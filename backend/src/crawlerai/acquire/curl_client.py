@@ -15,7 +15,6 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, replace
 from functools import partial
 from typing import Literal, cast
-from urllib.parse import urlsplit
 
 from curl_cffi import Curl, CurlECode, CurlOpt
 from curl_cffi.curl import CURL_WRITEFUNC_ERROR, CURLINFO_HEADER_OUT
@@ -27,9 +26,10 @@ from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.outcome import Exchange
 from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.acquire.redirects import location as redirect_location
+from crawlerai.acquire.session import SiteSession
 from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target, bracketed
 from crawlerai.acquire.types import FetchPolicy
-from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, proxy_pool
+from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
 from crawlerai.storage.capture_bundle import HeaderList
 
 __all__ = [
@@ -109,13 +109,14 @@ Redirected = Callable[[Hop, int, Target], Hop]
 
 @dataclass(frozen=True)
 class Sent:
-    """What a fetch's requests got: the last response (None when none arrived), the failure, if any, and the pool
-    endpoint they went through."""
+    """What a fetch's requests got: the last response (None when none arrived), the failure, if any, the pool
+    endpoint they went through and the site session they carried."""
 
     last: Wire | None
     error: str | None
     pool: ProxyPool | None = None
     proxy: ProxyEndpoint | None = None
+    session: SiteSession | None = None
 
 
 async def send(
@@ -128,38 +129,66 @@ async def send(
     pools: Mapping[str, ProxyPool] | None,
     redirected: Redirected,
     transport: Transport | None = None,
+    session: SiteSession | None = None,
 ) -> Sent:
     """Fetch `url` with `first` through the pool `policy.proxy_pool` names (an endpoint picked for the URL's host),
-    within the policy's caps and time budget; `transport` replaces the network (tests)."""
+    within the policy's caps and time budget; `transport` replaces the network (tests). A site `session` (INV-29's
+    exception) is carried only through its own endpoint while the pool has it available: its cookies seed the fetch's
+    jar, its identity headers go with every hop."""
     started = time.monotonic()
     try:
         pool = proxy_pool(policy.proxy_pool, pools)
     except UnknownProxyPool as unknown:
         return Sent(None, str(unknown))
-    proxy = None if pool is None else pool.pick(urlsplit(url).hostname or "")
+    session = _usable(session, pool)
+    proxy = session.proxy if session is not None else pool_endpoint(pool, url)
     limits = Limits(policy.max_body_bytes, policy.max_decompressed_bytes, started + policy.timeout_s)
     try:
         async with AsyncExitStack() as stack:
             if transport is None:
                 transport = await stack.enter_async_context(curl_transport(impersonate, proxy, limits))
             last = await follow(
-                url, first, connector=connector, transport=transport, deadline=limits.deadline, redirected=redirected
+                url,
+                first,
+                connector=connector,
+                transport=transport,
+                deadline=limits.deadline,
+                redirected=redirected,
+                session=session,
             )
     except Failed as failed:
-        return Sent(failed.last, failed.error, pool, proxy)
-    return Sent(last, None, pool, proxy)
+        return Sent(failed.last, failed.error, pool, proxy, session)
+    return Sent(last, None, pool, proxy, session)
+
+
+def _usable(session: SiteSession | None, pool: ProxyPool | None) -> SiteSession | None:
+    """`session` unless its endpoint is quarantined: its cookies were earned from that endpoint's address."""
+    if session is None or pool is None or session.proxy is None or pool.health.available(session.proxy):
+        return session
+    return None
 
 
 async def follow(
-    url: str, first: Hop, *, connector: SafeConnector, transport: Transport, deadline: float, redirected: Redirected
+    url: str,
+    first: Hop,
+    *,
+    connector: SafeConnector,
+    transport: Transport,
+    deadline: float,
+    redirected: Redirected,
+    session: SiteSession | None = None,
 ) -> Wire:
     """The final response for `url`, every hop checked by the guard first (INV-16), at most `MAX_REDIRECTS` followed.
-    Cookies set by one hop go with the next whose host and path they match, and none outlive the fetch (INV-29).
-    Raises `Failed`."""
+    Cookies set by one hop go with the next whose host and path they match, and none outlive the fetch (INV-29); a
+    site `session`'s cookies are held from the start, and its identity headers fill every hop. Raises `Failed`."""
     target = await _checked(connector.check(url), deadline, None)
     cookies = await FetchCookies.new()
+    identity: HeaderList = ()
+    if session is not None:
+        cookies.seed(session.cookies)
+        identity = session.identity
     hop = first
-    response = await _send(transport, target, hop, cookies)
+    response = await _send(transport, target, hop, cookies, identity)
     for hops in range(MAX_REDIRECTS + 1):
         location = redirect_location(response.status, response.response_headers)
         if location is None:
@@ -168,7 +197,7 @@ async def follow(
             raise Failed("too_many_redirects", response)
         target_next = await _checked(connector.redirect(target, location), deadline, response)
         hop, target = redirected(hop, response.status, target_next), target_next
-        response = await _send(transport, target, hop, cookies)
+        response = await _send(transport, target, hop, cookies, identity)
     return response
 
 
@@ -183,9 +212,12 @@ async def _checked(check: Awaitable[Target], deadline: float, last: Wire | None)
         raise Failed("timeout", last) from e
 
 
-async def _send(transport: Transport, target: Target, hop: Hop, cookies: FetchCookies) -> Wire:
+async def _send(transport: Transport, target: Target, hop: Hop, cookies: FetchCookies, identity: HeaderList) -> Wire:
     # The fetch sends only its own cookies (INV-29), and the guard's host is the request's (RFC 9110 §7.2).
     headers = {name: value for name, value in hop.headers.items() if name.lower() not in ("cookie", "host")}
+    named = {name.lower() for name in headers}
+    # A session's identity replaces the impersonation's; a header the hop names itself (a recipe's) still wins.
+    headers.update((name, value) for name, value in identity if name.lower() not in named)
     if (cookie := cookies.header(target.url)) is not None:
         headers["Cookie"] = cookie
     response = await transport(target, replace(hop, headers=headers))

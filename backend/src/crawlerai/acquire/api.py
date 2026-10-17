@@ -7,7 +7,9 @@ two only a navigation sends (Upgrade Insecure Requests §3.2; Fetch Metadata §2
 Metadata of a CORS request for no destination (W3C Fetch Metadata Request Headers §2: `Sec-Fetch-Mode: cors`,
 `Sec-Fetch-Dest: empty`, `Sec-Fetch-Site` from the page to the endpoint), the `Referer` the default referrer policy
 gives (W3C Referrer Policy §3, `strict-origin-when-cross-origin`) and an `Origin` where Fetch §3.1 sends one (a CORS
-request to another origin, or any request that is not a GET). A recipe's own headers come last and win.
+request to another origin, or any request that is not a GET). A recipe's own headers come last and win. The page's
+site session, if any (`acquire.session`, INV-29's exception), lends its cookies and identity to a request in the
+site's registrable domain.
 """
 
 import asyncio
@@ -26,6 +28,7 @@ from crawlerai.acquire.classify import classify
 from crawlerai.acquire.curl_client import Hop, Transport, Wire, send
 from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
 from crawlerai.acquire.public_suffix import default_suffixes
+from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.core.proxy import ProxyPool
@@ -92,11 +95,14 @@ async def fetch_json(
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
     transport: Transport | None = None,
+    sessions: SiteSessions | None = None,
 ) -> FetchResult:
     """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request. `transport`
-    replaces the network (tests)."""
+    replaces the network (tests). `sessions` are this process's site sessions: the page's site's goes with a request
+    in its registrable domain, and is dropped when it is `blocked`."""
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
+    session = None if sessions is None else sessions.take(request.page_url, request.url, policy.proxy_pool)
     sent = await send(
         request.url,
         _first_hop(request),
@@ -106,6 +112,7 @@ async def fetch_json(
         pools=pools,
         redirected=_Redirect(request.page_url),
         transport=transport,
+        session=session,
     )
     last, error, challenge = sent.last, sent.error, None
     block_class: BlockClass = "error"
@@ -130,6 +137,8 @@ async def fetch_json(
         challenge=challenge,
     )
     report_proxy(sent.pool, sent.proxy, result)
+    if sessions is not None:
+        sessions.settle(sent.session, result)
     return result
 
 
@@ -236,13 +245,10 @@ def site_relation(page_url: str, url: str) -> SiteRelation:
     if _origin(page_url) == _origin(url):
         return "same-origin"
     (scheme_a, host_a, _), (scheme_b, host_b, _) = _origin(page_url), _origin(url)
-    if scheme_a == scheme_b and _site(host_a) == _site(host_b):
+    suffixes = default_suffixes()
+    if scheme_a == scheme_b and suffixes.site(host_a) == suffixes.site(host_b):
         return "same-site"
     return "cross-site"
-
-
-def _site(host: str) -> str:
-    return default_suffixes().registrable_domain(host) or host
 
 
 def referrer(page_url: str, url: str) -> str | None:

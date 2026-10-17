@@ -22,6 +22,7 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs, adapter_registry
+from crawlerai.acquire.session import CookieExport, SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
@@ -81,23 +82,46 @@ async def _work() -> None:
     connector = SafeConnector()
     pools = settings.proxy_pools
 
-    async def fetch_in(session: BrowserSession, url: str, policy: FetchPolicy) -> FetchResult:
+    async def fetch_in(
+        session: BrowserSession, url: str, policy: FetchPolicy, export: CookieExport | None
+    ) -> FetchResult:
         return await fetch_browser(
-            url, policy, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools
+            url, policy, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools, export=export
         )
 
     impersonate = rung_impersonation(settings)
-    http = partial(fetch_http, engine_version=ENGINE_VERSION, impersonate=impersonate, connector=connector, pools=pools)
+    sessions = SiteSessions()  # this worker's site sessions (INV-29's exception), in memory only
+    http = partial(
+        fetch_http,
+        engine_version=ENGINE_VERSION,
+        impersonate=impersonate,
+        connector=connector,
+        pools=pools,
+        sessions=sessions,
+    )
     engine = create_async_engine(settings.database_url.get_secret_value())
     try:
         async with aclosing(
             SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
         ) as browser:
             json = partial(
-                fetch_json, engine_version=ENGINE_VERSION, impersonate=impersonate, connector=connector, pools=pools
+                fetch_json,
+                engine_version=ENGINE_VERSION,
+                impersonate=impersonate,
+                connector=connector,
+                pools=pools,
+                sessions=sessions,
             )
             adapters = adapter_registry(settings.disabled_adapters)
-            rungs = Rungs(http=http, browser=browser.fetch, adapters=adapters, conditional=http, json=json)
+            rungs = Rungs(
+                http=http,
+                browser=browser.fetch,
+                adapters=adapters,
+                conditional=http,
+                json=json,
+                sessions=sessions,
+                exporting=browser.fetch,
+            )
             store = open_store(settings.object_store)
             fetching = Fetching(rungs, connector, store, HostLimiter())
             llm, setup = llm_from_settings(settings, engine)

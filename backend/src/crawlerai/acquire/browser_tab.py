@@ -16,6 +16,7 @@ import contextlib
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AsyncExitStack
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Final, Literal, Protocol, cast
 
@@ -28,14 +29,17 @@ from crawlerai.acquire.browser import (
     BrowserSession,
     Failed,
     Rendered,
+    challenge_of,
     classified,
+    context_cookies,
     read_state,
     rendered,
 )
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result
+from crawlerai.acquire.challenge import count
+from crawlerai.acquire.outcome import Content, Exchange, fetch_result, report_proxy
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import ActionsReport, BlockClass, FetchPolicy, FetchResult, PagedFetch
-from crawlerai.core.proxy import ProxyPool, UnknownProxyPool, pool_endpoint
+from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
 
 __all__ = ["Click", "Drive", "ListingRung", "Ref", "Tab", "fetch_listing"]
 
@@ -270,30 +274,51 @@ async def fetch_listing(
 ) -> PagedFetch:
     """Render the listing at `url` as `fetch_browser` does and, when it is reached (`ok`), let `drive` act on it; the
     answer holds the document states the driver kept (at least one) and its report. A page not reached is the one
-    page, with no report. The navigation is bounded by `policy.browser_timeout_s`; the driver bounds its own actions."""
+    page, with no report, labelled with the challenge it presents. The navigation is bounded by
+    `policy.browser_timeout_s`; the driver bounds its own actions. The pool endpoint is told how the navigation went."""
+    fetched_at = datetime.now(UTC)
+    started = time.monotonic()
+    try:
+        pool = proxy_pool(policy.proxy_pool, pools)
+    except UnknownProxyPool as unknown:
+        return _failed(url, policy, engine_version, fetched_at, started, str(unknown), None)
+    proxy = pool_endpoint(pool, url)
+    paged = await _listing(url, policy, drive, session, engine_version, connector or SafeConnector(), proxy)
+    report_proxy(pool, proxy, paged.pages[0])
+    return paged
+
+
+async def _listing(
+    url: str,
+    policy: FetchPolicy,
+    drive: Drive,
+    session: BrowserSession,
+    engine_version: str,
+    connector: SafeConnector,
+    proxy: ProxyEndpoint | None,
+) -> PagedFetch:
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
     exchange: Exchange | None = None
     try:
-        proxy = pool_endpoint(policy.proxy_pool, pools, url)
         async with AsyncExitStack() as stack:
             async with asyncio.timeout(policy.browser_timeout_s):
-                page = await stack.enter_async_context(
-                    rendered(url, policy, session, connector or SafeConnector(), proxy, started, {})
-                )
+                page = await stack.enter_async_context(rendered(url, policy, session, connector, proxy, started, {}))
                 exchange, content = await read_state(page)
                 block_class = await classified(exchange, content)
             if block_class != "ok":
-                return _one(url, policy, engine_version, fetched_at, started, exchange, content, block_class, None)
+                cookies = await context_cookies(page.page.context)
+                challenge = await challenge_of(block_class, exchange, content, url, cookies)
+                count(challenge, "browser")
+                one = _Outcome(exchange, content, block_class, None, challenge)
+                return _one(url, policy, engine_version, fetched_at, started, one)
             tab = _PatchrightTab(page, url=url, engine_version=engine_version, started=started)
             report = await _driven(drive, tab)
             if not tab.kept and not await tab.keep():
-                return _one(url, policy, engine_version, fetched_at, started, exchange, content, block_class, None)
+                return _one(url, policy, engine_version, fetched_at, started, _Outcome(exchange, content, block_class))
             return PagedFetch(pages=tuple(tab.kept), report=report.model_copy(update={"pages": len(tab.kept)}))
     except Failed as failed:
         return _failed(url, policy, engine_version, fetched_at, started, failed.error, failed.exchange)
-    except UnknownProxyPool as unknown:
-        return _failed(url, policy, engine_version, fetched_at, started, str(unknown), None)
     except TimeoutError:
         return _failed(url, policy, engine_version, fetched_at, started, "timeout", exchange)
 
@@ -307,16 +332,17 @@ async def _driven(drive: Drive, tab: _PatchrightTab) -> ActionsReport:
         return ActionsReport(mechanism=None, stop="error", actions=0, pages=len(tab.kept), items=0)
 
 
+@dataclass(frozen=True)
+class _Outcome:
+    exchange: Exchange
+    content: Content
+    block_class: BlockClass
+    error: str | None = None
+    challenge: str | None = None
+
+
 def _one(
-    url: str,
-    policy: FetchPolicy,
-    engine_version: str,
-    fetched_at: datetime,
-    started: float,
-    exchange: Exchange,
-    content: Content,
-    block_class: BlockClass,
-    error: str | None,
+    url: str, policy: FetchPolicy, engine_version: str, fetched_at: datetime, started: float, outcome: _Outcome
 ) -> PagedFetch:
     result = fetch_result(
         url=url,
@@ -325,10 +351,11 @@ def _one(
         engine_version=engine_version,
         fetched_at=fetched_at,
         started=started,
-        exchange=exchange,
-        content=content,
-        block_class=block_class,
-        error=error,
+        exchange=outcome.exchange,
+        content=outcome.content,
+        block_class=outcome.block_class,
+        error=outcome.error,
+        challenge=outcome.challenge,
     )
     return PagedFetch(pages=(result,), report=None)
 
@@ -343,4 +370,4 @@ def _failed(
     exchange: Exchange | None,
 ) -> PagedFetch:
     empty = exchange or Exchange(url=url, status=0, request_headers=(), response_headers=())
-    return _one(url, policy, engine_version, fetched_at, started, empty, Content(body=b""), "error", error)
+    return _one(url, policy, engine_version, fetched_at, started, _Outcome(empty, Content(body=b""), "error", error))

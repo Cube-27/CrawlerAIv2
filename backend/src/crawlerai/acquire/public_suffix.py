@@ -71,6 +71,11 @@ class PublicSuffixes:
                 return ".".join(labels[i - 1 :]) if i else None
         return None
 
+    def site(self, host: str) -> str:
+        """The site of `host` (HTML Standard §7.1.1 "obtain a site", less the scheme): its registrable domain, or the
+        host itself where it has none (an IP address, a public suffix)."""
+        return self.registrable_domain(host) or host.strip(".").lower()
+
 
 def _ascii(name: str) -> str:
     """A domain as the cookie header carries it: IDNA A-labels (RFC 5890 §2.3.2.1), lowercase."""

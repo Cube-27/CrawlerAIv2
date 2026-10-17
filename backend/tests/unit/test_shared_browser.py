@@ -8,6 +8,7 @@ from typing import cast
 
 import pytest
 
+from crawlerai.acquire.session import CookieExport
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.worker.browser import SharedBrowser
 
@@ -48,7 +49,7 @@ class Chromium:
         finally:
             session.closed = True
 
-    async def fetch(self, session: Session, url: str, policy: FetchPolicy) -> FetchResult:
+    async def fetch(self, session: Session, url: str, policy: FetchPolicy, export: CookieExport | None) -> FetchResult:
         self.fetched.append((session.number, url))
         if self.kills.get(url, 0) > 0:
             self.kills[url] -= 1

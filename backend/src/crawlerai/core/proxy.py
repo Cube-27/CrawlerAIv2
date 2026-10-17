@@ -135,7 +135,6 @@ def proxy_pool(name: str | None, pools: Mapping[str, ProxyPool] | None) -> Proxy
     return pool
 
 
-def pool_endpoint(name: str | None, pools: Mapping[str, ProxyPool] | None, url: str) -> ProxyEndpoint | None:
-    """The endpoint of pool `name` that a request for `url` goes through, or None when no pool is asked for."""
-    pool = proxy_pool(name, pools)
+def pool_endpoint(pool: ProxyPool | None, url: str) -> ProxyEndpoint | None:
+    """The endpoint of `pool` that a request for `url` goes through, or None without a pool."""
     return None if pool is None else pool.pick(urlsplit(url).hostname or "")

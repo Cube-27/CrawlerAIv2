@@ -80,6 +80,9 @@ class AttemptRecord(_Frozen):
     # measured from `fetched_at`, so the pause is never shorter than asked. Read by the politeness step whichever
     # attempt's outcome is kept; not stored, as the response's other headers are not.
     retry_after: timedelta | None = Field(default=None, exclude=True)
+    # D-1353: this browser `ok` opened a site session with its cookies (`acquire.session`), so the site's later fetches
+    # stay on HTTP while it lives (`rungs.remember_fetch_method`). In memory only, like `retry_after`.
+    site_session: bool = Field(default=False, exclude=True)
 
 
 class FetchResult(_Frozen):

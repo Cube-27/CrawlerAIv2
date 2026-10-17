@@ -4,7 +4,8 @@ Redirects are followed by hand so the SSRF guard checks every hop (§4.5), and e
 address the guard checked. Through a proxy pool, which resolves names itself, the guard still checks each hop's host
 before it is requested (ARCHITECTURE §7.1). Every failure becomes an `error` outcome with a short reason that never
 contains the URL. Given the validators a page last answered with, its request is conditional (SPEC-11 §4.2): an
-unchanged page answers 304 with no body. The request is a navigation, sent with the impersonation's own headers.
+unchanged page answers 304 with no body. The request is a navigation, sent with the impersonation's own headers, or
+with a site session's cookies and identity where the site has one (`acquire.session`, INV-29's exception).
 """
 
 import asyncio
@@ -21,6 +22,7 @@ from crawlerai.acquire.challenge import CHALLENGED, challenge_label, count
 from crawlerai.acquire.classify import classify
 from crawlerai.acquire.curl_client import Hop, pinned, reason, send
 from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
+from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, Validators
 from crawlerai.core.proxy import ProxyPool
@@ -35,10 +37,13 @@ async def fetch_http(
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
     validators: Validators | None = None,
+    sessions: SiteSessions | None = None,
 ) -> FetchResult:
-    """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request."""
+    """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request. `sessions`
+    are this process's site sessions: the site's, if any, goes with the fetch, and is dropped when it is `blocked`."""
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
+    session = None if sessions is None else sessions.take(url, url, policy.proxy_pool)
     sent = await send(
         url,
         Hop("GET", _conditional(validators)),
@@ -47,6 +52,7 @@ async def fetch_http(
         connector=connector or SafeConnector(),
         pools=pools,
         redirected=_unconditional,
+        session=session,
     )
     last, challenge = sent.last, None
     block_class: BlockClass = "error"
@@ -70,6 +76,8 @@ async def fetch_http(
         challenge=challenge,
     )
     report_proxy(sent.pool, sent.proxy, result)
+    if sessions is not None:
+        sessions.settle(sent.session, result)
     return result
 
 

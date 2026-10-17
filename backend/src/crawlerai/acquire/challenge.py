@@ -9,15 +9,16 @@ the log per label and rung, and slow a host's adaptive rate as a 429 does (`poli
 """
 
 import logging
+from collections.abc import Iterable
 from typing import Final
 
 from crawlerai.acquire.classify import interstitial
 from crawlerai.acquire.types import BlockClass
-from crawlerai.adapters.challenges import vendor_of
+from crawlerai.adapters.challenges import SIGNATURES, vendor_of
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.storage.capture_bundle import HeaderList
 
-__all__ = ["CHALLENGED", "STRUCTURAL", "challenge_label", "challenge_signal", "count"]
+__all__ = ["CHALLENGED", "STRUCTURAL", "challenge_label", "challenge_signal", "count", "portable"]
 
 log = logging.getLogger(__name__)
 
@@ -34,13 +35,23 @@ def challenge_signal(status: int, headers: HeaderList, body: bytes, url: str) ->
     return interstitial(status, headers, body, url)
 
 
-def challenge_label(status: int, headers: HeaderList, body: bytes, url: str) -> str | None:
+def challenge_label(
+    status: int, headers: HeaderList, body: bytes, url: str, cookie_names: Iterable[str] = ()
+) -> str | None:
     """The label of a response in a `CHALLENGED` class. `headers` are as received, `Set-Cookie` included: only
-    the cookie names are read (RFC 6265 §4.1.1, the name before the first `=`), never a value."""
-    signature = vendor_of((name for name, _ in headers), _cookie_names(headers), body)
+    the cookie names are read (RFC 6265 §4.1.1, the name before the first `=`), never a value. `cookie_names` adds the
+    names a browser holds for the page, whose capture records no `Set-Cookie`."""
+    names = (*_cookie_names(headers), *cookie_names)
+    signature = vendor_of((name for name, _ in headers), names, body)
     if signature is not None:
         return signature.vendor
     return STRUCTURAL if challenge_signal(status, headers, body, url) else None
+
+
+def portable(label: str | None) -> bool:
+    """Whether the cookies a browser earns past a challenge with `label` may serve later plain HTTP fetches (a site
+    session, D-1352): an unlabelled or structural challenge, or a vendor whose signature says so."""
+    return not any(signature.vendor == label and not signature.portable for signature in SIGNATURES)
 
 
 def _cookie_names(headers: HeaderList) -> tuple[str, ...]:

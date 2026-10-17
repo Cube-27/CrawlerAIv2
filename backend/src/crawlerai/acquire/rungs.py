@@ -8,7 +8,8 @@ adapter detects, or which an adapter says stands for one of its platform's pages
 served by the recipe's rung (SPEC-09 §4.8), which the caller binds to the recipe: the config IR sits above `acquire`
 (`.importlinter`). The browser rung is `crawlerai.acquire.browser.fetch_browser`. Every rung is a function of
 (url, policy), so `acquire` decides and records only. The one exception is the HTTP rung's conditional form, which
-also takes the validators a page last answered with (SPEC-11 §4.2).
+also takes the validators a page last answered with (SPEC-11 §4.2), and the browser rung's exporting form, which also
+hands the context's cookies to a site session (`acquire.session`, INV-29's exception).
 """
 
 import asyncio
@@ -23,9 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.browser_tab import ListingRung
+from crawlerai.acquire.challenge import portable
 from crawlerai.acquire.classify import classify, interstitial
 from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import SLOW_DOWN, Admit, asked_pause
+from crawlerai.acquire.session import CookieExport, SiteSessions, identity
 from crawlerai.acquire.types import (
     AttemptRecord,
     BlockClass,
@@ -53,6 +56,12 @@ class ConditionalRung(Protocol):
     def __call__(self, url: str, policy: FetchPolicy, *, validators: Validators | None) -> Awaitable[FetchResult]: ...
 
 
+class ExportingRung(Protocol):
+    """The browser rung filling `export` with the context's cookies (`crawlerai.acquire.browser.fetch_browser`)."""
+
+    def __call__(self, url: str, policy: FetchPolicy, *, export: CookieExport) -> Awaitable[FetchResult]: ...
+
+
 _NOT_MODIFIED = 304
 _UNAVAILABLE = 503  # RFC 9110 §15.6.4
 # ARCHITECTURE §7.1: the HTTP outcomes that are evidence for the browser, which may pass where HTTP did not.
@@ -71,6 +80,10 @@ class Rungs:
     json: JsonFetcher | None = None
     # A listing with browser actions (`acquire.browser_tab.fetch_listing`, owner #52); the API process sets it.
     listing: ListingRung | None = None
+    # The site sessions of this process, which the HTTP and JSON rungs were bound to, and the browser rung's exporting
+    # form that opens them; without both a browser retry opens none (INV-29 without its exception).
+    sessions: SiteSessions | None = None
+    exporting: ExportingRung | None = None
 
 
 def adapter_registry(disabled: Collection[str]) -> Registry:
@@ -203,9 +216,26 @@ async def _page(
     retried = policy.method_hint == "auto" and method == "http" and await _browser_may_help(result, needs_render)
     if not retried or not await _admitted(admit_next, after=_paused_by(result)):
         return await _as_last_page(result), result.attempts, result.duration_ms
-    retry = await rungs.browser(url, policy)
+    retry = await _browser_retry(url, policy, rungs, result)
     kept = retry if await _better(retry, result, needs_render) else await _as_last_page(result)
     return kept, result.attempts + retry.attempts, result.duration_ms + retry.duration_ms
+
+
+async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: FetchResult) -> FetchResult:
+    """The browser attempt after the HTTP `result`. When HTTP was refused (`shell` or `blocked`) by a challenge whose
+    cookies may serve plain HTTP (`challenge.portable`) and the process keeps site sessions, the browser's `ok` opens
+    the site's session with the context's cookies and the identity it sent (INV-29's exception), and its attempt says
+    so (`site_session`)."""
+    sessions, exporting = rungs.sessions, rungs.exporting
+    handoff = result.block_class in _BROWSER_EVIDENCE and portable(result.attempts[-1].challenge)
+    if sessions is None or exporting is None or not handoff:
+        return await rungs.browser(url, policy)
+    export = CookieExport()
+    retry = await exporting(url, policy, export=export)
+    if retry.block_class != "ok" or sessions.open(url, policy.proxy_pool, export, identity(retry)) is None:
+        return retry
+    opened = tuple(a.model_copy(update={"site_session": True}) for a in retry.attempts)
+    return FetchResult(bundle=retry.bundle, duration_ms=retry.duration_ms, attempts=opened)
 
 
 async def _browser_may_help(result: FetchResult, needs_render: RenderCheck | None) -> bool:
@@ -288,12 +318,15 @@ async def remember_fetch_method(conn: AsyncConnection, site_id: SiteId, result: 
     (a shell or a block), or HTTP was `ok` but lacked what the caller reads (D-1260, owner #49, #54), so the site's
     later fetches go straight to the browser instead of paying for both. In `auto`, a kept browser outcome follows an
     HTTP attempt only on that evidence (`_page`). Only the re-check (`crawlerai.scheduler.recheck`) sets it back to
-    `http`, so `fetch_method_checked_at` starts its clock here."""
+    `http`, so `fetch_method_checked_at` starts its clock here. A browser `ok` that opened a site session leaves the
+    site on HTTP (D-1353): its later fetches pass over HTTP with the session's cookies, and when the session ends
+    the next refusal is solved in the browser again."""
     # Only `auto` renders on evidence: a browser fetch asked for (`method_hint`) is no evidence about HTTP, even beside
     # an HTTP attempt of a recipe's page request.
     by_evidence = result.bundle.manifest.fetch_policy.get("method_hint") == "auto"
     by_http = any(a.method == "http" for a in result.attempts)
-    if result.method == "browser" and result.block_class == "ok" and by_evidence and by_http:
+    handed_off = any(a.site_session for a in result.attempts)
+    if result.method == "browser" and result.block_class == "ok" and by_evidence and by_http and not handed_off:
         await conn.execute(
             update(Site)
             .where(Site.id == site_id, Site.fetch_method != "browser")

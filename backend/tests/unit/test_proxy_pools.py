@@ -459,7 +459,7 @@ def test_inv16_the_browser_guard_checks_the_host_before_asking_any_endpoint_of_a
 ) -> None:
     pools = _pools(proxy.endpoint(), second_proxy.endpoint())
     for _ in range(2):
-        endpoint = pool_endpoint("dc", pools, "http://internal.example.test/")
+        endpoint = pool_endpoint(pools["dc"], "http://internal.example.test/")
         assert endpoint is not None
         code, _ = _guarded(proxy, endpoint, "internal.example.test")
         assert code == 2  # RFC 1928 §6: connection not allowed by ruleset
