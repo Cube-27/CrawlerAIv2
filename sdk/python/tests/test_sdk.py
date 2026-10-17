@@ -62,15 +62,19 @@ def test_a_request_the_model_refuses_is_not_sent() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("nothing is sent")
 
+    http = client(handler)
+
     with pytest.raises(ValueError, match="query"):
-        client(handler).search(limit=3)
+        http.search(limit=3)
 
 
 def test_a_model_and_its_members_are_not_taken_together() -> None:
     request = models.SearchRequest(query="kettles")
 
+    http = client(lambda r: httpx.Response(200))
+
     with pytest.raises(TypeError, match="not both"):
-        client(lambda r: httpx.Response(200)).search(request, limit=3)
+        http.search(request, limit=3)
 
 
 def test_a_problem_is_an_api_error_with_its_type_and_members() -> None:
@@ -107,7 +111,7 @@ def test_wait_for_job_polls_until_it_ends() -> None:
     statuses = iter(["queued", "running", "completed"])
     http = client(lambda request: httpx.Response(200, json=summary(next(statuses))))
 
-    ended = http.wait_for_job(JOB_ID, poll_interval=0)
+    ended = http.wait_for_job(JOB_ID, poll_interval_s=0)
 
     assert ended.status.value == "completed"
 
@@ -116,7 +120,7 @@ def test_wait_for_job_times_out() -> None:
     http = client(lambda request: httpx.Response(200, json=summary("running")))
 
     with pytest.raises(JobTimeout):
-        http.wait_for_job(JOB_ID, poll_interval=0.01, timeout=0.05)
+        http.wait_for_job(JOB_ID, poll_interval_s=0.01, timeout_s=0.05)
 
 
 def test_job_results_are_paged_through_their_cursor() -> None:
@@ -173,7 +177,7 @@ async def test_the_async_client_runs_the_same_calls() -> None:
 
     async with AsyncCrawlerAI("k", "https://api.example.test", transport=httpx.MockTransport(handler)) as http:
         submitted = await http.batch_scrape(urls=["https://a.example.test/"], formats=["markdown"])
-        ended = await http.wait_for_job(submitted.job_id, poll_interval=0)
+        ended = await http.wait_for_job(submitted.job_id, poll_interval_s=0)
         kinds = [event.kind async for event in http.events(submitted.job_id)]
 
     assert (ended.status.value, kinds) == ("completed", ["progress", "completed"])

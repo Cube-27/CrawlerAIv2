@@ -19,6 +19,9 @@ MAX_BYTES: Final = 2_000_000  # an answer past this is not read
 # pages, up to this many.
 SEARXNG_MAX_PAGES: Final = 5
 
+QUERY: Final = "{query}"  # the placeholder of a URL template, replaced by the percent-encoded query
+LIMIT: Final = "{limit}"
+
 Get = Callable[[str], Awaitable[tuple[bytes, str | None]]]
 
 
@@ -84,7 +87,7 @@ class TemplateProvider:
     fields: Fields | None = None
 
     async def search(self, query: str, limit: int) -> list[Hit]:
-        url = self.template.replace("{query}", quote(query, safe="")).replace("{limit}", str(limit))
+        url = self.template.replace(QUERY, quote(query, safe="")).replace(LIMIT, str(limit))
         body, charset = await self.get(url)
         return parse(body, charset, url, self.fields)[:limit]
 
@@ -98,9 +101,9 @@ def configured(
         _absolute(searxng_url)
         return SearxngProvider(searxng_url, get)
     if url_template is not None:
-        if "{query}" not in url_template:
+        if QUERY not in url_template:
             raise ValueError("the search URL template has no {query}")
-        _absolute(url_template.replace("{query}", "q").replace("{limit}", "1"))
+        _absolute(url_template.replace(QUERY, "q").replace(LIMIT, "1"))
         return TemplateProvider(url_template, get, fields)
     return None
 

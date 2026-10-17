@@ -40,6 +40,13 @@ export type JobSummary = S["JobSummary"];
 export type JobStatus = JobSummary["status"];
 export type Problem = S["Problem"];
 
+/** `url` without the slashes that end it. */
+function trimSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === "/") end -= 1;
+  return url.slice(0, end);
+}
+
 const ENDED: ReadonlySet<JobStatus> = new Set(["completed", "failed", "cancelled"]);
 
 /** The API answered with a problem document (RFC 9457): `type` is its code (`validation`, `search_unavailable`, ...). */
@@ -88,7 +95,7 @@ export class CrawlerAI {
 
   constructor(apiKey: string, options: ClientOptions = {}) {
     this.#key = apiKey;
-    this.#base = (options.baseUrl ?? "http://localhost:8000").replace(/\/+$/, "");
+    this.#base = trimSlashes(options.baseUrl ?? "http://localhost:8000");
     this.#fetch = options.fetch ?? ((...args) => fetch(...args));
   }
 
@@ -185,15 +192,17 @@ export class CrawlerAI {
 
   /** Poll the job until it is `completed`, `failed` or `cancelled`, and return its summary. Rejects with `JobTimeout`
    * after `timeoutS` seconds (never, when absent). */
-  async waitForJob(jobId: string, options: { pollIntervalS?: number; timeoutS?: number } = {}): Promise<JobSummary> {
-    const interval = (options.pollIntervalS ?? 1) * 1000;
+  waitForJob(jobId: string, options: { pollIntervalS?: number; timeoutS?: number } = {}): Promise<JobSummary> {
     const deadline = options.timeoutS === undefined ? Infinity : Date.now() + options.timeoutS * 1000;
-    for (;;) {
-      const summary = await this.job(jobId);
-      if (ENDED.has(summary.status)) return summary;
-      if (Date.now() >= deadline) throw new JobTimeout(jobId, options.timeoutS ?? 0);
-      await new Promise((resolve) => setTimeout(resolve, interval));
-    }
+    return this.#poll(jobId, (options.pollIntervalS ?? 1) * 1000, deadline, options.timeoutS ?? 0);
+  }
+
+  async #poll(jobId: string, intervalMs: number, deadline: number, timeoutS: number): Promise<JobSummary> {
+    const summary = await this.job(jobId);
+    if (ENDED.has(summary.status)) return summary;
+    if (Date.now() >= deadline) throw new JobTimeout(jobId, timeoutS);
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    return this.#poll(jobId, intervalMs, deadline, timeoutS);
   }
 
   /** The job's run events live (`GET /v1/jobs/{id}/events`), until its end event; resume with the last id seen. */

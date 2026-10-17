@@ -47,9 +47,10 @@ def _body[M: BaseModel](
     """The JSON body of `request`, or of `fields`, validated by `model`; members never given are left out."""
     if request is not None and fields:
         raise TypeError("give the request or its members, not both")
-    checked = (
-        request if isinstance(request, model) else model.model_validate(request if request is not None else fields)
-    )
+    if isinstance(request, model):
+        checked = request
+    else:
+        checked = model.model_validate(fields if request is None else request)
     body: dict[str, Any] = checked.model_dump(mode="json", by_alias=True, exclude_unset=True)
     return body
 
@@ -186,18 +187,18 @@ class CrawlerAI:
                 return
 
     def wait_for_job(
-        self, job_id: JobId, *, poll_interval: float = 1.0, timeout: float | None = None
+        self, job_id: JobId, *, poll_interval_s: float = 1.0, timeout_s: float | None = None
     ) -> models.JobSummary:
         """Poll the job until it is `completed`, `failed` or `cancelled`, and return its summary. Raises `JobTimeout`
-        after `timeout` seconds (never, when None)."""
-        deadline = None if timeout is None else time.monotonic() + timeout
+        after `timeout_s` seconds (never, when None)."""
+        deadline = None if timeout_s is None else time.monotonic() + timeout_s
         while True:
             summary = self.job(job_id)
             if summary.status.value in ENDED:
                 return summary
             if deadline is not None and time.monotonic() >= deadline:
-                raise JobTimeout(str(job_id), timeout or 0.0)
-            time.sleep(poll_interval)
+                raise JobTimeout(str(job_id), timeout_s or 0.0)
+            time.sleep(poll_interval_s)
 
     def events(self, job_id: JobId, *, last_event_id: str | None = None) -> Iterator[sse.JobEvent]:
         """The job's run events live (`GET /v1/jobs/{id}/events`), until its end event; resume with the last id seen."""
@@ -286,16 +287,16 @@ class AsyncCrawlerAI:
                 return
 
     async def wait_for_job(
-        self, job_id: JobId, *, poll_interval: float = 1.0, timeout: float | None = None
+        self, job_id: JobId, *, poll_interval_s: float = 1.0, timeout_s: float | None = None
     ) -> models.JobSummary:
-        deadline = None if timeout is None else time.monotonic() + timeout
+        deadline = None if timeout_s is None else time.monotonic() + timeout_s
         while True:
             summary = await self.job(job_id)
             if summary.status.value in ENDED:
                 return summary
             if deadline is not None and time.monotonic() >= deadline:
-                raise JobTimeout(str(job_id), timeout or 0.0)
-            await asyncio.sleep(poll_interval)
+                raise JobTimeout(str(job_id), timeout_s or 0.0)
+            await asyncio.sleep(poll_interval_s)
 
     async def events(self, job_id: JobId, *, last_event_id: str | None = None) -> AsyncIterator[sse.JobEvent]:
         headers = {"Accept": "text/event-stream", **({} if last_event_id is None else {"Last-Event-ID": last_event_id})}

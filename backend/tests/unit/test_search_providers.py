@@ -134,5 +134,7 @@ def test_the_settings_choose_the_provider_and_refuse_a_malformed_one() -> None:
 
 
 async def test_an_unreachable_provider_is_a_failure_with_no_internals() -> None:
+    get = http_get(1)
+
     with pytest.raises(SearchFailed, match="did not answer"):
-        await http_get(1)("http://127.0.0.1:1/never")
+        await get("http://127.0.0.1:1/never")

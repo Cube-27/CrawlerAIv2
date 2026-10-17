@@ -16,7 +16,7 @@ with CrawlerAI(os.environ["CRAWLERAI_API_KEY"], os.environ.get("CRAWLERAI_URL", 
         for hit in found.results:
             print(hit.position, hit.title, hit.url)
         if found.job_id is not None:
-            done = client.wait_for_job(found.job_id, poll_interval=1, timeout=120)
+            done = client.wait_for_job(found.job_id, poll_interval_s=1, timeout_s=120)
             print("scrape", done.status.value, done.counts.done, "pages")
 
     # Crawl a docs section best-first: the pages about the query come first.

@@ -123,6 +123,19 @@ test("events parse ids, kinds and multi-line data, whatever the chunking", async
   ]);
 });
 
+test("a CRLF split between two chunks is one line break", async () => {
+  const chunks = ["id: 1\r", "\nevent: progress\r\ndata: {}\r", "\n\r\n"];
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));
+      controller.close();
+    },
+  });
+  const events = [];
+  for await (const event of parseEvents(body)) events.push(event);
+  assert.deepEqual(events, [{ kind: "progress", id: "1", data: {} }]);
+});
+
 test("parseEvents alone reads a stream that ends without a blank line", async () => {
   const body = new Response('event: progress\ndata: {"a":1}').body;
   assert.ok(body !== null);
