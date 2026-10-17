@@ -118,3 +118,13 @@ def test_calls_of_one_endpoint_group_into_one_series_in_capture_order(first: lis
     series = row_series(data_calls(page))
 
     assert [[data.call.index for data in group] for group in series] == [[1, 2]]
+
+
+@given(_names)
+def test_a_request_sent_again_counts_once_in_its_series(names: list[str]) -> None:
+    url = f"{API}/items?page=1"
+    page = _page(
+        [f"Item {name}" for name in names], (url, {"results": _items(names)}), (url, {"results": _items(names)})
+    )
+
+    assert [[data.call.index for data in group] for group in row_series(data_calls(page))] == [[0]]

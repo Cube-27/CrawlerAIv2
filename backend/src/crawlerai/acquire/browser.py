@@ -484,16 +484,16 @@ async def _json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[Net
 
 
 async def _json_body(response: Response) -> bytes | None:
-    """The response's body when it is within the per-body cap and is JSON: labelled so, or sniffed as JSON text holding
-    an object or an array (`network_json`)."""
+    """The response's body when it is not empty, within the per-body cap, and JSON: labelled so, or sniffed as JSON
+    text holding an object or an array (`network_json`)."""
     if await _json_size(response) > _JSON_BODY_MAX_BYTES:
         return None
     try:
         data = await response.body()
     except PlaywrightError:
         return None  # no body to read: a redirect, or a request that failed or was evicted
-    if len(data) > _JSON_BODY_MAX_BYTES:
-        return None
+    if not data or len(data) > _JSON_BODY_MAX_BYTES:
+        return None  # an empty body (a 204, RFC 9110 §15.3.5) holds no JSON text
     return data if _json_label(response) or _sniffed(data) else None
 
 

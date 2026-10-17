@@ -134,12 +134,19 @@ def data_calls(page: ParsedPage) -> list[DataCall]:
 
 def row_series(calls: Sequence[DataCall]) -> list[tuple[DataCall, ...]]:
     """The calls with rows grouped by endpoint and row query, each group in capture order: the pages of one listing a
-    page loaded (a first batch, then more on scrolling). Groups come in the order of their best call in `calls`."""
-    groups: dict[tuple[EndpointKey, str], list[DataCall]] = {}
-    for data in calls:
+    page loaded (a first batch, then more on scrolling). A request sent again (same method, URL and body) answers with
+    the same items, so only its first call counts. Groups come in the order of their best call in `calls`."""
+    best: dict[tuple[EndpointKey, str], int] = {}  # each group's best rank in `calls`
+    for rank, data in enumerate(calls):
         if data.rows is not None:
-            groups.setdefault((data.call.endpoint, data.rows), []).append(data)
-    return [tuple(sorted(group, key=lambda data: data.call.index)) for group in groups.values()]
+            best.setdefault((data.call.endpoint, data.rows), rank)
+    groups: dict[tuple[EndpointKey, str], dict[tuple[str | None, str, str | None], DataCall]] = {}
+    for data in sorted(calls, key=lambda data: data.call.index):
+        if data.rows is not None:
+            entry = data.call.entry
+            group = groups.setdefault((data.call.endpoint, data.rows), {})
+            group.setdefault((entry.method, entry.url, entry.request_body), data)
+    return [tuple(groups[key].values()) for key in sorted(groups, key=best.__getitem__)]
 
 
 def _rows(document: JsonValue, page: ParsedPage, memo: dict[str, bool]) -> tuple[str | None, int]:
