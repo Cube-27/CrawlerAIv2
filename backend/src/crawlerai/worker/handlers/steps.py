@@ -29,7 +29,7 @@ from crawlerai.db.models import CaptureId, Job, RecordId, SchemaId, SiteId
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.conditional import Unchanged, fetch_unless_unchanged
-from crawlerai.recurring.state import record_fetch, standing_record, stored_validators
+from crawlerai.recurring.state import record_fetch, standing_listing, standing_record, stored_validators
 from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.task import ActiveConfig
@@ -99,7 +99,7 @@ class FetchedPage:
     site: SiteRow
     result: FetchResult
     capture_id: CaptureId
-    standing: RecordId | None
+    standing: tuple[RecordId, ...]
     attempts: tuple[AttemptRecord, ...]
     proxy_pool: str | None
     check: ContentCheck | None = None
@@ -136,7 +136,7 @@ async def fetch_page(
     guard refused fails the task at once (INV-16): the task's URL is checked before anything, as the services that
     fetch while the caller waits check theirs (`check_target`), since a crawl's URLs were never checked at submit.
 
-    With `recurring`, the records the task extracts with, a page a record already stands for (`standing_record`) is
+    With `recurring`, the records the task extracts with, a page records already stand for (`_standing`) is
     fetched with the validators it last answered with, and a 304 ends the task `unchanged` with no capture (SPEC-11
     §4.2).
 
@@ -150,9 +150,9 @@ async def fetch_page(
         return Ended(Failed(str(e), transient=False))
     site = await site_row(conn, urlsplit(task.url).hostname or "")
     policy = fetch_policy(options, locale, site.proxy_pool, page_kind=task.page_kind)
-    standing = None if recurring is None else await _standing(conn, task, site.id, recurring)
+    standing = () if recurring is None else await _standing(conn, task, site.id, recurring)
     # Validators go only where a record stands for a 304; without one, a 304 is fetched again whole (§4.6).
-    validators = None if standing is None else await stored_validators(conn, site.id, task.canonical_url)
+    validators = await stored_validators(conn, site.id, task.canonical_url) if standing else None
     attempts: list[AttemptRecord] = []
     robots = recording(fetching.rungs.http, policy, attempts)
     recipe = await _recipe(conn, fetching, task, served, robots)
@@ -177,7 +177,7 @@ async def fetch_page(
             attempts.extend(result.attempts)
             return result
 
-        return await fetch_unless_unchanged(fetch, validators, has_record=standing is not None)
+        return await fetch_unless_unchanged(fetch, validators, has_record=bool(standing))
 
     by_adapter = fetching.rungs.adapters.would_serve(task.url)
     fetched = await fetch_politely(
@@ -190,8 +190,8 @@ async def fetch_page(
         fetched = Failed(refused, transient=False)
     if isinstance(fetched, Unchanged):
         await record_fetch(conn, site.id, task.canonical_url, fetched)
-        # The task stands for the record that stood for the 304 (`fetch_unless_unchanged` takes none without one).
-        await link_records(conn, task.id, [] if standing is None else [standing])
+        # The task stands for the records that stood for the 304 (`fetch_unless_unchanged` takes none without one).
+        await link_records(conn, task.id, standing)
         fetched = Finished("unchanged")
     return Ended(fetched, tuple(attempts), policy.proxy_pool)
 
@@ -215,11 +215,16 @@ async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: FetchedPag
     await record_fetch_usage(conn, task.job_id, page.attempts, page.proxy_pool)
 
 
-async def _standing(conn: AsyncConnection, task: ClaimedTask, site_id: SiteId, records: Records) -> RecordId | None:
-    """The record that stands for the page while it is unchanged (`standing_record`), for the config the job pinned
-    (None: `adhoc`)."""
+async def _standing(
+    conn: AsyncConnection, task: ClaimedTask, site_id: SiteId, records: Records
+) -> tuple[RecordId, ...]:
+    """The records that stand for the page while it is unchanged, for the config the job pinned (None: `adhoc`): a
+    listing's (`standing_listing`), or its detail page's one (`standing_record`)."""
     version = None if records.config is None else records.config.version
-    return await standing_record(conn, site_id, task.canonical_url, records.schema, version)
+    if records.schema.page_kind == "listing":
+        return await standing_listing(conn, site_id, task.canonical_url, records.schema, version)
+    record = await standing_record(conn, site_id, task.canonical_url, records.schema, version)
+    return () if record is None else (record,)
 
 
 def unreached(page: FetchedPage) -> TaskResult | None:

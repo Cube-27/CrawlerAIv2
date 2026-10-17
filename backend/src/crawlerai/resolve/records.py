@@ -177,14 +177,24 @@ def assemble_listing(
     return ("extracted" if complete else "partial"), tuple(records.values())
 
 
+def row_url_fields(schema: SchemaDef) -> list[str]:
+    """The names of the schema's row fields that hold a row's URL, in order: a field of type url whose path is `T.url`
+    in every alternative (schema.org Thing.url, "URL of the item")."""
+    return [
+        name
+        for name, spec in schema.fields.items()
+        if spec.scope == "row"
+        and spec.type is FieldType.URL
+        and spec.schema_org is not None
+        and all(path.steps == ("url",) and path.joined is None for path in parse_paths(spec.schema_org))
+    ]
+
+
 def _row_key(schema: SchemaDef, row: FieldSet) -> str | None:
-    """The row's published URL: the first row field of type url whose path is `T.url` in every alternative (schema.org
-    Thing.url, "URL of the item"). Without one, the row's position on the page stands in."""
-    for name, spec in schema.fields.items():
-        if spec.scope != "row" or spec.type is not FieldType.URL or spec.schema_org is None:
-            continue
+    """The row's published URL: the first of `row_url_fields` it publishes. Without one, the row's position on the page
+    stands in."""
+    for name in row_url_fields(schema):
         outcome = row.get(name)
-        names_item = all(path.steps == ("url",) and path.joined is None for path in parse_paths(spec.schema_org))
-        if names_item and outcome is not None and isinstance(outcome.value, str):
+        if outcome is not None and isinstance(outcome.value, str):
             return outcome.value
     return None

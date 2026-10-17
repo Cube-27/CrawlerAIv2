@@ -4,7 +4,9 @@
 
 A reached page contributes its links and next-page candidates at its depth plus one. The scope is on the host the start
 page is on: when the site redirects the start URL to another host of the same site (its `www.` subdomain, or back), the
-crawl follows it there (D-0991).
+crawl follows it there (D-0991). The start task stores where its page is on the job (`job.start_location`), the way
+every other task reads it, and the URL it was redirected to is never a task of its own: that page is the start task's
+(D-1285).
 
 The start URL's task also reads the site's sitemaps (`crawlerai.crawl.sitemaps`: robots.txt `Sitemap:` lines, else
 `/sitemap.xml`) and adds their URLs as seeds, at depth 0, even when its own page was not reached, on the attempt that
@@ -25,7 +27,7 @@ from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Final
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.robots import site_robots
@@ -35,7 +37,7 @@ from crawlerai.crawl.frontier import Frontier, discovered
 from crawlerai.crawl.rules import located
 from crawlerai.crawl.sitemaps import SitemapReader, roots
 from crawlerai.db.jobs import record_event
-from crawlerai.db.models import Capture, UrlTask
+from crawlerai.db.models import Job
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT
@@ -98,31 +100,32 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
         conn, fetching, task, crawl.request.fetch, crawl.request.locale, served=served, llm=crawl.llm
     )
     result, found = (page.task_result, ()) if isinstance(page, Ended) else await _visit(conn, crawl, page)
+    is_start = task.canonical_url == crawl.request.start
     # The sitemaps are read before the task writes its job's row (usage, the frontier), which stays locked until the
     # task commits: a cancel, which locks that row, never waits for the reading (up to `SITEMAP_TIMEOUT_S`).
-    reads_sitemaps = task.canonical_url == crawl.request.start and ends_task(task, result)
+    reads_sitemaps = is_start and ends_task(task, result)
     # Where the start page is decides what the crawl takes; a task that adds nothing does not look it up.
-    start = await _start_capture(conn, crawl, page) if found or reads_sitemaps else None
-    site_url = located(crawl.request.start, start)
+    adds_urls = bool(found) or reads_sitemaps
+    site_url = await _site_url(conn, crawl, page) if adds_urls else crawl.request.start
     frontier = crawl.request.frontier(site_url)
     seeds = await _sitemap_seeds(conn, fetching, crawl, frontier, site_url) if reads_sitemaps else []
+    if is_start and adds_urls:
+        await conn.execute(update(Job).where(Job.id == task.job_id).values(start_location=site_url))
     await count_fetch(conn, task, page)  # after the extraction, as role C needs (D-0346)
     await frontier.enqueue(conn, task.job_id, seeds, depth=0, parent=None)
     await frontier.enqueue(conn, task.job_id, found, depth=task.depth + 1, parent=task.id)
     return result
 
 
-async def _start_capture(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage | Ended) -> tuple[str, str] | None:
-    """The (method, final URL) of the crawl's start page's capture, which the scope follows (`rules.located`); None
-    when it has none."""
-    if crawl.task.canonical_url == crawl.request.start:
+async def _site_url(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage | Ended) -> str:
+    """Where the crawl's start page is (`rules.located`), which its scope follows: for the start task, from its own
+    page's capture; for every other, as the start task stored it on the job (D-1285)."""
+    request = crawl.request
+    if crawl.task.canonical_url == request.start:
         manifest = None if isinstance(page, Ended) else page.result.bundle.manifest
-        return None if manifest is None else (manifest.method, manifest.final_url)
-    # Every other task was added by the start task or after it, which stored its capture's id with its outcome.
-    of_start = (UrlTask.job_id == crawl.task.job_id, UrlTask.canonical_url == crawl.request.start)
-    query = select(Capture.method, Capture.final_url).join(UrlTask, UrlTask.capture_id == Capture.id)
-    row = (await conn.execute(query.where(*of_start))).one_or_none()
-    return None if row is None else (row.method, row.final_url)
+        return located(request.start, None if manifest is None else (manifest.method, manifest.final_url))
+    stored = (await conn.execute(select(Job.start_location).where(Job.id == crawl.task.job_id))).scalar_one()
+    return stored or request.start
 
 
 async def _visit(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage) -> tuple[TaskResult, tuple[str, ...]]:

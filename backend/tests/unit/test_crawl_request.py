@@ -28,6 +28,22 @@ def test_a_stored_request_reads_back_as_itself() -> None:
     assert CrawlRequest.model_validate(request.model_dump(mode="json", by_alias=True)) == request
 
 
+def test_a_budget_is_kept_with_the_request_and_is_none_without_one() -> None:
+    body = {"url": URL, "formats": ["markdown"]}
+
+    budgeted = CrawlRequest.model_validate({**body, "budget": {"llm_calls": 3}})
+
+    assert CrawlRequest.model_validate(body).budget is None
+    assert budgeted.model_dump(mode="json", by_alias=True)["budget"] == {"llm_calls": 3}
+
+
+@pytest.mark.parametrize("budget", [{"llm_calls": -1}, {}, {"llm_calls": 1, "pages": 2}])
+def test_refuses_a_budget_that_is_not_a_count_of_llm_calls(budget: dict[str, object]) -> None:
+    [(location, _)] = _errors({"url": URL, "formats": ["markdown"], "budget": budget})
+
+    assert location[0] == "budget"
+
+
 @pytest.mark.parametrize(
     ("member", "value"),
     [("url", "/p/1"), ("webhook_url", "hooks/done"), ("limit", 0), ("limit", MAX_LIMIT + 1), ("max_depth", -1)],

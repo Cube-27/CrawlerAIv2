@@ -20,15 +20,16 @@ from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.crawl.canonical import canonicalize
 from crawlerai.crawl.frontier import Frontier
 from crawlerai.crawl.rules import PageKindRule, Patterns, Scope
 from crawlerai.db.models import ApiKeyId, JobId, UrlTask
 from crawlerai.llm.client import NO_LLM, LLMClient
+from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.batch import insert_job, records_schema
 from crawlerai.services.fetching import check_targets
 from crawlerai.services.map import MAX_LIMIT  # a crawl enqueues at most what a map of the site returns
+from crawlerai.services.scrape import Budget
 from crawlerai.services.scrape_steps import (
     FetchOptions,
     Input,
@@ -44,9 +45,9 @@ from crawlerai.services.scrape_steps import (
 class CrawlRequest(Input):
     """The body of `POST /v1/crawl` (§4.5). The formats, `schema`, `fetch` and `locale` are a batch's (§4.3), for every
     page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted
-    while the caller waits. `include` and `exclude`
-    globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which pages are extracted. `webhook_url` is
-    called when the job ends (§4.2)."""
+    while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does
+    (D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which
+    pages are extracted. `webhook_url` is called when the job ends (§4.2)."""
 
     url: str
     include: Patterns = Field(default_factory=list)
@@ -58,6 +59,7 @@ class CrawlRequest(Input):
     page_kind_rules: list[PageKindRule] = Field(default_factory=list)
     fetch: FetchOptions = FetchOptions()
     locale: str | None = None
+    budget: Budget | None = None
     webhook_url: str | None = None
 
     @field_validator("url")
@@ -91,9 +93,11 @@ class CrawlRequest(Input):
 
     def frontier(self, located: str | None = None) -> Frontier:
         """The crawl's frontier, on the host of `located`, where the start page is after the site's own redirects to a
-        host of the same site (RFC 9110 §15.4; D-0991), else on the start URL's."""
+        host of the same site (RFC 9110 §15.4; D-0991), else on the start URL's. A `located` that is not the start URL
+        is a page already fetched, which the frontier never adds again."""
         scope = Scope(urlsplit(located or self.start).hostname or "", tuple(self.include), tuple(self.exclude))
-        return Frontier(scope, tuple(self.page_kind_rules), self.max_depth, self.limit)
+        fetched = located if located != self.start else None
+        return Frontier(scope, tuple(self.page_kind_rules), self.max_depth, self.limit, fetched)
 
 
 class CrawlSubmitted(BaseModel):

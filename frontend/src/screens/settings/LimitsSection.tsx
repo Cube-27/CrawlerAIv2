@@ -7,12 +7,14 @@ import { FormActions } from "../../components/FormActions";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { Section } from "../../components/Section";
 
-/** The project's limits (`/v1/project/settings`): the LLM call cap of a run whose request sets none. While the
- * settings load, the same form shows disabled, so loading moves nothing. */
+/** The project's limits (`/v1/project/settings`): the LLM call cap of a run whose request sets none. A save sends the
+ * key draft cap as loaded: only the API sets it. While the settings load, the same form shows disabled, so loading
+ * moves nothing. */
 export function LimitsSection() {
   const settings = useProjectSettings();
   const save = useSaveProjectSettings();
   const saved = settings.data?.llm_call_cap;
+  const draftCap = settings.data?.draft_call_cap ?? null;
   return (
     <Section title="Limits">
       <LimitsForm
@@ -24,7 +26,7 @@ export function LimitsSection() {
         isPending={save.isPending}
         onSave={(llmCallCap) => {
           save.mutate(
-            { llm_call_cap: llmCallCap },
+            { llm_call_cap: llmCallCap, draft_call_cap: draftCap },
             {
               onSuccess: () => {
                 toast.success("Saved the LLM call limit.");

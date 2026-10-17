@@ -17,7 +17,7 @@ from urllib.parse import urljoin, urlsplit
 
 from lxml import etree
 
-from crawlerai.crawl.canonical import canonicalize
+from crawlerai.normalize.url_key import canonicalize
 
 MAX_DEPTH: Final = 3  # SPEC-10 §4.4: indexes are followed to depth 3 (a root is depth 0)
 MAX_URLS: Final = 50_000  # SPEC-10 §4.4: at most 50k URLs are read

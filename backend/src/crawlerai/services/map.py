@@ -34,11 +34,11 @@ from crawlerai.acquire.types import AttemptRecord, FetchPolicy
 from crawlerai.content.links import links
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.crawl.canonical import canonicalize
 from crawlerai.crawl.rules import Patterns, Scope, located
 from crawlerai.crawl.sitemaps import SitemapReader, roots
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import Job, JobId
+from crawlerai.normalize.url_key import canonicalize
 from crawlerai.services.fetching import Fetching, PoliteHttp, TargetRejected, check_target, site_rules
 from crawlerai.services.scrape_steps import DEFAULT_PROJECT, SiteRow, absolute_http_url, record_fetch_usage, site_row
 from crawlerai.storage.capture_bundle import CaptureBundle

@@ -26,7 +26,7 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.db.keys import create_key
-from crawlerai.db.models import ApiKey, Job
+from crawlerai.db.models import ApiKey, Job, Project
 from crawlerai.db.models import SchemaDef as SchemaRow
 from crawlerai.llm.client import MeteredClient, ProviderReply, Unconfigured
 from crawlerai.llm.providers.fake import FakeProvider
@@ -263,3 +263,61 @@ async def test_a_run_whose_names_cannot_be_drafted_is_refused_and_stores_no_job(
     assert (response.status_code, response.json()["type"]) == (503, "llm_unavailable")
     async with engine.connect() as conn:
         assert (await conn.execute(select(func.count()).select_from(Job))).scalar_one() == before
+
+
+@pytest.fixture
+async def draft_cap(api: Api, engine: AsyncEngine) -> AsyncIterator[Callable[[int | None], Any]]:
+    """Sets the project's `draft_call_cap` through its settings, and clears it afterwards."""
+
+    async def set_cap(cap: int | None) -> None:
+        body = {"llm_call_cap": None, "draft_call_cap": cap}
+        assert (await api.http.patch("/v1/project/settings", json=body)).status_code == 200
+
+    yield set_cap
+    async with engine.begin() as conn:
+        await conn.execute(update(Project).values(draft_call_cap=None))
+
+
+async def _key_drafts(engine: AsyncEngine) -> list[int]:
+    async with engine.connect() as conn:
+        return list(
+            (await conn.execute(select(ApiKey.draft_calls).where(ApiKey.label == "fields-draft-test"))).scalars()
+        )
+
+
+async def test_a_key_at_the_draft_cap_is_refused_a_new_draft_but_not_a_stored_one(
+    api: Api, engine: AsyncEngine, names: list[str], provider: FakeProvider, draft_cap: Callable[[int | None], Any]
+) -> None:
+    await draft_cap(1)
+    first = await api.http.post("/v1/schemas/draft", json={"fields": names, "page_kind": "detail"})
+    stored = await api.http.post("/v1/schemas/draft", json={"fields": names[::-1], "page_kind": "detail"})
+    other = await api.http.post("/v1/schemas/draft", json={"fields": [names[0]], "page_kind": "detail"})
+
+    assert (first.status_code, stored.status_code, other.status_code) == (200, 200, 429)
+    assert other.json()["type"] == "draft_cap_reached"
+    # The stored draft needed no call, and the refused one made none.
+    assert len(provider.calls) == 1
+    assert await _key_drafts(engine) == [1]
+
+
+@pytest.mark.parametrize("run", ["scrape", "batch", "crawl", "extract"])
+async def test_every_run_type_counts_its_field_name_draft_against_the_cap(
+    api: Api, engine: AsyncEngine, own_origin: str, names: list[str], run: str, draft_cap: Callable[[int | None], Any]
+) -> None:
+    await draft_cap(0)
+    path, body = _runs(own_origin, names)[run]
+
+    response = await api.http.post(path, json=body)
+
+    assert (response.status_code, response.json()["type"]) == (429, "draft_cap_reached")
+    assert await _key_drafts(engine) == [0]
+    assert await _drafts(engine, fields_name(names, "detail")) == 0
+
+
+async def test_without_a_cap_every_draft_is_counted_and_none_refused(
+    api: Api, engine: AsyncEngine, names: list[str]
+) -> None:
+    response = await api.http.post("/v1/schemas/draft", json={"fields": names, "page_kind": "detail"})
+
+    assert response.status_code == 200
+    assert await _key_drafts(engine) == [1]

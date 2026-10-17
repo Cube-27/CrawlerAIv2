@@ -49,6 +49,7 @@ from crawlerai.storage.capture_bundle import sha256_hex
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import run_worker
+from tests.db.conftest import listing_page, listing_schema
 
 pytestmark = [pytest.mark.anyio, pytest.mark.usefixtures("site")]
 
@@ -397,3 +398,47 @@ async def test_a_job_without_records_neither_reads_nor_writes_url_state(
     assert origin.sent == [None, None]
     async with engine.connect() as conn:
         assert (await conn.execute(select(UrlState.canonical_url))).all() == []
+
+
+def _visible(page: bytes, prose: str = PROSE) -> bytes:
+    """A listing page with visible text, which its content fingerprint reads (one without words has none)."""
+    return page.replace(b"<body></body>", f"<body><main><h1>Kettles</h1><p>{prose}</p></main></body>".encode())
+
+
+async def test_an_unchanged_listing_is_not_extracted_again_and_still_lists_its_rows(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    origin: Origin,
+    own_origin: str,
+    schema_name: str,
+    engine_data: EngineData,
+) -> None:
+    schema = await listing_schema(engine, schema_name)
+    url = f"{own_origin}/kettles"
+    listing = {"formats": ["records"], "schema": {"id": str(schema.id)}, "page_kind": "listing"}
+    origin.pages = {url: _visible(listing_page(own_origin, ["Blue kettle", "Red kettle"]))}
+    first = await _run_job(engine, fetching, engine_data, [url], listing)
+    records = await _count(engine, Record)
+
+    again = await _run_job(engine, fetching, engine_data, [url], listing)
+    third = await _run_job(engine, fetching, engine_data, [url], listing)
+
+    assert first == Run({url: ("extracted", True)}, extractions=1)
+    # An unchanged run leaves the standing record where the extraction put it: every later run is unchanged too.
+    assert [again, third] == [Run({url: ("unchanged", True)}, extractions=0)] * 2
+    assert await _count(engine, Record) == records
+    # The unchanged listing's job lists the rows it stood for, as the run that extracted them did.
+    assert sorted(await _results(engine, again)) == [("Blue kettle", 1, []), ("Red kettle", 1, [])]
+
+    origin.pages[url] = _visible(listing_page(own_origin, ["Blue kettle", "Red kettle", "Green kettle"]), OTHER_PROSE)
+    grown = await _run_job(engine, fetching, engine_data, [url], listing)
+    standing = await _run_job(engine, fetching, engine_data, [url], listing)
+
+    # A changed listing is extracted, and the next run stands on that extraction.
+    assert grown == Run({url: ("extracted", True)}, extractions=1)
+    assert standing == Run({url: ("unchanged", True)}, extractions=0)
+    assert [title for title, _, _ in sorted(await _results(engine, standing))] == [
+        "Blue kettle",
+        "Green kettle",
+        "Red kettle",
+    ]

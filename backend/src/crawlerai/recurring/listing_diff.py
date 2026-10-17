@@ -3,8 +3,10 @@ finds.
 
 A run is a records crawl that completed. A recurring crawl is the caller re-submitting the same request (§14), so the
 runs of one crawl are the records crawls with the same scope: start URL, globs, depth, limit, page-kind rules and
-schema. A run's listing is the URLs its frontier gave a page kind, on the start URL's host: every URL of the catalog the
-crawl found, whether or not its page was then reached.
+schema. A run's listing is the URLs its frontier gave a page kind, on the host the start page is on
+(`job.start_location`): every URL of the catalog the crawl found, whether or not its page was then reached; and, for a
+listing schema, the row URLs of the records its pages stand for (`resolve.records.row_url_fields`), which no task
+fetches.
 
 `close_run` diffs a run as its job ends (the queue's `ending` hook), in that transaction and before the end event:
 - each URL of the listing is seen: `missing_runs` 0, `gone_at` cleared, and the run noted as the last to hold it;
@@ -39,13 +41,18 @@ from crawlerai.db.models import (
     JobEvent,
     JobId,
     JobStatus,
+    Record,
     SchemaId,
     Site,
     SiteId,
     TaskOutcome,
+    TaskRecord,
     UrlState,
     UrlTask,
 )
+from crawlerai.normalize.url_key import canonicalize
+from crawlerai.resolve.records import row_url_fields
+from crawlerai.schemas import registry
 
 __all__ = ["GONE_AFTER_RUNS", "SITEMAPS_TIMED_OUT", "URL_GONE", "close_run"]
 
@@ -62,7 +69,7 @@ _SCOPE: Final = ("url", "include", "exclude", "max_depth", "limit", "page_kind_r
 # The outcomes of a page the crawl handler read no links from (`crawlerai.worker.handlers.crawl`).
 _UNREACHED: Final[frozenset[TaskOutcome]] = frozenset({"blocked", "shell", "failed"})
 
-_JobRow = Row[str, SchemaId | None, dict[str, Any]]
+_JobRow = Row[str, SchemaId | None, dict[str, Any], str | None]
 
 
 @dataclass(frozen=True)
@@ -79,15 +86,17 @@ async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> 
     """Diff the job's listing against the earlier runs of its crawl, as the job ends in `status`."""
     if status != "completed":
         return
-    job: _JobRow = (await conn.execute(select(Job.kind, Job.schema_id, Job.request).where(Job.id == job_id))).one()
+    columns = (Job.kind, Job.schema_id, Job.request, Job.start_location)
+    job: _JobRow = (await conn.execute(select(*columns).where(Job.id == job_id))).one()
     if job.kind != "crawl" or job.schema_id is None:
         return
-    host = urlsplit(job.request["url"]).hostname
+    # The host the crawl's scope followed the start page to (D-1285), else the start URL's.
+    host = urlsplit(job.start_location or job.request["url"]).hostname
     site = select(Site.id).where(Site.host == host).with_for_update()
     site_id = (await conn.execute(site)).scalar_one_or_none()
     if site_id is None:
         return
-    listing = await _listing(conn, job_id, host)
+    listing = await _listing(conn, job_id, host, job.schema_id)
     if not listing.urls:
         return
     await _seen(conn, site_id, job_id, listing.urls)
@@ -97,13 +106,32 @@ async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> 
         await record_event(conn, job_id, URL_GONE, {"url": url})
 
 
-async def _listing(conn: AsyncConnection, job_id: JobId, host: str | None) -> _Listing:
-    """The job's listing, of its URLs on `host`."""
+async def _listing(conn: AsyncConnection, job_id: JobId, host: str | None, schema_id: SchemaId) -> _Listing:
+    """The job's listing, of its URLs on `host`: its tasks' and its rows'."""
     query = select(UrlTask.canonical_url, UrlTask.page_kind, UrlTask.outcome).where(UrlTask.job_id == job_id)
     tasks = (await conn.execute(query)).all()
-    listed = (url for url, page_kind, _ in tasks if page_kind is not None and urlsplit(url).hostname == host)
+    listed = {url for url, page_kind, _ in tasks if page_kind is not None and urlsplit(url).hostname == host}
+    listed.update(url for url in await _row_urls(conn, job_id, schema_id) if urlsplit(url).hostname == host)
     unreached = any(page_kind is None and outcome in _UNREACHED for _, page_kind, outcome in tasks)
     return _Listing(sorted(listed), len(tasks), unreached)
+
+
+async def _row_urls(conn: AsyncConnection, job_id: JobId, schema_id: SchemaId) -> list[str]:
+    """The canonical row URLs of the records the job's tasks stand for, found unchanged or stored: the first
+    `row_url_fields` value a record publishes. None for a schema that is no listing or names no row URL."""
+    schema = await registry.get_by_id(conn, schema_id)
+    fields = row_url_fields(schema)
+    if schema.page_kind != "listing" or not fields:
+        return []
+    row_url = func.coalesce(*(Record.data[name].astext for name in fields))
+    of_job = (
+        select(row_url)
+        .join(TaskRecord, TaskRecord.record_id == Record.id)
+        .join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
+        .where(UrlTask.job_id == job_id)
+        .distinct()
+    )
+    return [url for url in map(canonicalize, (await conn.execute(of_job)).scalars()) if url is not None]
 
 
 async def _sitemaps_timed_out(conn: AsyncConnection, job_id: JobId) -> bool:

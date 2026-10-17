@@ -11,8 +11,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from crawlerai.crawl.canonical import canonicalize
 from crawlerai.db.models import PageKind
+from crawlerai.normalize.url_key import canonicalize
 
 # The characters `fnmatch` gives a meaning (Python `fnmatch` docs: `*`, `?`, `[seq]`).
 _PATTERN_CHARACTERS: Final = frozenset("*?[")

@@ -8,13 +8,14 @@ queue. Its capture is stored, and for `records` it is extracted with what the jo
 (`config` mode; the page joins the config's drift window, as a scrape's does). Its record is stored. Page outputs are
 not stored: `/v1/jobs/{id}/results` makes them from the capture.
 
-A records task is how a recurring run sees a page again (SPEC-11 §4.2, §4.3). When a record already stands for the
-page (`crawlerai.recurring.state.standing_record`), the page is fetched with the validators it last answered with,
-and a 304 ends the task `unchanged` with no capture (`steps.fetch_page`). A page fetched whole whose visible text is
-within a few SimHash bits of the last ends `unchanged` with its capture, and is not extracted. Having no extraction, an
-unchanged page joins no drift window (SPEC-08 §4.9) and does not count toward `pages_extracted` (ARCHITECTURE §8.3
-counts `extracted` and `partial` pages). Only records tasks read or write `url_state`: a fingerprint or validators
-stored without the record made from that content would let a stale record stand.
+A records task is how a recurring run sees a page again (SPEC-11 §4.2, §4.3). When records already stand for the page
+(`standing_record`, or `standing_listing` for a listing, in `crawlerai.recurring.state`), the page is fetched with the
+validators it last answered with, and a 304 ends the task `unchanged` with no capture (`steps.fetch_page`). A page
+fetched whole whose visible text is within a few SimHash bits of the last ends `unchanged` with its capture, and is not
+extracted. Having no extraction, an unchanged page joins no drift window (SPEC-08 §4.9) and does not count toward
+`pages_extracted` (ARCHITECTURE §8.3 counts `extracted` and `partial` pages). Only records tasks read or write
+`url_state`: a fingerprint or validators stored without the record made from that content would let a stale record
+stand.
 
 Everything is written in the worker's transaction for the task, so a task that raises rolls back alone and fails no
 other (INV-31). A page that was not reached ends with its outcome (`blocked`, `shell`, `not_found`); a fetch error is a
@@ -34,7 +35,7 @@ from crawlerai.db.models import SiteId
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.simhash import simhash64
-from crawlerai.recurring.state import record_content, record_fetch
+from crawlerai.recurring.state import record_content, record_fetch, stand_for_listing
 from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
@@ -97,14 +98,16 @@ async def _settle(
         return Finished("extracted", capture_id=page.capture_id)
     parsed = page.parsed
     changed = await _content_changed(conn, page.site.id, task.canonical_url, parsed)
-    if not changed and page.standing is not None:
+    if not changed and page.standing:
         await record_fetch(conn, page.site.id, task.canonical_url, page.result)
-        await link_records(conn, task.id, (page.standing,))
+        await link_records(conn, task.id, page.standing)
         return Finished("unchanged", capture_id=page.capture_id)
     result = await extract_records(conn, task, page, records, caller_supplied=True, llm=llm, parsed=parsed)
     if isinstance(result, Finished):
         # The validators are stored with the record made from the content they describe, never without it.
         await record_fetch(conn, page.site.id, task.canonical_url, page.result)
+        if records.schema.page_kind == "listing":
+            await stand_for_listing(conn, page.site.id, task.canonical_url, task.id)
     return result
 
 

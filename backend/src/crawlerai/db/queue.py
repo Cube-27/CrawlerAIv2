@@ -20,7 +20,7 @@ before the job ends: what it writes commits with the end, and the events it reco
 """
 
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Final
@@ -233,24 +233,25 @@ async def release_expired_leases(conn: AsyncConnection, *, batch: int, ending: J
     return len(tasks)
 
 
+async def stuck_running_jobs(
+    conn: AsyncConnection, *, kinds: Sequence[JobKind], older_than: timedelta, batch: int, taskless: bool = False
+) -> list[JobId]:
+    """Up to `batch` ids of jobs of `kinds` `running` since more than `older_than` ago (with `taskless`, only those with
+    no task), oldest id first, locked for the caller's transaction: the one query the scheduler's reapers share. The
+    partial index on running jobs answers it. FOR NO KEY UPDATE, as `settle_job` takes; a job another transaction holds
+    is left to the next run."""
+    stuck = select(Job.id).where(Job.status == "running", Job.kind.in_(kinds), Job.started_at < func.now() - older_than)
+    if taskless:
+        stuck = stuck.where(~select(UrlTask.id).where(UrlTask.job_id == Job.id).exists())
+    locked = stuck.order_by(Job.id).limit(batch).with_for_update(key_share=True, skip_locked=True)
+    return list((await conn.execute(locked)).scalars())
+
+
 async def fail_stalled_jobs(conn: AsyncConnection, *, batch: int) -> int:
     """End `failed` up to `batch` jobs of `_RUN_INLINE` kinds `running` with no task for longer than `LEASE`, and
     return how many. A process runs such a job while its caller waits, within the request's time cap (a `map`'s, a
     draft's), far under a lease."""
-    stalled = (
-        select(Job.id)
-        .where(
-            Job.status == "running",
-            Job.kind.in_(_RUN_INLINE),
-            Job.started_at < func.now() - LEASE,
-            ~select(UrlTask.id).where(UrlTask.job_id == Job.id).exists(),
-        )
-        .order_by(Job.id)
-        .limit(batch)
-        # FOR NO KEY UPDATE, as `settle_job` takes; a job another transaction holds is left to the next run.
-        .with_for_update(key_share=True, skip_locked=True)
-    )
-    job_ids = (await conn.execute(stalled)).scalars().all()
+    job_ids = await stuck_running_jobs(conn, kinds=_RUN_INLINE, older_than=LEASE, batch=batch, taskless=True)
     for job_id in job_ids:
         await transition_job(conn, job_id, "failed")
     return len(job_ids)

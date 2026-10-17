@@ -15,6 +15,7 @@ from crawlerai.api.dto import FieldErrorOut, Problem
 from crawlerai.core.errors import UNEXPECTED
 from crawlerai.core.validation import field_error
 from crawlerai.llm.client import BudgetExhausted, LLMFailure, OutputInvalid, ProviderRefused, ProviderUnavailable
+from crawlerai.llm.draft_cap import DraftCapReached
 
 PROBLEM_JSON = "application/problem+json"  # RFC 9457 §3
 
@@ -56,11 +57,13 @@ def invalid(detail: str, errors: Sequence[tuple[str, str]] = ()) -> ProblemError
     return ProblemError(422, "validation", "Invalid request", detail, errors)
 
 
-# 422: the request's own `budget.llm_calls` does not cover its work. 503: no provider answered. 502: a provider
+# 422: the request's own `budget.llm_calls` does not cover its work. 429: the key made all the uncharged drafts the
+# project allows (RFC 6585 §4). 503: no provider answered. 502: a provider
 # refused the request (RFC 9110 §15.6.3: an invalid response from the upstream server), or the model answered, but not
 # validly, after the one retry.
 _LLM_PROBLEMS: Final[dict[str, tuple[int, str]]] = {
     BudgetExhausted.code: (422, "Budget exhausted"),
+    DraftCapReached.code: (429, "Draft cap reached"),
     ProviderUnavailable.code: (503, "LLM unavailable"),
     ProviderRefused.code: (502, "LLM refused the request"),
     OutputInvalid.code: (502, "LLM output invalid"),
