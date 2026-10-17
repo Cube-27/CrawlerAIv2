@@ -405,6 +405,35 @@ def _visible(page: bytes, prose: str = PROSE) -> bytes:
     return page.replace(b"<body></body>", f"<body><main><h1>Kettles</h1><p>{prose}</p></main></body>".encode())
 
 
+def _linked(page: bytes, rows: int) -> bytes:
+    """A listing page without words: each row an image link to its item (D-1383)."""
+    cells = "".join(f'<a href="/kettles/{n}"><img src="/i/{n}.jpg" alt=""></a>' for n in range(1, rows + 1))
+    return page.replace(b"<body></body>", f"<body><main>{cells}</main></body>".encode())
+
+
+async def test_a_listing_without_words_is_unchanged_while_its_links_are(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    origin: Origin,
+    own_origin: str,
+    schema_name: str,
+    engine_data: EngineData,
+) -> None:
+    schema = await listing_schema(engine, schema_name)
+    url = f"{own_origin}/kettles"
+    listing = {"formats": ["records"], "schema": {"id": str(schema.id)}, "page_kind": "listing"}
+    origin.pages = {url: _linked(listing_page(own_origin, ["Blue kettle", "Red kettle"]), 2)}
+
+    first = await _run_job(engine, fetching, engine_data, [url], listing)
+    again = await _run_job(engine, fetching, engine_data, [url], listing)
+    origin.pages[url] = _linked(listing_page(own_origin, ["Blue kettle", "Red kettle", "Green kettle"]), 3)
+    grown = await _run_job(engine, fetching, engine_data, [url], listing)
+
+    assert first == Run({url: ("extracted", True)}, extractions=1)
+    assert again == Run({url: ("unchanged", True)}, extractions=0)
+    assert grown == Run({url: ("extracted", True)}, extractions=1)
+
+
 async def test_an_unchanged_listing_is_not_extracted_again_and_still_lists_its_rows(
     engine: AsyncEngine,
     fetching: Fetching,

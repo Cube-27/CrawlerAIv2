@@ -11,8 +11,8 @@ not stored: `/v1/jobs/{id}/results` makes them from the capture.
 A records task is how a recurring run sees a page again (SPEC-11 §4.2, §4.3). When records already stand for the page
 (`standing_record`, or `standing_listing` for a listing, in `crawlerai.recurring.state`), the page is fetched with the
 validators it last answered with, and a 304 ends the task `unchanged` with no capture (`steps.fetch_page`). A page
-fetched whole whose visible words are the same as last time (an equal content digest, D-1340) ends `unchanged` with its
-capture, and is not extracted. Having no extraction, an unchanged page joins no drift window (SPEC-08 §4.9) and does
+fetched whole whose visible words are the same as last time (an equal content digest, D-1340), or a listing without
+words whose links are (D-1383), ends `unchanged` with its capture, and is not extracted. Having no extraction, an unchanged page joins no drift window (SPEC-08 §4.9) and does
 not count toward `pages_extracted` (ARCHITECTURE §8.3 counts `extracted` and `partial` pages). Only records tasks read
 or write `url_state`: a fingerprint or validators stored without the record made from that content would let a stale
 record stand.
@@ -30,11 +30,12 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.config_ir.drift import DriftMargins
+from crawlerai.content.links import links
 from crawlerai.content.page import ParsedPage
-from crawlerai.db.models import SiteId
+from crawlerai.db.models import PageKind, SiteId
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
-from crawlerai.recurring.simhash import content_fingerprint
+from crawlerai.recurring.simhash import ContentFingerprint, content_fingerprint
 from crawlerai.recurring.state import record_content, record_fetch, stand_for_listing
 from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.pipeline import EngineData
@@ -97,7 +98,9 @@ async def _settle(
     if records is None:
         return Finished("extracted", capture_id=page.capture_id)
     parsed = page.parsed
-    changed = await _content_changed(conn, page.site.id, task.canonical_url, parsed)
+    final_url = page.result.bundle.manifest.final_url
+    kind = records.schema.page_kind
+    changed = await _content_changed(conn, page.site.id, task.canonical_url, parsed, final_url, kind)
     if not changed and page.standing:
         await record_fetch(conn, page.site.id, task.canonical_url, page.result)
         await link_records(conn, task.id, page.standing)
@@ -111,14 +114,27 @@ async def _settle(
     return result
 
 
-async def _content_changed(conn: AsyncConnection, site_id: SiteId, canonical_url: str, parsed: ParsedPage) -> bool:
-    """Whether the page's visible text changed since it was last fingerprinted (`record_content`). A page without
-    words, or one whose fingerprint fails, counts as changed and is extracted: an error never skips extraction
-    (§4.6)."""
+async def _content_changed(
+    conn: AsyncConnection, site_id: SiteId, canonical_url: str, parsed: ParsedPage, final_url: str, kind: PageKind
+) -> bool:
+    """Whether the page's content changed since it was last fingerprinted (`record_content`). A page without a
+    fingerprint (`page_fingerprint`), or one whose fingerprint fails, counts as changed and is extracted: an error
+    never skips extraction (§4.6)."""
     try:
         # Rendering the text is CPU work, as resolution is: a thread keeps the event loop serving other tasks.
-        fingerprint = await asyncio.to_thread(lambda: content_fingerprint(parsed.cleaned_text.text))
+        fingerprint = await asyncio.to_thread(page_fingerprint, parsed, final_url, kind)
     except Exception:
         log.exception("the content fingerprint failed; the page is extracted")
         return True
     return fingerprint is None or await record_content(conn, site_id, canonical_url, fingerprint)
+
+
+def page_fingerprint(parsed: ParsedPage, final_url: str, kind: PageKind) -> ContentFingerprint | None:
+    """The fingerprint of the page's visible words; for a listing without words (rows of images, text drawn by script),
+    of the URLs it links to, in document order (`content.links`): its rows' links are what such a listing shows of them
+    (D-1383). None for a detail page without words, or a listing with neither words nor links."""
+    fingerprint = content_fingerprint(parsed.cleaned_text.text)
+    if fingerprint is not None or kind != "listing":
+        return fingerprint
+    # A canonical URL holds no whitespace (WHATWG URL Standard percent-encodes it), so each link is one word.
+    return content_fingerprint(" ".join(links(parsed, final_url)))
