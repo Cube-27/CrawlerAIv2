@@ -210,7 +210,7 @@ def test_network_entries_written_before_requests_were_recorded_still_decode() ->
 _containers = st.one_of(st.lists(_json, max_size=3), st.dictionaries(_text, _json, max_size=3))
 # Guard prefixes: short, and holding no object or array opener.
 _guards = st.text(
-    alphabet=st.characters(blacklist_categories=("Cs",), blacklist_characters="{["), min_size=1, max_size=16
+    alphabet=st.characters(blacklist_categories=["Cs"], blacklist_characters="{["), min_size=1, max_size=16
 ).filter(lambda text: text.strip(" \t\n\r") != "")
 
 
