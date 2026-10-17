@@ -1,9 +1,11 @@
 """Pagination (SPEC-05 §4.12, ARCHITECTURE §8.6): the URLs that may be the next page of a listing, in order.
 
 First the page's `rel=next` links (HTML Living Standard §4.6.7: `next` names the next document of a series). Then the
-structural numbered links: a link to the same origin that differs from the page URL only in one integer path segment
-or one integer query parameter, whatever its name (C4), and whose integer is the page's plus one. When the page URL
-carries no such integer, which number its link would carry is not stated, so no structural link is taken (C7). A
+structural numbered links: a link to the same origin that differs from the page URL only in one path segment or one
+query parameter value, whatever its name (C4), where the two differ only in one integer (RFC 3986 §3.3, §3.4: a
+segment or value is opaque text, so an integer inside it, `page-2.html`, numbers it as one standing alone does), and
+the link's integer is the page's plus one. When the page URL carries no such integer, which number its link would
+carry is not stated, so no structural link is taken (C7). A
 learned config's next-page step is SPEC-08's; infinite scroll is §7.2's.
 """
 
@@ -20,8 +22,9 @@ from crawlerai.normalize.base import Context
 from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import NEXT_PAGE_FIELD, FieldType, SchemaDef
 
-# A page number: ASCII digits (without re.ASCII, `\d` would also take other scripts' digits).
-_INTEGER = re.compile(r"\d+", re.ASCII)
+# A page number: ASCII digits (without re.ASCII, `\d` would also take other scripts' digits); the capturing group keeps
+# the integers in `split`'s parts, at odd positions.
+_INTEGER = re.compile(r"(\d+)", re.ASCII)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,11 +103,23 @@ def _one_higher_parameter(link: SplitResult, page: SplitResult) -> bool:
 
 
 def _one_higher(link: list[str], page: list[str]) -> bool:
-    """Whether the two sequences differ in exactly one place, where both hold integers and the link's is one higher."""
+    """Whether the two sequences differ in exactly one place, where the two items differ only in one integer and the
+    link's is one higher."""
     if len(link) != len(page):
         return False
     differing = [(a, b) for a, b in zip(link, page, strict=True) if a != b]
-    if len(differing) != 1:
+    return len(differing) == 1 and _integer_one_higher(*differing[0])
+
+
+def _integer_one_higher(link: str, page: str) -> bool:
+    """Whether `link` is `page` with one of its integers one higher, the text around the integers the same."""
+    link_parts, page_parts = _INTEGER.split(link), _INTEGER.split(page)
+    if len(link_parts) != len(page_parts):
         return False
-    a, b = differing[0]
-    return bool(_INTEGER.fullmatch(a) and _INTEGER.fullmatch(b)) and int(a) == int(b) + 1
+    differing = [i for i, (a, b) in enumerate(zip(link_parts, page_parts, strict=True)) if a != b]
+    # `split` puts the integers at odd positions and the text between them at even ones.
+    return (
+        len(differing) == 1
+        and differing[0] % 2 == 1
+        and int(link_parts[differing[0]]) == int(page_parts[differing[0]]) + 1
+    )

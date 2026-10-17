@@ -97,13 +97,19 @@ class RecipeRung:
         return _after(page, result, fallback=policy.method_hint != "browser")
 
     async def pages(
-        self, url: str, policy: FetchPolicy, *, records: int, limit: int = MAX_PAGES, deadline: float | None = None
+        self,
+        url: str,
+        policy: FetchPolicy,
+        *,
+        records: int | None,
+        limit: int = MAX_PAGES,
+        deadline: float | None = None,
     ) -> AsyncIterator[FetchResult]:
         """The listing at `url`, one response per page its pagination names (`next_request` of `pagination.py`), until a
         response's `rows` select no object, the pagination names no next page (or one already requested), `records`
-        rows were yielded, `limit` requests were sent, or `deadline` (`time.monotonic()`) has passed. Each request
-        waits for its host's rate in `fetch_json` (`services.fetching.recipe_rung`). A response with no rows is not
-        yielded; one that is not `ok` is yielded last."""
+        rows were yielded (None: no row target), `limit` requests were sent, or `deadline` (`time.monotonic()`) has
+        passed. Each request waits for its host's rate in `fetch_json` (`services.fetching.recipe_rung`). A response
+        with no rows is not yielded; one that is not `ok` is yielded last."""
         pagination = self.recipe.pagination
         if pagination is None:
             raise ValueError("a recipe without pagination serves one response per page")
@@ -133,9 +139,7 @@ class RecipeRung:
             rows += count
             headers = result.bundle.manifest.headers.response
             following = next_request(pagination, request, number + 1, document, headers)
-            if rows >= records or following is None or (following.url, following.body) in sent:
-                return
-            if deadline is not None and time.monotonic() >= deadline:
+            if following is None or (following.url, following.body) in sent or _done(rows, records, deadline):
                 return
             request = following
 
@@ -159,6 +163,11 @@ class RecipeRung:
 
     def _unserved(self, url: str, policy: FetchPolicy, reason: str) -> FetchResult:
         return unserved(url, policy, self.engine_version, "error", reason)
+
+
+def _done(rows: int, records: int | None, deadline: float | None) -> bool:
+    """Whether the rows yielded reach the row target, or the deadline has passed."""
+    return (records is not None and rows >= records) or (deadline is not None and time.monotonic() >= deadline)
 
 
 def unserved(url: str, policy: FetchPolicy, engine_version: str, block_class: BlockClass, reason: str) -> FetchResult:

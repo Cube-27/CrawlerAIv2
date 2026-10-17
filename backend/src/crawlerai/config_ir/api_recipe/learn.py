@@ -26,7 +26,14 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from typing import Final
 
-from crawlerai.config_ir.api_recipe.binding import Ambiguous, CapturedRequest, Sample, bind, page_data
+from crawlerai.config_ir.api_recipe.binding import (
+    Ambiguous,
+    CapturedRequest,
+    Sample,
+    bind,
+    page_data,
+    withhold_tokens,
+)
 from crawlerai.config_ir.api_recipe.discovery import (
     DiscoverySample,
     EndpointCandidate,
@@ -233,8 +240,11 @@ async def _proven(
     pagination: Pagination | None = None,
 ) -> tuple[Proven, BoundBy] | str:
     """The bound request, with `pagination` when it is a listing's, and the headers its replay proved, and what bound
-    it; else why there is none."""
-    spec = bind([page.sample for page in pages])
+    it; else why there is none. Token-like query values the page does not state are left out first
+    (`withhold_tokens`)."""
+    samples, withheld = withhold_tokens([page.sample for page in pages])
+    pages = [replace(page, sample=sample) for page, sample in zip(pages, samples, strict=True)]
+    spec = bind(samples)
     if isinstance(spec, Ambiguous):
         proven = await bind_by_role_d(client, spec, fields, pages, schema, replay, job_id=job_id, pagination=pagination)
         bound_by: BoundBy = "role_d"
@@ -245,7 +255,8 @@ async def _proven(
         proven = await minimize(paged, fields, pages, schema, replay)
         bound_by = "deterministic"
     if isinstance(proven, NotLearnable):
-        return f"not_learnable: {proven.reason}"
+        left_out = f" (token-like query values left out: {', '.join(withheld)})" if withheld else ""
+        return f"not_learnable: {proven.reason}{left_out}"
     if isinstance(proven, Rejected):
         return "role_d_rejected: " + "; ".join(proven.diagnostics)
     return proven, bound_by

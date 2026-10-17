@@ -6,7 +6,11 @@ Every rule reads the document's structure (C2), never its words (C4):
 - **The items.** The groups of repeated linked items (`acquire.items.item_groups`); the listing is the group with
   the largest rendered area, not the most members, since a sidebar's link list may outnumber a product grid. An
   item's identity is its first hyperlink (HTML Standard §4.6.1) that no other item of the group links to, else its
-  first one: items may share a link (a company's, a posting's several locations).
+  first one: items may share a link (a company's, a posting's several locations). A page that shows no linked items
+  counts the rows of its calls instead: the rows of the first series of the page's latest data calls (`Tab.calls`;
+  `network_match`: rows whose own strings the page shows), each named by its JSON text (RFC 8259, members
+  sorted), so a scroll listing whose items hold no link keeps loading. Only one of the two is counted, so an item that
+  a call loaded and the page links to counts once.
 - **Next pages by link.** `resolve.pagination`: `rel=next` (HTML Standard §4.6.7), then the link whose URL is the
   page's with one integer one higher; the tab navigates there, robots.txt and the site's rate permitting (the gate).
 - **A numbered pager.** The first element after the last item (document order) whose children hold at least three
@@ -25,11 +29,16 @@ Every rule reads the document's structure (C2), never its words (C4):
 
 Without a hint the order is: next pages by link or pager, scroll, the control after the items. An action's effect is
 waited for by polling until an item no earlier state showed appears, or for a page turn the first item changes, for
-at most `Caps.wait_s`. A document state that an action would replace (a page turn, or a growth that dropped items)
-is kept before it, when it shows an item no kept state holds; the last state is kept on the same test.
+at most `Caps.wait_s`. A document state that an action may replace is kept before it when it shows an item no kept
+state holds: before a page turn always; before a scroll or a click that grows the list too, and that state is
+dropped again when the state after the action still shows every item of it, so a list that recycles its items while
+growing (a virtualised list) keeps each batch, and one that only grows keeps one state. The last state is kept on the
+same test.
 """
 
 import asyncio
+import hashlib
+import json
 import re
 import time
 from collections.abc import Awaitable, Callable, Iterator, Sequence
@@ -41,6 +50,9 @@ from lxml.html import HtmlElement
 from crawlerai.acquire.browser_tab import Click, Ref, Tab
 from crawlerai.acquire.items import in_chrome, is_hyperlink, item_groups
 from crawlerai.acquire.types import ActionsReport, BrowserActions, PagingHint, StopReason
+from crawlerai.collect import json_doc
+from crawlerai.collect.item_links import block_links
+from crawlerai.collect.network_match import data_calls, row_series
 from crawlerai.content.dom import document_base_url, tokens
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.url import canonical_url
@@ -126,6 +138,15 @@ class _Still:
 _Step = _Nothing | _Moved | _Still | StopReason
 
 
+@dataclass(frozen=True)
+class _Held:
+    """The run's record of kept states before a state was kept ahead of an action, to restore when it is dropped."""
+
+    kept: frozenset[str]
+    kept_any: bool
+    keeps: int
+
+
 async def collect(tab: Tab, request: BrowserActions, gate: Gate, deadline: float, caps: Caps = _CAPS) -> ActionsReport:
     """Collect the listing on `tab` until `request.records` distinct items were seen (module docstring), or
     `deadline` (`time.monotonic()`) passes; the document states to keep are kept on the tab."""
@@ -147,7 +168,6 @@ class _Run:
     actions: int = 0
     turned: int = 0
     mechanism: PagingHint | None = None
-    replacing: bool = False
     stop: StopReason | None = None
 
     async def go(self) -> ActionsReport:
@@ -187,9 +207,7 @@ class _Run:
             case _Moved(view=moved, kind=kind):
                 if self.mechanism is None:
                     self.mechanism = self.request.hint or kind
-                grew = self._see(moved)
-                self.replacing = self.replacing or not set(view.ids) <= set(moved.ids)
-                idle = 0 if grew else idle + 1
+                idle = 0 if self._see(moved) else idle + 1
                 if idle >= self.caps.idle_rounds:
                     self.stop = "end"
                 return moved, idle
@@ -306,12 +324,14 @@ class _Run:
     # --- scroll ---
 
     async def _scroll(self, view: _View) -> _Step:
-        if self.replacing and not await self._keep(view):
-            return "error"
         await self.gate(None)
+        held = await self._hold(view)
+        if held is False:
+            return "error"
         self.actions += 1
         await self.tab.scroll()
         moved, shown = await self._effect(view, "grow")
+        self._release(held, view, moved)
         return _Moved(moved, "scroll") if shown else _Still(moved)
 
     # --- the control after the items ---
@@ -331,16 +351,19 @@ class _Run:
         return _Still(view)
 
     async def _click_control(self, view: _View, control: HtmlElement) -> _Step:
-        if self.replacing and not await self._keep(view):
-            return "error"
         if not await self.gate(_target(view, control)):
             return _Still(view)  # a hyperlink to a page the gate refuses is no control of this listing
+        held = await self._hold(view)
+        if held is False:
+            return "error"
         self.actions += 1
         url, requests = _page_url(self.tab.url), self.tab.data_requests()
         clicked = await self.tab.click(_ref(control))
         if clicked == "gone":
+            self._release(held, view, view)
             return _Still(view)
         if clicked == "intercepted":
+            self._release(held, view, view)
             return "click_intercepted"
         moved, shown = await self._effect(view, "grow")
         if _page_url(self.tab.url) != url:
@@ -348,6 +371,7 @@ class _Run:
             if _page_url(self.tab.url) != url:
                 return "error"  # the listing could not be got back
             return _Still(await self._read() or view)
+        self._release(held, view, moved)
         if not shown:
             return _Still(moved)
         return _Moved(moved, "load_more" if self.tab.data_requests() > requests else "show_more")
@@ -367,12 +391,14 @@ class _Run:
         html = await self.tab.html()
         if html is None:
             return None
-        page = ParsedPage(html)
+        calls = await self.tab.calls()
+        page = ParsedPage(html, tuple(body for _, body in calls), tuple(entry for entry, _ in calls))
         url = self.tab.url
         root = page.lxml_tree
         groups = item_groups(root)
         items = await self._largest(groups)
-        return _View(root, url, items, _identities(items, document_base_url(page, url)), page)
+        ids = _identities(items, document_base_url(page, url)) if items else _call_rows(page)
+        return _View(root, url, items, ids, page)
 
     async def _largest(self, groups: Sequence[tuple[HtmlElement, ...]]) -> tuple[HtmlElement, ...]:
         """The rendered items of the group with the largest rendered area; none when no group is rendered at all.
@@ -419,9 +445,27 @@ class _Run:
         self.seen.update(dict.fromkeys(view.ids))
         return len(self.seen) > size
 
+    async def _hold(self, view: _View) -> _Held | bool:
+        """Keep the state ahead of an action that may replace it (module docstring): what to restore when it is
+        dropped, True when no state needed keeping, False when it could not be kept."""
+        if self._held(view):
+            return True
+        held = _Held(frozenset(self.kept), self.kept_any, self.keeps)
+        return held if await self._keep(view) else False
+
+    def _release(self, held: _Held | bool, before: _View, after: _View) -> None:
+        """Drop the state kept ahead of an action when the state after it still shows each of its items."""
+        if isinstance(held, _Held) and set(before.ids) <= set(after.ids):
+            self.tab.discard()
+            self.kept, self.kept_any, self.keeps = set(held.kept), held.kept_any, held.keeps
+
+    def _held(self, view: _View) -> bool:
+        """Whether the kept states already hold every item of the view."""
+        return self.kept_any and set(view.ids) <= self.kept
+
     async def _keep(self, view: _View) -> bool:
         """Keep the document state when it shows an item no kept state holds (or none is kept yet)."""
-        if self.kept_any and set(view.ids) <= self.kept:
+        if self._held(view):
             return True
         if not await self.tab.keep():
             return False
@@ -451,7 +495,7 @@ def _target(view: _View, control: HtmlElement) -> str | None:
 
 def _identities(items: Sequence[HtmlElement], base: str) -> tuple[str, ...]:
     """Each item's identity (module docstring), distinct, in order; an item without a hyperlink has none."""
-    urls = [list(dict.fromkeys(_item_links(item, base))) for item in items]
+    urls = [list(dict.fromkeys(block_links(item, base))) for item in items]
     counts: dict[str, int] = {}
     for own in urls:
         for url in own:
@@ -460,10 +504,17 @@ def _identities(items: Sequence[HtmlElement], base: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(identities))
 
 
-def _item_links(item: HtmlElement, base: str) -> Iterator[str]:
-    for element in item.iter("a", "area"):
-        if is_hyperlink(element) and (url := canonical_url(element.get("href") or "", base)) is not None:
-            yield url
+def _call_rows(page: ParsedPage) -> tuple[str, ...]:
+    """The rows of the first series of the page's data calls (module docstring), each named by a digest of its JSON
+    text, distinct, in order."""
+    series = next(iter(row_series(data_calls(page))), ())
+    names: dict[str, None] = {}
+    for data in series:
+        for _, row in json_doc.select(data.rows or "", data.call.document):
+            if isinstance(row, dict):
+                text = json.dumps(row, sort_keys=True, ensure_ascii=False)
+                names[hashlib.sha256(text.encode()).hexdigest()] = None
+    return tuple(names)
 
 
 def _links(view: _View) -> tuple[NextLink, ...]:
@@ -493,7 +544,9 @@ def _enabled(element: HtmlElement) -> bool:
 
 
 def _after_items(view: _View) -> Iterator[HtmlElement]:
-    """The controls after the last item in document order, outside every item."""
+    """The controls after the last item in document order, outside every item; none without linked items."""
+    if not view.items:
+        return
     last = view.items[-1]
     inside = {element for item in view.items for element in item.iter()}
     started = False
@@ -594,6 +647,8 @@ def _current(slots: list[HtmlElement], controls: list[HtmlElement], turned: int)
 def _controls_after(view: _View) -> list[HtmlElement]:
     """The candidates for the control after the items, nearest level first (module docstring)."""
     after = [c for c in _after_items(view) if _enabled(c) and not in_chrome(c) and not _in_form(c)]
+    if not after:
+        return []
     node: HtmlElement | None = view.items[-1].getparent()
     for _ in range(_CONTROL_LEVELS + 1):
         if node is None or node.tag == "body":

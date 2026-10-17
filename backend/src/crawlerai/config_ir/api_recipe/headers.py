@@ -10,25 +10,18 @@ replay needs one of those, or more than one added header, the recipe is not lear
 browser rung (§2: cookie handoff, tokens and signed requests are §22).
 """
 
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 
 from pydantic import ValidationError
 
-from crawlerai.config_ir.api_recipe.model import CLIENT_FIELDS, CREDENTIAL_FIELDS, PAGE_URL, RequestSpec
+from crawlerai.config_ir.api_recipe.model import CLIENT_FIELDS, CREDENTIAL_FIELDS, PAGE_URL, RequestSpec, token_like
 from crawlerai.config_ir.api_recipe.replay import Replay, ReplayPage, reproduces
 from crawlerai.schemas.types import SchemaDef
 
 # RFC 8259 §11: the JSON media type, the one header a recipe starts with.
 _ACCEPT: Final = {"Accept": "application/json"}
-# A value looks like a token when one of its items (RFC 9110 §5.6.1, §5.6.6: items split at commas, parameters at
-# semicolons, words at whitespace; RFC 7515 §7.1: the parts of a JWS compact serialization split at dots) is 20 or more
-# characters of one base64 alphabet (RFC 4648 §4 standard, §5 URL- and filename-safe; hex, §8, is in both), padding
-# allowed.
-_ITEM_SEPARATORS: Final = re.compile(r"[\s,;.]+")
-_TOKEN: Final = re.compile(r"(?:[A-Za-z0-9+/]{20,}|[A-Za-z0-9_-]{20,})={0,2}")
 _NO_SINGLE_HEADER: Final = "no single captured header makes the replay reproduce the sample values"
 
 
@@ -100,7 +93,7 @@ def _candidates(pages: Sequence[ReplayPage]) -> tuple[list[tuple[str, str]], lis
             continue
         seen.add(key)
         value = _constant(key, pages)
-        if value is None or key in CREDENTIAL_FIELDS or _token_like(value):
+        if value is None or key in CREDENTIAL_FIELDS or token_like(value):
             withheld.append(name)
         else:
             candidates.append((name, value))
@@ -116,7 +109,3 @@ def _constant(key: str, pages: Sequence[ReplayPage]) -> str | None:
 def _recipe_value(key: str, page: ReplayPage) -> str | None:
     value = next((v for name, v in page.sample.request.headers if name.lower() == key), None)
     return f"{{{PAGE_URL}}}" if value == page.sample.page_url else value
-
-
-def _token_like(value: str) -> bool:
-    return any(_TOKEN.fullmatch(item) for item in _ITEM_SEPARATORS.split(value))

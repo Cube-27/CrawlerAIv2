@@ -2,12 +2,19 @@
 extracts with as the job pinned them (INV-28); fetching its page politely and storing the capture; the result a page
 that was not reached ends with; and extracting and storing a reached page's record.
 
+A listing whose records the job reads, on a site whose pinned config has a listing recipe (one with pagination,
+Appendix A #59), is served by the recipe page after page (`RecipeRung.pages`) up to the job's page bound
+(`listing_pages`); the first page is the task's capture and record, and each further page is stored under the task as a
+listing's further kept state is (`store_further`). When the recipe does not serve the first page, the page
+is fetched by the rungs as any page is.
+
 Every step writes in the worker's transaction for the task, so a task that raises rolls back alone (INV-31). The
 task's fetch attempts are counted as the job's usage at its end (`count_fetch`): that write locks the job's row until
 the task commits.
 """
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from functools import partial
 from typing import Final
 from urllib.parse import urlsplit
@@ -17,11 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.robots import Fetch
-from crawlerai.acquire.rungs import acquire
+from crawlerai.acquire.rungs import Rung, acquire
 from crawlerai.acquire.ssrf import SsrfRejected
-from crawlerai.acquire.types import AttemptRecord, FetchResult, Validators
+from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, Validators
 from crawlerai.config_ir.active import config_by_id, recipe_of
-from crawlerai.config_ir.api_recipe.execute import RecipeRung
+from crawlerai.config_ir.api_recipe.execute import MAX_PAGES, RecipeRung
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
@@ -54,13 +61,16 @@ from crawlerai.services.scrape_steps import (
     SiteRow,
     checked_extraction,
     content_check,
+    extract_further,
     fetch_policy,
     new_capture,
     parsed_page,
     record_fetch_usage,
     site_row,
+    store_further,
     store_page_record,
 )
+from crawlerai.storage.base import ObjectStore
 from crawlerai.worker.loop import Failed, Finished, TaskResult
 from crawlerai.worker.polite import HostRules, fetch_politely
 
@@ -113,6 +123,7 @@ class FetchedPage:
     attempts: tuple[AttemptRecord, ...]
     proxy_pool: str | None
     check: ContentCheck | None = None
+    further: tuple[FetchResult, ...] = ()  # a listing recipe's further pages, in order
 
     @property
     def parsed(self) -> ParsedPage:
@@ -140,6 +151,7 @@ async def fetch_page(
     recurring: Records | None = None,
     served: Records | None = None,
     llm: LLMClient,
+    listing_pages: int = MAX_PAGES,
 ) -> FetchedPage | Ended:
     """Fetch the task's page politely (`fetch_politely`: robots.txt over HTTP, the page through `acquire`) and store
     its capture, or the result the task ends this run with. Neither writes the job's usage. A request the SSRF
@@ -153,7 +165,8 @@ async def fetch_page(
     With `served`, the records the task extracts with when they are all it reads of the page, the config they name
     serves the page through its API recipe when it has one (SPEC-09 §4.8, `recipe_rung`), and an HTTP page that lacks
     the offer data or the rows their schema reads is rendered once more (`ContentCheck`, owner #49, #54), with role C
-    on `llm`, charged to the task's job."""
+    on `llm`, charged to the task's job. A listing's recipe with pagination serves up to
+    `listing_pages` pages of it (module docstring)."""
     try:
         await fetching.connector.check(task.url)
     except SsrfRejected as e:
@@ -169,6 +182,7 @@ async def fetch_page(
     robots = recording(fetching.rungs.http, policy, attempts)
     recipe = await _recipe(conn, fetching, task, served, robots)
     check = None if served is None else content_check(served.schema, served.data, served.config, _role_c(task, llm))
+    listed = _Listed.of(recipe, served, listing_pages, attempts)
 
     async def page(url: str, admit_next: Admit, known: HostRules) -> FetchResult | Unchanged:
         # An adapter's endpoint goes by its host's robots.txt, read in the task's transaction (SPEC-15 §4.6); the
@@ -182,7 +196,7 @@ async def fetch_page(
                 policy,
                 site.fetch_method,
                 rungs,
-                recipe=recipe,
+                recipe=await listed.rung(url, policy, recipe),
                 validators=sent,
                 admit_next=admit_next,
                 send=send,
@@ -201,7 +215,8 @@ async def fetch_page(
     if isinstance(fetched, FetchResult):
         if (refused := refusal(fetched)) is None:
             capture_id = await new_capture(conn, fetching.store, site.id, fetched)
-            return FetchedPage(site, fetched, capture_id, standing, tuple(attempts), policy.proxy_pool, check)
+            pages = tuple(listed.further)
+            return FetchedPage(site, fetched, capture_id, standing, tuple(attempts), policy.proxy_pool, check, pages)
         fetched = Failed(refused, transient=False)
     if isinstance(fetched, Unchanged):
         await record_fetch(conn, site.id, task.canonical_url, fetched)
@@ -221,6 +236,80 @@ async def _recipe(
         return None
     host = urlsplit(task.url).hostname or ""
     return recipe_rung(fetching, recipe, host, lambda url, policy: endpoint_rules(conn, url, policy, robots))
+
+
+@dataclass
+class _Listed:
+    """A listing's pages as its recipe serves them (module docstring): the recipe, when it has pagination and the
+    task reads a listing's records, the request bound, the task's attempts, and the pages after the first."""
+
+    recipe: RecipeRung | None
+    limit: int
+    attempts: list[AttemptRecord]
+    further: list[FetchResult] = field(default_factory=list)
+
+    @classmethod
+    def of(
+        cls, recipe: RecipeRung | None, served: Records | None, limit: int, attempts: list[AttemptRecord]
+    ) -> "_Listed":
+        lists = served is not None and served.schema.page_kind == "listing"
+        paged = recipe is not None and recipe.recipe.pagination is not None
+        return cls(recipe if lists and paged else None, limit, attempts)
+
+    async def rung(self, url: str, policy: FetchPolicy, recipe: RecipeRung | None) -> Rung | None:
+        """The recipe rung `acquire` fetches the page through: `recipe` as it is without a listing recipe; else one
+        that answers with the first page the listing recipe served, its further pages kept, up to `limit` requests, so
+        `acquire` keeps or falls back from that one answer as from any recipe's (SPEC-09 §4.8); None when it served no
+        page. Each page request waits for its host's rate on its own (`recipe_rung`)."""
+        if self.recipe is None:
+            return recipe
+        pages = [page async for page in self.recipe.pages(url, policy, records=None, limit=self.limit)]
+        if not pages:
+            return None
+        first, further = pages[0], pages[1:]
+        self.attempts.extend(attempt for page in further for attempt in page.attempts)
+        self.further[:] = _until_refused(further) if first.block_class == "ok" else []
+
+        async def served(_url: str, _policy: FetchPolicy) -> FetchResult:
+            return first
+
+        return served
+
+
+def _until_refused(pages: Sequence[FetchResult]) -> list[FetchResult]:
+    """The pages before the first one the SSRF guard refused a request of (INV-16): a refused page is never stored."""
+    kept: list[FetchResult] = []
+    for page in pages:
+        if refusal(page) is not None:
+            break
+        kept.append(page)
+    return kept
+
+
+async def store_further_pages(
+    conn: AsyncConnection,
+    store: ObjectStore,
+    task: ClaimedTask,
+    page: FetchedPage,
+    records: Records,
+    *,
+    caller_supplied: bool,
+    llm: LLMClient,
+) -> None:
+    """Extract and store a listing recipe's further pages under the task, with what the job pinned."""
+    if not page.further:
+        return
+    extracted = await extract_further(page.further, records.schema, records.config, records.data, _role_c(task, llm))
+    await store_further(
+        conn,
+        store,
+        task,
+        page.site.id,
+        records.schema,
+        extracted,
+        records.margins,
+        caller_supplied=caller_supplied,
+    )
 
 
 async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage | Ended) -> None:

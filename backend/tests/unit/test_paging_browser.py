@@ -55,12 +55,23 @@ def _numbered(path: str, query: dict[str, list[str]]) -> bytes:
     return _page(f'<ul class="grid">{_cards((n - 1) * 10, 10)}</ul><div class="pages">{pager}</div>')
 
 
-def _in_segment(path: str, query: dict[str, list[str]]) -> bytes:
-    """Numbered pages whose integer is inside a path segment (`/seg/page-N.html`), which the +1 integer link rule does
-    not read, under a pager of ordinal links: 4 pages of 10 items."""
-    n = int(path.removeprefix("/seg/page-").removesuffix(".html"))
-    pager = "".join(f'<li><a href="/seg/page-{p}.html">{p}</a></li>' for p in range(1, 5) if p != n)
+_LETTERS = "kmqz"
+
+
+def _lettered(path: str, query: dict[str, list[str]]) -> bytes:
+    """Pages named by letters (`/seg/page-k.html`), which no integer link rule reads, under a pager of ordinal links:
+    4 pages of 10 items."""
+    n = 1 + _LETTERS.index(path.removeprefix("/seg/page-").removesuffix(".html"))
+    pager = "".join(f'<li><a href="/seg/page-{_LETTERS[p - 1]}.html">{p}</a></li>' for p in range(1, 5) if p != n)
     return _page(f'<ul class="grid">{_cards((n - 1) * 10, 10)}</ul><nav><ul>{pager}</ul></nav>')
+
+
+def _in_segment(path: str, query: dict[str, list[str]]) -> bytes:
+    """Numbered pages whose integer is inside a path segment (`/inseg/page-N.html`), with one link to the next page
+    after the items and no pager: 3 pages of 10 items."""
+    n = int(path.removeprefix("/inseg/page-").removesuffix(".html"))
+    following = f'<p><a href="page-{n + 1}.html">Onward</a></p>' if n < 3 else ""
+    return _page(f'<ul class="grid">{_cards((n - 1) * 10, 10)}</ul>{following}')
 
 
 def _cursor(path: str, query: dict[str, list[str]]) -> bytes:
@@ -132,6 +143,47 @@ new IntersectionObserver(entries => { if (entries[0].isIntersecting && next > 0)
 more();
 </script>"""
 )
+# A virtualised list: reaching the end loads 8 more items, 48 in all, and the document keeps only the last 16.
+_VIRTUAL = _page(
+    """<ul class="grid" id="grid"></ul><div id="end"></div><script>
+let next = 0, busy = false;
+async function more() {
+  if (busy || next >= 48) return;
+  busy = true;
+  const items = await (await fetch('/api/more?from=' + next + '&size=8')).json();
+  await new Promise(r => setTimeout(r, 300));
+  const grid = document.getElementById('grid');
+  grid.insertAdjacentHTML('beforeend', Array.from(items, i =>
+    '<li class="card"><a href="/item/' + i + '">Thing ' + i + '</a><p>Words about thing ' + i + '.</p></li>').join(''));
+  while (grid.children.length > 16) grid.firstElementChild.remove();
+  next += items.length;
+  busy = false;
+}
+new IntersectionObserver(entries => { if (entries[0].isIntersecting && next > 0) more(); })
+  .observe(document.getElementById('end'));
+more();
+</script>"""
+)
+# Infinite scroll whose items hold no link: each call answers 8 rows as JSON, shown as text, 40 in all. The site's one
+# link is in its header (a page linking nowhere on its site is no site page, `acquire.classify`).
+_TEXT_ROWS = _page(
+    """<header><a href="/elsewhere">Home</a></header><ul class="grid" id="grid"></ul><div id="end"></div><script>
+let next = 0, busy = false;
+async function more() {
+  if (busy || next >= 40) return;
+  busy = true;
+  const answer = await (await fetch('/api/rows?from=' + next)).json();
+  await new Promise(r => setTimeout(r, 300));
+  document.getElementById('grid').insertAdjacentHTML('beforeend', Array.from(answer.items, row =>
+    '<li class="card"><p>' + row.title + '</p><p>Rank ' + row.rank + '</p></li>').join(''));
+  next += answer.items.length;
+  busy = false;
+}
+new IntersectionObserver(entries => { if (entries[0].isIntersecting && next > 0) more(); })
+  .observe(document.getElementById('end'));
+more();
+</script>"""
+)
 # Twelve items, a link to another document after them, and nothing that pages.
 _STILL = _page(f'<ul class="grid">{_cards(0, 12)}</ul><a href="/elsewhere">Elsewhere</a>')
 # A fixed layer over the whole viewport takes every click.
@@ -144,6 +196,8 @@ _ROUTES: dict[str, bytes] = {
     "/load-more": _LOAD_MORE,
     "/show-more": _SHOW_MORE,
     "/scroll": _SCROLL,
+    "/virtual": _VIRTUAL,
+    "/text-rows": _TEXT_ROWS,
     "/still": _STILL,
     "/elsewhere": _page("<p>Another document.</p>"),
     "/overlay": _OVERLAY,
@@ -154,6 +208,10 @@ def _api(path: str, query: dict[str, list[str]]) -> bytes:
     if path == "/api/ajax":
         page = int(query["page"][0])
         return json.dumps(list(range((page - 1) * 6, page * 6))).encode()
+    if path == "/api/rows":
+        start = int(query["from"][0])
+        rows = [{"title": f"Entry number {i} of the list", "rank": i} for i in range(start, min(start + 8, 40))]
+        return json.dumps({"items": rows}).encode()
     start, size = int(query["from"][0]), int(query.get("size", ["10"])[0])
     return json.dumps(list(range(start, min(start + size, 50)))).encode()
 
@@ -182,6 +240,8 @@ def server() -> Iterator[Server]:
             if parts.path.startswith("/num/"):
                 body = _numbered(parts.path, query)
             elif parts.path.startswith("/seg/"):
+                body = _lettered(parts.path, query)
+            elif parts.path.startswith("/inseg/"):
                 body = _in_segment(parts.path, query)
             elif parts.path == "/rel":
                 body = _cursor(parts.path, query)
@@ -298,21 +358,33 @@ def test_numbered_links_are_followed_until_the_target_and_each_page_is_kept(brow
 
 
 def test_a_pager_of_ordinal_links_in_nav_is_clicked_page_by_page_to_its_end(browser: Browser) -> None:
-    fetched = browser.run("/seg/page-1.html", BrowserActions(records=100))
+    fetched = browser.run("/seg/page-k.html", BrowserActions(records=100))
 
     assert _summary(fetched) == ("pagination", "end", 4, 40)
     # Three clicks on hyperlinks, each gated by its target first; page 4 links to no page 5.
-    pages = [browser.server.url(f"/seg/page-{n}.html") for n in (2, 3, 4)]
+    pages = [browser.server.url(f"/seg/page-{letter}.html") for letter in _LETTERS[1:]]
     assert browser.gated == pages
     # Each kept state is recorded under the URL it was asked for, not the listing's first one.
-    assert [page.bundle.manifest.url for page in fetched.pages] == [browser.server.url("/seg/page-1.html"), *pages]
+    assert [page.bundle.manifest.url for page in fetched.pages] == [browser.server.url("/seg/page-k.html"), *pages]
+
+
+def test_an_integer_inside_a_path_segment_is_followed_as_the_next_page(browser: Browser) -> None:
+    fetched = browser.run("/inseg/page-1.html", BrowserActions(records=100))
+
+    assert _summary(fetched) == ("pagination", "end", 3, 30)
+    pages = [browser.server.url(f"/inseg/page-{n}.html") for n in (2, 3)]
+    assert browser.gated == pages
+    assert [page.bundle.manifest.final_url for page in fetched.pages] == [
+        browser.server.url("/inseg/page-1.html"),
+        *pages,
+    ]
 
 
 def test_a_pager_link_the_gate_refuses_is_not_clicked(browser: Browser) -> None:
-    fetched = browser.run("/seg/page-1.html", BrowserActions(records=100), refuse="page-2")
+    fetched = browser.run("/seg/page-k.html", BrowserActions(records=100), refuse="page-m")
 
     assert _summary(fetched) == (None, "not_admitted", 1, 10)
-    assert [page.bundle.manifest.final_url for page in fetched.pages] == [browser.server.url("/seg/page-1.html")]
+    assert [page.bundle.manifest.final_url for page in fetched.pages] == [browser.server.url("/seg/page-k.html")]
 
 
 def test_rel_next_with_opaque_cursors_runs_to_the_end_of_the_list(browser: Browser) -> None:
@@ -383,6 +455,25 @@ def test_infinite_scroll_grows_one_document_to_the_target(browser: Browser) -> N
     assert (report.mechanism, report.stop, report.pages) == ("scroll", "records", 1)
     assert 30 <= report.items <= 40
     assert len(_items(fetched)[0]) == report.items
+
+
+def test_a_virtualised_list_keeps_a_state_per_batch_so_every_item_is_kept(browser: Browser) -> None:
+    fetched = browser.run("/virtual", BrowserActions(records=100, hint="scroll"))
+
+    report = fetched.report
+    assert report is not None
+    assert (report.mechanism, report.stop, report.items) == ("scroll", "end", 48)
+    kept = set().union(*_items(fetched))
+    assert kept == {f"/item/{i}".encode() for i in range(48)}
+    assert report.pages == len(fetched.pages) > 1
+
+
+def test_a_scroll_listing_whose_items_hold_no_link_loads_by_its_call_rows(browser: Browser) -> None:
+    fetched = browser.run("/text-rows", BrowserActions(records=100))
+
+    assert _summary(fetched) == ("scroll", "end", 1, 40)
+    # The one kept state holds every call that loaded its rows.
+    assert len(fetched.pages[0].bundle.network) == 5
 
 
 def test_a_listing_without_paging_stops_with_no_mechanism_after_undoing_a_click_that_left(browser: Browser) -> None:

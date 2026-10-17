@@ -83,6 +83,7 @@ from crawlerai.services.scrape_steps import (
     FetchOptions,
     FetchSummary,
     Formats,
+    Further,
     Input,
     PageFormat,
     PageOutcome,
@@ -90,10 +91,12 @@ from crawlerai.services.scrape_steps import (
     SchemaRequest,
     SchemaUnusable,
     SiteRow,
+    StoredFurther,
     check_records,
     check_usable,
     checked_extraction,
     content_check,
+    extract_further,
     fetch_policy,
     fetch_summary,
     format_member,
@@ -104,6 +107,7 @@ from crawlerai.services.scrape_steps import (
     record_fetch_usage,
     records_outcome,
     site_row,
+    store_further,
     store_page_record,
 )
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
@@ -406,37 +410,14 @@ def _pages(paged: PagedFetch | str) -> tuple[FetchResult | str, tuple[FetchResul
     return paged.pages[0], paged.pages[1:], paged.report
 
 
-# A further kept state of a listing, its extraction, and the site's active config as it ran on it.
-_Extracted = tuple[FetchResult, ExtractionResult, ActiveConfig | None]
-
-
 async def _extract_more(
     work: _Work, task: ClaimedTask, derived: _Derived, config: ActiveConfig | None, pages: tuple[FetchResult, ...]
-) -> list[_Extracted]:
+) -> list[Further]:
     """The extraction of each further kept state that was reached, with the first page's schema, as `_derive`'s."""
     schema, data = derived.schema, work.data
     if derived.extraction is None or schema is None or data is None:
         return []
-    extracted: list[_Extracted] = []
-    for page in pages:
-        if page.block_class != "ok":
-            continue
-        own = None if config is None else config.for_capture(page.bundle.manifest, data.adapters)
-        executor = None if own is None else own.executor
-        gap_fill = role_c(work.llm, job_id=task.job_id)
-        parsed = ParsedPage.of(page.bundle)
-        extraction = await extract_page(page.bundle, schema, executor, gap_fill, data=data, parsed=parsed)
-        extracted.append((page, extraction, own))
-    return extracted
-
-
-@dataclass(frozen=True)
-class _More:
-    """A listing's further kept states as stored: each record with the extraction it came from, and whether any
-    state's extraction failed."""
-
-    records: tuple[tuple[StoredRecord, ExtractionResult], ...] = ()
-    failed: bool = False
+    return await extract_further(pages, schema, config, data, role_c(work.llm, job_id=task.job_id))
 
 
 async def _store_more(
@@ -445,31 +426,13 @@ async def _store_more(
     task: ClaimedTask,
     site_id: SiteId,
     derived: _Derived,
-    extracted: list[_Extracted],
+    extracted: list[Further],
     margins: DriftMargins | None,
-) -> _More:
-    """Store each further kept state: its capture, its extraction and its records, under the scrape's task, each
-    under the canonical URL of the document it read (a row without its own URL is keyed by its page and position)."""
+) -> StoredFurther:
+    """Store each further kept state under the scrape's task (`store_further`)."""
     if derived.schema is None:
-        return _More()
-    records: list[tuple[StoredRecord, ExtractionResult]] = []
-    failed = False
-    for page, extraction, config in extracted:
-        capture_id = await new_capture(conn, store, site_id, page)
-        kept = await store_page_record(
-            conn,
-            task,
-            extraction,
-            capture_id=capture_id,
-            site_id=site_id,
-            schema=derived.schema,
-            config=config,
-            margins=margins,
-            page_url=canonicalize(page.bundle.manifest.final_url),
-        )
-        failed = failed or kept.outcome == "failed"
-        records.extend((record, extraction) for record in kept.records)
-    return _More(tuple(records), failed)
+        return StoredFurther()
+    return await store_further(conn, store, task, site_id, derived.schema, extracted, margins)
 
 
 def _content_check(
@@ -646,7 +609,7 @@ async def _finish(
     capture_id: CaptureId,
     derived: _Derived,
     margins: DriftMargins | None,
-    more: Callable[[], Awaitable[_More]] | None = None,
+    more: Callable[[], Awaitable[StoredFurther]] | None = None,
 ) -> tuple[PageOutcome, list[ScrapedRecord] | None]:
     """Settle the task with the page's outcome, after storing its extraction and record when `records` asked, and
     the page's run of an active config in its drift window. `more` stores a listing's further kept states (owner
@@ -674,7 +637,7 @@ async def _finish(
     if stored.outcome == "failed":
         await fail_task(conn, task, EXTRACTION_ERROR, transient=False, capture_id=capture_id)
         return "failed", None
-    further = _More() if more is None else await more()
+    further = StoredFurther() if more is None else await more()
     # A detail page's one record, or a listing's one per row (none when it listed nothing, SPEC-05 §4.10).
     kept = {record.id: (record, extraction) for record in stored.records} | {r.id: (r, e) for r, e in further.records}
     outcome = records_outcome(tuple(record for record, _ in kept.values()))

@@ -26,12 +26,14 @@ from patchright.async_api import TimeoutError as PlaywrightTimeout
 
 from crawlerai.acquire.browser import (
     DATA_REQUESTS,
+    JSON_BODIES_MAX,
     BrowserSession,
     Failed,
     Rendered,
     challenge_of,
     classified,
     context_cookies,
+    json_bodies,
     read_state,
     rendered,
 )
@@ -40,6 +42,7 @@ from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, 
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import ActionsReport, BlockClass, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
+from crawlerai.storage.capture_bundle import NetworkBody
 
 __all__ = ["Click", "Drive", "ListingRung", "Ref", "Tab", "fetch_listing"]
 
@@ -134,6 +137,14 @@ class Tab(Protocol):
         """Keep the document as it is now as a capture of its own; False when it could not be read within the caps."""
         ...
 
+    def discard(self) -> None:
+        """Drop the state kept last, which a later one holds whole: its data responses go to the next state kept."""
+        ...
+
+    async def calls(self) -> tuple[tuple[NetworkBody, bytes], ...]:
+        """The JSON bodies of the page's latest data responses, as many as a capture keeps at most."""
+        ...
+
 
 # The driver: what to do with the tab, answering what it did. The caller binds the request's settings to it.
 Drive = Callable[[Tab], Awaitable[ActionsReport]]
@@ -151,6 +162,9 @@ class _PatchrightTab:
         self._calls_from = 0
         self._requests = 0
         self.kept: list[FetchResult] = []
+        # Each kept state's start: the time its attempt is counted from and its first data response, for `discard`.
+        self._starts: list[tuple[float, int]] = []
+        self._bodies: dict[int, tuple[NetworkBody, bytes] | None] = {}  # the latest data responses read, by index
         page.page.on("request", self._on_request)
 
     def _on_request(self, request: Request) -> None:
@@ -240,9 +254,26 @@ class _PatchrightTab:
             return False
         block_class = await classified(exchange, content)
         self.kept.append(self._result(fetched_at, exchange, content, block_class))
+        self._starts.append((self._since, self._calls_from))
         self._since = time.monotonic()
         self._calls_from = calls_to
         return True
+
+    def discard(self) -> None:
+        if self.kept:
+            self.kept.pop()
+            self._since, self._calls_from = self._starts.pop()
+
+    async def calls(self) -> tuple[tuple[NetworkBody, bytes], ...]:
+        responses = self._page.calls.responses
+        first = max(0, len(responses) - JSON_BODIES_MAX)
+        for index in [index for index in self._bodies if index < first]:
+            del self._bodies[index]
+        for index in range(first, len(responses)):
+            if index not in self._bodies:
+                self._bodies[index] = next(iter(await json_bodies([responses[index]])), None)
+        found = (self._bodies[index] for index in range(first, len(responses)))
+        return tuple(body for body in found if body is not None)
 
     def _result(
         self, fetched_at: datetime, exchange: Exchange, content: Content, block_class: BlockClass

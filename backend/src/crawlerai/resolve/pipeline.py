@@ -39,6 +39,7 @@ from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import CALIBRATION_FILE
 from crawlerai.db.models import ExtractionMode, SourceKind
 from crawlerai.normalize.base import Context
+from crawlerai.resolve.call_rows import with_call_rows
 from crawlerai.resolve.derive import Derived, fill, is_page_url_field
 from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibration, required_fields
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
@@ -416,8 +417,13 @@ class _Listing:
         row_fields = {name for name, spec in page.schema.fields.items() if spec.scope == "row"}
         holders = frozenset(c.entity_id for c in page.collected.candidates if c.field in row_fields)
         rows = listing_rows(page.graph, page.primary, page.target, holders) or page.config.rows
-        # Appendix A #59: the rows of the page's captured calls serve where neither gives any.
+        # Appendix A #59: the rows of the page's captured calls serve where neither gives any; beside them, a call row
+        # fills the row of its item and extends the listing (`resolve/call_rows.py`).
         network = not rows and bool(page.collected.rows)
+        if rows:
+            call = (page.collected.rows, page.candidates, page.page, page.ctx.base_url)
+            rows, joined = with_call_rows(page.graph, page.schema, rows, *call)
+            candidates = (*candidates, *joined)
         fields, resolved = page.resolve_listing(candidates, rows or page.collected.rows)
         next_pages = tuple(link.url for link in links)
         return cls(page, fields, resolved, next_pages, candidates, tuple(diagnostics), network=network)

@@ -45,6 +45,19 @@ PAGE_URL: Final = "page_url"
 _INDEX: Final = re.compile(r"0|[1-9]\d*", re.ASCII)
 # RFC 9110 §5.6.2: a field name is a token.
 _TOKEN: Final = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+# A value looks like a token when one of its items (RFC 9110 §5.6.1, §5.6.6: items split at commas, parameters at
+# semicolons, words at whitespace; RFC 7515 §7.1: the parts of a JWS compact serialization split at dots) is 20 or more
+# characters of one base64 alphabet (RFC 4648 §4 standard, §5 URL- and filename-safe; hex, §8, is in both), padding
+# allowed. A recipe never stores one: header minimization never sends such a header, and binding leaves such a query
+# value out unless the page states it (`binding.withhold_tokens`).
+_ITEM_SEPARATORS: Final = re.compile(r"[\s,;.]+")
+_BASE64_TOKEN: Final = re.compile(r"(?:[A-Za-z0-9+/]{20,}|[A-Za-z0-9_-]{20,})={0,2}")
+
+
+def token_like(value: str) -> bool:
+    return any(_BASE64_TOKEN.fullmatch(item) for item in _ITEM_SEPARATORS.split(value))
+
+
 # Fields that carry credentials: RFC 9110 §11.6.2 and §11.7.2, RFC 6265 §5.4. A recipe that needs one is not
 # learnable (§4.6), so a recipe never holds one.
 CREDENTIAL_FIELDS: Final = frozenset({"authorization", "proxy-authorization", "cookie"})
