@@ -4,7 +4,7 @@ by role D when that is ambiguous), prove its headers by replay and validate it o
 that passed all of it comes back with its proof; one that failed comes back refused with the reason.
 
 Pages are synthetic browser captures on `.test` hosts whose network bodies hold the endpoint's JSON; a stand-in API
-(`httpx.MockTransport`) answers the replays through `fetch_json`, and role D is the fake provider's scripted client.
+(`tests.stand_in`) answers the replays through `fetch_json`, and role D is the fake provider's scripted client.
 """
 
 import asyncio

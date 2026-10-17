@@ -2,7 +2,7 @@
 requests, and the spec is accepted only by replay: it must reproduce every captured request, then its replay must
 reproduce the published values. A spec that does not reproduce gets one repair round, and nothing is fetched for it.
 
-The client is scripted and a stand-in API (`httpx.MockTransport`, synthetic `.test` hosts) answers the replays through
+The client is scripted and a stand-in API (`tests.stand_in`, synthetic `.test` hosts) answers the replays through
 `fetch_json`.
 """
 

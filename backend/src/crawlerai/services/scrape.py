@@ -65,6 +65,7 @@ from crawlerai.services.fetching import (
     admitted,
     check_target,
     engine_rules,
+    observed,
     recipe_rung,
     refusal,
     site_rules,
@@ -618,6 +619,7 @@ async def polite_fetch(
         send=send,
         needs_render=needs_render,
     )
+    observed(fetching.limiter, host, site.crawl_delay_ms, robots, result, page=True)
     attempts.extend(result.attempts)
     if (refused := refusal(result)) is not None:
         raise TargetRejected(refused)

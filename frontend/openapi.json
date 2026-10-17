@@ -173,6 +173,17 @@
             "title": "Block Class",
             "type": "string"
           },
+          "challenge": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Challenge"
+          },
           "duration_ms": {
             "title": "Duration Ms",
             "type": "integer"

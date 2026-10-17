@@ -1,4 +1,10 @@
-"""Politeness per site (SPEC-02 §4.6): a request rate, and the pause a server asks for.
+"""Politeness per site (SPEC-02 §4.6): a request rate, adapted to how the host answers, and the pause a server asks
+for.
+
+The rate adapts per host (D-1327), as TCP's congestion control does (RFC 5681 §3.1: back off multiplicatively on a
+congestion signal, grow back slowly): a 429 or 503 (`SLOW_DOWN`), or a challenge (`AttemptRecord.challenge`), doubles
+the host's spacing, up to `BACKOFF_MAX`; after `RECOVERY_RUN` `ok` answers in a row it shrinks by `RECOVERY_FACTOR`,
+never below the site's configured interval and its robots.txt `Crawl-delay` (`interval`).
 
 The limiter's state lives in the worker process. With several workers a site sees up to one request per interval
 from each, which the design point (0.1 tasks/s) accepts; shared state is a candidate only if measured.
@@ -20,6 +26,9 @@ BACKOFF_MAX: Final = timedelta(minutes=15)  # SPEC-02 §4.6: the longest backoff
 # RFC 6585 §4 (429 Too Many Requests) and RFC 9110 §15.6.4 (503 Service Unavailable): the statuses that ask a
 # client to slow down, optionally with a Retry-After.
 SLOW_DOWN: Final = frozenset({429, 503})
+# D-1327: the adaptive spacing's recovery, unmeasured starting points: 20 `ok` answers in a row shrink it by 10%.
+RECOVERY_RUN: Final = 20
+RECOVERY_FACTOR: Final = 0.9
 
 
 class Admit(Protocol):
@@ -43,6 +52,12 @@ def asked_pause(attempt: AttemptRecord) -> timedelta:
 def slowed_down(attempts: Iterable[AttemptRecord]) -> AttemptRecord | None:
     """The last attempt a server answered with a 429 or 503 (`SLOW_DOWN`), if any."""
     return next((a for a in reversed(tuple(attempts)) if a.status in SLOW_DOWN), None)
+
+
+def page_requests(attempts: Iterable[AttemptRecord]) -> tuple[AttemptRecord, ...]:
+    """The attempts of a page fetch that went to the page's host: an adapter's or recipe's API request (method `api`)
+    goes to its endpoint, whose host's rate it is admitted at and adapts (D-1327)."""
+    return tuple(attempt for attempt in attempts if attempt.method != "api")
 
 
 def interval(crawl_delay_ms: int | None, robots_delay: timedelta | None) -> timedelta:
@@ -75,12 +90,15 @@ def retry_after(headers: HeaderList, now: datetime) -> timedelta | None:
 
 
 class HostLimiter:
-    """Admission per host: one request per interval (a token bucket that holds one token), and none while a pause
-    a server asked for runs."""
+    """Admission per host: one request per spacing (a token bucket that holds one token), and none while a pause
+    a server asked for runs. The spacing is the site's interval, or longer while the host's answers asked for fewer
+    requests (`observe`)."""
 
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
         self._next: dict[str, float] = {}  # host -> when its next request may go, on `clock`
+        self._adapted: dict[str, timedelta] = {}  # host -> its spacing, while longer than its interval
+        self._ok_run: dict[str, int] = {}  # host -> `ok` answers since its spacing last changed
 
     def admit(self, host: str, interval: timedelta) -> timedelta:
         """Zero, recording a request to `host` now, when one may go; otherwise how long until one may."""
@@ -89,8 +107,38 @@ class HostLimiter:
         wait = timedelta(seconds=self._next.get(host, now) - now)
         if wait > timedelta(0):
             return wait
-        self._next[host] = now + interval.total_seconds()
+        self._next[host] = now + self.spacing(host, interval).total_seconds()
         return timedelta(0)
+
+    def spacing(self, host: str, interval: timedelta) -> timedelta:
+        """The time between two requests to `host` now: its `interval`, or the adapted spacing while longer."""
+        adapted = self._adapted.get(host)
+        return interval if adapted is None else max(interval, adapted)
+
+    def observe(self, host: str, interval: timedelta, attempts: Iterable[AttemptRecord]) -> None:
+        """Adapt `host`'s spacing to the answers of a fetch's `attempts` (module docstring)."""
+        for attempt in attempts:
+            if attempt.status in SLOW_DOWN or attempt.challenge is not None:
+                self._slowed(host, interval)
+            elif attempt.block_class == "ok":
+                self._answered(host, interval)
+
+    def _slowed(self, host: str, interval: timedelta) -> None:
+        self._adapted[host] = min(self.spacing(host, interval) * 2, max(BACKOFF_MAX, interval))
+        self._ok_run[host] = 0
+
+    def _answered(self, host: str, interval: timedelta) -> None:
+        adapted = self._adapted.get(host)
+        if adapted is None:
+            return
+        run = self._ok_run.get(host, 0) + 1
+        self._ok_run[host] = run % RECOVERY_RUN
+        if run < RECOVERY_RUN:
+            return
+        if (shrunk := adapted * RECOVERY_FACTOR) > interval:
+            self._adapted[host] = shrunk
+        else:
+            del self._adapted[host]
 
     async def wait(
         self, host: str, interval: timedelta, bound: timedelta = timedelta.max, *, after: timedelta = timedelta(0)

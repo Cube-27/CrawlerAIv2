@@ -6,7 +6,7 @@ failed run does.
 Pages are made the way a page task makes them (`extract_task`) from synthetic pages on an RFC 2606 host: the title
 comes from JSON-LD, the price only from the page text, which a scripted role C reads in cold mode. Role A is a
 scripted client; no provider is called. On an API-backed site the pages are browser captures whose network bodies hold
-the values, and a stand-in API (`httpx.MockTransport`) answers the run's replays (SPEC-09 §2, §7).
+the values, and a stand-in API (`tests.stand_in`) answers the run's replays (SPEC-09 §2, §7).
 """
 
 import asyncio

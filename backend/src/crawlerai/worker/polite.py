@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.politeness import BACKOFF_MAX, Admit, HostLimiter, interval, refuse, slowed_down
+from crawlerai.acquire.politeness import BACKOFF_MAX, Admit, HostLimiter, interval, page_requests, refuse, slowed_down
 from crawlerai.acquire.robots import Fetch, site_robots
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Site, SiteId
@@ -74,6 +74,7 @@ async def fetch_politely(
         return Postpone(wait)
 
     result = await fetch(task.url, refuse if disallowed else partial(limiter.wait, host, gap, WAIT_MAX))
+    limiter.observe(host, gap, page_requests(result.attempts))
     if isinstance(result, Unchanged) or result.block_class == "ok":
         return result
     if disallowed:

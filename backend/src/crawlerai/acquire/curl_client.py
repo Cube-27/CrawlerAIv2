@@ -1,0 +1,336 @@
+"""The one curl_cffi client of the HTTP and JSON rungs (SPEC-02 §4.5, §4.7; D-1320): a session impersonating Chrome,
+every request pinned to the address the SSRF guard checked or sent through a proxy pool's CONNECT tunnel, bodies capped
+while they stream, redirects followed by hand through the guard with the fetch's own cookies (INV-29), and every
+failure a short reason that never contains the URL.
+
+A request's headers are merged into the impersonation's defaults: a header the profile sends keeps the profile's
+position with the request's value, a `None` value removes it, and any other header follows the profile's (D-1321).
+"""
+
+import asyncio
+import io
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import AsyncExitStack, asynccontextmanager
+from dataclasses import dataclass, replace
+from functools import partial
+from typing import Literal, cast
+from urllib.parse import urlsplit
+
+from curl_cffi import Curl, CurlECode, CurlOpt
+from curl_cffi.curl import CURL_WRITEFUNC_ERROR, CURLINFO_HEADER_OUT
+from curl_cffi.requests import AsyncSession, BrowserTypeLiteral, Response
+from curl_cffi.requests.exceptions import RequestException
+
+from crawlerai.acquire.cookies import FetchCookies
+from crawlerai.acquire.headers import recorded
+from crawlerai.acquire.outcome import Exchange
+from crawlerai.acquire.redirects import MAX_REDIRECTS
+from crawlerai.acquire.redirects import location as redirect_location
+from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected, Target, bracketed
+from crawlerai.acquire.types import FetchPolicy
+from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, proxy_pool
+from crawlerai.storage.capture_bundle import HeaderList
+
+__all__ = [
+    "Failed",
+    "Hop",
+    "Limits",
+    "Redirected",
+    "Sent",
+    "Transport",
+    "Wire",
+    "curl_transport",
+    "follow",
+    "pinned",
+    "reason",
+    "send",
+]
+
+_CURLPROXY_HTTP = 0  # curl's `curl_proxytype` for an HTTP proxy (CURLOPT_PROXYTYPE)
+_CURL_ERRORS: dict[int, str] = {
+    CurlECode.OPERATION_TIMEDOUT: "timeout",
+    CurlECode.FILESIZE_EXCEEDED: "body_cap",  # the compressed body passed max_body_bytes
+    CurlECode.BAD_CONTENT_ENCODING: "decode_error",
+}
+
+
+@dataclass(frozen=True)
+class Hop:
+    """What one request sends. `headers` are merged into the impersonation's defaults; `None` removes a default.
+    `order` replaces the profile's header order (lowercase names), for a request the profile does not describe."""
+
+    method: Literal["GET", "POST"]
+    headers: Mapping[str, str | None]
+    body: bytes | None = None
+    order: tuple[str, ...] | None = None
+
+
+@dataclass(frozen=True)
+class Wire:
+    """One response as it arrived: the headers sent and received, cookies included, and the decoded body. `status` is
+    0 when no status line arrived."""
+
+    url: str
+    status: int
+    request_headers: HeaderList
+    response_headers: HeaderList
+    body: bytes
+
+    @property
+    def exchange(self) -> Exchange:
+        """As a capture records it: without credentials (`headers.recorded`)."""
+        return Exchange(self.url, self.status, recorded(self.request_headers), recorded(self.response_headers))
+
+
+@dataclass(frozen=True)
+class Limits:
+    """INV-30's caps and the fetch's deadline, on `time.monotonic()`."""
+
+    max_body_bytes: int
+    max_decompressed_bytes: int
+    deadline: float
+
+
+class Failed(Exception):
+    """A request got no usable response. `last` is the last response that did arrive, if any."""
+
+    def __init__(self, error: str, last: Wire | None) -> None:
+        super().__init__(error)
+        self.error = error
+        self.last = last
+
+
+# Sends one hop to a checked target; tests stand in for the network here.
+Transport = Callable[[Target, Hop], Awaitable[Wire]]
+# The hop that follows a redirect with `status` to the checked target.
+Redirected = Callable[[Hop, int, Target], Hop]
+
+
+@dataclass(frozen=True)
+class Sent:
+    """What a fetch's requests got: the last response (None when none arrived), the failure, if any, and the pool
+    endpoint they went through."""
+
+    last: Wire | None
+    error: str | None
+    pool: ProxyPool | None = None
+    proxy: ProxyEndpoint | None = None
+
+
+async def send(
+    url: str,
+    first: Hop,
+    policy: FetchPolicy,
+    *,
+    impersonate: BrowserTypeLiteral,
+    connector: SafeConnector,
+    pools: Mapping[str, ProxyPool] | None,
+    redirected: Redirected,
+    transport: Transport | None = None,
+) -> Sent:
+    """Fetch `url` with `first` through the pool `policy.proxy_pool` names (an endpoint picked for the URL's host),
+    within the policy's caps and time budget; `transport` replaces the network (tests)."""
+    started = time.monotonic()
+    try:
+        pool = proxy_pool(policy.proxy_pool, pools)
+    except UnknownProxyPool as unknown:
+        return Sent(None, str(unknown))
+    proxy = None if pool is None else pool.pick(urlsplit(url).hostname or "")
+    limits = Limits(policy.max_body_bytes, policy.max_decompressed_bytes, started + policy.timeout_s)
+    try:
+        async with AsyncExitStack() as stack:
+            if transport is None:
+                transport = await stack.enter_async_context(curl_transport(impersonate, proxy, limits))
+            last = await follow(
+                url, first, connector=connector, transport=transport, deadline=limits.deadline, redirected=redirected
+            )
+    except Failed as failed:
+        return Sent(failed.last, failed.error, pool, proxy)
+    return Sent(last, None, pool, proxy)
+
+
+async def follow(
+    url: str, first: Hop, *, connector: SafeConnector, transport: Transport, deadline: float, redirected: Redirected
+) -> Wire:
+    """The final response for `url`, every hop checked by the guard first (INV-16), at most `MAX_REDIRECTS` followed.
+    Cookies set by one hop go with the next whose host and path they match, and none outlive the fetch (INV-29).
+    Raises `Failed`."""
+    target = await _checked(connector.check(url), deadline, None)
+    cookies = await FetchCookies.new()
+    hop = first
+    response = await _send(transport, target, hop, cookies)
+    for hops in range(MAX_REDIRECTS + 1):
+        location = redirect_location(response.status, response.response_headers)
+        if location is None:
+            break
+        if hops == MAX_REDIRECTS:
+            raise Failed("too_many_redirects", response)
+        target_next = await _checked(connector.redirect(target, location), deadline, response)
+        hop, target = redirected(hop, response.status, target_next), target_next
+        response = await _send(transport, target, hop, cookies)
+    return response
+
+
+async def _checked(check: Awaitable[Target], deadline: float, last: Wire | None) -> Target:
+    """Run one guard check within the fetch's time budget: name resolution can take as long as the request."""
+    try:
+        async with asyncio.timeout(deadline - time.monotonic()):
+            return await check
+    except SsrfRejected as e:
+        raise Failed(str(e), last) from e
+    except TimeoutError as e:
+        raise Failed("timeout", last) from e
+
+
+async def _send(transport: Transport, target: Target, hop: Hop, cookies: FetchCookies) -> Wire:
+    # The fetch sends only its own cookies (INV-29), and the guard's host is the request's (RFC 9110 §7.2).
+    headers = {name: value for name, value in hop.headers.items() if name.lower() not in ("cookie", "host")}
+    if (cookie := cookies.header(target.url)) is not None:
+        headers["Cookie"] = cookie
+    response = await transport(target, replace(hop, headers=headers))
+    cookies.extract(target.url, response.status, response.response_headers)
+    return response
+
+
+class _Session(AsyncSession[Response]):
+    """curl_cffi's session, releasing a request's handle from the event loop's multi handle before its callbacks.
+
+    curl_cffi 0.16 frees a handle's callback data first and removes the handle from the multi handle second. For a
+    request still in flight (cancelled by an outer time cap), the removal closes its connection, and curl reports
+    that to the debug callback (`DEBUGFUNCTION`, which records the headers sent), whose data is gone by then: the
+    process dies in native code. Removed first, the handle's events reach live callbacks; curl_cffi's own removal
+    then finds it removed, which `curl_multi_remove_handle` answers with success.
+    """
+
+    def release_curl(self, curl: Curl) -> None:
+        if not self._closed:
+            self.acurl.remove_handle(curl)
+        super().release_curl(curl)
+
+
+@asynccontextmanager
+async def curl_transport(
+    impersonate: BrowserTypeLiteral, proxy: ProxyEndpoint | None, limits: Limits
+) -> AsyncIterator[Transport]:
+    """A transport over one curl_cffi session for one fetch, through `proxy` when a pool carries it."""
+    # Cookies are kept by `FetchCookies`, not libcurl's engine, which this build runs without the public-suffix list
+    # (RFC 6265 §5.3 step 5): the session discards what curl parsed, and each request clears curl's list before
+    # sending only the cookies passed in. `trust_env=False` stops curl_cffi reading the proxy environment variables;
+    # libcurl reads them itself, so each request also sets CURLOPT_PROXY, and a pool request CURLOPT_NOPROXY:
+    # proxies come only from the pools.
+    async with _Session(impersonate=impersonate, trust_env=False, discard_cookies=True) as session:
+        yield partial(_request, session, proxy, limits)
+
+
+async def _request(
+    session: AsyncSession[Response], proxy: ProxyEndpoint | None, limits: Limits, target: Target, hop: Hop
+) -> Wire:
+    remaining = limits.deadline - time.monotonic()
+    if remaining <= 0:
+        raise Failed("timeout", None)
+
+    body = io.BytesIO()
+    received = 0
+
+    def on_body(chunk: bytes) -> int:
+        # curl hands over the body after content decoding, so this counts decompressed bytes: a compression bomb
+        # stops here, holding at most the cap in memory.
+        nonlocal received
+        received += len(chunk)
+        if received > limits.max_decompressed_bytes:
+            return CURL_WRITEFUNC_ERROR
+        return body.write(chunk)
+
+    sent: list[bytes] = []
+
+    def on_debug(kind: int, data: bytes) -> None:
+        if kind == CURLINFO_HEADER_OUT:
+            sent.append(data)
+
+    options: dict[CurlOpt, object] = {
+        **(pinned(target) if proxy is None else _through(proxy)),
+        # curl speaks only the schemes the guard admits, whatever URL reaches it (CURLOPT_PROTOCOLS_STR).
+        CurlOpt.PROTOCOLS_STR: "http,https",
+        CurlOpt.MAXFILESIZE_LARGE: limits.max_body_bytes,  # counts body bytes as received, before decoding
+        # The debug callback is the only place curl reports the request headers it sent (impersonation sets them in
+        # C). It also sees every other debug event, a cost accepted for recording what was sent.
+        CurlOpt.VERBOSE: 1,
+        CurlOpt.DEBUGFUNCTION: on_debug,
+    }
+    if hop.order is not None:
+        # Applied after the impersonation, whose order it replaces (CURLOPT_HTTPHEADER_ORDER, curl-impersonate).
+        options[CurlOpt.HTTPHEADER_ORDER] = ",".join(hop.order)
+    # curl_cffi types option values as str, but passes each to curl_easy_setopt with the option's own type.
+    session.curl_options = cast(dict[CurlOpt, str], options)
+    try:
+        response = await session.request(
+            hop.method,
+            target.url,
+            headers=dict(hop.headers),
+            data=hop.body,
+            allow_redirects=False,
+            timeout=remaining,
+            content_callback=on_body,
+        )
+    except RequestException as e:
+        error = "body_cap" if received > limits.max_decompressed_bytes else reason(e)
+        # The exception carries what arrived before the failure: the status and headers, if any.
+        partial_response: Response | None = e.response
+        last = None if partial_response is None else _wire(target, partial_response, sent, b"")
+        raise Failed(error, last) from e
+    return _wire(target, response, sent, body.getvalue())
+
+
+def reason(error: RequestException) -> str:
+    """A curl failure's reason: its kind, never its message, which can hold the URL (SPEC-02 §4.11)."""
+    return _CURL_ERRORS.get(error.code, f"network_error: curl {int(error.code)}")
+
+
+def pinned(target: Target) -> dict[CurlOpt, object]:
+    ip = bracketed(str(target.ip))
+    return {
+        # Every connection of this request goes to the checked address, whatever host name curl derives from the
+        # URL (IDNA, case, percent-encoding): CURLOPT_RESOLVE's `*` host matches every name on the port.
+        CurlOpt.RESOLVE: [f"*:{target.port}:{ip}"],
+        CurlOpt.PROXY: "",  # an empty proxy disables proxies, including the environment's (CURLOPT_PROXY)
+    }
+
+
+def _through(proxy: ProxyEndpoint) -> dict[CurlOpt, object]:
+    # No CURLOPT_RESOLVE: its `*` would also redirect the connection to the proxy. The proxy resolves the page's host
+    # itself (ARCHITECTURE §7.1); the guard checked that host before this request.
+    options: dict[CurlOpt, object] = {
+        # The proxy's host alone, with its type and port set apart: curl's CURLPROXY_HTTP (0) speaks plain HTTP to
+        # the proxy, the only kind a pool is (`crawlerai.core.proxy`); pages inside the tunnel keep their own TLS.
+        CurlOpt.PROXY: bracketed(proxy.host),
+        CurlOpt.PROXYPORT: proxy.port,
+        CurlOpt.PROXYTYPE: _CURLPROXY_HTTP,
+        # A CONNECT tunnel for http pages too (RFC 9110 §9.3.6): the proxy relays bytes and never rewrites a request.
+        CurlOpt.HTTPPROXYTUNNEL: 1,
+        # An empty list overrides the environment's `no_proxy`, which would otherwise send matching hosts direct,
+        # resolved by curl rather than the guard (CURLOPT_NOPROXY).
+        CurlOpt.NOPROXY: "",
+    }
+    if proxy.username is not None:
+        # Set apart from the proxy URL, so the credentials need no percent-encoding (CURLOPT_PROXYUSERNAME).
+        options[CurlOpt.PROXYUSERNAME] = proxy.username
+        options[CurlOpt.PROXYPASSWORD] = proxy.password or ""
+    return options
+
+
+def _wire(target: Target, response: Response, sent: list[bytes], body: bytes) -> Wire:
+    return Wire(
+        url=target.url,
+        status=response.status_code,
+        request_headers=_parse_request_headers(sent[-1] if sent else b""),
+        response_headers=tuple((name, value or "") for name, value in response.headers.multi_items()),
+        body=body,
+    )
+
+
+def _parse_request_headers(block: bytes) -> HeaderList:
+    # curl reports the header block it sent in HTTP/1.1 form for every protocol version: a request line, then
+    # `name: value` lines (RFC 9112 §3, §5).
+    lines = block.decode("latin-1").split("\r\n")[1:]
+    return tuple((name, value.strip()) for name, _, value in (line.partition(":") for line in lines if ":" in line))

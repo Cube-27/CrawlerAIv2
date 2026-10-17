@@ -13,6 +13,7 @@ from crawlerai.acquire.api import fetch_json
 from crawlerai.acquire.browser import fetch_browser, open_browser
 from crawlerai.acquire.browser_tab import Drive, fetch_listing
 from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.impersonate import rung_impersonation
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs, adapter_registry
 from crawlerai.acquire.ssrf import SafeConnector
@@ -60,10 +61,9 @@ def fetching_from_settings(settings: Settings) -> Fetching:
                 url, policy, drive, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools
             )
 
-    http = partial(
-        fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, connector=connector, pools=pools
-    )
-    json = partial(fetch_json, engine_version=ENGINE_VERSION, connector=connector, pools=pools)
+    impersonate = rung_impersonation(settings)
+    http = partial(fetch_http, engine_version=ENGINE_VERSION, impersonate=impersonate, connector=connector, pools=pools)
+    json = partial(fetch_json, engine_version=ENGINE_VERSION, impersonate=impersonate, connector=connector, pools=pools)
     rungs = Rungs(
         http=http,
         browser=browser,

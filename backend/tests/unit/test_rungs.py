@@ -177,8 +177,22 @@ def test_the_bundle_records_every_attempt_beside_its_policy() -> None:
     assert result.bundle.manifest.fetch_policy == {
         **FetchPolicy().model_dump(mode="json"),
         "attempts": [
-            {"method": "http", "status": 200, "block_class": "shell", "duration_ms": 1, "error": None},
-            {"method": "browser", "status": 200, "block_class": "ok", "duration_ms": 1, "error": None},
+            {
+                "method": "http",
+                "status": 200,
+                "block_class": "shell",
+                "duration_ms": 1,
+                "error": None,
+                "challenge": None,
+            },
+            {
+                "method": "browser",
+                "status": 200,
+                "block_class": "ok",
+                "duration_ms": 1,
+                "error": None,
+                "challenge": None,
+            },
         ],
     }
 

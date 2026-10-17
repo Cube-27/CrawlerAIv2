@@ -285,6 +285,44 @@ async def test_a_slow_down_response_retries_after_retry_after_or_the_backoff(
     assert await _polite(conn, second, site_id, FetchPolicy(), web, limiter) == Postpone(pause)
 
 
+async def test_after_a_slow_down_the_sites_pages_come_at_twice_the_interval(conn: AsyncConnection, web: Web) -> None:
+    # D-1327: once the asked pause is over, the host's spacing stays doubled until a run of `ok` answers shrinks it.
+    site_id = await _site(conn)
+    web.pages[f"{ORIGIN}/item/1"] = (429, b"", (("Retry-After", "5"),))
+    web.pages[f"{ORIGIN}/item/2"] = (200, PAGE, ())
+    first, second, third = await _tasks(conn, "/item/1", "/item/2", "/item/3")
+    clock = Clock()
+    limiter = HostLimiter(clock)
+
+    await _polite(conn, first, site_id, FetchPolicy(), web, limiter)
+    clock.now += 5
+    assert isinstance(await _polite(conn, second, site_id, FetchPolicy(), web, limiter), FetchResult)
+    clock.now += 1
+
+    assert await _polite(conn, third, site_id, FetchPolicy(), web, limiter) == Postpone(timedelta(seconds=1))
+
+
+async def test_an_api_requests_slow_down_does_not_slow_the_pages_host(conn: AsyncConnection, web: Web) -> None:
+    # D-1327: an adapter's or recipe's request goes to its endpoint, whose host's rate observes it (`_polite_json`).
+    site_id = await _site(conn)
+    web.pages[f"{ORIGIN}/item/1"] = (200, PAGE, ())
+    first, second, third = await _tasks(conn, "/item/1", "/item/2", "/item/3")
+    clock = Clock()
+    limiter = HostLimiter(clock)
+
+    async def after_an_endpoint(url: str, admit: Admit) -> FetchResult:
+        page = await web(url)
+        endpoint = AttemptRecord(method="api", status=429, block_class="blocked", duration_ms=1)
+        return page.model_copy(update={"attempts": (endpoint, *page.attempts)})
+
+    await fetch_politely(conn, first, site_id, FetchPolicy(), after_an_endpoint, limiter, fetch_robots=web)
+    clock.now += 1
+    await _polite(conn, second, site_id, FetchPolicy(), web, limiter)
+    clock.now += 1
+
+    assert isinstance(await _polite(conn, third, site_id, FetchPolicy(), web, limiter), FetchResult)
+
+
 async def test_a_further_request_of_the_fetch_takes_a_turn_at_the_sites_rate(conn: AsyncConnection, web: Web) -> None:
     site_id = await _site(conn)
     web.pages[f"{ORIGIN}/item/1"] = (200, PAGE, ())

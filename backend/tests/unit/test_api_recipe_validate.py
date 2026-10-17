@@ -2,7 +2,7 @@
 when every mapped field reproduces the published value on every held-out page that has one; an accepted recipe carries
 its proof and enters the validated config, and its report enters the config's validation report.
 
-A stand-in API (`httpx.MockTransport`, synthetic `.test` hosts) answers the replays through `fetch_json`.
+A stand-in API (`tests.stand_in`, synthetic `.test` hosts) answers the replays through `fetch_json`.
 """
 
 import asyncio

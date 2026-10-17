@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.politeness import BACKOFF_MAX, HostLimiter, asked_pause, interval, slowed_down
+from crawlerai.acquire.politeness import BACKOFF_MAX, HostLimiter, asked_pause, interval, page_requests, slowed_down
 from crawlerai.acquire.robots import Fetch, Robots, site_robots
 from crawlerai.acquire.rungs import Rung, Rungs
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
@@ -127,6 +127,21 @@ async def admitted(
     if after:
         return await limiter.wait(host, gap, SLOW_DOWN_WAIT_MAX, after=after)
     return await limiter.wait(host, gap)
+
+
+def observed(
+    limiter: HostLimiter,
+    host: str,
+    crawl_delay_ms: int | None,
+    robots: Robots | None,
+    result: FetchResult,
+    *,
+    page: bool = False,
+) -> None:
+    """Adapt the host's rate to the answers of `result` (D-1327, `HostLimiter.observe`); for a `page` fetch, to its
+    requests to the page's host only (`page_requests`): its API requests were observed on their endpoint's host."""
+    attempts = page_requests(result.attempts) if page else result.attempts
+    limiter.observe(host, interval(crawl_delay_ms, None if robots is None else robots.crawl_delay), attempts)
 
 
 # The rules a request to a URL goes by on its host: the host's interval setting and robots.txt (None when the policy
@@ -250,6 +265,7 @@ async def _polite_json(
     if not take_turn(host):
         await admitted(limiter, host, *allowed)
     result = await json(request, policy)
+    observed(limiter, host, *allowed, result)
     slowed = slowed_down(result.attempts)
     if slowed is not None:
         # SPEC-02 §4.6: the pause asked for, else the first backoff.
@@ -276,6 +292,7 @@ class PoliteHttp:
             return None
         await admitted(self.fetching.limiter, self.host, self.crawl_delay_ms, self.robots)
         result = await self.fetching.rungs.http(url, policy)
+        observed(self.fetching.limiter, self.host, self.crawl_delay_ms, self.robots, result)
         self.attempts.extend(result.attempts)
         if (refused := refusal(result)) is not None:
             raise TargetRejected(refused)

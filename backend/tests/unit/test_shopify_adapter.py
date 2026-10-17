@@ -22,6 +22,7 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import NOT_PLATFORM, NOT_SERVED, AdapterMatch
 from crawlerai.adapters.registry import Registry
 from crawlerai.adapters.shopify import API_VERSION, Shopify
+from tests.stand_in import CONNECT_FAILED, IMPERSONATE, handler_transport
 
 ADAPTER = Shopify()
 SHOP = "shop.example.test"
@@ -85,8 +86,10 @@ def _send(handler: Handler) -> JsonFetcher:
 
     async def send(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         connector = SafeConnector(resolve)
-        transport = httpx.MockTransport(handler)
-        return await fetch_json(request, policy, engine_version="test", connector=connector, transport=transport)
+        transport = handler_transport(handler)
+        return await fetch_json(
+            request, policy, engine_version="test", impersonate=IMPERSONATE, connector=connector, transport=transport
+        )
 
     return send
 
@@ -197,7 +200,7 @@ def test_a_fetch_with_no_response_says_nothing_about_the_platform() -> None:
 
     result = _fetch(PAGE, handler)
 
-    assert (result.block_class, result.attempts[-1].error) == ("error", "network_error: ConnectError")
+    assert (result.block_class, result.attempts[-1].error) == ("error", CONNECT_FAILED)
 
 
 def test_the_endpoint_keeps_the_pages_port_and_drops_its_user_information() -> None:
