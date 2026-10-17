@@ -27,6 +27,7 @@ from pydantic import ValidationError
 
 from crawlerai.acquire.api import JsonRequest, fetch_json
 from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.tunnel import open_tunnel
@@ -45,10 +46,11 @@ _JSON = b'{"items": [{"id": 1, "name": "Synthetic"}]}'
 
 @dataclass
 class Origin:
-    """The site behind the proxy. Records the Host of every request it serves."""
+    """The site behind the proxy. Records the Host and Cookie of every request it serves."""
 
     port: int
     hosts: list[str] = field(default_factory=list)
+    cookies: list[str | None] = field(default_factory=list)
 
 
 @pytest.fixture
@@ -68,6 +70,7 @@ def origin() -> Iterator[Origin]:
 
         def do_GET(self) -> None:
             state[0].hosts.append(self.headers.get("Host", ""))
+            state[0].cookies.append(self.headers.get("Cookie"))
             status, headers, body = self.routes.get(self.path, (404, (), b"no route"))
             self.send_response(status)
             for name, value in headers:
@@ -192,7 +195,9 @@ def _pools(*endpoints: ProxyEndpoint, mode: PoolMode = "rotate") -> dict[str, Pr
     return {"dc": ProxyPool(endpoints, mode)}
 
 
-def _fetch(url: str, pools: dict[str, ProxyPool], pool: str | None = "dc") -> FetchResult:
+def _fetch(
+    url: str, pools: dict[str, ProxyPool], pool: str | None = "dc", sessions: SiteSessions | None = None
+) -> FetchResult:
     return asyncio.run(
         fetch_http(
             url,
@@ -201,6 +206,7 @@ def _fetch(url: str, pools: dict[str, ProxyPool], pool: str | None = "dc") -> Fe
             impersonate=IMPERSONATE_DEFAULT,
             connector=StubConnector(),
             pools=pools,
+            sessions=sessions,
         )
     )
 
@@ -377,6 +383,41 @@ def test_a_sticky_pool_keeps_a_site_on_one_endpoint(origin: Origin, proxy: StubP
         assert _outcome(_fetch("http://shop.example.test/p", pools)) == (200, "ok", None)
 
     assert sorted((len(proxy.tunnels), len(second_proxy.tunnels))) == [0, 4]
+
+
+def _session_through(endpoint: ProxyEndpoint) -> SiteSessions:
+    sessions = SiteSessions()
+    cookies = (SessionCookie("clearance", "1", "example.test", "/", secure=False, host_only=False, expires=None),)
+    identity = (("User-Agent", "Mozilla/5.0 Solver/153.0"),)
+    assert sessions.open("http://shop.example.test/", "dc", CookieExport(cookies, endpoint), identity) is not None
+    return sessions
+
+
+def test_inv29_a_site_session_keeps_the_sites_fetches_on_the_endpoint_its_cookies_came_through(
+    origin: Origin, proxy: StubProxy, second_proxy: StubProxy
+) -> None:
+    pools = _pools(proxy.endpoint(), second_proxy.endpoint())
+    sessions = _session_through(second_proxy.endpoint())
+
+    for _ in range(4):
+        assert _outcome(_fetch("http://shop.example.test/p", pools, sessions=sessions)) == (200, "ok", None)
+
+    assert (len(proxy.tunnels), len(second_proxy.tunnels)) == (0, 4)
+    assert origin.cookies == ["clearance=1"] * 4
+
+
+def test_inv29_a_site_session_whose_endpoint_is_quarantined_is_not_used(
+    origin: Origin, proxy: StubProxy, second_proxy: StubProxy
+) -> None:
+    pools = _pools(proxy.endpoint(), second_proxy.endpoint(), mode="sticky")
+    for _ in range(QUARANTINE_AFTER):
+        pools["dc"].report(second_proxy.endpoint(), healthy=False)
+    sessions = _session_through(second_proxy.endpoint())
+
+    assert _outcome(_fetch("http://shop.example.test/p", pools, sessions=sessions)) == (200, "ok", None)
+
+    assert (len(proxy.tunnels), len(second_proxy.tunnels)) == (1, 0)
+    assert origin.cookies == [None]
 
 
 def test_an_endpoint_that_keeps_failing_is_left_out_until_its_quarantine_ends(

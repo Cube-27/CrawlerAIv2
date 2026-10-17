@@ -114,6 +114,22 @@ async def test_http_failing_and_the_browser_passing_sets_the_site_to_browser(
     assert await _memory(conn, site_id) == ("browser", await _now(conn))
 
 
+async def test_a_browser_solve_that_opened_a_site_session_leaves_the_site_on_http(
+    conn: AsyncConnection, http: Web, browser: Web
+) -> None:
+    # D-1353: the session's cookies carry the site's next fetches over HTTP (`acquire.session`).
+    site_id = await _site(conn)
+    http.pages[PAGE], browser.pages[PAGE] = "blocked", "ok"
+    result = await acquire(PAGE, FetchPolicy(), "http", Rungs(http=http, browser=browser))
+    first, solve = result.attempts
+    opened = with_attempts(result, (first, solve.model_copy(update={"site_session": True})), result.duration_ms)
+
+    await remember_fetch_method(conn, site_id, opened)
+    assert await _memory(conn, site_id) == ("http", None)
+    await remember_fetch_method(conn, site_id, result)
+    assert await _memory(conn, site_id) == ("browser", await _now(conn))
+
+
 async def test_a_render_kept_over_a_lacking_http_page_sets_the_site_to_browser_and_skips_http_next(
     conn: AsyncConnection, http: Web, browser: Web
 ) -> None:

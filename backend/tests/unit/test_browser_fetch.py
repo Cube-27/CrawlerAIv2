@@ -14,6 +14,7 @@ import gzip
 import json
 import os
 import re
+import socket
 import threading
 import time
 from collections.abc import Iterator
@@ -26,9 +27,13 @@ import pytest
 from patchright.async_api import Error as PlaywrightError
 
 from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
+from crawlerai.acquire.session import CookieExport
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.adapters.challenges import SIGNATURES
 from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.proxy import ProxyEndpoint, ProxyPool
+from crawlerai.core.proxy_health import QUARANTINE_AFTER
 from crawlerai.storage.capture_bundle import decode, encode
 
 pytestmark = pytest.mark.browser
@@ -100,6 +105,8 @@ _WITH_WORKER = b"""<html><body><p>Worker page</p><script>new Worker('/worker.js'
 _INTERSTITIAL = b"""<html><body><p>One moment</p><script>
 setTimeout(() => location.replace('/app'), 4000);
 </script></body></html>"""
+# A 403 document that stands in for the page and never navigates on within the fetch (a challenge it cannot pass).
+_REFUSED = b"<html><body><script>window.__challenge = 1;</script></body></html>"
 # A 403 document that is a site page: enough text and hyperlinks (`acquire/classify.py`).
 _REFUSAL_PAGE = (
     b"<html><body><nav>"
@@ -244,7 +251,14 @@ class Browser:
 
     connector: LocalConnector | None = None  # the last fetch's
 
-    def fetch(self, url: str, policy: FetchPolicy | None = None) -> FetchResult:
+    def fetch(
+        self,
+        url: str,
+        policy: FetchPolicy | None = None,
+        *,
+        export: CookieExport | None = None,
+        pools: dict[str, ProxyPool] | None = None,
+    ) -> FetchResult:
         self.connector = LocalConnector(self.port)
         return self.runner.run(
             fetch_browser(
@@ -253,6 +267,8 @@ class Browser:
                 session=self.session,
                 engine_version=ENGINE_VERSION,
                 connector=self.connector,
+                pools=pools,
+                export=export,
             )
         )
 
@@ -608,6 +624,55 @@ def test_inv29_a_cookie_that_does_not_match_the_next_hop_is_not_sent(
     assert result.bundle.manifest.final_url == location
     hop = [h for request_host, p, h in server.requests[first:] if p == path and request_host.startswith(host + ":")]
     assert [h.get("Cookie") for h in hop] == ["keep=1"]
+
+
+def test_inv29_asked_to_export_the_fetch_hands_over_the_contexts_cookies_and_records_none(
+    browser: Browser, server: Server
+) -> None:
+    export = CookieExport()
+
+    result = browser.fetch(server.url("/app"), export=export)  # `/app` sets `session=s1`
+
+    assert result.block_class == "ok"
+    assert [(c.name, c.value, c.domain, c.host_only) for c in export.cookies] == [
+        ("session", "s1", "shop.example.test", True)
+    ]
+    assert export.proxy is None
+    assert all(name.lower() not in ("cookie", "set-cookie") for name, _ in result.bundle.manifest.headers.request)
+
+
+# --- challenges and proxy health (D-1326, D-1324) -------------------------------------------------------------------
+
+
+def test_a_refused_document_is_labelled_with_the_vendor_whose_cookie_the_context_holds(
+    browser: Browser, server: Server
+) -> None:
+    # The capture records no `Set-Cookie`: the cookie names come from the context, read without changing it.
+    signature = next(s for s in SIGNATURES if s.cookie_prefixes)
+    name = signature.cookie_prefixes[0]
+    server.routes["/refused-labelled"] = Reply(403, body=_REFUSED, headers=(("Set-Cookie", f"{name}=1"),))
+    server.routes["/refused"] = Reply(403, body=_REFUSED)
+
+    labelled, structural = browser.fetch(server.url("/refused-labelled")), browser.fetch(server.url("/refused"))
+
+    assert (labelled.block_class, labelled.attempts[0].challenge) == ("blocked", signature.vendor)
+    assert (structural.block_class, structural.attempts[0].challenge) == ("blocked", "structural")
+
+
+def test_a_pool_endpoint_that_no_browser_fetch_gets_through_is_quarantined(browser: Browser, server: Server) -> None:
+    with socket.socket() as closed:
+        closed.bind(("127.0.0.1", 0))
+        port = closed.getsockname()[1]
+    endpoint = ProxyEndpoint("127.0.0.1", port)
+    pools = {"dc": ProxyPool((endpoint,), "rotate")}
+
+    results = [
+        browser.fetch(server.url("/app"), FetchPolicy(browser_timeout_s=10, proxy_pool="dc"), pools=pools)
+        for _ in range(QUARANTINE_AFTER)
+    ]
+
+    assert [(r.attempts[0].status, r.block_class) for r in results] == [(None, "error")] * QUARANTINE_AFTER
+    assert not pools["dc"].health.available(endpoint)
 
 
 # --- INV-30: untrusted bodies are bounded --------------------------------------------------------------------------

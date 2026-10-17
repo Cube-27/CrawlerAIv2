@@ -105,6 +105,7 @@ class SiteSession:
     cookies: tuple[SessionCookie, ...] = field(repr=False)
     expires_at: float  # on the store's clock
     fetches_left: int
+    passed: bool = False  # it has served an `ok` fetch
 
 
 @dataclass
@@ -114,15 +115,21 @@ class SiteSessions:
     clock: Callable[[], float] = time.monotonic
     suffixes: Callable[[], PublicSuffixes] = default_suffixes
     _by_site: dict[tuple[str, str | None], SiteSession] = field(default_factory=dict, repr=False)
+    # Sites whose last session was refused before it served an `ok`, until when they open no other (D-1354).
+    _refused: dict[tuple[str, str | None], float] = field(default_factory=dict, repr=False)
 
     def open(self, url: str, pool: str | None, export: CookieExport, sent: HeaderList) -> SiteSession | None:
         """A session for the site of `url` through `pool`, from the cookies of `export` that belong to its registrable
         domain and the identity headers `sent`; it replaces the site's earlier one. None, and no session, when no
-        cookie belongs to the domain or `sent` has no user agent."""
+        cookie belongs to the domain, `sent` has no user agent, or the site's last session was refused before it served
+        an `ok` less than `SESSION_TTL` ago."""
         site = _host(url)
         domain = self.suffixes().site(site)
         cookies = tuple(cookie for cookie in export.cookies if _domain_match(cookie.domain, domain))
         if not cookies or not any(name.lower() == _USER_AGENT for name, _ in sent):
+            return None
+        if (refused_until := self._refused.pop((site, pool), None)) is not None and self.clock() < refused_until:
+            self._refused[site, pool] = refused_until
             return None
         session = SiteSession(
             site=site,
@@ -153,8 +160,17 @@ class SiteSessions:
         return session
 
     def settle(self, session: SiteSession | None, result: FetchResult) -> None:
-        """Drop `session` when the fetch it served was `blocked`: its cookies no longer pass."""
-        if session is not None and result.block_class == "blocked":
+        """Record how the fetch `session` served went. `blocked` drops it: its cookies no longer pass. A session that
+        is refused (`blocked` or `shell`) before it served an `ok` never carried the site, so it is dropped and the
+        site opens no other for `SESSION_TTL`: its fetches go to the browser rather than solving over and over."""
+        if session is None:
+            return
+        if result.block_class == "ok":
+            session.passed = True
+        elif result.block_class in ("blocked", "shell") and not session.passed:
+            self._refused[session.site, session.pool] = self.clock() + SESSION_TTL.total_seconds()
+            self.drop(session)
+        elif result.block_class == "blocked":
             self.drop(session)
 
     def drop(self, session: SiteSession) -> None:
