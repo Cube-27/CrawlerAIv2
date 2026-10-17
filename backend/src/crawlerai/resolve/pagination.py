@@ -8,31 +8,52 @@ learned config's next-page step is SPEC-08's; infinite scroll is §7.2's.
 """
 
 import re
-from collections.abc import Iterator
+from dataclasses import dataclass
 from urllib.parse import SplitResult, parse_qsl, urlsplit
 
 from crawlerai.content.dom import document_base_url, tokens
-from crawlerai.content.page import ParsedPage
+from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.normalize.url import canonical_url
 
 # A page number: ASCII digits (without re.ASCII, `\d` would also take other scripts' digits).
 _INTEGER = re.compile(r"\d+", re.ASCII)
 
 
+@dataclass(frozen=True, slots=True)
+class NextLink:
+    """One next-page candidate: its canonical URL, the `href` as written, the XPath of its element, and whether it is
+    a `rel=next` link (else a numbered one)."""
+
+    url: str
+    href: str
+    xpath: str
+    rel_next: bool
+
+
 def next_page_candidates(page: ParsedPage, final_url: str) -> tuple[str, ...]:
     """The candidates (module docstring), canonical (SPEC-04 §4.4), each once; `final_url` is the capture's."""
+    return tuple(link.url for link in next_page_links(page, final_url))
+
+
+def next_page_links(page: ParsedPage, final_url: str) -> tuple[NextLink, ...]:
+    """The candidates with their elements: the first element of each URL, `rel=next` ones first."""
     base_url = document_base_url(page, final_url)
     current = canonical_url(final_url, None)
-    links = [(url, rel) for href, rel in _references(page) if (url := canonical_url(href, base_url)) is not None]
-    rel_next = [url for url, rel in links if "next" in rel]
-    numbered = [url for url, _ in links if current is not None and _is_next_number(url, current)]
-    return tuple(dict.fromkeys((*rel_next, *numbered)))
-
-
-def _references(page: ParsedPage) -> Iterator[tuple[str, frozenset[str]]]:
+    rel_next: list[NextLink] = []
+    numbered: list[NextLink] = []
     for node in page.tree.css("a[href], link[href]"):
+        href = node.attributes.get("href") or ""
+        if (url := canonical_url(href, base_url)) is None:
+            continue
         # HTML §4.6.1: `rel` is a set of space-separated tokens, compared ASCII case-insensitively.
-        yield node.attributes.get("href") or "", frozenset(tokens((node.attributes.get("rel") or "").lower()))
+        if "next" in tokens((node.attributes.get("rel") or "").lower()):
+            rel_next.append(NextLink(url, href, node_xpath(node), rel_next=True))
+        elif current is not None and _is_next_number(url, current):
+            numbered.append(NextLink(url, href, node_xpath(node), rel_next=False))
+    first: dict[str, NextLink] = {}
+    for link in (*rel_next, *numbered):
+        first.setdefault(link.url, link)
+    return tuple(first.values())
 
 
 def _is_next_number(url: str, current: str) -> bool:

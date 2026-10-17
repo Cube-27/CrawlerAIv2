@@ -45,7 +45,7 @@ def item_blocks(root: HtmlElement) -> tuple[HtmlElement, ...]:
 
 def item_groups(root: HtmlElement) -> tuple[tuple[HtmlElement, ...], ...]:
     """Every group of repeated items in the document `root` (at least `MIN_ITEMS` siblings of one shape, outside the
-    chrome), each in document order."""
+    chrome), each in document order. The browser's paging driver ranks them by rendered area (`crawl.paging`)."""
     content = _content(root)
     # One walk up from each hyperlink gathers the link-holding elements by parent and tag; an element already
     # gathered had its ancestors gathered with it, so each element is gathered once.
@@ -60,7 +60,7 @@ def item_groups(root: HtmlElement) -> tuple[tuple[HtmlElement, ...], ...]:
         tuple(items)
         for (parent, _), nodes in siblings.items()
         for items in _shapes(nodes)
-        if len(items) >= MIN_ITEMS and not _chrome(parent)
+        if len(items) >= MIN_ITEMS and not in_chrome(parent)
     )
 
 
@@ -84,7 +84,7 @@ def _content(root: HtmlElement) -> HtmlElement:
     return root if body is None else body
 
 
-def _chrome(node: HtmlElement | None) -> bool:
+def in_chrome(node: HtmlElement | None) -> bool:
     """Whether `node` is in the site's chrome. Chrome above the main landmark holds no content, so it is not asked."""
     while node is not None and node.tag != "main":
         if node.tag in _CHROME_TAGS or not _CHROME_ROLES.isdisjoint(_tokens(node.get("role"))):

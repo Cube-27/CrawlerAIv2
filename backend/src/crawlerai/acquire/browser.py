@@ -12,7 +12,7 @@ import re
 import time
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import cast
 
@@ -29,7 +29,16 @@ from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.core.proxy import ProxyEndpoint, UnknownProxyPool, pool_endpoint
 from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_file, sha256_hex
 
-__all__ = ["BrowserSession", "fetch_browser", "open_browser"]
+__all__ = [
+    "BrowserSession",
+    "Failed",
+    "Rendered",
+    "classified",
+    "fetch_browser",
+    "open_browser",
+    "read_state",
+    "rendered",
+]
 
 # Patchright's documented setup (D-1204, D-1205): the full Chromium build (`chromium`), not the headless shell
 # Playwright picks for `headless=True` by default, run in Chromium's own headless mode, with its own user agent and
@@ -98,7 +107,9 @@ async def open_browser() -> AsyncIterator[BrowserSession]:
             await browser.close()
 
 
-class _Failed(Exception):
+class Failed(Exception):
+    """A browser fetch that ends as an `error` outcome: the short reason, and the exchange when a response arrived."""
+
     def __init__(self, error: str, exchange: Exchange | None) -> None:
         super().__init__(error)
         self.error = error
@@ -124,15 +135,10 @@ async def fetch_browser(
     try:
         proxy = pool_endpoint(policy.proxy_pool, pools)
         async with asyncio.timeout(policy.browser_timeout_s):
-            exchange, content = await _render(
-                url, policy, session, connector or SafeConnector(), proxy, started, timings
-            )
-        # classify parses HTML synchronously; a thread keeps the event loop free. Without the page kind: the listing
-        # rule calls a page a shell for the browser to render, and the browser is the last rung, so its page is
-        # extracted whatever its links (rows from captured JSON are read then).
-        headers = exchange.response_headers
-        block_class: BlockClass = await asyncio.to_thread(classify, exchange.status, headers, content.body)
-    except _Failed as failed:
+            async with rendered(url, policy, session, connector or SafeConnector(), proxy, started, timings) as page:
+                exchange, content = await read_state(page)
+        block_class = await classified(exchange, content)
+    except Failed as failed:
         error, block_class, exchange = failed.error, "error", failed.exchange
     except UnknownProxyPool as unknown:
         error, block_class = str(unknown), "error"
@@ -154,7 +160,27 @@ async def fetch_browser(
     )
 
 
-async def _render(
+async def classified(exchange: Exchange, content: Content) -> BlockClass:
+    """The block class of a rendered document. classify parses HTML synchronously; a thread keeps the event loop
+    free. Without the page kind: the listing rule calls a page a shell for the browser to render, and the browser is
+    the last rung, so its page is extracted whatever its links (rows from captured JSON are read then)."""
+    return await asyncio.to_thread(classify, exchange.status, exchange.response_headers, content.body)
+
+
+@dataclass
+class Rendered:
+    """A page whose navigation has settled: the tab, its main frame's navigations, the first document's response, the
+    policy it was fetched with, and the JSON responses it has loaded so far (when the policy captures them)."""
+
+    page: Page
+    frame: "_MainFrame"
+    response: Response
+    policy: FetchPolicy
+    json_responses: list[Response] = field(default_factory=list)
+
+
+@asynccontextmanager
+async def rendered(
     url: str,
     policy: FetchPolicy,
     session: BrowserSession,
@@ -162,11 +188,13 @@ async def _render(
     proxy: ProxyEndpoint | None,
     started: float,
     timings: dict[str, int],
-) -> tuple[Exchange, Content]:
+) -> AsyncIterator[Rendered]:
+    """The page at `url` in a fresh context, once its navigation has settled; the context closes when the block ends,
+    and its wall time is `timings["context"]`. Raises `Failed`."""
     try:
         first = await connector.check(url)  # also refuses `file:`, `data:` and other non-web schemes
     except SsrfRejected as e:
-        raise _Failed(str(e), None) from e
+        raise Failed(str(e), None) from e
     async with SocksGuard(connector, checked=(first,), upstream=proxy) as guard:
         context = await session.browser.new_context(
             proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK}, accept_downloads=False
@@ -174,7 +202,7 @@ async def _render(
         opened = time.monotonic()
         try:
             page = await context.new_page()
-            return await _navigate(page, url, first, policy, guard, started)
+            yield await _navigate(page, url, first, policy, guard, started)
         finally:
             await context.close()
             timings["context"] = round((time.monotonic() - opened) * 1000)
@@ -214,7 +242,7 @@ class _MainFrame:
 
 async def _navigate(
     page: Page, url: str, first: Target, policy: FetchPolicy, guard: SocksGuard, started: float
-) -> tuple[Exchange, Content]:
+) -> Rendered:
     frame = _MainFrame(page, first.url)
     json_responses: list[Response] = []
 
@@ -234,9 +262,9 @@ async def _navigate(
     try:
         response = await page.goto(url, wait_until="domcontentloaded", timeout=_ms_until(budget_end))
     except PlaywrightError as e:
-        raise _Failed(_navigation_error(e, guard.rejection_for(frame.last_hop)), None) from e
+        raise Failed(_navigation_error(e, guard.rejection_for(frame.last_hop)), None) from e
     if response is None:  # only a same-document navigation has none, and a new page has no document yet
-        raise _Failed("no_response", None)
+        raise Failed("no_response", None)
     # A page that never settles is read as it is when the wait ends.
     await _settle(
         page,
@@ -244,23 +272,33 @@ async def _navigate(
         started + _SETTLE_SHARE * policy.browser_timeout_s,
         interstitial_deadline=started + _INTERSTITIAL_SHARE * policy.browser_timeout_s,
     )
-    # The document the frame shows: the first one, or where a navigation it started itself ended.
-    response = frame.latest or response
+    return Rendered(page, frame, response, policy, json_responses)
+
+
+async def read_state(rendered: Rendered, *, url: str | None = None, json_from: int = 0) -> tuple[Exchange, Content]:
+    """The document the page shows now, as an exchange and its content: the first document, or where a navigation
+    ended (one it started itself, or a browser action's), under `url` when given (the response's URL otherwise), with
+    the JSON bodies loaded from the `json_from`-th on. Raises `Failed` for a body past the policy's caps."""
+    policy = rendered.policy
+    response = rendered.frame.latest or rendered.response
     sent, received = await asyncio.gather(response.request.headers_array(), response.headers_array())
     exchange = Exchange(
-        url=response.url,
+        url=url or response.url,
         status=response.status,
         request_headers=recorded(_header_list(sent)),
         response_headers=recorded(_header_list(received)),
     )
     body, raw_body, network, wire_size = await asyncio.gather(
-        _rendered(page, exchange), _raw_body(response), _json_bodies(json_responses), _wire_size(response, exchange)
+        _rendered(rendered.page, exchange),
+        _raw_body(response),
+        _json_bodies(rendered.json_responses[json_from:]),
+        _wire_size(response, exchange),
     )
     # The browser hands over bodies after content decoding; `wire_size` counts the body as it arrived, before. Both
     # caps bound what is stored, not memory: the browser has no streaming read, so the bodies are read in full first.
     decoded = max(len(body), len(raw_body or b""))
     if wire_size > policy.max_body_bytes or decoded > policy.max_decompressed_bytes:
-        raise _Failed("body_cap", exchange)
+        raise Failed("body_cap", exchange)
     return exchange, Content(body=body, raw_body=raw_body, network=network)
 
 
@@ -334,7 +372,7 @@ async def _rendered(page: Page, exchange: Exchange) -> bytes:
     try:
         return (await page.content()).encode()
     except PlaywrightError as e:
-        raise _Failed("render_error", exchange) from e
+        raise Failed("render_error", exchange) from e
 
 
 async def _raw_body(response: Response) -> bytes | None:
@@ -350,7 +388,7 @@ async def _wire_size(response: Response, exchange: Exchange) -> int:
     try:
         return (await response.request.sizes())["responseBodySize"]
     except PlaywrightError as e:
-        raise _Failed("network_error", exchange) from e
+        raise Failed("network_error", exchange) from e
 
 
 def _is_json(response: Response) -> bool:

@@ -10,10 +10,15 @@ from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 __all__ = [
+    "ActionsReport",
     "AttemptRecord",
     "BlockClass",
+    "BrowserActions",
     "FetchPolicy",
     "FetchResult",
+    "PagedFetch",
+    "PagingHint",
+    "StopReason",
     "Validators",
     "check_robots_override",
     "policy_with_attempts",
@@ -102,3 +107,41 @@ def fetched_as(fetch_policy: dict[str, JsonValue]) -> PageKind | None:
         case "listing":
             return "listing"
     return None
+
+
+# Owner #52: the paging mechanisms a caller may name for a listing scrape's browser actions.
+PagingHint = Literal["load_more", "show_more", "pagination", "next", "scroll"]
+# Why a listing's browser actions stopped (`crawl.paging`): the row target was reached, the list ended, the page showed
+# no item group, no mechanism grew it, a cap was reached, an overlay took a click, robots.txt refused the next page,
+# or a document state could not be kept.
+StopReason = Literal[
+    "records", "end", "no_items", "no_mechanism", "action_cap", "time_cap", "click_intercepted", "robots", "error"
+]
+
+
+class BrowserActions(_Frozen):
+    """A single-URL listing scrape's browser actions (owner #52). `records` is a soft target: the run stops once it
+    has seen at least that many rows, so it may pass it by one page or batch. Without a `hint` the mechanism is
+    detected."""
+
+    records: PositiveInt = 100
+    hint: PagingHint | None = None
+
+
+class ActionsReport(_Frozen):
+    """What a listing's browser actions did: the mechanism that grew the list (None when none did), why they stopped,
+    the actions taken, the document states kept and the distinct items seen."""
+
+    mechanism: PagingHint | None
+    stop: StopReason
+    actions: int
+    pages: int
+    items: int
+
+
+class PagedFetch(_Frozen):
+    """A listing fetched with browser actions: each kept document state as a fetch result of its own, in order (the
+    first holds the navigation's attempt), and the report; None when the page was not reached, so nothing was done."""
+
+    pages: Annotated[tuple[FetchResult, ...], Field(min_length=1)]
+    report: ActionsReport | None
