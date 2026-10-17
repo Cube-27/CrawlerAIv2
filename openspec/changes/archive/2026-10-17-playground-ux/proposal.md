@@ -21,6 +21,6 @@ adapter read it) and the new `network` evidence are not visible. The API carries
 
 ## Impact
 
-- Capabilities: [frontend](../../specs/frontend/spec.md), [rest-api](../../specs/rest-api/spec.md),
-  [jobs](../../specs/jobs/spec.md), [learning-configs](../../specs/learning-configs/spec.md).
+- Capabilities: [frontend](../../../specs/frontend/spec.md), [rest-api](../../../specs/rest-api/spec.md),
+  [jobs](../../../specs/jobs/spec.md), [learning-configs](../../../specs/learning-configs/spec.md).
 - `frontend/openapi.json` and `schema.d.ts` regenerate; `DESIGN.md` "Showing extraction results" changes.
