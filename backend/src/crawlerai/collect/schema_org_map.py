@@ -68,12 +68,13 @@ class VocabularyMissing(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class Vocabulary:
-    """The schema.org types, each with itself and every type it is a subclass of, transitively; and the properties
-    that identify a thing: `identifier` and its sub-properties, transitively (`sku`, `gtin13`); and each property's
-    sub-properties, transitively (`narrower`)."""
+    """The schema.org types, each with itself and every type it is a subclass of, transitively; each property's
+    sub-properties, transitively (`narrower`), among them the properties that identify a thing (`identifier` and
+    its sub-properties: `sku`, `gtin13`); and the names of all properties."""
 
     supertypes: Mapping[str, frozenset[str]]
     narrower: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    properties: frozenset[str] = frozenset()
 
     @classmethod
     def read(cls, path: Path) -> "Vocabulary":
@@ -104,6 +105,7 @@ class Vocabulary:
         return cls(
             {name: _ancestors(name, parents) for name in parents},
             {name: frozenset(names) for name, names in narrower.items()},
+            frozenset(broader),
         )
 
     @property
@@ -124,6 +126,47 @@ class Vocabulary:
         subtype of follows it."""
         known = list(dict.fromkeys(name for name in names if name in self))
         return tuple(sorted(known, key=lambda t: any(o != t and self.is_a(o, t) for o in known)))
+
+
+# schema.org: "An Enumeration is a type whose members are named instances of it" (`schema:Enumeration`).
+_ENUMERATION = "Enumeration"
+
+
+def reference_errors(fields: Mapping[str, FieldSpec], vocabulary: Vocabulary) -> list[tuple[str, str]]:
+    """The `schema_org` paths and `schema:` enum references of a schema document's `fields` that the pinned schema.org
+    vocabulary does not define, as (field path, reason) pairs (SPEC-04 §4.2). A path's root must be a type and each
+    step and its `+` join a property; a `schema:` reference must be an enumeration. `type:` references name the
+    shipped type vocabularies, which the normalizer declines on when unknown (`unknown_vocab`)."""
+    errors: list[tuple[str, str]] = []
+    for name, spec in fields.items():
+        _reference_errors(f"fields.{name}", spec, vocabulary, errors)
+    return errors
+
+
+def _reference_errors(path: str, spec: FieldSpec, vocabulary: Vocabulary, errors: list[tuple[str, str]]) -> None:
+    if spec.schema_org is not None:
+        errors.extend((f"{path}.schema_org", reason) for reason in _path_problems(spec.schema_org, vocabulary))
+    if spec.vocab is not None and spec.vocab.startswith("schema:"):
+        enumeration = spec.vocab.removeprefix("schema:")
+        if not vocabulary.is_a(enumeration, _ENUMERATION) or enumeration == _ENUMERATION:
+            errors.append((f"{path}.vocab", f"{enumeration} is not a schema.org enumeration"))
+    if spec.item is not None:
+        _reference_errors(f"{path}.item", spec.item, vocabulary, errors)
+    for sub_name, sub in (spec.fields or {}).items():
+        _reference_errors(f"{path}.fields.{sub_name}", sub, vocabulary, errors)
+
+
+def _path_problems(schema_org: str, vocabulary: Vocabulary) -> list[str]:
+    problems = []
+    for alternative in parse_paths(schema_org):
+        if alternative.root not in vocabulary:
+            problems.append(f"{alternative.root} is not a schema.org type")
+        problems.extend(
+            f"{prop} is not a schema.org property"
+            for prop in (*alternative.steps, *([alternative.joined] if alternative.joined else []))
+            if prop not in vocabulary.properties
+        )
+    return problems
 
 
 @cache
