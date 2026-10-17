@@ -18,7 +18,7 @@ from crawlerai.acquire.types import BrowserActions
 from crawlerai.crawl.paging import Caps, collect
 
 _URL = "https://shop.example.test/list"
-_FAST = {"wait_s": 0.02, "poll_s": 0.001}
+_WAIT_S, _POLL_S = 0.02, 0.001  # fast waits: the simulated tab changes at once
 
 
 class _LoadMoreTab:
@@ -84,7 +84,7 @@ def test_a_load_more_run_stops_for_its_reason_within_one_batch_and_its_cap(
     total: int, batch: int, records: int, cap: int
 ) -> None:
     tab = _LoadMoreTab(total, batch)
-    caps = Caps(actions=cap, **_FAST)
+    caps = Caps(actions=cap, wait_s=_WAIT_S, poll_s=_POLL_S)
 
     report = asyncio.run(collect(tab, BrowserActions(records=records), _open, time.monotonic() + 60, caps))
 
@@ -112,7 +112,11 @@ def test_a_load_more_run_stops_for_its_reason_within_one_batch_and_its_cap(
 def test_a_list_with_nothing_to_page_keeps_one_state_and_names_no_mechanism(total: int, records: int) -> None:
     tab = _LoadMoreTab(total, total)  # everything shows; there is no control
 
-    report = asyncio.run(collect(tab, BrowserActions(records=records), _open, time.monotonic() + 60, Caps(**_FAST)))
+    report = asyncio.run(
+        collect(
+            tab, BrowserActions(records=records), _open, time.monotonic() + 60, Caps(wait_s=_WAIT_S, poll_s=_POLL_S)
+        )
+    )
 
     assert report.items == total
     assert tab.kept == [total]
