@@ -497,6 +497,39 @@ def test_a_referred_answer_that_is_not_ok_leaves_the_page_with_both_attempts() -
     assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("api", "not_found")]
 
 
+async def _lacks_rows(result: FetchResult) -> bool:
+    """A `needs_render` check: the HTTP page lacks what the caller reads, the render holds it (owner #54)."""
+    return result.method == "http"
+
+
+def _rendered_or_referred(adapter: ReferringAdapter, browser: Rung) -> FetchResult:
+    page = PageRung(_linking(PLATFORM))
+    rungs = Rungs(http=page, browser=browser, adapters=Registry([adapter], active={adapter.name}))
+    policy = FetchPolicy(page_kind="listing")
+    fetch = acquire(CAREERS, policy, "http", rungs, send=_send, admit_next=_admit(True, []), needs_render=_lacks_rows)
+    return asyncio.run(fetch)
+
+
+def test_a_page_lacking_rows_is_referred_before_it_is_rendered() -> None:
+    # D-1388: the referral serves the page, so the render it would have needed is never paid for.
+    adapter, browser = ReferringAdapter("platform", "platform.example.test"), Rung("browser")
+
+    result = _rendered_or_referred(adapter, browser)
+
+    assert (result.method, result.bundle.manifest.url, browser.calls) == ("api", PLATFORM, [])
+    assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("api", "ok")]
+
+
+def test_a_referral_that_does_not_serve_leaves_the_render_and_is_not_asked_again() -> None:
+    answer = Rung("api", status=404, block_class="not_found")
+    adapter, browser = ReferringAdapter("platform", "platform.example.test", answer), Rung("browser")
+
+    result = _rendered_or_referred(adapter, browser)
+
+    assert (result.method, adapter.rung.calls, browser.calls) == ("browser", [PLATFORM], [CAREERS])
+    assert [a.method for a in result.attempts] == ["http", "api", "browser"]
+
+
 def test_a_host_the_adapter_declined_is_not_referred_to() -> None:
     adapter = ReferringAdapter("platform", "platform.example.test", Rung("api", status=404, reason=NOT_PLATFORM))
     registry = Registry([adapter], active={"platform"})
