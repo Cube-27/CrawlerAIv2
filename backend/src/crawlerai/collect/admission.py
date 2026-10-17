@@ -17,17 +17,22 @@ A visible value inside an array row is owned by that row, not by the page (owner
 recommendations, the variants of one), and which of them, if any, is the page's subject is resolution's question
 (`resolve.ownership`). The row's entity carries the URLs written in its scope, the row up to its nested rows, as
 SPEC-13 §4.3 scopes a row, so resolution can tell a row naming the page from another page's item. One object in an
-array is its holder's only item, as an object member is, and stays in its holder.
+array is its holder's only item, as an object member is, and stays in its holder, unless it names a document of its own
+(D-1345): a related item alone in its array is still another page's item.
+
+A value repeated under many paths of the documents is one candidate per field, normalized value and owner (D-1343).
 
 A field with candidates from other kinds admits values only by equality ("leaves are considered only for fields still
 lacking a candidate or for agreement checks"), so a value both equal and visible is not independent.
 """
 
+import mimetypes
 import re
 from collections.abc import Callable, Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
 from typing import Literal, Protocol
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
@@ -36,7 +41,7 @@ from crawlerai.collect.json_doc import ROOT, is_scalar, member
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import canonical_urls
 from crawlerai.content.page import ParsedPage
-from crawlerai.normalize.base import Context, Ok
+from crawlerai.normalize.base import Context, Ok, raw_key
 from crawlerai.normalize.dispatch import checkable, equal, equality_key, normalize
 from crawlerai.schemas.types import FieldSpec, SchemaDef
 
@@ -117,34 +122,55 @@ def admit(
     ctx: Context,
     others: Sequence[Candidate],
 ) -> Admitted:
-    """The candidates of `documents` under the rule above, in document order, then schema field order; one per value,
-    field and owner."""
+    """The candidates of `documents` under the rule above, in document order, then schema field order; one per
+    field, normalized value and owner (`_Distinct`)."""
     anchors = field_anchors(others, kind, schema)
     # What a value admits depends on the value alone, so a value repeated across the documents is read once.
     readings: dict[tuple[type, str | int | float], tuple[_Reading, ...]] = {}
-    candidates: list[Candidate] = []
+    candidates = _Distinct()
     rows = _Rows(kind, ctx)
     for index, document in enumerate(documents):
-        for leaf in _leaves(document.data):
+        for leaf in _leaves(document.data, ctx):
             rows.see(index, leaf)
             key = (type(leaf.value), leaf.value)
             if key not in readings:
                 readings[key] = tuple(_readings(leaf.value, page, schema, ctx, anchors))
             locator = format_locator(kind, document.address, leaf.path)
-            candidates.extend(
-                Candidate(
-                    field=reading.field,
-                    # Only a visible value is independent; one admitted by equality keeps its anchor's owner.
-                    entity_id=rows.owner(index, leaf) if reading.independent else reading.owner,
-                    source_kind=kind,
-                    raw=leaf.value,
-                    normalized=reading.normalized,
-                    locator=locator,
-                    independent=reading.independent,
+            for reading in readings[key]:
+                candidates.add(
+                    reading.normalized.value,
+                    Candidate(
+                        field=reading.field,
+                        # Only a visible value is independent; one admitted by equality keeps its anchor's owner.
+                        entity_id=rows.owner(index, leaf) if reading.independent else reading.owner,
+                        source_kind=kind,
+                        raw=leaf.value,
+                        normalized=reading.normalized,
+                        locator=locator,
+                        independent=reading.independent,
+                    ),
                 )
-                for reading in readings[key]
-            )
-    return Admitted(candidates=tuple(candidates), entities=rows.entities(), diagnostics=tuple(diagnostics))
+    return Admitted(candidates=candidates.kept(), entities=rows.entities(), diagnostics=tuple(diagnostics))
+
+
+class _Distinct:
+    """The candidates of one collector, one per field, normalized value and owner (D-1343). A large state blob repeats
+    one value under many paths (a price in every cached copy of the product); each repeat is the same evidence, not
+    more of it, as one owner's equal values are one value to resolution (§10), so only one is kept: the one with the
+    shortest locator, the value nearest the document root or the first document (on a tie, the first in document
+    order). It keeps the place of the first repeat, so the order stays document order."""
+
+    def __init__(self) -> None:
+        self._kept: dict[tuple[str, str, bool, Hashable], Candidate] = {}
+
+    def add(self, normalized: JsonValue, candidate: Candidate) -> None:
+        key = (candidate.field, candidate.entity_id, candidate.independent, raw_key(normalized))
+        kept = self._kept.get(key)
+        if kept is None or len(candidate.locator) < len(kept.locator):
+            self._kept[key] = candidate
+
+    def kept(self) -> tuple[Candidate, ...]:
+        return tuple(self._kept.values())
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,7 +183,7 @@ class _Leaf:
     rows: tuple[str, ...]
 
 
-def _leaves(document: JsonValue) -> Iterator[_Leaf]:
+def _leaves(document: JsonValue, ctx: Context) -> Iterator[_Leaf]:
     """Every string and number in `document` (as `json_doc.scalars`) with the rows holding it. Iterative, as
     `json_doc.nodes`."""
     stack: list[tuple[str, JsonValue, tuple[str, ...]]] = [(ROOT, document, ())]
@@ -166,16 +192,20 @@ def _leaves(document: JsonValue) -> Iterator[_Leaf]:
         if is_scalar(value):
             yield _Leaf(path, value, rows)
         else:
-            stack.extend(reversed(_children(path, value, rows)))
+            stack.extend(reversed(_children(path, value, rows, ctx)))
 
 
-def _children(path: str, value: JsonValue, rows: tuple[str, ...]) -> list[tuple[str, JsonValue, tuple[str, ...]]]:
+def _children(
+    path: str, value: JsonValue, rows: tuple[str, ...], ctx: Context
+) -> list[tuple[str, JsonValue, tuple[str, ...]]]:
     if isinstance(value, dict):
         return [(member(path, key), child, rows) for key, child in value.items()]
     if not isinstance(value, list):
         return []
-    # An array of two or more objects is a set of items, each object one row; one object is its holder's own item.
-    items = sum(isinstance(child, dict) for child in value) >= _MIN_ROWS
+    objects = [child for child in value if isinstance(child, dict)]
+    # An array of two or more objects is a set of items, each object one row. One object is its holder's own item,
+    # unless it names a document of its own (`_names_a_document`): then it is one item of a set that holds one now.
+    items = len(objects) >= _MIN_ROWS or (len(objects) == 1 and _names_a_document(objects[0], ctx))
     children: list[tuple[str, JsonValue, tuple[str, ...]]] = []
     for i, child in enumerate(value):
         item = f"{path}[{i}]"
@@ -184,6 +214,37 @@ def _children(path: str, value: JsonValue, rows: tuple[str, ...]) -> list[tuple[
 
 
 _MIN_ROWS = 2
+
+
+def _names_a_document(item: Mapping[str, JsonValue], ctx: Context) -> bool:
+    """Whether an object writes, in its own scope (its members and the objects among them, not its arrays), a URL that
+    names a document (D-1345). The array holding it is then a set of items, each another page or the page itself, as
+    the rows of an array of two or more are, and ownership tells them apart by their URLs (`resolve.ownership`): a lone
+    related item names another page, while the page's own item names the page or nothing. A URL whose path names a
+    media file (`_media`) addresses an image or a video of the item, not a document, so the page's own item holding its
+    image stays its holder's."""
+    stack: list[JsonValue] = list(item.values())
+    written: list[str] = []
+    while stack:
+        value = stack.pop()
+        if isinstance(value, dict):
+            stack.extend(value.values())
+        elif isinstance(value, str) and _WRITTEN_URL.match(value):
+            written.append(value)
+    return any(not _media(url) for url in canonical_urls(written, ctx))
+
+
+# The registered media types of a file name's extension (IANA media types, as Python's built-in `mimetypes` table holds
+# them; `MimeTypes()` reads that table only, never the host's files, so the answer is the same on every machine).
+_MEDIA_TYPES = mimetypes.MimeTypes()
+# RFC 6838 §4.2: the top-level types of media content rather than documents.
+_MEDIA_TOP_LEVEL = frozenset({"image", "audio", "video", "font"})
+
+
+def _media(url: str) -> bool:
+    """Whether the URL's path names a file of an image, audio, video or font media type by its extension."""
+    media_type, _ = _MEDIA_TYPES.guess_type(urlsplit(url).path, strict=True)
+    return media_type is not None and media_type.partition("/")[0] in _MEDIA_TOP_LEVEL
 
 
 class _Rows:

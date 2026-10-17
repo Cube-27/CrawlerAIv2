@@ -144,6 +144,19 @@ def test_a_state_row_naming_nothing_is_one_item_among_others() -> None:
     assert _price(_extract(_page(TARGET, state=state, body="€19.90 €17.90"))) == ("missing", "not_owned", None)
 
 
+def test_a_related_item_alone_in_its_array_lends_no_price() -> None:
+    # D-1345: one object in an array naming a document of its own is one item of a set, not its holder's own item.
+    state: JsonValue = {"product": {"id": 1}, "related": RELATED_ROWS[:1]}
+
+    assert _price(_extract(_page(TARGET, state=state, body="Related: €5.00"))) == ("missing", "not_owned", None)
+
+
+def test_the_pages_own_item_alone_in_its_array_holds_the_targets_price() -> None:
+    state: JsonValue = {"products": [{"href": "/p/1", "image": "/img/1.jpg", "cost": "€19.90"}]}
+
+    assert _kept(_extract(_page(TARGET, state=state, body="€19.90"))) == [TARGET_PRICE]
+
+
 # --- structured data ---
 
 
