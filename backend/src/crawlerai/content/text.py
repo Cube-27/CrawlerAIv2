@@ -162,12 +162,16 @@ def _enter(item: _Enter, shown: list[str]) -> list[_Item]:
 
 
 def _completed(node: LexborNode, title: str | None) -> str | None:
-    """The element's `title` when its text is that title cut short: the text ends in an ellipsis (U+2026, or the
+    return completed(node.text(deep=True), title)
+
+
+def completed(text: str, title: str | None) -> str | None:
+    """An element's `title` when its `text` is that title cut short: the text ends in an ellipsis (U+2026, or the
     three full stops it decomposes to under NFKC) and the title starts with the text before it and goes on. HTML
     Standard §3.2.6.1: `title` is advisory information for its element, here the full text the element shows cut."""
     if not title:
         return None
-    shown_text = " ".join(compose(node.text(deep=True)).split())
+    shown_text = " ".join(compose(text).split())
     if not shown_text.endswith(_ELLIPSES):
         return None
     cut = unicodedata.normalize("NFKC", shown_text).removesuffix(_ELLIPSIS).rstrip()
