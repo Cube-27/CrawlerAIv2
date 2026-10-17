@@ -1,0 +1,67 @@
+"""Adapter entities carry identity (SPEC-05 §4.5, §4.6): the item URL and identifier values the adapter's shape maps are
+the entity's `item_urls` and `identity`, so resolution merges the platform's statement of an item with the page's own
+JSON-LD statement of it, and keeps two different items apart. Boards and answers are synthetic."""
+
+import json
+from datetime import UTC, datetime
+from typing import Any
+
+from crawlerai.adapters.base import AdapterMatch
+from crawlerai.adapters.rippling import Rippling
+from crawlerai.collect.adapter import AdapterCollector
+from crawlerai.collect.base import CollectResult
+from crawlerai.collect.jsonld import JsonLdCollector
+from crawlerai.content.page import ParsedPage
+from crawlerai.normalize.base import Context
+from crawlerai.resolve.ownership import EntityGraph
+from tests.unit.adapter_support import FIXTURES, JOB_FIELDS, VOCABULARY
+from tests.unit.test_adapter_collector import _schema
+
+JOB = "00000000-0000-4000-8000-0000000000b1"
+JOB_URL = f"https://ats.example.test/example-board/jobs/{JOB}"
+PAGE_URL = "https://careers.example.test/jobs/synthetic-engineer"
+CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=PAGE_URL, page_url=PAGE_URL)
+SCHEMA = _schema("detail", **JOB_FIELDS)
+
+
+def _adapter_result() -> CollectResult:
+    body = (FIXTURES / "rippling" / "job.json").read_text(encoding="utf-8")
+    collector = AdapterCollector(Rippling(), AdapterMatch("example-board", "detail", JOB), VOCABULARY)
+    return collector.collect(ParsedPage(body), SCHEMA, CTX)
+
+
+def _jsonld_result(**properties: Any) -> CollectResult:
+    block = {"@context": "https://schema.org", "@type": "JobPosting", "title": "Synthetic Engineer", **properties}
+    page = ParsedPage(f'<html><head><script type="application/ld+json">{json.dumps(block)}</script></head></html>')
+    return JsonLdCollector(VOCABULARY).collect(page, SCHEMA, CTX)
+
+
+def _roots(*results: CollectResult) -> list[str]:
+    graph = EntityGraph.of((e for r in results for e in r.entities), VOCABULARY, (PAGE_URL,))
+    return [e.id for e in graph.entities.values() if e.parent is None and e.id != "page"]
+
+
+def test_an_adapter_posting_carries_its_identifier_and_item_url() -> None:
+    (posting, *_) = _adapter_result().entities
+
+    assert posting.id == "adapter:rippling:$"
+    assert posting.identity == (("identifier", JOB),)
+    assert posting.item_urls == (JOB_URL,)
+
+
+def test_the_adapters_posting_and_the_pages_json_ld_posting_sharing_an_identifier_are_one_entity() -> None:
+    roots = _roots(_adapter_result(), _jsonld_result(identifier=JOB))
+
+    assert roots == ["adapter:rippling:$"]
+
+
+def test_the_adapters_posting_and_the_pages_json_ld_posting_naming_one_item_url_are_one_entity() -> None:
+    roots = _roots(_adapter_result(), _jsonld_result(url=JOB_URL))
+
+    assert roots == ["adapter:rippling:$"]
+
+
+def test_a_json_ld_posting_of_another_item_stays_apart() -> None:
+    roots = _roots(_adapter_result(), _jsonld_result(identifier="another", url="https://ats.example.test/other"))
+
+    assert len(roots) == 2

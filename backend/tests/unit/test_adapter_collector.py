@@ -84,6 +84,7 @@ def test_a_detail_response_is_one_posting_with_a_candidate_per_documented_field(
             types=("JobPosting",),
             urls=("https://jobs.example.com/example-tenant/jobs/4000001",),
             parent=None,
+            item_urls=("https://jobs.example.com/example-tenant/jobs/4000001",),
         ),
         Entity(
             id="adapter:greenhouse:$['company_name']",
