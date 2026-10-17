@@ -34,6 +34,10 @@ EXPECTED: dict[tuple[ProgressiveMode, LearnEvent], ProgressiveMode | None] = {
     ("cold", "approve"): "active",
     ("learning", "approve"): "active",
     ("active", "approve"): "active",
+    # D-1391: a refusal leaves the mode as it is.
+    ("cold", "reject"): "cold",
+    ("learning", "reject"): "learning",
+    ("active", "reject"): "active",
 }
 
 

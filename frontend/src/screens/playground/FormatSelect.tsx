@@ -2,6 +2,7 @@ import { FieldError, ListBox, Select } from "@heroui/react";
 import type { Key } from "react";
 import type { ScrapeFormat } from "../../api/scrape";
 import { FORMATS, orderedFormats } from "../../components/formats";
+import { HANGING_ERROR } from "../../components/OptionSelect";
 
 /** A page format: every format but `records`, which a chosen schema asks for. */
 export type PageFormat = Exclude<ScrapeFormat, "records">;
@@ -16,7 +17,8 @@ function pageFormats(keys: Key | Key[] | null): PageFormat[] {
 }
 
 /** The toolbar's Format (SPEC-14 §4.2): the page formats a scrape, batch or crawl asks for, several at once. Its name
- * is the request member a server error names. */
+ * is the request member a server error names. Its error line hangs under it without taking room, like the Schema
+ * select's (`OptionSelect`), so a refused send moves nothing (D-1214). */
 export function FormatSelect({
   value,
   isDisabled = false,
@@ -28,6 +30,7 @@ export function FormatSelect({
 }>) {
   return (
     <Select
+      className="relative"
       aria-label="Format"
       name="formats"
       selectionMode="multiple"
@@ -52,7 +55,7 @@ export function FormatSelect({
           ))}
         </ListBox>
       </Select.Popover>
-      <FieldError />
+      <FieldError className={HANGING_ERROR} />
     </Select>
   );
 }

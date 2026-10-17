@@ -3,7 +3,7 @@
 ## Purpose
 
 The FastAPI app under `/v1` and the MCP server: auth, rate limits, problem responses, the synchronous scrape, schema,
-config, record, replay and usage endpoints, and the ten MCP tools, all thin calls into `crawlerai.services`. Job
+config, record, replay and usage endpoints, and the eleven MCP tools, all thin calls into `crawlerai.services`. Job
 endpoints, `map` and `crawl` are in [jobs](../jobs/spec.md). Rationale: ARCHITECTURE §13, §17, §18
 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-07, SPEC-10.
 
@@ -70,10 +70,11 @@ values serialized unchanged (INV-22, INV-27), and `usage` SHALL count every fetc
 ### Requirement: Schema, config, record and replay endpoints
 `/v1/schemas` SHALL offer create, list, get, replace and retire (presets, retired schemas and taken names are 409) and
 `/v1/schemas/draft`; config endpoints expose [learning-configs](../learning-configs/spec.md), with
-`POST /v1/configs/{id}/approve` (409 unless the config is `pending_approval`); `GET /v1/records` pages newest first by
+`POST /v1/configs/{id}/approve` and `POST /v1/configs/{id}/reject` (each 409 unless the config is the latest version
+and `pending_approval`); `GET /v1/records` pages newest first by
 keyset cursor (≤ 200) with `changed_since` (see [jobs](../jobs/spec.md)), and with `job_id` by the job's tasks, newest
 task first, a record once; `POST /v1/captures/{id}/replay` runs the current engine cold and persists nothing.
-(Previously: no approve endpoint.) Refs: §13.1, §15, D-0396, D-0523, D-0950, D-1280, D-1342.
+(Previously: no reject endpoint.) Refs: §13.1, §15, D-0396, D-0523, D-0950, D-1280, D-1342, D-1391.
 
 ### Requirement: Project settings
 `GET/PATCH /v1/project/settings` SHALL read and set `llm_call_cap`, the LLM calls a job may make when its request sets
@@ -88,11 +89,12 @@ estimate, not billing. Refs: §17, ARCHITECTURE rev 11.
 
 ### Requirement: MCP tools
 The MCP server SHALL use the official `mcp` SDK and expose exactly `scrape`, `map`, `crawl_start`, `crawl_status`,
-`extract`, `extract_status`, `list_schemas`, `create_schema`, `get_site_config`, `export_config`, each one service call;
-long jobs return a `job_id` at once and status tools page 10 results. No jobs-list or usage tool. Refs: §13.3, D-0698.
+`extract`, `extract_status`, `list_schemas`, `create_schema`, `get_site_config`, `export_config`, `reject_config`, each
+one service call; long jobs return a `job_id` at once and status tools page 10 results. No jobs-list or usage tool.
+(Previously: ten tools, no `reject_config`.) Refs: §13.3, D-0698, D-1391.
 #### Scenario: Tool list
 - **WHEN** a client lists the tools
-- **THEN** it gets exactly the ten tools named above
+- **THEN** it gets exactly the eleven tools named above
 
 ### Requirement: MCP output and untrusted page content
 `scrape` markdown SHALL come in pages of at most 20,000 characters with a `<capture_id>:<offset>` cursor; an unpublished
@@ -117,3 +119,10 @@ and `browser_actions` reports the mechanism, stop reason, actions, pages and ite
 #### Scenario: Detail page
 - **WHEN** a scrape with `page_kind` `detail` sets `browser_actions`
 - **THEN** the answer is a 422 problem naming `browser_actions` and no job is created
+
+### Requirement: The fetch names its adapter
+A scrape answer's `fetch` SHALL carry `adapter`, the name of the platform adapter that read the page's `api` capture
+(INV-39), null for any other fetch. Refs: D-1393.
+#### Scenario: Adapter capture
+- **WHEN** a page is served by a platform adapter's API request
+- **THEN** `fetch.method` is `api` and `fetch.adapter` is that adapter's name

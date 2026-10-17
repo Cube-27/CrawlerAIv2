@@ -1,7 +1,12 @@
 import { Button, Chip, Link, Tabs } from "@heroui/react";
 import { useParams } from "react-router";
 import type { ConfigDetail } from "../../api/configs";
-import { useApproveConfig, useConfig, useSiteConfigs } from "../../api/hooks/configs";
+import {
+  useApproveConfig,
+  useConfig,
+  useRejectConfig,
+  useSiteConfigs,
+} from "../../api/hooks/configs";
 import { problemOf } from "../../api/hooks/query";
 import { useSchema } from "../../api/hooks/schemas";
 import { ConfigStatusLabel } from "../../components/ConfigStatusLabel";
@@ -71,28 +76,52 @@ function ConfigTabs({ config }: Readonly<{ config: ConfigDetail }>) {
   );
 }
 
-/** Approves a learned config that waits for approval (D-1342); shown only on such a config. */
-function ApproveButton({ approve }: Readonly<{ approve: ReturnType<typeof useApproveConfig> }>) {
+/** Approves or rejects a learned config that waits for approval (D-1342, D-1391); shown only on such a config. */
+function DecisionButtons({
+  approve,
+  reject,
+}: Readonly<{
+  approve: ReturnType<typeof useApproveConfig>;
+  reject: ReturnType<typeof useRejectConfig>;
+}>) {
+  const busy = approve.isPending || reject.isPending;
   return (
-    <Button
-      isPending={approve.isPending}
-      onPress={() => {
-        approve.mutate();
-      }}
-    >
-      Approve
-    </Button>
+    <>
+      <Button
+        variant="secondary"
+        isPending={reject.isPending}
+        isDisabled={busy}
+        onPress={() => {
+          reject.mutate();
+        }}
+      >
+        Reject
+      </Button>
+      <Button
+        isPending={approve.isPending}
+        isDisabled={busy}
+        onPress={() => {
+          approve.mutate();
+        }}
+      >
+        Approve
+      </Button>
+    </>
   );
 }
 
 function ConfigView({ config }: Readonly<{ config: ConfigDetail }>) {
   const learning = useLearn({ site: config.site, schemaId: config.schema_id });
   const approve = useApproveConfig(config.id);
-  const learnProblem = problemOf(learning.learn.error) ?? problemOf(approve.error);
+  const reject = useRejectConfig(config.id);
+  const learnProblem =
+    problemOf(learning.learn.error) ?? problemOf(approve.error) ?? problemOf(reject.error);
   const schemaLabel = useSchemaLabel();
   const actions = (
     <>
-      {config.status === "pending_approval" ? <ApproveButton approve={approve} /> : null}
+      {config.status === "pending_approval" ? (
+        <DecisionButtons approve={approve} reject={reject} />
+      ) : null}
       <LearnButtons {...learning} />
     </>
   );
@@ -118,8 +147,8 @@ function ConfigView({ config }: Readonly<{ config: ConfigDetail }>) {
 }
 
 /** One config version (SPEC-12 §4.3): its fields' steps, status, yield and validity, its validation report, the
- * correction form, export with the release report, and the other versions; "Learn now" in the header, and "Approve"
- * on a learned config waiting for approval (D-1342). */
+ * correction form, export with the release report, and the other versions; "Learn now" in the header, and "Reject" and "Approve"
+ * on a learned config waiting for approval (D-1342, D-1391). */
 export function ConfigScreen() {
   const { id = "" } = useParams();
   const config = useConfig(id);

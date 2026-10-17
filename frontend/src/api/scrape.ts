@@ -25,7 +25,7 @@ export interface ScrapeRequest {
   formats: ScrapeFormat[];
   schema: SchemaRef | null;
   page_kind: PageKind | null;
-  fetch: { method_hint: MethodHint };
+  fetch: { method_hint: MethodHint; max_rows?: number };
   /** Omitted to take the server's default. */
   max_age?: number;
   timeout_s?: number;
@@ -44,4 +44,6 @@ export type ScrapeResponse = Schemas["ScrapeResult"];
 
 export type ScrapeOutcome = ScrapeResponse["outcome"];
 export type FetchAttempt = Schemas["AttemptRecord"];
+/** How a page was fetched: the kept attempt, the platform adapter that read it, and every attempt. */
+export type FetchSummary = Schemas["FetchSummary"];
 export type PageMetadata = Schemas["PageMetadata"];

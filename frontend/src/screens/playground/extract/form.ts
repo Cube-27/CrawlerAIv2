@@ -3,6 +3,7 @@ import { parseJsonObject } from "../../../api/json";
 import type { MethodHint, PageKind, SchemaRef } from "../../../api/scrape";
 import type { SchemaPageKind } from "../../../api/schemas";
 import {
+  fetchMember,
   llmBudget,
   NO_ERRORS,
   optionalNumber,
@@ -12,6 +13,7 @@ import {
 import {
   count,
   llmCalls,
+  maxRows,
   member,
   methodHint,
   pageKind,
@@ -41,6 +43,8 @@ export interface ExtractOptions {
   pageKind: PageKind | null;
   limit: number;
   methodHint: MethodHint;
+  /** `fetch.max_rows`: NaN while empty. */
+  maxRows: number;
   llmCalls: number;
   /** Empty: no webhook. */
   webhookUrl: string;
@@ -55,6 +59,7 @@ export const DEFAULT_EXTRACT_OPTIONS: ExtractOptions = {
   limit: Number.NaN,
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
+  maxRows: Number.NaN,
   llmCalls: Number.NaN,
   webhookUrl: "",
 };
@@ -135,7 +140,7 @@ export function buildExtract(form: ExtractFormState): ExtractRequest | null {
     urls: [form.url, ...options.urls],
     schema,
     page_kind: kind,
-    fetch: { method_hint: options.methodHint },
+    fetch: fetchMember(options.methodHint, options.maxRows),
     ...optionalNumber("limit", options.limit),
     ...llmBudget(options.llmCalls),
     ...webhook(options.webhookUrl),
@@ -166,6 +171,7 @@ export function extractForm(request: StoredRequest): ExtractFormState {
       pageKind: schemaSource === "id" ? null : kind,
       limit: count(request, "limit"),
       methodHint: methodHint(request),
+      maxRows: maxRows(request),
       llmCalls: llmCalls(request),
       webhookUrl: webhookUrl(request),
     },

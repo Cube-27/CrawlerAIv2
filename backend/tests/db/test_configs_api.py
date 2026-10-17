@@ -15,14 +15,14 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.config_ir.held_out import load_held_out
-from crawlerai.config_ir.progressive import relearn_schema
+from crawlerai.config_ir.progressive import relearn_schema, trigger_learning
 from crawlerai.db.keys import create_key
 from crawlerai.db.models import (
     ApiKey,
@@ -288,9 +288,10 @@ async def test_the_config_api_needs_a_key(client: httpx.AsyncClient, world: Worl
         await client.put(f"/v1/configs/{config_id}", json={"confirm": ["title"]}),
         await client.post(f"/v1/sites/{world.host}/learn", json={"schema_id": str(world.schema.id)}),
         await client.post(f"/v1/configs/{config_id}/approve"),
+        await client.post(f"/v1/configs/{config_id}/reject"),
     ]
 
-    assert [r.status_code for r in responses] == [401, 401, 401, 401, 401]
+    assert [r.status_code for r in responses] == [401, 401, 401, 401, 401, 401]
 
 
 # Approval (D-1342).
@@ -594,3 +595,68 @@ async def test_held_out_pages_skip_expired_bundles_and_pages_without_records(wor
         pages = await load_held_out(conn, world.store, world.site_id, world.schema, limit=8)
 
     assert [page.capture_id for page in pages] == [kept]
+
+
+# Refusal (D-1391).
+
+
+async def test_rejecting_a_pending_config_suspends_it_and_keeps_the_serving_one(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    first = await world.active_config(H2)
+    waiting = await _pending(world, 2)
+    async with world.engine.begin() as conn:
+        await conn.execute(
+            update(ProgressiveState).where(ProgressiveState.site_id == world.site_id).values(pages_extracted=11)
+        )
+
+    rejected = await client.post(f"/v1/configs/{waiting}/reject")
+    again = await client.post(f"/v1/configs/{waiting}/reject")
+    approved = await client.post(f"/v1/configs/{waiting}/approve")
+
+    assert (rejected.status_code, rejected.json()["status"]) == (200, "suspended")
+    assert await world.configs() == [(1, "active", "induced"), (2, "suspended", "induced")]
+    state = await world.state()
+    assert (state.mode, state.active_config_id) == ("active", first)
+    assert [(r.status_code, r.json()["detail"]) for r in (again, approved)] == [
+        (409, f"config {waiting} is suspended, not the latest version waiting for approval"),
+        (409, f"config {waiting} is suspended, not the latest version waiting for approval"),
+    ]
+
+
+async def test_a_cold_state_whose_config_was_rejected_learns_again_after_more_pages(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    waiting = await _pending(world, 1)
+    async with world.engine.begin() as conn:
+        key = {"site_id": world.site_id, "schema_id": world.schema.id, "page_kind": "detail"}
+        await conn.execute(insert(ProgressiveState).values(**key, mode="cold", pages_extracted=9))
+
+    rejected = await client.post(f"/v1/configs/{waiting}/reject")
+
+    assert rejected.status_code == 200
+    state = await world.state()
+    assert (state.mode, state.retry_at_pages) == ("cold", 17)
+    async with world.engine.begin() as conn:
+        started = await trigger_learning(conn, batch=10)
+    assert started == 0
+
+
+async def test_a_waiting_config_older_than_the_latest_version_is_not_rejected(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    await world.active_config(H2)
+    waiting = await _pending(world, 2)
+    key = {"site_id": world.site_id, "schema_id": world.schema.id, "page_kind": "detail"}
+    async with world.engine.begin() as conn:
+        draft = {"version": 3, "status": "draft", "ir": _ir(world.host, world.schema, H1), "origin": "operator"}
+        await conn.execute(insert(ExtractionConfig).values(**key, **draft))
+
+    rejected = await client.post(f"/v1/configs/{waiting}/reject")
+
+    assert rejected.status_code == 409
+    assert await world.configs() == [
+        (1, "active", "induced"),
+        (2, "pending_approval", "induced"),
+        (3, "draft", "operator"),
+    ]

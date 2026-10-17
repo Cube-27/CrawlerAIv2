@@ -19,11 +19,13 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from sqlalchemy import RowMapping, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.acquire.types import AttemptRecord
+from crawlerai.collect.run import Adapters
 from crawlerai.config_ir.exporters.records import RecordFormat, clean_record, export_records
 from crawlerai.config_ir.progressive import StateKey, learning_failed
 from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
-from crawlerai.core.capture import BlockClass
+from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.errors import Refusal
 from crawlerai.db.jobs import JOB_TRANSITIONS, transition_job
 from crawlerai.db.models import (
@@ -49,7 +51,14 @@ from crawlerai.resolve.records import FieldMeta, RecordContent
 from crawlerai.schemas import registry
 from crawlerai.services.llm_costs import costs_of_jobs
 from crawlerai.services.records import MAX_PAGE, RecordFilter, RecordPage, StoredRecord, list_records
-from crawlerai.services.scrape_steps import Formats, PageFormat, format_member, page_formats
+from crawlerai.services.scrape_steps import (
+    FetchSummary,
+    Formats,
+    PageFormat,
+    fetch_summary,
+    format_member,
+    page_formats,
+)
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import decode
 
@@ -172,6 +181,7 @@ class PageOutput(BaseModel):
     raw_html: str | None = format_member()
     links: list[str] | None = format_member()
     metadata: PageMetadata | None = format_member()
+    fetch: FetchSummary | None = format_member()  # a member once the task has a capture that kept its attempts
 
 
 class PageOutputPage(BaseModel):
@@ -186,14 +196,15 @@ class PageOutputPage(BaseModel):
 
 class JsonValuesItem(BaseModel):
     """A task of a job in `json_values` (SPEC-14 §4.4): its URL, its outcome (null until it ends), the clean records
-    its page stands for, and, when asked for, its page's metadata. `records` is empty for a task with no record (failed,
-    blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or partial page
-    whose capture is still kept."""
+    its page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no
+    record (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or
+    partial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts."""
 
     url: str
     outcome: TaskOutcome | None
     records: list[dict[str, JsonValue]]
     metadata: PageMetadata | None = format_member()
+    fetch: FetchSummary | None = format_member()
 
 
 class JsonValuesPage(BaseModel):
@@ -213,12 +224,12 @@ class ResultsQuery(BaseModel):
     cursor: uuid.UUID | None = None  # a record's id; a task's for page outputs and `json_values`
     limit: int = Field(default=50, ge=1, le=MAX_PAGE)
     format: ResultFormat = "json"
-    include: Literal["metadata"] | None = None  # `json_values` only
+    include: list[Literal["metadata", "fetch"]] = Field(default_factory=list)  # `json_values` only
     csv_safe: bool = False  # `csv_records` only: quote formula-like cells for spreadsheets (D-0879)
 
     @model_validator(mode="after")
     def _options_fit_the_format(self) -> "ResultsQuery":
-        if self.include is not None and self.format != "json_values":
+        if self.include and self.format != "json_values":
             raise ValueError("`include` is accepted only with format=json_values")
         if self.csv_safe and self.format != "csv_records":
             raise ValueError("`csv_safe` is accepted only with format=csv_records")
@@ -337,21 +348,22 @@ async def _cancel(conn: AsyncConnection, job_id: JobId) -> None:
 
 
 async def job_results(
-    conn: AsyncConnection, job_id: JobId, query: ResultsQuery, *, store: ObjectStore
+    conn: AsyncConnection, job_id: JobId, query: ResultsQuery, *, store: ObjectStore, adapters: Adapters | None = None
 ) -> RecordPage | ExportPage | PageOutputPage | JsonValuesPage:
     """The job's records after `query.cursor`, newest first, in the field shape of `/v1/records` (`json`) or exported
     in the schema's columns. Values are the stored published values, unchanged (INV-27). A job without a schema
     answers `json` with its page outputs, made from the captures in `store`, and has nothing to export. Any job
-    answers `json_values` with its tasks after `query.cursor`, oldest first."""
+    answers `json_values` with its tasks after `query.cursor`, oldest first. `adapters` names the platform adapter in a
+    fetch summary; without it none is named."""
     job = (await conn.execute(select(Job.schema_id, Job.request).where(Job.id == job_id))).one_or_none()
     if job is None:
         raise JobNotFound(f"no job {job_id}")
     if query.format == "json_values":
-        return await _json_values(conn, store, job_id, job.schema_id, query)
+        return await _json_values(conn, store, job_id, job.schema_id, query, adapters)
     if job.schema_id is None:
         if query.format != "json":
             raise NotExportable(f"job {job_id} has no schema, so it has no records to export")
-        return await _page_outputs(conn, store, job_id, job.request.get("formats", []), query)
+        return await _page_outputs(conn, store, job_id, job.request.get("formats", []), query, adapters)
     cursor = None if query.cursor is None else RecordId(query.cursor)
     page = await list_records(conn, RecordFilter(job_id=job_id, cursor=cursor, limit=query.limit))
     if query.format == "json":
@@ -374,6 +386,10 @@ class _TaskRow(NamedTuple):
     fetched_at: datetime | None
     block_class: BlockClass | None
     object_key: str | None
+    method: CaptureMethod | None
+    status_code: int | None
+    capture_url: str | None
+    fetch_policy: dict[str, Any] | None
 
 
 async def _task_rows(
@@ -391,6 +407,10 @@ async def _task_rows(
         Capture.fetched_at,
         Capture.block_class,
         Capture.object_key,
+        Capture.method,
+        Capture.status_code,
+        Capture.url.label("capture_url"),
+        Capture.fetch_policy,
     )
     statement = select(*columns).outerjoin(Capture, Capture.id == UrlTask.capture_id).where(UrlTask.job_id == job_id)
     after = None if query.cursor is None else UrlTaskId(query.cursor)
@@ -399,14 +419,38 @@ async def _task_rows(
 
 
 async def _page_outputs(
-    conn: AsyncConnection, store: ObjectStore, job_id: JobId, formats: list[PageFormat], query: ResultsQuery
+    conn: AsyncConnection,
+    store: ObjectStore,
+    job_id: JobId,
+    formats: list[PageFormat],
+    query: ResultsQuery,
+    adapters: Adapters | None,
 ) -> PageOutputPage:
     rows, next_cursor = await _task_rows(conn, job_id, query)
-    items = [await _page_output(store, row, formats) for row in rows]
+    items = [await _page_output(store, row, formats, adapters) for row in rows]
     return PageOutputPage(items=items, next_cursor=next_cursor)
 
 
-async def _page_output(store: ObjectStore, row: _TaskRow, formats: list[PageFormat]) -> PageOutput:
+def _fetch_of(row: _TaskRow, adapters: Adapters | None) -> FetchSummary | None:
+    """The fetch of the task's page, from what its capture row kept: the method, status and class of the kept attempt,
+    and every attempt made (SPEC-02 §4.4); None for a task with no capture, or one that kept no attempts."""
+    attempts = None if row.fetch_policy is None else row.fetch_policy.get("attempts")
+    if not attempts or row.method is None or row.block_class is None or row.final_url is None:
+        return None
+    return fetch_summary(
+        row.method,
+        row.status_code or None,
+        row.block_class,
+        [AttemptRecord.model_validate(attempt) for attempt in attempts],
+        adapters=adapters,
+        url=row.capture_url or row.url,
+        final_url=row.final_url,
+    )
+
+
+async def _page_output(
+    store: ObjectStore, row: _TaskRow, formats: list[PageFormat], adapters: Adapters | None
+) -> PageOutput:
     output = PageOutput(
         task_id=row.id,
         url=row.url,
@@ -416,6 +460,7 @@ async def _page_output(store: ObjectStore, row: _TaskRow, formats: list[PageForm
         capture_id=row.capture_id,
         final_url=row.final_url,
         fetched_at=row.fetched_at,
+        fetch=_fetch_of(row, adapters),
     )
     # Only a page the task reached and extracted has formats (SPEC-07 §4.8): a crawl's `links_only` page was reached,
     # for its links, and is never extracted (ARCHITECTURE §13.2).
@@ -426,15 +471,17 @@ async def _page_output(store: ObjectStore, row: _TaskRow, formats: list[PageForm
 
 
 async def _json_values(
-    conn: AsyncConnection, store: ObjectStore, job_id: JobId, schema_id: SchemaId | None, query: ResultsQuery
+    conn: AsyncConnection,
+    store: ObjectStore,
+    job_id: JobId,
+    schema_id: SchemaId | None,
+    query: ResultsQuery,
+    adapters: Adapters | None,
 ) -> JsonValuesPage:
     page, next_cursor = await _task_rows(conn, job_id, query)
     # A task's records are linked when it ends, so one read before its outcome shows none.
     records = await _clean_records(conn, schema_id, [row.id for row in page if row.outcome is not None])
-    items = [
-        await _json_values_item(store, row, records.get(row.id, []), metadata=query.include == "metadata")
-        for row in page
-    ]
+    items = [await _json_values_item(store, row, records.get(row.id, []), query, adapters) for row in page]
     return JsonValuesPage(format="json_values", items=items, next_cursor=next_cursor)
 
 
@@ -459,10 +506,24 @@ async def _clean_records(
 
 
 async def _json_values_item(
-    store: ObjectStore, row: _TaskRow, records: list[dict[str, JsonValue]], *, metadata: bool
+    store: ObjectStore,
+    row: _TaskRow,
+    records: list[dict[str, JsonValue]],
+    query: ResultsQuery,
+    adapters: Adapters | None,
 ) -> JsonValuesItem:
-    item = JsonValuesItem(url=row.url, outcome=row.outcome, records=records)
-    if not metadata or row.outcome not in _EXTRACTED or row.object_key is None or row.final_url is None:
+    item = JsonValuesItem(
+        url=row.url,
+        outcome=row.outcome,
+        records=records,
+        fetch=_fetch_of(row, adapters) if "fetch" in query.include else None,
+    )
+    if (
+        "metadata" not in query.include
+        or row.outcome not in _EXTRACTED
+        or row.object_key is None
+        or row.final_url is None
+    ):
         return item
     made = await asyncio.to_thread(_formats_of, store, row.object_key, ["metadata"])
     return item if made is None else item.model_copy(update=made)

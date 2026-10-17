@@ -2,7 +2,7 @@ import { Button, Link, Table, Typography } from "@heroui/react";
 import { useState } from "react";
 import { useJobResults, useJobValues } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
-import type { JsonValuesItem } from "../../../api/jobs";
+import type { JsonValuesItem, PageOutput } from "../../../api/jobs";
 import { useCursorPages } from "../../../components/cursors";
 import { pageJson } from "../output/cleanJson";
 import { OutcomeLabel } from "../../../components/OutcomeLabel";
@@ -120,15 +120,56 @@ function PagesTable({
 
 /** The page output at `offset` in a read of `format=json`, once it holds page outputs (SPEC-10 §4.2); undefined
  * until then, so the drawer keeps showing the item. */
-function pageOutput(results: ReturnType<typeof useJobResults>["data"], offset: number): unknown {
+function pageOutput(
+  results: ReturnType<typeof useJobResults>["data"],
+  offset: number,
+): PageOutput | undefined {
   return results?.kind === "pages" ? results.page.items[offset] : undefined;
 }
 
+/** The drawer of one page, mounted only while it is open, so that what it reads is read only then. A job without a
+ * schema (`outputs`) shows the page's outputs, read from `format=json` at the same cursor as the table's page, whose
+ * pages hold the same tasks in the same order (SPEC-10 §4.2); any other shows the item's records. How the page was
+ * fetched is on the page output, or on `json_values` asked for it (D-1392). `offset` is the row's index in the page. */
+function PageDrawer({
+  jobId,
+  page,
+  offset,
+  row,
+  outputs,
+  onClose,
+}: Readonly<{
+  jobId: string;
+  page: { cursor: string | null; limit: number };
+  offset: number;
+  row: Row;
+  outputs: boolean;
+  onClose: () => void;
+}>) {
+  // Page outputs can be large: they are read only for a job that shows them.
+  const pageOutputs = useJobResults(jobId, page, outputs).data;
+  const fetched = useJobValues(
+    jobId,
+    { ...page, withMetadata: false, withFetch: true },
+    !outputs,
+  ).data;
+  const output = pageOutput(pageOutputs, offset);
+  const { item } = row;
+  return (
+    <ItemDrawer
+      url={item.url}
+      value={outputs ? (output ?? item) : pageJson(item.records, item.metadata)}
+      fetch={(output ?? fetched?.items[offset])?.fetch}
+      position={row.id}
+      onClose={onClose}
+    />
+  );
+}
+
 /** A batch's or crawl's pages (SPEC-14 §4.3), one row each in task order, from `results?format=json_values`; each
- * row's JSON opens in a drawer. With `outputs` (a job without a schema), the drawer shows the page's outputs, read
- * from `format=json` at the same cursor, whose pages hold the same tasks in the same order (SPEC-10 §4.2). The job's
- * events read the page shown again as tasks end. With `selectable` (a crawl's pages), rows are selected by URL across
- * pages, and the selected URLs open as a batch (SPEC-14 §2.8). */
+ * row's JSON and fetch open in a drawer (`PageDrawer`). The job's events read the page shown again as tasks end. With
+ * `selectable` (a crawl's pages), rows are selected by URL across pages, and the selected URLs open as a batch
+ * (SPEC-14 §2.8). */
 export function ResultsTable({
   jobId,
   withMetadata,
@@ -136,15 +177,14 @@ export function ResultsTable({
   outputs,
 }: Readonly<{ jobId: string; withMetadata: boolean; selectable: boolean; outputs: boolean }>) {
   const { cursor, page, previous, nextTo } = useCursorPages();
-  const values = useJobValues(jobId, { cursor, limit: PAGE_SIZE, withMetadata });
+  const values = useJobValues(jobId, {
+    cursor,
+    limit: PAGE_SIZE,
+    withMetadata,
+    withFetch: false,
+  });
   // The open drawer's row, by its place: its item is read from the page shown, so a refresh updates it.
   const [openId, setOpenId] = useState<number | null>(null);
-  // Page outputs can be large: they are read only while a drawer shows one.
-  const pageOutputs = useJobResults(
-    jobId,
-    { cursor, limit: PAGE_SIZE },
-    outputs && openId !== null,
-  ).data;
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const data = values.data;
   const first = (page - 1) * PAGE_SIZE + 1;
@@ -169,14 +209,12 @@ export function ResultsTable({
         />
       </PagedTable>
       {open === undefined ? null : (
-        <ItemDrawer
-          url={open.item.url}
-          value={
-            outputs
-              ? (pageOutput(pageOutputs, open.id - first) ?? open.item)
-              : pageJson(open.item.records, open.item.metadata)
-          }
-          position={open.id}
+        <PageDrawer
+          jobId={jobId}
+          page={{ cursor, limit: PAGE_SIZE }}
+          offset={open.id - first}
+          row={open}
+          outputs={outputs}
           onClose={() => {
             setOpenId(null);
           }}

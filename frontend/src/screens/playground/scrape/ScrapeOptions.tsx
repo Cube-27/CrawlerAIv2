@@ -1,6 +1,13 @@
 import type { PageKind, PagingHint } from "../../../api/scrape";
 import { NumberRow, OptionsPanel, SelectRow, SwitchRow } from "../OptionsPanel";
-import { FetchMethodRow, FieldsRow, LlmCallsRow, MetadataRow, PageKindRow } from "../rows";
+import {
+  FetchMethodRow,
+  FieldsRow,
+  LlmCallsRow,
+  MaxRowsRow,
+  MetadataRow,
+  PageKindRow,
+} from "../rows";
 import { browserActionsApply, DEFAULT_OPTIONS, type ScrapeOptions as Options } from "./form";
 
 /** Scrape's options (SPEC-14 §4.2): page kind, fetch method, max age, timeout, the LLM call limit, Metadata in JSON,
@@ -34,6 +41,12 @@ export function ScrapeOptions({
         value={options.methodHint}
         onChange={(methodHint) => {
           onChange({ ...options, methodHint });
+        }}
+      />
+      <MaxRowsRow
+        value={options.maxRows}
+        onChange={(maxRows) => {
+          onChange({ ...options, maxRows });
         }}
       />
       <NumberRow

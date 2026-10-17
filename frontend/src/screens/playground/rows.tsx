@@ -65,6 +65,24 @@ export function FetchMethodRow({
   );
 }
 
+/** `fetch.max_rows`: a soft row target for a list a platform adapter reads from its API in pages (D-1395). Empty
+ * asks for every page, up to the server's cap. */
+export function MaxRowsRow({
+  value,
+  onChange,
+}: Readonly<{ value: number; onChange: (maxRows: number) => void }>) {
+  return (
+    <NumberRow
+      label="Max rows"
+      help="For a list read from a platform's API in pages: stop once at least this many rows were read; the last page may pass it. Empty: every page, up to the server's cap."
+      name="fetch.max_rows"
+      value={value}
+      minValue={1}
+      onChange={onChange}
+    />
+  );
+}
+
 /** `budget.llm_calls` (SPEC-06 §4.8): the most LLM calls the request may make. Empty leaves `budget` out, and the
  * project's LLM call limit (Settings) applies, or none (D-1121). */
 export function LlmCallsRow({

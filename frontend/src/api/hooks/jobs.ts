@@ -18,6 +18,7 @@ import {
   type CrawlRequest,
   type ExtractRequest,
   type ExportFormat,
+  type ValuesPage,
   type ExportPage,
   type JobFilters,
   type MapRequest,
@@ -82,14 +83,12 @@ export function useJobResults(
 
 /** The job's `json_values` page at `cursor`. Under the results key, so the job's events read it again; the page shown
  * stays while it is read again. */
-export function useJobValues(
-  id: string,
-  page: { cursor: string | null; limit: number; withMetadata: boolean },
-) {
+export function useJobValues(id: string, page: ValuesPage, enabled = true) {
   const client = useApiClient();
   return useQuery({
     queryKey: [...jobResultsKey(id), "json_values", page],
     queryFn: () => unwrap(listJobValues(client, id, page)),
+    enabled,
   });
 }
 

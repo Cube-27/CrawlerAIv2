@@ -6,9 +6,9 @@ import { EmptyView } from "../../../components/EmptyView";
 import { JsonView } from "../../../components/JsonView";
 import { OutcomeLabel } from "../../../components/OutcomeLabel";
 import { RecordList } from "../../../components/RecordFields";
-import { StatusLabel } from "../../../components/StatusLabel";
 import { Timestamp } from "../../../components/Timestamp";
-import { hasUncalibrated, scrapeJson } from "./cleanJson";
+import { hasUncalibrated, UncalibratedBadge } from "../../../components/UncalibratedBadge";
+import { scrapeJson } from "./cleanJson";
 import { FetchView, LinksTable, MetadataTable, TextFormat, UsageTable } from "./FormatViews";
 
 interface OutputTab {
@@ -32,7 +32,7 @@ function JsonTab({
     <div className="flex flex-col gap-3">
       {hasUncalibrated(response.records ?? []) ? (
         <div>
-          <StatusLabel text="uncalibrated" tone="warning" />
+          <UncalibratedBadge records={response.records ?? []} />
         </div>
       ) : null}
       <JsonView label="Page JSON" value={item} filename={`job-${response.job_id}.json`} />

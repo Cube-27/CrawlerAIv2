@@ -58,6 +58,7 @@ function scrapeResponse(overrides: Partial<ScrapeResponse> = {}): ScrapeResponse
       method: "browser",
       status_code: 200,
       block_class: "ok",
+      adapter: null,
       attempts: [
         { method: "http", status: 200, block_class: "shell", duration_ms: 120, error: null },
         { method: "browser", status: 200, block_class: "ok", duration_ms: 2400, error: null },
@@ -246,6 +247,7 @@ describe("scrape playground: the request", () => {
     await userEvent.type(options.getByRole("textbox", { name: "Max age (s)" }), "3600");
     await userEvent.type(options.getByRole("textbox", { name: "Timeout (s)" }), "90");
     await userEvent.type(options.getByRole("textbox", { name: "LLM call limit" }), "0");
+    await userEvent.type(options.getByRole("textbox", { name: "Max rows" }), "60");
     await closeOptions();
 
     await submit();
@@ -256,7 +258,7 @@ describe("scrape playground: the request", () => {
       formats: ["links"],
       schema: null,
       page_kind: "listing",
-      fetch: { method_hint: "browser" },
+      fetch: { method_hint: "browser", max_rows: 60 },
       max_age: 3600,
       timeout_s: 90,
       budget: { llm_calls: 0 },
@@ -434,12 +436,14 @@ describe("scrape playground: records", () => {
     expect(price.getByText("19.90 EUR")).toBeInTheDocument();
     expect(price.getByText("published")).toBeInTheDocument();
     expect(price.getByText("0.98")).toBeInTheDocument();
-    expect(price.getByText("structured")).toBeInTheDocument();
-    expect(price.getByText("jsonld")).toBeInTheDocument();
+    expect(price.getByText("Structured data")).toHaveAttribute("title", "structured");
+    expect(price.getByText("JSON-LD")).toHaveAttribute("title", "jsonld");
     expect(price.getByText("jsonld:0:$.offers.price")).toBeInTheDocument();
     const title = within(records.getByRole("row", { name: /title/ }));
     expect(title.getByText("Blue mug")).toBeInTheDocument();
-    expect(title.getByText("uncalibrated")).toBeInTheDocument();
+    // The record's one badge sits with its summary, not in a field's row.
+    expect(title.queryByText("uncalibrated")).not.toBeInTheDocument();
+    expect(records.getAllByText("uncalibrated")).toHaveLength(1);
     expect(records.getByText("incomplete")).toBeInTheDocument();
   });
 
@@ -685,6 +689,55 @@ describe("scrape playground: formats and problems", () => {
     expect(
       within(usage.getByRole("row", { name: /LLM tokens in/ })).getByText("1200"),
     ).toBeVisible();
+  });
+
+  it("names the platform adapter that read the page, and each attempt's challenge label", async () => {
+    stubScrape({
+      "POST /v1/scrape": () =>
+        Response.json(
+          scrapeResponse({
+            fetch: {
+              method: "api",
+              status_code: 200,
+              block_class: "ok",
+              adapter: "board",
+              attempts: [
+                {
+                  method: "http",
+                  status: 403,
+                  block_class: "blocked",
+                  duration_ms: 80,
+                  error: null,
+                  challenge: "structural",
+                },
+                { method: "api", status: 200, block_class: "ok", duration_ms: 300, error: null },
+              ],
+            },
+          }),
+        ),
+    });
+    await openScrape();
+    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/a");
+
+    await submit();
+
+    const usage = await openTab("Usage");
+    expect(within(usage.getByRole("row", { name: /Adapter/ })).getByText("board")).toBeVisible();
+    const blocked = within(usage.getByRole("row", { name: "http" }));
+    expect(blocked.getByText("403")).toBeVisible();
+    expect(blocked.getByText("structural")).toBeVisible();
+    expect(within(usage.getByRole("row", { name: "api" })).getAllByText("—")).toHaveLength(2);
+  });
+
+  it("shows no adapter row for a page no adapter read", async () => {
+    stubScrape({ "POST /v1/scrape": () => Response.json(scrapeResponse()) });
+    await openScrape();
+    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://store.test/a");
+
+    await submit();
+
+    const usage = await openTab("Usage");
+    expect(usage.queryByRole("row", { name: /Adapter/ })).not.toBeInTheDocument();
   });
 
   it("shows a page robots.txt kept from being fetched without a fetch or a final URL", async () => {

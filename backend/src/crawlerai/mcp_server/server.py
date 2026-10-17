@@ -1,4 +1,4 @@
-"""The MCP server (SPEC-10 §4.7, ARCHITECTURE §13.3): ten tools, each one call into `crawlerai.services`, answered as
+"""The MCP server (SPEC-10 §4.7, ARCHITECTURE §13.3): eleven tools, each one call into `crawlerai.services`, answered as
 `output` shapes them. It holds no logic of its own (§3).
 
 One server runs over stdio (`python -m crawlerai.mcp_server`) and over streamable HTTP at `/mcp` in the API app
@@ -148,9 +148,17 @@ class _Tools:
             raise ToolError(f"not a results cursor: {cursor!r}") from e
         async with runtime.database.connect() as conn:
             summary = await jobs.get_job(conn, job_id)
-            results = await jobs.job_results(conn, job_id, query, store=runtime.fetching.store)
+            results = await jobs.job_results(
+                conn, job_id, query, store=runtime.fetching.store, adapters=runtime.fetching.rungs.adapters
+            )
         structured = {"job": summary.model_dump(mode="json"), "results": results.model_dump(mode="json")}
         return tool_result(structured, results.items if isinstance(results, RecordPage) else None)
+
+    async def reject_config(self, ctx: AnyContext, config_id: ExtractionConfigId) -> CallToolResult:
+        runtime = (await self._bind(ctx)).runtime
+        async with runtime.database.begin() as conn:
+            refused = await configs.reject_config(conn, config_id)
+        return tool_result(refused.model_dump(mode="json"))
 
 
 async def _scrape(runtime: Runtime, request: ScrapeRequest) -> CallToolResult:
@@ -215,6 +223,12 @@ _TOOLS: Final = {
         "validated on.",
         _READ_ONLY,
     ),
+    "reject_config": (
+        "reject_config",
+        "Refuse a learned config waiting as `pending_approval`, as `POST /v1/configs/{id}/reject` does: it is "
+        "suspended, what served before goes on serving, and the site learns again only after more pages.",
+        _WRITES,
+    ),
 }
 
 
@@ -235,7 +249,7 @@ def _answered[**P](tool: Callable[P, Awaitable[CallToolResult]]) -> Callable[P, 
 
 
 def build_server(bind: Bind) -> FastMCP:
-    """The server with its ten tools. `bind` gives a call its runtime and API key, and refuses an unauthenticated
+    """The server with its eleven tools. `bind` gives a call its runtime and API key, and refuses an unauthenticated
     one. Over HTTP the server is stateless and answers JSON, so any API process can take any request; DNS-rebinding
     protection is off, since a request authenticates with a bearer key a browser never sends on its own (§18)."""
     server = FastMCP(

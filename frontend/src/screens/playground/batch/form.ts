@@ -4,6 +4,7 @@ import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import { badUrlLine } from "./urls";
 import {
+  fetchMember,
   hasSchema,
   lines,
   llmBudget,
@@ -16,6 +17,7 @@ import {
 } from "../pageRequest";
 import {
   llmCalls,
+  maxRows,
   methodHint,
   pageFormats,
   pageKind,
@@ -36,6 +38,8 @@ export interface BatchOptions {
   /** Empty: no webhook. */
   webhookUrl: string;
   methodHint: MethodHint;
+  /** `fetch.max_rows`: NaN while empty. */
+  maxRows: number;
   /** `budget.llm_calls`; NaN (empty) leaves `budget` out: the project's limit, or none (D-1121). */
   llmCalls: number;
 }
@@ -47,6 +51,7 @@ export const DEFAULT_BATCH_OPTIONS: BatchOptions = {
   webhookUrl: "",
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
+  maxRows: Number.NaN,
   llmCalls: Number.NaN,
 };
 
@@ -89,7 +94,7 @@ export function buildBatch(form: BatchFormState): BatchRequest | null {
     formats: hasSchema(form) ? ["records"] : requestFormats(form),
     schema: requestSchema(form),
     page_kind: requestPageKind(form),
-    fetch: { method_hint: form.options.methodHint },
+    fetch: fetchMember(form.options.methodHint, form.options.maxRows),
     ...llmBudget(form.options.llmCalls),
     ...webhook(form.options.webhookUrl),
   };
@@ -111,6 +116,7 @@ export function batchForm(request: StoredRequest): BatchFormState {
       fields: schemaFields(request),
       webhookUrl: webhookUrl(request),
       methodHint: methodHint(request),
+      maxRows: maxRows(request),
       llmCalls: llmCalls(request),
     },
   };

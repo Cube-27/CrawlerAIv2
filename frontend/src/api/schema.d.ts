@@ -134,6 +134,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/configs/{config_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Config
+         * @description Refuses a learned config waiting as `pending_approval`: it becomes `suspended`, the version active before goes on
+         *     serving, and the site learns again only after 8 more extracted pages. 409 for a config in any other status or not
+         *     the latest version.
+         */
+        post: operations["reject_config_v1_configs__config_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/crawl": {
         parameters: {
             query?: never;
@@ -400,14 +422,15 @@ export interface paths {
          * Job Results
          * @description The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,
          *     `csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its
-         *     tasks, oldest first, each with the content formats the job asked for once its page was reached. Any job answers
-         *     `format=json_values` with its tasks, oldest first, each with its URL, outcome and clean records (the schema's
-         *     fields in name order, each its published value or null); `include=metadata`, accepted with `json_values` only,
-         *     adds a reached page's metadata while its capture is kept. `csv_safe=true`, accepted with `csv_records` only,
-         *     prefixes `'` to each cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return, so a spreadsheet shows it
-         *     as text (OWASP CSV Injection); without it the export is the published values unchanged. Pass a page's
-         *     `next_cursor` as `cursor` for the page after it. 409: an export other than `json_values` of a job without a
-         *     schema.
+         *     tasks, oldest first, each with the content formats the job asked for once its page was reached, and its fetch (the
+         *     attempts made, as a scrape answers them). Any job
+         *     answers `format=json_values` with its tasks, oldest first, each with its URL, outcome and clean records (the
+         *     schema's fields in name order, each its published value or null); `include=metadata`, accepted with `json_values`
+         *     only, adds a reached page's metadata while its capture is kept, and `include=fetch` its fetch. `csv_safe=true`,
+         *     accepted with `csv_records` only, prefixes `'` to each cell starting with `=`, `+`, `-`, `@`, a tab or a carriage
+         *     return, so a spreadsheet shows it as text (OWASP CSV Injection); without it the export is the published values
+         *     unchanged. Pass a page's `next_cursor` as `cursor` for the page after it. 409: an export other than `json_values`
+         *     of a job without a schema.
          */
         get: operations["job_results_v1_jobs__job_id__results_get"];
         put?: never;
@@ -1342,9 +1365,12 @@ export interface components {
         };
         /**
          * FetchSummary
-         * @description The fetch of the page: the method, status and class of the kept attempt, and every attempt made.
+         * @description The fetch of the page: the method, status and class of the kept attempt, the platform adapter that read an `api`
+         *     capture (INV-39; null for any other), and every attempt made.
          */
         FetchSummary: {
+            /** Adapter */
+            adapter: string | null;
             /** Attempts */
             attempts: components["schemas"]["AttemptRecord"][];
             /**
@@ -1700,11 +1726,12 @@ export interface components {
         /**
          * JsonValuesItem
          * @description A task of a job in `json_values` (SPEC-14 §4.4): its URL, its outcome (null until it ends), the clean records
-         *     its page stands for, and, when asked for, its page's metadata. `records` is empty for a task with no record (failed,
-         *     blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or partial page
-         *     whose capture is still kept.
+         *     its page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no
+         *     record (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or
+         *     partial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts.
          */
         JsonValuesItem: {
+            fetch?: components["schemas"]["FetchSummary"];
             metadata?: components["schemas"]["PageMetadata"];
             /** Outcome */
             outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "failed") | null;
@@ -2099,6 +2126,7 @@ export interface components {
         PageOutput: {
             /** Capture Id */
             capture_id: string | null;
+            fetch?: components["schemas"]["FetchSummary"];
             /** Fetched At */
             fetched_at: string | null;
             /** Final Url */
@@ -3316,6 +3344,78 @@ export interface operations {
             };
         };
     };
+    reject_config_v1_configs__config_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     crawl_site_v1_crawl_post: {
         parameters: {
             query?: never;
@@ -4271,7 +4371,7 @@ export interface operations {
                 cursor?: string | null;
                 limit?: number;
                 format?: "json" | "json_values" | "json_records" | "csv_records" | "markdown";
-                include?: "metadata" | null;
+                include?: ("metadata" | "fetch")[];
                 csv_safe?: boolean;
             };
             header?: never;

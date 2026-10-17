@@ -50,6 +50,7 @@ describe("extract playground", () => {
       "https://shop.test/items/*",
       true,
     );
+    await fill(options.getByRole("textbox", { name: "Max rows" }), "25");
     await closeOptions();
 
     await extract();
@@ -59,7 +60,7 @@ describe("extract playground", () => {
       urls: ["https://shop.test/items/1", "https://shop.test/items/*"],
       schema: { id: SCHEMA_ID },
       page_kind: "detail",
-      fetch: { method_hint: "auto" },
+      fetch: { method_hint: "auto", max_rows: 25 },
     });
   });
 

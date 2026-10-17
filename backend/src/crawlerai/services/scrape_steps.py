@@ -66,7 +66,43 @@ from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest
 log = logging.getLogger(__name__)
 
 PageFormat = Literal["markdown", "html", "raw_html", "links", "metadata", "records"]
+
+
 # `url_task.outcome` as a page task reports it (SPEC-07 §4.4).
+class FetchSummary(BaseModel):
+    """The fetch of the page: the method, status and class of the kept attempt, the platform adapter that read an `api`
+    capture (INV-39; null for any other), and every attempt made."""
+
+    method: CaptureMethod
+    status_code: int | None  # None when no response arrived
+    block_class: BlockClass
+    adapter: str | None
+    attempts: tuple[AttemptRecord, ...]
+
+
+def fetch_summary(
+    method: CaptureMethod,
+    status_code: int | None,
+    block_class: BlockClass,
+    attempts: Iterable[AttemptRecord],
+    *,
+    adapters: Adapters | None,
+    url: str,
+    final_url: str,
+) -> FetchSummary:
+    """The summary of the fetch of `url`, whose kept attempt ended at `final_url`. An `api` capture names the active
+    adapter that reads it, as the collectors do (`Registry.reader`); an API recipe's has none, and none is named
+    without `adapters`."""
+    found = adapters.reader(url, final_url) if method == "api" and adapters is not None else None
+    return FetchSummary(
+        method=method,
+        status_code=status_code,
+        block_class=block_class,
+        adapter=None if found is None else found[0].name,
+        attempts=tuple(attempts),
+    )
+
+
 PageOutcome = Literal["extracted", "partial", "blocked", "shell", "not_found", "failed"]
 
 BLOCK_OUTCOMES: Final[dict[BlockClass, PageOutcome]] = {
