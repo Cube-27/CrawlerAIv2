@@ -291,7 +291,7 @@ async def store_further_pages(
     records: Records,
     *,
     caller_supplied: bool,
-    llm: LLMClient | None,
+    llm: LLMClient,
 ) -> None:
     """Extract and store a listing recipe's further pages under the task, with what the job pinned."""
     if not page.further:

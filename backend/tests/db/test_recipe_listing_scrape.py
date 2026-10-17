@@ -29,6 +29,7 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Capture, Extraction, ExtractionConfig, Job, JobId, JobKind, Record, SiteId, UrlTask
+from crawlerai.llm.client import NO_LLM
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas.types import SchemaDef, document_digest
@@ -269,7 +270,7 @@ async def test_a_batch_task_of_a_listing_recipe_stores_every_page_of_the_listing
         engine, fetching.connector, BatchScrapeRequest.model_validate(body), data=engine_data
     )
 
-    await _run(engine, {"batch_scrape": scrape_handler(fetching, engine_data, None, llm=None)}, submitted.job_id)
+    await _run(engine, {"batch_scrape": scrape_handler(fetching, engine_data, None, llm=NO_LLM)}, submitted.job_id)
 
     # Three pages of three, three and two rows: every page is requested and stored, with no browser.
     assert [parse_qs(urlsplit(r.url).query).get("after") for r in web.requested] == [None, ["3"], ["6"]]
@@ -298,7 +299,7 @@ async def test_a_crawl_task_of_a_listing_recipe_serves_its_pages_up_to_the_crawl
     }
     submitted = await submit_crawl(engine, fetching.connector, CrawlRequest.model_validate(body), data=engine_data)
 
-    await _run(engine, {"crawl": crawl_handler(fetching, engine_data, None, llm=None)}, submitted.job_id)
+    await _run(engine, {"crawl": crawl_handler(fetching, engine_data, None, llm=NO_LLM)}, submitted.job_id)
 
     assert len(web.requested) == 2
     titles, _ = await _titles(engine, submitted.job_id)
