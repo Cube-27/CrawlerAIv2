@@ -10,7 +10,9 @@ import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
+
+import pytest
 
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
@@ -18,9 +20,12 @@ from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
+from crawlerai.resolve import pipeline
 from crawlerai.resolve.pipeline import EngineData, GapReply, GapRequest, ListingGapReply, ListingGapRequest
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
+from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from crawlerai.services import scrape_steps
 from crawlerai.services.scrape_steps import ContentCheck
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 
@@ -182,3 +187,25 @@ def test_the_check_keeps_the_extraction_and_parse_of_each_capture_it_read() -> N
     assert extraction is not None
     assert extraction is check.extraction(result.bundle)
     assert check.parse(result.bundle).html == ROWS
+
+
+def test_a_render_whose_extraction_fails_is_not_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    # D-1248: a failed extraction gives no rows, so the render is not kept over the HTTP page.
+    real = pipeline.extract_page
+
+    async def failing_render(bundle: CaptureBundle, *args: Any, **kwargs: Any) -> ExtractionResult:
+        if bundle.manifest.method == "browser":
+            return ExtractionResult(
+                outcome="error", entity=None, rows=(), candidates=(), llm_calls=(), mode="adhoc", record_confidence=None
+            )
+        return await real(bundle, *args, **kwargs)
+
+    monkeypatch.setattr(scrape_steps, "extract_page", failing_render)
+
+    result, check, _role_c, render = _fetch(TEMPLATE, ROWS)
+
+    assert render.calls == [URL]
+    assert result.method == "http"
+    extraction = check.extraction(result.bundle)
+    assert extraction is not None
+    assert extraction.outcome != "error"

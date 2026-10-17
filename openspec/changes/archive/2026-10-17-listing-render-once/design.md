@@ -34,12 +34,16 @@
 - Why: owner #54 is the listing counterpart of owner #49; the render decision stays in one place.
 - Reversible: yes
 
-### D-1248 — A failed extraction never renders; a role C failure counts as no rows
+### D-1248 — A failed extraction or role C call counts as no rows
 - Date: 2026-10-17 · Change/PR: listing-render-once (#242) · Status: decided
-- Decision: an extraction with outcome `error` never asks for the render (as `lacks_offer_data` on a page that fails
-  to read). A role C call that fails (provider unavailable, budget) leaves the extraction without rows, so the page
-  is rendered: the render may hold structured rows that need no role C.
-- Why: the conservative reading of "gives no rows after extraction"; the extraction is the one the page is stored with.
+- Decision: an extraction with outcome `error` gives no rows: on the HTTP page it asks for the render, and a render
+  whose extraction fails is never kept over the HTTP page. A role C call that fails (provider unavailable, budget)
+  leaves the extraction without rows too, so the page is rendered: the render may hold structured rows that need no
+  role C.
+- Alternatives: never render on a failed HTTP extraction (as `lacks_offer_data`); then `_better` would keep a render
+  whose extraction failed, since the check would no longer hold on it (review of #242).
+- Why: the render is kept only when its extraction gives rows, as owner #54 states; the extraction is the one the
+  page is stored with.
 - Reversible: yes
 
 ### D-1249 — The HTTP capture's role C calls are charged, not stored, when the render is kept

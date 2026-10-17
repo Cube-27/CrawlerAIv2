@@ -567,5 +567,6 @@ def lacks_offer_data(
 
 def lacks_rows(extraction: ExtractionResult) -> bool:
     """Whether a reached listing's extraction (structured rows, the site's config's rows, role C's) gave no rows: a
-    render may hold the rows the page's scripts fill in (owner #54, D-1246). An extraction that failed is never one."""
-    return extraction.outcome != "error" and not extraction.rows
+    render may hold the rows the page's scripts fill in (owner #54, D-1246). A failed extraction gave none (D-1248), so
+    a render whose extraction fails is never kept over the HTTP page."""
+    return not extraction.rows
