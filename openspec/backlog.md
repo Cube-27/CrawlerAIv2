@@ -42,7 +42,8 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   remembered method stays `http`); remembering it needs a decision. Pages behind a challenge that does not clear
   itself headless stay `blocked` (§22).
 - Tough-site run (#225): a JSON-LD ItemList of ListItems with `name`/`url` and no `item` gives no rows (2 listings): schema.org types such an entry only as Thing, so taking it as the schema's type needs a decision.
-- Tough-site run (#225): listings whose category or chrome-like tiles pass `acquire.items` stay `ok` at HTTP with no rows (about 7 pages; 2 more in the 40-page site test, owner question D-1245); and a listing shell whose browser retry fails keeps the HTTP shell, losing rows role C read from the HTTP page (1 page).
+- Tough-site run (#225): a listing shell whose browser retry fails keeps the HTTP shell, losing rows role C read from the HTTP page (1 page).
+- Listing render (#242): a recurring job's render check extracts a listing (role C included) before the unchanged-content test, so an unchanged listing without structured rows pays a role C call on each fetch; judging the content first needs the standing record's fingerprint in the check. Measure on the next dev run how many listings the render reaches (owner #54).
 - Browser parity (#229): with Patchright's documented setup the 4 dev interstitial rows (403 challenge documents) still
   end `blocked`; two of them never navigate on within the 18 s wait and two are not judged interstitial by structure.
   The wait adds about 18 s to each structureless 403 (the blocked pages too); measure on the dev run and lower

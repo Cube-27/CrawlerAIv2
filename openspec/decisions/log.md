@@ -1003,3 +1003,4 @@ Entries written before the OpenSpec conversion (#223), when this file was `docs/
   role C call, only on listings that gave nothing.
 - Blocked: rows on client-rendered listings whose HTTP body holds other repeated blocks; nothing else.
 - Reversible: yes
+- Owner answer: confirmed 2026-10-17, option (a) (owner decision #54). Implemented in #242 (D-1246–D-1249).

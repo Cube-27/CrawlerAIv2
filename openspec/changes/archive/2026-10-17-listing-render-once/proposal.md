@@ -22,7 +22,7 @@ kept, the listing counterpart of owner #49's render for detail pages without off
 
 ## Impact
 
-- Capabilities: [acquisition](../../specs/acquisition/spec.md) ("Browser on evidence").
+- Capabilities: [acquisition](../../../specs/acquisition/spec.md) ("Browser on evidence").
 - Design: Appendix A #49, #54; D-1202, D-1245.
 - Files: `backend/src/crawlerai/resolve/pipeline.py`, `services/{scrape,scrape_steps}.py`,
   `worker/handlers/{steps,scrape,crawl}.py`, `acquire/rungs.py` (docstring).
