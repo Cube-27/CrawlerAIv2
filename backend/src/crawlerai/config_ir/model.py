@@ -252,7 +252,11 @@ class ListingSpec(_Model):
 
 
 class SchemaRef(_Model):
+    """The schema a config is for: its name, and the digest of its document at learning (`document_digest`). A schema
+    is edited in place (D-0950), so only the digest says which document the config was learned for."""
+
     name: Name
+    digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class Fetch(_Model):

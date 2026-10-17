@@ -37,7 +37,7 @@ from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.task import extract_task
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
@@ -92,7 +92,7 @@ class World:
         ir = {
             "ir_version": "1",
             "site": self.origin.removeprefix("https://"),
-            "schema": {"name": self.schema.name},
+            "schema": {"name": self.schema.name, "digest": document_digest(self.schema)},
             "page_kind": "detail",
             "fetch": {"method": "http"},
             "fields": {name: {"steps": [step], "status": "uncorroborated"} for name, step in fields.items()},

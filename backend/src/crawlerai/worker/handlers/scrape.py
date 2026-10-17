@@ -66,11 +66,11 @@ class _PageFetch(BaseModel):
 
 
 def scrape_handler(
-    fetching: Fetching, data: EngineData | None, margins: DriftMargins | None, *, llm: LLMClient | None
+    fetching: Fetching, data: EngineData | None, margins: DriftMargins | None, *, llm: LLMClient
 ) -> TaskHandler:
     """The `batch_scrape` and `extract` handler of a worker that fetches with `fetching`; `data` is None in a worker
     without the engine's data files, whose records tasks then fail. `margins` decide drift suspensions (SPEC-08 §4.9);
-    role C runs on `llm` (None: no role C)."""
+    role C runs on `llm`."""
 
     async def handle(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
         job = await load_job(conn, task, data, margins)
@@ -89,7 +89,7 @@ def scrape_handler(
 
 
 async def _settle(
-    conn: AsyncConnection, task: ClaimedTask, page: FetchedPage, records: Records | None, llm: LLMClient | None
+    conn: AsyncConnection, task: ClaimedTask, page: FetchedPage, records: Records | None, llm: LLMClient
 ) -> TaskResult:
     """The fetched page's result: its outcome when it was not reached or the job has no records, else its record's."""
     ended = unreached(page)

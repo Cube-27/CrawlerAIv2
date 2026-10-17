@@ -303,3 +303,17 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
 )
 def test_text_after_an_iso_date_never_changes_that_date(raw: str, expected: object) -> None:
     assert normalize(raw, ctx=_ctx("en-GB")) == expected
+
+
+@pytest.mark.parametrize("zone", [" UTC", "UTC", " GMT", " utc", "Z", "z"])
+@given(_datetimes.map(lambda v: v.astimezone(UTC).replace(tzinfo=None, microsecond=0)))
+def test_a_zone_name_after_the_time_is_a_zero_offset(zone: str, value: datetime) -> None:
+    written = f"{value.date().isoformat()} {value.time().isoformat()}{zone}"
+
+    assert normalize(written, DATETIME) == Ok(value.isoformat() + "Z")
+    assert normalize(written) == Ok(value.date().isoformat())
+
+
+@pytest.mark.parametrize("zone", [" IST", " CST", " EDT", " UTC+05:30"])
+def test_another_zone_abbreviation_fixes_no_offset(zone: str) -> None:
+    assert normalize(f"2026-10-15 09:31:36{zone}", DATETIME, _ctx("en")) == Invalid("no_offset")

@@ -37,7 +37,7 @@ IR = ExtractionConfigIR.model_validate(
     {
         "ir_version": "1",
         "site": "catalog.example.test",
-        "schema": {"name": "synthetic"},
+        "schema": {"name": "synthetic", "digest": "0" * 64},
         "page_kind": "listing",
         "fetch": {"method": "browser"},
         "fields": {
@@ -94,7 +94,7 @@ def test_platform_draft_carries_every_step_in_order_as_xpath_regex_or_jsonpath()
         "regex_flags": "u",
         "ir_version": "1",
         "site": "catalog.example.test",
-        "schema": {"name": "synthetic"},
+        "schema": {"name": "synthetic", "digest": "0" * 64},
         "page_kind": "listing",
         "fetch": {"method": "browser"},
         "fields": {

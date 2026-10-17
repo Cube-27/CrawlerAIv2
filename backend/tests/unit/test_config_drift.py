@@ -46,7 +46,7 @@ def _ir(
         {
             "ir_version": "1",
             "site": "shop.example.test",
-            "schema": {"name": "synthetic"},
+            "schema": {"name": "synthetic", "digest": "0" * 64},
             "page_kind": page_kind,
             "fetch": {"method": "http"},
             "fields": fields,

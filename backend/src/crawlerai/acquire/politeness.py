@@ -18,10 +18,10 @@ from email.utils import parsedate_to_datetime
 from typing import Final, Protocol
 
 from crawlerai.acquire.types import AttemptRecord
+from crawlerai.core.retry import FIRST_BACKOFF
 from crawlerai.storage.capture_bundle import HeaderList
 
 DEFAULT_INTERVAL: Final = timedelta(seconds=1)  # SPEC-02 §4.6: 1 request/s
-BACKOFF_MIN: Final = timedelta(seconds=30)  # SPEC-02 §4.6: the first backoff
 BACKOFF_MAX: Final = timedelta(minutes=15)  # SPEC-02 §4.6: the longest backoff
 # RFC 6585 §4 (429 Too Many Requests) and RFC 9110 §15.6.4 (503 Service Unavailable): the statuses that ask a
 # client to slow down, optionally with a Retry-After.
@@ -46,7 +46,7 @@ async def refuse(*, after: timedelta = timedelta(0)) -> bool:
 
 def asked_pause(attempt: AttemptRecord) -> timedelta:
     """The pause a 429 or 503 `attempt` asks for (SPEC-02 §4.6): its `Retry-After`, else the first backoff."""
-    return BACKOFF_MIN if attempt.retry_after is None else attempt.retry_after
+    return FIRST_BACKOFF if attempt.retry_after is None else attempt.retry_after
 
 
 def slowed_down(attempts: Iterable[AttemptRecord]) -> AttemptRecord | None:

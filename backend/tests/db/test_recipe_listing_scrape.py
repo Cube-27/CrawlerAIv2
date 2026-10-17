@@ -26,7 +26,7 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
 from crawlerai.db.models import Capture, Extraction, ExtractionConfig, SiteId, UrlTask
 from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import SchemaDef, document_digest
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.storage.fs import FsStore
@@ -93,7 +93,7 @@ def _ir(origin: str, schema: SchemaDef) -> dict[str, Any]:
     return {
         "ir_version": "1",
         "site": origin.removeprefix("https://"),
-        "schema": {"name": schema.name},
+        "schema": {"name": schema.name, "digest": document_digest(schema)},
         "page_kind": "listing",
         "fetch": {"method": "browser"},
         "fields": {},

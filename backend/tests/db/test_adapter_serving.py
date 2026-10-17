@@ -26,6 +26,7 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobId, JobKind, Record, Site, SiteId
+from crawlerai.llm.client import NO_LLM
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
@@ -271,7 +272,7 @@ async def _run_job(engine: AsyncEngine, fetching: Fetching, data: EngineData, jo
     url = engine.url.render_as_string(hide_password=False)
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
     stop = asyncio.Event()
-    handlers: dict[JobKind, TaskHandler] = {"batch_scrape": scrape_handler(fetching, data, None, llm=None)}
+    handlers: dict[JobKind, TaskHandler] = {"batch_scrape": scrape_handler(fetching, data, None, llm=NO_LLM)}
     loop = asyncio.create_task(run_worker(settings, handlers, stop, ending=close_run))
     async with asyncio.timeout(60):
         while True:

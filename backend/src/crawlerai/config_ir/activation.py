@@ -38,6 +38,8 @@ from crawlerai.db.models import (
     SchemaDef,
     Site,
 )
+from crawlerai.schemas import registry
+from crawlerai.schemas.types import document_digest
 
 
 class NotValidated(ValueError):
@@ -148,6 +150,9 @@ async def _check_key(conn: AsyncConnection, key: StateKey, ir: ExtractionConfigI
     learned = (ir.site, ir.schema_.name, ir.page_kind)
     if learned != (*found, key.page_kind):
         raise ConfigMismatch(f"config for {learned} activated for progressive_state {key}")
+    # A schema is edited in place (D-0950): a config learned before an edit is for another document.
+    if ir.schema_.digest != document_digest(await registry.get_by_id(conn, key.schema_id)):
+        raise ConfigMismatch(f"config learned for an earlier document of schema {ir.schema_.name} activated for {key}")
 
 
 async def _suspend_active(conn: AsyncConnection, key: StateKey) -> None:

@@ -28,7 +28,6 @@ import json
 import re
 from collections.abc import Sequence
 from dataclasses import replace
-from http import HTTPStatus
 from typing import Final
 from urllib.parse import urlsplit
 
@@ -40,6 +39,7 @@ from crawlerai.acquire.robots import at_origin
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import ALL, NOT_PLATFORM, NOT_SERVED, AdapterMatch, Members, Shape
 from crawlerai.adapters.paging import fetch_pages
+from crawlerai.core.retry import is_transient
 
 API_VERSION: Final = "2026-10"
 # The Storefront API's endpoint path of any version: versions are named `YYYY-MM` (API versioning documentation).
@@ -208,12 +208,6 @@ def _merge(answers: Sequence[JsonValue]) -> JsonValue:
     return {**first, "data": {**(data if isinstance(data, dict) else {}), "collection": merged_collection}}
 
 
-def _transient(status: int) -> bool:
-    """A status that says the server cannot answer now rather than what it is (RFC 6585 §4: 429, too many requests;
-    RFC 9110 §15.6: a 5xx server error). An edge in front of a shop answers these without the API's header."""
-    return status == HTTPStatus.TOO_MANY_REQUESTS or status >= HTTPStatus.INTERNAL_SERVER_ERROR
-
-
 def _one_currency(answer: JsonValue) -> bool:
     """Whether the shop presents its prices in one currency only, so that the answer's prices are in the currency any
     page of the shop shows. A tokenless answer prices in the shop's primary market (`@inContext` names no other), while
@@ -234,7 +228,7 @@ def _verdict(result: FetchResult, language: str | None) -> FetchResult:
     the platform's answer holding errors or no collection, or, for a page in `language`, not in that language, is
     `NOT_SERVED`."""
     manifest = result.bundle.manifest
-    if manifest.status_code == 0 or _transient(manifest.status_code):
+    if manifest.status_code == 0 or is_transient(manifest.status_code):
         return result
     if not any(name.lower() == SIGNAL for name, _ in manifest.headers.response):
         return as_error(result, NOT_PLATFORM)

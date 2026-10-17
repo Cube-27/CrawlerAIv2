@@ -41,6 +41,7 @@ from crawlerai.db.models import (
     SiteId,
 )
 from crawlerai.schemas import registry
+from crawlerai.schemas.types import document_digest
 from crawlerai.storage.base import ObjectStore
 
 
@@ -141,6 +142,9 @@ async def correct(
         raise ConfigConflict(f"config {config_id} is version {row['version']}; correct the latest, version {latest}")
     schema = await registry.get_by_id(conn, key.schema_id)
     ir = ExtractionConfigIR.model_validate(row["ir"])
+    if ir.schema_.digest != document_digest(schema):
+        # A schema is edited in place (D-0950): this config's steps were learned for the document before the edit.
+        raise ConfigConflict(f"config {config_id} was learned for an earlier document of schema {schema.name}")
     corrected = corrections.correct(ir, schema, correction, engine_version=ENGINE_VERSION, at=datetime.now(UTC))
     # §4.4: the site's 8 most recent extracted pages; the operator wrote the steps from none of them.
     held_out = await load_held_out(conn, store, key.site_id, schema, limit=LEARN_AFTER_PAGES)

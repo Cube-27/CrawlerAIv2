@@ -34,10 +34,13 @@ def json_decimal(value: object) -> Decimal | None:
 
 @dataclass(frozen=True, slots=True)
 class Stated:
-    """The one number a text holds, as written (for `readings`), and the text before it, where a sign would be."""
+    """The one number a text holds, as written (for `readings`), the text before it, where a sign would be, the text
+    after it, and the whole text (NFKC, stripped) they are cut from."""
 
     written: str
     before: str
+    after: str
+    text: str
 
 
 def stated(raw: str) -> Stated | str:
@@ -53,7 +56,8 @@ def stated(raw: str) -> Stated | str:
         return "no_number"
     if len(runs) > 1:
         return "several_numbers"
-    return Stated(runs[0].group(), text[: runs[0].start()])
+    run = runs[0]
+    return Stated(run.group(), text[: run.start()], text[run.end() :], text)
 
 
 def negative(before: str) -> bool:
