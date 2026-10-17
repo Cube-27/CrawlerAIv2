@@ -78,3 +78,17 @@ def test_a_page_with_more_links_than_the_cap_keeps_the_first() -> None:
 
 def test_a_page_without_a_canonical_link_has_none() -> None:
     assert canonical_link(_page("<html><body>x</body></html>")) is None
+
+
+def test_a_reference_no_url_parser_reads_is_skipped_and_the_rest_are_kept() -> None:
+    # RFC 3986 §3.2.2: an unmatched bracket in an authority is no URL.
+    html = (
+        '<html><head><base href="http://[bad"><link rel="canonical" href="http://[x">'
+        '<meta property="og:url" content="http://[y"></head>'
+        '<body><a href="http://[z">1</a><a href="/ok">2</a></body></html>'
+    )
+
+    refs = page_refs(_page(html))
+
+    assert refs == PageRefs(own=(FINAL,), links=("https://careers.example.test/ok",))
+    assert canonical_link(_page(html)) is None

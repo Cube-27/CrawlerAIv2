@@ -4,8 +4,8 @@ host's rate; SPEC-15 §4.6).
 
 The walk ends when the adapter has no next request, when the rows reach the request's target (`FetchPolicy.max_rows`,
 soft: whole pages are kept) or the hard cap, or when the time budget is spent. A later page that fails ends the walk
-with the pages already read, as an answer with fewer rows; only the first page decides the outcome. An empty page ends
-the walk, so an adapter's next request cannot loop.
+with the pages already read, as an answer with fewer rows, its attempt kept; only the first page decides the outcome.
+An empty page ends the walk, so an adapter's next request cannot loop.
 """
 
 import json
@@ -52,16 +52,18 @@ async def fetch_pages(
     progress = count
     while count < target and progress and clock() < deadline and (request := next_page(answers)) is not None:
         page = await send(request, policy)
+        # Every request is an attempt of the result, a refused or failed one too: the caller reads them for the guard's
+        # refusals (INV-16) and the slow-downs.
+        kept = kept.model_copy(
+            update={"attempts": (*kept.attempts, *page.attempts), "duration_ms": kept.duration_ms + page.duration_ms}
+        )
         if page.block_class != "ok":
             break
         answers.append(json.loads(page.bundle.body))
         progress = rows(answers[-1])  # an empty page ends the list, whatever the adapter asks next
         count += progress
-        kept = kept.model_copy(
-            update={"attempts": (*kept.attempts, *page.attempts), "duration_ms": kept.duration_ms + page.duration_ms}
-        )
     if len(answers) == 1:
-        return result
+        return kept
     return _merged(kept, result, json.dumps(merge(answers), ensure_ascii=False).encode())
 
 

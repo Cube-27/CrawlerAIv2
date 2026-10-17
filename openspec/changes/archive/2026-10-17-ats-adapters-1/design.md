@@ -5,7 +5,7 @@
 - **Paging.** `adapters/paging.fetch_pages(first, policy, send, next_page, merge, rows)` sends the first request,
   then asks the adapter's `next_page(answers)` for each following one while the rows are under the target
   (`FetchPolicy.max_rows`, else the hard cap) and the time budget lasts. The result is the first page's `FetchResult`
-  with the merged body (re-hashed in its manifest) and every kept page's attempt. A list of one page is returned as
+  with the merged body (re-hashed in its manifest) and every page's attempt, a failed later page's too. A list of one page is returned as
   answered. Each adapter supplies three small functions (next request, merge, row count).
 - **Referral.** `adapters.base.Referring` (optional, `runtime_checkable`): `referred(refs, kind)` returns a platform
   page URL from `PageRefs` (`own`: final URL, canonical link, `og:url`; `links`). `acquire.page_refs.page_refs` reads

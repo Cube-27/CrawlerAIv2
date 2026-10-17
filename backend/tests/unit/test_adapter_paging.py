@@ -129,8 +129,26 @@ def test_a_later_page_that_fails_ends_the_walk_with_the_rows_read(scripted_api: 
     result = _walk(scripted_api(fails_after_two_pages, sent))
 
     assert (result.block_class, json.loads(result.bundle.body)) == ("ok", list(range(2 * SIZE)))
-    assert len(result.attempts) == 2  # the failed page is not an attempt of the kept answer
+    # The failed page's attempt is kept, last: its refusal or slow-down is the caller's to read.
+    assert [(a.block_class, a.error) for a in result.attempts] == [
+        ("ok", None),
+        ("ok", None),
+        ("error", "decode_error"),
+    ]
     assert len(sent) == 3
+
+
+def test_a_second_page_that_fails_leaves_the_first_pages_answer_with_both_attempts(scripted_api: ScriptedApi) -> None:
+    sent: list[JsonRequest] = []
+    answer = _table(100)
+
+    def fails_on_the_second_page(request: JsonRequest) -> bytes:
+        return b"not json" if _offset(request) else answer(request)
+
+    result = _walk(scripted_api(fails_on_the_second_page, sent))
+
+    assert (result.block_class, json.loads(result.bundle.body)) == ("ok", list(range(SIZE)))
+    assert [a.error for a in result.attempts] == [None, "decode_error"]
 
 
 def test_a_first_page_that_fails_is_the_outcome(scripted_api: ScriptedApi) -> None:
