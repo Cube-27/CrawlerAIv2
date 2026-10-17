@@ -25,9 +25,8 @@ career page is rendered before its Workday referral, and a recipe learner's own 
 
 ## Impact
 
-- Capabilities: [acquisition](../../specs/acquisition/spec.md), [adapters](../../specs/adapters/spec.md),
-  [jobs](../../specs/jobs/spec.md), [learning-configs](../../specs/learning-configs/spec.md),
-  [persistence-storage](../../specs/persistence-storage/spec.md).
+- Capabilities: [acquisition](../../../specs/acquisition/spec.md), [adapters](../../../specs/adapters/spec.md),
+  [jobs](../../../specs/jobs/spec.md).
 - Database: the baseline migration gains `site_fetch_method`, `site.adapter_declined` and `url_task.final_url`, and loses
   `site.fetch_method`, `site.fetch_method_checked_at` and `url_state.record_fingerprint` (greenfield, recreated).
 - No API shape changes.
