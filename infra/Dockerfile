@@ -10,7 +10,7 @@ WORKDIR /app
 
 # Dependencies install from wheels only, so no third-party build script runs.
 COPY pyproject.toml uv.lock ./
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-build --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --extra parquet --no-build --no-install-project
 
 # The fetched data files are downloaded and checked against their pinned sha256 before the project is built, since the
 # build hook puts the manifest's data files in the wheel (hatch_build.py). `crawlerai data fetch` without the CLI, which
@@ -28,7 +28,7 @@ ARG CRAWLERAI_GIT_SHA=""
 COPY hatch_build.py ./
 COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-build --no-binary-package crawlerai --no-editable
+    uv sync --frozen --no-dev --extra parquet --no-build --no-binary-package crawlerai --no-editable
 
 FROM python:3.12-slim
 
