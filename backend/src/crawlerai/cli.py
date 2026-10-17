@@ -12,7 +12,7 @@ from contextlib import aclosing, asynccontextmanager, suppress
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
-from typing import get_args
+from typing import Final, get_args
 
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
@@ -34,7 +34,7 @@ from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.keys import create_key, revoke_key
-from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, Split
+from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, ScheduleId, Split
 from crawlerai.eval import calibrate, promote
 from crawlerai.eval.cli import EvalCliError, PageRequest, check_urls, parse_site_list, report, run_capture
 from crawlerai.eval.store import (
@@ -44,13 +44,18 @@ from crawlerai.eval.store import (
     dev_store,
     private_store,
 )
+from crawlerai.llm.client import NO_LLM
 from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict
+from crawlerai.services import schedules as schedules_service
 from crawlerai.services import schemas as schemas_service
 from crawlerai.services.fetch_options import FetchOptions, UnknownProxyPool, check_proxy_pool, fetch_policy
 from crawlerai.services.fetching import Fetching, learning_replay
+from crawlerai.services.records import MAX_PAGE
+from crawlerai.services.runtime import fetching_from_settings
+from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
 from crawlerai.services.scrape_paging import learning_render
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
@@ -59,6 +64,9 @@ from crawlerai.worker.browser import SharedBrowser
 from crawlerai.worker.handlers.table import task_handlers
 from crawlerai.worker.learn import run_learner
 from crawlerai.worker.loop import run_worker
+
+# What `crawlerai schedules` prints of a schedule: enough to find it and see whether and when it runs.
+_SCHEDULE_LINE: Final = {"id", "name", "kind", "cron", "interval_s", "timezone", "paused", "next_run_at", "last_job_id"}
 
 
 def _print_openapi() -> None:
@@ -164,7 +172,10 @@ async def _schedule() -> None:
     fetch = partial(
         fetch_http, engine_version=ENGINE_VERSION, impersonate=rung_impersonation(settings), pools=settings.proxy_pools
     )
-    entries = periodic(open_store(settings.object_store), fetch, poster(SafeConnector()))
+    # A schedule's run submits its job with the schema its creation resolved, so it drafts nothing: no LLM client.
+    fetching = fetching_from_settings(settings)
+    submitting = Submitting(fetching, load_engine_data(fetching.rungs.adapters), NO_LLM)
+    entries = periodic(open_store(settings.object_store), fetch, poster(SafeConnector()), submitting)
     await run_scheduler(settings, entries, _stop_on_signals())
 
 
@@ -284,6 +295,27 @@ async def _apikey_revoke(parser: argparse.ArgumentParser, key_id: uuid.UUID) -> 
     if outcome == "not_found":
         parser.exit(2, f"crawlerai apikey revoke: no API key {key_id}\n")
     print(json.dumps({"id": str(key_id), "revoked": outcome == "revoked"}))
+
+
+async def _schedules_list() -> None:
+    cursor: ScheduleId | None = None
+    async with _transaction() as conn:
+        while True:
+            page = await schedules_service.list_schedules(conn, ScheduleListQuery(cursor=cursor, limit=MAX_PAGE))
+            for schedule in page.items:
+                print(schedule.model_dump_json(include=_SCHEDULE_LINE))
+            if page.next_cursor is None:
+                return
+            cursor = page.next_cursor
+
+
+async def _schedules_pause(parser: argparse.ArgumentParser, schedule_id: uuid.UUID, *, paused: bool) -> None:
+    try:
+        async with _transaction() as conn:
+            schedule = await schedules_service.set_paused(conn, ScheduleId(schedule_id), paused=paused)
+    except ScheduleNotFound as e:
+        parser.exit(2, f"crawlerai schedules: {e}\n")
+    print(schedule.model_dump_json(include=_SCHEDULE_LINE))
 
 
 def _data_dir() -> Path:
@@ -416,8 +448,24 @@ def _parser() -> argparse.ArgumentParser:
     revoke = apikey.add_parser("revoke", help="revoke a key: requests with it are refused from then on")
     revoke.set_defaults(handler=_run_apikey_revoke)
     revoke.add_argument("id", type=uuid.UUID, help="the key's id, as `apikey create` printed it")
+    _add_schedule_commands(commands)
     _add_eval_commands(commands)
     return parser
+
+
+def _add_schedule_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    """`schedules list|pause|resume`: the recurring schedules (§22 "Recurring schedule storage"), one JSON line each;
+    `/v1/schedules` creates and edits them."""
+    schedules = commands.add_parser("schedules", help="recurring schedules: list, pause, resume").add_subparsers(
+        dest="schedules_command", required=True
+    )
+    schedules.add_parser("list", help="print the schedules, newest first, one JSON line each").set_defaults(
+        handler=_run_schedules_list
+    )
+    for name, help_ in (("pause", "stop a schedule's runs"), ("resume", "run a schedule again from its next time")):
+        command = schedules.add_parser(name, help=help_)
+        command.set_defaults(handler=_run_schedules_pause, paused=name == "pause")
+        command.add_argument("id", type=uuid.UUID, help="the schedule's id")
 
 
 def _under_cwd(parser: argparse.ArgumentParser, option: str, path: Path) -> Path:
@@ -519,6 +567,14 @@ def _run_apikey_create(_parser: argparse.ArgumentParser, args: argparse.Namespac
 
 def _run_apikey_revoke(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     asyncio.run(_apikey_revoke(parser, args.id))
+
+
+def _run_schedules_list(_parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
+    asyncio.run(_schedules_list())
+
+
+def _run_schedules_pause(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    asyncio.run(_schedules_pause(parser, args.id, paused=args.paused))
 
 
 def _run_data(parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:

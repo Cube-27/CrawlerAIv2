@@ -341,6 +341,7 @@ dependencies = [
     { name = "asyncpg" },
     { name = "babel" },
     { name = "boto3" },
+    { name = "cronsim" },
     { name = "cssselect" },
     { name = "curl-cffi" },
     { name = "dateparser" },
@@ -364,6 +365,7 @@ dependencies = [
     { name = "selectolax" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "trafilatura" },
+    { name = "tzdata" },
     { name = "uvicorn" },
     { name = "webencodings" },
     { name = "zstandard" },
@@ -406,6 +408,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.29,<1" },
     { name = "babel", specifier = ">=2.16,<3" },
     { name = "boto3", specifier = ">=1.35,<2" },
+    { name = "cronsim", specifier = ">=2.6,<3" },
     { name = "cssselect", specifier = ">=1.2,<2" },
     { name = "curl-cffi", specifier = ">=0.16,<0.17" },
     { name = "dateparser", specifier = ">=1.2,<2" },
@@ -430,6 +433,7 @@ requires-dist = [
     { name = "selectolax", specifier = ">=0.3,<1" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2,<3" },
     { name = "trafilatura", specifier = ">=2,<3" },
+    { name = "tzdata", specifier = ">=2024.1" },
     { name = "uvicorn", specifier = ">=0.30,<1" },
     { name = "webencodings", specifier = ">=0.5,<1" },
     { name = "zstandard", specifier = ">=0.23,<1" },
@@ -458,6 +462,14 @@ dev = [
 licenses = [
     { name = "cyclonedx-bom", specifier = ">=7,<8" },
     { name = "pip-licenses", specifier = ">=5,<6" },
+]
+
+[[package]]
+name = "cronsim"
+version = "2.7"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fb/1a/02f105147f7f2e06ed4f734ff5a6439590bb275a53dd91fc73df6312298a/cronsim-2.7-py3-none-any.whl", hash = "sha256:1e1431fa08c51dc7f72e67e571c7c7a09af26420169b607badd4ca9677ffad1e", size = 14213, upload-time = "2025-10-21T16:38:20.431Z" },
 ]
 
 [[package]]

@@ -9,7 +9,7 @@ import {
   FormatRows,
   MetadataRow,
   ScopeRows,
-  WebhookRow,
+  WebhookRows,
 } from "../rows";
 import { DEFAULT_CRAWL_OPTIONS, type CrawlOptions as Options } from "./form";
 import { RuleRows } from "./RuleRows";
@@ -125,10 +125,10 @@ export function CrawlOptions({
       />
       <FieldsRow options={options} onChange={onChange} />
       <FormatRows options={options} formats={formats} onChange={onChange} />
-      <WebhookRow
-        value={options.webhookUrl}
-        onChange={(webhookUrl) => {
-          onChange({ ...options, webhookUrl });
+      <WebhookRows
+        value={options.webhook}
+        onChange={(webhook) => {
+          onChange({ ...options, webhook });
         }}
       />
       <RuleRows

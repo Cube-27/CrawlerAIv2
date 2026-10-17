@@ -1,3 +1,4 @@
+import type { WebhookEvent } from "../../api/jobs";
 import type {
   ChunkSource,
   ChunkStrategy,
@@ -6,9 +7,17 @@ import type {
   ScrapeFormat,
   ScreenshotArea,
 } from "../../api/scrape";
-import { METHOD_HINTS, PAGE_KINDS } from "../../components/requestOptions";
+import { METHOD_HINTS, PAGE_KINDS, WEBHOOK_EVENTS } from "../../components/requestOptions";
 import type { FormatSettings } from "./formatOptions";
-import { NumberRow, SelectRow, SwitchRow, TagListRow, TextRow } from "./OptionsPanel";
+import {
+  CheckboxesRow,
+  NumberRow,
+  SelectRow,
+  SwitchRow,
+  TagListRow,
+  TextRow,
+} from "./OptionsPanel";
+import type { WebhookSettings } from "./pageRequest";
 
 /** Options rows more than one mode has (SPEC-14 §4.2), each named after its request member. */
 
@@ -115,20 +124,61 @@ export function LlmCallsRow({
   );
 }
 
-/** `webhook_url`: where the job's end is posted (SPEC-10 §4.2). */
-export function WebhookRow({
+/** `webhook_url`, `webhook_events` and `webhook_batch` (SPEC-10 §4.2, D-1419): where the job's events are posted,
+ * which, and how many at once. Without a URL the others are disabled and nothing is sent. */
+export function WebhookRows({
   value,
   onChange,
-}: Readonly<{ value: string; onChange: (webhookUrl: string) => void }>) {
+}: Readonly<{ value: WebhookSettings; onChange: (webhook: WebhookSettings) => void }>) {
+  const off = value.url.trim() === "";
   return (
-    <TextRow
-      label="Webhook URL"
-      help="Where the job's summary is posted when it ends. Empty: no webhook."
-      name="webhook_url"
-      value={value}
-      placeholder="None"
-      onChange={onChange}
-    />
+    <>
+      <TextRow
+        label="Webhook URL"
+        help="Where the job's events are posted, signed with your API key's webhook secret. Empty: no webhook."
+        name="webhook_url"
+        value={value.url}
+        placeholder="None"
+        onChange={(url) => {
+          onChange({ ...value, url });
+        }}
+      />
+      <NumberRow
+        label="Batch events"
+        help="Post up to this many events at once. Empty: one event per post."
+        name="webhook_batch.max_events"
+        value={value.batchEvents}
+        minValue={1}
+        placeholder="1"
+        isDisabled={off}
+        onChange={(batchEvents) => {
+          onChange({ ...value, batchEvents });
+        }}
+      />
+      <NumberRow
+        label="Batch seconds"
+        help="Post a smaller batch once its oldest event has waited this long."
+        name="webhook_batch.max_seconds"
+        value={value.batchSeconds}
+        minValue={1}
+        placeholder="None"
+        isDisabled={off}
+        onChange={(batchSeconds) => {
+          onChange({ ...value, batchSeconds });
+        }}
+      />
+      <CheckboxesRow<WebhookEvent>
+        label="Webhook events"
+        help="What is posted: each page done, each record stored or changed, a URL found gone, the job's end."
+        name="webhook_events"
+        options={WEBHOOK_EVENTS}
+        values={value.events}
+        isDisabled={off}
+        onChange={(events) => {
+          onChange({ ...value, events });
+        }}
+      />
+    </>
   );
 }
 

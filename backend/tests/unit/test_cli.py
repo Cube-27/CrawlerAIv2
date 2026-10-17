@@ -14,6 +14,8 @@ import pytest
 from crawlerai import cli
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
+from crawlerai.acquire.politeness import HostLimiter
+from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.cli import main
@@ -22,8 +24,11 @@ from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool
 from crawlerai.core.settings import AcquireSettings, Settings
 from crawlerai.db.queue import LEASE_BATCH
+from crawlerai.llm.client import NO_LLM
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic
+from crawlerai.services.fetching import Fetching
+from crawlerai.services.schedules import Submitting
 from crawlerai.storage.fs import FsStore
 
 
@@ -112,9 +117,12 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_
     fetches: list[object] = []
     posts: list[object] = []
 
-    def entries_for(store: object, fetch: object, post: object) -> tuple[str, object]:
+    submittings: list[object] = []
+
+    def entries_for(store: object, fetch: object, post: object, submitting: object) -> tuple[str, object]:
         fetches.append(fetch)
         posts.append(post)
+        submittings.append(submitting)
         return ("entries for", store)
 
     monkeypatch.setattr(cli, "periodic", entries_for)
@@ -134,6 +142,9 @@ def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_
     [post] = posts  # webhooks go through the SSRF guard (SPEC-10 §4.2)
     assert isinstance(post, partial)
     assert type(post.keywords["connector"]) is SafeConnector
+    [submitting] = submittings  # a schedule's run drafts nothing: its schema was resolved when it was created
+    assert isinstance(submitting, Submitting)
+    assert submitting.llm is NO_LLM
 
 
 @pytest.fixture
@@ -173,7 +184,9 @@ def test_a_job_its_last_expired_lease_ends_is_diffed() -> None:
     async def post(url: str, body: bytes, headers: Mapping[str, str]) -> int:
         raise AssertionError("not called")
 
-    entries = periodic(FsStore(Path("unused")), fetch, post)
+    store = FsStore(Path("unused"))
+    fetching = Fetching(Rungs(http=fetch, browser=fetch), SafeConnector(), store, HostLimiter())
+    entries = periodic(store, fetch, post, Submitting(fetching, None, NO_LLM))
 
     (release,) = (entry.run for entry in entries if entry.name == "release_expired_leases")
     assert isinstance(release, partial)

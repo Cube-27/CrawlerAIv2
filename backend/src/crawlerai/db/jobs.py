@@ -12,7 +12,8 @@ from typing import Any, Final
 from sqlalchemy import ColumnElement, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, TaskStatus, UrlTask, UrlTaskId, WebhookDelivery
+from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, TaskStatus, UrlTask, UrlTaskId
+from crawlerai.db.webhook_outbox import emit_job_event
 
 JOB_TRANSITIONS: Final[Mapping[JobStatus, frozenset[JobStatus]]] = {
     "queued": frozenset({"running", "cancelled"}),
@@ -64,10 +65,12 @@ async def record_event(
     *,
     ts: datetime | None = None,
 ) -> None:
-    """Append an event, stamped `ts`, or when it is recorded. A worker records a task's events at the end of the
-    task's transaction, where `now()` would be the time the transaction began (PostgreSQL §9.9.5)."""
+    """Append an event, stamped `ts`, or when it is recorded, and owe the webhook event it stands for, if any
+    (`db.webhook_outbox`). A worker records a task's events at the end of the task's transaction, where `now()` would
+    be the time the transaction began (PostgreSQL §9.9.5)."""
     values = {"job_id": job_id, "kind": kind, "payload": dict(payload or {}), "ts": ts or func.clock_timestamp()}
     await conn.execute(insert(JobEvent).values(values))
+    await emit_job_event(conn, job_id, kind, payload or {})
 
 
 async def _move[S: str](
@@ -91,8 +94,8 @@ async def _move[S: str](
 
 
 async def transition_job(conn: AsyncConnection, job_id: JobId, target: JobStatus) -> None:
-    """Move a job to `target`. Starting stamps `started_at`; ending stamps `finished_at`, records an event of the
-    same kind, which SSE reports, and owes the job's webhook, if it has one (SPEC-10 §4.2)."""
+    """Move a job to `target`. Starting stamps `started_at`; ending stamps `finished_at` and records an event of the
+    same kind, which SSE reports and which owes the job's end webhook event, if it asked for one (SPEC-10 §4.2)."""
     values: dict[str, Any] = {}
     if target == "running":
         values["started_at"] = func.now()
@@ -105,11 +108,6 @@ async def transition_job(conn: AsyncConnection, job_id: JobId, target: JobStatus
     await _move(conn, Job, job_id, JOB_TRANSITIONS, target, values)
     if ended_at is not None:
         await record_event(conn, job_id, target, ts=ended_at)
-        await conn.execute(
-            insert(WebhookDelivery).from_select(
-                ["job_id"], select(Job.id).where(Job.id == job_id, Job.webhook_url.is_not(None))
-            )
-        )
 
 
 async def start_jobs(conn: AsyncConnection, job_ids: Collection[JobId]) -> None:

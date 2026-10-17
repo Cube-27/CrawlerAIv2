@@ -22,6 +22,9 @@ import {
   schemaPageKindErrors,
   screenshotArea,
   webhook,
+  NO_WEBHOOK,
+  withWebhookErrors,
+  type WebhookSettings,
 } from "../pageRequest";
 import {
   count,
@@ -34,7 +37,7 @@ import {
   schemaId,
   text,
   texts,
-  webhookUrl,
+  webhookSettings,
   type StoredRequest,
 } from "../run/storedRequest";
 
@@ -66,8 +69,8 @@ export interface CrawlOptions extends FormatSettings {
   maxRows: number;
   /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
   advanced: AdvancedFetch;
-  /** Empty: no webhook. */
-  webhookUrl: string;
+  /** An empty URL: no webhook. */
+  webhook: WebhookSettings;
 }
 
 export const DEFAULT_CRAWL_OPTIONS: CrawlOptions = {
@@ -87,7 +90,7 @@ export const DEFAULT_CRAWL_OPTIONS: CrawlOptions = {
   methodHint: "auto",
   maxRows: Number.NaN,
   advanced: DEFAULT_ADVANCED,
-  webhookUrl: "",
+  webhook: NO_WEBHOOK,
   ...DEFAULT_FORMAT_SETTINGS,
 };
 
@@ -132,6 +135,10 @@ function fieldsErrors(rules: readonly RuleRow[]): Readonly<Record<string, string
  * or field names it asks for `records` alone, which needs a rule; every rule is for the schema's page kind, and field
  * names take rules of one page kind. Without either it asks for at least one format. */
 export function crawlErrors(form: CrawlFormState): Readonly<Record<string, string>> {
+  return withWebhookErrors(requestErrors(form), form.options.webhook);
+}
+
+function requestErrors(form: CrawlFormState): Readonly<Record<string, string>> {
   const hasFields = form.options.fields.length > 0;
   if (form.schemaId !== "" && hasFields) return SCHEMA_AND_FIELDS;
   if (hasFields) return fieldsErrors(form.options.rules);
@@ -171,7 +178,7 @@ export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
     ...crawlStrategy(options),
     ...(options.allowSubdomains ? { allow_subdomains: true } : {}),
     ...(options.allowExternal ? { allow_external: true } : {}),
-    ...webhook(options.webhookUrl),
+    ...webhook(options.webhook),
   };
 }
 
@@ -229,7 +236,7 @@ export function crawlForm(request: StoredRequest): CrawlFormState {
       methodHint: methodHint(request),
       maxRows: maxRows(request),
       advanced: storedAdvanced(request),
-      webhookUrl: webhookUrl(request),
+      webhook: webhookSettings(request),
       ...storedFormatSettings(request),
     },
   };

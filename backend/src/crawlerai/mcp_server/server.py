@@ -1,5 +1,5 @@
-"""The MCP server (SPEC-10 §4.7, ARCHITECTURE §13.3): twelve tools, each one call into `crawlerai.services`, answered as
-`output` shapes them. It holds no logic of its own (§3).
+"""The MCP server (SPEC-10 §4.7, ARCHITECTURE §13.3): twenty tools, each one call into `crawlerai.services`,
+answered as `output` shapes them. It holds no logic of its own (§3).
 
 One server runs over stdio (`python -m crawlerai.mcp_server`) and over streamable HTTP at `/mcp` in the API app
 (`crawlerai.api.mcp`). Each transport binds a call to the runtime it runs with and the API key that authenticated it.
@@ -22,20 +22,21 @@ from pydantic import ValidationError
 
 from crawlerai.config_ir.exporters.configs import ConfigFormat
 from crawlerai.core.errors import UNEXPECTED, Refusal
-from crawlerai.db.models import ApiKeyId, ExtractionConfigId, JobId, SchemaStatus
+from crawlerai.db.models import ApiKeyId, ExtractionConfigId, JobId, ScheduleId, SchemaStatus
 from crawlerai.mcp_server.output import MAX_IMAGE_BYTES, InvalidCursor, MarkdownCursor, markdown_page, tool_result
 from crawlerai.schemas.types import Name
-from crawlerai.services import captures, configs, crawl, exports, extract, jobs, schemas
+from crawlerai.services import captures, configs, crawl, exports, extract, jobs, schedules, schemas
 from crawlerai.services import map as map_service
 from crawlerai.services import scrape as scrape_service
 from crawlerai.services import search as search_service
 from crawlerai.services.configs import ExportRequest
 from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.extract import ExtractRequest
-from crawlerai.services.jobs import ResultsQuery
+from crawlerai.services.jobs import JobListQuery, ResultsQuery
 from crawlerai.services.map import MapRequest
 from crawlerai.services.records import RecordPage
 from crawlerai.services.runtime import Runtime
+from crawlerai.services.schedules import NewSchedule, ScheduleListQuery, Submitting
 from crawlerai.services.schemas import NewSchema
 from crawlerai.services.scrape import ScrapeRequest
 from crawlerai.services.search import SearchRequest
@@ -182,11 +183,61 @@ class _Tools:
                 raise ToolError(str(e)) from e
         return tool_result({"job_id": str(job_id), "llms_txt": text})
 
+    async def create_schedule(self, ctx: AnyContext, schedule: NewSchedule) -> CallToolResult:
+        caller = await self._bind(ctx)
+        runtime = caller.runtime
+        created = await schedules.create_schedule(
+            runtime.database, _submitting(runtime), schedule, api_key_id=caller.api_key_id
+        )
+        return tool_result(created.model_dump(mode="json"))
+
+    async def list_schedules(self, ctx: AnyContext, cursor: ScheduleId | None = None) -> CallToolResult:
+        runtime = (await self._bind(ctx)).runtime
+        async with runtime.database.connect() as conn:
+            page = await schedules.list_schedules(conn, ScheduleListQuery(cursor=cursor))
+        return tool_result(page.model_dump(mode="json"))
+
+    async def schedule_jobs(
+        self, ctx: AnyContext, schedule_id: ScheduleId, cursor: JobId | None = None
+    ) -> CallToolResult:
+        runtime = (await self._bind(ctx)).runtime
+        async with runtime.database.connect() as conn:
+            await schedules.get_schedule(conn, schedule_id)
+            page = await jobs.list_jobs(conn, JobListQuery(schedule_id=schedule_id, cursor=cursor))
+        return tool_result(page.model_dump(mode="json"))
+
+    async def pause_schedule(self, ctx: AnyContext, schedule_id: ScheduleId) -> CallToolResult:
+        return await self._set_paused(ctx, schedule_id, paused=True)
+
+    async def resume_schedule(self, ctx: AnyContext, schedule_id: ScheduleId) -> CallToolResult:
+        return await self._set_paused(ctx, schedule_id, paused=False)
+
+    async def _set_paused(self, ctx: AnyContext, schedule_id: ScheduleId, *, paused: bool) -> CallToolResult:
+        runtime = (await self._bind(ctx)).runtime
+        async with runtime.database.begin() as conn:
+            changed = await schedules.set_paused(conn, schedule_id, paused=paused)
+        return tool_result(changed.model_dump(mode="json"))
+
+    async def run_schedule(self, ctx: AnyContext, schedule_id: ScheduleId) -> CallToolResult:
+        runtime = (await self._bind(ctx)).runtime
+        started = await schedules.run_now(runtime.database, _submitting(runtime), schedule_id)
+        return tool_result(started.model_dump(mode="json"))
+
+    async def delete_schedule(self, ctx: AnyContext, schedule_id: ScheduleId) -> CallToolResult:
+        runtime = (await self._bind(ctx)).runtime
+        async with runtime.database.begin() as conn:
+            await schedules.delete_schedule(conn, schedule_id)
+        return tool_result({"deleted": str(schedule_id)})
+
     async def reject_config(self, ctx: AnyContext, config_id: ExtractionConfigId) -> CallToolResult:
         runtime = (await self._bind(ctx)).runtime
         async with runtime.database.begin() as conn:
             refused = await configs.reject_config(conn, config_id)
         return tool_result(refused.model_dump(mode="json"))
+
+
+def _submitting(runtime: Runtime) -> Submitting:
+    return Submitting(runtime.fetching, runtime.engine_data, runtime.llm)
 
 
 async def _scrape(runtime: Runtime, request: ScrapeRequest) -> CallToolResult:
@@ -246,6 +297,10 @@ included. Follow it with `extract_status`."""
 _LLMS_TXT = f"""The `llms.txt` (llmstxt.org) of the pages a crawl, batch or extract job reached: the site's name and
 summary, then links to its pages with their titles and descriptions. The full text of the pages is `GET
 /v1/jobs/{{id}}/llms-full.txt` over REST. {UNTRUSTED}"""
+_CREATE_SCHEDULE = """Store a recurring run, as `POST /v1/schedules` does: `kind` (scrape, batch_scrape, crawl or
+extract) with its `request`, run at each time of the 5-field `cron` expression in `timezone`, or every `interval_s`
+seconds (at least 60). A scrape runs as the batch of its URL; a `records` schema is stored by id. Each run is a job:
+follow one with `crawl_status`, or list them with `schedule_jobs`. The request's webhook options apply to every run."""
 _TOOLS: Final = {
     "scrape": ("scrape", _SCRAPE, _FETCHES),
     "map": ("map", _MAP, _FETCHES),
@@ -271,6 +326,34 @@ _TOOLS: Final = {
         "A config as `json` (the IR as stored) or a `platform_draft`, with the release check on the pages it was "
         "validated on.",
         _READ_ONLY,
+    ),
+    "create_schedule": ("create_schedule", _CREATE_SCHEDULE, _WRITES),
+    "list_schedules": (
+        "list_schedules",
+        "The schedules, newest first, with cadence, next run, last run and its job or error; pass `next_cursor` as "
+        "`cursor` for more.",
+        _READ_ONLY,
+    ),
+    "schedule_jobs": (
+        "schedule_jobs",
+        "The jobs a schedule submitted, newest first, with their summaries; pass `next_cursor` as `cursor` for more.",
+        _READ_ONLY,
+    ),
+    "pause_schedule": ("pause_schedule", "Stop a schedule's runs until it is resumed.", _WRITES),
+    "resume_schedule": (
+        "resume_schedule",
+        "Resume a paused schedule from its first due time after now; missed runs are not made up.",
+        _WRITES,
+    ),
+    "run_schedule": (
+        "run_schedule",
+        "Submit a schedule's job now, as `POST /v1/schedules/{id}/run` does; returns its `job_id`.",
+        _FETCHES,
+    ),
+    "delete_schedule": (
+        "delete_schedule",
+        "Delete a schedule; the jobs it submitted stay.",
+        ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False),
     ),
     "reject_config": (
         "reject_config",
@@ -298,7 +381,7 @@ def _answered[**P](tool: Callable[P, Awaitable[CallToolResult]]) -> Callable[P, 
 
 
 def build_server(bind: Bind) -> FastMCP:
-    """The server with its twelve tools. `bind` gives a call its runtime and API key, and refuses an unauthenticated
+    """The server with its twenty tools. `bind` gives a call its runtime and API key, and refuses an unauthenticated
     one. Over HTTP the server is stateless and answers JSON, so any API process can take any request; DNS-rebinding
     protection is off, since a request authenticates with a bearer key a browser never sends on its own (§18)."""
     server = FastMCP(

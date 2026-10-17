@@ -1,3 +1,4 @@
+import type { WebhookEvent } from "../../api/jobs";
 import type { PageKind, SchemaRef, ScrapeFormat, ScreenshotArea } from "../../api/scrape";
 import type { SchemaPageKind } from "../../api/schemas";
 import { orderedFormats } from "../../components/formats";
@@ -11,10 +12,73 @@ export function lines(text: string): string[] {
     .filter((line) => line !== "");
 }
 
-/** The optional `webhook_url` member (SPEC-10 §4.2): left out when empty. */
-export function webhook(url: string): { webhook_url?: string } {
-  const trimmed = url.trim();
-  return trimmed === "" ? {} : { webhook_url: trimmed };
+/** The events a request that names none is sent: the job's end. */
+export const JOB_END_EVENTS: readonly WebhookEvent[] = [
+  "job_completed",
+  "job_failed",
+  "job_cancelled",
+];
+
+/** A queued mode's webhook options (D-1419): an empty `url` sends none of them. `batchEvents` and `batchSeconds`
+ * (NaN while empty) group events into deliveries, both or neither. */
+export interface WebhookSettings {
+  url: string;
+  events: readonly WebhookEvent[];
+  batchEvents: number;
+  batchSeconds: number;
+}
+
+export const NO_WEBHOOK: WebhookSettings = {
+  url: "",
+  events: JOB_END_EVENTS,
+  batchEvents: Number.NaN,
+  batchSeconds: Number.NaN,
+};
+
+function sameEvents(a: readonly WebhookEvent[], b: readonly WebhookEvent[]): boolean {
+  return a.length === b.length && a.every((event) => b.includes(event));
+}
+
+/** Why the webhook options can't be sent, by request member. */
+export function webhookErrors(settings: WebhookSettings): Readonly<Record<string, string>> {
+  if (settings.url.trim() === "") return NO_ERRORS;
+  if (settings.events.length === 0) return { webhook_events: "Choose at least one event." };
+  const both = "Give both the events and the seconds of a batch, or neither.";
+  if (Number.isNaN(settings.batchEvents) && !Number.isNaN(settings.batchSeconds))
+    return { "webhook_batch.max_events": both };
+  if (!Number.isNaN(settings.batchEvents) && Number.isNaN(settings.batchSeconds))
+    return { "webhook_batch.max_seconds": both };
+  return NO_ERRORS;
+}
+
+/** `errors` with the webhook's own after them; `errors` itself when the webhook has none. */
+export function withWebhookErrors(
+  errors: Readonly<Record<string, string>>,
+  settings: WebhookSettings,
+): Readonly<Record<string, string>> {
+  const own = webhookErrors(settings);
+  return own === NO_ERRORS ? errors : { ...errors, ...own };
+}
+
+/** The optional `webhook_url`, `webhook_events` and `webhook_batch` members (SPEC-10 §4.2): all left out without a
+ * URL, the events when they are the job's end (the server's own choice), the batch while it is empty. */
+export function webhook(settings: WebhookSettings): {
+  webhook_url?: string;
+  webhook_events?: WebhookEvent[];
+  webhook_batch?: { max_events: number; max_seconds: number };
+} {
+  const url = settings.url.trim();
+  if (url === "") return {};
+  const batched = !Number.isNaN(settings.batchEvents) && !Number.isNaN(settings.batchSeconds);
+  return {
+    webhook_url: url,
+    ...(sameEvents(settings.events, JOB_END_EVENTS)
+      ? {}
+      : { webhook_events: [...settings.events] }),
+    ...(batched
+      ? { webhook_batch: { max_events: settings.batchEvents, max_seconds: settings.batchSeconds } }
+      : {}),
+  };
 }
 
 /** An optional number member: left out while its field is empty (NaN), so the server's default applies. */

@@ -121,6 +121,14 @@ def upgrade() -> None:
         sa.Column("cancel_requested", sa.Boolean(), server_default=sa.text("false"), nullable=False),
         sa.Column("api_key_id", sa.Uuid(), nullable=True),
         sa.Column("start_location", sa.Text(), nullable=True),
+        sa.Column(
+            "webhook_events",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default=sa.text("'[]'::jsonb"),
+            nullable=False,
+        ),
+        sa.Column("webhook_batch", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("schedule_id", sa.Uuid(), nullable=True),
         sa.CheckConstraint(
             "kind IN ('scrape', 'batch_scrape', 'map', 'crawl', 'extract', 'learn')", name=op.f("ck_job_kind")
         ),
@@ -298,16 +306,19 @@ def upgrade() -> None:
     op.create_index(op.f("ix_usage_event_job_id_id"), "usage_event", ["job_id", "id"], unique=False)
     op.create_table(
         "webhook_delivery",
+        sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("job_id", sa.Uuid(), nullable=False),
         sa.Column("status", sa.Text(), server_default=sa.text("'pending'"), nullable=False),
         sa.Column("attempts", sa.Integer(), server_default=sa.text("0"), nullable=False),
         sa.Column("next_attempt_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("last_error", sa.Text(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.CheckConstraint("status IN ('pending', 'delivered', 'failed')", name=op.f("ck_webhook_delivery_status")),
         sa.CheckConstraint("attempts >= 0", name=op.f("ck_webhook_delivery_attempts_non_negative")),
         sa.ForeignKeyConstraint(["job_id"], ["job.id"], name=op.f("fk_webhook_delivery_job_id_job")),
-        sa.PrimaryKeyConstraint("job_id", name=op.f("pk_webhook_delivery")),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_webhook_delivery")),
     )
+    op.create_index(op.f("ix_webhook_delivery_job_id"), "webhook_delivery", ["job_id"], unique=False)
     op.create_index(
         op.f("ix_webhook_delivery_next_attempt_at"),
         "webhook_delivery",
@@ -586,6 +597,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("url_task_id", "record_id", name=op.f("pk_task_record")),
     )
     op.create_index(op.f("ix_task_record_record_id"), "task_record", ["record_id"], unique=False)
+    _create_schedules_and_webhook_events()
     op.bulk_insert(
         sa.table("project", sa.column("id", sa.Uuid()), sa.column("name", sa.Text())),
         [{"id": uuid7(), "name": "default"}],
@@ -594,6 +606,75 @@ def upgrade() -> None:
     op.execute(
         "CREATE CONSTRAINT TRIGGER record_committed AFTER INSERT ON record "
         "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION record_committed()"
+    )
+
+
+def _create_schedules_and_webhook_events() -> None:
+    """The recurring schedules (`job.schedule_id` refers to them) and the webhook outbox."""
+    op.create_table(
+        "schedule",
+        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("project_id", sa.Uuid(), nullable=False),
+        sa.Column("name", sa.Text(), nullable=False),
+        sa.Column("kind", sa.Text(), nullable=False),
+        sa.Column("request", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("cron", sa.Text(), nullable=True),
+        sa.Column("interval_s", sa.Integer(), nullable=True),
+        sa.Column("timezone", sa.Text(), nullable=False),
+        sa.Column("next_run_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("paused", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column("last_run_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_error", sa.Text(), nullable=True),
+        sa.Column("api_key_id", sa.Uuid(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.CheckConstraint("kind IN ('batch_scrape', 'crawl', 'extract')", name=op.f("ck_schedule_kind")),
+        sa.CheckConstraint("(cron IS NULL) <> (interval_s IS NULL)", name=op.f("ck_schedule_one_cadence")),
+        sa.CheckConstraint("interval_s >= 60", name=op.f("ck_schedule_interval_at_least_a_minute")),
+        sa.ForeignKeyConstraint(["api_key_id"], ["api_key.id"], name=op.f("fk_schedule_api_key_id_api_key")),
+        sa.ForeignKeyConstraint(["project_id"], ["project.id"], name=op.f("fk_schedule_project_id_project")),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_schedule")),
+    )
+    op.create_index(
+        op.f("ix_schedule_next_run_at"),
+        "schedule",
+        ["next_run_at"],
+        unique=False,
+        postgresql_where=sa.text("NOT paused"),
+    )
+    op.create_foreign_key(
+        op.f("fk_job_schedule_id_schedule"), "job", "schedule", ["schedule_id"], ["id"], ondelete="SET NULL"
+    )
+    op.create_index(op.f("ix_job_schedule_id_id"), "job", ["schedule_id", "id"], unique=False)
+    op.create_table(
+        "webhook_event",
+        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("job_id", sa.Uuid(), nullable=False),
+        sa.Column("event", sa.Text(), nullable=False),
+        sa.Column(
+            "payload", postgresql.JSONB(astext_type=sa.Text()), server_default=sa.text("'{}'::jsonb"), nullable=False
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("clock_timestamp()"), nullable=False
+        ),
+        sa.Column("delivery_id", sa.Uuid(), nullable=True),
+        sa.CheckConstraint(
+            "event IN ('page', 'record', 'record_changed', 'url_gone', 'job_completed', 'job_failed', 'job_cancelled')",
+            name=op.f("ck_webhook_event_event"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["delivery_id"], ["webhook_delivery.id"], name=op.f("fk_webhook_event_delivery_id_webhook_delivery")
+        ),
+        sa.ForeignKeyConstraint(["job_id"], ["job.id"], name=op.f("fk_webhook_event_job_id_job")),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_webhook_event")),
+    )
+    op.create_index(op.f("ix_webhook_event_delivery_id_id"), "webhook_event", ["delivery_id", "id"], unique=False)
+    op.create_index(
+        op.f("ix_webhook_event_job_id_id"),
+        "webhook_event",
+        ["job_id", "id"],
+        unique=False,
+        postgresql_where=sa.text("delivery_id IS NULL"),
     )
 
 
@@ -610,6 +691,7 @@ def downgrade() -> None:
         "url_task",
         "progressive_state",
         "eval_page",
+        "webhook_event",
         "webhook_delivery",
         "usage_event",
         "job_event",
@@ -618,6 +700,7 @@ def downgrade() -> None:
         "site_fetch_method",
         "site",
         "job",
+        "schedule",
         "schema_def",
         "project",
         "eval_run",

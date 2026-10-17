@@ -3,6 +3,9 @@ import type { MethodHint, PageKind } from "../../../api/scrape";
 import { orderedFormats } from "../../../components/formats";
 import { METHOD_HINTS, PAGE_KINDS } from "../../../components/requestOptions";
 import type { PageFormat } from "../FormatSelect";
+import type { WebhookEvent } from "../../../api/jobs";
+import { JOB_END_EVENTS, type WebhookSettings } from "../pageRequest";
+import { WEBHOOK_EVENTS } from "../../../components/requestOptions";
 
 /** Members picked out of a job's stored request (`GET /v1/jobs/{id}/request`, the request as the server validated it), to
  * show it again in a mode's bar and options (SPEC-14 §4.8). The UI reads only what its forms hold; a member that is
@@ -86,7 +89,17 @@ export function pageFormats(request: StoredRequest): {
   };
 }
 
-/** `webhook_url`, or "" for none. */
-export function webhookUrl(request: StoredRequest): string {
-  return text(request, "webhook_url");
+/** The webhook options: `webhook_url` ("" for none), its events (the job's end when none are stored) and batch. */
+export function webhookSettings(request: StoredRequest): WebhookSettings {
+  const known = WEBHOOK_EVENTS.map(([event]) => event);
+  const events = texts(request, "webhook_events").filter((event): event is WebhookEvent =>
+    known.some((entry) => entry === event),
+  );
+  const batch = member(request, "webhook_batch");
+  return {
+    url: text(request, "webhook_url"),
+    events: events.length === 0 ? JOB_END_EVENTS : events,
+    batchEvents: count(batch, "max_events"),
+    batchSeconds: count(batch, "max_seconds"),
+  };
 }

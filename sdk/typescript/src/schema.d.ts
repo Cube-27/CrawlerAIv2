@@ -581,6 +581,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Schedules
+         * @description The schedules, newest first. Pass a page's `next_cursor` as `cursor` for the page after it.
+         */
+        get: operations["list_schedules_v1_schedules_get"];
+        put?: never;
+        /**
+         * Create Schedule
+         * @description Store a recurring run of `request` (of `kind`: a scrape runs as the batch of its URL), at each time of the
+         *     5-field `cron` expression in `timezone`, or every `interval_s` seconds (at least 60). The request is checked as
+         *     its submission would be (targets, schema); a `records` schema is stored by id. Its jobs are submitted as this key's,
+         *     which signs their webhooks.
+         */
+        post: operations["create_schedule_v1_schedules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/schedules/{schedule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Schedule */
+        get: operations["get_schedule_v1_schedules__schedule_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Schedule
+         * @description Delete the schedule. Its jobs stay, with `schedule_id` null.
+         */
+        delete: operations["delete_schedule_v1_schedules__schedule_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Schedule
+         * @description Change the schedule's name, cadence, or run (`kind` with `request`, checked as at creation); a changed cadence
+         *     is due at its first time after now.
+         */
+        patch: operations["update_schedule_v1_schedules__schedule_id__patch"];
+        trace?: never;
+    };
+    "/v1/schedules/{schedule_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Schedule
+         * @description Stop the schedule's runs until it is resumed.
+         */
+        post: operations["pause_schedule_v1_schedules__schedule_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/schedules/{schedule_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Schedule
+         * @description Run the schedule again from its first due time after now; the runs missed while paused are not made up.
+         */
+        post: operations["resume_schedule_v1_schedules__schedule_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/schedules/{schedule_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Schedule
+         * @description Submit the schedule's job now, paused or not; its next due time stays as it is.
+         */
+        post: operations["run_schedule_v1_schedules__schedule_id__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/schemas": {
         parameters: {
             query?: never;
@@ -927,7 +1040,7 @@ export interface components {
          *     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),
          *     and `schema.fields` is drafted while the caller waits (SPEC-14 §4.10). Role C fills a page's gaps as in a scrape;
          *     `budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job
-         *     kind (D-1006, D-1121). `webhook_url` is called when the job ends (§4.2).
+         *     kind (D-1006, D-1121). The webhook options are `WebhookOptions` (§4.2).
          */
         BatchScrapeRequest: {
             budget?: components["schemas"]["Budget"] | null;
@@ -955,6 +1068,9 @@ export interface components {
             schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
             /** Urls */
             urls: string[];
+            webhook_batch?: components["schemas"]["WebhookBatch"] | null;
+            /** Webhook Events */
+            webhook_events?: ("page" | "record" | "record_changed" | "url_gone" | "job_completed" | "job_failed" | "job_cancelled")[];
             /** Webhook Url */
             webhook_url?: string | null;
         };
@@ -1264,7 +1380,7 @@ export interface components {
          *     page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted
          *     while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does
          *     (D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which
-         *     pages are extracted. `webhook_url` is called when the job ends (§4.2).
+         *     pages are extracted. The webhook options are `WebhookOptions` (§4.2).
          *
          *     `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the
          *     links that best match `query` and `keywords` first (`crawl.scoring`). `max_pages` is `limit`. `allow_subdomains`
@@ -1331,6 +1447,9 @@ export interface components {
             strategy: "bfs" | "dfs" | "best_first";
             /** Url */
             url: string;
+            webhook_batch?: components["schemas"]["WebhookBatch"] | null;
+            /** Webhook Events */
+            webhook_events?: ("page" | "record" | "record_changed" | "url_gone" | "job_completed" | "job_failed" | "job_cancelled")[];
             /** Webhook Url */
             webhook_url?: string | null;
         };
@@ -1480,8 +1599,8 @@ export interface components {
          * @description The body of `POST /v1/extract` (§4.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it
          *     inline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 §4.10), and its page kind must
          *     be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's
-         *     draft. The `fetch` and `locale` are a scrape's (SPEC-07 §4.4), for every URL. `webhook_url` is called when the job
-         *     ends (§4.2).
+         *     draft. The `fetch` and `locale` are a scrape's (SPEC-07 §4.4), for every URL. The webhook options are
+         *     `WebhookOptions` (§4.2).
          */
         ExtractRequest: {
             budget?: components["schemas"]["Budget"] | null;
@@ -1513,6 +1632,9 @@ export interface components {
             schema: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"];
             /** Urls */
             urls: string[];
+            webhook_batch?: components["schemas"]["WebhookBatch"] | null;
+            /** Webhook Events */
+            webhook_events?: ("page" | "record" | "record_changed" | "url_gone" | "job_completed" | "job_failed" | "job_cancelled")[];
             /** Webhook Url */
             webhook_url?: string | null;
         };
@@ -1904,6 +2026,8 @@ export interface components {
             /** Llm Cost Usd */
             llm_cost_usd: number | null;
             outcomes: components["schemas"]["OutcomeCounts"];
+            /** Schedule Id */
+            schedule_id: string | null;
             /** Start Url */
             start_url: string | null;
             /** Started At */
@@ -2284,6 +2408,81 @@ export interface components {
             /** Unpriced Tokens */
             unpriced_tokens: number;
         };
+        /** NewBatchSchedule */
+        NewBatchSchedule: {
+            /** Cron */
+            cron?: string | null;
+            /** Interval S */
+            interval_s?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "batch_scrape";
+            /** Name */
+            name: string;
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            request: components["schemas"]["BatchScrapeRequest"];
+            /**
+             * Timezone
+             * @default UTC
+             */
+            timezone: string;
+        };
+        /** NewCrawlSchedule */
+        NewCrawlSchedule: {
+            /** Cron */
+            cron?: string | null;
+            /** Interval S */
+            interval_s?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "crawl";
+            /** Name */
+            name: string;
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            request: components["schemas"]["CrawlRequest"];
+            /**
+             * Timezone
+             * @default UTC
+             */
+            timezone: string;
+        };
+        /** NewExtractSchedule */
+        NewExtractSchedule: {
+            /** Cron */
+            cron?: string | null;
+            /** Interval S */
+            interval_s?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "extract";
+            /** Name */
+            name: string;
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            request: components["schemas"]["ExtractRequest"];
+            /**
+             * Timezone
+             * @default UTC
+             */
+            timezone: string;
+        };
         /** NewSchema */
         NewSchema: {
             /** Fields */
@@ -2302,6 +2501,31 @@ export interface components {
              * @default []
              */
             required_groups: string[][];
+        };
+        /** NewScrapeSchedule */
+        NewScrapeSchedule: {
+            /** Cron */
+            cron?: string | null;
+            /** Interval S */
+            interval_s?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "scrape";
+            /** Name */
+            name: string;
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            request: components["schemas"]["ScrapeRequest"];
+            /**
+             * Timezone
+             * @default UTC
+             */
+            timezone: string;
         };
         /**
          * NextUrlPagination
@@ -2843,6 +3067,97 @@ export interface components {
                 [key: string]: components["schemas"]["SubFieldMeta"];
             };
         };
+        /** RunStarted */
+        RunStarted: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+        };
+        /**
+         * ScheduleOut
+         * @description A schedule: its run (`kind`, and `request` as stored, a records schema by id), its cadence, whether it is
+         *     paused, when it runs next, and its last run: when, the job it submitted, or why it submitted none.
+         */
+        ScheduleOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Cron */
+            cron: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Interval S */
+            interval_s: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "batch_scrape" | "crawl" | "extract";
+            /** Last Error */
+            last_error: string | null;
+            /** Last Job Id */
+            last_job_id: string | null;
+            /** Last Run At */
+            last_run_at: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Next Run At
+             * Format: date-time
+             */
+            next_run_at: string;
+            /** Paused */
+            paused: boolean;
+            /** Request */
+            request: {
+                [key: string]: unknown;
+            };
+            /** Timezone */
+            timezone: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SchedulePage
+         * @description One page of schedules, newest first; `next_cursor` is the `cursor` of the page after it, None on the last.
+         */
+        SchedulePage: {
+            /** Items */
+            items: components["schemas"]["ScheduleOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * ScheduleUpdate
+         * @description The members to change; any left out stay. A new `request` comes with its `kind`; a `cron` replaces an interval
+         *     and an `interval_s` a cron expression.
+         */
+        ScheduleUpdate: {
+            /** Cron */
+            cron?: string | null;
+            /** Interval S */
+            interval_s?: number | null;
+            /** Kind */
+            kind?: ("scrape" | "batch_scrape" | "crawl" | "extract") | null;
+            /** Name */
+            name?: string | null;
+            /** Request */
+            request?: {
+                [key: string]: unknown;
+            } | null;
+            /** Timezone */
+            timezone?: string | null;
+        };
         /** SchemaById */
         SchemaById: {
             /**
@@ -3361,6 +3676,17 @@ export interface components {
             type: "wait";
             /** Xpath */
             xpath?: string | null;
+        };
+        /**
+         * WebhookBatch
+         * @description How a job's webhook events are grouped: up to `max_events` a delivery, sent when that many wait or the oldest
+         *     has waited `max_seconds`, whichever comes first.
+         */
+        WebhookBatch: {
+            /** Max Events */
+            max_events: number;
+            /** Max Seconds */
+            max_seconds: number;
         };
         /** XPathStep */
         "XPathStep-Input": {
@@ -4645,6 +4971,7 @@ export interface operations {
             query?: {
                 kind?: ("scrape" | "batch_scrape" | "map" | "crawl" | "extract" | "learn") | null;
                 status?: ("queued" | "running" | "completed" | "failed" | "cancelled") | null;
+                schedule_id?: string | null;
                 cursor?: string | null;
                 limit?: number;
             };
@@ -5404,6 +5731,597 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_schedules_v1_schedules_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulePage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_schedule_v1_schedules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewScrapeSchedule"] | components["schemas"]["NewBatchSchedule"] | components["schemas"]["NewCrawlSchedule"] | components["schemas"]["NewExtractSchedule"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_schedule_v1_schedules__schedule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_schedule_v1_schedules__schedule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_schedule_v1_schedules__schedule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    pause_schedule_v1_schedules__schedule_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    resume_schedule_v1_schedules__schedule_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    run_schedule_v1_schedules__schedule_id__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunStarted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

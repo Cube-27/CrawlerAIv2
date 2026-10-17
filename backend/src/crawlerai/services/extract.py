@@ -36,23 +36,21 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.errors import Refusal
 from crawlerai.crawl.rules import MAX_PATTERNS, UrlGlob, is_glob, url_glob
 from crawlerai.db.jobs import transition_job
-from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind
+from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind, ScheduleId
 from crawlerai.llm.client import LLMClient
 from crawlerai.llm.roles.s_schema import MAX_SAMPLES, draft_schema
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.services.batch import MAX_URLS, insert_job, insert_tasks, job_pins
+from crawlerai.services.batch import MAX_URLS, OWN_TRANSACTION, Placement, insert_job, insert_tasks, job_pins
 from crawlerai.services.fetch_options import check_proxy_pool
 from crawlerai.services.fetching import Fetching, check_targets
 from crawlerai.services.map import MapRequest, map_urls
 from crawlerai.services.scrape import MAX_TIMEOUT_S, Budget, RecordsUnavailable, polite_fetch
 from crawlerai.services.scrape_steps import (
     FetchOptions,
-    Input,
     SchemaPrompt,
     SchemaRequest,
-    absolute_http_url,
     check_records,
     check_usable,
     fetch_policy,
@@ -60,17 +58,18 @@ from crawlerai.services.scrape_steps import (
     record_fetch_usage,
     site_row,
 )
+from crawlerai.services.webhook_options import WebhookOptions
 
 # The bound on a prompt's draft, its sample fetches included: the longest a scrape may wait (D-0028).
 DRAFT_TIMEOUT_S: Final = float(MAX_TIMEOUT_S)
 
 
-class ExtractRequest(Input):
+class ExtractRequest(WebhookOptions):
     """The body of `POST /v1/extract` (§4.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it
     inline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 §4.10), and its page kind must
     be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's
-    draft. The `fetch` and `locale` are a scrape's (SPEC-07 §4.4), for every URL. `webhook_url` is called when the job
-    ends (§4.2)."""
+    draft. The `fetch` and `locale` are a scrape's (SPEC-07 §4.4), for every URL. The webhook options are
+    `WebhookOptions` (§4.2)."""
 
     urls: list[str] = Field(min_length=1, max_length=MAX_URLS)
     schema_: SchemaRequest = Field(alias="schema")
@@ -79,7 +78,6 @@ class ExtractRequest(Input):
     fetch: FetchOptions = FetchOptions()
     locale: str | None = None
     budget: Budget | None = None
-    webhook_url: str | None = None
 
     @field_validator("urls")
     @classmethod
@@ -96,11 +94,6 @@ class ExtractRequest(Input):
         if any(count > MAX_PATTERNS for count in origins.values()):
             raise ValueError(f"at most {MAX_PATTERNS} globs per host: a host's globs are its map's include")
         return urls
-
-    @field_validator("webhook_url")
-    @classmethod
-    def _absolute_webhook_url(cls, url: str | None) -> str | None:
-        return None if url is None else absolute_http_url(url)
 
     @model_validator(mode="after")
     def _schema_of_the_page_kind(self) -> Self:
@@ -150,14 +143,15 @@ async def submit_extract(
     data: EngineData | None,
     api_key_id: ApiKeyId | None = None,
     draft_timeout_s: float = DRAFT_TIMEOUT_S,
+    placement: Placement = OWN_TRANSACTION,
 ) -> ExtractSubmitted:
-    """Store `request` as a queued job with its tasks; `api_key_id`, the key that submitted it, signs its webhook
-    (§4.2). Raises, storing no extract job: `UnknownProxyPool` for a proxy pool not configured (D-1434),
-    `TargetsRejected` for a refused target, `RecordsUnavailable` without
-    `data`, `named_schema`'s errors for a schema that cannot be used (or field names `llm` could not draft),
-    `TargetRejected` for a refused fetch of a map, and
-    `NothingToExtract`. Raises, failing the job: `NoSamplePage`, `TargetRejected` for a refused redirect, the LLM
-    client's `LLMFailure`, `SchemaUnusable` for a draft of another page kind, and `DraftTimedOut`."""
+    """Store `request` as a queued job with its tasks, where `placement` says (a prompt's job, stored before its
+    draft, always in transactions of its own); `api_key_id`, the key that submitted it, signs its webhook (§4.2).
+    Raises, storing no extract job: `UnknownProxyPool` for a proxy pool not configured (D-1434), `TargetsRejected` for
+    a refused target, `RecordsUnavailable` without `data`, `named_schema`'s errors for a schema that cannot be used (or
+    field names `llm` could not draft), `TargetRejected` for a refused fetch of a map, and `NothingToExtract`. Raises,
+    failing the job: `NoSamplePage`, `TargetRejected` for a refused redirect, the LLM client's `LLMFailure`,
+    `SchemaUnusable` for a draft of another page kind, and `DraftTimedOut`."""
     check_proxy_pool(request.fetch, fetching.proxy_pools)
     await check_targets(fetching.connector, request.targets(), webhook_url=request.webhook_url)
     if data is None:
@@ -170,8 +164,8 @@ async def submit_extract(
         # `named_schema` returns the schema of every request but a prompt's.
         prompt = cast(SchemaPrompt, request.schema_).prompt
         return await _drafted(engine, fetching, llm, request, prompt, urls, data, api_key_id, draft_timeout_s)
-    async with engine.begin() as conn:
-        job_id = await _insert_job(conn, request, schema, data, urls, api_key_id)
+    async with placement.transaction(engine) as conn:
+        job_id = await _insert_job(conn, request, schema, data, urls, api_key_id, placement.schedule_id)
         await insert_tasks(conn, job_id, request.page_kind, _pairs(urls))
     return ExtractSubmitted(job_id=job_id, schema_=schema)
 
@@ -212,6 +206,7 @@ async def _insert_job(
     data: EngineData | None,
     urls: dict[str, str],
     api_key_id: ApiKeyId | None,
+    schedule_id: ScheduleId | None = None,
 ) -> JobId:
     return await insert_job(
         conn,
@@ -220,8 +215,8 @@ async def _insert_job(
         schema=schema,
         data=data,
         urls=list(urls.values()),
-        webhook_url=request.webhook_url,
         api_key_id=api_key_id,
+        schedule_id=schedule_id,
     )
 
 

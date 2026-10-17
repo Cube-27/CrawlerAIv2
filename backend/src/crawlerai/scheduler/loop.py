@@ -1,4 +1,5 @@
-"""The scheduler process (SPEC-01 §4.3): periodic upkeep, from a table of entries that later specs extend.
+"""The scheduler process (SPEC-01 §4.3): periodic upkeep and the recurring schedules' runs, from a table of entries
+that later specs extend.
 
 Each entry runs once at start, then again `interval` after its previous run ended, in a transaction of its own. An
 entry that raises is rolled back and logged, and runs again at its next turn: one failing entry, or the database
@@ -25,9 +26,11 @@ from crawlerai.config_ir.learning import EXPIRE_BATCH, expire_learn_runs
 from crawlerai.config_ir.progressive import TRIGGER_BATCH, trigger_learning
 from crawlerai.core.settings import Settings
 from crawlerai.db.queue import LEASE_BATCH, STALLED_BATCH, fail_stalled_jobs, release_expired_leases
+from crawlerai.db.webhook_outbox import FORM_BATCH, form_deliveries
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.recheck import RECHECK_BATCH, recheck_fetch_method
 from crawlerai.scheduler.retention import RETENTION_BATCH, expire_candidates, expire_captures
+from crawlerai.services.schedules import SCHEDULE_BATCH, Submitting, run_due_schedules
 from crawlerai.storage.base import ObjectStore
 
 log = logging.getLogger(__name__)
@@ -41,9 +44,10 @@ class Periodic:
     batch: int | None = None
 
 
-def periodic(store: ObjectStore, fetch: Rung, post: Poster) -> tuple[Periodic, ...]:
+def periodic(store: ObjectStore, fetch: Rung, post: Poster, submitting: Submitting) -> tuple[Periodic, ...]:
     """The scheduler's entries (SPEC-01 §4.3). `store` is the main object store, where production captures live;
-    `fetch` is the HTTP rung, for the fetch-method re-check (SPEC-02 §4.4); `post` sends webhooks (SPEC-10 §4.2)."""
+    `fetch` is the HTTP rung, for the fetch-method re-check (SPEC-02 §4.4); `post` sends webhooks (SPEC-10 §4.2);
+    `submitting` is what the recurring schedules submit their jobs with (§22 "Recurring schedule storage")."""
     return (
         # A job its last expired lease ends is diffed as the worker would have (SPEC-11 §4.5).
         Periodic(
@@ -89,8 +93,20 @@ def periodic(store: ObjectStore, fetch: Rung, post: Poster) -> tuple[Periodic, .
             batch=EXPIRE_BATCH,
         ),
         Periodic(
+            "run_due_schedules",
+            timedelta(seconds=10),
+            partial(run_due_schedules, submitting=submitting, batch=SCHEDULE_BATCH),
+            batch=SCHEDULE_BATCH,
+        ),
+        Periodic(
+            "form_webhook_deliveries",
+            timedelta(seconds=2),
+            partial(form_deliveries, batch=FORM_BATCH),
+            batch=FORM_BATCH,
+        ),
+        Periodic(
             "deliver_webhooks",
-            timedelta(seconds=5),
+            timedelta(seconds=2),
             partial(deliver_webhooks, post=post, batch=DELIVERY_BATCH),
             batch=DELIVERY_BATCH,
         ),

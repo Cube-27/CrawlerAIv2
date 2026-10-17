@@ -30,14 +30,13 @@ from crawlerai.db.models import ApiKeyId, JobId, UrlTask
 from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData
-from crawlerai.services.batch import insert_job, records_schema
+from crawlerai.services.batch import OWN_TRANSACTION, Placement, insert_job, records_schema
 from crawlerai.services.fetch_options import check_proxy_pool
 from crawlerai.services.fetching import check_targets
 from crawlerai.services.map import MAX_LIMIT  # a crawl enqueues at most what a map of the site returns
 from crawlerai.services.scrape import Budget
 from crawlerai.services.scrape_steps import (
     FetchOptions,
-    Input,
     PageFormat,
     SchemaById,
     SchemaFields,
@@ -46,14 +45,15 @@ from crawlerai.services.scrape_steps import (
     check_formats,
     check_records,
 )
+from crawlerai.services.webhook_options import WebhookOptions
 
 
-class CrawlRequest(Input):
+class CrawlRequest(WebhookOptions):
     """The body of `POST /v1/crawl` (§4.5). The formats, `schema`, `fetch` and `locale` are a batch's (§4.3), for every
     page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted
     while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does
     (D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which
-    pages are extracted. `webhook_url` is called when the job ends (§4.2).
+    pages are extracted. The webhook options are `WebhookOptions` (§4.2).
 
     `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the
     links that best match `query` and `keywords` first (`crawl.scoring`). `max_pages` is `limit`. `allow_subdomains`
@@ -77,7 +77,6 @@ class CrawlRequest(Input):
     fetch: FetchOptions = FetchOptions()
     locale: str | None = None
     budget: Budget | None = None
-    webhook_url: str | None = None
     fit: FitOptions | None = None  # `markdown_fit`'s query and block limit
     chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
 
@@ -102,11 +101,6 @@ class CrawlRequest(Input):
     @classmethod
     def _absolute_start_url(cls, url: str) -> str:
         return absolute_http_url(url)
-
-    @field_validator("webhook_url")
-    @classmethod
-    def _absolute_webhook_url(cls, url: str | None) -> str | None:
-        return None if url is None else absolute_http_url(url)
 
     @model_validator(mode="after")
     def _records_have_rules_of_the_schemas_kind(self) -> Self:
@@ -156,10 +150,11 @@ async def submit_crawl(
     llm: LLMClient = NO_LLM,
     api_key_id: ApiKeyId | None = None,
     proxy_pools: Collection[str] | None = None,
+    placement: Placement = OWN_TRANSACTION,
 ) -> CrawlSubmitted:
-    """Store `request` as a queued job with the start URL's task; `api_key_id`, the key that submitted it, signs its
-    webhook (§4.2); `proxy_pools`, the configured pools, which `fetch.proxy_pool` must name one of (D-1434). Raises,
-    storing nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target,
+    """Store `request` as a queued job with the start URL's task, where `placement` says; `api_key_id`, the key that
+    submitted it, signs its webhook (§4.2); `proxy_pools`, the configured pools, which `fetch.proxy_pool` must name one
+    of (D-1434). Raises, storing nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target,
     `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use."""
     if proxy_pools is not None:
         check_proxy_pool(request.fetch, proxy_pools)
@@ -168,7 +163,7 @@ async def submit_crawl(
     page_kind = request.page_kind_rules[0].page_kind if request.page_kind_rules else None
     schema = await records_schema(engine, request.formats, request.schema_, page_kind, data, llm)
     frontier = request.frontier()
-    async with engine.begin() as conn:
+    async with placement.transaction(engine) as conn:
         job_id = await insert_job(
             conn,
             "crawl",
@@ -176,8 +171,8 @@ async def submit_crawl(
             schema=schema,
             data=data,
             urls=[request.start],
-            webhook_url=request.webhook_url,
             api_key_id=api_key_id,
+            schedule_id=placement.schedule_id,
         )
         # The start URL is fetched whatever the scope: `include` and `exclude` choose the URLs it leads to.
         await conn.execute(insert(UrlTask).values(frontier.task_row(job_id, request.start, 0, None)))

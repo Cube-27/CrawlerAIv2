@@ -29,6 +29,8 @@ export type JsonValuesPage = Schemas["JsonValuesPage"];
 export type JsonValuesItem = Schemas["JsonValuesItem"];
 export type PageKindRule = Schemas["PageKindRule"];
 export type MapResult = Schemas["MapResult"];
+/** A webhook event a queued request can ask for (SPEC-10 §4.2, D-1414). */
+export type WebhookEvent = NonNullable<Schemas["BatchScrapeRequest"]["webhook_events"]>[number];
 
 /** The requests as the forms build them. The generated types mark every member with a default as required
  * (openapi-typescript), so a request that leaves a default to the server is sent as that type; the server validates
@@ -122,6 +124,8 @@ export function cancelState(job: JobSummary): "cancellable" | "requested" | "end
 export interface JobFilters {
   kind: JobKind | null;
   status: JobStatus | null;
+  /** A schedule's jobs only (its history, D-1418); left out: every job. */
+  scheduleId?: string | null;
 }
 
 /** One page of the jobs that pass `filters`, newest first: the first when `cursor` is null, `limit` jobs at most. */
@@ -132,6 +136,7 @@ export function listJobs(
   const query = {
     ...(filters.kind === null ? {} : { kind: filters.kind }),
     ...(filters.status === null ? {} : { status: filters.status }),
+    ...(filters.scheduleId == null ? {} : { schedule_id: filters.scheduleId }),
     ...(cursor === null ? {} : { cursor }),
     limit,
   };

@@ -84,6 +84,16 @@ class PageKind(Enum):
     listing = "listing"
 
 
+class WebhookEvent(Enum):
+    page = "page"
+    record = "record"
+    record_changed = "record_changed"
+    url_gone = "url_gone"
+    job_completed = "job_completed"
+    job_failed = "job_failed"
+    job_cancelled = "job_cancelled"
+
+
 class BatchSubmitted(BaseModel):
     job_id: Annotated[UUID, Field(title="Job Id")]
 
@@ -650,6 +660,10 @@ class ModelRoleUsage(BaseModel):
     unpriced_tokens: Annotated[int, Field(title="Unpriced Tokens")]
 
 
+class IntervalS(RootModel[int]):
+    root: Annotated[int, Field(ge=60, title="Interval S")]
+
+
 class RequiredGroup(RootModel[str]):
     root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,63}$")]
 
@@ -924,6 +938,61 @@ class RequestBody(BaseModel):
     template: Annotated[str, Field(min_length=1, title="Template")]
 
 
+class RunStarted(BaseModel):
+    job_id: Annotated[UUID, Field(title="Job Id")]
+
+
+class Kind2(Enum):
+    batch_scrape = "batch_scrape"
+    crawl = "crawl"
+    extract = "extract"
+
+
+class ScheduleOut(BaseModel):
+    created_at: Annotated[AwareDatetime, Field(title="Created At")]
+    cron: Annotated[str | None, Field(title="Cron")] = None
+    id: Annotated[UUID, Field(title="Id")]
+    interval_s: Annotated[int | None, Field(title="Interval S")] = None
+    kind: Annotated[Kind2, Field(title="Kind")]
+    last_error: Annotated[str | None, Field(title="Last Error")] = None
+    last_job_id: Annotated[UUID | None, Field(title="Last Job Id")] = None
+    last_run_at: Annotated[AwareDatetime | None, Field(title="Last Run At")] = None
+    name: Annotated[str, Field(title="Name")]
+    next_run_at: Annotated[AwareDatetime, Field(title="Next Run At")]
+    paused: Annotated[bool, Field(title="Paused")]
+    request: Annotated[dict[str, Any], Field(title="Request")]
+    timezone: Annotated[str, Field(title="Timezone")]
+    updated_at: Annotated[AwareDatetime, Field(title="Updated At")]
+
+
+class SchedulePage(BaseModel):
+    items: Annotated[list[ScheduleOut], Field(title="Items")]
+    next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
+
+
+class Kind3(Enum):
+    scrape = "scrape"
+    batch_scrape = "batch_scrape"
+    crawl = "crawl"
+    extract = "extract"
+
+
+class Name(RootModel[str]):
+    root: Annotated[str, Field(max_length=200, min_length=1, title="Name")]
+
+
+class ScheduleUpdate(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    cron: Annotated[str | None, Field(title="Cron")] = None
+    interval_s: Annotated[IntervalS | None, Field(title="Interval S")] = None
+    kind: Annotated[Kind3 | None, Field(title="Kind")] = None
+    name: Annotated[Name | None, Field(title="Name")] = None
+    request: Annotated[dict[str, Any] | None, Field(title="Request")] = None
+    timezone: Annotated[str | None, Field(title="Timezone")] = None
+
+
 class SchemaById(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1139,6 +1208,14 @@ class WaitAction(BaseModel):
     xpath: Annotated[str | None, Field(title="Xpath")] = None
 
 
+class WebhookBatch(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    max_events: Annotated[int, Field(ge=1, le=1000, title="Max Events")]
+    max_seconds: Annotated[float, Field(gt=0.0, le=3600.0, title="Max Seconds")]
+
+
 class FieldNoParams(BaseModel):
     pass
     model_config = ConfigDict(
@@ -1325,6 +1402,7 @@ class JobSummary(BaseModel):
     kind: Annotated[Kind, Field(title="Kind")]
     llm_cost_usd: Annotated[float | None, Field(title="Llm Cost Usd")] = None
     outcomes: OutcomeCounts
+    schedule_id: Annotated[UUID | None, Field(title="Schedule Id")] = None
     start_url: Annotated[str | None, Field(title="Start Url")] = None
     started_at: Annotated[AwareDatetime | None, Field(title="Started At")] = None
     status: Annotated[Status4, Field(title="Status")]
@@ -1596,6 +1674,10 @@ class BatchScrapeRequest(BaseModel):
         Field(alias="schema", title="Schema"),
     ] = None
     urls: Annotated[list[str], Field(max_length=1000, min_length=1, title="Urls")]
+    webhook_batch: WebhookBatch | None = None
+    webhook_events: Annotated[
+        list[WebhookEvent] | None, Field(min_length=1, title="Webhook Events")
+    ] = None
     webhook_url: Annotated[str | None, Field(title="Webhook Url")] = None
 
 
@@ -1649,6 +1731,10 @@ class CrawlRequest(BaseModel):
     ] = None
     strategy: Annotated[Strategy1 | None, Field(title="Strategy")] = "bfs"
     url: Annotated[str, Field(title="Url")]
+    webhook_batch: WebhookBatch | None = None
+    webhook_events: Annotated[
+        list[WebhookEvent] | None, Field(min_length=1, title="Webhook Events")
+    ] = None
     webhook_url: Annotated[str | None, Field(title="Webhook Url")] = None
 
 
@@ -1698,6 +1784,10 @@ class ExtractRequest(BaseModel):
         Field(alias="schema", title="Schema"),
     ]
     urls: Annotated[list[str], Field(max_length=1000, min_length=1, title="Urls")]
+    webhook_batch: WebhookBatch | None = None
+    webhook_events: Annotated[
+        list[WebhookEvent] | None, Field(min_length=1, title="Webhook Events")
+    ] = None
     webhook_url: Annotated[str | None, Field(title="Webhook Url")] = None
 
 
@@ -1772,6 +1862,58 @@ class Labels(BaseModel):
     prefill_source: Annotated[str | None, Field(title="Prefill Source")] = None
     rows: Annotated[list[LabelRow] | None, Field(title="Rows")] = []
     status: Annotated[Status5, Field(title="Status")]
+
+
+class NewBatchSchedule(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    cron: Annotated[str | None, Field(title="Cron")] = None
+    interval_s: Annotated[IntervalS | None, Field(title="Interval S")] = None
+    kind: Annotated[Literal["batch_scrape"], Field(title="Kind")]
+    name: Annotated[str, Field(max_length=200, min_length=1, title="Name")]
+    paused: Annotated[bool | None, Field(title="Paused")] = False
+    request: BatchScrapeRequest
+    timezone: Annotated[str | None, Field(title="Timezone")] = "UTC"
+
+
+class NewCrawlSchedule(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    cron: Annotated[str | None, Field(title="Cron")] = None
+    interval_s: Annotated[IntervalS | None, Field(title="Interval S")] = None
+    kind: Annotated[Literal["crawl"], Field(title="Kind")]
+    name: Annotated[str, Field(max_length=200, min_length=1, title="Name")]
+    paused: Annotated[bool | None, Field(title="Paused")] = False
+    request: CrawlRequest
+    timezone: Annotated[str | None, Field(title="Timezone")] = "UTC"
+
+
+class NewExtractSchedule(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    cron: Annotated[str | None, Field(title="Cron")] = None
+    interval_s: Annotated[IntervalS | None, Field(title="Interval S")] = None
+    kind: Annotated[Literal["extract"], Field(title="Kind")]
+    name: Annotated[str, Field(max_length=200, min_length=1, title="Name")]
+    paused: Annotated[bool | None, Field(title="Paused")] = False
+    request: ExtractRequest
+    timezone: Annotated[str | None, Field(title="Timezone")] = "UTC"
+
+
+class NewScrapeSchedule(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    cron: Annotated[str | None, Field(title="Cron")] = None
+    interval_s: Annotated[IntervalS | None, Field(title="Interval S")] = None
+    kind: Annotated[Literal["scrape"], Field(title="Kind")]
+    name: Annotated[str, Field(max_length=200, min_length=1, title="Name")]
+    paused: Annotated[bool | None, Field(title="Paused")] = False
+    request: ScrapeRequest
+    timezone: Annotated[str | None, Field(title="Timezone")] = "UTC"
 
 
 class PageDetail(BaseModel):

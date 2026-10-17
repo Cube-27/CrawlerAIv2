@@ -355,7 +355,7 @@
       },
       "BatchScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/batch/scrape` (\u00a74.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's (SPEC-07 \u00a74.4), for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),\nand `schema.fields` is drafted while the caller waits (SPEC-14 \u00a74.10). Role C fills a page's gaps as in a scrape;\n`budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job\nkind (D-1006, D-1121). `webhook_url` is called when the job ends (\u00a74.2).",
+        "description": "The body of `POST /v1/batch/scrape` (\u00a74.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a\nscrape's (SPEC-07 \u00a74.4), for every URL. A batch's results are either records or page outputs, so `records` is\nasked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),\nand `schema.fields` is drafted while the caller waits (SPEC-14 \u00a74.10). Role C fills a page's gaps as in a scrape;\n`budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job\nkind (D-1006, D-1121). The webhook options are `WebhookOptions` (\u00a74.2).",
         "properties": {
           "budget": {
             "anyOf": [
@@ -469,6 +469,33 @@
             "maxItems": 1000,
             "minItems": 1,
             "title": "Urls",
+            "type": "array"
+          },
+          "webhook_batch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebhookBatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "webhook_events": {
+            "items": {
+              "enum": [
+                "page",
+                "record",
+                "record_changed",
+                "url_gone",
+                "job_completed",
+                "job_failed",
+                "job_cancelled"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Webhook Events",
             "type": "array"
           },
           "webhook_url": {
@@ -1182,7 +1209,7 @@
       },
       "CrawlRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/crawl` (\u00a74.5). The formats, `schema`, `fetch` and `locale` are a batch's (\u00a74.3), for every\npage the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted\nwhile the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does\n(D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\npages are extracted. `webhook_url` is called when the job ends (\u00a74.2).\n\n`strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the\nlinks that best match `query` and `keywords` first (`crawl.scoring`). `max_pages` is `limit`. `allow_subdomains`\nkeeps the start host's subdomains without an `include`, and `allow_external` any host (D-1440, D-1441).",
+        "description": "The body of `POST /v1/crawl` (\u00a74.5). The formats, `schema`, `fetch` and `locale` are a batch's (\u00a74.3), for every\npage the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted\nwhile the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does\n(D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\npages are extracted. The webhook options are `WebhookOptions` (\u00a74.2).\n\n`strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the\nlinks that best match `query` and `keywords` first (`crawl.scoring`). `max_pages` is `limit`. `allow_subdomains`\nkeeps the start host's subdomains without an `include`, and `allow_external` any host (D-1440, D-1441).",
         "properties": {
           "allow_external": {
             "default": false,
@@ -1354,6 +1381,33 @@
           "url": {
             "title": "Url",
             "type": "string"
+          },
+          "webhook_batch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebhookBatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "webhook_events": {
+            "items": {
+              "enum": [
+                "page",
+                "record",
+                "record_changed",
+                "url_gone",
+                "job_completed",
+                "job_failed",
+                "job_cancelled"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Webhook Events",
+            "type": "array"
           },
           "webhook_url": {
             "anyOf": [
@@ -1740,7 +1794,7 @@
       },
       "ExtractRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/extract` (\u00a74.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it\ninline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 \u00a74.10), and its page kind must\nbe `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's\ndraft. The `fetch` and `locale` are a scrape's (SPEC-07 \u00a74.4), for every URL. `webhook_url` is called when the job\nends (\u00a74.2).",
+        "description": "The body of `POST /v1/extract` (\u00a74.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it\ninline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 \u00a74.10), and its page kind must\nbe `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's\ndraft. The `fetch` and `locale` are a scrape's (SPEC-07 \u00a74.4), for every URL. The webhook options are\n`WebhookOptions` (\u00a74.2).",
         "properties": {
           "budget": {
             "anyOf": [
@@ -1814,6 +1868,33 @@
             "maxItems": 1000,
             "minItems": 1,
             "title": "Urls",
+            "type": "array"
+          },
+          "webhook_batch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebhookBatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "webhook_events": {
+            "items": {
+              "enum": [
+                "page",
+                "record",
+                "record_changed",
+                "url_gone",
+                "job_completed",
+                "job_failed",
+                "job_cancelled"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Webhook Events",
             "type": "array"
           },
           "webhook_url": {
@@ -2922,6 +3003,18 @@
           "outcomes": {
             "$ref": "#/components/schemas/OutcomeCounts"
           },
+          "schedule_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Id"
+          },
           "start_url": {
             "anyOf": [
               {
@@ -3001,7 +3094,8 @@
           "engine_version",
           "cancel_requested",
           "start_url",
-          "url_count"
+          "url_count",
+          "schedule_id"
         ],
         "title": "JobSummary",
         "type": "object"
@@ -3897,6 +3991,183 @@
         "title": "ModelRoleUsage",
         "type": "object"
       },
+      "NewBatchSchedule": {
+        "additionalProperties": false,
+        "properties": {
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron"
+          },
+          "interval_s": {
+            "anyOf": [
+              {
+                "minimum": 60.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval S"
+          },
+          "kind": {
+            "const": "batch_scrape",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "request": {
+            "$ref": "#/components/schemas/BatchScrapeRequest"
+          },
+          "timezone": {
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "request"
+        ],
+        "title": "NewBatchSchedule",
+        "type": "object"
+      },
+      "NewCrawlSchedule": {
+        "additionalProperties": false,
+        "properties": {
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron"
+          },
+          "interval_s": {
+            "anyOf": [
+              {
+                "minimum": 60.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval S"
+          },
+          "kind": {
+            "const": "crawl",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "request": {
+            "$ref": "#/components/schemas/CrawlRequest"
+          },
+          "timezone": {
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "request"
+        ],
+        "title": "NewCrawlSchedule",
+        "type": "object"
+      },
+      "NewExtractSchedule": {
+        "additionalProperties": false,
+        "properties": {
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron"
+          },
+          "interval_s": {
+            "anyOf": [
+              {
+                "minimum": 60.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval S"
+          },
+          "kind": {
+            "const": "extract",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "request": {
+            "$ref": "#/components/schemas/ExtractRequest"
+          },
+          "timezone": {
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "request"
+        ],
+        "title": "NewExtractSchedule",
+        "type": "object"
+      },
       "NewSchema": {
         "additionalProperties": false,
         "properties": {
@@ -3942,6 +4213,65 @@
           "name"
         ],
         "title": "NewSchema",
+        "type": "object"
+      },
+      "NewScrapeSchedule": {
+        "additionalProperties": false,
+        "properties": {
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron"
+          },
+          "interval_s": {
+            "anyOf": [
+              {
+                "minimum": 60.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval S"
+          },
+          "kind": {
+            "const": "scrape",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "request": {
+            "$ref": "#/components/schemas/ScrapeRequest"
+          },
+          "timezone": {
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "request"
+        ],
+        "title": "NewScrapeSchedule",
         "type": "object"
       },
       "NextUrlPagination": {
@@ -5403,6 +5733,260 @@
         "title": "RowMeta",
         "type": "object"
       },
+      "RunStarted": {
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "RunStarted",
+        "type": "object"
+      },
+      "ScheduleOut": {
+        "description": "A schedule: its run (`kind`, and `request` as stored, a records schema by id), its cadence, whether it is\npaused, when it runs next, and its last run: when, the job it submitted, or why it submitted none.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "interval_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval S"
+          },
+          "kind": {
+            "enum": [
+              "batch_scrape",
+              "crawl",
+              "extract"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Job Id"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_run_at": {
+            "format": "date-time",
+            "title": "Next Run At",
+            "type": "string"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "request": {
+            "additionalProperties": true,
+            "title": "Request",
+            "type": "object"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "request",
+          "cron",
+          "interval_s",
+          "timezone",
+          "paused",
+          "next_run_at",
+          "last_run_at",
+          "last_job_id",
+          "last_error",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ScheduleOut",
+        "type": "object"
+      },
+      "SchedulePage": {
+        "description": "One page of schedules, newest first; `next_cursor` is the `cursor` of the page after it, None on the last.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "SchedulePage",
+        "type": "object"
+      },
+      "ScheduleUpdate": {
+        "additionalProperties": false,
+        "description": "The members to change; any left out stay. A new `request` comes with its `kind`; a `cron` replaces an interval\nand an `interval_s` a cron expression.",
+        "properties": {
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron"
+          },
+          "interval_s": {
+            "anyOf": [
+              {
+                "minimum": 60.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval S"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "scrape",
+                  "batch_scrape",
+                  "crawl",
+                  "extract"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "ScheduleUpdate",
+        "type": "object"
+      },
       "SchemaById": {
         "additionalProperties": false,
         "properties": {
@@ -6726,6 +7310,30 @@
           }
         },
         "title": "WaitAction",
+        "type": "object"
+      },
+      "WebhookBatch": {
+        "additionalProperties": false,
+        "description": "How a job's webhook events are grouped: up to `max_events` a delivery, sent when that many wait or the oldest\nhas waited `max_seconds`, whichever comes first.",
+        "properties": {
+          "max_events": {
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Max Events",
+            "type": "integer"
+          },
+          "max_seconds": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 3600.0,
+            "title": "Max Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "max_events",
+          "max_seconds"
+        ],
+        "title": "WebhookBatch",
         "type": "object"
       },
       "XPathStep-Input": {
@@ -8918,6 +9526,23 @@
           },
           {
             "in": "query",
+            "name": "schedule_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schedule Id"
+            }
+          },
+          {
+            "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
@@ -10319,6 +10944,969 @@
         "summary": "List Records",
         "tags": [
           "records"
+        ]
+      }
+    },
+    "/v1/schedules": {
+      "get": {
+        "description": "The schedules, newest first. Pass a page's `next_cursor` as `cursor` for the page after it.",
+        "operationId": "list_schedules_v1_schedules_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Schedules",
+        "tags": [
+          "schedules"
+        ]
+      },
+      "post": {
+        "description": "Store a recurring run of `request` (of `kind`: a scrape runs as the batch of its URL), at each time of the\n5-field `cron` expression in `timezone`, or every `interval_s` seconds (at least 60). The request is checked as\nits submission would be (targets, schema); a `records` schema is stored by id. Its jobs are submitted as this key's,\nwhich signs their webhooks.",
+        "operationId": "create_schedule_v1_schedules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "discriminator": {
+                  "mapping": {
+                    "batch_scrape": "#/components/schemas/NewBatchSchedule",
+                    "crawl": "#/components/schemas/NewCrawlSchedule",
+                    "extract": "#/components/schemas/NewExtractSchedule",
+                    "scrape": "#/components/schemas/NewScrapeSchedule"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/NewScrapeSchedule"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NewBatchSchedule"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NewCrawlSchedule"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NewExtractSchedule"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Schedule",
+        "tags": [
+          "schedules"
+        ]
+      }
+    },
+    "/v1/schedules/{schedule_id}": {
+      "delete": {
+        "description": "Delete the schedule. Its jobs stay, with `schedule_id` null.",
+        "operationId": "delete_schedule_v1_schedules__schedule_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Schedule",
+        "tags": [
+          "schedules"
+        ]
+      },
+      "get": {
+        "operationId": "get_schedule_v1_schedules__schedule_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Schedule",
+        "tags": [
+          "schedules"
+        ]
+      },
+      "patch": {
+        "description": "Change the schedule's name, cadence, or run (`kind` with `request`, checked as at creation); a changed cadence\nis due at its first time after now.",
+        "operationId": "update_schedule_v1_schedules__schedule_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Schedule",
+        "tags": [
+          "schedules"
+        ]
+      }
+    },
+    "/v1/schedules/{schedule_id}/pause": {
+      "post": {
+        "description": "Stop the schedule's runs until it is resumed.",
+        "operationId": "pause_schedule_v1_schedules__schedule_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pause Schedule",
+        "tags": [
+          "schedules"
+        ]
+      }
+    },
+    "/v1/schedules/{schedule_id}/resume": {
+      "post": {
+        "description": "Run the schedule again from its first due time after now; the runs missed while paused are not made up.",
+        "operationId": "resume_schedule_v1_schedules__schedule_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resume Schedule",
+        "tags": [
+          "schedules"
+        ]
+      }
+    },
+    "/v1/schedules/{schedule_id}/run": {
+      "post": {
+        "description": "Submit the schedule's job now, paused or not; its next due time stays as it is.",
+        "operationId": "run_schedule_v1_schedules__schedule_id__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run Schedule",
+        "tags": [
+          "schedules"
         ]
       }
     },
