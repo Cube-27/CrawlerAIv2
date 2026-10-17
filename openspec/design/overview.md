@@ -38,7 +38,8 @@ estimated LLM cost, from the providers' published prices kept as versioned data,
 ### Non-goals
 
 - Page-type detection. The caller chooses detail or listing (§23).
-- Web search and scripted browser actions (Appendix A #21).
+- Web search and scripted browser actions (Appendix A #21), except a single-URL listing scrape's paging actions
+  (Appendix A #52).
 - Multi-tenant SaaS machinery: billing, signup, tenancy, user accounts, roles. One deployment serves one
   organization, with API keys.
 - Enrichment, product intelligence, knowledge graphs.
@@ -149,7 +150,7 @@ is measured after it is added.
 | **GMC feed and job XML exporters** | Feed delivery | A user asks (OPEN_QUESTIONS #4). |
 | **Site health dashboard, alerts** | Operations | Production use starts. |
 | **WARC capture format** | Interoperability with archive tools | Someone needs pywb or WARC output. |
-| **Web search; browser actions; authenticated crawls** | Scope | The owner decides (Appendix A #21). |
+| **Web search; browser actions; authenticated crawls** | Scope | The owner decides (Appendix A #21). **Browser actions admitted 2026-10-17** for a single-URL listing scrape only, opt-in: scroll and structural paging controls, never typing, forms, logins or CAPTCHA (Appendix A #52). |
 
 ## 23. Deferred: page-type gate
 
