@@ -11,12 +11,16 @@ Nothing is defaulted (C7): a fraction, a negative number, a range, another unit,
 is `Invalid`; a number the page's locales read as different values is `Ambiguous`.
 """
 
-from collections.abc import Hashable, Mapping
+import unicodedata
+from collections.abc import Hashable, Iterator, Mapping
 from decimal import Decimal
+from functools import cache
 
+from babel import Locale
+from babel.localedata import locale_identifiers
 from pydantic import JsonValue
 
-from crawlerai.normalize import numbers
+from crawlerai.normalize import numbers, vocab
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -24,6 +28,8 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 _ONE = "C62"
 # schema.org `QuantitativeValue`: `minValue` and `maxValue` state a range, not one count.
 _RANGE_KEYS = ("minValue", "maxValue")
+# CLDR unit id of "item": the one measurement unit of the CLDR unit data that is a count, so it does not contradict C62.
+_CLDR_COUNT_UNIT = "concentr-item"
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
@@ -48,16 +54,44 @@ def _quantitative_value(raw: Mapping[str, JsonValue], ctx: Context) -> Normalize
     unit_code, unit_text = raw.get("unitCode"), raw.get("unitText")
     if unit_code not in (None, _ONE) or (unit_code is None and unit_text is not None):
         return Invalid("unit")
+    if unit_code == _ONE and isinstance(unit_text, str) and _names_a_measure(unit_text, ctx):
+        return Invalid("unit")
     if "value" not in raw:
         return Invalid("range" if any(k in raw for k in _RANGE_KEYS) else "no_value")
     return _scalar(raw["value"], ctx)
+
+
+def _names_a_measure(unit_text: str, ctx: Context) -> bool:
+    """Whether `unitText` is the name or symbol of a CLDR measurement unit other than a count (D-1271): "one" and
+    "kg" cannot both be right. Text that names no CLDR unit ("items", "pieces") does not contradict "one"."""
+    label = unicodedata.normalize("NFKC", unit_text).strip().casefold()
+    return label in _measure_labels(vocab.context_languages(ctx))
+
+
+@cache
+def _measure_labels(languages: frozenset[str]) -> frozenset[str]:
+    """Every CLDR unit pattern's text beside its `{0}` placeholder (names and symbols, singular and plural, all
+    widths) of the languages' locales, or of every locale when the page states no language."""
+    idents = (i for i in locale_identifiers() if not languages or i.split("_")[0] in languages)
+    labels = {label for ident in idents for label in _locale_labels(ident)}
+    labels.discard("")
+    return frozenset(labels)
+
+
+def _locale_labels(ident: str) -> Iterator[str]:
+    for unit, widths in Locale.parse(ident)._data["unit_patterns"].items():
+        if unit != _CLDR_COUNT_UNIT:
+            for forms in widths.values():
+                for pattern in forms.values():
+                    if isinstance(pattern, str):
+                        yield unicodedata.normalize("NFKC", pattern.replace("{0}", "")).strip().casefold()
 
 
 def _text(raw: str, ctx: Context) -> NormalizeResult:
     found = numbers.stated(raw)
     if isinstance(found, str):
         return Invalid(found)
-    if numbers.negative(found.before):
+    if numbers.negated(found.before):
         return Invalid("negative")
     values = numbers.readings(found.written, numbers.locale_set(ctx))
     if not values:

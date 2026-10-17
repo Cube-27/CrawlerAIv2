@@ -73,3 +73,32 @@ def test_every_tile_carrying_the_shared_tokens_is_an_item_in_document_order(
     page = _page(_grid(classes))
 
     assert _hrefs(page) == [f"/p/{i}" for i in range(len(extras))]
+
+
+def test_a_bare_tag_cloud_does_not_outrank_a_grid_of_richer_items() -> None:
+    cloud = '<ul class="cloud">' + "".join(f'<li><a href="/t/{i}">tag{i}</a></li>' for i in range(30)) + "</ul>"
+    grid = (
+        '<div class="grid">'
+        + "".join(
+            f'<div class="card"><a href="/p/{i}"><img src="/i/{i}.jpg" alt=""></a><a href="/p/{i}">Kettle {i}</a>'
+            f"<span>{i}9.90 EUR</span></div>"
+            for i in range(4)
+        )
+        + "</div>"
+    )
+
+    assert _hrefs(_page(cloud + grid)) == [f"/p/{i}" for i in range(4)]
+    assert _hrefs(_page(grid + cloud)) == [f"/p/{i}" for i in range(4)]
+
+
+def test_with_equal_evidence_the_larger_group_wins() -> None:
+    small = "".join(f'<p class="a"><a href="/a/{i}">A{i}</a> note</p>' for i in range(3))
+    large = "".join(f'<p class="b"><a href="/b/{i}">B{i}</a> note</p>' for i in range(5))
+
+    assert _hrefs(_page(f"<div>{small}</div><div>{large}</div>")) == [f"/b/{i}" for i in range(5)]
+
+
+def test_a_group_of_bare_links_is_still_found_when_it_is_the_only_one() -> None:
+    cloud = '<ul class="cloud">' + "".join(f'<li><a href="/t/{i}">tag{i}</a></li>' for i in range(5)) + "</ul>"
+
+    assert _hrefs(_page(cloud)) == [f"/t/{i}" for i in range(5)]

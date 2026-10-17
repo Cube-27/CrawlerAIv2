@@ -82,7 +82,7 @@ def _text(raw: str, ctx: Context, stated: str | None = None) -> NormalizeResult:
     if isinstance(run, Invalid):
         return run
     before, after = text[: run.start()], text[run.end() :]
-    if numbers.negative(before):
+    if numbers.negated(before):
         return Invalid("not_positive")
     locales = numbers.locale_set(ctx)
     currencies = _currencies_of(text, before, after, locales, ctx, stated)

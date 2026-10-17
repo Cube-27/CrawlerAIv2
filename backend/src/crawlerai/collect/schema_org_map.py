@@ -280,7 +280,7 @@ def field_candidates(
     for name, spec, paths in mapped_fields(schema):
         as_list = spec.type is FieldType.LIST
         if spec.type is FieldType.IDENTIFIER:
-            paths = _with_sub_properties(paths, vocabulary)
+            paths = _with_sub_properties(paths, vocabulary, spec.scheme)
         for entity_id, selected in _selections(entities, paths, vocabulary, as_list=as_list):
             if selected.url and _holds_text(spec):
                 continue
@@ -315,16 +315,32 @@ def mapped_fields(schema: SchemaDef) -> Iterator[tuple[str, FieldSpec, tuple[Map
             yield name, spec, parse_paths(spec.schema_org)
 
 
-def _with_sub_properties(paths: Sequence[MappedPath], vocabulary: Vocabulary) -> tuple[MappedPath, ...]:
+def _with_sub_properties(
+    paths: Sequence[MappedPath], vocabulary: Vocabulary, scheme: str | None
+) -> tuple[MappedPath, ...]:
     """Each alternative, then the same path ending in each sub-property of its last property. RDF Schema 1.1 §3.5
     (`rdfs:subPropertyOf`): a value of a sub-property is a value of the property, so a `gtin13` is a `gtin`. Only an
     identifier field reads them: an identifier's sub-properties name its schemes (GTIN-13 of GTIN), while others
-    narrow what the value is (`logo` of `image`), which the field's own property does not mean."""
+    narrow what the value is (`logo` of `image`), which the field's own property does not mean. A path ending in
+    `identifier` itself names no scheme, so it widens only to the field's own scheme: the schema.org property of that
+    name (`gtin` for scheme `gtin`) and its sub-properties, never the other schemes (D-1273)."""
     return tuple(
         widened
         for path in paths
-        for widened in (path, *(_ending_in(path, sub) for sub in sorted(vocabulary.sub_properties(path.steps[-1]))))
+        for widened in (
+            path,
+            *(_ending_in(path, sub) for sub in sorted(_widening(path.steps[-1], vocabulary, scheme))),
+        )
     )
+
+
+def _widening(prop: str, vocabulary: Vocabulary, scheme: str | None) -> frozenset[str]:
+    subs = vocabulary.sub_properties(prop)
+    if prop != _IDENTIFIER:
+        return subs
+    if scheme not in subs:
+        return frozenset()
+    return frozenset({scheme}) | vocabulary.sub_properties(scheme)
 
 
 def _ending_in(path: MappedPath, prop: str) -> MappedPath:

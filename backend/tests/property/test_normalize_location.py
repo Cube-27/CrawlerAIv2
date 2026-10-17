@@ -195,3 +195,13 @@ def test_another_type_is_a_programming_error() -> None:
 
     with pytest.raises(TypeError):
         location.normalize("Alderton", spec, CTX)
+
+
+@pytest.mark.parametrize("text", ["Not remote", "Not remote, Lakeside", "Remote-friendly office", "Remote work only"])
+def test_a_remote_phrase_inside_other_words_of_its_clause_is_not_remote(text: str) -> None:
+    assert norm(text) == Ok(value(text))
+
+
+@pytest.mark.parametrize("text", ["Lakeside; Remote", "Remote", "Lakeside / Remote (US)"])
+def test_a_remote_clause_of_its_own_is_remote(text: str) -> None:
+    assert norm(text) == Ok(value(text, remote=True))

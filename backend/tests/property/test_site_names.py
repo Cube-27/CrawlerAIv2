@@ -43,3 +43,13 @@ def test_a_title_naming_the_site_is_one_of_its_writings(site_name: str, other: s
 
     assert site.names(f" {site_name}! ")
     assert site.names(other) == (fold(other) == fold(site_name))
+
+
+def test_a_site_name_of_many_parts_costs_a_bounded_number_of_runs() -> None:
+    name = " | ".join(f"part{i}" for i in range(2000))
+
+    site = SiteNames.of([name], None)
+
+    assert len(site.stated) <= 8 * 9 // 2 + 1
+    assert site.names("part0part1")
+    assert site.names(name.replace(" | ", ""))

@@ -58,9 +58,6 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Role C: confirm the `fast` Anthropic model accepts `output_config.effort` (D-0766); sparse 200-row listings spend ~14 output tokens per absent field; Gemini thinking is not lowered for role C [#159]. `max_output_tokens` may not hold 200 wide rows [#111].
 - Resolve: a listing item stated in two syntaxes keeps only the first syntax's row; merging both entities into one row would add the other's values and their agreement [#196].
 - Acquisition: CDP streaming for the browser's memory bound; proxy support and `proxy_bytes` usage in `fetch_json` [#52, #64].
-- Normalize: a minus counts anywhere before the number (`numbers.negative`), so "In stock - 5 left" declines as negative; count it only when it touches the number, for money and count (D-0922) [#203].
-- Normalize: `count` accepts `unitCode` `C62` with a contradicting `unitText` ("kg"); decide whether to decline any `unitText` beside C62 (D-0921) [#203].
-- Normalize: `type:remote` (location) still matches its phrase anywhere, so "not remote" reads as remote; the first-clause rule (`vocab.stated_codes`) may apply there too, gated (D-0920) [#203].
 - Role S: field-name drafts (`schema.fields`, `POST /v1/schemas/draft`) are charged to no job budget; only the per-key rate limit bounds them, and usage records them. Add a per-key cap on uncharged role S calls if it matters (D-0926) [#205].
 - Playground: the toolbar's Format shows its error line under it in the flow, so a refused send without a format moves the action and the output down; hang it as the toolbar's Schema now does (D-1214) [#238].
 - Field tables: every field of an uncalibrated engine shows an `uncalibrated` badge; one badge per record would need a DESIGN.md and INV-22 change [#214].
@@ -68,15 +65,10 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Shopify product pages take the page path; joining the adapter's answer to the page's collectors needs a capture holding both and a measure of cross-source conflicts (D-1118) [#224].
 - Resolve: identity merge across collectors (microdata `itemid`/`sku` duplicates, one item in JSON-LD and microdata) belongs in `EntityGraph` with one shared union-find; `_same_nodes` anchors URL agreement to an identity's first node, so two later agreeing nodes can stay apart (D-0942) [#207].
 - Resolve: renditions of one image across merged blocks (or an `http` og:image) still decline; publishing one needs a rendition rule (D-0944) [#207].
-- Collect: `site_names._runs` is quadratic in `og:site_name`'s separator parts; cap the parts if long site names appear (D-0940) [#207].
 - Round-1 eval: class 13 is §22 evidence (repeated-structure DOM collectors; class 10 is addressed by #208); classes 11 and 12 answered by the owner (D-1057, D-1058) [#207, #216].
 - Recurring: SPEC-11 §4.5's listing diff tracks a listing crawl's page URLs, not its row URLs ("No job stores listing records" no longer holds), and a listing page gets no standing record (rows are keyed by row URL), so it is always re-extracted [#206].
-- Listing items (`acquire.items`): the largest same-shape linked group wins, so a bare tag cloud or pager outside `nav` can outrank a small grid in markdown. Measure on dev first (D-0934, D-0993) [#206, #213].
-- Markdown: trafilatura drops the space after an inline element whose parent is a `div`, `td` or `li` (`**Warning!**This`); fix upstream, or rewrap such runs before extraction with dev evidence (D-0994) [#213].
-- Markdown: a listing page with no repeated items keeps only what trafilatura's `favor_precision` keeps (a UAT listing kept only its FAQ); compare recall mode on dev listings before changing it [#213].
 - Crawl: each task that adds URLs looks up the start task's capture for the site's host (D-0991); store the host on the job if the query shows in profiles. A redirected start page is usually linked from itself, so its target is fetched again as a task [#213].
 - Acquisition thresholds to confirm on dev: the 1024-byte terminal bound (D-0932) and the listing shell rule's effect on empty listings (D-0933) [#206].
-- Collect: identifier widening (D-0965) also applies to a field mapped to `T.identifier` itself, pooling every scheme; stop at `identifier` or keep sub-properties of the field's `scheme` [#209].
 - Resolve: a standalone variant Product beside its ProductGroup (no `isVariantOf`) gets none of the group's variants as rows, nor its colour, gender or material; one eval page and one site-test page show it, see SPEC-13 §9 (D-0966) [#209].
 - Array rows (#243): a related item alone in an array (one object) stays in its holder's scope and its visible state
   value is still the page's; a state variant row naming the page only with a variant query, or no URL, is `not_owned`

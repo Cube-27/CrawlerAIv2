@@ -277,3 +277,22 @@ def test_an_identifier_field_reaches_its_property_s_sub_properties() -> None:
 def test_another_field_reaches_only_its_own_property() -> None:
     # A logo is an image of the thing, but not the picture of the item an image field means.
     assert _found((Typed("item", ("Product",), BRANDED),), _schema(image=IMAGE)) == []
+
+
+BARE_IDENTIFIER = FieldSpec(type=FieldType.IDENTIFIER, scheme="gtin", description="d", schema_org="Product.identifier")
+MIXED = _JsonNode("item", {"gtin13": ["4006381333931"], "sku": ["S-1"], "identifier": ["X-1"]})
+
+
+def test_a_field_mapped_to_identifier_widens_only_to_its_own_scheme() -> None:
+    assert _found((Typed("item", ("Product",), MIXED),), _schema(gtin=BARE_IDENTIFIER)) == [
+        ("gtin", "item", "jsonld:0:$.item.identifier[0]"),
+        ("gtin", "item", "jsonld:0:$.item.gtin13[0]"),
+    ]
+
+
+def test_a_custom_identifier_mapped_to_identifier_reads_that_property_only() -> None:
+    custom = BARE_IDENTIFIER.model_copy(update={"scheme": "custom"})
+
+    assert _found((Typed("item", ("Product",), MIXED),), _schema(code=custom)) == [
+        ("code", "item", "jsonld:0:$.item.identifier[0]"),
+    ]
