@@ -183,7 +183,6 @@ class Site(Base):
     __tablename__ = "site"
     __table_args__ = (
         CheckConstraint("host = lower(host)", name="host_lowercase"),
-        CheckConstraint(one_of("fetch_method", FetchMethod), name="fetch_method"),
         CheckConstraint("crawl_delay_ms >= 0", name="crawl_delay_ms_non_negative"),
     )
 
@@ -191,12 +190,29 @@ class Site(Base):
     project_id: Mapped[ProjectId] = mapped_column(ForeignKey(Project.id))
     host: Mapped[str] = mapped_column(Text, unique=True)
     platform: Mapped[str | None] = mapped_column(Text)
-    fetch_method: Mapped[FetchMethod] = mapped_column(Text, server_default=text("'http'"))
     proxy_pool: Mapped[str | None] = mapped_column(Text)
     robots_snapshot: Mapped[str | None] = mapped_column(Text)
     crawl_delay_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = created_at_column()
-    fetch_method_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The adapters that declined the host (`adapters.registry`, SPEC-15 §4.2), each with the time (ISO 8601, UTC) until
+    # which it is not asked again (D-1384).
+    adapter_declined: Mapped[dict[str, str]] = mapped_column(JSONB, server_default=empty_object_default())
+
+
+class SiteFetchMethod(Base):
+    """The fetch method a site's pages of one kind are remembered to need (SPEC-02 §4.4, D-1380): a row once a fetch of
+    that kind kept a browser `ok` over HTTP; no row is `http`. `checked_at` starts the re-check's clock."""
+
+    __tablename__ = "site_fetch_method"
+    __table_args__ = (
+        CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
+        CheckConstraint(one_of("method", FetchMethod), name="method"),
+    )
+
+    site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id), primary_key=True)
+    page_kind: Mapped[PageKind] = mapped_column(Text, primary_key=True)
+    method: Mapped[FetchMethod] = mapped_column(Text)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class SchemaDef(Base):
@@ -326,7 +342,6 @@ class UrlState(Base):
     # (D-1340), and their SimHash as 16 hex digits, which says how far a change moved.
     content_digest: Mapped[str | None] = mapped_column(Text)
     content_fingerprint: Mapped[str | None] = mapped_column(Text)
-    record_fingerprint: Mapped[str | None] = mapped_column(Text)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     missing_runs: Mapped[int] = mapped_column(Integer, server_default=text("0"))
@@ -388,6 +403,8 @@ class UrlTask(Base):
         Index(None, "job_id", "status", "outcome"),
         # A job's tasks in id order, which its results and its records page by (keyset, `db.paging`).
         Index(None, "job_id", "id"),
+        # A crawl takes no URL a task of the job was already fetched at (`crawl.frontier`, D-1382).
+        Index(None, "job_id", "final_url", postgresql_where=text("final_url IS NOT NULL")),
     )
 
     id: Mapped[UrlTaskId] = mapped_column(primary_key=True, default=uuid7)
@@ -407,6 +424,8 @@ class UrlTask(Base):
     priority: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     depth: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     parent_task_id: Mapped[UrlTaskId | None] = mapped_column(ForeignKey(f"{__tablename__}.id"))
+    # Where the task's page was fetched, after its redirects, in canonical form (`normalize.url_key`); NULL until then.
+    final_url: Mapped[str | None] = mapped_column(Text)
 
 
 class JobEvent(Base):

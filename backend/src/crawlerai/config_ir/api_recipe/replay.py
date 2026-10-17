@@ -15,12 +15,15 @@ from crawlerai.collect import json_doc
 from crawlerai.collect.api import read_map
 from crawlerai.config_ir.api_recipe.binding import PageData, Sample, render_body, render_url, resolve_params
 from crawlerai.config_ir.api_recipe.model import PAGE_URL, RequestSpec
+from crawlerai.db.models import JobId
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.schemas.types import SchemaDef
 
 # Sends one request: `fetch_json` with the job's policy and engine version.
 Replay = Callable[[JsonRequest], Awaitable[FetchResult]]
+# A learning run's `Replay`, for its job (whose usage the requests count as) and the site's proxy pool (D-1381).
+Replays = Callable[[JobId, str | None], Replay]
 
 
 @dataclass(frozen=True)

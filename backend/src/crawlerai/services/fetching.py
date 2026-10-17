@@ -6,11 +6,12 @@ page's (SPEC-09 §4.8), as a learning run's recipe replays are (§4.6, §4.7).
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Final
 from urllib.parse import urlsplit
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
@@ -21,11 +22,12 @@ from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.config_ir.api_recipe.execute import RecipeRung, unserved
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
-from crawlerai.config_ir.api_recipe.replay import Replay
+from crawlerai.config_ir.api_recipe.replay import Replay, Replays
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
-from crawlerai.services.scrape_steps import SiteRow, site_row
+from crawlerai.db.models import JobId, Site
+from crawlerai.services.scrape_steps import SiteRow, record_fetch_usage, site_row
 from crawlerai.storage.base import ObjectStore
 
 # D-1263: the longest pause a site asked for that a service waits out in place before its one further request: the
@@ -163,6 +165,37 @@ async def endpoint_rules(
     return (site.crawl_delay_ms, robots) if robots.allows(url) else "robots"
 
 
+def page_host_first(page_host: str, known: tuple[int | None, Robots | None], rules: SiteRules) -> SiteRules:
+    """`rules`, except for a URL on `page_host`, whose rules the caller read before fetching its page (`known`: the
+    host's interval setting and robots.txt, None when the policy does not respect it) and which are not read again
+    (D-1384)."""
+    crawl_delay_ms, robots = known
+
+    async def first(url: str, policy: FetchPolicy) -> tuple[int | None, Robots | None] | str:
+        if (urlsplit(url).hostname or "") != page_host:
+            return await rules(url, policy)
+        if not policy.respect_robots:
+            return crawl_delay_ms, None
+        if robots is None:
+            return "robots_unreachable"  # RFC 9309 §2.3.1.4: an unreachable robots.txt allows nothing
+        return (crawl_delay_ms, robots) if robots.allows(url) else "robots"
+
+    return first
+
+
+def site_rungs(fetching: Fetching, host: str, site: SiteRow) -> Rungs:
+    """This process's rungs with an adapter registry knowing the declines stored on the site of `host` (D-1384)."""
+    return replace(fetching.rungs, adapters=fetching.rungs.adapters.for_host(host, site.adapter_declined))
+
+
+async def store_declines(conn: AsyncConnection, site: SiteRow, host: str, rungs: Rungs) -> None:
+    """Store on the site of `host` the adapter declines `rungs` hold for it (`site_rungs`) when they differ from what
+    its row held: a decline made, or one that ran out (D-1384)."""
+    declined = rungs.adapters.declined_for(host)
+    if declined != site.adapter_declined:
+        await conn.execute(update(Site).where(Site.id == site.id).values(adapter_declined=declined))
+
+
 def engine_rules(engine: AsyncEngine, http: Rung, attempts: list[AttemptRecord]) -> SiteRules:
     """`endpoint_rules` read in a transaction of their own, robots.txt fetched over `http`, its attempts added to
     `attempts`: for a service that holds no connection while it fetches."""
@@ -226,23 +259,30 @@ def _polite_send(fetching: Fetching, json: JsonFetcher, rules: SiteRules, turn: 
     return send
 
 
-def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replay | None:
+def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
     """A learning run's recipe replays (SPEC-09 §4.6, §4.7) over this process's JSON rung, as politely as a served
     recipe's request: only where the endpoint host's robots.txt allows it, at that host's rate (D-0731). A `learn` job
-    names no fetch policy, so replays go with the default one, which respects robots.txt. None without the JSON
-    rung."""
+    names no fetch policy, so replays go with the default one, which respects robots.txt, through the site's proxy
+    pool, as its pages are fetched; their requests, robots.txt's too, count as the job's usage (D-1381). None without
+    the JSON rung."""
     json = fetching.rungs.json
     if json is None:
         return None
-    policy = FetchPolicy()
 
-    async def replay(request: JsonRequest) -> FetchResult:
-        # Nobody reads the attempts of a replay's robots.txt fetch: the run records only the replay's outcome. A list
-        # per replay, since the learner's replay lives as long as the worker.
-        rules = engine_rules(engine, fetching.rungs.http, [])
-        return await _polite_json(fetching.limiter, json, rules, request, policy, lambda _host: False)
+    def replays(job_id: JobId, proxy_pool: str | None) -> Replay:
+        policy = FetchPolicy(proxy_pool=proxy_pool)
 
-    return replay
+        async def replay(request: JsonRequest) -> FetchResult:
+            attempts: list[AttemptRecord] = []
+            rules = engine_rules(engine, fetching.rungs.http, attempts)
+            result = await _polite_json(fetching.limiter, json, rules, request, policy, lambda _host: False)
+            async with engine.begin() as conn:
+                await record_fetch_usage(conn, job_id, [*attempts, *result.attempts], proxy_pool)
+            return result
+
+        return replay
+
+    return replays
 
 
 async def _polite_json(

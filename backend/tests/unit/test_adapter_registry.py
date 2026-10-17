@@ -20,7 +20,7 @@ from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.adapters.base import NOT_PLATFORM, NOT_SERVED, Adapter, AdapterMatch, PageRefs, Shape
-from crawlerai.adapters.registry import DECLINE_SECONDS, MAX_DECLINED, Registry, platform_adapters
+from crawlerai.adapters.registry import DECLINE_FOR, Registry, platform_adapters
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.db.models import PageKind
 
@@ -84,11 +84,14 @@ async def _send(_request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
     raise AssertionError("the stub adapters answer themselves")
 
 
+T0 = datetime(2026, 10, 17, tzinfo=UTC)
+
+
 @dataclass
 class Clock:
-    now: float = 0.0
+    now: datetime = T0
 
-    def __call__(self) -> float:
+    def __call__(self) -> datetime:
         return self.now
 
 
@@ -248,12 +251,33 @@ def test_a_host_answering_without_the_platform_signal_is_declined_for_the_window
     registry = Registry([adapter], active={"board"}, clock=clock)
 
     asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
-    clock.now = DECLINE_SECONDS - 1
+    clock.now = T0 + DECLINE_FOR - timedelta(seconds=1)
     declined = asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
-    clock.now = DECLINE_SECONDS + 1
+    clock.now = T0 + DECLINE_FOR + timedelta(seconds=1)
     retried = asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
 
     assert (declined, retried is not None, len(adapter.rung.calls)) == (None, True, 2)
+
+
+def test_a_decline_is_read_back_from_what_the_site_row_stored() -> None:
+    # D-1384: the window holds across registries, so across processes, through `site.adapter_declined`.
+    adapter = StubAdapter("board", "board.example.test", Rung("api", status=404, reason=NOT_PLATFORM))
+    clock = Clock()
+    base = Registry([adapter], active={"board"}, clock=clock)
+    first = base.for_host("board.example.test", {})
+    asyncio.run(first.serve(BOARD, FetchPolicy(), _send))
+    stored = first.declined_for("board.example.test")
+
+    clock.now = T0 + timedelta(hours=1)
+    within = base.for_host("board.example.test", stored).would_serve(BOARD)
+    clock.now = T0 + DECLINE_FOR + timedelta(seconds=1)
+    expired = base.for_host("board.example.test", stored)
+
+    assert stored == {"board": (T0 + DECLINE_FOR).isoformat()}
+    assert within is False
+    assert expired.would_serve(BOARD) is True
+    assert expired.declined_for("board.example.test") == {}  # a decline that ran out is not stored again
+    assert base.would_serve(BOARD) is True  # the process's registry keeps none of a fetch's declines
 
 
 def test_an_answer_the_platform_gives_for_another_page_declines_no_host() -> None:
@@ -264,25 +288,6 @@ def test_an_answer_the_platform_gives_for_another_page_declines_no_host() -> Non
     again = asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
 
     assert (again is not None, len(adapter.rung.calls)) == (True, 2)
-
-
-def test_declined_hosts_are_bounded_and_the_oldest_is_forgotten_first() -> None:
-    adapter = StubAdapter("board", "", Rung("api", status=404, reason=NOT_PLATFORM))
-    registry = Registry([adapter], active={"board"})
-    urls = [f"https://h{i}.example.test/" for i in range(MAX_DECLINED + 1)]
-
-    async def serve_all() -> None:
-        for url in urls:
-            await registry.serve(url, FetchPolicy(), _send)
-
-    asyncio.run(serve_all())
-
-    async def served(url: str) -> bool:
-        return await registry.serve(url, FetchPolicy(), _send) is not None
-
-    assert asyncio.run(served(urls[1])) is False
-    assert asyncio.run(served(urls[-1])) is False
-    assert asyncio.run(served(urls[0])) is True
 
 
 SHOP_LIST = "https://shop.example.test/list"
@@ -490,6 +495,39 @@ def test_a_referred_answer_that_is_not_ok_leaves_the_page_with_both_attempts() -
 
     assert result.method == "http"
     assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("api", "not_found")]
+
+
+async def _lacks_rows(result: FetchResult) -> bool:
+    """A `needs_render` check: the HTTP page lacks what the caller reads, the render holds it (owner #54)."""
+    return result.method == "http"
+
+
+def _rendered_or_referred(adapter: ReferringAdapter, browser: Rung) -> FetchResult:
+    page = PageRung(_linking(PLATFORM))
+    rungs = Rungs(http=page, browser=browser, adapters=Registry([adapter], active={adapter.name}))
+    policy = FetchPolicy(page_kind="listing")
+    fetch = acquire(CAREERS, policy, "http", rungs, send=_send, admit_next=_admit(True, []), needs_render=_lacks_rows)
+    return asyncio.run(fetch)
+
+
+def test_a_page_lacking_rows_is_referred_before_it_is_rendered() -> None:
+    # D-1388: the referral serves the page, so the render it would have needed is never paid for.
+    adapter, browser = ReferringAdapter("platform", "platform.example.test"), Rung("browser")
+
+    result = _rendered_or_referred(adapter, browser)
+
+    assert (result.method, result.bundle.manifest.url, browser.calls) == ("api", PLATFORM, [])
+    assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("api", "ok")]
+
+
+def test_a_referral_that_does_not_serve_leaves_the_render_and_is_not_asked_again() -> None:
+    answer = Rung("api", status=404, block_class="not_found")
+    adapter, browser = ReferringAdapter("platform", "platform.example.test", answer), Rung("browser")
+
+    result = _rendered_or_referred(adapter, browser)
+
+    assert (result.method, adapter.rung.calls, browser.calls) == ("browser", [PLATFORM], [CAREERS])
+    assert [a.method for a in result.attempts] == ["http", "api", "browser"]
 
 
 def test_a_host_the_adapter_declined_is_not_referred_to() -> None:

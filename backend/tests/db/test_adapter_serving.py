@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from pydantic import SecretStr
@@ -24,7 +25,7 @@ from crawlerai.acquire.rungs import Rungs, adapter_registry
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import Job, JobId, JobKind, Record, SiteId
+from crawlerai.db.models import Job, JobId, JobKind, Record, Site, SiteId
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
@@ -168,8 +169,8 @@ async def test_a_collection_url_with_a_query_its_canonical_drops_is_served_over_
 
     assert result.fetch is not None
     assert (result.outcome, result.fetch.method, web.page_fetches()) == ("extracted", "api", [url])
-    # The page gives no rows, so it is rendered once (owner #54) before the adapter serves its canonical URL.
-    assert [(a.method, a.status) for a in result.fetch.attempts] == [("http", 200), ("browser", 200), ("api", 200)]
+    # The page gives no rows; its canonical URL, which the adapter serves, is asked before any render (D-1388).
+    assert [(a.method, a.status) for a in result.fetch.attempts] == [("http", 200), ("api", 200)]
     assert result.records is not None
     assert [record.fields["title"].value for record in result.records] == ["Desk Lamp"]
 
@@ -194,6 +195,11 @@ async def test_a_page_of_a_host_that_is_not_the_platform_is_fetched_as_a_page_an
         ("http", None),
         ("browser", None),  # a listing without rows, rendered once to no better effect (owner #54)
     ]
+    # D-1384: the decline is the site row's, so every process reads it.
+    async with engine.connect() as conn:
+        host = urlsplit(url).hostname
+        stored = (await conn.execute(select(Site.adapter_declined).where(Site.host == host))).scalar_one()
+    assert list(stored) == ["shopify"]
 
 
 @pytest.mark.parametrize("status", [429, 502])

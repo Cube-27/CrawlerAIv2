@@ -19,7 +19,7 @@ from crawlerai.storage.capture_bundle import (
     sha256_hex,
 )
 
-__all__ = ["Content", "Exchange", "as_error", "fetch_result", "report_proxy"]
+__all__ = ["Content", "Exchange", "Traffic", "as_error", "fetch_result", "report_proxy"]
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,14 @@ class Exchange:
     status: int
     request_headers: HeaderList
     response_headers: HeaderList
+
+
+@dataclass
+class Traffic:
+    """The bytes a fetch's requests have moved so far, both ways, which `proxy_bytes` usage counts for a fetch through
+    a pool (D-1381): the HTTP messages of the HTTP and JSON rungs, the tunnelled bytes of the browser's guard."""
+
+    bytes: int = 0
 
 
 @dataclass(frozen=True)
@@ -53,9 +61,10 @@ def fetch_result(
     error: str | None,
     timings: dict[str, int] | None = None,
     challenge: str | None = None,
+    transferred: int = 0,
 ) -> FetchResult:
     """`started` is the `time.monotonic()` reading when the fetch began; `timings` are added to its total; `challenge`
-    labels the attempt (`acquire.challenge`)."""
+    labels the attempt (`acquire.challenge`); `transferred` is the bytes the attempt moved (`Traffic`)."""
     if error is not None:
         # An error keeps no body: it yields no records (INV-11), and a partial body would mislead a replay.
         content = Content(body=b"")
@@ -87,6 +96,7 @@ def fetch_result(
         error=error,
         challenge=challenge,
         retry_after=retry_after(exchange.response_headers, fetched_at),
+        transferred=transferred,
     )
     bundle = CaptureBundle(
         manifest=manifest, body=content.body, network=tuple(data for _, data in content.network), raw_body=raw_body

@@ -83,6 +83,9 @@ class AttemptRecord(_Frozen):
     # D-1353: this browser `ok` opened a site session with its cookies (`acquire.session`), so the site's later fetches
     # stay on HTTP while it lives (`rungs.remember_fetch_method`). In memory only, like `retry_after`.
     site_session: bool = Field(default=False, exclude=True)
+    # The bytes the attempt moved both ways (`outcome.Traffic`), which `proxy_bytes` usage counts for a fetch through a
+    # pool (D-1381). Not stored, as the attempt's other wire details are not.
+    transferred: int = Field(default=0, ge=0, exclude=True)
 
 
 class FetchResult(_Frozen):

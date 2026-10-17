@@ -1,5 +1,5 @@
 """Rung selection (SPEC-02 §4.4, ARCHITECTURE §7.1): HTTP by default, the browser on evidence, and the method that
-worked remembered in `site.fetch_method`.
+worked remembered per site and page kind in `site_fetch_method` (D-1380).
 
 A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) first, and to the page rungs when the
 adapter does not serve it (SPEC-15 §4.6). A page whose own canonical link is its URL without the query, which an
@@ -19,7 +19,8 @@ from datetime import timedelta
 from typing import Protocol
 from urllib.parse import urlsplit, urlunsplit
 
-from sqlalchemy import func, update
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.api import JsonFetcher
@@ -39,7 +40,7 @@ from crawlerai.acquire.types import (
     policy_with_attempts,
 )
 from crawlerai.adapters.registry import Registry, platform_adapters
-from crawlerai.db.models import FetchMethod, Site, SiteId
+from crawlerai.db.models import FetchMethod, PageKind, SiteFetchMethod, SiteId
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
 # Whether an HTTP `ok` page lacks what the caller reads from it and a render may hold (offer data, owner #49; a
@@ -48,6 +49,9 @@ Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
 RenderCheck = Callable[[FetchResult], Awaitable[bool]]
 # A fetch so far: the outcome kept, every attempt and their duration.
 Fetched = tuple[FetchResult, tuple[AttemptRecord, ...], int]
+# The adapter answer for the page a fetch has so far, when an adapter serves its canonical or referred URL; else that
+# page (`_by_canonical`).
+Refer = Callable[[Fetched], Awaitable[Fetched]]
 
 
 class ConditionalRung(Protocol):
@@ -121,7 +125,8 @@ async def acquire(
     when `admit_next` refuses it: the fetch keeps the outcome it has. The result lists every attempt, in its bundle's
     manifest too. `validators` go with the HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch. A page no
     adapter detected whose canonical link is its URL without the query, which an adapter detects, is fetched again by
-    that adapter on its own turn (SPEC-15 §4.2)."""
+    that adapter on its own turn (SPEC-15 §4.2); an HTTP `ok` page that would be rendered only for lacking what the
+    caller reads asks it before the render, which runs only when no adapter serves it (D-1388)."""
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
     # An adapter's endpoint is not the page: its slow-down holds back the page only by the pause it put on the host's
     # rate, which `admit_next` waits out (SPEC-15 §4.9). A recipe's may be the page's own (its HTML page request).
@@ -132,26 +137,37 @@ async def acquire(
         served.block_class == "ok" or (by_recipe and slow_down(served)) or not await _admitted(admit_next)
     ):
         return served
-    kept, attempts, duration_ms = await _page(url, policy, remembered, rungs, validators, admit_next, needs_render)
+    refer = None
+    if served is None and send is not None:
+        asked: set[str] = set()
+
+        async def refer(page: Fetched) -> Fetched:
+            return await _by_canonical(url, page, policy, rungs, send, admit_next, asked)
+
+    page = await _page(url, policy, remembered, rungs, validators, admit_next, needs_render, refer)
+    kept, attempts, duration_ms = page if refer is None else await refer(page)
     if served is not None:
         return with_attempts(kept, served.attempts + attempts, served.duration_ms + duration_ms)
-    if send is not None:
-        kept, attempts, duration_ms = await _by_canonical(
-            url, (kept, attempts, duration_ms), policy, rungs, send, admit_next
-        )
     return with_attempts(kept, attempts, duration_ms)
 
 
 async def _by_canonical(
-    url: str, page: Fetched, policy: FetchPolicy, rungs: Rungs, send: JsonFetcher, admit_next: Admit | None
+    url: str,
+    page: Fetched,
+    policy: FetchPolicy,
+    rungs: Rungs,
+    send: JsonFetcher,
+    admit_next: Admit | None,
+    asked: set[str],
 ) -> Fetched:
     """The adapter's answer for the page's canonical URL (`_query_dropped`), or for the platform page the page on its
     own host stands for (`_referred`), when there is one, it is `ok` and the site's rate admits the request; else the
-    page. Either way with every attempt."""
+    page. Either way with every attempt. A URL in `asked` was asked already in this fetch, and is not asked again."""
     kept, attempts, duration_ms = page
     canonical = _query_dropped(url, kept, rungs.adapters) or _referred(kept, policy, rungs.adapters)
-    if canonical is None or not await _admitted(admit_next):
+    if canonical is None or canonical in asked or not await _admitted(admit_next):
         return page
+    asked.add(canonical)
     served = await rungs.adapters.serve(canonical, policy, send)
     if served is None:
         return page
@@ -205,20 +221,29 @@ async def _page(
     validators: Validators | None,
     admit_next: Admit | None,
     needs_render: RenderCheck | None,
-) -> tuple[FetchResult, tuple[AttemptRecord, ...], int]:
+    refer: Refer | None = None,
+) -> Fetched:
     """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration. An HTTP
-    page kept for want of a browser outcome is the fetch's last page (`_as_last_page`)."""
+    page kept for want of a browser outcome is the fetch's last page (`_as_last_page`). An HTTP `ok` page that would
+    be rendered only for lacking what the caller reads is first offered to `refer` (its adapter canonical or
+    referral), whose `ok` answer is kept without the render (D-1388)."""
     method = remembered if policy.method_hint == "auto" else policy.method_hint
     if method == "http" and rungs.conditional is not None:
         result = await rungs.conditional(url, policy, validators=validators)
     else:
         result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
     retried = policy.method_hint == "auto" and method == "http" and await _browser_may_help(result, needs_render)
+    page: Fetched = (result, result.attempts, result.duration_ms)
+    if retried and refer is not None and result.block_class == "ok":
+        page = await refer(page)
+        if page[0] is not result:
+            return page
+    _, attempts, duration_ms = page
     if not retried or not await _admitted(admit_next, after=_paused_by(result)):
-        return await _as_last_page(result), result.attempts, result.duration_ms
+        return await _as_last_page(result), attempts, duration_ms
     retry = await _browser_retry(url, policy, rungs, result)
     kept = retry if await _better(retry, result, needs_render) else await _as_last_page(result)
-    return kept, result.attempts + retry.attempts, result.duration_ms + retry.duration_ms
+    return kept, attempts + retry.attempts, duration_ms + retry.duration_ms
 
 
 async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: FetchResult) -> FetchResult:
@@ -313,22 +338,45 @@ def with_attempts(result: FetchResult, attempts: tuple[AttemptRecord, ...], dura
     return FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=attempts)
 
 
+def remembered_as(kind: PageKind | None) -> PageKind:
+    """The page kind whose remembered method a fetch of `kind` reads and writes (D-1380). A fetch with no page kind is
+    classified as a detail page is (`classify` applies the listing rule to listings only), so it shares the detail
+    pages' memory."""
+    return kind or "detail"
+
+
+async def remembered_method(conn: AsyncConnection, site_id: SiteId, kind: PageKind | None) -> FetchMethod:
+    """The method remembered for the site's pages of `kind` (`remembered_as`): `http` when none is (SPEC-02 §4.4)."""
+    query = select(SiteFetchMethod.method).where(
+        SiteFetchMethod.site_id == site_id, SiteFetchMethod.page_kind == remembered_as(kind)
+    )
+    method: FetchMethod | None = (await conn.execute(query)).scalar_one_or_none()
+    return method or "http"
+
+
 async def remember_fetch_method(conn: AsyncConnection, site_id: SiteId, result: FetchResult) -> None:
-    """Set the site to `browser` when `result` kept a browser `ok` over an HTTP attempt of the same fetch: HTTP failed
-    (a shell or a block), or HTTP was `ok` but lacked what the caller reads (D-1260, owner #49, #54), so the site's
-    later fetches go straight to the browser instead of paying for both. In `auto`, a kept browser outcome follows an
-    HTTP attempt only on that evidence (`_page`). Only the re-check (`crawlerai.scheduler.recheck`) sets it back to
-    `http`, so `fetch_method_checked_at` starts its clock here. A browser `ok` that opened a site session leaves the
-    site on HTTP (D-1353): its later fetches pass over HTTP with the session's cookies, and when the session ends
-    the next refusal is solved in the browser again."""
+    """Remember `browser` for the site's pages of the kind `result` was fetched as when it kept a browser `ok` over an
+    HTTP attempt of the same fetch: HTTP failed (a shell or a block), or HTTP was `ok` but lacked what the caller reads
+    (D-1260, owner #49, #54), so the site's later fetches of that kind go straight to the browser instead of paying
+    for both; its other kind keeps its own memory (D-1380). In `auto`, a kept browser outcome follows an HTTP attempt
+    only on that evidence (`_page`). Only the re-check (`crawlerai.scheduler.recheck`) sets it back to `http`, so
+    `checked_at` starts its clock here. A browser `ok` that opened a site session leaves the kind on HTTP (D-1353): its
+    later fetches pass over HTTP with the session's cookies, and when the session ends the next refusal is solved in
+    the browser again."""
+    fetch_policy = result.bundle.manifest.fetch_policy
     # Only `auto` renders on evidence: a browser fetch asked for (`method_hint`) is no evidence about HTTP, even beside
     # an HTTP attempt of a recipe's page request.
-    by_evidence = result.bundle.manifest.fetch_policy.get("method_hint") == "auto"
+    by_evidence = fetch_policy.get("method_hint") == "auto"
     by_http = any(a.method == "http" for a in result.attempts)
     handed_off = any(a.site_session for a in result.attempts)
-    if result.method == "browser" and result.block_class == "ok" and by_evidence and by_http and not handed_off:
-        await conn.execute(
-            update(Site)
-            .where(Site.id == site_id, Site.fetch_method != "browser")
-            .values(fetch_method="browser", fetch_method_checked_at=func.now())
+    if result.method != "browser" or result.block_class != "ok" or not by_evidence or not by_http or handed_off:
+        return
+    row = {"site_id": site_id, "page_kind": remembered_as(fetched_as(fetch_policy)), "method": "browser"}
+    insert = pg_insert(SiteFetchMethod).values(**row, checked_at=func.now())
+    await conn.execute(
+        insert.on_conflict_do_update(
+            index_elements=[SiteFetchMethod.site_id, SiteFetchMethod.page_kind],
+            set_={"method": "browser", "checked_at": func.now()},
+            where=SiteFetchMethod.method != "browser",
         )
+    )

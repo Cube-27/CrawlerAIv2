@@ -28,7 +28,7 @@ from patchright.async_api import TimeoutError as PlaywrightTimeout
 from crawlerai.acquire.challenge import CHALLENGED, challenge_label, count
 from crawlerai.acquire.classify import INTERSTITIAL_STATUS, classify, interstitial
 from crawlerai.acquire.headers import recorded
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result, report_proxy
+from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
 from crawlerai.acquire.session import CookieExport, SessionCookie, browser_cookies
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
@@ -156,11 +156,13 @@ async def fetch_browser(
     content = Content(body=b"")
     pool = proxy = None
     challenge: str | None = None
+    traffic = Traffic()
     try:
         pool = proxy_pool(policy.proxy_pool, pools)
         proxy = pool_endpoint(pool, url)
         async with asyncio.timeout(policy.browser_timeout_s):
-            async with rendered(url, policy, session, connector or SafeConnector(), proxy, started, timings) as page:
+            guarded = rendered(url, policy, session, connector or SafeConnector(), proxy, started, timings, traffic)
+            async with guarded as page:
                 exchange, content = await read_state(page)
                 cookies = await context_cookies(page.page.context)
         block_class = await classified(exchange, content)
@@ -188,6 +190,7 @@ async def fetch_browser(
         # `context` is the browser context's wall time, which `browser_seconds` usage counts (§4.8).
         timings=timings,
         challenge=challenge,
+        transferred=traffic.bytes,
     )
     report_proxy(pool, proxy, result)
     return result
@@ -261,14 +264,15 @@ async def rendered(
     proxy: ProxyEndpoint | None,
     started: float,
     timings: dict[str, int],
+    traffic: Traffic,
 ) -> AsyncIterator[Rendered]:
     """The page at `url` in a fresh context, once its navigation has settled; the context closes when the block ends,
-    and its wall time is `timings["context"]`. Raises `Failed`."""
+    and its wall time is `timings["context"]`. The bytes the guard relays are added to `traffic`. Raises `Failed`."""
     try:
         first = await connector.check(url)  # also refuses `file:`, `data:` and other non-web schemes
     except SsrfRejected as e:
         raise Failed(str(e), None) from e
-    async with SocksGuard(connector, checked=(first,), upstream=proxy) as guard:
+    async with SocksGuard(connector, checked=(first,), upstream=proxy, traffic=traffic) as guard:
         context = await session.browser.new_context(
             proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK}, accept_downloads=False
         )
