@@ -151,7 +151,8 @@ async def learn_listing(
         return refused(bound)
     proven, bound_by = bound
     pages = [ListingPage.of(page) for page in held_out]
-    pages = await renders.listing(pages, lambda page: endpoint.key not in page_series(page), MIN_HELD_OUT)
+    # A held-out page is validated on its first two pages: one whose capture shows fewer is rendered, renders left.
+    pages = await renders.listing(pages, lambda page: len(page_series(page).get(endpoint.key, ())) < 2, MIN_HELD_OUT)
     held = [
         HeldOutReplay(page.capture_id, held_page)
         for page in pages
