@@ -49,6 +49,7 @@ from crawlerai.worker.handlers.steps import (
     extract_records,
     fetch_page,
     load_job,
+    store_further_pages,
     unreached,
 )
 from crawlerai.worker.loop import Failed, Finished, TaskHandler, TaskResult
@@ -81,7 +82,9 @@ def scrape_handler(
         page = await fetch_page(
             conn, fetching, task, request.fetch, request.locale, recurring=records, served=records, llm=llm
         )
-        result = page.task_result if isinstance(page, Ended) else await _settle(conn, task, page, records, llm)
+        result = (
+            page.task_result if isinstance(page, Ended) else await _settle(conn, fetching, task, page, records, llm)
+        )
         await count_fetch(conn, task, page)
         return result
 
@@ -89,7 +92,12 @@ def scrape_handler(
 
 
 async def _settle(
-    conn: AsyncConnection, task: ClaimedTask, page: FetchedPage, records: Records | None, llm: LLMClient
+    conn: AsyncConnection,
+    fetching: Fetching,
+    task: ClaimedTask,
+    page: FetchedPage,
+    records: Records | None,
+    llm: LLMClient,
 ) -> TaskResult:
     """The fetched page's result: its outcome when it was not reached or the job has no records, else its record's."""
     ended = unreached(page)
@@ -107,6 +115,7 @@ async def _settle(
         return Finished("unchanged", capture_id=page.capture_id)
     result = await extract_records(conn, task, page, records, caller_supplied=True, llm=llm, parsed=parsed)
     if isinstance(result, Finished):
+        await store_further_pages(conn, fetching.store, task, page, records, caller_supplied=True, llm=llm)
         # The validators are stored with the record made from the content they describe, never without it.
         await record_fetch(conn, page.site.id, task.canonical_url, page.result)
         if records.schema.page_kind == "listing":

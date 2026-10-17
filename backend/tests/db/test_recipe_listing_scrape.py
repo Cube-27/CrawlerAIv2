@@ -1,11 +1,13 @@
 """A listing scrape of a site whose active config has a listing recipe (Appendix A #59, SPEC-09 §4.8): the recipe
 serves the listing's pages over HTTP, one capture each, until the request's `records` target, with no browser; when it
-does not serve the first page, the browser actions run as before (§4.10).
+does not serve the first page, the browser actions run as before (§4.10). The worker's batch and crawl tasks serve
+every page of the listing the same way, up to the job's page bound.
 
 The web is a stub answering synthetic JSON on RFC 2606 hosts, the listing rung a stub that records being asked: no
 network.
 """
 
+import asyncio
 import json
 import uuid
 from collections.abc import AsyncIterator, Callable
@@ -15,6 +17,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -24,12 +27,19 @@ from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
-from crawlerai.db.models import Capture, Extraction, ExtractionConfig, SiteId, UrlTask
+from crawlerai.core.settings import Settings
+from crawlerai.db.models import Capture, Extraction, ExtractionConfig, Job, JobId, JobKind, Record, SiteId, UrlTask
+from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas.types import SchemaDef, document_digest
+from crawlerai.services.batch import BatchScrapeRequest, submit_batch
+from crawlerai.services.crawl import CrawlRequest, submit_crawl
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.storage.fs import FsStore
+from crawlerai.worker.handlers.crawl import crawl_handler
+from crawlerai.worker.handlers.scrape import scrape_handler
+from crawlerai.worker.loop import TaskHandler, run_worker
 from tests.db.conftest import listing_page, listing_schema, resolve
 
 pytestmark = pytest.mark.anyio
@@ -49,6 +59,8 @@ class Web:
     listed: list[str] = field(default_factory=list)
 
     async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
+        if url.endswith(".xml"):  # a crawl's start task looks for sitemaps: there are none
+            return self.fetch_result(url, 404, b"", block_class="not_found")
         assert url.endswith("/robots.txt"), "a listing recipe fetches no HTML page"
         return self.fetch_result(url, 200, b"User-agent: *\nAllow: /\n")
 
@@ -200,3 +212,94 @@ async def test_a_listing_the_recipe_does_not_serve_runs_its_browser_actions(
     assert result.fetch.method == "browser"
     assert result.records is not None
     assert [r.fields["title"].value for r in result.records] == NAMES[:2]
+
+
+# The worker's tasks.
+
+
+async def _run(engine: AsyncEngine, handlers: dict[JobKind, TaskHandler], job_id: JobId) -> None:
+    """Run a worker loop until the job has ended."""
+    url = engine.url.render_as_string(hide_password=False)
+    settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
+    stop = asyncio.Event()
+    loop = asyncio.create_task(run_worker(settings, handlers, stop, ending=close_run))
+    async with asyncio.timeout(60):
+        while True:
+            async with engine.connect() as conn:
+                status = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one()
+            if status in ("completed", "failed", "cancelled"):
+                break
+            await asyncio.sleep(0.1)
+    stop.set()
+    await loop
+
+
+async def _titles(engine: AsyncEngine, job_id: JobId) -> tuple[list[str], list[str]]:
+    """The titles of the job's records, and the methods of the captures its extractions read, in order."""
+    async with engine.connect() as conn:
+        rows = (
+            await conn.execute(
+                select(Record.data, Capture.method)
+                .join(Extraction, Record.extraction_id == Extraction.id)
+                .join(Capture, Extraction.capture_id == Capture.id)
+                .join(UrlTask, Extraction.url_task_id == UrlTask.id)
+                .where(UrlTask.job_id == job_id)
+                .order_by(Record.id)
+            )
+        ).all()
+    return [row.data["title"] for row in rows], [row.method for row in rows]
+
+
+async def test_a_batch_task_of_a_listing_recipe_stores_every_page_of_the_listing(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    body = {
+        "urls": [f"{own_origin}/kettles"],
+        "formats": ["records"],
+        "schema": {"id": str(schema.id)},
+        "page_kind": "listing",
+    }
+    submitted = await submit_batch(
+        engine, fetching.connector, BatchScrapeRequest.model_validate(body), data=engine_data
+    )
+
+    await _run(engine, {"batch_scrape": scrape_handler(fetching, engine_data, None, llm=None)}, submitted.job_id)
+
+    # Three pages of three, three and two rows: every page is requested and stored, with no browser.
+    assert [parse_qs(urlsplit(r.url).query).get("after") for r in web.requested] == [None, ["3"], ["6"]]
+    titles, methods = await _titles(engine, submitted.job_id)
+    assert (sorted(titles), set(methods), web.listed) == (NAMES, {"api"}, [])
+
+
+async def test_a_crawl_task_of_a_listing_recipe_serves_its_pages_up_to_the_crawl_limit(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/kettles"
+    rules = [{"pattern": url, "page_kind": "listing"}]
+    body = {
+        "url": url,
+        "formats": ["records"],
+        "schema": {"id": str(schema.id)},
+        "page_kind_rules": rules,
+        "max_depth": 0,
+        "limit": 2,
+    }
+    submitted = await submit_crawl(engine, fetching.connector, CrawlRequest.model_validate(body), data=engine_data)
+
+    await _run(engine, {"crawl": crawl_handler(fetching, engine_data, None, llm=None)}, submitted.job_id)
+
+    assert len(web.requested) == 2
+    titles, _ = await _titles(engine, submitted.job_id)
+    assert sorted(titles) == NAMES[:6]

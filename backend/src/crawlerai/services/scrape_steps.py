@@ -53,6 +53,7 @@ from crawlerai.db.usage import record_usage
 from crawlerai.llm.client import LLMClient
 from crawlerai.llm.roles.s_schema import MAX_FIELD_NAMES, draft_fields, normalize_prompt
 from crawlerai.normalize.url import canonical_url
+from crawlerai.normalize.url_key import canonicalize
 from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page, lacks_offer_data, lacks_rows
 from crawlerai.resolve.task import ActiveConfig, Stored, StoredRecord, store_extraction
@@ -440,6 +441,75 @@ async def store_page_record(
         listed_nothing = schema.page_kind == "listing" and stored.outcome != "failed"
         return replace(stored, outcome="partial" if listed_nothing else "failed")
     return stored
+
+
+# A listing's further page (a kept state of its browser actions, or a page its recipe served), its extraction, and the
+# site's active config as it ran on it.
+Further = tuple[FetchResult, ExtractionResult, ActiveConfig | None]
+
+
+@dataclass(frozen=True)
+class StoredFurther:
+    """A listing's further pages as stored: each record with the extraction it came from, and whether any page's
+    extraction failed."""
+
+    records: tuple[tuple[StoredRecord, ExtractionResult], ...] = ()
+    failed: bool = False
+
+
+async def extract_further(
+    pages: Iterable[FetchResult],
+    schema: SchemaDef,
+    config: ActiveConfig | None,
+    data: EngineData,
+    gap_fill: RoleC | None,
+) -> list[Further]:
+    """The extraction of each further page of a listing that was reached, with the first page's schema, each with the
+    site's config for its own capture."""
+    extracted: list[Further] = []
+    for page in pages:
+        if page.block_class != "ok":
+            continue
+        own = None if config is None else config.for_capture(page.bundle.manifest, data.adapters)
+        executor = None if own is None else own.executor
+        parsed = ParsedPage.of(page.bundle)
+        extraction = await extract_page(page.bundle, schema, executor, gap_fill, data=data, parsed=parsed)
+        extracted.append((page, extraction, own))
+    return extracted
+
+
+async def store_further(
+    conn: AsyncConnection,
+    store: ObjectStore,
+    task: ClaimedTask,
+    site_id: SiteId,
+    schema: SchemaDef,
+    extracted: Iterable[Further],
+    margins: DriftMargins | None,
+    *,
+    caller_supplied: bool = True,
+) -> StoredFurther:
+    """Store each further page: its capture, its extraction and its records, under the listing's task, each under the
+    canonical URL of the document it read (a row without its own URL is keyed by its page and position)."""
+    records: list[tuple[StoredRecord, ExtractionResult]] = []
+    failed = False
+    for page, extraction, config in extracted:
+        capture_id = await new_capture(conn, store, site_id, page)
+        kept = await store_page_record(
+            conn,
+            task,
+            extraction,
+            capture_id=capture_id,
+            site_id=site_id,
+            schema=schema,
+            config=config,
+            margins=margins,
+            caller_supplied=caller_supplied,
+            page_url=canonicalize(page.bundle.manifest.final_url),
+        )
+        failed = failed or kept.outcome == "failed"
+        records.extend((record, extraction) for record in kept.records)
+    return StoredFurther(tuple(records), failed)
 
 
 def records_outcome(records: tuple[StoredRecord, ...]) -> Literal["extracted", "partial"]:
