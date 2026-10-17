@@ -94,7 +94,7 @@ const MIXED_RULES = {
   page_kind_rules: "Fields are drafted for one page kind: give every rule the same page kind.",
 };
 
-/** Why field names can't be sent: they need rules, of one page kind the server takes records of. */
+/** Why field names can't be sent: they need rules, all of one page kind. */
 function fieldsErrors(rules: readonly RuleRow[]): Readonly<Record<string, string>> {
   const kinds = new Set(setRules(rules).map((rule) => rule.pageKind));
   if (kinds.size === 0) return NO_RULES;

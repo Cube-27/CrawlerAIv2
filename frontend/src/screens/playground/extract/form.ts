@@ -114,8 +114,8 @@ const SOURCE_ERRORS: Readonly<Record<SchemaSource, Readonly<Record<string, strin
   fields: NO_FIELDS,
 };
 
-/** Why `form` can't be sent, by field: an extract needs a schema, and records of one page kind the server takes
- * records of (SPEC-10 §4.6, SPEC-07 §4.4). */
+/** Why `form` can't be sent, by field: an extract needs a schema, and records of one page kind (SPEC-10 §4.6,
+ * SPEC-07 §4.4). */
 export function extractErrors(form: ExtractFormState): Readonly<Record<string, string>> {
   if (extractSchema(form) === null) return SOURCE_ERRORS[form.options.schemaSource];
   const kind = extractPageKind(form);

@@ -20,7 +20,7 @@ export function PageKindRow({
   return (
     <SelectRow<PageKind>
       label="Page kind"
-      help="Whether the page shows one item or a list of items. With a schema, it is the schema's; records of listing pages are not available yet."
+      help="Whether the page shows one item or a list of items. With a schema, it is the schema's."
       name="page_kind"
       options={PAGE_KINDS}
       value={hasSchema ? schemaPageKind : value}
