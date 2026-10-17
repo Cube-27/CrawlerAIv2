@@ -1,5 +1,6 @@
 """Browser fetch with Patchright headless Chromium (SPEC-02 §4.8, ARCHITECTURE §7.1): one navigation, bounded waits,
-and the JSON bodies the page loads captured for API discovery (§7.2 step 1).
+and the JSON bodies the page loads captured, the network data-source layer's input (Appendix A #57) and API
+discovery's (§7.2 step 1).
 
 One browser per worker process (`open_browser`), one fresh context per fetch. Every connection the context opens goes
 through a `SocksGuard`, which applies the SSRF guard to every redirect hop, frame and worker (§4.5). As in
@@ -10,7 +11,7 @@ import asyncio
 import contextlib
 import re
 import time
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -27,10 +28,12 @@ from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint
-from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_file, sha256_hex
+from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_file, network_json, sha256_hex
 
 __all__ = [
+    "DATA_REQUESTS",
     "BrowserSession",
+    "DataCalls",
     "Failed",
     "Rendered",
     "classified",
@@ -51,9 +54,19 @@ _LAUNCH_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
 # `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
 # unless told not to; it is named here so the guard does not rest on a library default.
 _PROXY_ALL_LOOPBACK = "<-loopback>"
-# SPEC-02 §4.8, D-0010: JSON bodies are captured up to 2 MB each and 50 per page.
+# SPEC-02 §4.8, D-0010: JSON bodies are captured up to 2 MB each and 50 per page; INV-30 (Appendix A #57): at most
+# 10 MB of them per page in all.
 _JSON_BODY_MAX_BYTES = 2_000_000
 _JSON_BODIES_MAX = 50
+_JSON_PAGE_MAX_BYTES = 10_000_000
+# Fetch Standard §2.2.5: requests whose destination is the empty string (fetch() and XMLHttpRequest) or `document`
+# carry data or a new document; Playwright names them `fetch`, `xhr` and `document`. Scripts, styles, images and fonts
+# are the page's code and media, not data it loads.
+DATA_REQUESTS = frozenset({"fetch", "xhr", "document"})
+# WHATWG MIME Sniffing §4.6: the JSON MIME types are `application/json`, `text/json` and any type with the `+json`
+# structured syntax suffix (RFC 6839 §3.1). A body labelled `text/plain`, or not labelled, may still be JSON: it is
+# kept only when its bytes are (`network_json`, RFC 8259).
+_SNIFFED_TYPES = frozenset({"text/plain", ""})
 # The wait for the page to settle ends at this share of `browser_timeout_s`; the rest is for reading the DOM and the
 # bodies.
 _SETTLE_SHARE = 0.9
@@ -166,15 +179,33 @@ async def classified(exchange: Exchange, content: Content) -> BlockClass:
 
 
 @dataclass
+class DataCalls:
+    """The data responses a page has received so far (when the policy captures them), in arrival order, each with how
+    many browser actions the page had performed when it arrived; `actions` is that count now, which a listing's
+    browser actions raise (`browser_tab`)."""
+
+    responses: list[tuple[Response, int]] = field(default_factory=list)
+    actions: int = 0
+
+    def on_response(self, response: Response, main_frame: Frame) -> None:
+        request = response.request
+        # The main frame's navigation responses are the page itself, not data it loaded.
+        if request.is_navigation_request() and request.frame == main_frame:
+            return
+        if request.resource_type in DATA_REQUESTS and _json_label(response) is not None:
+            self.responses.append((response, self.actions))
+
+
+@dataclass
 class Rendered:
     """A page whose navigation has settled: the tab, its main frame's navigations, the first document's response, the
-    policy it was fetched with, and the JSON responses it has loaded so far (when the policy captures them)."""
+    policy it was fetched with, and the data responses it has loaded so far."""
 
     page: Page
     frame: "_MainFrame"
     response: Response
     policy: FetchPolicy
-    json_responses: list[Response] = field(default_factory=list)
+    calls: DataCalls = field(default_factory=DataCalls)
 
 
 @asynccontextmanager
@@ -252,19 +283,13 @@ async def _navigate(
     page: Page, url: str, first: Target, policy: FetchPolicy, guard: SocksGuard, started: float
 ) -> Rendered:
     frame = _MainFrame(page, first.url)
-    json_responses: list[Response] = []
-
-    def on_response(response: Response) -> None:
-        # The navigation responses are the page itself, not data it loaded.
-        if not response.request.is_navigation_request() and _is_json(response):
-            json_responses.append(response)
-
+    calls = DataCalls()
     page.on("request", frame.on_request)
     page.on("response", frame.on_response)
     page.on("requestfailed", frame.on_failed)
     page.on("framenavigated", frame.on_navigated)
     if policy.capture_network_json:
-        page.on("response", on_response)
+        page.on("response", lambda response: calls.on_response(response, page.main_frame))
 
     budget_end = started + policy.browser_timeout_s
     try:
@@ -280,16 +305,16 @@ async def _navigate(
         started + _SETTLE_SHARE * policy.browser_timeout_s,
         interstitial_deadline=started + _INTERSTITIAL_SHARE * policy.browser_timeout_s,
     )
-    return Rendered(page, frame, response, policy, json_responses)
+    return Rendered(page, frame, response, policy, calls)
 
 
 async def read_state(
-    rendered: Rendered, *, url: str | None = None, json: tuple[int, int | None] = (0, None)
+    rendered: Rendered, *, url: str | None = None, calls: tuple[int, int | None] = (0, None)
 ) -> tuple[Exchange, Content]:
     """The document the page shows now, as an exchange and its content: the first document, or where a navigation
     ended (one it started itself, or a browser action's), under `url` when given (the response's URL otherwise), with
-    the bodies of the JSON responses in the `json` slice (all of them by default). Raises `Failed` for a body past the
-    policy's caps, or a response the browser no longer holds."""
+    the JSON bodies of the data responses in the `calls` slice (all of them by default). Raises `Failed` for a body
+    past the policy's caps, or a response the browser no longer holds."""
     policy = rendered.policy
     response = rendered.frame.latest or rendered.response
     try:
@@ -310,7 +335,7 @@ async def read_state(
     body, raw_body, network = await asyncio.gather(
         _rendered(rendered.page, exchange),
         _raw_body(response),
-        _json_bodies(rendered.json_responses[slice(*json)]),
+        _json_bodies(rendered.calls.responses[slice(*calls)]),
     )
     if max(len(body), len(raw_body or b"")) > policy.max_decompressed_bytes:
         raise Failed("body_cap", exchange)
@@ -418,29 +443,28 @@ async def _json_size(response: Response) -> int:
         return 0
 
 
-def _is_json(response: Response) -> bool:
-    # JSON media types: `application/json` (RFC 8259 §11) and the `+json` structured syntax suffix (RFC 6839 §3.1).
-    return "json" in response.headers.get("content-type", "").lower()
+def _json_label(response: Response) -> bool | None:
+    """True when the response is labelled with a JSON MIME type, False when its label leaves its body to be sniffed,
+    None when it names another kind of body (`_SNIFFED_TYPES`). The essence is compared, lower-cased, parameters
+    dropped (WHATWG MIME Sniffing §2.1)."""
+    essence = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if essence in ("application/json", "text/json") or essence.endswith("+json"):
+        return True
+    return False if essence in _SNIFFED_TYPES else None
 
 
-async def _json_bodies(responses: list[Response]) -> tuple[tuple[NetworkBody, bytes], ...]:
+async def _json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[NetworkBody, bytes], ...]:
     captured: list[tuple[NetworkBody, bytes]] = []
-    for response in responses:
+    total = 0
+    for response, action in responses:
         if len(captured) == _JSON_BODIES_MAX:
             break
-        if await _json_size(response) > _JSON_BODY_MAX_BYTES:
+        data = await _json_body(response)
+        if data is None or total + len(data) > _JSON_PAGE_MAX_BYTES:
             continue
-        try:
-            data = await response.body()
-        except PlaywrightError:
-            continue  # no body to read: a redirect, or a request that failed or was evicted
         sent = response.request.post_data_buffer
-        if len(data) > _JSON_BODY_MAX_BYTES or len(sent or b"") > _JSON_BODY_MAX_BYTES:
+        if len(sent or b"") > _JSON_BODY_MAX_BYTES:
             continue
-        try:
-            headers = recorded(_header_list(await response.request.headers_array()))
-        except PlaywrightError:
-            headers = None  # the request is gone from the browser
         entry = NetworkBody(
             url=response.url,
             status=response.status,
@@ -449,10 +473,44 @@ async def _json_bodies(responses: list[Response]) -> tuple[tuple[NetworkBody, by
             file=network_file(len(captured)),
             method=response.request.method,
             request_body=_text_or_none(sent),
-            request_headers=headers,
+            request_headers=await _headers(response.request.headers_array()),
+            response_headers=await _headers(response.headers_array()),
+            resource_type=response.request.resource_type,
+            action=action,
         )
         captured.append((entry, data))
+        total += len(data)
     return tuple(captured)
+
+
+async def _json_body(response: Response) -> bytes | None:
+    """The response's body when it is within the per-body cap and is JSON: labelled so, or sniffed as JSON text holding
+    an object or an array (`network_json`)."""
+    if await _json_size(response) > _JSON_BODY_MAX_BYTES:
+        return None
+    try:
+        data = await response.body()
+    except PlaywrightError:
+        return None  # no body to read: a redirect, or a request that failed or was evicted
+    if len(data) > _JSON_BODY_MAX_BYTES:
+        return None
+    return data if _json_label(response) or _sniffed(data) else None
+
+
+def _sniffed(data: bytes) -> bool:
+    try:
+        return isinstance(network_json(data), (dict, list))
+    except ValueError:
+        return False
+
+
+async def _headers(read: Awaitable[Sequence[Mapping[str, object]]]) -> HeaderList | None:
+    """A request's or response's headers as a capture records them (no credentials); None when the browser no longer
+    holds them."""
+    try:
+        return recorded(_header_list(await read))
+    except PlaywrightError:
+        return None
 
 
 def _text_or_none(data: bytes | None) -> str | None:

@@ -5,7 +5,7 @@ manifest.json      # CaptureManifest
 body.html          # response body as received (transfer/content encoding removed); body.json for API captures;
                    # for browser captures, the rendered DOM
 body.raw.html      # browser captures only: the navigation response body as the server sent it (SPEC-02 §4.8)
-network/0001.json  # captured JSON bodies in request order (browser captures only)
+network/0001.json  # captured JSON bodies in response order, as received (browser captures only)
 ```
 
 `encode` and `decode` are pure and `decode(encode(b)) == b` (INV-10). Replay reads nothing but the bundle.
@@ -13,6 +13,7 @@ network/0001.json  # captured JSON bodies in request order (browser captures onl
 
 import hashlib
 import io
+import json
 import re
 import tarfile
 from datetime import UTC, datetime
@@ -55,7 +56,12 @@ class NetworkBody(_Frozen):
     `method`, `request_body` and `request_headers` describe the request the body answered, which API discovery groups
     and binds by (SPEC-09 §4.3) and header minimization replays (§4.6); bundles written before they were kept decode
     with None. `request_body` is None also for a request without a body or with one that is not UTF-8 text.
-    `request_headers` are recorded as the page's are (SPEC-02 §4.7: no cookies), in the order sent."""
+    `request_headers` are recorded as the page's are (SPEC-02 §4.7: no cookies), in the order sent.
+
+    `response_headers` are recorded the same way, in the order received; `resource_type` is the request's Fetch
+    destination as the browser names it (`fetch`, `xhr`, `document`); `action` is how many browser actions the page
+    had performed when the response arrived (0: the page's own load). Bundles written before they were kept decode
+    with None."""
 
     url: str
     status: int
@@ -65,6 +71,9 @@ class NetworkBody(_Frozen):
     method: str | None = None
     request_body: str | None = None
     request_headers: HeaderList | None = None
+    response_headers: HeaderList | None = None
+    resource_type: str | None = None
+    action: int | None = Field(default=None, ge=0)
 
 
 class CaptureManifest(_Frozen):
@@ -242,6 +251,47 @@ def _meta_encoding(body: bytes) -> webencodings.Encoding | None:
 
 def _body_file(method: CaptureMethod) -> str:
     return "body.json" if method == "api" else "body.html"
+
+
+# RFC 8259 §2: a JSON text is one value; the data a page loads is an object or an array, which open with these.
+_OPENERS: Final = ("{", "[")
+# A JSON body may open with a short prefix that makes it no script a page of another origin could run (a
+# cross-site script inclusion guard: an endless loop or unbalanced brackets, then the JSON text). Such a prefix holds
+# no object or array opener, so the JSON text starts at the first one; a prefix longer than this is not one.
+_GUARD_PREFIX_MAX: Final = 16
+
+
+def network_json(data: bytes) -> JsonValue:
+    """A captured network body as JSON (RFC 8259): UTF-8 text (§8.1; a byte order mark is ignored, as §8.1 allows),
+    either one JSON text or a short guard prefix followed by an object or array (`_GUARD_PREFIX_MAX`). Raises
+    `ValueError` when it is neither. The browser reads bodies to keep with it and every reader of the bundle's
+    network bodies parses them with it, so the two agree."""
+    text = data.decode("utf-8-sig")  # UnicodeDecodeError is a ValueError
+    try:
+        return _loads(text)
+    except ValueError:
+        starts = [i for i in (text.find(opener) for opener in _OPENERS) if i > 0]
+        if not starts or min(starts) > _GUARD_PREFIX_MAX:
+            raise
+    value = _loads(text[min(starts) :])
+    if not isinstance(value, (dict, list)):
+        raise ValueError("a guard prefix is followed by an object or an array")
+    return value
+
+
+def _not_json(constant: str) -> JsonValue:
+    raise ValueError(f"{constant} is not JSON (RFC 8259 §6)")
+
+
+_DECODER: Final = json.JSONDecoder(parse_constant=_not_json)
+
+
+def _loads(text: str) -> JsonValue:
+    try:
+        value: JsonValue = _DECODER.decode(text)
+    except RecursionError:
+        raise ValueError("nested too deeply") from None
+    return value
 
 
 def network_file(index: int) -> str:

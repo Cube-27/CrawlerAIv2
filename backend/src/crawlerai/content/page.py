@@ -14,7 +14,7 @@ from lxml import html as lxml_html
 from selectolax import lexbor
 
 from crawlerai.content.text import CleanedText, VisibleIndex, render, xpath_step
-from crawlerai.storage.capture_bundle import CaptureBundle, decode_body
+from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, decode_body
 
 
 @dataclass(frozen=True)
@@ -28,14 +28,18 @@ class ScriptBlock:
 
 
 class ParsedPage:
-    def __init__(self, html: str, network: tuple[bytes, ...] = ()) -> None:
+    def __init__(
+        self, html: str, network: tuple[bytes, ...] = (), network_entries: tuple[NetworkBody, ...] = ()
+    ) -> None:
         self.html = html
-        # The bundle's captured network bodies, in request order (the `xhr:<n>` locator indexes them).
+        # The bundle's captured network bodies, in capture order (the `xhr:<n>` locator indexes them), and their
+        # manifest entries (the request each answered), when the caller has them.
         self.network = network
+        self.network_entries = network_entries
 
     @classmethod
     def of(cls, bundle: CaptureBundle) -> "ParsedPage":
-        return cls(decode_body(bundle), bundle.network)
+        return cls(decode_body(bundle), bundle.network, bundle.manifest.network_bodies)
 
     @cached_property
     def tree(self) -> lexbor.LexborHTMLParser:
