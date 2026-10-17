@@ -9,25 +9,35 @@ import time
 from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
-from typing import Final
+from typing import Final, Protocol
 
 from crawlerai.acquire.types import AttemptRecord
 from crawlerai.storage.capture_bundle import HeaderList
 
 DEFAULT_INTERVAL: Final = timedelta(seconds=1)  # SPEC-02 §4.6: 1 request/s
+BACKOFF_MIN: Final = timedelta(seconds=30)  # SPEC-02 §4.6: the first backoff
 BACKOFF_MAX: Final = timedelta(minutes=15)  # SPEC-02 §4.6: the longest backoff
 # RFC 6585 §4 (429 Too Many Requests) and RFC 9110 §15.6.4 (503 Service Unavailable): the statuses that ask a
 # client to slow down, optionally with a Retry-After.
 SLOW_DOWN: Final = frozenset({429, 503})
 
-# Waits until the site's rate admits one more request, records it and answers True; answers False, recording nothing,
-# when that turn is too far off to wait for in place.
-Admit = Callable[[], Awaitable[bool]]
+
+class Admit(Protocol):
+    """Waits until the site's rate admits one more request, records it and answers True; answers False, recording
+    nothing, when that turn is too far off to wait for in place. `after` is a pause the site asked for (D-1263: a 503's
+    `Retry-After`, else the first backoff): the site is paused for it first, and the turn comes no sooner."""
+
+    def __call__(self, *, after: timedelta = ...) -> Awaitable[bool]: ...
 
 
-async def refuse() -> bool:
+async def refuse(*, after: timedelta = timedelta(0)) -> bool:
     """The `Admit` of a fetch that may send no further request: robots.txt disallows the page (SPEC-15 §4.6)."""
     return False
+
+
+def asked_pause(attempt: AttemptRecord) -> timedelta:
+    """The pause a 429 or 503 `attempt` asks for (SPEC-02 §4.6): its `Retry-After`, else the first backoff."""
+    return BACKOFF_MIN if attempt.retry_after is None else attempt.retry_after
 
 
 def slowed_down(attempts: Iterable[AttemptRecord]) -> AttemptRecord | None:
@@ -82,9 +92,16 @@ class HostLimiter:
         self._next[host] = now + interval.total_seconds()
         return timedelta(0)
 
-    async def wait(self, host: str, interval: timedelta, bound: timedelta = timedelta.max) -> bool:
+    async def wait(
+        self, host: str, interval: timedelta, bound: timedelta = timedelta.max, *, after: timedelta = timedelta(0)
+    ) -> bool:
         """Wait in place until a request to `host` may go, record it and answer True; answer False at once, recording
-        nothing, when it may go only more than `bound` from now."""
+        nothing, when it may go only more than `bound` from now. `after` pauses the host first (`pause`): a pause
+        longer than `bound` is not waited for, and is left to the caller's backoff."""
+        if after > bound:
+            return False
+        if after:
+            self.pause(host, after)
         while wait := self.admit(host, interval):
             if wait > bound:
                 return False

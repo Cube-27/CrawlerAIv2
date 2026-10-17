@@ -457,13 +457,39 @@ def test_an_interstitial_is_read_where_its_navigation_ends_after_the_quiet_time(
 
 
 def test_an_interstitial_that_stays_is_read_after_its_share_of_the_budget(browser: Browser, server: Server) -> None:
-    server.routes["/forbidden"] = Reply(403, body=b"<html><body><p>Access denied</p></body></html>")
+    server.routes["/forbidden"] = Reply(
+        403, body=b"<html><body><p>Access denied</p><script>void 0</script></body></html>"
+    )
 
     result = browser.fetch(server.url("/forbidden"), FetchPolicy(browser_timeout_s=20))
 
     assert (result.block_class, result.bundle.manifest.status_code) == ("blocked", 403)
     # 40% of the 20 s budget waiting for a navigation, then the 2 s DOM quiet; never the 90% settle share.
     assert 8_000 <= result.duration_ms < 14_000
+
+
+def test_a_refusal_that_cannot_navigate_is_not_waited_on(browser: Browser, server: Server) -> None:
+    # D-1262: no script and no refresh: nothing can replace the document, so only the DOM quiet is waited.
+    server.routes["/static-refusal"] = Reply(403, body=b"<html><body><p>Access denied</p></body></html>")
+
+    result = browser.fetch(server.url("/static-refusal"), FetchPolicy(browser_timeout_s=20))
+
+    assert (result.block_class, result.bundle.manifest.status_code) == ("blocked", 403)
+    assert result.duration_ms < 6_000
+
+
+def test_a_refreshing_refusal_with_links_is_read_where_its_refresh_ends(browser: Browser, server: Server) -> None:
+    # D-1262: a refresh pragma declares the document navigates on, whatever its links (HTML Standard §4.2.5.3).
+    body = _REFUSAL_PAGE.replace(b"<html>", b'<html><head><meta http-equiv="refresh" content="3; url=/app"></head>')
+    server.routes["/refreshes"] = Reply(503, body=body)
+
+    started = time.monotonic()
+    result = browser.fetch(server.url("/refreshes"), FetchPolicy(browser_timeout_s=20))
+
+    manifest = result.bundle.manifest
+    assert (result.block_class, manifest.status_code, manifest.final_url) == ("ok", 200, server.url("/app"))
+    # The wait ends with the navigation, not at its 8 s share of the budget.
+    assert time.monotonic() - started < 8
 
 
 def test_navigation_that_outlives_the_budget_is_a_timeout(browser: Browser, server: Server) -> None:

@@ -1,5 +1,5 @@
-"""`site.fetch_method` memory (SPEC-02 §4.4, ARCHITECTURE §7.1): set to `browser` when HTTP fails and the browser
-passes, and back to `http` by the 7-day re-check when HTTP passes again.
+"""`site.fetch_method` memory (SPEC-02 §4.4, ARCHITECTURE §7.1): set to `browser` when HTTP fails, or lacks what the
+caller reads, and the browser passes, and back to `http` by the 7-day re-check when HTTP passes again.
 
 The web is a stub answering synthetic pages on RFC 2606 hosts; no network.
 """
@@ -112,6 +112,41 @@ async def test_http_failing_and_the_browser_passing_sets_the_site_to_browser(
     await _acquire_and_remember(conn, site_id, http, browser)
 
     assert await _memory(conn, site_id) == ("browser", await _now(conn))
+
+
+async def test_a_render_kept_over_a_lacking_http_page_sets_the_site_to_browser_and_skips_http_next(
+    conn: AsyncConnection, http: Web, browser: Web
+) -> None:
+    # D-1260: HTTP answered `ok` but lacked what the caller reads (owner #49, #54); the render held it.
+    site_id = await _site(conn)
+    http.pages[PAGE], browser.pages[PAGE] = "ok", "ok"
+
+    async def lacking(result: FetchResult) -> bool:
+        return result.method == "http"
+
+    remembered = (await _memory(conn, site_id))[0]
+    result = await acquire(PAGE, FetchPolicy(), remembered, Rungs(http=http, browser=browser), needs_render=lacking)
+    await remember_fetch_method(conn, site_id, result)
+    assert await _memory(conn, site_id) == ("browser", await _now(conn))
+
+    http.fetched.clear()
+    await _acquire_and_remember(conn, site_id, http, browser)
+    assert http.fetched == []  # the next fetch goes straight to the browser
+
+
+async def test_a_render_that_holds_no_more_than_http_leaves_the_site_on_http(
+    conn: AsyncConnection, http: Web, browser: Web
+) -> None:
+    site_id = await _site(conn)
+    http.pages[PAGE], browser.pages[PAGE] = "ok", "ok"
+
+    async def lacking(result: FetchResult) -> bool:
+        return True  # the render lacks it too: HTTP's page is kept
+
+    result = await acquire(PAGE, FetchPolicy(), "http", Rungs(http=http, browser=browser), needs_render=lacking)
+    await remember_fetch_method(conn, site_id, result)
+
+    assert await _memory(conn, site_id) == ("http", None)
 
 
 @pytest.mark.parametrize(

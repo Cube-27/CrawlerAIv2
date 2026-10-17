@@ -6,7 +6,7 @@ The rungs are stubs answering synthetic outcomes; no network.
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 import pytest
@@ -37,11 +37,14 @@ class Rung:
     block_class: BlockClass
     status: int | None = None
     calls: list[tuple[str, FetchPolicy]] = field(default_factory=list)
+    body: bytes | None = None  # PAGE for `ok`, else SHELL, by default
+    headers: tuple[tuple[str, str], ...] = ()
+    retry_after: timedelta | None = None
 
     async def __call__(self, url: str, policy: FetchPolicy) -> FetchResult:
         self.calls.append((url, policy))
         status = STATUS[self.block_class] if self.status is None else self.status
-        body = PAGE if self.block_class == "ok" else SHELL
+        body = self.body if self.body is not None else PAGE if self.block_class == "ok" else SHELL
         manifest = CaptureManifest(
             capture_id=uuid7(),
             url=url,
@@ -50,14 +53,20 @@ class Rung:
             method=self.method,
             status_code=status,
             block_class=self.block_class,
-            headers=Headers(request=(), response=()),
+            headers=Headers(request=(), response=self.headers),
             timings_ms={"total": 1},
             html_sha256=sha256_hex(body),
             network_bodies=(),
             fetch_policy=policy.model_dump(mode="json"),
             engine_version="test",
         )
-        attempt = AttemptRecord(method=self.method, status=status, block_class=self.block_class, duration_ms=1)
+        attempt = AttemptRecord(
+            method=self.method,
+            status=status,
+            block_class=self.block_class,
+            duration_ms=1,
+            retry_after=self.retry_after,
+        )
         bundle = CaptureBundle(manifest=manifest, body=body, network=())
         return FetchResult(bundle=bundle, duration_ms=1, attempts=(attempt,))
 
@@ -239,7 +248,7 @@ def _acquire_admitting(
     """`acquire` in auto with an `admit_next` that logs, alongside the rungs, when it runs, and answers `admits`."""
     log: list[str] = []
 
-    async def admit_next() -> bool:
+    async def admit_next(*, after: timedelta = timedelta(0)) -> bool:
         log.append("admit")
         return admits
 
@@ -364,3 +373,123 @@ def test_a_not_modified_answer_is_neither_checked_nor_rendered() -> None:
 
     assert _attempts(result) == [("http", "ok")]
     assert check.asked == []
+
+
+# --- D-1261: an HTTP listing shell kept for want of a browser outcome is the fetch's last page ---
+
+_HTML = (("content-type", "text/html"),)
+# A listing page with the site's structure (text and links) but no repeated items: a shell by the listing rule alone.
+_UNLISTED = (
+    "<html><body><main><h1>Catalogue</h1><p>"
+    + "Synthetic catalogue text. " * 20
+    + "</p>"
+    + "".join(f'<a href="/about/{i}">About {i}</a>' for i in range(6))
+    + "</main></body></html>"
+).encode()
+LISTING = FetchPolicy(page_kind="listing")
+
+
+def _listing_shell(body: bytes = _UNLISTED) -> Rung:
+    return Rung("http", "shell", body=body, headers=_HTML)
+
+
+@pytest.mark.parametrize("browser", ["blocked", "error", "shell"])
+def test_a_listing_shell_whose_render_fails_is_kept_as_an_ok_page_to_extract(browser: BlockClass) -> None:
+    stubs = Web(_listing_shell(), Rung("browser", browser))
+
+    result = stubs.acquire(LISTING)
+
+    assert (result.method, result.block_class, result.bundle.body) == ("http", "ok", _UNLISTED)
+    assert _attempts(result) == [("http", "shell"), ("browser", browser)]  # the attempt keeps what HTTP said
+
+
+def test_a_listing_shell_whose_render_is_not_admitted_is_kept_as_an_ok_page() -> None:
+    rungs = Rungs(http=_listing_shell(), browser=Rung("browser", "ok"))
+
+    async def refuse(*, after: timedelta = timedelta(0)) -> bool:
+        return False
+
+    result = asyncio.run(acquire(URL, LISTING, "http", rungs, admit_next=refuse))
+
+    assert (result.method, result.block_class) == ("http", "ok")
+    assert _attempts(result) == [("http", "shell")]
+
+
+def test_a_listing_shell_whose_render_passes_keeps_the_render() -> None:
+    stubs = Web(_listing_shell(), Rung("browser", "ok"))
+
+    result = stubs.acquire(LISTING)
+
+    assert (result.method, result.block_class) == ("browser", "ok")
+
+
+@pytest.mark.parametrize(
+    ("body", "policy"),
+    [
+        pytest.param(SHELL, LISTING, id="no-site-structure"),
+        pytest.param(_UNLISTED, FetchPolicy(), id="not-fetched-as-a-listing"),
+    ],
+)
+def test_a_shell_without_site_structure_or_outside_a_listing_stays_a_shell(body: bytes, policy: FetchPolicy) -> None:
+    stubs = Web(_listing_shell(body), Rung("browser", "blocked"))
+
+    result = stubs.acquire(policy)
+
+    assert (result.method, result.block_class) == ("http", "shell")
+
+
+# --- D-1263: a 503 interstitial gets one browser attempt after the site's pause ---
+
+# A refusal standing in for the page: no site structure, and a script that may navigate on.
+_CHALLENGE = b"<html><head><script src='/check.js'></script></head><body><p>One moment.</p></body></html>"
+# A static refusal: nothing on it can navigate.
+_STATIC = b"<html><body><p>Service unavailable.</p></body></html>"
+
+
+def _acquire_slowed(
+    status: int, body: bytes, retry_after: timedelta | None, *, admits: bool = True
+) -> tuple[list[timedelta], Rung, FetchResult]:
+    pauses: list[timedelta] = []
+
+    async def admit_next(*, after: timedelta = timedelta(0)) -> bool:
+        pauses.append(after)
+        return admits
+
+    http = Rung("http", "blocked", status, body=body, headers=_HTML, retry_after=retry_after)
+    browser = Rung("browser", "ok")
+    result = asyncio.run(acquire(URL, FetchPolicy(), "http", Rungs(http=http, browser=browser), admit_next=admit_next))
+    return pauses, browser, result
+
+
+@pytest.mark.parametrize(
+    ("retry_after", "pause"),
+    [(timedelta(seconds=7), timedelta(seconds=7)), (None, timedelta(seconds=30))],
+)
+def test_a_503_interstitial_is_rendered_once_after_its_retry_after_or_the_first_backoff(
+    retry_after: timedelta | None, pause: timedelta
+) -> None:
+    pauses, browser, result = _acquire_slowed(503, _CHALLENGE, retry_after)
+
+    assert pauses == [pause]
+    assert len(browser.calls) == 1
+    assert (result.method, result.block_class) == ("browser", "ok")
+    assert _attempts(result) == [("http", "blocked"), ("browser", "ok")]
+
+
+def test_a_503_interstitial_whose_pause_is_not_admitted_keeps_the_503() -> None:
+    pauses, browser, result = _acquire_slowed(503, _CHALLENGE, timedelta(hours=1), admits=False)
+
+    assert pauses == [timedelta(hours=1)]
+    assert browser.calls == []
+    assert result.bundle.manifest.status_code == 503
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [pytest.param(503, _STATIC, id="static-503"), pytest.param(429, _CHALLENGE, id="429")],
+)
+def test_a_static_503_or_any_429_gets_no_browser_attempt(status: int, body: bytes) -> None:
+    pauses, browser, result = _acquire_slowed(status, body, None)
+
+    assert (pauses, browser.calls) == ([], [])
+    assert result.bundle.manifest.status_code == status
