@@ -3,7 +3,6 @@ import { useSubmitExtract } from "../../../api/hooks/jobs";
 import { problemOf } from "../../../api/hooks/query";
 import type { ExtractRequest } from "../../../api/jobs";
 import { useFieldsReview } from "../fields/useFieldsReview";
-import { SchemaSelect } from "../../../components/SchemaSelect";
 import { optionsChanged, withSchema } from "../pageRequest";
 import { PlaygroundLayout } from "../PlaygroundLayout";
 import { JobModeOutput } from "../run/JobRun";
@@ -11,6 +10,7 @@ import { useShownJob } from "../run/useShownJob";
 import { requestUrl, UrlInput } from "../UrlInput";
 import { usePageForm } from "../usePageForm";
 import { ExtractOptions } from "./ExtractOptions";
+import { SchemaSourceSelect } from "./SchemaSourceSelect";
 import {
   buildExtract,
   DEFAULT_EXTRACT_OPTIONS,
@@ -60,13 +60,14 @@ export function ExtractPlayground() {
       onOptionsOpen={setOptionsOpen}
       optionsChanged={optionsChanged(form.options, DEFAULT_EXTRACT_OPTIONS)}
       tools={
-        <SchemaSelect
-          value={form.schemaId}
-          noneLabel="No schema"
-          hideLabel
-          isDisabled={form.options.schemaSource !== "id"}
-          onChange={(schemaId, schema) => {
-            setForm(withSchema(form, schemaId, schema?.page_kind ?? null));
+        <SchemaSourceSelect
+          source={form.schemaSource}
+          schemaId={form.schemaId}
+          onSource={(schemaSource) => {
+            setForm({ ...withSchema(form, "", null), schemaSource });
+          }}
+          onSchema={(schemaId, schema) => {
+            setForm({ ...withSchema(form, schemaId, schema.page_kind), schemaSource: "id" });
           }}
         />
       }
@@ -77,6 +78,7 @@ export function ExtractPlayground() {
       }
       options={
         <ExtractOptions
+          source={form.schemaSource}
           options={form.options}
           schemaPageKind={form.schemaPageKind}
           onChange={(options) => {

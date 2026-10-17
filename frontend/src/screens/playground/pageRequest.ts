@@ -113,8 +113,9 @@ export function fieldsPageKindErrors(
 }
 
 /** Why `form` can't be sent, by field: it asks for no format; it names a stored schema and fields; its schema's
- * records are for no page kind (the schema names none); or its fields have no page kind. Derived from the current form, so a change anywhere that fixes it clears it; each
- * answer is one constant, so the errors change only when the reason does. */
+ * records are for no page kind (the schema names none); or its fields have no page kind. Derived from the current
+ * form, so a change anywhere that fixes it clears it; each answer is one constant, so the errors change only when the
+ * reason does. */
 export function pageKindErrors(form: PageKindForm): Readonly<Record<string, string>> {
   if (asksForNothing(form)) return NO_FORMAT;
   const hasFields = form.options.fields.length > 0;

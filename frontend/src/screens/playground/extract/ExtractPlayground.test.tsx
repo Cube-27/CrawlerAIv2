@@ -11,6 +11,7 @@ import {
   openPlayground,
   pick,
   posted,
+  selectTrigger,
 } from "../../../test/playground";
 
 // `fetch` answers the extract, job, results and events endpoints with the shapes SPEC-10 §4.2, §4.6 and SPEC-14 §4.4
@@ -66,8 +67,8 @@ describe("extract playground", () => {
     const calls = extractApi();
     await openPlayground("/extract");
     await fill(screen.getByRole("textbox", { name: "URL" }), "https://shop.test/items/1");
+    await pick(/Schema$/, "From a prompt");
     const options = await openOptions();
-    await pick(/Schema source/, "From a prompt");
     await fill(options.getByRole("textbox", { name: "Prompt" }), "title and price");
     await pick(/Page kind/, "Detail");
     await fill(options.getByRole("textbox", { name: "LLM call limit" }), "3");
@@ -85,18 +86,31 @@ describe("extract playground", () => {
     });
   });
 
-  it("says what a request without a schema or page kind lacks, and sends nothing", async () => {
+  it("says at the toolbar's Schema that a schema is missing, leaving the options closed, and sends nothing", async () => {
     const calls = extractApi();
     await openPlayground("/extract");
     await fill(screen.getByRole("textbox", { name: "URL" }), "https://shop.test/items/1");
 
     await extract();
 
-    const options = await findOptions();
     expect(
-      options.getByText("Choose a stored schema in the toolbar, or another source."),
+      await screen.findByText("Choose a stored schema, or another source of one."),
     ).toBeInTheDocument();
-    await pick(/Schema source/, "Inline JSON");
+    expect(screen.queryByRole("dialog", { name: "Options" })).not.toBeInTheDocument();
+    expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
+  });
+
+  it("opens the options to say what an inline schema lacks, and sends nothing", async () => {
+    const calls = extractApi();
+    await openPlayground("/extract");
+    await fill(screen.getByRole("textbox", { name: "URL" }), "https://shop.test/items/1");
+    await pick(/Schema$/, "Inline JSON");
+
+    await extract();
+
+    const options = await findOptions();
+    expect(options.getByText("Enter a SchemaDef as a JSON object.")).toBeInTheDocument();
+    expect(options.queryByRole("button", { name: /Schema source/ })).not.toBeInTheDocument();
     await fill(options.getByRole("textbox", { name: "Schema JSON" }), '{"name": "x"}');
     await closeOptions();
     await extract();
@@ -120,6 +134,7 @@ describe("extract playground", () => {
       expect(url).toHaveValue("https://shop.test/items/1");
     });
     expect(url).toBeDisabled();
+    expect(selectTrigger(/Schema$/)).toHaveTextContent("Inline JSON");
     const options = await openOptions();
     expect(options.getByRole("textbox", { name: "Schema JSON" })).toHaveValue(
       JSON.stringify({ name: "item", page_kind: "detail" }, null, 2),
