@@ -47,6 +47,11 @@ class Method(Enum):
     POST = "POST"
 
 
+class Artifact(BaseModel):
+    content_type: Annotated[str, Field(title="Content Type")]
+    url: Annotated[str, Field(title="Url")]
+
+
 class BlockClass(Enum):
     ok = "ok"
     blocked = "blocked"
@@ -63,10 +68,14 @@ class Method1(Enum):
 
 class Format(Enum):
     markdown = "markdown"
+    markdown_fit = "markdown_fit"
+    chunks = "chunks"
     html = "html"
     raw_html = "raw_html"
     links = "links"
     metadata = "metadata"
+    screenshot = "screenshot"
+    pdf = "pdf"
     records = "records"
 
 
@@ -134,6 +143,34 @@ class CapturedOut(BaseModel):
     status_code: Annotated[int, Field(title="Status Code")]
 
 
+class Chunk(BaseModel):
+    heading_path: Annotated[list[str], Field(title="Heading Path")]
+    index: Annotated[int, Field(title="Index")]
+    text: Annotated[str, Field(title="Text")]
+    words: Annotated[int, Field(title="Words")]
+
+
+class Source(Enum):
+    markdown = "markdown"
+    markdown_fit = "markdown_fit"
+
+
+class Strategy(Enum):
+    heading = "heading"
+    sentence = "sentence"
+    token = "token"
+
+
+class ChunkOptions(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    overlap: Annotated[int | None, Field(ge=0, title="Overlap")] = 0
+    size: Annotated[int | None, Field(gt=0, title="Size")] = 400
+    source: Annotated[Source | None, Field(title="Source")] = "markdown"
+    strategy: Annotated[Strategy | None, Field(title="Strategy")] = "heading"
+
+
 class Text(RootModel[str]):
     root: Annotated[str, Field(max_length=1000, min_length=1, title="Text")]
 
@@ -182,10 +219,14 @@ class ConfirmItem(RootModel[str]):
 
 class Format2(Enum):
     markdown = "markdown"
+    markdown_fit = "markdown_fit"
+    chunks = "chunks"
     html = "html"
     raw_html = "raw_html"
     links = "links"
     metadata = "metadata"
+    screenshot = "screenshot"
+    pdf = "pdf"
     records = "records"
 
 
@@ -193,7 +234,7 @@ class Query(RootModel[str]):
     root: Annotated[str, Field(max_length=500, title="Query")]
 
 
-class Strategy(Enum):
+class Strategy1(Enum):
     bfs = "bfs"
     dfs = "dfs"
     best_first = "best_first"
@@ -240,6 +281,7 @@ class Format3(Enum):
     json_records = "json_records"
     csv_records = "csv_records"
     markdown = "markdown"
+    jsonl = "jsonl"
 
 
 class ExportPage(BaseModel):
@@ -299,6 +341,11 @@ class MethodHint(Enum):
     auto = "auto"
     http = "http"
     browser = "browser"
+
+
+class Screenshot(Enum):
+    viewport = "viewport"
+    full_page = "full_page"
 
 
 class WaitFor(RootModel[int]):
@@ -428,6 +475,22 @@ class FieldsDraft(BaseModel):
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
 
 
+class MaxBlocks(RootModel[int]):
+    root: Annotated[int, Field(gt=0, title="Max Blocks")]
+
+
+class Query1(RootModel[str]):
+    root: Annotated[str, Field(min_length=1, title="Query")]
+
+
+class FitOptions(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    max_blocks: Annotated[MaxBlocks | None, Field(title="Max Blocks")] = None
+    query: Annotated[Query1 | None, Field(title="Query")] = None
+
+
 class Llm(Enum):
     checking = "checking"
     ok = "ok"
@@ -475,7 +538,7 @@ class WhenType(RootModel[str]):
     root: Annotated[str, Field(pattern="^[A-Z][A-Za-z0-9]*$", title="When Type")]
 
 
-class Source(Enum):
+class Source1(Enum):
     jsonld = "jsonld"
     js_state = "js_state"
     xhr = "xhr"
@@ -565,6 +628,7 @@ class MapRequest(BaseModel):
     exclude: Annotated[list[str] | None, Field(max_length=20, title="Exclude")] = []
     include: Annotated[list[str] | None, Field(max_length=20, title="Include")] = []
     limit: Annotated[int | None, Field(ge=1, le=5000, title="Limit")] = 5000
+    llms_txt: Annotated[bool | None, Field(title="Llms Txt")] = False
     url: Annotated[str, Field(title="Url")]
     use_links: Annotated[bool | None, Field(title="Use Links")] = True
     use_sitemaps: Annotated[bool | None, Field(title="Use Sitemaps")] = True
@@ -904,10 +968,14 @@ class SchemaRef(BaseModel):
 
 class Format5(Enum):
     markdown = "markdown"
+    markdown_fit = "markdown_fit"
+    chunks = "chunks"
     html = "html"
     raw_html = "raw_html"
     links = "links"
     metadata = "metadata"
+    screenshot = "screenshot"
+    pdf = "pdf"
     records = "records"
 
 
@@ -1188,6 +1256,7 @@ class FetchOptions(BaseModel):
     robots_override_reason: Annotated[
         str | None, Field(title="Robots Override Reason")
     ] = None
+    screenshot: Annotated[Screenshot | None, Field(title="Screenshot")] = "viewport"
     wait_for: Annotated[WaitFor | WaitFor1 | None, Field(title="Wait For")] = None
 
 
@@ -1268,7 +1337,9 @@ class JsonValuesItem(BaseModel):
     fetch: FetchSummary | None = None
     metadata: PageMetadata | None = None
     outcome: Annotated[Outcome | None, Field(title="Outcome")] = None
+    pdf: Artifact | None = None
     records: Annotated[list[dict[str, JsonValue]], Field(title="Records")]
+    screenshot: Artifact | None = None
     url: Annotated[str, Field(title="Url")]
 
 
@@ -1297,6 +1368,7 @@ class ListLabel(BaseModel):
 
 
 class MapResult(BaseModel):
+    llms_txt: Annotated[str | None, Field(title="Llms Txt")] = None
     sources: MapSources
     truncated: Annotated[bool, Field(title="Truncated")]
     urls: Annotated[list[str], Field(title="Urls")]
@@ -1316,6 +1388,7 @@ class NewSchema(BaseModel):
 
 class PageOutput(BaseModel):
     capture_id: Annotated[UUID | None, Field(title="Capture Id")] = None
+    chunks: Annotated[list[Chunk] | None, Field(title="Chunks")] = None
     fetch: FetchSummary | None = None
     fetched_at: Annotated[AwareDatetime | None, Field(title="Fetched At")] = None
     final_url: Annotated[str | None, Field(title="Final Url")] = None
@@ -1323,9 +1396,12 @@ class PageOutput(BaseModel):
     last_error: Annotated[str | None, Field(title="Last Error")] = None
     links: Annotated[list[str] | None, Field(title="Links")] = None
     markdown: Annotated[str | None, Field(title="Markdown")] = None
+    markdown_fit: Annotated[str | None, Field(title="Markdown Fit")] = None
     metadata: PageMetadata | None = None
     outcome: Annotated[Outcome | None, Field(title="Outcome")] = None
+    pdf: Artifact | None = None
     raw_html: Annotated[str | None, Field(title="Raw Html")] = None
+    screenshot: Artifact | None = None
     status: Annotated[Status7, Field(title="Status")]
     task_id: Annotated[UUID, Field(title="Task Id")]
     url: Annotated[str, Field(title="Url")]
@@ -1396,6 +1472,7 @@ class ScrapeRequest(BaseModel):
     )
     browser_actions: BrowserActions | None = None
     budget: Budget | None = None
+    chunking: ChunkOptions | None = None
     fetch: Annotated[FetchOptions | None, Field()] = {
         "actions": [],
         "cache": "default",
@@ -1403,7 +1480,9 @@ class ScrapeRequest(BaseModel):
         "headers": {},
         "method_hint": "auto",
         "respect_robots": True,
+        "screenshot": "viewport",
     }
+    fit: FitOptions | None = None
     formats: Annotated[list[Format5], Field(min_length=1, title="Formats")]
     locale: Annotated[str | None, Field(title="Locale")] = None
     max_age: Annotated[int | None, Field(ge=0, title="Max Age")] = 0
@@ -1428,6 +1507,7 @@ class SearchScrape(BaseModel):
         "headers": {},
         "method_hint": "auto",
         "respect_robots": True,
+        "screenshot": "viewport",
     }
     formats: Annotated[list[Format5] | None, Field(min_length=1, title="Formats")] = [
         "markdown"
@@ -1497,6 +1577,7 @@ class BatchScrapeRequest(BaseModel):
         extra="forbid",
     )
     budget: Budget | None = None
+    chunking: ChunkOptions | None = None
     fetch: Annotated[FetchOptions | None, Field()] = {
         "actions": [],
         "cache": "default",
@@ -1504,7 +1585,9 @@ class BatchScrapeRequest(BaseModel):
         "headers": {},
         "method_hint": "auto",
         "respect_robots": True,
+        "screenshot": "viewport",
     }
+    fit: FitOptions | None = None
     formats: Annotated[list[Format], Field(min_length=1, title="Formats")]
     locale: Annotated[str | None, Field(title="Locale")] = None
     page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
@@ -1530,6 +1613,7 @@ class CrawlRequest(BaseModel):
     allow_external: Annotated[bool | None, Field(title="Allow External")] = False
     allow_subdomains: Annotated[bool | None, Field(title="Allow Subdomains")] = False
     budget: Budget | None = None
+    chunking: ChunkOptions | None = None
     exclude: Annotated[list[str] | None, Field(max_length=20, title="Exclude")] = None
     fetch: Annotated[FetchOptions | None, Field()] = {
         "actions": [],
@@ -1538,7 +1622,9 @@ class CrawlRequest(BaseModel):
         "headers": {},
         "method_hint": "auto",
         "respect_robots": True,
+        "screenshot": "viewport",
     }
+    fit: FitOptions | None = None
     formats: Annotated[list[Format2], Field(min_length=1, title="Formats")]
     include: Annotated[list[str] | None, Field(max_length=20, title="Include")] = None
     keywords: Annotated[list[str] | None, Field(max_length=20, title="Keywords")] = None
@@ -1561,7 +1647,7 @@ class CrawlRequest(BaseModel):
         SchemaById | SchemaInline | SchemaFields | None,
         Field(alias="schema", title="Schema"),
     ] = None
-    strategy: Annotated[Strategy | None, Field(title="Strategy")] = "bfs"
+    strategy: Annotated[Strategy1 | None, Field(title="Strategy")] = "bfs"
     url: Annotated[str, Field(title="Url")]
     webhook_url: Annotated[str | None, Field(title="Webhook Url")] = None
 
@@ -1602,6 +1688,7 @@ class ExtractRequest(BaseModel):
         "headers": {},
         "method_hint": "auto",
         "respect_robots": True,
+        "screenshot": "viewport",
     }
     limit: Annotated[int | None, Field(ge=1, le=1000, title="Limit")] = 1000
     locale: Annotated[str | None, Field(title="Locale")] = None
@@ -1657,7 +1744,7 @@ class JsonPathStepInput(BaseModel):
         list[NormalizeOpInput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp] | None,
         Field(title="Post"),
     ] = []
-    source: Annotated[Source, Field(title="Source")]
+    source: Annotated[Source1, Field(title="Source")]
 
 
 class JsonPathStepOutput(BaseModel):
@@ -1669,7 +1756,7 @@ class JsonPathStepOutput(BaseModel):
         list[NormalizeOpOutput | TrimOp | AbsolutizeUrlOp | RegexReplaceOp] | None,
         Field(title="Post"),
     ] = []
-    source: Annotated[Source, Field(title="Source")]
+    source: Annotated[Source1, Field(title="Source")]
 
 
 class Labels(BaseModel):
@@ -1915,6 +2002,7 @@ class ReplayResult(BaseModel):
 class ScrapeResult(BaseModel):
     browser_actions: ActionsReport | None = None
     capture_id: Annotated[UUID | None, Field(title="Capture Id")] = None
+    chunks: Annotated[list[Chunk] | None, Field(title="Chunks")] = None
     fetch: FetchSummary | None = None
     fetched_at: Annotated[AwareDatetime | None, Field(title="Fetched At")] = None
     final_url: Annotated[str | None, Field(title="Final Url")] = None
@@ -1922,11 +2010,14 @@ class ScrapeResult(BaseModel):
     job_id: Annotated[UUID, Field(title="Job Id")]
     links: Annotated[list[str] | None, Field(title="Links")] = None
     markdown: Annotated[str | None, Field(title="Markdown")] = None
+    markdown_fit: Annotated[str | None, Field(title="Markdown Fit")] = None
     metadata: PageMetadata | None = None
     outcome: Annotated[Outcome2, Field(title="Outcome")]
+    pdf: Artifact | None = None
     raw_html: Annotated[str | None, Field(title="Raw Html")] = None
     records: Annotated[list[ScrapedRecord] | None, Field(title="Records")] = None
     schema_: Annotated[SchemaDef | None, Field(alias="schema")] = None
+    screenshot: Artifact | None = None
     url: Annotated[str, Field(title="Url")]
     usage: Usage
 
