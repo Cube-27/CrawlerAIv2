@@ -20,14 +20,17 @@ calls, and API discovery scores calls with logic of its own.
   row array of a call); `XhrCollector` reads a listing's rows from the call series of its best endpoint through the
   API recipe row reader (`collect/api.py`), and API discovery uses the same module.
 - Listing resolution takes those rows where structured data and the config give none, below role C when they leave a
-  required field unpublished.
+  required field unpublished; values of captured calls take an evidence bucket of their own, `network`.
 - Later batch (A2, tasks section 3): listing recipes with pagination kinds and their inference from call series.
 
 ## Impact
 
 - Capabilities: [acquisition](../../specs/acquisition/spec.md), [extraction](../../specs/extraction/spec.md),
-  [persistence-storage](../../specs/persistence-storage/spec.md), [adapters](../../specs/adapters/spec.md).
+  [persistence-storage](../../specs/persistence-storage/spec.md), [resolution](../../specs/resolution/spec.md);
+  A2 also [adapters](../../specs/adapters/spec.md) and [learning-configs](../../specs/learning-configs/spec.md).
 - Design: `openspec/design/overview.md` §22, `openspec/design/owner-decisions.md` #57.
 - Files: `storage/capture_bundle.py`, `acquire/browser.py`, `acquire/browser_tab.py`, `content/page.py`,
   `collect/network_match.py`, `collect/xhr.py`, `collect/api.py`, `collect/admission.py`, `collect/run.py`,
-  `resolve/pipeline.py` (listing rows source), `config_ir/api_recipe/discovery.py`, `config_ir/api_recipe/binding.py`.
+  `resolve/pipeline.py` (listing rows source), `resolve/evidence.py`, `resolve/types.py`,
+  `backend/data/source_precedence.yaml`, `config_ir/api_recipe/discovery.py`, `config_ir/api_recipe/binding.py`, the
+  generated API client (`frontend/openapi.json`, `frontend/src/api/schema.d.ts`).
