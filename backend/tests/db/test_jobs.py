@@ -19,8 +19,11 @@ import pytest
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
+from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.persist import store_capture
-from crawlerai.acquire.types import FetchResult
+from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.adapters.base import AdapterMatch, Shape
+from crawlerai.adapters.registry import Registry
 from crawlerai.api.app import create_app
 from crawlerai.core.ids import uuid7
 from crawlerai.db.jobs import start_jobs
@@ -61,6 +64,26 @@ from crawlerai.services.records import RecordPage
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
+
+
+@dataclass
+class _Board:
+    """An adapter for one synthetic API path: it reads the `api` captures fetched from it."""
+
+    name: str = "board"
+
+    def detect(self, url: str) -> AdapterMatch | None:
+        return AdapterMatch(tenant="tenant", page_kind="listing")
+
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
+        return endpoint.endswith(f"/api/{match.tenant}/jobs")
+
+    async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
+        raise AssertionError("not fetched")
+
+    def shapes(self, match: AdapterMatch, answer: Any, /) -> tuple[Shape, ...]:
+        return ()
+
 
 OUTCOMES = {"extracted", "partial", "unchanged", "links_only", "blocked", "shell", "not_found", "no_match", "failed"}
 
@@ -691,6 +714,82 @@ async def test_json_values_carry_metadata_only_when_asked_and_the_capture_is_kep
     assert ["metadata" in item for item in items] == [True, True, False, False, False]
     assert (items[0]["metadata"]["title"], items[0]["metadata"]["language"]) == ("Kettle", "en")
     assert (items[0]["records"], asked.json()["format"]) == ([{"title": "Kettle"}], "json_values")
+
+
+def _attempted(result: FetchResult) -> FetchResult:
+    """`result`, reached by a browser after an HTTP attempt that met a challenge."""
+    blocked = AttemptRecord(method="http", status=403, block_class="blocked", duration_ms=40, challenge="structural")
+    reached = AttemptRecord(method="browser", status=200, block_class="ok", duration_ms=900)
+    return result.model_copy(update={"attempts": (blocked, reached)})
+
+
+async def test_the_fetch_of_a_page_is_served_with_every_attempt_when_asked(
+    client: httpx.AsyncClient, world: World, tmp_path: Path, fetch_result: Callable[..., FetchResult]
+) -> None:
+    job_id = await world.job(schema_id=world.schema.id, status="completed")
+    store = FsStore(tmp_path / "objects")
+    async with world.engine.begin() as conn:
+        capture = await store_capture(
+            conn, store, _attempted(fetch_result(f"{world.origin}/c/1", body=b"<html></html>")), world.site_id
+        )
+    await world.page(job_id, "extracted", [{"title": "Kettle"}], capture_id=capture)
+    await world.page(job_id, "failed")
+    params = {"format": "json_values"}
+
+    plain = await client.get(f"/v1/jobs/{job_id}/results", params=params)
+    asked = await client.get(f"/v1/jobs/{job_id}/results", params={**params, "include": ["metadata", "fetch"]})
+
+    assert [set(item) for item in plain.json()["items"]] == [{"url", "outcome", "records"}] * 2
+    first, second = asked.json()["items"]
+    assert "fetch" not in second
+    assert (first["fetch"]["method"], first["fetch"]["status_code"], first["fetch"]["adapter"]) == ("http", 200, None)
+    assert [(a["method"], a["status"], a["block_class"], a["challenge"]) for a in first["fetch"]["attempts"]] == [
+        ("http", 403, "blocked", "structural"),
+        ("browser", 200, "ok", None),
+    ]
+    assert "metadata" in first
+
+
+async def test_page_outputs_carry_the_fetch_of_a_task_with_a_capture(
+    client: httpx.AsyncClient, world: World, tmp_path: Path, fetch_result: Callable[..., FetchResult]
+) -> None:
+    job_id = await world.job(status="completed")
+    store = FsStore(tmp_path / "objects")
+    async with world.engine.begin() as conn:
+        capture = await store_capture(
+            conn, store, _attempted(fetch_result(f"{world.origin}/c/2", body=b"<html></html>")), world.site_id
+        )
+    await world.page(job_id, "blocked", capture_id=capture)
+    await world.page(job_id, "blocked")
+
+    response = await client.get(f"/v1/jobs/{job_id}/results")
+
+    with_capture, without = response.json()["items"]
+    assert [a["block_class"] for a in with_capture["fetch"]["attempts"]] == ["blocked", "ok"]
+    assert "fetch" not in without
+
+
+async def test_a_fetch_names_the_adapter_of_its_api_capture(
+    world: World, tmp_path: Path, fetch_result: Callable[..., FetchResult]
+) -> None:
+    job_id = await world.job(schema_id=world.schema.id, status="completed")
+    store = FsStore(tmp_path / "objects")
+    page = f"{world.origin}/tenant/jobs"
+    async with world.engine.begin() as conn:
+        api = fetch_result(page, body=b"{}", method="api", final_url=f"{world.origin}/api/tenant/jobs")
+        capture = await store_capture(conn, store, api, world.site_id)
+    await world.page(job_id, "extracted", [{"title": "Kettle"}], capture_id=capture)
+    query = ResultsQuery(format="json_values", include=["fetch"])
+    adapters = Registry([_Board()], active={"board"})
+
+    async with world.engine.connect() as conn:
+        named = await jobs.job_results(conn, job_id, query, store=store, adapters=adapters)
+        unnamed = await jobs.job_results(conn, job_id, query, store=store)
+
+    assert isinstance(named, JsonValuesPage)
+    assert isinstance(unnamed, JsonValuesPage)
+    assert [item.fetch.adapter for item in named.items if item.fetch] == ["board"]
+    assert [item.fetch.adapter for item in unnamed.items if item.fetch] == [None]
 
 
 async def test_json_values_are_served_for_a_job_without_a_schema(client: httpx.AsyncClient, world: World) -> None:

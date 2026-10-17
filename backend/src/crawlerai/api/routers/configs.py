@@ -1,7 +1,7 @@
-"""`/v1/sites/{host}/configs`, `/v1/configs/{id}`, `/v1/configs/{id}/approve`, `/v1/configs/{id}/export` and
-`/v1/sites/{host}/learn` (SPEC-08 §4.10, ARCHITECTURE §13.1): a site's configs, operator corrections (C5), approval of
-learned configs (D-1342), exports and forced learning. The rules are
-the configs service's; this router translates HTTP to it and its errors to problems."""
+"""`/v1/sites/{host}/configs`, `/v1/configs/{id}`, `/v1/configs/{id}/approve`, `/v1/configs/{id}/reject`,
+`/v1/configs/{id}/export` and `/v1/sites/{host}/learn` (SPEC-08 §4.10, ARCHITECTURE §13.1): a site's configs,
+operator corrections (C5), approval and refusal of learned configs (D-1342, D-1391), exports and forced learning. The
+rules are the configs service's; this router translates HTTP to it and its errors to problems."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -90,6 +90,15 @@ async def approve_config(config_id: ExtractionConfigId, request: Request) -> Con
     in any other status."""
     async with _transaction(request) as conn:
         return await configs.approve_config(conn, config_id)
+
+
+@router.post("/configs/{config_id}/reject", responses=_CHANGES)
+async def reject_config(config_id: ExtractionConfigId, request: Request) -> ConfigDetail:
+    """Refuses a learned config waiting as `pending_approval`: it becomes `suspended`, the version active before goes on
+    serving, and the site learns again only after 8 more extracted pages. 409 for a config in any other status or not
+    the latest version."""
+    async with _transaction(request) as conn:
+        return await configs.reject_config(conn, config_id)
 
 
 @router.post("/configs/{config_id}/export", responses=_NOT_FOUND)

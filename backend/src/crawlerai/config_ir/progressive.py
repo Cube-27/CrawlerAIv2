@@ -46,7 +46,7 @@ LEARN_AFTER_PAGES: Final = 8
 TRIGGER_BATCH: Final = 100
 
 LearnEvent = Literal[
-    "start", "start_forced", "activate", "fail", "operator", "schema_edit", "await_approval", "approve"
+    "start", "start_forced", "activate", "fail", "operator", "schema_edit", "await_approval", "approve", "reject"
 ]
 
 TRANSITIONS: Final[Mapping[LearnEvent, Mapping[ProgressiveMode, ProgressiveMode]]] = {
@@ -65,6 +65,8 @@ TRANSITIONS: Final[Mapping[LearnEvent, Mapping[ProgressiveMode, ProgressiveMode]
     "await_approval": {"learning": "cold", "active": "active"},
     # An approved config activates in any mode, as an operator's does: a person decided.
     "approve": {"cold": "active", "learning": "active", "active": "active"},
+    # A refused config leaves the state's mode as it is: the site serves what it served before (D-1391).
+    "reject": {"cold": "cold", "learning": "learning", "active": "active"},
     # An edited schema's states start over (ARCHITECTURE §8.4): what was learned is for its old document, and a run in
     # flight is dropped, so that it can neither activate nor fail the state.
     "schema_edit": {"cold": "cold", "learning": "cold", "active": "cold"},
@@ -81,6 +83,7 @@ RUN_IN_FLIGHT: Final[Mapping[LearnEvent, bool | None]] = {
     "schema_edit": None,
     "await_approval": True,
     "approve": None,
+    "reject": None,
 }
 
 
@@ -207,6 +210,16 @@ async def config_approved(conn: AsyncConnection, key: StateKey, config_id: Extra
     """Make `config_id`, a learned config a person approved, `key`'s active config, with or without a learning run in
     flight. The state must exist."""
     if not await _move(conn, key.where(), "approve", active_config_id=config_id, last_learned_at=func.now()):
+        raise LookupError(f"no progressive_state {key}")
+
+
+async def config_rejected(conn: AsyncConnection, key: StateKey) -> None:
+    """Record that a person refused the learned config waiting for `key` (D-1391): a cold state learns again only after
+    `LEARN_AFTER_PAGES` more pages, as after a failed run, so the refused document is not learned at once. The state
+    must exist."""
+    state = ProgressiveState
+    retry = case((state.mode == "cold", state.pages_extracted + LEARN_AFTER_PAGES), else_=state.retry_at_pages)
+    if not await _move(conn, key.where(), "reject", retry_at_pages=retry):
         raise LookupError(f"no progressive_state {key}")
 
 

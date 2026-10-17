@@ -1,4 +1,4 @@
-"""The MCP server (SPEC-10 §4.7): the SDK's client calls each of the ten tools over streamable HTTP at `/mcp` in the
+"""The MCP server (SPEC-10 §4.7): the SDK's client calls each of the eleven tools over streamable HTTP at `/mcp` in the
 API app, and over stdio from `python -m crawlerai.mcp_server`. What each tool does is its service's, tested with the
 service; here, that a tool reaches it with the caller's key, and answers by the output rules (§13.3).
 
@@ -58,6 +58,7 @@ TOOLS = {
     "create_schema",
     "get_site_config",
     "export_config",
+    "reject_config",
 }
 # The tools that answer with page content say that it is untrusted (§4.7).
 CONTENT_TOOLS = {"scrape", "map", "crawl_status", "extract_status"}
@@ -157,7 +158,7 @@ def _texts(result: CallToolResult) -> list[str]:
     return [block.text for block in result.content if isinstance(block, TextContent)]
 
 
-async def test_the_ten_tools_are_listed_and_those_with_page_content_say_it_is_untrusted(
+async def test_the_eleven_tools_are_listed_and_those_with_page_content_say_it_is_untrusted(
     session: ClientSession,
 ) -> None:
     tools = (await session.list_tools()).tools
@@ -310,6 +311,27 @@ async def test_a_sites_config_is_read_and_exported(
     assert [(config["id"], config["status"]) for config in configs["items"]] == [(str(site_config), "active")]
     assert exported["format"] == "json"
     assert exported["export"]["fields"]["title"]["steps"] == [{"xpath": "normalize-space(//h1)", "post": []}]
+
+
+async def test_a_waiting_config_is_rejected_once(
+    session: ClientSession, engine: AsyncEngine, site_config: ExtractionConfigId
+) -> None:
+    async with engine.begin() as conn:
+        await conn.execute(
+            update(ExtractionConfig).where(ExtractionConfig.id == site_config).values(status="pending_approval")
+        )
+
+    rejected = await _call(session, "reject_config", config_id=str(site_config))
+    again = await session.call_tool("reject_config", {"config_id": str(site_config)})
+
+    assert (rejected["id"], rejected["status"]) == (str(site_config), "suspended")
+    assert (again.isError, _texts(again)) == (
+        True,
+        [
+            f"Error executing tool reject_config: config {site_config} is suspended, "
+            "not the latest version waiting for approval"
+        ],
+    )
 
 
 # --- stdio ---

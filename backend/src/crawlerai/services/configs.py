@@ -10,6 +10,7 @@ An export (§4.11) carries the release check (§12.3) run on the pages the confi
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict
@@ -18,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir import corrections
-from crawlerai.config_ir.activation import NotPending, approve, store_correction
+from crawlerai.config_ir.activation import NotPending, approve, reject, store_correction
 from crawlerai.config_ir.corrections import Correction
 from crawlerai.config_ir.exporters.configs import ConfigExport, ConfigFormat, export_config
 from crawlerai.config_ir.held_out import load_captures, load_held_out
@@ -84,7 +85,7 @@ class ConfigNotFound(Refusal, LookupError):
     pass
 
 
-class ConfigConflict(Exception):
+class ConfigConflict(Refusal):
     """The request is valid, but the stored configs or learning state don't allow it now."""
 
 
@@ -151,9 +152,24 @@ async def correct(
 async def approve_config(conn: AsyncConnection, config_id: ExtractionConfigId) -> ConfigDetail:
     """Approve the config `config_id`, waiting as `pending_approval` (D-1342): it becomes its site's active config for
     its schema and page kind; the version active before is `suspended`."""
+    return await _decide(conn, config_id, approve)
+
+
+async def reject_config(conn: AsyncConnection, config_id: ExtractionConfigId) -> ConfigDetail:
+    """Refuse the config `config_id`, waiting as `pending_approval` (D-1391): it is `suspended` and what served before
+    goes on serving."""
+    return await _decide(conn, config_id, reject)
+
+
+async def _decide(
+    conn: AsyncConnection,
+    config_id: ExtractionConfigId,
+    decide: Callable[[AsyncConnection, StateKey, ExtractionConfigId], Awaitable[None]],
+) -> ConfigDetail:
+    """The config after a person's decision on it; `ConfigConflict` when it is not waiting for one."""
     row = await _row(conn, config_id)
     try:
-        await approve(conn, StateKey(row["site_id"], row["schema_id"], row["page_kind"]), config_id)
+        await decide(conn, StateKey(row["site_id"], row["schema_id"], row["page_kind"]), config_id)
     except NotPending as e:
         detail = f"config {config_id} is {row['status']}, not the latest version waiting for approval"
         raise ConfigConflict(detail) from e

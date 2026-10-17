@@ -23,6 +23,7 @@ from crawlerai.config_ir.progressive import (
     NotLearning,
     StateKey,
     config_approved,
+    config_rejected,
     learning_activated,
     learning_awaits_approval,
     lock_state,
@@ -84,10 +85,9 @@ class NotPending(ValueError):
     """The config is not waiting for approval."""
 
 
-async def approve(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
-    """Make `config_id`, a config of `key` waiting for approval, the active one (D-1342), suspending the config active
-    before it. Raises `NotPending` when it is not `pending_approval` or not its scope's latest version: a newer
-    version, an operator's correction or a draft, was written knowing it."""
+async def _lock_pending(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
+    """Lock `key`'s state, then check that `config_id` is the latest version of its scope and waiting for approval.
+    Raises `NotPending` otherwise: a newer version, an operator's correction or a draft, was written knowing it."""
     await lock_state(conn, key)
     configs = ExtractionConfig
     latest = select(func.max(configs.version)).where(*key.config_scope()).scalar_subquery()
@@ -95,9 +95,23 @@ async def approve(conn: AsyncConnection, key: StateKey, config_id: ExtractionCon
     found = (await conn.execute(row.with_for_update(of=configs))).first()
     if found is None or found[0] != "pending_approval" or not found[1]:
         raise NotPending(f"config {config_id} is not the latest version waiting for approval")
+
+
+async def approve(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
+    """Make `config_id`, a config of `key` waiting for approval, the active one (D-1342), suspending the config active
+    before it. Raises `NotPending` when it is not `pending_approval` or not its scope's latest version."""
+    await _lock_pending(conn, key, config_id)
     await _suspend_active(conn, key)
-    await conn.execute(update(configs).where(configs.id == config_id).values(status="active"))
+    await conn.execute(update(ExtractionConfig).where(ExtractionConfig.id == config_id).values(status="active"))
     await config_approved(conn, key, config_id)
+
+
+async def reject(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
+    """Refuse `config_id`, a config of `key` waiting for approval (D-1391): it is `suspended`, the config active before
+    it goes on serving, and the state learns again only after more pages. Raises `NotPending` as `approve` does."""
+    await _lock_pending(conn, key, config_id)
+    await conn.execute(update(ExtractionConfig).where(ExtractionConfig.id == config_id).values(status="suspended"))
+    await config_rejected(conn, key)
 
 
 async def store_correction(
