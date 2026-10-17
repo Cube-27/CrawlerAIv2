@@ -67,20 +67,20 @@ SITEMAP_TIMEOUT_S: Final = TIMEOUT_S  # as long as a `map` reads a site's sitema
 @dataclass(frozen=True)
 class _Crawl:
     """A task of a crawl: the request, what the task extracts records with (None: formats), and the client role C runs
-    on (None: no role C)."""
+    on."""
 
     task: ClaimedTask
     request: CrawlRequest
     records: Records | None
-    llm: LLMClient | None
+    llm: LLMClient
 
 
 def crawl_handler(
-    fetching: Fetching, data: EngineData | None, margins: DriftMargins | None, *, llm: LLMClient | None
+    fetching: Fetching, data: EngineData | None, margins: DriftMargins | None, *, llm: LLMClient
 ) -> TaskHandler:
     """The `crawl` handler of a worker that fetches with `fetching`; `data` is None in a worker without the engine's
-    data files, whose records tasks then fail. `margins` decide drift suspensions (SPEC-08 §4.9); role C runs on `llm`
-    (None: no role C)."""
+    data files, whose records tasks then fail. `margins` decide drift suspensions (SPEC-08 §4.9); role C
+    runs on `llm`."""
 
     async def handle(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
         job = await load_job(conn, task, data, margins)

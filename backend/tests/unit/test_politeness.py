@@ -11,7 +11,6 @@ from hypothesis import strategies as st
 
 from crawlerai.acquire.politeness import (
     BACKOFF_MAX,
-    FIRST_BACKOFF,
     RECOVERY_FACTOR,
     RECOVERY_RUN,
     HostLimiter,
@@ -21,6 +20,7 @@ from crawlerai.acquire.politeness import (
     retry_after,
 )
 from crawlerai.acquire.types import AttemptRecord
+from crawlerai.core.retry import FIRST_BACKOFF
 
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
 

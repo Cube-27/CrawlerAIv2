@@ -37,6 +37,7 @@ from crawlerai.db.models import (
     UrlState,
     UrlTask,
 )
+from crawlerai.llm.client import NO_LLM
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
@@ -139,7 +140,7 @@ async def _run_job(
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
     stop = asyncio.Event()
     loop = asyncio.create_task(
-        run_worker(settings, {"batch_scrape": scrape_handler(fetching, data, None, llm=None)}, stop)
+        run_worker(settings, {"batch_scrape": scrape_handler(fetching, data, None, llm=NO_LLM)}, stop)
     )
     async with asyncio.timeout(60):
         while not await _ended(engine, job_id):

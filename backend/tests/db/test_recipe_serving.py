@@ -38,6 +38,7 @@ from crawlerai.db.models import (
     SiteId,
     UrlTask,
 )
+from crawlerai.llm.client import NO_LLM
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
@@ -453,7 +454,7 @@ async def test_a_batch_task_of_a_site_with_a_recipe_is_served_over_its_api(
     )
     submitted = await submit_batch(engine, fetching.connector, request, data=engine_data)
 
-    await _run(engine, {"batch_scrape": scrape_handler(fetching, engine_data, None, llm=None)}, submitted.job_id)
+    await _run(engine, {"batch_scrape": scrape_handler(fetching, engine_data, None, llm=NO_LLM)}, submitted.job_id)
 
     data, candidates = await _stored(engine, submitted.job_id)
     assert (web.page_fetches(), len(web.requested)) == ([], 1)
@@ -491,7 +492,7 @@ async def test_a_crawl_page_whose_links_are_followed_is_fetched_and_one_at_the_l
     web.endpoints[f"{own_origin}/api/products/other-lamp"] = PRODUCT
     submitted = await submit_crawl(engine, fetching.connector, _crawl(start, lamp_schema, 1), data=engine_data)
 
-    await _run(engine, {"crawl": crawl_handler(fetching, engine_data, None, llm=None)}, submitted.job_id)
+    await _run(engine, {"crawl": crawl_handler(fetching, engine_data, None, llm=NO_LLM)}, submitted.job_id)
 
     # The start page over HTTP for its links; the page it leads to, at the last depth, over the API only.
     assert [url for url in web.page_fetches() if not url.endswith(".xml")] == [start]
