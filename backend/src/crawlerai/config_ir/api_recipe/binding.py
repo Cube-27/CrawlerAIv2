@@ -5,12 +5,17 @@ Values are compared and passed around percent-decoded (RFC 3986 §2.1) and encod
 so a value read from the page URL and one read from a JSON document mean the same thing. A binding is accepted only
 when its templates reproduce the captured request of every sample page exactly; anything less is `Ambiguous`, the
 case role D (§4.5) takes.
+
+A query value that looks like a token (`model.token_like`: an API key) and is the same on every sample is never stored
+as a literal: it is bound from the page when a page value holds it on every sample, and left out of the endpoint URL
+otherwise (`withhold_tokens`, before binding and role D), so the replay shows whether the endpoint needs it; one it
+needs leaves the site without a recipe, as a token header does (§4.6).
 """
 
 import json
 import re
-from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from typing import Final, NamedTuple
 from urllib.parse import quote, unquote, urlsplit
 
@@ -25,6 +30,7 @@ from crawlerai.config_ir.api_recipe.model import (
     PageDataKind,
     RequestSpec,
     parse_binder,
+    token_like,
 )
 from crawlerai.config_ir.executor import documents
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS
@@ -123,6 +129,14 @@ def with_query_value(url: str, name: str, value: str) -> str:
     return f"{path}?{'&'.join(items)}"
 
 
+def without_query(url: str, names: Iterable[str]) -> str:
+    """`url` without its query items named one of `names` (compared percent-decoded)."""
+    path, question, query = url.partition("?")
+    left = set(names)
+    items = [item for item in query.split("&") if item and unquote(item.partition("=")[0]) not in left]
+    return path + (question + "&".join(items) if items else "")
+
+
 def page_data(page: ParsedPage) -> PageData:
     """The page's JSON documents as `jsonld:` and `js_state:` binders read them: a list per kind, in page order,
     unreadable ones skipped (their collectors report them)."""
@@ -201,6 +215,27 @@ def bind(samples: Sequence[Sample]) -> RequestSpec | Ambiguous:
         return Ambiguous(str(unbound))
 
 
+def withhold_tokens(samples: Sequence[Sample]) -> tuple[list[Sample], tuple[str, ...]]:
+    """The samples with each token-like query value that is the same on every sample and that no page value binds
+    (module docstring) left out of their endpoint URLs, and the names of the query items left out."""
+    try:
+        binding = _Binding(samples)
+    except _Unbound:
+        return list(samples), ()
+    urls = [_Url.split(sample.request.url) for sample in samples]
+    if len({tuple(name for name, _ in url.query) for url in urls}) != 1:
+        return list(samples), ()  # binding refuses query names that differ
+    names: list[str] = []
+    for index, (name, value) in enumerate(urls[0].query):
+        values = [unquote(url.query[index][1] or "") for url in urls]
+        if value is not None and len(set(values)) == 1 and token_like(values[0]) and not binding.binds(values):
+            names.append(unquote(name))
+    if not names:
+        return list(samples), ()
+    stripped = [replace(s, request=replace(s.request, url=without_query(s.request.url, names))) for s in samples]
+    return stripped, tuple(names)
+
+
 class _Unbound(Exception):
     pass
 
@@ -268,13 +303,18 @@ class _Binding:
         they vary and nothing binds them."""
         varies = len(set(values)) > 1
         text = next(self._url_binders(values), None)
-        if text is None and varies:
+        # A constant token is bound from the page's data too: the page states the key it sends (`withhold_tokens`).
+        if text is None and (varies or token_like(values[0])):
             text = next(self._data_binders(values), None)
         if text is not None:
             return self.params.setdefault(text, f"p{len(self.params) + 1}")
         if varies:
             raise _Unbound(f"{where} varies between sample pages and no page value binds it")
         return None
+
+    def binds(self, values: list[str]) -> bool:
+        """Whether a page value binds `values` (one per sample page)."""
+        return next(self._url_binders(values), None) is not None or next(self._data_binders(values), None) is not None
 
     def _url_binders(self, values: list[str]) -> Iterator[str]:
         first = _Url.split(self.samples[0].page_url)

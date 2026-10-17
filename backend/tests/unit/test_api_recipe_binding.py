@@ -13,6 +13,7 @@ from crawlerai.config_ir.api_recipe.binding import (
     render_url,
     resolve,
     resolve_params,
+    withhold_tokens,
 )
 from crawlerai.config_ir.api_recipe.model import Binder, RequestSpec
 
@@ -176,3 +177,57 @@ def test_values_render_encoded_in_the_url_and_escaped_in_the_body() -> None:
 
     assert render_url(f"{_API}/{{a}}?k={{a}}", params) == f"{_API}/x%2Fy&z%20%22q%22?k=x/y%26z%20%22q%22"
     assert render_body('{"k":"{a}"}', params) == '{"k":"x/y&z \\"q\\""}'
+
+
+# --- token-like query values (owner delegation 2026-10-17) ---
+
+_KEY = "Zk3Q9xLm2Vb7Rt4Ws8Np1Hc6"  # 24 characters of the base64url alphabet: token-like
+
+
+def test_a_constant_token_like_query_value_no_page_value_holds_is_left_out() -> None:
+    samples = [
+        _sample(f"{_PAGE}/c/mugs", f"{_API}/search?q=mugs&key={_KEY}&lang=en"),
+        _sample(f"{_PAGE}/c/cups", f"{_API}/search?q=cups&key={_KEY}&lang=en"),
+    ]
+
+    stripped, withheld = withhold_tokens(samples)
+
+    assert withheld == ("key",)
+    assert [s.request.url for s in stripped] == [f"{_API}/search?q=mugs&lang=en", f"{_API}/search?q=cups&lang=en"]
+    spec = _spec(bind(stripped))
+    assert spec.url == f"{_API}/search?q={{p1}}&lang=en"
+    assert _KEY not in spec.model_dump_json()
+
+
+def test_a_constant_token_the_page_data_states_is_bound_from_the_page() -> None:
+    state = {"js_state": [{"config": {"searchKey": _KEY}}]}
+    samples = [
+        _sample(f"{_PAGE}/c/mugs", f"{_API}/search?q=mugs&key={_KEY}", page_data=state),
+        _sample(f"{_PAGE}/c/cups", f"{_API}/search?q=cups&key={_KEY}", page_data=state),
+    ]
+
+    stripped, withheld = withhold_tokens(samples)
+    spec = _spec(bind(stripped))
+
+    assert (withheld, stripped) == ((), samples)
+    assert spec.url == f"{_API}/search?q={{p1}}&key={{p2}}"
+    assert spec.params_from_url["p2"] == "js_state:$[0]['config']['searchKey']"
+    assert spec.requires_page_fetch is True
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ("en", "en"),  # a constant too short to be a token
+        (_KEY, _KEY[::-1]),  # token-like, but it varies: binding binds it or declines, as before
+    ],
+)
+def test_short_or_varying_query_values_are_not_withheld(first: str, second: str) -> None:
+    samples = [
+        _sample(f"{_PAGE}/c/mugs", f"{_API}/search?q=mugs&v={first}"),
+        _sample(f"{_PAGE}/c/cups", f"{_API}/search?q=cups&v={second}"),
+    ]
+
+    stripped, withheld = withhold_tokens(samples)
+
+    assert (withheld, stripped) == ((), samples)
