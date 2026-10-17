@@ -26,7 +26,7 @@ next pages, but no candidate reaches the field (0 of 18 listing outputs in a 40-
   waits for each action's effect, stops at the target, at the end of the list or at its caps, and reports why.
 - The scrape stores a capture, an extraction and records for each kept document state, and answers with the union
   of their records and a `browser_actions` report.
-- A listing's `next_page_url` field takes the first pagination candidate as a `dom` candidate.
+- A listing's `next_page_url` field takes the first `rel=next` link as a `dom` candidate.
 - The playground's Scrape options show Records and Paging hint for page kind Listing only.
 
 ## Impact

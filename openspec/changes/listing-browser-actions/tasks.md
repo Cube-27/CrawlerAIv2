@@ -26,7 +26,7 @@
 
 - [ ] 4.1 The scrape runs the driver for `browser_actions`, stores a capture, extraction and records per kept state,
       and answers with their records once each and the `browser_actions` report; usage counts the browser seconds.
-- [ ] 4.2 `next_page_url` of a listing from the first pagination candidate (`dom` candidate on the page).
+- [ ] 4.2 `next_page_url` of a listing from its first `rel=next` link (`dom` candidate on the page).
 
 ## 5. Playground
 

@@ -13,6 +13,10 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from crawlerai.db.models import PageKind, SchemaId, SchemaOrigin, SchemaStatus
 
+# ARCHITECTURE §5.3: the listing presets' page-level next-page field, which pagination (SPEC-05 §4.12) and a
+# config's `next` step (§12.1) fill.
+NEXT_PAGE_FIELD = "next_page_url"
+
 
 class FieldType(StrEnum):
     """The §5.1 field types. A type is added here only together with its normalizer module (C8)."""

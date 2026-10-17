@@ -593,9 +593,24 @@ def test_a_row_takes_no_page_level_value() -> None:
 
 def test_the_next_pages_come_with_the_listing() -> None:
     head = '<link rel="next" href="/c/widgets?page=3">'
-    result = _listing(_html(_item_list(_row(1)), head=head))
+    result = _listing(_html(_item_list(_row(1)), head=head), data=COMMITTED)
     assert result.next_pages == ("https://shop.example.test/c/widgets?page=3",)
-    # No source states the next page as a field value, so the page field is not filled from the link (C7, D-0355).
+    # HTML's `rel=next` states the next document, so it fills the page field, read from the link element (D-1226).
+    assert result.entity is not None
+    found = result.entity["next_page_url"]
+    assert (found.status, found.value, found.source_kind, found.locator) == (
+        "published",
+        "https://shop.example.test/c/widgets?page=3",
+        "dom",
+        "dom:/html[1]/head[1]/link[1]",
+    )
+
+
+def test_a_numbered_link_is_a_next_page_but_fills_no_field() -> None:
+    # A link one integer higher is only inferred to be the next page: the value is not stated, so it is not filled (C7).
+    body = '<a href="/c/widgets?page=3">3</a>'
+    result = _listing(_html(_item_list(_row(1)), body=body), data=COMMITTED)
+    assert result.next_pages == ("https://shop.example.test/c/widgets?page=3",)
     assert result.entity is not None
     assert result.entity["next_page_url"].status == "missing"
 

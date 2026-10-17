@@ -11,9 +11,14 @@ import re
 from dataclasses import dataclass
 from urllib.parse import SplitResult, parse_qsl, urlsplit
 
+from crawlerai.collect.base import PAGE, Candidate
+from crawlerai.collect.locator import format_locator
+from crawlerai.collect.schema_org_map import candidate
 from crawlerai.content.dom import document_base_url, tokens
 from crawlerai.content.page import ParsedPage, node_xpath
+from crawlerai.normalize.base import Context
 from crawlerai.normalize.url import canonical_url
+from crawlerai.schemas.types import NEXT_PAGE_FIELD, FieldType, SchemaDef
 
 # A page number: ASCII digits (without re.ASCII, `\d` would also take other scripts' digits).
 _INTEGER = re.compile(r"\d+", re.ASCII)
@@ -54,6 +59,22 @@ def next_page_links(page: ParsedPage, final_url: str) -> tuple[NextLink, ...]:
     for link in (*rel_next, *numbered):
         first.setdefault(link.url, link)
     return tuple(first.values())
+
+
+def next_page_candidate(
+    links: tuple[NextLink, ...], schema: SchemaDef, ctx: Context, diagnostics: list[str]
+) -> Candidate | None:
+    """The first `rel=next` link as the page's `dom` candidate of a listing schema's page-level `next_page_url`
+    (D-1226): the page states its next document in HTML's own terms (§4.6.7), so the value is read, not inferred; a
+    numbered link is only inferred to be the next page, so it fills no field (C7). Its `href` as written, at its
+    element's locator, normalized as a URL against the page; None without such a field or link."""
+    spec = schema.fields.get(NEXT_PAGE_FIELD)
+    first = next((link for link in links if link.rel_next), None)
+    if first is None or spec is None or spec.scope != "page" or spec.type is not FieldType.URL:
+        return None
+    return candidate(
+        NEXT_PAGE_FIELD, spec, PAGE, "dom", first.href, format_locator("dom", first.xpath), ctx, diagnostics
+    )
 
 
 def _is_next_number(url: str, current: str) -> bool:
