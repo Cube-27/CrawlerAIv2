@@ -21,7 +21,7 @@ try {
 
 // Crawl a docs section best-first: the pages about the query come first.
 const job = await client.crawl({
-  url: "https://docs.python.org/3/library/ipc.html",
+  url: "https://docs.example.com/guide/",
   formats: ["markdown"],
   strategy: "best_first",
   query: "asyncio event loop",

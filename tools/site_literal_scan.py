@@ -58,7 +58,9 @@ EXEMPT_DIRS = ("backend/src/crawlerai/adapters/", "docs/", "openspec/", ".github
 EXEMPT_NAMES = frozenset({"pnpm-lock.yaml", "package.json", "pyproject.toml", "LICENSE", "NOTICE"})
 EXEMPT_SUFFIXES = (".lock",)
 DATA_MANIFEST = "backend/data/manifest.json"
-EXEMPT_FILES = frozenset({DATA_MANIFEST})
+# The SDKs' READMEs are documentation (D-0004) full of code samples, whose attribute accesses read as
+# dotted tokens; the SDKs' code and examples are scanned like any other.
+EXEMPT_FILES = frozenset({DATA_MANIFEST, "sdk/python/README.md", "sdk/typescript/README.md"})
 
 JS_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
 

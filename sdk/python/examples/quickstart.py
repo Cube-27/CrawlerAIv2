@@ -21,7 +21,7 @@ with CrawlerAI(os.environ["CRAWLERAI_API_KEY"], os.environ.get("CRAWLERAI_URL", 
 
     # Crawl a docs section best-first: the pages about the query come first.
     job = client.crawl(
-        url="https://docs.python.org/3/library/ipc.html",
+        url="https://docs.example.com/guide/",
         formats=["markdown"],
         strategy="best_first",
         query="asyncio event loop",
