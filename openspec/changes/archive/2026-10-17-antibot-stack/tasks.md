@@ -19,10 +19,10 @@
 
 ## 2. B2: site session cookie handoff
 
-- [ ] 2.1 `acquire/session.py`: `SiteSession` (site, registrable domain, proxy endpoint, user agent, jar, 30 min,
-  200 fetches) in worker memory, keyed by site and proxy endpoint; `FetchCookies.seed()`
-- [ ] 2.2 Browser rung: after an `ok` that follows a blocked or shell HTTP attempt, a read-only export of the context's
-  cookies and the user agent into the session when the challenge label is portable or unlabelled
-- [ ] 2.3 HTTP, JSON and recipe rungs use the session (jar, sticky endpoint, user agent); `blocked` drops it;
-  `remember_fetch_method` keeps HTTP while a session serves
-- [ ] 2.4 INV-29 amendment applied with cross-site, cross-proxy and no-persistence tests
+- [x] 2.1 `acquire/session.py`: `SiteSession` (site, registrable domain, proxy endpoint, user agent, jar, 30 min,
+  200 fetches) in worker memory, keyed by site and proxy endpoint; `FetchCookies.seed()` (#253)
+- [x] 2.2 Browser rung: after an `ok` that follows a blocked or shell HTTP attempt, a read-only export of the context's
+  cookies and the user agent into the session when the challenge label is portable or unlabelled (#253)
+- [x] 2.3 HTTP, JSON and recipe rungs use the session (jar, sticky endpoint, user agent); `blocked` drops it;
+  `remember_fetch_method` keeps HTTP while a session serves (#253)
+- [x] 2.4 INV-29 amendment applied with cross-site, cross-proxy and no-persistence tests (#253)

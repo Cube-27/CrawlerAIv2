@@ -53,10 +53,11 @@ resolver and pool tests over every endpoint; active. Refs: §7.1, §18, D-0115, 
 
 ### Requirement: Proxy pools
 A site's `proxy_pool` SHALL be used from `CRAWLERAI_PROXY_POOLS` (a proxy URL, or endpoints with mode `rotate` or
-`sticky`) over a CONNECT tunnel by every rung; an endpoint failing 3 times in a row SHALL be left out for a quarantine
-doubling from 1 to 30 min (`core/proxy_health.py`), and a pool never sends direct. An unknown pool MUST end
+`sticky`) over a CONNECT tunnel by every rung, which reports each fetch's endpoint health; an endpoint failing 3 times
+in a row SHALL be left out for a quarantine doubling from 1 to 30 min (`core/proxy_health.py`), and a pool never sends
+direct. An unknown pool MUST end
 `error`/`proxy_pool_unknown` sending nothing, and credentials never appear in errors. (Previously: one endpoint per
-pool.) Refs: §7.1, D-0282, D-0286, D-1264, D-1323, D-1324.
+pool.) Refs: §7.1, D-0282, D-0286, D-1264, D-1323, D-1324, D-1355.
 
 ### Requirement: Per-site rate and backoff
 The system SHALL space requests to a host by `crawl_delay_ms`, else 1 req/s, never below robots `Crawl-delay`,
@@ -73,14 +74,26 @@ adapt.) Refs: §7.1, D-0163, D-0165, D-0901, D-1263, D-1327.
 ### Requirement: Cookies stay inside one fetch (INV-29)
 Each fetch SHALL have its own HTTP session or browser context; cookies live in a per-fetch jar matched per RFC 6265
 (public-suffix `Domain` ignored), are sent only on matching hops and are discarded at the end; the one exception is a
-site session (`acquire/session.py`): cookies a browser fetch of the site received after a blocked or shell HTTP attempt,
-exported read-only, seed later HTTP and JSON fetches of the same site, registrable domain and proxy endpoint, in worker
-memory, for at most 30 min and 200 fetches, and are dropped on `blocked`. None are stored, logged or captured.
-(Previously: no cookie outlived its fetch.) Enforced by: cross-fetch, cross-site, cross-proxy and no-persistence
-cookie tests; active once B2 lands. Refs: §7.1, D-0321, D-0884, D-0902, owner #58.
+site session (`acquire/session.py`): the cookies of the site's registrable domain that a browser `ok` held after a
+`blocked` or `shell` HTTP attempt with a portable or no challenge label, read without change with the user agent it
+sent, seed later HTTP and JSON fetches of that site (`site.host`) in that domain through the same pool endpoint, in
+process memory, for at most 30 min and 200 fetches; `blocked` drops it, and one refused before any `ok` leaves the site
+without a session for 30 min. None are stored, logged or captured. (Previously: no cookie outlived its fetch.)
+Enforced by: cross-fetch, cross-site, cross-domain, cross-proxy, expiry and no-persistence cookie tests; active.
+Refs: §7.1, D-0321, D-0884, D-0902, owner #58, D-1350–D-1354.
 #### Scenario: Next fetch to the same host
 - **WHEN** fetch A receives `Set-Cookie` from `example.com` and fetch B then requests `example.com`, with no site session
 - **THEN** fetch B sends no cookie
+#### Scenario: Site session on another site
+- **WHEN** `shop.example.com` has a site session and a fetch requests `www.example.com`
+- **THEN** the fetch sends none of the session's cookies
+
+### Requirement: Remembered fetch method and re-check
+The system SHALL set `fetch_method='browser'` only when a browser `ok` was kept over an HTTP attempt of the same `auto`
+fetch (an HTTP `shell`/`blocked`, or an HTTP `ok` that lacked what the caller reads) and did not open a site session; a
+scheduler re-check SHALL retry such a site over HTTP after 7 days (its latest `ok` URL, robots allowing) and reset it to
+`http` on `ok`. (Previously: a browser `ok` that opened a site session also set it.) Refs: §7.1, D-0204, D-0205, D-1260,
+D-1353.
 
 ### Requirement: Acquisition candidates stay unbuilt
 The system SHALL NOT include residential proxies, unblockers, CAPTCHA solving, challenge clicking, behaviour emulation,
@@ -92,10 +105,10 @@ the form above.) Refs: §7.2, §22, owner #52, owner #58.
 ## ADDED Requirements
 
 ### Requirement: Challenge labels
-A `blocked` or `shell` attempt SHALL carry `challenge`: the vendor whose signature (`adapters/challenges.py`: response
-header names, cookie names, challenge resource paths) the response shows, else `structural` when
-`classify.interstitial` holds, else none; the label is counted per label and rung and slows the host's rate.
-Refs: owner #58, D-1326.
+A `blocked` or `shell` attempt of any rung SHALL carry `challenge`: the vendor whose signature (`adapters/challenges.py`:
+response header names, cookie names, also those a browser context holds, challenge resource paths) the response shows,
+else `structural` when `classify.interstitial` holds, else none; the label is counted per label and rung and slows the
+host's rate. Refs: owner #58, D-1326, D-1355.
 #### Scenario: Structural challenge
 - **WHEN** HTTP answers 403 with a script-only document that matches no vendor signature
 - **THEN** the attempt is `blocked` with `challenge: structural`
