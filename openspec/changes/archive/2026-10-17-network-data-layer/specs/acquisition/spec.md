@@ -6,8 +6,10 @@ fetch, XMLHttpRequest and document responses (not the main frame's navigation) t
 `text/plain` or not at all, whose bytes are an RFC 8259 object or array (a guard prefix of at most 16 characters
 stripped, `storage.capture_bundle.network_json`); each with its request's method, body and cookie-free headers, the
 cookie-free response headers, the resource type and the count of browser actions before it, within the caps in
-`acquire/browser.py`. Refs: §7.2, Appendix A #59, D-0010, D-0540, D-1311, D-1312.
-(Previously: bodies labelled JSON only, with the request's method, body and headers.)
+`acquire/browser.py`. A render whose content is quiet while a fetch or XMLHttpRequest call is in flight is read up to
+3 s later, so a late data call is kept. Refs: §7.2, Appendix A #59, D-0010, D-0540, D-1311, D-1312, D-1369.
+(Previously: bodies labelled JSON only, with the request's method, body and headers; the read did not wait for calls in
+flight.)
 #### Scenario: JSON under another label
 - **WHEN** a page fetches `)]}'` and a JSON object labelled `text/plain`, and a text/plain body that is no JSON
 - **THEN** the first is kept as received and the second is not

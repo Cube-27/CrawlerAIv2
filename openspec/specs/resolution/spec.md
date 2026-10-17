@@ -75,12 +75,17 @@ Refs: §9, §10, Appendix A #40, D-0442, D-0910. Enforced by: resolver tests; ac
 - **THEN** `url` publishes that URL with `derived_by=canonical_link`, source kind `derived`, evidence `derived`
 
 ### Requirement: Evidence, confidence and τ
-Each published field SHALL carry one evidence bucket (`resolve/evidence.py`; `agreed` needs two independent kinds) and
-the dev precision of its `(type, evidence)` bucket from `calibration.json`; a calibrated bucket below τ (0.97 required,
-0.95 otherwise) abstains `below_tau`. Until the first dev fit every field is uncalibrated. Refs: §10, §16.3, D-0455, D-0456.
+Each published field SHALL carry one evidence bucket (`resolve/evidence.py`; `agreed` needs two independent kinds;
+`network` for a value of the page's captured calls, Appendix A #59; a lone `js_state` value has none and abstains
+`no_bucket`) and the dev precision of its `(type, evidence)` bucket from `calibration.json`; a calibrated bucket below
+τ (0.97 required, 0.95 otherwise) abstains `below_tau`. Until the first dev fit every field is uncalibrated.
+Refs: §10, §16.3, D-0455, D-0456, D-1316.
 #### Scenario: Calibrated bucket below τ
 - **WHEN** a required money field's bucket has n=40 and precision 0.969
 - **THEN** the field is `abstained` with reason `below_tau`
+#### Scenario: Value of a captured call
+- **WHEN** a field's only candidate is a visible price read from a captured call
+- **THEN** it publishes with evidence `network`, uncalibrated
 
 ### Requirement: Record confidence
 Record confidence SHALL be the minimum over published required fields and required-group members, null when any is
