@@ -22,8 +22,8 @@ and two unbounded spends: a crawl with no budget of its own and field-name draft
 
 ## Impact
 
-- Capabilities: [jobs](../../specs/jobs/spec.md), [rest-api](../../specs/rest-api/spec.md),
-  [llm](../../specs/llm/spec.md).
+- Capabilities: [jobs](../../../specs/jobs/spec.md), [rest-api](../../../specs/rest-api/spec.md),
+  [llm](../../../specs/llm/spec.md).
 - The baseline migration is edited in place (greenfield): `job.start_location`, `url_state.standing_task_id`,
   `api_key.draft_calls`, `project.draft_call_cap`, three indexes.
 - API: `CrawlRequest.budget`, `ProjectSettings.draft_call_cap` (required in `PATCH /v1/project/settings`), a 429

@@ -124,3 +124,4 @@ Cross-cutting facts fixed by the specs (so later readers do not re-decide them):
 - Eval store separation (hidden/fresh never in the main DB or main object store): SPEC-01 §4.4, SPEC-03 §4.2.
 - Calibration and precedence files are dev-only artifacts stamped with their source split: SPEC-05 §4.9, §4.11.
 | — | [Normalize, collect and content follow-ups](2026-10-17-normalize-collect-content/proposal.md) ([tasks](2026-10-17-normalize-collect-content/tasks.md), [decisions](2026-10-17-normalize-collect-content/design.md)) | §8.5, §8.6, §9 | 04, 05, 07 | L1 | tasks 1.1–1.8 (#245) |
+| — | [Jobs, crawl and recurring performance and caps](2026-10-17-jobs-crawl-perf/proposal.md) ([tasks](2026-10-17-jobs-crawl-perf/tasks.md), [decisions](2026-10-17-jobs-crawl-perf/design.md)) | §6, §13.2, §14, §17 | 01, 07, 10, 11 | L1 (jobs) | tasks 1.1–5.1 (#246) |

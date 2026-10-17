@@ -50,23 +50,19 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Acquisition hardening (#244): `db.queue.BACKOFF_BASE` and `acquire.politeness.BACKOFF_MIN` are both SPEC-02's first
   backoff (30 s); the queue could import the politeness constant (D-1263).
 - ATS adapters (#226): UKG Pro (UltiPro), ADP, Rippling and Paycom are not built yet; Workday and Oracle Recruiting serve each list's first page only (20 and 25 rows), and Workday sites on a tenant's own domain are not detected.
-- Job results paging builds the job's whole `task_record` set per page; measure on a ~100k-task job (paging by task id is the likely fix) [#158].
-- Learning: SPEC-09 discovery, role D and recipe validation are not yet called from learning (needed with R7) [#149].
+- Crawl: only the start page's redirect target is kept out of the frontier (D-1285); another page whose URL redirects is still fetched again as its target's task. Deduplicating by final URL needs each task's final URL stored (jobs-crawl-perf #246).
+- Role S cap: `project.draft_call_cap` counts a key's calls in all, with no window, and the Settings screen has no field for it (it sends the loaded value back); add a window or a field if the cap is used (D-1282) [#246].
+- Recurring: a listing page whose text has no words has no content fingerprint, so it is always extracted; `url_state.record_fingerprint` is unused and could go (D-1283) [#246].
 - Optional: report non-LLM recipe errors as a refused recipe [#151].
-- Indexes, measure first: `url_task (job_id, status, outcome)` if large-crawl listing is slow [#19, #146]; `job (started_at) WHERE status = 'running'` for `fail_stalled_jobs` and `expire_learn_runs`, which share one shape and could share one reaper [#195].
 - Labeling pre-fill: return its diagnostics, a change to the prefill response shape (D-0847) [#111].
 - Role C: confirm the `fast` Anthropic model accepts `output_config.effort` (D-0766); sparse 200-row listings spend ~14 output tokens per absent field; Gemini thinking is not lowered for role C [#159]. `max_output_tokens` may not hold 200 wide rows [#111].
 - Resolve: a listing item stated in two syntaxes keeps only the first syntax's row; merging both entities into one row would add the other's values and their agreement [#196].
-- Role S: field-name drafts (`schema.fields`, `POST /v1/schemas/draft`) are charged to no job budget; only the per-key rate limit bounds them, and usage records them. Add a per-key cap on uncharged role S calls if it matters (D-0926) [#205].
 - Playground: the toolbar's Format shows its error line under it in the flow, so a refused send without a format moves the action and the output down; hang it as the toolbar's Schema now does (D-1214) [#238].
 - Field tables: every field of an uncalibrated engine shows an `uncalibrated` badge; one badge per record would need a DESIGN.md and INV-22 change [#214].
-- Crawl: `CrawlRequest` has no `budget` of its own; the project's LLM call cap (Settings) bounds it (D-1044, D-1121) [#218, #224].
 - Shopify product pages take the page path; joining the adapter's answer to the page's collectors needs a capture holding both and a measure of cross-source conflicts (D-1118) [#224].
 - Resolve: identity merge across collectors (microdata `itemid`/`sku` duplicates, one item in JSON-LD and microdata) belongs in `EntityGraph` with one shared union-find; `_same_nodes` anchors URL agreement to an identity's first node, so two later agreeing nodes can stay apart (D-0942) [#207].
 - Resolve: renditions of one image across merged blocks (or an `http` og:image) still decline; publishing one needs a rendition rule (D-0944) [#207].
 - Round-1 eval: class 13 is §22 evidence (repeated-structure DOM collectors; class 10 is addressed by #208); classes 11 and 12 answered by the owner (D-1057, D-1058) [#207, #216].
-- Recurring: SPEC-11 §4.5's listing diff tracks a listing crawl's page URLs, not its row URLs ("No job stores listing records" no longer holds), and a listing page gets no standing record (rows are keyed by row URL), so it is always re-extracted [#206].
-- Crawl: each task that adds URLs looks up the start task's capture for the site's host (D-0991); store the host on the job if the query shows in profiles. A redirected start page is usually linked from itself, so its target is fetched again as a task [#213].
 - Acquisition thresholds to confirm on dev: the 1024-byte terminal bound (D-0932) and the listing shell rule's effect on empty listings (D-0933) [#206].
 - Resolve: a standalone variant Product beside its ProductGroup (no `isVariantOf`) gets none of the group's variants as rows, nor its colour, gender or material; one eval page and one site-test page show it, see SPEC-13 §9 (D-0966) [#209].
 - Array rows (#243): a related item alone in an array (one object) stays in its holder's scope and its visible state
