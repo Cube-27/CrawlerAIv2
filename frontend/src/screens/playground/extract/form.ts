@@ -77,7 +77,7 @@ export const INITIAL_EXTRACT: ExtractFormState = {
   options: DEFAULT_EXTRACT_OPTIONS,
 };
 
-const NO_SCHEMA = { schema: "Choose a stored schema, or another source of one." };
+const NO_SCHEMA = { schema: "Choose a schema." };
 const NOT_JSON = { inline_schema: "Enter a SchemaDef as a JSON object." };
 const NO_PROMPT = { prompt: "Describe the fields to extract." };
 const NO_FIELDS = { fields: "Add the names of the fields to extract." };

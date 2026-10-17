@@ -93,9 +93,7 @@ describe("extract playground", () => {
 
     await extract();
 
-    expect(
-      await screen.findByText("Choose a stored schema, or another source of one."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Choose a schema.")).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Options" })).not.toBeInTheDocument();
     expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
   });

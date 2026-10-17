@@ -7,7 +7,8 @@ export function isOptionOf<K extends string>(options: Readonly<Record<K, string>
 }
 
 /** A labelled HeroUI Select over a `Record` of option labels. With `hideLabel`, the label is its accessible name only,
- * for a toolbar. `placeholder` is what it shows while nothing is chosen; `name` is the request member whose errors it
+ * for a toolbar, whose error line hangs under it without taking room, so showing one moves nothing around it.
+ * `placeholder` is what it shows while nothing is chosen; `name` is the request member whose errors it
  * shows. */
 export function OptionSelect<K extends string>({
   label,
@@ -34,6 +35,7 @@ export function OptionSelect<K extends string>({
 }>) {
   return (
     <Select
+      {...(hideLabel ? { className: "relative" } : {})}
       isRequired={isRequired}
       isDisabled={isDisabled}
       value={value}
@@ -59,7 +61,7 @@ export function OptionSelect<K extends string>({
           ))}
         </ListBox>
       </Select.Popover>
-      <FieldError />
+      <FieldError {...(hideLabel ? { className: "absolute top-full whitespace-nowrap" } : {})} />
     </Select>
   );
 }
