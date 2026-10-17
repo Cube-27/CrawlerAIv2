@@ -61,6 +61,7 @@ from crawlerai.resolve.task import Stored, extract_task
 from crawlerai.resolve.types import LLMCallRecord
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent, SchemaDef, SchemaDocument
+from crawlerai.services import configs as configs_service
 from crawlerai.services import schemas as schemas_service
 from crawlerai.services.jobs import cancel_job
 from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, sha256_hex
@@ -368,6 +369,50 @@ async def test_a_required_field_no_page_states_is_learned_as_absent_and_not_aske
     assert stored.result.entity is not None
     sku_outcome = stored.result.entity["sku"]
     assert (role_c.calls, sku_outcome.status, sku_outcome.reason) == (0, "missing", "absent")
+
+
+@pytest.fixture
+async def approval(site: LearnSite) -> AsyncIterator[None]:
+    """The project requires approval of learned configs (D-1342) for the test."""
+    async with site.engine.begin() as conn:
+        await conn.execute(update(Project).values(require_config_approval=True))
+    yield
+    async with site.engine.begin() as conn:
+        await conn.execute(update(Project).values(require_config_approval=False))
+
+
+@pytest.mark.usefixtures("approval")
+async def test_with_approval_required_a_learned_config_waits_until_approved(site: LearnSite) -> None:
+    await site.pages(8)
+    async with site.engine.begin() as conn:
+        assert await trigger_learning(conn, batch=10) == 1
+
+    job_id, learned = await site.learn(RoleA(PRICE_REPLY))
+
+    assert learned is not None
+    assert learned.config_id is not None
+    assert learned.reason == "pending_approval"
+    status, payload = await site.finished(job_id)
+    assert (status, payload["config_id"], payload["reason"]) == (
+        "completed",
+        str(learned.config_id),
+        "pending_approval",
+    )
+    state = await site.state()
+    assert (state.mode, state.active_config_id, state.learning_started_at) == ("cold", None, None)
+    # Pages are still served cold, and no run starts while the config waits, however many pages come.
+    role_c = TextRoleC()
+    assert (await site.extract(9, role_c)).result.mode == "adhoc"
+    async with site.engine.begin() as conn:
+        await conn.execute(update(ProgressiveState).where(*site.key.where()).values(pages_extracted=100))
+        assert await trigger_learning(conn, batch=10) == 0
+
+    async with site.engine.begin() as conn:
+        approved = await configs_service.approve_config(conn, learned.config_id)
+
+    assert approved.status == "active"
+    assert ((await site.state()).mode, (await site.state()).active_config_id) == ("active", learned.config_id)
+    assert (await site.extract(10, role_c)).result.mode == "config"
 
 
 async def test_a_field_role_a_gives_no_working_steps_is_reported_as_not_learned_with_why(site: LearnSite) -> None:

@@ -74,6 +74,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("llm_call_cap", sa.Integer(), nullable=True),
         sa.Column("draft_call_cap", sa.Integer(), nullable=True),
+        sa.Column("require_config_approval", sa.Boolean(), server_default=sa.text("false"), nullable=False),
         sa.CheckConstraint("llm_call_cap >= 0", name=op.f("ck_project_llm_call_cap_non_negative")),
         sa.CheckConstraint("draft_call_cap >= 0", name=op.f("ck_project_draft_call_cap_non_negative")),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_project")),
@@ -223,7 +224,9 @@ def upgrade() -> None:
             "origin IN ('adapter', 'induced', 'llm_synth', 'operator')", name=op.f("ck_extraction_config_origin")
         ),
         sa.CheckConstraint("page_kind IN ('detail', 'listing')", name=op.f("ck_extraction_config_page_kind")),
-        sa.CheckConstraint("status IN ('draft', 'active', 'suspended')", name=op.f("ck_extraction_config_status")),
+        sa.CheckConstraint(
+            "status IN ('draft', 'active', 'suspended', 'pending_approval')", name=op.f("ck_extraction_config_status")
+        ),
         sa.CheckConstraint("version >= 1", name=op.f("ck_extraction_config_version_positive")),
         sa.ForeignKeyConstraint(
             ["schema_id"], ["schema_def.id"], name=op.f("fk_extraction_config_schema_id_schema_def")

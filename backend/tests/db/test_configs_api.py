@@ -84,6 +84,7 @@ def _ir(host: str, schema: SchemaDef, step: dict[str, Any], **more: dict[str, An
             "learned_at": "2026-10-01T00:00:00Z",
             "engine_version": "test",
         },
+        "absent": [],
     }
 
 
@@ -285,9 +286,35 @@ async def test_the_config_api_needs_a_key(client: httpx.AsyncClient, world: Worl
         await client.get(f"/v1/configs/{config_id}"),
         await client.put(f"/v1/configs/{config_id}", json={"confirm": ["title"]}),
         await client.post(f"/v1/sites/{world.host}/learn", json={"schema_id": str(world.schema.id)}),
+        await client.post(f"/v1/configs/{config_id}/approve"),
     ]
 
-    assert [r.status_code for r in responses] == [401, 401, 401, 401]
+    assert [r.status_code for r in responses] == [401, 401, 401, 401, 401]
+
+
+# Approval (D-1342).
+
+
+async def test_approving_a_pending_config_makes_it_the_active_one(client: httpx.AsyncClient, world: World) -> None:
+    first = await world.active_config(H2)
+    key = {"site_id": world.site_id, "schema_id": world.schema.id, "page_kind": "detail"}
+    async with world.engine.begin() as conn:
+        pending = insert(ExtractionConfig).values(
+            **key, version=2, status="pending_approval", ir=_ir(world.host, world.schema, H1), origin="induced"
+        )
+        second: ExtractionConfigId = (await conn.execute(pending.returning(ExtractionConfig.id))).scalar_one()
+
+    approved = await client.post(f"/v1/configs/{second}/approve")
+    again = await client.post(f"/v1/configs/{second}/approve")
+    old = await client.post(f"/v1/configs/{first}/approve")
+
+    assert (approved.status_code, approved.json()["status"]) == (200, "active")
+    assert await world.configs() == [(1, "suspended", "induced"), (2, "active", "induced")]
+    assert ((await world.state()).mode, (await world.state()).active_config_id) == ("active", second)
+    assert [(r.status_code, r.json()["detail"]) for r in (again, old)] == [
+        (409, f"config {second} is active, not pending_approval"),
+        (409, f"config {first} is suspended, not pending_approval"),
+    ]
 
 
 # Corrections.

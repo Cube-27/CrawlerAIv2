@@ -68,7 +68,8 @@ NormalizeStatus = Literal["ok", "ambiguous", "invalid"]
 SourceKind = Literal[
     "adapter", "api", "jsonld", "microdata", "og", "js_state", "xhr", "config", "llm", "derived", "dom"
 ]
-ConfigStatus = Literal["draft", "active", "suspended"]
+# `pending_approval`: a learned config waiting for a person to approve it (`project.require_config_approval`, D-1342).
+ConfigStatus = Literal["draft", "active", "suspended", "pending_approval"]
 ConfigOrigin = Literal["adapter", "induced", "llm_synth", "operator"]
 # `extraction_config.field_status` values (ARCHITECTURE §6, §8.3 step 4).
 FieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended", "absent"]
@@ -159,6 +160,8 @@ class Project(Base):
     llm_call_cap: Mapped[int | None] = mapped_column(Integer)
     # The most uncharged role S calls (field-name drafts) one API key may make, in all; NULL: no cap (D-1282).
     draft_call_cap: Mapped[int | None] = mapped_column(Integer)
+    # Whether a learned config waits for approval before it serves (D-1342); off: it activates once validated.
+    require_config_approval: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
 
 class ApiKey(Base):

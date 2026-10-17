@@ -27,6 +27,13 @@ EXPECTED: dict[tuple[ProgressiveMode, LearnEvent], ProgressiveMode | None] = {
     ("cold", "schema_edit"): "cold",
     ("learning", "schema_edit"): "cold",
     ("active", "schema_edit"): "cold",
+    # D-1342: a config waiting for approval ends the run as a failure does; an approval activates in any mode.
+    ("cold", "await_approval"): None,
+    ("learning", "await_approval"): "cold",
+    ("active", "await_approval"): "active",
+    ("cold", "approve"): "active",
+    ("learning", "approve"): "active",
+    ("active", "approve"): "active",
 }
 
 
