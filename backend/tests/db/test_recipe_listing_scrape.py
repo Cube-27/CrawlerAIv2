@@ -51,24 +51,29 @@ PAGE_SIZE = 3
 
 @dataclass
 class Web:
-    """robots.txt over HTTP, the listing endpoint as JSON (`up`: whether it answers), and the listing rung."""
+    """robots.txt and the listing page over HTTP, the listing endpoint as JSON (`up`: whether it answers; `down`: the
+    status it fails with), and the listing rung."""
 
     fetch_result: Callable[..., FetchResult]
     origin: str
     up: bool = True
+    down: int = 500
     requested: list[JsonRequest] = field(default_factory=list)
     listed: list[str] = field(default_factory=list)
+    pages: list[str] = field(default_factory=list)
 
     async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
         if url.endswith(".xml"):  # a crawl's start task looks for sitemaps: there are none
             return self.fetch_result(url, 404, b"", block_class="not_found")
-        assert url.endswith("/robots.txt"), "a listing recipe fetches no HTML page"
+        if not url.endswith("/robots.txt"):
+            self.pages.append(url)
+            return self.fetch_result(url, 200, listing_page(self.origin, NAMES[:2]), policy=policy)
         return self.fetch_result(url, 200, b"User-agent: *\nAllow: /\n")
 
     async def json(self, request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         self.requested.append(request)
         if not self.up:
-            return self.fetch_result(request.page_url, 500, b"{}", block_class="error", method="api")
+            return self.fetch_result(request.page_url, self.down, b"{}", block_class="error", method="api")
         after = parse_qs(urlsplit(request.url).query).get("after", ["0"])[0]
         start = int(after)
         rows = [
@@ -218,21 +223,29 @@ async def test_a_listing_the_recipe_does_not_serve_runs_its_browser_actions(
 # The worker's tasks.
 
 
-async def _run(engine: AsyncEngine, handlers: dict[JobKind, TaskHandler], job_id: JobId) -> None:
-    """Run a worker loop until the job has ended."""
+async def _run(
+    engine: AsyncEngine, handlers: dict[JobKind, TaskHandler], job_id: JobId, *, first_attempt: bool = False
+) -> None:
+    """Run a worker loop until the job has ended, or with `first_attempt` until its task's first attempt has ended (a
+    transient failure is retried only after a backoff)."""
     url = engine.url.render_as_string(hide_password=False)
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
     stop = asyncio.Event()
     loop = asyncio.create_task(run_worker(settings, handlers, stop, ending=close_run))
     async with asyncio.timeout(60):
-        while True:
-            async with engine.connect() as conn:
-                status = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one()
-            if status in ("completed", "failed", "cancelled"):
-                break
+        while not await _ended(engine, job_id, first_attempt=first_attempt):
             await asyncio.sleep(0.1)
     stop.set()
     await loop
+
+
+async def _ended(engine: AsyncEngine, job_id: JobId, *, first_attempt: bool) -> bool:
+    async with engine.connect() as conn:
+        if first_attempt:
+            query = select(UrlTask.last_error.is_not(None)).where(UrlTask.job_id == job_id)
+            return bool((await conn.execute(query)).scalar_one())
+        status = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one()
+    return status in ("completed", "failed", "cancelled")
 
 
 async def _titles(engine: AsyncEngine, job_id: JobId) -> tuple[list[str], list[str]]:
@@ -304,3 +317,46 @@ async def test_a_crawl_task_of_a_listing_recipe_serves_its_pages_up_to_the_crawl
     assert len(web.requested) == 2
     titles, _ = await _titles(engine, submitted.job_id)
     assert sorted(titles) == NAMES[:6]
+
+
+async def _batch(
+    engine: AsyncEngine, fetching: Fetching, url: str, schema: SchemaDef, data: EngineData, *, first_attempt: bool
+) -> None:
+    body = {"urls": [url], "formats": ["records"], "schema": {"id": str(schema.id)}, "page_kind": "listing"}
+    submitted = await submit_batch(engine, fetching.connector, BatchScrapeRequest.model_validate(body), data=data)
+    handlers: dict[JobKind, TaskHandler] = {"batch_scrape": scrape_handler(fetching, data, None, llm=NO_LLM)}
+    await _run(engine, handlers, submitted.job_id, first_attempt=first_attempt)
+
+
+async def test_a_batch_task_whose_recipe_fails_its_first_page_requests_it_once_then_fetches_the_page(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    web.up = False
+    url = f"{own_origin}/kettles"
+
+    await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+
+    assert (len(web.requested), web.pages) == (1, [url])
+
+
+async def test_a_batch_task_whose_recipe_is_asked_to_slow_down_sends_nothing_more(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    web.up, web.down = False, 503  # RFC 9110 §15.6.4
+    url = f"{own_origin}/kettles"
+
+    await _batch(engine, fetching, url, schema, engine_data, first_attempt=True)
+
+    assert (len(web.requested), web.pages) == (1, [])

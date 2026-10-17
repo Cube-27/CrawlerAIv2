@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.robots import Fetch
-from crawlerai.acquire.rungs import acquire
+from crawlerai.acquire.rungs import Rung, acquire
 from crawlerai.acquire.ssrf import SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, Validators
 from crawlerai.config_ir.active import config_by_id, recipe_of
@@ -191,14 +191,12 @@ async def fetch_page(
         send = adapter_send(fetching, host, rules)
 
         async def fetch(sent: Validators | None) -> FetchResult:
-            if (first := await listed.first(url, policy, admit_next)) is not None:
-                return first
             result = await acquire(
                 url,
                 policy,
                 site.fetch_method,
                 rungs,
-                recipe=recipe,
+                recipe=await listed.rung(url, policy, recipe),
                 validators=sent,
                 admit_next=admit_next,
                 send=send,
@@ -258,19 +256,24 @@ class _Listed:
         paged = recipe is not None and recipe.recipe.pagination is not None
         return cls(recipe if lists and paged else None, limit, attempts)
 
-    async def first(self, url: str, policy: FetchPolicy, admit_next: Admit) -> FetchResult | None:
-        """The first page, the further ones kept, up to `limit` requests; None when the recipe served no first page
-        (or there is none), after waiting for the turn of the request that follows. Each page request waits for its
-        host's rate on its own (`recipe_rung`)."""
+    async def rung(self, url: str, policy: FetchPolicy, recipe: RecipeRung | None) -> Rung | None:
+        """The recipe rung `acquire` fetches the page through: `recipe` as it is without a listing recipe; else one
+        that answers with the first page the listing recipe served, its further pages kept, up to `limit` requests, so
+        `acquire` keeps or falls back from that one answer as from any recipe's (SPEC-09 §4.8); None when it served no
+        page. Each page request waits for its host's rate on its own (`recipe_rung`)."""
         if self.recipe is None:
-            return None
+            return recipe
         pages = [page async for page in self.recipe.pages(url, policy, records=None, limit=self.limit)]
-        self.attempts.extend(attempt for page in pages for attempt in page.attempts)
-        if not pages or pages[0].block_class != "ok":
-            await admit_next()
+        if not pages:
             return None
-        self.further[:] = _until_refused(pages[1:])
-        return pages[0]
+        first, further = pages[0], pages[1:]
+        self.attempts.extend(attempt for page in further for attempt in page.attempts)
+        self.further[:] = _until_refused(further) if first.block_class == "ok" else []
+
+        async def served(_url: str, _policy: FetchPolicy) -> FetchResult:
+            return first
+
+        return served
 
 
 def _until_refused(pages: Sequence[FetchResult]) -> list[FetchResult]:

@@ -70,8 +70,9 @@ crawl up to its `limit` when lower (a crawl's `limit` bounds the pages it fetche
 record bound of its own, and adding one is an API change no use case asks for). The first page is the task's capture
 and record as before; each further page is stored under the task with its capture, extraction and records
 (`scrape_steps.store_further`, shared with the scrape service, C8), keyed by its own URL. The task's outcome is the
-first page's. A page the SSRF guard refused a request of ends the further pages (INV-16). A first page not served
-falls back to the page rungs, after the turn of the request that follows.
+first page's. A page the SSRF guard refused a request of ends the further pages (INV-16). The first page's answer is
+handed to `acquire` as the recipe rung's, so it is kept or falls back to the page rungs (after the turn of the request
+that follows; a slow-down sends nothing more) by the one rule every recipe's answer takes (C8).
 
 ### D-1407 Token-like query values
 Status: decided (owner-delegated 2026-10-17). A query value that looks like a token (`model.token_like`, the rule
