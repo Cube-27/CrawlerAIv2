@@ -34,10 +34,10 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
 from crawlerai.collect.json_doc import ROOT, is_scalar, member
 from crawlerai.collect.locator import format_locator
+from crawlerai.collect.schema_org_map import canonical_urls
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import checkable, equal, equality_key, normalize
-from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import FieldSpec, SchemaDef
 
 StateKind = Literal["js_state", "xhr"]
@@ -212,7 +212,9 @@ class _Rows:
             Entity(
                 id=self._id(index, row),
                 types=(ARRAY_ROW,),
-                urls=self._canonical(self._urls.get((index, row), ())),
+                # RFC 3986 §5.2: a relative reference resolves against the document base URL; one that does not
+                # canonicalize names nothing.
+                urls=canonical_urls(self._urls.get((index, row), ()), self._ctx),
                 parent=parent or PAGE,
             )
             for (index, row), parent in self._owners.items()
@@ -222,15 +224,9 @@ class _Rows:
         # Unique per collector: the document's position among its documents (a script can hold several), and the path.
         return f"{self._kind}:{index}:{row}"
 
-    def _canonical(self, written: Sequence[str]) -> tuple[str, ...]:
-        # RFC 3986 §5.2: a relative reference resolves against the document base URL (HTML Standard); an absolute URL
-        # is its own target. A string that does not canonicalize names nothing.
-        found = (canonical_url(raw, self._ctx.base_url) for raw in written)
-        return tuple(dict.fromkeys(url for url in found if url is not None))
-
 
 # The start of an http(s) URL (RFC 3986 §3.1, scheme case-insensitive) or of a path-absolute or network-path reference
-# (§4.2); which of them name a document is `canonical_url`'s, asked only for the rows that own a value.
+# (§4.2); which of them name a document is `canonical_urls`'s, asked only for the rows that own a value.
 _WRITTEN_URL = re.compile(r"(?:https?:)?/", re.IGNORECASE)
 
 
