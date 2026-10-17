@@ -16,6 +16,7 @@ from pydantic import SecretStr, ValidationError
 
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.types import REDACTED, FetchPolicy, FetchResult, RequestContext
+from crawlerai.cli import main
 from crawlerai.config_ir.page_actions import to_steps
 from crawlerai.core.settings import IMPERSONATE_DEFAULT
 from crawlerai.services.fetch_options import (
@@ -212,3 +213,29 @@ def test_a_header_the_caller_names_replaces_the_impersonations(server: Server) -
 
     assert _sent(server, "shop.example.test/p")["accept-language"] == "de-CH"
     assert json.dumps(server.requests).count("Accept-Language") == 1
+
+
+# --- the CLI -----------------------------------------------------------------------------------------------------
+
+
+def test_the_fetch_command_refuses_a_header_the_fetch_sets_itself(capsys: pytest.CaptureFixture[str]) -> None:
+    argv = ["fetch", "https://shop.example.test/", "--out", "page.bundle", "--header", "User-Agent: x"]
+
+    with pytest.raises(SystemExit) as stopped:
+        main(argv)
+
+    assert stopped.value.code == 2
+    assert "sets itself" in capsys.readouterr().err
+
+
+def test_the_fetch_command_refuses_a_proxy_pool_not_configured(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CRAWLERAI_PROXY_POOLS", "{}")
+    argv = ["fetch", "https://shop.example.test/", "--out", "page.bundle", "--proxy-pool", "eu"]
+
+    with pytest.raises(SystemExit) as stopped:
+        main(argv)
+
+    assert stopped.value.code == 2
+    assert "no proxy pool named 'eu'" in capsys.readouterr().err
