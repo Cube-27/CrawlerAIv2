@@ -40,4 +40,12 @@ async def crawl_site(
     data: EngineData | None = request.app.state.engine_data
     llm = KeyCapped(request.app.state.llm, database(request), key)
     with submission_problems():
-        return await crawl.submit_crawl(database(request), fetching.connector, body, data=data, llm=llm, api_key_id=key)
+        return await crawl.submit_crawl(
+            database(request),
+            fetching.connector,
+            body,
+            data=data,
+            llm=llm,
+            api_key_id=key,
+            proxy_pools=fetching.proxy_pools,
+        )

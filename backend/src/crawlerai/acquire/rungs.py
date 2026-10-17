@@ -252,7 +252,10 @@ async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: Fe
     the site's session with the context's cookies and the identity it sent (INV-29's exception), and its attempt says
     so (`site_session`)."""
     sessions, exporting = rungs.sessions, rungs.exporting
-    handoff = result.block_class in _BROWSER_EVIDENCE and portable(result.attempts[-1].challenge)
+    # A fetch with the caller's own context opens no session (D-1432): its cookies are the caller's, not the site's.
+    handoff = (
+        policy.context is None and result.block_class in _BROWSER_EVIDENCE and portable(result.attempts[-1].challenge)
+    )
     if sessions is None or exporting is None or not handoff:
         return await rungs.browser(url, policy)
     export = CookieExport()

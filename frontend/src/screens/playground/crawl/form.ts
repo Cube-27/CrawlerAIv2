@@ -1,13 +1,13 @@
 import type { CrawlRequest } from "../../../api/jobs";
 import { isJsonObject } from "../../../api/json";
 import type { MethodHint, PageKind, ScrapeFormat } from "../../../api/scrape";
+import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } from "../advanced";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import {
   asksForNothing,
   fieldsPageKindErrors,
   hasSchema,
-  fetchMember,
   NO_ERRORS,
   NO_FORMAT,
   optionalNumber,
@@ -52,6 +52,8 @@ export interface CrawlOptions {
   methodHint: MethodHint;
   /** `fetch.max_rows`: NaN while empty. */
   maxRows: number;
+  /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
+  advanced: AdvancedFetch;
   /** Empty: no webhook. */
   webhookUrl: string;
 }
@@ -67,6 +69,7 @@ export const DEFAULT_CRAWL_OPTIONS: CrawlOptions = {
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
   maxRows: Number.NaN,
+  advanced: DEFAULT_ADVANCED,
   webhookUrl: "",
 };
 
@@ -143,7 +146,7 @@ export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
     })),
     include: [...options.include],
     exclude: [...options.exclude],
-    fetch: fetchMember(options.methodHint, options.maxRows),
+    fetch: fetchMember(options.methodHint, options.maxRows, options.advanced),
     ...optionalNumber("max_depth", options.maxDepth),
     ...optionalNumber("limit", options.limit),
     ...webhook(options.webhookUrl),
@@ -184,6 +187,7 @@ export function crawlForm(request: StoredRequest): CrawlFormState {
       limit: count(request, "limit"),
       methodHint: methodHint(request),
       maxRows: maxRows(request),
+      advanced: storedAdvanced(request),
       webhookUrl: webhookUrl(request),
     },
   };

@@ -1,9 +1,9 @@
 import type { MethodHint, PageKind, PagingHint, ScrapeRequest } from "../../../api/scrape";
+import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } from "../advanced";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import {
   canSend,
-  fetchMember,
   llmBudget,
   optionalNumber,
   requestFormats,
@@ -37,6 +37,8 @@ export interface ScrapeOptions {
   llmCalls: number;
   /** `fetch.max_rows`: NaN while empty (every page, up to the server's cap). */
   maxRows: number;
+  /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
+  advanced: AdvancedFetch;
   /** Browser actions (owner #52): sent only for listing pages. `records` is NaN while empty (the server's 100), and a
    * null `pagingHint` lets the server detect the mechanism. */
   browserActions: boolean;
@@ -54,6 +56,7 @@ export const DEFAULT_OPTIONS: ScrapeOptions = {
   timeoutS: Number.NaN,
   llmCalls: Number.NaN,
   maxRows: Number.NaN,
+  advanced: DEFAULT_ADVANCED,
   browserActions: false,
   records: Number.NaN,
   pagingHint: null,
@@ -86,7 +89,7 @@ export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
     formats: requestFormats(form),
     schema: requestSchema(form),
     page_kind: requestPageKind(form),
-    fetch: fetchMember(options.methodHint, options.maxRows),
+    fetch: fetchMember(options.methodHint, options.maxRows, options.advanced),
     ...optionalNumber("max_age", options.maxAge),
     ...optionalNumber("timeout_s", options.timeoutS),
     ...llmBudget(options.llmCalls),
@@ -155,6 +158,7 @@ export function scrapeForm(request: StoredRequest): ScrapeFormState {
       timeoutS: count(request, "timeout_s"),
       llmCalls: llmCalls(request),
       maxRows: maxRows(request),
+      advanced: storedAdvanced(request),
       ...storedBrowserActions(request),
     },
   };

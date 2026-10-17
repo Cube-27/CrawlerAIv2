@@ -40,9 +40,12 @@ async def fetch_http(
     sessions: SiteSessions | None = None,
 ) -> FetchResult:
     """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request. `sessions`
-    are this process's site sessions: the site's, if any, goes with the fetch, and is dropped when it is `blocked`."""
+    are this process's site sessions: the site's, if any, goes with the fetch, and is dropped when it is `blocked`; a
+    fetch with the caller's own context takes none (D-1432)."""
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
+    if policy.context is not None:
+        sessions = None
     session = None if sessions is None else sessions.take(url, url, policy.proxy_pool)
     sent = await send(
         url,

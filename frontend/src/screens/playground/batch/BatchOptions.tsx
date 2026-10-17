@@ -1,3 +1,4 @@
+import { AdvancedRows } from "../AdvancedRows";
 import type { PageKind } from "../../../api/scrape";
 import { OptionsPanel } from "../OptionsPanel";
 import {
@@ -68,6 +69,12 @@ export function BatchOptions({
         value={options.webhookUrl}
         onChange={(webhookUrl) => {
           onChange({ ...options, webhookUrl });
+        }}
+      />
+      <AdvancedRows
+        value={options.advanced}
+        onChange={(advanced) => {
+          onChange({ ...options, advanced });
         }}
       />
     </OptionsPanel>

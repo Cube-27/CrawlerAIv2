@@ -70,6 +70,7 @@ from crawlerai.services.scrape_steps import (
     store_further,
     store_page_record,
 )
+from crawlerai.services.stored_captures import NOT_CACHED, recent_capture, reread
 from crawlerai.storage.base import ObjectStore
 from crawlerai.worker.loop import Failed, Finished, TaskResult
 from crawlerai.worker.polite import HostRules, fetch_politely
@@ -175,9 +176,13 @@ async def fetch_page(
     site = await site_row(conn, host, task.page_kind)
     rungs = site_rungs(fetching, host, site)
     policy = fetch_policy(options, locale, site.proxy_pool, page_kind=task.page_kind)
+    if options.cache == "only":
+        return await _stored_page(conn, fetching, task, site, policy)
     standing = () if recurring is None else await _standing(conn, task, site.id, recurring)
-    # Validators go only where a record stands for a 304; without one, a 304 is fetched again whole (§4.6).
-    validators = await stored_validators(conn, site.id, task.canonical_url) if standing else None
+    # Validators go only where a record stands for a 304; without one, a 304 is fetched again whole (§4.6). A fetch
+    # that bypasses what is stored sends none (D-1435).
+    sends_validators = bool(standing) and options.cache != "bypass"
+    validators = await stored_validators(conn, site.id, task.canonical_url) if sends_validators else None
     attempts: list[AttemptRecord] = []
     robots = recording(fetching.rungs.http, policy, attempts)
     recipe = await _recipe(conn, fetching, task, served, robots)
@@ -224,6 +229,18 @@ async def fetch_page(
         await link_records(conn, task.id, standing)
         fetched = Finished("unchanged")
     return Ended(fetched, tuple(attempts), policy.proxy_pool)
+
+
+async def _stored_page(
+    conn: AsyncConnection, fetching: Fetching, task: ClaimedTask, site: SiteRow, policy: FetchPolicy
+) -> FetchedPage | Ended:
+    """The task's page from the latest stored capture made with `policy`'s steps and context (`cache: only`, D-1435),
+    with no fetch; without one the task fails `not_cached`."""
+    row = await recent_capture(conn, site.id, task.canonical_url, policy, max_age=None)
+    recent = None if row is None else await reread(fetching.store, row)
+    if recent is None:
+        return Ended(Failed(NOT_CACHED, transient=False))
+    return FetchedPage(site, recent.result, recent.capture_id, (), (), policy.proxy_pool)
 
 
 async def _recipe(

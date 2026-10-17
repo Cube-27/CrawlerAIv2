@@ -14,6 +14,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import get_args
 
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from crawlerai.acquire.api import fetch_json
@@ -48,6 +49,7 @@ from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict
 from crawlerai.services import schemas as schemas_service
+from crawlerai.services.fetch_options import FetchOptions, UnknownProxyPool, check_proxy_pool, fetch_policy
 from crawlerai.services.fetching import Fetching, learning_replay
 from crawlerai.services.scrape_paging import learning_render
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
@@ -133,7 +135,7 @@ async def _work() -> None:
                 listing=listing,
             )
             store = open_store(settings.object_store)
-            fetching = Fetching(rungs, connector, store, HostLimiter())
+            fetching = Fetching(rungs, connector, store, HostLimiter(), frozenset(settings.proxy_pools))
             llm, setup = llm_from_settings(settings, engine)
             data, margins = load_engine_data(adapters), load_drift_margins()
             handlers = task_handlers(fetching, data, margins, llm=llm)
@@ -166,14 +168,33 @@ async def _schedule() -> None:
     await run_scheduler(settings, entries, _stop_on_signals())
 
 
-async def _fetch(url: str, out: Path, connector: SafeConnector | None = None) -> None:
-    result = await fetch_http(
-        url,
-        FetchPolicy(),
-        engine_version=ENGINE_VERSION,
-        impersonate=rung_impersonation(AcquireSettings()),
-        connector=connector,
-    )
+async def _fetch(
+    url: str, out: Path, connector: SafeConnector | None = None, options: FetchOptions | None = None
+) -> None:
+    """Fetch `url` into a bundle at `out`: over HTTP, or in the browser when `options` ask for it or for page steps,
+    with the caller's request context and proxy pool (D-1430, D-1434)."""
+    settings = AcquireSettings()
+    options = options or FetchOptions()
+    policy = fetch_policy(options, None, None)
+    if options.in_browser:
+        async with open_browser() as session:
+            result = await fetch_browser(
+                url,
+                policy,
+                session=session,
+                engine_version=ENGINE_VERSION,
+                connector=connector,
+                pools=settings.proxy_pools,
+            )
+    else:
+        result = await fetch_http(
+            url,
+            policy,
+            engine_version=ENGINE_VERSION,
+            impersonate=rung_impersonation(settings),
+            connector=connector,
+            pools=settings.proxy_pools,
+        )
     out.write_bytes(encode(result.bundle))
     manifest = result.bundle.manifest
     summary = {
@@ -183,6 +204,8 @@ async def _fetch(url: str, out: Path, connector: SafeConnector | None = None) ->
         "block_class": manifest.block_class,
         "error": result.attempts[-1].error,
     }
+    if steps := result.attempts[-1].steps:
+        summary["steps"] = [step.model_dump(mode="json") for step in steps]
     print(json.dumps(summary))
 
 
@@ -365,12 +388,13 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "scheduler", help="run the scheduler: release expired leases, expire old data, re-check fetch methods"
     ).set_defaults(handler=_run_scheduler)
-    fetch = commands.add_parser("fetch", help="fetch one URL over HTTP into a capture bundle file")
+    fetch = commands.add_parser("fetch", help="fetch one URL over HTTP, or in the browser, into a capture bundle file")
     fetch.set_defaults(handler=_run_fetch)
     fetch.add_argument("url")
     fetch.add_argument(
         "--out", type=Path, required=True, help="the bundle file to write (zstd-compressed tar), under this directory"
     )
+    _add_fetch_options(fetch)
     schemas = commands.add_parser("schemas", help="schema definitions").add_subparsers(
         dest="schemas_command", required=True
     )
@@ -430,7 +454,56 @@ def _run_scheduler(_parser: argparse.ArgumentParser, _args: argparse.Namespace) 
 
 def _run_fetch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     # The bundle is written only under the working directory: a path argument never reaches elsewhere.
-    asyncio.run(_fetch(args.url, _under_cwd(parser, "--out", args.out)))
+    out = _under_cwd(parser, "--out", args.out)
+    options = _fetch_options(parser, args)
+    try:
+        check_proxy_pool(options, AcquireSettings().proxy_pools)
+    except UnknownProxyPool as e:
+        parser.error(str(e))
+    asyncio.run(_fetch(args.url, out, options=options))
+
+
+def _add_fetch_options(fetch: argparse.ArgumentParser) -> None:
+    """The request's `fetch` members as flags (D-1430, D-1436): the same names and checks as the API's."""
+    fetch.add_argument("--browser", action="store_true", help="fetch in the browser rather than over HTTP")
+    fetch.add_argument("--proxy-pool", help="a configured proxy pool (CRAWLERAI_PROXY_POOLS) to send through")
+    fetch.add_argument(
+        "--header", action="append", default=[], metavar="NAME:VALUE", help="a request header (HTTP only); repeats"
+    )
+    fetch.add_argument("--cookie", action="append", default=[], metavar="NAME=VALUE", help="a cookie; repeats")
+    fetch.add_argument("--wait-for", metavar="MS|SELECTOR|network_idle", help="what the browser waits for first")
+    fetch.add_argument(
+        "--action", action="append", default=[], metavar="JSON", help='a page step, e.g. {"type": "click", ...}'
+    )
+
+
+def _fetch_options(parser: argparse.ArgumentParser, args: argparse.Namespace) -> FetchOptions:
+    wait_for: int | str | None = args.wait_for
+    if isinstance(wait_for, str) and wait_for.isdigit():
+        wait_for = int(wait_for)
+    try:
+        return FetchOptions.model_validate(
+            {
+                "method_hint": "browser" if args.browser else "auto",
+                "proxy_pool": args.proxy_pool,
+                "headers": _pairs(args.header, ":"),
+                "cookies": _pairs(args.cookie, "="),
+                "wait_for": wait_for,
+                "actions": [json.loads(action) for action in args.action],
+            }
+        )
+    except (ValueError, ValidationError) as e:
+        parser.error(f"invalid fetch options: {e}")
+
+
+def _pairs(values: Sequence[str], separator: str) -> dict[str, str]:
+    pairs = {}
+    for value in values:
+        name, found, rest = value.partition(separator)
+        if not found:
+            raise ValueError(f"expected NAME{separator}VALUE, got {name!r}")
+        pairs[name.strip()] = rest.strip()
+    return pairs
 
 
 def _run_schemas(parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:

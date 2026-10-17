@@ -1,10 +1,10 @@
 import type { BatchRequest } from "../../../api/jobs";
 import type { MethodHint, PageKind } from "../../../api/scrape";
+import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } from "../advanced";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import { badUrlLine } from "./urls";
 import {
-  fetchMember,
   hasSchema,
   lines,
   llmBudget,
@@ -40,6 +40,8 @@ export interface BatchOptions {
   methodHint: MethodHint;
   /** `fetch.max_rows`: NaN while empty. */
   maxRows: number;
+  /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
+  advanced: AdvancedFetch;
   /** `budget.llm_calls`; NaN (empty) leaves `budget` out: the project's limit, or none (D-1121). */
   llmCalls: number;
 }
@@ -52,6 +54,7 @@ export const DEFAULT_BATCH_OPTIONS: BatchOptions = {
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
   maxRows: Number.NaN,
+  advanced: DEFAULT_ADVANCED,
   llmCalls: Number.NaN,
 };
 
@@ -94,7 +97,7 @@ export function buildBatch(form: BatchFormState): BatchRequest | null {
     formats: hasSchema(form) ? ["records"] : requestFormats(form),
     schema: requestSchema(form),
     page_kind: requestPageKind(form),
-    fetch: fetchMember(form.options.methodHint, form.options.maxRows),
+    fetch: fetchMember(form.options.methodHint, form.options.maxRows, form.options.advanced),
     ...llmBudget(form.options.llmCalls),
     ...webhook(form.options.webhookUrl),
   };
@@ -117,6 +120,7 @@ export function batchForm(request: StoredRequest): BatchFormState {
       webhookUrl: webhookUrl(request),
       methodHint: methodHint(request),
       maxRows: maxRows(request),
+      advanced: storedAdvanced(request),
       llmCalls: llmCalls(request),
     },
   };

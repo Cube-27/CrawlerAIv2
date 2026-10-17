@@ -20,7 +20,14 @@ const response: ScrapeResponse = {
     block_class: "ok",
     adapter: null,
     attempts: [
-      { method: "browser", status: 200, block_class: "ok", duration_ms: 2400, error: null },
+      {
+        method: "browser",
+        status: 200,
+        block_class: "ok",
+        duration_ms: 2400,
+        steps: [],
+        error: null,
+      },
     ],
   },
   usage: {

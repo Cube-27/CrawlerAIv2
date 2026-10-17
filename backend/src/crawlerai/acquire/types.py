@@ -3,7 +3,17 @@
 from datetime import timedelta
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, PositiveFloat, PositiveInt, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    PositiveFloat,
+    PositiveInt,
+    SecretStr,
+    field_serializer,
+    model_validator,
+)
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.db.models import PageKind
@@ -16,8 +26,11 @@ __all__ = [
     "BrowserActions",
     "FetchPolicy",
     "FetchResult",
+    "PageStep",
     "PagedFetch",
     "PagingHint",
+    "RequestContext",
+    "StepOutcome",
     "StopReason",
     "Validators",
     "check_robots_override",
@@ -35,6 +48,60 @@ def check_robots_override(respect_robots: bool, reason: str | None) -> None:
         raise ValueError("respect_robots=false needs a robots_override_reason")
 
 
+# A caller's header or cookie: its name and secret value.
+SecretPair = tuple[str, SecretStr]
+# What a capture, a log line or an answer shows for a secret value (pydantic's `SecretStr` rendering).
+REDACTED = "**********"
+
+
+class RequestContext(_Frozen):
+    """The caller's own request context (D-1430): headers the HTTP and JSON rungs send to the fetched URL's host, and
+    cookies seeded as host-only cookies of that host (INV-29 amended). The values are secrets: every serialization
+    shows them redacted, so neither a capture's manifest nor a log line holds one (D-1432)."""
+
+    headers: tuple[SecretPair, ...] = ()
+    cookies: tuple[SecretPair, ...] = ()
+
+    @field_serializer("headers", "cookies")
+    def _redacted(self, pairs: tuple[SecretPair, ...]) -> list[tuple[str, str]]:
+        return [(name, REDACTED) for name, _ in pairs]
+
+    def header_names(self) -> frozenset[str]:
+        return frozenset(name.lower() for name, _ in self.headers)
+
+
+# What a page step does (D-1436): wait (milliseconds, an element, or no data call in flight), click (an element or
+# visible text), scroll (to the end, by pixels, or until the document stops growing), press a key, or type text.
+StepAction = Literal["wait", "click", "scroll", "press", "type"]
+ScrollMode = Literal["end", "by", "stable"]
+
+
+class PageStep(_Frozen):
+    """One browser step as the browser rung runs it (`run_steps`), translated from the caller's vocabulary
+    (`page_actions` in `config_ir`): an element is named by an XPath 1.0 expression, or by its visible `text` for a
+    click. Each step ends within `timeout_ms`."""
+
+    action: StepAction
+    timeout_ms: PositiveInt
+    xpath: str | None = None
+    text: str | None = None
+    ms: PositiveInt | None = None
+    network_idle: bool = False
+    scroll: ScrollMode | None = None
+    px: int | None = None
+    key: str | None = None
+
+
+# How a step ended: done; its element never appeared, or never became actionable, within its timeout; refused (a
+# credential field, D-1438); the browser failed it; or not run, after an earlier step that did not complete.
+StepResult = Literal["done", "not_found", "timeout", "refused", "error", "skipped"]
+
+
+class StepOutcome(_Frozen):
+    action: StepAction
+    outcome: StepResult
+
+
 class FetchPolicy(_Frozen):
     method_hint: Literal["auto", "http", "browser"] = "auto"
     proxy_pool: str | None = None
@@ -50,6 +117,9 @@ class FetchPolicy(_Frozen):
     # A soft row target for a list an adapter's API serves in pages: its walk ends once it has at least this many rows
     # (whole pages are kept); None asks for every page, up to the adapters' hard cap (`adapters.paging.MAX_ROWS`).
     max_rows: PositiveInt | None = None
+    # The caller's headers and cookies (D-1430), and the page steps the browser runs before it reads the page (D-1436).
+    context: RequestContext | None = None
+    steps: tuple[PageStep, ...] = ()
 
     @model_validator(mode="after")
     def _override_has_a_reason(self) -> "FetchPolicy":
@@ -86,6 +156,8 @@ class AttemptRecord(_Frozen):
     # The bytes the attempt moved both ways (`outcome.Traffic`), which `proxy_bytes` usage counts for a fetch through a
     # pool (D-1381). Not stored, as the attempt's other wire details are not.
     transferred: int = Field(default=0, ge=0, exclude=True)
+    # D-1437: how each of the policy's page steps ended, in order, on the browser attempt that ran them.
+    steps: tuple[StepOutcome, ...] = ()
 
 
 class FetchResult(_Frozen):

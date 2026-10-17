@@ -1,3 +1,4 @@
+import { AdvancedRows } from "../AdvancedRows";
 import type { PageKind } from "../../../api/scrape";
 import { NumberRow, OptionsPanel } from "../OptionsPanel";
 import { FetchMethodRow, MaxRowsRow, FieldsRow, MetadataRow, ScopeRows, WebhookRow } from "../rows";
@@ -82,6 +83,12 @@ export function CrawlOptions({
         error={rulesError}
         onChange={(rules) => {
           onChange({ ...options, rules });
+        }}
+      />
+      <AdvancedRows
+        value={options.advanced}
+        onChange={(advanced) => {
+          onChange({ ...options, advanced });
         }}
       />
     </OptionsPanel>

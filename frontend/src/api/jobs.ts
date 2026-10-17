@@ -4,7 +4,7 @@ import type { RecordPage, StoredRecord } from "./records";
 import type { Opened } from "./events";
 import { apiResult, type ApiResult } from "./result";
 import type { components, operations } from "./schema";
-import type { SchemaRef } from "./scrape";
+import type { FetchMember, SchemaRef } from "./scrape";
 
 type Schemas = components["schemas"];
 
@@ -34,14 +34,14 @@ export type MapResult = Schemas["MapResult"];
  * (openapi-typescript), so a request that leaves a default to the server is sent as that type; the server validates
  * it. */
 export type BatchRequest = Omit<Schemas["BatchScrapeRequest"], "fetch" | "schema"> & {
-  fetch: Pick<Schemas["FetchOptions"], "method_hint" | "max_rows">;
+  fetch: FetchMember;
   schema: JobSchemaRef | null;
 };
 export type CrawlRequest = Omit<
   Schemas["CrawlRequest"],
   "fetch" | "schema" | "limit" | "max_depth"
 > & {
-  fetch: Pick<Schemas["FetchOptions"], "method_hint" | "max_rows">;
+  fetch: FetchMember;
   schema: JobSchemaRef | null;
   limit?: number;
   max_depth?: number;
@@ -50,7 +50,7 @@ export type ExtractRequest = Omit<
   Schemas["ExtractRequest"],
   "fetch" | "schema" | "budget" | "limit"
 > & {
-  fetch: Pick<Schemas["FetchOptions"], "method_hint" | "max_rows">;
+  fetch: FetchMember;
   schema: SchemaRef;
   budget?: Schemas["Budget"];
   limit?: number;

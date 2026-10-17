@@ -32,6 +32,10 @@ throwaway databases.
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
+- Request context and actions (#262): a scrape's `browser_actions` (listing paging) takes no `fetch.actions` yet (D-1439):
+  let the paging driver run the caller's steps first (a cookie banner, a filter). An asynchronous job's secret values
+  stay in `job.request` after it ends (D-1432): scrub them when the job ends, once recurring crawls show whether a re-run
+  reads them. Steps are per request; per-URL steps in a batch are a later member if callers ask.
 - ATS adapters (#248): the SmartRecruiters API host's robots.txt disallows every agent but one, so by default its adapter
   is refused and the page rungs serve (D-1306); it was verified on recorded answers. A branded list page with no rows at
   HTTP is rendered once (owner #54) before the own-host referral serves its Workday site; referring first would save the

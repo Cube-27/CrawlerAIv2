@@ -1,3 +1,4 @@
+import { AdvancedRows } from "../AdvancedRows";
 import type { PageKind, PagingHint } from "../../../api/scrape";
 import { NumberRow, OptionsPanel, SelectRow, SwitchRow } from "../OptionsPanel";
 import {
@@ -89,6 +90,12 @@ export function ScrapeOptions({
         options={options}
         applies={browserActionsApply(options, hasSchema ? schemaPageKind : options.pageKind)}
         onChange={onChange}
+      />
+      <AdvancedRows
+        value={options.advanced}
+        onChange={(advanced) => {
+          onChange({ ...options, advanced });
+        }}
       />
     </OptionsPanel>
   );

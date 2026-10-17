@@ -12,6 +12,7 @@ links only (`links_only`, §13.2), unless the crawl has no rules, when every pag
 are crawl-discovered: a page whose required fields don't all publish ends `no_match`, without a record (§10, §23).
 """
 
+from collections.abc import Collection
 from typing import Self
 from urllib.parse import urlsplit
 
@@ -27,6 +28,7 @@ from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.batch import insert_job, records_schema
+from crawlerai.services.fetch_options import check_proxy_pool
 from crawlerai.services.fetching import check_targets
 from crawlerai.services.map import MAX_LIMIT  # a crawl enqueues at most what a map of the site returns
 from crawlerai.services.scrape import Budget
@@ -112,10 +114,14 @@ async def submit_crawl(
     data: EngineData | None,
     llm: LLMClient = NO_LLM,
     api_key_id: ApiKeyId | None = None,
+    proxy_pools: Collection[str] | None = None,
 ) -> CrawlSubmitted:
     """Store `request` as a queued job with the start URL's task; `api_key_id`, the key that submitted it, signs its
-    webhook (§4.2). Raises, storing nothing: `TargetsRejected` for a refused target, `RecordsUnavailable` for `records`
-    without `data`, and `named_schema`'s errors for a schema `records` cannot use."""
+    webhook (§4.2); `proxy_pools`, the configured pools, which `fetch.proxy_pool` must name one of (D-1434). Raises,
+    storing nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target,
+    `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use."""
+    if proxy_pools is not None:
+        check_proxy_pool(request.fetch, proxy_pools)
     await check_targets(connector, [("url", request.url)], webhook_url=request.webhook_url)
     # A records crawl's rules have one page kind, its schema's (the request's validator).
     page_kind = request.page_kind_rules[0].page_kind if request.page_kind_rules else None

@@ -43,6 +43,7 @@ from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import MAX_URLS, insert_job, insert_tasks, job_pins
+from crawlerai.services.fetch_options import check_proxy_pool
 from crawlerai.services.fetching import Fetching, check_targets
 from crawlerai.services.map import MapRequest, map_urls
 from crawlerai.services.scrape import MAX_TIMEOUT_S, Budget, RecordsUnavailable, polite_fetch
@@ -151,11 +152,13 @@ async def submit_extract(
     draft_timeout_s: float = DRAFT_TIMEOUT_S,
 ) -> ExtractSubmitted:
     """Store `request` as a queued job with its tasks; `api_key_id`, the key that submitted it, signs its webhook
-    (§4.2). Raises, storing no extract job: `TargetsRejected` for a refused target, `RecordsUnavailable` without
+    (§4.2). Raises, storing no extract job: `UnknownProxyPool` for a proxy pool not configured (D-1434),
+    `TargetsRejected` for a refused target, `RecordsUnavailable` without
     `data`, `named_schema`'s errors for a schema that cannot be used (or field names `llm` could not draft),
     `TargetRejected` for a refused fetch of a map, and
     `NothingToExtract`. Raises, failing the job: `NoSamplePage`, `TargetRejected` for a refused redirect, the LLM
     client's `LLMFailure`, `SchemaUnusable` for a draft of another page kind, and `DraftTimedOut`."""
+    check_proxy_pool(request.fetch, fetching.proxy_pools)
     await check_targets(fetching.connector, request.targets(), webhook_url=request.webhook_url)
     if data is None:
         raise RecordsUnavailable("this process has not loaded the engine's data files")
