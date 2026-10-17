@@ -108,6 +108,9 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
     served = None if reads_links else crawl.records
     # A listing recipe's pages count toward the crawl's page bound as its tasks do.
     pages = min(MAX_PAGES, crawl.request.limit)
+    # A page no rule matched is read for its links only, so it needs no file made of it.
+    extracted = task.page_kind is not None or not crawl.request.page_kind_rules
+    formats = crawl.request.formats if extracted else ()
     page = await fetch_page(
         conn,
         fetching,
@@ -117,6 +120,7 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
         served=served,
         llm=crawl.llm,
         listing_pages=pages,
+        formats=formats,
     )
     if not isinstance(page, Ended):
         await _record_final_url(conn, task, page)

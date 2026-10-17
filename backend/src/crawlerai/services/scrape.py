@@ -24,7 +24,7 @@ canonical URL that reached its page within that many seconds is read again inste
 import asyncio
 import os
 import socket
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
@@ -45,6 +45,8 @@ from crawlerai.config_ir.active import active_config, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
+from crawlerai.content.chunks import Chunk, ChunkOptions
+from crawlerai.content.fit import FitOptions
 from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.engine_version import ENGINE_VERSION
@@ -78,11 +80,13 @@ from crawlerai.services.records import ScrapedRecord
 from crawlerai.services.scrape_paging import check_browser_actions, paged_fetch
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
+    CAPTURE_FORMATS,
     DEFAULT_PROJECT,
     EXTRACTION_ERROR,
     ContentCheck,
     FetchOptions,
     FetchSummary,
+    FormatOptions,
     Formats,
     Further,
     Input,
@@ -93,6 +97,7 @@ from crawlerai.services.scrape_steps import (
     SchemaUnusable,
     SiteRow,
     StoredFurther,
+    check_formats,
     check_records,
     check_usable,
     checked_extraction,
@@ -112,6 +117,7 @@ from crawlerai.services.scrape_steps import (
     store_page_record,
 )
 from crawlerai.services.stored_captures import NOT_CACHED, CaptureRow, NotCached, Recent, recent_capture, reread
+from crawlerai.storage.artifacts import Artifact
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import CaptureManifest
 
@@ -145,6 +151,8 @@ class ScrapeRequest(Input):
     timeout_s: float = Field(default=60, gt=0, le=MAX_TIMEOUT_S)
     budget: Budget | None = None
     browser_actions: BrowserActions | None = None
+    fit: FitOptions | None = None  # `markdown_fit`'s query and block limit
+    chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
 
     @field_validator("url")
     @classmethod
@@ -157,7 +165,14 @@ class ScrapeRequest(Input):
     def _records_have_a_schema(self) -> Self:
         check_records(self.formats, self.schema_, self.page_kind)
         check_browser_actions(self.browser_actions, self.page_kind, self.max_age, self.fetch)
+        check_formats(self.formats, self.fetch, self.fit, self.chunking)
+        if self.browser_actions is not None and CAPTURE_FORMATS.intersection(self.formats):
+            raise ValueError("screenshot and pdf are of the page as first rendered, so browser_actions cannot ask them")
         return self
+
+    @property
+    def format_options(self) -> FormatOptions:
+        return FormatOptions(fit=self.fit, chunking=self.chunking)
 
 
 class Usage(BaseModel):
@@ -184,10 +199,14 @@ class ScrapeResult(BaseModel):
     outcome: PageOutcome
     fetch: FetchSummary | None
     markdown: str | None = format_member()
+    markdown_fit: str | None = format_member()
+    chunks: list[Chunk] | None = format_member()
     html: str | None = format_member()
     raw_html: str | None = format_member()
     links: list[str] | None = format_member()
     metadata: PageMetadata | None = format_member()
+    screenshot: Artifact | None = format_member()
+    pdf: Artifact | None = format_member()
     schema_: SchemaDef | None = format_member(alias="schema")
     records: list[ScrapedRecord] | None = format_member()
     browser_actions: ActionsReport | None = format_member()
@@ -335,9 +354,11 @@ async def _run(
         site = await site_row(conn, host, request.page_kind)
         config = await _config(conn, site.id, work)
         recipe = recipe_of(config) if config is not None and records_only else None
-        policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind)
+        policy = fetch_policy(
+            request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind, formats=request.formats
+        )
         row = await _stored(conn, request, policy, site.id, task.canonical_url, api=recipe is not None)
-    recent = await _read_stored(fetching.store, row, request.fetch.cache)
+    recent = await _read_stored(fetching.store, row, request.fetch.cache, request.formats)
     attempts: list[AttemptRecord] = []
     check = _content_check(work, request, config, task)
     further: tuple[FetchResult, ...] = ()
@@ -365,12 +386,7 @@ async def _run(
         )
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
-    derived = _NOTHING
-    if isinstance(page, FetchResult) and page.block_class == "ok":
-        reached = (page, parsed_page(page.bundle, check))
-        derived = await _derive(
-            engine, work, request, task, reached, config, known=checked_extraction(page.bundle, check)
-        )
+    derived = await _derive_reached(engine, work, request, task, page, recent, config, check)
     extra = await _extract_more(work, task, derived, config, further)
     members, records = _NOT_FETCHED, None
     async with engine.begin() as conn:
@@ -411,12 +427,35 @@ async def _stored(
     return await recent_capture(conn, site_id, canonical, policy, max_age=max_age, api=api)
 
 
-async def _read_stored(store: ObjectStore, row: CaptureRow | None, cache: CacheMode) -> Recent | None:
-    """The stored capture `row` names, read again; with `cache: only`, `NotCached` when there is none to read."""
-    recent = None if row is None else await reread(store, row)
+async def _read_stored(
+    store: ObjectStore, row: CaptureRow | None, cache: CacheMode, formats: Collection[str]
+) -> Recent | None:
+    """The stored capture `row` names, read again with the files `formats` ask of it; with `cache: only`, `NotCached`
+    when there is none to read."""
+    recent = None if row is None else await reread(store, row, formats)
     if recent is None and cache == "only":
         raise NotCached("no stored capture of the page was made the way this request fetches it")
     return recent
+
+
+async def _derive_reached(
+    engine: AsyncEngine,
+    work: _Work,
+    request: ScrapeRequest,
+    task: ClaimedTask,
+    page: FetchResult | str,
+    recent: Recent | None,
+    config: ActiveConfig | None,
+    check: ContentCheck | None,
+) -> _Derived:
+    """What `_derive` makes of the page when it was reached, else nothing; `recent` is the capture reread instead of a
+    fetch, whose stored files the answer names."""
+    if not isinstance(page, FetchResult) or page.block_class != "ok":
+        return _NOTHING
+    files = frozenset(page.artifacts) if recent is None else recent.artifacts
+    reached = (page, parsed_page(page.bundle, check))
+    known = checked_extraction(page.bundle, check)
+    return await _derive(engine, work, request, task, reached, config, known=known, files=files)
 
 
 def _pages(paged: PagedFetch | str) -> tuple[FetchResult | str, tuple[FetchResult, ...], ActionsReport | None]:
@@ -477,14 +516,16 @@ async def _derive(
     config: ActiveConfig | None,
     *,
     known: ExtractionResult | None = None,
+    files: frozenset[str] = frozenset(),
 ) -> _Derived:
     """The requested formats, the draft of a prompt, and the extraction for `records`, from the page's one parse
     (INV-26), with the site's active `config` when there is one; `known` is the page's extraction when its fetch's
-    check already made it with the request's schema (a listing's, owner #54)."""
+    check already made it with the request's schema (a listing's, owner #54); `files` names the artifacts stored for the
+    capture."""
     result, page = reached
     prompt = request.schema_.prompt if isinstance(request.schema_, SchemaPrompt) else None
     manifest = result.bundle.manifest
-    formats, sample = await asyncio.to_thread(_content, page, manifest, request.formats, sample=prompt is not None)
+    formats, sample = await asyncio.to_thread(_content, page, manifest, request, files, sample=prompt is not None)
     drafted = None
     if prompt is not None and sample is not None:
         # Role S's one sample page is the page's cleaned text (SPEC-06 §4.5).
@@ -628,10 +669,11 @@ def _scraped(kept: StoredRecord, extraction: ExtractionResult) -> ScrapedRecord:
 
 
 def _content(
-    page: ParsedPage, manifest: CaptureManifest, requested: list[PageFormat], *, sample: bool
+    page: ParsedPage, manifest: CaptureManifest, request: ScrapeRequest, files: frozenset[str], *, sample: bool
 ) -> tuple[Formats, str | None]:
     """The requested content formats of the page and, when `sample`, its cleaned text."""
-    return page_formats(page, manifest, requested), page.cleaned_text.text if sample else None
+    formats = page_formats(page, manifest, request.formats, request.format_options, files)
+    return formats, page.cleaned_text.text if sample else None
 
 
 async def _usage(conn: AsyncConnection, job_id: JobId) -> Usage:

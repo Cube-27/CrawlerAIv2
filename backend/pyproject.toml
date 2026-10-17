@@ -86,6 +86,11 @@ mypy_path = "src"
 explicit_package_bases = true
 plugins = ["pydantic.mypy"]
 
+# pyarrow ships no type information; `config_ir.exporters.files` keeps it behind `Any`.
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
@@ -115,6 +120,7 @@ dev = [
     "types-dateparser>=1.2,<2",
     "types-jsonschema>=4.23,<5",
     "types-lxml>=2026.2,<2027",
+    "types-openpyxl>=3.1.5.20261017",
     "types-pyyaml>=6,<7",
 ]
 licenses = [

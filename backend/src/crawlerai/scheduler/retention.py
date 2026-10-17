@@ -13,6 +13,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import Candidate, Capture
+from crawlerai.storage.artifacts import ARTIFACT_TYPES, artifact_key
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import CAPTURES_PREFIX
 
@@ -48,6 +49,8 @@ async def expire_captures(conn: AsyncConnection, store: ObjectStore, *, batch: i
 def _delete_objects(store: ObjectStore, keys: list[str]) -> None:
     for key in keys:
         store.delete(key)
+        for name in ARTIFACT_TYPES:  # the screenshot and PDF of the capture go with its bundle
+            store.delete(artifact_key(key, name))
 
 
 async def expire_candidates(conn: AsyncConnection, *, batch: int) -> int:

@@ -58,6 +58,7 @@ from crawlerai.services.scrape_steps import (
     EXTRACTION_ERROR,
     ContentCheck,
     FetchOptions,
+    PageFormat,
     SiteRow,
     checked_extraction,
     content_check,
@@ -153,6 +154,7 @@ async def fetch_page(
     served: Records | None = None,
     llm: LLMClient,
     listing_pages: int = MAX_PAGES,
+    formats: Sequence[PageFormat] = (),
 ) -> FetchedPage | Ended:
     """Fetch the task's page politely (`fetch_politely`: robots.txt over HTTP, the page through `acquire`) and store
     its capture, or the result the task ends this run with. Neither writes the job's usage. A request the SSRF
@@ -167,7 +169,10 @@ async def fetch_page(
     serves the page through its API recipe when it has one (SPEC-09 §4.8, `recipe_rung`), and an HTTP page that lacks
     the offer data or the rows their schema reads is rendered once more (`ContentCheck`, owner #49, #54), with role C
     on `llm`, charged to the task's job. A listing's recipe with pagination serves up to
-    `listing_pages` pages of it (module docstring)."""
+    `listing_pages` pages of it (module docstring).
+
+    `formats` are those the task's page is read for: a screenshot or PDF among them is made in the browser
+    (`fetch_policy`)."""
     try:
         await fetching.connector.check(task.url)
     except SsrfRejected as e:
@@ -175,9 +180,9 @@ async def fetch_page(
     host = urlsplit(task.url).hostname or ""
     site = await site_row(conn, host, task.page_kind)
     rungs = site_rungs(fetching, host, site)
-    policy = fetch_policy(options, locale, site.proxy_pool, page_kind=task.page_kind)
+    policy = fetch_policy(options, locale, site.proxy_pool, page_kind=task.page_kind, formats=formats)
     if options.cache == "only":
-        return await _stored_page(conn, fetching, task, site, policy)
+        return await _stored_page(conn, fetching, task, site, policy, formats)
     standing = () if recurring is None else await _standing(conn, task, site.id, recurring)
     # Validators go only where a record stands for a 304; without one, a 304 is fetched again whole (§4.6). A fetch
     # that bypasses what is stored sends none (D-1435).
@@ -232,12 +237,17 @@ async def fetch_page(
 
 
 async def _stored_page(
-    conn: AsyncConnection, fetching: Fetching, task: ClaimedTask, site: SiteRow, policy: FetchPolicy
+    conn: AsyncConnection,
+    fetching: Fetching,
+    task: ClaimedTask,
+    site: SiteRow,
+    policy: FetchPolicy,
+    formats: Sequence[PageFormat],
 ) -> FetchedPage | Ended:
     """The task's page from the latest stored capture made with `policy`'s steps and context (`cache: only`, D-1435),
     with no fetch; without one the task fails `not_cached`."""
     row = await recent_capture(conn, site.id, task.canonical_url, policy, max_age=None)
-    recent = None if row is None else await reread(fetching.store, row)
+    recent = None if row is None else await reread(fetching.store, row, formats)
     if recent is None:
         return Ended(Failed(NOT_CACHED, transient=False))
     return FetchedPage(site, recent.result, recent.capture_id, (), (), policy.proxy_pool)

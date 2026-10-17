@@ -20,6 +20,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.ssrf import SafeConnector
+from crawlerai.content.chunks import ChunkOptions
+from crawlerai.content.fit import FitOptions
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.models import (
     ApiKeyId,
@@ -48,6 +50,7 @@ from crawlerai.services.scrape_steps import (
     SchemaFields,
     SchemaInline,
     absolute_http_url,
+    check_formats,
     check_records,
     named_schema,
 )
@@ -71,6 +74,8 @@ class BatchScrapeRequest(Input):
     locale: str | None = None
     budget: Budget | None = None
     webhook_url: str | None = None
+    fit: FitOptions | None = None  # `markdown_fit`'s query and block limit
+    chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
 
     @field_validator("urls")
     @classmethod
@@ -88,6 +93,7 @@ class BatchScrapeRequest(Input):
     @model_validator(mode="after")
     def _records_alone_with_a_schema(self) -> Self:
         check_records(self.formats, self.schema_, self.page_kind)
+        check_formats(self.formats, self.fetch, self.fit, self.chunking)
         if "records" in self.formats and len(set(self.formats)) > 1:
             raise ValueError("records are asked alone: a batch's results are records or page outputs")
         return self

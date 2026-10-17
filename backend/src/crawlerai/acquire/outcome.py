@@ -63,10 +63,12 @@ def fetch_result(
     challenge: str | None = None,
     transferred: int = 0,
     steps: tuple[StepOutcome, ...] = (),
+    artifacts: dict[str, bytes] | None = None,
 ) -> FetchResult:
     """`started` is the `time.monotonic()` reading when the fetch began; `timings` are added to its total; `challenge`
     labels the attempt (`acquire.challenge`); `transferred` is the bytes the attempt moved (`Traffic`); `steps` how the
-    policy's page steps ended. The caller's header values are recorded redacted (D-1432)."""
+    policy's page steps ended; `artifacts` are the files made of an `ok` page, kept with the result. The caller's header
+    values are recorded redacted (D-1432)."""
     if error is not None:
         # An error keeps no body: it yields no records (INV-11), and a partial body would mislead a replay.
         content = Content(body=b"")
@@ -104,7 +106,8 @@ def fetch_result(
     bundle = CaptureBundle(
         manifest=manifest, body=content.body, network=tuple(data for _, data in content.network), raw_body=raw_body
     )
-    return FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=(attempt,))
+    kept = artifacts if artifacts and error is None and block_class == "ok" else {}
+    return FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=(attempt,), artifacts=kept)
 
 
 def _redacted(headers: HeaderList, policy: FetchPolicy) -> HeaderList:

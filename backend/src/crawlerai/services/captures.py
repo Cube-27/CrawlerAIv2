@@ -25,6 +25,7 @@ from crawlerai.resolve.task import ActiveConfig, page_records
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.records import ExtractedRecord
+from crawlerai.storage.artifacts import ARTIFACT_TYPES, artifact_key
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import CaptureBundle, decode
 
@@ -92,6 +93,19 @@ async def markdown_of(engine: AsyncEngine, store: ObjectStore, capture_id: Captu
     while len(_MARKDOWN) > _MARKDOWN_KEPT:
         _MARKDOWN.popitem(last=False)
     return made
+
+
+async def artifact(engine: AsyncEngine, store: ObjectStore, capture_id: CaptureId, name: str) -> bytes:
+    """The artifact `name` of the capture (`storage.artifacts`): the screenshot or PDF the browser made of its page.
+    Raises `CaptureNotFound` for a capture that is gone, and for one that has no such artifact."""
+    if name not in ARTIFACT_TYPES:
+        raise CaptureNotFound(f"no artifact {name!r}")
+    async with engine.connect() as conn:
+        capture = await _capture(conn, capture_id)
+    try:
+        return await asyncio.to_thread(store.get, artifact_key(capture.object_key, name))
+    except (ObjectNotFound, ValueError) as e:  # a ValueError: the capture is an eval capture, which has none
+        raise CaptureNotFound(f"capture {capture_id} has no artifact {name!r}") from e
 
 
 async def _capture(conn: AsyncConnection, capture_id: CaptureId) -> _Capture:

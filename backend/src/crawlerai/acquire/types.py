@@ -120,6 +120,15 @@ class FetchPolicy(_Frozen):
     # The caller's headers and cookies (D-1430), and the page steps the browser runs before it reads the page (D-1436).
     context: RequestContext | None = None
     steps: tuple[PageStep, ...] = ()
+    # Files the browser makes of the rendered page, stored beside the capture (`storage.artifacts`): a PNG of the
+    # viewport or of the whole page, and a PDF print. Either needs the browser rung (`method_hint` `browser`).
+    screenshot: Literal["viewport", "full_page"] | None = None
+    pdf: bool = False
+
+    @property
+    def captures_page(self) -> bool:
+        """Whether the fetch must end on the rendered page itself, for a file the browser makes of it."""
+        return self.screenshot is not None or self.pdf
 
     @model_validator(mode="after")
     def _override_has_a_reason(self) -> "FetchPolicy":
@@ -164,6 +173,9 @@ class FetchResult(_Frozen):
     bundle: CaptureBundle  # its manifest holds the method and block class of the kept outcome
     duration_ms: int
     attempts: Annotated[tuple[AttemptRecord, ...], Field(min_length=1)]
+    # The files the browser made of the page, by artifact name (`storage.artifacts`); in memory until the capture is
+    # stored, never part of the bundle.
+    artifacts: dict[str, bytes] = Field(default_factory=dict, exclude=True)
 
     @property
     def method(self) -> CaptureMethod:

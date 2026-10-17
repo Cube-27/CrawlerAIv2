@@ -26,7 +26,7 @@ the task at once (INV-16).
 import asyncio
 import logging
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.config_ir.drift import DriftMargins
@@ -40,7 +40,7 @@ from crawlerai.recurring.state import record_content, record_fetch, stand_for_li
 from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
-from crawlerai.services.scrape_steps import FetchOptions
+from crawlerai.services.scrape_steps import FetchOptions, PageFormat
 from crawlerai.worker.handlers.steps import (
     Ended,
     FetchedPage,
@@ -64,6 +64,7 @@ class _PageFetch(BaseModel):
 
     fetch: FetchOptions
     locale: str | None
+    formats: list[PageFormat] = Field(default_factory=list)  # an extract job's request has none
 
 
 def scrape_handler(
@@ -80,7 +81,15 @@ def scrape_handler(
         request, records = _PageFetch.model_validate(job[0]), job[1]
         # A records job asks for nothing else of its pages (`BatchScrapeRequest`, `ExtractRequest`).
         page = await fetch_page(
-            conn, fetching, task, request.fetch, request.locale, recurring=records, served=records, llm=llm
+            conn,
+            fetching,
+            task,
+            request.fetch,
+            request.locale,
+            recurring=records,
+            served=records,
+            llm=llm,
+            formats=request.formats,
         )
         result = (
             page.task_result if isinstance(page, Ended) else await _settle(conn, fetching, task, page, records, llm)

@@ -5,18 +5,21 @@ Every answer carries its structured content and, for clients that read only text
 2025-06-18, "Structured content"). Page text in either is data from the open web.
 """
 
+import base64
 import json
 import uuid
 from collections.abc import Sequence
 from typing import Any, Final, NamedTuple
 
-from mcp.types import CallToolResult, ContentBlock, TextContent
+from mcp.types import CallToolResult, ContentBlock, ImageContent, TextContent
 
 from crawlerai.db.models import CaptureId
 from crawlerai.services.records import ExtractedRecord
 
 MARKDOWN_PAGE_CHARS: Final = 20_000  # D-0038
 UNKNOWN: Final = "unknown"
+# A screenshot larger than this is named by its URL only: an image block is carried as base64 text in the answer.
+MAX_IMAGE_BYTES: Final = 1_500_000
 
 
 class InvalidCursor(ValueError):
@@ -69,10 +72,16 @@ def records_summary(records: Sequence[ExtractedRecord]) -> str:
     return "\n\n".join(blocks) if blocks else "No records."
 
 
-def tool_result(structured: dict[str, Any], records: Sequence[ExtractedRecord] | None = None) -> CallToolResult:
+def tool_result(
+    structured: dict[str, Any],
+    records: Sequence[ExtractedRecord] | None = None,
+    image: bytes | None = None,
+) -> CallToolResult:
     """`structured` as the answer's structured content and as JSON text, with the records' summary after it when the
-    answer holds records."""
+    answer holds records, and a PNG `image` as an image block (MCP 2025-06-18, "Image content")."""
     content: list[ContentBlock] = [TextContent(type="text", text=json.dumps(structured, ensure_ascii=False))]
     if records is not None:
         content.append(TextContent(type="text", text=records_summary(records)))
+    if image is not None:
+        content.append(ImageContent(type="image", data=base64.b64encode(image).decode("ascii"), mimeType="image/png"))
     return CallToolResult(content=content, structuredContent=structured)
