@@ -114,7 +114,7 @@ the protected hidden-host scan), and `.pre-commit-config.yaml` runs the fast one
 
 ## Invariants
 
-The testable invariants keep their IDs `INV-01`…`INV-44` and live as requirements in their capability's `spec.md`
+The testable invariants keep their IDs `INV-01`…`INV-45` and live as requirements in their capability's `spec.md`
 (INV-03, INV-05, INV-09 and INV-18 in "Repo checks" above), each with what enforces it and whether that enforcement
 runs today. An invariant whose enforcement is not built yet is still binding: review applies it until the check
 exists. Invariants are never removed or renumbered; a superseded one keeps a requirement that says so. A change that

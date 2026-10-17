@@ -273,6 +273,24 @@ async def test_a_jobs_page_outputs_name_the_files_and_the_formats_with_their_opt
     assert "quietly" not in body["markdown_fit"]
 
 
+async def test_json_values_with_fetch_names_the_files_a_page_kept(
+    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    pages[url] = (200, PAGE)
+    body = await _scrape(client, url, formats=["screenshot"])
+
+    with_fetch = await client.get(
+        f"/v1/jobs/{body['job_id']}/results", params={"format": "json_values", "include": "fetch"}
+    )
+    without = await client.get(f"/v1/jobs/{body['job_id']}/results", params={"format": "json_values"})
+
+    (item,) = with_fetch.json()["items"]
+    assert item["screenshot"] == body["screenshot"]
+    assert "pdf" not in item
+    assert "screenshot" not in without.json()["items"][0]
+
+
 async def test_options_need_their_format(client: httpx.AsyncClient, own_origin: str) -> None:
     url = f"{own_origin}/kettles/blue"
     for options in ({"fit": {"query": "x"}}, {"chunking": {"size": 10}}):

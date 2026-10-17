@@ -78,3 +78,7 @@ without calibration), stamped on `job`, `extraction`, the capture manifest and `
 ### Requirement: Nothing stored in the repo
 Captures, evaluation data and secrets MUST NOT enter the public repository; tests build synthetic bundles on RFC 2606
 hosts, and secrets come from the environment and are redacted in logs. Refs: §15, §18, Appendix A #26.
+
+### Requirement: Capture artifacts
+Artifacts SHALL be objects keyed from the capture's bundle key (`captures/Y/M/<id>.<name>`), written before the
+capture row, listed by name from the object store, and deleted with the bundle; no table holds them. Refs: D-1421.

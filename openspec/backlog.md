@@ -120,3 +120,5 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Role C: one site-test listing whose HTTP body holds 20 item blocks gave one role C row; not reproducible without the LLM recording, re-check on the next run [#240].
 - Resolve: adapter entities (`collect/adapter.py`) carry no identity, so an adapter item and the page's JSON-LD
   statement of it stay two entities (D-1290) [#247].
+- Output formats: `markdown_fit` and `chunks` count words, not model tokens; a tokenizer-backed size needs a licensed tokenizer, which no LLM-free path has [#259].
+- Output formats: no OCR or visual diff of a screenshot, and no scheduled screenshot history per URL [#259].
