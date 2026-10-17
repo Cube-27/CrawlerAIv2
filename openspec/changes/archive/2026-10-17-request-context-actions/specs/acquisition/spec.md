@@ -24,6 +24,34 @@ Enforced by: `tests/unit/test_page_steps_browser.py` (synthetic pages); active.
 
 ## MODIFIED Requirements
 
+### Requirement: HTTP and browser rungs
+The HTTP rung SHALL use `curl_cffi` impersonating Chrome (`CRAWLERAI_IMPERSONATE`, else the profile nearest the
+installed Patchright Chromium major, checked at startup by `acquire/impersonate.py`), at most 5 manual redirects, and
+record headers without cookies or proxy credentials. The browser rung SHALL use Patchright's full Chromium build in
+headless mode, a fresh context per fetch (the caller's cookies added before it navigates), one navigation, no scripted
+actions (a listing scrape's browser actions and the caller's page steps excepted, below), capped by `browser_timeout_s`
+(plus the steps' own timeouts); it reads
+the page after `load` once the DOM's structure and text are unchanged for 2 s or, for a 2xx/3xx document, the network
+is idle, and keeps the main frame's latest document, following a navigation the document starts itself. A document
+`classify.interstitial` judges to stand in for the page (403, 429 or 503; a script or refresh; no page of the site) is
+first given up to 40% of `browser_timeout_s` to navigate on, the wait ending at the main frame's next commit, with
+nothing clicked or typed. The browser reads a body's wire size before the body. The JSON rung (`fetch_json`, method
+`api`) SHALL send through the HTTP rung's client (`acquire/curl_client.py`: impersonation, guard, caps, cookie jar,
+proxy pools, reasons) the headers a page's `fetch()` sends: Fetch Metadata of a CORS request, `Referer`, `Origin`, in a
+`fetch()`'s order. (Previously: no caller cookies or page steps.) Refs: §7.1,
+D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262, D-1264, D-1265, owner #58,
+D-1320–D-1322, D-1325, D-1433, D-1437.
+#### Scenario: Interstitial that navigates on
+- **WHEN** a 403 document with no site structure replaces itself after more than 2 s
+- **THEN** the browser rung reads the document the navigation ends on
+#### Scenario: Refusal that cannot navigate
+- **WHEN** a 403 document has no script and no refresh
+- **THEN** the browser rung does not wait for a navigation
+#### Scenario: Cross-site JSON call
+- **WHEN** a page on `https://jobs.example.com/` has its JSON fetched from `https://api.example.net/`
+- **THEN** the request carries `Sec-Fetch-Site: cross-site`, `Sec-Fetch-Mode: cors`, `Origin: https://jobs.example.com`
+  and no `Sec-Fetch-User`
+
 ### Requirement: Cookies stay inside one fetch (INV-29)
 Each fetch SHALL have its own HTTP session or browser context; cookies live in a per-fetch jar matched per RFC 6265
 (public-suffix `Domain` ignored), are sent only on matching hops and are discarded at the end; the caller's cookies
@@ -44,7 +72,8 @@ Refs: §7.1, D-0321, D-0884, D-0902, owner #58, D-1350–D-1354, D-1433.
 
 ### Requirement: Acquisition candidates stay unbuilt
 The system SHALL NOT include residential proxies, unblockers, CAPTCHA solving, challenge clicking, behaviour emulation,
-fingerprint spoofing, real Chrome or authenticated crawls until the owner admits one (C13); browser actions are a
-single-URL listing scrape's (owner #52) and the caller's page actions (above); no action logs in, enters a credential
-or answers a CAPTCHA. (Previously: no browser action typed, and only a listing scrape's existed.) Refs: §7.2, §22,
-owner #52, owner #58, owner delegation 2026-10-17, D-1438.
+fingerprint spoofing or real Chrome until the owner admits one (C13); an authenticated crawl runs only on the caller's
+own cookies or headers (above), and browser actions are a single-URL listing scrape's (owner #52) and the caller's page
+actions (above); no action logs in, enters a credential or answers a CAPTCHA. (Previously: no authenticated crawl, no
+browser action typed, and only a listing scrape's existed.) Refs: §7.2, §22, owner #52, owner #58, owner delegation
+2026-10-17, D-1432, D-1438.

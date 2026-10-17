@@ -151,7 +151,7 @@ is measured after it is added.
 | **GMC feed and job XML exporters** | Feed delivery | A user asks (OPEN_QUESTIONS #4). |
 | **Site health dashboard, alerts** | Operations | Production use starts. |
 | **WARC capture format** | Interoperability with archive tools | Someone needs pywb or WARC output. |
-| **Web search; browser actions; authenticated crawls** | Scope | The owner decides (Appendix A #21). **Browser actions admitted 2026-10-17** for a single-URL listing scrape only, opt-in: scroll and structural paging controls, never typing, forms, logins or CAPTCHA (Appendix A #52). |
+| **Web search; browser actions; authenticated crawls** | Scope | The owner decides (Appendix A #21). **Browser actions admitted 2026-10-17** for a single-URL listing scrape only, opt-in: scroll and structural paging controls, never typing, forms, logins or CAPTCHA (Appendix A #52). **Extended 2026-10-17** under owner delegation (Appendix A #61): the caller's own page steps (wait, click, scroll, press, type) on any page kind and every job kind, typing refused in password and credential fields; **authenticated crawls admitted** only on the caller's own session cookies or headers, never a login or credential entry by the engine. |
 
 ## 23. Deferred: page-type gate
 
