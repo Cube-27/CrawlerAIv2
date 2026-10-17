@@ -7,10 +7,11 @@ A stand-in API (`tests.stand_in`, synthetic `.test` hosts) answers through `fetc
 
 import asyncio
 import json
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from functools import partial
 from ipaddress import ip_address
 
@@ -21,7 +22,6 @@ from hypothesis import strategies as st
 
 from crawlerai.acquire.api import JsonFetcher, fetch_json
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
-from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
@@ -387,10 +387,10 @@ def _listing(pagination: Pagination, *, method: str = "GET", body: str | None = 
     )
 
 
-def _run(recipe: ApiRecipe, api: StandIn, records: int = 100, admit: Admit | None = None) -> list[FetchResult]:
+def _run(recipe: ApiRecipe, api: StandIn, records: int = 100, deadline: float | None = None) -> list[FetchResult]:
     async def run() -> list[FetchResult]:
         rung = _rung(recipe, api)
-        return [page async for page in rung.pages(f"{SITE}/lamps", POLICY, records=records, admit_next=admit)]
+        return [page async for page in rung.pages(f"{SITE}/lamps", POLICY, records=records, deadline=deadline)]
 
     return asyncio.run(run())
 
@@ -442,22 +442,16 @@ def test_a_next_url_and_a_link_header_are_followed_on_the_endpoint_s_origin() ->
         assert len(pages) == 3
 
 
-def test_the_records_target_and_the_site_s_rate_end_the_listing() -> None:
+def test_the_records_target_and_the_deadline_end_the_listing() -> None:
     paging = ParamPagination(kind="param", where="query", name="offset", start=0, step=2, rows="$['items'][*]")
     api = StandIn(_offsets)
 
     assert len(_run(_listing(paging), api, records=3)) == 2
     assert [r.url.params["offset"] for r in api.requests] == ["0", "2"]
 
-    turns: list[bool] = []
-
-    async def refuse_second(*, after: timedelta = timedelta(0)) -> bool:
-        turns.append(True)
-        return len(turns) < 2
-
-    refused = StandIn(_offsets)
-    assert len(_run(_listing(paging), refused, admit=refuse_second)) == 2
-    assert [r.url.params["offset"] for r in refused.requests] == ["0", "2"]
+    late = StandIn(_offsets)
+    assert len(_run(_listing(paging), late, deadline=time.monotonic())) == 1  # passed: no page after the first
+    assert [r.url.params["offset"] for r in late.requests] == ["0"]
 
 
 def test_a_cursor_that_comes_back_ends_the_listing() -> None:

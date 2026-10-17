@@ -85,7 +85,9 @@ async def paged_fetch(
             return "robots"
     await admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
     admit_next = partial(admitted, fetching.limiter, host, site.crawl_delay_ms, robots)
-    served = await _recipe_pages(engine, fetching, url, host, policy, attempts, recipe, actions.records, admit_next)
+    served = await _recipe_pages(
+        engine, fetching, url, host, policy, attempts, recipe, (actions.records, deadline), admit_next
+    )
     if served is not None:
         return served
     rung = fetching.rungs.listing
@@ -114,17 +116,20 @@ async def _recipe_pages(
     policy: FetchPolicy,
     attempts: list[AttemptRecord],
     recipe: ApiRecipe | None,
-    records: int,
+    until: tuple[int, float],
     admit_next: Admit,
 ) -> PagedFetch | None:
-    """The listing's pages as `recipe` serves them (`RecipeRung.pages`) when it has pagination, with their attempts
-    added to `attempts`; None when it served no first page, after waiting for the turn of the request that follows."""
+    """The listing's pages as `recipe` serves them (`RecipeRung.pages`) when it has pagination, until the records
+    target or the deadline of `until`, with their attempts added to `attempts`; None when it served no first page,
+    after waiting for the turn of the request that follows. Each page request waits for its host's rate on its own
+    (`recipe_rung`): the caller's admitted turn goes to the first."""
     if recipe is None or recipe.pagination is None:
         return None
     rung = recipe_rung(fetching, recipe, host, engine_rules(engine, fetching.rungs.http, attempts))
     if rung is None:
         return None
-    pages = [page async for page in rung.pages(url, policy, records=records, admit_next=admit_next)]
+    records, deadline = until
+    pages = [page async for page in rung.pages(url, policy, records=records, deadline=deadline)]
     for page in pages:
         attempts.extend(page.attempts)
         if (refused := refusal(page)) is not None:

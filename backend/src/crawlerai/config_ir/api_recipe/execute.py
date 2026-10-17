@@ -23,7 +23,6 @@ from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.outcome import Content, fetch_result
-from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.rungs import Rung, slow_down, with_attempts
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.collect import json_doc
@@ -98,12 +97,13 @@ class RecipeRung:
         return _after(page, result, fallback=policy.method_hint != "browser")
 
     async def pages(
-        self, url: str, policy: FetchPolicy, *, records: int, limit: int = MAX_PAGES, admit_next: Admit | None = None
+        self, url: str, policy: FetchPolicy, *, records: int, limit: int = MAX_PAGES, deadline: float | None = None
     ) -> AsyncIterator[FetchResult]:
         """The listing at `url`, one response per page its pagination names (`next_request` of `pagination.py`), until a
         response's `rows` select no object, the pagination names no next page (or one already requested), `records`
-        rows were yielded, `limit` requests were sent, or `admit_next` refuses the next request (the site's rate,
-        SPEC-02 §4.6). A response with no rows is not yielded; one that is not `ok` is yielded last."""
+        rows were yielded, `limit` requests were sent, or `deadline` (`time.monotonic()`) has passed. Each request
+        waits for its host's rate in `fetch_json` (`services.fetching.recipe_rung`). A response with no rows is not
+        yielded; one that is not `ok` is yielded last."""
         pagination = self.recipe.pagination
         if pagination is None:
             raise ValueError("a recipe without pagination serves one response per page")
@@ -135,7 +135,7 @@ class RecipeRung:
             following = next_request(pagination, request, number + 1, document, headers)
             if rows >= records or following is None or (following.url, following.body) in sent:
                 return
-            if admit_next is not None and not await admit_next():
+            if deadline is not None and time.monotonic() >= deadline:
                 return
             request = following
 

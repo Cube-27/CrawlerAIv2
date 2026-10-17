@@ -103,11 +103,12 @@ row query, no longer by the endpoint key's query names: a listing's first call o
 parameter its next calls add, and the literal path still keeps two resources apart (refines D-1314).
 
 ### D-1363 The paged executor
-Status: decided (owner-delegated 2026-10-17). `RecipeRung.pages(url, policy, records=, limit=50, admit_next=)` runs
+Status: decided (owner-delegated 2026-10-17). `RecipeRung.pages(url, policy, records=, limit=50, deadline=)` runs
 every kind: it stops at a page with no object rows, when the pagination names no next page or one already requested (a
-cursor that comes back), when the rows yielded reach `records`, at `limit` requests, or when `admit_next` refuses the
-next request; a non-`ok` page is yielded last. The first request is the caller's admitted turn (D-0603 kept for
-`param`).
+cursor that comes back), when the rows yielded reach `records`, at `limit` requests, or once `deadline` (a scrape's
+browser actions time cap) has passed; a non-`ok` page is yielded last. Each request waits for its host's rate in the
+polite JSON send (`recipe_rung`), whose first request takes the caller's admitted turn; an `admit_next` gate as well
+would wait twice per page (review of #254). D-0603 is kept for `param`.
 
 ### D-1364 Listing recipes are learned (supersedes D-0604)
 Status: decided (owner-delegated 2026-10-17). A listing's endpoint is the series, on every sample page with calls,

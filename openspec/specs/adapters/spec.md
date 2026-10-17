@@ -201,7 +201,8 @@ resolve in the `adapter` evidence bucket. Refs: §7.2, §10, D-0599, D-0601, D-0
 The endpoint host SHALL get a `site` row and obey its robots.txt and rate like a page. A listing scrape with browser
 actions on a site whose active recipe has pagination SHALL be served by it over HTTP (`RecipeRung.pages`), each page
 a capture, until a page has no rows, the pagination names no new next page (or one on another origin), the request's
-`records` target, 50 pages or the site's rate refuses; when the first page is not served the browser actions run.
+`records` target, 50 pages or the actions' time cap, each request at its host's rate; when the first page is not
+served the browser actions run.
 Refs: Appendix A #59, D-0731, D-0603, D-1363, D-1368.
 #### Scenario: Records target
 - **WHEN** a cursor-paged recipe answers three rows a page and the scrape asks for 5 records
