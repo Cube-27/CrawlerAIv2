@@ -810,6 +810,11 @@ export interface components {
             method: "http" | "browser" | "api";
             /** Status */
             status: number | null;
+            /**
+             * Steps
+             * @default []
+             */
+            steps: components["schemas"]["StepOutcome"][];
         };
         /**
          * AttrStep
@@ -850,6 +855,10 @@ export interface components {
             budget?: components["schemas"]["Budget"] | null;
             /**
              * @default {
+             *       "actions": [],
+             *       "cache": "default",
+             *       "cookies": {},
+             *       "headers": {},
              *       "method_hint": "auto",
              *       "respect_robots": true
              *     }
@@ -955,6 +964,28 @@ export interface components {
             page_id: string;
             /** Status Code */
             status_code: number;
+        };
+        /**
+         * ClickAction
+         * @description Click an element, or the first visible element whose text holds `text`.
+         */
+        ClickAction: {
+            /** Selector */
+            selector?: string | null;
+            /** Text */
+            text?: string | null;
+            /**
+             * Timeout Ms
+             * @default 5000
+             */
+            timeout_ms: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "click";
+            /** Xpath */
+            xpath?: string | null;
         };
         /** ConfigDetail */
         ConfigDetail: {
@@ -1131,6 +1162,10 @@ export interface components {
             exclude?: string[];
             /**
              * @default {
+             *       "actions": [],
+             *       "cache": "default",
+             *       "cookies": {},
+             *       "headers": {},
              *       "method_hint": "auto",
              *       "respect_robots": true
              *     }
@@ -1325,6 +1360,10 @@ export interface components {
             budget?: components["schemas"]["Budget"] | null;
             /**
              * @default {
+             *       "actions": [],
+             *       "cache": "default",
+             *       "cookies": {},
+             *       "headers": {},
              *       "method_hint": "auto",
              *       "respect_robots": true
              *     }
@@ -1416,8 +1455,38 @@ export interface components {
              */
             method: "http" | "browser";
         };
-        /** FetchOptions */
+        /**
+         * FetchOptions
+         * @description How a request's pages are fetched. `headers` go over HTTP to the page's own host only, never in the browser
+         *     (INV-44), and `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch
+         *     a browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`.
+         */
         FetchOptions: {
+            /**
+             * Actions
+             * @default []
+             */
+            actions: (components["schemas"]["WaitAction"] | components["schemas"]["ClickAction"] | components["schemas"]["ScrollAction"] | components["schemas"]["PressAction"] | components["schemas"]["TypeAction"])[];
+            /**
+             * Cache
+             * @default default
+             * @enum {string}
+             */
+            cache: "default" | "bypass" | "only";
+            /**
+             * Cookies
+             * @default {}
+             */
+            cookies: {
+                [key: string]: string;
+            };
+            /**
+             * Headers
+             * @default {}
+             */
+            headers: {
+                [key: string]: string;
+            };
             /** Max Rows */
             max_rows?: number | null;
             /**
@@ -1435,6 +1504,8 @@ export interface components {
             respect_robots: boolean;
             /** Robots Override Reason */
             robots_override_reason?: string | null;
+            /** Wait For */
+            wait_for?: number | string | null;
         };
         /**
          * FetchSummary
@@ -2369,6 +2440,21 @@ export interface components {
             /** Site */
             site: string;
         };
+        /** PressAction */
+        PressAction: {
+            /** Key */
+            key: string;
+            /**
+             * Timeout Ms
+             * @default 5000
+             */
+            timeout_ms: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "press";
+        };
         /**
          * Problem
          * @description RFC 9457 problem details (SPEC-07 §4.3). `type` is one of the API's problem types, or `about:blank` when the
@@ -2708,6 +2794,10 @@ export interface components {
             budget?: components["schemas"]["Budget"] | null;
             /**
              * @default {
+             *       "actions": [],
+             *       "cache": "default",
+             *       "cookies": {},
+             *       "headers": {},
              *       "method_hint": "auto",
              *       "respect_robots": true
              *     }
@@ -2798,6 +2888,28 @@ export interface components {
              */
             mode: "adhoc" | "config";
         };
+        /**
+         * ScrollAction
+         * @description Scroll to the end (`to: bottom`), by `by` CSS pixels, or until the document stops growing (`until: stable`).
+         */
+        ScrollAction: {
+            /** By */
+            by?: number | null;
+            /**
+             * Timeout Ms
+             * @default 5000
+             */
+            timeout_ms: number;
+            /** To */
+            to?: "bottom" | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "scroll";
+            /** Until */
+            until?: "stable" | null;
+        };
         /** SearchHit */
         SearchHit: {
             /**
@@ -2853,6 +2965,10 @@ export interface components {
             budget?: components["schemas"]["Budget"] | null;
             /**
              * @default {
+             *       "actions": [],
+             *       "cache": "default",
+             *       "cookies": {},
+             *       "headers": {},
              *       "method_hint": "auto",
              *       "respect_robots": true
              *     }
@@ -2885,6 +3001,19 @@ export interface components {
             n: number;
             /** Reason */
             reason: string;
+        };
+        /** StepOutcome */
+        StepOutcome: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "wait" | "click" | "scroll" | "press" | "type";
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "done" | "not_found" | "timeout" | "refused" | "error" | "skipped";
         };
         /**
          * StoredRecord
@@ -2967,6 +3096,28 @@ export interface components {
             trim: components["schemas"]["_NoParams"];
         };
         /**
+         * TypeAction
+         * @description Type `text` into an element; refused in the browser for a password or credential field (D-1438).
+         */
+        TypeAction: {
+            /** Selector */
+            selector?: string | null;
+            /** Text */
+            text: string;
+            /**
+             * Timeout Ms
+             * @default 5000
+             */
+            timeout_ms: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "type";
+            /** Xpath */
+            xpath?: string | null;
+        };
+        /**
          * Usage
          * @description What the scrape's job used (ARCHITECTURE §17).
          */
@@ -3013,6 +3164,33 @@ export interface components {
             listing: components["schemas"]["ListingReport"] | null;
             /** Refused */
             refused?: string | null;
+        };
+        /**
+         * WaitAction
+         * @description Wait `ms` milliseconds, for an element to be visible, or for the network to be idle (`network_idle`).
+         */
+        WaitAction: {
+            /** Ms */
+            ms?: number | null;
+            /**
+             * Network Idle
+             * @default false
+             */
+            network_idle: boolean;
+            /** Selector */
+            selector?: string | null;
+            /**
+             * Timeout Ms
+             * @default 5000
+             */
+            timeout_ms: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "wait";
+            /** Xpath */
+            xpath?: string | null;
         };
         /** XPathStep */
         "XPathStep-Input": {
@@ -5271,6 +5449,16 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel, SecretStr
 
 
 class Mechanism(Enum):
@@ -59,18 +59,6 @@ class Method1(Enum):
     http = "http"
     browser = "browser"
     api = "api"
-
-
-class AttemptRecord(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    block_class: Annotated[BlockClass, Field(title="Block Class")]
-    challenge: Annotated[str | None, Field(title="Challenge")] = None
-    duration_ms: Annotated[int, Field(title="Duration Ms")]
-    error: Annotated[str | None, Field(title="Error")] = None
-    method: Annotated[Method1, Field(title="Method")]
-    status: Annotated[int | None, Field(title="Status")] = None
 
 
 class Format(Enum):
@@ -144,6 +132,21 @@ class CapturedOut(BaseModel):
     n: Annotated[int, Field(title="N")]
     page_id: Annotated[UUID, Field(title="Page Id")]
     status_code: Annotated[int, Field(title="Status Code")]
+
+
+class Text(RootModel[str]):
+    root: Annotated[str, Field(max_length=1000, min_length=1, title="Text")]
+
+
+class ClickAction(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    selector: Annotated[str | None, Field(title="Selector")] = None
+    text: Annotated[Text | None, Field(title="Text")] = None
+    timeout_ms: Annotated[int | None, Field(ge=1, le=15000, title="Timeout Ms")] = 5000
+    type: Annotated[Literal["click"], Field(title="Type")] = "click"
+    xpath: Annotated[str | None, Field(title="Xpath")] = None
 
 
 class FieldStatus(Enum):
@@ -282,6 +285,12 @@ class Fetch(BaseModel):
     method: Annotated[Method2, Field(title="Method")]
 
 
+class Cache(Enum):
+    default = "default"
+    bypass = "bypass"
+    only = "only"
+
+
 class MaxRows(RootModel[int]):
     root: Annotated[int, Field(gt=0, title="Max Rows")]
 
@@ -292,31 +301,18 @@ class MethodHint(Enum):
     browser = "browser"
 
 
-class FetchOptions(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    max_rows: Annotated[MaxRows | None, Field(title="Max Rows")] = None
-    method_hint: Annotated[MethodHint | None, Field(title="Method Hint")] = "auto"
-    proxy_pool: Annotated[str | None, Field(title="Proxy Pool")] = None
-    respect_robots: Annotated[bool | None, Field(title="Respect Robots")] = True
-    robots_override_reason: Annotated[
-        str | None, Field(title="Robots Override Reason")
-    ] = None
+class WaitFor(RootModel[int]):
+    root: Annotated[int, Field(ge=1, le=15000, title="Wait For")]
+
+
+class WaitFor1(RootModel[str]):
+    root: Annotated[str, Field(min_length=1, title="Wait For")]
 
 
 class Method3(Enum):
     http = "http"
     browser = "browser"
     api = "api"
-
-
-class FetchSummary(BaseModel):
-    adapter: Annotated[str | None, Field(title="Adapter")] = None
-    attempts: Annotated[list[AttemptRecord], Field(title="Attempts")]
-    block_class: Annotated[BlockClass, Field(title="Block Class")]
-    method: Annotated[Method3, Field(title="Method")]
-    status_code: Annotated[int | None, Field(title="Status Code")] = None
 
 
 class FieldErrorOut(BaseModel):
@@ -659,28 +655,6 @@ class Status7(Enum):
     cancelled = "cancelled"
 
 
-class PageOutput(BaseModel):
-    capture_id: Annotated[UUID | None, Field(title="Capture Id")] = None
-    fetch: FetchSummary | None = None
-    fetched_at: Annotated[AwareDatetime | None, Field(title="Fetched At")] = None
-    final_url: Annotated[str | None, Field(title="Final Url")] = None
-    html: Annotated[str | None, Field(title="Html")] = None
-    last_error: Annotated[str | None, Field(title="Last Error")] = None
-    links: Annotated[list[str] | None, Field(title="Links")] = None
-    markdown: Annotated[str | None, Field(title="Markdown")] = None
-    metadata: PageMetadata | None = None
-    outcome: Annotated[Outcome | None, Field(title="Outcome")] = None
-    raw_html: Annotated[str | None, Field(title="Raw Html")] = None
-    status: Annotated[Status7, Field(title="Status")]
-    task_id: Annotated[UUID, Field(title="Task Id")]
-    url: Annotated[str, Field(title="Url")]
-
-
-class PageOutputPage(BaseModel):
-    items: Annotated[list[PageOutput], Field(title="Items")]
-    next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
-
-
 class Status8(Enum):
     draft = "draft"
     labeled = "labeled"
@@ -712,6 +686,21 @@ class ParamPagination(BaseModel):
     start: Annotated[int, Field(ge=0, title="Start")]
     step: Annotated[int, Field(ge=1, title="Step")]
     where: Annotated[Where, Field(title="Where")]
+
+
+class PressAction(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    key: Annotated[
+        str,
+        Field(
+            pattern="^(?:(?:Shift|Control|Alt|Meta|ControlOrMeta)\\+)*(?:[A-Za-z][A-Za-z0-9]*|\\S)$",
+            title="Key",
+        ),
+    ]
+    timeout_ms: Annotated[int | None, Field(ge=1, le=15000, title="Timeout Ms")] = 5000
+    type: Annotated[Literal["press"], Field(title="Type")] = "press"
 
 
 class Problem(BaseModel):
@@ -931,6 +920,21 @@ class Outcome2(Enum):
     failed = "failed"
 
 
+class By(RootModel[int]):
+    root: Annotated[int, Field(ge=-100000, le=100000, title="By")]
+
+
+class ScrollAction(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    by: Annotated[By | None, Field(title="By")] = None
+    timeout_ms: Annotated[int | None, Field(ge=1, le=15000, title="Timeout Ms")] = 5000
+    to: Annotated[str | None, Field(title="To")] = None
+    type: Annotated[Literal["scroll"], Field(title="Type")] = "scroll"
+    until: Annotated[str | None, Field(title="Until")] = None
+
+
 class SearchHit(BaseModel):
     position: Annotated[
         int, Field(description="1-based, in the provider's order", title="Position")
@@ -968,6 +972,31 @@ class SkippedOut(BaseModel):
     reason: Annotated[str, Field(title="Reason")]
 
 
+class Action(Enum):
+    wait = "wait"
+    click = "click"
+    scroll = "scroll"
+    press = "press"
+    type = "type"
+
+
+class Outcome3(Enum):
+    done = "done"
+    not_found = "not_found"
+    timeout = "timeout"
+    refused = "refused"
+    error = "error"
+    skipped = "skipped"
+
+
+class StepOutcome(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    action: Annotated[Action, Field(title="Action")]
+    outcome: Annotated[Outcome3, Field(title="Outcome")]
+
+
 class Status11(Enum):
     published = "published"
     missing = "missing"
@@ -996,6 +1025,17 @@ class TaskCounts(BaseModel):
     queued: Annotated[int, Field(title="Queued")]
 
 
+class TypeAction(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    selector: Annotated[str | None, Field(title="Selector")] = None
+    text: Annotated[str, Field(max_length=1000, title="Text")]
+    timeout_ms: Annotated[int | None, Field(ge=1, le=15000, title="Timeout Ms")] = 5000
+    type: Annotated[Literal["type"], Field(title="Type")] = "type"
+    xpath: Annotated[str | None, Field(title="Xpath")] = None
+
+
 class Usage(BaseModel):
     browser_seconds: Annotated[int | None, Field(title="Browser Seconds")] = 0
     http_requests: Annotated[int | None, Field(title="Http Requests")] = 0
@@ -1013,6 +1053,22 @@ class ValidationReport(BaseModel):
     held_out: Annotated[list[UUID], Field(title="Held Out")]
     listing: ListingReport | None = None
     refused: Annotated[str | None, Field(title="Refused")] = None
+
+
+class Ms(RootModel[int]):
+    root: Annotated[int, Field(ge=1, le=15000, title="Ms")]
+
+
+class WaitAction(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    ms: Annotated[Ms | None, Field(title="Ms")] = None
+    network_idle: Annotated[bool | None, Field(title="Network Idle")] = False
+    selector: Annotated[str | None, Field(title="Selector")] = None
+    timeout_ms: Annotated[int | None, Field(ge=1, le=15000, title="Timeout Ms")] = 5000
+    type: Annotated[Literal["wait"], Field(title="Type")] = "wait"
+    xpath: Annotated[str | None, Field(title="Xpath")] = None
 
 
 class FieldNoParams(BaseModel):
@@ -1049,6 +1105,19 @@ class ApiRecipe(BaseModel):
         False
     )
     url: Annotated[str, Field(title="Url")]
+
+
+class AttemptRecord(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    block_class: Annotated[BlockClass, Field(title="Block Class")]
+    challenge: Annotated[str | None, Field(title="Challenge")] = None
+    duration_ms: Annotated[int, Field(title="Duration Ms")]
+    error: Annotated[str | None, Field(title="Error")] = None
+    method: Annotated[Method1, Field(title="Method")]
+    status: Annotated[int | None, Field(title="Status")] = None
+    steps: Annotated[list[StepOutcome] | None, Field(title="Steps")] = []
 
 
 class Outcomes(RootModel[CapturedOut | SkippedOut]):
@@ -1093,6 +1162,41 @@ class DistractorKey(BaseModel):
     )
     field: Annotated[str, Field(min_length=1, title="Field")]
     value: JsonValue
+
+
+class Actions(
+    RootModel[WaitAction | ClickAction | ScrollAction | PressAction | TypeAction]
+):
+    root: Annotated[
+        WaitAction | ClickAction | ScrollAction | PressAction | TypeAction,
+        Field(discriminator="type"),
+    ]
+
+
+class FetchOptions(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    actions: Annotated[list[Actions] | None, Field(max_length=20, title="Actions")] = []
+    cache: Annotated[Cache | None, Field(title="Cache")] = "default"
+    cookies: Annotated[dict[str, SecretStr] | None, Field(title="Cookies")] = {}
+    headers: Annotated[dict[str, SecretStr] | None, Field(title="Headers")] = {}
+    max_rows: Annotated[MaxRows | None, Field(title="Max Rows")] = None
+    method_hint: Annotated[MethodHint | None, Field(title="Method Hint")] = "auto"
+    proxy_pool: Annotated[str | None, Field(title="Proxy Pool")] = None
+    respect_robots: Annotated[bool | None, Field(title="Respect Robots")] = True
+    robots_override_reason: Annotated[
+        str | None, Field(title="Robots Override Reason")
+    ] = None
+    wait_for: Annotated[WaitFor | WaitFor1 | None, Field(title="Wait For")] = None
+
+
+class FetchSummary(BaseModel):
+    adapter: Annotated[str | None, Field(title="Adapter")] = None
+    attempts: Annotated[list[AttemptRecord], Field(title="Attempts")]
+    block_class: Annotated[BlockClass, Field(title="Block Class")]
+    method: Annotated[Method3, Field(title="Method")]
+    status_code: Annotated[int | None, Field(title="Status Code")] = None
 
 
 class FieldLabel(BaseModel):
@@ -1210,6 +1314,28 @@ class NewSchema(BaseModel):
     ] = []
 
 
+class PageOutput(BaseModel):
+    capture_id: Annotated[UUID | None, Field(title="Capture Id")] = None
+    fetch: FetchSummary | None = None
+    fetched_at: Annotated[AwareDatetime | None, Field(title="Fetched At")] = None
+    final_url: Annotated[str | None, Field(title="Final Url")] = None
+    html: Annotated[str | None, Field(title="Html")] = None
+    last_error: Annotated[str | None, Field(title="Last Error")] = None
+    links: Annotated[list[str] | None, Field(title="Links")] = None
+    markdown: Annotated[str | None, Field(title="Markdown")] = None
+    metadata: PageMetadata | None = None
+    outcome: Annotated[Outcome | None, Field(title="Outcome")] = None
+    raw_html: Annotated[str | None, Field(title="Raw Html")] = None
+    status: Annotated[Status7, Field(title="Status")]
+    task_id: Annotated[UUID, Field(title="Task Id")]
+    url: Annotated[str, Field(title="Url")]
+
+
+class PageOutputPage(BaseModel):
+    items: Annotated[list[PageOutput], Field(title="Items")]
+    next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
+
+
 class RegexReplaceOp(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1271,6 +1397,10 @@ class ScrapeRequest(BaseModel):
     browser_actions: BrowserActions | None = None
     budget: Budget | None = None
     fetch: Annotated[FetchOptions | None, Field()] = {
+        "actions": [],
+        "cache": "default",
+        "cookies": {},
+        "headers": {},
         "method_hint": "auto",
         "respect_robots": True,
     }
@@ -1292,6 +1422,10 @@ class SearchScrape(BaseModel):
     )
     budget: Budget | None = None
     fetch: Annotated[FetchOptions | None, Field()] = {
+        "actions": [],
+        "cache": "default",
+        "cookies": {},
+        "headers": {},
         "method_hint": "auto",
         "respect_robots": True,
     }
@@ -1364,6 +1498,10 @@ class BatchScrapeRequest(BaseModel):
     )
     budget: Budget | None = None
     fetch: Annotated[FetchOptions | None, Field()] = {
+        "actions": [],
+        "cache": "default",
+        "cookies": {},
+        "headers": {},
         "method_hint": "auto",
         "respect_robots": True,
     }
@@ -1394,6 +1532,10 @@ class CrawlRequest(BaseModel):
     budget: Budget | None = None
     exclude: Annotated[list[str] | None, Field(max_length=20, title="Exclude")] = None
     fetch: Annotated[FetchOptions | None, Field()] = {
+        "actions": [],
+        "cache": "default",
+        "cookies": {},
+        "headers": {},
         "method_hint": "auto",
         "respect_robots": True,
     }
@@ -1454,6 +1596,10 @@ class ExtractRequest(BaseModel):
     )
     budget: Budget | None = None
     fetch: Annotated[FetchOptions | None, Field()] = {
+        "actions": [],
+        "cache": "default",
+        "cookies": {},
+        "headers": {},
         "method_hint": "auto",
         "respect_robots": True,
     }
