@@ -21,7 +21,7 @@ and which misses depend on role C.
 
 ## Impact
 
-- Capability: [evaluation](../../specs/evaluation/spec.md).
+- Capability: [evaluation](../../../specs/evaluation/spec.md).
 - Code: `backend/src/crawlerai/eval/` (`label_file.py`, `metrics.py`, `replay.py`, `cli.py`, `store.py`,
   `prefill.py`), `backend/src/crawlerai/cli.py`, `backend/src/crawlerai/normalize/` (`text.word_overlap`,
   `dispatch.similarity`).
