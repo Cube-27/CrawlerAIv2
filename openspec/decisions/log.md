@@ -986,3 +986,20 @@ Entries written before the OpenSpec conversion (#223), when this file was `docs/
 - Alternatives: keep `/review-pr` for every PR (an agent and about 50k tokens even for one-line PRs); review every PR in CI (the same cost on PRs the plugin's own pre-check calls trivial).
 - Why: owner, 2026-10-17. The plugin found the planted bug in a test PR (#231) and reviews a 54-file diff for about $0.30-0.65.
 - Reversible: yes
+
+### D-1245 — A listing without rows at HTTP whose body holds other repeated blocks is not rendered
+- Date: 2026-10-17 · Spec/PR: site-test-40-fixes (#240) · Status: needs-owner
+- Question: the HTTP listing-shell rule (D-0933, D-1158) sends a listing to the browser only when its HTTP body shows
+  no repeated items and no structured data that lists items. In the 40-page site test, two client-rendered listings
+  hold other repeated linked blocks in their HTTP body (related posts, search filters). They stay `ok` at HTTP, role
+  C reads 0 rows, and no browser render follows: the grid is only a client template there. The tough-site run saw
+  about 7 such pages (#225 follow-up). Rendering on the extraction result is an acquisition rule like owner #49
+  (detail pages only), so it needs the owner (#53).
+- Options: (a) in `auto`, a listing whose HTTP capture gives no rows after extraction gets one browser render, and the
+  capture with more rows is kept, as owner #49 does for detail pages without offer data; (b) a structural test of
+  the item blocks at classification (unexpanded template placeholders, items inside forms), each needing its own
+  standard; (c) leave it.
+- Recommendation: (a). The evidence is the extraction result, not a page string, and it costs one render and one more
+  role C call, only on listings that gave nothing.
+- Blocked: rows on client-rendered listings whose HTTP body holds other repeated blocks; nothing else.
+- Reversible: yes

@@ -23,7 +23,7 @@ outnumbers the grid. The triage of every class is in [design.md](design.md).
 
 ## Impact
 
-- Capabilities: [normalization](../../specs/normalization/spec.md) (money), [extraction](../../specs/extraction/spec.md)
+- Capabilities: [normalization](../../../specs/normalization/spec.md) (money), [extraction](../../../specs/extraction/spec.md)
   (cold listing rows).
 - Files: `backend/src/crawlerai/normalize/money.py`, `backend/src/crawlerai/collect/item_links.py`,
   `backend/src/crawlerai/acquire/items.py`, `backend/src/crawlerai/content/text.py`, their tests.
