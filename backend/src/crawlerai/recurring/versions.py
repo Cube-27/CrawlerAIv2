@@ -28,7 +28,7 @@ from crawlerai.resolve.records import FieldMeta, RecordDraft
 from crawlerai.resolve.task import RecordSource, StoredRecord
 from crawlerai.schemas.types import SchemaDef, document_digest
 
-__all__ = ["link_records", "store_records"]
+__all__ = ["latest_versions", "link_records", "store_records"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +48,7 @@ async def store_records(
     """Store a page's records, in `conn`'s transaction, as new versions of their entities where their fingerprints
     differ, and return them in `drafts`' order: an unchanged entity's is its latest stored record, as stored."""
     await _lock(conn, source.site_id, schema)
-    latest = await _latest(conn, source.site_id, schema, [draft.entity_key for draft in drafts])
+    latest = await latest_versions(conn, source.site_id, schema, [draft.entity_key for draft in drafts])
     digest = document_digest(schema)
     stored: list[StoredRecord | None] = []
     new: list[_New] = []
@@ -84,7 +84,10 @@ async def _lock(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> No
     await conn.execute(select(func.pg_advisory_xact_lock(int.from_bytes(digest, "big", signed=True))))
 
 
-async def _latest(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef, keys: list[str]) -> dict[str, RowMapping]:
+async def latest_versions(
+    conn: AsyncConnection, site_id: SiteId, schema: SchemaDef, keys: list[str]
+) -> dict[str, RowMapping]:
+    """The latest version of each entity of `keys` under `schema` on the site, by key; an entity with none is absent."""
     columns = (Record.id, Record.entity_key, Record.version, Record.fingerprint, Record.schema_digest, Record.data)
     query = (
         select(*columns, Record.field_meta, Record.complete)

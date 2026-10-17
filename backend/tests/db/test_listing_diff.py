@@ -10,7 +10,21 @@ from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.jobs import record_event
-from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, Project, SchemaId, Site, SiteId, UrlState, UrlTask
+from crawlerai.db.models import (
+    Extraction,
+    Job,
+    JobEvent,
+    JobId,
+    JobStatus,
+    Project,
+    Record,
+    SchemaId,
+    Site,
+    SiteId,
+    TaskRecord,
+    UrlState,
+    UrlTask,
+)
 from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT, close_run
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDocument
@@ -45,9 +59,11 @@ class Shop:
         status: JobStatus = "completed",
         extra: tuple[dict[str, Any], ...] = (),
         events: tuple[str, ...] = (),
+        rows: tuple[str, ...] = (),
     ) -> JobId:
         """A run whose tasks are the start page, `paths` (each matched the crawl's rule) and `extra` tasks (their
-        `url_task` columns), that recorded `events`; ended in `status`."""
+        `url_task` columns), that recorded `events`; ended in `status`. The first of `paths` stands for a record per
+        row URL of `rows`."""
         default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
         job = {
             "project_id": default_project,
@@ -59,11 +75,36 @@ class Shop:
         }
         job_id: JobId = (await self.conn.execute(insert(Job).values(job).returning(Job.id))).scalar_one()
         tasks = [self.task(""), *extra, *(self.task(path, page_kind="detail") for path in paths)]
-        await self.conn.execute(insert(UrlTask), [{"job_id": job_id} | task for task in tasks])
+        inserted = insert(UrlTask).returning(UrlTask.id, sort_by_parameter_order=True)
+        task_ids = (await self.conn.execute(inserted, [{"job_id": job_id} | task for task in tasks])).scalars().all()
+        if rows:
+            await self.stand_for_rows(job_id, task_ids[1 + len(extra)], rows)
         for kind in events:
             await record_event(self.conn, job_id, kind, {"url": self.url("")})
         await close_run(self.conn, job_id, status)
         return job_id
+
+    async def stand_for_rows(self, job_id: JobId, task_id: Any, rows: tuple[str, ...]) -> None:
+        """Make the task stand for one record per row URL, as a listing page's task does."""
+        extraction = {"url_task_id": task_id, "engine_version": "test", "mode": "adhoc"}
+        extraction_id = (
+            await self.conn.execute(insert(Extraction).values(extraction).returning(Extraction.id))
+        ).scalar_one()
+        for url in rows:
+            values = {
+                "extraction_id": extraction_id,
+                "job_id": job_id,
+                "site_id": self.site_id,
+                "schema_id": self.schema_id,
+                "entity_key": url,
+                "data": {"title": "row", "url": url},
+                "field_meta": {},
+                "complete": True,
+                "mode": "adhoc",
+                "schema_digest": "digest",
+            }
+            record_id = (await self.conn.execute(insert(Record).values(values).returning(Record.id))).scalar_one()
+            await self.conn.execute(insert(TaskRecord).values(url_task_id=task_id, record_id=record_id))
 
     def task(self, path: str, **columns: Any) -> dict[str, Any]:
         """A task of a run at `path`: a page that ended `links_only` unless `columns` say otherwise."""
@@ -215,3 +256,32 @@ async def test_a_url_no_listing_held_is_never_missing(shop: Shop) -> None:
         await shop.run("p/a")
 
     assert await shop.state() == {"p/a": (0, False), "p/z": (0, False)}
+
+
+async def test_the_row_urls_of_a_listing_crawl_are_in_the_listing(shop: Shop, conn: AsyncConnection) -> None:
+    fields = {"title": TITLE, "url": {"type": "url", "required": True, "description": "d", "schema_org": "Product.url"}}
+    document = {"name": f"synthetic_{uuid.uuid4().hex[:12]}", "page_kind": "listing", "fields": fields}
+    schema = await registry.create(conn, SchemaDocument.model_validate(document), "user")
+    rows = Shop(conn, shop.site_id, shop.host, schema.id)
+    kettles = tuple(shop.url(f"kettles/{name}") for name in ("a", "b", "c"))
+
+    await rows.run("l/1", rows=kettles)
+    await rows.run("l/1", rows=(*kettles[:2], "https://other.example.test/x"))
+    third = await rows.run("l/1", rows=kettles[:2])
+
+    # Row URLs are listed beside the page's: c, which only the first run held, has missed two runs and is gone, and a
+    # row on another host is not the site's.
+    assert await rows.state() == {
+        "l/1": (0, False),
+        "kettles/a": (0, False),
+        "kettles/b": (0, False),
+        "kettles/c": (2, True),
+    }
+    assert await rows.gone_events(third) == [{"url": kettles[2]}]
+
+
+async def test_a_detail_schemas_records_add_no_row_urls(shop: Shop) -> None:
+    await shop.run("p/a", rows=(shop.url("not/a/row"),))
+
+    # The shop's schema is a detail schema: records name no row, so nothing but the matched page is listed.
+    assert await shop.state() == {"p/a": (0, False)}

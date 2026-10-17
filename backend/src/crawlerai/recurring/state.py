@@ -16,13 +16,23 @@ from crawlerai.db.models import (
     SiteId,
     TaskRecord,
     UrlState,
+    UrlTaskId,
 )
 from crawlerai.recurring.conditional import Unchanged, received
 from crawlerai.recurring.simhash import hamming
+from crawlerai.recurring.versions import latest_versions
 from crawlerai.resolve.records import entity_key
 from crawlerai.schemas.types import SchemaDef, document_digest
 
-__all__ = ["UNCHANGED_BITS", "record_content", "record_fetch", "standing_record", "stored_validators"]
+__all__ = [
+    "UNCHANGED_BITS",
+    "record_content",
+    "record_fetch",
+    "stand_for_listing",
+    "standing_listing",
+    "standing_record",
+    "stored_validators",
+]
 
 # SPEC-11 §4.3, ARCHITECTURE §14 (owner, D-0665): only equal fingerprints are the same content. SimHash still serves
 # for what it ignores structurally (nonces, whitespace); any other change, such as a new price, runs extraction.
@@ -95,6 +105,52 @@ async def standing_record(
         .limit(1)
     )
     return (await conn.execute(query)).scalar_one_or_none()
+
+
+async def standing_listing(
+    conn: AsyncConnection,
+    site_id: SiteId,
+    canonical_url: str,
+    schema: SchemaDef,
+    config_version: int | None,
+) -> tuple[RecordId, ...]:
+    """The records that stand for a listing page when it has not changed (D-1283): the latest version of each entity the
+    task named by `url_state.standing_task_id` stood for, when that task extracted the page the way it would be now
+    (by config `config_version`, or `adhoc` for None, with `schema`), its links are no older than the page's content
+    (`record_content`), and each entity's latest version was extracted with `schema`'s document. Empty when the page
+    must be extracted. A listing's rows are keyed by their URLs, so no entity of the page's own stands for it as a
+    detail page's does (`standing_record`)."""
+    state = select(UrlState.standing_task_id, UrlState.last_changed_at).where(*_url(site_id, canonical_url))
+    row = (await conn.execute(state)).first()
+    if row is None or row.standing_task_id is None:
+        return ()
+    mode: ExtractionMode = "adhoc" if config_version is None else "config"
+    extracted = select(Extraction.id).where(
+        Extraction.url_task_id == row.standing_task_id,
+        Extraction.mode == mode,
+        Extraction.config_version.is_not_distinct_from(config_version),
+    )
+    links = select(Record.entity_key, Record.schema_id, TaskRecord.created_at).join(
+        TaskRecord, TaskRecord.record_id == Record.id
+    )
+    stood_for = (await conn.execute(links.where(TaskRecord.url_task_id == row.standing_task_id))).all()
+    changed = row.last_changed_at
+    unchanged_since = all(
+        link.schema_id == schema.id and (changed is None or link.created_at >= changed) for link in stood_for
+    )
+    if not stood_for or not unchanged_since or not (await conn.execute(select(extracted.exists()))).scalar_one():
+        return ()
+    latest = await latest_versions(conn, site_id, schema, [link.entity_key for link in stood_for])
+    digest = document_digest(schema)
+    if any(version["schema_digest"] != digest for version in latest.values()):
+        return ()
+    return tuple(version["id"] for version in latest.values())
+
+
+async def stand_for_listing(conn: AsyncConnection, site_id: SiteId, canonical_url: str, task_id: UrlTaskId) -> None:
+    """Note that the task's records stand for the listing page now (`standing_listing`): it extracted the page, or
+    found its rows unchanged."""
+    await _upsert(conn, site_id, canonical_url, {"standing_task_id": task_id}, last_seen_at=func.now())
 
 
 async def record_content(conn: AsyncConnection, site_id: SiteId, canonical_url: str, fingerprint: int) -> bool:
