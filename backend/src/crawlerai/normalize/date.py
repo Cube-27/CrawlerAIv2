@@ -38,12 +38,16 @@ _MIN_YEAR, _MAX_YEAR = 1970, 2100
 
 # RFC 3339 §5.6 `full-date` and `date-time`, with the ISO 8601 space separator and lowercase `t`/`z` that RFC 3339
 # §5.6 notes permit, and the other ISO 8601 offset forms (§4.2.5.1: `±hh:mm`, `±hhmm`, `±hh`) and decimal comma
-# (§4.2.2.4). Fractions longer than microseconds are cut to six digits (Python's resolution).
+# (§4.2.2.4). Fractions longer than microseconds are cut to six digits (Python's resolution). A zone written as a
+# name after the time, with or without a space ("09:31:36 UTC"), is `UTC` (the time scale ISO 8601-1 §4.3.3's `Z`
+# designator stands for) or `GMT` (RFC 5322 §3.3 `zone`): both are zero offset, and no other abbreviation fixes one.
 _RFC_3339 = re.compile(
     r"(?P<date>\d{4}-\d{2}-\d{2})"
-    r"(?:[Tt ](?P<time>\d{2}:\d{2}(?::\d{2})?)(?:[.,](?P<fraction>\d+))?(?P<offset>[Zz]|[+-]\d{2}(?::?\d{2})?)?)?",
+    r"(?:[Tt ](?P<time>\d{2}:\d{2}(?::\d{2})?)(?:[.,](?P<fraction>\d+))?"
+    r"(?P<offset>[Zz]|[+-]\d{2}(?::?\d{2})?|\s?(?i:UTC|GMT))?)?",
     re.ASCII,
 )
+_ZERO_OFFSET_NAMES = frozenset({"UTC", "GMT"})
 # An ISO 8601 calendar date in extended format (`YYYY-MM-DD`, §4.1.2.2) fixes the order of its fields: text that
 # starts with one is read year first whatever the page's locales say, and must state that date.
 _ISO_DATE_PREFIX = re.compile(r"\d{4}-\d{2}-\d{2}(?!\d)", re.ASCII)
@@ -101,12 +105,19 @@ def _from_rfc_3339(match: re.Match[str], want_time: bool) -> NormalizeResult:
         return Invalid("no_offset")
     iso = match.group("date")
     if time is not None:
-        iso += f"T{time}" + (f".{fraction[:6].ljust(6, '0')}" if fraction else "") + (offset or "").upper()
+        iso += f"T{time}" + (f".{fraction[:6].ljust(6, '0')}" if fraction else "") + _offset(offset)
     try:
         value = datetime.fromisoformat(iso)
     except ValueError:
         return Invalid("not_a_date")
     return _decide({value}, want_time)
+
+
+def _offset(written: str | None) -> str:
+    """The offset an RFC 3339 match writes, as `datetime.fromisoformat` reads it: a zone name is zero offset."""
+    if written is None:
+        return ""
+    return "Z" if written.strip().upper() in _ZERO_OFFSET_NAMES else written.upper()
 
 
 def _from_numeric(match: re.Match[str], orders: tuple[Order, ...]) -> NormalizeResult:
