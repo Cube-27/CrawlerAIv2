@@ -57,12 +57,13 @@ fetch('/api/search', {method: 'POST', headers: {'Content-Type': 'application/jso
   .then(r => r.json()).then(() => { document.getElementById('done').textContent = 'searched'; });
 </script></body></html>"""
 # Data loaded as JSON under other labels: behind a guard prefix, as text/plain, and as an XMLHttpRequest; beside a
-# text/plain body that is no JSON and a stylesheet fetched with fetch() (its body is not data).
+# text/plain body that is no JSON, an empty JSON answer and a stylesheet fetched with fetch() (its body is not data).
 _SNIFFED = b"""<html><body><p id="done"></p><script>
 (async () => {
   await fetch('/api/guarded');
   await fetch('/api/plain-json');
   await fetch('/api/note');
+  await fetch('/api/empty');
   await fetch('/style.css');
   await new Promise(done => {
     const x = new XMLHttpRequest(); x.onload = done; x.open('GET', '/api/linked'); x.send();
@@ -181,6 +182,7 @@ def server() -> Iterator[Server]:
             "/sniffed": Reply(body=_SNIFFED),
             "/api/guarded": Reply(content_type="text/plain; charset=utf-8", body=_GUARDED),
             "/api/plain-json": Reply(content_type="text/plain", body=b'[{"id": 1}, {"id": 2}]'),
+            "/api/empty": Reply(204, content_type=_JSON),
             "/api/linked": Reply(
                 content_type="application/vnd.example+json",
                 body=b'{"page": 1}',
