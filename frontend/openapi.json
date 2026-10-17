@@ -1732,8 +1732,19 @@
         "type": "object"
       },
       "FetchSummary": {
-        "description": "The fetch of the page: the method, status and class of the kept attempt, and every attempt made.",
+        "description": "The fetch of the page: the method, status and class of the kept attempt, the platform adapter that read an `api`\ncapture (INV-39; null for any other), and every attempt made.",
         "properties": {
+          "adapter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adapter"
+          },
           "attempts": {
             "items": {
               "$ref": "#/components/schemas/AttemptRecord"
@@ -1777,6 +1788,7 @@
           "method",
           "status_code",
           "block_class",
+          "adapter",
           "attempts"
         ],
         "title": "FetchSummary",
@@ -2804,8 +2816,11 @@
       },
       "JsonValue": {},
       "JsonValuesItem": {
-        "description": "A task of a job in `json_values` (SPEC-14 \u00a74.4): its URL, its outcome (null until it ends), the clean records\nits page stands for, and, when asked for, its page's metadata. `records` is empty for a task with no record (failed,\nblocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or partial page\nwhose capture is still kept.",
+        "description": "A task of a job in `json_values` (SPEC-14 \u00a74.4): its URL, its outcome (null until it ends), the clean records\nits page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no\nrecord (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or\npartial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts.",
         "properties": {
+          "fetch": {
+            "$ref": "#/components/schemas/FetchSummary"
+          },
           "metadata": {
             "$ref": "#/components/schemas/PageMetadata"
           },
@@ -3789,6 +3804,9 @@
               }
             ],
             "title": "Capture Id"
+          },
+          "fetch": {
+            "$ref": "#/components/schemas/FetchSummary"
           },
           "fetched_at": {
             "anyOf": [
@@ -6530,6 +6548,120 @@
         ]
       }
     },
+    "/v1/configs/{config_id}/reject": {
+      "post": {
+        "description": "Refuses a learned config waiting as `pending_approval`: it becomes `suspended`, the version active before goes on\nserving, and the site learns again only after 8 more extracted pages. 409 for a config in any other status or not\nthe latest version.",
+        "operationId": "reject_config_v1_configs__config_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reject Config",
+        "tags": [
+          "configs"
+        ]
+      }
+    },
     "/v1/crawl": {
       "post": {
         "description": "Queue a job that crawls from `url`: its sitemaps and the links of each page, within `include` and `exclude`,\n`max_depth` and `limit`, on its host (and the subdomains an `include` names). A page a `page_kind_rules` pattern\nmatches is extracted; with rules, any other page is fetched for its links only. A target the API may not fetch, in\n`url` or `webhook_url`, is a 422 and nothing is queued.",
@@ -8195,7 +8327,7 @@
     },
     "/v1/jobs/{job_id}/results": {
       "get": {
-        "description": "The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,\n`csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its\ntasks, oldest first, each with the content formats the job asked for once its page was reached. Any job answers\n`format=json_values` with its tasks, oldest first, each with its URL, outcome and clean records (the schema's\nfields in name order, each its published value or null); `include=metadata`, accepted with `json_values` only,\nadds a reached page's metadata while its capture is kept. `csv_safe=true`, accepted with `csv_records` only,\nprefixes `'` to each cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return, so a spreadsheet shows it\nas text (OWASP CSV Injection); without it the export is the published values unchanged. Pass a page's\n`next_cursor` as `cursor` for the page after it. 409: an export other than `json_values` of a job without a\nschema.",
+        "description": "The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,\n`csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its\ntasks, oldest first, each with the content formats the job asked for once its page was reached, and its fetch (the\nattempts made, as a scrape answers them). Any job\nanswers `format=json_values` with its tasks, oldest first, each with its URL, outcome and clean records (the\nschema's fields in name order, each its published value or null); `include=metadata`, accepted with `json_values`\nonly, adds a reached page's metadata while its capture is kept, and `include=fetch` its fetch. `csv_safe=true`,\naccepted with `csv_records` only, prefixes `'` to each cell starting with `=`, `+`, `-`, `@`, a tab or a carriage\nreturn, so a spreadsheet shows it as text (OWASP CSV Injection); without it the export is the published values\nunchanged. Pass a page's `next_cursor` as `cursor` for the page after it. 409: an export other than `json_values`\nof a job without a schema.",
         "operationId": "job_results_v1_jobs__job_id__results_get",
         "parameters": [
           {
@@ -8259,16 +8391,15 @@
             "name": "include",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "const": "metadata",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Include"
+              "items": {
+                "enum": [
+                  "metadata",
+                  "fetch"
+                ],
+                "type": "string"
+              },
+              "title": "Include",
+              "type": "array"
             }
           },
           {

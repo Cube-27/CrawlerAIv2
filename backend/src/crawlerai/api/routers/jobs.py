@@ -85,19 +85,20 @@ async def job_results(
 ) -> RecordPage | ExportPage | PageOutputPage | JsonValuesPage:
     """The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,
     `csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its
-    tasks, oldest first, each with the content formats the job asked for once its page was reached. Any job answers
-    `format=json_values` with its tasks, oldest first, each with its URL, outcome and clean records (the schema's
-    fields in name order, each its published value or null); `include=metadata`, accepted with `json_values` only,
-    adds a reached page's metadata while its capture is kept. `csv_safe=true`, accepted with `csv_records` only,
-    prefixes `'` to each cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return, so a spreadsheet shows it
-    as text (OWASP CSV Injection); without it the export is the published values unchanged. Pass a page's
-    `next_cursor` as `cursor` for the page after it. 409: an export other than `json_values` of a job without a
-    schema."""
+    tasks, oldest first, each with the content formats the job asked for once its page was reached, and its fetch (the
+    attempts made, as a scrape answers them). Any job
+    answers `format=json_values` with its tasks, oldest first, each with its URL, outcome and clean records (the
+    schema's fields in name order, each its published value or null); `include=metadata`, accepted with `json_values`
+    only, adds a reached page's metadata while its capture is kept, and `include=fetch` its fetch. `csv_safe=true`,
+    accepted with `csv_records` only, prefixes `'` to each cell starting with `=`, `+`, `-`, `@`, a tab or a carriage
+    return, so a spreadsheet shows it as text (OWASP CSV Injection); without it the export is the published values
+    unchanged. Pass a page's `next_cursor` as `cursor` for the page after it. 409: an export other than `json_values`
+    of a job without a schema."""
     engine = database(request)
     fetching: Fetching = request.app.state.fetching
     async with engine.connect() as conn:
         try:
-            return await jobs.job_results(conn, job_id, query, store=fetching.store)
+            return await jobs.job_results(conn, job_id, query, store=fetching.store, adapters=fetching.rungs.adapters)
         except JobNotFound as e:
             raise not_found(str(e)) from e
         except NotExportable as e:
