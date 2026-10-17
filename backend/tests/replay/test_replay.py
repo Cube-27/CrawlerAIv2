@@ -6,6 +6,7 @@ import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import get_args
 
 import pytest
 from pydantic import JsonValue
@@ -35,9 +36,9 @@ from crawlerai.eval.metrics import (
     Usage,
     build_report,
 )
-from crawlerai.eval.replay import ConfigSnapshot, RecordedLLM, RecordingMissing, page_output, replay_split
+from crawlerai.eval.replay import CappedLLM, ConfigSnapshot, RecordedLLM, RecordingMissing, page_output, replay_split
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalRunRow, LabelPass, Labels
-from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, ReplyCheck, request_hash
+from crawlerai.llm.client import NO_LLM, LLMClient, LLMFailure, LLMRequest, LLMResponse, ReplyCheck, request_hash
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
@@ -372,6 +373,88 @@ def test_only_checked_pages_replay() -> None:
     assert [case.page_id for case in asyncio.run(replay_split(store, StubEngine(), live=LiveLLM()))] == [
         str(checked.id)
     ]
+
+
+def test_drafts_and_labeled_pages_replay_when_asked() -> None:
+    store = MemoryStore()
+    pages = [asyncio.run(add_page(store, n, status=status)) for n, status in enumerate(get_args(LabelStatus), start=1)]
+    asyncio.run(add_page(store, 9, status="checked", schema_name="other_schema"))
+    cases = asyncio.run(
+        replay_split(store, StubEngine(), SCHEMA.name, live=LiveLLM(), statuses=frozenset(get_args(LabelStatus)))
+    )
+    assert [case.page_id for case in cases] == sorted(str(page.id) for page in pages)
+
+
+@pytest.mark.parametrize("split", ["hidden", "fresh"])
+def test_a_private_split_never_replays_drafts(split: Split) -> None:
+    call = replay_split(MemoryStore(split), StubEngine(), live=LiveLLM(), statuses=frozenset({"draft", "checked"}))
+    with pytest.raises(ValueError, match="only dev pages"):
+        asyncio.run(call)
+
+
+class UnansweredEngine(StubEngine):
+    """Asks the LLM once per page and, as role C does, keeps its fields missing when the call gets no reply."""
+
+    async def replay_page(
+        self,
+        bundle: CaptureBundle,
+        schema: SchemaDef,
+        config: ConfigSnapshot | None,
+        llm: LLMClient,
+        mode: ExtractionMode,
+    ) -> ExtractionResult:
+        reason = "below_tau"  # answered, but not enough to publish
+        try:
+            await llm.complete_json(REQUEST.model_copy(update={"user": bundle.body.decode()}))
+        except LLMFailure as failure:
+            reason = failure.field_reason
+        missing = FieldOutcome(
+            status="missing",
+            reason=reason,
+            value=None,
+            evidence=None,
+            confidence=None,
+            calibrated=False,
+            source_kind=None,
+            locator=None,
+            derived_by=None,
+            chosen=None,
+            rejected=(),
+        )
+        return ExtractionResult(
+            outcome="partial",
+            entity={"summary": missing},
+            rows=(),
+            candidates=(),
+            llm_calls=(),
+            mode=mode,
+            record_confidence=None,
+        )
+
+
+def test_a_call_without_a_reply_is_counted_and_its_fields_keep_the_reason() -> None:
+    # `--llm unanswered`: a recording miss is answered by a client without a provider, not dropped (D-1464).
+    store = MemoryStore()
+    asyncio.run(add_page(store, 1))
+    [case] = asyncio.run(replay_split(store, UnansweredEngine(), live=NO_LLM))
+    assert isinstance(case.output, PageOutput)
+    assert (case.output.llm_calls, case.output.llm_unanswered) == (0, 1)
+    assert case.output.fields["summary"].reason == "llm_unavailable"
+    assert store.cache == {}
+
+
+def test_a_capped_live_client_stops_at_its_cap_and_recordings_do_not_count() -> None:
+    store, live = MemoryStore(), LiveLLM()
+    for n in range(1, 4):
+        asyncio.run(add_page(store, n))
+    cases = asyncio.run(replay_split(store, UnansweredEngine(), live=CappedLLM(live, 2)))
+    assert [case.output.llm_unanswered for case in cases if isinstance(case.output, PageOutput)] == [0, 0, 1]
+    assert len(live.calls) == 2
+    # The recorded pages cost nothing the second time: the one call left goes to the page the cap cut off.
+    again = LiveLLM()
+    cases = asyncio.run(replay_split(store, UnansweredEngine(), live=CappedLLM(again, 1)))
+    assert [case.output.llm_unanswered for case in cases if isinstance(case.output, PageOutput)] == [0, 0, 0]
+    assert len(again.calls) == 1
 
 
 def test_the_schema_filter_selects_pages() -> None:
@@ -836,6 +919,6 @@ def test_an_aggregate_offer_s_price_read_only_by_role_c_stays_an_offer_split() -
     assert isinstance(case.output, PageOutput)
     assert case.output.llm_calls == 1
     assert case.output.fields["price"] == FieldOutput(
-        status="conflict", offered={"llm": ({"amount": "12.50", "currency": "USD"},)}
+        status="conflict", reason="offer_split", offered={"llm": ({"amount": "12.50", "currency": "USD"},)}
     )
     assert case.output.fields["availability"].status == "published"

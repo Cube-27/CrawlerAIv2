@@ -1,9 +1,9 @@
 """The replay harness (SPEC-03 §4.5, ARCHITECTURE §15, G7, INV-10): the only path from eval captures to metrics.
 
-`replay_split` replays every checked page of a store's split through an `Engine` and returns the cases that
-`build_report` (`crawlerai.eval.metrics`) scores. Every LLM call goes through `RecordedLLM`, which answers from the
-split's recorded responses, so a replay reads nothing but the bundle, the page's config snapshot and the
-recordings: two replays of one engine version give byte-identical results.
+`replay_split` replays every checked page of a store's split (and, for a dev report that asks, its drafts: D-1461)
+through an `Engine` and returns the cases that `build_report` (`crawlerai.eval.metrics`) scores. Every LLM call goes
+through `RecordedLLM`, which answers from the split's recorded responses, so a replay reads nothing but the bundle,
+the page's config snapshot and the recordings: two replays of one engine version give byte-identical results.
 
 `Engine` is the seam to SPEC-05: its `replay_page` runs `resolve.pipeline.extract_page`, the function the worker
 runs, with SPEC-03's signature (`eval.engine`); the engine holds its calibration, which `version` names
@@ -18,10 +18,18 @@ from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.validation import field_error
 from crawlerai.db.models import ExtractionMode, FieldStatus, SourceKind
-from crawlerai.eval.labels import parse_labels
-from crawlerai.eval.metrics import EvalCase, FieldOutput, PageOutput, ReplayFailed, SchemaFields
+from crawlerai.eval.labels import LabelStatus, parse_labels
+from crawlerai.eval.metrics import CHECKED, EvalCase, FieldOutput, PageOutput, ReplayFailed, SchemaFields
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalStore
-from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, ReplyCheck, request_hash
+from crawlerai.llm.client import (
+    BudgetExhausted,
+    LLMClient,
+    LLMFailure,
+    LLMRequest,
+    LLMResponse,
+    ReplyCheck,
+    request_hash,
+)
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.types import ExtractionResult, FieldOutcome, FieldSet
 from crawlerai.schemas.types import SchemaDef
@@ -66,6 +74,38 @@ class RecordedLLM:
         return response
 
 
+class CappedLLM:
+    """A live client that answers at most `max_calls` requests, then raises `BudgetExhausted` as a job without budget
+    does (SPEC-06 §4.7): the fields asked stay missing with `llm_budget`. It bounds what a local dev run spends; a
+    recorded response costs nothing and is not counted, as `RecordedLLM` answers it before any live call."""
+
+    def __init__(self, client: LLMClient, max_calls: int) -> None:
+        self._client = client
+        self._left = max_calls
+
+    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
+        if self._left <= 0:
+            raise BudgetExhausted("the run's LLM call cap is reached")
+        self._left -= 1
+        return await self._client.complete_json(req, check)
+
+
+class _PageCalls:
+    """One page's view of the harness's client: it counts the calls that got no reply (`LLMFailure`), which the
+    pipeline turns into missing fields, so a dev report tells the misses that depend on role C (D-1464)."""
+
+    def __init__(self, client: LLMClient) -> None:
+        self._client = client
+        self.unanswered = 0
+
+    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
+        try:
+            return await self._client.complete_json(req, check)
+        except LLMFailure:
+            self.unanswered += 1
+            raise
+
+
 class ConfigSnapshot(BaseModel):
     """The site's active config as `eval_page.config_snapshot` holds it: the `extraction_config` row's `ir` and
     `field_status` (ARCHITECTURE §6, §12). Other columns of the row pass through to the engine. An `ir` the IR model
@@ -96,18 +136,26 @@ class Engine(Protocol):
 
 
 async def replay_split(
-    store: EvalStore, engine: Engine, schema_filter: str | None = None, live: LLMClient | None = None
+    store: EvalStore,
+    engine: Engine,
+    schema_filter: str | None = None,
+    live: LLMClient | None = None,
+    statuses: frozenset[LabelStatus] = CHECKED,
 ) -> list[EvalCase]:
-    """Replay every `checked` page of the store's split (of schema `schema_filter`, if given), in page order.
+    """Replay every page of the store's split whose labels are in `statuses` (`checked` unless a dev report asks for
+    drafts too, D-1461; of schema `schema_filter`, if given), in page order.
 
     A page with its site's config snapshot replays in `config` mode with that config, any other cold (`adhoc`, no
     config). A missing or corrupt bundle, an invalid snapshot, or a recording that is missing or unreadable drops the
     page as a `ReplayFailed` case, which the `n_pages` gate catches (§4.11). A schema the engine doesn't know, or
     labels that don't fit it, stop the run: those are setup errors, not pages to drop.
     """
+    if statuses != CHECKED and store.split != "dev":
+        raise ValueError(f"only dev pages replay with labels that are not checked, not {store.split} ones")
     llm = RecordedLLM(store, live)
+    pages = [page for status in sorted(statuses) for page in await store.list_pages(schema_filter, status)]
     cases = []
-    for page in await store.list_pages(schema_filter, "checked"):
+    for page in sorted(pages, key=lambda page: page.id):
         schema = engine.schema(page.schema_name)
         if schema.page_kind != page.page_kind:
             raise ValueError(f"eval page {page.id} is a {page.page_kind} page; schema {schema.name} is not")
@@ -136,13 +184,14 @@ def schema_fields(schema: SchemaDef) -> SchemaFields:
     )
 
 
-def page_output(result: ExtractionResult, block_class: BlockClass) -> PageOutput:
-    """What metrics score of an extraction: each field's status, value, evidence and the values each source kind
-    offered, and the page's LLM calls."""
+def page_output(result: ExtractionResult, block_class: BlockClass, llm_unanswered: int = 0) -> PageOutput:
+    """What metrics score of an extraction: each field's status, value, evidence, reason and the values each source
+    kind offered, and the page's LLM calls, answered and not."""
     return PageOutput(
         block_class=block_class,
         mode=result.mode,
         llm_calls=len(result.llm_calls),
+        llm_unanswered=llm_unanswered,
         fields=_field_outputs(result.entity or {}),
         rows=tuple(_field_outputs(row) for row in result.rows),
     )
@@ -154,6 +203,7 @@ def _field_outputs(fields: FieldSet) -> dict[str, FieldOutput]:
             status=outcome.status,
             value=outcome.value,
             evidence=outcome.evidence,
+            reason=outcome.reason,
             offered=_offered(outcome),
             # A row-mapped field's rows, each scored per sub-field (SPEC-13 §4.10).
             items=tuple(_field_outputs(row.fields) for row in outcome.items or ()),
@@ -186,10 +236,12 @@ async def _replay(
             reasons = "; ".join(f"{path}: {reason}" for path, reason in map(field_error, e.errors()))
             return ReplayFailed(error=f"invalid config_snapshot: {reasons}"), {}
     mode: ExtractionMode = "adhoc" if config is None else "config"
+    calls = _PageCalls(llm)
     try:
-        result = await engine.replay_page(bundle, schema, config, llm, mode)
+        result = await engine.replay_page(bundle, schema, config, calls, mode)
     except RecordingMissing as e:
         return ReplayFailed(error=f"recording missing: {e}"), {}
     except RecordingUnreadable as e:
         return ReplayFailed(error=f"recording unreadable: {e}"), {}
-    return page_output(result, bundle.manifest.block_class), {} if config is None else config.field_status
+    status = {} if config is None else config.field_status
+    return page_output(result, bundle.manifest.block_class, calls.unanswered), status

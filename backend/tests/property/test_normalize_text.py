@@ -117,3 +117,33 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
 
     with pytest.raises(TypeError):
         text.normalize("a", spec, CTX)
+
+
+# --- word overlap (`text.word_overlap`, D-1462) ---
+
+# `vocab.tokens` words are runs of letters: digits and punctuation separate them.
+_sentences = st.lists(st.from_regex(r"[A-Za-z]{1,12}", fullmatch=True), min_size=1, max_size=30)
+
+
+@given(_sentences, _sentences)
+def test_word_overlap_is_symmetric_and_between_zero_and_one(a: list[str], b: list[str]) -> None:
+    score = text.word_overlap(" ".join(a), " ".join(b))
+    assert score is not None
+    assert 0 <= score <= 1
+    assert score == text.word_overlap(" ".join(b), " ".join(a))
+
+
+@given(st.permutations(["alpha", "beta", "gamma", "delta"]))
+def test_the_same_words_in_any_order_case_or_punctuation_overlap_fully(words: list[str]) -> None:
+    assert text.word_overlap("Alpha, beta. Gamma\n\ndelta!", " ".join(w.upper() for w in words)) == 1.0
+
+
+def test_word_overlap_counts_repeated_words() -> None:
+    # Dice over multisets: {a, a, b} and {a, b} share 2 of 5 words, twice over.
+    assert text.word_overlap("a a b", "a b") == pytest.approx(0.8)
+    assert text.word_overlap("one two", "three four") == 0.0
+
+
+@pytest.mark.parametrize(("a", "b"), [("words", None), (3, "words"), ("...", "words"), ("words", "")])
+def test_word_overlap_needs_two_texts_with_words(a: JsonValue, b: JsonValue) -> None:
+    assert text.word_overlap(a, b) is None

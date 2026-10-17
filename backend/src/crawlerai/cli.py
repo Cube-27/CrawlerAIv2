@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Final, get_args
 
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.acquire.api import fetch_json
 from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
@@ -35,29 +35,49 @@ from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.keys import create_key, revoke_key
 from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, ScheduleId, Split
-from crawlerai.eval import calibrate, promote
-from crawlerai.eval.cli import EvalCliError, PageRequest, check_urls, parse_site_list, report, run_capture
+from crawlerai.eval import calibrate, label_file, promote
+from crawlerai.eval.cli import (
+    EvalCliError,
+    PageRequest,
+    active_schemas,
+    check_hosts,
+    check_urls,
+    hosts_elsewhere,
+    http_host,
+    parse_site_list,
+    report,
+    run_capture,
+)
+from crawlerai.eval.engine import PipelineEngine
+from crawlerai.eval.gate import commits_on
+from crawlerai.eval.labels import LabelStatus
+from crawlerai.eval.metrics import CHECKED, build_report
+from crawlerai.eval.replay import CappedLLM, replay_split
 from crawlerai.eval.store import (
     EvalNotFound,
+    EvalRunRow,
     PrivateCredentialsMissing,
     PrivateStoreNotSeparate,
     dev_store,
     private_store,
 )
-from crawlerai.llm.client import NO_LLM
+from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.recurring.listing_diff import close_run
+from crawlerai.resolve.pipeline import EngineData
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict
+from crawlerai.schemas.types import SchemaDef
 from crawlerai.services import schedules as schedules_service
 from crawlerai.services import schemas as schemas_service
 from crawlerai.services.fetch_options import FetchOptions, UnknownProxyPool, check_proxy_pool, fetch_policy
-from crawlerai.services.fetching import Fetching, learning_replay
+from crawlerai.services.fetching import Fetching, TargetRejected, learning_replay
 from crawlerai.services.records import MAX_PAGE
 from crawlerai.services.runtime import fetching_from_settings
 from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
+from crawlerai.services.scrape import polite_fetch
 from crawlerai.services.scrape_paging import learning_render
-from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
+from crawlerai.services.scrape_steps import content_check, load_drift_margins, load_engine_data, site_row
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
 from crawlerai.worker.browser import SharedBrowser
@@ -88,10 +108,10 @@ def _stop_on_signals() -> asyncio.Event:
     return stop
 
 
-async def _work() -> None:
-    quiet_peer_resets(asyncio.get_running_loop())
-    settings = Settings()
-    connector = SafeConnector()
+@asynccontextmanager
+async def _fetching(settings: Settings, connector: SafeConnector) -> AsyncIterator[Fetching]:
+    """What a process fetches pages with, as a worker does (SPEC-02 §4.4): HTTP, the shared browser, the adapters, and
+    this process's site sessions; the browser closes with it."""
     pools = settings.proxy_pools
 
     async def fetch_in(
@@ -118,32 +138,38 @@ async def _work() -> None:
         pools=pools,
         sessions=sessions,
     )
+    async with aclosing(
+        SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
+    ) as browser:
+        json = partial(
+            fetch_json,
+            engine_version=ENGINE_VERSION,
+            impersonate=impersonate,
+            connector=connector,
+            pools=pools,
+            sessions=sessions,
+        )
+        rungs = Rungs(
+            http=http,
+            browser=browser.fetch,
+            adapters=adapter_registry(settings.disabled_adapters),
+            conditional=http,
+            json=json,
+            sessions=sessions,
+            exporting=browser.fetch,
+            listing=listing,
+        )
+        store = open_store(settings.object_store)
+        yield Fetching(rungs, connector, store, HostLimiter(), frozenset(settings.proxy_pools))
+
+
+async def _work() -> None:
+    quiet_peer_resets(asyncio.get_running_loop())
+    settings = Settings()
     engine = create_async_engine(settings.database_url.get_secret_value())
     try:
-        async with aclosing(
-            SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
-        ) as browser:
-            json = partial(
-                fetch_json,
-                engine_version=ENGINE_VERSION,
-                impersonate=impersonate,
-                connector=connector,
-                pools=pools,
-                sessions=sessions,
-            )
-            adapters = adapter_registry(settings.disabled_adapters)
-            rungs = Rungs(
-                http=http,
-                browser=browser.fetch,
-                adapters=adapters,
-                conditional=http,
-                json=json,
-                sessions=sessions,
-                exporting=browser.fetch,
-                listing=listing,
-            )
-            store = open_store(settings.object_store)
-            fetching = Fetching(rungs, connector, store, HostLimiter(), frozenset(settings.proxy_pools))
+        async with _fetching(settings, SafeConnector()) as fetching:
+            store, adapters = fetching.store, fetching.rungs.adapters
             llm, setup = llm_from_settings(settings, engine)
             data, margins = load_engine_data(adapters), load_drift_margins()
             handlers = task_handlers(fetching, data, margins, llm=llm)
@@ -231,6 +257,100 @@ async def _eval_capture(
 async def _eval_import_sites(split: Split, file: Path, pages_per_site: int) -> None:
     sites = parse_site_list(file.read_text(encoding="utf-8"), pages_per_site)
     sys.stdout.write(report([*await run_capture(Settings(), split, sites.requests), *sites.over_limit]))
+
+
+async def _eval_import_labels(file: Path) -> None:
+    """Capture a label file's pages into dev through the worker's acquisition path, one page at a time, and store
+    their labels as drafts (D-1460)."""
+    settings = Settings()
+    pages = label_file.read_label_file(file.read_text(encoding="utf-8"))
+    database_url = settings.database_url.get_secret_value()
+    schemas = await active_schemas(database_url, label_file.schema_names(pages))
+    labeled = label_file.labeled_pages(pages, schemas)
+    # A host belongs to one split (ARCHITECTURE §16.1): refused, by counts only, before anything is fetched.
+    check_hosts([page.request for page in labeled], await hosts_elsewhere(settings, "dev"))
+    engine = create_async_engine(database_url)
+    try:
+        async with aclosing(dev_store(settings)) as store, _fetching(settings, SafeConnector()) as fetching:
+            data = load_engine_data(fetching.rungs.adapters)
+            fetch = partial(_polite_page, engine, fetching, data)
+            outcomes = await label_file.import_pages(store, schemas, labeled, fetch, await store.page_urls())
+    finally:
+        await engine.dispose()
+    sys.stdout.write(label_file.report(outcomes))
+
+
+async def _polite_page(
+    engine: AsyncEngine, fetching: Fetching, data: EngineData | None, url: str, schema: SchemaDef
+) -> FetchResult | str:
+    """The page as a worker fetches it for `schema` (`polite_fetch`): robots.txt, the site's rate, its adapters, and
+    a render when the HTTP page lacks what the schema reads; or why it was not fetched."""
+    host = http_host(url)
+    if host is None:  # `labeled_pages` refuses such a URL
+        raise EvalCliError("not an http or https URL with a host")
+    async with engine.begin() as conn:
+        site = await site_row(conn, host, schema.page_kind)
+    policy = FetchPolicy(page_kind=schema.page_kind, proxy_pool=site.proxy_pool)
+    try:
+        return await polite_fetch(
+            engine, fetching, url, host, policy, site, [], needs_render=content_check(schema, data, None, None)
+        )
+    except TargetRejected:
+        return "target_rejected"
+
+
+async def _eval_run(
+    statuses: frozenset[LabelStatus], llm_mode: str, out: Path | None, max_calls: int | None = None
+) -> None:
+    """Replay the dev split through the pipeline and score it; store the run when it scores checked pages only."""
+    settings = Settings()
+    data = load_engine_data(adapter_registry(settings.disabled_adapters))
+    if data is None:
+        raise EvalCliError("the engine's data files are missing: run `crawlerai data fetch`")
+    database_url = settings.database_url.get_secret_value()
+    pipeline = PipelineEngine(data, await active_schemas(database_url))
+    git_sha = commits_on("HEAD", _data_dir().parent.parent)[0]
+    db = create_async_engine(database_url)
+    try:
+        async with aclosing(dev_store(settings)) as store:
+            cases = await replay_split(
+                store, pipeline, live=_replay_llm(llm_mode, settings, db, max_calls), statuses=statuses
+            )
+            result = build_report(cases, "dev", pipeline.version, git_sha, statuses)
+            # A run is a baseline and what calibration fits on: drafts never become one (§16.2, D-1461).
+            run = None
+            if statuses == CHECKED:
+                metrics = result.model_dump(mode="json")
+                run = await store.put_run(
+                    EvalRunRow(split="dev", engine_version=pipeline.version, git_sha=git_sha, metrics=metrics)
+                )
+    finally:
+        await db.dispose()
+    if out is not None:
+        out.write_text(result.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    dropped = sum(page.error is not None for page in result.pages or ())
+    summary = {
+        "eval_run_id": None if run is None else str(run),
+        "n_pages": result.n_pages,
+        "dropped": dropped,
+        "label_statuses": list(result.label_statuses),
+        "by_field_type": {k: v.model_dump(mode="json") for k, v in result.by_field_type.items()},
+    }
+    print(json.dumps(summary))
+
+
+def _replay_llm(mode: str, settings: Settings, db: AsyncEngine, max_calls: int | None) -> LLMClient | None:
+    """What answers a call no recording holds (`RecordedLLM`): nothing, so the page is dropped (`recorded`, as in CI);
+    a client that answers none, so its fields stay missing (`unanswered`, D-1464); or the configured providers, whose
+    responses are recorded (`live`), at most `max_calls` of them when given."""
+    match mode:
+        case "unanswered":
+            return NO_LLM
+        case "live":
+            live = llm_from_settings(settings, db)[0]
+            return live if max_calls is None else CappedLLM(live, max_calls)
+        case _:
+            return None
 
 
 async def _eval_promote(all_pages: bool) -> None:
@@ -362,6 +482,31 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     import_sites.add_argument("--split", choices=splits, required=True)
     import_sites.add_argument("--file", type=Path, required=True)
     import_sites.add_argument("--pages-per-site", type=_positive_int, required=True)
+    import_labels = eval_commands.add_parser(
+        "import-labels", help="capture a label file's pages into dev and store their labels as drafts"
+    )
+    import_labels.set_defaults(handler=_run_eval, eval_handler=_run_eval_import_labels)
+    import_labels.add_argument("file", type=Path, help="the label file (JSON), under the working directory")
+    # Imported labels are drafts only: a labeled or checked page takes the two passes of §16.2 (D-1460).
+    import_labels.add_argument("--split", choices=["dev"], required=True)
+    import_labels.add_argument("--status", choices=["draft"], required=True)
+    run = eval_commands.add_parser("run", help="replay the dev split through the engine and print its report")
+    run.set_defaults(handler=_run_eval, eval_handler=_run_eval_run)
+    run.add_argument("--split", choices=["dev"], required=True)
+    run.add_argument(
+        "--labels",
+        choices=["checked", "all"],
+        default="checked",
+        help="score checked pages (stored as a run), or drafts and labeled pages too (D-1461; not stored)",
+    )
+    run.add_argument(
+        "--llm",
+        choices=["recorded", "unanswered", "live"],
+        default="recorded",
+        help="for a call no recording holds: drop the page, answer nothing, or call the configured providers",
+    )
+    run.add_argument("--llm-max-calls", type=_positive_int, help="with --llm live: the most provider calls to make")
+    run.add_argument("--out", type=Path, help="write the full report (JSON) here, under the working directory")
     promote_command = eval_commands.add_parser(
         "promote", help="move the fresh sites whose pages are all checked into dev, keeping their labels"
     )
@@ -611,6 +756,16 @@ def _run_eval_import_sites(parser: argparse.ArgumentParser, args: argparse.Names
     # The site list is read only from under the working directory, as `fetch --out` is written there.
     sites = _under_cwd(parser, "--file", args.file)
     asyncio.run(_eval_import_sites(args.split, sites, args.pages_per_site))
+
+
+def _run_eval_import_labels(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    asyncio.run(_eval_import_labels(_under_cwd(parser, "file", args.file)))
+
+
+def _run_eval_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    out = None if args.out is None else _under_cwd(parser, "--out", args.out)
+    statuses: frozenset[LabelStatus] = CHECKED if args.labels == "checked" else frozenset(get_args(LabelStatus))
+    asyncio.run(_eval_run(statuses, args.llm, out, args.llm_max_calls))
 
 
 def _run_eval_promote(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
