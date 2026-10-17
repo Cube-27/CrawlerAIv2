@@ -20,14 +20,14 @@ Adapted from pstack's session-pickup and pause-safely playbooks (MIT, see `NOTIC
 2. **Rebuild the state** for each in-flight branch (one PR, a batch of tasks of one change, `change/<change-id>`):
    - what is committed on the branch;
    - whether a PR is open and what CI says;
-   - what review verdicts exist.
+   - for a PR over 10 files, whether `claude-review` posted (`/implement-pr` §6.2).
 3. **Diff done against pending.** Name the resume point for each branch:
 
    | Situation | Action |
    |---|---|
-   | Open PR, CI green, no review | Its implementor starts one reviewer (`/implement-pr` §6.1); if the implementor is gone, start a fresh one in the worktree to do it |
+   | Open PR over 10 files, CI green, no `claude-review` comments | Its implementor comments `/claude-review` (`/implement-pr` §6.2); if the implementor is gone, start a fresh one in the worktree to do it |
    | Open PR with a latest `READY <sha7>` comment matching the head | Merge it (`/run-plan` §1.3), or send `REBASE` if GitHub reports it `CONFLICTING` (never only because it is behind `main`) |
-   | Open PR with a `MERGE AFTER FIX` (or older `FIX`) verdict | Its implementor makes the listed fixes, gets CI green and comments `READY`; no second review |
+   | Open PR with `claude-review` findings and no `READY` | Its implementor fixes or answers each finding, gets CI green and comments `READY`; no second review |
    | Branch with commits, no PR | A worker continues `/implement-pr` from §3 Verify |
    | Branch with no commits, or abandoned for more than 7 days with no PR | Remove the worktree and delete the branch; its tasks are unchecked, so ready again |
 

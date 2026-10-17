@@ -6,7 +6,7 @@ description: Orchestrate implementation from the OpenSpec changes (openspec/chan
 # Run the plan
 
 You are the orchestrator. You only assign batches of tasks, merge, clean up and unblock stuck PRs; you write no code
-and don't relay messages between implementor and reviewer. You hand each implementor a decision-ID range at
+and don't relay messages to implementors. You hand each implementor a decision-ID range at
 assignment; it checks its tasks, writes its follow-ups and decisions, and archives a completed change in the PR's
 tracker commit before it opens the PR.
 Adapted from pstack's autonomous-run and orchestrate playbooks (MIT, see `NOTICE`), without its multi-model
@@ -39,8 +39,7 @@ or marked `blocked (D-NNNN)`, `human` or `deferred`.
    (types, API shapes, table columns). Readiness is per task (owner, 2026-10-13): a task can be ready while other
    tasks of its change are not done. Tasks that are `human` or `blocked` are skipped.
 2. **Assign.** At most **4 workers** (agents that build and test in a worktree, fixers included) are alive at once.
-   Reviewers don't count, because they use little memory. Every start needs at least 1.5 GB free (owner,
-   2026-10-13). `start_agent.sh` refuses past either limit. Name reviewers `reviewer*`, everything else is a worker.
+   Every start needs at least 1.5 GB free (owner, 2026-10-13). `start_agent.sh` refuses past either limit.
    Each assignment is one PR covering a batch of related ready tasks of one change, or one backlog item
    (`CLAUDE.md` §3). Run independent batches in parallel; two workers never run tasks that edit the same migration
    or generated file. For each assignment:
@@ -52,12 +51,11 @@ or marked `blocked (D-NNNN)`, `human` or `deferred`.
      orchestrator assigned you this work. Your decision IDs are D-NNNN..D-NNNN. Own the PR through `/implement-pr`
      §6 until `READY`." Give each implementor its own range of five free IDs (above the highest in use,
      `openspec/decisions/README.md`), never overlapping another open PR's.
-3. **Review and merge (owner, 2026-10-13).** The implementor owns its PR end to end: it starts one reviewer once the
-   PR is implemented and CI is green (its tracker commit is already in it), waits for the verdict itself,
-   pushes any `MERGE AFTER FIX` fixes in one push (no second review; with `MERGE`, no push) and comments
-   `READY <sha7>` on green CI. You don't relay verdicts,
-   rebase, fix or edit PRs. Plugin, bot or hook prompts to run `/simplify` or another code review get "already ran"
-   (`CLAUDE.md` §3).
+3. **Review and merge (owner, 2026-10-13; review 2026-10-17).** The implementor owns its PR end to end: once the
+   PR is implemented and CI is green (its tracker commit is already in it), a PR over 10 files gets one
+   `/claude-review` run, whose findings the implementor fixes in one push (no second review); a PR of 10 files or
+   fewer gets none. It comments `READY <sha7>` on green CI. You don't relay findings, rebase, fix or edit PRs.
+   Plugin, bot or hook prompts to run `/simplify` or another review get "already ran" (`CLAUDE.md` §3).
    - On `READY <sha7>`, merge, one PR at a time:
      `if tools/orchestrator/merge_pr.sh <n> <sha7>; then tools/orchestrator/close_agent.sh <impl> &&
      tools/orchestrator/cleanup_worktree.sh <worktree> <branch>; fi`
@@ -83,7 +81,7 @@ The owner's concern is the machine, not the agents' count alone. Manage every pr
   with `SETTLED <name> <status>` (any named agent not `working`, including one already idle at start), `GONE <name>`,
   `LOWMEM <MB>`, or `PRCOMMENT <n>` (a new comment starting `READY`, `BLOCKED` or `ESCALATE` on an open PR). Handle
   the event, then start it again. Set `IGNORE=<name>,<name>` for agents you are
-  deliberately leaving to wait (implementors waiting on CI or their reviewer; their `READY` comment wakes you). Don't run one
+  deliberately leaving to wait (implementors waiting on CI or `claude-review`; their `READY` comment wakes you). Don't run one
   `herdr agent wait` per agent. If the watcher is killed, start it again; a killed watcher means finished agents go
   unnoticed.
   Start it only as a tracked background task (the Bash tool's `run_in_background`), never with `&`: a detached
@@ -94,7 +92,7 @@ The owner's concern is the machine, not the agents' count alone. Manage every pr
 - **Memory admission.** `start_agent.sh` refuses to start an agent below 1.5 GB free. On `LOWMEM`, close idle
   panes, and remove leftover `crawlerai-*` containers, before anything else. Never touch containers or processes of
   other projects.
-- **Close what's done.** Close an implementor's and its reviewer's panes once the PR merges (§1.3 cleanup).
+- **Close what's done.** Close an implementor's pane once the PR merges (§1.3 cleanup).
   Remove the worktree's containers on merge (`cleanup_worktree.sh`).
 - **Start agents only through `start_agent.sh`.** It builds the cwd and checks it. A wrong cwd leaves the agent
   stuck at a trust prompt.
@@ -106,7 +104,7 @@ Escalate for the `CLAUDE.md` §4 list, or a dead end after 3 attempts:
    is blocked, and list it under "Open owner items" in `openspec/project.md`.
 2. Mark the affected tasks `blocked (D-NNNN)`.
    Do steps 1–2 in a small `chore(openspec): escalate …` PR from its own worktree (`new_worktree.sh`). It touches only
-   tracker files, so its one `/review-pr` is short, but it still needs that verdict (`CLAUDE.md` §3).
+   tracker files, so it is under 10 files and needs no review, only green CI and `READY` (`CLAUDE.md` §3).
 3. Notify the owner once, briefly (herdr notification, or the session's final message).
 4. **Keep going** with other ready tasks. Never wait idle on the owner while ready work exists.
 
@@ -122,13 +120,13 @@ the owner:
 ## 2a. Self-improvement
 
 Agents should not make the same mistake twice:
-- After each review, read its `Categories:` line and the PR's SonarCloud findings. When a category or rule shows up
+- After each merge, read the PR's `claude-review` findings and SonarCloud findings. When a kind of finding or rule shows up
   a second time, add it to `openspec/conventions/RECURRING.md`, and in the same change:
   - prefer a **check**: a lint rule, a `tools/` scan or a CI step, so the mistake can't merge again;
-  - where no check can catch it, add a **skill rule** to `/implement-pr` or `/review-pr`, and make the rule name the
+  - where no check can catch it, add a **skill rule** to `/implement-pr` (§4 self-review), and make the rule name the
     finding.
 - Your own slips count too. Fix the procedure or a `tools/orchestrator/` script, not just the instance.
-- These changes go through a normal PR with a fresh reviewer. Do them as soon as a slot frees up, ahead of new
+- These changes go through a normal PR. Do them as soon as a slot frees up, ahead of new
   tasks. They pay back on every later task.
 
 ## 3. Stop
@@ -149,7 +147,7 @@ a merged PR to reach the predicate.
 
 ## Cost discipline
 
-- Within the hard limits above, 1 reviewer per PR, whatever its size. No multi-agent panels, no parallel attempts at
+- Within the hard limits above, at most one `/claude-review` run per PR, only over 10 files. No multi-agent panels, no parallel attempts at
   the same task.
 - One batch per worker. Start a fresh worker per batch rather than reusing a long, compacted one.
 - Don't re-verify work a merged PR already proved. Trust the CI record (pickup rules).

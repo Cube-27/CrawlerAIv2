@@ -31,7 +31,7 @@ Full table and rejected alternatives: ARCHITECTURE §19 ([archived](changes/arch
 | `design/` | [overview.md](design/overview.md): goals, the evidence behind the contract, milestone M, the candidates register (§22); [owner-decisions.md](design/owner-decisions.md): ARCHITECTURE Appendix A, appended as the owner decides. The full ARCHITECTURE rev 26 (cited in code as `ARCHITECTURE §N`) and the old INVARIANTS table are frozen in [the archive](changes/archive/2026-10-16-architecture-rev26/) | When a spec or a ref points there |
 | `decisions/` | How decisions are logged ([README](decisions/README.md)) and the cross-cutting log ([log.md](decisions/log.md)) | When logging a decision |
 | `OPEN_QUESTIONS.md` | Questions only the owner or a user can answer, with recommended defaults | When escalating |
-| `conventions/` | `ENGINEERING.md` (how to write code here), `DESIGN.md` (frontend conventions), `RECURRING.md` (repeated agent mistakes and their checks) | Implementors and reviewers, once per session |
+| `conventions/` | `ENGINEERING.md` (how to write code here), `DESIGN.md` (frontend conventions), `RECURRING.md` (repeated agent mistakes and their checks) | Implementors, once per session |
 
 ## Capabilities
 

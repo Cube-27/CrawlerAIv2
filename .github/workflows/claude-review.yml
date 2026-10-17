@@ -1,6 +1,6 @@
 name: claude-review
 
-# Opt-in Claude code review; not the merge review (/review-pr is). The job lives in Cube-27/.github.
+# The one review of a PR over 10 files (CLAUDE.md §3): start it once per PR. The job lives in Cube-27/.github.
 #   gh pr comment <n> --body "/claude-review"
 #   gh workflow run claude-review.yml -f pr=<n>
 

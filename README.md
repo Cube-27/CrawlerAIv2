@@ -52,7 +52,7 @@ capability, in-flight work as change folders, done work archived.
 | [openspec/OPEN_QUESTIONS.md](openspec/OPEN_QUESTIONS.md) | Decisions still open, each with a recommended default |
 | [openspec/conventions/](openspec/conventions/) | `ENGINEERING.md` (engineering principles), `DESIGN.md` (frontend conventions), `RECURRING.md` (recurring agent mistakes) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute: checks, pull requests, the evaluation report |
-| [.claude/skills/](.claude/skills/) | Agent procedures: `run-plan`, `implement-pr`, `review-pr`, `pickup` |
+| [.claude/skills/](.claude/skills/) | Agent procedures: `run-plan`, `implement-pr`, `pickup` |
 
 ## Stack
 

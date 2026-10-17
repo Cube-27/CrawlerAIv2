@@ -979,3 +979,10 @@ Entries written before the OpenSpec conversion (#223), when this file was `docs/
 - Decision: iCIMS gets no adapter. Its career portals are server-rendered HTML and call no public JSON; the vendor's REST API needs customer OAuth credentials, which adapters never use.
 - Why: an adapter reads a platform's public, unauthenticated JSON; the page path already reads the portals' HTML.
 - Reversible: yes
+
+### D-1208 — The `claude-review` CI workflow is the review, only for PRs over 10 files
+- Date: 2026-10-17 · Change/PR: owner request (#236) · Status: decided
+- Decision: The `/review-pr` reviewer agent is removed. A PR that changes more than 10 files gets one review, the `claude-review` workflow (Anthropic's code-review plugin, Sonnet 5.5 at high effort), started by the implementor commenting `/claude-review`; the implementor fixes or answers each inline finding in one push, then `READY`. A PR of 10 files or fewer merges on green CI and `READY`. `merge_pr.sh` checks it: over 10 files it needs the plugin's `## Code review` comment or an inline comment by `claude[bot]`; the managed Code Review's notices from the same app don't count. No `/simplify`, no re-review.
+- Alternatives: keep `/review-pr` for every PR (an agent and about 50k tokens even for one-line PRs); review every PR in CI (the same cost on PRs the plugin's own pre-check calls trivial).
+- Why: owner, 2026-10-17. The plugin found the planted bug in a test PR (#231) and reviews a 54-file diff for about $0.30-0.65.
+- Reversible: yes

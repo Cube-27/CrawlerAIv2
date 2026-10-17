@@ -35,8 +35,8 @@ fails if one appears in a workflow, a hook or a tool config.
 - Tests come first: behaviour tests, Hypothesis properties for normalizers, replays of stored captures for
   extraction. No test is named after a site or asserts one site's output (C9). Fixtures are synthetic and use
   reserved names (`example.com`, `.test`).
-- Merge needs a `MERGE` review verdict from someone other than the author and green CI. Hooks and checks are
-  never skipped or weakened.
+- Merge needs green CI, and for a PR over 10 files the `claude-review` workflow's review (comment `/claude-review`)
+  with every finding fixed or answered. Hooks and checks are never skipped or weakened.
 
 ### Checklist
 
