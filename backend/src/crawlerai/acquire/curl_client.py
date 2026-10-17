@@ -141,12 +141,14 @@ async def send(
     redirected: Redirected,
     transport: Transport | None = None,
     session: SiteSession | None = None,
+    page_url: str | None = None,
 ) -> Sent:
     """Fetch `url` with `first` through the pool `policy.proxy_pool` names (an endpoint picked for the URL's host),
     within the policy's caps and time budget; `transport` replaces the network (tests). A site `session` (INV-29's
     exception) is carried only through its own endpoint while the pool has it available: its cookies seed the fetch's
-    jar, its identity headers go with every hop. The caller's context (`policy.context`) goes with the hops to `url`'s
-    host (`follow`)."""
+    jar, its identity headers go with every hop. The caller's context (`policy.context`) belongs to the page: it goes
+    with the hops to the host of `page_url` (the page a JSON request is made for; `url` itself by default), and to no
+    other host (`follow`, D-1431)."""
     started = time.monotonic()
     try:
         pool = proxy_pool(policy.proxy_pool, pools)
@@ -169,6 +171,7 @@ async def send(
                 redirected=redirected,
                 session=session,
                 context=policy.context,
+                page_url=page_url,
             )
     except Failed as failed:
         return Sent(failed.last, failed.error, pool, proxy, session, traffic.bytes)
@@ -192,19 +195,20 @@ async def follow(
     redirected: Redirected,
     session: SiteSession | None = None,
     context: RequestContext | None = None,
+    page_url: str | None = None,
 ) -> Wire:
     """The final response for `url`, every hop checked by the guard first (INV-16), at most `MAX_REDIRECTS` followed.
     Cookies set by one hop go with the next whose host and path they match, and none outlive the fetch (INV-29); a
     site `session`'s cookies are held from the start, and its identity headers fill every hop. The caller's `context`
-    cookies are held from the start as host-only cookies of `url`'s host, and its headers go with every hop to that
-    host only (D-1431, D-1433). Raises `Failed`."""
+    cookies are held from the start as host-only cookies of the page's host (`page_url`'s, else `url`'s), and its
+    headers go with every hop to that host only (D-1431, D-1433). Raises `Failed`."""
     target = await _checked(connector.check(url), deadline, None)
     cookies = await FetchCookies.new()
     identity: HeaderList = ()
     if session is not None:
         cookies.seed(session.cookies)
         identity = session.identity
-    caller = _Caller.of(url, context)
+    caller = _Caller.of(page_url or url, context)
     cookies.seed(caller.cookies)
     hop = first
     response = await _send(transport, target, hop, cookies, identity, caller)

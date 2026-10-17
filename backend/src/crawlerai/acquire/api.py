@@ -116,6 +116,7 @@ async def fetch_json(
         redirected=_Redirect(request.page_url),
         transport=transport,
         session=session,
+        page_url=request.page_url,
     )
     last, error, challenge = sent.last, sent.error, None
     block_class: BlockClass = "error"

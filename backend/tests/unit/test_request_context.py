@@ -14,6 +14,7 @@ import pytest
 from cssselect import HTMLTranslator
 from pydantic import SecretStr, ValidationError
 
+from crawlerai.acquire.api import JsonRequest, fetch_json
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.types import REDACTED, FetchPolicy, FetchResult, RequestContext
 from crawlerai.cli import main
@@ -213,6 +214,33 @@ def test_a_header_the_caller_names_replaces_the_impersonations(server: Server) -
 
     assert _sent(server, "shop.example.test/p")["accept-language"] == "de-CH"
     assert json.dumps(server.requests).count("Accept-Language") == 1
+
+
+def _fetch_json(server: Server, endpoint: str, context: RequestContext) -> FetchResult:
+    return asyncio.run(
+        fetch_json(
+            JsonRequest(url=endpoint, page_url=server.url("/board")),
+            FetchPolicy(context=context),
+            engine_version="test",
+            impersonate=IMPERSONATE_DEFAULT,
+            connector=LoopbackConnector(server.port, {}),
+        )
+    )
+
+
+def test_a_json_call_to_another_host_carries_neither_the_header_nor_the_cookie(server: Server) -> None:
+    # An adapter's or a recipe's endpoint on another host than the page the caller named (D-1431, D-1433).
+    server.route("/api/jobs", Reply(200, (("Content-Type", "application/json"),), b"[]"))
+    context = _context({"Authorization": "Bearer t0ken"}, {"sid": "s3cret"})
+    _fetch_json(server, server.url("/api/jobs", "api.example.test"), context)
+    _fetch_json(server, server.url("/api/jobs"), context)
+
+    elsewhere = _sent(server, "api.example.test/api/jobs")
+    assert "authorization" not in elsewhere
+    assert "cookie" not in elsewhere
+    same_host = _sent(server, "shop.example.test/api/jobs")
+    assert same_host["authorization"] == "Bearer t0ken"
+    assert same_host["cookie"] == "sid=s3cret"
 
 
 # --- the CLI -----------------------------------------------------------------------------------------------------
