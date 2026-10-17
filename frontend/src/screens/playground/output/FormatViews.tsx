@@ -1,5 +1,6 @@
 import { Label, Table, TextArea, TextField } from "@heroui/react";
-import type { FetchAttempt, PageMetadata, ScrapeResponse } from "../../../api/scrape";
+import type { PageMetadata, ScrapeResponse } from "../../../api/scrape";
+import { FetchAttemptsTable } from "../../../components/FetchAttempts";
 
 /** A text format (markdown, html, raw_html) in a read-only text area, to read, scroll and copy as sent. */
 export function TextFormat({ label, text }: Readonly<{ label: string; text: string }>) {
@@ -81,10 +82,6 @@ export function MetadataTable({ metadata }: Readonly<{ metadata: PageMetadata }>
 }
 
 export function FetchView({ fetch }: Readonly<{ fetch: NonNullable<ScrapeResponse["fetch"]> }>) {
-  const attempts: (FetchAttempt & { id: number })[] = fetch.attempts.map((attempt, id) => ({
-    ...attempt,
-    id,
-  }));
   return (
     <div className="flex flex-col gap-4">
       <NameValueTable
@@ -93,32 +90,11 @@ export function FetchView({ fetch }: Readonly<{ fetch: NonNullable<ScrapeRespons
           ["Method", fetch.method],
           ["HTTP status", fetch.status_code === null ? "—" : String(fetch.status_code)],
           ["Block class", fetch.block_class],
+          // The platform adapter that read the page's API capture (D-1393); other fetches have none.
+          ...(fetch.adapter === null ? [] : [["Adapter", fetch.adapter] as const]),
         ]}
       />
-      <Table>
-        <Table.ScrollContainer>
-          <Table.Content aria-label="Fetch attempts">
-            <Table.Header>
-              <Table.Column isRowHeader>Method</Table.Column>
-              <Table.Column>HTTP status</Table.Column>
-              <Table.Column>Block class</Table.Column>
-              <Table.Column>Duration (ms)</Table.Column>
-              <Table.Column>Error</Table.Column>
-            </Table.Header>
-            <Table.Body items={attempts}>
-              {(attempt) => (
-                <Table.Row id={attempt.id}>
-                  <Table.Cell>{attempt.method}</Table.Cell>
-                  <Table.Cell>{attempt.status === null ? "—" : String(attempt.status)}</Table.Cell>
-                  <Table.Cell>{attempt.block_class}</Table.Cell>
-                  <Table.Cell>{String(attempt.duration_ms)}</Table.Cell>
-                  <Table.Cell>{attempt.error ?? "—"}</Table.Cell>
-                </Table.Row>
-              )}
-            </Table.Body>
-          </Table.Content>
-        </Table.ScrollContainer>
-      </Table>
+      <FetchAttemptsTable attempts={fetch.attempts} />
     </div>
   );
 }

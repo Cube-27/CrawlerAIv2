@@ -81,6 +81,7 @@ describe("crawl playground", () => {
     await userEvent.click(options.getByRole("button", { name: "Add rule" }));
     await fill(options.getByRole("textbox", { name: "Pattern 1" }), "https://shop.test/items/*");
     await pick(/Page kind 1/, "Listing");
+    await fill(options.getByRole("textbox", { name: "Max rows" }), "30");
     await closeOptions();
 
     await start();
@@ -94,7 +95,7 @@ describe("crawl playground", () => {
       page_kind_rules: [{ pattern: "https://shop.test/items/*", page_kind: "listing" }],
       include: ["https://shop.test/items/*"],
       exclude: ["https://shop.test/cart/*"],
-      fetch: { method_hint: "auto" },
+      fetch: { method_hint: "auto", max_rows: 30 },
     });
   });
 

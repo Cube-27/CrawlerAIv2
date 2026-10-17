@@ -7,6 +7,7 @@ import {
   asksForNothing,
   fieldsPageKindErrors,
   hasSchema,
+  fetchMember,
   NO_ERRORS,
   NO_FORMAT,
   optionalNumber,
@@ -18,6 +19,7 @@ import {
 } from "../pageRequest";
 import {
   count,
+  maxRows,
   methodHint,
   pageFormats,
   pageKind,
@@ -48,6 +50,8 @@ export interface CrawlOptions {
   maxDepth: number;
   limit: number;
   methodHint: MethodHint;
+  /** `fetch.max_rows`: NaN while empty. */
+  maxRows: number;
   /** Empty: no webhook. */
   webhookUrl: string;
 }
@@ -62,6 +66,7 @@ export const DEFAULT_CRAWL_OPTIONS: CrawlOptions = {
   limit: Number.NaN,
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
+  maxRows: Number.NaN,
   webhookUrl: "",
 };
 
@@ -138,7 +143,7 @@ export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
     })),
     include: [...options.include],
     exclude: [...options.exclude],
-    fetch: { method_hint: options.methodHint },
+    fetch: fetchMember(options.methodHint, options.maxRows),
     ...optionalNumber("max_depth", options.maxDepth),
     ...optionalNumber("limit", options.limit),
     ...webhook(options.webhookUrl),
@@ -178,6 +183,7 @@ export function crawlForm(request: StoredRequest): CrawlFormState {
       maxDepth: count(request, "max_depth"),
       limit: count(request, "limit"),
       methodHint: methodHint(request),
+      maxRows: maxRows(request),
       webhookUrl: webhookUrl(request),
     },
   };

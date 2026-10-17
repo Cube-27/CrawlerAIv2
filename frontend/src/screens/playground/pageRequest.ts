@@ -1,4 +1,4 @@
-import type { PageKind, SchemaRef, ScrapeFormat } from "../../api/scrape";
+import type { MethodHint, PageKind, SchemaRef, ScrapeFormat } from "../../api/scrape";
 import type { SchemaPageKind } from "../../api/schemas";
 import { orderedFormats } from "../../components/formats";
 import type { PageFormat } from "./FormatSelect";
@@ -25,6 +25,14 @@ export function optionalNumber<K extends string>(
   const member: Partial<Record<K, number>> = {};
   if (!Number.isNaN(value)) member[key] = value;
   return member;
+}
+
+/** The request's `fetch` member: the method hint, and `max_rows` while its field is filled (D-1395). */
+export function fetchMember(
+  methodHint: MethodHint,
+  maxRows: number,
+): { method_hint: MethodHint; max_rows?: number } {
+  return { method_hint: methodHint, ...optionalNumber("max_rows", maxRows) };
 }
 
 /** The optional `budget.llm_calls` member (SPEC-06 §4.8), left out while empty. */

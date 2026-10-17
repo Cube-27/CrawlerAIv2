@@ -289,6 +289,47 @@ describe("config screen: reading a version", () => {
     ]);
   });
 
+  it("rejects a learned config waiting for approval, which is then suspended", async () => {
+    let current: ConfigDetail = { ...detail, status: "pending_approval" };
+    const calls = configApi({
+      [`GET /v1/configs/${V2_ID}`]: () => Response.json(current),
+      [`POST /v1/configs/${V2_ID}/reject`]: () => {
+        current = { ...current, status: "suspended" };
+        return Response.json(current);
+      },
+    });
+    await open(`/configs/${V2_ID}`, HOST);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Reject" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(calls.filter(({ method }) => method === "POST").map(({ path }) => path)).toEqual([
+      `/v1/configs/${V2_ID}/reject`,
+    ]);
+  });
+
+  it("shows the problem when a config can no longer be rejected", async () => {
+    configApi({
+      [`GET /v1/configs/${V2_ID}`]: () => Response.json({ ...detail, status: "pending_approval" }),
+      [`POST /v1/configs/${V2_ID}/reject`]: () =>
+        problem(409, {
+          title: "Conflict",
+          detail: "config is suspended, not the latest version waiting for approval",
+        }),
+    });
+    await open(`/configs/${V2_ID}`, HOST);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Reject" }));
+
+    expect(
+      await screen.findByText("config is suspended, not the latest version waiting for approval"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  });
+
   it("shows the validation report, with a dropped field's reason", async () => {
     configApi();
     await open(`/configs/${V2_ID}`, HOST);
