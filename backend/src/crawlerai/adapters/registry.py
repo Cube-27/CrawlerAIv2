@@ -16,15 +16,20 @@ from urllib.parse import urlsplit
 
 from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.adapters.adp import ADP
 from crawlerai.adapters.ashby import Ashby
+from crawlerai.adapters.bamboohr import BambooHR
 from crawlerai.adapters.base import NOT_PLATFORM, Adapter, AdapterMatch, PageRefs, Referring
 from crawlerai.adapters.greenhouse import Greenhouse
 from crawlerai.adapters.lever import Lever
 from crawlerai.adapters.oracle_recruiting import OracleRecruiting
+from crawlerai.adapters.personio import Personio
 from crawlerai.adapters.recruitee import Recruitee
 from crawlerai.adapters.rippling import Rippling
 from crawlerai.adapters.shopify import Shopify
 from crawlerai.adapters.smartrecruiters import SmartRecruiters
+from crawlerai.adapters.teamtailor import Teamtailor
+from crawlerai.adapters.ukg import UltiPro
 from crawlerai.adapters.workable import Workable
 from crawlerai.adapters.workday import Workday
 from crawlerai.db.models import PageKind
@@ -47,6 +52,11 @@ def platform_adapters() -> tuple[Adapter, ...]:
         Recruitee(),
         Workable(),
         Rippling(),
+        BambooHR(),
+        Teamtailor(),
+        UltiPro(),
+        Personio(),
+        ADP(),
     )
 
 

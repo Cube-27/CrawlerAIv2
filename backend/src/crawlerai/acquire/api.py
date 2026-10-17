@@ -75,6 +75,9 @@ class JsonRequest:
     # Sent after the fetch's own headers, replacing a field of the same name; never Host or Cookie.
     headers: HeaderList = ()
     body: str | None = None  # UTF-8 text, a POST's only
+    # The endpoint answers XML or HTML, not JSON (a feed, a page embedding data): a 2xx answer is `ok` whatever its
+    # body, and the adapter that asked reads it into the JSON its shapes describe (`adapters.answer`).
+    raw: bool = False
 
 
 JsonFetcher = Callable[[JsonRequest, FetchPolicy], Awaitable[FetchResult]]
@@ -108,7 +111,7 @@ async def fetch_json(
     block_class: BlockClass = "error"
     body = b""
     if error is None and last is not None:
-        block_class, error = await asyncio.to_thread(_outcome, last.status, last.body)
+        block_class, error = await asyncio.to_thread(_outcome, last.status, last.body, request.raw)
         body = last.body
         if block_class in CHALLENGED:
             challenge = await asyncio.to_thread(_label, last, request.url)
@@ -134,8 +137,10 @@ def _label(last: Wire, url: str) -> str | None:
     return challenge_label(last.status, last.response_headers, last.body, url)
 
 
-def _outcome(status: int, body: bytes) -> tuple[BlockClass, str | None]:
+def _outcome(status: int, body: bytes, raw: bool) -> tuple[BlockClass, str | None]:
     if 200 <= status < 300:
+        if raw:
+            return "ok", None
         # RFC 8259 §8.1: JSON text exchanged between systems is UTF-8; `json.loads` also detects UTF-16/32 from bytes.
         try:
             json.loads(body)

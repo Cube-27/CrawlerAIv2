@@ -1,0 +1,22 @@
+{
+  "meta": {"totalCount": 2},
+  "result": [
+    {
+      "id": "7",
+      "jobOpeningName": "Synthetic Engineer",
+      "departmentLabel": "Engineering",
+      "employmentStatusLabel": "Full-Time",
+      "location": {"city": "Northtown", "state": "Exampleland"},
+      "isRemote": null
+    },
+    {
+      "id": "8",
+      "jobOpeningName": "Placeholder Analyst",
+      "departmentLabel": null,
+      "employmentStatusLabel": "Part-Time",
+      "location": {"city": null, "state": null},
+      "atsLocation": {"country": "Exampleland", "state": null, "province": null, "city": "Eastport"},
+      "isRemote": true
+    }
+  ]
+}

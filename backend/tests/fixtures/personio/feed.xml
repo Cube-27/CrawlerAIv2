@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workzag-jobs>
+  <position>
+    <id>9001</id>
+    <subcompany>Example Co &amp; Partners</subcompany>
+    <office>Northtown</office>
+    <additionalOffices>
+      <office>Eastport</office>
+    </additionalOffices>
+    <department>Engineering</department>
+    <name>Synthetic Engineer</name>
+    <jobDescriptions>
+      <jobDescription>
+        <name>Your role</name>
+        <value><![CDATA[<p>Build <strong>things</strong>.</p>]]></value>
+      </jobDescription>
+      <jobDescription>
+        <name>Your profile</name>
+        <value><![CDATA[<p>Care.</p>]]></value>
+      </jobDescription>
+    </jobDescriptions>
+    <employmentType>permanent</employmentType>
+    <schedule>full-time</schedule>
+    <createdAt>2026-09-30T16:36:07+00:00</createdAt>
+  </position>
+  <position>
+    <id>9002</id>
+    <office>Eastport</office>
+    <name>Placeholder Analyst</name>
+    <jobDescriptions></jobDescriptions>
+    <schedule>part-time</schedule>
+    <createdAt>2026-09-29T10:00:00+00:00</createdAt>
+  </position>
+</workzag-jobs>

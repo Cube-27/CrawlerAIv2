@@ -103,6 +103,22 @@ def test_a_success_status_without_json_is_a_decode_error_with_no_body() -> None:
     assert result.bundle.body == b""
 
 
+def test_a_raw_request_keeps_a_success_body_that_is_not_json_and_still_classifies_other_statuses() -> None:
+    xml = b"<feed><item>1</item></feed>"
+
+    kept = fetch(
+        lambda _r: httpx.Response(200, headers={"Content-Type": "application/xml"}, content=xml),
+        JsonRequest(url=API, page_url=PAGE, raw=True),
+    )
+    missing = fetch(
+        lambda _r: httpx.Response(404, headers={"Content-Type": "application/xml"}, content=xml),
+        JsonRequest(url=API, page_url=PAGE, raw=True),
+    )
+
+    assert (outcome(kept), kept.bundle.body) == ((200, "ok", None), xml)
+    assert outcome(missing) == (404, "not_found", None)
+
+
 def test_a_redirect_is_followed_through_the_guard() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "api.example.com":

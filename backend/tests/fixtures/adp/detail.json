@@ -1,0 +1,10 @@
+{
+  "itemID": "5000000000001_1",
+  "requisitionTitle": "Synthetic Engineer",
+  "postDate": "2026-09-30T10:00:00.000-04:00",
+  "clientRequisitionID": "R-100",
+  "customFieldGroup": {"stringFields": [{"stringValue": "555001", "nameCode": {"codeValue": "ExternalJobID"}}]},
+  "requisitionDescription": "<p>Build things.</p>",
+  "requisitionLocations": [{"nameCode": {"shortName": " Northtown, ZZ"}}],
+  "payGradeRange": {"minimumRate": {"amountValue": 85000.0, "currencyCode": "USD"}, "maximumRate": {"amountValue": 115000.0, "currencyCode": "USD"}}
+}

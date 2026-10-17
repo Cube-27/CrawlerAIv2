@@ -134,6 +134,11 @@ def test_every_platform_adapter_has_its_own_name() -> None:
         "recruitee",
         "workable",
         "rippling",
+        "bamboohr",
+        "teamtailor",
+        "ukg",
+        "personio",
+        "adp",
     }
     Registry(adapters, active=names)  # refuses repeated names
 
