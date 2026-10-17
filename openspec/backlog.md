@@ -66,8 +66,9 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   site's other kinds to the browser too until the weekly re-check; a per-kind memory needs a column (D-1260).
 - Acquisition hardening (#244): no rung records `proxy_bytes` usage (the usage resource exists); a learning run's
   recipe replays use the default policy, so no proxy pool (D-1264).
-- Anti-bot stack (#249): the browser rungs pick a pool endpoint but neither report its health nor label challenges
-  (`browser.py`, `browser_tab.py`, changed by the network-layer batch at the time; D-1324, D-1326).
+- Anti-bot stack (#253): no real site in the live check cleared a challenge in the headless browser after HTTP was
+  refused, so the site session handoff is proven on a local fixture only; measure on a dev run how often a browser
+  `ok` opens a session and how many HTTP fetches each session serves before tuning 30 min / 200 fetches (D-1350).
 - Anti-bot stack (#249): challenge labels are counted only as log records; per-category counts in the eval report
   need the hidden-cell suppression review (D-1326). The adaptive rate's 20-answer run and 10% recovery are unmeasured
   (D-1327).

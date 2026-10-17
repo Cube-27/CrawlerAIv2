@@ -9,7 +9,11 @@ browser, and the next task that needs one launches a new one: at most one restar
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, AsyncExitStack
 
+from crawlerai.acquire.session import CookieExport
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+
+# Fetches a page in a session, filling the cookie export when one is given (`acquire.browser.fetch_browser`).
+type Fetch[S] = Callable[[S, str, FetchPolicy, CookieExport | None], Awaitable[FetchResult]]
 
 
 class SharedBrowser[S]:
@@ -19,7 +23,7 @@ class SharedBrowser[S]:
     def __init__(
         self,
         launch: Callable[[], AbstractAsyncContextManager[S]],
-        fetch: Callable[[S, str, FetchPolicy], Awaitable[FetchResult]],
+        fetch: Fetch[S],
         alive: Callable[[S], bool],
     ) -> None:
         self._launch = launch
@@ -27,15 +31,16 @@ class SharedBrowser[S]:
         self._alive = alive
         self._open: tuple[AsyncExitStack, S] | None = None
 
-    async def fetch(self, url: str, policy: FetchPolicy) -> FetchResult:
-        """The browser rung (`crawlerai.acquire.rungs.Rungs.browser`)."""
+    async def fetch(self, url: str, policy: FetchPolicy, *, export: CookieExport | None = None) -> FetchResult:
+        """The browser rung (`crawlerai.acquire.rungs.Rungs.browser`), and with `export` its exporting form
+        (`Rungs.exporting`)."""
         session = await self._session()
-        result = await self._fetch(session, url, policy)
+        result = await self._fetch(session, url, policy, export)
         if self._alive(session):
             return result
         await self.aclose()
         session = await self._session()
-        result = await self._fetch(session, url, policy)
+        result = await self._fetch(session, url, policy, export)
         if not self._alive(session):
             await self.aclose()
         return result

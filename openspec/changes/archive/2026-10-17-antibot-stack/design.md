@@ -103,3 +103,64 @@ B2 (the site session cookie handoff) is its second.
 - Still out: CAPTCHA or Turnstile solving, clicking challenges, behaviour emulation, fingerprint spoofing or init
   scripts, real Chrome or headed browsers, custom user agents or headers in the browser, persisted cookies, logins,
   unblocker APIs and residential proxies. INV-42–INV-44 are unchanged.
+
+### D-1350: Site sessions keyed by site and pool, pinned to the endpoint
+- Date: 2026-10-17 · Change/PR: antibot-stack (#253) · Status: decided (owner-delegated 2026-10-17)
+- `acquire/session.py` keeps one `SiteSession` per site and proxy pool in the process's memory (the worker's, and the
+  API process's for the services that fetch). A site is `site.host`, the page URL's host, so no site ID is threaded
+  through the rungs. The session keeps the endpoint its cookies were earned through and serves only requests sent
+  through it: a `rotate` pool sends the site's session fetches through that endpoint, and a quarantined endpoint's
+  session is not used. That is the research note's "keyed by site and proxy endpoint", with at most one live session
+  per site and pool.
+- It holds only the cookies of the site's registrable domain (RFC 6265 §5.1.3 domain matching, the Public Suffix List).
+  A JSON request goes with the session of its page's site, and only to an endpoint in that domain. An adapter's
+  platform endpoint therefore never gets it. The fetch's jar is seeded from the session (`FetchCookies.seed`), and the
+  jar's own matching decides each hop.
+- Cookies that the session's fetches set are not written back: the session ends within 30 min and 200 fetches anyway.
+
+### D-1351: What the browser hands over
+- Date: 2026-10-17 · Change/PR: antibot-stack (#253) · Status: decided (owner-delegated 2026-10-17)
+- `Rungs.exporting` is the browser rung in its exporting form, like `Rungs.conditional` for HTTP. `acquire` uses it
+  only for the browser retry after a `blocked` or `shell` HTTP attempt whose label is portable or absent, and only when
+  the process keeps sessions. The rung reads `context.cookies()` before the context closes and sets nothing in the
+  browser (INV-42–INV-44). A session opens only on the browser's `ok`, with at least one cookie of the domain.
+- The identity is the user agent and the low-entropy client hints (`Sec-CH-UA`, `-Mobile`, `-Platform`, W3C UA Client
+  Hints §3.1) that the kept document's request sent, read from the recorded request headers. Bot managers bind a
+  clearance to the user agent, so the HTTP fetches send the browser rung's own user agent unchanged, `HeadlessChrome`
+  included, in place of the impersonation's. The client hints go with it, so the identity stays consistent. A header that
+  a hop names itself (a recipe's) still wins. Without a user agent, no session opens.
+
+### D-1352: Portability from the signature data
+- Date: 2026-10-17 · Change/PR: antibot-stack (#253) · Status: decided (owner-delegated 2026-10-17)
+- `challenge.portable(label)` reads `ChallengeSignature.portable` (adapter data, C3). A structural or absent label is
+  portable, and a vendor whose tokens are per-request script headers is not. For a non-portable vendor, the browser
+  retry runs in its plain form and nothing is exported.
+
+### D-1353: The remembered method while a session serves
+- Date: 2026-10-17 · Change/PR: antibot-stack (#253) · Status: decided (owner-delegated 2026-10-17)
+- A browser attempt that opened a session carries `AttemptRecord.site_session`, which is held in memory only and kept out
+  of the manifest, the `capture` row and the API like `retry_after`. `remember_fetch_method` leaves such a site on
+  `http`, so its next fetches take the HTTP rung with the session. When the session ends, the next refusal is solved in
+  the browser again.
+
+### D-1354: A session that never carried the site
+- Date: 2026-10-17 · Change/PR: antibot-stack (#253) · Status: decided (owner-delegated 2026-10-17)
+- A client-rendered site that sets any cookie would otherwise open a session on every fetch: HTTP shell, browser `ok`,
+  new session, HTTP shell again. Each fetch would pay for both rungs, and the site would never be remembered as
+  `browser`. So a session refused (`blocked` or `shell`) before it served any `ok` is dropped, and its site opens no
+  other for 30 min. The browser retry of that fetch opens none, and the site is remembered as `browser`.
+- A session that has served an `ok` and is then `blocked` (its clearance lapsed) is dropped, and the next solve opens a
+  new one. The live check showed both cases.
+
+### D-1355: Browser rungs report endpoint health and label challenges
+- Date: 2026-10-17 · Change/PR: antibot-stack (#253) · Status: decided (owner-delegated 2026-10-17)
+- This is the B1 follow-up (D-1324, D-1326). `fetch_browser` and `fetch_listing` report the pool endpoint's health with
+  `outcome.report_proxy`, by the HTTP rung's rule. A listing reports its navigation.
+- A `blocked` or `shell` browser document gets a challenge label. The capture records no `Set-Cookie`, so the cookie
+  names come from the context's cookies, which are read once for both the label and the export.
+- `core.proxy.pool_endpoint` now takes the resolved pool, so the rungs keep the pool to report to.
+
+### D-1356: B2 completes the change
+- Date: 2026-10-17 · Change/PR: antibot-stack (#253) · Status: decided (owner-delegated 2026-10-17)
+- This PR applies the whole acquisition delta, including the INV-29 amendment and the remembered-method rule, and
+  archives the change. Owner decision #58's row cites D-1350–D-1356.

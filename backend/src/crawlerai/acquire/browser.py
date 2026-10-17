@@ -4,7 +4,11 @@ discovery's (§7.2 step 1).
 
 One browser per worker process (`open_browser`), one fresh context per fetch. Every connection the context opens goes
 through a `SocksGuard`, which applies the SSRF guard to every redirect hop, frame and worker (§4.5). As in
-`fetch_http`, every failure becomes an `error` outcome with a short reason that never contains the URL (D-0128).
+`fetch_http`, every failure becomes an `error` outcome with a short reason that never contains the URL (D-0128). A
+`blocked` or `shell` document is labelled with the challenge it presents (`acquire.challenge`), and the pool endpoint
+it went through is told how it went (`core.proxy_health`), as the HTTP rung does. Asked to export (`CookieExport`), the
+fetch reads the context's cookies before the context closes, without changing them, for a site session (INV-29's
+exception).
 """
 
 import asyncio
@@ -17,17 +21,19 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import cast
 
-from patchright.async_api import Browser, Frame, Page, Request, Response, async_playwright
+from patchright.async_api import Browser, BrowserContext, Frame, Page, Request, Response, async_playwright
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
+from crawlerai.acquire.challenge import CHALLENGED, challenge_label, count
 from crawlerai.acquire.classify import INTERSTITIAL_STATUS, classify, interstitial
 from crawlerai.acquire.headers import recorded
-from crawlerai.acquire.outcome import Content, Exchange, fetch_result
+from crawlerai.acquire.outcome import Content, Exchange, fetch_result, report_proxy
+from crawlerai.acquire.session import CookieExport, SessionCookie, browser_cookies
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
-from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint
+from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
 from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_file, network_json, sha256_hex
 
 __all__ = [
@@ -36,7 +42,9 @@ __all__ = [
     "DataCalls",
     "Failed",
     "Rendered",
+    "challenge_of",
     "classified",
+    "context_cookies",
     "fetch_browser",
     "open_browser",
     "read_state",
@@ -135,27 +143,38 @@ async def fetch_browser(
     engine_version: str,
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
+    export: CookieExport | None = None,
 ) -> FetchResult:
-    """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every connection."""
+    """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every connection. `export`,
+    when given, receives the context's cookies and the endpoint, whatever the outcome; the caller decides whether a
+    session opens."""
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
     timings: dict[str, int] = {}
     error: str | None = None
     exchange: Exchange | None = None
     content = Content(body=b"")
+    pool = proxy = None
+    challenge: str | None = None
     try:
-        proxy = pool_endpoint(policy.proxy_pool, pools, url)
+        pool = proxy_pool(policy.proxy_pool, pools)
+        proxy = pool_endpoint(pool, url)
         async with asyncio.timeout(policy.browser_timeout_s):
             async with rendered(url, policy, session, connector or SafeConnector(), proxy, started, timings) as page:
                 exchange, content = await read_state(page)
+                cookies = await context_cookies(page.page.context)
         block_class = await classified(exchange, content)
+        challenge = await challenge_of(block_class, exchange, content, url, cookies)
+        if export is not None:
+            export.cookies, export.proxy = cookies, proxy
     except Failed as failed:
         error, block_class, exchange = failed.error, "error", failed.exchange
     except UnknownProxyPool as unknown:
         error, block_class = str(unknown), "error"
     except TimeoutError:
         error, block_class = "timeout", "error"
-    return fetch_result(
+    count(challenge, "browser")
+    result = fetch_result(
         url=url,
         method="browser",
         policy=policy,
@@ -168,6 +187,31 @@ async def fetch_browser(
         error=error,
         # `context` is the browser context's wall time, which `browser_seconds` usage counts (§4.8).
         timings=timings,
+        challenge=challenge,
+    )
+    report_proxy(pool, proxy, result)
+    return result
+
+
+async def context_cookies(context: BrowserContext) -> tuple[SessionCookie, ...]:
+    """Every cookie the context holds, read without changing any (INV-42: nothing is set in the browser); none when
+    the context is gone."""
+    try:
+        return browser_cookies(cast(list[Mapping[str, object]], await context.cookies()))
+    except PlaywrightError:
+        return ()
+
+
+async def challenge_of(
+    block_class: BlockClass, exchange: Exchange, content: Content, url: str, cookies: tuple[SessionCookie, ...]
+) -> str | None:
+    """The challenge label of a `CHALLENGED` document (`acquire.challenge`), from its response headers, the names of
+    the cookies the context holds (its capture records no `Set-Cookie`) and its markup."""
+    if block_class not in CHALLENGED:
+        return None
+    names = tuple(cookie.name for cookie in cookies)
+    return await asyncio.to_thread(
+        challenge_label, exchange.status, exchange.response_headers, content.body, url, names
     )
 
 

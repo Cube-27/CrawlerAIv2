@@ -16,6 +16,7 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs, adapter_registry
+from crawlerai.acquire.session import CookieExport, SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
 from crawlerai.config_ir.drift import DriftMargins
@@ -46,12 +47,18 @@ def fetching_from_settings(settings: Settings) -> Fetching:
     connector = SafeConnector()
     pools = settings.proxy_pools
 
-    async def browser(url: str, policy: FetchPolicy) -> FetchResult:
+    async def browser(url: str, policy: FetchPolicy, *, export: CookieExport | None = None) -> FetchResult:
         # The browser is a rung of last resort here (ARCHITECTURE §7.1), so it is launched per fetch rather than kept
         # running beside every API process.
         async with open_browser() as session:
             return await fetch_browser(
-                url, policy, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools
+                url,
+                policy,
+                session=session,
+                engine_version=ENGINE_VERSION,
+                connector=connector,
+                pools=pools,
+                export=export,
             )
 
     async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
@@ -62,8 +69,23 @@ def fetching_from_settings(settings: Settings) -> Fetching:
             )
 
     impersonate = rung_impersonation(settings)
-    http = partial(fetch_http, engine_version=ENGINE_VERSION, impersonate=impersonate, connector=connector, pools=pools)
-    json = partial(fetch_json, engine_version=ENGINE_VERSION, impersonate=impersonate, connector=connector, pools=pools)
+    sessions = SiteSessions()  # this process's site sessions (INV-29's exception), in memory only
+    http = partial(
+        fetch_http,
+        engine_version=ENGINE_VERSION,
+        impersonate=impersonate,
+        connector=connector,
+        pools=pools,
+        sessions=sessions,
+    )
+    json = partial(
+        fetch_json,
+        engine_version=ENGINE_VERSION,
+        impersonate=impersonate,
+        connector=connector,
+        pools=pools,
+        sessions=sessions,
+    )
     rungs = Rungs(
         http=http,
         browser=browser,
@@ -71,6 +93,8 @@ def fetching_from_settings(settings: Settings) -> Fetching:
         conditional=http,
         json=json,
         listing=listing,
+        sessions=sessions,
+        exporting=browser,
     )
     return Fetching(rungs, connector, open_store(settings.object_store), HostLimiter())
 
