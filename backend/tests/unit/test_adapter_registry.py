@@ -19,9 +19,10 @@ from crawlerai.acquire.outcome import Content, Exchange, as_error, fetch_result
 from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
-from crawlerai.adapters.base import NOT_PLATFORM, NOT_SERVED, Adapter, AdapterMatch, Shape
+from crawlerai.adapters.base import NOT_PLATFORM, NOT_SERVED, Adapter, AdapterMatch, PageRefs, Shape
 from crawlerai.adapters.registry import DECLINE_SECONDS, MAX_DECLINED, Registry, platform_adapters
 from crawlerai.core.capture import CaptureMethod
+from crawlerai.db.models import PageKind
 
 BOARD = "https://board.example.test/tenant"
 
@@ -122,7 +123,18 @@ def test_every_platform_adapter_has_its_own_name() -> None:
     adapters: tuple[Adapter, ...] = platform_adapters()
 
     names = [adapter.name for adapter in adapters]
-    assert set(names) == {"greenhouse", "lever", "shopify", "workday", "oracle_recruiting"}
+    assert set(names) == {
+        "greenhouse",
+        "lever",
+        "shopify",
+        "workday",
+        "oracle_recruiting",
+        "ashby",
+        "smartrecruiters",
+        "recruitee",
+        "workable",
+        "rippling",
+    }
     Registry(adapters, active=names)  # refuses repeated names
 
 
@@ -385,3 +397,99 @@ def test_a_canonical_of_a_host_its_adapter_declined_takes_no_turn() -> None:
     first, second = fetch(f"{SHOP_LIST}?from=newsletter"), fetch(f"{SHOP_LIST}?from=footer")
 
     assert (first.method, second.method, adapter.rung.calls, asked) == ("http", "http", [SHOP_LIST], [True])
+
+
+PLATFORM = "https://platform.example.test/tenant"
+CAREERS = "https://careers.example.test/"
+
+
+@dataclass
+class ReferringAdapter(StubAdapter):
+    """Detects the pages of `platform.example.test`; refers a page to the first of its links it detects, in the kind it
+    asked for (`kinds` records what it was asked)."""
+
+    kinds: list[PageKind | None] = field(default_factory=list)
+
+    def detect(self, url: str) -> AdapterMatch | None:
+        return AdapterMatch(tenant="tenant", page_kind="listing") if urlsplit(url).hostname == self.host else None
+
+    def referred(self, refs: PageRefs, kind: PageKind | None, /) -> str | None:
+        self.kinds.append(kind)
+        return next((link for link in refs.links if self.detect(link) is not None), None)
+
+
+def _linking(*hrefs: str) -> str:
+    return "<html><body>" + "".join(f'<a href="{href}">x</a>' for href in hrefs) + "</body></html>"
+
+
+def _referred(
+    page: PageRung, adapter: StubAdapter, asked: list[bool], kind: PageKind | None = "listing"
+) -> FetchResult:
+    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter], active={adapter.name}))
+    return asyncio.run(
+        acquire(CAREERS, FetchPolicy(page_kind=kind), "http", rungs, send=_send, admit_next=_admit(True, asked))
+    )
+
+
+def test_a_page_on_its_own_host_that_an_adapter_refers_to_a_platform_page_is_served_by_it() -> None:
+    # SPEC-15 §4.2: the page's own links say which platform page it stands for; the adapter's answer is recorded under
+    # that platform page, on the page's next turn.
+    adapter, page = ReferringAdapter("platform", "platform.example.test"), PageRung(_linking(PLATFORM))
+    asked: list[bool] = []
+
+    result = _referred(page, adapter, asked)
+
+    assert (result.method, result.bundle.manifest.url, adapter.rung.calls, asked) == (
+        "api",
+        PLATFORM,
+        [PLATFORM],
+        [True],
+    )
+    assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("api", "ok")]
+    assert adapter.kinds == ["listing"]
+
+
+def test_a_page_the_adapter_does_not_refer_stays_the_page() -> None:
+    adapter, page = ReferringAdapter("platform", "platform.example.test"), PageRung(_linking("/about"))
+    asked: list[bool] = []
+
+    result = _referred(page, adapter, asked)
+
+    assert (result.method, adapter.rung.calls, asked) == ("http", [], [])
+
+
+def test_an_adapter_without_a_referral_is_never_asked_for_the_pages_references() -> None:
+    adapter, page = StubAdapter("platform", "platform.example.test"), PageRung(_linking(PLATFORM))
+    asked: list[bool] = []
+
+    result = _referred(page, adapter, asked)
+
+    assert (result.method, adapter.rung.calls, asked) == ("http", [], [])
+
+
+def test_a_referred_page_the_sites_rate_does_not_admit_stays_the_page() -> None:
+    adapter, page = ReferringAdapter("platform", "platform.example.test"), PageRung(_linking(PLATFORM))
+    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter], active={"platform"}))
+
+    result = asyncio.run(acquire(CAREERS, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(False, [])))
+
+    assert (result.method, adapter.rung.calls) == ("http", [])
+
+
+def test_a_referred_answer_that_is_not_ok_leaves_the_page_with_both_attempts() -> None:
+    answer = Rung("api", status=404, block_class="not_found")
+    adapter = ReferringAdapter("platform", "platform.example.test", answer)
+    page, asked = PageRung(_linking(PLATFORM)), list[bool]()
+
+    result = _referred(page, adapter, asked)
+
+    assert result.method == "http"
+    assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("api", "not_found")]
+
+
+def test_a_host_the_adapter_declined_is_not_referred_to() -> None:
+    adapter = ReferringAdapter("platform", "platform.example.test", Rung("api", status=404, reason=NOT_PLATFORM))
+    registry = Registry([adapter], active={"platform"})
+    asyncio.run(registry.serve(PLATFORM, FetchPolicy(), _send))
+
+    assert registry.referred(lambda: PageRefs(own=(), links=(PLATFORM,)), "listing") is None

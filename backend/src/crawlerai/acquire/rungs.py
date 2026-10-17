@@ -3,7 +3,8 @@ worked remembered in `site.fetch_method`.
 
 A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) first, and to the page rungs when the
 adapter does not serve it (SPEC-15 §4.6). A page whose own canonical link is its URL without the query, which an
-adapter detects, is then served by that adapter (SPEC-15 §4.2). A site whose active config has an API recipe is
+adapter detects, or which an adapter says stands for one of its platform's pages, is then served by that adapter
+(SPEC-15 §4.2). A site whose active config has an API recipe is
 served by the recipe's rung (SPEC-09 §4.8), which the caller binds to the recipe: the config IR sits above `acquire`
 (`.importlinter`). The browser rung is `crawlerai.acquire.browser.fetch_browser`. Every rung is a function of
 (url, policy), so `acquire` decides and records only. The one exception is the HTTP rung's conditional form, which
@@ -15,15 +16,15 @@ from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Protocol
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
-from selectolax.lexbor import LexborHTMLParser
 from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.browser_tab import ListingRung
 from crawlerai.acquire.classify import classify, interstitial
+from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import SLOW_DOWN, Admit, asked_pause
 from crawlerai.acquire.types import (
     AttemptRecord,
@@ -36,7 +37,6 @@ from crawlerai.acquire.types import (
 )
 from crawlerai.adapters.registry import Registry, platform_adapters
 from crawlerai.db.models import FetchMethod, Site, SiteId
-from crawlerai.storage.capture_bundle import decode_body
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
 # Whether an HTTP `ok` page lacks what the caller reads from it and a render may hold (offer data, owner #49; a
@@ -132,10 +132,11 @@ async def acquire(
 async def _by_canonical(
     url: str, page: Fetched, policy: FetchPolicy, rungs: Rungs, send: JsonFetcher, admit_next: Admit | None
 ) -> Fetched:
-    """The adapter's answer for the page's canonical URL (`_query_dropped`), when there is one, it is `ok` and the
-    site's rate admits the request; else the page. Either way with every attempt."""
+    """The adapter's answer for the page's canonical URL (`_query_dropped`), or for the platform page the page on its
+    own host stands for (`_referred`), when there is one, it is `ok` and the site's rate admits the request; else the
+    page. Either way with every attempt."""
     kept, attempts, duration_ms = page
-    canonical = _query_dropped(url, kept, rungs.adapters)
+    canonical = _query_dropped(url, kept, rungs.adapters) or _referred(kept, policy, rungs.adapters)
     if canonical is None or not await _admitted(admit_next):
         return page
     served = await rungs.adapters.serve(canonical, policy, send)
@@ -157,23 +158,17 @@ def _query_dropped(url: str, page: FetchResult, adapters: Registry) -> str | Non
         return None
     bare = urlunsplit(parts._replace(query="", fragment=""))
     # A host its adapter declined is not asked again, so the request would take a turn at the site's rate for nothing.
-    if not adapters.would_serve(bare) or (canonical := _canonical_link(page)) is None:
+    if not adapters.would_serve(bare) or (canonical := canonical_link(page)) is None:
         return None
     return bare if _same_resource(canonical, bare) else None
 
 
-def _canonical_link(page: FetchResult) -> str | None:
-    """The page's first `link rel=canonical`, resolved against the document's base URL (HTML Standard §2.4.1: the
-    first `base href`, else the page's URL)."""
-    tree = LexborHTMLParser(decode_body(page.bundle))
-    base = page.bundle.manifest.final_url
-    if (base_element := tree.css_first("base[href]")) is not None:
-        base = urljoin(base, base_element.attributes.get("href") or "")
-    for link in tree.css("link[rel][href]"):
-        # HTML Standard §4.6.1: `rel` is a set of space-separated, ASCII case-insensitive keywords.
-        if "canonical" in (link.attributes.get("rel") or "").lower().split():
-            return urljoin(base, link.attributes.get("href") or "")
-    return None
+def _referred(page: FetchResult, policy: FetchPolicy, adapters: Registry) -> str | None:
+    """The platform page an active adapter says the fetched page stands for, from what the page states (its redirect,
+    canonical link, `og:url`, links; SPEC-15 §4.2): a site on a tenant's own host that the platform serves."""
+    if page.block_class != "ok":
+        return None
+    return adapters.referred(lambda: page_refs(page), policy.page_kind)
 
 
 def _same_resource(a: str, b: str) -> bool:

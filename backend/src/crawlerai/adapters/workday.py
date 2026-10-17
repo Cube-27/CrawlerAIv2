@@ -7,6 +7,8 @@ render its job list and its job pages, verified against live answers of several 
 - `GET /wday/cxs/{tenant}/{site}/job/{location}/{slug}` answers one posting,
   `{"jobPostingInfo": {"title", "jobDescription", "location", "additionalLocations", "startDate", "timeType",
   "externalUrl", ...}, "hiringOrganization": {"name", ...}}`.
+The list pages by `limit` (at most 20: a larger one is refused) and `offset`; only the first page states `total`, and
+the last page is the first with fewer than `limit` postings.
 
 A career site is `https://{tenant}.{data center}.myworkdayjobs.com/[{locale}/]{site}`, or on the shared host
 `https://{data center}.myworkdaysite.com/[{locale}/]recruiting/{tenant}/{site}`; a job page is the site's URL followed
@@ -16,22 +18,27 @@ is the site's root, its URL without the locale, which is what a posting's `exter
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Final
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import ALL, AdapterMatch, Shape
+from crawlerai.adapters.base import ALL, AdapterMatch, PageRefs, Shape
+from crawlerai.adapters.paging import fetch_pages
+from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import HeaderList
 
 JOBS_DOMAIN: Final = "myworkdayjobs.com"
 SITES_DOMAIN: Final = "myworkdaysite.com"
 
-# The body the career site's own list page sends for its first page: no facet, no search text, 20 postings.
-FIRST_PAGE: Final[dict[str, JsonValue]] = {"appliedFacets": {}, "limit": 20, "offset": 0, "searchText": ""}
+# The most postings the endpoint answers per page; the body the career site's own list page sends for its first page:
+# no facet, no search text.
+PAGE_SIZE: Final = 20
+FIRST_PAGE: Final[dict[str, JsonValue]] = {"appliedFacets": {}, "limit": PAGE_SIZE, "offset": 0, "searchText": ""}
 
 # A host name label (RFC 1123 §2.1), as `urlsplit` gives it: lowercase.
 _LABEL: Final = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", re.ASCII)
@@ -98,16 +105,29 @@ class Workday:
         # RFC 9110 §12.5.4: the answer in the language of the page's locale, as the page asks it.
         language: HeaderList = () if page.locale is None else (("Accept-Language", page.locale),)
         if page.match.item is not None:
-            request = JsonRequest(url=f"{page.api}/{page.match.item}", page_url=url, headers=language)
-        else:
-            request = JsonRequest(
-                url=f"{page.api}/jobs",
-                page_url=url,
-                method="POST",
-                headers=(("Content-Type", "application/json"), *language),
-                body=json.dumps(FIRST_PAGE),
-            )
-        return await send(request, policy)
+            return await send(JsonRequest(url=f"{page.api}/{page.match.item}", page_url=url, headers=language), policy)
+        return await fetch_pages(
+            _list_request(page, url, language, 0),
+            policy,
+            send,
+            next_page=lambda answers: _next_page(page, url, language, answers),
+            merge=_merge,
+            rows=_rows,
+        )
+
+    def referred(self, refs: PageRefs, kind: PageKind | None, /) -> str | None:
+        """The Workday page a page on the tenant's own host stands for. Only structure decides (HTML Standard §4.6
+        links, RFC 6596 canonical, Open Graph `og:url`, RFC 9110 §15.4 redirects, which end in the final URL): a URL
+        the page names as itself that this adapter detects (of the kind asked), else, for a listing, the one career
+        site every Workday link of the page belongs to: a listing links to its jobs and its site, so links to two
+        sites do not say."""
+        for url in refs.own:
+            if (match := self.detect(url)) is not None and kind in (None, match.page_kind):
+                return url
+        if kind != "listing":
+            return None
+        sites = {site for link in refs.links if (site := _site_root(link)) is not None}
+        return next(iter(sites)) if len(sites) == 1 else None
 
     def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
         if match.page_kind == "detail":
@@ -116,16 +136,46 @@ class Workday:
         return (replace(_LISTING, nodes={"itemListElement": (listed,)}),)
 
 
+def _list_request(page: _Page, url: str, language: HeaderList, offset: int) -> JsonRequest:
+    body = {**FIRST_PAGE, "offset": offset}
+    return JsonRequest(
+        url=f"{page.api}/jobs",
+        page_url=url,
+        method="POST",
+        headers=(("Content-Type", "application/json"), *language),
+        body=json.dumps(body),
+    )
+
+
+def _postings(answer: JsonValue) -> list[JsonValue]:
+    postings = answer.get("jobPostings") if isinstance(answer, dict) else None
+    return postings if isinstance(postings, list) else []
+
+
+def _rows(answer: JsonValue) -> int:
+    return len(_postings(answer))
+
+
+def _next_page(page: _Page, url: str, language: HeaderList, answers: Sequence[JsonValue]) -> JsonRequest | None:
+    """The page after `answers`, unless the last one was short (the list's end) or the first page's `total`, which
+    only it states, is reached."""
+    offset = sum(_rows(answer) for answer in answers)
+    total = answers[0].get("total") if isinstance(answers[0], dict) else None
+    if _rows(answers[-1]) < PAGE_SIZE or (isinstance(total, int) and offset >= total):
+        return None
+    return _list_request(page, url, language, offset)
+
+
+def _merge(answers: Sequence[JsonValue]) -> JsonValue:
+    first = answers[0]
+    return {**(first if isinstance(first, dict) else {}), "jobPostings": [p for a in answers for p in _postings(a)]}
+
+
 def _page(url: str) -> _Page | None:
-    parts = urlsplit(url)
-    if parts.scheme.lower() not in {"http", "https"} or parts.hostname is None:
+    located = _located(url)
+    if located is None:
         return None
-    segments = parts.path.strip("/").split("/")
-    locale = segments[0] if _LOCALE.fullmatch(segments[0]) else None
-    site = _site(parts.hostname, segments[1:] if locale else segments)
-    if site is None:
-        return None
-    tenant, base, rest = site
+    parts, locale, (tenant, base, rest) = located
     origin = f"https://{parts.hostname}"
     match rest:
         # A list URL with a query shows a filter or a search of the list, which the first page does not reproduce.
@@ -137,6 +187,24 @@ def _page(url: str) -> _Page | None:
             return None
     match = AdapterMatch(tenant=origin + base, page_kind="listing" if item is None else "detail", item=item)
     return _Page(api=f"{origin}/wday/cxs/{tenant}/{base.rsplit('/', 1)[1]}", locale=locale, match=match)
+
+
+def _located(url: str) -> tuple[SplitResult, str | None, tuple[str, str, list[str]]] | None:
+    """The URL's parts, its locale and the career site it is under (`_site`), whatever the path after the site."""
+    parts = urlsplit(url)
+    if parts.scheme.lower() not in {"http", "https"} or parts.hostname is None:
+        return None
+    segments = parts.path.strip("/").split("/")
+    locale = segments[0] if _LOCALE.fullmatch(segments[0]) else None
+    site = _site(parts.hostname, segments[1:] if locale else segments)
+    return None if site is None else (parts, locale, site)
+
+
+def _site_root(url: str) -> str | None:
+    """The root URL of the career site `url` is under: a link to the site's list with a tracking query, its sign-in or
+    one of its pages names the site as a job link does."""
+    located = _located(url)
+    return None if located is None else f"https://{located[0].hostname}{located[2][1]}"
 
 
 def _site(host: str, segments: list[str]) -> tuple[str, str, list[str]] | None:

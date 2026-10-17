@@ -14,8 +14,9 @@ from hypothesis import settings
 from lxml import html as lxml_html
 from selectolax import lexbor
 
-from crawlerai.acquire.api import JsonFetcher, fetch_json
+from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 
 settings.register_profile("ci", max_examples=200)
 settings.load_profile("ci" if os.environ.get("CI") else "default")
@@ -81,3 +82,20 @@ def _stand_in_api(routes: Mapping[str, bytes]) -> JsonFetcher:
 @pytest.fixture
 def stand_in_api() -> Callable[[Mapping[str, bytes]], JsonFetcher]:
     return _stand_in_api
+
+
+@pytest.fixture
+def scripted_api(
+    stand_in_api: Callable[[Mapping[str, bytes]], JsonFetcher],
+) -> Callable[[Callable[[JsonRequest], bytes], list[JsonRequest]], JsonFetcher]:
+    """A stand-in API whose answer to each request is `answer(request)`, which sees the body and headers too (a paged
+    list's pages differ by them); every request it gets is added to `sent`."""
+
+    def make(answer: Callable[[JsonRequest], bytes], sent: list[JsonRequest]) -> JsonFetcher:
+        async def send(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
+            sent.append(request)
+            return await stand_in_api({request.url: answer(request)})(request, policy)
+
+        return send
+
+    return make

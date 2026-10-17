@@ -89,10 +89,21 @@ class _Node:
             prefix = self.shape.prefixes.get(prop, "")
             return [value for at in (members, *self.shape.also.get(prop, ())) for value in self._read(at, prefix)]
         return [
-            Value(node.data, self._locator(node.path), node)
+            Value(node.as_object(), self._locator(node.path), node)
             for shape in self.shape.nodes.get(prop, ())
             for node in _reach(self.adapter, shape, self.data, self.path, parent=self.id, via=prop, nested=False)
         ]
+
+    def as_object(self) -> JsonValue:
+        """The node as the object structured data states it: a node whose shape maps properties or nodes is an object
+        of those properties and its nodes' (`MonetaryAmount` with `currency`, `minValue`, `maxValue`), the way a JSON-LD
+        node holds them, so a field reading the whole node reads schema.org names; any other node is the API's own
+        object."""
+        if not (self.shape.properties or self.shape.nodes):
+            return self.data
+        names = (*self.shape.properties, *self.shape.nodes)
+        found = {name: _one([v.raw for v in self.values(name)]) for name in names}
+        return {name: raw for name, raw in found.items() if raw is not None}
 
     def _read(self, members: Members, prefix: str) -> list[Value]:
         # RFC 8259 `null`: the API states no value.
@@ -104,6 +115,11 @@ class _Node:
 
     def _locator(self, path: str) -> str:
         return format_locator("adapter", self.adapter, path)
+
+
+def _one(values: list[JsonValue]) -> JsonValue:
+    """The value a JSON-LD object states for a property: the one value, or an array of several; None for none."""
+    return values[0] if len(values) == 1 else (values or None)
 
 
 def _reach(

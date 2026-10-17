@@ -16,12 +16,18 @@ from urllib.parse import urlsplit
 
 from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import NOT_PLATFORM, Adapter, AdapterMatch
+from crawlerai.adapters.ashby import Ashby
+from crawlerai.adapters.base import NOT_PLATFORM, Adapter, AdapterMatch, PageRefs, Referring
 from crawlerai.adapters.greenhouse import Greenhouse
 from crawlerai.adapters.lever import Lever
 from crawlerai.adapters.oracle_recruiting import OracleRecruiting
+from crawlerai.adapters.recruitee import Recruitee
+from crawlerai.adapters.rippling import Rippling
 from crawlerai.adapters.shopify import Shopify
+from crawlerai.adapters.smartrecruiters import SmartRecruiters
+from crawlerai.adapters.workable import Workable
 from crawlerai.adapters.workday import Workday
+from crawlerai.db.models import PageKind
 
 # How long a host stays declined, and how many declined hosts are remembered (the oldest is forgotten first).
 DECLINE_SECONDS: Final = 24 * 60 * 60
@@ -30,7 +36,18 @@ MAX_DECLINED: Final = 10_000
 
 def platform_adapters() -> tuple[Adapter, ...]:
     """Every adapter, active or not."""
-    return Greenhouse(), Lever(), Shopify(), Workday(), OracleRecruiting()
+    return (
+        Greenhouse(),
+        Lever(),
+        Shopify(),
+        Workday(),
+        OracleRecruiting(),
+        Ashby(),
+        SmartRecruiters(),
+        Recruitee(),
+        Workable(),
+        Rippling(),
+    )
 
 
 class Registry:
@@ -57,6 +74,19 @@ class Registry:
         for adapter in self._active:
             if (match := adapter.detect(url)) is not None and adapter.serves(match, endpoint):
                 return adapter, match
+        return None
+
+    def referred(self, refs: Callable[[], PageRefs], kind: PageKind | None) -> str | None:
+        """The platform page URL the page with `refs` (read only when an active adapter refers) stands for, by the
+        first active adapter whose `referred` names one it has not declined the host of (SPEC-15 §4.2)."""
+        referring = [adapter for adapter in self._active if isinstance(adapter, Referring)]
+        if not referring:
+            return None
+        page = refs()
+        for adapter in referring:
+            url = adapter.referred(page, kind)
+            if url is not None and self.would_serve(url):
+                return url
         return None
 
     def would_serve(self, url: str) -> bool:

@@ -1,0 +1,62 @@
+{
+  "apiVersion": "1",
+  "jobs": [
+    {
+      "id": "00000000-0000-4000-8000-0000000000a1",
+      "title": " Synthetic Platform Engineer",
+      "employmentType": "FullTime",
+      "location": "Northtown",
+      "secondaryLocations": [
+        {
+          "location": "Remote (Exampleland)"
+        }
+      ],
+      "publishedAt": "2026-09-30T10:00:00.000+00:00",
+      "jobUrl": "https://jobs.example.test/example-board/00000000-0000-4000-8000-0000000000a1",
+      "descriptionHtml": "<p>Build example platforms.</p>",
+      "compensation": {
+        "compensationTierSummary": "x",
+        "compensationTiers": [],
+        "summaryComponents": [
+          {
+            "compensationType": "EquityPercentage",
+            "interval": "NONE",
+            "currencyCode": null,
+            "minValue": null,
+            "maxValue": null
+          },
+          {
+            "compensationType": "Salary",
+            "interval": "YEAR",
+            "currencyCode": "USD",
+            "minValue": 100000,
+            "maxValue": 150000
+          }
+        ]
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000a2",
+      "title": "Placeholder Analyst",
+      "employmentType": "Contract",
+      "location": "Eastport",
+      "secondaryLocations": [],
+      "publishedAt": "2026-09-29T10:00:00.000+00:00",
+      "jobUrl": "https://jobs.example.test/example-board/00000000-0000-4000-8000-0000000000a2",
+      "descriptionHtml": "<p>Analyse placeholders.</p>",
+      "compensation": {
+        "compensationTierSummary": "Offers Equity",
+        "compensationTiers": [],
+        "summaryComponents": [
+          {
+            "compensationType": "EquityPercentage",
+            "interval": "NONE",
+            "currencyCode": null,
+            "minValue": null,
+            "maxValue": null
+          }
+        ]
+      }
+    }
+  ]
+}

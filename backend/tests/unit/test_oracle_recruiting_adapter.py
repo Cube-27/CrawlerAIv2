@@ -7,6 +7,7 @@ synthetic.
 """
 
 import asyncio
+import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -30,6 +31,7 @@ from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
+ScriptedApi = Callable[[Callable[[JsonRequest], bytes], list[JsonRequest]], JsonFetcher]  # `scripted_api` (conftest)
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 HOST = f"example-pod.fa.dc1.{DOMAIN}"
@@ -136,6 +138,42 @@ def test_an_answer_without_the_requisition_does_not_serve_the_page(stand_in_api:
     result = asyncio.run(ADAPTER.fetch(f"{ROOT}/job/100001", FetchPolicy(), send))
 
     assert (result.block_class, result.attempts[-1].error) == ("error", NOT_SERVED)
+
+
+def _requisitions(first: int, count: int, total: int) -> bytes:
+    listed = [{"Id": str(i), "Title": f"Job {i}"} for i in range(first, first + count)]
+    return json.dumps({"items": [{"TotalJobsCount": total, "requisitionList": listed}], "hasMore": False}).encode()
+
+
+def test_a_list_is_paged_by_offset_until_the_total_the_first_item_states(scripted_api: ScriptedApi) -> None:
+    sent: list[JsonRequest] = []
+
+    def answer(request: JsonRequest) -> bytes:
+        offset = int(request.url.split("offset=")[1].split("&")[0])
+        return _requisitions(offset, min(PAGE_SIZE, 250 - offset), total=250)
+
+    result = asyncio.run(ADAPTER.fetch(ROOT, FetchPolicy(), scripted_api(answer, sent)))
+
+    assert [r.url.split("offset=")[1].split("&")[0] for r in sent] == ["0", "100", "200"]
+    assert all(f"limit={PAGE_SIZE}," in r.url for r in sent)
+    (search,) = json.loads(result.bundle.body)["items"]
+    assert [r["Id"] for r in search["requisitionList"]] == [str(i) for i in range(250)]
+    assert search["TotalJobsCount"] == 250
+    assert ADAPTER.serves(AdapterMatch(ROOT, "listing"), result.bundle.manifest.final_url) is True
+
+
+def test_the_requests_row_target_bounds_the_pages(scripted_api: ScriptedApi) -> None:
+    sent: list[JsonRequest] = []
+
+    def answer(request: JsonRequest) -> bytes:
+        offset = int(request.url.split("offset=")[1].split("&")[0])
+        return _requisitions(offset, PAGE_SIZE, total=5000)
+
+    result = asyncio.run(ADAPTER.fetch(ROOT, FetchPolicy(max_rows=150), scripted_api(answer, sent)))
+
+    assert len(sent) == 2
+    (search,) = json.loads(result.bundle.body)["items"]
+    assert len(search["requisitionList"]) == 2 * PAGE_SIZE
 
 
 async def _unused_send(_request: JsonRequest, _policy: FetchPolicy) -> FetchResult:

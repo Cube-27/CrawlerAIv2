@@ -47,6 +47,9 @@ class FetchPolicy(_Frozen):
     capture_network_json: bool = True  # browser only
     locale_hint: str | None = None  # request locale, for the normalizers' context
     page_kind: PageKind | None = None  # the kind the task fetches the page as, which `classify` reads
+    # A soft row target for a list an adapter's API serves in pages: its walk ends once it has at least this many rows
+    # (whole pages are kept); None asks for every page, up to the adapters' hard cap (`adapters.paging.MAX_ROWS`).
+    max_rows: PositiveInt | None = None
 
     @model_validator(mode="after")
     def _override_has_a_reason(self) -> "FetchPolicy":

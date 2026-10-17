@@ -1,0 +1,45 @@
+{
+  "offset": 0,
+  "limit": 100,
+  "totalFound": 2,
+  "content": [
+    {
+      "id": "1001",
+      "name": "Synthetic Platform Engineer",
+      "refNumber": "REF1001",
+      "releasedDate": "2026-09-30T10:00:00.000Z",
+      "company": {
+        "identifier": "ExampleCo",
+        "name": "Example Co"
+      },
+      "location": {
+        "city": "Northtown",
+        "country": "zz",
+        "fullLocation": "Northtown, Exampleland"
+      },
+      "typeOfEmployment": {
+        "id": "permanent",
+        "label": "Full-time"
+      }
+    },
+    {
+      "id": "1002",
+      "name": "Placeholder Analyst",
+      "refNumber": "REF1002",
+      "releasedDate": "2026-09-30T10:00:00.000Z",
+      "company": {
+        "identifier": "ExampleCo",
+        "name": "Example Co"
+      },
+      "location": {
+        "city": "Northtown",
+        "country": "zz",
+        "fullLocation": "Eastport, Exampleland"
+      },
+      "typeOfEmployment": {
+        "id": "permanent",
+        "label": "Full-time"
+      }
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "offers": [
+    {
+      "guid": "g1",
+      "slug": "synthetic-engineer",
+      "title": "Synthetic Engineer",
+      "description": "<p>Do Synthetic Engineer.</p>",
+      "requirements": "<p>Req.</p>",
+      "location": "Northtown, Exampleland",
+      "employment_type_code": "fulltime_permanent",
+      "published_at": "2026-09-30 10:00:00 UTC",
+      "careers_url": "https://careers.example.test/o/synthetic-engineer",
+      "company_name": "Example Co",
+      "salary": {
+        "min": "60000",
+        "max": "80000",
+        "period": "year",
+        "currency": "EUR"
+      }
+    },
+    {
+      "guid": "g2",
+      "slug": "placeholder-analyst",
+      "title": "Placeholder Analyst",
+      "description": "<p>Do Placeholder Analyst.</p>",
+      "requirements": "<p>Req.</p>",
+      "location": "Northtown, Exampleland",
+      "employment_type_code": "fulltime_permanent",
+      "published_at": "2026-09-30 10:00:00 UTC",
+      "careers_url": "https://careers.example.test/o/placeholder-analyst",
+      "company_name": "Example Co",
+      "salary": {
+        "min": null,
+        "max": null,
+        "period": null,
+        "currency": null
+      }
+    }
+  ]
+}

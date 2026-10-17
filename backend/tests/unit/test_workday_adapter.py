@@ -17,7 +17,7 @@ from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import AdapterMatch
+from crawlerai.adapters.base import AdapterMatch, PageRefs
 from crawlerai.adapters.workday import FIRST_PAGE, JOBS_DOMAIN, SITES_DOMAIN, Workday
 from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.schema_org_map import Vocabulary
@@ -29,6 +29,7 @@ from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
+ScriptedApi = Callable[[Callable[[JsonRequest], bytes], list[JsonRequest]], JsonFetcher]  # `scripted_api` (conftest)
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 TENANT, SITE, DC = "example-tenant", "External", "wd1"
@@ -138,6 +139,92 @@ def test_a_job_page_is_fetched_from_its_job_path(stand_in_api: StandInApi) -> No
         body,
     )
     assert [(r.method, r.body, r.headers) for r in sent] == [("GET", None, ())]
+
+
+def _postings(count: int, first: int, *, total: int | None) -> bytes:
+    rows = [{"title": f"Job {i}", "externalPath": f"/job/Northtown/Job-{i}_R-{i}"} for i in range(first, first + count)]
+    return json.dumps({"total": total, "jobPostings": rows} if total is not None else {"jobPostings": rows}).encode()
+
+
+def test_a_list_is_paged_by_offset_until_a_short_page(scripted_api: ScriptedApi) -> None:
+    sent: list[JsonRequest] = []
+
+    def answer(request: JsonRequest) -> bytes:
+        offset = json.loads(request.body or "")["offset"]
+        # Only the first page states `total`, which the other pages do not repeat (here more than the list holds).
+        return _postings(min(20, 45 - offset), offset, total=999 if offset == 0 else None)
+
+    result = asyncio.run(ADAPTER.fetch(ROOT, FetchPolicy(), scripted_api(answer, sent)))
+
+    bodies = [json.loads(r.body or "") for r in sent]
+    assert [(b["offset"], b["limit"]) for b in bodies] == [(0, 20), (20, 20), (40, 20)]
+    merged = json.loads(result.bundle.body)
+    assert [p["title"] for p in merged["jobPostings"]] == [f"Job {i}" for i in range(45)]
+    assert merged["total"] == 999
+    assert ADAPTER.serves(AdapterMatch(ROOT, "listing"), result.bundle.manifest.final_url) is True
+
+
+def test_a_list_stops_at_the_total_the_first_page_states(scripted_api: ScriptedApi) -> None:
+    sent: list[JsonRequest] = []
+
+    def answer(request: JsonRequest) -> bytes:
+        offset = json.loads(request.body or "")["offset"]
+        return _postings(20, offset, total=40 if offset == 0 else None)
+
+    result = asyncio.run(ADAPTER.fetch(ROOT, FetchPolicy(), scripted_api(answer, sent)))
+
+    assert [json.loads(r.body or "")["offset"] for r in sent] == [0, 20]
+    assert len(json.loads(result.bundle.body)["jobPostings"]) == 40
+
+
+def test_the_requests_row_target_bounds_the_pages(scripted_api: ScriptedApi) -> None:
+    sent: list[JsonRequest] = []
+
+    def answer(request: JsonRequest) -> bytes:
+        offset = json.loads(request.body or "")["offset"]
+        return _postings(20, offset, total=1000 if offset == 0 else None)
+
+    result = asyncio.run(ADAPTER.fetch(ROOT, FetchPolicy(max_rows=30), scripted_api(answer, sent)))
+
+    assert len(sent) == 2
+    assert len(json.loads(result.bundle.body)["jobPostings"]) == 40
+
+
+def _refs(*own: str, links: tuple[str, ...] = ()) -> PageRefs:
+    return PageRefs(own=own, links=links)
+
+
+def test_a_page_that_names_a_career_site_as_itself_stands_for_it() -> None:
+    own = f"https://{HOST}/en-US/{SITE}"
+    assert ADAPTER.referred(_refs("https://careers.example.test/", own), "listing") == own
+    # A job page is not the list a listing scrape asks for, and the other way round.
+    job = f"{ROOT}/{JOB_PATH}"
+    assert ADAPTER.referred(_refs("https://careers.example.test/", job), "listing") is None
+    assert ADAPTER.referred(_refs(job), "detail") == job
+    assert ADAPTER.referred(_refs(ROOT), None) == ROOT
+
+
+def test_a_listing_stands_for_the_one_career_site_its_links_belong_to() -> None:
+    links = (
+        f"{ROOT}/{JOB_PATH}",
+        f"https://{HOST}/en-US/{SITE}/login",
+        f"{ROOT}/?source=careers",
+        "https://www.example.com/",
+    )
+    refs = _refs("https://careers.example.test/", links=links)
+    assert ADAPTER.referred(refs, "listing") == ROOT
+    assert ADAPTER.referred(refs, "detail") is None
+    assert ADAPTER.referred(refs, None) is None
+
+
+def test_links_to_two_career_sites_do_not_say_which_the_page_stands_for() -> None:
+    links = (f"{ROOT}/{JOB_PATH}", f"https://{HOST}/Other/job/Southville/Example_R-9")
+    assert ADAPTER.referred(_refs("https://careers.example.test/", links=links), "listing") is None
+
+
+def test_a_page_that_states_no_career_site_stands_for_none() -> None:
+    refs = _refs("https://careers.example.test/", links=("https://www.example.com/jobs",))
+    assert ADAPTER.referred(refs, "listing") is None
 
 
 async def _unused_send(_request: JsonRequest, _policy: FetchPolicy) -> FetchResult:

@@ -382,3 +382,25 @@ def test_a_prefixed_property_reads_each_string_value_after_its_prefix() -> None:
 
 def _url(path: str) -> FieldSpec:
     return FieldSpec.model_validate({"type": "url", "description": "d", "scope": "row", "schema_org": path})
+
+
+def test_a_node_with_mapped_properties_is_read_as_an_object_of_schema_org_names() -> None:
+    # A field that reads a whole node reads what a JSON-LD node would state: schema.org names, not the API's members.
+    amount = Shape(
+        type="MonetaryAmount", at=("pay",), properties={"currency": ("cur",), "minValue": ("lo",), "maxValue": ("hi",)}
+    )
+    posting = Shape(
+        type="JobPosting", nodes={"baseSalary": (amount,), "jobLocation": (Shape(type="Place", at=("place",)),)}
+    )
+    body = json.dumps({"pay": {"cur": "EUR", "lo": 10, "hi": 20, "extra": "x"}, "place": {"name": "Town"}})
+    schema = _schema(
+        "detail",
+        salary=FieldSpec.model_validate({"type": "text", "description": "d", "schema_org": "JobPosting.baseSalary"}),
+        place=FieldSpec.model_validate({"type": "text", "description": "d", "schema_org": "JobPosting.jobLocation"}),
+    )
+
+    result = _collect(_StandIn(posting), "detail", body, schema)
+
+    found = _values(result)
+    assert found[("adapter:stand-in:$", "salary")][0] == {"currency": "EUR", "minValue": 10, "maxValue": 20}
+    assert found[("adapter:stand-in:$", "place")][0] == {"name": "Town"}  # no mapped property: the API's own object

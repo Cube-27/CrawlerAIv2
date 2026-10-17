@@ -1655,6 +1655,18 @@
       "FetchOptions": {
         "additionalProperties": false,
         "properties": {
+          "max_rows": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Rows"
+          },
           "method_hint": {
             "default": "auto",
             "enum": [
