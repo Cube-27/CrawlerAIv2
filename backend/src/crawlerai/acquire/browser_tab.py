@@ -23,7 +23,15 @@ from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import Request
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
-from crawlerai.acquire.browser import BrowserSession, Failed, Rendered, classified, read_state, rendered
+from crawlerai.acquire.browser import (
+    DATA_REQUESTS,
+    BrowserSession,
+    Failed,
+    Rendered,
+    classified,
+    read_state,
+    rendered,
+)
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import ActionsReport, BlockClass, FetchPolicy, FetchResult, PagedFetch
@@ -42,10 +50,6 @@ Click = Literal["clicked", "intercepted", "gone"]
 _CLICK_TIMEOUT_MS: Final = 4_000
 # A browser action's navigation (to a next page, or back) waits this long for its document.
 _NAVIGATION_TIMEOUT_MS: Final = 15_000
-# Fetch Standard §2.2.5: requests whose destination is the empty string (fetch() and XMLHttpRequest) or `document`
-# carry data or a new document; Playwright names them `fetch`, `xhr` and `document`. Images and fonts are not counted:
-# items shown from the DOM still load theirs.
-_DATA_REQUESTS: Final = frozenset({"fetch", "xhr", "document"})
 # HTML Standard §8.1.6 (navigation), RFC 9110 §15.5: a document answered 4xx or 5xx is no next page.
 _ERROR_STATUS: Final = 400
 # The element an element-index XPath path names (DOM Standard `document.evaluate`, XPath 1.0), when it has the tag the
@@ -140,13 +144,14 @@ class _PatchrightTab:
         self._at = page.page.url
         self._engine_version = engine_version
         self._since = started  # the time the next kept state's attempt is counted from
-        self._json_from = 0
+        self._calls_from = 0
         self._requests = 0
         self.kept: list[FetchResult] = []
         page.page.on("request", self._on_request)
 
     def _on_request(self, request: Request) -> None:
-        if request.resource_type in _DATA_REQUESTS:
+        # Images and fonts are not counted (`DATA_REQUESTS`): items shown from the DOM still load theirs.
+        if request.resource_type in DATA_REQUESTS:
             self._requests += 1
 
     @property
@@ -171,7 +176,12 @@ class _PatchrightTab:
         except PlaywrightError:
             return [0.0] * len(elements)
 
+    def _act(self) -> None:
+        """Count a browser action: the data responses that arrive from now on followed it (`NetworkBody.action`)."""
+        self._page.calls.actions += 1
+
     async def click(self, element: Ref) -> Click:
+        self._act()
         try:
             handle = await self._page.page.evaluate_handle(_ELEMENT_JS, list(element))
         except PlaywrightError:
@@ -191,6 +201,7 @@ class _PatchrightTab:
                 await handle.dispose()
 
     async def scroll(self) -> None:
+        self._act()
         with contextlib.suppress(PlaywrightError):
             await self._page.page.evaluate(_NEAR_END_JS)
             await asyncio.sleep(_SCROLL_STEP_S)
@@ -198,6 +209,7 @@ class _PatchrightTab:
 
     async def goto(self, url: str, timeout_s: float) -> bool:
         timeout_ms = max(1.0, min(_NAVIGATION_TIMEOUT_MS, 1000 * timeout_s))  # 0 would mean no timeout
+        self._act()
         try:
             response = await self._page.page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
         except PlaywrightError:
@@ -207,6 +219,7 @@ class _PatchrightTab:
         return response is not None and response.status < _ERROR_STATUS
 
     async def back(self) -> None:
+        self._act()
         with contextlib.suppress(PlaywrightError):
             await self._page.page.go_back(wait_until="domcontentloaded", timeout=_NAVIGATION_TIMEOUT_MS)
 
@@ -215,16 +228,16 @@ class _PatchrightTab:
 
     async def keep(self) -> bool:
         fetched_at = datetime.now(UTC)
-        # The JSON responses up to now belong to this state; one arriving while it is read goes to the next.
-        json_to = len(self._page.json_responses)
+        # The data responses up to now belong to this state; one arriving while it is read goes to the next.
+        calls_to = len(self._page.calls.responses)
         try:
-            exchange, content = await read_state(self._page, url=self.url, json=(self._json_from, json_to))
+            exchange, content = await read_state(self._page, url=self.url, calls=(self._calls_from, calls_to))
         except (Failed, PlaywrightError):
             return False
         block_class = await classified(exchange, content)
         self.kept.append(self._result(fetched_at, exchange, content, block_class))
         self._since = time.monotonic()
-        self._json_from = json_to
+        self._calls_from = calls_to
         return True
 
     def _result(

@@ -11,18 +11,21 @@ The recipe lives in the config IR, which sits above `collect` (`.importlinter`),
 the recipe's map and rows, as it binds the config executor (`collect.config`), and the result has the same shape: a
 detail page's values belong to the page; a listing's row-scoped values belong to the rows its `rows` query selects,
 read with paths relative to each row, and its page-scoped values to the page.
+
+The row reader is shared: the `xhr` collector reads a listing's rows from a captured call with a map it proved on the
+page (`collect.xhr`), so its rows are read exactly as a recipe's are (C8).
 """
 
 import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Final
+from typing import Final, Literal
 
 from pydantic import JsonValue
 
 from crawlerai.collect import json_doc
-from crawlerai.collect.base import PAGE, Candidate, Entity
+from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
 from crawlerai.collect.config import ROW_KIND, Executed
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate
@@ -31,6 +34,13 @@ from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 
 Scalar = str | int | float
+
+# The source kinds whose JSON is read through a map: an API recipe's capture and a captured network call.
+MappedKind = Literal["api", "xhr"]
+# The type of a row each reads: a recipe's rows are a list's items (schema.org ListItem, as a config's are); a call's
+# are the object items of one of its arrays (`collect.base.ARRAY_ROW`), whose being the page's rows is resolution's
+# question, asked only where structured data and the config give none.
+_ROW_TYPES: Final[dict[MappedKind, str]] = {"api": ROW_KIND, "xhr": ARRAY_ROW}
 
 # §4.2: a money field joins the amount and currency paths with `+`; each part starts at the root `$` (RFC 9535 §2.2).
 _JOIN: Final = re.compile(r"\+(?=\$)")
@@ -81,7 +91,7 @@ class ApiCollector:
             document = json_doc.parse(page.html)
         except ValueError as e:
             return Executed(rows=(), candidates=(), diagnostics=(f"api:{self.recipe_id}: not JSON ({e})",))
-        reading = _Reading(self.recipe_id, schema, ctx)
+        reading = _Reading("api", self.recipe_id, schema, ctx)
         known = {name: path for name, path in self.map.items() if name in schema.fields}
         reading.diagnostics.extend(
             f"api:{self.recipe_id}:{name}: not a field of the schema" for name in self.map if name not in known
@@ -97,11 +107,29 @@ class ApiCollector:
         return Executed(rows=tuple(entities), candidates=(*candidates, *listed), diagnostics=tuple(reading.diagnostics))
 
 
+def read_rows(
+    kind: MappedKind,
+    address: str,
+    query: str,
+    fields: Mapping[str, str],
+    document: JsonValue,
+    schema: SchemaDef,
+    ctx: Context,
+) -> Executed:
+    """The rows `query` selects in `document`, each a root entity `<kind>:<address>:<row path>` (`_ROW_TYPES`), with
+    the `fields` of the map (paths relative to the row) read from it; values are located as
+    `<kind>:<address>:<path>`."""
+    reading = _Reading(kind, address, schema, ctx)
+    entities, candidates = reading.rows(query, fields, document)
+    return Executed(rows=tuple(entities), candidates=tuple(candidates), diagnostics=tuple(reading.diagnostics))
+
+
 @dataclass
 class _Reading:
-    """One recipe capture read for one schema."""
+    """One JSON document read for one schema: an API recipe's capture (`address` the recipe id) or a captured call."""
 
-    recipe_id: str
+    kind: MappedKind
+    address: str
     schema: SchemaDef
     ctx: Context
     diagnostics: list[str] = field(default_factory=list)
@@ -113,8 +141,8 @@ class _Reading:
             if read is None:
                 continue  # the value is absent or not one scalar here: no candidate, as for any source
             raw, located = read
-            locator = format_locator("api", self.recipe_id, located)
-            made = candidate(name, self.schema.fields[name], owner, "api", raw, locator, self.ctx, self.diagnostics)
+            locator = format_locator(self.kind, self.address, located)
+            made = candidate(name, self.schema.fields[name], owner, self.kind, raw, locator, self.ctx, self.diagnostics)
             if made is not None:
                 found.append(made)
         return found
@@ -126,7 +154,7 @@ class _Reading:
         for path, row in json_doc.select(query, document):
             # A row is a JSON object (RFC 8259 §4); an item of another kind holds no fields.
             if isinstance(row, dict):
-                owner = f"api:{self.recipe_id}:{path}"
-                entities.append(Entity(id=owner, types=(ROW_KIND,), urls=(), parent=None))
+                owner = f"{self.kind}:{self.address}:{path}"
+                entities.append(Entity(id=owner, types=(_ROW_TYPES[self.kind],), urls=(), parent=None))
                 candidates.extend(self.candidates(fields, row, path, owner))
         return entities, candidates

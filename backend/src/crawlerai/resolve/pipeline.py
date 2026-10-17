@@ -393,6 +393,7 @@ class _Listing:
     candidates: tuple[Candidate, ...]
     diagnostics: tuple[str, ...]
     llm_calls: tuple[LLMCallRecord, ...] = ()
+    network: bool = False  # the rows are those of the page's captured calls (Appendix A #59)
 
     @classmethod
     def read(cls, source: _Source) -> "_Listing":
@@ -406,18 +407,23 @@ class _Listing:
         row_fields = {name for name, spec in page.schema.fields.items() if spec.scope == "row"}
         holders = frozenset(c.entity_id for c in page.collected.candidates if c.field in row_fields)
         rows = listing_rows(page.graph, page.primary, page.target, holders) or page.config.rows
-        fields, resolved = page.resolve_listing(candidates, rows)
+        # Appendix A #59: the rows of the page's captured calls serve where neither gives any.
+        network = not rows and bool(page.collected.rows)
+        fields, resolved = page.resolve_listing(candidates, rows or page.collected.rows)
         next_pages = tuple(link.url for link in links)
-        return cls(page, fields, resolved, next_pages, candidates, tuple(diagnostics))
+        return cls(page, fields, resolved, next_pages, candidates, tuple(diagnostics), network=network)
 
     def gap(self) -> ListingGapRequest | None:
         """The role C request when structured data gives no rows (ARCHITECTURE §8.6): every row field, and the page
-        fields still `missing` that the config does not run; None with rows, for a schema without row fields, or when
-        the config runs a row field (§8.4; role C's rows could not join the config's)."""
+        fields still `missing` that the config does not run; None with rows (but for rows of captured calls that leave
+        a record incomplete, which role C's rows replace), for a schema without row fields, or when the config runs a
+        row field (§8.4; role C's rows could not join the config's)."""
         schema = self.page.schema
         covered = self.page.config.covered
         row_fields = tuple(name for name, spec in schema.fields.items() if spec.scope == "row")
-        if self.rows or not row_fields or covered.intersection(row_fields):
+        if (self.rows and not (self.network and not self._complete())) or not row_fields:
+            return None
+        if covered.intersection(row_fields):
             return None
         page_missing = tuple(
             name for name, outcome in self.fields.items() if outcome.status == "missing" and name not in covered
@@ -433,7 +439,9 @@ class _Listing:
         page = replace(page, graph=graph)
         links = row_links(page.page, page.schema, page.ctx, reply.rows, reply.candidates)
         candidates = (*self.candidates, *reply.candidates, *links)
-        fields, rows = page.resolve_listing(candidates, reply.rows)
+        # Rows of captured calls stand when role C reads none.
+        network = self.network and not reply.rows
+        fields, rows = page.resolve_listing(candidates, page.collected.rows if network else reply.rows)
         if reply.failure is not None:
             fields = _unanswered(fields, asked, reply.failure)
         diagnostics = (*self.diagnostics, *reply.diagnostics)
@@ -445,15 +453,22 @@ class _Listing:
             candidates=candidates,
             diagnostics=diagnostics,
             llm_calls=reply.llm_calls,
+            network=network,
         )
+
+    def _records(self) -> list[FieldSet]:
+        # Each row's record holds the page's fields too (`resolve.records.assemble_listing`).
+        return [{**self.fields, **row} for row in self.rows]
+
+    def _complete(self) -> bool:
+        records = self._records()
+        return bool(records) and all(is_complete(self.page.schema, record) for record in records)
 
     def result(self, mode: ExtractionMode) -> ExtractionResult:
         schema = self.page.schema
-        # Each row's record holds the page's fields too (`resolve.records.assemble_listing`).
-        records = [{**self.fields, **row} for row in self.rows]
-        complete = bool(records) and all(is_complete(schema, record) for record in records)
+        records = self._records()
         return ExtractionResult(
-            outcome="extracted" if complete else "partial",
+            outcome="extracted" if self._complete() else "partial",
             entity=self.fields,
             rows=self.rows,
             candidates=self.candidates,

@@ -28,13 +28,15 @@ TAU_OPTIONAL: Final = 0.95
 MIN_CALIBRATED_N: Final = 30
 # ARCHITECTURE §10 buckets by source kind: an adapter or an API recipe; one structured-data standard (schema.org
 # JSON-LD and microdata, the Open Graph protocol); a structural DOM value (§8.1), which follows no structured-data
-# standard; role C's grounded values. A config value's bucket is its field status; js_state and xhr have none.
+# standard; a value of the page's captured calls, the network data-source layer (Appendix A #59); role C's grounded
+# values. A config value's bucket is its field status; js_state has none.
 _ADAPTER: frozenset[SourceKind] = frozenset({"adapter", "api"})
 _BUCKET: Mapping[SourceKind, Evidence] = {
     "jsonld": "structured",
     "microdata": "structured",
     "og": "structured",
     "dom": "dom",
+    "xhr": "network",
     "llm": "llm_grounded",
 }
 
@@ -79,7 +81,7 @@ def load_calibration(path: Path) -> Calibration | None:
 
 def evidence_of(chosen: Candidate, agreeing: tuple[Candidate, ...], *, corroborated: bool) -> Evidence | None:
     """The §10 bucket of a published value, `adapter` > `agreed` > the chosen kind's bucket (D-0021). `corroborated`
-    is the config's field status (SPEC-08); `None` when no bucket holds the value (a lone js_state or xhr value)."""
+    is the config's field status (SPEC-08); `None` when no bucket holds the value (a lone js_state value)."""
     if chosen.source_kind in _ADAPTER:
         return "adapter"
     # §8.1, §10: only independent candidates count, so a state value admitted by equality never agrees with itself.

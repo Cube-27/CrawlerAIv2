@@ -42,6 +42,10 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   render: measure how often. Descriptions are the main section only (D-1308). `fetch.max_rows` is not in the playground.
 - ATS adapters, later: UKG, ADP, BambooHR, Personio, Teamtailor and Workable's per-job endpoint publish public JSON the same
   way; each is admitted on measurement of at least 3 tenants (C6), Personio's feed needs an XML reader.
+- Network data layer (#250): the paging driver (`crawl.paging`) counts linked DOM item blocks only, so a scroll listing whose items hold no item link stops `no_items` although its calls would load more rows.
+- Network data layer (#250): a render sometimes ends before the page's data call arrives (one of five renders of one listing kept no call); the settle wait does not wait for fetches in flight.
+- Network data layer (#250): structured rows that lack a field the page's call carries per item (microdata rows without a price) keep it unpublished; joining a call's rows to structured rows needs an item identity rule.
+- Network data layer (#250): the release executor reads `xhr` bodies with `json.loads`, not `network_json` (no guard prefix), since it shares no code with the engine (INV-20); decide whether it follows.
 - Listing browser actions (#241): a load-more or scroll listing whose rows come from a JSON-LD ItemList keeps the
   first batch only (the script is not updated as items load); rows of the grown DOM need role C or a config. Not
   validated on a real virtualised list or a real in-DOM show-more listing; an integer inside a path segment

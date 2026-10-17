@@ -24,7 +24,7 @@ lacking a candidate or for agreement checks"), so a value both equal and visible
 """
 
 import re
-from collections.abc import Hashable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
 from typing import Literal, Protocol
@@ -51,6 +51,8 @@ class Admitted(BaseModel):
 
     candidates: tuple[Candidate, ...]
     entities: tuple[Entity, ...] = ()
+    # A listing's rows read from captured calls (`collect.xhr`), also among `entities`.
+    rows: tuple[Entity, ...] = ()
     diagnostics: tuple[str, ...] = ()
 
 
@@ -76,7 +78,7 @@ class _Anchor:
 
 
 @dataclass(slots=True)
-class _FieldAnchors:
+class FieldAnchors:
     """One field's anchors, and their owners by equality key (`normalize.dispatch.equality_key`), built once per page:
     a value then finds the owners of its equal anchors with one key lookup, not one equality test per anchor. `keyed`
     is False when some anchor has no key (the field's equality is no equivalence, as location's): its values are then
@@ -117,7 +119,7 @@ def admit(
 ) -> Admitted:
     """The candidates of `documents` under the rule above, in document order, then schema field order; one per value,
     field and owner."""
-    anchors = _anchors(others, kind, schema)
+    anchors = field_anchors(others, kind, schema)
     # What a value admits depends on the value alone, so a value repeated across the documents is read once.
     readings: dict[tuple[type, str | int | float], tuple[_Reading, ...]] = {}
     candidates: list[Candidate] = []
@@ -245,21 +247,43 @@ def _readings(
     page: ParsedPage,
     schema: SchemaDef,
     ctx: Context,
-    anchors: Mapping[str, _FieldAnchors],
+    anchors: Mapping[str, FieldAnchors],
 ) -> Iterator[_Reading]:
     # The same for every field, so computed at most once, and only when a field needs it.
     visible = cache(lambda: page.visible_values.visible(str(raw)))
     for name, spec in schema.fields.items():
-        field_anchors = anchors.get(name)
-        if field_anchors is None and not (checkable(raw, spec) and visible()):
-            continue
-        normalized = normalize(raw, spec, ctx)
-        if isinstance(normalized, Ok):
-            for owner, independent in _owners(normalized.value, spec, field_anchors):
+        own = anchors.get(name)
+        normalized = _normalized(raw, spec, ctx, visible, own)
+        if normalized is not None:
+            for owner, independent in _owners(normalized.value, spec, own):
                 yield _Reading(name, normalized, owner, independent)
 
 
-def _owners(value: JsonValue, spec: FieldSpec, anchors: _FieldAnchors | None) -> Iterator[tuple[str, bool]]:
+def admits(
+    raw: str | int | float, spec: FieldSpec, page: ParsedPage, ctx: Context, anchors: FieldAnchors | None
+) -> bool:
+    """Whether the rule above admits `raw` for a field of `spec` with `anchors` (its `field_anchors` entry): equal to
+    an anchor, or, for a field without one, checkable and visible."""
+    normalized = _normalized(raw, spec, ctx, lambda: page.visible_values.visible(str(raw)), anchors)
+    return normalized is not None and (anchors is None or bool(anchors.owners(normalized.value, spec)))
+
+
+def _normalized(
+    raw: str | int | float,
+    spec: FieldSpec,
+    ctx: Context,
+    visible: Callable[[], bool],
+    anchors: FieldAnchors | None,
+) -> Ok | None:
+    """`raw` normalized as `spec` when the rule lets it be tried: the field has anchors, or its type is checkable
+    and `raw` is visible."""
+    if anchors is None and not (checkable(raw, spec) and visible()):
+        return None
+    normalized = normalize(raw, spec, ctx)
+    return normalized if isinstance(normalized, Ok) else None
+
+
+def _owners(value: JsonValue, spec: FieldSpec, anchors: FieldAnchors | None) -> Iterator[tuple[str, bool]]:
     """Who owns an admitted value and whether it is independent: the page for a visible value of a field without
     anchors; else each owner of an equal anchor once, in the order of `others`."""
     if anchors is None:
@@ -269,15 +293,15 @@ def _owners(value: JsonValue, spec: FieldSpec, anchors: _FieldAnchors | None) ->
         yield owner, False
 
 
-def _anchors(others: Sequence[Candidate], kind: StateKind, schema: SchemaDef) -> Mapping[str, _FieldAnchors]:
+def field_anchors(others: Sequence[Candidate], kind: StateKind, schema: SchemaDef) -> Mapping[str, FieldAnchors]:
     """Each schema field's normalized values from another source kind, with their owners. A candidate that did not
     normalize still gives its field an entry, so the field admits by equality only (the conservative reading of
     "lacking a candidate")."""
-    anchors: dict[str, _FieldAnchors] = {}
+    anchors: dict[str, FieldAnchors] = {}
     for other in others:
         spec = schema.fields.get(other.field)
         if other.source_kind != kind and spec is not None:
-            field_anchors = anchors.setdefault(other.field, _FieldAnchors())
+            field_anchors = anchors.setdefault(other.field, FieldAnchors())
             if isinstance(other.normalized, Ok):
                 field_anchors.add(_Anchor(other.entity_id, other.normalized.value), spec)
     return anchors

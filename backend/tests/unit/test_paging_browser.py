@@ -7,6 +7,7 @@ arbitrary (C4, C9).
 """
 
 import asyncio
+import itertools
 import json
 import os
 import re
@@ -334,6 +335,22 @@ def test_an_ajax_pager_is_clicked_by_its_integers_and_every_page_is_kept(browser
     assert _summary(fetched) == ("pagination", "records", 4, 24)
     assert [len(links) for links in _items(fetched)] == [6, 6, 6, 6]
     assert len(set().union(*_items(fetched))) == 24
+
+
+def test_each_kept_page_holds_the_calls_since_the_last_with_the_browser_action_they_followed(browser: Browser) -> None:
+    fetched = browser.run("/ajax", BrowserActions(records=20))
+
+    calls = [
+        [(urlsplit(e.url).query, e.resource_type, e.action) for e in page.bundle.manifest.network_bodies]
+        for page in fetched.pages
+    ]
+    # The page's own load fetched the first page before any action; each click fetched the next one.
+    assert [[(query, kind) for query, kind, _ in page] for page in calls] == [
+        [(f"page={n}", "fetch")] for n in range(1, 5)
+    ]
+    actions = [page[0][2] or 0 for page in calls]
+    assert calls[0][0][2] == 0
+    assert all(earlier < later for earlier, later in itertools.pairwise(actions))
 
 
 def test_a_load_more_control_is_found_without_a_hint_and_one_grown_page_is_kept(browser: Browser) -> None:

@@ -1,10 +1,10 @@
 """API discovery (SPEC-09 §4.3, ARCHITECTURE §7.2 step 1): from the learning sample's browser captures, the endpoints
 whose JSON responses carry the page's published values on every sample page, each with a JSONPath per field.
 
-A captured body is read only when the capture recorded the method of the request behind it and the response was a
-success (RFC 9110 §15.3): a recipe can only replay such a request. Bodies group into endpoints by
-request method, URL shape (`binding.url_shape`: path segments may vary, they are what binding parameterizes) and
-request body shape; on each page the best-scoring body of a group stands for it.
+Captured calls are read through `collect/network_match.py` (Appendix A #59), the one reader the `xhr` collector
+shares: a readable call (a success, JSON) counts only when the capture recorded the method of the request behind it,
+since a recipe can only replay such a request. Calls group into endpoints by `network_match.EndpointKey` (request
+method, URL shape, request body shape); on each page the best-scoring body of a group stands for it.
 
 A body scores one point per required field (§10, required groups included) whose published value is `equal` to a
 reading of the body, and one per other field with a visible leaf of its type (§4.3). A reading is one scalar leaf,
@@ -16,25 +16,21 @@ endpoint per config, D-0035).
 
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final
 
 from pydantic import JsonValue
 
 from crawlerai.collect import json_doc
 from crawlerai.collect.api import joined_raw, map_paths
-from crawlerai.config_ir.api_recipe.binding import CapturedRequest, UrlShape, url_shape
+from crawlerai.collect.network_match import Call, EndpointKey, endpoint_key, read_calls, visible_paths
+from crawlerai.config_ir.api_recipe.binding import CapturedRequest
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.resolve.evidence import required_fields
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody
+from crawlerai.storage.capture_bundle import CaptureBundle
 
 Scalar = str | int | float
-# (method, URL shape, request body shape): what the requests of one endpoint share across pages.
-_EndpointKey = tuple[str, UrlShape, tuple[str, ...] | None]
-# RFC 9110 §15.3: the 2xx class.
-_SUCCESS: Final = range(200, 300)
 
 
 @dataclass(frozen=True)
@@ -75,8 +71,9 @@ def discover(samples: Sequence[DiscoverySample], schema: SchemaDef) -> list[Endp
 def endpoint_request(bundle: CaptureBundle, endpoint: EndpointCandidate) -> CapturedRequest | None:
     """The request to `endpoint` a capture holds a readable answer to, the first in capture order; `None` when it holds
     none. Held-out validation reads the captures that hold one (§4.7)."""
-    key = _key(endpoint.requests[0])
-    return next((request for request, _ in _readables(bundle) if _key(request) == key), None)
+    first = endpoint.requests[0]
+    key = endpoint_key(first.method, first.url, first.body)
+    return next((_request(call) for call in _replayable(bundle) if call.endpoint == key), None)
 
 
 @dataclass(frozen=True)
@@ -113,56 +110,33 @@ def _candidate(bodies: list[_Body], schema: SchemaDef, required: frozenset[str])
     )
 
 
-def _bodies(sample: DiscoverySample, schema: SchemaDef, required: frozenset[str]) -> dict[_EndpointKey, _Body]:
-    """The page's readable bodies, the best-scoring one per endpoint, in capture order of first appearance."""
+def _bodies(sample: DiscoverySample, schema: SchemaDef, required: frozenset[str]) -> dict[EndpointKey, _Body]:
+    """The page's replayable bodies, the best-scoring one per endpoint, in capture order of first appearance."""
     page = ParsedPage.of(sample.bundle)
-    best: dict[_EndpointKey, _Body] = {}
-    for request, document in _readables(sample.bundle):
-        body = _scored(request, document, page, sample, schema, required)
-        key = _key(request)
-        if key not in best or body.score > best[key].score:
-            best[key] = body
+    best: dict[EndpointKey, _Body] = {}
+    memo: dict[str, bool] = {}
+    for call in _replayable(sample.bundle):
+        body = _scored(_request(call), call.document, page, memo, sample, schema, required)
+        if call.endpoint not in best or body.score > best[call.endpoint].score:
+            best[call.endpoint] = body
     return best
 
 
-def _readables(bundle: CaptureBundle) -> Iterator[tuple[CapturedRequest, JsonValue]]:
-    """The capture's readable bodies, each with the request it answered, in capture order."""
-    for entry, data in zip(bundle.manifest.network_bodies, bundle.network, strict=True):
-        if (readable := _readable(entry, data)) is not None:
-            yield readable
+def _replayable(bundle: CaptureBundle) -> Iterator[Call]:
+    """The capture's readable calls whose request method was recorded, in capture order."""
+    return (call for call in read_calls(bundle.manifest.network_bodies, bundle.network) if call.entry.method)
 
 
-def _readable(entry: NetworkBody, data: bytes) -> tuple[CapturedRequest, JsonValue] | None:
-    if entry.method is None or entry.status not in _SUCCESS:
-        return None
-    try:
-        document = json_doc.parse(data.decode("utf-8"))
-    except ValueError:  # UnicodeDecodeError is a ValueError
-        return None
-    return CapturedRequest(entry.method.upper(), entry.url, entry.request_body, entry.request_headers or ()), document
-
-
-def _key(request: CapturedRequest) -> _EndpointKey:
-    return request.method, url_shape(request.url), _body_shape(request.body)
-
-
-def _body_shape(body: str | None) -> tuple[str, ...] | None:
-    """The paths of a JSON request body's values with every array index written `[*]`, or the body itself when it
-    is not JSON: requests to one URL that send differently shaped bodies (one GraphQL URL, many queries) differ."""
-    if body is None:
-        return None
-    try:
-        document = json_doc.parse(body)
-    except ValueError:
-        return (body,)
-    leaves = {path for path, value in json_doc.nodes(document, wildcard=True) if not isinstance(value, (dict, list))}
-    return tuple(sorted(leaves))
+def _request(call: Call) -> CapturedRequest:
+    entry = call.entry
+    return CapturedRequest(str(entry.method).upper(), entry.url, entry.request_body, entry.request_headers or ())
 
 
 def _scored(
     request: CapturedRequest,
     document: JsonValue,
     page: ParsedPage,
+    memo: dict[str, bool],
     sample: DiscoverySample,
     schema: SchemaDef,
     required: frozenset[str],
@@ -174,7 +148,7 @@ def _scored(
     matched = required & hits.keys()
     others = [name for name in schema.fields if name not in matched]
     used = {leaf for name in matched for path in hits[name] for leaf in map_paths(path)}
-    visible = {r.path for r in leaves if others and r.path not in used and page.visible_values.visible(str(r.raw))}
+    visible = visible_paths(document, page, memo) - used if others else set()
     shown = [name for name in others if any(reading.path in visible for reading, _ in typed[name])]
     return _Body(request, hits, len(matched) + len(shown))
 
