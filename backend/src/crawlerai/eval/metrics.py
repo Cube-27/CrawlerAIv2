@@ -20,8 +20,17 @@ from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
 from crawlerai.core.capture import BlockClass
 from crawlerai.db.models import EvalCategory, ExtractionMode, FieldStatus, PageKind, SourceKind, Split
-from crawlerai.eval.labels import DistractorKey, FieldLabel, LabelRow, Labels, ListLabel, parse_labels, sub_fields
-from crawlerai.normalize.dispatch import equal
+from crawlerai.eval.labels import (
+    DistractorKey,
+    FieldLabel,
+    LabelRow,
+    Labels,
+    LabelStatus,
+    ListLabel,
+    parse_labels,
+    sub_fields,
+)
+from crawlerai.normalize.dispatch import equal, similarity
 from crawlerai.resolve.preference import rule_type
 from crawlerai.resolve.types import Evidence
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -30,6 +39,13 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 _URL = FieldSpec(type=FieldType.URL)
 # ARCHITECTURE §16.3: hidden and fresh aggregates suppress cells with fewer than 10 labeled fields.
 MIN_CELL = 10
+# D-1462: a long_text output matches its label when their word multisets overlap by at least this Dice coefficient
+# (`normalize.dispatch.similarity`): a description is one value, but where it ends and how it is broken into lines
+# differ between a page's sources, so exact equality would score most correct descriptions wrong.
+LONG_TEXT_MIN_SIMILARITY = 0.9
+# The label statuses that count by default: checked pages only (§16.2). Drafts count only in a dev report that asks
+# for them (D-1461).
+CHECKED: frozenset[LabelStatus] = frozenset({"checked"})
 
 # ARCHITECTURE §10: the evidence buckets of config candidates.
 CONFIG_EVIDENCE: frozenset[Evidence] = frozenset({"config_corroborated", "config_uncorroborated"})
@@ -45,6 +61,8 @@ class FieldOutput(_Model):
     status: Literal["published", "missing", "conflict", "abstained"]
     value: JsonValue = None
     evidence: Evidence | None = None
+    # Why the field is not published (`FieldOutcome.reason`: `below_tau`, `llm_unavailable`, ...), for triage.
+    reason: str | None = None
     # The normalized values of the field's kept candidates (valid, owned, not a URL parameter), per source kind,
     # published or not: what `fit-precedence` scores each kind on (SPEC-05 §4.11).
     offered: dict[SourceKind, tuple[JsonValue, ...]] = {}
@@ -56,6 +74,9 @@ class PageOutput(_Model):
     block_class: BlockClass  # from the capture manifest
     mode: ExtractionMode
     llm_calls: int = 0
+    # LLM calls the page asked for that got no reply (no provider, no recording answered as unavailable): the
+    # fields they were for stay missing, so a dev report tells the misses that depend on role C (D-1464).
+    llm_unanswered: int = 0
     fields: dict[str, FieldOutput] = {}  # detail: the entity; listing: page-level fields
     rows: tuple[dict[str, FieldOutput], ...] = ()  # listing rows
 
@@ -104,6 +125,8 @@ class Judgment(_Model):
     evidence: Evidence | None
     label_value: JsonValue
     output_value: JsonValue
+    # The engine's reason for leaving the field unpublished, when it output the field and did not publish it.
+    reason: str | None = None
     # Each kind that offered a value: TP when every value it offered equals the label's value.
     sources: dict[SourceKind, SourceCell] = {}
 
@@ -115,6 +138,8 @@ class PageDetail(_Model):
     error: str | None
     zero_touch: bool | None
     judgments: tuple[Judgment, ...]
+    llm_unanswered: int = 0
+    label_status: LabelStatus = "checked"
 
 
 class FieldMetrics(_Model):
@@ -182,6 +207,12 @@ class Report(_Model):
     # `None` when no checked page labels one.
     row_matching: RowMetrics | Suppressed | None = None
     row_matching_by_field: dict[str, RowMetrics | Suppressed] = {}
+    # The label statuses scored: checked only, except in a dev report that asks for drafts too (D-1461).
+    label_statuses: tuple[LabelStatus, ...] = ("checked",)
+    # Dev only, like `by_field`: per "page_kind|field_type", and the count of each kind of disagreement per
+    # "schema|field" (`disagreement`), for triage.
+    by_page_kind: dict[str, FieldMetrics | Suppressed] = {}
+    disagreements: dict[str, dict[str, int]] = {}
 
 
 @dataclass(frozen=True)
@@ -204,28 +235,24 @@ class _RowCount:
         )
 
 
-def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, git_sha: str) -> Report:
-    """Score every checked case. Pages that are not `checked` don't count (§4.3); failed replays are dropped from
-    `n_pages` and every metric. Per-page detail is kept for dev only."""
-    scored: list[tuple[EvalCase, PageOutput, list[Judgment], bool]] = []
-    details: list[PageDetail] = []
-    row_counts: defaultdict[str, _RowCount] = defaultdict(_RowCount)
-    for case in sorted(cases, key=lambda c: c.page_id):
-        if case.labels.status != "checked":
-            continue
-        match case.output:
-            case ReplayFailed(error=error):
-                details.append(_detail(case, error, None, ()))
-            case PageOutput() as output:
-                judgments = _judge_case(case.schema_def, case.labels, output, row_counts)
-                zero_touch = _zero_touch(case.schema_def, judgments, frozenset(case.labels.lists))
-                scored.append((case, output, judgments, zero_touch))
-                details.append(_detail(case, None, zero_touch, tuple(judgments)))
-
+def build_report(
+    cases: Iterable[EvalCase],
+    split: Split,
+    engine_version: str,
+    git_sha: str,
+    statuses: frozenset[LabelStatus] = CHECKED,
+) -> Report:
+    """Score every case whose label status is in `statuses`: checked only (§4.3), unless a dev report asks for drafts
+    too (D-1461), whose unlabeled fields are not scored. Failed replays are dropped from `n_pages` and every metric.
+    Per-page detail is kept for dev only."""
+    if statuses != CHECKED and split != "dev":
+        raise ValueError(f"only a dev report scores labels that are not checked, not a {split} one")
+    scored, details, row_counts = _score(cases, statuses)
     by_type: defaultdict[str, list[Judgment]] = defaultdict(list)
     by_field: defaultdict[str, list[Judgment]] = defaultdict(list)
     by_bucket: defaultdict[str, list[Judgment]] = defaultdict(list)
     by_config: defaultdict[str, list[Judgment]] = defaultdict(list)
+    by_kind: defaultdict[str, list[Judgment]] = defaultdict(list)
     pages_by_category: defaultdict[str, list[tuple[bool, BlockClass]]] = defaultdict(list)
     pages_by_mode: defaultdict[str, list[PageOutput]] = defaultdict(list)
     for case, output, judgments, zero_touch in scored:
@@ -235,11 +262,13 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
             type_ = _cell_type(case.schema_def, j.field)
             by_type[type_].append(j)
             by_field[f"{case.schema_def.name}|{j.field}"].append(j)
+            by_kind[f"{case.schema_def.page_kind}|{type_}"].append(j)
             if j.evidence is not None:
                 by_bucket[f"{type_}|{j.evidence}"].append(j)
             if (status := _config_status(case, j)) is not None:
                 by_config[f"{type_}|{status}"].append(j)
 
+    dev = split == "dev"
     return Report(
         engine_version=engine_version,
         git_sha=git_sha,
@@ -261,12 +290,62 @@ def build_report(cases: Iterable[EvalCase], split: Split, engine_version: str, g
             k: Usage(llm_calls_per_1k_pages=1000 * sum(o.llm_calls for o in outs) / len(outs), n=len(outs))
             for k, outs in sorted(pages_by_mode.items())
         },
-        pages=tuple(details) if split == "dev" else None,
+        pages=tuple(details) if dev else None,
         # Precedence is fitted on dev only (C1, INV-02), so no other split measures per kind.
-        by_source=_by_source((c.schema_def, js) for c, _, js, _ in scored) if split == "dev" else {},
+        by_source=_by_source((c.schema_def, js) for c, _, js, _ in scored) if dev else {},
         row_matching=sum(row_counts.values(), _RowCount()).metrics() if row_counts else None,
         row_matching_by_field={k: v.metrics() for k, v in sorted(row_counts.items())},
+        label_statuses=tuple(sorted(statuses)),
+        by_page_kind={k: _field_metrics(v) for k, v in sorted(by_kind.items())} if dev else {},
+        disagreements=_disagreements(by_field) if dev else {},
     )
+
+
+def disagreement(judgment: Judgment) -> str | None:
+    """What kind of disagreement a judgment is, for triage; `None` for an agreement (TP, TN). FP: `wrong_value`, a
+    value where the label says `absent` (`on_absent`), or a row the labels don't have (`extra_row`). FN: the engine's
+    reason, or `not_output` when it output nothing for the field (a listing row it did not find, among others)."""
+    match judgment.cell:
+        case "TP" | "TN":
+            return None
+        case "FP" if judgment.entity.startswith("extra["):
+            return "FP|extra_row"
+        case "FP":
+            return "FP|on_absent" if judgment.on_absent else "FP|wrong_value"
+        case "FN":
+            return f"FN|{judgment.reason or 'not_output'}"
+
+
+def _disagreements(by_field: Mapping[str, Sequence[Judgment]]) -> dict[str, dict[str, int]]:
+    counts = {
+        key: Counter(kind for j in judgments if (kind := disagreement(j)) is not None)
+        for key, judgments in by_field.items()
+    }
+    return {key: dict(sorted(count.items())) for key, count in sorted(counts.items()) if count}
+
+
+_Scored = tuple[EvalCase, PageOutput, list[Judgment], bool]
+
+
+def _score(
+    cases: Iterable[EvalCase], statuses: frozenset[LabelStatus]
+) -> tuple[list[_Scored], list[PageDetail], defaultdict[str, _RowCount]]:
+    """Each case in `statuses` judged, with its zero-touch; each page's detail; the row counts of row-mapped fields."""
+    scored: list[_Scored] = []
+    details: list[PageDetail] = []
+    row_counts: defaultdict[str, _RowCount] = defaultdict(_RowCount)
+    for case in sorted(cases, key=lambda c: c.page_id):
+        if case.labels.status not in statuses:
+            continue
+        match case.output:
+            case ReplayFailed(error=error):
+                details.append(_detail(case, error, None, ()))
+            case PageOutput() as output:
+                judgments = _judge_case(case.schema_def, case.labels, output, row_counts)
+                zero_touch = _zero_touch(case.schema_def, judgments, frozenset(case.labels.lists))
+                scored.append((case, output, judgments, zero_touch))
+                details.append(_detail(case, None, zero_touch, tuple(judgments), output.llm_unanswered))
+    return scored, details, row_counts
 
 
 def _judge_case(
@@ -317,6 +396,9 @@ def export_aggregate(report: Report) -> Report:
             "row_matching": _suppress(report.row_matching) if report.row_matching is not None else None,
             # Its keys name schemas, as `by_field`'s do.
             "row_matching_by_field": _suppress_all(report.row_matching_by_field) if dev else {},
+            # Its cells split a field type's into parts, which would give one suppressed part away (§16.3).
+            "by_page_kind": _suppress_all(report.by_page_kind) if dev else {},
+            "disagreements": report.disagreements if dev else {},
         }
     )
 
@@ -373,7 +455,13 @@ def _config_status(case: EvalCase, judgment: Judgment) -> FieldStatus | None:
     return case.config_status.get(judgment.field)
 
 
-def _detail(case: EvalCase, error: str | None, zero_touch: bool | None, judgments: tuple[Judgment, ...]) -> PageDetail:
+def _detail(
+    case: EvalCase,
+    error: str | None,
+    zero_touch: bool | None,
+    judgments: tuple[Judgment, ...],
+    llm_unanswered: int = 0,
+) -> PageDetail:
     return PageDetail(
         page_id=case.page_id,
         category=case.category,
@@ -381,6 +469,8 @@ def _detail(case: EvalCase, error: str | None, zero_touch: bool | None, judgment
         error=error,
         zero_touch=zero_touch,
         judgments=judgments,
+        llm_unanswered=llm_unanswered,
+        label_status=case.labels.status,
     )
 
 
@@ -529,7 +619,7 @@ def _judge(name: str, entity: str, label: FieldLabel, out: FieldOutput | None, s
     published = out if out is not None and out.status == "published" else None
     value = published.value if published else None
     if published:
-        cell: Cell = "FP" if label.absent or not equal(value, label.value, spec) else "TP"
+        cell: Cell = "FP" if label.absent or not same(value, label.value, spec) else "TP"
     else:
         cell = "TN" if label.absent else "FN"
     return Judgment(
@@ -541,13 +631,25 @@ def _judge(name: str, entity: str, label: FieldLabel, out: FieldOutput | None, s
         evidence=published.evidence if published else None,
         label_value=label.value,
         output_value=value,
+        reason=None if out is None or published else out.reason,
         sources={} if out is None else _source_cells(out, label, spec),
     )
 
 
+def same(output: JsonValue, label: JsonValue, spec: FieldSpec) -> bool:
+    """Whether an output value scores as its label's value: equal by the type's equality (SPEC-04 §4.5), or, for
+    long_text, similar enough (`LONG_TEXT_MIN_SIMILARITY`, D-1462)."""
+    if equal(output, label, spec):
+        return True
+    if spec.type is not FieldType.LONG_TEXT:
+        return False
+    score = similarity(output, label, spec)
+    return score is not None and score >= LONG_TEXT_MIN_SIMILARITY
+
+
 def _source_cells(out: FieldOutput, label: FieldLabel, spec: FieldSpec) -> dict[SourceKind, SourceCell]:
     return {
-        kind: "TP" if not label.absent and all(equal(v, label.value, spec) for v in values) else "FP"
+        kind: "TP" if not label.absent and all(same(v, label.value, spec) for v in values) else "FP"
         for kind, values in out.offered.items()
     }
 
