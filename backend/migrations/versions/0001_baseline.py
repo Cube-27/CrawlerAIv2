@@ -401,6 +401,7 @@ def upgrade() -> None:
         sa.Column("depth", sa.Integer(), server_default=sa.text("0"), nullable=False),
         sa.Column("parent_task_id", sa.Uuid(), nullable=True),
         sa.Column("final_url", sa.Text(), nullable=True),
+        sa.Column("score", sa.Float(), nullable=True),
         sa.CheckConstraint(
             "outcome IN ('extracted', 'partial', 'unchanged', 'links_only', 'blocked', 'shell', 'not_found',"
             " 'no_match', 'failed')",

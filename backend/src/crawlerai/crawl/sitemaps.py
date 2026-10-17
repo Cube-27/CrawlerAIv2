@@ -10,8 +10,8 @@ past the protocol's size is skipped.
 import asyncio
 import zlib
 from collections import deque
-from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable, Sequence
-from dataclasses import dataclass
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Final, Literal
 from urllib.parse import urljoin, urlsplit
 
@@ -40,6 +40,8 @@ class Sitemap:
 
     kind: Literal["urlset", "index"]
     locs: tuple[str, ...]
+    # The `priority` (0.0 to 1.0, sitemaps.org) of the locations that state a valid one, by location.
+    priorities: Mapping[str, float] = field(default_factory=dict)
 
 
 def roots(start_url: str, listed: Sequence[str]) -> tuple[str, ...]:
@@ -68,14 +70,29 @@ def read(body: bytes) -> Sitemap | None:
     if entry is None:
         return None
     child, kind = entry
-    locs = (
-        loc.text.strip()
-        for item in root
-        if _local_name(item) == child
-        for loc in item
-        if _local_name(loc) == "loc" and loc.text
-    )
-    return Sitemap(kind, tuple(loc for loc in locs if loc))
+    locs: list[str] = []
+    priorities: dict[str, float] = {}
+    for item in root:
+        if _local_name(item) != child:
+            continue
+        fields = {_local_name(part): (part.text or "").strip() for part in item}
+        loc = fields.get("loc")
+        if not loc:
+            continue
+        locs.append(loc)
+        priority = _priority(fields.get("priority"))
+        if priority is not None:
+            priorities[loc] = priority
+    return Sitemap(kind, tuple(locs), priorities)
+
+
+def _priority(text: str | None) -> float | None:
+    """sitemaps.org `<priority>`: a number from 0.0 to 1.0; anything else states none."""
+    try:
+        value = float(text or "")
+    except ValueError:
+        return None
+    return value if 0.0 <= value <= 1.0 else None
 
 
 class SitemapReader:
@@ -87,6 +104,7 @@ class SitemapReader:
         self._host = host
         self._max_urls = max_urls
         self.cut = False
+        self.priorities: dict[str, float] = {}  # the priorities of the URLs read so far, by canonical URL
 
     async def urls(self, start: Iterable[str]) -> AsyncGenerator[str]:
         """The page URLs of the sitemaps from `start` and the indexes under them, breadth first. Each sitemap is
@@ -95,6 +113,7 @@ class SitemapReader:
         seen: set[str] = set()
         count = 0
         while (urlset := await self._next_urlset(queue, seen)) is not None:
+            self.priorities.update(urlset.priorities)
             for page in urlset.locs:
                 if count == self._max_urls:
                     self.cut = True
@@ -136,7 +155,9 @@ def _read_canonical(body: bytes) -> Sitemap | None:
     sitemap = read(body)
     if sitemap is None:
         return None
-    return Sitemap(sitemap.kind, tuple(filter(None, map(canonicalize, sitemap.locs))))
+    canonical = {loc: canonicalize(loc) for loc in sitemap.locs}
+    priorities = {url: value for loc, value in sitemap.priorities.items() if (url := canonical.get(loc))}
+    return Sitemap(sitemap.kind, tuple(filter(None, canonical.values())), priorities)
 
 
 def _on_host(urls: Iterable[str], host: str | None) -> list[str]:

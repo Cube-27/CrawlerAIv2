@@ -34,8 +34,11 @@ async def crawl_site(
 ) -> CrawlSubmitted:
     """Queue a job that crawls from `url`: its sitemaps and the links of each page, within `include` and `exclude`,
     `max_depth` and `limit`, on its host (and the subdomains an `include` names). A page a `page_kind_rules` pattern
-    matches is extracted; with rules, any other page is fetched for its links only. A target the API may not fetch, in
-    `url` or `webhook_url`, is a 422 and nothing is queued."""
+    matches is extracted; with rules, any other page is fetched for its links only. `strategy` orders the visits: `bfs`
+    (default), `dfs`, or `best_first`, which fetches the links that best match `query` and `keywords` first (anchor
+    text and URL path against the query, the holding page's relevance, sitemap priority, shallower first);
+    `allow_subdomains` and `allow_external` widen the host scope. Pages the `limit` leaves unfetched end `cancelled`.
+    A target the API may not fetch, in `url` or `webhook_url`, is a 422 and nothing is queued."""
     fetching: Fetching = request.app.state.fetching
     data: EngineData | None = request.app.state.engine_data
     llm = KeyCapped(request.app.state.llm, database(request), key)

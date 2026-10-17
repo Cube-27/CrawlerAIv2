@@ -74,7 +74,12 @@ class Postpone:
     after: timedelta
 
 
-TaskResult = Finished | Failed | Postpone
+@dataclass(frozen=True)
+class Skipped:
+    """The task is not run, because its job no longer needs it: a scored crawl that spent its page limit."""
+
+
+TaskResult = Finished | Failed | Postpone | Skipped
 TaskHandler = Callable[[ClaimedTask, AsyncConnection], Awaitable[TaskResult]]
 
 
@@ -178,6 +183,8 @@ async def _execute(
             log.warning("url_task %s: %s task of job %s: failed: %s", task.id, job.kind, task.job_id, text)
         case Postpone(after):
             await release_task(conn, task, after=after)
+        case Skipped():
+            await cancel_task(conn, task)
         case unreachable:
             assert_never(unreachable)
 

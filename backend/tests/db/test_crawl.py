@@ -756,3 +756,63 @@ async def test_nothing_is_taken_past_max_depth_or_after_a_cancel(conn: AsyncConn
 
     assert (deep, cancelled) == (0, 0)
     assert len(await _urls(conn, job)) == 1
+
+
+# Strategies (D-1440).
+
+
+async def test_a_best_first_crawl_spends_its_limit_on_the_pages_that_match_the_query(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+) -> None:
+    web.pages |= {
+        f"{own_origin}/": page("/blog/holiday", "/blog/news", "/guides/rate-limits", "/about"),
+        # The best candidate is found only once the page before it is read: it must still come before the leased rest.
+        f"{own_origin}/guides/rate-limits": page("/guides/rate-limits/retry"),
+        f"{own_origin}/guides/rate-limits/retry": page(),
+        f"{own_origin}/blog/holiday": page(),
+        f"{own_origin}/blog/news": page(),
+        f"{own_origin}/about": page(),
+        f"{own_origin}/team": page(),
+    }
+    request = crawl(f"{own_origin}/", strategy="best_first", query="rate limits retry", limit=3)
+    submitted = await submit_crawl(engine, fetching.connector, request, data=None)
+
+    await run(engine, fetching, None, submitted.job_id)
+
+    found = await tasks(engine, submitted.job_id)
+    fetched = [
+        url.removeprefix(own_origin)
+        for url in web.fetched
+        if url.startswith(f"{own_origin}/") and "robots" not in url and "sitemap" not in url
+    ]
+    assert fetched == ["/", "/guides/rate-limits", "/guides/rate-limits/retry"]
+    done = {url for url, task in found.items() if task.status == "done"}
+    assert done == {f"{own_origin}{path}" for path in fetched}
+    assert all(task.status == "cancelled" for url, task in found.items() if url not in done)
+    assert found[f"{own_origin}/guides/rate-limits"].score > found[f"{own_origin}/blog/news"].score
+
+
+async def test_a_depth_first_crawl_leases_the_deepest_task_first(conn: AsyncConnection, job: JobId) -> None:
+    shallow, deep = "https://shop.example.test/a", "https://shop.example.test/b"
+    strategy = Frontier(Scope("shop.example.test"), (), 5, 10, "dfs")
+    await strategy.enqueue(conn, job, [shallow], depth=1, parent=None)
+    await strategy.enqueue(conn, job, [deep], depth=3, parent=None)
+
+    claimed = await queue.claim_tasks(conn, "w", 2)
+
+    assert [task.canonical_url for task in claimed] == [deep, shallow]
+
+
+async def test_a_full_scored_frontier_replaces_its_weakest_task_by_a_better_candidate(
+    conn: AsyncConnection, job: JobId
+) -> None:
+    frontier = Frontier(Scope("shop.example.test"), (), 5, 1, "dfs")  # capacity 5 tasks: the start task and 4 more
+    base = "https://shop.example.test"
+    await frontier.enqueue(conn, job, [f"{base}/shallow{n}" for n in range(4)], depth=1, parent=None)
+
+    added = await frontier.enqueue(conn, job, [f"{base}/deep{n}" for n in range(3)], depth=4, parent=None)
+    refused = await frontier.enqueue(conn, job, [f"{base}/shallower"], depth=0, parent=None)
+
+    urls = (await conn.execute(select(UrlTask.url).where(UrlTask.job_id == job))).scalars().all()
+    assert (added, refused) == (3, 0)
+    assert sorted(urls) == sorted([f"{base}/", f"{base}/shallow0", *(f"{base}/deep{n}" for n in range(3))])
