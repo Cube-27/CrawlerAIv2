@@ -35,7 +35,10 @@ def remove_scripting_attributes(tree: lexbor.LexborHTMLParser) -> None:
 
 def cleaned_html(page: ParsedPage) -> str:
     """The page with `script`, `style`, `noscript` and `template` elements, event handler attributes and
-    `javascript:` URLs removed; everything else is kept."""
+    `javascript:` URLs removed; everything else is kept. A JSON body (`ParsedPage.json_body`) is no HTML document, so
+    it has none: `""` (D-1474); `raw_html` still holds it as received."""
+    if page.json_body:
+        return ""
     tree = page.tree.clone()
     for node in tree.css(_REMOVED):
         node.decompose()

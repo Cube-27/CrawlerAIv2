@@ -18,8 +18,13 @@ repeated items is read in recall mode, as precision mode keeps little of a page 
 
 trafilatura drops the space after an inline element that opens a `div`, `td` or `li`'s text ("**Warning!**This"), so
 each such run of inline content is wrapped in a `p` first (`_wrap_inline_runs`, D-1275).
+
+A JSON body (an `api` capture's, `ParsedPage.json_body`) is no HTML document: its Markdown is the answer itself,
+pretty-printed in one fenced code block whose info string is `json` (CommonMark §4.5), never its text read as HTML
+(D-1473).
 """
 
+import json
 import re
 from collections.abc import Callable, Iterator
 from copy import deepcopy
@@ -55,6 +60,8 @@ def markdown(
     """The main content as Markdown, with its links and images, and a listing's items; `""` when there is none.
     `page_kind` is the kind the capture was fetched as. `prune`, when given, takes content out of the copy of the tree
     that is read, after a listing's items were taken from it (`content.fit`)."""
+    if page.json_body:
+        return json_block(page.html)
     tree = _absolute(page, final_url)
     items = item_blocks(tree) if page_kind == "listing" else ()
     for item in items:
@@ -74,6 +81,19 @@ def markdown(
     )
     listed = "\n".join(f"- {line}" for line in map(_item, items) if line)
     return _tidy("\n\n".join(part for part in (extracted, listed) if part))
+
+
+def json_block(text: str) -> str:
+    """A JSON text (RFC 8259) pretty-printed, two spaces per level and its characters as written, in a fenced code
+    block: the fence is a run of backticks longer than any inside the text, so none closes it (CommonMark §4.5). `""`
+    for a text that is no JSON."""
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return ""
+    pretty = json.dumps(value, indent=2, ensure_ascii=False)
+    fence = "`" * max(3, 1 + max((len(run) for run in re.findall("`+", pretty)), default=0))
+    return f"{fence}json\n{pretty}\n{fence}"
 
 
 def _absolute(page: ParsedPage, final_url: str) -> HtmlElement:

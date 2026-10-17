@@ -319,6 +319,37 @@ def test_every_link_of_a_json_body_is_one_of_its_strings_canonicalized(document:
     assert set(found) == {canonical_url(s, None) for s in _strings_of(document)} - {None}
 
 
+def test_the_markdown_of_a_json_body_is_the_answer_pretty_printed_in_a_json_code_block() -> None:
+    page = ParsedPage(API_ANSWER, json_body=True)
+
+    text = markdown(page, "https://api.example.test/boards/1")
+
+    assert text.startswith("```json\n")
+    assert text.endswith("\n```")
+    assert json.loads(text.removeprefix("```json\n").removesuffix("\n```")) == json.loads(API_ANSWER)
+    # A description's markup is a string value, never a link read from it.
+    assert "](https://www.example.com/about)" not in text
+
+
+def test_the_html_of_a_json_body_is_empty() -> None:
+    assert cleaned_html(ParsedPage(API_ANSWER, json_body=True)) == ""
+
+
+def test_a_json_body_that_does_not_parse_has_no_markdown() -> None:
+    assert markdown(ParsedPage('{"url": "https://jobs.example.test/1"', json_body=True), FINAL_URL) == ""
+
+
+@given(st.recursive(st.none() | st.booleans() | st.integers() | st.text(), _json_containers, max_leaves=20))
+def test_no_string_of_a_json_body_closes_its_code_block(document: object) -> None:
+    text = markdown(ParsedPage(json.dumps(document), json_body=True), FINAL_URL)
+    fence = text.split("json\n", 1)[0]
+
+    # CommonMark §4.5: a closing fence is a run of at least as many backticks as the opening one, alone on its line.
+    inner = text.removeprefix(f"{fence}json\n").removesuffix(f"\n{fence}")
+    assert not any(line.strip().startswith(fence) for line in inner.splitlines())
+    assert json.loads(inner) == document
+
+
 METADATA_PAGE = """<!doctype html><html lang=" de-CH "><head>
 <title>
   Folding   chair
