@@ -6,6 +6,10 @@ Accepts:
   `maxValue`, `value`, `unitText`, `unitCode`), as a JSON object;
 - text: two amounts around one separator, with the period from an explicit "per X" or "/X".
 
+The period of a monetary range is read from `unitText`, else `unitCode`, in any of the forms `_period` lists: a
+schema.org unit word, an interval of one unit ("1 YEAR"), an ISO 8601 duration of one unit ("P1Y"), a UN/CEFACT
+Recommendation 20 code ("ANN"), or a `type:period` phrase of the page's languages ("per year").
+
 Exactly one of `currency` and `unit` is set. Bounds are decimal strings. The currency of a monetary range always
 comes from the money rules, which the caller passes in (the dispatcher passes the money module): this module never
 reads a currency itself (C8), and it does not import the money module (the normalize-independence contract).
@@ -45,6 +49,16 @@ _PERIODS = ("HOUR", "DAY", "WEEK", "MONTH", "YEAR")
 # The `type:period` vocabulary (SPEC-04 §4.4) maps each phrase to one of these units; its JUSTIFICATION.md names the
 # source.
 _PERIOD_VOCABULARY = "period"
+# An interval written as a count of one and a unit word ("1 YEAR"): ISO 80000-1 writes a quantity as a number and a
+# unit, and one unit is the period itself.
+_ONE_UNIT = re.compile(rf"1\s+({'|'.join(_PERIODS)})", re.IGNORECASE | re.ASCII)
+# ISO 8601-1 §5.5.2 durations of exactly one unit (`P1Y`, `P1M`, `P1W`, `P1D`, `PT1H`); more than one unit ("P1Y6M") or
+# another count is not a period.
+_ISO_DURATION = re.compile(r"P(?:1([YMWD])|T1(H))", re.ASCII)
+_ISO_DURATION_UNITS = {"Y": "YEAR", "M": "MONTH", "W": "WEEK", "D": "DAY", "H": "HOUR"}
+# UN/CEFACT Recommendation 20 common codes of the schema.org `unitCode` for each period (annum, month, week, day,
+# hour).
+_UN_CEFACT_PERIODS = {"ANN": "YEAR", "MON": "MONTH", "WEE": "WEEK", "DAY": "DAY", "HUR": "HOUR"}
 # The range separators SPEC-04 §4.4 names: hyphen-minus and en dash (the range dash, Unicode U+2013), in any language;
 # the `type:range_to` vocabulary holds the words, such as `en` "to", for the page's languages.
 _DASHES = r"-|\u2013"
@@ -77,9 +91,7 @@ def _from_structured(raw: dict[str, JsonValue], ctx: Context, money: MoneyRules)
     if isinstance(bounds, Invalid):
         return bounds
     lo, hi = bounds
-    unit_text = _string(quantity.get("unitText"))
-    period = unit_text.upper() if unit_text is not None else None
-    period = period if period in _PERIODS else None
+    unit_text, unit_code = _string(quantity.get("unitText")), _string(quantity.get("unitCode"))
     currency = raw.get("currency")
     if currency is not None:
         if not isinstance(currency, str):
@@ -88,14 +100,35 @@ def _from_structured(raw: dict[str, JsonValue], ctx: Context, money: MoneyRules)
         return _monetary(
             money({"price": format(lo, "f"), "priceCurrency": currency}, ctx),
             money({"price": format(hi, "f"), "priceCurrency": currency}, ctx),
-            period,
+            _period(unit_text, ctx) or _period(unit_code, ctx),
         )
-    unit = _string(quantity.get("unitCode")) or (unit_text if period is None else None)
+    period = unit_text.upper() if unit_text is not None else None
+    period = period if period in _PERIODS else None
+    unit = unit_code or (unit_text if period is None else None)
     if unit is None:
         return Ambiguous("currency_missing", ())
     if lo > hi:
         return Invalid("min_greater_than_max")
     return Ok(_value(lo, hi, currency=None, unit=unit, period=period))
+
+
+def _period(written: str | None, ctx: Context) -> str | None:
+    """The `_PERIODS` unit an interval written as `written` names, or `None` when it names none."""
+    if written is None:
+        return None
+    upper = written.upper()
+    if upper in _PERIODS:
+        return upper
+    if upper in _UN_CEFACT_PERIODS:
+        return _UN_CEFACT_PERIODS[upper]
+    if one := _ONE_UNIT.fullmatch(written):
+        return one.group(1).upper()
+    if duration := _ISO_DURATION.fullmatch(upper):
+        return _ISO_DURATION_UNITS[duration.group(1) or duration.group(2)]
+    found = _period_phrases(vocab.context_languages(ctx))
+    if found is None or (phrase := found[0].fullmatch(written)) is None:
+        return None
+    return found[1][phrase.lastgroup or ""]
 
 
 def _bounds(quantity: dict[str, JsonValue]) -> tuple[Decimal, Decimal] | Invalid:

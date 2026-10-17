@@ -25,7 +25,7 @@ from price_parser import Price
 from pydantic import JsonValue
 
 from crawlerai.normalize import numbers
-from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
+from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org `price`: ASCII digits with `.` (U+002E) as the decimal point and no grouping symbols.
@@ -33,6 +33,9 @@ _SCHEMA_ORG_PRICE = re.compile(r"\d+(?:\.\d+)?", re.ASCII)
 # SPEC-01 D-0005: money is stored as `numeric(18,6)`, so an amount has at most 12 integer and 6 fraction digits.
 _MAX_AMOUNT = Decimal(10) ** 12
 _MAX_EXPONENT = -6
+# `numbers.stated` declines a text without one number as `no_number` or `several_numbers`; money names them by what
+# they mean for an amount: none is no amount, and two are a range, not one value.
+_NUMBER_REASONS = {"no_number": "no_amount", "several_numbers": "range"}
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
@@ -71,24 +74,17 @@ def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
 def _text(raw: str, ctx: Context, stated: str | None = None) -> NormalizeResult:
     """Money written as text; `stated` is the currency structured data states beside it, which any sign the text
     writes must denote, and which a text without a sign is in."""
-    if has_surrogate(raw):
-        return Invalid("surrogate")
-    # Unicode NFKC (UAX #15): compatibility forms (fullwidth digits and signs, no-break spaces) read as their plain
-    # form, which is also how CLDR symbols are compared below.
-    text = unicodedata.normalize("NFKC", raw).strip()
-    if not text:
-        return Invalid("empty")
-    run = _amount_run(text)
-    if isinstance(run, Invalid):
-        return run
-    before, after = text[: run.start()], text[run.end() :]
+    found = numbers.stated(raw)
+    if isinstance(found, str):
+        return Invalid(_NUMBER_REASONS.get(found, found))
+    text, before, after = found.text, found.before, found.after
     if numbers.negated(before):
         return Invalid("not_positive")
     locales = numbers.locale_set(ctx)
     currencies = _currencies_of(text, before, after, locales, ctx, stated)
     if isinstance(currencies, Invalid):
         return currencies
-    amounts = numbers.readings(run.group(), locales)
+    amounts = numbers.readings(found.written, locales)
     if not amounts:
         return Invalid("unparsable_amount")
     if len(currencies) == 1 and len(amounts) == 1:
@@ -112,16 +108,6 @@ def _currencies_of(
     if isinstance(agreed, Invalid) or stated not in agreed:
         return Invalid("currency_conflict")
     return [stated]
-
-
-def _amount_run(text: str) -> re.Match[str] | Invalid:
-    """The one run of amount characters in `text`; none is no amount, and two are a range, not one value."""
-    runs = list(numbers.AMOUNT_RUN.finditer(text))
-    if not runs:
-        return Invalid("no_amount")
-    if len(runs) > 1:
-        return Invalid("range")
-    return runs[0]
 
 
 def _signs(text: str, before: str, after: str) -> list[str] | Invalid:
