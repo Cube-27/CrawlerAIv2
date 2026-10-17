@@ -4,9 +4,9 @@ import httpx
 import pytest
 
 from crawlerai.acquire import cookies, public_suffix
+from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.public_suffix import PublicSuffixes
-from crawlerai.acquire.types import FetchPolicy
-from tests.unit.test_api_fetch import fetch, json_reply
+from tests.unit.test_api_fetch import PAGE, fetch, json_reply
 
 LIST = """// a synthetic list in the file's format
 test
@@ -57,7 +57,7 @@ def _fetch_with(
         return json_reply()(request)
 
     hosts = dict.fromkeys(("shared.test", "api.shared.test", "cdn.shared.test"), "93.184.215.14")
-    result = fetch(handler, FetchPolicy(), dns=hosts, url=start)
+    result = fetch(handler, JsonRequest(url=start, page_url=PAGE), dns=hosts)
     assert result.block_class == "ok"
     cookie: str | None = seen[1].headers.get("Cookie")
     return cookie
