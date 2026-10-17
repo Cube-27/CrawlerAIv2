@@ -3,7 +3,7 @@
 ## Purpose
 
 The FastAPI app under `/v1` and the MCP server: auth, rate limits, problem responses, the synchronous scrape, schema,
-config, record, replay and usage endpoints, and the eleven MCP tools, all thin calls into `crawlerai.services`. Job
+config, record, replay and usage endpoints, and the twelve MCP tools, all thin calls into `crawlerai.services`. Job
 endpoints, `map` and `crawl` are in [jobs](../jobs/spec.md). Rationale: ARCHITECTURE §13, §17, §18
 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-07, SPEC-10.
 
@@ -94,13 +94,13 @@ costliest jobs (default 30 days, at most 366, else 422), and `GET /v1/usage/llm/
 estimate, not billing. Refs: §17, ARCHITECTURE rev 11.
 
 ### Requirement: MCP tools
-The MCP server SHALL use the official `mcp` SDK and expose exactly `scrape`, `map`, `crawl_start`, `crawl_status`,
-`extract`, `extract_status`, `list_schemas`, `create_schema`, `get_site_config`, `export_config`, `reject_config`, each
-one service call; long jobs return a `job_id` at once and status tools page 10 results. No jobs-list or usage tool.
-(Previously: ten tools, no `reject_config`.) Refs: §13.3, D-0698, D-1391.
+The MCP server SHALL use the official `mcp` SDK and expose exactly `scrape`, `map`, `search`, `crawl_start`,
+`crawl_status`, `extract`, `extract_status`, `list_schemas`, `create_schema`, `get_site_config`, `export_config`,
+`reject_config`, each one service call; long jobs return a `job_id` at once and status tools page 10 results. No
+jobs-list or usage tool. (Previously: eleven tools, no `search`.) Refs: §13.3, D-0698, D-1391, D-1442.
 #### Scenario: Tool list
 - **WHEN** a client lists the tools
-- **THEN** it gets exactly the eleven tools named above
+- **THEN** it gets exactly the twelve tools named above
 
 ### Requirement: MCP output and untrusted page content
 `scrape` markdown SHALL come in pages of at most 20,000 characters with a `<capture_id>:<offset>` cursor; an unpublished
@@ -144,3 +144,20 @@ same members. Refs: owner delegation 2026-10-17, D-1430–D-1437.
 #### Scenario: Forbidden header
 - **WHEN** a scrape's `fetch.headers` names `User-Agent`
 - **THEN** the answer is a 422 problem naming `fetch.headers` and no job is created
+
+### Requirement: Web search
+`POST /v1/search` `{query, limit ≤ 50, scrape?}` SHALL answer the provider's results in its order (`position`, `url`,
+`title`, `snippet`), where the provider is a SearXNG instance (`CRAWLERAI_SEARCH_SEARXNG_URL`) or a URL template
+(`CRAWLERAI_SEARCH_URL_TEMPLATE`, `{query}`, `{limit}`) read by the shape of its JSON or HTML answer
+(`CRAWLERAI_SEARCH_FIELDS` names members). Without a provider it is 503 `search_unavailable`, a provider that fails is
+502 `search_failed`. With `scrape` (a batch's `formats`, `schema`, `page_kind`, `fetch`, `budget`, `webhook_url`) the
+results the SSRF guard accepts are scraped by one `batch_scrape` job whose `job_id` the answer carries, the others
+counted in `skipped` (INV-16). Refs: §22, D-1442, D-1443.
+#### Scenario: No provider
+- **WHEN** no search provider is configured and a client posts a query
+- **THEN** the answer is 503 `search_unavailable`
+
+### Requirement: SDKs
+`sdk/python` and `sdk/typescript` SHALL wrap the API with typed requests and answers generated from
+`frontend/openapi.json`, job polling, the event stream and webhook signature verification; the `sdk` CI job MUST fail
+when a generated file differs from a fresh generation. Refs: D-1444.

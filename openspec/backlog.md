@@ -36,6 +36,16 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   let the paging driver run the caller's steps first (a cookie banner, a filter). An asynchronous job's secret values
   stay in `job.request` after it ends (D-1432): scrub them when the job ends, once recurring crawls show whether a re-run
   reads them. Steps are per request; per-URL steps in a batch are a later member if callers ask.
+- Crawl strategies (#261): the best-first weights (0.5 match, 0.3 inherited, 0.2 prior, 0.8 per depth) and the candidate
+  factor 5 are untuned; they were checked live on one public documentation site only (a query-matching page before its
+  siblings, an eventloop page found one level down). Measure on dev once a crawl evaluation exists. A best-first crawl's
+  unfetched candidates list as `cancelled` in `GET /v1/jobs/{id}/results`; consider hiding them there.
+- Web search (#261): an HTML provider's results carry no snippet, results are not cached, and SearXNG is read up to 5
+  pages. No public SearXNG instance accepted the JSON API in the live check (challenge pages), so the SearXNG path was
+  verified against a local stub of its JSON API and the template path against a public JSON API.
+- SDKs (#261): not published to PyPI or npm; the packages carry the repository's AGPL-3.0 license, which the owner may
+  want to relax for libraries. Add an `AsyncCrawlerAI` webhook receiver example if callers ask.
+
 - ATS adapters (#248): the SmartRecruiters API host's robots.txt disallows every agent but one, so by default its adapter
   is refused and the page rungs serve (D-1306); it was verified on recorded answers. A branded list page with no rows at
   HTTP is rendered once (owner #54) before the own-host referral serves its Workday site; referring first would save the
