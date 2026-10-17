@@ -111,3 +111,27 @@ def test_next_page_links_name_their_element_and_whether_rel_next_found_them() ->
     assert next_page_links(page, f"{BASE}/c/shoes?page=1") == (
         NextLink(f"{BASE}/c/shoes?page=2", "?page=2", "/html[1]/head[1]/link[1]", rel_next=True),
     )
+
+
+@given(prefix=_NAMES, suffix=st.sampled_from(["", ".html", "-all", "_x.htm"]), current=st.integers(0, 10**6))
+def test_an_integer_inside_a_path_segment_numbers_pages(prefix: str, suffix: str, current: int) -> None:
+    def link(n: int) -> str:
+        return f"/list/{prefix}-{n}{suffix}"
+
+    body = _links(link(current + 2), f"/list/other-{current + 1}{suffix}", link(current + 1), link(current))
+    assert _next(body, f"{BASE}{link(current)}") == (f"{BASE}{link(current + 1)}",)
+
+
+def test_an_integer_inside_a_query_value_numbers_pages() -> None:
+    body = _links("/c?view=p3", "/c?view=q3", "/c?view=p2x")
+    assert _next(body, f"{BASE}/c?view=p2") == (f"{BASE}/c?view=p3",)
+
+
+def test_a_segment_whose_text_or_second_integer_differs_is_no_numbered_page() -> None:
+    body = _links(
+        "/list/page-3-of-9.html",  # another integer differs too
+        "/list/sheet-3.html",  # the text around the integer differs
+        "/list/page-3.htm",  # the suffix differs
+        "/list/page-3-of-10.html",  # the one numbered page: one integer one higher, the rest the same
+    )
+    assert _next(body, f"{BASE}/list/page-2-of-10.html") == (f"{BASE}/list/page-3-of-10.html",)

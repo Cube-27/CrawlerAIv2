@@ -1,11 +1,13 @@
 """Cold listings (SPEC-05 §4.7 "Listings", ARCHITECTURE §8.6): which of a listing page's entities are its rows.
 
-Rows come from structured data. The entities of the schema's primary types that an `ItemList` lists (directly or
-through a `ListItem`) are the rows; an entity inside another primary entity (a row's related item, an item it offers)
-is part of that entity, not a row. A page with no listed entity takes its top-level primary entities as rows when there
-are at least three and the page URLs single none of them out as the page's own (§4.6): fewer, or one the page names,
-is what a detail page looks like. Each row resolves its row-scoped fields like a detail target; page-scoped fields
-resolve against the page entity.
+Rows come from structured data. The entities of the schema's primary types that an `ItemList` lists (directly or through
+a `ListItem`) are the rows; an entity inside another primary entity (a row's related item, an item it offers) is part of
+that entity, not a row. A page with no listed entity takes its top-level primary entities as rows when there are at
+least three and the page URLs single none of them out as the page's own (§4.6): fewer, or one the page names, is what a
+detail page looks like. When the page singles none out, a top-level primary entity that no list holds is a row beside
+the listed ones too: a list that grew after its script was written (a load-more, a scroll) states its later items in the
+grown document only, as microdata, while the script keeps the first batch. Each row resolves its row-scoped fields like
+a detail target; page-scoped fields resolve against the page entity.
 
 A page often states its items in two syntaxes (JSON-LD and microdata): the entity graph has already merged them into
 one entity (`resolve.identity`), so the item is one row with the values of both.
@@ -45,8 +47,8 @@ def listing_rows(
     primaries = [entity for entity in graph.entities.values() if is_primary(graph, entity, primary)]
     rows = [entity for entity in primaries if _listed(graph, entity, primary)]
     top_level = [entity for entity in primaries if entity.parent is None]
-    if not rows and isinstance(target, AmbiguousTarget) and len(top_level) >= MIN_TOP_LEVEL_ROWS:
-        rows = top_level
+    if isinstance(target, AmbiguousTarget) and (rows or len(top_level) >= MIN_TOP_LEVEL_ROWS):
+        rows += [entity for entity in top_level if entity not in rows]
     if not rows:
         rows = [entity for entity in graph.entities.values() if entity.id in holders and _entry(graph, entity)]
     return tuple(rows)

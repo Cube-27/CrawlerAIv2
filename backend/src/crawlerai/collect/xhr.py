@@ -6,13 +6,15 @@ JSON is skipped with a diagnostic. Values are admitted by `admission`; locators 
 index in the bundle.
 
 On a listing, the calls of one rows endpoint (`network_match.row_series`) give rows: the first series, best first, in
-which some row field is proved. A row field takes the path, relative to a row, whose values the admission rule admits
-in the most rows, at least `MIN_ITEMS` of them; a path proved so on the page is read in every row of the series
+which some row field is proved. A row field takes the path, relative to a row, whose values the admission rule admits in
+the most rows, at least `MIN_ITEMS` of them; for a url field, a value that is the target of a hyperlink of one of the
+page's repeated item blocks (`item_links.group_links`; HTML Standard §4.6.1: a hyperlink states the document it leads
+to) counts as admitted too, so a call whose items the page links to proves its item URL path even when the field's other
+candidates name other items (a load-more's later batch); a path proved so on the page is read in every row of the series
 through the API recipe row reader (`collect.api`), as a recipe's map is. Those calls are then read as rows only, not
 admitted value by value as well. Where the site has a learned listing recipe, the calls of its endpoint are read with
 the recipe's map instead (`network_match.LearnedCalls`): learning proved those paths by equality with published row
-values, so text fields are read too.
-"""
+values, so text fields are read too."""
 
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -22,10 +24,12 @@ from crawlerai.collect import json_doc
 from crawlerai.collect.admission import Admitted, Document, FieldAnchors, admit, admits, field_anchors
 from crawlerai.collect.api import read_rows
 from crawlerai.collect.base import Candidate
+from crawlerai.collect.item_links import group_links
 from crawlerai.collect.network_match import DataCall, LearnedCalls, data_calls, row_series
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import FieldSpec, SchemaDef
+from crawlerai.normalize.url import canonical_url
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import network_json
 
 Scalar = str | int | float
@@ -109,8 +113,13 @@ def _proved(
 ) -> tuple[tuple[DataCall, ...], dict[str, str]] | None:
     """The first row series in which some row field is proved, with its map."""
     anchors = field_anchors(others, "xhr", schema)
-    for series in row_series(data_calls(page)):
-        if fields := _row_map(series, page, schema, ctx, anchors):
+    series_found = row_series(data_calls(page))
+    if not series_found:
+        return None
+    reads_urls = any(spec.scope == "row" and spec.type is FieldType.URL for spec in schema.fields.values())
+    links = frozenset[str]().union(*group_links(page, ctx.base_url)) if reads_urls else frozenset[str]()
+    for series in series_found:
+        if fields := _row_map(series, page, schema, ctx, anchors, links):
             return series, fields
     return None
 
@@ -121,6 +130,7 @@ def _row_map(
     schema: SchemaDef,
     ctx: Context,
     anchors: Mapping[str, FieldAnchors],
+    links: frozenset[str],
 ) -> dict[str, str]:
     """Each row field's path in the series' rows: the one whose values are admitted in the most rows, at least
     `MIN_ITEMS`; ties keep the first row's document order."""
@@ -129,7 +139,7 @@ def _row_map(
     found: dict[str, str] = {}
     for name, spec in schema.fields.items():
         if spec.scope == "row" and paths:
-            counts = _admitted_rows(rows, paths, spec, page, ctx, anchors.get(name))
+            counts = _admitted_rows(rows, paths, spec, page, ctx, (anchors.get(name), links))
             best = max(paths, key=counts.__getitem__)
             if counts[best] >= MIN_ITEMS:
                 found[name] = best
@@ -142,9 +152,11 @@ def _admitted_rows(
     spec: FieldSpec,
     page: ParsedPage,
     ctx: Context,
-    anchors: FieldAnchors | None,
+    proof: tuple[FieldAnchors | None, frozenset[str]],
 ) -> dict[str, int]:
-    """For each path, how many rows hold a value there that the admission rule admits for a field of `spec`."""
+    """For each path, how many rows hold a value there that the admission rule admits for a field of `spec` with the
+    anchors of `proof`, or, for a url field, that one of the item blocks' links of `proof` leads to."""
+    anchors, links = proof
     memo: dict[tuple[type, Scalar], bool] = {}
     counts = dict.fromkeys(paths, 0)
     for row in rows:
@@ -153,9 +165,13 @@ def _admitted_rows(
                 continue
             key = (type(raw), raw)
             if key not in memo:
-                memo[key] = admits(raw, spec, page, ctx, anchors)
+                memo[key] = admits(raw, spec, page, ctx, anchors) or _linked(raw, spec, ctx, links)
             counts[path] += memo[key]
     return counts
+
+
+def _linked(raw: Scalar, spec: FieldSpec, ctx: Context, links: frozenset[str]) -> bool:
+    return spec.type is FieldType.URL and isinstance(raw, str) and canonical_url(raw, ctx.base_url) in links
 
 
 def _rows(series: Sequence[DataCall]) -> Iterator[_Row]:

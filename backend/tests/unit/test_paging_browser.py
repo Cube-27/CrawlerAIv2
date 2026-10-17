@@ -55,12 +55,23 @@ def _numbered(path: str, query: dict[str, list[str]]) -> bytes:
     return _page(f'<ul class="grid">{_cards((n - 1) * 10, 10)}</ul><div class="pages">{pager}</div>')
 
 
-def _in_segment(path: str, query: dict[str, list[str]]) -> bytes:
-    """Numbered pages whose integer is inside a path segment (`/seg/page-N.html`), which the +1 integer link rule does
-    not read, under a pager of ordinal links: 4 pages of 10 items."""
-    n = int(path.removeprefix("/seg/page-").removesuffix(".html"))
-    pager = "".join(f'<li><a href="/seg/page-{p}.html">{p}</a></li>' for p in range(1, 5) if p != n)
+_LETTERS = "kmqz"
+
+
+def _lettered(path: str, query: dict[str, list[str]]) -> bytes:
+    """Pages named by letters (`/seg/page-k.html`), which no integer link rule reads, under a pager of ordinal links:
+    4 pages of 10 items."""
+    n = 1 + _LETTERS.index(path.removeprefix("/seg/page-").removesuffix(".html"))
+    pager = "".join(f'<li><a href="/seg/page-{_LETTERS[p - 1]}.html">{p}</a></li>' for p in range(1, 5) if p != n)
     return _page(f'<ul class="grid">{_cards((n - 1) * 10, 10)}</ul><nav><ul>{pager}</ul></nav>')
+
+
+def _in_segment(path: str, query: dict[str, list[str]]) -> bytes:
+    """Numbered pages whose integer is inside a path segment (`/inseg/page-N.html`), with one link to the next page
+    after the items and no pager: 3 pages of 10 items."""
+    n = int(path.removeprefix("/inseg/page-").removesuffix(".html"))
+    following = f'<p><a href="page-{n + 1}.html">Onward</a></p>' if n < 3 else ""
+    return _page(f'<ul class="grid">{_cards((n - 1) * 10, 10)}</ul>{following}')
 
 
 def _cursor(path: str, query: dict[str, list[str]]) -> bytes:
@@ -182,6 +193,8 @@ def server() -> Iterator[Server]:
             if parts.path.startswith("/num/"):
                 body = _numbered(parts.path, query)
             elif parts.path.startswith("/seg/"):
+                body = _lettered(parts.path, query)
+            elif parts.path.startswith("/inseg/"):
                 body = _in_segment(parts.path, query)
             elif parts.path == "/rel":
                 body = _cursor(parts.path, query)
@@ -298,21 +311,33 @@ def test_numbered_links_are_followed_until_the_target_and_each_page_is_kept(brow
 
 
 def test_a_pager_of_ordinal_links_in_nav_is_clicked_page_by_page_to_its_end(browser: Browser) -> None:
-    fetched = browser.run("/seg/page-1.html", BrowserActions(records=100))
+    fetched = browser.run("/seg/page-k.html", BrowserActions(records=100))
 
     assert _summary(fetched) == ("pagination", "end", 4, 40)
     # Three clicks on hyperlinks, each gated by its target first; page 4 links to no page 5.
-    pages = [browser.server.url(f"/seg/page-{n}.html") for n in (2, 3, 4)]
+    pages = [browser.server.url(f"/seg/page-{letter}.html") for letter in _LETTERS[1:]]
     assert browser.gated == pages
     # Each kept state is recorded under the URL it was asked for, not the listing's first one.
-    assert [page.bundle.manifest.url for page in fetched.pages] == [browser.server.url("/seg/page-1.html"), *pages]
+    assert [page.bundle.manifest.url for page in fetched.pages] == [browser.server.url("/seg/page-k.html"), *pages]
+
+
+def test_an_integer_inside_a_path_segment_is_followed_as_the_next_page(browser: Browser) -> None:
+    fetched = browser.run("/inseg/page-1.html", BrowserActions(records=100))
+
+    assert _summary(fetched) == ("pagination", "end", 3, 30)
+    pages = [browser.server.url(f"/inseg/page-{n}.html") for n in (2, 3)]
+    assert browser.gated == pages
+    assert [page.bundle.manifest.final_url for page in fetched.pages] == [
+        browser.server.url("/inseg/page-1.html"),
+        *pages,
+    ]
 
 
 def test_a_pager_link_the_gate_refuses_is_not_clicked(browser: Browser) -> None:
-    fetched = browser.run("/seg/page-1.html", BrowserActions(records=100), refuse="page-2")
+    fetched = browser.run("/seg/page-k.html", BrowserActions(records=100), refuse="page-m")
 
     assert _summary(fetched) == (None, "not_admitted", 1, 10)
-    assert [page.bundle.manifest.final_url for page in fetched.pages] == [browser.server.url("/seg/page-1.html")]
+    assert [page.bundle.manifest.final_url for page in fetched.pages] == [browser.server.url("/seg/page-k.html")]
 
 
 def test_rel_next_with_opaque_cursors_runs_to_the_end_of_the_list(browser: Browser) -> None:

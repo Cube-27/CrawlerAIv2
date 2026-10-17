@@ -46,6 +46,7 @@ __all__ = [
     "classified",
     "context_cookies",
     "fetch_browser",
+    "json_bodies",
     "open_browser",
     "read_state",
     "rendered",
@@ -400,7 +401,7 @@ async def read_state(
     body, raw_body, network = await asyncio.gather(
         _rendered(rendered.page, exchange),
         _raw_body(response),
-        _json_bodies(rendered.calls.responses[slice(*calls)]),
+        json_bodies(rendered.calls.responses[slice(*calls)]),
     )
     if max(len(body), len(raw_body or b"")) > policy.max_decompressed_bytes:
         raise Failed("body_cap", exchange)
@@ -522,7 +523,8 @@ def _json_label(response: Response) -> bool | None:
     return False if essence in _SNIFFED_TYPES else None
 
 
-async def _json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[NetworkBody, bytes], ...]:
+async def json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[NetworkBody, bytes], ...]:
+    """The JSON bodies of `responses` (each with the action count it arrived at) a capture keeps, within its caps."""
     captured: list[tuple[NetworkBody, bytes]] = []
     total = 0
     for response, action in responses:

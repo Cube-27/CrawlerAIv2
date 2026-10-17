@@ -32,6 +32,7 @@ from crawlerai.acquire.browser import (
     challenge_of,
     classified,
     context_cookies,
+    json_bodies,
     read_state,
     rendered,
 )
@@ -40,6 +41,7 @@ from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, 
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import ActionsReport, BlockClass, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
+from crawlerai.storage.capture_bundle import NetworkBody
 
 __all__ = ["Click", "Drive", "ListingRung", "Ref", "Tab", "fetch_listing"]
 
@@ -134,6 +136,14 @@ class Tab(Protocol):
         """Keep the document as it is now as a capture of its own; False when it could not be read within the caps."""
         ...
 
+    async def discard(self) -> None:
+        """Drop the state kept last, which a later one holds whole: its data responses go to the next state kept."""
+        ...
+
+    async def calls(self) -> tuple[tuple[NetworkBody, bytes], ...]:
+        """The JSON bodies of the data responses since the state kept last, as a kept state would hold them."""
+        ...
+
 
 # The driver: what to do with the tab, answering what it did. The caller binds the request's settings to it.
 Drive = Callable[[Tab], Awaitable[ActionsReport]]
@@ -151,6 +161,9 @@ class _PatchrightTab:
         self._calls_from = 0
         self._requests = 0
         self.kept: list[FetchResult] = []
+        # Each kept state's start: the time its attempt is counted from and its first data response, for `discard`.
+        self._starts: list[tuple[float, int]] = []
+        self._bodies: dict[int, tuple[NetworkBody, bytes] | None] = {}  # the data responses read so far, by index
         page.page.on("request", self._on_request)
 
     def _on_request(self, request: Request) -> None:
@@ -240,9 +253,27 @@ class _PatchrightTab:
             return False
         block_class = await classified(exchange, content)
         self.kept.append(self._result(fetched_at, exchange, content, block_class))
+        self._starts.append((self._since, self._calls_from))
         self._since = time.monotonic()
         self._calls_from = calls_to
         return True
+
+    async def discard(self) -> None:
+        if self.kept:
+            self.kept.pop()
+            self._since, self._calls_from = self._starts.pop()
+
+    async def calls(self) -> tuple[tuple[NetworkBody, bytes], ...]:
+        responses = self._page.calls.responses
+        # A body before the start of the state kept last is never asked for again (`discard` goes back one state).
+        floor = self._starts[-1][1] if self._starts else 0
+        for index in [index for index in self._bodies if index < floor]:
+            del self._bodies[index]
+        for index in range(self._calls_from, len(responses)):
+            if index not in self._bodies:
+                self._bodies[index] = next(iter(await json_bodies([responses[index]])), None)
+        found = (self._bodies[index] for index in range(self._calls_from, len(responses)))
+        return tuple(body for body in found if body is not None)
 
     def _result(
         self, fetched_at: datetime, exchange: Exchange, content: Content, block_class: BlockClass

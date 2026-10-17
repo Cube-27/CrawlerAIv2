@@ -182,6 +182,20 @@ def _hyperlinks(block: HtmlElement) -> Iterator[HtmlElement]:
     return (element for element in block.iter("a", "area") if is_hyperlink(element))
 
 
+def block_links(block: HtmlElement, base: str | None) -> Iterator[str]:
+    """The canonical URLs the block's hyperlinks (HTML Standard §4.6.1) lead to, in document order, repeats kept."""
+    for anchor in _hyperlinks(block):
+        if (url := canonical_url(anchor.get("href") or "", base)) is not None:
+            yield url
+
+
+def group_links(page: ParsedPage, base: str | None) -> list[frozenset[str]]:
+    """The documents each group of repeated item blocks (`item_groups`) links to, by group, in the groups' order."""
+    return [
+        frozenset(url for block in group for url in block_links(block, base)) for group in item_groups(page.lxml_tree)
+    ]
+
+
 def _xpath(element: HtmlElement) -> str:
     """The XPath 1.0 path of `element`, one positional step per ancestor (`content.page.node_xpath`'s form)."""
     steps: list[str] = []
