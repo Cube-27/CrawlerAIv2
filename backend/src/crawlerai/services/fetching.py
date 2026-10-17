@@ -44,6 +44,9 @@ class Fetching:
     connector: SafeConnector
     store: ObjectStore
     limiter: HostLimiter
+    # The names of the configured proxy pools (`CRAWLERAI_PROXY_POOLS`), which a request's `fetch.proxy_pool` is
+    # checked against (D-1434).
+    proxy_pools: frozenset[str] = frozenset()
 
 
 class TargetRejected(Refusal):
@@ -104,7 +107,9 @@ async def site_rules(
 
 
 def recording(rung: Rung, policy: FetchPolicy, attempts: list[AttemptRecord]) -> Fetch:
-    """A fetch through `rung` with `policy` that adds the attempts of each fetch to `attempts`."""
+    """A fetch of robots.txt through `rung` with `policy` that adds the attempts of each fetch to `attempts`. The
+    caller's request context and page steps are the page's, not robots.txt's (D-1432): it goes without them."""
+    policy = policy.model_copy(update={"context": None, "steps": ()})
 
     async def fetch(url: str) -> FetchResult:
         result = await rung(url, policy)

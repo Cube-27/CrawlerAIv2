@@ -184,6 +184,7 @@ def test_the_bundle_records_every_attempt_beside_its_policy() -> None:
                 "duration_ms": 1,
                 "error": None,
                 "challenge": None,
+                "steps": [],
             },
             {
                 "method": "browser",
@@ -192,6 +193,7 @@ def test_the_bundle_records_every_attempt_beside_its_policy() -> None:
                 "duration_ms": 1,
                 "error": None,
                 "challenge": None,
+                "steps": [],
             },
         ],
     }

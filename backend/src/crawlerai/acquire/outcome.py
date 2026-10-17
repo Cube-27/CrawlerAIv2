@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from crawlerai.acquire.politeness import retry_after
-from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
+from crawlerai.acquire.types import REDACTED, AttemptRecord, BlockClass, FetchPolicy, FetchResult, StepOutcome
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool
@@ -62,9 +62,11 @@ def fetch_result(
     timings: dict[str, int] | None = None,
     challenge: str | None = None,
     transferred: int = 0,
+    steps: tuple[StepOutcome, ...] = (),
 ) -> FetchResult:
     """`started` is the `time.monotonic()` reading when the fetch began; `timings` are added to its total; `challenge`
-    labels the attempt (`acquire.challenge`); `transferred` is the bytes the attempt moved (`Traffic`)."""
+    labels the attempt (`acquire.challenge`); `transferred` is the bytes the attempt moved (`Traffic`); `steps` how the
+    policy's page steps ended. The caller's header values are recorded redacted (D-1432)."""
     if error is not None:
         # An error keeps no body: it yields no records (INV-11), and a partial body would mislead a replay.
         content = Content(body=b"")
@@ -79,7 +81,7 @@ def fetch_result(
         method=method,
         status_code=exchange.status,
         block_class=block_class,
-        headers=Headers(request=exchange.request_headers, response=exchange.response_headers),
+        headers=Headers(request=_redacted(exchange.request_headers, policy), response=exchange.response_headers),
         timings_ms={"total": duration_ms, **(timings or {})},
         html_sha256=sha256_hex(content.body),
         raw_html_sha256=None if raw_body is None else sha256_hex(raw_body),
@@ -97,11 +99,21 @@ def fetch_result(
         challenge=challenge,
         retry_after=retry_after(exchange.response_headers, fetched_at),
         transferred=transferred,
+        steps=steps,
     )
     bundle = CaptureBundle(
         manifest=manifest, body=content.body, network=tuple(data for _, data in content.network), raw_body=raw_body
     )
     return FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=(attempt,))
+
+
+def _redacted(headers: HeaderList, policy: FetchPolicy) -> HeaderList:
+    """`headers` with the value of each header the caller set (`RequestContext`) redacted: the caller's values are
+    secrets (D-1432)."""
+    if policy.context is None or not policy.context.headers:
+        return headers
+    names = policy.context.header_names()
+    return tuple((name, REDACTED if name.lower() in names else value) for name, value in headers)
 
 
 def as_error(result: FetchResult, reason: str) -> FetchResult:

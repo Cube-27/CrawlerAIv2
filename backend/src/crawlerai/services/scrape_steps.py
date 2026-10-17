@@ -11,17 +11,17 @@ import logging
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from typing import Any, Final, Literal, Self, TypedDict
+from typing import Any, Final, Literal, TypedDict
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import and_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.rungs import remember_fetch_method, remembered_as
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, check_robots_override, fetched_as
+from crawlerai.acquire.types import AttemptRecord, FetchResult, fetched_as
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.run import Adapters
 from crawlerai.collect.schema_org_map import VocabularyMissing
@@ -61,6 +61,8 @@ from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.registry import SchemaNotFound, get_by_id
 from crawlerai.schemas.types import Name, SchemaDef
 from crawlerai.services import schemas
+from crawlerai.services.fetch_options import FetchOptions as FetchOptions
+from crawlerai.services.fetch_options import fetch_policy as fetch_policy
 from crawlerai.services.schemas import NewSchema
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest
@@ -190,19 +192,6 @@ class SchemaFields(Input):
 SchemaRequest = SchemaById | SchemaInline | SchemaPrompt | SchemaFields
 
 
-class FetchOptions(Input):
-    method_hint: Literal["auto", "http", "browser"] = "auto"
-    respect_robots: bool = True
-    robots_override_reason: str | None = None
-    proxy_pool: str | None = None
-    max_rows: PositiveInt | None = None  # `FetchPolicy.max_rows`
-
-    @model_validator(mode="after")
-    def _override_has_a_reason(self) -> Self:
-        check_robots_override(self.respect_robots, self.robots_override_reason)
-        return self
-
-
 def check_records(formats: list[PageFormat], schema: SchemaRequest | None, page_kind: PageKind | None) -> None:
     """`records` needs a schema and a `page_kind`, and the schema's page kind must be that one (SPEC-07 §4.4). Raises
     `ValueError`, for a request model's validator."""
@@ -292,20 +281,6 @@ async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None 
     row = (await conn.execute(query)).one()
     method: FetchMethod = "browser" if row.method == "browser" else "http"
     return SiteRow(row.id, method, row.proxy_pool, row.robots_snapshot, row.crawl_delay_ms, row.adapter_declined)
-
-
-def fetch_policy(
-    options: FetchOptions, locale: str | None, site_pool: str | None, *, page_kind: PageKind | None = None
-) -> FetchPolicy:
-    return FetchPolicy(
-        page_kind=page_kind,
-        method_hint=options.method_hint,
-        proxy_pool=options.proxy_pool or site_pool,
-        respect_robots=options.respect_robots,
-        robots_override_reason=options.robots_override_reason,
-        locale_hint=locale,
-        max_rows=options.max_rows,
-    )
 
 
 @dataclass

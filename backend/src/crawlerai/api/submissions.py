@@ -6,6 +6,7 @@ from contextlib import contextmanager
 
 from crawlerai.api.problems import ProblemError, conflict, invalid, llm_problem, records_unavailable
 from crawlerai.llm.client import LLMFailure
+from crawlerai.services.fetch_options import UnknownProxyPool
 from crawlerai.services.fetching import TargetsRejected
 from crawlerai.services.schemas import InvalidSchema, SchemaConflict
 from crawlerai.services.scrape import RecordsUnavailable
@@ -19,6 +20,8 @@ def submission_problems() -> Iterator[None]:
     from the LLM failure's problem."""
     try:
         yield
+    except UnknownProxyPool as e:
+        raise invalid(str(e), [("fetch.proxy_pool", str(e))]) from e
     except TargetsRejected as e:
         # 422: the request names a target the API may not fetch (INV-16).
         raise ProblemError(422, "ssrf_rejected", "Target refused", str(e), [(e.member, e.reason)]) from e

@@ -38,4 +38,12 @@ async def batch_scrape(
     data: EngineData | None = request.app.state.engine_data
     llm = KeyCapped(request.app.state.llm, database(request), key)
     with submission_problems():
-        return await batch.submit_batch(database(request), fetching.connector, body, data=data, llm=llm, api_key_id=key)
+        return await batch.submit_batch(
+            database(request),
+            fetching.connector,
+            body,
+            data=data,
+            llm=llm,
+            api_key_id=key,
+            proxy_pools=fetching.proxy_pools,
+        )

@@ -56,6 +56,9 @@ def check_browser_actions(
         raise ValueError("browser_actions fetches the page, so max_age must be 0")
     if fetch.method_hint == "http":
         raise ValueError("browser_actions runs in the browser, so method_hint cannot be http")
+    if fetch.actions or fetch.wait_for is not None:
+        # D-1439: a listing's paging driver acts on the settled page; the caller's steps do not run before it.
+        raise ValueError("browser_actions takes no fetch.actions or fetch.wait_for")
 
 
 async def paged_fetch(

@@ -49,6 +49,7 @@ from crawlerai.db.queue import settle_job
 from crawlerai.llm.pricing import default_pricing
 from crawlerai.resolve.records import FieldMeta, RecordContent
 from crawlerai.schemas import registry
+from crawlerai.services.fetch_options import redacted_request
 from crawlerai.services.llm_costs import costs_of_jobs
 from crawlerai.services.records import MAX_PAGE, RecordFilter, RecordPage, StoredRecord, list_records
 from crawlerai.services.scrape_steps import (
@@ -261,12 +262,12 @@ async def get_job(conn: AsyncConnection, job_id: JobId) -> JobSummary:
 
 
 async def job_request(conn: AsyncConnection, job_id: JobId) -> dict[str, Any]:
-    """The request the job was submitted with, as stored (`job.request`): the playground shows it again to edit and
-    re-run (SPEC-14 §4.8)."""
+    """The request the job was submitted with, as stored (`job.request`), its `fetch` secrets redacted (D-1432): the
+    playground shows it again to edit and re-run (SPEC-14 §4.8)."""
     request = (await conn.execute(select(Job.request).where(Job.id == job_id))).scalar_one_or_none()
     if request is None:
         raise JobNotFound(f"no job {job_id}")
-    return request
+    return redacted_request(request)
 
 
 async def list_jobs(conn: AsyncConnection, query: JobListQuery) -> JobPage:

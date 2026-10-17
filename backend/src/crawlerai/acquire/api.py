@@ -102,6 +102,9 @@ async def fetch_json(
     in its registrable domain, and is dropped when it is `blocked`."""
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
+    # A fetch with the caller's own context takes no site session (D-1432).
+    if policy.context is not None:
+        sessions = None
     session = None if sessions is None else sessions.take(request.page_url, request.url, policy.proxy_pool)
     sent = await send(
         request.url,

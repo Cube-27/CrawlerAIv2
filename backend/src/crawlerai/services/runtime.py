@@ -96,7 +96,7 @@ def fetching_from_settings(settings: Settings) -> Fetching:
         sessions=sessions,
         exporting=browser,
     )
-    return Fetching(rungs, connector, open_store(settings.object_store), HostLimiter())
+    return Fetching(rungs, connector, open_store(settings.object_store), HostLimiter(), frozenset(pools))
 
 
 @asynccontextmanager

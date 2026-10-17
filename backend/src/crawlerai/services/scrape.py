@@ -26,13 +26,13 @@ import os
 import socket
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import partial
-from typing import Any, Final, Self, TypedDict
+from typing import Final, Self, TypedDict
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, field_validator, model_validator
-from sqlalchemy import Row, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -49,7 +49,7 @@ from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
-from crawlerai.db.models import Capture, CaptureId, Job, JobId, PageKind, SiteId, UrlTask
+from crawlerai.db.models import CaptureId, Job, JobId, PageKind, SiteId
 from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_claimed
 from crawlerai.llm.client import NO_LLM, LLMClient, LLMFailure
 from crawlerai.llm.roles.s_schema import draft_schema
@@ -58,6 +58,7 @@ from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig, StoredRecord
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import SchemaDef
+from crawlerai.services.fetch_options import check_proxy_pool
 from crawlerai.services.fetching import (
     Fetching,
     TargetRejected,
@@ -110,8 +111,9 @@ from crawlerai.services.scrape_steps import (
     store_further,
     store_page_record,
 )
-from crawlerai.storage.base import ObjectNotFound, ObjectStore
-from crawlerai.storage.capture_bundle import CaptureManifest, decode
+from crawlerai.services.stored_captures import NOT_CACHED, CaptureRow, NotCached, recent_capture, reread
+from crawlerai.storage.base import ObjectStore
+from crawlerai.storage.capture_bundle import CaptureManifest
 
 MAX_TIMEOUT_S: Final = 120  # D-0028
 # A scrape task's `last_error` when it failed for no reason the service declares.
@@ -202,14 +204,6 @@ class RecordsUnavailable(Refusal):
 
 
 @dataclass(frozen=True)
-class _Recent:
-    """A capture `max_age` lets the scrape read again instead of fetching: its id, and the fetch that made it."""
-
-    capture_id: CaptureId
-    result: FetchResult
-
-
-@dataclass(frozen=True)
 class _Work:
     """What a scrape works with besides fetching: the LLM client, the engine's data and drift margins, and the schema
     `records` extracts with when the request names it (a prompt's is drafted after the fetch)."""
@@ -263,6 +257,7 @@ async def scrape(
     `SchemaUnusable` for a draft of another page kind. Any other exception fails the job with `internal_error` and
     propagates."""
     await check_target(fetching.connector, request.url)
+    check_proxy_pool(request.fetch, fetching.proxy_pools)
     work = _Work(llm, data, margins, await _named_schema(engine, request, data, llm))
     task = await _start(engine, request, work.schema)
     try:
@@ -279,6 +274,9 @@ async def scrape(
         raise
     except LLMFailure as e:
         await _fail(engine, task, e.code)
+        raise
+    except NotCached:
+        await _fail(engine, task, NOT_CACHED)
         raise
     except Exception:
         # Anything else is this process's fault; the job still ends now, not when the task's lease runs out.
@@ -337,11 +335,11 @@ async def _run(
         site = await site_row(conn, host, request.page_kind)
         config = await _config(conn, site.id, work)
         recipe = recipe_of(config) if config is not None and records_only else None
-        row = None
-        if request.max_age:
-            row = await _recent_capture(conn, site.id, task.canonical_url, request.max_age, api=recipe is not None)
-    recent = None if row is None else await _reread(fetching.store, row)
-    policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind)
+        policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind)
+        row = await _stored(conn, request, policy, site.id, task.canonical_url, api=recipe is not None)
+    recent = None if row is None else await reread(fetching.store, row)
+    if recent is None and request.fetch.cache == "only":
+        raise NotCached("no stored capture of the page was made the way this request fetches it")
     attempts: list[AttemptRecord] = []
     check = _content_check(work, request, config, task)
     further: tuple[FetchResult, ...] = ()
@@ -403,6 +401,18 @@ async def _run(
     )
 
 
+async def _stored(
+    conn: AsyncConnection, request: ScrapeRequest, policy: FetchPolicy, site_id: SiteId, canonical: str, *, api: bool
+) -> CaptureRow | None:
+    """The stored capture the request reads instead of fetching (D-1435): within `max_age` by default, none with
+    `cache: bypass`, and with `cache: only` within `max_age`, or of any age when it is 0."""
+    cache = request.fetch.cache
+    if cache == "bypass" or (cache == "default" and not request.max_age):
+        return None
+    max_age = request.max_age or (None if cache == "only" else 0)
+    return await recent_capture(conn, site_id, canonical, policy, max_age=max_age, api=api)
+
+
 def _pages(paged: PagedFetch | str) -> tuple[FetchResult | str, tuple[FetchResult, ...], ActionsReport | None]:
     """The first page of a paged fetch (the scrape's capture and formats), the other kept states, and the report."""
     if isinstance(paged, str):
@@ -443,46 +453,6 @@ def _content_check(
     if "records" not in request.formats:
         return None
     return content_check(work.schema, work.data, config, role_c(work.llm, job_id=task.job_id))
-
-
-_CaptureRow = Row[CaptureId, str, int, dict[str, Any]]
-
-
-async def _recent_capture(
-    conn: AsyncConnection, site_id: SiteId, canonical: str, max_age: int, *, api: bool
-) -> _CaptureRow | None:
-    """The latest capture of `canonical` that reached its page (§4.8) within `max_age` seconds and has not expired;
-    one an API recipe fetched only with `api`: a scrape that asks for the record only, with a config whose recipe
-    reads it, as it holds JSON, not the page (SPEC-09 §4.8). Captures are found through the tasks that fetched them,
-    which hold the canonical URL."""
-    query = (
-        select(Capture.id, Capture.object_key, Capture.duration_ms, Capture.fetch_policy)
-        .join(UrlTask, UrlTask.capture_id == Capture.id)
-        .where(
-            Capture.site_id == site_id,
-            Capture.fetched_at >= func.now() - timedelta(seconds=max_age),
-            Capture.block_class == "ok",
-            or_(Capture.expires_at.is_(None), Capture.expires_at > func.now()),
-            UrlTask.canonical_url == canonical,
-        )
-        .order_by(Capture.fetched_at.desc())
-        .limit(1)
-    )
-    if not api:
-        query = query.where(Capture.method != "api")
-    return (await conn.execute(query)).one_or_none()
-
-
-async def _reread(store: ObjectStore, row: _CaptureRow) -> _Recent | None:
-    """The capture's bundle, with the attempts its row keeps (SPEC-02 §4.4); None when its bundle is gone."""
-    capture_id, object_key, duration_ms, fetch_policy = row
-    try:
-        blob = await asyncio.to_thread(store.get, object_key)
-    except ObjectNotFound:
-        return None
-    bundle = await asyncio.to_thread(decode, blob)
-    attempts = tuple(AttemptRecord.model_validate(attempt) for attempt in fetch_policy["attempts"])
-    return _Recent(capture_id, FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=attempts))
 
 
 async def _config(conn: AsyncConnection, site_id: SiteId, work: _Work) -> ActiveConfig | None:

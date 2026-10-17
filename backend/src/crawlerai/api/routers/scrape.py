@@ -15,6 +15,7 @@ from crawlerai.llm.client import LLMFailure
 from crawlerai.llm.draft_cap import KeyCapped
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import scrape as scrape_service
+from crawlerai.services.fetch_options import UnknownProxyPool
 from crawlerai.services.fetching import Fetching, TargetRejected
 from crawlerai.services.schemas import InvalidSchema, SchemaConflict
 from crawlerai.services.scrape import (
@@ -24,6 +25,7 @@ from crawlerai.services.scrape import (
     ScrapeTimedOut,
 )
 from crawlerai.services.scrape_steps import SchemaUnusable
+from crawlerai.services.stored_captures import NOT_CACHED, NotCached
 
 router = APIRouter(
     prefix="/v1/scrape",
@@ -35,7 +37,13 @@ router = APIRouter(
 
 @router.post(
     "",
-    responses={409: PROBLEM_RESPONSE, 502: PROBLEM_RESPONSE, 503: PROBLEM_RESPONSE, 504: PROBLEM_RESPONSE},
+    responses={
+        404: PROBLEM_RESPONSE,
+        409: PROBLEM_RESPONSE,
+        502: PROBLEM_RESPONSE,
+        503: PROBLEM_RESPONSE,
+        504: PROBLEM_RESPONSE,
+    },
 )
 async def scrape(
     body: ScrapeRequest, request: Request, key: Annotated[ApiKeyId, Depends(require_api_key)]
@@ -53,6 +61,10 @@ async def scrape(
         return await scrape_service.scrape(engine, fetching, body, llm=llm, data=data, margins=margins)
     except TargetRejected as e:
         raise target_refused(e.reason) from e
+    except UnknownProxyPool as e:
+        raise invalid(str(e), [("fetch.proxy_pool", str(e))]) from e
+    except NotCached as e:
+        raise ProblemError(404, NOT_CACHED, "Not cached", str(e)) from e
     except SchemaUnusable as e:
         raise invalid(str(e), [("schema", str(e))]) from e
     except InvalidSchema as e:

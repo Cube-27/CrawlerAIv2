@@ -8,7 +8,9 @@ through a `SocksGuard`, which applies the SSRF guard to every redirect hop, fram
 `blocked` or `shell` document is labelled with the challenge it presents (`acquire.challenge`), and the pool endpoint
 it went through is told how it went (`core.proxy_health`), as the HTTP rung does. Asked to export (`CookieExport`), the
 fetch reads the context's cookies before the context closes, without changing them, for a site session (INV-29's
-exception).
+exception). The caller's cookies (`RequestContext`) are added to the context before the navigation, as host-only
+cookies of the URL's host; the caller's headers are never set in the browser (INV-44). The caller's page steps run
+after the settle and before the read (`acquire.page_steps`), within the browser's time cap plus their own timeouts.
 """
 
 import asyncio
@@ -20,7 +22,9 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import cast
+from urllib.parse import urlsplit
 
+from patchright._impl._api_structures import SetCookieParam
 from patchright.async_api import Browser, BrowserContext, Frame, Page, Request, Response, async_playwright
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
@@ -29,10 +33,11 @@ from crawlerai.acquire.challenge import CHALLENGED, challenge_label, count
 from crawlerai.acquire.classify import INTERSTITIAL_STATUS, classify, interstitial
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
+from crawlerai.acquire.page_steps import run_steps, steps_budget_s
 from crawlerai.acquire.session import CookieExport, SessionCookie, browser_cookies
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
-from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
+from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, RequestContext, StepOutcome
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
 from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_file, network_json, sha256_hex
 
@@ -164,12 +169,14 @@ async def fetch_browser(
     pool = proxy = None
     challenge: str | None = None
     traffic = Traffic()
+    steps: tuple[StepOutcome, ...] = ()
     try:
         pool = proxy_pool(policy.proxy_pool, pools)
         proxy = pool_endpoint(pool, url)
-        async with asyncio.timeout(policy.browser_timeout_s):
+        async with asyncio.timeout(policy.browser_timeout_s + steps_budget_s(policy.steps)):
             guarded = rendered(url, policy, session, connector or SafeConnector(), proxy, started, timings, traffic)
             async with guarded as page:
+                steps = await _stepped(page)
                 exchange, content = await read_state(page)
                 cookies = await context_cookies(page.page.context)
         block_class = await classified(exchange, content)
@@ -198,9 +205,31 @@ async def fetch_browser(
         timings=timings,
         challenge=challenge,
         transferred=traffic.bytes,
+        steps=steps,
     )
     report_proxy(pool, proxy, result)
     return result
+
+
+async def _stepped(page: "Rendered") -> tuple[StepOutcome, ...]:
+    """Run the policy's page steps on the settled page, each change followed by a wait for its content to settle."""
+    if not page.policy.steps:
+        return ()
+
+    async def settle(within_s: float) -> None:
+        with contextlib.suppress(TimeoutError):
+            async with asyncio.timeout(within_s):
+                await _content_quiet(page.page, page.frame, page.calls)
+
+    return await run_steps(page.page, page.policy.steps, settle, lambda: len(page.calls.in_flight))
+
+
+def caller_cookies(url: str, context: RequestContext) -> list[SetCookieParam]:
+    """The caller's cookies as `BrowserContext.add_cookies` takes them: given with `url`, each is a host-only cookie
+    of its host for every path (RFC 6265 §5.3 step 6, path `/` from the URL's root)."""
+    parts = urlsplit(url)
+    root = f"{parts.scheme}://{parts.netloc}/"
+    return [SetCookieParam(name=name, value=value.get_secret_value(), url=root) for name, value in context.cookies]
 
 
 async def context_cookies(context: BrowserContext) -> tuple[SessionCookie, ...]:
@@ -293,6 +322,8 @@ async def rendered(
         )
         opened = time.monotonic()
         try:
+            if policy.context is not None and policy.context.cookies:
+                await context.add_cookies(caller_cookies(url, policy.context))
             page = await context.new_page()
             yield await _navigate(page, url, first, policy, guard, started)
         finally:

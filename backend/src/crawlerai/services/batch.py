@@ -10,7 +10,7 @@ has for the schema and page kind (`job.pinned`, `JobPins`). A URL given twice
 keeps its record, `complete=false`, with outcome `partial` (ARCHITECTURE §10).
 """
 
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from typing import Any, Final, Self
 from urllib.parse import urlsplit
 
@@ -36,6 +36,7 @@ from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData, PinnedData
 from crawlerai.schemas.types import SchemaDef
+from crawlerai.services.fetch_options import KEEP_SECRETS, check_proxy_pool
 from crawlerai.services.fetching import check_targets
 from crawlerai.services.scrape import Budget, RecordsUnavailable
 from crawlerai.services.scrape_steps import (
@@ -119,11 +120,15 @@ async def submit_batch(
     data: EngineData | None,
     llm: LLMClient = NO_LLM,
     api_key_id: ApiKeyId | None = None,
+    proxy_pools: Collection[str] | None = None,
 ) -> BatchSubmitted:
     """Store `request` as a queued job with its tasks; `api_key_id`, the key that submitted it, signs its webhook
-    (SPEC-10 §4.2). Raises, storing nothing: `TargetsRejected` for a refused target,
+    (SPEC-10 §4.2); `proxy_pools`, the configured pools, which `fetch.proxy_pool` must name one of (D-1434). Raises,
+    storing nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target,
     `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use
     (or field names `llm` could not draft)."""
+    if proxy_pools is not None:
+        check_proxy_pool(request.fetch, proxy_pools)
     targets = [(f"urls[{index}]", url) for index, url in enumerate(request.urls)]
     await check_targets(connector, targets, webhook_url=request.webhook_url)
     # A format batch that names a schema is a format job.
@@ -192,7 +197,8 @@ async def insert_job(
         .values(
             project_id=DEFAULT_PROJECT,
             kind=kind,
-            request=request.model_dump(mode="json", by_alias=True),
+            # The caller's secrets stay in the stored request, which the job's workers read (D-1432).
+            request=request.model_dump(mode="json", by_alias=True, context={KEEP_SECRETS: True}),
             schema_id=None if schema is None else schema.id,
             webhook_url=webhook_url,
             api_key_id=api_key_id,
