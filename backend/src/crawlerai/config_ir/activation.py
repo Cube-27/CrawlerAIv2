@@ -74,9 +74,7 @@ async def store_pending(conn: AsyncConnection, key: StateKey, validated: Validat
     if started is None or started.learning_started_at is None:
         raise NotLearning(key, "await_approval")
     await _check_key(conn, key, ir)
-    configs = ExtractionConfig
-    waiting = (*key.config_scope(), configs.status == "pending_approval")
-    await conn.execute(update(configs).where(*waiting).values(status="suspended"))
+    await _suspend_waiting(conn, key)
     config_id = await _store(conn, key, ir, validated.report, "pending_approval")
     await learning_awaits_approval(conn, key)
     return config_id
@@ -88,12 +86,15 @@ class NotPending(ValueError):
 
 async def approve(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
     """Make `config_id`, a config of `key` waiting for approval, the active one (D-1342), suspending the config active
-    before it. Raises `NotPending` when it is not `pending_approval`."""
+    before it. Raises `NotPending` when it is not `pending_approval` or not its scope's latest version: a newer
+    version, an operator's correction or a draft, was written knowing it."""
     await lock_state(conn, key)
     configs = ExtractionConfig
-    status = select(configs.status).where(configs.id == config_id, *key.config_scope()).with_for_update()
-    if (await conn.execute(status)).scalar_one_or_none() != "pending_approval":
-        raise NotPending(f"config {config_id} is not waiting for approval")
+    latest = select(func.max(configs.version)).where(*key.config_scope()).scalar_subquery()
+    row = select(configs.status, configs.version == latest).where(configs.id == config_id, *key.config_scope())
+    found = (await conn.execute(row.with_for_update(of=configs))).first()
+    if found is None or found[0] != "pending_approval" or not found[1]:
+        raise NotPending(f"config {config_id} is not the latest version waiting for approval")
     await _suspend_active(conn, key)
     await conn.execute(update(configs).where(configs.id == config_id).values(status="active"))
     await config_approved(conn, key, config_id)
@@ -115,6 +116,7 @@ async def store_correction(
     if validated.ir is None or not set(operated) <= _field_names(validated.ir):
         return await _store(conn, key, corrected, validated.report, "draft")
     await _suspend_active(conn, key)
+    await _suspend_waiting(conn, key)  # the operator's config is newer than one waiting for approval (D-1342)
     config_id = await _store(conn, key, validated.ir, validated.report, "active")
     await operator_activated(conn, key, config_id)
     return config_id
@@ -139,6 +141,12 @@ async def _suspend_active(conn: AsyncConnection, key: StateKey) -> None:
     configs = ExtractionConfig
     active = (*key.config_scope(), configs.status == "active")
     await conn.execute(update(configs).where(*active).values(status="suspended"))
+
+
+async def _suspend_waiting(conn: AsyncConnection, key: StateKey) -> None:
+    configs = ExtractionConfig
+    waiting = (*key.config_scope(), configs.status == "pending_approval")
+    await conn.execute(update(configs).where(*waiting).values(status="suspended"))
 
 
 async def _store(

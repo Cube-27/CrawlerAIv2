@@ -23,7 +23,8 @@ change the design are owner decision #60.
   missing required field at once, so it was asked). Synthesis does not try it; its report reason is `absent`. In config
   mode role C is not asked for it and it stays `missing` with reason `absent`; any collector that states it still
   publishes it, and a config page that publishes it re-tests it: `drift.record_run` removes it from `absent` and
-  `field_status`, logs `absent_stated` and starts a forced learning run. Completeness is unchanged: a page missing an
+  `field_status`, logs `absent_stated` and starts a forced learning run; an operator correction giving it steps removes
+  it too. Pages a config's API recipe serves keep the `absent` statuses. Completeness is unchanged: a page missing an
   absent required field is still `partial`.
 - Alternatives: optional fields too (they never make role C run, they only ride along); counting only role C's
   `shown: false` claims (not stored per field).
@@ -35,8 +36,9 @@ change the design are owner decision #60.
   before). When on, a learning run's validated config is stored `pending_approval`, the run ends as a failed one does
   without the retry bump (an active state keeps its config, a learning one goes cold), and the job completes with the
   config id and reason `pending_approval`. `trigger_learning` starts no run while a config waits; a forced run may, and
-  the config it stores replaces the waiting one (`suspended`). `POST /v1/configs/{id}/approve` suspends the active
-  version and activates the waiting one in any mode (event `approve`, the operator's edges). Operator corrections are
+  the config it stores replaces the waiting one (`suspended`), as an operator correction that activates and a schema
+  edit do. `POST /v1/configs/{id}/approve` approves only the latest version of its scope while it waits: it suspends
+  the active version and activates it in any mode (event `approve`, the operator's edges). Operator corrections are
   not gated: an operator is the person approving. The corroboration ideas of D-0783 (independent references, constant
   values as `suspect`) are not built.
 - Alternatives: approval only where sources conflict (needs a conflict measure first); a review queue (§22, frontend

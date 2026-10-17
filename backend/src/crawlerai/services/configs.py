@@ -155,7 +155,8 @@ async def approve_config(conn: AsyncConnection, config_id: ExtractionConfigId) -
     try:
         await approve(conn, StateKey(row["site_id"], row["schema_id"], row["page_kind"]), config_id)
     except NotPending as e:
-        raise ConfigConflict(f"config {config_id} is {row['status']}, not pending_approval") from e
+        detail = f"config {config_id} is {row['status']}, not the latest version waiting for approval"
+        raise ConfigConflict(detail) from e
     return await get(conn, config_id)
 
 

@@ -239,7 +239,10 @@ async def relearn_schema(conn: AsyncConnection, schema_id: SchemaId) -> None:
     The next run starts once enough pages are extracted (`trigger_learning`); `pages_extracted` is kept."""
     configs = ExtractionConfig
     await conn.execute(
-        update(configs).where(configs.schema_id == schema_id, configs.status == "active").values(status="suspended")
+        update(configs)
+        # A config waiting for approval was learned for the old document too (D-1342).
+        .where(configs.schema_id == schema_id, configs.status.in_(("active", "pending_approval")))
+        .values(status="suspended")
     )
     scope = [ProgressiveState.schema_id == schema_id]
     await _move(conn, scope, "schema_edit", active_config_id=None, learning_started_at=None, retry_at_pages=None)
