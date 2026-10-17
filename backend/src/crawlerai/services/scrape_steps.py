@@ -262,13 +262,14 @@ def check_usable(schema: SchemaDef, page_kind: PageKind | None) -> None:
 @dataclass(frozen=True, slots=True)
 class SiteRow:
     """A site as a fetch reads it: its id, the fetch method remembered for the page kind fetched, its proxy pool,
-    robots.txt snapshot and interval setting."""
+    robots.txt snapshot and interval setting, and the adapters that declined its host (`Registry.for_host`)."""
 
     id: SiteId
     fetch_method: FetchMethod
     proxy_pool: str | None
     robots_snapshot: str | None
     crawl_delay_ms: int | None
+    adapter_declined: dict[str, str] = field(default_factory=dict)
 
 
 async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None = None) -> SiteRow:
@@ -278,10 +279,18 @@ async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None 
         pg_insert(Site).values(project_id=DEFAULT_PROJECT, host=host).on_conflict_do_nothing(index_elements=[Site.host])
     )
     memory = and_(SiteFetchMethod.site_id == Site.id, SiteFetchMethod.page_kind == remembered_as(page_kind))
-    columns = (Site.id, SiteFetchMethod.method, Site.proxy_pool, Site.robots_snapshot, Site.crawl_delay_ms)
+    columns = (
+        Site.id,
+        SiteFetchMethod.method,
+        Site.proxy_pool,
+        Site.robots_snapshot,
+        Site.crawl_delay_ms,
+        Site.adapter_declined,
+    )
     query = select(*columns).select_from(Site).outerjoin(SiteFetchMethod, memory).where(Site.host == host)
     row = (await conn.execute(query)).one()
-    return SiteRow(row.id, row.method or "http", row.proxy_pool, row.robots_snapshot, row.crawl_delay_ms)
+    method: FetchMethod = "browser" if row.method == "browser" else "http"
+    return SiteRow(row.id, method, row.proxy_pool, row.robots_snapshot, row.crawl_delay_ms, row.adapter_declined)
 
 
 def fetch_policy(

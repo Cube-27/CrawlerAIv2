@@ -20,7 +20,7 @@ from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.adapters.base import NOT_PLATFORM, NOT_SERVED, Adapter, AdapterMatch, PageRefs, Shape
-from crawlerai.adapters.registry import DECLINE_SECONDS, MAX_DECLINED, Registry, platform_adapters
+from crawlerai.adapters.registry import DECLINE_FOR, Registry, platform_adapters
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.db.models import PageKind
 
@@ -84,11 +84,14 @@ async def _send(_request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
     raise AssertionError("the stub adapters answer themselves")
 
 
+T0 = datetime(2026, 10, 17, tzinfo=UTC)
+
+
 @dataclass
 class Clock:
-    now: float = 0.0
+    now: datetime = T0
 
-    def __call__(self) -> float:
+    def __call__(self) -> datetime:
         return self.now
 
 
@@ -248,12 +251,33 @@ def test_a_host_answering_without_the_platform_signal_is_declined_for_the_window
     registry = Registry([adapter], active={"board"}, clock=clock)
 
     asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
-    clock.now = DECLINE_SECONDS - 1
+    clock.now = T0 + DECLINE_FOR - timedelta(seconds=1)
     declined = asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
-    clock.now = DECLINE_SECONDS + 1
+    clock.now = T0 + DECLINE_FOR + timedelta(seconds=1)
     retried = asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
 
     assert (declined, retried is not None, len(adapter.rung.calls)) == (None, True, 2)
+
+
+def test_a_decline_is_read_back_from_what_the_site_row_stored() -> None:
+    # D-1384: the window holds across registries, so across processes, through `site.adapter_declined`.
+    adapter = StubAdapter("board", "board.example.test", Rung("api", status=404, reason=NOT_PLATFORM))
+    clock = Clock()
+    base = Registry([adapter], active={"board"}, clock=clock)
+    first = base.for_host("board.example.test", {})
+    asyncio.run(first.serve(BOARD, FetchPolicy(), _send))
+    stored = first.declined_for("board.example.test")
+
+    clock.now = T0 + timedelta(hours=1)
+    within = base.for_host("board.example.test", stored).would_serve(BOARD)
+    clock.now = T0 + DECLINE_FOR + timedelta(seconds=1)
+    expired = base.for_host("board.example.test", stored)
+
+    assert stored == {"board": (T0 + DECLINE_FOR).isoformat()}
+    assert within is False
+    assert expired.would_serve(BOARD) is True
+    assert expired.declined_for("board.example.test") == {}  # a decline that ran out is not stored again
+    assert base.would_serve(BOARD) is True  # the process's registry keeps none of a fetch's declines
 
 
 def test_an_answer_the_platform_gives_for_another_page_declines_no_host() -> None:
@@ -264,25 +288,6 @@ def test_an_answer_the_platform_gives_for_another_page_declines_no_host() -> Non
     again = asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
 
     assert (again is not None, len(adapter.rung.calls)) == (True, 2)
-
-
-def test_declined_hosts_are_bounded_and_the_oldest_is_forgotten_first() -> None:
-    adapter = StubAdapter("board", "", Rung("api", status=404, reason=NOT_PLATFORM))
-    registry = Registry([adapter], active={"board"})
-    urls = [f"https://h{i}.example.test/" for i in range(MAX_DECLINED + 1)]
-
-    async def serve_all() -> None:
-        for url in urls:
-            await registry.serve(url, FetchPolicy(), _send)
-
-    asyncio.run(serve_all())
-
-    async def served(url: str) -> bool:
-        return await registry.serve(url, FetchPolicy(), _send) is not None
-
-    assert asyncio.run(served(urls[1])) is False
-    assert asyncio.run(served(urls[-1])) is False
-    assert asyncio.run(served(urls[0])) is True
 
 
 SHOP_LIST = "https://shop.example.test/list"

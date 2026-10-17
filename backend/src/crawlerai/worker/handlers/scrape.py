@@ -12,10 +12,10 @@ A records task is how a recurring run sees a page again (SPEC-11 §4.2, §4.3). 
 (`standing_record`, or `standing_listing` for a listing, in `crawlerai.recurring.state`), the page is fetched with the
 validators it last answered with, and a 304 ends the task `unchanged` with no capture (`steps.fetch_page`). A page
 fetched whole whose visible words are the same as last time (an equal content digest, D-1340), or a listing without
-words whose links are (D-1383), ends `unchanged` with its capture, and is not extracted. Having no extraction, an unchanged page joins no drift window (SPEC-08 §4.9) and does
-not count toward `pages_extracted` (ARCHITECTURE §8.3 counts `extracted` and `partial` pages). Only records tasks read
-or write `url_state`: a fingerprint or validators stored without the record made from that content would let a stale
-record stand.
+words whose links are (D-1383), ends `unchanged` with its capture, and is not extracted. Having no extraction, an
+unchanged page joins no drift window (SPEC-08 §4.9) and does not count toward `pages_extracted` (ARCHITECTURE §8.3
+counts `extracted` and `partial` pages). Only records tasks read or write `url_state`: a fingerprint or validators
+stored without the record made from that content would let a stale record stand.
 
 Everything is written in the worker's transaction for the task, so a task that raises rolls back alone and fails no
 other (INV-31). A page that was not reached ends with its outcome (`blocked`, `shell`, `not_found`); a fetch error is a

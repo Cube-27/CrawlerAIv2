@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.politeness import BACKOFF_MAX, Admit, HostLimiter, interval, page_requests, refuse, slowed_down
-from crawlerai.acquire.robots import Fetch, site_robots
+from crawlerai.acquire.robots import Fetch, Robots, site_robots
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Site, SiteId
 from crawlerai.db.queue import LEASE, ClaimedTask, retry_delay
@@ -28,9 +28,12 @@ from crawlerai.worker.loop import Failed, Finished, Postpone, TaskResult
 # themselves (each within its policy's timeout) and the rest of the task.
 WAIT_MAX: Final = LEASE / 2
 
-# A page fetch, which answers `Unchanged` when it sent validators the page still matches (SPEC-11 §4.2), and admits
-# each request after its first with the `Admit` it is given.
-PageFetch = Callable[[str, Admit], Awaitable[FetchResult | Unchanged]]
+# The rules the page's host goes by, as `fetch_politely` read them before the fetch: the site's interval setting and
+# robots.txt (None when the policy does not respect it).
+HostRules = tuple[int | None, Robots | None]
+# A page fetch, which answers `Unchanged` when it sent validators the page still matches (SPEC-11 §4.2), admits each
+# request after its first with the `Admit` it is given, and has the page host's `HostRules` (D-1384).
+PageFetch = Callable[[str, Admit, HostRules], Awaitable[FetchResult | Unchanged]]
 
 
 async def fetch_politely(
@@ -73,7 +76,8 @@ async def fetch_politely(
     if wait := limiter.admit(host, gap):
         return Postpone(wait)
 
-    result = await fetch(task.url, refuse if disallowed else partial(limiter.wait, host, gap, WAIT_MAX))
+    admit_next = refuse if disallowed else partial(limiter.wait, host, gap, WAIT_MAX)
+    result = await fetch(task.url, admit_next, (site.crawl_delay_ms, robots))
     limiter.observe(host, gap, page_requests(result.attempts))
     if isinstance(result, Unchanged) or result.block_class == "ok":
         return result

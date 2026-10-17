@@ -6,11 +6,12 @@ page's (SPEC-09 §4.8), as a learning run's recipe replays are (§4.6, §4.7).
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Final
 from urllib.parse import urlsplit
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
@@ -25,7 +26,7 @@ from crawlerai.config_ir.api_recipe.replay import Replay, Replays
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
-from crawlerai.db.models import JobId
+from crawlerai.db.models import JobId, Site
 from crawlerai.services.scrape_steps import SiteRow, record_fetch_usage, site_row
 from crawlerai.storage.base import ObjectStore
 
@@ -162,6 +163,37 @@ async def endpoint_rules(
     if robots is None:
         return "robots_unreachable"  # RFC 9309 §2.3.1.4: an unreachable robots.txt allows nothing
     return (site.crawl_delay_ms, robots) if robots.allows(url) else "robots"
+
+
+def page_host_first(page_host: str, known: tuple[int | None, Robots | None], rules: SiteRules) -> SiteRules:
+    """`rules`, except for a URL on `page_host`, whose rules the caller read before fetching its page (`known`: the
+    host's interval setting and robots.txt, None when the policy does not respect it) and which are not read again
+    (D-1384)."""
+    crawl_delay_ms, robots = known
+
+    async def first(url: str, policy: FetchPolicy) -> tuple[int | None, Robots | None] | str:
+        if (urlsplit(url).hostname or "") != page_host:
+            return await rules(url, policy)
+        if not policy.respect_robots:
+            return crawl_delay_ms, None
+        if robots is None:
+            return "robots_unreachable"  # RFC 9309 §2.3.1.4: an unreachable robots.txt allows nothing
+        return (crawl_delay_ms, robots) if robots.allows(url) else "robots"
+
+    return first
+
+
+def site_rungs(fetching: Fetching, host: str, site: SiteRow) -> Rungs:
+    """This process's rungs with an adapter registry knowing the declines stored on the site of `host` (D-1384)."""
+    return replace(fetching.rungs, adapters=fetching.rungs.adapters.for_host(host, site.adapter_declined))
+
+
+async def store_declines(conn: AsyncConnection, site: SiteRow, host: str, rungs: Rungs) -> None:
+    """Store on the site of `host` the adapter declines `rungs` hold for it (`site_rungs`) when they differ from what
+    its row held: a decline made, or one that ran out (D-1384)."""
+    declined = rungs.adapters.declined_for(host)
+    if declined != site.adapter_declined:
+        await conn.execute(update(Site).where(Site.id == site.id).values(adapter_declined=declined))
 
 
 def engine_rules(engine: AsyncEngine, http: Rung, attempts: list[AttemptRecord]) -> SiteRules:
