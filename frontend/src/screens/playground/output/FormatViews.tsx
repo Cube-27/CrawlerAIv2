@@ -122,7 +122,7 @@ export function ScreenshotView({ artifact }: Readonly<{ artifact: Artifact }>) {
       <img
         src={artifact.url}
         alt="Screenshot of the page"
-        className="max-h-[70vh] max-w-full rounded-medium border border-divider object-contain"
+        className="max-w-full rounded-medium border border-divider object-contain"
       />
     </a>
   );
