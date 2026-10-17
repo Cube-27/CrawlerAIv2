@@ -291,6 +291,38 @@ def test_standalone_variants_naming_their_group_s_id_are_its_variants() -> None:
     assert [item.fields["sku"].value for item in published.items or ()] == ["W-S", "W-M"]
 
 
+def test_a_product_naming_its_group_by_is_variant_of_gives_the_group_s_variants_as_rows() -> None:
+    # D-1344: schema.org `isVariantOf` is the inverse of `hasVariant`; the group, not the Product holding it, is the
+    # page's product, its variants are rows, and the page's Product is the variant it states (sku W-M).
+    group = {
+        "@type": "ProductGroup",
+        "name": "Widget",
+        "color": "Blue",
+        "variesBy": "https://schema.org/size",
+        "hasVariant": [
+            {
+                "@type": "Product",
+                "sku": f"W-{size}",
+                "size": size,
+                "offers": _offer(price, "https://schema.org/InStock"),
+            }
+            for size, price in (("S", "10.00"), ("M", "12.00"))
+        ],
+    }
+    product = _product(name="Widget M", sku="W-M", url=PAGE_URL, isVariantOf=group)
+
+    result = _extract(_jsonld(product))
+
+    assert _outcomes(result, "title", "color") == {
+        "title": ("published", None, "Widget"),
+        "color": ("published", None, "Blue"),
+    }
+    assert result.entity is not None
+    published = result.entity["variants"]
+    assert published.status == "published"
+    assert [item.fields["sku"].value for item in published.items or ()] == ["W-S", "W-M"]
+
+
 def test_list_entries_stating_their_own_name_and_url_are_the_rows() -> None:
     # schema.org: a ListItem without `item` stands for the thing it lists with its own name and url. The breadcrumb
     # trail's entries are the page's navigation, never rows.

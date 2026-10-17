@@ -228,6 +228,53 @@ def test_a_product_naming_its_group_s_id_is_its_variant() -> None:
     assert graph.entities["jsonld:2:$"].parent is None
 
 
+# `isVariantOf` (D-1344): the inverse of `hasVariant`, so the group stands beside the page's Product.
+
+
+def test_a_product_naming_its_group_by_is_variant_of_is_the_group_s_member_it_states() -> None:
+    group = {
+        "@type": "ProductGroup",
+        "name": "Widget",
+        "hasVariant": [{"@type": "Product", "sku": "W-1"}, {"@type": "Product", "sku": "W-2"}],
+    }
+    product = _product(sku="W-2", name="Widget Two", isVariantOf=group)
+
+    graph, candidates = _graph(product)
+
+    group_id, member = "jsonld:0:$['isVariantOf']", "jsonld:0:$['isVariantOf']['hasVariant'][1]"
+    assert _roots(graph) == [group_id]
+    assert graph.aliases == {"jsonld:0:$": member}
+    assert (graph.entities[member].parent, graph.entities[member].via) == (group_id, "hasVariant")
+    assert ("title", member) in [(c.field, c.entity_id) for c in candidates]
+
+
+def test_a_product_naming_its_group_by_is_variant_of_and_no_member_becomes_one() -> None:
+    product = _product(sku="W-2", isVariantOf={"@type": "ProductGroup", "name": "Widget"})
+
+    graph, _ = _graph(product)
+
+    group_id = "jsonld:0:$['isVariantOf']"
+    assert _roots(graph) == [group_id]
+    assert (graph.entities["jsonld:0:$"].parent, graph.entities["jsonld:0:$"].via) == (group_id, "hasVariant")
+
+
+def test_is_variant_of_a_product_model_is_not_inverted() -> None:
+    # schema.org `isVariantOf` also ranges over ProductModel, which has no `hasVariant` members.
+    graph, _ = _graph(_product(sku="W-2", isVariantOf={"@type": "ProductModel", "name": "Widget"}))
+
+    assert _roots(graph) == ["jsonld:0:$"]
+
+
+def test_is_variant_of_on_a_nested_product_is_not_inverted() -> None:
+    product = _product(sku="W-2", isVariantOf={"@type": "ProductGroup", "name": "Widget"})
+    page = {"@context": SCHEMA_ORG, "@type": "WebPage", "mainEntity": product}
+
+    graph, _ = _graph(page)
+
+    group = graph.entities["jsonld:0:$['mainEntity']['isVariantOf']"]
+    assert (group.parent, group.via) == ("jsonld:0:$['mainEntity']", "isVariantOf")
+
+
 _KEYS = st.sampled_from([("sku", "A"), ("sku", "B"), ("gtin13", "4006381333931"), ("@id", "https://x.example/1")])
 
 

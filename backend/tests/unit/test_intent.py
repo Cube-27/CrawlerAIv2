@@ -284,8 +284,11 @@ def test_two_product_groups_naming_the_page_stay_ambiguous() -> None:
     assert _select(*groups, *variants) == AmbiguousTarget(candidates=(groups[0].id, groups[1].id))
 
 
-def test_the_group_a_product_is_a_variant_of_is_not_a_candidate() -> None:
-    # schema.org `isVariantOf` (inverse of `hasVariant`): its value is the group the holder belongs to.
+def test_the_group_a_product_is_a_variant_of_is_the_target_and_the_product_its_variant() -> None:
+    # schema.org `isVariantOf` (inverse of `hasVariant`): its value is the group the holder belongs to, so the group is
+    # the page's product and the holder one of its variants (D-1344).
     product = _entity("jsonld:0:$", "Product", PAGE_URL + "?colour=red")
     group = _entity("jsonld:0:$['isVariantOf']", "ProductGroup", PAGE_URL, parent=product.id, via="isVariantOf")
-    assert _select(product, group, request_url=OTHER_URL) == product
+    target = _select(product, group, request_url=OTHER_URL)
+    assert isinstance(target, Entity)
+    assert (target.id, target.parent) == (group.id, None)
