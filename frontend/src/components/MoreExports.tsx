@@ -4,7 +4,7 @@ import { problemOf } from "../api/hooks/query";
 import type { JobFile } from "../api/jobs";
 import { saveBlob, saveExportPages } from "../app/download";
 
-// JSON Lines (jsonl.org) is a text export by cursor like CSV; the others are made whole by the server: a workbook
+// JSON Lines is a text export by cursor like CSV; the others are made whole by the server: a workbook
 // (ECMA-376 Office Open XML), an Apache Parquet file, and the `llms.txt` pair (llmstxt.org).
 const LINES = { extension: "jsonl", type: "application/x-ndjson" };
 const FILES: readonly { file: JobFile; label: string; records: boolean }[] = [
