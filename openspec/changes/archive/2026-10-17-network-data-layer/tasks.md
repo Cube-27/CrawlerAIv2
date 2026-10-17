@@ -21,11 +21,16 @@
 
 ## 3. Listing recipes and pagination (batch A2)
 
-- [ ] 3.1 Pagination kinds `param`, `cursor`, `next_url` and `link` (RFC 8288) in `config_ir/api_recipe/model.py`,
-      query or body.
-- [ ] 3.2 `config_ir/api_recipe/pagination.py` infers the kind from two or more calls of one endpoint; Hypothesis
-      properties.
-- [ ] 3.3 `execute.pages()` runs every kind, POST bodies included, and stops on empty rows, an absent cursor or the
-      records target.
-- [ ] 3.4 Learning accepts listing recipes (supersedes D-0604), validated by replaying pages 1 and 2 against the
-      captured rows; samples without network bodies get a browser render with capture.
+- [x] 3.1 Pagination kinds `param`, `cursor`, `next_url` and `link` (RFC 8288) in `config_ir/api_recipe/model.py`,
+      query or body. (#254)
+- [x] 3.2 `config_ir/api_recipe/pagination.py` infers the kind from two or more calls of one endpoint; Hypothesis
+      properties. (#254)
+- [x] 3.3 `execute.pages()` runs every kind, POST bodies included, and stops on empty rows, an absent cursor or the
+      records target. (#254)
+- [x] 3.4 Learning accepts listing recipes (supersedes D-0604), validated by replaying pages 1 and 2 against the
+      captured rows; samples without network bodies get a browser render with capture. (#254)
+- [x] 3.5 Role D's prompt (`d_bind.txt`) names a listing's pagination; a learned listing recipe's map reads a browser
+      capture's calls of its endpoint, text fields included. (#254)
+- [x] 3.6 A listing scrape with browser actions is served by its site's listing recipe over HTTP, up to its records
+      target. (#254)
+- [x] 3.7 A render waits for a data call still in flight when its content is quiet (#250 follow-up). (#254)

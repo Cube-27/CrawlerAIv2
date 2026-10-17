@@ -20,6 +20,7 @@ from crawlerai.collect.dom import DomCollector
 from crawlerai.collect.js_state import JsStateCollector
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.microdata import MicrodataCollector
+from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.collect.xhr import XhrCollector
@@ -50,7 +51,9 @@ def collect_page(
     *,
     vocabulary: Vocabulary,
     adapters: Adapters | None,
+    learned: LearnedCalls | None = None,
 ) -> Collected:
+    """Every collector over the page; `learned` is the site's learned listing recipe's calls (`collect.xhr`)."""
     collectors: list[Collector] = [
         JsonLdCollector(vocabulary),
         MicrodataCollector(vocabulary),
@@ -66,7 +69,7 @@ def collect_page(
     ]
     entities = tuple(entity for result in results for entity in result.entities)
     others = tuple(candidate for result in results for candidate in result.candidates)
-    admitting: Sequence[AdmittingCollector] = (JsStateCollector(), XhrCollector())
+    admitting: Sequence[AdmittingCollector] = (JsStateCollector(), XhrCollector(learned))
     admitted = [
         a
         for c in admitting

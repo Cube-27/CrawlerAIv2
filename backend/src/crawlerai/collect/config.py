@@ -11,6 +11,7 @@ from typing import Protocol, Self
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from crawlerai.collect.base import PAGE, Candidate, Entity
+from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context
@@ -52,6 +53,12 @@ class ConfigExecutor(Protocol):
         """The status of each field it runs (`suspended` fields do not run, §8.3), and of each field it lists as
         `absent` (D-1341): resolution reads it for the `config_corroborated` / `config_uncorroborated` bucket (§10), and
         the pipeline for the fields role C may still fill (§8.4)."""
+        ...
+
+    @property
+    def learned_calls(self) -> LearnedCalls | None:
+        """The calls of a learned listing recipe's endpoint, which the `xhr` collector reads with the recipe's map on
+        a page the recipe did not serve (Appendix A #59); None without one."""
         ...
 
     def execute(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed: ...

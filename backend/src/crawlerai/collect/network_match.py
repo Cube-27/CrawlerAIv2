@@ -14,8 +14,8 @@ currency sign, grouping), and a short number matches any counter on the page. An
 `MIN_ITEMS` is no listing's rows (`acquire.items`).
 """
 
-from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import Final
 from urllib.parse import urlsplit
@@ -132,33 +132,77 @@ def data_calls(page: ParsedPage) -> list[DataCall]:
     return sorted(found, key=lambda data: (-data.row_hits, -data.visible))
 
 
-# One listing's series: an endpoint, the literal origin and path its calls share, and the row query.
-_SeriesKey = tuple[EndpointKey, str, str]
+# One listing's series: the request method, the literal origin and path its calls share, the request body shape and
+# the row query.
+SeriesKey = tuple[str | None, str, tuple[str, ...] | None, str]
 
 
 def row_series(calls: Sequence[DataCall]) -> list[tuple[DataCall, ...]]:
     """The calls with rows grouped into the pages of one listing a page loaded (a first batch, then more on scrolling):
-    one endpoint and row query, and the same origin and path, so that only query or body values vary (RFC 3986 §3.3,
-    §3.4: a path names the resource, a query the part of it asked for; a URL shape alone lets two resources' paths
-    meet). Each group is in capture order. A request sent again (same method, URL and body) answers with the same
-    items, so only its first call counts. Groups come in the order of their best call in `calls`."""
-    best: dict[_SeriesKey, int] = {}  # each group's best rank in `calls`
+    one method, body shape and row query, and the same origin and path, so that only the query or body values vary
+    (RFC 3986 §3.3, §3.4: a path names the resource, a query the part of it asked for; a URL shape alone lets two
+    resources' paths meet). The query's names may differ too: a listing's first call often leaves out the page or
+    cursor parameter its next calls add. Each group is in capture order. A request sent again (same method, URL and
+    body) answers with the same items, so only its first call counts. Groups come in the order of their best call in
+    `calls`."""
+    best: dict[SeriesKey, int] = {}  # each group's best rank in `calls`
     for rank, data in enumerate(calls):
-        if (key := _series_key(data)) is not None:
+        if (key := series_key(data)) is not None:
             best.setdefault(key, rank)
-    groups: dict[_SeriesKey, dict[tuple[str | None, str, str | None], DataCall]] = {}
+    groups: dict[SeriesKey, dict[tuple[str | None, str, str | None], DataCall]] = {}
     for data in sorted(calls, key=lambda data: data.call.index):
-        if (key := _series_key(data)) is not None:
+        if (key := series_key(data)) is not None:
             entry = data.call.entry
             groups.setdefault(key, {}).setdefault((entry.method, entry.url, entry.request_body), data)
     return [tuple(groups[key].values()) for key in sorted(groups, key=best.__getitem__)]
 
 
-def _series_key(data: DataCall) -> _SeriesKey | None:
+def series_key(data: DataCall) -> SeriesKey | None:
+    """The series a call with rows belongs to (`row_series`); None for a call without rows."""
     if data.rows is None:
         return None
     parts = urlsplit(data.call.entry.url)
-    return data.call.endpoint, f"{parts.scheme}://{parts.netloc}{parts.path}", data.rows
+    endpoint = data.call.endpoint
+    return endpoint.method, f"{parts.scheme}://{parts.netloc}{parts.path}", endpoint.body, data.rows
+
+
+@dataclass(frozen=True)
+class LearnedCalls:
+    """A learned listing recipe (Appendix A #59) as the calls a page makes show it: the request method, the origin and
+    path segments of its endpoint URL template (None for a segment holding a placeholder, which any value fills), the
+    row query and the field map, paths relative to a row. The `xhr` collector reads the calls it matches with that
+    map, text fields included, instead of proving paths on the page."""
+
+    method: str
+    origin: str
+    segments: tuple[str | None, ...]
+    rows: str
+    map: Mapping[str, str]
+
+    def matches(self, data: DataCall) -> bool:
+        entry = data.call.entry
+        parts = urlsplit(entry.url)
+        segments = parts.path[1:].split("/") if parts.path else []
+        return (
+            data.rows == self.rows
+            and str(entry.method).upper() == self.method
+            and f"{parts.scheme}://{parts.netloc}" == self.origin
+            and len(segments) == len(self.segments)
+            and all(want is None or want == got for want, got in zip(self.segments, segments, strict=True))
+        )
+
+
+def state_calls(states: Sequence[ParsedPage]) -> list[DataCall]:
+    """The calls of the document states one listing's browser actions kept, in order (a kept state's calls are those
+    since the state before it), as `data_calls` gives them for each, best first; a call's index counts the network
+    bodies of the states before its own, so calls of different states never share one."""
+    found: list[DataCall] = []
+    offset = 0
+    for state in states:
+        for data in data_calls(state):
+            found.append(replace(data, call=replace(data.call, index=offset + data.call.index)))
+        offset += len(state.network)
+    return sorted(found, key=lambda data: (-data.row_hits, -data.visible))
 
 
 def _rows(document: JsonValue, page: ParsedPage, memo: dict[str, bool]) -> tuple[str | None, int]:

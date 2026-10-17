@@ -83,6 +83,11 @@ _SETTLE_SHARE = 0.9
 # Attribute changes are left out: animations and style toggles change attributes, not content.
 _QUIET_S = 2.0
 _POLL_S = 0.25
+# A page whose content is quiet while one of its fetch or XMLHttpRequest calls (Fetch Standard §2.2.5 destinations) is
+# still in flight is waited for up to this much longer, so a data call that arrives late is kept; a call that never
+# ends (a long poll) holds the read no longer than that.
+_CALL_WAIT_S = 3.0
+_CALLS = frozenset({"fetch", "xhr"})
 # Evaluated in Patchright's isolated world, which shares the document but not the page's globals, so the page neither
 # sees nor touches the observer. It is installed on the first call in each document, and answers the seconds since
 # the last change.
@@ -230,6 +235,14 @@ class DataCalls:
 
     responses: list[tuple[Response, int]] = field(default_factory=list)
     actions: int = 0
+    in_flight: set[Request] = field(default_factory=set)  # the fetch and XMLHttpRequest calls not answered yet
+
+    def on_request(self, request: Request) -> None:
+        if request.resource_type in _CALLS:
+            self.in_flight.add(request)
+
+    def on_done(self, request: Request) -> None:
+        self.in_flight.discard(request)
 
     def on_response(self, response: Response, main_frame: Frame) -> None:
         request = response.request
@@ -332,6 +345,9 @@ async def _navigate(
     page.on("response", frame.on_response)
     page.on("requestfailed", frame.on_failed)
     page.on("framenavigated", frame.on_navigated)
+    page.on("request", calls.on_request)
+    page.on("requestfinished", calls.on_done)
+    page.on("requestfailed", calls.on_done)
     if policy.capture_network_json:
         page.on("response", lambda response: calls.on_response(response, page.main_frame))
 
@@ -348,6 +364,7 @@ async def _navigate(
         frame,
         started + _SETTLE_SHARE * policy.browser_timeout_s,
         interstitial_deadline=started + _INTERSTITIAL_SHARE * policy.browser_timeout_s,
+        calls=calls,
     )
     return Rendered(page, frame, response, policy, calls)
 
@@ -386,16 +403,19 @@ async def read_state(
     return exchange, Content(body=body, raw_body=raw_body, network=network)
 
 
-async def _settle(page: Page, frame: _MainFrame, deadline: float, *, interstitial_deadline: float) -> None:
+async def _settle(
+    page: Page, frame: _MainFrame, deadline: float, *, interstitial_deadline: float, calls: DataCalls
+) -> None:
     """Wait for `load`, then, while the document is an interstitial, for the next one (until `interstitial_deadline`),
-    then until the content is quiet (`_QUIET_JS`) or, for a document that is no error, the network is idle (no
-    connection for 500 ms), whichever comes first; at most until `deadline`."""
+    then until the content is quiet (`_QUIET_JS`) with no data call in flight (`_CALL_WAIT_S` at most) or, for a
+    document that is no error, the network is idle (no connection for 500 ms), whichever comes first; at most until
+    `deadline`."""
     with contextlib.suppress(PlaywrightTimeout):
         await page.wait_for_load_state("load", timeout=_ms_until(deadline))
     while time.monotonic() < interstitial_deadline and await _interstitial(page, frame):
         if not await _next_document(page, frame, interstitial_deadline):
             break
-    waits = [asyncio.create_task(_content_quiet(page, frame))]
+    waits = [asyncio.create_task(_content_quiet(page, frame, calls))]
     if frame.latest is None or frame.latest.status < _ERROR_STATUS:
         waits.append(asyncio.create_task(_network_idle(page, deadline)))
     try:
@@ -431,8 +451,9 @@ async def _next_document(page: Page, frame: _MainFrame, deadline: float) -> bool
     return True
 
 
-async def _content_quiet(page: Page, frame: _MainFrame) -> None:
-    """Returns once no navigation is in flight and the document's structure and text have not changed for `_QUIET_S`."""
+async def _content_quiet(page: Page, frame: _MainFrame, calls: DataCalls) -> None:
+    """Returns once no navigation is in flight and the document's structure and text have not changed for `_QUIET_S`,
+    nor for `_CALL_WAIT_S` more while a data call is in flight."""
     while True:
         await asyncio.sleep(_POLL_S)
         if frame.pending:
@@ -441,7 +462,7 @@ async def _content_quiet(page: Page, frame: _MainFrame) -> None:
             quiet = cast(float, await page.evaluate(_QUIET_JS))
         except PlaywrightError:
             continue  # the document is being replaced, and its observer with it
-        if quiet >= _QUIET_S:
+        if quiet >= (_QUIET_S + _CALL_WAIT_S if calls.in_flight else _QUIET_S):
             return
 
 

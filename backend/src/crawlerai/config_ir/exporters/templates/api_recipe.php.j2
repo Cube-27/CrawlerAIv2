@@ -20,7 +20,15 @@
 {% endfor %}
 {% set pagination = recipe.pagination %}
 {% if pagination %}
-// Pagination: set query parameter {{ pagination["name"]|php_comment }} to {{ pagination.start|php_int }}, {{ (pagination.start + pagination.step)|php_int }}, {{ (pagination.start + 2 * pagination.step)|php_int }}, ... until {{ pagination.rows|php_comment }} selects nothing.
+{% if pagination.kind == "param" %}
+// Pagination: set {{ pagination.where|php_comment }} value {{ pagination["name"]|php_comment }} to {{ pagination.start|php_int }}, {{ (pagination.start + pagination.step)|php_int }}, {{ (pagination.start + 2 * pagination.step)|php_int }}, ... until {{ pagination.rows|php_comment }} selects nothing.
+{% elif pagination.kind == "cursor" %}
+// Pagination: set {{ pagination.where|php_comment }} value {{ pagination["name"]|php_comment }} to the value the previous response holds at {{ pagination.cursor|php_comment }}, until it holds none or {{ pagination.rows|php_comment }} selects nothing.
+{% elif pagination.kind == "next_url" %}
+// Pagination: request the URL the previous response holds at {{ pagination["next"]|php_comment }} (RFC 3986 resolution, same origin), until it holds none or {{ pagination.rows|php_comment }} selects nothing.
+{% else %}
+// Pagination: request the target of the previous response's Link header with rel="next" (RFC 8288, same origin), until there is none or {{ pagination.rows|php_comment }} selects nothing.
+{% endif %}
 {% endif %}
 
 function api_recipe_request(string $page_url, array $params): array

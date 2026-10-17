@@ -119,12 +119,35 @@
           "pagination": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Pagination"
+                "discriminator": {
+                  "mapping": {
+                    "cursor": "#/components/schemas/CursorPagination",
+                    "link": "#/components/schemas/LinkPagination",
+                    "next_url": "#/components/schemas/NextUrlPagination",
+                    "param": "#/components/schemas/ParamPagination"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ParamPagination"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CursorPagination"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NextUrlPagination"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LinkPagination"
+                  }
+                ]
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Pagination"
           },
           "params_from_url": {
             "default": {},
@@ -1192,6 +1215,47 @@
           "xpath"
         ],
         "title": "CssStep",
+        "type": "object"
+      },
+      "CursorPagination": {
+        "additionalProperties": false,
+        "description": "The next request sets `name` to the value the previous response holds at `cursor`, until it holds none.",
+        "properties": {
+          "cursor": {
+            "title": "Cursor",
+            "type": "string"
+          },
+          "kind": {
+            "const": "cursor",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "string"
+          },
+          "where": {
+            "enum": [
+              "query",
+              "body"
+            ],
+            "title": "Where",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "where",
+          "name",
+          "cursor",
+          "rows"
+        ],
+        "title": "CursorPagination",
         "type": "object"
       },
       "DayUsage": {
@@ -3076,6 +3140,27 @@
         "title": "LearnStarted",
         "type": "object"
       },
+      "LinkPagination": {
+        "additionalProperties": false,
+        "description": "The next request goes to the target of the previous response's `Link` field with relation type `next`\n(RFC 8288 \u00a73), on the recipe's own origin, until it names none.",
+        "properties": {
+          "kind": {
+            "const": "link",
+            "title": "Kind",
+            "type": "string"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "rows"
+        ],
+        "title": "LinkPagination",
+        "type": "object"
+      },
       "ListLabel": {
         "additionalProperties": false,
         "description": "A row-mapped field's label (SPEC-13 \u00a74.10): one row per variant shown on the page, in page order. `absent`\nmeans the page offers no variant choice.",
@@ -3442,6 +3527,32 @@
           "name"
         ],
         "title": "NewSchema",
+        "type": "object"
+      },
+      "NextUrlPagination": {
+        "additionalProperties": false,
+        "description": "The next request goes to the URL the previous response holds at `next` (resolved against the request's URL,\nRFC 3986 \u00a75), on the recipe's own origin, until it holds none.",
+        "properties": {
+          "kind": {
+            "const": "next_url",
+            "title": "Kind",
+            "type": "string"
+          },
+          "next": {
+            "title": "Next",
+            "type": "string"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "next",
+          "rows"
+        ],
+        "title": "NextUrlPagination",
         "type": "object"
       },
       "NormalizeOp-Input": {
@@ -4026,9 +4137,9 @@
         "title": "PageSummary",
         "type": "object"
       },
-      "Pagination": {
+      "ParamPagination": {
         "additionalProperties": false,
-        "description": "\u00a74.8: the listing's next request sets query parameter `name` to `start`, `start + step`, ... until `rows`\nselects nothing.",
+        "description": "\u00a74.8: the listing's requests set `name` to `start`, `start + step`, ... (a page number or an item offset) until\n`rows` selects nothing.",
         "properties": {
           "kind": {
             "const": "param",
@@ -4053,16 +4164,25 @@
             "minimum": 1.0,
             "title": "Step",
             "type": "integer"
+          },
+          "where": {
+            "enum": [
+              "query",
+              "body"
+            ],
+            "title": "Where",
+            "type": "string"
           }
         },
         "required": [
           "kind",
+          "where",
           "name",
           "start",
           "step",
           "rows"
         ],
-        "title": "Pagination",
+        "title": "ParamPagination",
         "type": "object"
       },
       "PlatformDraft": {

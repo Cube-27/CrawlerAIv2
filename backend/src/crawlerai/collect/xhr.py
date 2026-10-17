@@ -9,17 +9,20 @@ On a listing, the calls of one rows endpoint (`network_match.row_series`) give r
 which some row field is proved. A row field takes the path, relative to a row, whose values the admission rule admits
 in the most rows, at least `MIN_ITEMS` of them; a path proved so on the page is read in every row of the series
 through the API recipe row reader (`collect.api`), as a recipe's map is. Those calls are then read as rows only, not
-admitted value by value as well.
+admitted value by value as well. Where the site has a learned listing recipe, the calls of its endpoint are read with
+the recipe's map instead (`network_match.LearnedCalls`): learning proved those paths by equality with published row
+values, so text fields are read too.
 """
 
 from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass
 
 from crawlerai.acquire.items import MIN_ITEMS
 from crawlerai.collect import json_doc
 from crawlerai.collect.admission import Admitted, Document, FieldAnchors, admit, admits, field_anchors
 from crawlerai.collect.api import read_rows
 from crawlerai.collect.base import Candidate
-from crawlerai.collect.network_match import DataCall, data_calls, row_series
+from crawlerai.collect.network_match import DataCall, LearnedCalls, data_calls, row_series
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, SchemaDef
@@ -30,11 +33,18 @@ Scalar = str | int | float
 _Row = dict[str, Scalar]
 
 
+@dataclass(frozen=True)
 class XhrCollector:
+    """`learned`: the calls of the site's learned listing recipe, read with its map where the page made them."""
+
+    learned: LearnedCalls | None = None
+
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate]) -> Admitted:
         diagnostics: list[str] = []
         documents = network_documents(page, diagnostics)
-        found = _proved(page, schema, ctx, others) if schema.page_kind == "listing" else None
+        found = None
+        if schema.page_kind == "listing":
+            found = _learned(page, schema, self.learned) or _proved(page, schema, ctx, others)
         if found is None:
             return admit("xhr", documents, diagnostics, page, schema, ctx, others)
         series, fields = found
@@ -76,6 +86,22 @@ def _query(data: DataCall) -> str:
     if data.rows is None:  # `row_series` keeps only calls with rows
         raise ValueError("a call of a row series has a row query")
     return data.rows
+
+
+def _learned(
+    page: ParsedPage, schema: SchemaDef, learned: LearnedCalls | None
+) -> tuple[tuple[DataCall, ...], dict[str, str]] | None:
+    """The first row series whose calls the learned recipe's endpoint made, with the recipe's map of the schema's row
+    fields."""
+    if learned is None:
+        return None
+    fields = {
+        name: path for name, path in learned.map.items() if name in schema.fields and schema.fields[name].scope == "row"
+    }
+    for series in row_series(data_calls(page)):
+        if fields and all(learned.matches(data) for data in series):
+            return series, fields
+    return None
 
 
 def _proved(

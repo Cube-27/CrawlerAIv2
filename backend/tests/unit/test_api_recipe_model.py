@@ -20,7 +20,14 @@ def _recipe(**changes: Any) -> dict[str, Any]:
         "params_from_url": {"slug": "path:1", "lang": "query:hl"},
         "headers": {"Accept": "application/json", "Referer": "{page_url}"},
         "map": {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"},
-        "pagination": {"kind": "param", "name": "page", "start": 1, "step": 1, "rows": "$['data']['items'][*]"},
+        "pagination": {
+            "kind": "param",
+            "where": "query",
+            "name": "page",
+            "start": 1,
+            "step": 1,
+            "rows": "$['data']['items'][*]",
+        },
         "proof": {"validated_on": [_CAPTURE], "headers_tried": 2, "bound_by": "deterministic"},
         **changes,
     }
@@ -118,10 +125,46 @@ _REFUSED: dict[str, tuple[dict[str, Any], str]] = {
         "validated_on",
     ),
     "pagination step zero": (
-        {"pagination": {"kind": "param", "name": "p", "start": 0, "step": 0, "rows": "$[*]"}},
+        {"pagination": {"kind": "param", "where": "query", "name": "p", "start": 0, "step": 0, "rows": "$[*]"}},
         "greater than or equal to 1",
     ),
+    "pagination of an unknown kind": ({"pagination": {"kind": "scroll", "rows": "$[*]"}}, "does not match any of"),
+    "body pagination without a body": (
+        {"pagination": {"kind": "param", "where": "body", "name": "$['page']", "start": 0, "step": 1, "rows": "$[*]"}},
+        "needs a request body",
+    ),
+    "body pagination path with a wildcard": (
+        {
+            "method": "POST",
+            "body": {"template": '{"page":1}'},
+            "pagination": {"kind": "cursor", "where": "body", "name": "$[*]", "cursor": "$['c']", "rows": "$[*]"},
+        },
+        "without wildcards",
+    ),
+    "next URL path outside the engine subset": (
+        {"pagination": {"kind": "next_url", "next": "$.next", "rows": "$[*]"}},
+        "not a query of name, wildcard and index",
+    ),
 }
+
+
+@pytest.mark.parametrize(
+    "pagination",
+    [
+        {"kind": "cursor", "where": "body", "name": "$['variables']['after']", "cursor": "$['end']", "rows": "$[*]"},
+        {"kind": "param", "where": "body", "name": "$['variables']['page']", "start": 1, "step": 1, "rows": "$[*]"},
+        {"kind": "next_url", "next": "$['links']['next']", "rows": "$['items'][*]"},
+        {"kind": "link", "rows": "$['items'][*]"},
+    ],
+    ids=["cursor-in-body", "param-in-body", "next_url", "link"],
+)
+def test_every_pagination_kind_round_trips(pagination: dict[str, Any]) -> None:
+    body = {"template": '{"query":"q","variables":{"page":1,"after":null}}'}
+    recipe = ApiRecipe.model_validate(_recipe(method="POST", body=body, pagination=pagination))
+
+    assert ApiRecipe.model_validate_json(recipe.model_dump_json()) == recipe
+    assert recipe.pagination is not None
+    assert recipe.pagination.model_dump() == pagination
 
 
 @pytest.mark.parametrize(("changes", "reason"), _REFUSED.values(), ids=_REFUSED.keys())
@@ -149,3 +192,18 @@ def test_a_map_entry_reads_one_scalar_or_its_joined_parts(path: str, expected: o
     document: JsonValue = {"data": data}
 
     assert read_map(path, document) == expected
+
+
+def test_a_listing_recipe_names_the_calls_its_endpoint_makes() -> None:
+    recipe = ApiRecipe.model_validate(_recipe(url="https://api.example.test/v1/{slug}/items?hl={lang}"))
+    detail = ApiRecipe.model_validate(_recipe(pagination=None))
+
+    learned = recipe.learned_calls
+    assert learned is not None
+    assert (learned.method, learned.origin, learned.segments) == (
+        "GET",
+        "https://api.example.test",
+        ("v1", None, "items"),
+    )
+    assert (learned.rows, learned.map) == ("$['data']['items'][*]", recipe.map)
+    assert detail.learned_calls is None

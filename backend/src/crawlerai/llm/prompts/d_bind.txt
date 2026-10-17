@@ -22,6 +22,12 @@ Reply with one JSON object that matches the response schema:
   placeholder: `"{name}"` for a string, a bare `{name}` for a number. `null` for a request without a body.
 Headers are not part of your spec; the program finds the ones the endpoint needs by replaying the request.
 
+A listing's sample request is the request for its first page. The request then names the listing's pagination: its
+kind (`param`: a page number or item offset; `cursor`: a value the previous answer holds; `next_url` or `link`: a URL
+the previous answer gives) and, for `param` and `cursor`, the query parameter or body value it sets (a body value as
+a JSONPath like `$['variables']['page']`). The program sets that value itself on every page: write it in your
+template exactly as the sample request has it, never as a placeholder, and write no pagination in your reply.
+
 Rules:
 - Keep a part of the URL or body literal when it is the same on every sample page and the page URL does not hold it.
 - A placeholder needs a binder that gives the same value as the browser's request on every sample page.

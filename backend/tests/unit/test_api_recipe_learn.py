@@ -257,11 +257,3 @@ def test_responses_that_carry_no_published_value_say_no_endpoint(stand_in_api: S
 
     assert learned.recipe is None
     assert (learned.report.refused or "").startswith("no_endpoint:")
-
-
-def test_a_listing_says_its_recipe_needs_pagination(stand_in_api: StandInApi) -> None:
-    learned, sent = _learn(stand_in_api, [_by_slug(n) for n in range(8)], schema=_schema("listing"))
-
-    assert learned.recipe is None
-    assert (learned.report.refused or "").startswith("listing:")
-    assert sent == []
