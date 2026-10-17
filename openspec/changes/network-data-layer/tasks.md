@@ -2,7 +2,7 @@
 
 ## 1. Admission
 
-- [x] 1.1 Owner-decisions row #58 and a §22 row admitting the network data-source layer (owner delegation
+- [x] 1.1 Owner-decisions row #59 and a §22 row admitting the network data-source layer (owner delegation
       2026-10-17). (#250)
 
 ## 2. Capture and runtime source (batch A1)

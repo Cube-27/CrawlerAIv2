@@ -7,7 +7,7 @@ request sent again counts once), the first such series in which a row field's pa
 the state admission rule in `MIN_ITEMS` rows or more; that path is read in every row through the API recipe row reader
 (`collect/api.py`), each row an `array_row` entity. Resolution takes these rows only where structured data and the
 config give none; when they leave a record incomplete role C is asked, and its rows, if any, replace them.
-Refs: §8.1, §8.6, Appendix A #58, D-1313, D-1314, D-1315.
+Refs: §8.1, §8.6, Appendix A #59, D-1313, D-1314, D-1315.
 #### Scenario: Rows a call proves
 - **WHEN** a listing with no structured rows loaded four items whose prices it shows for three
 - **THEN** the call gives four rows, each with its price, and no title (text admits by equality only)

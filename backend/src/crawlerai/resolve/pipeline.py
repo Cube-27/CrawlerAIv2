@@ -393,7 +393,7 @@ class _Listing:
     candidates: tuple[Candidate, ...]
     diagnostics: tuple[str, ...]
     llm_calls: tuple[LLMCallRecord, ...] = ()
-    network: bool = False  # the rows are those of the page's captured calls (Appendix A #58)
+    network: bool = False  # the rows are those of the page's captured calls (Appendix A #59)
 
     @classmethod
     def read(cls, source: _Source) -> "_Listing":
@@ -407,7 +407,7 @@ class _Listing:
         row_fields = {name for name, spec in page.schema.fields.items() if spec.scope == "row"}
         holders = frozenset(c.entity_id for c in page.collected.candidates if c.field in row_fields)
         rows = listing_rows(page.graph, page.primary, page.target, holders) or page.config.rows
-        # Appendix A #58: the rows of the page's captured calls serve where neither gives any.
+        # Appendix A #59: the rows of the page's captured calls serve where neither gives any.
         network = not rows and bool(page.collected.rows)
         fields, resolved = page.resolve_listing(candidates, rows or page.collected.rows)
         next_pages = tuple(link.url for link in links)

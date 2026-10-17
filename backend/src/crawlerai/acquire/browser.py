@@ -1,5 +1,5 @@
 """Browser fetch with Patchright headless Chromium (SPEC-02 §4.8, ARCHITECTURE §7.1): one navigation, bounded waits,
-and the JSON bodies the page loads captured, the network data-source layer's input (Appendix A #58) and API
+and the JSON bodies the page loads captured, the network data-source layer's input (Appendix A #59) and API
 discovery's (§7.2 step 1).
 
 One browser per worker process (`open_browser`), one fresh context per fetch. Every connection the context opens goes
@@ -54,7 +54,7 @@ _LAUNCH_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
 # `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
 # unless told not to; it is named here so the guard does not rest on a library default.
 _PROXY_ALL_LOOPBACK = "<-loopback>"
-# SPEC-02 §4.8, D-0010: JSON bodies are captured up to 2 MB each and 50 per page; INV-30 (Appendix A #58): at most
+# SPEC-02 §4.8, D-0010: JSON bodies are captured up to 2 MB each and 50 per page; INV-30 (Appendix A #59): at most
 # 10 MB of them per page in all.
 _JSON_BODY_MAX_BYTES = 2_000_000
 _JSON_BODIES_MAX = 50

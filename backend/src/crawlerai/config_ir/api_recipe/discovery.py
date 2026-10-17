@@ -1,7 +1,7 @@
 """API discovery (SPEC-09 §4.3, ARCHITECTURE §7.2 step 1): from the learning sample's browser captures, the endpoints
 whose JSON responses carry the page's published values on every sample page, each with a JSONPath per field.
 
-Captured calls are read through `collect/network_match.py` (Appendix A #58), the one reader the `xhr` collector
+Captured calls are read through `collect/network_match.py` (Appendix A #59), the one reader the `xhr` collector
 shares: a readable call (a success, JSON) counts only when the capture recorded the method of the request behind it,
 since a recipe can only replay such a request. Calls group into endpoints by `network_match.EndpointKey` (request
 method, URL shape, request body shape); on each page the best-scoring body of a group stands for it.
