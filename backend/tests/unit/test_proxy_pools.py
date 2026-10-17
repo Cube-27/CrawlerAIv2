@@ -22,6 +22,7 @@ from socketserver import BaseRequestHandler, TCPServer, ThreadingTCPServer
 import pytest
 from pydantic import ValidationError
 
+from crawlerai.acquire.api import JsonRequest, fetch_json
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
@@ -34,6 +35,7 @@ _PAGE = f"<html><body><h1>Catalogue</h1>{_LINKS}</body></html>".encode()
 # The guard's view of DNS. The public address is never connected to: through a pool, the proxy resolves names.
 _DNS = {"shop.example.test": "93.184.215.14", "internal.example.test": "10.0.0.1"}
 _CREDENTIALS = ("pool user", "p@ss:word")
+_JSON = b'{"items": [{"id": 1, "name": "Synthetic"}]}'
 
 
 @dataclass
@@ -52,6 +54,9 @@ def origin() -> Iterator[Origin]:
         protocol_version = "HTTP/1.1"
         routes: dict[str, tuple[int, tuple[tuple[str, str], ...], bytes]] = {  # noqa: RUF012
             "/p": (200, (("Content-Type", "text/html"),), _PAGE),
+            "/j": (200, (("Content-Type", "application/json"),), _JSON),
+            "/j-hop": (302, (("Location", "/j"),), b""),
+            "/j-hop-private": (302, (("Location", "http://internal.example.test/j"),), b""),
             "/hop": (302, (("Location", "/p"),), b""),
             "/hop-private": (302, (("Location", "http://internal.example.test/"),), b""),
         }
@@ -305,6 +310,66 @@ def test_each_redirect_hop_is_checked_and_followed_through_the_pool(origin: Orig
 def test_a_pool_that_is_not_configured_refuses_the_fetch(origin: Origin, proxy: StubProxy) -> None:
     # Fetching without the pool would send the request from somewhere the site's configuration did not ask for.
     result = _fetch("http://shop.example.test/p", {"dc": proxy.endpoint()}, pool="other")
+
+    assert _outcome(result) == (0, "error", "proxy_pool_unknown")
+    assert (proxy.tunnels, origin.hosts) == ([], [])
+
+
+# --- JSON fetch (D-1264) ------------------------------------------------------------------------------------------
+
+
+def _fetch_json(url: str, pools: dict[str, ProxyEndpoint], pool: str | None = "dc") -> FetchResult:
+    request = JsonRequest(url=url, page_url="http://shop.example.test/page")
+    return asyncio.run(
+        fetch_json(
+            request,
+            FetchPolicy(proxy_pool=pool, timeout_s=5),
+            engine_version="test",
+            connector=StubConnector(),
+            pools=pools,
+        )
+    )
+
+
+def test_a_json_fetch_naming_a_pool_goes_through_a_tunnel_of_its_proxy(origin: Origin, proxy: StubProxy) -> None:
+    endpoint = proxy.endpoint(_CREDENTIALS)
+    proxy.required = endpoint.authorization
+
+    result = _fetch_json("http://shop.example.test/j", {"dc": endpoint})
+
+    assert _outcome(result) == (200, "ok", None)
+    assert result.bundle.body == _JSON
+    assert proxy.tunnels == ["shop.example.test:80"]  # a CONNECT tunnel even for `http:`, naming the host
+    assert origin.hosts == ["shop.example.test"]
+    manifest = result.bundle.manifest
+    assert all(
+        name.lower() != "proxy-authorization" for name, _ in manifest.headers.request + manifest.headers.response
+    )
+
+
+def test_a_json_fetch_follows_each_checked_hop_through_the_pool(origin: Origin, proxy: StubProxy) -> None:
+    followed = _fetch_json("http://shop.example.test/j-hop", {"dc": proxy.endpoint()})
+    assert _outcome(followed) == (200, "ok", None)
+    assert followed.bundle.manifest.final_url == "http://shop.example.test/j"
+
+    refused = _fetch_json("http://shop.example.test/j-hop-private", {"dc": proxy.endpoint()})
+    assert _outcome(refused) == (302, "error", "ssrf_rejected: private_address")
+    assert "internal.example.test:80" not in proxy.tunnels
+
+
+def test_a_json_fetch_whose_tunnel_is_refused_is_an_error_naming_no_credential(
+    origin: Origin, proxy: StubProxy
+) -> None:
+    proxy.required = "Basic other"
+
+    result = _fetch_json("http://shop.example.test/j", {"dc": proxy.endpoint(_CREDENTIALS)})
+
+    assert _outcome(result) == (0, "error", "network_error: ProxyError")
+    assert origin.hosts == []
+
+
+def test_a_json_fetch_naming_an_unknown_pool_sends_nothing(origin: Origin, proxy: StubProxy) -> None:
+    result = _fetch_json("http://shop.example.test/j", {"dc": proxy.endpoint()}, pool="other")
 
     assert _outcome(result) == (0, "error", "proxy_pool_unknown")
     assert (proxy.tunnels, origin.hosts) == ([], [])

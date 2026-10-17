@@ -11,7 +11,7 @@ Only CONNECT with no authentication is spoken (RFC 1928 §3, §4). Bytes are rel
 between the browser and the site.
 
 With an `upstream` proxy pool, the guard still checks each host, then opens the connection as a CONNECT tunnel
-through the pool's proxy (RFC 9110 §9.3.6), naming the host: the proxy resolves it, so the address can't be pinned
+through the pool's proxy (`acquire.tunnel`), naming the host: the proxy resolves it, so the address can't be pinned
 (ARCHITECTURE §7.1).
 """
 
@@ -24,6 +24,7 @@ from types import TracebackType
 from typing import Self, cast
 
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target, authority, bracketed
+from crawlerai.acquire.tunnel import TunnelRefused, open_tunnel
 from crawlerai.core.proxy import ProxyEndpoint
 
 __all__ = ["SocksGuard"]
@@ -161,31 +162,13 @@ class SocksGuard:
 
 
 async def _tunnel(proxy: ProxyEndpoint, target: Target) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-    """A CONNECT tunnel to `target`'s host through `proxy` (RFC 9110 §9.3.6). Any 2xx answer opens it."""
+    """A CONNECT tunnel to `target`'s host through `proxy` (`open_tunnel`), its failures as SOCKS5 replies."""
     try:
-        reader, writer = await asyncio.open_connection(proxy.host, proxy.port)
+        return await open_tunnel(proxy, target.host, target.port)
     except OSError as e:
         raise _Refused(_HOST_UNREACHABLE) from e
-    # RFC 9112 §3.2.3: CONNECT names the authority.
-    authority_form = f"{bracketed(target.host)}:{target.port}"
-    head = [f"CONNECT {authority_form} HTTP/1.1", f"Host: {authority_form}"]
-    if proxy.authorization is not None:
-        head.append(f"Proxy-Authorization: {proxy.authorization}")
-    try:
-        # The host is ASCII: a browser names it in IDNA (A-label) form, and the guard admitted it.
-        writer.write(("\r\n".join(head) + "\r\n\r\n").encode("ascii"))
-        await writer.drain()
-        # A 2xx CONNECT response ends with its header section: what follows belongs to the tunnel (RFC 9110 §9.3.6).
-        response = await reader.readuntil(b"\r\n\r\n")
-    except (OSError, asyncio.IncompleteReadError, asyncio.LimitOverrunError) as e:
-        writer.close()
+    except TunnelRefused as e:
         raise _Refused(_GENERAL_FAILURE) from e
-    # RFC 9112 §4: status-line = HTTP-version SP status-code SP [ reason-phrase ].
-    fields = response.split(b" ", 2)
-    if len(fields) < 2 or not fields[1].startswith(b"2"):
-        writer.close()
-        raise _Refused(_GENERAL_FAILURE)
-    return reader, writer
 
 
 async def _negotiate(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> bool:

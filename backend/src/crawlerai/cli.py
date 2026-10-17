@@ -93,7 +93,7 @@ async def _work() -> None:
         async with aclosing(
             SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
         ) as browser:
-            json = partial(fetch_json, engine_version=ENGINE_VERSION, connector=connector)
+            json = partial(fetch_json, engine_version=ENGINE_VERSION, connector=connector, pools=pools)
             adapters = adapter_registry(settings.disabled_adapters)
             rungs = Rungs(http=http, browser=browser.fetch, adapters=adapters, conditional=http, json=json)
             store = open_store(settings.object_store)

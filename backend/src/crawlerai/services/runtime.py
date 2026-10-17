@@ -63,7 +63,7 @@ def fetching_from_settings(settings: Settings) -> Fetching:
     http = partial(
         fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, connector=connector, pools=pools
     )
-    json = partial(fetch_json, engine_version=ENGINE_VERSION, connector=connector)
+    json = partial(fetch_json, engine_version=ENGINE_VERSION, connector=connector, pools=pools)
     rungs = Rungs(
         http=http,
         browser=browser,
