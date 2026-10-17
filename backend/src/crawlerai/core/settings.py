@@ -11,7 +11,7 @@ from curl_cffi.requests import BrowserTypeLiteral
 from pydantic import BeforeValidator, Field, IPvAnyNetwork, PositiveFloat, PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from crawlerai.core.proxy import ProxyEndpoint
+from crawlerai.core.proxy import ProxyPool
 
 # `fs:///<absolute path>` or `s3://<bucket>[/<prefix>]` (SPEC-00 §4.4).
 OBJECT_STORE_URL_PATTERN = r"^(fs:///.+|s3://[^/]+(/.*)?)$"
@@ -56,8 +56,9 @@ class AcquireSettings(_Base):
     """The subset a fetch needs, so `crawlerai fetch` runs without a database or object store."""
 
     impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT
-    # `CRAWLERAI_PROXY_POOLS`, JSON `{pool_name: proxy_url}` (SPEC-02 §3, OPEN_QUESTIONS #10).
-    proxy_pools: dict[str, Annotated[ProxyEndpoint, BeforeValidator(ProxyEndpoint.parse)]] = Field(default_factory=dict)
+    # `CRAWLERAI_PROXY_POOLS`, JSON `{pool_name: proxy_url | {"endpoints": [proxy_url, ...], "mode": ...}}` (SPEC-02
+    # §3, OPEN_QUESTIONS #10, D-1323).
+    proxy_pools: dict[str, ProxyPool] = Field(default_factory=dict)
     # `CRAWLERAI_DISABLED_ADAPTERS`, comma-separated: the platform adapters that do not run (SPEC-15 §4.8). Every
     # registered adapter runs unless named here (owner, 2026-10-16).
     disabled_adapters: Annotated[tuple[str, ...], NoDecode, BeforeValidator(_comma_separated)] = ()

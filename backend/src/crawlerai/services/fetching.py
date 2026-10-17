@@ -129,6 +129,13 @@ async def admitted(
     return await limiter.wait(host, gap)
 
 
+def observed(
+    limiter: HostLimiter, host: str, crawl_delay_ms: int | None, robots: Robots | None, result: FetchResult
+) -> None:
+    """Adapt the host's rate to the answers of `result` (D-1327, `HostLimiter.observe`)."""
+    limiter.observe(host, interval(crawl_delay_ms, None if robots is None else robots.crawl_delay), result.attempts)
+
+
 # The rules a request to a URL goes by on its host: the host's interval setting and robots.txt (None when the policy
 # does not respect it), or why robots.txt keeps the request from being sent.
 SiteRules = Callable[[str, FetchPolicy], Awaitable[tuple[int | None, Robots | None] | str]]
@@ -250,6 +257,7 @@ async def _polite_json(
     if not take_turn(host):
         await admitted(limiter, host, *allowed)
     result = await json(request, policy)
+    observed(limiter, host, *allowed, result)
     slowed = slowed_down(result.attempts)
     if slowed is not None:
         # SPEC-02 §4.6: the pause asked for, else the first backoff.
@@ -276,6 +284,7 @@ class PoliteHttp:
             return None
         await admitted(self.fetching.limiter, self.host, self.crawl_delay_ms, self.robots)
         result = await self.fetching.rungs.http(url, policy)
+        observed(self.fetching.limiter, self.host, self.crawl_delay_ms, self.robots, result)
         self.attempts.extend(result.attempts)
         if (refused := refusal(result)) is not None:
             raise TargetRejected(refused)

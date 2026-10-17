@@ -9,6 +9,7 @@ from crawlerai.acquire.politeness import retry_after
 from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
+from crawlerai.core.proxy import ProxyEndpoint, ProxyPool
 from crawlerai.storage.capture_bundle import (
     CaptureBundle,
     CaptureManifest,
@@ -18,7 +19,7 @@ from crawlerai.storage.capture_bundle import (
     sha256_hex,
 )
 
-__all__ = ["Content", "Exchange", "as_error", "fetch_result"]
+__all__ = ["Content", "Exchange", "as_error", "fetch_result", "report_proxy"]
 
 
 @dataclass(frozen=True)
@@ -51,8 +52,10 @@ def fetch_result(
     block_class: BlockClass,
     error: str | None,
     timings: dict[str, int] | None = None,
+    challenge: str | None = None,
 ) -> FetchResult:
-    """`started` is the `time.monotonic()` reading when the fetch began; `timings` are added to its total."""
+    """`started` is the `time.monotonic()` reading when the fetch began; `timings` are added to its total; `challenge`
+    labels the attempt (`acquire.challenge`)."""
     if error is not None:
         # An error keeps no body: it yields no records (INV-11), and a partial body would mislead a replay.
         content = Content(body=b"")
@@ -82,6 +85,7 @@ def fetch_result(
         block_class=block_class,
         duration_ms=duration_ms,
         error=error,
+        challenge=challenge,
         retry_after=retry_after(exchange.response_headers, fetched_at),
     )
     bundle = CaptureBundle(
@@ -100,3 +104,21 @@ def as_error(result: FetchResult, reason: str) -> FetchResult:
         duration_ms=result.duration_ms,
         attempts=(*result.attempts[:-1], last),
     )
+
+
+def report_proxy(pool: ProxyPool | None, endpoint: ProxyEndpoint | None, result: FetchResult) -> None:
+    """Record how a fetch through a pool's `endpoint` went (`core.proxy_health`): a block, or a request that got no
+    answer (a timeout, a network failure: the proxy, or the address it sends from), counts against the endpoint; any
+    other answer for it; a failure the endpoint has no part in (an SSRF refusal, a cap, a decoding error) for
+    neither."""
+    if pool is None or endpoint is None:
+        return
+    attempt = result.attempts[-1]
+    if attempt.block_class == "blocked" or (attempt.status is None and _unanswered(attempt.error)):
+        pool.report(endpoint, healthy=False)
+    elif attempt.error is None or attempt.status is not None:
+        pool.report(endpoint, healthy=True)
+
+
+def _unanswered(error: str | None) -> bool:
+    return error is not None and (error == "timeout" or error.startswith("network_error"))

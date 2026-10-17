@@ -17,6 +17,7 @@ from selectolax import lexbor
 from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from tests.stand_in import IMPERSONATE, handler_transport
 
 settings.register_profile("ci", max_examples=200)
 settings.load_profile("ci" if os.environ.get("CI") else "default")
@@ -75,7 +76,11 @@ def _stand_in_api(routes: Mapping[str, bytes]) -> JsonFetcher:
         return httpx.Response(404, json={}) if body is None else httpx.Response(200, content=body)
 
     return partial(
-        fetch_json, engine_version="test", connector=SafeConnector(resolve), transport=httpx.MockTransport(handler)
+        fetch_json,
+        engine_version="test",
+        impersonate=IMPERSONATE,
+        connector=SafeConnector(resolve),
+        transport=handler_transport(handler),
     )
 
 

@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from crawlerai.acquire.api import fetch_json
 from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
 from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.impersonate import rung_impersonation
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs, adapter_registry
 from crawlerai.acquire.ssrf import SafeConnector
@@ -85,15 +86,16 @@ async def _work() -> None:
             url, policy, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools
         )
 
-    http = partial(
-        fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, connector=connector, pools=pools
-    )
+    impersonate = rung_impersonation(settings)
+    http = partial(fetch_http, engine_version=ENGINE_VERSION, impersonate=impersonate, connector=connector, pools=pools)
     engine = create_async_engine(settings.database_url.get_secret_value())
     try:
         async with aclosing(
             SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
         ) as browser:
-            json = partial(fetch_json, engine_version=ENGINE_VERSION, connector=connector, pools=pools)
+            json = partial(
+                fetch_json, engine_version=ENGINE_VERSION, impersonate=impersonate, connector=connector, pools=pools
+            )
             adapters = adapter_registry(settings.disabled_adapters)
             rungs = Rungs(http=http, browser=browser.fetch, adapters=adapters, conditional=http, json=json)
             store = open_store(settings.object_store)
@@ -123,7 +125,7 @@ async def _work() -> None:
 async def _schedule() -> None:
     settings = Settings()
     fetch = partial(
-        fetch_http, engine_version=ENGINE_VERSION, impersonate=settings.impersonate, pools=settings.proxy_pools
+        fetch_http, engine_version=ENGINE_VERSION, impersonate=rung_impersonation(settings), pools=settings.proxy_pools
     )
     entries = periodic(open_store(settings.object_store), fetch, poster(SafeConnector()))
     await run_scheduler(settings, entries, _stop_on_signals())
@@ -134,7 +136,7 @@ async def _fetch(url: str, out: Path, connector: SafeConnector | None = None) ->
         url,
         FetchPolicy(),
         engine_version=ENGINE_VERSION,
-        impersonate=AcquireSettings().impersonate,
+        impersonate=rung_impersonation(AcquireSettings()),
         connector=connector,
     )
     out.write_bytes(encode(result.bundle))

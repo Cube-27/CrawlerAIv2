@@ -74,6 +74,7 @@ async def fetch_politely(
         return Postpone(wait)
 
     result = await fetch(task.url, refuse if disallowed else partial(limiter.wait, host, gap, WAIT_MAX))
+    limiter.observe(host, gap, result.attempts)
     if isinstance(result, Unchanged) or result.block_class == "ok":
         return result
     if disallowed:

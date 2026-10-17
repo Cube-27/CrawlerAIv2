@@ -2,7 +2,7 @@
 the HTML page fetched first only when a binder reads its JSON documents; what the recipe cannot serve falls back to the
 configured rungs; a listing's pages come by incrementing the pagination parameter until the rows run out.
 
-A stand-in API (`httpx.MockTransport`, synthetic `.test` hosts) answers through `fetch_json` and the SSRF guard.
+A stand-in API (`tests.stand_in`, synthetic `.test` hosts) answers through `fetch_json` and the SSRF guard.
 """
 
 import asyncio
@@ -34,6 +34,7 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, PageKind, SchemaId
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from tests.stand_in import IMPERSONATE, handler_transport
 
 SITE = "https://shop.example.test"
 ENDPOINT = "https://api.example.test/v1"
@@ -79,8 +80,9 @@ class StandIn:
         return partial(
             fetch_json,
             engine_version="test",
+            impersonate=IMPERSONATE,
             connector=SafeConnector(resolve_host),
-            transport=httpx.MockTransport(handler),
+            transport=handler_transport(handler),
         )
 
 

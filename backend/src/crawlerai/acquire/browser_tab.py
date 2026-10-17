@@ -27,7 +27,7 @@ from crawlerai.acquire.browser import BrowserSession, Failed, Rendered, classifi
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import ActionsReport, BlockClass, FetchPolicy, FetchResult, PagedFetch
-from crawlerai.core.proxy import ProxyEndpoint, UnknownProxyPool, pool_endpoint
+from crawlerai.core.proxy import ProxyPool, UnknownProxyPool, pool_endpoint
 
 __all__ = ["Click", "Drive", "ListingRung", "Ref", "Tab", "fetch_listing"]
 
@@ -253,7 +253,7 @@ async def fetch_listing(
     session: BrowserSession,
     engine_version: str,
     connector: SafeConnector | None = None,
-    pools: Mapping[str, ProxyEndpoint] | None = None,
+    pools: Mapping[str, ProxyPool] | None = None,
 ) -> PagedFetch:
     """Render the listing at `url` as `fetch_browser` does and, when it is reached (`ok`), let `drive` act on it; the
     answer holds the document states the driver kept (at least one) and its report. A page not reached is the one
@@ -262,7 +262,7 @@ async def fetch_listing(
     started = time.monotonic()
     exchange: Exchange | None = None
     try:
-        proxy = pool_endpoint(policy.proxy_pool, pools)
+        proxy = pool_endpoint(policy.proxy_pool, pools, url)
         async with AsyncExitStack() as stack:
             async with asyncio.timeout(policy.browser_timeout_s):
                 page = await stack.enter_async_context(

@@ -1,5 +1,6 @@
-"""Proxy pools (SPEC-02 §3, §4.5, ARCHITECTURE §7.1): a fetch whose policy names a configured pool goes through
-that pool's proxy, in both fetchers, and the SSRF guard still checks every host before it is requested.
+"""Proxy pools (SPEC-02 §3, §4.5, ARCHITECTURE §7.1, D-1323, D-1324): a fetch whose policy names a configured pool goes
+through one of that pool's proxies, in every fetcher, picked in turn or kept per site, an endpoint that keeps failing
+left out for a while; and the SSRF guard still checks every host before it is requested, whichever endpoint carries it.
 
 The proxy is a local stub speaking HTTP CONNECT (RFC 9110 §9.3.6). Like a real proxy it resolves names itself: it
 sends every tunnel to a local origin server, whatever host it names. The guard's resolver is a stub, so no test
@@ -13,6 +14,7 @@ import os
 import socket
 import struct
 import threading
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,7 +30,8 @@ from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.tunnel import open_tunnel
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.core.proxy import ProxyEndpoint
+from crawlerai.core.proxy import PoolMode, ProxyEndpoint, ProxyPool, pool_endpoint
+from crawlerai.core.proxy_health import QUARANTINE_AFTER, QUARANTINE_MIN, PoolHealth
 from crawlerai.core.settings import IMPERSONATE_DEFAULT, AcquireSettings
 
 _LINKS = "".join(f'<a href="/item/{i}">Item {i}</a>' for i in range(8))
@@ -96,6 +99,15 @@ class StubProxy:
 
 @pytest.fixture
 def proxy(origin: Origin) -> Iterator[StubProxy]:
+    yield from _stub_proxy(origin)
+
+
+@pytest.fixture
+def second_proxy(origin: Origin) -> Iterator[StubProxy]:
+    yield from _stub_proxy(origin)
+
+
+def _stub_proxy(origin: Origin) -> Iterator[StubProxy]:
     state: list[StubProxy] = []
 
     class Handler(BaseRequestHandler):
@@ -175,7 +187,11 @@ class StubConnector(SafeConnector):
         super().__init__(resolve)
 
 
-def _fetch(url: str, pools: dict[str, ProxyEndpoint], pool: str | None = "dc") -> FetchResult:
+def _pools(*endpoints: ProxyEndpoint, mode: PoolMode = "rotate") -> dict[str, ProxyPool]:
+    return {"dc": ProxyPool(endpoints, mode)}
+
+
+def _fetch(url: str, pools: dict[str, ProxyPool], pool: str | None = "dc") -> FetchResult:
     return asyncio.run(
         fetch_http(
             url,
@@ -198,9 +214,10 @@ def _outcome(result: FetchResult) -> tuple[int, str, str | None]:
 def test_pools_are_read_from_json_with_credentials_percent_decoded(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CRAWLERAI_PROXY_POOLS", '{"dc": "http://pool%20user:p%40ss%3Aword@proxy.example.com:3128"}')
 
-    (name, endpoint), *rest = AcquireSettings().proxy_pools.items()
+    (name, pool), *rest = AcquireSettings().proxy_pools.items()
 
     assert (name, rest) == ("dc", [])
+    (endpoint,) = pool.endpoints
     assert endpoint == ProxyEndpoint("proxy.example.com", 3128, "pool user", "p@ss:word")
     # RFC 7617 §2: Basic credentials are base64("user:password").
     assert endpoint.authorization == "Basic " + base64.b64encode(b"pool user:p@ss:word").decode()
@@ -227,6 +244,13 @@ def test_an_endpoint_without_credentials_sends_no_authorization() -> None:
         '"http://user:secret-pw@proxy.example.com:99999"',
         '"proxy.example.com:3128"',
         '{"url": "http://user:secret-pw@proxy.example.com:3128"}',
+        # D-1323: a pool of several endpoints names its mode, lists at least one endpoint, and none twice.
+        '{"endpoints": ["http://user:secret-pw@proxy.example.com:3128"]}',
+        '{"endpoints": ["http://user:secret-pw@proxy.example.com:3128"], "mode": "random"}',
+        '{"endpoints": [], "mode": "rotate"}',
+        '{"endpoints": ["http://user:secret-pw@a.example.com:1", "http://user:secret-pw@a.example.com:1"], '
+        '"mode": "sticky"}',
+        '{"endpoints": ["socks5://user:secret-pw@proxy.example.com:1080"], "mode": "rotate"}',
     ],
 )
 def test_a_proxy_url_other_than_http_host_port_is_refused_without_echoing_it(
@@ -241,11 +265,26 @@ def test_a_proxy_url_other_than_http_host_port_is_refused_without_echoing_it(
     assert refused.value.errors()[0]["loc"] == ("proxy_pools", "dc")
 
 
+def test_a_pool_of_several_endpoints_is_read_with_its_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "CRAWLERAI_PROXY_POOLS",
+        '{"dc": {"endpoints": ["http://a.example.com:3128", "http://u:p@b.example.com:8080"], "mode": "sticky"}}',
+    )
+
+    pool = AcquireSettings().proxy_pools["dc"]
+
+    assert pool.mode == "sticky"
+    assert pool.endpoints == (
+        ProxyEndpoint("a.example.com", 3128),
+        ProxyEndpoint("b.example.com", 8080, "u", "p"),
+    )
+
+
 # --- HTTP fetch --------------------------------------------------------------------------------------------------
 
 
 def test_a_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, proxy: StubProxy) -> None:
-    result = _fetch("http://shop.example.test/p", {"dc": proxy.endpoint()})
+    result = _fetch("http://shop.example.test/p", _pools(proxy.endpoint()))
 
     assert _outcome(result) == (200, "ok", None)
     assert result.bundle.body == _PAGE
@@ -260,7 +299,7 @@ def test_the_environments_no_proxy_does_not_send_a_pool_fetch_direct(
     # Going direct would skip the pool and let curl resolve the host itself, unpinned from the checked address.
     monkeypatch.setenv("no_proxy", "*")
 
-    result = _fetch("http://shop.example.test/p", {"dc": proxy.endpoint()})
+    result = _fetch("http://shop.example.test/p", _pools(proxy.endpoint()))
 
     assert _outcome(result) == (200, "ok", None)
     assert proxy.tunnels == ["shop.example.test:80"]
@@ -270,7 +309,7 @@ def test_the_pools_credentials_reach_the_proxy_and_never_the_capture(origin: Ori
     endpoint = proxy.endpoint(_CREDENTIALS)
     proxy.required = endpoint.authorization
 
-    result = _fetch("http://shop.example.test/p", {"dc": endpoint})
+    result = _fetch("http://shop.example.test/p", _pools(endpoint))
 
     assert _outcome(result) == (200, "ok", None)
     assert proxy.tunnels == ["shop.example.test:80"]
@@ -282,7 +321,7 @@ def test_the_pools_credentials_reach_the_proxy_and_never_the_capture(origin: Ori
 def test_a_proxy_that_refuses_the_tunnel_is_an_error(origin: Origin, proxy: StubProxy) -> None:
     proxy.required = "Basic other"
 
-    result = _fetch("http://shop.example.test/p", {"dc": proxy.endpoint(_CREDENTIALS)})
+    result = _fetch("http://shop.example.test/p", _pools(proxy.endpoint(_CREDENTIALS)))
 
     # curl reports a refused CONNECT as it reports an unreachable server (CURLE_COULDNT_CONNECT).
     assert _outcome(result) == (0, "error", "network_error: curl 7")
@@ -291,41 +330,130 @@ def test_a_proxy_that_refuses_the_tunnel_is_an_error(origin: Origin, proxy: Stub
 
 
 def test_the_host_is_checked_before_it_is_requested_through_the_pool(origin: Origin, proxy: StubProxy) -> None:
-    result = _fetch("http://internal.example.test/p", {"dc": proxy.endpoint()})
+    result = _fetch("http://internal.example.test/p", _pools(proxy.endpoint()))
 
     assert _outcome(result) == (0, "error", "ssrf_rejected: private_address")
     assert proxy.tunnels == []
 
 
 def test_each_redirect_hop_is_checked_and_followed_through_the_pool(origin: Origin, proxy: StubProxy) -> None:
-    followed = _fetch("http://shop.example.test/hop", {"dc": proxy.endpoint()})
+    followed = _fetch("http://shop.example.test/hop", _pools(proxy.endpoint()))
     assert _outcome(followed) == (200, "ok", None)
     assert followed.bundle.manifest.final_url == "http://shop.example.test/p"
     assert set(proxy.tunnels) == {"shop.example.test:80"}
 
-    refused = _fetch("http://shop.example.test/hop-private", {"dc": proxy.endpoint()})
+    refused = _fetch("http://shop.example.test/hop-private", _pools(proxy.endpoint()))
     assert _outcome(refused) == (302, "error", "ssrf_rejected: private_address")
     assert "internal.example.test:80" not in proxy.tunnels
 
 
 def test_a_pool_that_is_not_configured_refuses_the_fetch(origin: Origin, proxy: StubProxy) -> None:
     # Fetching without the pool would send the request from somewhere the site's configuration did not ask for.
-    result = _fetch("http://shop.example.test/p", {"dc": proxy.endpoint()}, pool="other")
+    result = _fetch("http://shop.example.test/p", _pools(proxy.endpoint()), pool="other")
 
     assert _outcome(result) == (0, "error", "proxy_pool_unknown")
     assert (proxy.tunnels, origin.hosts) == ([], [])
 
 
+# --- pools of several endpoints (D-1323, D-1324) --------------------------------------------------------------------
+
+
+def test_a_rotating_pool_sends_successive_fetches_through_each_endpoint_in_turn(
+    origin: Origin, proxy: StubProxy, second_proxy: StubProxy
+) -> None:
+    pools = _pools(proxy.endpoint(), second_proxy.endpoint())
+
+    outcomes = [_outcome(_fetch("http://shop.example.test/p", pools)) for _ in range(4)]
+
+    assert outcomes == [(200, "ok", None)] * 4
+    assert (len(proxy.tunnels), len(second_proxy.tunnels)) == (2, 2)
+
+
+def test_a_sticky_pool_keeps_a_site_on_one_endpoint(origin: Origin, proxy: StubProxy, second_proxy: StubProxy) -> None:
+    pools = _pools(proxy.endpoint(), second_proxy.endpoint(), mode="sticky")
+
+    for _ in range(4):
+        assert _outcome(_fetch("http://shop.example.test/p", pools)) == (200, "ok", None)
+
+    assert sorted((len(proxy.tunnels), len(second_proxy.tunnels))) == [0, 4]
+
+
+def test_an_endpoint_that_keeps_failing_is_left_out_until_its_quarantine_ends(
+    origin: Origin, proxy: StubProxy, second_proxy: StubProxy
+) -> None:
+    proxy.required = "Basic other"  # refuses every tunnel
+    pools = _pools(proxy.endpoint(), second_proxy.endpoint())
+
+    outcomes = [_outcome(_fetch("http://shop.example.test/p", pools))[1] for _ in range(10)]
+
+    # Taken in turn, the refusing endpoint fails QUARANTINE_AFTER times; then only the other one is chosen.
+    assert outcomes == ["error", "ok"] * QUARANTINE_AFTER + ["ok"] * (10 - 2 * QUARANTINE_AFTER)
+    assert len(proxy.authorizations) == QUARANTINE_AFTER
+    pool = pools["dc"]
+    pool.health.clock = lambda: time.monotonic() + QUARANTINE_MIN.total_seconds()
+    assert pool.pick("shop.example.test") == proxy.endpoint()  # its quarantine over, it is chosen again
+
+
+def test_a_pool_whose_every_endpoint_is_quarantined_still_sends_through_one() -> None:
+    first, second = ProxyEndpoint("127.0.0.1", 1), ProxyEndpoint("127.0.0.1", 2)
+    now = [0.0]
+    pool = ProxyPool((first, second), "rotate", PoolHealth(clock=lambda: now[0]))
+    for _ in range(QUARANTINE_AFTER):
+        pool.report(first, healthy=False)
+    now[0] = 1.0
+    for _ in range(QUARANTINE_AFTER + 1):
+        pool.report(second, healthy=False)
+
+    # Never direct: the endpoint that recovers first (the shorter quarantine began earlier).
+    assert pool.pick("shop.example.test") == first
+
+
+@pytest.mark.parametrize("mode", ["rotate", "sticky"])
+def test_inv16_every_endpoint_of_a_pool_reaches_only_checked_hosts(
+    origin: Origin, proxy: StubProxy, second_proxy: StubProxy, mode: PoolMode
+) -> None:
+    pools = _pools(proxy.endpoint(), second_proxy.endpoint(), mode=mode)
+
+    for _ in range(2):
+        assert _outcome(_fetch("http://internal.example.test/p", pools)) == (
+            0,
+            "error",
+            "ssrf_rejected: private_address",
+        )
+        refused = _fetch("http://shop.example.test/hop-private", pools)
+        assert _outcome(refused) == (302, "error", "ssrf_rejected: private_address")
+        refused_json = _fetch_json("http://shop.example.test/j-hop-private", pools)
+        assert _outcome(refused_json) == (302, "error", "ssrf_rejected: private_address")
+
+    tunnels = proxy.tunnels + second_proxy.tunnels
+    assert "internal.example.test:80" not in tunnels
+    assert set(tunnels) == {"shop.example.test:80"}
+
+
+def test_inv16_the_browser_guard_checks_the_host_before_asking_any_endpoint_of_a_pool(
+    origin: Origin, proxy: StubProxy, second_proxy: StubProxy
+) -> None:
+    pools = _pools(proxy.endpoint(), second_proxy.endpoint())
+    for _ in range(2):
+        endpoint = pool_endpoint("dc", pools, "http://internal.example.test/")
+        assert endpoint is not None
+        code, _ = _guarded(proxy, endpoint, "internal.example.test")
+        assert code == 2  # RFC 1928 §6: connection not allowed by ruleset
+
+    assert (proxy.authorizations, second_proxy.authorizations) == ([], [])
+
+
 # --- JSON fetch (D-1264) ------------------------------------------------------------------------------------------
 
 
-def _fetch_json(url: str, pools: dict[str, ProxyEndpoint], pool: str | None = "dc") -> FetchResult:
+def _fetch_json(url: str, pools: dict[str, ProxyPool], pool: str | None = "dc") -> FetchResult:
     request = JsonRequest(url=url, page_url="http://shop.example.test/page")
     return asyncio.run(
         fetch_json(
             request,
             FetchPolicy(proxy_pool=pool, timeout_s=5),
             engine_version="test",
+            impersonate=IMPERSONATE_DEFAULT,
             connector=StubConnector(),
             pools=pools,
         )
@@ -336,7 +464,7 @@ def test_a_json_fetch_naming_a_pool_goes_through_a_tunnel_of_its_proxy(origin: O
     endpoint = proxy.endpoint(_CREDENTIALS)
     proxy.required = endpoint.authorization
 
-    result = _fetch_json("http://shop.example.test/j", {"dc": endpoint})
+    result = _fetch_json("http://shop.example.test/j", _pools(endpoint))
 
     assert _outcome(result) == (200, "ok", None)
     assert result.bundle.body == _JSON
@@ -349,11 +477,11 @@ def test_a_json_fetch_naming_a_pool_goes_through_a_tunnel_of_its_proxy(origin: O
 
 
 def test_a_json_fetch_follows_each_checked_hop_through_the_pool(origin: Origin, proxy: StubProxy) -> None:
-    followed = _fetch_json("http://shop.example.test/j-hop", {"dc": proxy.endpoint()})
+    followed = _fetch_json("http://shop.example.test/j-hop", _pools(proxy.endpoint()))
     assert _outcome(followed) == (200, "ok", None)
     assert followed.bundle.manifest.final_url == "http://shop.example.test/j"
 
-    refused = _fetch_json("http://shop.example.test/j-hop-private", {"dc": proxy.endpoint()})
+    refused = _fetch_json("http://shop.example.test/j-hop-private", _pools(proxy.endpoint()))
     assert _outcome(refused) == (302, "error", "ssrf_rejected: private_address")
     assert "internal.example.test:80" not in proxy.tunnels
 
@@ -363,14 +491,15 @@ def test_a_json_fetch_whose_tunnel_is_refused_is_an_error_naming_no_credential(
 ) -> None:
     proxy.required = "Basic other"
 
-    result = _fetch_json("http://shop.example.test/j", {"dc": proxy.endpoint(_CREDENTIALS)})
+    result = _fetch_json("http://shop.example.test/j", _pools(proxy.endpoint(_CREDENTIALS)))
 
-    assert _outcome(result) == (0, "error", "network_error: ProxyError")
+    # curl reports a refused CONNECT as it reports an unreachable server (CURLE_COULDNT_CONNECT).
+    assert _outcome(result) == (0, "error", "network_error: curl 7")
     assert origin.hosts == []
 
 
 def test_a_json_fetch_naming_an_unknown_pool_sends_nothing(origin: Origin, proxy: StubProxy) -> None:
-    result = _fetch_json("http://shop.example.test/j", {"dc": proxy.endpoint()}, pool="other")
+    result = _fetch_json("http://shop.example.test/j", _pools(proxy.endpoint()), pool="other")
 
     assert _outcome(result) == (0, "error", "proxy_pool_unknown")
     assert (proxy.tunnels, origin.hosts) == ([], [])
@@ -479,7 +608,7 @@ def test_a_browser_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, pr
                     session=session,
                     engine_version="test",
                     connector=StubConnector(),
-                    pools={"dc": proxy.endpoint()},
+                    pools=_pools(proxy.endpoint()),
                 )
 
             return await fetch("dc"), await fetch("other")

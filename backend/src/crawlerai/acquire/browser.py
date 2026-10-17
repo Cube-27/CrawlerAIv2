@@ -26,7 +26,7 @@ from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
-from crawlerai.core.proxy import ProxyEndpoint, UnknownProxyPool, pool_endpoint
+from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint
 from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_file, sha256_hex
 
 __all__ = [
@@ -121,7 +121,7 @@ async def fetch_browser(
     session: BrowserSession,
     engine_version: str,
     connector: SafeConnector | None = None,
-    pools: Mapping[str, ProxyEndpoint] | None = None,
+    pools: Mapping[str, ProxyPool] | None = None,
 ) -> FetchResult:
     """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every connection."""
     fetched_at = datetime.now(UTC)
@@ -131,7 +131,7 @@ async def fetch_browser(
     exchange: Exchange | None = None
     content = Content(body=b"")
     try:
-        proxy = pool_endpoint(policy.proxy_pool, pools)
+        proxy = pool_endpoint(policy.proxy_pool, pools, url)
         async with asyncio.timeout(policy.browser_timeout_s):
             async with rendered(url, policy, session, connector or SafeConnector(), proxy, started, timings) as page:
                 exchange, content = await read_state(page)

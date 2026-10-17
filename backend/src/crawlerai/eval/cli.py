@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.acquire.http import fetch_http
+from crawlerai.acquire.impersonate import rung_impersonation
 from crawlerai.acquire.politeness import HostLimiter, interval
 from crawlerai.acquire.robots import Fetch, Robots, robots_url, snapshot_of
 from crawlerai.acquire.ssrf import SafeConnector
@@ -270,7 +271,7 @@ async def run_capture(
         fetch_http,
         policy=FetchPolicy(),
         engine_version=ENGINE_VERSION,
-        impersonate=settings.impersonate,
+        impersonate=rung_impersonation(settings),
         connector=connector,
     )
     async with aclosing(store):

@@ -88,8 +88,22 @@ async def test_the_row_keeps_the_policy_and_every_attempt(conn: AsyncConnection,
     assert row.fetch_policy == {
         **FetchPolicy(timeout_s=12.0).model_dump(mode="json"),
         "attempts": [
-            {"method": "http", "status": 200, "block_class": "shell", "duration_ms": 120, "error": None},
-            {"method": "browser", "status": 200, "block_class": "ok", "duration_ms": 1830, "error": None},
+            {
+                "method": "http",
+                "status": 200,
+                "block_class": "shell",
+                "duration_ms": 120,
+                "error": None,
+                "challenge": None,
+            },
+            {
+                "method": "browser",
+                "status": 200,
+                "block_class": "ok",
+                "duration_ms": 1830,
+                "error": None,
+                "challenge": None,
+            },
         ],
     }
 
