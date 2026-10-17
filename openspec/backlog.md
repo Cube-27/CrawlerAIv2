@@ -47,6 +47,9 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   worker's token cannot push workflow files. Add it to `ci.yml`; until then only the digest test runs in CI. The SDKs
   are not published to PyPI or npm and carry the repository's AGPL-3.0 license, which the owner may want to relax for
   libraries. Add an `AsyncCrawlerAI` webhook receiver example if callers ask.
+- Schedules and webhooks (#259): delivered `webhook_event` and `webhook_delivery` rows are never expired (add them to
+  retention); a job's deliveries have no read endpoint (status, attempts, last error) for a caller debugging a receiver;
+  the UI cannot edit a schedule (`PATCH /v1/schedules/{id}` exists) or create one from a stored run's request.
 - ATS adapters (#248): the SmartRecruiters API host's robots.txt disallows every agent but one, so by default its adapter
   is refused and the page rungs serve (D-1306); it was verified on recorded answers. A branded list page with no rows at
   HTTP is rendered once (owner #54) before the own-host referral serves its Workday site; referring first would save the

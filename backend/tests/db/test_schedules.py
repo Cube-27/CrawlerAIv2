@@ -1,5 +1,5 @@
 """Recurring schedules (§22 "Recurring schedule storage", admitted 2026-10-17): `/v1/schedules` over HTTP, and the
-scheduler entry that submits due runs exactly once (`services.schedules.run_due_schedules`).
+scheduler entry that submits due runs exactly once (`run_due_schedules` of `crawlerai.services.schedules`).
 
 The app runs as `submit_client` (conftest) sets it up: nothing leaves the process, and `PRIVATE_HOST` resolves to a
 private address. Hosts are RFC 2606 names.
