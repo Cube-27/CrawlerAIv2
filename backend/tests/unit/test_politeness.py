@@ -11,7 +11,7 @@ from hypothesis import strategies as st
 
 from crawlerai.acquire.politeness import (
     BACKOFF_MAX,
-    BACKOFF_MIN,
+    FIRST_BACKOFF,
     RECOVERY_FACTOR,
     RECOVERY_RUN,
     HostLimiter,
@@ -119,7 +119,7 @@ def test_a_wait_after_a_pause_the_site_asked_for_goes_no_sooner_and_holds_the_ho
     start = clock.now
 
     admitted = asyncio.run(
-        limiter.wait("a.example.test", timedelta(seconds=1), timedelta(minutes=1), after=BACKOFF_MIN)
+        limiter.wait("a.example.test", timedelta(seconds=1), timedelta(minutes=1), after=FIRST_BACKOFF)
     )
 
     assert admitted is True
@@ -140,7 +140,7 @@ def test_a_pause_longer_than_the_bound_is_refused_without_waiting() -> None:
     assert limiter.admit("a.example.test", timedelta(seconds=1)) == timedelta(0)  # left to the caller's backoff
 
 
-@pytest.mark.parametrize(("asked", "expected"), [(timedelta(seconds=9), timedelta(seconds=9)), (None, BACKOFF_MIN)])
+@pytest.mark.parametrize(("asked", "expected"), [(timedelta(seconds=9), timedelta(seconds=9)), (None, FIRST_BACKOFF)])
 def test_the_pause_a_slow_down_asks_for_is_its_retry_after_else_the_first_backoff(
     asked: timedelta | None, expected: timedelta
 ) -> None:

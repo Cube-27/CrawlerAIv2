@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.core.ids import uuid7
+from crawlerai.core.retry import is_transient
 from crawlerai.db.models import JobId
 from crawlerai.llm import client as client_module
 from crawlerai.llm.client import (
@@ -28,7 +29,6 @@ from crawlerai.llm.client import (
     ProviderRefused,
     ProviderReply,
     ProviderUnavailable,
-    is_transient,
     redacted,
     request_hash,
 )

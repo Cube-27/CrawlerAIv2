@@ -18,13 +18,13 @@ import httpx2
 from anthropic import APIConnectionError, APIStatusError, AsyncAnthropic
 from anthropic.types import OutputConfigParam, TextBlock
 
+from crawlerai.core.retry import is_transient
 from crawlerai.llm.client import (
     ModelClass,
     ProviderCall,
     ProviderError,
     ProviderRefused,
     ProviderReply,
-    is_transient,
     redacted,
 )
 from crawlerai.llm.setup import CHECK_TIMEOUT_S

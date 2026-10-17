@@ -28,6 +28,7 @@ from typing import Any, Final
 from sqlalchemy import Executable, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.core.retry import FIRST_BACKOFF
 from crawlerai.db.jobs import (
     InvalidTransition,
     blocking_statuses,
@@ -53,7 +54,6 @@ from crawlerai.db.task_events import record_task_events
 
 LEASE: Final = timedelta(minutes=10)
 MAX_ATTEMPTS: Final = 3
-BACKOFF_BASE: Final = timedelta(seconds=30)
 LAST_ERROR_BYTES: Final = 2048
 # How many stalled jobs one scheduler turn ends (`fail_stalled_jobs`); a full batch runs again at once.
 STALLED_BATCH: Final = 100
@@ -172,7 +172,7 @@ def retried(task: ClaimedTask, *, transient: bool) -> bool:
 
 def retry_delay(attempts: int) -> timedelta:
     """The backoff before retrying a task that failed transiently on attempt `attempts` (1 for the first)."""
-    delay: timedelta = BACKOFF_BASE * 2 ** (attempts - 1)
+    delay: timedelta = FIRST_BACKOFF * 2 ** (attempts - 1)
     return delay
 
 
