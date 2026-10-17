@@ -16,7 +16,8 @@ jobs-list or usage tool. (Previously: eleven tools, no schedule tools.) Refs: §
 `/v1/schedules` SHALL create (201), list newest first, read, `PATCH` (name, cadence, or `kind` with `request`, checked
 as at creation), delete (204, its jobs kept with `schedule_id` null), pause, resume and run now (202 with `job_id`)
 schedules; a request the submission would refuse, a schema prompt or a scrape's browser actions is a 422, and
-`GET /v1/jobs?schedule_id=` lists a schedule's jobs. Refs: §22, D-1411, D-1412, D-1417.
+`GET /v1/jobs?schedule_id=` lists a schedule's jobs; `crawlerai schedules list|pause|resume` does the same from the
+command line. Refs: §22, D-1411, D-1412, D-1417.
 
 ### Requirement: Webhook payloads
 A delivery SHALL POST `{delivery_id, job_id, attempt, events: [{id, type, created_at, data}]}` with

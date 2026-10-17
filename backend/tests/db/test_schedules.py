@@ -6,6 +6,7 @@ private address. Hosts are RFC 2606 names.
 """
 
 import asyncio
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.cli import main
 from crawlerai.db.models import Job, JobId, Schedule, ScheduleId
 from crawlerai.llm.client import NO_LLM
 from crawlerai.resolve.pipeline import EngineData
@@ -321,3 +323,24 @@ async def test_a_private_crawl_target_is_refused_at_creation(engine: AsyncEngine
 
     with pytest.raises(TargetsRejected):
         await schedules.create_schedule(engine, submitting, new, api_key_id=None)
+
+
+async def test_the_cli_lists_pauses_and_resumes_schedules(
+    created: ScheduleId, database_url: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
+
+    async def cli(*argv: str) -> list[dict[str, Any]]:
+        # The CLI runs its own event loop, so it runs on a thread of its own here.
+        await asyncio.to_thread(main, list(argv))
+        return [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+
+    listed = await cli("schedules", "list")
+    paused = await cli("schedules", "pause", str(created))
+    resumed = await cli("schedules", "resume", str(created))
+
+    assert [(line["id"], line["interval_s"], line["paused"]) for line in listed] == [(str(created), 300, False)]
+    assert [line["paused"] for line in paused + resumed] == [True, False]
+    with pytest.raises(SystemExit) as exited:
+        await cli("schedules", "pause", "0192a000-0000-7000-8000-00000000dead")
+    assert exited.value.code == 2
