@@ -57,11 +57,13 @@ _CURL_ERRORS: dict[int, str] = {
 
 @dataclass(frozen=True)
 class Hop:
-    """What one request sends. `headers` are merged into the impersonation's defaults; `None` removes a default."""
+    """What one request sends. `headers` are merged into the impersonation's defaults; `None` removes a default.
+    `order` replaces the profile's header order (lowercase names), for a request the profile does not describe."""
 
     method: Literal["GET", "POST"]
     headers: Mapping[str, str | None]
     body: bytes | None = None
+    order: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -256,6 +258,9 @@ async def _request(
         CurlOpt.VERBOSE: 1,
         CurlOpt.DEBUGFUNCTION: on_debug,
     }
+    if hop.order is not None:
+        # Applied after the impersonation, whose order it replaces (CURLOPT_HTTPHEADER_ORDER, curl-impersonate).
+        options[CurlOpt.HTTPHEADER_ORDER] = ",".join(hop.order)
     # curl_cffi types option values as str, but passes each to curl_easy_setopt with the option's own type.
     session.curl_options = cast(dict[CurlOpt, str], options)
     try:

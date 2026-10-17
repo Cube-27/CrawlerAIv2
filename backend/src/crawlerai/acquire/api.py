@@ -21,7 +21,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from curl_cffi.requests import BrowserTypeLiteral
 
-from crawlerai.acquire.challenge import challenge_label, count
+from crawlerai.acquire.challenge import CHALLENGED, challenge_label, count
 from crawlerai.acquire.classify import classify
 from crawlerai.acquire.curl_client import Hop, Transport, Wire, send
 from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
@@ -44,6 +44,27 @@ SiteRelation = Literal["same-origin", "same-site", "cross-site"]
 # Fetch Metadata §2.1: across a redirect chain the value is the least related hop's.
 _RELATION_ORDER: Final[tuple[SiteRelation, ...]] = ("same-origin", "same-site", "cross-site")
 _DEFAULT_PORTS: Final = {"http": 80, "https": 443}  # RFC 9110 §4.2
+# D-1321: the order in which Chromium sends a script's `fetch()` headers, as the browser rung's Chromium sends them to a
+# header echo service; the impersonation profile describes a navigation's. A header absent from a request is skipped.
+FETCH_HEADER_ORDER: Final = (
+    "host",
+    "content-length",
+    "sec-ch-ua-platform",
+    "user-agent",
+    "sec-ch-ua",
+    "content-type",
+    "sec-ch-ua-mobile",
+    "accept",
+    "origin",
+    "sec-fetch-site",
+    "sec-fetch-mode",
+    "sec-fetch-dest",
+    "referer",
+    "accept-encoding",
+    "accept-language",
+    "cookie",
+    "priority",
+)
 
 
 @dataclass(frozen=True)
@@ -89,7 +110,7 @@ async def fetch_json(
     if error is None and last is not None:
         block_class, error = await asyncio.to_thread(_outcome, last.status, last.body)
         body = last.body
-        if block_class != "ok" and error is None:
+        if block_class in CHALLENGED:
             challenge = await asyncio.to_thread(_label, last, request.url)
     count(challenge, "api")
     result = fetch_result(
@@ -133,7 +154,7 @@ def _first_hop(request: JsonRequest) -> Hop:
     if request.body is not None and not any(name.lower() == _CONTENT_TYPE for name in headers):
         headers["Content-Type"] = _TEXT_BODY
     body = None if request.body is None else request.body.encode()
-    return Hop(request.method, headers, body)
+    return Hop(request.method, headers, body, FETCH_HEADER_ORDER)
 
 
 def _replace(headers: dict[str, str | None], name: str, value: str | None) -> None:
@@ -155,6 +176,8 @@ def _fetch_headers(page_url: str, url: str, method: str, before: SiteRelation) -
         "Sec-Fetch-User": None,
         "Upgrade-Insecure-Requests": None,
         "Referer": referrer(page_url, url),
+        # RFC 9218 §4: urgency 1, incremental, as Chromium sends for a script's fetch (a navigation is urgency 0).
+        "Priority": "u=1, i",
     }
     if method != "GET" or _origin(page_url) != _origin(url):
         headers["Origin"] = _serialized_origin(page_url)
@@ -180,7 +203,7 @@ class _Redirect:
             _replace(headers, name, value)
         if method == "GET" and _origin(self.page_url) == _origin(target.url):
             _replace(headers, "Origin", None)
-        return Hop(method, headers, body)
+        return Hop(method, headers, body, FETCH_HEADER_ORDER)
 
 
 def _relation_of(value: str | None) -> SiteRelation:

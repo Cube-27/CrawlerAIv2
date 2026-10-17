@@ -1,6 +1,7 @@
-"""Challenge labels on attempts (D-1326): which anti-bot challenge, if any, a response the fetch did not keep as `ok`
-presents. The label is the vendor whose signature the response shows (`adapters.challenges`, site data), else
-`STRUCTURAL` when the generic signal holds, else none.
+"""Challenge labels on attempts (D-1326): which anti-bot challenge, if any, a `blocked` or `shell` response presents
+(`CHALLENGED`: a site's missing page or failure is no challenge, whatever cookies its edge sets). The label is the
+vendor whose signature the response shows (`adapters.challenges`, site data), else `STRUCTURAL` when the generic
+signal holds, else none.
 
 INV-24 holds: the block class comes from status and structure alone (`classify`), and a label changes neither it nor
 the remembered fetch method. Labels are recorded on the attempt (its manifest and `capture` row keep them), counted in
@@ -11,17 +12,20 @@ import logging
 from typing import Final
 
 from crawlerai.acquire.classify import interstitial
+from crawlerai.acquire.types import BlockClass
 from crawlerai.adapters.challenges import vendor_of
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.storage.capture_bundle import HeaderList
 
-__all__ = ["STRUCTURAL", "challenge_label", "challenge_signal", "count"]
+__all__ = ["CHALLENGED", "STRUCTURAL", "challenge_label", "challenge_signal", "count"]
 
 log = logging.getLogger(__name__)
 
 # The label of a challenge no vendor signature names.
 STRUCTURAL: Final = "structural"
 _SET_COOKIE = "set-cookie"  # RFC 6265 §4.1
+# The classes a challenge takes (`classify`): a refusal, or a document with nothing of the page in it.
+CHALLENGED: Final[frozenset[BlockClass]] = frozenset({"blocked", "shell"})
 
 
 def challenge_signal(status: int, headers: HeaderList, body: bytes, url: str) -> bool:
@@ -31,7 +35,7 @@ def challenge_signal(status: int, headers: HeaderList, body: bytes, url: str) ->
 
 
 def challenge_label(status: int, headers: HeaderList, body: bytes, url: str) -> str | None:
-    """The label of a response the fetch did not keep as `ok`. `headers` are as received, `Set-Cookie` included: only
+    """The label of a response in a `CHALLENGED` class. `headers` are as received, `Set-Cookie` included: only
     the cookie names are read (RFC 6265 §4.1.1, the name before the first `=`), never a value."""
     signature = vendor_of((name for name, _ in headers), _cookie_names(headers), body)
     if signature is not None:

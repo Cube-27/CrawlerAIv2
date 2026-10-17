@@ -16,7 +16,7 @@ from ipaddress import ip_address
 import httpx
 import pytest
 
-from crawlerai.acquire.api import JsonRequest, fetch_json, referrer, site_relation
+from crawlerai.acquire.api import FETCH_HEADER_ORDER, JsonRequest, fetch_json, referrer, site_relation
 from crawlerai.acquire.challenge import STRUCTURAL
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
@@ -368,31 +368,26 @@ def test_the_request_reaches_the_pinned_address_under_its_host_name(server: Serv
     assert [request for request, _ in server.requests] == ["api.example.test/jobs"]
 
 
-def test_the_json_call_sends_the_impersonations_headers_in_its_order(server: Server) -> None:
-    """D-1321: the JSON rung's headers take the impersonation profile's positions, as the HTTP rung's do; the fields
-    a navigation alone sends are gone and the Fetch Metadata are a CORS request's."""
+def test_the_json_call_sends_the_impersonations_headers_in_the_order_of_a_scripts_fetch(server: Server) -> None:
+    """D-1321, D-1322: the JSON rung keeps the impersonation's identity (the same user agent and client hints as the
+    HTTP rung's navigation), drops the fields only a navigation sends, and sends its fields in a `fetch()`'s order."""
     page = server.url("/page", host="api.example.test")
     server.route("/jobs", json_route())
     server.route("/page", Reply(200, (("Content-Type", "text/html"),), b"<a href='/x'>x</a>" * 5))
-    asyncio.run(
-        fetch_http(
-            page,
-            FetchPolicy(),
-            engine_version="test",
-            impersonate=IMPERSONATE,
-            connector=LoopbackConnector(server.port, {}),
-        )
-    )
+    connector = LoopbackConnector(server.port, {})
+    asyncio.run(fetch_http(page, FetchPolicy(), engine_version="test", impersonate=IMPERSONATE, connector=connector))
     fetch_local(server, "/jobs", page=page)
 
-    navigation, call = ([name.lower() for name, _ in headers] for _, headers in server.requests)
-    shared = [name for name in navigation if name in call]
-    assert [name for name in call if name in shared] == shared
-    assert {"user-agent", "accept", "sec-fetch-site", "accept-encoding"} <= set(shared)
-    assert {"sec-fetch-user", "upgrade-insecure-requests"} <= set(navigation) - set(call)
-    sent = dict((name.lower(), value) for name, value in server.requests[1][1])
-    assert (sent["sec-fetch-mode"], sent["sec-fetch-dest"], sent["sec-fetch-site"]) == ("cors", "empty", "same-origin")
-    assert sent["accept"] == "application/json"
+    navigation, call = (dict((name.lower(), value) for name, value in headers) for _, headers in server.requests)
+    for name in ("user-agent", "sec-ch-ua", "sec-ch-ua-platform", "accept-language"):
+        assert call[name] == navigation[name]
+    assert {"sec-fetch-user", "upgrade-insecure-requests"} <= navigation.keys() - call.keys()
+    assert (call["sec-fetch-mode"], call["sec-fetch-dest"], call["sec-fetch-site"]) == ("cors", "empty", "same-origin")
+    assert (call["accept"], call["referer"]) == ("application/json", page)  # `Priority` goes over HTTP/2 only
+    names = [name.lower() for name, _ in server.requests[1][1]]
+    ordered = [name for name in names if name in FETCH_HEADER_ORDER]
+    assert ordered == sorted(ordered, key=FETCH_HEADER_ORDER.index)
+    assert names.index("sec-ch-ua-platform") < names.index("user-agent") < names.index("sec-ch-ua")
 
 
 def test_inv30_a_body_over_the_cap_is_an_error_without_a_body(server: Server) -> None:
