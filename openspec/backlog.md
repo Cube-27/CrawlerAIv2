@@ -42,16 +42,17 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   as written; the range normalizer decides), ADP pay type (annual or hourly), Teamtailor's `jobs.rss` locations. UKG and ADP
   were measured on one tenant each (their endpoints are the platform's own); add tenants as found. A re-scrape of a
   listing keeps an earlier record of the same URL: check that a field newly mapped by an adapter reaches it.
-- Network data layer (#250): the paging driver (`crawl.paging`) counts linked DOM item blocks only, so a scroll listing whose items hold no item link stops `no_items` although its calls would load more rows.
-- Network data layer (#250): structured rows that lack a field the page's call carries per item (microdata rows without a price) keep it unpublished; joining a call's rows to structured rows needs an item identity rule.
 - Network data layer (#250): the release executor reads `xhr` bodies with `json.loads`, not `network_json` (no guard prefix), since it shares no code with the engine (INV-20); decide whether it follows.
-- Network data layer (#254): the worker's crawl and batch tasks serve a listing recipe's first page only; only a scrape with browser actions follows its pagination (D-1368).
 - Network data layer (#254): cold listing rows publish text fields only through role C (call rows admit text by equality), so without LLM keys a learned listing recipe maps checkable fields only (the live check's public search listing: `url`); verify a full `learn` job through the API once role A has keys (H4).
-- Network data layer (#254): binding keeps a query value that is constant across samples literal, so a public search key in an endpoint URL is stored in the recipe; header minimization withholds token-like header values only. Decide whether URL query tokens follow the same rule.
-- Listing browser actions (#241): a load-more or scroll listing whose rows come from a JSON-LD ItemList keeps the
-  first batch only (the script is not updated as items load); rows of the grown DOM need role C or a config. Not
-  validated on a real virtualised list or a real in-DOM show-more listing; an integer inside a path segment
-  (`page-2.html`) is not a +1 integer link, so such pages turn by their pager only. Measure on dev before changing.
+- Listing paging (#258): call rows that extend a listing beyond its script (D-1402) carry the fields their call proves
+  by the listing's links or by visibility; a field the script states for other items admits by equality only, so those
+  rows are partial until role C reads them (verify once role A/C have keys). Grown items stated by neither structured
+  data nor a call stay for role C or a config.
+- Listing paging (#258): a load-more control written as an `a` without `href` (a placeholder, HTML Standard §4.6.1) is
+  no control, so such a listing stops `no_mechanism` (one public test listing, live check of #258); measure on dev how
+  often before admitting script-click placeholders.
+- Listing paging (#258): a JSON-LD `ItemList` beside a load-more, a call filling structured rows (D-1400, D-1401) and an
+  in-DOM show-more listing were verified on synthetic pages only; validate on dev listings.
 - Absent fields (#252): a config-mode page missing an absent required field is still `partial`; listings never get
   `absent` fields (D-1347); a field the previous config covered was not asked of role C on its pages, yet a run reading
   them may list it absent when another field made a call (D-1341). Measure on dev once LLM keys exist.
