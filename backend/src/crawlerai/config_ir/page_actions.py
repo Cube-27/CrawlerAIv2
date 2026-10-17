@@ -33,7 +33,7 @@ _DEFAULT_TIMEOUT_MS: Final = 5_000
 _MAX_TIMEOUT_MS: Final = 15_000
 NETWORK_IDLE: Final = "network_idle"
 # UI Events KeyboardEvent `key` values (W3C UI Events Key Values), optionally with modifiers joined by `+`, as
-# Playwright's `keyboard.press` takes them: `Enter`, `PageDown`, `a`, `Control+A`.
+# Playwright's keyboard press takes them: `Enter`, `PageDown`, `a`, `Control+A`.
 _KEY: Final = r"^(?:(?:Shift|Control|Alt|Meta|ControlOrMeta)\+)*(?:[A-Za-z][A-Za-z0-9]*|\S)$"
 
 Timeout = Annotated[int, Field(ge=1, le=_MAX_TIMEOUT_MS)]

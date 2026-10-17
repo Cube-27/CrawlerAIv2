@@ -1,11 +1,12 @@
 """The caller's page steps on the browser rung (D-1436, D-1437): run in order on the rendered page after its settle and
 before it is read, each within its own timeout.
 
-An element is named by an XPath 1.0 expression (`config_ir.page_actions` translates a CSS selector into one, as an IR
-`css` step is), or for a click by its visible text. Locators and `evaluate` run in Patchright's isolated world, which
-shares the document but not the page's globals (INV-44). A click is a pointer click on the first matching element
-that becomes actionable; one an overlay intercepts times out and is reported, not worked around. Nothing is typed into
-a password field or a field whose autofill names a credential (D-1438): no step logs in or enters a credential.
+An element is named by an XPath 1.0 expression (the caller's vocabulary in `config_ir` translates a CSS selector into
+one, as an IR `css` step is), or for a click by its visible text. Locators and `evaluate` run in Patchright's isolated
+world, which shares the document but not the page's globals (INV-44). A click is a pointer click on the first matching
+element that becomes actionable; one an overlay intercepts times out and is reported, not worked around. Nothing is
+typed into a password field or a field whose autofill names a credential (D-1438): no step logs in or enters a
+credential.
 
 The first step that does not complete ends the run: the steps after it are `skipped`, and the page is read as it is.
 """

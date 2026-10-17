@@ -10,7 +10,7 @@ it went through is told how it went (`core.proxy_health`), as the HTTP rung does
 fetch reads the context's cookies before the context closes, without changing them, for a site session (INV-29's
 exception). The caller's cookies (`RequestContext`) are added to the context before the navigation, as host-only
 cookies of the URL's host; the caller's headers are never set in the browser (INV-44). The caller's page steps run
-after the settle and before the read (`acquire.page_steps`), within the browser's time cap plus their own timeouts.
+after the settle and before the read (`run_steps`), within the browser's time cap plus their own timeouts.
 """
 
 import asyncio

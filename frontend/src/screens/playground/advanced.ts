@@ -36,7 +36,7 @@ export const ACTION_MODES: Readonly<Record<ActionType, readonly ActionMode[]>> =
   type: ["selector"],
 };
 
-/** The server's cap on steps (`config_ir.page_actions.MAX_ACTIONS`). */
+/** The server's cap on steps (`MAX_ACTIONS` of `page_actions` in `config_ir`). */
 export const MAX_ACTIONS = 20;
 
 export interface AdvancedFetch {

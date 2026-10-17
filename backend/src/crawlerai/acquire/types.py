@@ -77,9 +77,9 @@ ScrollMode = Literal["end", "by", "stable"]
 
 
 class PageStep(_Frozen):
-    """One browser step as the browser rung runs it (`acquire.page_steps`), translated from the caller's vocabulary
-    (`config_ir.page_actions`): an element is named by an XPath 1.0 expression, or by its visible `text` for a click.
-    Each step ends within `timeout_ms`."""
+    """One browser step as the browser rung runs it (`run_steps`), translated from the caller's vocabulary
+    (`page_actions` in `config_ir`): an element is named by an XPath 1.0 expression, or by its visible `text` for a
+    click. Each step ends within `timeout_ms`."""
 
     action: StepAction
     timeout_ms: PositiveInt

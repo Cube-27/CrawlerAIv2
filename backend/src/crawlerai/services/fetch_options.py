@@ -3,7 +3,8 @@ fetched, and the fetch policy it makes for a page (`fetch_policy`).
 
 Besides the method hint, robots.txt override, proxy pool and row target, it carries the caller's request context
 (D-1430): `headers` and `cookies`, whose values are secrets, `wait_for` and `actions`, the page steps the browser runs
-before it reads the page (`config_ir.page_actions`, D-1436), and `cache`, whether a stored capture is reused (D-1435).
+before it reads the page (`page_actions` in `config_ir`, D-1436), and `cache`, whether a stored capture is reused
+(D-1435).
 
 A secret value is shown as `**********` by every serialization (an answer, a stored scrape request, a log line), except
 the one that stores an asynchronous job's request for its workers (`KEEP_SECRETS`, D-1432).
