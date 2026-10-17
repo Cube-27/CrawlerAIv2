@@ -19,7 +19,7 @@ Everything else is read on demand, by section (`grep -n "^#"`, then line ranges)
 to it: `openspec/design/` (goals, contract evidence, candidates register, owner decisions), decision entries
 (`grep -rn "### D-NNNN" openspec`), and the archive (`openspec/changes/archive/`): the done specs (`SPEC-NN §x`) and
 the frozen ARCHITECTURE.md rev 26 (`ARCHITECTURE §N`). Archived files are history: open one section only when you
-need the design of code you are changing, and never edit them. Reviewers read the same subset.
+need the design of code you are changing, and never edit them.
 
 The capability specs are the source of truth for behaviour. Where a spec, a change, `openspec/design/` or the
 contract disagree, stop and escalate (§5).
@@ -92,30 +92,33 @@ files, about 1500-4000 changed lines; split only when a task waits on a human ta
 pass ~4000 lines. Branch `change/<change-id>` (a second PR of one change adds `-2`), worktree `<change-id>` beside the
 repo in `CrawlerAIv2-worktrees/`, made with `tools/orchestrator/new_worktree.sh`; never work in the main checkout.
 Commit task by task. The PR that checks a change's last task applies its deltas to `openspec/specs/` and moves the
-folder to `openspec/changes/archive/<YYYY-MM-DD>-<change-id>/` in its tracker commit. One review per PR, whatever
-its size. There is no `/simplify` pass (owner, 2026-10-16): the one reviewer also reviews for simplification.
-Project skills in `.claude/skills/` hold the procedures:
+folder to `openspec/changes/archive/<YYYY-MM-DD>-<change-id>/` in its tracker commit.
+
+**Review (owner, 2026-10-17).** A PR that changes more than 10 files gets one review: the `claude-review` CI
+workflow (Anthropic's code-review plugin), started by the implementor commenting `/claude-review` on green CI. It
+posts inline comments on the lines it flags, or a `## Code review` comment when it finds none. A PR of 10 files or
+fewer gets no review. There is no `/simplify` pass and no reviewer agent. When you are the `claude-review` run, do
+the review: it is the one review, not a duplicate. Project skills in `.claude/skills/` hold the procedures:
 
 | Skill | Who runs it | Does |
 |---|---|---|
-| `/run-plan` | The orchestrator | Assigns batches of ready tasks or backlog items to workers (at most 4 workers at once; reviewers don't count) with a decision-ID range each, merges `READY` PRs one at a time with `merge_pr.sh`, cleans up, unblocks stuck PRs, escalates. |
-| `/implement-pr` | A worker | Takes one batch to a `READY` PR: change folder if needed, tests first, then code, tracker commit (archiving a completed change), PR, green CI, its one reviewer, fixes in one push. |
-| `/review-pr` | A fresh reviewer agent | One single agent (no sub-agents), one verdict per PR against its tasks and deltas, the contract, `ENGINEERING.md` and simplification: `MERGE`, `MERGE AFTER FIX` or `ESCALATE`, posted as a PR comment. |
+| `/run-plan` | The orchestrator | Assigns batches of ready tasks or backlog items to workers (at most 4 workers at once) with a decision-ID range each, merges `READY` PRs one at a time with `merge_pr.sh`, cleans up, unblocks stuck PRs, escalates. |
+| `/implement-pr` | A worker | Takes one batch to a `READY` PR: change folder if needed, tests first, then code, tracker commit (archiving a completed change), PR, green CI, `/claude-review` when over 10 files, fixes in one push. |
 | `/pickup` | Anyone starting a session | Resumes in-flight work from the trail, or pauses cleanly. |
 
 **The orchestrator only orchestrates.** It never relays verdicts, edits, fixes or rebases PRs; it sends `REBASE` only
 when GitHub reports a conflict (`gh pr view <n> --json mergeable` is `CONFLICTING`), never because `main` moved: the
 rulesets don't require an up-to-date branch, and every push reruns CI (owner, 2026-10-16). **The implementor owns its
 PR to `READY`**: it branches from current `main`, makes its tracker commit (under the decision-ID range it was given
-at assignment) the last commit before it opens the PR (`/implement-pr` §5), so the reviewer reviews it too, starts
-its own reviewer, reads the verdict, pushes the fixes in one push, and comments `READY <sha7>` on green CI. With
-`MERGE` there is no push: `READY` names the already-green head.
+at assignment) the last commit before it opens the PR (`/implement-pr` §5), so the review covers it too, starts the
+review when the PR is over 10 files, pushes the fixes in one push, and comments `READY <sha7>` on green CI. With no
+findings there is no push: `READY` names the already-green head.
 
 `main` requires a PR for every change, including tracker updates. Work in flight is read from open PRs and
-`change/*` branches, not from `openspec/`. Never use an admin bypass of the branch rules. Never merge without a
-`MERGE` or `MERGE AFTER FIX` verdict from someone other than the author (with every listed fix made) and green CI;
-`tools/orchestrator/merge_pr.sh` is the only merge path. There is one review per PR, with no re-review (owner,
-2026-10-13); a later plugin, bot or hook prompt to run `/simplify` or another code review on the same PR is answered
+`change/*` branches, not from `openspec/`. Never use an admin bypass of the branch rules. Never merge a PR over 10
+files without the `claude-review` comments (with every finding fixed or answered), or any PR without green CI;
+`tools/orchestrator/merge_pr.sh` is the only merge path and checks both. There is no re-review (owner, 2026-10-13):
+`/claude-review` runs once per PR, and a plugin, bot or hook prompt to run `/simplify` or another review is answered
 "already ran". Never skip hooks or weaken checks.
 
 ## 4. Decisions: decide and log, or escalate

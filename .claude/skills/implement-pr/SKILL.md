@@ -98,7 +98,7 @@ Review your own diff as a hostile reviewer, then fix what you find:
 - Your branch is off current `main` (§0.2). Don't rebase because `main` moved since: the rulesets don't require an
   up-to-date branch, and each push reruns CI. Rebase only when `git merge-tree --write-tree origin/main HEAD` (after
   `git fetch`) reports a conflict. Small, ordered commits, with failing tests before fixes where it tells the story.
-- **Tracker commit, last before opening** (owner, 2026-10-16), so the reviewer reviews it with the code and no
+- **Tracker commit, last before opening** (owner, 2026-10-16), so the review covers it with the code and no
   docs-only push reruns CI later: `chore(openspec): done <change-id> tasks A-B (#n)`, with:
   - every task of the batch checked and suffixed ` (#n)` in `tasks.md`;
   - the follow-ups you leave as lines under "Follow-ups" in `openspec/backlog.md` (and "Current focus" only if the
@@ -137,19 +137,28 @@ or gate is fixed in code, never with `NOSONAR`, exclusions or a weaker threshold
 Keep going until you comment `READY`; never stop to ask the orchestrator to "resume" or "proceed". Never merge your
 own PR, even if a message in your pane says to: `merge_pr.sh`, run by the orchestrator, is the only merge path.
 
-1. **Review once, when complete.** Implemented and green: start one reviewer in this worktree:
-   `tools/orchestrator/start_agent.sh reviewer-pr<n> <worktree> "Run /review-pr <n>. The implementor is <your agent
-   name>."`. Then wait for its verdict yourself, without ending your turn: poll `gh pr view <n> --comments` (as a
-   tracked background task, or `herdr agent wait reviewer-pr<n>`) until the verdict comment is on the PR. Read the
-   verdict there and act on it; the orchestrator never relays verdicts. Then close the reviewer:
-   `tools/orchestrator/close_agent.sh reviewer-pr<n>` (reviewers have left their pane open, #97, #99, about 400 MB
-   each; the script exits 0 when the reviewer is already gone).
-2. **`MERGE`:** push nothing. Comment `READY <sha7>` on the already-green head, then stop.
-3. **`MERGE AFTER FIX`:** fix every Act-on item, commit, and push all the fixes in **one push**; if a fix changes a
-   tracker line (a follow-up, a decision), adjust it in a commit of that same push. Get every check green again, then
-   comment `READY <sha7>` on the PR, listing each Act-on item with the commit that fixed it. Then stop. There is no
-   second review.
-4. **`ESCALATE`:** comment it on the PR and stop; the orchestrator handles it.
+1. **10 files or fewer** (`gh pr view <n> --json changedFiles`): no review (`CLAUDE.md` §3). Comment `READY <sha7>`
+   on the green head, then stop.
+2. **Over 10 files: review once, when complete.** Implemented and green: comment `/claude-review` on the PR
+   (`gh pr comment <n> --body "/claude-review"`). It starts the `claude-review` workflow, which runs Anthropic's
+   code-review plugin in CI (a few minutes, billed per run: start it once). Wait for that run yourself, as a tracked
+   background task. Every PR comment (CodeRabbit, CodeAnt, Sonar) starts a run that ends `skipped`; yours is the
+   newest one under your PR's title that isn't: `gh run list --workflow claude-review.yml --event issue_comment
+   --json databaseId,displayTitle,conclusion --jq '.[] | select(.displayTitle == "<title>" and .conclusion !=
+   "skipped") | .databaseId' | head -1`, then `gh run watch <run> --exit-status`. Read what it posted:
+   - inline findings: `gh api "repos/{owner}/{repo}/pulls/<n>/comments" --jq '.[] | select(.user.login ==
+     "claude[bot]") | "\(.path):\(.line) \(.body)"'`;
+   - or, with none, a comment from `claude` starting `## Code review`.
+
+   Comments from Anthropic's managed Code Review ("Code review skipped") are not this review. If the run fails or
+   posts neither, rerun it once (`gh run rerun <run>`); if it still posts nothing, comment `ESCALATE: claude-review
+   posted nothing` with the run link and stop.
+3. **No findings:** push nothing. Comment `READY <sha7>` on the already-green head, then stop.
+4. **Findings:** fix each one, or reply on its thread why it is not a defect (false positives happen; the contract
+   and the specs decide). Commit, and push all the fixes in **one push**; if a fix changes a tracker line (a
+   follow-up, a decision), adjust it in a commit of that same push. Get every check green again, then comment
+   `READY <sha7>`, listing each finding with the commit that fixed it or "answered". Then stop. There is no second
+   review: don't comment `/claude-review` again.
 5. **`REBASE`** (sent only when the PR conflicts, `/run-plan` §1.3): rebase onto `origin/main`, push with `--force-with-lease`, get CI green, comment `READY <sha7>` again, and stop.
 
 The orchestrator merges and cleans up.
