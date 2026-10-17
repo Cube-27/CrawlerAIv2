@@ -422,7 +422,7 @@ async def test_an_unchanged_page_shows_the_latest_record_of_its_entity(world: Wo
     page = await _json_values(world.engine, rerun)
 
     assert [(item.url, item.outcome, item.records) for item in page.items] == [
-        (url, "unchanged", [{"title": "Kettle 0", "colour": None}])
+        (url, "unchanged", [{"title": "Kettle 0"}])
     ]
 
 
