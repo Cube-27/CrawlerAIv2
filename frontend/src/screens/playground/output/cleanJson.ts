@@ -12,9 +12,11 @@ function codeUnitOrder(a: string, b: string): number {
 }
 
 /** The key of a money field's currency, as the server's clean record names it (`config_ir/exporters/records.py`):
- * `currency` beside `price` unless the schema has its own `currency` field. */
-function currencyKey(name: string, fields: FieldTypes): string {
-  return name === "price" && !("currency" in fields) ? "currency" : `${name}_currency`;
+ * `currency` beside `price`, else `<name>_currency`, the first that names no field; null when both do, and the money
+ * value is then written whole. */
+function currencyKey(name: string, fields: FieldTypes): string | null {
+  const candidates = name === "price" ? ["currency", `${name}_currency`] : [`${name}_currency`];
+  return candidates.find((key) => !(key in fields)) ?? null;
 }
 
 function cleanValue(value: unknown, spec: FieldTypeSpec | undefined): unknown {
@@ -34,9 +36,10 @@ function cleanObject(fields: FieldTypes, data: JsonObject): CleanRecord {
     const value = data[name];
     if (value === null || value === undefined) continue;
     const spec = fields[name];
-    if (spec?.type === "money" && isJsonObject(value)) {
+    const currency = spec?.type === "money" ? currencyKey(name, fields) : null;
+    if (currency !== null && isJsonObject(value)) {
       clean[name] = value.amount;
-      clean[currencyKey(name, fields)] = value.currency;
+      clean[currency] = value.currency;
     } else {
       clean[name] = cleanValue(value, spec);
     }

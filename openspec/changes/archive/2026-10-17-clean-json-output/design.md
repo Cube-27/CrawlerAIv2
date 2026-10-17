@@ -11,7 +11,7 @@
 
 ### D-1210 — Clean records: published fields only, money flat
 - Date: 2026-10-17 · Change/PR: clean-json-output · Status: decided
-- Decision: a clean record leaves out unpublished fields; a money field `x` writes its amount as `x` and its ISO 4217 code as `currency` when `x` is `price` and the schema has no `currency` field, else `x_currency`. Nested rows are written the same way. Records, CSV and Markdown exports are unchanged.
+- Decision: a clean record leaves out unpublished fields; a money field `x` writes its amount as `x` and its ISO 4217 code as `currency` when `x` is `price`, else `x_currency`: the first key that names no schema field; when both do, the money value is written whole. Nested rows are written the same way. Records, CSV and Markdown exports are unchanged.
 - Alternatives: separate `price` and `currency` schema fields (replaces the money type end to end); `price_currency` always. The owner chose the bare `currency` key.
 - Why: owner request (#51). Amount and code are written verbatim, so no value changes (INV-27); only the clean layout does.
 - Reversible: yes — `clean_record` and `cleanJson.ts`.

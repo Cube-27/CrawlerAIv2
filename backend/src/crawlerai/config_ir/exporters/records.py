@@ -9,7 +9,8 @@ published and never fixed (INV-27); a `csv_safe` CSV (D-0879) only marks formula
 
 A clean record (`json_values`, SPEC-14 §4.4) is a record's published values alone, with no status: the schema's
 published fields in name order, an unpublished one left out. A money value is written flat: the field holds its amount
-and a sibling `currency` (for a field named `price`) or `<field>_currency` its ISO 4217 code; objects nested in the
+and a sibling `currency` (for a field named `price`) or `<field>_currency` its ISO 4217 code, the first key that names
+no schema field (when both do, the money value is written whole); objects nested in the
 record, such as variant rows, are written the same way.
 """
 
@@ -66,9 +67,10 @@ def _clean_object(fields: Mapping[str, FieldSpec], data: Mapping[str, JsonValue]
         if value is None:
             continue
         spec = fields[name]
-        if spec.type is FieldType.MONEY and isinstance(value, dict):
+        currency_key = _currency_key(name, fields) if spec.type is FieldType.MONEY else None
+        if currency_key is not None and isinstance(value, dict):
             clean[name] = value.get("amount")
-            clean[_currency_key(name, fields)] = value.get("currency")
+            clean[currency_key] = value.get("currency")
         else:
             clean[name] = _clean_value(value, spec)
     return clean
@@ -82,9 +84,11 @@ def _clean_value(value: JsonValue, spec: FieldSpec) -> JsonValue:
     return value
 
 
-def _currency_key(name: str, fields: Mapping[str, FieldSpec]) -> str:
-    """The key of a money field's currency: `currency` beside `price` unless the schema has its own `currency` field."""
-    return "currency" if name == "price" and "currency" not in fields else f"{name}_currency"
+def _currency_key(name: str, fields: Mapping[str, FieldSpec]) -> str | None:
+    """The key of a money field's currency: `currency` beside `price`, else `<name>_currency`, the first that names no
+    field of the schema; None when both do, and the money value is then written whole."""
+    candidates = ["currency", f"{name}_currency"] if name == "price" else [f"{name}_currency"]
+    return next((key for key in candidates if key not in fields), None)
 
 
 def _row(fields: list[str], record: RecordContent) -> _Row:

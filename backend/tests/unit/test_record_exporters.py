@@ -163,6 +163,17 @@ def test_another_money_field_or_a_schema_currency_field_names_its_currency_after
     }
 
 
+def test_a_money_value_is_written_whole_when_every_currency_key_names_a_schema_field() -> None:
+    fields = {"price": _MONEY, "currency": _TEXT, "price_currency": _TEXT}
+    schema = SchemaDocument(name="thing", page_kind="detail", fields=fields)
+
+    assert clean_record(schema, {"price": _EUR, "currency": "x", "price_currency": "y"}) == {
+        "currency": "x",
+        "price": {"amount": "9.50", "currency": "EUR"},
+        "price_currency": "y",
+    }
+
+
 def test_money_in_nested_rows_is_written_flat_and_their_nulls_left_out() -> None:
     row = FieldSpec(type=FieldType.OBJECT, description="d", fields={"price": _MONEY, "sku": _TEXT})
     variants = FieldSpec(type=FieldType.LIST, description="d", item=row)
