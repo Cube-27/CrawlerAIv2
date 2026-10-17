@@ -1,9 +1,16 @@
 import { AdvancedRows } from "../AdvancedRows";
 import type { PageKind } from "../../../api/scrape";
-import { NumberRow, OptionsPanel } from "../OptionsPanel";
+import type { CrawlStrategy } from "../../../api/jobs";
+import { NumberRow, OptionsPanel, SelectRow, SwitchRow, TextRow } from "../OptionsPanel";
 import { FetchMethodRow, MaxRowsRow, FieldsRow, MetadataRow, ScopeRows, WebhookRow } from "../rows";
 import { DEFAULT_CRAWL_OPTIONS, type CrawlOptions as Options } from "./form";
 import { RuleRows } from "./RuleRows";
+
+const STRATEGIES: readonly (readonly [CrawlStrategy, string])[] = [
+  ["bfs", "Breadth first"],
+  ["dfs", "Depth first"],
+  ["best_first", "Best first"],
+];
 
 /** Crawl's options (SPEC-14 §4.2): the scope globs; max depth, page limit, fetch method and Metadata in JSON; fields
  * (§4.10) and the webhook; then the page-kind rules. With a schema, every rule is for its page kind,
@@ -50,6 +57,42 @@ export function CrawlOptions({
         minValue={1}
         onChange={(limit) => {
           onChange({ ...options, limit });
+        }}
+      />
+      <SelectRow<CrawlStrategy>
+        label="Strategy"
+        help="The order pages are visited in: breadth first, depth first, or best first, which visits the links that best match the query first."
+        name="strategy"
+        options={STRATEGIES}
+        value={options.strategy}
+        onChange={(strategy) => {
+          onChange({ ...options, strategy });
+        }}
+      />
+      <TextRow
+        label="Query"
+        help="Best first only: the words that rank links, by their text and URL path."
+        name="query"
+        value={options.query}
+        placeholder="Words the pages you want are about"
+        onChange={(query) => {
+          onChange({ ...options, query });
+        }}
+      />
+      <SwitchRow
+        label="Include subdomains"
+        help="Also follows links to subdomains of the start host."
+        isSelected={options.allowSubdomains}
+        onChange={(allowSubdomains) => {
+          onChange({ ...options, allowSubdomains });
+        }}
+      />
+      <SwitchRow
+        label="Follow external links"
+        help="Also follows links to other hosts; the include and exclude globs still apply."
+        isSelected={options.allowExternal}
+        onChange={(allowExternal) => {
+          onChange({ ...options, allowExternal });
         }}
       />
       <FetchMethodRow

@@ -7,6 +7,9 @@ Call the CrawlerAI crawl endpoint to crawl a site from a start URL.
   `metadata` and `records`.
 - Scope: `include` and `exclude` URL globs, `max_depth` and `limit`. The crawl stays on the start URL's host (and the
   subdomains an `include` names) and reads its sitemaps and each page's links.
+- `strategy`: `bfs` (default), `dfs` or `best_first`; best first with a `query` (and `keywords`) fetches the links that
+  match it first, so a small `limit` still reaches the relevant pages. `allow_subdomains` and `allow_external` widen the
+  scope; `max_pages` is an alias of `limit`.
 - `page_kind_rules` (`[{"pattern": "<glob>", "page_kind": "<kind>"}]`): a page a rule matches is extracted; with
   rules, every other page is fetched for its links only. With `schema`, ask for `records`.
 - The answer is `202` with a `job_id`. Follow it with `GET /v1/jobs/{job_id}` or `GET /v1/jobs/{job_id}/events`, and
@@ -19,7 +22,8 @@ Call the CrawlerAI crawl endpoint to crawl a site from a start URL.
 Build an integration on the CrawlerAI crawl endpoint (`POST /v1/crawl`).
 
 - Read the base URL and the API key from configuration (`CRAWLERAI_API_KEY`); never hard-code a key.
-- Keep crawls bounded: always set `limit`, and narrow them with `include` and `exclude` globs.
+- Keep crawls bounded: always set `limit`, and narrow them with `include` and `exclude` globs. To read only what
+  matters on a large site, use `strategy: best_first` with a `query`.
 - Use `page_kind_rules` so only the pages you need are extracted; the others are read for links only.
 - Wait for the job with `webhook_url` or the event stream (resume with `Last-Event-ID`), then page through the
   `json_values` results with `cursor` until `next_cursor` is null.

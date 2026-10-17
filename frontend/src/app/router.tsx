@@ -6,6 +6,7 @@ import { RecordsScreen } from "../screens/records/RecordsScreen";
 import { BatchPlayground } from "../screens/playground/batch/BatchPlayground";
 import { CrawlPlayground } from "../screens/playground/crawl/CrawlPlayground";
 import { ExtractPlayground } from "../screens/playground/extract/ExtractPlayground";
+import { SearchPlayground } from "../screens/playground/search/SearchPlayground";
 import { MapPlayground } from "../screens/playground/map/MapPlayground";
 import { ScrapePlayground } from "../screens/playground/scrape/ScrapePlayground";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
@@ -39,6 +40,7 @@ export const routes: RouteObject[] = [
           { path: "batch", element: <BatchPlayground /> },
           { path: "map", element: <MapPlayground /> },
           { path: "crawl", element: <CrawlPlayground /> },
+          { path: "search", element: <SearchPlayground /> },
           { path: "extract", element: <ExtractPlayground /> },
           { path: "schemas", element: <SchemasScreen /> },
           { path: "schemas/new", element: <NewSchemaScreen /> },
