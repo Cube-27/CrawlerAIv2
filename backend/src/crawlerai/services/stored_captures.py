@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import Row, cast, func, or_, select
+from sqlalchemy import ColumnElement, Row, cast, func, literal, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -65,9 +65,8 @@ async def recent_capture(
             Capture.block_class == "ok",
             or_(Capture.expires_at.is_(None), Capture.expires_at > func.now()),
             UrlTask.canonical_url == canonical,
-            func.coalesce(Capture.fetch_policy["steps"], cast("[]", JSONB)) == cast(json.dumps(made["steps"]), JSONB),
-            func.coalesce(Capture.fetch_policy["context"], cast("null", JSONB))
-            == cast(json.dumps(made["context"]), JSONB),
+            func.coalesce(Capture.fetch_policy["steps"], _jsonb([])) == _jsonb(made["steps"]),
+            func.coalesce(Capture.fetch_policy["context"], _jsonb(None)) == _jsonb(made["context"]),
         )
         .order_by(Capture.fetched_at.desc())
         .limit(1)
@@ -77,6 +76,12 @@ async def recent_capture(
     if not api:
         query = query.where(Capture.method != "api")
     return (await conn.execute(query)).one_or_none()
+
+
+def _jsonb(value: object) -> ColumnElement[Any]:
+    """`value` as a JSONB value in SQL: its JSON text, bound as text and cast there (a JSONB-typed bind would encode the
+    text again, as a JSON string)."""
+    return cast(literal(json.dumps(value)), JSONB)
 
 
 async def reread(store: ObjectStore, row: CaptureRow) -> Recent | None:

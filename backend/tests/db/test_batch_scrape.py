@@ -97,6 +97,7 @@ class Web:
     crashing: set[str] = field(default_factory=set)
     renders: dict[str, bytes] = field(default_factory=dict)
     browser_fetches: list[tuple[int, str]] = field(default_factory=list)
+    http_fetches: list[tuple[str, FetchPolicy]] = field(default_factory=list)
     sessions: int = 0
 
     def answer(self, url: str, method: str = "http") -> FetchResult:
@@ -106,6 +107,7 @@ class Web:
     async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
         if url in self.raising:
             raise Crash("the rung raised")
+        self.http_fetches.append((url, policy))
         return self.answer(url)
 
     @asynccontextmanager
@@ -589,3 +591,51 @@ async def test_a_crashed_browser_fails_only_its_task_and_restarts_once_for_it(
     # The crashing page was fetched in the shared browser and in one restart, which died too; the other pages once.
     assert [len(sessions[url]) for url in urls] == [1, 2, 1]
     assert len(set(sessions[urls[1]])) == 2
+
+
+# The request context and cache modes per page (D-1432, D-1435, D-1439).
+
+
+async def test_a_batchs_workers_send_the_callers_cookie_with_every_page(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+) -> None:
+    urls = [f"{own_origin}/a", f"{own_origin}/b"]
+    for url in urls:
+        web.pages[url] = (200, _page("Kettle"))
+    batch = _batch(urls, "markdown", fetch={"cookies": {"sid": "s3cret"}})
+
+    submitted = await submit_batch(engine, fetching.connector, batch, data=None)
+    await _run(engine, fetching, None, submitted.job_id)
+
+    sent = {
+        url: [value.get_secret_value() for _, value in policy.context.cookies]
+        for url, policy in web.http_fetches
+        if policy.context is not None
+    }
+    assert sent == {url: ["s3cret"] for url in urls}  # robots.txt goes without it
+
+
+async def test_cache_only_serves_each_page_from_its_stored_capture_or_fails_it(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+) -> None:
+    stored, missing = f"{own_origin}/a", f"{own_origin}/never"
+    web.pages[stored] = (200, _page("Kettle"))
+    first = await submit_batch(engine, fetching.connector, _batch([stored], "markdown"), data=None)
+    await _run(engine, fetching, None, first.job_id)
+    fetched = len(web.http_fetches)
+
+    again = _batch([stored, missing], "markdown", fetch={"cache": "only"})
+    second = await submit_batch(engine, fetching.connector, again, data=None)
+    await _run(engine, fetching, None, second.job_id)
+
+    async with engine.connect() as conn:
+        rows = (
+            await conn.execute(
+                select(UrlTask.url, UrlTask.status, UrlTask.last_error).where(UrlTask.job_id == second.job_id)
+            )
+        ).all()
+    assert len(web.http_fetches) == fetched  # nothing fetched
+    assert {(url, status, error) for url, status, error in rows} == {
+        (stored, "done", None),
+        (missing, "failed", "not_cached"),
+    }
