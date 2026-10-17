@@ -27,6 +27,7 @@ from crawlerai.llm.client import LLMClient
 from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.llm.setup import LLMSetup
 from crawlerai.resolve.pipeline import EngineData
+from crawlerai.search.providers import SearchProvider, configured
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
@@ -40,6 +41,7 @@ class Runtime:
     engine_data: EngineData | None  # None without the data files: no `records`
     drift_margins: DriftMargins | None
     llm_setup: LLMSetup  # checked in the background from when `open_runtime` opens (`crawlerai.llm.setup`)
+    search: SearchProvider | None = None  # None without a configured provider: search answers 503 (D-1442)
 
 
 def fetching_from_settings(settings: Settings) -> Fetching:
@@ -99,6 +101,12 @@ def fetching_from_settings(settings: Settings) -> Fetching:
     return Fetching(rungs, connector, open_store(settings.object_store), HostLimiter(), frozenset(pools))
 
 
+def _search(settings: Settings) -> SearchProvider | None:
+    return configured(
+        settings.search_searxng_url, settings.search_url_template, settings.search_timeout_s, settings.search_fields
+    )
+
+
 @asynccontextmanager
 async def open_runtime(settings: Settings) -> AsyncIterator[Runtime]:
     quiet_peer_resets(asyncio.get_running_loop())
@@ -114,6 +122,7 @@ async def open_runtime(settings: Settings) -> AsyncIterator[Runtime]:
             engine_data=load_engine_data(fetching.rungs.adapters),
             drift_margins=load_drift_margins(),
             llm_setup=setup,
+            search=_search(settings),
         )
     finally:
         check.cancel()

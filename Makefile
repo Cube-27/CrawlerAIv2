@@ -14,7 +14,9 @@ UV_RUN ?= uv run
 CRAWLERAI_OBJECT_STORE := $(or $(CRAWLERAI_OBJECT_STORE),fs:///$(patsubst /%,%,$(CURDIR))/.data/objects)
 export
 
-.PHONY: dev up db db-down migrate api api-client check check-data check-tools check-backend \
+# `check-sdk` is not part of `check`: it needs `uvx` and the SDK's own `pnpm install`. CI checks only that the SDKs
+# were generated from the current API document (tools/tests/test_sdk_digest.py).
+.PHONY: sdk check-sdk dev up db db-down migrate api api-client check check-data check-tools check-backend \
 	check-frontend check-api-client check-licenses check-size-gates check-complexity check-theme
 
 ## Start Postgres, apply migrations and run the API on http://localhost:8000.
@@ -95,6 +97,18 @@ check-backend: db
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic upgrade head
 	cd backend && CRAWLERAI_TEST_DATABASE_URL=$(CHECK_DATABASE_URL) \
 		CRAWLERAI_TEST_PRIVATE_DATABASE_URL=$(CHECK_PRIVATE_DATABASE_URL) $(UV_RUN) pytest
+
+## Regenerate the Python and TypeScript SDKs' generated files from frontend/openapi.json (run `make api-client` first).
+sdk:
+	sdk/python/generate.sh
+	cd sdk/typescript && pnpm install --frozen-lockfile && pnpm gen
+	python3 tools/sdk_digest.py
+
+check-sdk: sdk
+	git diff --exit-code -- sdk || { echo "SDK out of date: run 'make sdk' and commit the result."; exit 1; }
+	cd sdk/typescript && pnpm check && pnpm test
+	cd sdk/python && uv sync --frozen --no-build --extra dev -q && .venv/bin/ruff check src tests \
+		&& .venv/bin/mypy src tests && .venv/bin/pytest -q
 
 check-frontend:
 	cd frontend && pnpm check

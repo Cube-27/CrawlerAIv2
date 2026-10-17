@@ -80,6 +80,7 @@ class ClaimedTask:
     attempts: int
     priority: int
     depth: int
+    score: float | None
     parent_task_id: UrlTaskId | None
     claimed_by: str
     lease_until: datetime
@@ -94,14 +95,15 @@ class LeaseLost(Exception):
 
 
 async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[ClaimedTask]:
-    """Lease up to `n` due tasks to `worker`, highest priority first, then oldest, and start their queued jobs."""
+    """Lease up to `n` due tasks to `worker`: highest priority first, then best crawl score (`UrlTask.score`, a task
+    with none after one with), then oldest; and start their queued jobs."""
     # The CTE runs exactly once (MATERIALIZED, PostgreSQL docs, "WITH Queries"). As a plain `IN (subquery)`, the
     # planner may rescan the subquery once per row of a semi-join; each rescan skips the rows already claimed and
     # yields `n` more, so a single claim could take every due task.
     due = (
         select(UrlTask.id)
         .where(UrlTask.status == "queued", UrlTask.next_attempt_at <= func.now())
-        .order_by(UrlTask.priority.desc(), UrlTask.id)
+        .order_by(UrlTask.priority.desc(), UrlTask.score.desc().nulls_last(), UrlTask.id)
         .limit(n)
         .with_for_update(skip_locked=True)
         .cte("due")
@@ -122,7 +124,7 @@ async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[Claime
     if tasks:
         await start_jobs(conn, {task.job_id for task in tasks})
     # UPDATE ... RETURNING does not keep the subquery's order.
-    return sorted(tasks, key=lambda task: (-task.priority, task.id))
+    return sorted(tasks, key=lambda task: (-task.priority, -(task.score or 0.0), task.id))
 
 
 async def insert_claimed(

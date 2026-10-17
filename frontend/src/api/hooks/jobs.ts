@@ -11,6 +11,7 @@ import {
   listJobResults,
   listJobValues,
   mapUrls,
+  searchWeb,
   submitBatch,
   submitCrawl,
   submitExtract,
@@ -22,6 +23,7 @@ import {
   type ExportPage,
   type JobFilters,
   type MapRequest,
+  type SearchRequest,
 } from "../jobs";
 import { unwrap } from "./query";
 
@@ -154,4 +156,10 @@ export function useSubmitExtract() {
 export function useMapUrls() {
   const client = useApiClient();
   return useMutation({ mutationFn: (body: MapRequest) => unwrap(mapUrls(client, body)) });
+}
+
+/** A search changes nothing on the server unless it scrapes: the batch job it queues is read through its own hooks. */
+export function useSearchWeb() {
+  const client = useApiClient();
+  return useMutation({ mutationFn: (body: SearchRequest) => unwrap(searchWeb(client, body)) });
 }

@@ -39,13 +39,17 @@ export type BatchRequest = Omit<Schemas["BatchScrapeRequest"], "fetch" | "schema
 };
 export type CrawlRequest = Omit<
   Schemas["CrawlRequest"],
-  "fetch" | "schema" | "limit" | "max_depth"
+  "fetch" | "schema" | "limit" | "max_depth" | "strategy" | "allow_subdomains" | "allow_external"
 > & {
   fetch: FetchMember;
   schema: JobSchemaRef | null;
   limit?: number;
   max_depth?: number;
+  strategy?: CrawlStrategy;
+  allow_subdomains?: boolean;
+  allow_external?: boolean;
 };
+export type CrawlStrategy = Schemas["CrawlRequest"]["strategy"];
 export type ExtractRequest = Omit<
   Schemas["ExtractRequest"],
   "fetch" | "schema" | "budget" | "limit"
@@ -322,4 +326,30 @@ export async function openJobEvents(
     signal,
   });
   return { response, error };
+}
+
+export type SearchResult = Schemas["SearchResult"];
+export type SearchHit = Schemas["SearchHit"];
+/** The search request as the form builds it: `scrape` leaves out the members it does not set, so the server's defaults
+ * apply. */
+export interface SearchRequest {
+  query: string;
+  limit?: number;
+  scrape?: {
+    formats: Schemas["SearchScrape"]["formats"];
+    schema?: { id: string };
+    page_kind?: PageKindRule["page_kind"];
+  };
+}
+
+/** The web results of a query (`POST /v1/search` answers at once); with `scrape`, a batch job scrapes them. */
+export function searchWeb(
+  client: ApiClient,
+  body: SearchRequest,
+): Promise<ApiResult<SearchResult>> {
+  return apiResult(
+    // The server applies the defaults this request leaves out (see `SearchRequest`).
+    () => client.POST("/v1/search", { body: body as Schemas["SearchRequest"] }),
+    "Searching the web",
+  );
 }

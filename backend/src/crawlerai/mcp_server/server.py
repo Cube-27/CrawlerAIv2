@@ -1,4 +1,4 @@
-"""The MCP server (SPEC-10 §4.7, ARCHITECTURE §13.3): eleven tools, each one call into `crawlerai.services`, answered as
+"""The MCP server (SPEC-10 §4.7, ARCHITECTURE §13.3): twelve tools, each one call into `crawlerai.services`, answered as
 `output` shapes them. It holds no logic of its own (§3).
 
 One server runs over stdio (`python -m crawlerai.mcp_server`) and over streamable HTTP at `/mcp` in the API app
@@ -28,6 +28,7 @@ from crawlerai.schemas.types import Name
 from crawlerai.services import captures, configs, crawl, extract, jobs, schemas
 from crawlerai.services import map as map_service
 from crawlerai.services import scrape as scrape_service
+from crawlerai.services import search as search_service
 from crawlerai.services.configs import ExportRequest
 from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.extract import ExtractRequest
@@ -37,6 +38,7 @@ from crawlerai.services.records import RecordPage
 from crawlerai.services.runtime import Runtime
 from crawlerai.services.schemas import NewSchema
 from crawlerai.services.scrape import ScrapeRequest
+from crawlerai.services.search import SearchRequest
 
 log = logging.getLogger(__name__)
 
@@ -83,6 +85,20 @@ class _Tools:
     async def map(self, ctx: AnyContext, request: MapRequest) -> CallToolResult:
         runtime = (await self._bind(ctx)).runtime
         result = await map_service.map_urls(runtime.database, runtime.fetching, request)
+        return tool_result(result.model_dump(mode="json"))
+
+    async def search(self, ctx: AnyContext, request: SearchRequest) -> CallToolResult:
+        caller = await self._bind(ctx)
+        runtime = caller.runtime
+        result = await search_service.search(
+            runtime.database,
+            runtime.fetching.connector,
+            runtime.search,
+            request,
+            data=runtime.engine_data,
+            llm=runtime.llm,
+            api_key_id=caller.api_key_id,
+        )
         return tool_result(result.model_dump(mode="json"))
 
     async def crawl_start(self, ctx: AnyContext, request: CrawlRequest) -> CallToolResult:
@@ -192,8 +208,12 @@ reads "unknown" in the summary. {UNTRUSTED}"""
 _MAP = f"""Discover a site's URLs from its sitemaps and the start page's links, as `POST /v1/map` does: canonical, on
 the start URL's host or the `include` globs, less the `exclude` globs. {UNTRUSTED}"""
 _CRAWL_START = """Queue a crawl from `url`, as `POST /v1/crawl` does, and return its `job_id`. A page a
-`page_kind_rules` pattern matches is extracted; with rules, other pages are fetched for their links only. Follow it
+`page_kind_rules` pattern matches is extracted; with rules, other pages are fetched for their links only. With
+`strategy` "best_first" and a `query`, the pages whose links best match it are fetched first, within `limit`. Follow it
 with `crawl_status`."""
+_SEARCH = f"""Search the web for `query`, as `POST /v1/search` does: the results' `url`, `title` and `snippet`. With
+`scrape` (`formats`, `schema`), a batch job scrapes the results and the answer carries its `job_id`; follow it with
+`extract_status`. Fails when the operator has configured no search provider. {UNTRUSTED}"""
 _STATUS = f"""The job's summary (status, task counts, outcomes, usage) and the first page of its results: records with
 each field's `status` and `confidence` ("unknown" in the summary for a field without a published value), or page
 outputs for a job without a schema. Pass the `next_cursor` of `results` as `cursor` for the next page. {UNTRUSTED}"""
@@ -203,6 +223,7 @@ included. Follow it with `extract_status`."""
 _TOOLS: Final = {
     "scrape": ("scrape", _SCRAPE, _FETCHES),
     "map": ("map", _MAP, _FETCHES),
+    "search": ("search", _SEARCH, _FETCHES),
     "crawl_start": ("crawl_start", _CRAWL_START, _FETCHES),
     "crawl_status": ("status", _STATUS, _READ_ONLY),
     "extract": ("extract", _EXTRACT, _FETCHES),
@@ -250,7 +271,7 @@ def _answered[**P](tool: Callable[P, Awaitable[CallToolResult]]) -> Callable[P, 
 
 
 def build_server(bind: Bind) -> FastMCP:
-    """The server with its eleven tools. `bind` gives a call its runtime and API key, and refuses an unauthenticated
+    """The server with its twelve tools. `bind` gives a call its runtime and API key, and refuses an unauthenticated
     one. Over HTTP the server is stateless and answers JSON, so any API process can take any request; DNS-rebinding
     protection is off, since a request authenticates with a bearer key a browser never sends on its own (§18)."""
     server = FastMCP(

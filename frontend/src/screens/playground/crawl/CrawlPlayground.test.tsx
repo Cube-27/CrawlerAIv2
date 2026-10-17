@@ -191,4 +191,42 @@ describe("crawl playground", () => {
       "https://shop.test/a/*",
     );
   });
+
+  it("sends a best-first strategy with its query, and the scope switches, only when set", async () => {
+    const calls = crawlApi();
+    await openPlayground("/crawl");
+    await typeUrl("shop.test/");
+    const options = await openOptions();
+    await pick(/Strategy/, "Best first");
+    await fill(options.getByRole("textbox", { name: "Query" }), "  rate limits ");
+    await userEvent.click(options.getByRole("switch", { name: "Include subdomains" }));
+    await closeOptions();
+
+    await start();
+
+    expect(await screen.findByRole("grid", { name: "Pages" })).toBeInTheDocument();
+    expect(posted(calls)).toMatchObject({
+      strategy: "best_first",
+      query: "rate limits",
+      allow_subdomains: true,
+    });
+    expect(posted(calls)).not.toHaveProperty("allow_external");
+  });
+
+  it("leaves the query out of a crawl that is not best first", async () => {
+    const calls = crawlApi();
+    await openPlayground("/crawl");
+    await typeUrl("shop.test/");
+    const options = await openOptions();
+    await fill(options.getByRole("textbox", { name: "Query" }), "ignored");
+    await pick(/Strategy/, "Depth first");
+    await closeOptions();
+
+    await start();
+
+    expect(await screen.findByRole("grid", { name: "Pages" })).toBeInTheDocument();
+    const body = posted(calls);
+    expect(body).toMatchObject({ strategy: "dfs" });
+    expect(body).not.toHaveProperty("query");
+  });
 });

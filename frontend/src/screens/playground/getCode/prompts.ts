@@ -3,6 +3,7 @@ import batch from "../prompts/batch.md?raw";
 import crawl from "../prompts/crawl.md?raw";
 import extract from "../prompts/extract.md?raw";
 import map from "../prompts/map.md?raw";
+import search from "../prompts/search.md?raw";
 import scrape from "../prompts/scrape.md?raw";
 
 /** One prompt for coding agents (SPEC-14 §4.7). */
@@ -40,6 +41,7 @@ const PROMPTS: Readonly<Record<ModeId, readonly AgentPrompt[]>> = {
   crawl: parse(crawl),
   map: parse(map),
   extract: parse(extract),
+  search: parse(search),
 };
 
 /** The prompts of `mode`. */

@@ -1,4 +1,4 @@
-import type { CrawlRequest } from "../../../api/jobs";
+import type { CrawlRequest, CrawlStrategy } from "../../../api/jobs";
 import { isJsonObject } from "../../../api/json";
 import type { MethodHint, PageKind, ScrapeFormat } from "../../../api/scrape";
 import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } from "../advanced";
@@ -19,6 +19,7 @@ import {
 } from "../pageRequest";
 import {
   count,
+  flag,
   maxRows,
   methodHint,
   pageFormats,
@@ -49,6 +50,11 @@ export interface CrawlOptions {
   fields: readonly string[];
   maxDepth: number;
   limit: number;
+  /** How the frontier is ordered (D-1440); `query` orders a best-first crawl only. */
+  strategy: CrawlStrategy;
+  query: string;
+  allowSubdomains: boolean;
+  allowExternal: boolean;
   methodHint: MethodHint;
   /** `fetch.max_rows`: NaN while empty. */
   maxRows: number;
@@ -66,6 +72,11 @@ export const DEFAULT_CRAWL_OPTIONS: CrawlOptions = {
   fields: [],
   maxDepth: Number.NaN,
   limit: Number.NaN,
+  // CrawlRequest's own defaults (D-1440).
+  strategy: "bfs",
+  query: "",
+  allowSubdomains: false,
+  allowExternal: false,
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
   maxRows: Number.NaN,
@@ -149,8 +160,21 @@ export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
     fetch: fetchMember(options.methodHint, options.maxRows, options.advanced),
     ...optionalNumber("max_depth", options.maxDepth),
     ...optionalNumber("limit", options.limit),
+    ...crawlStrategy(options),
+    ...(options.allowSubdomains ? { allow_subdomains: true } : {}),
+    ...(options.allowExternal ? { allow_external: true } : {}),
     ...webhook(options.webhookUrl),
   };
+}
+
+/** The request's `strategy` when it is not the default, and the `query` that orders a best-first crawl: a query on
+ * another strategy is not sent, which the server refuses. */
+function crawlStrategy(options: CrawlOptions): { strategy?: CrawlStrategy; query?: string } {
+  if (options.strategy === "bfs") return {};
+  const query = options.query.trim();
+  return options.strategy === "best_first" && query !== ""
+    ? { strategy: options.strategy, query }
+    : { strategy: options.strategy };
 }
 
 /** The stored rules, as rows; a rule without a pattern or a page kind is not one the server took. */
@@ -165,6 +189,11 @@ function storedRules(request: StoredRequest): RuleRow[] {
       ? []
       : [{ key: `stored-${String(index)}`, pattern, pageKind: kind }];
   });
+}
+
+function strategyOf(request: StoredRequest): CrawlStrategy {
+  const strategy = text(request, "strategy");
+  return strategy === "dfs" || strategy === "best_first" ? strategy : "bfs";
 }
 
 /** The form that shows the stored `request` of a crawl job. A stored schema's page kind is its rules'. */
@@ -185,6 +214,10 @@ export function crawlForm(request: StoredRequest): CrawlFormState {
       fields: schemaFields(request),
       maxDepth: count(request, "max_depth"),
       limit: count(request, "limit"),
+      strategy: strategyOf(request),
+      query: text(request, "query"),
+      allowSubdomains: flag(request, "allow_subdomains", false),
+      allowExternal: flag(request, "allow_external", false),
       methodHint: methodHint(request),
       maxRows: maxRows(request),
       advanced: storedAdvanced(request),

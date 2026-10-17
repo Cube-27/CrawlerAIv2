@@ -42,11 +42,15 @@ def page_kind_for(url: str, rules: Sequence[PageKindRule]) -> PageKind | None:
 @dataclass(frozen=True)
 class Scope:
     """The URLs a request keeps: any that `exclude` matches is dropped; otherwise, with `include`, those it matches,
-    on any host; without it, those on the start URL's exact `host` (D-0037: a subdomain needs an `include`)."""
+    on any host; without it, those on the start URL's exact `host` (D-0037: a subdomain needs an `include`), or, with
+    `subdomains`, on `host` or its subdomains. `external` lifts the start site's bound for a crawl (`Frontier`): the
+    globs and `subdomains` still say which of the other hosts' URLs are kept (D-1440)."""
 
     host: str
     include: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
+    subdomains: bool = False
+    external: bool = False
 
     def admits(self, url: str) -> bool:
         """Whether `url`, in canonical form (`crawl.canonical`), is in scope."""
@@ -54,7 +58,9 @@ class Scope:
             return False
         if self.include:
             return _any_match(url, self.include)
-        return urlsplit(url).hostname == self.host
+        if self.external:
+            return True
+        return on_site(url, self.host) if self.subdomains else urlsplit(url).hostname == self.host
 
 
 def on_site(url: str, host: str) -> bool:

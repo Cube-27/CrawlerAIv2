@@ -115,3 +115,27 @@ def test_takes_at_most_max_patterns_globs_in_a_scope_list(member: str) -> None:
 
     assert len(getattr(accepted, member)) == MAX_PATTERNS
     assert location == (member,)
+
+
+def test_max_pages_is_the_limit() -> None:
+    request = CrawlRequest.model_validate(
+        {"url": "https://shop.example.test/", "formats": ["markdown"], "max_pages": 7}
+    )
+
+    assert request.limit == 7
+    with pytest.raises(ValueError, match="alias"):
+        CrawlRequest.model_validate(
+            {"url": "https://shop.example.test/", "formats": ["markdown"], "max_pages": 7, "limit": 7}
+        )
+
+
+def test_a_query_orders_a_best_first_crawl_only() -> None:
+    body = {"url": "https://shop.example.test/", "formats": ["markdown"], "query": "kettles"}
+    with pytest.raises(ValueError, match="best_first"):
+        CrawlRequest.model_validate(body)
+    with pytest.raises(ValueError, match="no words"):
+        CrawlRequest.model_validate({**body, "strategy": "best_first", "query": "?!"})
+
+    frontier = CrawlRequest.model_validate({**body, "strategy": "best_first", "keywords": ["Tea"]}).frontier()
+
+    assert (frontier.strategy, frontier.wanted) == ("best_first", ("kettles", "tea"))

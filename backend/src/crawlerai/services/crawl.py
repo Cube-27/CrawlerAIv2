@@ -13,7 +13,7 @@ are crawl-discovered: a page whose required fields don't all publish ends `no_ma
 """
 
 from collections.abc import Collection
-from typing import Self
+from typing import Any, Self
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.crawl.frontier import Frontier
 from crawlerai.crawl.rules import PageKindRule, Patterns, Scope
+from crawlerai.crawl.scoring import Strategy, query_terms
 from crawlerai.db.models import ApiKeyId, JobId, UrlTask
 from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.normalize.url_key import canonicalize
@@ -49,13 +50,24 @@ class CrawlRequest(Input):
     page the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted
     while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does
     (D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which
-    pages are extracted. `webhook_url` is called when the job ends (§4.2)."""
+    pages are extracted. `webhook_url` is called when the job ends (§4.2).
+
+    `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the
+    links that best match `query` and `keywords` first (`crawl.scoring`). `max_pages` is `limit`. `allow_subdomains`
+    keeps the start host's subdomains without an `include`, and `allow_external` any host (D-1440, D-1441)."""
 
     url: str
     include: Patterns = Field(default_factory=list)
     exclude: Patterns = Field(default_factory=list)
     max_depth: int = Field(default=3, ge=0)
-    limit: int = Field(default=500, ge=1, le=MAX_LIMIT)
+    limit: int = Field(
+        default=500, ge=1, le=MAX_LIMIT, description="At most this many pages are fetched; alias `max_pages`."
+    )
+    strategy: Strategy = "bfs"
+    query: str | None = Field(default=None, max_length=500)
+    keywords: list[str] = Field(default_factory=list, max_length=20)
+    allow_subdomains: bool = False
+    allow_external: bool = False
     formats: list[PageFormat] = Field(min_length=1)
     schema_: SchemaById | SchemaInline | SchemaFields | None = Field(default=None, alias="schema")
     page_kind_rules: list[PageKindRule] = Field(default_factory=list)
@@ -63,6 +75,23 @@ class CrawlRequest(Input):
     locale: str | None = None
     budget: Budget | None = None
     webhook_url: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _max_pages_is_limit(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "max_pages" in data:
+            if "limit" in data:
+                raise ValueError("give limit or its alias max_pages, not both")
+            return {key if key != "max_pages" else "limit": value for key, value in data.items()}
+        return data
+
+    @model_validator(mode="after")
+    def _query_orders_best_first(self) -> Self:
+        if self.strategy != "best_first" and (self.query or self.keywords):
+            raise ValueError("query and keywords order a best_first crawl: set strategy to best_first")
+        if self.strategy == "best_first" and self.query is not None and not query_terms(self.query, self.keywords):
+            raise ValueError("the query has no words")
+        return self
 
     @field_validator("url")
     @classmethod
@@ -96,8 +125,14 @@ class CrawlRequest(Input):
     def frontier(self, located: str | None = None) -> Frontier:
         """The crawl's frontier, on the host of `located`, where the start page is after the site's own redirects to a
         host of the same site (RFC 9110 §15.4; D-0991), else on the start URL's."""
-        scope = Scope(urlsplit(located or self.start).hostname or "", tuple(self.include), tuple(self.exclude))
-        return Frontier(scope, tuple(self.page_kind_rules), self.max_depth, self.limit)
+        host = urlsplit(located or self.start).hostname or ""
+        scope = Scope(host, tuple(self.include), tuple(self.exclude), self.allow_subdomains, self.allow_external)
+        wanted = query_terms(self.query, self.keywords)
+        start = urlsplit(self.start)
+        home = (
+            f"{start.scheme}://{start.netloc}{start.path.rsplit('/', 1)[0]}/" if self.strategy == "best_first" else ""
+        )
+        return Frontier(scope, tuple(self.page_kind_rules), self.max_depth, self.limit, self.strategy, wanted, home)
 
 
 class CrawlSubmitted(BaseModel):

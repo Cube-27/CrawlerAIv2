@@ -29,6 +29,7 @@ import httpx
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi import FastAPI
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
@@ -380,12 +381,18 @@ async def resolve(host: str) -> list[IPAddress]:
 
 
 @pytest.fixture
-async def submit_client(
+async def submit_client(submit_app: tuple[FastAPI, httpx.AsyncClient]) -> httpx.AsyncClient:
+    """The client of `submit_app`."""
+    return submit_app[1]
+
+
+@pytest.fixture
+async def submit_app(
     database_url: str, engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> AsyncIterator[httpx.AsyncClient]:
-    """The app against the test database, for the endpoints that submit jobs: without the engine's data files, its
-    fetching a stub that resolves `PRIVATE_HOST` to a private address and fetches nothing (submitting fetches
-    nothing). `engine` deletes the jobs afterwards; the key is deleted here."""
+) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
+    """The app, and its client, against the test database, for the endpoints that submit jobs: without the engine's
+    data files, its fetching a stub that resolves `PRIVATE_HOST` to a private address and fetches nothing
+    (submitting fetches nothing). `engine` deletes the jobs afterwards; the key is deleted here."""
     monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
     monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + tmp_path.as_posix().lstrip("/"))
     monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
@@ -407,7 +414,7 @@ async def submit_client(
         store = FsStore(tmp_path / "objects")
         app.state.fetching = Fetching(Rungs(http=never, browser=never), SafeConnector(resolve), store, HostLimiter())
         app.state.engine_data = None
-        yield client
+        yield app, client
     keys_engine = create_async_engine(database_url)
     async with keys_engine.begin() as conn:
         # The key's jobs keep their rows until `engine` deletes them; they let go of the key first.

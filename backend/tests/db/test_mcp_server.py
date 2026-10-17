@@ -1,4 +1,4 @@
-"""The MCP server (SPEC-10 §4.7): the SDK's client calls each of the eleven tools over streamable HTTP at `/mcp` in the
+"""The MCP server (SPEC-10 §4.7): the SDK's client calls each of the twelve tools over streamable HTTP at `/mcp` in the
 API app, and over stdio from `python -m crawlerai.mcp_server`. What each tool does is its service's, tested with the
 service; here, that a tool reaches it with the caller's key, and answers by the output rules (§13.3).
 
@@ -50,6 +50,7 @@ pytestmark = pytest.mark.anyio
 TOOLS = {
     "scrape",
     "map",
+    "search",
     "crawl_start",
     "crawl_status",
     "extract",
@@ -61,7 +62,7 @@ TOOLS = {
     "reject_config",
 }
 # The tools that answer with page content say that it is untrusted (§4.7).
-CONTENT_TOOLS = {"scrape", "map", "crawl_status", "extract_status"}
+CONTENT_TOOLS = {"scrape", "map", "search", "crawl_status", "extract_status"}
 TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
 PRICE = {"type": "money", "required": True, "description": "The price", "schema_org": "Offer.price+priceCurrency"}
 
@@ -158,13 +159,20 @@ def _texts(result: CallToolResult) -> list[str]:
     return [block.text for block in result.content if isinstance(block, TextContent)]
 
 
-async def test_the_eleven_tools_are_listed_and_those_with_page_content_say_it_is_untrusted(
+async def test_the_twelve_tools_are_listed_and_those_with_page_content_say_it_is_untrusted(
     session: ClientSession,
 ) -> None:
     tools = (await session.list_tools()).tools
 
     assert {tool.name for tool in tools} == TOOLS
     assert {tool.name for tool in tools if UNTRUSTED in (tool.description or "")} == CONTENT_TOOLS
+
+
+async def test_search_without_a_provider_is_refused_with_the_reason(session: ClientSession) -> None:
+    result = await session.call_tool("search", {"request": {"query": "kettles"}})
+
+    assert result.isError
+    assert "no search provider is configured" in " ".join(_texts(result))
 
 
 async def test_the_endpoint_refuses_a_request_without_a_key(app_client: httpx.AsyncClient) -> None:

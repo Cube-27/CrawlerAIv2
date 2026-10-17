@@ -1067,8 +1067,18 @@
       },
       "CrawlRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/crawl` (\u00a74.5). The formats, `schema`, `fetch` and `locale` are a batch's (\u00a74.3), for every\npage the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted\nwhile the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does\n(D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\npages are extracted. `webhook_url` is called when the job ends (\u00a74.2).",
+        "description": "The body of `POST /v1/crawl` (\u00a74.5). The formats, `schema`, `fetch` and `locale` are a batch's (\u00a74.3), for every\npage the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted\nwhile the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does\n(D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\npages are extracted. `webhook_url` is called when the job ends (\u00a74.2).\n\n`strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the\nlinks that best match `query` and `keywords` first (`crawl.scoring`). `max_pages` is `limit`. `allow_subdomains`\nkeeps the start host's subdomains without an `include`, and `allow_external` any host (D-1440, D-1441).",
         "properties": {
+          "allow_external": {
+            "default": false,
+            "title": "Allow External",
+            "type": "boolean"
+          },
+          "allow_subdomains": {
+            "default": false,
+            "title": "Allow Subdomains",
+            "type": "boolean"
+          },
           "budget": {
             "anyOf": [
               {
@@ -1122,8 +1132,17 @@
             "title": "Include",
             "type": "array"
           },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Keywords",
+            "type": "array"
+          },
           "limit": {
             "default": 500,
+            "description": "At most this many pages are fetched; alias `max_pages`.",
             "maximum": 5000.0,
             "minimum": 1.0,
             "title": "Limit",
@@ -1153,6 +1172,18 @@
             "title": "Page Kind Rules",
             "type": "array"
           },
+          "query": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
           "schema": {
             "anyOf": [
               {
@@ -1169,6 +1200,16 @@
               }
             ],
             "title": "Schema"
+          },
+          "strategy": {
+            "default": "bfs",
+            "enum": [
+              "bfs",
+              "dfs",
+              "best_first"
+            ],
+            "title": "Strategy",
+            "type": "string"
           },
           "url": {
             "title": "Url",
@@ -5716,6 +5757,211 @@
         "title": "ScrollAction",
         "type": "object"
       },
+      "SearchHit": {
+        "properties": {
+          "position": {
+            "description": "1-based, in the provider's order",
+            "title": "Position",
+            "type": "integer"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "position",
+          "url",
+          "title",
+          "snippet"
+        ],
+        "title": "SearchHit",
+        "type": "object"
+      },
+      "SearchRequest": {
+        "additionalProperties": false,
+        "description": "The body of `POST /v1/search`: `query`, at most `limit` results, and optionally how to `scrape` them.",
+        "properties": {
+          "limit": {
+            "default": 10,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "scrape": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchScrape"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "SearchRequest",
+        "type": "object"
+      },
+      "SearchResult": {
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The batch job scraping the results, with `scrape`",
+            "title": "Job Id"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "skipped": {
+            "default": 0,
+            "description": "Results the API may not fetch, left out of the scrape",
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query",
+          "results"
+        ],
+        "title": "SearchResult",
+        "type": "object"
+      },
+      "SearchScrape": {
+        "additionalProperties": false,
+        "description": "How the results are scraped: a batch's `formats` (markdown when none), `schema`, `page_kind`, `fetch`,\n`locale`, `budget` and `webhook_url`, for every result (`BatchScrapeRequest`).",
+        "properties": {
+          "budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Budget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fetch": {
+            "$ref": "#/components/schemas/FetchOptions",
+            "default": {
+              "actions": [],
+              "cache": "default",
+              "cookies": {},
+              "headers": {},
+              "method_hint": "auto",
+              "respect_robots": true
+            }
+          },
+          "formats": {
+            "default": [
+              "markdown"
+            ],
+            "items": {
+              "enum": [
+                "markdown",
+                "html",
+                "raw_html",
+                "links",
+                "metadata",
+                "records"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Formats",
+            "type": "array"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "page_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "detail",
+                  "listing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Kind"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaById"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaInline"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaFields"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "title": "SearchScrape",
+        "type": "object"
+      },
       "SkippedOut": {
         "additionalProperties": false,
         "properties": {
@@ -7188,7 +7434,7 @@
     },
     "/v1/crawl": {
       "post": {
-        "description": "Queue a job that crawls from `url`: its sitemaps and the links of each page, within `include` and `exclude`,\n`max_depth` and `limit`, on its host (and the subdomains an `include` names). A page a `page_kind_rules` pattern\nmatches is extracted; with rules, any other page is fetched for its links only. A target the API may not fetch, in\n`url` or `webhook_url`, is a 422 and nothing is queued.",
+        "description": "Queue a job that crawls from `url`: its sitemaps and the links of each page, within `include` and `exclude`,\n`max_depth` and `limit`, on its host (and the subdomains an `include` names). A page a `page_kind_rules` pattern\nmatches is extracted; with rules, any other page is fetched for its links only. `strategy` orders the visits: `bfs`\n(default), `dfs`, or `best_first`, which fetches the links that best match `query` and `keywords` first (anchor\ntext and URL path against the query, the holding page's relevance, sitemap priority, shallower first);\n`allow_subdomains` and `allow_external` widen the host scope. Pages the `limit` leaves unfetched end `cancelled`.\nA target the API may not fetch, in `url` or `webhook_url`, is a 422 and nothing is queued.",
         "operationId": "crawl_site_v1_crawl_post",
         "requestBody": {
           "content": {
@@ -10250,6 +10496,133 @@
         "summary": "Scrape",
         "tags": [
           "scrape"
+        ]
+      }
+    },
+    "/v1/search": {
+      "post": {
+        "description": "The web results of `query` from the configured provider: `url`, `title` and `snippet`, in its order, at most\n`limit`. With `scrape`, a batch job scrapes the results (`job_id`); a result the API may not fetch is counted in\n`skipped`. 503 `search_unavailable` when no provider is configured, 502 when the provider does not answer.",
+        "operationId": "search_v1_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Search",
+        "tags": [
+          "search"
         ]
       }
     },

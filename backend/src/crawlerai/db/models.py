@@ -13,6 +13,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -426,6 +427,8 @@ class UrlTask(Base):
     parent_task_id: Mapped[UrlTaskId | None] = mapped_column(ForeignKey(f"{__tablename__}.id"))
     # Where the task's page was fetched, after its redirects, in canonical form (`normalize.url_key`); NULL until then.
     final_url: Mapped[str | None] = mapped_column(Text)
+    # A crawl's lease order within its priority, higher first (`crawl.scoring`); NULL (breadth first) leases after it.
+    score: Mapped[float | None] = mapped_column(Float)
 
 
 class JobEvent(Base):

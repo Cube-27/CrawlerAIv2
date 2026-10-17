@@ -50,4 +50,11 @@ export const ENDPOINTS: Readonly<Record<ModeId, Endpoint>> = {
       "Queue a job that crawls from `url`: its sitemaps and the links of each page, within `include` and `exclude`, `max_depth` and `limit`, on its host (and the subdomains an `include` names).",
     mcpTool: "crawl_start",
   },
+  search: {
+    path: "/v1/search",
+    title: "Search",
+    sentence:
+      "The web results of `query` from the configured provider: `url`, `title` and `snippet`, in its order, at most `limit`.",
+    mcpTool: "search",
+  },
 };
