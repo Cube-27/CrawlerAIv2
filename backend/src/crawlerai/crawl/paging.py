@@ -331,7 +331,7 @@ class _Run:
         self.actions += 1
         await self.tab.scroll()
         moved, shown = await self._effect(view, "grow")
-        await self._release(held, view, moved)
+        self._release(held, view, moved)
         return _Moved(moved, "scroll") if shown else _Still(moved)
 
     # --- the control after the items ---
@@ -360,10 +360,10 @@ class _Run:
         url, requests = _page_url(self.tab.url), self.tab.data_requests()
         clicked = await self.tab.click(_ref(control))
         if clicked == "gone":
-            await self._release(held, view, view)
+            self._release(held, view, view)
             return _Still(view)
         if clicked == "intercepted":
-            await self._release(held, view, view)
+            self._release(held, view, view)
             return "click_intercepted"
         moved, shown = await self._effect(view, "grow")
         if _page_url(self.tab.url) != url:
@@ -371,7 +371,7 @@ class _Run:
             if _page_url(self.tab.url) != url:
                 return "error"  # the listing could not be got back
             return _Still(await self._read() or view)
-        await self._release(held, view, moved)
+        self._release(held, view, moved)
         if not shown:
             return _Still(moved)
         return _Moved(moved, "load_more" if self.tab.data_requests() > requests else "show_more")
@@ -448,21 +448,24 @@ class _Run:
     async def _hold(self, view: _View) -> _Held | bool:
         """Keep the state ahead of an action that may replace it (module docstring): what to restore when it is
         dropped, True when no state needed keeping, False when it could not be kept."""
+        if self._held(view):
+            return True
         held = _Held(frozenset(self.kept), self.kept_any, self.keeps)
-        keeps = self.keeps
-        if not await self._keep(view):
-            return False
-        return held if self.keeps > keeps else True
+        return held if await self._keep(view) else False
 
-    async def _release(self, held: _Held | bool, before: _View, after: _View) -> None:
+    def _release(self, held: _Held | bool, before: _View, after: _View) -> None:
         """Drop the state kept ahead of an action when the state after it still shows each of its items."""
         if isinstance(held, _Held) and set(before.ids) <= set(after.ids):
-            await self.tab.discard()
+            self.tab.discard()
             self.kept, self.kept_any, self.keeps = set(held.kept), held.kept_any, held.keeps
+
+    def _held(self, view: _View) -> bool:
+        """Whether the kept states already hold every item of the view."""
+        return self.kept_any and set(view.ids) <= self.kept
 
     async def _keep(self, view: _View) -> bool:
         """Keep the document state when it shows an item no kept state holds (or none is kept yet)."""
-        if self.kept_any and set(view.ids) <= self.kept:
+        if self._held(view):
             return True
         if not await self.tab.keep():
             return False

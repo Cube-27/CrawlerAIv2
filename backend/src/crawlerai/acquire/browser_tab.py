@@ -137,7 +137,7 @@ class Tab(Protocol):
         """Keep the document as it is now as a capture of its own; False when it could not be read within the caps."""
         ...
 
-    async def discard(self) -> None:
+    def discard(self) -> None:
         """Drop the state kept last, which a later one holds whole: its data responses go to the next state kept."""
         ...
 
@@ -259,7 +259,7 @@ class _PatchrightTab:
         self._calls_from = calls_to
         return True
 
-    async def discard(self) -> None:
+    def discard(self) -> None:
         if self.kept:
             self.kept.pop()
             self._since, self._calls_from = self._starts.pop()

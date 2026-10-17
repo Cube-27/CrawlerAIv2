@@ -71,7 +71,7 @@ class _LoadMoreTab:
         self.kept.append(self.shown)
         return True
 
-    async def discard(self) -> None:
+    def discard(self) -> None:
         self.kept.pop()
 
     async def calls(self) -> tuple[tuple[NetworkBody, bytes], ...]:
@@ -108,7 +108,7 @@ class _ScrollTab(_LoadMoreTab):
         self.states.append(set(self._range()))
         return True
 
-    async def discard(self) -> None:
+    def discard(self) -> None:
         self.states.pop()
 
 
