@@ -234,14 +234,14 @@ class Browser:
     server: Server
     gated: list[str | None] = field(default_factory=list)
 
-    def run(self, path: str, request: BrowserActions, caps: Caps = Caps(), refuse: str = "") -> PagedFetch:
+    def run(self, path: str, request: BrowserActions, caps: Caps | None = None, refuse: str = "") -> PagedFetch:
         self.gated.clear()
 
         async def gate(url: str | None) -> bool:
             self.gated.append(url)
             return not (url and refuse and refuse in url)
 
-        drive = partial(collect, request=request, gate=gate, deadline=time.monotonic() + 90, caps=caps)
+        drive = partial(collect, request=request, gate=gate, deadline=time.monotonic() + 90, caps=caps or Caps())
         return self.runner.run(
             fetch_listing(
                 self.server.url(path),
