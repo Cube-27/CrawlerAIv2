@@ -22,6 +22,7 @@ from crawlerai.api.routers import (
     records,
     schemas,
     scrape,
+    search,
     usage,
 )
 from crawlerai.api.routers import eval as eval_router
@@ -41,6 +42,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.engine_data = runtime.engine_data
         app.state.drift_margins = runtime.drift_margins
         app.state.llm_setup = runtime.llm_setup
+        app.state.search = runtime.search
         yield
 
 
@@ -58,6 +60,7 @@ def create_app(eval_ui: bool | None = None) -> FastAPI:
     app.include_router(scrape.router)
     app.include_router(batch.router)
     app.include_router(map_router.router)
+    app.include_router(search.router)
     app.include_router(crawl.router)
     app.include_router(extract.router)
     app.include_router(records.router)

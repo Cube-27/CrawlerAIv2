@@ -76,6 +76,18 @@ class ApiSettings(_Base):
     api_rate_burst: PositiveInt = 40
 
 
+class SearchSettings(_Base):
+    """The web search provider (`POST /v1/search`, D-1442): a SearXNG instance's base URL, or a URL template with
+    `{query}` and `{limit}` for any endpoint that answers JSON or HTML. With neither, search answers 503."""
+
+    search_searxng_url: str | None = None
+    search_url_template: str | None = None
+    # `CRAWLERAI_SEARCH_FIELDS`, JSON `{"url": member, "title": member, "snippet": member}`: which members of the
+    # template provider's JSON results hold each part, when reading them by their shape gets one wrong (D-1443).
+    search_fields: dict[str, str] = Field(default_factory=dict)
+    search_timeout_s: PositiveFloat = 15
+
+
 class McpSettings(_Base):
     """What the MCP server's stdio process reads besides `Settings` (SPEC-10 §4.7): the API key it acts with."""
 
@@ -107,7 +119,7 @@ class LLMSettings(_Base):
     llm_api_key_gemini: SecretStr | None = None
 
 
-class Settings(DatabaseSettings, AcquireSettings, ApiSettings, LLMSettings):
+class Settings(DatabaseSettings, AcquireSettings, ApiSettings, LLMSettings, SearchSettings):
     eval_private_database_url: SecretStr | None = None
     object_store: ObjectStoreUrl
     eval_private_object_store: ObjectStoreUrl | None = None
