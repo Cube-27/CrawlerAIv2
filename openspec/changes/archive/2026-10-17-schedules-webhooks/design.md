@@ -17,13 +17,13 @@ A run's job is inserted in the transaction that holds the schedule's row (`FOR U
 ## Decisions
 
 All decided under the owner delegation of 2026-10-17, which asked for recurring runs and webhook events beyond the
-job's end; owner-decisions #61 admits §22 "Recurring schedule storage".
+job's end; owner-decisions #64 admits §22 "Recurring schedule storage".
 
 ### D-1410 — §22 "Recurring schedule storage" admitted; a run is submitted exactly once
 - Date: 2026-10-17 · Change/PR: schedules-webhooks (#259) · Status: decided (owner-delegated 2026-10-17)
 - Decision: §22 "Recurring schedule storage" admitted: a `schedule` table and a scheduler entry that submits due runs
   through the jobs services. A run's job is inserted in the transaction that holds the schedule's row (`FOR UPDATE
-  SKIP LOCKED`) and moves its `next_run_at` (`Placement`), so it is submitted exactly once (INV-45); the scheduler
+  SKIP LOCKED`) and moves its `next_run_at` (`Placement`), so it is submitted exactly once (INV-46); the scheduler
   now creates jobs, for due schedules only.
 - Reversible: yes
 

@@ -20,7 +20,7 @@ when it ended, in 3 attempts.) Refs: §17, D-0639, D-0642, D-0644, D-0760, D-141
 
 ## ADDED Requirements
 
-### Requirement: Recurring schedules (INV-45)
+### Requirement: Recurring schedules (INV-46)
 A schedule SHALL hold the request of a batch scrape, crawl or extract (a scrape stored as the batch of its URL, a
 `records` schema by id), checked as its submission is when created, and run at each time of a 5-field cron expression
 in an IANA zone or every `interval_s` ≥ 60 s (`core/cadence.py`, `services/schedules.py`). A due run's job is stored in

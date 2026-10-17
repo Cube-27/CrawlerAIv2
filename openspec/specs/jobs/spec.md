@@ -171,7 +171,7 @@ and sections of links with descriptions, and `llms-full.txt` the pages' markdown
 - **WHEN** a job without a schema is exported as `xlsx`
 - **THEN** it is refused with 409
 
-### Requirement: Recurring schedules (INV-45)
+### Requirement: Recurring schedules (INV-46)
 A schedule SHALL hold the request of a batch scrape, crawl or extract (a scrape stored as the batch of its URL, a
 `records` schema by id), checked as its submission is when created, and run at each time of a 5-field cron expression
 in an IANA zone or every `interval_s` ≥ 60 s (`core/cadence.py`, `services/schedules.py`). A due run's job is stored in
