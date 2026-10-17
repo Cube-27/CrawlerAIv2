@@ -23,6 +23,7 @@ locked (`Frontier.enqueue`) only for the rest of the task's transaction.
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from contextlib import aclosing
 from dataclasses import dataclass
 from datetime import timedelta
@@ -48,7 +49,7 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.fetching import Fetching, PoliteHttp, TargetRejected, recording
 from crawlerai.services.map import TIMEOUT_S
-from crawlerai.services.scrape_steps import fetch_policy, record_fetch_usage, site_row
+from crawlerai.services.scrape_steps import PageFormat, fetch_policy, record_fetch_usage, site_row
 from crawlerai.storage.base import ObjectStore
 from crawlerai.worker.handlers.steps import (
     Ended,
@@ -108,9 +109,6 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
     served = None if reads_links else crawl.records
     # A listing recipe's pages count toward the crawl's page bound as its tasks do.
     pages = min(MAX_PAGES, crawl.request.limit)
-    # A page no rule matched is read for its links only, so it needs no file made of it.
-    extracted = task.page_kind is not None or not crawl.request.page_kind_rules
-    formats = crawl.request.formats if extracted else ()
     page = await fetch_page(
         conn,
         fetching,
@@ -120,7 +118,7 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
         served=served,
         llm=crawl.llm,
         listing_pages=pages,
-        formats=formats,
+        formats=_formats_of(task, crawl.request),
     )
     if not isinstance(page, Ended):
         await _record_final_url(conn, task, page)
@@ -151,6 +149,13 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
     )
     await frontier.close_if_spent(conn, task)
     return result
+
+
+def _formats_of(task: ClaimedTask, request: CrawlRequest) -> Sequence[PageFormat]:
+    """The formats the task's page is fetched for: a page no rule matched is read for its links only, so it needs no
+    file made of it."""
+    extracted = task.page_kind is not None or not request.page_kind_rules
+    return request.formats if extracted else ()
 
 
 async def _record_final_url(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage) -> None:
