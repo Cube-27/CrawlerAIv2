@@ -18,7 +18,13 @@ export function UrlList({
   return (
     <div className="relative">
       <TextField aria-label="URLs" isRequired name="urls" value={value} onChange={onChange}>
-        <TextArea rows={2} spellCheck={false} placeholder="One URL per line" />
+        {/* Ten lines show at once; a longer list scrolls inside the box, which keeps its height. */}
+        <TextArea
+          rows={10}
+          className="resize-none overflow-y-auto"
+          spellCheck={false}
+          placeholder="One URL per line"
+        />
         <Description>
           {count} {count === 1 ? "URL" : "URLs"}
         </Description>

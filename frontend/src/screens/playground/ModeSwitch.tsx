@@ -1,16 +1,13 @@
-import { Tabs, Typography } from "@heroui/react";
+import { Tabs } from "@heroui/react";
 import { MODE_GROUPS, type ModeId } from "./modes";
 
-/** The mode switch, centred over the command bar: a tab per mode, each a link to its route, under its group's caption, so back and forward move
- * between modes. */
+/** The mode switch, centred over the command bar: a tab per mode, each a link to its route, so back and forward move
+ * between modes. Each group is its own tab list, named by its caption for assistive technology but shown without it. */
 export function ModeSwitch({ current }: Readonly<{ current: ModeId }>) {
   return (
     <nav aria-label="Mode" className="flex flex-wrap items-end justify-center gap-6">
       {MODE_GROUPS.map((group) => (
-        <div key={group.caption} className="flex flex-col gap-1">
-          <Typography.Paragraph size="sm" color="muted">
-            {group.caption}
-          </Typography.Paragraph>
+        <div key={group.caption}>
           <Tabs variant="secondary" selectedKey={current}>
             <Tabs.ListContainer>
               <Tabs.List aria-label={group.caption}>
