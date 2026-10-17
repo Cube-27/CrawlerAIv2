@@ -7,8 +7,8 @@ commit and delete the lines their PR closes; a follow-up that grows into work be
 
 ## Current focus
 
-- Data accuracy: SPEC-13, SPEC-15 and structural ownership of state array rows (#243) are complete. Next: identity
-  merge across collectors in `EntityGraph` (D-0942), then a standalone variant Product beside its ProductGroup (D-0966).
+- Data accuracy: SPEC-13, SPEC-15, structural ownership of state array rows (#243) and identity merge across
+  collectors with standalone variants (#247) are complete.
 - Data sources, later (owner #53): discover the network/API calls a page makes for its data and read the data from
   them, generically, as a learned layer (the way listing pagination was probed before #52). Not started; needs a probe
   and the owner's admission like #52.
@@ -47,7 +47,6 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   validated on a real virtualised list or a real in-DOM show-more listing; an integer inside a path segment
   (`page-2.html`) is not a +1 integer link, so such pages turn by their pager only. Measure on dev before changing.
 - ce1 extraction (#227): `js_state` admission stores thousands of duplicate price candidates on a page with a large state blob (6,561 on one); deduplicating them needs a provenance decision (which locator stays).
-- Tough-site run (#225): a JSON-LD ItemList of ListItems with `name`/`url` and no `item` gives no rows (2 listings): schema.org types such an entry only as Thing, so taking it as the schema's type needs a decision.
 - Acquisition hardening (#244): pages behind a challenge that does not clear headless stay `blocked` after the 40%
   interstitial wait (5 real 403 challenge pages waited ~20 s each and stayed blocked in the live check); measure the
   share that clears on a dev run before lowering `_INTERSTITIAL_SHARE` (D-1262). A 429 challenge page gets no browser
@@ -65,15 +64,11 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Optional: report non-LLM recipe errors as a refused recipe [#151].
 - Labeling pre-fill: return its diagnostics, a change to the prefill response shape (D-0847) [#111].
 - Role C: confirm the `fast` Anthropic model accepts `output_config.effort` (D-0766); sparse 200-row listings spend ~14 output tokens per absent field; Gemini thinking is not lowered for role C [#159]. `max_output_tokens` may not hold 200 wide rows [#111].
-- Resolve: a listing item stated in two syntaxes keeps only the first syntax's row; merging both entities into one row would add the other's values and their agreement [#196].
 - Playground: the toolbar's Format shows its error line under it in the flow, so a refused send without a format moves the action and the output down; hang it as the toolbar's Schema now does (D-1214) [#238].
 - Field tables: every field of an uncalibrated engine shows an `uncalibrated` badge; one badge per record would need a DESIGN.md and INV-22 change [#214].
 - Shopify product pages take the page path; joining the adapter's answer to the page's collectors needs a capture holding both and a measure of cross-source conflicts (D-1118) [#224].
-- Resolve: identity merge across collectors (microdata `itemid`/`sku` duplicates, one item in JSON-LD and microdata) belongs in `EntityGraph` with one shared union-find; `_same_nodes` anchors URL agreement to an identity's first node, so two later agreeing nodes can stay apart (D-0942) [#207].
-- Resolve: renditions of one image across merged blocks (or an `http` og:image) still decline; publishing one needs a rendition rule (D-0944) [#207].
 - Round-1 eval: class 13 is §22 evidence (repeated-structure DOM collectors; class 10 is addressed by #208); classes 11 and 12 answered by the owner (D-1057, D-1058) [#207, #216].
 - Acquisition thresholds to confirm on dev: the 1024-byte terminal bound (D-0932) and the listing shell rule's effect on empty listings (D-0933) [#206].
-- Resolve: a standalone variant Product beside its ProductGroup (no `isVariantOf`) gets none of the group's variants as rows, nor its colour, gender or material; one eval page and one site-test page show it, see SPEC-13 §9 (D-0966) [#209].
 - Array rows (#243): a related item alone in an array (one object) stays in its holder's scope and its visible state
   value is still the page's; a state variant row naming the page only with a variant query, or no URL, is `not_owned`
   (D-1250, D-1253). `dom` label-value pairs inside repeated page structures (a comparison table) stay page values (D-1255).
@@ -107,3 +102,9 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Recurring: `worker/handlers/scrape.py` docstring still says "within a few SimHash bits"; only Hamming 0 means unchanged (D-0665) [#223].
 - Normalize: a location's `remote_flag` is `false` when the page does not state it, so "not stated" and "not remote" read alike; a tri-state (`null` when unstated) changes the value shape [#240].
 - Role C: one site-test listing whose HTTP body holds 20 item blocks gave one role C row; not reproducible without the LLM recording, re-check on the next run [#240].
+- Resolve: a Product that names its group only by `isVariantOf` keeps the group as its child, so the group's
+  variants are no rows (SPEC-13 §9); inverting `isVariantOf` into `hasVariant` waits for a dev page (D-1293) [#247].
+- Resolve: adapter entities (`collect/adapter.py`) carry no identity, so an adapter item and the page's JSON-LD
+  statement of it stay two entities (D-1290) [#247].
+- Specs: `specs/resolution/spec.md` is 119 lines, past the ~100-line guide; split identity and intent from
+  preference into their own capability [#247].
