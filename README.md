@@ -14,6 +14,10 @@ that a deterministic crawler can run.
 - **Scrape, map, crawl, extract.** A REST API and an MCP server provide page content as
   markdown, HTML, links and metadata; URL discovery; site crawls; and structured extraction with a JSON schema or
   a plain-language prompt. The API shapes are our own.
+- **Search and best-first crawls.** `POST /v1/search` returns web results from a provider the operator configures (a
+  SearXNG instance or any JSON or HTML endpoint) and can scrape them in one batch job; a crawl with
+  `strategy: "best_first"` and a `query` fetches the pages that match it first. Typed [Python](sdk/python/README.md) and
+  [TypeScript](sdk/typescript/README.md) SDKs wrap the API with job polling, event streaming and webhook verification.
 - **Schemas are data.** Commerce and jobs are presets, and any schema can be defined. Each field has a type such as
   money, enum, identifier, date, location or range, and each type has exactly one normalizer. A normalizer declines
   rather than guesses.
@@ -86,6 +90,7 @@ backend/                Python package `crawlerai` (src/crawlerai/), tests, alem
   src/crawlerai/adapters/   the only source directory allowed to contain hostnames (C3)
   data/manifest.json        pinned external data; every file under data/ is listed here (C4)
   .importlinter             one-module-per-field-type and layering contracts (C8)
+sdk/                    Python (pure httpx, pydantic) and TypeScript clients, generated from frontend/openapi.json
 frontend/               Vite + React + TypeScript + HeroUI v3; generated API client in src/api/
 infra/                  docker-compose.yml (Postgres), Dockerfile (the backend image), postgres/init.sql
 tools/                  repo checks: site-literal scan, data manifest, license scan, no-size-gates, file length
