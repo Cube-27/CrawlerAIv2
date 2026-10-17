@@ -14,7 +14,7 @@ from lxml import html
 from pydantic import BaseModel, ValidationError
 
 from crawlerai.config_ir import step_wire
-from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, FieldSteps, NormalizeOp, Step
+from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, FieldSteps, NormalizeOp, SchemaRef, Step
 from crawlerai.schemas.types import FieldType
 
 _TAGS = ["div", "span", "p", "a", "li", "ul"]
@@ -85,7 +85,7 @@ _ir = st.builds(
     lambda fields, listing, origin, kind, method, recipe: {
         "ir_version": "1",
         "site": "shop.example.com",
-        "schema": {"name": "commerce_detail"},
+        "schema": {"name": "commerce_detail", "digest": "0" * 64},
         "page_kind": kind,
         "fetch": {"method": method},
         "fields": fields,
@@ -140,7 +140,7 @@ def test_ir_refuses_a_recipe_the_recipe_model_refuses(recipe: dict[str, Any]) ->
     document = {
         "ir_version": "1",
         "site": "shop.example.test",
-        "schema": {"name": "commerce_detail"},
+        "schema": {"name": "commerce_detail", "digest": "0" * 64},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {},
@@ -161,7 +161,7 @@ def test_ir_serializes_in_the_architecture_shape() -> None:
         {
             "ir_version": "1",
             "site": "example.com",
-            "schema": {"name": "commerce_detail"},
+            "schema": {"name": "commerce_detail", "digest": "0" * 64},
             "page_kind": "detail",
             "fetch": {"method": "http"},
             "fields": {
@@ -180,7 +180,7 @@ def test_ir_serializes_in_the_architecture_shape() -> None:
         }
     )
     dumped = ir.model_dump(mode="json")
-    assert dumped["schema"] == {"name": "commerce_detail"}
+    assert dumped["schema"] == {"name": "commerce_detail", "digest": "0" * 64}
     assert dumped["fields"]["price"] == {
         "steps": [
             {
@@ -350,7 +350,7 @@ def test_malformed_fields_are_refused(fields: dict[str, Any]) -> None:
     document = {
         "ir_version": "1",
         "site": "example.com",
-        "schema": {"name": "s"},
+        "schema": {"name": "s", "digest": "0" * 64},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": fields,
@@ -363,3 +363,11 @@ def test_malformed_fields_are_refused(fields: dict[str, Any]) -> None:
     }
     with pytest.raises(ValidationError):
         ExtractionConfigIR.model_validate(document)
+
+
+@pytest.mark.parametrize("digest", [None, "", "abc", "G" * 64, "A" * 64, "0" * 63])
+def test_a_schema_reference_needs_the_documents_sha256_digest(digest: str | None) -> None:
+    ref: dict[str, Any] = {"name": "s"} if digest is None else {"name": "s", "digest": digest}
+
+    with pytest.raises(ValidationError):
+        SchemaRef.model_validate(ref)

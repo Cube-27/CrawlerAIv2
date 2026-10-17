@@ -42,7 +42,7 @@ from crawlerai.llm.client import NO_LLM
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaDef, SchemaDocument
+from crawlerai.schemas.types import SchemaDef, SchemaDocument, document_digest
 from crawlerai.services import captures
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.crawl import CrawlRequest, submit_crawl
@@ -120,7 +120,7 @@ def _ir(origin: str, schema: SchemaDef) -> dict[str, Any]:
     return {
         "ir_version": "1",
         "site": origin.removeprefix("https://"),
-        "schema": {"name": schema.name},
+        "schema": {"name": schema.name, "digest": document_digest(schema)},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "corroborated"}},

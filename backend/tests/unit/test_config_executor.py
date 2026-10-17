@@ -53,7 +53,7 @@ def _ir(fields: dict[str, Any], *, page_kind: str = "detail", listing: dict[str,
     document = {
         "ir_version": "1",
         "site": "shop.example.test",
-        "schema": {"name": "synthetic"},
+        "schema": {"name": "synthetic", "digest": "0" * 64},
         "page_kind": page_kind,
         "fetch": {"method": "http"},
         "fields": {

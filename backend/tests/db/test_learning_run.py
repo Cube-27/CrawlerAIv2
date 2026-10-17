@@ -60,7 +60,7 @@ from crawlerai.resolve.pipeline import EngineData, GapReply, GapRequest, Listing
 from crawlerai.resolve.task import Stored, extract_task
 from crawlerai.resolve.types import LLMCallRecord
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent, SchemaDef, SchemaDocument
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services import configs as configs_service
 from crawlerai.services import schemas as schemas_service
 from crawlerai.services.jobs import cancel_job
@@ -607,7 +607,7 @@ async def _operator_config(conn: AsyncConnection, site: LearnSite) -> Extraction
     ir = {
         "ir_version": "1",
         "site": site.origin.removeprefix("https://"),
-        "schema": {"name": site.schema.name},
+        "schema": {"name": site.schema.name, "digest": document_digest(site.schema)},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {"price": {"steps": [PRICE_STEP], "status": "operator"}},

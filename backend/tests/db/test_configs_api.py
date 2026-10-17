@@ -42,7 +42,7 @@ from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.task import extract_task
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaChanges, SchemaDef, SchemaDocument, document_digest
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
@@ -70,7 +70,7 @@ def _ir(host: str, schema: SchemaDef, step: dict[str, Any], **more: dict[str, An
     return {
         "ir_version": "1",
         "site": host,
-        "schema": {"name": schema.name},
+        "schema": {"name": schema.name, "digest": document_digest(schema)},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {
@@ -484,6 +484,22 @@ async def test_only_the_latest_version_is_corrected(client: httpx.AsyncClient, w
 
     assert response.status_code == 409
     assert response.json()["detail"] == f"config {first} is version 1; correct the latest, version 2"
+
+
+async def test_a_config_learned_before_a_schema_edit_is_not_corrected(client: httpx.AsyncClient, world: World) -> None:
+    await _pages(world, 3)
+    first = await world.active_config(H1)
+    title = world.schema.fields["title"].model_copy(update={"description": "The title, edited"})
+    async with world.engine.begin() as conn:
+        await registry.update_schema(conn, world.schema, SchemaChanges(fields={**world.schema.fields, "title": title}))
+
+    response = await client.put(f"/v1/configs/{first}", json={"confirm": ["title"]})
+
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"] == f"config {first} was learned for an earlier document of schema {world.schema.name}"
+    )
+    assert await world.configs() == [(1, "active", "induced")]
 
 
 @pytest.mark.parametrize(
