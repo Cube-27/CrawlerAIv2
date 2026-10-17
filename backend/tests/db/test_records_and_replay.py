@@ -41,7 +41,7 @@ from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.task import extract_task
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaChanges, SchemaDef, SchemaDocument
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaChanges, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services import captures, records
 from crawlerai.services.captures import CaptureNotFound
 from crawlerai.services.records import RecordFilter
@@ -291,7 +291,7 @@ async def test_a_schema_with_an_active_config_replays_with_it(world: World) -> N
     ir = {
         "ir_version": "1",
         "site": world.origin.removeprefix("https://"),
-        "schema": {"name": world.schema.name},
+        "schema": {"name": world.schema.name, "digest": document_digest(world.schema)},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {"title": {"steps": [{"jsonld": "$['name']", "when_type": "Product"}], "status": "operator"}},

@@ -249,3 +249,52 @@ def test_the_word_separator_is_that_of_the_page_language(bounds: list[Decimal], 
     # The `type:range_to` vocabulary has no `de` words, so on a German page "to" separates nothing; a dash does.
     assert in_language(f"{code} {lo} to {code} {hi}", "de") == Invalid("not_a_range")
     assert in_language(f"{code} {lo} - {code} {hi}", "de") == Ambiguous("period_missing", ())
+
+
+_INTERVALS = [
+    ("1 YEAR", "YEAR"),
+    ("1 month", "MONTH"),
+    ("1  WEEK", "WEEK"),
+    ("P1Y", "YEAR"),
+    ("P1M", "MONTH"),
+    ("P1W", "WEEK"),
+    ("P1D", "DAY"),
+    ("PT1H", "HOUR"),
+    ("ANN", "YEAR"),
+    ("MON", "MONTH"),
+    ("WEE", "WEEK"),
+    ("DAY", "DAY"),
+    ("HUR", "HOUR"),
+]
+
+
+@given(_bounds, st.sampled_from(CODES), st.sampled_from(_INTERVALS), st.sampled_from(["unitText", "unitCode"]))
+def test_a_monetary_range_reads_its_interval_from_every_standard_form(
+    bounds: list[Decimal], code: str, interval: tuple[str, str], key: str
+) -> None:
+    written, period = interval
+    lo, hi = bounds
+    raw: JsonValue = {"currency": code, "value": {"minValue": str(lo), "maxValue": str(hi), key: written}}
+
+    assert norm(raw) == Ok(_value(lo, hi, currency=code, period=period))
+
+
+@given(_bounds, st.sampled_from(CODES), st.sampled_from(["per year", "Per Month", "/week", "per day", "per hour"]))
+def test_a_monetary_range_reads_its_interval_from_a_period_phrase(
+    bounds: list[Decimal], code: str, phrase: str
+) -> None:
+    lo, hi = bounds
+    raw: JsonValue = {"currency": code, "value": {"minValue": str(lo), "maxValue": str(hi), "unitText": phrase}}
+
+    result = norm(raw)
+
+    assert isinstance(result, Ok)
+    assert isinstance(result.value, dict)
+    assert result.value["period"] == phrase.upper().replace("PER ", "").replace("/", "")
+
+
+@pytest.mark.parametrize("written", ["2 YEAR", "P2Y", "P1Y6M", "PT2H", "1 YEARS", "YEARLY", "P1", "XXX"])
+def test_an_interval_of_another_count_or_form_is_no_period(written: str) -> None:
+    raw: JsonValue = {"currency": "EUR", "value": {"minValue": "1", "maxValue": "2", "unitText": written}}
+
+    assert norm(raw) == Ambiguous("period_missing", ())

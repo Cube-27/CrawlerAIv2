@@ -42,7 +42,7 @@ from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve import pipeline
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
+from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.services.scrape_steps import SchemaUnusable
@@ -645,7 +645,7 @@ async def test_a_site_with_an_active_config_is_scraped_in_config_mode_and_the_pa
     ir = {
         "ir_version": "1",
         "site": host,
-        "schema": {"name": kettle_schema.name},
+        "schema": {"name": kettle_schema.name, "digest": document_digest(kettle_schema)},
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "corroborated"}},

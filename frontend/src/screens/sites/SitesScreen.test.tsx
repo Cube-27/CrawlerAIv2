@@ -85,7 +85,7 @@ const detail: ConfigDetail = {
   ir: {
     ir_version: "1",
     site: HOST,
-    schema: { name: "item_detail" },
+    schema: { name: "item_detail", digest: "0".repeat(64) },
     page_kind: "detail",
     fetch: { method: "http" },
     fields: {

@@ -69,6 +69,7 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.schemas import registry
 from crawlerai.schemas import types as schema_types
+from crawlerai.schemas.types import document_digest
 from crawlerai.services.fetching import Fetching
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
 from crawlerai.storage.fs import FsStore
@@ -303,7 +304,7 @@ def heading_config() -> Callable[[SiteId, schema_types.SchemaDef, int], dict[str
         ir = {
             "ir_version": "1",
             "site": "unused.example.test",
-            "schema": {"name": schema.name},
+            "schema": {"name": schema.name, "digest": document_digest(schema)},
             "page_kind": "detail",
             "fetch": {"method": "http"},
             "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "corroborated"}},

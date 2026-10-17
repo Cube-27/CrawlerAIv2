@@ -170,14 +170,6 @@ def redacted(message: str, secret: str) -> str:
     return message.replace(secret, "[redacted]") if secret else message
 
 
-def is_transient(status: int) -> bool:
-    """Whether an HTTP status says the provider did not answer this time: 408 Request Timeout (RFC 9110 §15.5.9),
-    429 Too Many Requests (RFC 6585 §4) or a 5xx server error (RFC 9110 §15.6). Other errors are the request's own
-    fault (a bad key, an unknown model, a refused schema): the provider raises `ProviderRefused`, which is not failed
-    over."""
-    return status in (408, 429) or 500 <= status <= 599
-
-
 class LLMFailure(Refusal):
     """A call that gave no valid reply (§4.7); `code` names why, as a task's `last_error` and a problem type, and
     `field_reason` as the reason of the fields the call was for, which stay `missing`. `answered` holds the calls that

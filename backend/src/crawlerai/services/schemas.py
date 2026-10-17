@@ -1,24 +1,26 @@
 """The schemas service (SPEC-07 §4.6, §4.7): what `/v1/schemas` and the MCP schema tools do, over a connection.
 
-Callers write `user` schemas. A schema is one row per name, edited in place (ARCHITECTURE §5.2); an edit sends its
-learned configs back to learning (`progressive.relearn_schema`), and a delete retires it. Presets change only through
-their files and `crawlerai schemas sync` (§5.3, D-0242), so callers can neither take a preset's name nor edit or
+Callers write `user` schemas, whose schema.org paths and enumerations the pinned vocabulary must define. A schema is
+one row per name, edited in place (ARCHITECTURE §5.2); an edit sends its learned configs back to learning
+(`progressive.relearn_schema`), and a delete retires it. Presets change only through their files and
+`crawlerai schemas sync` (§5.3, D-0242), so callers can neither take a preset's name nor edit or
 retire a preset.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from functools import cache
 
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.collect.schema_org_map import VocabularyMissing, default_vocabulary, reference_errors
 from crawlerai.config_ir.progressive import relearn_schema
 from crawlerai.core.errors import Refusal
 from crawlerai.core.validation import field_error
 from crawlerai.db.models import SchemaId, SchemaStatus
 from crawlerai.schemas import registry
 from crawlerai.schemas.registry import SchemaExists
-from crawlerai.schemas.types import Name, SchemaChanges, SchemaContent, SchemaDef, SchemaDocument
+from crawlerai.schemas.types import FieldSpec, Name, SchemaChanges, SchemaContent, SchemaDef, SchemaDocument
 
 
 class NewSchema(SchemaContent):
@@ -34,9 +36,25 @@ class InvalidSchema(Refusal):
     """The document breaks a schema rule (SPEC-04 §4.2); `errors` are (field path, reason) pairs, `""` for the whole
     document."""
 
-    def __init__(self, error: ValidationError) -> None:
+    def __init__(self, errors: Sequence[tuple[str, str]]) -> None:
         super().__init__("the schema document is invalid")
-        self.errors = [field_error(e) for e in error.errors()]
+        self.errors = list(errors)
+
+    @classmethod
+    def of(cls, error: ValidationError) -> "InvalidSchema":
+        return cls([field_error(e) for e in error.errors()])
+
+
+def _check_references(fields: Mapping[str, FieldSpec]) -> None:
+    """Refuse `fields` naming a schema.org type, property or enumeration the pinned vocabulary lacks (SPEC-04 §4.2,
+    D-0240). A process without the vocabulary file checks syntax only, as it extracts no records
+    (`load_engine_data`)."""
+    try:
+        vocabulary = default_vocabulary()
+    except VocabularyMissing:
+        return
+    if errors := reference_errors(fields, vocabulary):
+        raise InvalidSchema(errors)
 
 
 async def create(conn: AsyncConnection, schema: NewSchema) -> SchemaDef:
@@ -51,9 +69,11 @@ def _document(schema: NewSchema) -> SchemaDocument:
     if schema.name in _preset_names():
         raise SchemaConflict(f"{schema.name} is a preset name; presets change only through their files")
     try:
-        return SchemaDocument.model_validate(schema.model_dump())
+        document = SchemaDocument.model_validate(schema.model_dump())
     except ValidationError as e:
-        raise InvalidSchema(e) from e
+        raise InvalidSchema.of(e) from e
+    _check_references(document.fields)
+    return document
 
 
 async def inline(conn: AsyncConnection, schema: NewSchema) -> SchemaDef:
@@ -101,10 +121,11 @@ async def update(conn: AsyncConnection, schema_id: SchemaId, content: SchemaCont
     current = await _changeable(conn, schema_id)
     if current.status == "retired":
         raise SchemaConflict(f"schema {current.name} is retired")
+    _check_references(content.fields)
     try:
         edited = await registry.update_schema(conn, current, SchemaChanges.model_validate(content.model_dump()))
     except ValidationError as e:
-        raise InvalidSchema(e) from e
+        raise InvalidSchema.of(e) from e
     if edited != current:
         await relearn_schema(conn, schema_id)
     return edited

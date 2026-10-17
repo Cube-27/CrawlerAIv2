@@ -50,7 +50,7 @@ def _config(fields: dict[str, dict[str, Any]], listing: dict[str, Any] | None = 
         {
             "ir_version": "1",
             "site": "shop.example.test",
-            "schema": {"name": "synthetic"},
+            "schema": {"name": "synthetic", "digest": "0" * 64},
             "page_kind": "listing" if listing else "detail",
             "fetch": {"method": "http"},
             "fields": fields,

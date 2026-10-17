@@ -5017,7 +5017,13 @@
       },
       "SchemaRef": {
         "additionalProperties": false,
+        "description": "The schema a config is for: its name, and the digest of its document at learning (`document_digest`). A schema\nis edited in place (D-0950), so only the digest says which document the config was learned for.",
         "properties": {
+          "digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Digest",
+            "type": "string"
+          },
           "name": {
             "pattern": "^[a-z][a-z0-9_]{0,63}$",
             "title": "Name",
@@ -5025,7 +5031,8 @@
           }
         },
         "required": [
-          "name"
+          "name",
+          "digest"
         ],
         "title": "SchemaRef",
         "type": "object"

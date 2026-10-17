@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.schema_org_map import Vocabulary
@@ -21,12 +21,18 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, ExtractionConfig, ProgressiveState, Project, SchemaDef, Site
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef as SchemaDefinition
+from crawlerai.schemas.types import SchemaDocument, document_digest
 
 pytestmark = pytest.mark.anyio
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC))
 FIELDS = {"title": {"type": "text", "description": "d"}}
+
+
+def _digest(name: str) -> str:
+    document = SchemaDocument.model_validate({"name": name, "page_kind": "detail", "fields": FIELDS})
+    return document_digest(document)
 
 
 async def _key(conn: AsyncConnection) -> tuple[StateKey, str, str]:
@@ -44,7 +50,7 @@ def _validated(host: str, name: str, *, pages: int = 3) -> Validated:
         {
             "ir_version": "1",
             "site": host,
-            "schema": {"name": name},
+            "schema": {"name": name, "digest": _digest(name)},
             "page_kind": "detail",
             "fetch": {"method": "http"},
             "fields": {"title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "uncorroborated"}},
@@ -124,6 +130,19 @@ async def test_a_config_learned_for_another_key_is_refused(conn: AsyncConnection
     validated = _validated("other.example.test", name) if other == "site" else _validated(host, "other_schema")
 
     with pytest.raises(ConfigMismatch):
+        await activate(conn, key, validated)
+
+    assert await _configs(conn, key) == []
+
+
+async def test_a_config_learned_before_a_schema_edit_is_refused(conn: AsyncConnection) -> None:
+    key, host, name = await _key(conn)
+    await request_learning(conn, key)
+    validated = _validated(host, name)
+    edited = {"title": {"type": "text", "description": "an edited description"}}
+    await conn.execute(update(SchemaDef).where(SchemaDef.id == key.schema_id).values(fields=edited))
+
+    with pytest.raises(ConfigMismatch, match="earlier document"):
         await activate(conn, key, validated)
 
     assert await _configs(conn, key) == []

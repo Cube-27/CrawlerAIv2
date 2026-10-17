@@ -7,10 +7,10 @@ A location publishes what the page states and nothing it does not: no place is l
 - `locality`, `region` are a `PostalAddress`'s `addressLocality` and `addressRegion` as written.
 - `country` is an ISO 3166-1 alpha-2 code, and only when `addressCountry` states one (schema.org recommends the
   alpha-2 code). A country stated by name stays in `text`; no code is derived from it.
-- `remote_flag` comes only from `jobLocationType` `TELECOMMUTE` or a `type:remote` phrase, never from a missing
-  location.
+- `remote_flag` is `true` only from `jobLocationType` `TELECOMMUTE` or a `type:remote` phrase, never from a missing
+  location. No standard states "not remote" as a flag, so it is `None` when the input does not say.
 
-Each is `None` (or `false`) when the input does not state it. Accepted input: a string, or a schema.org
+Each is `None` when the input does not state it. Accepted input: a string, or a schema.org
 `PostalAddress`, or a `Place` holding one under `address` or naming itself in `name`, with `jobLocationType` beside
 them. Declines: input stating nothing is `Invalid("no_match")`; an `addressCountry` written as two letters that are
 no ISO 3166-1 code is `Invalid("unknown_country")`.
@@ -79,7 +79,8 @@ def _tokens(value: JsonValue) -> JsonValue:
 
 
 def _value(text: str | None, parts: Mapping[str, str | None], remote: bool) -> dict[str, JsonValue]:
-    return {"text": text, **{name: parts.get(name) for name in _PARTS}, "remote_flag": remote}
+    # Tri-state: `true` when stated, else `None`: a page that does not say is not a page that says "not remote".
+    return {"text": text, **{name: parts.get(name) for name in _PARTS}, "remote_flag": True if remote else None}
 
 
 def _text(given: str, ctx: Context, *, remote: bool = False) -> NormalizeResult:
@@ -155,14 +156,20 @@ def _part(given: JsonValue) -> str | None:
     return " ".join(unicodedata.normalize("NFC", given).split()) or None
 
 
+# ISO 3166-1 "exceptional reservations" (the standard's list of codes reserved at a body's request, which the
+# standard does not assign to a country): CLDR names regions by some of them.
+_EXCEPTIONALLY_RESERVED = frozenset({"AC", "CP", "CQ", "DG", "EA", "EU", "EZ", "FX", "IC", "SU", "TA", "UK", "UN"})
+
+
 @cache
 def iso_3166_alpha2() -> frozenset[str]:
     """The ISO 3166-1 alpha-2 codes CLDR names regions by (via Babel), less the ranges ISO 3166-1 leaves to users
-    (AA, QM to QZ, XA to XZ, ZZ), which name no country."""
+    (AA, QM to QZ, XA to XZ, ZZ) and its exceptional reservations (EU, EZ, UN, ...), which name no country."""
     return frozenset(
         code
         for code in Locale("en").territories
         if isinstance(code, str)
         and _looks_like_a_code(code)
+        and code not in _EXCEPTIONALLY_RESERVED
         and not (code in {"AA", "ZZ"} or code[0] == "X" or ("QM" <= code <= "QZ"))
     )

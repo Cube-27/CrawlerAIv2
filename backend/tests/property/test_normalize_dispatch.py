@@ -224,3 +224,19 @@ def test_a_dollar_sign_is_ambiguous_without_evidence_and_settled_by_a_page_curre
     assert len(currencies) > 1
     settled = Context(captured_at=AT, page_currencies=("CAD",))
     assert normalize(raw, _spec(FieldType.RANGE), settled) == Ok(_range(lo, hi, "CAD", "YEAR"))
+
+
+@given(
+    st.sampled_from(["1 YEAR", "P1Y", "ANN", "year"]),
+    st.sampled_from(["unitText", "unitCode"]),
+)
+def test_a_salary_interval_stated_as_text_is_read_by_the_dispatched_range_rules(interval: str, key: str) -> None:
+    salary: JsonValue = {"currency": "EUR", "minValue": "60000", "maxValue": "80000", key: interval}
+
+    assert normalize(salary, _spec(FieldType.RANGE), CTX) == Ok(
+        {"min": "60000", "max": "80000", "currency": "EUR", "unit": None, "period": "YEAR"}
+    )
+
+
+def test_a_timestamp_with_a_zone_name_is_read_by_the_dispatched_datetime_rules() -> None:
+    assert normalize("2026-10-15 09:31:36 UTC", _spec(FieldType.DATETIME), CTX) == Ok("2026-10-15T09:31:36Z")

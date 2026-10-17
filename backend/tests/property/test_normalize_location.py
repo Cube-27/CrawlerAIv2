@@ -32,7 +32,13 @@ def value(
     *,
     remote: bool = False,
 ) -> dict[str, JsonValue]:
-    return {"text": text, "locality": locality, "region": region, "country": country, "remote_flag": remote}
+    return {
+        "text": text,
+        "locality": locality,
+        "region": region,
+        "country": country,
+        "remote_flag": True if remote else None,
+    }
 
 
 # Words that name no remote work in any language: made-up place names.
@@ -107,7 +113,7 @@ def test_a_country_stated_by_name_stays_in_the_text_and_gets_no_code(country: Js
     assert result == Ok(value(f"Alderton, {written}", "Alderton"))
 
 
-@given(st.sampled_from(["ZZ", "XK", "QM", "AA", "zz"]))
+@given(st.sampled_from(["ZZ", "XK", "QM", "AA", "zz", "EU", "EZ", "UN", "UK", "AC"]))
 def test_two_letters_that_are_no_iso_3166_1_code_are_invalid(code: str) -> None:
     assert norm({"addressLocality": "Alderton", "addressCountry": code}) == Invalid("unknown_country")
 
@@ -118,6 +124,33 @@ def test_the_user_assigned_ranges_are_no_codes() -> None:
     assert {"DE", "US", "JP"} <= codes
     assert not codes & {"AA", "QM", "QZ", "XA", "XK", "XZ", "ZZ"}
     assert all(len(code) == 2 and code.isascii() and code.isupper() for code in codes)
+
+
+def test_the_exceptionally_reserved_codes_are_no_country_codes() -> None:
+    # ISO 3166-1 reserves these at a body's request; CLDR names regions by several of them.
+    assert not location.iso_3166_alpha2() & {
+        "AC",
+        "CP",
+        "CQ",
+        "DG",
+        "EA",
+        "EU",
+        "EZ",
+        "FX",
+        "IC",
+        "SU",
+        "TA",
+        "UK",
+        "UN",
+    }
+    assert {"GB", "FR"} <= location.iso_3166_alpha2()
+
+
+def test_remote_flag_is_null_unless_stated() -> None:
+    assert norm({"addressLocality": "Alderton", "jobLocationType": "ON_SITE"}) == Ok(value("Alderton", "Alderton"))
+    assert norm({"addressLocality": "Alderton", "jobLocationType": "TELECOMMUTE"}) == Ok(
+        value("Alderton", "Alderton", remote=True)
+    )
 
 
 def test_a_place_with_only_a_name_is_its_text() -> None:
