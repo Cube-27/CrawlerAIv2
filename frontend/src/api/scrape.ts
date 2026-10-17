@@ -9,6 +9,30 @@ export type MethodHint = "auto" | "http" | "browser";
 /** The paging mechanisms a listing's browser actions may be told to use (owner #52). */
 export type PagingHint = "load_more" | "show_more" | "pagination" | "next" | "scroll";
 
+/** `fetch.cache` (D-1435): reuse a stored capture as `max_age` allows, always fetch, or only serve a stored one. */
+export type CacheMode = "default" | "bypass" | "only";
+
+/** A page step the browser runs before it reads the page (D-1436, `config_ir/page_actions.py`). */
+export type PageAction =
+  | { type: "wait"; ms?: number; selector?: string; network_idle?: boolean }
+  | { type: "click"; selector?: string; text?: string }
+  | { type: "scroll"; to?: "bottom"; by?: number; until?: "stable" }
+  | { type: "press"; key: string }
+  | { type: "type"; selector: string; text: string };
+
+/** The `fetch` member every page request shares, with the members the form sets; the others take the server's
+ * defaults. */
+export interface FetchMember {
+  method_hint: MethodHint;
+  max_rows?: number;
+  headers?: Record<string, string>;
+  cookies?: Record<string, string>;
+  proxy_pool?: string;
+  wait_for?: number | string;
+  actions?: PageAction[];
+  cache?: CacheMode;
+}
+
 /** A schema by id, inline (a SchemaDef the server validates), or drafted by role S from a prompt or from field names
  * (SPEC-14 §4.10). */
 export type SchemaRef =
@@ -25,7 +49,7 @@ export interface ScrapeRequest {
   formats: ScrapeFormat[];
   schema: SchemaRef | null;
   page_kind: PageKind | null;
-  fetch: { method_hint: MethodHint; max_rows?: number };
+  fetch: FetchMember;
   /** Omitted to take the server's default. */
   max_age?: number;
   timeout_s?: number;

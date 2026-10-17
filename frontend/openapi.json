@@ -241,6 +241,14 @@
               }
             ],
             "title": "Status"
+          },
+          "steps": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StepOutcome"
+            },
+            "title": "Steps",
+            "type": "array"
           }
         },
         "required": [
@@ -343,6 +351,10 @@
           "fetch": {
             "$ref": "#/components/schemas/FetchOptions",
             "default": {
+              "actions": [],
+              "cache": "default",
+              "cookies": {},
+              "headers": {},
               "method_hint": "auto",
               "respect_robots": true
             }
@@ -637,6 +649,62 @@
           "error"
         ],
         "title": "CapturedOut",
+        "type": "object"
+      },
+      "ClickAction": {
+        "additionalProperties": false,
+        "description": "Click an element, or the first visible element whose text holds `text`.",
+        "properties": {
+          "selector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selector"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "timeout_ms": {
+            "default": 5000,
+            "maximum": 15000.0,
+            "minimum": 1.0,
+            "title": "Timeout Ms",
+            "type": "integer"
+          },
+          "type": {
+            "const": "click",
+            "default": "click",
+            "title": "Type",
+            "type": "string"
+          },
+          "xpath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xpath"
+          }
+        },
+        "title": "ClickAction",
         "type": "object"
       },
       "ConfigDetail": {
@@ -1022,6 +1090,10 @@
           "fetch": {
             "$ref": "#/components/schemas/FetchOptions",
             "default": {
+              "actions": [],
+              "cache": "default",
+              "cookies": {},
+              "headers": {},
               "method_hint": "auto",
               "respect_robots": true
             }
@@ -1501,6 +1573,10 @@
           "fetch": {
             "$ref": "#/components/schemas/FetchOptions",
             "default": {
+              "actions": [],
+              "cache": "default",
+              "cookies": {},
+              "headers": {},
               "method_hint": "auto",
               "respect_robots": true
             }
@@ -1741,7 +1817,75 @@
       },
       "FetchOptions": {
         "additionalProperties": false,
+        "description": "How a request's pages are fetched. `headers` go over HTTP to the page's own host only, never in the browser\n(INV-44), and `cookies` to that host in either; `wait_for` and `actions` run in the browser, so they make the fetch\na browser one and refuse `method_hint` `http`, and a browser fetch takes no `headers`.",
         "properties": {
+          "actions": {
+            "default": [],
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "click": "#/components/schemas/ClickAction",
+                  "press": "#/components/schemas/PressAction",
+                  "scroll": "#/components/schemas/ScrollAction",
+                  "type": "#/components/schemas/TypeAction",
+                  "wait": "#/components/schemas/WaitAction"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/WaitAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ClickAction"
+                },
+                {
+                  "$ref": "#/components/schemas/ScrollAction"
+                },
+                {
+                  "$ref": "#/components/schemas/PressAction"
+                },
+                {
+                  "$ref": "#/components/schemas/TypeAction"
+                }
+              ]
+            },
+            "maxItems": 20,
+            "title": "Actions",
+            "type": "array"
+          },
+          "cache": {
+            "default": "default",
+            "enum": [
+              "default",
+              "bypass",
+              "only"
+            ],
+            "title": "Cache",
+            "type": "string"
+          },
+          "cookies": {
+            "additionalProperties": {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            "default": {},
+            "maxProperties": 50,
+            "title": "Cookies",
+            "type": "object"
+          },
+          "headers": {
+            "additionalProperties": {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            "default": {},
+            "maxProperties": 50,
+            "title": "Headers",
+            "type": "object"
+          },
           "max_rows": {
             "anyOf": [
               {
@@ -1790,6 +1934,23 @@
               }
             ],
             "title": "Robots Override Reason"
+          },
+          "wait_for": {
+            "anyOf": [
+              {
+                "maximum": 15000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wait For"
           }
         },
         "title": "FetchOptions",
@@ -4294,6 +4455,34 @@
         "title": "PlatformDraft",
         "type": "object"
       },
+      "PressAction": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "pattern": "^(?:(?:Shift|Control|Alt|Meta|ControlOrMeta)\\+)*(?:[A-Za-z][A-Za-z0-9]*|\\S)$",
+            "title": "Key",
+            "type": "string"
+          },
+          "timeout_ms": {
+            "default": 5000,
+            "maximum": 15000.0,
+            "minimum": 1.0,
+            "title": "Timeout Ms",
+            "type": "integer"
+          },
+          "type": {
+            "const": "press",
+            "default": "press",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "PressAction",
+        "type": "object"
+      },
       "Problem": {
         "additionalProperties": false,
         "description": "RFC 9457 problem details (SPEC-07 \u00a74.3). `type` is one of the API's problem types, or `about:blank` when the\nHTTP status says all there is to say (RFC 9457 \u00a74.2.1); `instance` is the request's path (\u00a73.1.5).",
@@ -5202,6 +5391,10 @@
           "fetch": {
             "$ref": "#/components/schemas/FetchOptions",
             "default": {
+              "actions": [],
+              "cache": "default",
+              "cookies": {},
+              "headers": {},
               "method_hint": "auto",
               "respect_robots": true
             }
@@ -5465,6 +5658,64 @@
         "title": "ScrapedRecord",
         "type": "object"
       },
+      "ScrollAction": {
+        "additionalProperties": false,
+        "description": "Scroll to the end (`to: bottom`), by `by` CSS pixels, or until the document stops growing (`until: stable`).",
+        "properties": {
+          "by": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": -100000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By"
+          },
+          "timeout_ms": {
+            "default": 5000,
+            "maximum": 15000.0,
+            "minimum": 1.0,
+            "title": "Timeout Ms",
+            "type": "integer"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "const": "bottom",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          },
+          "type": {
+            "const": "scroll",
+            "default": "scroll",
+            "title": "Type",
+            "type": "string"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "const": "stable",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "title": "ScrollAction",
+        "type": "object"
+      },
       "SkippedOut": {
         "additionalProperties": false,
         "properties": {
@@ -5488,6 +5739,40 @@
           "reason"
         ],
         "title": "SkippedOut",
+        "type": "object"
+      },
+      "StepOutcome": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "wait",
+              "click",
+              "scroll",
+              "press",
+              "type"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "done",
+              "not_found",
+              "timeout",
+              "refused",
+              "error",
+              "skipped"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "outcome"
+        ],
+        "title": "StepOutcome",
         "type": "object"
       },
       "StoredRecord": {
@@ -5732,6 +6017,57 @@
         "title": "TrimOp",
         "type": "object"
       },
+      "TypeAction": {
+        "additionalProperties": false,
+        "description": "Type `text` into an element; refused in the browser for a password or credential field (D-1438).",
+        "properties": {
+          "selector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selector"
+          },
+          "text": {
+            "maxLength": 1000,
+            "title": "Text",
+            "type": "string"
+          },
+          "timeout_ms": {
+            "default": 5000,
+            "maximum": 15000.0,
+            "minimum": 1.0,
+            "title": "Timeout Ms",
+            "type": "integer"
+          },
+          "type": {
+            "const": "type",
+            "default": "type",
+            "title": "Type",
+            "type": "string"
+          },
+          "xpath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xpath"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "TypeAction",
+        "type": "object"
+      },
       "Usage": {
         "description": "What the scrape's job used (ARCHITECTURE \u00a717).",
         "properties": {
@@ -5821,6 +6157,67 @@
           "listing"
         ],
         "title": "ValidationReport",
+        "type": "object"
+      },
+      "WaitAction": {
+        "additionalProperties": false,
+        "description": "Wait `ms` milliseconds, for an element to be visible, or for the network to be idle (`network_idle`).",
+        "properties": {
+          "ms": {
+            "anyOf": [
+              {
+                "maximum": 15000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ms"
+          },
+          "network_idle": {
+            "default": false,
+            "title": "Network Idle",
+            "type": "boolean"
+          },
+          "selector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selector"
+          },
+          "timeout_ms": {
+            "default": 5000,
+            "maximum": 15000.0,
+            "minimum": 1.0,
+            "title": "Timeout Ms",
+            "type": "integer"
+          },
+          "type": {
+            "const": "wait",
+            "default": "wait",
+            "title": "Type",
+            "type": "string"
+          },
+          "xpath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xpath"
+          }
+        },
+        "title": "WaitAction",
         "type": "object"
       },
       "XPathStep-Input": {
@@ -9738,6 +10135,21 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
           },
           "409": {
             "content": {

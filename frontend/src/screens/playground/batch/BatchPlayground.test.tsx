@@ -636,10 +636,18 @@ describe("batch playground: how a page was fetched", () => {
           status: 403,
           block_class: "blocked",
           duration_ms: 120,
+          steps: [],
           error: null,
           challenge: "structural",
         },
-        { method: "browser", status: 200, block_class: "ok", duration_ms: 2400, error: null },
+        {
+          method: "browser",
+          status: 200,
+          block_class: "ok",
+          duration_ms: 2400,
+          steps: [],
+          error: null,
+        },
       ],
     };
     const calls = batchApi({
@@ -673,7 +681,9 @@ describe("batch playground: how a page was fetched", () => {
       status_code: 200,
       block_class: "ok",
       adapter: "board",
-      attempts: [{ method: "api", status: 200, block_class: "ok", duration_ms: 310, error: null }],
+      attempts: [
+        { method: "api", status: 200, block_class: "ok", duration_ms: 310, steps: [], error: null },
+      ],
     };
     batchApi({
       [`GET ${JOB}/request`]: () => Response.json({ urls: [FIRST.url], formats: ["markdown"] }),
@@ -704,6 +714,7 @@ describe("batch playground: how a page was fetched", () => {
           status: 403,
           block_class: "blocked",
           duration_ms: 70,
+          steps: [],
           error: null,
           challenge: "structural",
         },
@@ -712,6 +723,7 @@ describe("batch playground: how a page was fetched", () => {
           status: 403,
           block_class: "blocked",
           duration_ms: 20300,
+          steps: [],
           error: null,
           challenge: "structural",
         },

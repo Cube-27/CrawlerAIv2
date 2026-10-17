@@ -1,4 +1,4 @@
-import type { MethodHint, PageKind, SchemaRef, ScrapeFormat } from "../../api/scrape";
+import type { PageKind, SchemaRef, ScrapeFormat } from "../../api/scrape";
 import type { SchemaPageKind } from "../../api/schemas";
 import { orderedFormats } from "../../components/formats";
 import type { PageFormat } from "./FormatSelect";
@@ -25,14 +25,6 @@ export function optionalNumber<K extends string>(
   const member: Partial<Record<K, number>> = {};
   if (!Number.isNaN(value)) member[key] = value;
   return member;
-}
-
-/** The request's `fetch` member: the method hint, and `max_rows` while its field is filled (D-1395). */
-export function fetchMember(
-  methodHint: MethodHint,
-  maxRows: number,
-): { method_hint: MethodHint; max_rows?: number } {
-  return { method_hint: methodHint, ...optionalNumber("max_rows", maxRows) };
 }
 
 /** The optional `budget.llm_calls` member (SPEC-06 §4.8), left out while empty. */
@@ -138,11 +130,23 @@ export function canSend(form: PageKindForm): boolean {
   return pageKindErrors(form) === NO_ERRORS;
 }
 
-/** SameValue (ECMA-262), so an empty limit (NaN) equals the default; a list equals one with the same entries. */
+/** SameValue (ECMA-262), so an empty limit (NaN) equals the default; a list equals one with the same entries, and a
+ * group of settings (Advanced) one with the same members. */
 function sameSetting(value: unknown, other: unknown): boolean {
   if (Array.isArray(value) && Array.isArray(other))
     return value.length === other.length && value.every((entry, i) => sameSetting(entry, other[i]));
+  if (isGroup(value) && isGroup(other)) {
+    const keys = Object.keys(value);
+    return (
+      keys.length === Object.keys(other).length &&
+      keys.every((key) => sameSetting(value[key], other[key]))
+    );
+  }
   return Object.is(value, other);
+}
+
+function isGroup(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Whether any setting differs from its default. */

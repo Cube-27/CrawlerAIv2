@@ -58,7 +58,7 @@ from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig, StoredRecord
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.services.fetch_options import check_proxy_pool
+from crawlerai.services.fetch_options import CacheMode, check_proxy_pool
 from crawlerai.services.fetching import (
     Fetching,
     TargetRejected,
@@ -111,7 +111,7 @@ from crawlerai.services.scrape_steps import (
     store_further,
     store_page_record,
 )
-from crawlerai.services.stored_captures import NOT_CACHED, CaptureRow, NotCached, recent_capture, reread
+from crawlerai.services.stored_captures import NOT_CACHED, CaptureRow, NotCached, Recent, recent_capture, reread
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import CaptureManifest
 
@@ -337,9 +337,7 @@ async def _run(
         recipe = recipe_of(config) if config is not None and records_only else None
         policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind)
         row = await _stored(conn, request, policy, site.id, task.canonical_url, api=recipe is not None)
-    recent = None if row is None else await reread(fetching.store, row)
-    if recent is None and request.fetch.cache == "only":
-        raise NotCached("no stored capture of the page was made the way this request fetches it")
+    recent = await _read_stored(fetching.store, row, request.fetch.cache)
     attempts: list[AttemptRecord] = []
     check = _content_check(work, request, config, task)
     further: tuple[FetchResult, ...] = ()
@@ -411,6 +409,14 @@ async def _stored(
         return None
     max_age = request.max_age or (None if cache == "only" else 0)
     return await recent_capture(conn, site_id, canonical, policy, max_age=max_age, api=api)
+
+
+async def _read_stored(store: ObjectStore, row: CaptureRow | None, cache: CacheMode) -> Recent | None:
+    """The stored capture `row` names, read again; with `cache: only`, `NotCached` when there is none to read."""
+    recent = None if row is None else await reread(store, row)
+    if recent is None and cache == "only":
+        raise NotCached("no stored capture of the page was made the way this request fetches it")
+    return recent
 
 
 def _pages(paged: PagedFetch | str) -> tuple[FetchResult | str, tuple[FetchResult, ...], ActionsReport | None]:

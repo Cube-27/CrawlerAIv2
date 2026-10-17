@@ -1,9 +1,9 @@
 import type { ExtractRequest } from "../../../api/jobs";
 import { parseJsonObject } from "../../../api/json";
 import type { MethodHint, PageKind, SchemaRef } from "../../../api/scrape";
+import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } from "../advanced";
 import type { SchemaPageKind } from "../../../api/schemas";
 import {
-  fetchMember,
   llmBudget,
   NO_ERRORS,
   optionalNumber,
@@ -45,6 +45,8 @@ export interface ExtractOptions {
   methodHint: MethodHint;
   /** `fetch.max_rows`: NaN while empty. */
   maxRows: number;
+  /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
+  advanced: AdvancedFetch;
   llmCalls: number;
   /** Empty: no webhook. */
   webhookUrl: string;
@@ -60,6 +62,7 @@ export const DEFAULT_EXTRACT_OPTIONS: ExtractOptions = {
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
   maxRows: Number.NaN,
+  advanced: DEFAULT_ADVANCED,
   llmCalls: Number.NaN,
   webhookUrl: "",
 };
@@ -140,7 +143,7 @@ export function buildExtract(form: ExtractFormState): ExtractRequest | null {
     urls: [form.url, ...options.urls],
     schema,
     page_kind: kind,
-    fetch: fetchMember(options.methodHint, options.maxRows),
+    fetch: fetchMember(options.methodHint, options.maxRows, options.advanced),
     ...optionalNumber("limit", options.limit),
     ...llmBudget(options.llmCalls),
     ...webhook(options.webhookUrl),
@@ -172,6 +175,7 @@ export function extractForm(request: StoredRequest): ExtractFormState {
       limit: count(request, "limit"),
       methodHint: methodHint(request),
       maxRows: maxRows(request),
+      advanced: storedAdvanced(request),
       llmCalls: llmCalls(request),
       webhookUrl: webhookUrl(request),
     },

@@ -1,3 +1,4 @@
+import { AdvancedRows } from "../AdvancedRows";
 import type { PageKind } from "../../../api/scrape";
 import { NumberRow, OptionsPanel, TagListRow, TextAreaRow } from "../OptionsPanel";
 import {
@@ -124,6 +125,12 @@ export function ExtractOptions({
         }}
       />
       <SourceRow source={source} options={options} onChange={onChange} />
+      <AdvancedRows
+        value={options.advanced}
+        onChange={(advanced) => {
+          onChange({ ...options, advanced });
+        }}
+      />
     </OptionsPanel>
   );
 }
