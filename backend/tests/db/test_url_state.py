@@ -14,6 +14,7 @@ from crawlerai.acquire.types import AttemptRecord, FetchResult, Validators
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.db.models import Project, Site, SiteId, UrlState
 from crawlerai.recurring.conditional import Unchanged
+from crawlerai.recurring.simhash import ContentFingerprint
 from crawlerai.recurring.state import record_content, record_fetch, stored_validators
 
 pytestmark = pytest.mark.anyio
@@ -129,13 +130,15 @@ async def test_a_304_marks_the_url_seen_and_keeps_its_validators(
 
 # The content fingerprint (§4.3).
 
-FINGERPRINT = 0x0123_4567_89AB_CDEF
+FINGERPRINT = ContentFingerprint("00" * 16, 0x0123_4567_89AB_CDEF)
 
 
-async def _content(conn: AsyncConnection, site_id: SiteId) -> tuple[str | None, datetime | None]:
-    query = select(UrlState.content_fingerprint, UrlState.last_changed_at).where(UrlState.site_id == site_id)
+async def _content(conn: AsyncConnection, site_id: SiteId) -> tuple[str | None, str | None, datetime | None]:
+    query = select(UrlState.content_digest, UrlState.content_fingerprint, UrlState.last_changed_at).where(
+        UrlState.site_id == site_id
+    )
     row = (await conn.execute(query)).one()
-    return (row.content_fingerprint, row.last_changed_at)
+    return (row.content_digest, row.content_fingerprint, row.last_changed_at)
 
 
 async def _a_day_ago(conn: AsyncConnection, site_id: SiteId) -> datetime | None:
@@ -150,7 +153,7 @@ async def test_a_first_fingerprint_is_a_change(conn: AsyncConnection) -> None:
     assert await record_content(conn, site_id, URL, FINGERPRINT) is True
 
     now = (await conn.execute(select(func.now()))).scalar_one()
-    assert await _content(conn, site_id) == ("0123456789abcdef", now)
+    assert await _content(conn, site_id) == ("00" * 16, "0123456789abcdef", now)
 
 
 async def test_an_equal_fingerprint_is_unchanged(conn: AsyncConnection) -> None:
@@ -160,18 +163,19 @@ async def test_an_equal_fingerprint_is_unchanged(conn: AsyncConnection) -> None:
 
     assert await record_content(conn, site_id, URL, FINGERPRINT) is False
 
-    assert await _content(conn, site_id) == ("0123456789abcdef", changed_at)
+    assert await _content(conn, site_id) == ("00" * 16, "0123456789abcdef", changed_at)
 
 
-async def test_a_fingerprint_one_bit_away_is_a_change(conn: AsyncConnection) -> None:
+async def test_another_digest_with_an_equal_simhash_is_a_change(conn: AsyncConnection) -> None:
+    # D-1340: SimHash can stay equal across a one-word edit (D-0915); the digest decides.
     site_id = await _site(conn)
     await record_content(conn, site_id, URL, FINGERPRINT)
     await _a_day_ago(conn, site_id)
 
-    assert await record_content(conn, site_id, URL, FINGERPRINT ^ 1 << 60) is True
+    assert await record_content(conn, site_id, URL, ContentFingerprint("11" * 16, FINGERPRINT.simhash)) is True
 
     now = (await conn.execute(select(func.now()))).scalar_one()
-    assert await _content(conn, site_id) == ("1123456789abcdef", now)
+    assert await _content(conn, site_id) == ("11" * 16, "0123456789abcdef", now)
 
 
 async def test_a_fingerprint_keeps_the_validators(

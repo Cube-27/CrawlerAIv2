@@ -319,6 +319,9 @@ class UrlState(Base):
     etag: Mapped[str | None] = mapped_column(Text)
     # The header value as received: If-Modified-Since sends it back unchanged (RFC 9110 §13.1.3).
     last_modified: Mapped[str | None] = mapped_column(Text)
+    # The page's visible text (`recurring.simhash`): the exact digest of its words, which alone decides `unchanged`
+    # (D-1340), and their SimHash as 16 hex digits, which says how far a change moved.
+    content_digest: Mapped[str | None] = mapped_column(Text)
     content_fingerprint: Mapped[str | None] = mapped_column(Text)
     record_fingerprint: Mapped[str | None] = mapped_column(Text)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

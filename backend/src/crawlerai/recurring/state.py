@@ -1,6 +1,7 @@
 """`url_state` upkeep for recurring runs (SPEC-11 §4.1, ARCHITECTURE §6, §14): what a URL of a site last answered with,
 read before it is fetched again and written after."""
 
+import logging
 from typing import Any
 
 from sqlalchemy import ColumnElement, func, select, update
@@ -19,13 +20,12 @@ from crawlerai.db.models import (
     UrlTaskId,
 )
 from crawlerai.recurring.conditional import Unchanged, received
-from crawlerai.recurring.simhash import hamming
+from crawlerai.recurring.simhash import BITS, ContentFingerprint, hamming
 from crawlerai.recurring.versions import latest_versions
 from crawlerai.resolve.records import entity_key
 from crawlerai.schemas.types import SchemaDef, document_digest
 
 __all__ = [
-    "UNCHANGED_BITS",
     "record_content",
     "record_fetch",
     "stand_for_listing",
@@ -34,9 +34,7 @@ __all__ = [
     "stored_validators",
 ]
 
-# SPEC-11 §4.3, ARCHITECTURE §14 (owner, D-0665): only equal fingerprints are the same content. SimHash still serves
-# for what it ignores structurally (nonces, whitespace); any other change, such as a new price, runs extraction.
-UNCHANGED_BITS = 0
+log = logging.getLogger(__name__)
 
 _OK = 200  # RFC 9110 §15.3.1: the response carries the page itself, and its validators describe it
 
@@ -153,14 +151,23 @@ async def stand_for_listing(conn: AsyncConnection, site_id: SiteId, canonical_ur
     await _upsert(conn, site_id, canonical_url, {"standing_task_id": task_id}, last_seen_at=func.now())
 
 
-async def record_content(conn: AsyncConnection, site_id: SiteId, canonical_url: str, fingerprint: int) -> bool:
-    """Whether the page's content changed (§4.3): its fingerprint is more than `UNCHANGED_BITS` from the stored one,
-    or none is stored. A change stores the new fingerprint and sets `last_changed_at`."""
-    query = select(UrlState.content_fingerprint).where(*_url(site_id, canonical_url))
-    stored = (await conn.execute(query)).scalar_one_or_none()
-    if stored is not None and hamming(int(stored, 16), fingerprint) <= UNCHANGED_BITS:
+async def record_content(
+    conn: AsyncConnection, site_id: SiteId, canonical_url: str, fingerprint: ContentFingerprint
+) -> bool:
+    """Whether the page's content changed (§4.3): its digest differs from the stored one, or none is stored. A change
+    stores the new fingerprint and sets `last_changed_at`, and logs how many SimHash bits it moved."""
+    query = select(UrlState.content_digest, UrlState.content_fingerprint).where(*_url(site_id, canonical_url))
+    stored = (await conn.execute(query)).first()
+    if stored is not None and stored.content_digest == fingerprint.digest:
         return False
-    values = {"content_fingerprint": _hex(fingerprint), "last_changed_at": func.now()}
+    if stored is not None and stored.content_fingerprint is not None:
+        moved = hamming(int(stored.content_fingerprint, 16), fingerprint.simhash)
+        log.info("content changed at %s: SimHash moved %d of %d bits", canonical_url, moved, BITS)
+    values = {
+        "content_digest": fingerprint.digest,
+        "content_fingerprint": _hex(fingerprint.simhash),
+        "last_changed_at": func.now(),
+    }
     await _upsert(conn, site_id, canonical_url, values, last_seen_at=func.now())
     return True
 

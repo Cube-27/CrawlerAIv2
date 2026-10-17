@@ -426,6 +426,7 @@ def upgrade() -> None:
         sa.Column("canonical_url", sa.Text(), nullable=False),
         sa.Column("etag", sa.Text(), nullable=True),
         sa.Column("last_modified", sa.Text(), nullable=True),
+        sa.Column("content_digest", sa.Text(), nullable=True),
         sa.Column("content_fingerprint", sa.Text(), nullable=True),
         sa.Column("record_fingerprint", sa.Text(), nullable=True),
         sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=False),

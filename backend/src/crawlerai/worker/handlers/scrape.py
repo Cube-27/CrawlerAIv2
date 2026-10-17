@@ -34,7 +34,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import SiteId
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
-from crawlerai.recurring.simhash import simhash64
+from crawlerai.recurring.simhash import content_fingerprint
 from crawlerai.recurring.state import record_content, record_fetch, stand_for_listing
 from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.pipeline import EngineData
@@ -117,7 +117,7 @@ async def _content_changed(conn: AsyncConnection, site_id: SiteId, canonical_url
     (§4.6)."""
     try:
         # Rendering the text is CPU work, as resolution is: a thread keeps the event loop serving other tasks.
-        fingerprint = await asyncio.to_thread(lambda: simhash64(parsed.cleaned_text.text))
+        fingerprint = await asyncio.to_thread(lambda: content_fingerprint(parsed.cleaned_text.text))
     except Exception:
         log.exception("the content fingerprint failed; the page is extracted")
         return True
