@@ -77,7 +77,7 @@
 - Decision: a scored crawl queues up to 5 × `limit` candidates; past that a better candidate replaces the weakest
   queued one. A worker runs the tasks it leased together best first, so a task is skipped (cancelled, unfetched) once
   the pages finished, plus those leased ahead of it, reach `limit`; when it finishes the last page the queued
-  candidates are cancelled. A best-first task defers (back to the queue) when a better candidate was queued after it
+  candidates are cancelled. A best-first task defers (back to the queue) when a better candidate that is due was queued after it
   was leased. Cancelled candidates are listed in the job's results with status `cancelled`.
 - Alternatives: a task row per candidate without a bound (unbounded rows on large sites); one lease at a time.
 - Why: it keeps `limit` an exact bound on fetched pages and lets a late-found link outrank early ones.
