@@ -40,7 +40,14 @@ export type BatchRequest = Omit<Schemas["BatchScrapeRequest"], "fetch" | "schema
 };
 export type CrawlRequest = Omit<
   Schemas["CrawlRequest"],
-  "fetch" | "schema" | "limit" | "max_depth" | "chunking" | "strategy" | "allow_subdomains" | "allow_external"
+  | "fetch"
+  | "schema"
+  | "limit"
+  | "max_depth"
+  | "chunking"
+  | "strategy"
+  | "allow_subdomains"
+  | "allow_external"
 > & {
   fetch: FetchMember;
   schema: JobSchemaRef | null;

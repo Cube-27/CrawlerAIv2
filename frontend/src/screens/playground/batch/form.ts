@@ -11,7 +11,6 @@ import {
   type FormatSettings,
 } from "../formatOptions";
 import {
-  hasSchema,
   jobFormats,
   lines,
   llmBudget,

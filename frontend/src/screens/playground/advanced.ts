@@ -1,4 +1,10 @@
-import type { CacheMode, FetchMember, MethodHint, PageAction, ScreenshotArea } from "../../api/scrape";
+import type {
+  CacheMode,
+  FetchMember,
+  MethodHint,
+  PageAction,
+  ScreenshotArea,
+} from "../../api/scrape";
 import { optionalNumber } from "./pageRequest";
 import { member, text, type StoredRequest } from "./run/storedRequest";
 

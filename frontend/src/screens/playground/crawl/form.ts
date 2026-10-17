@@ -1,6 +1,6 @@
 import type { CrawlRequest, CrawlStrategy } from "../../../api/jobs";
 import { isJsonObject } from "../../../api/json";
-import type { MethodHint, PageKind, ScrapeFormat } from "../../../api/scrape";
+import type { MethodHint, PageKind } from "../../../api/scrape";
 import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } from "../advanced";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
