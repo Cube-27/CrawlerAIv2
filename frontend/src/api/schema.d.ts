@@ -42,6 +42,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/captures/{capture_id}/artifacts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifact
+         * @description The screenshot (`screenshot.png`) or PDF (`page.pdf`) the browser made of the capture's page, as the scrape,
+         *     batch or crawl that asked for it named it in its answer. 404: no such capture, its files expired with it, or it has
+         *     no such file.
+         */
+        get: operations["get_artifact_v1_captures__capture_id__artifacts__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/captures/{capture_id}/replay": {
         parameters: {
             query?: never;
@@ -394,6 +416,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs/{job_id}/llms-full.txt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job Llms Full Txt
+         * @description The job's pages as an `llms-full.txt`: the opening of `llms.txt`, then each page's Markdown under its title, up
+         *     to 1000 pages. 409: no page.
+         */
+        get: operations["job_llms_full_txt_v1_jobs__job_id__llms_full_txt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{job_id}/llms.txt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job Llms Txt
+         * @description The job's pages as an `llms.txt` (llmstxt.org): the site's name and summary from its first page, then links to
+         *     the pages it reached, each with its title and description, in sections by the first segment of their paths. Made
+         *     from the captures, for any job that reached pages (a crawl, batch or extract), up to 5000 pages. 409: no page.
+         */
+        get: operations["job_llms_txt_v1_jobs__job_id__llms_txt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs/{job_id}/request": {
         parameters: {
             query?: never;
@@ -424,7 +489,9 @@ export interface paths {
         /**
          * Job Results
          * @description The job's records, newest first: in the field shape of `/v1/records` (`format=json`), or as `json_records`,
-         *     `csv_records` or `markdown` text in the schema's columns. A job without a schema answers `format=json` with its
+         *     `csv_records`, `markdown` or `jsonl` (JSON Lines) text in the schema's columns, or all of them as one file,
+         *     `xlsx` (Excel) or `parquet` (Apache Parquet, 503 `format_unavailable` where pyarrow is not installed), which take no
+         *     `cursor` or `limit`. A job without a schema answers `format=json` with its
          *     tasks, oldest first, each with the content formats the job asked for once its page was reached, and its fetch (the
          *     attempts made, as a scrape answers them). Any job
          *     answers `format=json_values` with its tasks, oldest first, each with its URL, outcome and clean records (the
@@ -788,6 +855,17 @@ export interface components {
             url: string;
         };
         /**
+         * Artifact
+         * @description A stored artifact as an answer names it: the URL the API serves it at, which needs the API's own key like any
+         *     other route, and its media type.
+         */
+        Artifact: {
+            /** Content Type */
+            content_type: string;
+            /** Url */
+            url: string;
+        };
+        /**
          * AttemptRecord
          * @description One rung tried. `status` is None when no response arrived (network error, timeout, SSRF rejection).
          */
@@ -853,6 +931,7 @@ export interface components {
          */
         BatchScrapeRequest: {
             budget?: components["schemas"]["Budget"] | null;
+            chunking?: components["schemas"]["ChunkOptions"] | null;
             /**
              * @default {
              *       "actions": [],
@@ -860,12 +939,14 @@ export interface components {
              *       "cookies": {},
              *       "headers": {},
              *       "method_hint": "auto",
-             *       "respect_robots": true
+             *       "respect_robots": true,
+             *       "screenshot": "viewport"
              *     }
              */
             fetch: components["schemas"]["FetchOptions"];
+            fit?: components["schemas"]["FitOptions"] | null;
             /** Formats */
-            formats: ("markdown" | "html" | "raw_html" | "links" | "metadata" | "records")[];
+            formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
             /** Locale */
             locale?: string | null;
             /** Page Kind */
@@ -964,6 +1045,49 @@ export interface components {
             page_id: string;
             /** Status Code */
             status_code: number;
+        };
+        /**
+         * Chunk
+         * @description One chunk of a page's markdown: its position, text, size in words and the headings above it.
+         */
+        Chunk: {
+            /** Heading Path */
+            heading_path: string[];
+            /** Index */
+            index: number;
+            /** Text */
+            text: string;
+            /** Words */
+            words: number;
+        };
+        /**
+         * ChunkOptions
+         * @description `chunks`' options: the `strategy`, the `size` of a chunk and the `overlap` between chunks, in words, and the
+         *     markdown the chunks are cut from (`markdown_fit` is pruned, so the chunks hold the page's content only).
+         */
+        ChunkOptions: {
+            /**
+             * Overlap
+             * @default 0
+             */
+            overlap: number;
+            /**
+             * Size
+             * @default 400
+             */
+            size: number;
+            /**
+             * Source
+             * @default markdown
+             * @enum {string}
+             */
+            source: "markdown" | "markdown_fit";
+            /**
+             * Strategy
+             * @default heading
+             * @enum {string}
+             */
+            strategy: "heading" | "sentence" | "token";
         };
         /**
          * ClickAction
@@ -1158,6 +1282,7 @@ export interface components {
              */
             allow_subdomains: boolean;
             budget?: components["schemas"]["Budget"] | null;
+            chunking?: components["schemas"]["ChunkOptions"] | null;
             /** Exclude */
             exclude?: string[];
             /**
@@ -1167,12 +1292,14 @@ export interface components {
              *       "cookies": {},
              *       "headers": {},
              *       "method_hint": "auto",
-             *       "respect_robots": true
+             *       "respect_robots": true,
+             *       "screenshot": "viewport"
              *     }
              */
             fetch: components["schemas"]["FetchOptions"];
+            fit?: components["schemas"]["FitOptions"] | null;
             /** Formats */
-            formats: ("markdown" | "html" | "raw_html" | "links" | "metadata" | "records")[];
+            formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
             /** Include */
             include?: string[];
             /** Keywords */
@@ -1336,7 +1463,7 @@ export interface components {
              * Format
              * @enum {string}
              */
-            format: "json_records" | "csv_records" | "markdown";
+            format: "json_records" | "csv_records" | "markdown" | "jsonl";
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -1365,7 +1492,8 @@ export interface components {
              *       "cookies": {},
              *       "headers": {},
              *       "method_hint": "auto",
-             *       "respect_robots": true
+             *       "respect_robots": true,
+             *       "screenshot": "viewport"
              *     }
              */
             fetch: components["schemas"]["FetchOptions"];
@@ -1504,6 +1632,12 @@ export interface components {
             respect_robots: boolean;
             /** Robots Override Reason */
             robots_override_reason?: string | null;
+            /**
+             * Screenshot
+             * @default viewport
+             * @enum {string}
+             */
+            screenshot: "viewport" | "full_page";
             /** Wait For */
             wait_for?: number | string | null;
         };
@@ -1695,6 +1829,16 @@ export interface components {
              * @enum {string}
              */
             page_kind: "detail" | "listing";
+        };
+        /**
+         * FitOptions
+         * @description `markdown_fit`'s options: the `query` the content is kept relevant to, and at most `max_blocks` blocks of it.
+         */
+        FitOptions: {
+            /** Max Blocks */
+            max_blocks?: number | null;
+            /** Query */
+            query?: string | null;
         };
         /** Health */
         Health: {
@@ -2080,6 +2224,11 @@ export interface components {
              * @default 5000
              */
             limit: number;
+            /**
+             * Llms Txt
+             * @default false
+             */
+            llms_txt: boolean;
             /** Url */
             url: string;
             /**
@@ -2095,6 +2244,8 @@ export interface components {
         };
         /** MapResult */
         MapResult: {
+            /** Llms Txt */
+            llms_txt?: string;
             sources: components["schemas"]["MapSources"];
             /** Truncated */
             truncated: boolean;
@@ -2303,6 +2454,8 @@ export interface components {
         PageOutput: {
             /** Capture Id */
             capture_id: string | null;
+            /** Chunks */
+            chunks?: components["schemas"]["Chunk"][];
             fetch?: components["schemas"]["FetchSummary"];
             /** Fetched At */
             fetched_at: string | null;
@@ -2316,11 +2469,15 @@ export interface components {
             links?: string[];
             /** Markdown */
             markdown?: string;
+            /** Markdown Fit */
+            markdown_fit?: string;
             metadata?: components["schemas"]["PageMetadata"];
             /** Outcome */
             outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "failed") | null;
+            pdf?: components["schemas"]["Artifact"];
             /** Raw Html */
             raw_html?: string;
+            screenshot?: components["schemas"]["Artifact"];
             /**
              * Status
              * @enum {string}
@@ -2795,6 +2952,7 @@ export interface components {
         ScrapeRequest: {
             browser_actions?: components["schemas"]["BrowserActions"] | null;
             budget?: components["schemas"]["Budget"] | null;
+            chunking?: components["schemas"]["ChunkOptions"] | null;
             /**
              * @default {
              *       "actions": [],
@@ -2802,12 +2960,14 @@ export interface components {
              *       "cookies": {},
              *       "headers": {},
              *       "method_hint": "auto",
-             *       "respect_robots": true
+             *       "respect_robots": true,
+             *       "screenshot": "viewport"
              *     }
              */
             fetch: components["schemas"]["FetchOptions"];
+            fit?: components["schemas"]["FitOptions"] | null;
             /** Formats */
-            formats: ("markdown" | "html" | "raw_html" | "links" | "metadata" | "records")[];
+            formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
             /** Locale */
             locale?: string | null;
             /**
@@ -2836,6 +2996,8 @@ export interface components {
             browser_actions?: components["schemas"]["ActionsReport"];
             /** Capture Id */
             capture_id: string | null;
+            /** Chunks */
+            chunks?: components["schemas"]["Chunk"][];
             fetch: components["schemas"]["FetchSummary"] | null;
             /** Fetched At */
             fetched_at: string | null;
@@ -2852,17 +3014,21 @@ export interface components {
             links?: string[];
             /** Markdown */
             markdown?: string;
+            /** Markdown Fit */
+            markdown_fit?: string;
             metadata?: components["schemas"]["PageMetadata"];
             /**
              * Outcome
              * @enum {string}
              */
             outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "failed";
+            pdf?: components["schemas"]["Artifact"];
             /** Raw Html */
             raw_html?: string;
             /** Records */
             records?: components["schemas"]["ScrapedRecord"][];
             schema?: components["schemas"]["SchemaDef"];
+            screenshot?: components["schemas"]["Artifact"];
             /** Url */
             url: string;
             usage: components["schemas"]["Usage"];
@@ -2973,7 +3139,8 @@ export interface components {
              *       "cookies": {},
              *       "headers": {},
              *       "method_hint": "auto",
-             *       "respect_robots": true
+             *       "respect_robots": true,
+             *       "screenshot": "viewport"
              *     }
              */
             fetch: components["schemas"]["FetchOptions"];
@@ -2983,7 +3150,7 @@ export interface components {
              *       "markdown"
              *     ]
              */
-            formats: ("markdown" | "html" | "raw_html" | "links" | "metadata" | "records")[];
+            formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
             /** Locale */
             locale?: string | null;
             /** Page Kind */
@@ -3333,6 +3500,70 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_artifact_v1_captures__capture_id__artifacts__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capture_id: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file: a PNG for `screenshot.png`, a PDF for `page.pdf`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                    "image/png": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4672,6 +4903,150 @@ export interface operations {
             };
         };
     };
+    job_llms_full_txt_v1_jobs__job_id__llms_full_txt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    job_llms_txt_v1_jobs__job_id__llms_txt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     get_job_request_v1_jobs__job_id__request_get: {
         parameters: {
             query?: never;
@@ -4741,7 +5116,7 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
-                format?: "json" | "json_values" | "json_records" | "csv_records" | "markdown";
+                format?: "json" | "json_values" | "json_records" | "csv_records" | "markdown" | "jsonl" | "xlsx" | "parquet";
                 include?: ("metadata" | "fetch")[];
                 csv_safe?: boolean;
             };
@@ -4804,6 +5179,16 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
