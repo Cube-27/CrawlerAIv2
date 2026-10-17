@@ -148,8 +148,8 @@ async def standing_listing(
 
 
 async def stand_for_listing(conn: AsyncConnection, site_id: SiteId, canonical_url: str, task_id: UrlTaskId) -> None:
-    """Note that the task's records stand for the listing page now (`standing_listing`): it extracted the page, or
-    found its rows unchanged."""
+    """Note that the task's records stand for the listing page now (`standing_listing`). Only a task that extracted the
+    page may: one that found it unchanged has no extraction for `standing_listing` to check."""
     await _upsert(conn, site_id, canonical_url, {"standing_task_id": task_id}, last_seen_at=func.now())
 
 

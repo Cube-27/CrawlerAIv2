@@ -101,8 +101,6 @@ async def _settle(
     if not changed and page.standing:
         await record_fetch(conn, page.site.id, task.canonical_url, page.result)
         await link_records(conn, task.id, page.standing)
-        if records.schema.page_kind == "listing":
-            await stand_for_listing(conn, page.site.id, task.canonical_url, task.id)
         return Finished("unchanged", capture_id=page.capture_id)
     result = await extract_records(conn, task, page, records, caller_supplied=True, llm=llm, parsed=parsed)
     if isinstance(result, Finished):

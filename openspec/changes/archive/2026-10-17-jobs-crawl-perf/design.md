@@ -39,7 +39,8 @@ Decided under the owner's delegation of 2026-10-17 (status `decided (owner-deleg
 
 ### D-1283 — A listing page's standing record is the task that last stood for its rows
 - Date: 2026-10-17 · Change/PR: jobs-crawl-perf (#246) · Status: decided (owner-delegated 2026-10-17)
-- Decision: after a records task extracts a listing page, or finds it unchanged, `url_state.standing_task_id` names it.
+- Decision: after a records task extracts a listing page, `url_state.standing_task_id` names it (a task that finds it
+  unchanged leaves it: it has no extraction to check).
   The next run's standing records are the latest versions of the entities that task's `task_record` rows hold, valid
   when its extraction used the mode and config version this run would, its links are no older than the page's
   `last_changed_at`, and each entity's latest version has the schema's current digest. Then the SimHash and 304 paths
