@@ -82,8 +82,9 @@ differently give `Ambiguous`. Refs: §9, D-0275–D-0279, D-0302, D-0921, D-0922
 - **THEN** the result is `Invalid("no_ratings")`
 
 ### Requirement: identifier, text and url
-`normalize/identifier.py` SHALL check GTIN and ISBN check digits; `text.py` cleans text and declines templates;
-`url.py` parses per WHATWG, absolutizes, canonicalizes and declines non-http(s) or hostless URLs, never repairing. Refs: §9, D-0287–D-0290, D-0257–D-0263, D-1022.
+`normalize/identifier.py` SHALL check GTIN and ISBN check digits and publish the identifier as a string, the scheme being
+the field's (D-1209); `text.py` cleans text and declines templates; `url.py` parses per WHATWG, absolutizes,
+canonicalizes and declines non-http(s) or hostless URLs, never repairing. Refs: §9, D-0287–D-0290, D-0257–D-0263, D-1022, D-1209.
 #### Scenario: Check digit fails
 - **WHEN** one digit of a valid GTIN-13 is changed
 - **THEN** the result is `Invalid("check_digit")`
