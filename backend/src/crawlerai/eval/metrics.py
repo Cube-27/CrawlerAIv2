@@ -207,8 +207,9 @@ class Report(_Model):
     # `None` when no checked page labels one.
     row_matching: RowMetrics | Suppressed | None = None
     row_matching_by_field: dict[str, RowMetrics | Suppressed] = {}
-    # The label statuses scored: checked only, except in a dev report that asks for drafts too (D-1461).
-    label_statuses: tuple[LabelStatus, ...] = ("checked",)
+    # The label statuses scored: checked only, except in a dev report that asks for drafts too (D-1461). A list, so a
+    # Python dump of the report is still JSON, as `eval_run.metrics` holds it.
+    label_statuses: list[LabelStatus] = ["checked"]
     # Dev only, like `by_field`: per "page_kind|field_type", and the count of each kind of disagreement per
     # "schema|field" (`disagreement`), for triage.
     by_page_kind: dict[str, FieldMetrics | Suppressed] = {}
@@ -295,7 +296,7 @@ def build_report(
         by_source=_by_source((c.schema_def, js) for c, _, js, _ in scored) if dev else {},
         row_matching=sum(row_counts.values(), _RowCount()).metrics() if row_counts else None,
         row_matching_by_field={k: v.metrics() for k, v in sorted(row_counts.items())},
-        label_statuses=tuple(sorted(statuses)),
+        label_statuses=sorted(statuses),
         by_page_kind={k: _field_metrics(v) for k, v in sorted(by_kind.items())} if dev else {},
         disagreements=_disagreements(by_field) if dev else {},
     )

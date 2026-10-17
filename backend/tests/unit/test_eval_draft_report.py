@@ -87,13 +87,13 @@ def cell(table: dict[str, Any], key: str) -> FieldMetrics:
 
 def test_drafts_are_not_scored_by_default() -> None:
     r = build_report([case("p1", draft({"price": value(EUR_19)}), {"price": published(EUR_19)})], "dev", "e1", "abc")
-    assert (r.n_pages, r.by_field_type, r.label_statuses) == (0, {}, ("checked",))
+    assert (r.n_pages, r.by_field_type, r.label_statuses) == (0, {}, ["checked"])
 
 
 def test_drafts_are_scored_when_asked_and_the_report_says_so() -> None:
     r = dev_report(case("p1", draft({"price": value(EUR_19)}), {"price": published(EUR_19)}))
     assert r.n_pages == 1
-    assert r.label_statuses == ("checked", "draft")
+    assert r.label_statuses == ["checked", "draft"]
     assert cell(r.by_field_type, "money").precision == 1.0
     assert r.pages is not None
     assert r.pages[0].label_status == "draft"
