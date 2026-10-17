@@ -721,7 +721,8 @@ export interface components {
              * @enum {string}
              */
             method: "GET" | "POST";
-            pagination?: components["schemas"]["Pagination"] | null;
+            /** Pagination */
+            pagination?: (components["schemas"]["ParamPagination"] | components["schemas"]["CursorPagination"] | components["schemas"]["NextUrlPagination"] | components["schemas"]["LinkPagination"]) | null;
             /**
              * Params From Url
              * @default {}
@@ -1135,6 +1136,28 @@ export interface components {
             post: (components["schemas"]["NormalizeOp-Output"] | components["schemas"]["TrimOp"] | components["schemas"]["AbsolutizeUrlOp"] | components["schemas"]["RegexReplaceOp"])[];
             /** Xpath */
             xpath: string;
+        };
+        /**
+         * CursorPagination
+         * @description The next request sets `name` to the value the previous response holds at `cursor`, until it holds none.
+         */
+        CursorPagination: {
+            /** Cursor */
+            cursor: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "cursor";
+            /** Name */
+            name: string;
+            /** Rows */
+            rows: string;
+            /**
+             * Where
+             * @enum {string}
+             */
+            where: "query" | "body";
         };
         /** DayUsage */
         DayUsage: {
@@ -1823,6 +1846,20 @@ export interface components {
             job_id: string;
         };
         /**
+         * LinkPagination
+         * @description The next request goes to the target of the previous response's `Link` field with relation type `next`
+         *     (RFC 8288 §3), on the recipe's own origin, until it names none.
+         */
+        LinkPagination: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "link";
+            /** Rows */
+            rows: string;
+        };
+        /**
          * ListLabel
          * @description A row-mapped field's label (SPEC-13 §4.10): one row per variant shown on the page, in page order. `absent`
          *     means the page offers no variant choice.
@@ -1963,6 +2000,22 @@ export interface components {
              * @default []
              */
             required_groups: string[][];
+        };
+        /**
+         * NextUrlPagination
+         * @description The next request goes to the URL the previous response holds at `next` (resolved against the request's URL,
+         *     RFC 3986 §5), on the recipe's own origin, until it holds none.
+         */
+        NextUrlPagination: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "next_url";
+            /** Next */
+            next: string;
+            /** Rows */
+            rows: string;
         };
         /**
          * NormalizeOp
@@ -2177,14 +2230,14 @@ export interface components {
             status: ("draft" | "labeled" | "checked") | null;
         };
         /**
-         * Pagination
-         * @description §4.8: the listing's next request sets query parameter `name` to `start`, `start + step`, ... until `rows`
-         *     selects nothing.
+         * ParamPagination
+         * @description §4.8: the listing's requests set `name` to `start`, `start + step`, ... (a page number or an item offset) until
+         *     `rows` selects nothing.
          */
-        Pagination: {
+        ParamPagination: {
             /**
-             * Kind
-             * @constant
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
             kind: "param";
             /** Name */
@@ -2195,6 +2248,11 @@ export interface components {
             start: number;
             /** Step */
             step: number;
+            /**
+             * Where
+             * @enum {string}
+             */
+            where: "query" | "body";
         };
         /** PlatformDraft */
         PlatformDraft: {
