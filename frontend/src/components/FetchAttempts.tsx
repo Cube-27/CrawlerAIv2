@@ -36,15 +36,24 @@ export function FetchAttemptsTable({ attempts }: Readonly<{ attempts: readonly F
   );
 }
 
-/** How a page was fetched, in a drawer: the platform adapter that read it, when one did, and its attempts. */
+/** One line on how the fetch ended: the platform adapter that read the page, the method that served it, or the class
+ * it ended as when no attempt reached the page. */
+function trailText({ adapter, method, block_class, attempts }: FetchSummary): string {
+  if (block_class !== "ok") {
+    return `Not reached: ${block_class} after ${String(attempts.length)} attempt${attempts.length === 1 ? "" : "s"}.`;
+  }
+  return adapter === null
+    ? `Fetched by ${method}.`
+    : `Read from the ${adapter} platform adapter's API.`;
+}
+
+/** How a page was fetched, in a drawer: how it ended, then every attempt. */
 export function FetchTrail({ fetch }: Readonly<{ fetch: FetchSummary }>) {
   return (
     <section className="flex flex-col gap-2">
       <Typography.Heading level={3}>Fetch</Typography.Heading>
       <Typography.Paragraph size="sm" color="muted">
-        {fetch.adapter === null
-          ? `Fetched by ${fetch.method}.`
-          : `Read from the ${fetch.adapter} platform adapter's API.`}
+        {trailText(fetch)}
       </Typography.Paragraph>
       <FetchAttemptsTable attempts={fetch.attempts} />
     </section>

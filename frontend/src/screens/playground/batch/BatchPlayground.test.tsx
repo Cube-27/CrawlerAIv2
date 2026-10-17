@@ -692,6 +692,46 @@ describe("batch playground: how a page was fetched", () => {
     expect(drawer.getByRole("grid", { name: "Fetch attempts" })).toBeInTheDocument();
   });
 
+  it("says a blocked page was not reached, with the attempts that were made", async () => {
+    const fetch: FetchSummary = {
+      method: "http",
+      status_code: 403,
+      block_class: "blocked",
+      adapter: null,
+      attempts: [
+        {
+          method: "http",
+          status: 403,
+          block_class: "blocked",
+          duration_ms: 70,
+          error: null,
+          challenge: "structural",
+        },
+        {
+          method: "browser",
+          status: 403,
+          block_class: "blocked",
+          duration_ms: 20300,
+          error: null,
+          challenge: "structural",
+        },
+      ],
+    };
+    batchApi({
+      [`GET ${JOB}/results`]: () => valuesPage([FIRST, { ...SECOND, fetch }, THIRD]),
+    });
+    await openPlayground(`/batch?job=${JOB_ID}`);
+    await pagesGrid();
+
+    await userEvent.click(screen.getByRole("button", { name: "JSON of page 2" }));
+
+    const drawer = within(await screen.findByRole("dialog"));
+    expect(await drawer.findByText("Not reached: blocked after 2 attempts.")).toBeVisible();
+    expect(
+      within(drawer.getByRole("row", { name: "browser" })).getByText("structural"),
+    ).toBeVisible();
+  });
+
   it("shows no fetch section for a page whose capture kept no attempts", async () => {
     batchApi();
     await openPlayground(`/batch?job=${JOB_ID}`);

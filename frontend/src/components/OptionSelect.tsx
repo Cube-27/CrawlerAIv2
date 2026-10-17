@@ -6,6 +6,11 @@ export function isOptionOf<K extends string>(options: Readonly<Record<K, string>
   return (key: unknown): key is K => typeof key === "string" && Object.hasOwn(options, key);
 }
 
+/** The classes of a toolbar select's error line: it hangs under the select without taking room (so showing one moves
+ * nothing, D-1214), on one line from `sm` and in a column of `w-64` at phone width, where a long message would pass the
+ * screen's edge. The select is `relative`. */
+export const HANGING_ERROR = "absolute top-full w-64 sm:w-max sm:whitespace-nowrap";
+
 /** A labelled HeroUI Select over a `Record` of option labels. With `hideLabel`, the label is its accessible name only,
  * for a toolbar, whose error line hangs under it without taking room, so showing one moves nothing around it.
  * `placeholder` is what it shows while nothing is chosen; `name` is the request member whose errors it
@@ -61,7 +66,7 @@ export function OptionSelect<K extends string>({
           ))}
         </ListBox>
       </Select.Popover>
-      <FieldError {...(hideLabel ? { className: "absolute top-full whitespace-nowrap" } : {})} />
+      <FieldError {...(hideLabel ? { className: HANGING_ERROR } : {})} />
     </Select>
   );
 }

@@ -45,11 +45,11 @@ export function RecordFieldsTable({
             <Table.Column isRowHeader className="w-1/8">
               Field
             </Table.Column>
-            <Table.Column className="w-1/4">Value</Table.Column>
+            <Table.Column className="w-1/5">Value</Table.Column>
             <Table.Column className="w-1/8">Status</Table.Column>
             <Table.Column className="w-1/8">Confidence</Table.Column>
             <Table.Column className="w-1/8">Evidence</Table.Column>
-            <Table.Column className="w-1/12">Source</Table.Column>
+            <Table.Column className="w-1/8">Source</Table.Column>
             <Table.Column className="w-1/12">Locator</Table.Column>
             <Table.Column className="w-1/12">Derived by</Table.Column>
           </Table.Header>
