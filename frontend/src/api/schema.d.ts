@@ -169,8 +169,11 @@ export interface paths {
          * Crawl Site
          * @description Queue a job that crawls from `url`: its sitemaps and the links of each page, within `include` and `exclude`,
          *     `max_depth` and `limit`, on its host (and the subdomains an `include` names). A page a `page_kind_rules` pattern
-         *     matches is extracted; with rules, any other page is fetched for its links only. A target the API may not fetch, in
-         *     `url` or `webhook_url`, is a 422 and nothing is queued.
+         *     matches is extracted; with rules, any other page is fetched for its links only. `strategy` orders the visits: `bfs`
+         *     (default), `dfs`, or `best_first`, which fetches the links that best match `query` and `keywords` first (anchor
+         *     text and URL path against the query, the holding page's relevance, sitemap priority, shallower first);
+         *     `allow_subdomains` and `allow_external` widen the host scope. Pages the `limit` leaves unfetched end `cancelled`.
+         *     A target the API may not fetch, in `url` or `webhook_url`, is a 422 and nothing is queued.
          */
         post: operations["crawl_site_v1_crawl_post"];
         delete?: never;
@@ -602,6 +605,28 @@ export interface paths {
          *     stored schema of its name, and one that differs from it is a 409.
          */
         post: operations["scrape_v1_scrape_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search
+         * @description The web results of `query` from the configured provider: `url`, `title` and `snippet`, in its order, at most
+         *     `limit`. With `scrape`, a batch job scrapes the results (`job_id`); a result the API may not fetch is counted in
+         *     `skipped`. 503 `search_unavailable` when no provider is configured, 502 when the provider does not answer.
+         */
+        post: operations["search_v1_search_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1116,8 +1141,22 @@ export interface components {
          *     while the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does
          *     (D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which
          *     pages are extracted. `webhook_url` is called when the job ends (§4.2).
+         *
+         *     `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the
+         *     links that best match `query` and `keywords` first (`crawl.scoring`). `max_pages` is `limit`. `allow_subdomains`
+         *     keeps the start host's subdomains without an `include`, and `allow_external` any host (D-1440, D-1441).
          */
         CrawlRequest: {
+            /**
+             * Allow External
+             * @default false
+             */
+            allow_external: boolean;
+            /**
+             * Allow Subdomains
+             * @default false
+             */
+            allow_subdomains: boolean;
             budget?: components["schemas"]["Budget"] | null;
             /** Exclude */
             exclude?: string[];
@@ -1136,8 +1175,11 @@ export interface components {
             formats: ("markdown" | "html" | "raw_html" | "links" | "metadata" | "records")[];
             /** Include */
             include?: string[];
+            /** Keywords */
+            keywords?: string[];
             /**
              * Limit
+             * @description At most this many pages are fetched; alias `max_pages`.
              * @default 500
              */
             limit: number;
@@ -1150,8 +1192,16 @@ export interface components {
             max_depth: number;
             /** Page Kind Rules */
             page_kind_rules?: components["schemas"]["PageKindRule"][];
+            /** Query */
+            query?: string | null;
             /** Schema */
             schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
+            /**
+             * Strategy
+             * @default bfs
+             * @enum {string}
+             */
+            strategy: "bfs" | "dfs" | "best_first";
             /** Url */
             url: string;
             /** Webhook Url */
@@ -2859,6 +2909,86 @@ export interface components {
             type: "scroll";
             /** Until */
             until?: "stable" | null;
+        };
+        /** SearchHit */
+        SearchHit: {
+            /**
+             * Position
+             * @description 1-based, in the provider's order
+             */
+            position: number;
+            /** Snippet */
+            snippet: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+        };
+        /**
+         * SearchRequest
+         * @description The body of `POST /v1/search`: `query`, at most `limit` results, and optionally how to `scrape` them.
+         */
+        SearchRequest: {
+            /**
+             * Limit
+             * @default 10
+             */
+            limit: number;
+            /** Query */
+            query: string;
+            scrape?: components["schemas"]["SearchScrape"] | null;
+        };
+        /** SearchResult */
+        SearchResult: {
+            /**
+             * Job Id
+             * @description The batch job scraping the results, with `scrape`
+             */
+            job_id?: string | null;
+            /** Query */
+            query: string;
+            /** Results */
+            results: components["schemas"]["SearchHit"][];
+            /**
+             * Skipped
+             * @description Results the API may not fetch, left out of the scrape
+             * @default 0
+             */
+            skipped: number;
+        };
+        /**
+         * SearchScrape
+         * @description How the results are scraped: a batch's `formats` (markdown when none), `schema`, `page_kind`, `fetch`,
+         *     `locale`, `budget` and `webhook_url`, for every result (`BatchScrapeRequest`).
+         */
+        SearchScrape: {
+            budget?: components["schemas"]["Budget"] | null;
+            /**
+             * @default {
+             *       "actions": [],
+             *       "cache": "default",
+             *       "cookies": {},
+             *       "headers": {},
+             *       "method_hint": "auto",
+             *       "respect_robots": true
+             *     }
+             */
+            fetch: components["schemas"]["FetchOptions"];
+            /**
+             * Formats
+             * @default [
+             *       "markdown"
+             *     ]
+             */
+            formats: ("markdown" | "html" | "raw_html" | "links" | "metadata" | "records")[];
+            /** Locale */
+            locale?: string | null;
+            /** Page Kind */
+            page_kind?: ("detail" | "listing") | null;
+            /** Schema */
+            schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
+            /** Webhook Url */
+            webhook_url?: string | null;
         };
         /** SkippedOut */
         SkippedOut: {
@@ -5389,6 +5519,90 @@ export interface operations {
             };
             /** @description Gateway Timeout */
             504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    search_v1_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
