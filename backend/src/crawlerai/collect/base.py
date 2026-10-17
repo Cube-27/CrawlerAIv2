@@ -46,6 +46,8 @@ class Entity(_Model):
     item_urls: tuple[str, ...] = ()
     # schema.org `inProductGroupWithID`: the `productGroupID` of the ProductGroup this product is a variant of.
     group_ids: tuple[str, ...] = ()
+    # schema.org `isVariantOf`: the IRIs (`@id`, `itemid`) of the nodes this product names as what it is a variant of.
+    variant_of: tuple[str, ...] = ()
 
 
 class Candidate(_Model):

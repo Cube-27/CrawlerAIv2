@@ -258,6 +258,21 @@ def test_a_product_naming_its_group_by_is_variant_of_and_no_member_becomes_one()
     assert (graph.entities["jsonld:0:$"].parent, graph.entities["jsonld:0:$"].via) == (group_id, "hasVariant")
 
 
+def test_products_naming_their_group_by_its_iri_are_its_variants() -> None:
+    # One block lists the group and its variants as sibling nodes, each variant referencing the group by `@id`.
+    group = {"@type": "ProductGroup", "@id": "/p/1#group", "name": "Widget"}
+    variants = [{"@type": "Product", "sku": f"W-{n}", "isVariantOf": {"@id": "/p/1#group"}} for n in (1, 2)]
+
+    graph, _ = _graph({"@context": SCHEMA_ORG, "@graph": [group, *variants]})
+
+    group_id = "jsonld:0:$['@graph'][0]"
+    assert _roots(graph) == [group_id]
+    assert [(e.id, e.via) for e in graph.entities.values() if e.parent == group_id] == [
+        ("jsonld:0:$['@graph'][1]", "hasVariant"),
+        ("jsonld:0:$['@graph'][2]", "hasVariant"),
+    ]
+
+
 def test_is_variant_of_a_product_model_is_not_inverted() -> None:
     # schema.org `isVariantOf` also ranges over ProductModel, which has no `hasVariant` members.
     graph, _ = _graph(_product(sku="W-2", isVariantOf={"@type": "ProductModel", "name": "Widget"}))
