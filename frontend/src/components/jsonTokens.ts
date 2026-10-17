@@ -39,3 +39,29 @@ export function jsonTokens(text: string): JsonToken[] {
   if (last < text.length) tokens.push(plain(text, last, text.length));
   return tokens;
 }
+
+export interface JsonLine {
+  /** Where the line starts in the text: unique, so a list of lines can key on it. */
+  start: number;
+  /** The line's leading spaces: its nesting depth, two per level. */
+  indent: string;
+  /** The rest of the line, cut into tokens. */
+  tokens: JsonToken[];
+}
+
+/** `text`, JSON as JSON.stringify writes it, cut into lines and each line into its indent and tokens. A string holds
+ * no raw line break (RFC 8259 §7: control characters are escaped), so no token spans two lines. */
+export function jsonLines(text: string): JsonLine[] {
+  let start = 0;
+  return text.split("\n").map((line) => {
+    const indent = /^ */.exec(line)?.[0] ?? "";
+    const offset = start + indent.length;
+    const tokens = jsonTokens(line.slice(indent.length)).map((token) => ({
+      ...token,
+      start: offset + token.start,
+    }));
+    const entry = { start, indent, tokens };
+    start += line.length + 1;
+    return entry;
+  });
+}
