@@ -1,4 +1,4 @@
-"""The MCP server (SPEC-10 §4.7): the SDK's client calls each of the twelve tools over streamable HTTP at `/mcp` in the
+"""The MCP server (SPEC-10 §4.7): the SDK's client calls each of the twenty tools over streamable HTTP at `/mcp` in the
 API app, and over stdio from `python -m crawlerai.mcp_server`. What each tool does is its service's, tested with the
 service; here, that a tool reaches it with the caller's key, and answers by the output rules (§13.3).
 
@@ -31,7 +31,7 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.db.keys import CreatedKey, create_key, revoke_key
-from crawlerai.db.models import ApiKey, ExtractionConfig, ExtractionConfigId, Job, Project, Site, SiteId
+from crawlerai.db.models import ApiKey, ExtractionConfig, ExtractionConfigId, Job, Project, Schedule, Site, SiteId
 from crawlerai.llm.client import Unconfigured
 from crawlerai.llm.setup import LLMSetup
 from crawlerai.mcp_server.output import MARKDOWN_PAGE_CHARS
@@ -62,6 +62,13 @@ TOOLS = {
     "export_config",
     "reject_config",
     "llms_txt",
+    "create_schedule",
+    "list_schedules",
+    "schedule_jobs",
+    "pause_schedule",
+    "resume_schedule",
+    "run_schedule",
+    "delete_schedule",
 }
 # The tools that answer with page content say that it is untrusted (§4.7).
 CONTENT_TOOLS = {"scrape", "map", "search", "crawl_status", "extract_status", "llms_txt"}
@@ -115,6 +122,7 @@ async def key(
     yield created
     async with engine.begin() as conn:
         await conn.execute(update(Job).where(Job.api_key_id == created.id).values(api_key_id=None))
+        await conn.execute(update(Schedule).where(Schedule.api_key_id == created.id).values(api_key_id=None))
         await conn.execute(delete(ApiKey).where(ApiKey.id == created.id))
 
 
@@ -166,7 +174,7 @@ def _texts(result: CallToolResult) -> list[str]:
     return [block.text for block in result.content if isinstance(block, TextContent)]
 
 
-async def test_the_twelve_tools_are_listed_and_those_with_page_content_say_it_is_untrusted(
+async def test_the_twenty_tools_are_listed_and_those_with_page_content_say_it_is_untrusted(
     session: ClientSession,
 ) -> None:
     tools = (await session.list_tools()).tools
@@ -472,3 +480,23 @@ async def test_an_unexpected_error_reaches_the_client_without_its_text(
         ["Error executing tool list_schemas: the server failed to answer the request"],
     )
     assert "SELECT secret FROM internals" in caplog.text
+
+
+async def test_a_schedule_is_created_run_listed_paused_and_deleted_as_rest_does(
+    session: ClientSession, app_client: httpx.AsyncClient, own_origin: str
+) -> None:
+    request = {"urls": [f"{own_origin}/kettles/blue"], "formats": ["markdown"]}
+    schedule = {"name": "kettles", "kind": "batch_scrape", "request": request, "interval_s": 3600}
+
+    created = await _call(session, "create_schedule", schedule=schedule)
+    run = await _call(session, "run_schedule", schedule_id=created["id"])
+    history = await _call(session, "schedule_jobs", schedule_id=created["id"])
+    paused = await _call(session, "pause_schedule", schedule_id=created["id"])
+    listed = await _call(session, "list_schedules")
+    rest = (await app_client.get(f"/v1/schedules/{created['id']}")).json()
+    await _call(session, "delete_schedule", schedule_id=created["id"])
+
+    assert [job["id"] for job in history["items"]] == [run["job_id"]]
+    assert (paused["paused"], rest["paused"], rest["last_job_id"]) == (True, True, run["job_id"])
+    assert created["id"] in [item["id"] for item in listed["items"]]
+    assert (await app_client.get(f"/v1/schedules/{created['id']}")).status_code == 404

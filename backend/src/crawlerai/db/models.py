@@ -50,6 +50,9 @@ ExtractionConfigId = NewType("ExtractionConfigId", uuid.UUID)
 UsageEventId = NewType("UsageEventId", uuid.UUID)
 EvalPageId = NewType("EvalPageId", uuid.UUID)
 EvalRunId = NewType("EvalRunId", uuid.UUID)
+ScheduleId = NewType("ScheduleId", uuid.UUID)
+WebhookEventId = NewType("WebhookEventId", uuid.UUID)
+WebhookDeliveryId = NewType("WebhookDeliveryId", uuid.UUID)
 
 FetchMethod = Literal["http", "browser"]
 PageKind = Literal["detail", "listing"]
@@ -85,6 +88,14 @@ Split = Literal["dev", "hidden", "fresh"]
 PrivateSplit = Literal["hidden", "fresh"]
 EvalCategory = Literal["platform_store", "custom_store", "api_backed", "job_board", "mixed"]
 WebhookStatus = Literal["pending", "delivered", "failed"]
+# What a job's webhook can be sent (`crawlerai.db.webhook_outbox`): a page its task finished, a record a task stored
+# (and, for a new version, `record_changed`), a URL a recurring crawl no longer finds, and the job's end.
+WebhookEventType = Literal[
+    "page", "record", "record_changed", "url_gone", "job_completed", "job_failed", "job_cancelled"
+]
+# The job kinds a schedule submits (`crawlerai.services.schedules`): those the queue runs; a scheduled scrape is stored
+# as the batch of its one URL.
+ScheduledKind = Literal["batch_scrape", "crawl", "extract"]
 
 
 def one_of(column: str, values: Any) -> str:
@@ -110,6 +121,9 @@ TYPE_ANNOTATION_MAP: dict[Any, Any] = dict.fromkeys(
         UsageEventId,
         EvalPageId,
         EvalRunId,
+        ScheduleId,
+        WebhookEventId,
+        WebhookDeliveryId,
     ),
     Uuid,
 )
@@ -354,6 +368,39 @@ class UrlState(Base):
     standing_task_id: Mapped[UrlTaskId | None] = mapped_column(ForeignKey("url_task.id", ondelete=_SET_NULL))
 
 
+class Schedule(Base):
+    """A recurring run (§22 "Recurring schedule storage", admitted 2026-10-17): the request of a queued job kind,
+    submitted by the scheduler at each due time of its 5-field cron expression in `timezone`, or every `interval_s`.
+    Its jobs point back at it (`job.schedule_id`); the last one is its newest."""
+
+    __tablename__ = "schedule"
+    __table_args__ = (
+        CheckConstraint(one_of("kind", ScheduledKind), name="kind"),
+        CheckConstraint("(cron IS NULL) <> (interval_s IS NULL)", name="one_cadence"),
+        CheckConstraint("interval_s >= 60", name="interval_at_least_a_minute"),
+        # The scheduler reads the due schedules that are not paused.
+        Index(None, "next_run_at", postgresql_where=text("NOT paused")),
+    )
+
+    id: Mapped[ScheduleId] = mapped_column(primary_key=True, default=uuid7)
+    project_id: Mapped[ProjectId] = mapped_column(ForeignKey(Project.id))
+    name: Mapped[str] = mapped_column(Text)
+    kind: Mapped[ScheduledKind] = mapped_column(Text)
+    request: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    cron: Mapped[str | None] = mapped_column(Text)
+    interval_s: Mapped[int | None] = mapped_column(Integer)
+    timezone: Mapped[str] = mapped_column(Text)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    paused: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Why its last due run submitted no job (a refused target, globs that matched nothing); NULL once one is submitted.
+    last_error: Mapped[str | None] = mapped_column(Text)
+    # The key that created it: its jobs are submitted as that key's, which signs their webhooks.
+    api_key_id: Mapped[ApiKeyId | None] = mapped_column(ForeignKey(ApiKey.id))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = created_at_column()
+
+
 class Job(Base):
     __tablename__ = "job"
     __table_args__ = (
@@ -361,6 +408,8 @@ class Job(Base):
         CheckConstraint(one_of("status", JobStatus), name="status"),
         # The scheduler's reapers look only at running jobs, oldest start first (`db.queue.reap_stuck_jobs`).
         Index(None, "started_at", postgresql_where=text("status = 'running'")),
+        # A schedule's jobs, newest first (its history and its last job).
+        Index(None, "schedule_id", "id"),
     )
 
     id: Mapped[JobId] = mapped_column(primary_key=True, default=uuid7)
@@ -384,6 +433,12 @@ class Job(Base):
     # A crawl: where its start page is, canonical, after the site's own redirects (`crawl.rules.located`). The start
     # task writes it: it gives the scope's host and the one URL already fetched. NULL before then, and for other kinds.
     start_location: Mapped[str | None] = mapped_column(Text)
+    # The events its webhook is sent (`WebhookEventType`) and how they are grouped into deliveries
+    # (`crawlerai.db.webhook_outbox.WebhookBatch`, NULL: one event a delivery), from the request.
+    webhook_events: Mapped[list[str]] = mapped_column(JSONB, server_default=empty_array_default())
+    webhook_batch: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # The schedule that submitted it; NULL for a job a caller submitted, and once its schedule is deleted.
+    schedule_id: Mapped[ScheduleId | None] = mapped_column(ForeignKey(Schedule.id, ondelete=_SET_NULL))
 
 
 class UrlTask(Base):
@@ -446,8 +501,8 @@ class JobEvent(Base):
 
 
 class WebhookDelivery(Base):
-    """The completion webhook of an ended job (SPEC-10 §4.2): `pending` until it is delivered or its attempts run out.
-    Written with the job's end, so a job never ends without its webhook being owed."""
+    """One POST of a job's webhook (SPEC-10 §4.2): the events assigned to it, `pending` until the target accepts it or
+    its attempts run out (`crawlerai.api.webhooks`)."""
 
     __tablename__ = "webhook_delivery"
     __table_args__ = (
@@ -455,13 +510,37 @@ class WebhookDelivery(Base):
         CheckConstraint("attempts >= 0", name="attempts_non_negative"),
         # The scheduler reads the pending deliveries that are due.
         Index(None, "next_attempt_at", postgresql_where=text("status = 'pending'")),
+        Index(None, "job_id"),
     )
 
-    job_id: Mapped[JobId] = mapped_column(ForeignKey(Job.id), primary_key=True)
+    id: Mapped[WebhookDeliveryId] = mapped_column(primary_key=True, default=uuid7)
+    job_id: Mapped[JobId] = mapped_column(ForeignKey(Job.id))
     status: Mapped[WebhookStatus] = mapped_column(Text, server_default=text("'pending'"))
     attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at_column()
+
+
+class WebhookEvent(Base):
+    """An event a job's webhook is owed, written in the transaction that makes it happen (the outbox): it waits
+    unassigned until the scheduler groups it into a delivery (`crawlerai.db.webhook_outbox`)."""
+
+    __tablename__ = "webhook_event"
+    __table_args__ = (
+        CheckConstraint(one_of("event", WebhookEventType), name="event"),
+        # The scheduler groups each job's unassigned events, oldest first.
+        Index(None, "job_id", "id", postgresql_where=text("delivery_id IS NULL")),
+        # A delivery's events, in order, for its body.
+        Index(None, "delivery_id", "id"),
+    )
+
+    id: Mapped[WebhookEventId] = mapped_column(primary_key=True, default=uuid7)
+    job_id: Mapped[JobId] = mapped_column(ForeignKey(Job.id))
+    event: Mapped[WebhookEventType] = mapped_column(Text)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp())
+    delivery_id: Mapped[WebhookDeliveryId | None] = mapped_column(ForeignKey(WebhookDelivery.id))
 
 
 class UsageEvent(Base):

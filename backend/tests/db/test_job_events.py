@@ -14,7 +14,7 @@ from typing import Any
 import anyio
 import httpx
 import pytest
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.api.app import create_app
@@ -34,9 +34,10 @@ from crawlerai.db.models import (
     Site,
     TaskRecord,
     UrlTask,
-    WebhookDelivery,
+    WebhookEvent,
 )
 from crawlerai.db.queue import cancel_task, claim_tasks, complete_task, fail_task
+from crawlerai.db.webhook_outbox import JOB_END_EVENTS
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument, document_digest
 from crawlerai.services import events, jobs
@@ -215,34 +216,68 @@ async def test_a_retried_task_reports_its_last_extraction(conn: AsyncConnection)
     assert extracted == {"url": URL, "outcome": "extracted", "mode": "adhoc", "llm_calls": 0}
 
 
-# The webhook a job's end owes.
+# The webhook events a job's end owes (`db.webhook_outbox`).
+
+HOOK = "https://hooks.example.test/done"
 
 
-async def test_a_job_owes_a_pending_webhook_when_it_ends_only_if_it_has_a_webhook_url(conn: AsyncConnection) -> None:
-    hooked = await _job(conn, webhook_url="https://hooks.example.test/done")
-    plain = await _job(conn)
+async def _owed(conn: AsyncConnection, job_ids: list[JobId]) -> list[tuple[JobId, str]]:
+    rows = await conn.execute(
+        select(WebhookEvent.job_id, WebhookEvent.event)
+        .where(WebhookEvent.job_id.in_(job_ids), WebhookEvent.delivery_id.is_(None))
+        .order_by(WebhookEvent.id)
+    )
+    return [(row.job_id, row.event) for row in rows]
 
-    for job_id in (hooked, plain):
+
+async def test_a_job_owes_its_end_event_only_if_its_webhook_asked_for_it(conn: AsyncConnection) -> None:
+    hooked = await _job(conn, webhook_url=HOOK, webhook_events=list(JOB_END_EVENTS))
+    pages_only = await _job(conn, webhook_url=HOOK, webhook_events=["page"])
+    plain = await _job(conn, webhook_events=list(JOB_END_EVENTS))
+
+    for job_id in (hooked, pages_only, plain):
         await transition_job(conn, job_id, "failed")
 
-    rows = await conn.execute(
-        select(WebhookDelivery.job_id, WebhookDelivery.status, WebhookDelivery.attempts).where(
-            WebhookDelivery.job_id.in_([hooked, plain])
-        )
-    )
-    assert rows.all() == [(hooked, "pending", 0)]
+    assert await _owed(conn, [hooked, pages_only, plain]) == [(hooked, "job_failed")]
 
 
-async def test_cancelling_a_queued_job_with_a_webhook_url_owes_its_webhook(engine: AsyncEngine) -> None:
+async def test_cancelling_a_queued_job_with_a_webhook_owes_its_cancelled_event(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
-        job_id = await _job(conn, status="queued", webhook_url="https://hooks.example.test/done")
+        job_id = await _job(conn, status="queued", webhook_url=HOOK, webhook_events=list(JOB_END_EVENTS))
 
     async with engine.begin() as conn:
         await jobs.cancel_job(conn, job_id)
 
     async with engine.connect() as conn:
-        status = select(WebhookDelivery.status).where(WebhookDelivery.job_id == job_id)
-        assert (await conn.execute(status)).scalar_one() == "pending"
+        assert await _owed(conn, [job_id]) == [(job_id, "job_cancelled")]
+
+
+async def test_a_finished_task_owes_its_page_and_the_records_its_extraction_stored(conn: AsyncConnection) -> None:
+    job_id = await _job(conn, webhook_url=HOOK, webhook_events=["page", "record", "record_changed"])
+    task, capture_id = await _page(conn, job_id)
+    await conn.execute(update(UrlTask).where(UrlTask.id == task.id).values(capture_id=capture_id))
+
+    await complete_task(conn, task, "extracted")
+
+    rows = await conn.execute(
+        select(WebhookEvent.event, WebhookEvent.payload).where(WebhookEvent.job_id == job_id).order_by(WebhookEvent.id)
+    )
+    owed: list[tuple[str, dict[str, Any]]] = [(row.event, row.payload) for row in rows]
+    [(page_event, page), (record_event_, record)] = owed
+    assert (page_event, record_event_) == ("page", "record")
+    expected_page = {"task_id": str(task.id), "url": URL, "status": "done", "outcome": "extracted"}
+    assert page == expected_page | {"capture_id": str(capture_id), "last_error": None}
+    assert (record["url"], record["version"], record["changed_fields"]) == (URL, 1, [])
+    assert record["data"] == {"title": "Kettle"}
+
+
+async def test_an_unchanged_record_owes_no_record_event(conn: AsyncConnection) -> None:
+    job_id = await _job(conn, webhook_url=HOOK, webhook_events=["record"])
+    task, _ = await _page(conn, job_id, stored=False)
+
+    await complete_task(conn, task, "unchanged")
+
+    assert await _owed(conn, [job_id]) == []
 
 
 # The stream.

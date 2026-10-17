@@ -20,6 +20,7 @@ from crawlerai.api.routers import (
     jobs,
     project,
     records,
+    schedules,
     schemas,
     scrape,
     search,
@@ -66,6 +67,7 @@ def create_app(eval_ui: bool | None = None) -> FastAPI:
     app.include_router(records.router)
     app.include_router(captures.router)
     app.include_router(jobs.router)
+    app.include_router(schedules.router)
     app.include_router(events.router)
     app.include_router(configs.router)
     app.include_router(usage.router)

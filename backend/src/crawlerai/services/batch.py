@@ -10,7 +10,9 @@ has for the schema and page kind (`job.pinned`, `JobPins`). A URL given twice
 keeps its record, `complete=false`, with outcome `partial` (ARCHITECTURE §10).
 """
 
-from collections.abc import Collection, Iterable
+from collections.abc import AsyncIterator, Collection, Iterable
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any, Final, Self
 from urllib.parse import urlsplit
 
@@ -31,6 +33,7 @@ from crawlerai.db.models import (
     JobId,
     JobKind,
     PageKind,
+    ScheduleId,
     Site,
     UrlTask,
 )
@@ -44,27 +47,26 @@ from crawlerai.services.scrape import Budget, RecordsUnavailable
 from crawlerai.services.scrape_steps import (
     DEFAULT_PROJECT,
     FetchOptions,
-    Input,
     PageFormat,
     SchemaById,
     SchemaFields,
     SchemaInline,
-    absolute_http_url,
     check_formats,
     check_records,
     named_schema,
 )
+from crawlerai.services.webhook_options import WebhookOptions
 
 MAX_URLS: Final = 1000  # SPEC-10 §4.3
 
 
-class BatchScrapeRequest(Input):
+class BatchScrapeRequest(WebhookOptions):
     """The body of `POST /v1/batch/scrape` (§4.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a
     scrape's (SPEC-07 §4.4), for every URL. A batch's results are either records or page outputs, so `records` is
     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),
     and `schema.fields` is drafted while the caller waits (SPEC-14 §4.10). Role C fills a page's gaps as in a scrape;
     `budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job
-    kind (D-1006, D-1121). `webhook_url` is called when the job ends (§4.2)."""
+    kind (D-1006, D-1121). The webhook options are `WebhookOptions` (§4.2)."""
 
     urls: list[str] = Field(min_length=1, max_length=MAX_URLS)
     formats: list[PageFormat] = Field(min_length=1)
@@ -73,7 +75,6 @@ class BatchScrapeRequest(Input):
     fetch: FetchOptions = FetchOptions()
     locale: str | None = None
     budget: Budget | None = None
-    webhook_url: str | None = None
     fit: FitOptions | None = None  # `markdown_fit`'s query and block limit
     chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
 
@@ -85,11 +86,6 @@ class BatchScrapeRequest(Input):
                 raise ValueError(f"urls[{index}] is not an absolute http or https URL")
         return urls
 
-    @field_validator("webhook_url")
-    @classmethod
-    def _absolute_webhook_url(cls, url: str | None) -> str | None:
-        return None if url is None else absolute_http_url(url)
-
     @model_validator(mode="after")
     def _records_alone_with_a_schema(self) -> Self:
         check_records(self.formats, self.schema_, self.page_kind)
@@ -97,6 +93,28 @@ class BatchScrapeRequest(Input):
         if "records" in self.formats and len(set(self.formats)) > 1:
             raise ValueError("records are asked alone: a batch's results are records or page outputs")
         return self
+
+
+@dataclass(frozen=True)
+class Placement:
+    """Where a submission stores its job: in a transaction of its own, or, for a schedule's run, in `into`, the open
+    transaction that also moves the schedule on, so the job is stored exactly when the run is (`services.schedules`).
+    `schedule_id` names that schedule on the job."""
+
+    into: AsyncConnection | None = None
+    schedule_id: ScheduleId | None = None
+
+    @asynccontextmanager
+    async def transaction(self, engine: AsyncEngine) -> AsyncIterator[AsyncConnection]:
+        if self.into is not None:
+            yield self.into
+            return
+        async with engine.begin() as conn:
+            yield conn
+
+
+# A submission a caller makes: its job stored in a transaction of its own.
+OWN_TRANSACTION: Final = Placement()
 
 
 class JobPins(BaseModel):
@@ -127,10 +145,11 @@ async def submit_batch(
     llm: LLMClient = NO_LLM,
     api_key_id: ApiKeyId | None = None,
     proxy_pools: Collection[str] | None = None,
+    placement: Placement = OWN_TRANSACTION,
 ) -> BatchSubmitted:
-    """Store `request` as a queued job with its tasks; `api_key_id`, the key that submitted it, signs its webhook
-    (SPEC-10 §4.2); `proxy_pools`, the configured pools, which `fetch.proxy_pool` must name one of (D-1434). Raises,
-    storing nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target,
+    """Store `request` as a queued job with its tasks, where `placement` says; `api_key_id`, the key that submitted
+    it, signs its webhook (SPEC-10 §4.2); `proxy_pools`, the configured pools, which `fetch.proxy_pool` must name one of
+    (D-1434). Raises, storing nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target,
     `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use
     (or field names `llm` could not draft)."""
     if proxy_pools is not None:
@@ -139,7 +158,7 @@ async def submit_batch(
     await check_targets(connector, targets, webhook_url=request.webhook_url)
     # A format batch that names a schema is a format job.
     schema = await records_schema(engine, request.formats, request.schema_, request.page_kind, data, llm)
-    async with engine.begin() as conn:
+    async with placement.transaction(engine) as conn:
         job_id = await insert_job(
             conn,
             "batch_scrape",
@@ -147,8 +166,8 @@ async def submit_batch(
             schema=schema,
             data=data,
             urls=request.urls,
-            webhook_url=request.webhook_url,
             api_key_id=api_key_id,
+            schedule_id=placement.schedule_id,
         )
         urls = [(url, canonicalize(url) or url) for url in request.urls]
         await insert_tasks(conn, job_id, request.page_kind, urls)
@@ -187,16 +206,17 @@ async def records_schema(
 async def insert_job(
     conn: AsyncConnection,
     kind: JobKind,
-    request: Input,
+    request: WebhookOptions,
     *,
     schema: SchemaDef | None,
     data: EngineData | None,
     urls: list[str],
-    webhook_url: str | None,
     api_key_id: ApiKeyId | None,
+    schedule_id: ScheduleId | None,
 ) -> JobId:
-    """Insert `request` as a queued job of `kind`. A records job (`schema`) pins its engine data and the configs
-    active for the hosts of `urls` (INV-28, `JobPins`)."""
+    """Insert `request` as a queued job of `kind`, with its webhook options; `schedule_id` names the schedule that
+    submitted it. A records job (`schema`) pins its engine data and the configs active for the hosts of `urls` (INV-28,
+    `JobPins`)."""
     pinned = None if schema is None or data is None else await job_pins(conn, data, urls, schema)
     statement = (
         insert(Job)
@@ -206,10 +226,13 @@ async def insert_job(
             # The caller's secrets stay in the stored request, which the job's workers read (D-1432).
             request=request.model_dump(mode="json", by_alias=True, context={KEEP_SECRETS: True}),
             schema_id=None if schema is None else schema.id,
-            webhook_url=webhook_url,
+            webhook_url=request.webhook_url,
+            webhook_events=request.webhook_events,
+            webhook_batch=None if request.webhook_batch is None else request.webhook_batch.model_dump(),
             api_key_id=api_key_id,
             engine_version=ENGINE_VERSION,
             pinned=pinned,
+            schedule_id=schedule_id,
         )
         .returning(Job.id)
     )

@@ -56,6 +56,7 @@ from crawlerai.db.models import (
     ProgressiveState,
     Project,
     Record,
+    Schedule,
     SchemaDef,
     Site,
     SiteFetchMethod,
@@ -65,6 +66,7 @@ from crawlerai.db.models import (
     UrlTask,
     UsageEvent,
     WebhookDelivery,
+    WebhookEvent,
 )
 from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.resolve.pipeline import EngineData
@@ -144,9 +146,11 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
             ProgressiveState,
             UsageEvent,
             JobEvent,
+            WebhookEvent,
             WebhookDelivery,
             UrlTask,
             Job,
+            Schedule,
         ):
             await connection.execute(delete(model))
     await engine.dispose()
@@ -419,5 +423,6 @@ async def submit_app(
     async with keys_engine.begin() as conn:
         # The key's jobs keep their rows until `engine` deletes them; they let go of the key first.
         await conn.execute(update(Job).where(Job.api_key_id == key.id).values(api_key_id=None))
+        await conn.execute(update(Schedule).where(Schedule.api_key_id == key.id).values(api_key_id=None))
         await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
     await keys_engine.dispose()

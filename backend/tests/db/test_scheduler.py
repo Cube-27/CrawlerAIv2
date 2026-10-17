@@ -13,6 +13,9 @@ from pydantic import SecretStr
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.politeness import HostLimiter
+from crawlerai.acquire.rungs import Rungs
+from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
 from crawlerai.db.jobs import transition_job
@@ -30,10 +33,15 @@ from crawlerai.db.models import (
     SiteFetchMethod,
     UrlTask,
     WebhookDelivery,
+    WebhookEvent,
 )
 from crawlerai.db.queue import claim_tasks
+from crawlerai.llm.client import NO_LLM
 from crawlerai.scheduler.loop import Periodic, periodic, run_scheduler
+from crawlerai.services.fetching import Fetching
+from crawlerai.services.schedules import Submitting
 from crawlerai.storage.fs import FsStore
+from tests.db.conftest import resolve
 
 pytestmark = pytest.mark.anyio
 
@@ -46,6 +54,14 @@ async def _no_post(url: str, body: bytes, headers: Mapping[str, str]) -> int:
 
 async def _no_fetch(url: str, policy: FetchPolicy) -> FetchResult:
     raise AssertionError("no site is due for a fetch-method re-check")
+
+
+# No schedule is due in these tests but in the one that makes one, which refuses no target and fetches nothing.
+_SUBMITTING = Submitting(
+    Fetching(Rungs(http=_no_fetch, browser=_no_fetch), SafeConnector(resolve), FsStore(Path("unused")), HostLimiter()),
+    None,
+    NO_LLM,
+)
 
 
 async def _job(engine: AsyncEngine, count: int) -> JobId:
@@ -93,7 +109,7 @@ async def test_the_scheduler_requeues_tasks_whose_lease_expired(engine: AsyncEng
     async def requeued() -> bool:
         return (await statuses())[expired.id][0] == "queued"
 
-    await _scheduler_until(engine, periodic(FsStore(tmp_path), _no_fetch, _no_post), requeued)
+    await _scheduler_until(engine, periodic(FsStore(tmp_path), _no_fetch, _no_post, _SUBMITTING), requeued)
 
     assert await statuses() == {expired.id: ("queued", "lease expired"), live.id: ("claimed", None)}
 
@@ -132,7 +148,7 @@ async def test_the_scheduler_expires_production_captures_past_expires_at(engine:
             return (await conn.execute(select(func.count()).where(Capture.site_id == site_id))).scalar_one() == 0
 
     try:
-        await _scheduler_until(engine, periodic(store, _no_fetch, _no_post), expired)
+        await _scheduler_until(engine, periodic(store, _no_fetch, _no_post, _SUBMITTING), expired)
     finally:
         async with engine.begin() as conn:
             await conn.execute(delete(Capture).where(Capture.site_id == site_id))
@@ -254,7 +270,7 @@ async def test_the_scheduler_sets_a_browser_site_back_to_http_once_http_passes(
             return bool(method == "http")
 
     try:
-        await _scheduler_until(engine, periodic(FsStore(tmp_path), fetch, _no_post), on_http)
+        await _scheduler_until(engine, periodic(FsStore(tmp_path), fetch, _no_post, _SUBMITTING), on_http)
     finally:
         async with engine.begin() as conn:
             await conn.execute(delete(Capture).where(Capture.site_id == site_id))
@@ -285,7 +301,7 @@ async def test_the_scheduler_starts_learning_for_a_state_with_eight_extracted_pa
             jobs = select(Job.status).where(Job.kind == "learn", Job.schema_id == schema_id)
             return list((await conn.execute(jobs)).scalars()) == ["queued"]
 
-    await _scheduler_until(engine, periodic(FsStore(tmp_path), _no_fetch, _no_post), learn_job)
+    await _scheduler_until(engine, periodic(FsStore(tmp_path), _no_fetch, _no_post, _SUBMITTING), learn_job)
 
     async with engine.connect() as conn:
         mode = select(ProgressiveState.mode).where(ProgressiveState.schema_id == schema_id)
@@ -299,7 +315,9 @@ async def test_the_scheduler_delivers_an_ended_jobs_webhook(engine: AsyncEngine,
     hook = "https://hooks.example.test/done"
     async with engine.begin() as conn:
         await conn.execute(
-            update(Job).where(Job.id == job_id).values(status="running", webhook_url=hook, api_key_id=key.id)
+            update(Job)
+            .where(Job.id == job_id)
+            .values(status="running", webhook_url=hook, webhook_events=["job_completed"], api_key_id=key.id)
         )
         await transition_job(conn, job_id, "completed")
     sent: list[str] = []
@@ -311,13 +329,13 @@ async def test_the_scheduler_delivers_an_ended_jobs_webhook(engine: AsyncEngine,
     async def delivered() -> bool:
         async with engine.connect() as conn:
             status = select(WebhookDelivery.status).where(WebhookDelivery.job_id == job_id)
-            return (await conn.execute(status)).scalar_one() == "delivered"
+            return (await conn.execute(status)).scalar_one_or_none() == "delivered"
 
     try:
-        await _scheduler_until(engine, periodic(FsStore(tmp_path), _no_fetch, post), delivered)
+        await _scheduler_until(engine, periodic(FsStore(tmp_path), _no_fetch, post, _SUBMITTING), delivered)
     finally:
         async with engine.begin() as conn:
-            for model in (WebhookDelivery, JobEvent, UrlTask):
+            for model in (WebhookEvent, WebhookDelivery, JobEvent, UrlTask):
                 await conn.execute(delete(model).where(model.job_id == job_id))
             await conn.execute(delete(Job).where(Job.id == job_id))
             await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))

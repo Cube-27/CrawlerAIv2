@@ -38,6 +38,7 @@ from crawlerai.db.models import (
     JobStatus,
     Record,
     RecordId,
+    ScheduleId,
     SchemaId,
     TaskOutcome,
     TaskRecord,
@@ -136,6 +137,8 @@ class JobSummary(BaseModel):
     # (batch, extract); null when the request has no such member. The whole request is `job_request`.
     start_url: str | None
     url_count: int | None
+    # The schedule that submitted it (§22 "Recurring schedule storage"); null for a job a caller submitted.
+    schedule_id: ScheduleId | None
 
 
 class JobPage(BaseModel):
@@ -148,12 +151,13 @@ class JobPage(BaseModel):
 
 
 class JobListQuery(BaseModel):
-    """The jobs to list: all of them, or those of a kind, of a status, or both."""
+    """The jobs to list: all of them, or those of a kind, of a status, of a schedule, or any of these together."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: JobKind | None = None
     status: JobStatus | None = None
+    schedule_id: ScheduleId | None = None
     cursor: JobId | None = None
     limit: int = Field(default=50, ge=1, le=MAX_PAGE)
 
@@ -267,6 +271,7 @@ _JOB_COLUMNS = (
     Job.cancel_requested,
     Job.request["url"].astext.label("start_url"),
     func.jsonb_array_length(Job.request["urls"]).label("url_count"),
+    Job.schedule_id,
 )
 
 
@@ -288,13 +293,15 @@ async def job_request(conn: AsyncConnection, job_id: JobId) -> dict[str, Any]:
 
 
 async def list_jobs(conn: AsyncConnection, query: JobListQuery) -> JobPage:
-    """The page of jobs after `query.cursor` (the first page without one) of its kind and status. Jobs are ordered by
-    id, newest first (ids are UUIDv7, RFC 9562 §5.7, so their order is creation order)."""
+    """The page of jobs after `query.cursor` (the first page without one) of its kind, status and schedule. Jobs are
+    ordered by id, newest first (ids are UUIDv7, RFC 9562 §5.7, so their order is creation order)."""
     statement = select(*_JOB_COLUMNS)
     if query.kind is not None:
         statement = statement.where(Job.kind == query.kind)
     if query.status is not None:
         statement = statement.where(Job.status == query.status)
+    if query.schedule_id is not None:
+        statement = statement.where(Job.schedule_id == query.schedule_id)
     rows, next_cursor = await keyset_page(
         conn, statement, Job.id, after=query.cursor, limit=query.limit, descending=True
     )

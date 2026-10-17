@@ -537,6 +537,7 @@ async def test_a_jobs_summary_is_served_with_its_counts(client: httpx.AsyncClien
         "cancel_requested",
         "start_url",
         "url_count",
+        "schedule_id",
     }
     assert (body["id"], body["status"], body["counts"]["queued"], body["outcomes"]["partial"]) == (
         str(job_id),

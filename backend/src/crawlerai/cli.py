@@ -44,6 +44,7 @@ from crawlerai.eval.store import (
     dev_store,
     private_store,
 )
+from crawlerai.llm.client import NO_LLM
 from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic, run_scheduler
@@ -51,6 +52,8 @@ from crawlerai.schemas.registry import PresetConflict
 from crawlerai.services import schemas as schemas_service
 from crawlerai.services.fetch_options import FetchOptions, UnknownProxyPool, check_proxy_pool, fetch_policy
 from crawlerai.services.fetching import Fetching, learning_replay
+from crawlerai.services.runtime import fetching_from_settings
+from crawlerai.services.schedules import Submitting
 from crawlerai.services.scrape_paging import learning_render
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
@@ -164,7 +167,10 @@ async def _schedule() -> None:
     fetch = partial(
         fetch_http, engine_version=ENGINE_VERSION, impersonate=rung_impersonation(settings), pools=settings.proxy_pools
     )
-    entries = periodic(open_store(settings.object_store), fetch, poster(SafeConnector()))
+    # A schedule's run submits its job with the schema its creation resolved, so it drafts nothing: no LLM client.
+    fetching = fetching_from_settings(settings)
+    submitting = Submitting(fetching, load_engine_data(fetching.rungs.adapters), NO_LLM)
+    entries = periodic(open_store(settings.object_store), fetch, poster(SafeConnector()), submitting)
     await run_scheduler(settings, entries, _stop_on_signals())
 
 

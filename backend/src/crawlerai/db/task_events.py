@@ -4,6 +4,10 @@ in the transaction that finishes it: `task_fetched` for the page it fetched, `ta
 latest version, SPEC-11 §4.4: `task_record`), and `task_failed`, with its `last_error`, when it failed for
 good (D-0745). Handlers write nothing for them.
 
+The same transaction owes the job's webhook its task events (`db.webhook_outbox`), when the request asked for them:
+`page` for the finished task, `record` for each record version its extraction stored, and `record_changed` for each
+of those that replaced an earlier version.
+
 Payloads carry the task's URL: the caller supplied the job, so the stream returns it unredacted (§4.2).
 """
 
@@ -13,7 +17,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.jobs import record_event
-from crawlerai.db.models import Capture, Extraction, Record, TaskRecord, UrlTask, UrlTaskId
+from crawlerai.db.models import Capture, Extraction, ExtractionId, JobId, Record, TaskRecord, UrlTask, UrlTaskId
+from crawlerai.db.webhook_outbox import emit, emit_many
 
 TASK_FETCHED: Final = "task_fetched"
 TASK_EXTRACTED: Final = "task_extracted"
@@ -65,3 +70,47 @@ async def record_task_events(conn: AsyncConnection, task_id: UrlTaskId) -> None:
     if task.status == "failed":
         payload = {"task_id": str(task_id), "url": task.url, "attempts": task.attempts, "last_error": task.last_error}
         await record_event(conn, task.job_id, TASK_FAILED, payload)
+    page = {
+        "task_id": str(task_id),
+        "url": task.url,
+        "status": task.status,
+        "outcome": task.outcome,
+        "capture_id": None if task.capture_id is None else str(task.capture_id),
+        "last_error": task.last_error,
+    }
+    await emit(conn, task.job_id, "page", page)
+    if extraction is not None:
+        await _emit_records(conn, task.job_id, task_id, task.url, extraction.id)
+
+
+async def _emit_records(
+    conn: AsyncConnection, job_id: JobId, task_id: UrlTaskId, url: str, extraction_id: ExtractionId
+) -> None:
+    """`record` for each record the task's last extraction stored, and `record_changed` for each new version among
+    them; an unchanged record stores nothing, so it owes nothing."""
+    columns = (
+        Record.id,
+        Record.schema_id,
+        Record.entity_key,
+        Record.version,
+        Record.changed_fields,
+        Record.complete,
+        Record.data,
+    )
+    rows = (await conn.execute(select(*columns).where(Record.extraction_id == extraction_id).order_by(Record.id))).all()
+    payloads = [
+        {
+            "record_id": str(row.id),
+            "task_id": str(task_id),
+            "url": url,
+            "schema_id": str(row.schema_id),
+            "entity_key": row.entity_key,
+            "version": row.version,
+            "changed_fields": row.changed_fields,
+            "complete": row.complete,
+            "data": row.data,
+        }
+        for row in rows
+    ]
+    await emit_many(conn, job_id, "record", payloads)
+    await emit_many(conn, job_id, "record_changed", [payload for payload in payloads if payload["version"] > 1])
