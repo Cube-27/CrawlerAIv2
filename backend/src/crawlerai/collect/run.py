@@ -3,7 +3,8 @@ and diagnostics as one result.
 
 The standard collectors run first, each on its own: one that raises gives no candidates and a diagnostic, and the
 others still run. An `api` capture of an active adapter adds that adapter's collector (D-0445). Then js_state and xhr
-admit their values against the candidates of the other kinds (D-0418).
+admit their values against the candidates of the other kinds (D-0418); on a listing, xhr also reads the rows of the
+page's captured calls (Appendix A #57), which resolution takes where structured data and the config give none.
 """
 
 import logging
@@ -38,6 +39,7 @@ class Collected:
     entities: tuple[Entity, ...]
     candidates: tuple[Candidate, ...]
     diagnostics: tuple[str, ...]
+    rows: tuple[Entity, ...] = ()  # a listing's rows from captured calls, also among `entities`
 
 
 def collect_page(
@@ -78,6 +80,7 @@ def collect_page(
             *(d for result in admitted for d in result.diagnostics),
             *diagnostics,
         ),
+        rows=tuple(row for result in admitted for row in result.rows),
     )
 
 

@@ -79,6 +79,11 @@ def select(query: str, document: JsonValue, at: str = ROOT) -> list[tuple[str, J
     return nodes
 
 
+def is_query(query: str) -> bool:
+    """Whether `select` takes `query`: a normalized path is one unless a member name holds a quote or a backslash."""
+    return query.startswith(ROOT) and _QUERY_SEGMENTS.fullmatch(query, len(ROOT)) is not None
+
+
 def segments(query: str) -> list[str]:
     """The segments of a query `select` takes (`['name']`, `[*]`, `[0]`), as written; raises `ValueError` for any
     other query."""
