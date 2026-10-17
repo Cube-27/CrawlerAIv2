@@ -7,8 +7,10 @@ the order its fields were declared or stored in (JSONB does not keep key order).
 lowercase letter (`NAME_PATTERN`), so a status column never collides with a field. Values are serialized as
 published and never fixed (INV-27); a `csv_safe` CSV (D-0879) only marks formula-like cells for spreadsheets.
 
-A clean record (`json_values`, SPEC-14 §4.4) is a record's published values alone: the schema's fields in the order
-the schema lists them, each with its value or null, and no status.
+A clean record (`json_values`, SPEC-14 §4.4) is a record's published values alone, with no status: the schema's
+published fields in name order, an unpublished one left out. A money value is written flat: the field holds its amount
+and a sibling `currency` (for a field named `price`) or `<field>_currency` its ISO 4217 code; objects nested in the
+record, such as variant rows, are written the same way.
 """
 
 import csv
@@ -21,7 +23,7 @@ from typing import Literal
 from pydantic import JsonValue
 
 from crawlerai.resolve.records import RecordContent
-from crawlerai.schemas.types import SchemaDocument
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument
 
 RecordFormat = Literal["json_records", "csv_records", "markdown"]
 
@@ -54,7 +56,35 @@ def export_records(
 
 def clean_record(schema: SchemaDocument, data: Mapping[str, JsonValue]) -> _Row:
     """A record's published values `data` as a clean record of `schema`, its fields in name order as the columns."""
-    return {name: data.get(name) for name in sorted(schema.fields)}
+    return _clean_object(schema.fields, data)
+
+
+def _clean_object(fields: Mapping[str, FieldSpec], data: Mapping[str, JsonValue]) -> _Row:
+    clean: _Row = {}
+    for name in sorted(fields):
+        value = data.get(name)
+        if value is None:
+            continue
+        spec = fields[name]
+        if spec.type is FieldType.MONEY and isinstance(value, dict):
+            clean[name] = value.get("amount")
+            clean[_currency_key(name, fields)] = value.get("currency")
+        else:
+            clean[name] = _clean_value(value, spec)
+    return clean
+
+
+def _clean_value(value: JsonValue, spec: FieldSpec) -> JsonValue:
+    if spec.type is FieldType.LIST and spec.item is not None and isinstance(value, list):
+        return [_clean_value(item, spec.item) for item in value]
+    if spec.type is FieldType.OBJECT and spec.fields is not None and isinstance(value, dict):
+        return _clean_object(spec.fields, value)
+    return value
+
+
+def _currency_key(name: str, fields: Mapping[str, FieldSpec]) -> str:
+    """The key of a money field's currency: `currency` beside `price` unless the schema has its own `currency` field."""
+    return "currency" if name == "price" and "currency" not in fields else f"{name}_currency"
 
 
 def _row(fields: list[str], record: RecordContent) -> _Row:
