@@ -200,7 +200,7 @@ def test_a_constant_token_like_query_value_no_page_value_holds_is_left_out() -> 
 
 
 def test_a_constant_token_the_page_data_states_is_bound_from_the_page() -> None:
-    state = {"js_state": [{"config": {"searchKey": _KEY}}]}
+    state: PageData = {"js_state": [{"config": {"searchKey": _KEY}}]}
     samples = [
         _sample(f"{_PAGE}/c/mugs", f"{_API}/search?q=mugs&key={_KEY}", page_data=state),
         _sample(f"{_PAGE}/c/cups", f"{_API}/search?q=cups&key={_KEY}", page_data=state),

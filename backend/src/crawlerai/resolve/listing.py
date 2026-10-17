@@ -46,12 +46,18 @@ def listing_rows(
     the entities holding a candidate of a row field."""
     primaries = [entity for entity in graph.entities.values() if is_primary(graph, entity, primary)]
     rows = [entity for entity in primaries if _listed(graph, entity, primary)]
-    top_level = [entity for entity in primaries if entity.parent is None]
-    if isinstance(target, AmbiguousTarget) and (rows or len(top_level) >= MIN_TOP_LEVEL_ROWS):
-        rows += [entity for entity in top_level if entity not in rows]
+    if isinstance(target, AmbiguousTarget):
+        rows += _unlisted(primaries, rows)
     if not rows:
         rows = [entity for entity in graph.entities.values() if entity.id in holders and _entry(graph, entity)]
     return tuple(rows)
+
+
+def _unlisted(primaries: list[Entity], listed: list[Entity]) -> list[Entity]:
+    """The top-level primary entities no list holds that are rows of a page whose target is ambiguous: beside listed
+    rows, every one; without any, all of them when there are at least `MIN_TOP_LEVEL_ROWS` (module docstring)."""
+    top_level = [entity for entity in primaries if entity.parent is None and entity not in listed]
+    return top_level if listed or len(top_level) >= MIN_TOP_LEVEL_ROWS else []
 
 
 def _entry(graph: EntityGraph, entity: Entity) -> bool:

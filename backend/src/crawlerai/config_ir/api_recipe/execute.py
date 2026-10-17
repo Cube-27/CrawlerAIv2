@@ -139,13 +139,7 @@ class RecipeRung:
             rows += count
             headers = result.bundle.manifest.headers.response
             following = next_request(pagination, request, number + 1, document, headers)
-            if (
-                (records is not None and rows >= records)
-                or following is None
-                or (following.url, following.body) in sent
-            ):
-                return
-            if deadline is not None and time.monotonic() >= deadline:
+            if following is None or (following.url, following.body) in sent or _done(rows, records, deadline):
                 return
             request = following
 
@@ -169,6 +163,11 @@ class RecipeRung:
 
     def _unserved(self, url: str, policy: FetchPolicy, reason: str) -> FetchResult:
         return unserved(url, policy, self.engine_version, "error", reason)
+
+
+def _done(rows: int, records: int | None, deadline: float | None) -> bool:
+    """Whether the rows yielded reach the row target, or the deadline has passed."""
+    return (records is not None and rows >= records) or (deadline is not None and time.monotonic() >= deadline)
 
 
 def unserved(url: str, policy: FetchPolicy, engine_version: str, block_class: BlockClass, reason: str) -> FetchResult:

@@ -14,7 +14,7 @@ the task commits.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import Final
 from urllib.parse import urlsplit
@@ -182,8 +182,7 @@ async def fetch_page(
     robots = recording(fetching.rungs.http, policy, attempts)
     recipe = await _recipe(conn, fetching, task, served, robots)
     check = None if served is None else content_check(served.schema, served.data, served.config, _role_c(task, llm))
-    paged = recipe if served is not None and served.schema.page_kind == "listing" else None
-    further: list[FetchResult] = []
+    listed = _Listed.of(recipe, served, listing_pages, attempts)
 
     async def page(url: str, admit_next: Admit, known: HostRules) -> FetchResult | Unchanged:
         # An adapter's endpoint goes by its host's robots.txt, read in the task's transaction (SPEC-15 §4.6); the
@@ -192,11 +191,8 @@ async def fetch_page(
         send = adapter_send(fetching, host, rules)
 
         async def fetch(sent: Validators | None) -> FetchResult:
-            pages = await _recipe_pages(paged, url, policy, listing_pages, admit_next)
-            attempts.extend(attempt for served_page in pages for attempt in served_page.attempts)
-            if pages:
-                further[:] = _until_refused(pages[1:])
-                return pages[0]
+            if (first := await listed.first(url, policy, admit_next)) is not None:
+                return first
             result = await acquire(
                 url,
                 policy,
@@ -221,7 +217,7 @@ async def fetch_page(
     if isinstance(fetched, FetchResult):
         if (refused := refusal(fetched)) is None:
             capture_id = await new_capture(conn, fetching.store, site.id, fetched)
-            pages = tuple(further)
+            pages = tuple(listed.further)
             return FetchedPage(site, fetched, capture_id, standing, tuple(attempts), policy.proxy_pool, check, pages)
         fetched = Failed(refused, transient=False)
     if isinstance(fetched, Unchanged):
@@ -244,19 +240,37 @@ async def _recipe(
     return recipe_rung(fetching, recipe, host, lambda url, policy: endpoint_rules(conn, url, policy, robots))
 
 
-async def _recipe_pages(
-    recipe: RecipeRung | None, url: str, policy: FetchPolicy, limit: int, admit_next: Admit
-) -> list[FetchResult]:
-    """The listing's pages as `recipe` serves them when it has pagination, up to `limit` requests; none when it
-    served no first page (or has no pagination), after waiting for the turn of the request that follows. Each page
-    request waits for its host's rate on its own (`recipe_rung`)."""
-    if recipe is None or recipe.recipe.pagination is None:
-        return []
-    pages = [page async for page in recipe.pages(url, policy, records=None, limit=limit)]
-    if pages and pages[0].block_class == "ok":
-        return pages
-    await admit_next()
-    return []
+@dataclass
+class _Listed:
+    """A listing's pages as its recipe serves them (module docstring): the recipe, when it has pagination and the
+    task reads a listing's records, the request bound, the task's attempts, and the pages after the first."""
+
+    recipe: RecipeRung | None
+    limit: int
+    attempts: list[AttemptRecord]
+    further: list[FetchResult] = field(default_factory=list)
+
+    @classmethod
+    def of(
+        cls, recipe: RecipeRung | None, served: Records | None, limit: int, attempts: list[AttemptRecord]
+    ) -> "_Listed":
+        lists = served is not None and served.schema.page_kind == "listing"
+        paged = recipe is not None and recipe.recipe.pagination is not None
+        return cls(recipe if lists and paged else None, limit, attempts)
+
+    async def first(self, url: str, policy: FetchPolicy, admit_next: Admit) -> FetchResult | None:
+        """The first page, the further ones kept, up to `limit` requests; None when the recipe served no first page
+        (or there is none), after waiting for the turn of the request that follows. Each page request waits for its
+        host's rate on its own (`recipe_rung`)."""
+        if self.recipe is None:
+            return None
+        pages = [page async for page in self.recipe.pages(url, policy, records=None, limit=self.limit)]
+        self.attempts.extend(attempt for page in pages for attempt in page.attempts)
+        if not pages or pages[0].block_class != "ok":
+            await admit_next()
+            return None
+        self.further[:] = _until_refused(pages[1:])
+        return pages[0]
 
 
 def _until_refused(pages: Sequence[FetchResult]) -> list[FetchResult]:
