@@ -28,6 +28,7 @@ from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS, check_pattern, check_replacement
 from crawlerai.config_ir.xpath1 import check_xpath1
 from crawlerai.db.models import CaptureId, ConfigOrigin, FetchMethod, FieldStatus, PageKind
+from crawlerai.schemas.types import NEXT_PAGE_FIELD as NEXT_PAGE_FIELD  # the executors read it from here (§12.1)
 from crawlerai.schemas.types import FieldType, Name
 
 # Where a `jsonpath` step reads JSON: the page's JSON-LD, its script state, a captured network body, an API response.
@@ -232,10 +233,6 @@ class FieldSteps(_Model):
     status: FieldStatus
     yield_: Ratio | None = Field(default=None, alias="yield")
     validity: Ratio | None = None
-
-
-# ARCHITECTURE §5.3: the listing presets' page-level next-page field, which a listing's `next` step fills (§12.1).
-NEXT_PAGE_FIELD = "next_page_url"
 
 
 class ListingSpec(_Model):

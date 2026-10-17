@@ -44,7 +44,7 @@ from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibrat
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
 from crawlerai.resolve.listing import listing_rows
 from crawlerai.resolve.ownership import OFFER, EntityGraph
-from crawlerai.resolve.pagination import next_page_candidates
+from crawlerai.resolve.pagination import next_page_candidate, next_page_links
 from crawlerai.resolve.preference import (
     PRECEDENCE_FILE,
     PRECEDENCE_TYPES,
@@ -391,13 +391,16 @@ class _Listing:
     @classmethod
     def read(cls, source: _Source) -> "_Listing":
         page = _Page.read(source)
-        candidates = page.candidates
+        links = next_page_links(page.page, source.bundle.manifest.final_url)
+        diagnostics = list(page.diagnostics)
+        found = next_page_candidate(links, page.schema, page.ctx, diagnostics)
+        candidates = (*page.candidates, *(() if found is None else (found,)))
         # SPEC-08 §4.8: the config's rows serve only where structured data gives none. Its row candidates belong to its
         # own row entities, so structured and config values never meet in one row.
         rows = listing_rows(page.graph, page.primary, page.target, page.page_urls) or page.config.rows
         fields, resolved = page.resolve_listing(candidates, rows)
-        next_pages = next_page_candidates(page.page, source.bundle.manifest.final_url)
-        return cls(page, fields, resolved, next_pages, candidates, page.diagnostics)
+        next_pages = tuple(link.url for link in links)
+        return cls(page, fields, resolved, next_pages, candidates, tuple(diagnostics))
 
     def gap(self) -> ListingGapRequest | None:
         """The role C request when structured data gives no rows (ARCHITECTURE §8.6): every row field, and the page

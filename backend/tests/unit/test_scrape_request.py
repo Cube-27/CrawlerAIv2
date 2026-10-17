@@ -31,6 +31,7 @@ def test_takes_the_documented_defaults() -> None:
         "locale": None,
         "timeout_s": 60.0,
         "budget": None,
+        "browser_actions": None,
     }
 
 
@@ -126,3 +127,34 @@ def test_a_robots_override_needs_its_reason() -> None:
 
 def test_refuses_unknown_members() -> None:
     assert _errors({"url": URL, "formats": ["markdown"], "wait_for": 3}) == [("wait_for",)]
+
+
+# Owner #52: browser actions only for a listing fetched now, in the browser.
+LISTING = {"url": URL, "formats": ["markdown"], "page_kind": "listing"}
+
+
+@pytest.mark.parametrize(
+    ("fields", "message"),
+    [
+        ({"page_kind": "detail"}, "browser_actions needs page_kind listing"),
+        ({"page_kind": None}, "browser_actions needs page_kind listing"),
+        ({"max_age": 60}, "max_age must be 0"),
+        ({"fetch": {"method_hint": "http"}}, "method_hint cannot be http"),
+    ],
+)
+def test_refuses_browser_actions_outside_a_fresh_listing_fetch(fields: dict[str, Any], message: str) -> None:
+    body = {**LISTING, "browser_actions": {}, **fields}
+
+    assert any(message in text for text in _messages(body))
+
+
+@pytest.mark.parametrize("actions", [{"records": 0}, {"hint": "type_text"}, {"max_records": 5}])
+def test_refuses_browser_actions_out_of_their_shape(actions: dict[str, Any]) -> None:
+    assert _errors({**LISTING, "browser_actions": actions})[0][0] == "browser_actions"
+
+
+def test_takes_a_hint_and_a_row_target() -> None:
+    request = ScrapeRequest.model_validate({**LISTING, "browser_actions": {"records": 30, "hint": "scroll"}})
+
+    assert request.browser_actions is not None
+    assert (request.browser_actions.records, request.browser_actions.hint) == (30, "scroll")

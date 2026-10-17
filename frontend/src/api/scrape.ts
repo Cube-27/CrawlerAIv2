@@ -6,6 +6,8 @@ type Schemas = components["schemas"];
 export type ScrapeFormat = "markdown" | "html" | "raw_html" | "links" | "metadata" | "records";
 export type PageKind = "detail" | "listing";
 export type MethodHint = "auto" | "http" | "browser";
+/** The paging mechanisms a listing's browser actions may be told to use (owner #52). */
+export type PagingHint = "load_more" | "show_more" | "pagination" | "next" | "scroll";
 
 /** A schema by id, inline (a SchemaDef the server validates), or drafted by role S from a prompt or from field names
  * (SPEC-14 §4.10). */
@@ -28,6 +30,8 @@ export interface ScrapeRequest {
   max_age?: number;
   timeout_s?: number;
   budget?: { llm_calls: number };
+  /** A listing's browser actions (owner #52): a soft row target and an optional mechanism. */
+  browser_actions?: { records?: number; hint?: PagingHint };
 }
 
 /** Every field carries the §13.1 attributes plus `reason`, `source_kind` and `derived_by` (SPEC-07 §4.4). */

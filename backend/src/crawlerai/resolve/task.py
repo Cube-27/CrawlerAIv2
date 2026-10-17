@@ -155,10 +155,13 @@ async def store_extraction(
     caller_supplied: bool,
     write_records: RecordWriter,
     config: ActiveConfig | None = None,
+    page_url: str | None = None,
 ) -> Stored:
     """Store `result`, `extract_page`'s for the task's capture, as `extract_task` does: for a caller that extracts
     before it opens the transaction (`scrape`, which holds no connection while the page resolves). `config` is the
-    config a `config`-mode result ran."""
+    config a `config`-mode result ran; `page_url` the canonical URL of the document it read, when that is not the
+    task's (a listing's further page, owner #52)."""
+    page_url = page_url or task.canonical_url
     extraction_id: ExtractionId = (
         await conn.execute(
             insert(Extraction)
@@ -183,12 +186,12 @@ async def store_extraction(
         result.entity,
         result.rows,
         site_id=site_id,
-        page_url=task.canonical_url,
+        page_url=page_url,
         caller_supplied=caller_supplied,
     )
     if not drafts:
         return Stored(outcome, extraction_id, (), result)
-    source = RecordSource(extraction_id, task.id, task.job_id, site_id, result.mode, task.canonical_url)
+    source = RecordSource(extraction_id, task.id, task.job_id, site_id, result.mode, page_url)
     records = await write_records(conn, schema, drafts, source)
     return Stored(outcome, extraction_id, records, result)
 

@@ -9,7 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from crawlerai.content.page import ParsedPage
-from crawlerai.resolve.pagination import next_page_candidates
+from crawlerai.resolve.pagination import NextLink, next_page_candidates, next_page_links
 
 BASE = "https://shop.example.test"
 
@@ -100,3 +100,14 @@ def test_any_parameter_name_numbers_pages(name: str, current: int) -> None:
 def test_any_path_segment_numbers_pages(segment: str, current: int) -> None:
     body = _links(*(f"/{segment}/{n}/all" for n in (current + 2, current + 1)))
     assert _next(body, f"{BASE}/{segment}/{current}/all") == (f"{BASE}/{segment}/{current + 1}/all",)
+
+
+def test_next_page_links_name_their_element_and_whether_rel_next_found_them() -> None:
+    page = ParsedPage(
+        '<html><head><link rel="next" href="?page=2"></head>'
+        '<body><a href="/c/shoes?page=2">2</a><a href="/c/shoes/3">x</a></body></html>'
+    )
+
+    assert next_page_links(page, f"{BASE}/c/shoes?page=1") == (
+        NextLink(f"{BASE}/c/shoes?page=2", "?page=2", "/html[1]/head[1]/link[1]", rel_next=True),
+    )

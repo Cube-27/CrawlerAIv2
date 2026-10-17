@@ -33,6 +33,10 @@ throwaway databases.
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
+- Listing browser actions (#241): a load-more or scroll listing whose rows come from a JSON-LD ItemList keeps the
+  first batch only (the script is not updated as items load); rows of the grown DOM need role C or a config. Not
+  validated on a real virtualised list or a real in-DOM show-more listing; an integer inside a path segment
+  (`page-2.html`) is not a +1 integer link, so such pages turn by their pager only. Measure on dev before changing.
 - ce1 extraction (#227): `js_state` admission stores thousands of duplicate price candidates on a page with a large state blob (6,561 on one); deduplicating them needs a provenance decision (which locator stays).
 - Browser waits (#228): a client-rendered detail page is rendered on every fetch (HTTP stays `ok`, so the site's
   remembered method stays `http`); remembering it needs a decision. Pages behind a challenge that does not clear
