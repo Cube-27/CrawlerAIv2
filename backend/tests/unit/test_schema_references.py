@@ -34,7 +34,7 @@ VOCABULARY = Vocabulary.parse(
             _cls("Offer", "Thing"),
             _cls("Enumeration", "Thing"),
             _cls("ItemAvailability", "Enumeration"),
-            *map(_prop, ("name", "offers", "price", "priceCurrency")),
+            *map(_prop, ("name", "description", "offers", "price", "priceCurrency")),
         ]
     }
 )
@@ -62,11 +62,11 @@ def test_paths_and_enumerations_the_vocabulary_defines_pass() -> None:
 @pytest.mark.parametrize(
     ("path", "reason"),
     [
-        ("Widget.name", "Widget is not a schema.org type"),
+        ("Widget.description", "Widget is not a schema.org type"),
         ("Product.colour", "colour is not a schema.org property"),
         ("Product.offers.cost", "cost is not a schema.org property"),
         ("Product.offers.price+currency", "currency is not a schema.org property"),
-        ("Product.name|Gadget.name", "Gadget is not a schema.org type"),
+        ("Product.name|Gadget.description", "Gadget is not a schema.org type"),
     ],
 )
 def test_a_path_naming_a_term_the_vocabulary_lacks_is_refused_with_its_reason(path: str, reason: str) -> None:

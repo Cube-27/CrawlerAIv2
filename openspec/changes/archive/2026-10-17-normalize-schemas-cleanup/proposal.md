@@ -26,9 +26,9 @@ constants, signatures and spec texts disagree with the code.
 
 ## Impact
 
-- Capabilities: [normalization](../../specs/normalization/spec.md), [schemas](../../specs/schemas/spec.md),
-  [learning-configs](../../specs/learning-configs/spec.md), [jobs](../../specs/jobs/spec.md),
-  [resolution](../../specs/resolution/spec.md), new `identity-and-intent`; `openspec/project.md` capability table.
+- Capabilities: [normalization](../../../specs/normalization/spec.md), [schemas](../../../specs/schemas/spec.md),
+  [learning-configs](../../../specs/learning-configs/spec.md), [jobs](../../../specs/jobs/spec.md),
+  [resolution](../../../specs/resolution/spec.md), new `identity-and-intent`; `openspec/project.md` capability table.
 - Design: D-0960, D-0240, D-0950, D-0631, D-1305, D-1263; INV-28.
 - Files: `backend/src/crawlerai/{normalize,collect/schema_org_map.py,services/{schemas,configs}.py,config_ir,core/retry.py,
   db/queue.py,acquire/politeness.py,llm,adapters/shopify.py,worker/handlers}`.

@@ -12,22 +12,10 @@ Rationale: ARCHITECTURE §10 ([archived](../../changes/archive/2026-10-16-archit
 The system SHALL resolve every page through `extract_page`, used by the worker, `scrape` and replays alike; an
 exception yields outcome `error` (stored `failed`) with no fields and no record. Refs: §8.1, D-0483, D-0506.
 
-### Requirement: Validity, intent and ownership
-Every candidate SHALL pass its type normalizer ([normalization](../normalization/spec.md)), else it is rejected
-`invalid`/`ambiguous`. Entities of one most specific type that share an IRI, an identifier value (unless their item
-URLs differ) or, across collectors, an item URL other than a page URL are one entity before intent
-(`resolve/identity.py`). `select_target` picks one primary-type entity (`resolve/intent.py`) or none, which makes every
-field `conflict`/`intent_ambiguous`; a detail page's related items and its product's group do not make intent
-ambiguous (D-1151); candidates the target does not own are rejected `not_owned`. An `array_row` entity's candidates
-are the target's only where page values are, when that row and every row enclosing it names a page URL or the
-target's URL (`resolve/ownership.py`). Refs: §8.2 rule 3, Appendix A #55, D-0413, D-0785, D-0942, D-1151, D-1253,
-D-1255, D-1290, D-1291.
-#### Scenario: Related item's price in state
-- **WHEN** a detail page's state holds an array of two items, the related one with its own URL and a visible price
-- **THEN** that price is rejected `not_owned`, and a row naming the page URL keeps its price as the target's
-#### Scenario: One product in two syntaxes
-- **WHEN** a JSON-LD Product and a microdata Product state one sku, and only the microdata one states an Offer
-- **THEN** they are one target, its title `agreed`, and the Offer's price publishes
+### Requirement: Candidate validity
+Every candidate SHALL pass its type normalizer ([normalization](../normalization/spec.md)), else it is
+rejected `invalid`/`ambiguous`. Which entity a candidate belongs to is
+[identity-and-intent](../identity-and-intent/spec.md). Refs: §8.2, D-1379.
 
 ### Requirement: Exact-match agreement (INV-14)
 For exact-match types the system SHALL publish only when every valid, owned, kept candidate agrees after
@@ -100,10 +88,6 @@ stores the record as `partial` and a crawl-discovered URL is `no_match` with no 
 #### Scenario: Crawl page missing price
 - **WHEN** a crawl-discovered detail page leaves the required `price` missing
 - **THEN** the outcome is `no_match` and no record is stored
-
-### Requirement: Entity key
-`entity_key` SHALL be the hex sha256 of `site_id` + the task's canonical URL; a listing row uses its `T.url`, else
-`<task canonical URL>#<row position>`. Refs: D-0459, D-0512.
 
 ### Requirement: LLM gap hook
 The system SHALL ask role C ([llm](../llm/spec.md)) once per detail page only for missing required fields and unfilled
