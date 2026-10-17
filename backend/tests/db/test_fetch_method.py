@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.rungs import Rungs, acquire, remember_fetch_method
+from crawlerai.acquire.rungs import Rungs, acquire, remember_fetch_method, with_attempts
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.db.models import Capture, FetchMethod, Project, Site, SiteId
@@ -46,7 +46,7 @@ class Web:
             return self.fetch_result(url, 200, self.robots.encode(), method=self.method)
         block_class = self.pages.get(url, "not_found")
         status = {"ok": 200, "shell": 200, "blocked": 403, "not_found": 404}.get(block_class, 500)
-        return self.fetch_result(url, status, b"", block_class=block_class, method=self.method)
+        return self.fetch_result(url, status, b"", block_class=block_class, method=self.method, policy=policy)
 
 
 @pytest.fixture
@@ -132,6 +132,21 @@ async def test_a_render_kept_over_a_lacking_http_page_sets_the_site_to_browser_a
     http.fetched.clear()
     await _acquire_and_remember(conn, site_id, http, browser)
     assert http.fetched == []  # the next fetch goes straight to the browser
+
+
+async def test_a_browser_fetch_asked_for_beside_an_http_attempt_leaves_the_site_on_http(
+    conn: AsyncConnection, http: Web, browser: Web
+) -> None:
+    # A recipe's page request went over HTTP, then the hinted browser rendered the page: no evidence about HTTP.
+    site_id = await _site(conn)
+    http.pages[PAGE], browser.pages[PAGE] = "ok", "ok"
+    hinted = FetchPolicy(method_hint="browser")
+    page_request, render = await http(PAGE, hinted), await browser(PAGE, hinted)
+
+    result = with_attempts(render, page_request.attempts + render.attempts, 2)
+    await remember_fetch_method(conn, site_id, result)
+
+    assert await _memory(conn, site_id) == ("http", None)
 
 
 async def test_a_render_that_holds_no_more_than_http_leaves_the_site_on_http(

@@ -291,11 +291,14 @@ def with_attempts(result: FetchResult, attempts: tuple[AttemptRecord, ...], dura
 async def remember_fetch_method(conn: AsyncConnection, site_id: SiteId, result: FetchResult) -> None:
     """Set the site to `browser` when `result` kept a browser `ok` over an HTTP attempt of the same fetch: HTTP failed
     (a shell or a block), or HTTP was `ok` but lacked what the caller reads (D-1260, owner #49, #54), so the site's
-    later fetches go straight to the browser instead of paying for both. A kept browser outcome follows an HTTP
-    attempt only on that evidence (`_page`). Only the re-check (`crawlerai.scheduler.recheck`) sets it back to
+    later fetches go straight to the browser instead of paying for both. In `auto`, a kept browser outcome follows an
+    HTTP attempt only on that evidence (`_page`). Only the re-check (`crawlerai.scheduler.recheck`) sets it back to
     `http`, so `fetch_method_checked_at` starts its clock here."""
+    # Only `auto` renders on evidence: a browser fetch asked for (`method_hint`) is no evidence about HTTP, even beside
+    # an HTTP attempt of a recipe's page request.
+    by_evidence = result.bundle.manifest.fetch_policy.get("method_hint") == "auto"
     by_http = any(a.method == "http" for a in result.attempts)
-    if result.method == "browser" and result.block_class == "ok" and by_http:
+    if result.method == "browser" and result.block_class == "ok" and by_evidence and by_http:
         await conn.execute(
             update(Site)
             .where(Site.id == site_id, Site.fetch_method != "browser")

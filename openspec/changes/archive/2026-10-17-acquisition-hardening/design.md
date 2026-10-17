@@ -7,8 +7,8 @@ session's decisions (2026-10-17); the policy they add beside owner decisions #49
 
 ### D-1260 — Remember `browser` after a render kept over a lacking HTTP page
 - Date: 2026-10-17 · Change/PR: acquisition-hardening (#244) · Status: decided (owner-delegated 2026-10-17)
-- `remember_fetch_method` sets `site.fetch_method='browser'` for any browser `ok` kept over an HTTP attempt of the same
-  fetch, so a site whose pages need the render (owner #49 offers, #54 listing rows) stops paying HTTP plus browser
+- `remember_fetch_method` sets `site.fetch_method='browser'` for a browser `ok` kept over an HTTP attempt of the same
+  `auto` fetch (a hinted browser fetch beside a recipe's HTTP page request is no evidence), so a site whose pages need the render (owner #49 offers, #54 listing rows) stops paying HTTP plus browser
   on every fetch (#228). Per site, as the column is (no migration this wave); the 7-day re-check returns it to HTTP
   and a later render sets it again. A render that holds no more than HTTP leaves the site on HTTP.
 

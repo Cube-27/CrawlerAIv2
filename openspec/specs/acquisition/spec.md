@@ -44,8 +44,8 @@ Refs: §7.1, D-0009, D-0203, D-0865, D-0900, owner #49, D-1202, owner #54, D-124
 - **THEN** the browser attempt waits for a turn at least 7 s later, and its `ok` is kept
 
 ### Requirement: Remembered fetch method and re-check
-The system SHALL set `fetch_method='browser'` only when a browser `ok` was kept over an HTTP attempt of the same fetch
-(an HTTP `shell`/`blocked`, or an HTTP `ok` that lacked what the caller reads); a scheduler re-check SHALL retry such
+The system SHALL set `fetch_method='browser'` only when a browser `ok` was kept over an HTTP attempt of the same `auto`
+fetch (an HTTP `shell`/`blocked`, or an HTTP `ok` that lacked what the caller reads); a scheduler re-check SHALL retry such
 a site over HTTP after 7 days (its latest `ok` URL, robots allowing) and reset it to `http` on `ok`. Refs: §7.1,
 D-0204, D-0205, D-1260.
 

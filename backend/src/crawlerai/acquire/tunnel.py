@@ -50,6 +50,9 @@ async def open_tunnel(proxy: ProxyEndpoint, host: str, port: int) -> tuple[async
     except (OSError, UnicodeEncodeError, asyncio.IncompleteReadError, asyncio.LimitOverrunError) as e:
         writer.close()
         raise TunnelRefused from e
+    except BaseException:
+        writer.close()  # cancelled (a timeout) while the proxy has not answered: the socket is not left open
+        raise
     # RFC 9112 §4: status-line = HTTP-version SP status-code SP [ reason-phrase ].
     fields = response.split(b" ", 2)
     if len(fields) < 2 or not fields[1].startswith(b"2"):

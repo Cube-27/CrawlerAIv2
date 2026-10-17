@@ -26,6 +26,7 @@ from crawlerai.acquire.api import JsonRequest, fetch_json
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
+from crawlerai.acquire.tunnel import open_tunnel
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.proxy import ProxyEndpoint
 from crawlerai.core.settings import IMPERSONATE_DEFAULT, AcquireSettings
@@ -373,6 +374,32 @@ def test_a_json_fetch_naming_an_unknown_pool_sends_nothing(origin: Origin, proxy
 
     assert _outcome(result) == (0, "error", "proxy_pool_unknown")
     assert (proxy.tunnels, origin.hosts) == ([], [])
+
+
+def test_a_tunnel_cancelled_before_the_proxy_answers_closes_its_socket() -> None:
+    async def run() -> bool:
+        closed = asyncio.Event()
+
+        async def silent(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+            await reader.read()  # never answers CONNECT; returns once the client closes its side
+            closed.set()
+            writer.close()
+
+        server = await asyncio.start_server(silent, "127.0.0.1", 0)
+        port = int(server.sockets[0].getsockname()[1])
+        kept: list[BaseException] = []
+        try:
+            async with asyncio.timeout(0.2):
+                await open_tunnel(ProxyEndpoint(host="127.0.0.1", port=port), "shop.example.test", 80)
+        except TimeoutError as e:
+            kept.append(e)  # its traceback keeps the tunnel's frame alive: closing must not rest on garbage collection
+        try:
+            await asyncio.wait_for(closed.wait(), 2)
+        finally:
+            server.close()
+        return closed.is_set()
+
+    assert asyncio.run(run()) is True
 
 
 # --- the browser's guard -----------------------------------------------------------------------------------------
