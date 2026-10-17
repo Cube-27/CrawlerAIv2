@@ -169,8 +169,8 @@ async def test_a_collection_url_with_a_query_its_canonical_drops_is_served_over_
 
     assert result.fetch is not None
     assert (result.outcome, result.fetch.method, web.page_fetches()) == ("extracted", "api", [url])
-    # The page gives no rows, so it is rendered once (owner #54) before the adapter serves its canonical URL.
-    assert [(a.method, a.status) for a in result.fetch.attempts] == [("http", 200), ("browser", 200), ("api", 200)]
+    # The page gives no rows; its canonical URL, which the adapter serves, is asked before any render (D-1388).
+    assert [(a.method, a.status) for a in result.fetch.attempts] == [("http", 200), ("api", 200)]
     assert result.records is not None
     assert [record.fields["title"].value for record in result.records] == ["Desk Lamp"]
 
