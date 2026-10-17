@@ -89,6 +89,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/configs/{config_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Config
+         * @description Approves a learned config waiting as `pending_approval` (the project's `require_config_approval`): it becomes the
+         *     active config of its site, schema and page kind, and the version active before is `suspended`. 409 for a config
+         *     in any other status.
+         */
+        post: operations["approve_config_v1_configs__config_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/configs/{config_id}/export": {
         parameters: {
             query?: never;
@@ -429,6 +451,7 @@ export interface paths {
          * Get Project Settings
          * @description The project's settings. `llm_call_cap` bounds the LLM calls of every job whose request sets no
          *     `budget.llm_calls`, and `draft_call_cap` the uncharged field-name drafts of each API key; null bounds none.
+         *     `require_config_approval` makes a learned config wait for approval before it serves.
          */
         get: operations["get_project_settings_v1_project_settings_get"];
         put?: never;
@@ -439,7 +462,7 @@ export interface paths {
         /**
          * Patch Project Settings
          * @description Set the project's settings. A new `llm_call_cap` applies to running jobs too, from their next LLM call, and a new
-         *     `draft_call_cap` from a key's next draft.
+         *     `draft_call_cap` from a key's next draft; `require_config_approval` from the next learning run's end.
          */
         patch: operations["patch_project_settings_v1_project_settings_patch"];
         trace?: never;
@@ -888,7 +911,7 @@ export interface components {
         ConfigDetail: {
             /** Field Status */
             field_status: {
-                [key: string]: "corroborated" | "uncorroborated" | "operator" | "suspended";
+                [key: string]: "corroborated" | "uncorroborated" | "operator" | "suspended" | "absent";
             };
             /**
              * Id
@@ -917,7 +940,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "draft" | "active" | "suspended";
+            status: "draft" | "active" | "suspended" | "pending_approval";
             validation_report: components["schemas"]["ValidationReport"] | null;
             /** Version */
             version: number;
@@ -948,7 +971,7 @@ export interface components {
         ConfigSummary: {
             /** Field Status */
             field_status: {
-                [key: string]: "corroborated" | "uncorroborated" | "operator" | "suspended";
+                [key: string]: "corroborated" | "uncorroborated" | "operator" | "suspended" | "absent";
             };
             /**
              * Id
@@ -976,7 +999,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "draft" | "active" | "suspended";
+            status: "draft" | "active" | "suspended" | "pending_approval";
             validation_report: components["schemas"]["ValidationReport"] | null;
             /** Version */
             version: number;
@@ -1265,6 +1288,8 @@ export interface components {
         };
         /** ExtractionConfigIR */
         ExtractionConfigIR: {
+            /** Absent */
+            absent?: string[];
             api_recipe?: components["schemas"]["ApiRecipe"] | null;
             fetch: components["schemas"]["Fetch"];
             /** Fields */
@@ -1382,7 +1407,7 @@ export interface components {
             /** Reproduced */
             reproduced: number;
             /** Status */
-            status: ("corroborated" | "uncorroborated" | "operator" | "suspended") | null;
+            status: ("corroborated" | "uncorroborated" | "operator" | "suspended" | "absent") | null;
             /** Valid */
             valid: number;
             /** Validity */
@@ -1474,7 +1499,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "corroborated" | "uncorroborated" | "operator" | "suspended";
+            status: "corroborated" | "uncorroborated" | "operator" | "suspended" | "absent";
             /** Steps */
             steps: (components["schemas"]["XPathStep-Output"] | components["schemas"]["CssStep-Output"] | components["schemas"]["JsonLdStep-Output"] | components["schemas"]["JsonPathStep-Output"] | components["schemas"]["RegexStep-Output"] | components["schemas"]["AttrStep-Output"])[];
             /** Validity */
@@ -2234,12 +2259,16 @@ export interface components {
          * ProjectSettings
          * @description `llm_call_cap`: the most LLM calls a job may make when its request sets no `budget.llm_calls`; null: no cap.
          *     `draft_call_cap`: the most uncharged role S calls (field-name drafts) one API key may make, in all; null: no cap.
+         *     `require_config_approval`: whether a learned config waits for approval (`POST /v1/configs/{id}/approve`) before it
+         *     serves.
          */
         ProjectSettings: {
             /** Draft Call Cap */
             draft_call_cap: number | null;
             /** Llm Call Cap */
             llm_call_cap: number | null;
+            /** Require Config Approval */
+            require_config_approval: boolean;
         };
         /**
          * Proof
@@ -3139,6 +3168,78 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    approve_config_v1_configs__config_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
