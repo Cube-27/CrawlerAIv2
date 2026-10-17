@@ -120,6 +120,7 @@ class PriceConfig:
     """A site's learned config that reads a price from the page (`ConfigExecutor`)."""
 
     field_status: dict[str, FieldStatus] = {"price": "uncorroborated"}  # noqa: RUF012
+    learned_calls = None
 
     def execute(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:
         price: JsonValue = {"amount": "19.90", "currency": "EUR"}

@@ -46,9 +46,11 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   were measured on one tenant each (their endpoints are the platform's own); add tenants as found. A re-scrape of a
   listing keeps an earlier record of the same URL: check that a field newly mapped by an adapter reaches it.
 - Network data layer (#250): the paging driver (`crawl.paging`) counts linked DOM item blocks only, so a scroll listing whose items hold no item link stops `no_items` although its calls would load more rows.
-- Network data layer (#250): a render sometimes ends before the page's data call arrives (one of five renders of one listing kept no call); the settle wait does not wait for fetches in flight.
 - Network data layer (#250): structured rows that lack a field the page's call carries per item (microdata rows without a price) keep it unpublished; joining a call's rows to structured rows needs an item identity rule.
 - Network data layer (#250): the release executor reads `xhr` bodies with `json.loads`, not `network_json` (no guard prefix), since it shares no code with the engine (INV-20); decide whether it follows.
+- Network data layer (#254): the worker's crawl and batch tasks serve a listing recipe's first page only; only a scrape with browser actions follows its pagination (D-1368).
+- Network data layer (#254): cold listing rows publish text fields only through role C (call rows admit text by equality), so without LLM keys a learned listing recipe maps checkable fields only (the live check's public search listing: `url`); verify a full `learn` job through the API once role A has keys (H4).
+- Network data layer (#254): binding keeps a query value that is constant across samples literal, so a public search key in an endpoint URL is stored in the recipe; header minimization withholds token-like header values only. Decide whether URL query tokens follow the same rule.
 - Listing browser actions (#241): a load-more or scroll listing whose rows come from a JSON-LD ItemList keeps the
   first batch only (the script is not updated as items load); rows of the grown DOM need role C or a config. Not
   validated on a real virtualised list or a real in-DOM show-more listing; an integer inside a path segment

@@ -25,6 +25,7 @@ from crawlerai.collect.base import PAGE, Candidate, Entity
 from crawlerai.collect.config import ROW_KIND, Executed
 from crawlerai.collect.json_doc import select
 from crawlerai.collect.locator import format_locator
+from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.model import (
     NEXT_PAGE_FIELD,
@@ -92,6 +93,10 @@ class EngineExecutor:
             if steps.status != "suspended"
         }
         return {**running, **dict.fromkeys(self.ir.absent, "absent")}
+
+    @property
+    def learned_calls(self) -> LearnedCalls | None:
+        return None if self.ir.api_recipe is None else self.ir.api_recipe.learned_calls
 
     def execute(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:
         self._check(schema)

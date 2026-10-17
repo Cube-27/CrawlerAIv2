@@ -12,10 +12,19 @@ from collections.abc import Callable
 from typing import Annotated, Final, Literal, NamedTuple, Self, get_args
 from urllib.parse import urlsplit
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationError,
+    model_validator,
+)
 
 from crawlerai.collect import json_doc
 from crawlerai.collect.api import map_paths
+from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS, check_pattern
 from crawlerai.db.models import CaptureId
 from crawlerai.schemas.types import NAME_PATTERN, Name
@@ -169,15 +178,67 @@ class RequestBody(_Model):
     template: str = Field(min_length=1)
 
 
-class Pagination(_Model):
-    """§4.8: the listing's next request sets query parameter `name` to `start`, `start + step`, ... until `rows`
-    selects nothing."""
+# Where a listing's next request carries its page value: a query parameter (RFC 3986 §3.4), named; or a value of the
+# JSON request body (RFC 8259), at a normalized path (RFC 9535 §2.7), which reaches GraphQL `variables` too.
+PageWhere = Literal["query", "body"]
+
+
+def _check_body_path(path: str) -> str:
+    _engine_jsonpath(path)
+    if "[*]" in path:
+        raise ValueError(f"a body value's path names one value, without wildcards: {path!r}")
+    return path
+
+
+class ParamPagination(_Model):
+    """§4.8: the listing's requests set `name` to `start`, `start + step`, ... (a page number or an item offset) until
+    `rows` selects nothing."""
 
     kind: Literal["param"]
+    where: PageWhere
     name: str = Field(min_length=1)
     start: int = Field(ge=0)
     step: int = Field(ge=1)
     rows: EngineJsonPath
+
+
+class CursorPagination(_Model):
+    """The next request sets `name` to the value the previous response holds at `cursor`, until it holds none."""
+
+    kind: Literal["cursor"]
+    where: PageWhere
+    name: str = Field(min_length=1)
+    cursor: EngineJsonPath
+    rows: EngineJsonPath
+
+
+class NextUrlPagination(_Model):
+    """The next request goes to the URL the previous response holds at `next` (resolved against the request's URL,
+    RFC 3986 §5), on the recipe's own origin, until it holds none."""
+
+    kind: Literal["next_url"]
+    next: EngineJsonPath
+    rows: EngineJsonPath
+
+
+class LinkPagination(_Model):
+    """The next request goes to the target of the previous response's `Link` field with relation type `next`
+    (RFC 8288 §3), on the recipe's own origin, until it names none."""
+
+    kind: Literal["link"]
+    rows: EngineJsonPath
+
+
+Pagination = Annotated[
+    ParamPagination | CursorPagination | NextUrlPagination | LinkPagination, Field(discriminator="kind")
+]
+
+
+def body_pagination_path(pagination: "Pagination | None") -> str | None:
+    """The request body path a pagination sets, if it sets one."""
+    if isinstance(pagination, (ParamPagination, CursorPagination)) and pagination.where == "body":
+        return pagination.name
+    return None
 
 
 class RequestSpec(_Model):
@@ -209,6 +270,14 @@ class RequestSpec(_Model):
             raise ValueError("requires_page_fetch is true exactly when a binder reads the page's JSON documents")
         return self
 
+    @model_validator(mode="after")
+    def _pagination_fits(self) -> Self:
+        if (path := body_pagination_path(self.pagination)) is not None:
+            _check_body_path(path)
+            if self.body is None:
+                raise ValueError("a pagination value in the body needs a request body")
+        return self
+
     @property
     def binders(self) -> dict[str, Binder]:
         return {name: parse_binder(text) for name, text in self.params_from_url.items()}
@@ -216,6 +285,17 @@ class RequestSpec(_Model):
     @property
     def reads_page_data(self) -> bool:
         return any(binder.kind in PAGE_DATA_KINDS for binder in self.binders.values())
+
+
+def with_pagination(spec: RequestSpec, pagination: Pagination | None) -> RequestSpec | None:
+    """`spec` with `pagination` (as it is without one); None when the two do not make a valid request (a body value
+    the spec has no body for)."""
+    if pagination is None:
+        return spec
+    try:
+        return RequestSpec.model_validate({**spec.model_dump(), "pagination": pagination.model_dump()})
+    except ValidationError:
+        return None
 
 
 class Proof(_Model):
@@ -230,3 +310,19 @@ class Proof(_Model):
 class ApiRecipe(RequestSpec):
     map: dict[Name, MapPath] = Field(min_length=1)
     proof: Proof
+
+    @property
+    def learned_calls(self) -> LearnedCalls | None:
+        """A listing recipe's endpoint as the calls a browser page makes show it (`network_match.LearnedCalls`); None
+        for a recipe without pagination."""
+        if self.pagination is None:
+            return None
+        parts = urlsplit(self.url)
+        segments = parts.path[1:].split("/") if parts.path else []
+        return LearnedCalls(
+            method=self.method,
+            origin=f"{parts.scheme}://{parts.netloc}",
+            segments=tuple(None if PLACEHOLDER.search(segment) else segment for segment in segments),
+            rows=self.pagination.rows,
+            map=self.map,
+        )

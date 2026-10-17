@@ -351,7 +351,16 @@ async def _run(
         page = recent.result
     elif request.browser_actions is not None:
         paged = await paged_fetch(
-            engine, fetching, request.url, host, policy, site, attempts, request.browser_actions, request.timeout_s
+            engine,
+            fetching,
+            request.url,
+            host,
+            policy,
+            site,
+            attempts,
+            request.browser_actions,
+            request.timeout_s,
+            recipe=recipe,
         )
         page, further, report = _pages(paged)
     else:

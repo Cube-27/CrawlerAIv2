@@ -7,6 +7,7 @@ import json
 import re
 from typing import Any
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -113,12 +114,36 @@ def test_a_hint_that_reads_page_data_says_the_page_is_fetched_first() -> None:
     assert "// This recipe reads the page's JSON documents: fetch the page's HTML first." in _lines(text)
 
 
-def test_a_paginated_hint_says_how_the_next_page_is_requested() -> None:
-    pagination = {"kind": "param", "name": "offset", "start": 0, "step": 20, "rows": "$['items'][*]"}
-    lines = _lines(php_hint(_recipe(pagination=pagination)))
+_ROWS = "\"$['items'][*]\""
 
-    rows = "\"$['items'][*]\""
-    assert f'// Pagination: set query parameter "offset" to 0, 20, 40, ... until {rows} selects nothing.' in lines
+
+@pytest.mark.parametrize(
+    ("pagination", "line"),
+    [
+        (
+            {"kind": "param", "where": "query", "name": "offset", "start": 0, "step": 20, "rows": "$['items'][*]"},
+            f'// Pagination: set "query" value "offset" to 0, 20, 40, ... until {_ROWS} selects nothing.',
+        ),
+        (
+            {"kind": "cursor", "where": "query", "name": "after", "cursor": "$['next']", "rows": "$['items'][*]"},
+            '// Pagination: set "query" value "after" to the value the previous response holds at "$[\'next\']", '
+            f"until it holds none or {_ROWS} selects nothing.",
+        ),
+        (
+            {"kind": "next_url", "next": "$['links']['next']", "rows": "$['items'][*]"},
+            "// Pagination: request the URL the previous response holds at \"$['links']['next']\" (RFC 3986 "
+            f"resolution, same origin), until it holds none or {_ROWS} selects nothing.",
+        ),
+        (
+            {"kind": "link", "rows": "$['items'][*]"},
+            '// Pagination: request the target of the previous response\'s Link header with rel="next" (RFC 8288, '
+            f"same origin), until there is none or {_ROWS} selects nothing.",
+        ),
+    ],
+    ids=["param", "cursor", "next_url", "link"],
+)
+def test_a_paginated_hint_says_how_the_next_page_is_requested(pagination: dict[str, object], line: str) -> None:
+    assert line in _lines(php_hint(_recipe(pagination=pagination)))
     assert "Pagination" not in php_hint(_recipe())
 
 

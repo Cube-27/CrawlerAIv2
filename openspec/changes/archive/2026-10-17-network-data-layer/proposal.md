@@ -21,13 +21,16 @@ calls, and API discovery scores calls with logic of its own.
   API recipe row reader (`collect/api.py`), and API discovery uses the same module.
 - Listing resolution takes those rows where structured data and the config give none, below role C when they leave a
   required field unpublished; values of captured calls take an evidence bucket of their own, `network`.
-- Later batch (A2, tasks section 3): listing recipes with pagination kinds and their inference from call series.
+- Listing recipes (A2, tasks section 3): pagination kinds (`param`, `cursor`, `next_url`, RFC 8288 `link`, in the
+  query or the JSON body) inferred from call series, the paged executor for every kind, learning's listing path
+  validated by replaying two pages, browser renders for pages without calls, learned maps read by the `xhr` collector,
+  and listing scrapes served by their recipe over HTTP.
 
 ## Impact
 
-- Capabilities: [acquisition](../../specs/acquisition/spec.md), [extraction](../../specs/extraction/spec.md),
-  [persistence-storage](../../specs/persistence-storage/spec.md), [resolution](../../specs/resolution/spec.md);
-  A2 also [adapters](../../specs/adapters/spec.md) and [learning-configs](../../specs/learning-configs/spec.md).
+- Capabilities: [acquisition](../../../specs/acquisition/spec.md), [extraction](../../../specs/extraction/spec.md),
+  [persistence-storage](../../../specs/persistence-storage/spec.md), [resolution](../../../specs/resolution/spec.md);
+  A2 also [adapters](../../../specs/adapters/spec.md) and [learning-configs](../../../specs/learning-configs/spec.md).
 - Design: `openspec/design/overview.md` §22, `openspec/design/owner-decisions.md` #59.
 - Files: `storage/capture_bundle.py`, `acquire/browser.py`, `acquire/browser_tab.py`, `content/page.py`,
   `collect/network_match.py`, `collect/xhr.py`, `collect/api.py`, `collect/admission.py`, `collect/run.py`,

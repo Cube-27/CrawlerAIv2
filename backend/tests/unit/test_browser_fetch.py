@@ -93,6 +93,10 @@ setInterval(() => { fetch('/api/n/0'); document.getElementById('tick').textConte
 _STILL = b"""<html><body><p>Polling page with settled content</p><script>
 setInterval(() => fetch('/api/n/0'), 100);
 </script></body></html>"""
+# Static content whose data call answers after the 2 s DOM quiet: the call is still in flight when the content is quiet.
+_LATE_CALL = b"""<html><body><p>Static page whose data arrives late</p><script>
+fetch('/api/late').then(r => r.json());
+</script></body></html>"""
 # An error document that replaces itself (`location.replace`, HTML Standard §7.2.4) after a countdown.
 _REPLACES_ITSELF = b"""<html><body><p>One moment</p><script>
 setTimeout(() => location.replace('/app'), 1000);
@@ -198,6 +202,8 @@ def server() -> Iterator[Server]:
             "/heavy": Reply(body=_HEAVY),
             "/busy": Reply(body=_BUSY),
             "/still": Reply(body=_STILL),
+            "/late-call": Reply(body=_LATE_CALL),
+            "/api/late": Reply(content_type=_JSON, body=b'{"late": true}', delay_s=3.5),
             "/replaces-itself": Reply(403, body=_REPLACES_ITSELF),
             "/with-worker": Reply(body=_WITH_WORKER),
             "/worker.js": Reply(content_type="text/javascript", body=b"fetch('/api/n/7');"),
@@ -506,6 +512,15 @@ def test_a_page_whose_content_settles_is_read_without_waiting_for_its_network(br
     assert b"Polling page with settled content" in result.bundle.body
     # Two quiet seconds after `load`, not 90% of the 20 s cap.
     assert 2_000 <= result.duration_ms < 8_000
+
+
+def test_a_data_call_still_in_flight_when_the_content_is_quiet_is_waited_for(browser: Browser, server: Server) -> None:
+    result = browser.fetch(server.url("/late-call"), FetchPolicy(browser_timeout_s=20))
+
+    assert [entry.url for entry in result.bundle.manifest.network_bodies] == [server.url("/api/late")]
+    assert result.bundle.network == (b'{"late": true}',)
+    # The 2 s quiet passed while the call was in flight; it arrived within the 3 s more a call is given.
+    assert 3_500 <= result.duration_ms < 8_000
 
 
 def test_an_error_document_that_navigates_itself_is_read_where_the_navigation_ends(

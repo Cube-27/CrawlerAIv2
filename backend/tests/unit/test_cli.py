@@ -74,12 +74,12 @@ def test_the_worker_command_runs_its_loop_with_settings_from_the_environment(mon
     async def run(settings: Settings, handlers: Mapping[str, object], stop: asyncio.Event, *, ending: object) -> None:
         calls.append((settings.database_url.get_secret_value(), sorted(handlers), stop.is_set(), ending))
 
-    learners: list[tuple[object, int, bool, bool]] = []
+    learners: list[tuple[object, int, bool, bool, bool]] = []
 
-    async def learn(*args: object, vocabulary: object, max_chars: int, replay: object) -> None:
+    async def learn(*args: object, vocabulary: object, max_chars: int, replay: object, render: object) -> None:
         stop = args[3]
         assert isinstance(stop, asyncio.Event)
-        learners.append((vocabulary, max_chars, stop.is_set(), callable(replay)))
+        learners.append((vocabulary, max_chars, stop.is_set(), callable(replay), callable(render)))
 
     vocabulary = object()
     monkeypatch.setattr(cli, "run_worker", run)
@@ -93,8 +93,8 @@ def test_the_worker_command_runs_its_loop_with_settings_from_the_environment(mon
     url = "postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai"
     assert calls == [(url, ["batch_scrape", "crawl", "extract"], False, close_run)]
     # Learn jobs have no tasks: the worker's learner runs them beside the task loop (D-0624), replaying recipes over
-    # the JSON rung (SPEC-09 §2).
-    assert learners == [(vocabulary, 5000, False, True)]
+    # the JSON rung (SPEC-09 §2) and rendering pages without calls in the browser (Appendix A #59).
+    assert learners == [(vocabulary, 5000, False, True, True)]
 
 
 def test_the_scheduler_command_runs_the_entries_for_the_configured_object_store_and_the_http_rung(
