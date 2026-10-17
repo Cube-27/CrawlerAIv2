@@ -43,7 +43,8 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Web search (#261): an HTML provider's results carry no snippet, results are not cached, and SearXNG is read up to 5
   pages. No public SearXNG instance accepted the JSON API in the live check (challenge pages), so the SearXNG path was
   verified against a local stub of its JSON API and the template path against a public JSON API.
-- SDKs (#261): not published to PyPI or npm; the packages carry the repository's AGPL-3.0 license, which the owner may
+- SDKs (#261): the CI `sdk` job (`make check-sdk`: regenerate, diff, each SDK's checks and tests) could not be added: the
+  worker's token cannot push workflow files. Add it to `ci.yml`; until then only the digest test runs in CI. Not published to PyPI or npm; the packages carry the repository's AGPL-3.0 license, which the owner may
   want to relax for libraries. Add an `AsyncCrawlerAI` webhook receiver example if callers ask.
 
 - ATS adapters (#248): the SmartRecruiters API host's robots.txt disallows every agent but one, so by default its adapter

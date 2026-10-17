@@ -1,7 +1,7 @@
 # crawlerai-sdk (Python)
 
 A typed client for the CrawlerAI API over `httpx`, with pydantic models generated from the API's OpenAPI document
-(`src/crawlerai_sdk/models.py`; `./generate.sh` regenerates it and CI fails when it is stale). Python 3.12 or later.
+(`src/crawlerai_sdk/models.py`; `./generate.sh` regenerates it; a test fails when the API document changed and the SDKs were not regenerated). Python 3.12 or later.
 
 ```sh
 pip install ./sdk/python        # from a checkout; the package is not published yet

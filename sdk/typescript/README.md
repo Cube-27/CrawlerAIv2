@@ -1,7 +1,7 @@
 # @crawlerai/sdk (TypeScript)
 
 A typed client for the CrawlerAI API over `fetch`, with no runtime dependencies. Its types are generated from the
-API's OpenAPI document (`src/schema.d.ts` by `pnpm gen`; CI fails when it is stale). Node 20 or later, and any runtime
+API's OpenAPI document (`src/schema.d.ts` by `pnpm gen`; a test fails when the API document changed and this was not regenerated). Node 20 or later, and any runtime
 with `fetch` and Web Crypto.
 
 ```sh

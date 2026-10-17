@@ -54,7 +54,10 @@
 - Date: 2026-10-17 · Change/PR: crawl-search-sdk (#261) · Status: decided (owner-delegated 2026-10-17)
 - Decision: `sdk/python` (httpx and pydantic at runtime; models by `datamodel-code-generator`, run through `uvx` by
   `sdk/python/generate.sh`) and `sdk/typescript` (no runtime dependency; types by `openapi-typescript`) read
-  `frontend/openapi.json`. The `sdk` CI job regenerates both, fails on a diff, then runs each SDK's checks and tests.
+  `frontend/openapi.json`. `make sdk` regenerates both and records the digest of the document in `sdk/openapi.sha256`; `tools/tests/test_sdk_digest.py`
+  (run by CI) fails when the document changed and the SDKs were not regenerated; `make check-sdk` regenerates, fails on a
+  diff and runs each SDK's checks and tests. (The CI workflow itself could not be extended: the implementor's token has
+  no `workflow` scope.)
   Both give `scrape`, `map`, `search`, `crawl`, `batch_scrape`, `extract`, `job`, `cancel_job`, job results paging,
   `wait_for_job`, the event stream and webhook verification (HMAC-SHA256 of the raw body, constant-time compare). The
   packages carry the repository's license (AGPL-3.0-only) and are not published.

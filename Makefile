@@ -14,7 +14,8 @@ UV_RUN ?= uv run
 CRAWLERAI_OBJECT_STORE := $(or $(CRAWLERAI_OBJECT_STORE),fs:///$(patsubst /%,%,$(CURDIR))/.data/objects)
 export
 
-# `check-sdk` is not part of `check`: it needs `uvx` and the SDK's own `pnpm install`; CI's `sdk` job runs it.
+# `check-sdk` is not part of `check`: it needs `uvx` and the SDK's own `pnpm install`. CI checks only that the SDKs
+# were generated from the current API document (tools/tests/test_sdk_digest.py).
 .PHONY: sdk check-sdk dev up db db-down migrate api api-client check check-data check-tools check-backend \
 	check-frontend check-api-client check-licenses check-size-gates check-complexity check-theme
 
@@ -101,6 +102,7 @@ check-backend: db
 sdk:
 	sdk/python/generate.sh
 	cd sdk/typescript && pnpm install --frozen-lockfile && pnpm gen
+	python3 tools/sdk_digest.py
 
 check-sdk: sdk
 	git diff --exit-code -- sdk || { echo "SDK out of date: run 'make sdk' and commit the result."; exit 1; }

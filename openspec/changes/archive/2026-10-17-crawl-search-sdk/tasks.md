@@ -16,4 +16,4 @@
 
 - [x] 3.1 Python SDK: client, async client, polling, event stream, webhook verification, generated models. (#261)
 - [x] 3.2 TypeScript SDK: client, polling, event stream, webhook verification, generated types. (#261)
-- [x] 3.3 The `sdk` CI job, `make sdk` and `make check-sdk`, READMEs with examples. (#261)
+- [x] 3.3 `make sdk`, `make check-sdk`, the digest test that fails when the SDKs lag the API document, READMEs with examples. (#261)
