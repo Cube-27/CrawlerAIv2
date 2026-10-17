@@ -44,9 +44,9 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   pages. No public SearXNG instance accepted the JSON API in the live check (challenge pages), so the SearXNG path was
   verified against a local stub of its JSON API and the template path against a public JSON API.
 - SDKs (#261): the CI `sdk` job (`make check-sdk`: regenerate, diff, each SDK's checks and tests) could not be added: the
-  worker's token cannot push workflow files. Add it to `ci.yml`; until then only the digest test runs in CI. Not published to PyPI or npm; the packages carry the repository's AGPL-3.0 license, which the owner may
-  want to relax for libraries. Add an `AsyncCrawlerAI` webhook receiver example if callers ask.
-
+  worker's token cannot push workflow files. Add it to `ci.yml`; until then only the digest test runs in CI. The SDKs
+  are not published to PyPI or npm and carry the repository's AGPL-3.0 license, which the owner may want to relax for
+  libraries. Add an `AsyncCrawlerAI` webhook receiver example if callers ask.
 - ATS adapters (#248): the SmartRecruiters API host's robots.txt disallows every agent but one, so by default its adapter
   is refused and the page rungs serve (D-1306); it was verified on recorded answers. A branded list page with no rows at
   HTTP is rendered once (owner #54) before the own-host referral serves its Workday site; referring first would save the
