@@ -100,6 +100,7 @@ candidates (Appendix A #37, #46).
 | — | [DOM description: the page's description block is a long_text candidate](2026-10-18-dom-description/proposal.md) ([tasks](2026-10-18-dom-description/tasks.md), [decisions](2026-10-18-dom-description/design.md)) | §8.1 | 05 | — | tasks 1.1–1.3 (#286) |
 | — | [Plan phase 4b: role A prompt caching and a 60,000-character page cap, executability classes of learned fields](2026-10-18-plan-phase-4b/proposal.md) ([tasks](2026-10-18-plan-phase-4b/tasks.md), [decisions](2026-10-18-plan-phase-4b/design.md)) | §8.3, §11 | 06, 08 | — | tasks 1.1–2.1 (#287) |
 | — | [Resolve: calibrated confidence is reported, `min_confidence` gates on request, state JSON values get an evidence bucket](2026-10-18-resolve-confidence-state/proposal.md) ([tasks](2026-10-18-resolve-confidence-state/tasks.md), [decisions](2026-10-18-resolve-confidence-state/design.md)) | §10, §16.3 | 05 | — | tasks 1.1–2.1 (#289) |
+| — | [learn-sim-pages: unlabeled pages per host and held-out validation in learn-sim](2026-10-18-learn-sim-pages/proposal.md) ([tasks](2026-10-18-learn-sim-pages/tasks.md), [decisions](2026-10-18-learn-sim-pages/design.md)) | §16 | 05 | — | tasks 1.1–1.2 (#290) |
 
 Where the labeling tool lives: SPEC-03 (L0), as the first screen of the frontend skeleton from SPEC-00, because
 it must exist before any extraction code and is inseparable from the eval store's custodian access model.

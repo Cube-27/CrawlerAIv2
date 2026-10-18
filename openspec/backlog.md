@@ -51,8 +51,8 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   broken down by cause. Recorded detail replays need re-recording (request changed). An
   element that renders no text sits before the next line's break in role C's text. Adapters that stated only a
   posting URL no longer give `apply_url`; map a documented apply link where the platform has one.
-- Learning induction (#285): `eval learn-sim` validates in-sample because the golden dev split holds one page per
-  host (D-1685); capture 3+ pages per host to measure held-out generalization and listing `next` induction. Left to
+- Learning induction (#285): `eval learn-sim` validates on later pages when a host has them (`eval import-pages`
+  adds unlabeled pages, D-1760, D-1761); measure listing `next` induction on hosts with a second listing page. Left to
   role A: a role C span inside a longer text node (a company named mid-sentence), list fields from spans, and listings
   with no aligned group. Role A prompt caching (phase 4) is not done.
 - Extract with `fetch.cache: only` (#277): sample URLs read stored captures, but globs are still expanded by a live map.
