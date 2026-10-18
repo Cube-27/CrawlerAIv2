@@ -97,12 +97,12 @@ function resultsPage(page: RecordPage | ExportPage | PageOutputPage | JsonValues
   if ("format" in page)
     throw new Error("GET /v1/jobs/{id}/results answered an export to format=json");
   const items: (StoredRecord | PageOutput)[] = page.items;
-  const { next_cursor } = page;
+  const { next_cursor, total } = page;
   const outputs = items.filter(isPageOutput);
   // An empty page is a page of records: a job without a schema lists every task from its start (D-0630).
   return outputs.length === 0
-    ? { kind: "records", page: { items: items.filter(isRecord), next_cursor } }
-    : { kind: "pages", page: { items: outputs, next_cursor } };
+    ? { kind: "records", page: { items: items.filter(isRecord), next_cursor, total } }
+    : { kind: "pages", page: { items: outputs, next_cursor, total } };
 }
 
 type ResultsQuery = NonNullable<

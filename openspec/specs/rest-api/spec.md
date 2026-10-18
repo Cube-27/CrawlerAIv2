@@ -91,7 +91,7 @@ values serialized unchanged (INV-22, INV-27), and `usage` SHALL count every fetc
 `POST /v1/configs/{id}/approve` and `POST /v1/configs/{id}/reject` (each 409 unless the config is the latest version
 and `pending_approval`); `GET /v1/records` pages newest first by
 keyset cursor (≤ 200) with `changed_since` (see [jobs](../jobs/spec.md)), and with `job_id` by the job's tasks, newest
-task first, a record once; `POST /v1/captures/{id}/replay` runs the current engine cold and persists nothing.
+task first, a record once; every paged answer (records, jobs, a job's results) carries `total`, the matching rows in all; `POST /v1/captures/{id}/replay` runs the current engine cold and persists nothing.
 (Previously: no reject endpoint.) Refs: §13.1, §15, D-0396, D-0523, D-0950, D-1280, D-1342, D-1391.
 
 ### Requirement: Project settings

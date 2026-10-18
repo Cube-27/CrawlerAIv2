@@ -3,7 +3,6 @@ import type { FieldTypes } from "../api/field";
 import type { ExtractedRecord } from "../api/records";
 import type { RecordField } from "../api/scrape";
 import { ConfidenceCell, confidenceText } from "./ConfidenceCell";
-import { EmptyView } from "./EmptyView";
 import { EvidenceText, SourceKindText } from "./FieldOrigin";
 import { FieldStatusBadge } from "./FieldStatusBadge";
 import { FieldValue } from "./FieldValue";
@@ -103,31 +102,4 @@ export function RecordFieldsTable({
   fieldTypes,
 }: Readonly<{ label: string; record: ExtractedRecord; fieldTypes: FieldTypes }>) {
   return <FieldsTable label={label} fields={record.fields} fieldTypes={fieldTypes} />;
-}
-
-/** Records extracted from one page, each with its fields, or why there are none. */
-export function RecordList({
-  records,
-  fieldTypes,
-}: Readonly<{ records: readonly ExtractedRecord[]; fieldTypes: FieldTypes }>) {
-  if (records.length === 0) {
-    return <EmptyView title="No records">The page yielded no record for this schema.</EmptyView>;
-  }
-  return (
-    <div className="flex flex-col gap-6">
-      {records.map((record, index) => {
-        const title = `Record ${String(index + 1)}`;
-        return (
-          // One answer's records keep their order, and a replayed record has no id: its title is its key.
-          <section key={title} className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <Typography.Heading level={3}>{title}</Typography.Heading>
-              <RecordSummary record={record} />
-            </div>
-            <RecordFieldsTable label={`${title} fields`} record={record} fieldTypes={fieldTypes} />
-          </section>
-        );
-      })}
-    </div>
-  );
 }

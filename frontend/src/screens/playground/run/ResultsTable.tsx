@@ -6,7 +6,7 @@ import type { JsonValuesItem, PageOutput } from "../../../api/jobs";
 import { useCursorPages } from "../../../components/cursors";
 import { pageJson } from "../output/cleanJson";
 import { OutcomeLabel } from "../../../components/OutcomeLabel";
-import { PAGE_SIZE, PagedTable } from "../../../components/PagedTable";
+import { PagedTable } from "../../../components/PagedTable";
 import { ItemDrawer } from "./ItemDrawer";
 import { ScrapeAsBatchBar, SelectionCheckbox, selectOnPage, type Selection } from "./scrapeAsBatch";
 
@@ -177,10 +177,10 @@ export function ResultsTable({
   selectable,
   outputs,
 }: Readonly<{ jobId: string; withMetadata: boolean; selectable: boolean; outputs: boolean }>) {
-  const { cursor, page, previous, nextTo } = useCursorPages();
+  const { cursor, page, pageSize, setPageSize, previous, nextTo } = useCursorPages();
   const values = useJobValues(jobId, {
     cursor,
-    limit: PAGE_SIZE,
+    limit: pageSize,
     withMetadata,
     withFetch: false,
   });
@@ -188,7 +188,7 @@ export function ResultsTable({
   const [openId, setOpenId] = useState<number | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const data = values.data;
-  const first = (page - 1) * PAGE_SIZE + 1;
+  const first = (page - 1) * pageSize + 1;
   const rows = (data?.items ?? []).map((item, offset) => ({ id: first + offset, item }));
   const open = rows.find(({ id }) => id === openId);
   return (
@@ -200,6 +200,7 @@ export function ResultsTable({
         page={page}
         onPrevious={previous}
         onNext={data === undefined ? null : nextTo(data.next_cursor)}
+        rows={{ total: data?.total ?? null, count: rows.length, pageSize, onPageSize: setPageSize }}
       >
         <PagesTable
           rows={rows}
@@ -212,7 +213,7 @@ export function ResultsTable({
       {open === undefined ? null : (
         <PageDrawer
           jobId={jobId}
-          page={{ cursor, limit: PAGE_SIZE }}
+          page={{ cursor, limit: pageSize }}
           offset={open.id - first}
           row={open}
           outputs={outputs}

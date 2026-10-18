@@ -7,7 +7,7 @@ import { useCursorPages } from "../../components/cursors";
 import { EmptyView } from "../../components/EmptyView";
 import { JOB_STATUS_TEXT } from "../../components/JobStatusLabel";
 import { isOptionOf, OptionSelect } from "../../components/OptionSelect";
-import { PAGE_SIZE, PagedTable } from "../../components/PagedTable";
+import { PagedTable } from "../../components/PagedTable";
 import { JobRows } from "./JobRows";
 import { KIND_LABELS } from "./kinds";
 
@@ -101,8 +101,8 @@ function JobPageContent({
 
 /** One page of the jobs that pass `filters`. */
 export function JobPages({ filters }: Readonly<{ filters: JobFilters }>) {
-  const { cursor, page, previous, nextTo } = useCursorPages();
-  const jobs = useJobs({ filters, cursor, limit: PAGE_SIZE });
+  const { cursor, page, pageSize, setPageSize, previous, nextTo } = useCursorPages();
+  const jobs = useJobs({ filters, cursor, limit: pageSize });
   return (
     <PagedTable
       problem={problemOf(jobs.error)}
@@ -110,6 +110,12 @@ export function JobPages({ filters }: Readonly<{ filters: JobFilters }>) {
       page={page}
       onPrevious={previous}
       onNext={jobs.isSuccess ? nextTo(jobs.data.next_cursor) : null}
+      rows={{
+        total: jobs.data?.total ?? null,
+        count: jobs.data?.items.length ?? 0,
+        pageSize,
+        onPageSize: setPageSize,
+      }}
     >
       {jobs.isSuccess ? (
         <JobPageContent jobs={jobs.data.items} filters={filters} first={previous === null} />

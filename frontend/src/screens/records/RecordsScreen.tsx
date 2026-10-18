@@ -8,7 +8,7 @@ import { activeFilters, type RecordFilters, type StoredRecord } from "../../api/
 import { useCursorPages } from "../../components/cursors";
 import { EmptyView } from "../../components/EmptyView";
 import { PageHeader } from "../../components/PageHeader";
-import { PAGE_SIZE, PagedTable } from "../../components/PagedTable";
+import { PagedTable } from "../../components/PagedTable";
 import { RecordTable } from "../../components/RecordTable";
 import { RecordFiltersForm } from "./RecordFilters";
 import { RecordInspector } from "./RecordInspector";
@@ -25,9 +25,9 @@ function filtersOf(params: URLSearchParams): RecordFilters {
 
 /** One page of the filtered records with previous and next. */
 function RecordResults({ filters }: Readonly<{ filters: RecordFilters }>) {
-  const { cursor, page, previous, nextTo } = useCursorPages();
+  const { cursor, page, pageSize, setPageSize, previous, nextTo } = useCursorPages();
   const [open, setOpen] = useState<StoredRecord | null>(null);
-  const records = useRecords({ filters, cursor, limit: PAGE_SIZE });
+  const records = useRecords({ filters, cursor, limit: pageSize });
   const schema = useSchema(filters.schema_id);
   // Stable while the schema is, so opening a record leaves the table's columns and cells as they are.
   const fieldTypes = useMemo(() => parseFieldTypes(schema.data?.fields), [schema.data]);
@@ -42,6 +42,12 @@ function RecordResults({ filters }: Readonly<{ filters: RecordFilters }>) {
         page={page}
         onPrevious={previous}
         onNext={records.isSuccess ? nextTo(records.data.next_cursor) : null}
+        rows={{
+          total: records.data?.total ?? null,
+          count: items.length,
+          pageSize,
+          onPageSize: setPageSize,
+        }}
       >
         {items.length === 0 ? (
           <EmptyView title="No records">No record matches these filters.</EmptyView>

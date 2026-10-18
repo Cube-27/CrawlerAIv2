@@ -232,7 +232,11 @@ describe("scrape playground: records", () => {
 
     await submit();
 
-    const records = await openTab("Table");
+    const table = await openTab("Table");
+    // The table has a column per field; its row opens the record's every field attribute.
+    expect(table.getByRole("columnheader", { name: "price" })).toBeInTheDocument();
+    await userEvent.click(table.getAllByRole("row")[1] as HTMLElement);
+    const records = within(await screen.findByRole("grid", { name: "Record fields" }));
     const price = within(records.getByRole("row", { name: /price/ }));
     expect(price.getByText("19.90 EUR")).toBeInTheDocument();
     expect(price.getByText("published")).toBeInTheDocument();
@@ -244,8 +248,8 @@ describe("scrape playground: records", () => {
     expect(title.getByText("Blue mug")).toBeInTheDocument();
     // The record's one badge sits with its summary, not in a field's row.
     expect(title.queryByText("uncalibrated")).not.toBeInTheDocument();
-    expect(records.getAllByText("uncalibrated")).toHaveLength(1);
-    expect(records.getByText("incomplete")).toBeInTheDocument();
+    expect(screen.getAllByText("uncalibrated")).toHaveLength(1);
+    expect(screen.getByText("incomplete")).toBeInTheDocument();
   });
 });
 

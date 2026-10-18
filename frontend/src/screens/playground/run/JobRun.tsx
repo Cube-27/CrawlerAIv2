@@ -10,6 +10,7 @@ import { RunProgress } from "../../../components/RunProgress";
 import { StatusLabel } from "../../../components/StatusLabel";
 import { WebhookDeliveries } from "../../../components/WebhookDeliveries";
 import type { Problem } from "../../../api/problem";
+import { JobResults } from "../../jobs/JobResults";
 import { ScheduleRun } from "../../schedules/ScheduleRun";
 import { OutputArea, type OutputState } from "../OutputArea";
 import { RecentRuns } from "./RecentRuns";
@@ -64,6 +65,13 @@ function JobRunView({ job, withMetadata }: Readonly<{ job: JobSummary; withMetad
         selectable={job.kind === "crawl"}
         outputs={outputs}
       />
+      {/* A job with a schema extracts records: one row each, a column per schema field (frontend spec). */}
+      {request === undefined || outputs ? null : (
+        <section className="flex flex-col gap-2">
+          <Typography.Heading level={2}>Records</Typography.Heading>
+          <JobResults jobId={job.id} />
+        </section>
+      )}
       <ActivityFeed activity={activity} />
       <WebhookDeliveries jobId={job.id} webhookUrl={job.webhook_url} />
     </>

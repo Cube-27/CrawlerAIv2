@@ -33,6 +33,12 @@ Screens SHALL show a field only through `FieldValue`, `FieldStatusBadge`, `Confi
 - **WHEN** a record field has status `conflict` and reason `disagree`
 - **THEN** it renders "—", the status text "conflict" and the reason, with no value
 
+### Requirement: Results tables are one row per record and paged
+Every results view (scrape, batch, crawl, extract, jobs, records) SHALL show records as a table whose header row is the schema's field names and whose rows are the records, with a list or object value shown as its count and a View button that opens it in a drawer, never inline JSON. A table of stored results SHALL fetch one API page at a time (50 rows by default, 10, 25, 50 or 100 by a page-size selector) and show "Rows a–b of total" from the page's `total`; it SHALL NOT hold the whole result set. The URL input of the command bar SHALL be a plain input; a URL typed without a scheme is sent with `https://`. Enforced by: component tests; active.
+#### Scenario: A long result
+- **WHEN** a job holds 1,200 records
+- **THEN** the table shows rows 1–50 of 1,200 and Next reads the page after `next_cursor`
+
 ### Requirement: Layout never shifts on interaction
 Paging, tabs, filters, toggles, popovers, drawers and run-state changes SHALL move nothing around them: `PagedTable` pages by 20 in a fixed-height box with fixed column widths and truncation, and loading, empty and error states (including the playground output box) keep the content's footprint, and a toolbar select's error line hangs under it. (Previously: Schema's error line only.) Refs: D-1214, D-0751, D-0833, D-0985, DESIGN.md.
 #### Scenario: Short last page
@@ -83,7 +89,7 @@ Get code SHALL show the endpoint (checked against `openapi.json` by a test), cUR
 - **THEN** each tab shows "Complete the request above to see its code." and Copy code is off
 
 ### Requirement: Data screens
-Jobs (`/jobs`, run history, filters in the URL), Records (one schema, at most six field columns, drawer inspector with Replay), Schemas (one form for create, adopt and edit; edit only on active non-preset), Sites and configs (host lookup, learn with `force`, correction via `PUT /v1/configs/{id}` with changed fields only, Approve and Reject (`POST /v1/configs/{id}/reject`) on a `pending_approval` config, absent fields named) and Settings (the project's "LLM call limit per run", "Draft call limit per key" and "Approve learned configs" via `/v1/project/settings`; LLM usage tables from `GET /v1/usage/llm`, unknown cost never guessed) SHALL live under `frontend/src/screens/`. (Previously: no reject, and no draft limit field.) Refs: D-0433, D-0656, D-0700, D-0978, D-0983, D-1342, D-1391, D-1394.
+Jobs (`/jobs`, run history, filters in the URL), Records (one schema, drawer inspector with Replay), Schemas (one form for create, adopt and edit; edit only on active non-preset), Sites and configs (host lookup, learn with `force`, correction via `PUT /v1/configs/{id}` with changed fields only, Approve and Reject (`POST /v1/configs/{id}/reject`) on a `pending_approval` config, absent fields named) and Settings (the project's "LLM call limit per run", "Draft call limit per key" and "Approve learned configs" via `/v1/project/settings`; LLM usage tables from `GET /v1/usage/llm`, unknown cost never guessed) SHALL live under `frontend/src/screens/`. (Previously: no reject, and no draft limit field.) Refs: D-0433, D-0656, D-0700, D-0978, D-0983, D-1342, D-1391, D-1394.
 #### Scenario: Correction round-trip
 - **WHEN** an operator edits a field's steps and submits
 - **THEN** `PUT /v1/configs/{id}` carries only changed and confirmed fields and the validation report shows inline

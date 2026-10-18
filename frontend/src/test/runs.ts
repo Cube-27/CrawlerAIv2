@@ -31,7 +31,12 @@ export function quietEvents(): Response {
 
 /** A page of `json_values` results. */
 export function valuesPage(items: JsonValuesItem[], next_cursor: string | null = null): Response {
-  return Response.json({ format: "json_values", items, next_cursor } satisfies JsonValuesPage);
+  return Response.json({
+    format: "json_values",
+    items,
+    next_cursor,
+    total: items.length,
+  } satisfies JsonValuesPage);
 }
 
 export interface RunStub {

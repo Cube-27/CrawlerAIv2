@@ -4,7 +4,7 @@ import type { ExtractedRecord, ReplayResult } from "../../api/records";
 import type { RecordField } from "../../api/scrape";
 import { EmptyView } from "../../components/EmptyView";
 import { FieldValue } from "../../components/FieldValue";
-import { RecordList } from "../../components/RecordFields";
+import { ExtractedRecords } from "../../components/ExtractedRecords";
 import { StatusLabel } from "../../components/StatusLabel";
 import { diffFields } from "./diff";
 
@@ -84,7 +84,7 @@ export function ReplayView({
         The replay extracted {result.records.length} records from the capture, so it is not compared
         with this one.
       </Typography.Paragraph>
-      <RecordList records={result.records} fieldTypes={fieldTypes} />
+      <ExtractedRecords records={result.records} fieldTypes={fieldTypes} />
     </div>
   );
 }
