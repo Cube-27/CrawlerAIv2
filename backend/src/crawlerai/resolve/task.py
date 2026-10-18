@@ -7,6 +7,7 @@ and crawl tasks (SPEC-10). Storing only serializes what resolution decided (INV-
 was chosen or why it was rejected, and the record holds the published values.
 """
 
+import re
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from typing import Protocol
@@ -223,7 +224,7 @@ def _candidate_rows(extraction_id: ExtractionId, result: ExtractionResult) -> It
             "extraction_id": extraction_id,
             "entity_ref": candidate.entity_id,
             "field": candidate.field,
-            "raw_value": candidate.raw,
+            "raw_value": storable(candidate.raw),
             "normalized_value": value,
             "normalize_status": status,
             "source_kind": candidate.source_kind,
@@ -232,6 +233,24 @@ def _candidate_rows(extraction_id: ExtractionId, result: ExtractionResult) -> It
             "chosen": key in chosen,
             "reject_reason": None if key in chosen else reasons.get(key),
         }
+
+
+# PostgreSQL `jsonb` holds no U+0000 (its text type cannot) and no lone surrogate (not a Unicode scalar value, so no
+# UTF-8 string holds it; RFC 8259 §8.2 lets JSON text escape one). A page's raw value may carry either.
+_UNSTORABLE = re.compile(r"[\x00\ud800-\udfff]")
+
+
+def storable(value: JsonValue) -> JsonValue:
+    """`value` with each U+0000 and lone surrogate in its strings and member names replaced by U+FFFD, the Unicode
+    replacement character, so that `jsonb` takes it. A raw value is kept for triage; the normalized one is what
+    publishes, and normalizers decline such strings."""
+    if isinstance(value, str):
+        return _UNSTORABLE.sub("\ufffd", value)
+    if isinstance(value, list):
+        return [storable(item) for item in value]
+    if isinstance(value, dict):
+        return {_UNSTORABLE.sub("\ufffd", key): storable(item) for key, item in value.items()}
+    return value
 
 
 # A candidate's identity on the page: one field's value, from one source, at one place, of one entity.
