@@ -168,14 +168,21 @@ class Frontier:
     ) -> list[str]:
         """Which of `new` a scored crawl adds: the best `room` of them, and past that each one that outscores a queued
         task, which it replaces (the task is deleted), the weakest first. The best candidates are kept, however late
-        they are found."""
+        they are found. A task being claimed is not replaced."""
         ranked = sorted(new, key=lambda url: -scores[url])
         kept = ranked[: max(room, 0)]
         rest = ranked[len(kept) :]
         if not rest:
             return kept
         queued = (UrlTask.job_id == job_id, UrlTask.status == "queued", UrlTask.score.is_not(None))
-        weakest = select(UrlTask.id, UrlTask.score).where(*queued).order_by(UrlTask.score, UrlTask.id.desc())
+        # The rows are locked as `claim_tasks` locks them (FOR UPDATE SKIP LOCKED): one a worker is claiming is skipped,
+        # and one locked here cannot be claimed before it is deleted, so no worker's lease is deleted under it.
+        weakest = (
+            select(UrlTask.id, UrlTask.score)
+            .where(*queued)
+            .order_by(UrlTask.score, UrlTask.id.desc())
+            .with_for_update(skip_locked=True)
+        )
         evicted: list[UrlTaskId] = []
         for url, row in zip(rest, (await conn.execute(weakest.limit(len(rest)))).all(), strict=False):
             if scores[url] <= row.score:
