@@ -556,22 +556,33 @@ async def _settle(
 ) -> None:
     """Wait for `load`, then, while the document is an interstitial, for the next one (until `interstitial_deadline`),
     then until the content is quiet (`_QUIET_JS`) with no data call in flight (`_CALL_WAIT_S` at most) or, for a
-    document that is no error, the network is idle (no connection for 500 ms), whichever comes first; at most until
-    `deadline`."""
+    document that is no error, the network is idle (no connection for 500 ms), whichever comes first; a navigation
+    the main frame commits meanwhile restarts that wait on its document; at most until `deadline`."""
     with contextlib.suppress(PlaywrightTimeout):
         await page.wait_for_load_state("load", timeout=_ms_until(deadline))
     while time.monotonic() < interstitial_deadline and await _interstitial(page, frame):
         if not await _next_document(page, frame, interstitial_deadline):
             break
-    waits = [asyncio.create_task(_content_quiet(page, frame, calls))]
-    if frame.latest is None or frame.latest.status < _ERROR_STATUS:
-        waits.append(asyncio.create_task(_network_idle(page, deadline)))
-    try:
-        await asyncio.wait(waits, timeout=max(0.0, deadline - time.monotonic()), return_when=asyncio.FIRST_COMPLETED)
-    finally:
-        for wait in waits:
-            wait.cancel()
-        await asyncio.gather(*waits, return_exceptions=True)
+    # A navigation the page starts itself (a script's `location.replace`, a refresh) while the wait runs makes what was
+    # quiet an interim document: the wait starts over on the document that committed, until `deadline`.
+    while time.monotonic() < deadline:
+        shown, latest = frame.commits, frame.latest
+        waits = [asyncio.create_task(_content_quiet(page, frame, calls))]
+        if frame.latest is None or frame.latest.status < _ERROR_STATUS:
+            waits.append(asyncio.create_task(_network_idle(page, deadline)))
+        navigated = asyncio.create_task(frame.next_commit())
+        try:
+            await asyncio.wait(
+                [*waits, navigated], timeout=max(0.0, deadline - time.monotonic()), return_when=asyncio.FIRST_COMPLETED
+            )
+        finally:
+            for wait in (*waits, navigated):
+                wait.cancel()
+            await asyncio.gather(*waits, navigated, return_exceptions=True)
+        if frame.commits == shown and frame.latest is latest:  # a response in before its commit counts too
+            return
+        with contextlib.suppress(PlaywrightTimeout):
+            await page.wait_for_load_state("load", timeout=_ms_until(deadline))
 
 
 async def _interstitial(page: Page, frame: _MainFrame) -> bool:

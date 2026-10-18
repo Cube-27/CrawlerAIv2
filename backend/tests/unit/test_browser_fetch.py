@@ -403,3 +403,22 @@ def test_inv30_a_compression_bomb_stops_at_the_decompressed_cap_without_a_body(
     (attempt,) = result.attempts
     assert (attempt.status, attempt.block_class, attempt.error) == (200, "error", "body_cap")
     assert (result.bundle.body, result.bundle.raw_body, result.bundle.network) == (b"", None, ())
+
+
+# --- settling follows a navigation the page starts itself ------------------------------------------------------------
+
+
+def test_a_page_that_navigates_itself_during_the_settle_is_captured_as_its_final_document(
+    browser: Browser, server: Server
+) -> None:
+    shell = (
+        b"<html><body><p>Interim shell</p>"
+        b"<script>setTimeout(() => location.replace('/self-final'), 1000);</script></body></html>"
+    )
+    server.routes["/self-nav"] = Reply(404, body=shell)
+    server.routes["/self-final"] = Reply(body=b"<html><body><p>Final document</p></body></html>")
+
+    result = browser.fetch(server.url("/self-nav"))
+
+    assert b"Final document" in result.bundle.body
+    assert b"Interim shell" not in result.bundle.body

@@ -103,7 +103,8 @@ fetch, XMLHttpRequest and document responses (not the main frame's navigation) t
 stripped, `storage.capture_bundle.network_json`); each with its request's method, body and cookie-free headers, the
 cookie-free response headers, the resource type and the count of browser actions before it, within the caps in
 `acquire/browser.py`. A render whose content is quiet while a fetch or XMLHttpRequest call is in flight is read up to
-3 s later, so a late data call is kept. Refs: §7.2, Appendix A #59, D-0010, D-0540, D-1311, D-1312, D-1369.
+3 s later, so a late data call is kept. A navigation the main frame commits while the render settles restarts the wait
+on the new document (within the settle deadline), so the capture is the final document. Refs: §7.2, Appendix A #59, D-0010, D-0540, D-1311, D-1312, D-1369.
 #### Scenario: JSON under another label
 - **WHEN** a page fetches `)]}'` and a JSON object labelled `text/plain`, and a text/plain body that is no JSON
 - **THEN** the first is kept as received and the second is not
