@@ -112,3 +112,15 @@ def test_a_structured_price_with_grouping_reads_in_the_page_locale(price: str, t
     raw: JsonValue = {"price": price, "priceCurrency": "USD"}
 
     assert money.normalize(raw, MONEY, _ctx(html_lang=tag)) == _ok(amount, "USD")
+
+
+def test_cldr_compact_units_multiply_and_percentages_are_never_the_amount() -> None:
+    # Unicode CLDR `decimalFormats-short` (`0万` is 10^4 in Japanese) and currency count names (`円`); a CLDR
+    # percent sign marks a ratio, such as a discount written beside the price.
+    ja = _ctx(html_lang="ja")
+    assert money.normalize("3.5万円", MONEY, ja) == _ok("35000", "JPY")
+    assert money.normalize("8000円", MONEY, ja) == _ok("8000", "JPY")
+    assert money.normalize("$12.99 -20%", MONEY, _ctx(html_lang="en-US")) == _ok("12.99", "USD", "locale")
+    assert money.normalize("-20 %", MONEY, _ctx(html_lang="fr-FR")) == Invalid("no_amount")
+    # A unit is read only where it ends a word.
+    assert money.normalize("12 € T-shirt", MONEY, _ctx(html_lang="en-US")) == _ok("12", "EUR")

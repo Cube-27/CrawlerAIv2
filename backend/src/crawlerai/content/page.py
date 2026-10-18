@@ -6,6 +6,7 @@ selectolax tree; the captured network bodies are kept as the bundle holds them. 
 formats, pagination, the engine executor) takes a `ParsedPage`, never the raw body.
 """
 
+import itertools
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
@@ -99,6 +100,26 @@ class ParsedPage:
                 spans[path] = (min(start, run.start), max(end, run.end))
                 path = path.rpartition("/")[0]
         return spans
+
+    @cached_property
+    def own_runs(self) -> dict[str, tuple[tuple[int, int], ...]]:
+        """The spans of the cleaned text each element's own text nodes render (not its children's), by node path."""
+        runs: dict[str, list[tuple[int, int]]] = {}
+        for run in self.cleaned_text.offsets:
+            runs.setdefault(run.node_path, []).append((run.start, run.end))
+        return {path: tuple(spans) for path, spans in runs.items()}
+
+    @cached_property
+    def digit_joins(self) -> tuple[int, ...]:
+        """The offsets of the cleaned text where two text nodes meet with a digit on each side and nothing between
+        them: adjacent inline elements (`<span>$12</span><span>20</span>`) render as one run of digits that is two
+        numbers, a token boundary the text does not show."""
+        text, runs = self.cleaned_text.text, self.cleaned_text.offsets
+        return tuple(
+            right.start
+            for left, right in itertools.pairwise(runs)
+            if left.end == right.start and text[left.end - 1 : left.end].isdigit() and text[right.start].isdigit()
+        )
 
     @property
     def cleaned_text(self) -> CleanedText:

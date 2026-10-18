@@ -60,7 +60,10 @@ currency below (2): `page`, `locale` or `unknown`; `Ok.checked` is false for a t
 grounded source may publish (extraction spec). Two signs that share no currency, or a sign that cannot denote the
 structured `priceCurrency`, contradict each other and are `Invalid`; amounts the locales read differently are
 `Ambiguous`, and the amount must be positive. A text's one amount is read through `numbers.stated`, as count and
-number read theirs: none is `no_amount`, two are `range`. A monetary range keeps declining on a `null` currency
+number read theirs: none is `no_amount`, two are `range`; a number written with a CLDR percent sign is a ratio (a
+discount), never the amount. A CLDR compact decimal unit of the page's locales written right after the digits
+multiplies them (`decimalFormats-short`: `3.5万円` is 35000), and a currency's one-word CLDR count name (`円`) is a
+sign like its symbol. A monetary range keeps declining on a `null` currency
 (`currency_unknown`). Refs: §9, owner #68, D-1240, D-1370.
 (Previously: a sign several currencies share was `Ambiguous`, no sign was `Invalid`, a page currency never supplied a
 missing sign, and the locale settled a sign at full confidence.)
@@ -75,6 +78,9 @@ missing sign, and the locale settled a sign at full confidence.)
 #### Scenario: Structured price with its sign
 - **WHEN** a structured value is `{price: "$1,295.99", priceCurrency: "USD"}`
 - **THEN** the result is `Ok({amount: "1295.99", currency: "USD"})`; with `price: "€12"` it is `Invalid`
+#### Scenario: CJK units and a discount beside the price
+- **WHEN** the text is `3.5万円` with `html_lang="ja"`, or `$12.99 -20%` with `html_lang="en-US"`
+- **THEN** the results are `Ok({amount: "35000", currency: "JPY"})` and `Ok({amount: "12.99", currency: "USD"})`
 
 ### Requirement: enum and the first-clause rule (INV-37)
 `normalize/enum.py` SHALL match `schema:` members by IRI or name exactly, and otherwise read only the text's first

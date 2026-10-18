@@ -43,21 +43,80 @@ class Stated:
     text: str
 
 
-def stated(raw: str) -> Stated | str:
-    """The one number `raw` holds; else why it holds none (`surrogate`, `empty`, `no_number`, `several_numbers`)."""
+def stated(raw: str, *, percentages: bool = True) -> Stated | str:
+    """The one number `raw` holds; else why it holds none (`surrogate`, `empty`, `no_number`, `several_numbers`).
+    Without `percentages`, a number written with a CLDR percent sign next to it (`-20%`, `%20`) is not counted: a
+    discount beside a price is a ratio, not a second amount."""
     if has_surrogate(raw):
         return "surrogate"
     # Unicode NFKC (UAX #15): fullwidth digits and no-break spaces read as their plain form, as CLDR symbols are.
     text = unicodedata.normalize("NFKC", raw).strip()
     if not text:
         return "empty"
-    runs = list(AMOUNT_RUN.finditer(text))
+    runs = [run for run in AMOUNT_RUN.finditer(text) if percentages or not _percentage(text, run.start(), run.end())]
     if not runs:
         return "no_number"
     if len(runs) > 1:
         return "several_numbers"
     run = runs[0]
     return Stated(run.group(), text[: run.start()], text[run.end() :], text)
+
+
+def _percentage(text: str, start: int, end: int) -> bool:
+    """Whether a CLDR percent sign is written right after the number (white space between allowed, as `20 %` writes
+    it) or right before it (`%20`)."""
+    after, before = text[end:].lstrip(), text[:start]
+    return after.startswith(_percent_signs()) or before.endswith(_percent_signs())
+
+
+@cache
+def _percent_signs() -> tuple[str, ...]:
+    """The CLDR percent signs (`percentSign`, Latin digits) of every locale, NFKC, without bidi marks (Unicode Cf)."""
+    signs = {
+        "".join(c for c in unicodedata.normalize("NFKC", sign) if unicodedata.category(c) != "Cf")
+        for sign in (
+            Locale.parse(identifier).number_symbols.get("latn", {}).get("percentSign", "")
+            for identifier in identifiers()
+        )
+    }
+    return tuple(sorted(sign for sign in signs if sign))
+
+
+def compact_unit(after: str, locales: frozenset[str]) -> tuple[int, int] | None:
+    """The CLDR compact decimal unit written right after a number (`万` in `3.5万`, `K` in `12K`: Unicode CLDR
+    `decimalFormats-short`), as the power of ten it multiplies by and its length in `after`; `None` when the locales
+    write none there, or when they read the unit as different powers. Only the page's locales are asked: a unit means
+    nothing outside its locale."""
+    found: dict[str, set[int]] = {}
+    for identifier in locales:
+        for unit, power in _compact_units(identifier):
+            if after.startswith(unit) and not _word_letter(after[len(unit) : len(unit) + 1]):
+                found.setdefault(unit, set()).add(power)
+    if not found:
+        return None
+    unit = max(found, key=len)
+    powers = found[unit]
+    return (powers.pop(), len(unit)) if len(powers) == 1 else None
+
+
+def _word_letter(char: str) -> bool:
+    """Whether `char` is a letter of a script that spaces its words: a unit followed by one is the start of a word
+    (`Kg`), while a wide East Asian character after it (Unicode UAX #11: `円`) starts the next sign."""
+    letter = bool(char) and unicodedata.category(char).startswith("L")
+    return letter and unicodedata.east_asian_width(char) not in ("W", "F")
+
+
+@cache
+def _compact_units(identifier: str) -> tuple[tuple[str, int], ...]:
+    """A locale's compact decimal units (suffixes of its short decimal patterns, NFKC, CLDR quoting removed), each with
+    the power of ten it stands for: the pattern for `10^n` written with `k` digits stands for `10^(n-k+1)`."""
+    units: set[tuple[str, int]] = set()
+    for patterns in (Locale.parse(identifier).compact_decimal_formats.get("short") or {}).values():
+        for magnitude, pattern in patterns.items():
+            unit = unicodedata.normalize("NFKC", pattern.suffix[0]).replace("'", "")
+            if unit.strip() and not pattern.prefix[0].strip():
+                units.add((unit, len(magnitude) - pattern.pattern.count("0")))
+    return tuple(units)
 
 
 def negative(before: str) -> bool:
