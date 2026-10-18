@@ -1,4 +1,4 @@
-"""Fragments of a text or long_text field's value that another candidate supersedes (SPEC-05 §4.7)."""
+"""Fragments of a text or long_text value that another candidate supersedes (resolution spec, source precedence)."""
 
 import pytest
 
@@ -54,6 +54,12 @@ def test_an_open_graph_description_longer_than_the_others_is_not_superseded() ->
     og, other = _c(LONG, "og"), _c("A different tagline.", "jsonld")
 
     assert superseded(FieldType.LONG_TEXT, [og, other]) == []
+
+
+def test_an_entity_like_literal_is_not_decoded_again() -> None:
+    literal, other = _c("Tom &amp; Jerry", "jsonld"), _c("Tom & Jerry and the full story of the cat.", "dom")
+
+    assert superseded(FieldType.LONG_TEXT, [literal, other]) == []
 
 
 def test_unrelated_or_equal_long_texts_supersede_nothing() -> None:

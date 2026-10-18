@@ -19,7 +19,7 @@
 - Date: 2026-10-18 · Change/PR: plan-phase-3c (#284) · Status: decided (owner-delegated 2026-10-17)
 - Decision: For `long_text` only, an `og` candidate is superseded when a candidate of another kind is longer. An `og`
   text longer than all others, or equal, is not affected. `text` fields keep Open Graph in the order.
-- Why: ogp.me defines `og:description` as a one-to-two sentence summary; a longer description elsewhere on the page
+- Why: the Open Graph protocol defines `og:description` as a one-to-two sentence summary; a longer description elsewhere on the page
   is the fuller statement. Titles are covered by D-1660.
 - Reversible: yes
 

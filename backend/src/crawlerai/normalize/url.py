@@ -81,8 +81,8 @@ def resource_key(value: JsonValue) -> Hashable | None:
 
 # The size an image path states: a whole segment `<width>x<height>`, or that pair closing the file's name before its
 # extension (`name-300x200.ext`, `name_300x200.ext`). Both only say which rendition of the file the path serves.
-_SIZE_SEGMENT = re.compile(r"\d{1,5}x\d{1,5}")
-_SIZE_SUFFIX = re.compile(r"(?<=[^/])[-_]\d{1,5}x\d{1,5}(?=\.[^./]+$)")
+_SIZE_SEGMENT = re.compile(r"\d+x\d+")
+_SIZE_SUFFIX = re.compile(r"(?<=[^/])[-_]\d+x\d+(?=\.[^./]+$)")
 
 
 def _without_dimensions(path: str) -> str:

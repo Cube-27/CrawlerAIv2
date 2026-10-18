@@ -1,10 +1,11 @@
-"""Candidates of one text or long_text field that another candidate of the same field supersedes (SPEC-05 §4.7).
+"""Candidates of one text or long_text field that another candidate of the same field supersedes
+(resolution spec, requirement "Source precedence for text, url and image").
 
 Source precedence ranks by kind, so a kind that states a field as a fragment would win over one that states it whole.
 Two structural properties of the values say a candidate is a fragment of another, whatever its kind:
 - long_text: a text that is a prefix of a longer candidate, or an ellipsis-cut prefix of it (Unicode U+2026 or
-  `...`), is a truncation of it; an Open Graph description (the protocol's one-to-two sentence summary, ogp.me) is
-  a summary, so a longer description of another kind supersedes it.
+  `...`), is a truncation of it; an Open Graph description (the protocol defines it as a one-to-two sentence summary)
+  is a summary, so a longer description of another kind supersedes it.
 - text: a value that is another kind's value plus a separator (a dash or a vertical bar, between spaces) and more
   text, at either end, is that value with decoration; the other kind's undecorated value supersedes it.
 """
@@ -15,7 +16,6 @@ from collections.abc import Sequence
 
 from crawlerai.collect.base import Candidate
 from crawlerai.normalize.base import Ok
-from crawlerai.normalize.text import text_form
 from crawlerai.schemas.types import FieldType
 
 _ELLIPSIS = re.compile(r"\s*(?:…|\.{3})$")
@@ -34,10 +34,15 @@ def superseded(type_: FieldType, kept: Sequence[Candidate]) -> list[Candidate]:
 
 def _forms(kept: Sequence[Candidate]) -> list[tuple[Candidate, str]]:
     return [
-        (c, text_form(c.normalized.value))
+        (c, _collapsed(c.normalized.value))
         for c in kept
         if isinstance(c.normalized, Ok) and isinstance(c.normalized.value, str)
     ]
+
+
+def _collapsed(value: str) -> str:
+    # A normalized value is already entity-decoded and composed; only whitespace differs between renditions.
+    return " ".join(value.split())
 
 
 def _by_length(kept: Sequence[Candidate]) -> list[Candidate]:
