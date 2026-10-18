@@ -126,8 +126,14 @@ class Workday:
                 return url
         if kind != "listing":
             return None
-        sites = {site for link in refs.links if (site := _site_root(link)) is not None}
-        return next(iter(sites)) if len(sites) == 1 else None
+        linked = [site for link in refs.links if (site := _linked_site(link)) is not None]
+        if len({root for root, _ in linked}) != 1:
+            return None
+        root, locale = linked[0]
+        # The locale the links agree on keeps the list in the page's language (RFC 9110 §12.5.4, `fetch`); links that
+        # differ in it leave the site's root, in its default language.
+        locales = {locale for _, locale in linked}
+        return _localized(root, locale) if len(locales) == 1 and locale is not None else root
 
     def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
         if match.page_kind == "detail":
@@ -200,11 +206,17 @@ def _located(url: str) -> tuple[SplitResult, str | None, tuple[str, str, list[st
     return None if site is None else (parts, locale, site)
 
 
-def _site_root(url: str) -> str | None:
-    """The root URL of the career site `url` is under: a link to the site's list with a tracking query, its sign-in or
-    one of its pages names the site as a job link does."""
+def _linked_site(url: str) -> tuple[str, str | None] | None:
+    """The root URL of the career site `url` is under, and the locale `url` states: a link to the site's list with a
+    tracking query, its sign-in or one of its pages names the site as a job link does."""
     located = _located(url)
-    return None if located is None else f"https://{located[0].hostname}{located[2][1]}"
+    return None if located is None else (f"https://{located[0].hostname}{located[2][1]}", located[1])
+
+
+def _localized(root: str, locale: str) -> str:
+    """The site's root URL with its path led by `locale`, as the career site writes it."""
+    parts = urlsplit(root)
+    return f"{parts.scheme}://{parts.netloc}/{locale}{parts.path}"
 
 
 def _site(host: str, segments: list[str]) -> tuple[str, str, list[str]] | None:

@@ -217,6 +217,12 @@ def test_a_listing_stands_for_the_one_career_site_its_links_belong_to() -> None:
     assert ADAPTER.referred(refs, None) is None
 
 
+def test_a_listing_whose_links_all_state_one_locale_stands_for_the_site_in_that_locale() -> None:
+    localized = f"https://{HOST}/de-DE/{SITE}"
+    links = (f"{localized}/{JOB_PATH}", f"{localized}/login")
+    assert ADAPTER.referred(_refs("https://careers.example.test/", links=links), "listing") == localized
+
+
 def test_links_to_two_career_sites_do_not_say_which_the_page_stands_for() -> None:
     links = (f"{ROOT}/{JOB_PATH}", f"https://{HOST}/Other/job/Southville/Example_R-9")
     assert ADAPTER.referred(_refs("https://careers.example.test/", links=links), "listing") is None
