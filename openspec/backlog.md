@@ -43,6 +43,12 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   926 FN are mostly rows and fields the item layer does not find, which role C, filling bound rows only, cannot add.
   Call rows bound to no block and listings with no aligned group get no role C values; measure which listings lose
   rows to that before adding a path. `BLOCK_CLAIM_TOKENS` rests on one live run (41 output tokens per claim).
+- Role C on detail pages (#283): on the golden set `product_id` coverage stays 0.25 and detail `image_url` precision
+  0.63 (role C claims few ids for them; the image is usually published before role C runs); measure image claims where
+  a collector's image is wrong before changing precedence. `apply_url` is still missing on 6 of 17 job pages, not yet
+  broken down by cause. Recorded detail replays need re-recording (request changed). An
+  element that renders no text sits before the next line's break in role C's text. Adapters that stated only a
+  posting URL no longer give `apply_url`; map a documented apply link where the platform has one.
 - Extract with `fetch.cache: only` (#277): sample URLs read stored captures, but globs are still expanded by a live map.
 - Item layer (#278): block prices whose symbol is ambiguous without a stated currency (`$` on a page in `es` or `en`,
   `Rs.`) decline in the money normalizer; on the golden set four listings show prices only so. A currency the page
