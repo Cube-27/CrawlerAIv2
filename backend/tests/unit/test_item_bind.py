@@ -71,6 +71,18 @@ def test_a_stated_url_the_page_links_with_a_trailing_slash_takes_the_blocks_spel
     assert [row["url"] for row in _row_values(result)] == [_url(n) for n in (1, 2, 3)]
 
 
+def test_a_stated_url_with_another_path_or_more_of_one_parameter_names_another_item() -> None:
+    # RFC 3986 §6.2.4: one trailing slash aside, `/p/1//` is another path; a parameter repeated is two values.
+    stated = _item_list(_row(1, url=_url(1, "//")), _row(2, url=_url(2, "?c=r&c=r")), _row(3, url=_url(3, "?c=r")))
+    cards = _cards(_card(1), _card(2, href="/p/2?c=r&d=1"), _card(3, href="/p/3?c=r&d=1"))
+
+    result = _listing(_html(stated, body=cards), data=COMMITTED)
+
+    # Only the third binds (its query is among its block's); the others and their blocks stay apart.
+    assert [row["url"] for row in _row_values(result)][2] == _url(3, "?c=r&d=1")
+    assert len(result.rows) == 5
+
+
 def test_a_block_two_stated_rows_name_binds_neither_and_adds_no_row() -> None:
     # C7: two candidates for one join decline it; the block is not counted as a further item either.
     stated = _item_list(_row(1), _row(1, url=_url(1, "?ref=a")), _row(2), _row(3))

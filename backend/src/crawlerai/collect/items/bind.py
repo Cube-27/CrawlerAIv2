@@ -28,7 +28,7 @@ whose block does not show the field, so that row still gets the value its data s
 and the resolution spec's evidence rules (a call's value is `network` evidence; a lone state value has none).
 """
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from urllib.parse import parse_qsl, urlsplit
@@ -390,7 +390,7 @@ class _Index:
 
     def __init__(self, named: Iterable[tuple[str, str]], session: frozenset[str]) -> None:
         self._session = session
-        self._by_path: dict[str, list[tuple[str, frozenset[tuple[str, str]]]]] = defaultdict(list)
+        self._by_path: dict[str, list[tuple[str, Counter[tuple[str, str]]]]] = defaultdict(list)
         for entity, url in named:
             path, query = _parts(without_parameters(url, session))
             self._by_path[path].append((entity, query))
@@ -423,9 +423,12 @@ def _one_to_one(pairs: Iterable[tuple[str, str]]) -> dict[str, str]:
     return {left: right for left, right in listed if lefts[left] == 1 and rights[right] == 1}
 
 
-def _parts(url: str) -> tuple[str, frozenset[tuple[str, str]]]:
+def _parts(url: str) -> tuple[str, Counter[tuple[str, str]]]:
+    """The URL without its query, one trailing slash of its path aside (RFC 3986 §6.2.4: `/a/` and `/a` may name one
+    resource; `/a//` is another path), and its query parameters as a multiset (a repeated parameter is two values)."""
     split = urlsplit(url)
-    return f"{split.scheme}://{split.netloc}{split.path.rstrip('/')}", frozenset(parse_qsl(split.query, True))
+    path = split.path.removesuffix("/")
+    return f"{split.scheme}://{split.netloc}{path}", Counter(parse_qsl(split.query, keep_blank_values=True))
 
 
 def _squeezed(text: object) -> str:
