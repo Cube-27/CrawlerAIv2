@@ -27,6 +27,7 @@ from patchright.async_api import TimeoutError as PlaywrightTimeout
 from crawlerai.acquire.browser import (
     DATA_REQUESTS,
     JSON_BODIES_MAX,
+    JSON_PAGE_MAX_BYTES,
     BrowserSession,
     Failed,
     Rendered,
@@ -104,6 +105,11 @@ class Tab(Protocol):
         """The URL of the document the page shows now."""
         ...
 
+    @property
+    def landed(self) -> str:
+        """The URL where the listing's own navigation ended (its redirects followed), before the caller's steps ran."""
+        ...
+
     async def html(self) -> str | None:
         """The document serialized as it is now; None while it is being replaced."""
         ...
@@ -157,9 +163,17 @@ ListingRung = Callable[[str, FetchPolicy, Drive], Awaitable[PagedFetch]]
 
 class _PatchrightTab:
     def __init__(
-        self, page: Rendered, *, url: str, engine_version: str, started: float, steps: tuple[StepOutcome, ...]
+        self,
+        page: Rendered,
+        *,
+        url: str,
+        engine_version: str,
+        started: float,
+        steps: tuple[StepOutcome, ...],
+        landed: str | None = None,
     ) -> None:
         self._page = page
+        self.landed = page.page.url if landed is None else landed
         self._steps = steps  # the caller's page steps, run on the first document; its state's attempt reports them
         self._url = url  # the URL the shown document was asked for; `_at` is where that navigation ended
         self._at = page.page.url
@@ -279,9 +293,17 @@ class _PatchrightTab:
             del self._bodies[index]
         for index in range(first, count):
             if index not in self._bodies:
-                self._bodies[index] = next(iter(await json_bodies([responses[index]])), None)
+                self._bodies[index] = self._within_cap(next(iter(await json_bodies([responses[index]])), None))
         found = (self._bodies[index] for index in range(first, count))
         return tuple(body for body in found if body is not None)
+
+    def _within_cap(self, body: tuple[NetworkBody, bytes] | None) -> tuple[NetworkBody, bytes] | None:
+        """`body`, unless the bodies held with it would pass the page's cap (INV-30, `JSON_PAGE_MAX_BYTES`), which
+        `json_bodies` applies within one read only: each response is read on its own here."""
+        if body is None:
+            return None
+        held = sum(len(data) for _, data in filter(None, self._bodies.values()))
+        return body if held + len(body[1]) <= JSON_PAGE_MAX_BYTES else None
 
     def _result(
         self, fetched_at: datetime, exchange: Exchange, content: Content, block_class: BlockClass
@@ -346,23 +368,27 @@ async def _listing(
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
     exchange: Exchange | None = None
+    steps: tuple[StepOutcome, ...] = ()  # kept by a failure after the steps ran too
     try:
         async with AsyncExitStack() as stack:
             async with asyncio.timeout(policy.browser_timeout_s + steps_budget_s(policy.steps)):
                 page = await stack.enter_async_context(
                     rendered(url, policy, session, connector, proxy, started, {}, traffic)
                 )
+                landed = page.page.url
                 steps = await stepped(page)  # the caller's steps first (D-1513), then the paging driver reads the page
                 exchange, content = await read_state(page)
                 text = markup(content)
                 block_class = await classified(exchange, text)
             if block_class != "ok":
                 cookies = await context_cookies(page.page.context)
-                challenge = await challenge_of(block_class, exchange, text, url, cookies)
+                challenge = await challenge_of(block_class, exchange, text, cookies)
                 count(challenge, "browser")
                 one = _Outcome(exchange, content, block_class, None, challenge, steps)
                 return _one(url, policy, engine_version, fetched_at, started, one)
-            tab = _PatchrightTab(page, url=url, engine_version=engine_version, started=started, steps=steps)
+            tab = _PatchrightTab(
+                page, url=url, engine_version=engine_version, started=started, steps=steps, landed=landed
+            )
             report = await _driven(drive, tab)
             if not tab.kept and not await tab.keep():
                 return _one(
@@ -375,9 +401,9 @@ async def _listing(
                 )
             return PagedFetch(pages=tuple(tab.kept), report=report.model_copy(update={"pages": len(tab.kept)}))
     except Failed as failed:
-        return _failed(url, policy, engine_version, fetched_at, started, failed.error, failed.exchange)
+        return _failed(url, policy, engine_version, fetched_at, started, failed.error, failed.exchange, steps)
     except TimeoutError:
-        return _failed(url, policy, engine_version, fetched_at, started, "timeout", exchange)
+        return _failed(url, policy, engine_version, fetched_at, started, "timeout", exchange, steps)
 
 
 async def _driven(drive: Drive, tab: _PatchrightTab) -> ActionsReport:
@@ -427,6 +453,8 @@ def _failed(
     started: float,
     error: str,
     exchange: Exchange | None,
+    steps: tuple[StepOutcome, ...] = (),
 ) -> PagedFetch:
     empty = exchange or Exchange(url=url, status=0, request_headers=(), response_headers=())
-    return _one(url, policy, engine_version, fetched_at, started, _Outcome(empty, Content(body=b""), "error", error))
+    failure = _Outcome(empty, Content(body=b""), "error", error, steps=steps)
+    return _one(url, policy, engine_version, fetched_at, started, failure)

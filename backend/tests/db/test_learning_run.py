@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
@@ -30,6 +31,7 @@ from crawlerai.config_ir import learning
 from crawlerai.config_ir.active import active_config, config_by_id, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe, Proof
 from crawlerai.config_ir.api_recipe.replay import Replays
+from crawlerai.config_ir.held_out import load_pages
 from crawlerai.config_ir.learning import (
     LEARN_RUN_TIMEOUT,
     LEARNING_FINISHED,
@@ -371,6 +373,23 @@ async def test_a_required_field_no_page_states_is_learned_as_absent_and_not_aske
     assert (role_c.calls, sku_outcome.status, sku_outcome.reason) == (0, "missing", "absent")
 
 
+async def test_only_an_extraction_that_could_ask_role_c_for_every_gap_counts_as_asked(site: LearnSite) -> None:
+    # A config-mode extraction asks role C only for the fields its config does not cover, so its LLM call says
+    # nothing about a covered field: it never makes that field absent (learning-configs spec, "Absent fields").
+    async with site.engine.begin() as conn:
+        await conn.execute(insert(ProgressiveState).values(**site.key.columns()))
+    role_c = AskedRoleC()
+    await site.extract(1, role_c)
+    configured = await site.extract(2, role_c)
+    async with site.engine.begin() as conn:
+        await conn.execute(
+            update(Extraction).where(Extraction.id == configured.extraction_id).values(mode="config", config_version=1)
+        )
+        pages = await load_pages(conn, site.store, site.site_id, site.schema, limit=10)
+
+    assert [page.asked_llm for page in pages] == [False, True]  # most recent first: the config-mode one
+
+
 @pytest.fixture
 async def approval(site: LearnSite) -> AsyncIterator[None]:
     """The project requires approval of learned configs (D-1342) for the test."""
@@ -514,6 +533,21 @@ async def test_a_recipe_learning_error_refuses_the_recipe_and_the_config_still_a
     assert await site.recipe(learned.config_id) is None
     status, payload = await site.finished(job_id)
     assert (status, payload["report"]["api_recipe"]["refused"]) == ("completed", "recipe_error: RuntimeError")
+
+
+async def test_a_replays_usage_that_cannot_be_stored_fails_the_run_and_nothing_activates(site: LearnSite) -> None:
+    # A database error is the run's, not the recipe learner's: the replay's request would go unaccounted (adapters spec,
+    # "Held-out validation").
+    await site.pages(8, api=True)
+    await _forced(site)
+
+    async def unaccounted(_request: JsonRequest) -> FetchResult:
+        raise OperationalError("INSERT INTO usage_event", {}, ConnectionError("synthetic"))
+
+    job_id, learned = await site.learn(RoleA(PRICE_REPLY), lambda _job_id, _pool: unaccounted)
+
+    assert learned == Learned(None, "error")
+    assert ((await site.state()).mode, (await site.finished(job_id))[0]) == ("cold", "failed")
 
 
 async def _forced(site: LearnSite) -> None:

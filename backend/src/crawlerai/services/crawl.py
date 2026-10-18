@@ -56,16 +56,14 @@ class CrawlRequest(WebhookOptions):
     pages are extracted. The webhook options are `WebhookOptions` (§4.2).
 
     `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the
-    links that best match `query` and `keywords` first (`crawl.scoring`). `max_pages` is `limit`. `allow_subdomains`
+    links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`
     keeps the start host's subdomains without an `include`, and `allow_external` any host (D-1440, D-1441)."""
 
     url: str
     include: Patterns = Field(default_factory=list)
     exclude: Patterns = Field(default_factory=list)
     max_depth: int = Field(default=3, ge=0)
-    limit: int = Field(
-        default=500, ge=1, le=MAX_LIMIT, description="At most this many pages are fetched; alias `max_pages`."
-    )
+    limit: int = Field(default=500, ge=1, le=MAX_LIMIT, description="At most this many pages are fetched.")
     strategy: Strategy = "bfs"
     query: str | None = Field(default=None, max_length=500)
     keywords: list[str] = Field(default_factory=list, max_length=20)
@@ -83,6 +81,9 @@ class CrawlRequest(WebhookOptions):
     @model_validator(mode="before")
     @classmethod
     def _max_pages_is_limit(cls, data: Any) -> Any:
+        """`max_pages` is accepted as `limit` (jobs spec, "Crawl strategy and best-first scoring"); a before-validator,
+        so the OpenAPI schema and the clients generated from it name `limit` only, and the schema does not advertise the
+        alias."""
         if isinstance(data, dict) and "max_pages" in data:
             if "limit" in data:
                 raise ValueError("give limit or its alias max_pages, not both")

@@ -27,7 +27,7 @@ from crawlerai.db.models import (
 )
 from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT, close_run
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaDocument
+from crawlerai.schemas.types import SchemaChanges, SchemaDocument
 from crawlerai.services.crawl import CrawlRequest
 
 pytestmark = pytest.mark.anyio
@@ -59,11 +59,15 @@ class Shop:
         status: JobStatus = "completed",
         extra: tuple[dict[str, Any], ...] = (),
         events: tuple[str, ...] = (),
-        rows: tuple[str, ...] = (),
+        rows: tuple[str | None, ...] = (),
+        pinned: dict[str, Any] | None = None,
     ) -> JobId:
         """A run whose tasks are the start page, `paths` (each matched the crawl's rule) and `extra` tasks (their
         `url_task` columns), that recorded `events`; ended in `status`. The first of `paths` stands for a record per
-        row URL of `rows`."""
+        row URL of `rows` (None: a record that publishes no row URL). The job pinned `pinned`, else the schema as it is
+        now."""
+        if pinned is None:
+            pinned = {"schema": (await registry.get_by_id(self.conn, self.schema_id)).model_dump(mode="json")}
         default_project = select(Project.id).where(Project.name == "default").scalar_subquery()
         job = {
             "project_id": default_project,
@@ -72,6 +76,8 @@ class Shop:
             "request": request or self.request(),
             "schema_id": self.schema_id if schema else None,
             "engine_version": "test",
+            # What submit pins (INV-28, `JobPins`): only its schema is read here.
+            "pinned": pinned,
         }
         job_id: JobId = (await self.conn.execute(insert(Job).values(job).returning(Job.id))).scalar_one()
         tasks = [self.task(""), *extra, *(self.task(path, page_kind="detail") for path in paths)]
@@ -84,20 +90,21 @@ class Shop:
         await close_run(self.conn, job_id, status)
         return job_id
 
-    async def stand_for_rows(self, job_id: JobId, task_id: Any, rows: tuple[str, ...]) -> None:
+    async def stand_for_rows(self, job_id: JobId, task_id: Any, rows: tuple[str | None, ...]) -> None:
         """Make the task stand for one record per row URL, as a listing page's task does."""
         extraction = {"url_task_id": task_id, "engine_version": "test", "mode": "adhoc"}
         extraction_id = (
             await self.conn.execute(insert(Extraction).values(extraction).returning(Extraction.id))
         ).scalar_one()
-        for url in rows:
+        for index, url in enumerate(rows):
+            data = {"title": "row"} if url is None else {"title": "row", "url": url}
             values = {
                 "extraction_id": extraction_id,
                 "job_id": job_id,
                 "site_id": self.site_id,
                 "schema_id": self.schema_id,
-                "entity_key": url,
-                "data": {"title": "row", "url": url},
+                "entity_key": url or f"row-{index}",
+                "data": data,
                 "field_meta": {},
                 "complete": True,
                 "mode": "adhoc",
@@ -258,11 +265,19 @@ async def test_a_url_no_listing_held_is_never_missing(shop: Shop) -> None:
     assert await shop.state() == {"p/a": (0, False), "p/z": (0, False)}
 
 
+ROW_URL = {"type": "url", "required": True, "description": "d", "schema_org": "Product.url"}
+
+
+async def listing_shop(shop: Shop, conn: AsyncConnection) -> Shop:
+    """The shop with a listing schema whose rows name their URL in `url`."""
+    document = {"name": f"synthetic_{uuid.uuid4().hex[:12]}", "page_kind": "listing"}
+    fields = {"title": TITLE, "url": ROW_URL}
+    schema = await registry.create(conn, SchemaDocument.model_validate(document | {"fields": fields}), "user")
+    return Shop(conn, shop.site_id, shop.host, schema.id)
+
+
 async def test_the_row_urls_of_a_listing_crawl_are_in_the_listing(shop: Shop, conn: AsyncConnection) -> None:
-    fields = {"title": TITLE, "url": {"type": "url", "required": True, "description": "d", "schema_org": "Product.url"}}
-    document = {"name": f"synthetic_{uuid.uuid4().hex[:12]}", "page_kind": "listing", "fields": fields}
-    schema = await registry.create(conn, SchemaDocument.model_validate(document), "user")
-    rows = Shop(conn, shop.site_id, shop.host, schema.id)
+    rows = await listing_shop(shop, conn)
     kettles = tuple(shop.url(f"kettles/{name}") for name in ("a", "b", "c"))
 
     await rows.run("l/1", rows=kettles)
@@ -285,3 +300,30 @@ async def test_a_detail_schemas_records_add_no_row_urls(shop: Shop) -> None:
 
     # The shop's schema is a detail schema: records name no row, so nothing but the matched page is listed.
     assert await shop.state() == {"p/a": (0, False)}
+
+
+async def test_a_record_that_publishes_no_row_url_names_no_row(shop: Shop, conn: AsyncConnection) -> None:
+    rows = await listing_shop(shop, conn)
+    kettle = shop.url("kettles/a")
+
+    await rows.run("l/1", rows=(kettle, None))
+
+    # The row without a URL lists nothing, and the run still ends with its listing seen.
+    assert await rows.state() == {"l/1": (0, False), "kettles/a": (0, False)}
+
+
+async def test_a_schema_edit_while_a_run_is_live_keeps_its_row_urls(shop: Shop, conn: AsyncConnection) -> None:
+    rows = await listing_shop(shop, conn)
+    kettles = tuple(shop.url(f"kettles/{name}") for name in ("a", "b"))
+    await rows.run("l/1", rows=kettles)
+    current = await registry.get_by_id(conn, rows.schema_id)
+    pinned = {"schema": current.model_dump(mode="json")}
+
+    # The schema's row URL field is renamed after the second run was submitted: that run pinned the old schema, and
+    # its records (extracted with it) still hold the row URLs in `url`.
+    renamed = SchemaChanges.model_validate({"fields": {"title": TITLE, "link": ROW_URL}})
+    await registry.update_schema(conn, current, renamed)
+    second = await rows.run("l/1", rows=kettles, pinned=pinned)
+
+    assert await rows.state() == {"l/1": (0, False), "kettles/a": (0, False), "kettles/b": (0, False)}
+    assert await rows.gone_events(second) == []

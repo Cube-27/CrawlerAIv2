@@ -294,6 +294,22 @@ async def test_cancelling_the_last_claimed_task_cancels_the_job(conn: AsyncConne
     assert await _job_state(conn, job_id) == ("cancelled", ["cancelled"])
 
 
+async def test_a_skipped_last_task_runs_the_ending_of_the_job_it_completes(conn: AsyncConnection) -> None:
+    # A scored crawl's last task may be skipped (over its limit): the job still ends through its ending (the listing
+    # diff; jobs spec, "Listing diff and gone URLs").
+    job_id = await _job(conn)
+    await _tasks(conn, job_id, 1)
+    task = await _claim_one(conn)
+    endings: list[tuple[JobId, JobStatus]] = []
+
+    async def ending(_conn: AsyncConnection, ended: JobId, status: JobStatus) -> None:
+        endings.append((ended, status))
+
+    await cancel_task(conn, task, ending=ending)
+
+    assert endings == [(job_id, "completed")]
+
+
 async def test_finishing_a_task_of_an_ended_job_leaves_the_job_alone(conn: AsyncConnection) -> None:
     job_id = await _job(conn)
     await _tasks(conn, job_id, 1)

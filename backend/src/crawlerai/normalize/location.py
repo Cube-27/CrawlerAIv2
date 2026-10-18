@@ -130,7 +130,9 @@ def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
         parts["country"] = country_written.upper()
     stated = [p for p in (parts["locality"], parts["region"], country_written) if p]
     if stated:
-        return Ok(_value(", ".join(stated), parts, remote))
+        # The joined parts are the location's text, so a `type:remote` clause in it reads as it does in a string.
+        text = ", ".join(stated)
+        return Ok(_value(text, parts, remote or _says_remote(text, ctx)))
     if name := _part(raw.get("name")) or _part(address.get("name")):
         return _text(name, ctx, remote=remote)
     return Ok(_value(None, parts, remote)) if remote else Invalid("no_match")

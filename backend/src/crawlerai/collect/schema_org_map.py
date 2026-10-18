@@ -169,6 +169,17 @@ def _path_problems(schema_org: str, vocabulary: Vocabulary) -> list[str]:
     return problems
 
 
+def pinned_reference_errors(fields: Mapping[str, FieldSpec]) -> list[tuple[str, str]]:
+    """`reference_errors` against the pinned vocabulary (`default_vocabulary`), for every path that stores a schema
+    (schemas spec, "schema.org paths"). A process without the vocabulary file checks syntax only, as it extracts no
+    records (`load_engine_data`)."""
+    try:
+        vocabulary = default_vocabulary()
+    except VocabularyMissing:
+        return []
+    return reference_errors(fields, vocabulary)
+
+
 @cache
 def default_vocabulary() -> Vocabulary:
     """The vocabulary from the engine directory's `data/`, read once."""

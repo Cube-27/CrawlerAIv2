@@ -131,7 +131,7 @@ one allowed second parse (INV-26). Enforced by: `tests/unit/test_release_check.p
 ### Requirement: Absent fields
 On a detail schema, learning SHALL list in the config's `absent` (field status `absent`) each required field or
 required-group member that no page of the run published or gave a valid candidate for from any source while role C was
-asked on every page (`config_ir/absent.py`). Role C is not asked for it in config mode, where it stays `missing` with
+asked on every page outside config mode, where it is asked for every gap (`config_ir/absent.py`). Role C is not asked for it in config mode, where it stays `missing` with
 reason `absent`; a config page that publishes it removes it and starts a forced re-learn. Refs: D-0784, D-1341, D-1347.
 #### Scenario: A field no page states
 - **WHEN** a required sku is stated by no source on any of the 8 pages a run reads, and role C was asked on each

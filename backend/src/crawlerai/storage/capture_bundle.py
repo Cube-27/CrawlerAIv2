@@ -201,6 +201,11 @@ _UTF8: Final = webencodings.UTF8
 _META_UTF16: Final = frozenset({"utf-16be", "utf-16le"})
 _USER_DEFINED: Final = "x-user-defined"
 _WINDOWS_1252: Final = "windows-1252"
+# WHATWG MIME Sniffing §4.6: the JSON MIME types, `application/json`, `text/json` and any `+json` structured syntax
+# suffix (RFC 6839 §3.1); and the HTML ones (HTML Standard §16.1, RFC 3236), which an API answer may be when refused.
+_JSON_TYPES: Final = frozenset({"application/json", "text/json"})
+_JSON_SUFFIX: Final = "+json"
+_HTML_TYPES: Final = frozenset({"text/html", "application/xhtml+xml"})
 
 
 def sha256_hex(data: bytes) -> str:
@@ -218,12 +223,27 @@ def decode_html(body: bytes, headers: HeaderList, method: CaptureMethod) -> str:
     UTF-8, whatever the server declared for the bytes it sent. Any other body is decoded as HTML encoding sniffing says
     (HTML Standard §13.2.3.2): a byte order mark, else the charset its Content-Type names (RFC 9110 §8.3.2), else a
     `meta` declaration in its first bytes, else UTF-8; a label names its encoding as the Encoding Standard §4.2 says
-    (`iso-8859-1` is windows-1252), and an unknown label is skipped."""
+    (`iso-8859-1` is windows-1252), and an unknown label is skipped. A JSON body (`_is_json`) is UTF-8 (RFC 8259
+    §8.1; its media type has no charset parameter, §11), whatever charset its label names; the UTF-16 and UTF-32
+    forms are told from its first bytes as `core.json_text` reads them (RFC 4627 §3)."""
     if method == "browser":
         return body.decode(_UTF8.codec_info.name, errors="replace")
+    if _is_json(headers, method):
+        return body.decode(json.detect_encoding(body), errors="replace")
     encoding = _transport_encoding(headers) or _meta_encoding(body) or _UTF8
     text, _ = webencodings.decode(body, encoding, errors="replace")  # a byte order mark outranks `encoding`
     return text
+
+
+def _is_json(headers: HeaderList, method: CaptureMethod) -> bool:
+    """Whether a body is a JSON text: labelled with a JSON MIME type, or an API capture's (`body.json`; acquisition
+    spec, "Structural outcome classification (INV-24)") not labelled HTML. The essence is the last Content-Type's,
+    lower-cased, parameters dropped (RFC 9110 §8.3.1)."""
+    types = [value.split(";", 1)[0].strip().lower() for name, value in headers if name.lower() == "content-type"]
+    essence = types[-1] if types else ""
+    if essence in _JSON_TYPES or essence.endswith(_JSON_SUFFIX):
+        return True
+    return method == "api" and essence not in _HTML_TYPES
 
 
 def _transport_encoding(headers: HeaderList) -> webencodings.Encoding | None:

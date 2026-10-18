@@ -1,6 +1,7 @@
 """The SDK against a mock transport: what it sends, what it returns, and how it fails. Hosts are RFC 2606 names."""
 
 import json
+import time
 from collections.abc import Callable
 
 import httpx
@@ -195,3 +196,38 @@ def test_a_webhook_is_verified_with_the_secret_and_the_exact_body() -> None:
     assert parse_webhook("s3cret", body, signature).status.value == "completed"
     with pytest.raises(InvalidSignature):
         parse_webhook("other", body, signature)
+
+
+def test_wait_for_job_gives_up_at_the_deadline_not_an_interval_after_it() -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json=summary("running"))
+
+    started = time.monotonic()
+    with pytest.raises(JobTimeout):
+        client(handler).wait_for_job(JOB_ID, poll_interval_s=5, timeout_s=0.05)
+
+    assert time.monotonic() - started < 1
+    assert len(calls) == 2
+
+
+@pytest.mark.anyio
+async def test_the_async_wait_for_job_gives_up_at_the_deadline() -> None:
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=summary("running")))
+    started = time.monotonic()
+    async with AsyncCrawlerAI("k", "https://api.example.test", transport=transport) as http:
+        with pytest.raises(JobTimeout):
+            await http.wait_for_job(JOB_ID, poll_interval_s=5, timeout_s=0.05)
+
+    assert time.monotonic() - started < 1
+
+
+@pytest.mark.parametrize("signature", ["sha256=é", "ÿ" * 71, "sha256=\udcff"])
+def test_a_non_ascii_signature_is_invalid_not_an_error(signature: str) -> None:
+    body = json.dumps(summary("completed")).encode()
+
+    assert not verify_signature("s3cret", body, signature)
+    with pytest.raises(InvalidSignature):
+        parse_webhook("s3cret", body, signature)

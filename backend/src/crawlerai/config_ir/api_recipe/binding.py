@@ -130,12 +130,17 @@ def with_query_value(url: str, name: str, value: str) -> str:
     return f"{path}?{'&'.join(items)}"
 
 
-def without_query(url: str, names: Iterable[str]) -> str:
-    """`url` without its query items named one of `names` (compared percent-decoded)."""
+def without_query(url: str, items: Iterable[tuple[str, str]]) -> str:
+    """`url` without its query items that are one of the `(name, value)` `items` (compared percent-decoded)."""
     path, question, query = url.partition("?")
-    left = set(names)
-    items = [item for item in query.split("&") if item and unquote(item.partition("=")[0]) not in left]
-    return path + (question + "&".join(items) if items else "")
+    left = set(items)
+    kept = [item for item in query.split("&") if item and _decoded_item(item) not in left]
+    return path + (question + "&".join(kept) if kept else "")
+
+
+def _decoded_item(item: str) -> tuple[str, str] | None:
+    name, equals, value = item.partition("=")
+    return (unquote(name), unquote(value)) if equals else None
 
 
 def page_data(page: ParsedPage) -> PageData:
@@ -211,30 +216,39 @@ def bind(samples: Sequence[Sample]) -> RequestSpec | Ambiguous:
     sample pages at least.
     """
     try:
-        return _Binding(samples).spec()
+        return _Binding.checked(samples).spec()
     except _Unbound as unbound:
         return Ambiguous(str(unbound))
 
 
 def withhold_tokens(samples: Sequence[Sample]) -> tuple[list[Sample], tuple[str, ...]]:
     """The samples with each token-like query value that is the same on every sample and that no page value binds
-    (module docstring) left out of their endpoint URLs, and the names of the query items left out."""
-    try:
-        binding = _Binding(samples)
-    except _Unbound:
+    (module docstring) left out of their endpoint URLs, and the names of the query items left out. Items are matched
+    by their percent-decoded name and value together, wherever they stand in each query, so an ordinary item of the
+    same name stays and samples whose other query names differ are read too; a single sample's tokens are left out as
+    well, since nothing there tells a constant from a parameter."""
+    tokens = _shared_tokens(samples)
+    if tokens:
+        stated = _Binding(samples)
+        tokens = [(name, value) for name, value in tokens if not stated.binds([value] * len(samples))]
+    if not tokens:
         return list(samples), ()
-    urls = [_Url.split(sample.request.url) for sample in samples]
-    if len({tuple(name for name, _ in url.query) for url in urls}) != 1:
-        return list(samples), ()  # binding refuses query names that differ
-    names: list[str] = []
-    for index, (name, value) in enumerate(urls[0].query):
-        values = [unquote(url.query[index][1] or "") for url in urls]
-        if value is not None and len(set(values)) == 1 and token_like(values[0]) and not binding.binds(values):
-            names.append(unquote(name))
-    if not names:
-        return list(samples), ()
-    stripped = [replace(s, request=replace(s.request, url=without_query(s.request.url, names))) for s in samples]
-    return stripped, tuple(names)
+    stripped = [replace(s, request=replace(s.request, url=without_query(s.request.url, tokens))) for s in samples]
+    return stripped, tuple(name for name, _ in tokens)
+
+
+def _shared_tokens(samples: Sequence[Sample]) -> list[tuple[str, str]]:
+    """The percent-decoded token-like `(name, value)` query items every sample's endpoint URL holds, in the first
+    sample's order."""
+    if not samples:
+        return []
+    decoded = [_decoded_query(sample.request.url) for sample in samples]
+    shared = set(decoded[0]).intersection(*decoded[1:])
+    return [item for item in dict.fromkeys(decoded[0]) if item in shared and token_like(item[1])]
+
+
+def _decoded_query(url: str) -> list[tuple[str, str]]:
+    return [(unquote(name), unquote(value)) for name, value in _Url.split(url).query if value is not None]
 
 
 class _Unbound(Exception):
@@ -243,14 +257,19 @@ class _Unbound(Exception):
 
 class _Binding:
     def __init__(self, samples: Sequence[Sample]) -> None:
+        """The page values of `samples`, which `binds` reads; a request is bound only from a `checked` set."""
+        self.samples = samples
+        self.method = samples[0].request.method.upper()
+        self.params: dict[str, str] = {}  # binder text -> parameter name
+
+    @classmethod
+    def checked(cls, samples: Sequence[Sample]) -> "_Binding":
         if len(samples) < 2:
             raise _Unbound("binding needs two sample pages to tell parameters from constants")
         methods = {sample.request.method.upper() for sample in samples}
         if len(methods) != 1 or not methods <= {"GET", "POST"}:
             raise _Unbound(f"the sample requests use methods {sorted(methods)}, not one of GET and POST")
-        self.samples = samples
-        self.method = methods.pop()
-        self.params: dict[str, str] = {}  # binder text -> parameter name
+        return cls(samples)
 
     def spec(self) -> RequestSpec:
         url = self._url_template()

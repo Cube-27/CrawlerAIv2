@@ -254,6 +254,27 @@ describe("Settings screen", () => {
     ]);
   });
 
+  it("keeps a limit within the range the server stores", async () => {
+    const calls = stubApi({
+      [SETTINGS]: () =>
+        Response.json({ llm_call_cap: 25, draft_call_cap: 4, require_config_approval: false }),
+      [REPORT]: () => Response.json(empty),
+      "PATCH /v1/project/settings": ({ body }) => Response.json(body),
+    });
+    await openSettings();
+    await savedLimit("25");
+    const draft = screen.getByRole("textbox", { name: "Draft call limit per key" });
+
+    await userEvent.clear(draft);
+    await userEvent.type(draft, "3000000000");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await screen.findByText("Saved the limits.");
+    expect(calls.filter(({ method }) => method === "PATCH").map(({ body }) => body)).toEqual([
+      { llm_call_cap: 25, draft_call_cap: 2_147_483_647, require_config_approval: false },
+    ]);
+  });
+
   it("turns on the approval of learned configs", async () => {
     const calls = stubApi({
       [SETTINGS]: () =>

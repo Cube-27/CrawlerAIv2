@@ -129,6 +129,12 @@ def test_max_pages_is_the_limit() -> None:
         )
 
 
+def test_the_public_schema_does_not_advertise_max_pages() -> None:
+    # The alias is accepted by a before-validator, which the OpenAPI schema cannot carry: a client generated from
+    # the schema (with extra members forbidden) would refuse it, so the schema names `limit` only.
+    assert "max_pages" not in str(CrawlRequest.model_json_schema())
+
+
 def test_a_query_orders_a_best_first_crawl_only() -> None:
     body = {"url": "https://shop.example.test/", "formats": ["markdown"], "query": "kettles"}
     with pytest.raises(ValueError, match="best_first"):

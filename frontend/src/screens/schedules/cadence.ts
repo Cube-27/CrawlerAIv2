@@ -36,6 +36,12 @@ export function draftErrors(draft: ScheduleDraft): Readonly<Record<string, strin
   return errors;
 }
 
+/** A cron expression with its fields separated by single spaces: cron fields are whitespace-separated, so this is
+ * the same schedule, written one way (it is how the form sends one and how a stored one is compared). */
+function cronFields(cron: string): string {
+  return cron.trim().replace(/\s+/g, " ");
+}
+
 /** The `POST /v1/schedules` body for `request` (what `kind`'s action would send) on `draft`'s cadence. */
 export function scheduleBody(
   kind: ScheduleKind,
@@ -45,7 +51,7 @@ export function scheduleBody(
   const cadence =
     draft.every === "interval"
       ? { interval_s: Math.round(draft.minutes * 60) }
-      : { cron: draft.cron.trim().replace(/\s+/g, " ") };
+      : { cron: cronFields(draft.cron) };
   return { name: draft.name.trim(), kind, request, timezone: draft.timezone.trim(), ...cadence };
 }
 
@@ -99,7 +105,7 @@ export function scheduleChange(
     draft.timezone.trim() !== schedule.timezone ||
     (draft.every === "interval"
       ? draft.minutes !== before.minutes
-      : draft.cron.trim().replace(/\s+/g, " ") !== schedule.cron);
+      : cronFields(draft.cron) !== cronFields(schedule.cron ?? ""));
   if (cadenceChanged) {
     Object.assign(change, {
       timezone: cadence.timezone,

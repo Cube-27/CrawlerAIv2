@@ -50,6 +50,7 @@ async function* lines(body: ReadableStream<Uint8Array>): AsyncGenerator<string> 
   const decoder = new TextDecoder();
   const reader = body.getReader();
   let pending = "";
+  let ended = false;
   try {
     for (;;) {
       const { value, done } = await reader.read();
@@ -61,8 +62,12 @@ async function* lines(body: ReadableStream<Uint8Array>): AsyncGenerator<string> 
       yield* parts;
       if (done) break;
     }
+    ended = true;
     if (pending !== "") yield pending;
   } finally {
+    // A consumer that stops early (a `break` in `for await`) gets here before the stream ends: cancel the body so the
+    // connection closes now rather than when the server ends it (WHATWG Streams: ReadableStreamDefaultReader.cancel).
+    if (!ended) await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }

@@ -5,7 +5,7 @@ import { useApiClient } from "../../../app/auth";
 import { useFieldsReview } from "../fields/useFieldsReview";
 import { OutputArea, type OutputState } from "../OutputArea";
 import { ScrapeOutput } from "../output/ScrapeOutput";
-import { optionsChanged, pageKindErrors, requestFormats, requestPageKind } from "../pageRequest";
+import { optionsChanged, requestFormats, requestPageKind } from "../pageRequest";
 import { PageTools } from "../PageTools";
 import { PlaygroundLayout } from "../PlaygroundLayout";
 import { JobRunOutput } from "../run/JobRun";
@@ -13,7 +13,7 @@ import { RecentRuns } from "../run/RecentRuns";
 import { useShownJob } from "../run/useShownJob";
 import { requestUrl, UrlInput } from "../UrlInput";
 import { usePageForm } from "../usePageForm";
-import { buildRequest, DEFAULT_OPTIONS, INITIAL_FORM, scrapeForm } from "./form";
+import { buildRequest, DEFAULT_OPTIONS, INITIAL_FORM, scrapeErrors, scrapeForm } from "./form";
 import { runScrape, type ScrapeRun } from "./run";
 import { ScrapeOptions } from "./ScrapeOptions";
 
@@ -47,7 +47,7 @@ export function ScrapePlayground() {
   const { form, setForm, optionsOpen, setOptionsOpen, validationErrors, check } = usePageForm(
     INITIAL_FORM,
     state.kind === "failed" ? state.problem : null,
-    pageKindErrors,
+    scrapeErrors,
   );
   const { jobId, onEdit, clear } = useShownJob(scrapeForm, setForm);
   // Only the latest scrape's reply is shown; an earlier one still in flight is dropped.

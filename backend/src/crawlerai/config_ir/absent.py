@@ -3,9 +3,10 @@ learned config lists so that role C is not asked for them on every page (ARCHITE
 
 A learning run reads `LEARN_AFTER_PAGES` stored pages (§8.3). A field is absent when, on every one of them, nothing
 published it, no source gave a valid value for it (structured data, embedded state, the DOM, role C), and role C was
-asked (the extraction called the LLM: on a detail page, role C is asked for every missing required field at once,
-SPEC-06 §4.4). Only required fields and the members of a required group count: an optional field never makes role C
-run, it only rides along in a call a required one makes. An `object` field, or a list of objects, is never asked
+asked (an extraction outside config mode called the LLM: on a detail page, role C is asked for every missing
+required field at once, llm spec, "When role C is asked"; in config mode only for the fields the config does not cover).
+Only required fields and the members of a required group count: an optional field never makes role C run, it only rides
+along in a call a required one makes. An `object` field, or a list of objects, is never asked
 (SPEC-13 §4.9), so it is never absent either.
 
 In config mode an absent field is not asked of role C and stays `missing` with reason `absent` (`resolve.pipeline`);

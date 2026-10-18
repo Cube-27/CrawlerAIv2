@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.politeness import HostLimiter
@@ -27,6 +27,7 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import schedules
 from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.schedules import NewBatchSchedule, NewExtractSchedule, Submitting, Unschedulable
+from crawlerai.services.scrape import RecordsUnavailable
 from crawlerai.storage.fs import FsStore
 from tests.db.conftest import PRIVATE_HOST, resolve
 
@@ -130,6 +131,7 @@ async def test_schedule_problems(submit_client: httpx.AsyncClient, engine: Async
             submit_client, kind="batch_scrape", request=BATCH, cron="* * * * *", interval_s=60
         ),
         "short interval": await _create(submit_client, kind="batch_scrape", request=BATCH, interval_s=30),
+        "huge interval": await _create(submit_client, kind="batch_scrape", request=BATCH, interval_s=2**31),
         "six fields": await _create(submit_client, kind="batch_scrape", request=BATCH, cron="0 0 * * * *"),
         "unknown zone": await _create(
             submit_client, kind="batch_scrape", request=BATCH, cron="0 0 * * *", timezone="X"
@@ -146,6 +148,7 @@ async def test_schedule_problems(submit_client: httpx.AsyncClient, engine: Async
         "no cadence": (422, "validation"),
         "two cadences": (422, "validation"),
         "short interval": (422, "validation"),
+        "huge interval": (422, "validation"),
         "six fields": (422, "validation"),
         "unknown zone": (422, "validation"),
         "browser actions": (422, "validation"),
@@ -198,12 +201,13 @@ async def test_an_update_changes_name_and_cadence_and_checks_the_request(
         path, json={"kind": "batch_scrape", "request": {**BATCH, "urls": [f"https://{PRIVATE_HOST}/"]}}
     )
     invalid = await submit_client.patch(path, json={"kind": "crawl", "request": {"url": URL}})
+    huge = await submit_client.patch(path, json={"interval_s": 2**31})
 
     assert renamed.status_code == 200, renamed.text
     body = renamed.json()
     assert (body["name"], body["cron"], body["interval_s"]) == ("daily kettles", "15 3 * * *", None)
     assert datetime.fromisoformat(body["next_run_at"]).astimezone().strftime("%M") == "15"
-    assert (kind_alone.status_code, private.status_code, invalid.status_code) == (422, 422, 422)
+    assert (kind_alone.status_code, private.status_code, invalid.status_code, huge.status_code) == (422, 422, 422, 422)
     assert private.json()["type"] == "ssrf_rejected"
     assert "request.formats" in [error["field"] for error in invalid.json()["errors"]]
 
@@ -217,6 +221,64 @@ async def test_a_deleted_schedules_jobs_stay(submit_client: httpx.AsyncClient, e
     assert deleted.status_code == 204
     assert (await submit_client.get(f"/v1/schedules/{schedule['id']}")).status_code == 404
     assert (await submit_client.get(f"/v1/jobs/{job_id}")).json()["schedule_id"] is None
+
+
+# Concurrent changes.
+
+
+async def _waiting_on_a_lock(engine: AsyncEngine) -> None:
+    """Return once another session of the database waits on a lock (PostgreSQL `pg_stat_activity.wait_event_type`)."""
+    waiting = (
+        select(func.count())
+        .select_from(text("pg_stat_activity"))
+        .where(text("datname = current_database() AND wait_event_type = 'Lock'"))
+    )
+    async with engine.connect() as conn:
+        for _ in range(500):
+            if (await conn.execute(waiting)).scalar_one():
+                return
+            await asyncio.sleep(0.01)
+    raise AssertionError("no session waited on a lock")
+
+
+async def test_an_update_from_a_stale_read_keeps_a_concurrent_cadence_change(
+    engine: AsyncEngine, submitting: Submitting, created: ScheduleId, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checked = schedules._checked
+
+    async def cadence_changed_meanwhile(*args: Any) -> Any:
+        # Another update commits while this one checks its new request, after this one read the schedule.
+        await schedules.update_schedule(engine, submitting, created, schedules.ScheduleUpdate(interval_s=900))
+        return await checked(*args)
+
+    monkeypatch.setattr(schedules, "_checked", cadence_changed_meanwhile)
+    change = schedules.ScheduleUpdate(name="renamed", kind="batch_scrape", request=BATCH)
+
+    updated = await schedules.update_schedule(engine, submitting, created, change)
+
+    assert (updated.name, updated.interval_s) == ("renamed", 900)
+
+
+async def test_a_resume_racing_a_pause_runs_from_its_next_time_after_now(
+    engine: AsyncEngine, created: ScheduleId
+) -> None:
+    await _due(engine, created, timedelta(hours=1))
+    async with engine.connect() as pausing:
+        await pausing.begin()
+        await schedules.set_paused(pausing, created, paused=True)
+
+        async def resume() -> None:
+            async with engine.begin() as conn:
+                await schedules.set_paused(conn, created, paused=False)
+
+        resuming = asyncio.create_task(resume())
+        await _waiting_on_a_lock(engine)
+        await pausing.commit()
+        await resuming
+
+    row = await _row(engine, created)
+    # The resume read the pause it waited on: the hour it missed is not made up.
+    assert row.now < row.next_run_at <= row.now + timedelta(seconds=300)
 
 
 # The scheduler entry.
@@ -348,3 +410,21 @@ async def test_the_cli_lists_pauses_and_resumes_schedules(
     with pytest.raises(SystemExit) as exited:
         await cli("schedules", "pause", "0192a000-0000-7000-8000-00000000dead")
     assert exited.value.code == 2
+
+
+async def test_a_records_extract_is_refused_without_the_engines_data(
+    engine: AsyncEngine, submitting: Submitting, schema_name: str
+) -> None:
+    inline = {
+        "name": schema_name,
+        "page_kind": "detail",
+        "fields": {"title": {"type": "text", "required": True, "description": "The name"}},
+    }
+    request = {"urls": [URL], "page_kind": "detail", "schema": {"inline": inline}}
+    new = NewExtractSchedule.model_validate({"name": "e", "kind": "extract", "request": request, "interval_s": 60})
+    without_data = Submitting(submitting.fetching, None, submitting.llm)
+
+    with pytest.raises(RecordsUnavailable):
+        await schedules.create_schedule(engine, without_data, new, api_key_id=None)
+    async with engine.connect() as conn:
+        assert (await conn.execute(select(Schedule.id))).all() == []

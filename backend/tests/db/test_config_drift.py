@@ -2,19 +2,21 @@
 that falls below its validated yield is suspended in the IR and `field_status`, the suspension is a
 `drift_suspended` job event, and the site re-learns while its config keeps serving."""
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from sqlalchemy import insert, select
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy import delete, insert, select
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.drift import DriftMargins, record_run
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.config_ir.progressive import StateKey, learning_activated, request_learning
+from crawlerai.config_ir.progressive import StateKey, learning_activated, lock_state, request_learning
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import (
@@ -195,3 +197,44 @@ async def test_a_page_not_publishing_an_absent_field_leaves_it_absent(conn: Asyn
     assert (config.ir["absent"], config.field_status) == (["price"], ABSENT_STATUS)
     learn = select(Job.id).where(Job.kind == "learn", Job.schema_id == key.schema_id)
     assert len((await conn.execute(learn)).all()) == 1
+
+
+async def _locked_config(conn: AsyncConnection, statement: Any) -> ExtractionConfigId | None:
+    """The config row `statement` locks, or None when another transaction holds its lock (NOWAIT)."""
+    try:
+        async with conn.begin_nested():
+            return (await conn.execute(statement)).scalar_one()
+    except DBAPIError:
+        return None
+
+
+async def test_a_run_takes_the_state_lock_before_the_config_row_as_activation_does(engine: AsyncEngine) -> None:
+    """Every activation path locks the progressive state, then the config rows (`progressive.lock_state`); a run that
+    locked its config first could deadlock against an approval of the same state."""
+    async with engine.begin() as setup:
+        key, config_id, job_id = await _active_config(setup, ABSENT_IR, ABSENT_STATUS)
+    try:
+        async with engine.connect() as activation, engine.connect() as run:
+            await activation.begin()
+            await lock_state(activation, key)
+            await run.begin()
+            running = asyncio.create_task(_run(run, config_id, job_id, OLD, published=["title", "price"]))
+            await asyncio.sleep(0.5)  # the run waits for the state lock the activation holds
+
+            locked = select(ExtractionConfig.id).where(ExtractionConfig.id == config_id).with_for_update(nowait=True)
+            try:
+                held = await _locked_config(activation, locked)
+            finally:
+                await activation.rollback()
+                await asyncio.wait_for(running, 10)
+                await run.commit()
+            assert held == config_id  # the run held no config row lock while it waited
+    finally:
+        async with engine.begin() as cleanup:
+            await cleanup.execute(delete(ProgressiveState).where(*key.where()))
+            await cleanup.execute(delete(JobEvent).where(JobEvent.job_id == job_id))
+            await cleanup.execute(delete(Job).where(Job.schema_id == key.schema_id))
+            await cleanup.execute(delete(Job).where(Job.id == job_id))
+            await cleanup.execute(delete(ExtractionConfig).where(ExtractionConfig.id == config_id))
+            await cleanup.execute(delete(SchemaDef).where(SchemaDef.id == key.schema_id))
+            await cleanup.execute(delete(Site).where(Site.id == key.site_id))

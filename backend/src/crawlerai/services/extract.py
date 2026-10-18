@@ -31,12 +31,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.types import AttemptRecord, FetchResult
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.errors import Refusal
 from crawlerai.crawl.rules import MAX_PATTERNS, UrlGlob, is_glob, url_glob
 from crawlerai.db.jobs import transition_job
-from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind, ScheduleId
+from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind, ScheduleId, SiteId
 from crawlerai.llm.client import LLMClient
 from crawlerai.llm.roles.s_schema import MAX_SAMPLES, draft_schema
 from crawlerai.normalize.url_key import canonicalize
@@ -58,6 +58,7 @@ from crawlerai.services.scrape_steps import (
     record_fetch_usage,
     site_row,
 )
+from crawlerai.services.stored_captures import recent_capture, reread
 from crawlerai.services.webhook_options import WebhookOptions
 
 # The bound on a prompt's draft, its sample fetches included: the longest a scrape may wait (D-0028).
@@ -262,7 +263,9 @@ async def _samples(
     engine: AsyncEngine, fetching: Fetching, request: ExtractRequest, job_id: JobId, urls: list[str]
 ) -> list[str]:
     """The cleaned text of each of `urls` reached, fetched one after another as a scrape fetches its page; the fetches
-    count as the job's usage. Raises `NoSamplePage` when none was reached."""
+    count as the job's usage. With `fetch.cache` `only`, each is the latest stored capture of its URL made with the
+    request's steps and context, and nothing is fetched (jobs spec, "Request context and actions per page"); a URL
+    without one is no sample. Raises `NoSamplePage` when none was reached."""
     samples: list[str] = []
     for url in urls:
         host = urlsplit(url).hostname or ""
@@ -275,20 +278,42 @@ async def _samples(
             page_kind=request.page_kind,
             all_resources=site.load_all_resources,
         )
-        attempts: list[AttemptRecord] = []
-        try:
-            page = await fetch_now(
-                engine, fetching, url, PagePlan(site_rungs(fetching, host, site), site, policy, attempts)
+        page: FetchResult | str | None
+        if request.fetch.cache == "only":
+            page = await _stored_sample(engine, fetching, site.id, url, policy)
+        else:
+            page = await _fetched_sample(
+                engine, fetching, job_id, url, PagePlan(site_rungs(fetching, host, site), site, policy, [])
             )
-        finally:
-            async with engine.begin() as conn:
-                await record_fetch_usage(conn, job_id, attempts, policy.proxy_pool)
         if isinstance(page, FetchResult) and page.block_class == "ok":
             # Parsing and rendering the text are CPU work: a thread keeps the event loop free.
             samples.append(await asyncio.to_thread(_cleaned_text, page))
     if not samples:
         raise NoSamplePage("none of the pages to draft the schema from was reached")
     return samples
+
+
+async def _fetched_sample(
+    engine: AsyncEngine, fetching: Fetching, job_id: JobId, url: str, page: PagePlan
+) -> FetchResult | str:
+    """The sample page at `url` fetched as a scrape fetches its page (`fetch_now`), its attempts counted as the job's
+    usage."""
+    try:
+        return await fetch_now(engine, fetching, url, page)
+    finally:
+        async with engine.begin() as conn:
+            await record_fetch_usage(conn, job_id, page.attempts, page.policy.proxy_pool)
+
+
+async def _stored_sample(
+    engine: AsyncEngine, fetching: Fetching, site_id: SiteId, url: str, policy: FetchPolicy
+) -> FetchResult | None:
+    """The latest stored capture of `url` made with `policy`'s steps and context, of any age (`recent_capture`), or None
+    without one."""
+    async with engine.connect() as conn:
+        row = await recent_capture(conn, site_id, canonicalize(url) or url, policy, max_age=None)
+    recent = None if row is None else await reread(fetching.store, row)
+    return None if recent is None else recent.result
 
 
 def _pairs(urls: dict[str, str]) -> list[tuple[str, str]]:

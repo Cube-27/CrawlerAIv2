@@ -131,6 +131,8 @@ class HostLimiter:
     def _slowed(self, host: str, interval: timedelta) -> None:
         self._adapted[host] = min(self.spacing(host, interval) * 2, max(BACKOFF_MAX, interval))
         self._ok_run[host] = 0
+        # The turn `admit` reserved used the old spacing; push it so the new spacing holds from this answer on.
+        self.pause(host, self.spacing(host, interval))
 
     def _answered(self, host: str, interval: timedelta) -> None:
         adapted = self._adapted.get(host)

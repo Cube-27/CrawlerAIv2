@@ -11,10 +11,11 @@ export function SearchOutput({ result }: Readonly<{ result: SearchResult }>) {
     return <EmptyView title="No results">The provider found nothing for this query.</EmptyView>;
   const jobId = result.job_id ?? null;
   const job = jobId === null ? null : runPath("batch_scrape", jobId);
+  const count = result.results.length;
   return (
     <>
       <Typography.Paragraph>
-        {result.results.length} results
+        {count} {count === 1 ? "result" : "results"}
         {result.skipped > 0 ? `, ${String(result.skipped)} the API may not fetch` : ""}.
         {job === null ? null : (
           <>

@@ -19,6 +19,7 @@ from selectolax.lexbor import LexborHTMLParser
 from crawlerai.core import json_text
 from crawlerai.normalize.url_key import canonicalize
 
+_SCHEMES = frozenset({"http", "https"})  # RFC 9110 §4.2: the URI schemes a result is fetched over
 _MAX_DEPTH = 6  # nesting a result array is looked for at; deeper is not a result list
 
 
@@ -30,7 +31,11 @@ class Hit:
 
 
 def _is_url(value: object) -> bool:
-    return isinstance(value, str) and value.startswith(("http://", "https://")) and canonicalize(value) is not None
+    # RFC 3986 §3.1: a scheme is case-insensitive, so `HTTPS://` names an https URL too.
+    if not isinstance(value, str):
+        return False
+    scheme, colon, rest = value.partition(":")
+    return bool(colon) and rest.startswith("//") and scheme.lower() in _SCHEMES and canonicalize(value) is not None
 
 
 Fields = Mapping[str, str]  # the JSON members that hold a result's "url", "title" and "snippet"
@@ -105,12 +110,21 @@ def from_html(body: str, answered_from: str) -> list[Hit]:
 
 def parse(body: bytes, content_charset: str | None, answered_from: str, fields: Fields | None = None) -> list[Hit]:
     """The results of an answer: JSON when `body` decodes as JSON, else HTML; one per canonical URL, in order."""
-    text = body.decode(content_charset or "utf-8", errors="replace")
+    text = _decoded(body, content_charset)
     try:
         hits = from_json(json_text.parse(text), fields)
     except ValueError:
         hits = from_html(text, answered_from)
     return unique(hits)
+
+
+def _decoded(body: bytes, content_charset: str | None) -> str:
+    """`body` in its declared charset, or in UTF-8 (the default of RFC 8259 §8.1 and the WHATWG Encoding Standard) when
+    it declares none or one Python has no codec for."""
+    try:
+        return body.decode(content_charset or "utf-8", errors="replace")
+    except LookupError:
+        return body.decode("utf-8", errors="replace")
 
 
 def unique(hits: list[Hit]) -> list[Hit]:

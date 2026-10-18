@@ -1,7 +1,14 @@
 import { AdvancedRows } from "../AdvancedRows";
 import type { PageKind, ScrapeFormat } from "../../../api/scrape";
 import type { CrawlStrategy } from "../../../api/jobs";
-import { NumberRow, OptionsPanel, SelectRow, SwitchRow, TextRow } from "../OptionsPanel";
+import {
+  NumberRow,
+  OptionsPanel,
+  SelectRow,
+  SwitchRow,
+  TagListRow,
+  TextRow,
+} from "../OptionsPanel";
 import {
   FetchMethodRow,
   MaxRowsRow,
@@ -87,6 +94,16 @@ export function CrawlOptions({
         placeholder="Words the pages you want are about"
         onChange={(query) => {
           onChange({ ...options, query });
+        }}
+      />
+      <TagListRow
+        label="Keywords"
+        help="Best first only: more words that rank links, each added on its own."
+        name="keywords"
+        values={options.keywords}
+        placeholder="A word the pages you want contain"
+        onChange={(keywords) => {
+          onChange({ ...options, keywords });
         }}
       />
       <SwitchRow

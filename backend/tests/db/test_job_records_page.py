@@ -4,9 +4,10 @@ is a record id that stays valid as tasks are added."""
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 import pytest
-from sqlalchemy import insert, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import (
@@ -160,3 +161,19 @@ async def test_a_cursor_of_a_record_the_job_has_no_task_for_gives_an_empty_page(
     page = await list_records(jobs.conn, RecordFilter(job_id=job_id, cursor=jobs.stored["z1"], limit=5))
 
     assert (page.items, page.next_cursor) == ([], None)
+
+
+async def test_a_record_a_task_stands_for_later_keeps_its_place_so_no_page_skips_records(jobs: Jobs) -> None:
+    job_id = await jobs.job()
+    older = await jobs.task(job_id, "a", "a1")
+    await jobs.task(job_id, "m", "m1")
+    await jobs.task(job_id, "b", "shared")
+    first = await list_records(jobs.conn, RecordFilter(job_id=job_id, limit=1))
+    # The older task's page comes to stand for the record after the newer one did (tasks run concurrently).
+    later = {"url_task_id": older, "record_id": jobs.stored["shared"], "created_at": func.now() + timedelta(seconds=1)}
+    await jobs.conn.execute(insert(TaskRecord).values(later))
+
+    rest = await list_records(jobs.conn, RecordFilter(job_id=job_id, cursor=first.next_cursor, limit=5))
+
+    reverse = {record_id: title for title, record_id in jobs.stored.items()}
+    assert [reverse[record.id] for record in first.items + rest.items] == ["shared", "m1", "a1"]

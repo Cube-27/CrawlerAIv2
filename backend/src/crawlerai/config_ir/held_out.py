@@ -128,8 +128,9 @@ def published_of(
 class StoredPage:
     """A stored page as validation reads it (`held_out`) and as a learning sample (`sample`), and its capture, whose
     network bodies API discovery reads (SPEC-09 §4.3). `stated`: the fields any source gave a valid value for, published
-    or not; `asked_llm`: whether its extraction called the LLM (role C, on a detail page's gaps). Learning reads both
-    for the fields the site never states (`config_ir.absent`)."""
+    or not; `asked_llm`: whether its extraction called the LLM (role C, on a detail page's gaps) outside config mode,
+    where it is asked only for the fields the config does not cover. Learning reads both for the fields the site never
+    states (`config_ir.absent`)."""
 
     held_out: HeldOutPage
     sample: SamplePage
@@ -197,7 +198,10 @@ async def _pages(
 
 
 async def _llm_calls(conn: AsyncConnection, ids: Sequence[ExtractionId]) -> dict[ExtractionId, int]:
-    query = select(Extraction.id, Extraction.llm_calls).where(Extraction.id.in_(ids))
+    """Each extraction's LLM calls, counted only where role C could be asked for every missing field: a config-mode
+    extraction asks it only for the fields its config does not cover (llm spec, "When role C is asked"), so its call
+    says nothing of a covered one (`config_ir.absent`)."""
+    query = select(Extraction.id, Extraction.llm_calls).where(Extraction.id.in_(ids), Extraction.mode != "config")
     return {row.id: row.llm_calls for row in await conn.execute(query)}
 
 

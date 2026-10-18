@@ -238,3 +238,25 @@ def test_a_remote_phrase_inside_other_words_of_its_clause_is_not_remote(text: st
 @pytest.mark.parametrize("text", ["Lakeside; Remote", "Remote", "Lakeside / Remote (US)"])
 def test_a_remote_clause_of_its_own_is_remote(text: str) -> None:
     assert norm(text) == Ok(value(text, remote=True))
+
+
+def test_a_remote_clause_in_a_postal_address_is_remote_as_in_text() -> None:
+    raw: JsonValue = {"@type": "PostalAddress", "addressLocality": "Remote", "addressRegion": "Lakeside"}
+
+    assert norm(raw) == Ok(value("Remote, Lakeside", "Remote", "Lakeside", remote=True))
+
+
+def test_a_remote_phrase_inside_other_words_of_a_postal_address_part_is_not_remote() -> None:
+    raw: JsonValue = {"@type": "PostalAddress", "addressLocality": "Not remote"}
+
+    assert norm(raw) == Ok(value("Not remote", "Not remote"))
+
+
+@pytest.mark.parametrize("text", ["Remote's office", "Remote\u2019s office, Lakeside"])
+def test_a_word_internal_apostrophe_does_not_end_a_clause(text: str) -> None:
+    assert norm(text) == Ok(value(text))
+
+
+@pytest.mark.parametrize("text", ["Lakeside, Remote", "'Remote'", "Lakeside \u2019 Remote"])
+def test_an_apostrophe_not_between_letters_still_ends_a_clause(text: str) -> None:
+    assert norm(text) == Ok(value(text, remote=True))

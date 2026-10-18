@@ -30,6 +30,7 @@ from typing import Final
 
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.rungs import remembered_method
@@ -266,6 +267,10 @@ async def _learned(
         )
     except LLMFailure:
         raise  # D-0738: role D's failure ends the run as role A's does
+    except SQLAlchemyError:
+        # A database error is the run's, not the recipe's: a replay whose usage was not stored would go unaccounted
+        # (adapters spec, "Held-out validation"), so the run ends failed rather than activating the config.
+        raise
     except Exception as e:
         # D-1389: the recipe learner's own error refuses the recipe, not the config it would have joined.
         log.exception("learn job %s: recipe learning failed", run.job_id)

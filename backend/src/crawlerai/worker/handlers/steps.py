@@ -13,6 +13,7 @@ task's fetch attempts are counted as the job's usage at its end (`count_fetch`):
 the task commits.
 """
 
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Final
@@ -31,7 +32,7 @@ from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.retry import backoff_delay
 from crawlerai.db.models import CaptureId, Job, RecordId, SchemaId, SiteId
-from crawlerai.db.queue import ClaimedTask
+from crawlerai.db.queue import LEASE, ClaimedTask
 from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.conditional import Unchanged
 from crawlerai.recurring.state import record_fetch, standing_listing, standing_record, stored_validators
@@ -81,6 +82,10 @@ from crawlerai.services.stored_captures import NOT_CACHED, recent_capture, rerea
 from crawlerai.storage.base import ObjectStore
 from crawlerai.worker.loop import Failed, Finished, Postpone, TaskResult
 
+# A listing recipe's page requests start within this share of the task's lease (`LEASE`): each waits in place for its
+# turn at most `QUEUED.bound` (half the lease), so the last one ends inside the lease, its timeout and the extraction
+# after it included, and no other worker claims the task and sends its requests again.
+RECIPE_PAGES_SHARE: Final = LEASE / 4
 # The `last_error` of a records task in a worker that has not loaded the engine's data files (D-0492).
 RECORDS_UNAVAILABLE: Final = "records_unavailable"
 # A page a vendor's challenge kept out is fetched at most this many times (master plan 2026-10-18 §3.1).
@@ -192,7 +197,9 @@ async def fetch_page(
         options, locale, site.proxy_pool, page_kind=task.page_kind, formats=formats, all_resources=all_resources
     )
     if options.cache == "only":
-        return await _stored_page(conn, fetching, task, site, policy, formats)
+        # A page the config's API recipe serves was stored as its JSON, as a scrape reads it.
+        api = served is not None and served.config is not None and recipe_of(served.config) is not None
+        return await _stored_page(conn, fetching, task, site, policy, formats, api=api)
     standing = () if recurring is None else await _standing(conn, task, site.id, recurring)
     # Validators go only where a record stands for a 304; without one, a 304 is fetched again whole (§4.6). A fetch
     # that bypasses what is stored sends none (D-1435).
@@ -216,7 +223,8 @@ def _plan(task: ClaimedTask, served: Records | None, llm: LLMClient, listing_pag
     recipe = None if served.config is None else recipe_of(served.config)
     lists = served.schema.page_kind == "listing" and recipe is not None and recipe.pagination is not None
     check = render_need(served.schema, served.data, served.config)
-    pages = RecipePages(listing_pages, plan.attempts) if lists else None
+    deadline = time.monotonic() + RECIPE_PAGES_SHARE.total_seconds()
+    pages = RecipePages(listing_pages, plan.attempts, deadline=deadline) if lists else None
     return replace(plan, recipe=recipe, pages=pages, needs_render=check)
 
 
@@ -228,11 +236,12 @@ async def _kept(
     fetched: FetchResult | Unchanged | TaskResult,
     standing: tuple[RecordId, ...],
 ) -> FetchedPage | Ended:
-    """The fetched page with its capture stored, or how the task ends: a refused request fails it (INV-16), and a 304
-    that a record stands for ends it `unchanged`, linked to those records."""
+    """The fetched page with its capture stored, or how the task ends: a refused request, a listing recipe's further
+    page's too, fails it (INV-16), and a 304 that a record stands for ends it `unchanged`, linked to those records."""
     site, attempts, pool = plan.site, tuple(plan.attempts), plan.policy.proxy_pool
     if isinstance(fetched, FetchResult):
-        if (refused := refusal(fetched)) is None:
+        further_refused = None if plan.pages is None else plan.pages.refused
+        if (refused := refusal(fetched) or further_refused) is None:
             check = plan.needs_render if isinstance(plan.needs_render, RenderNeed) else None
             capture_id = await new_capture(conn, fetching.store, site.id, fetched, check)
             further = () if plan.pages is None else tuple(plan.pages.further)
@@ -302,10 +311,12 @@ async def _stored_page(
     site: SiteRow,
     policy: FetchPolicy,
     formats: Sequence[PageFormat],
+    *,
+    api: bool,
 ) -> FetchedPage | Ended:
     """The task's page from the latest stored capture made with `policy`'s steps and context (`cache: only`, D-1435),
-    with no fetch; without one the task fails `not_cached`."""
-    row = await recent_capture(conn, site.id, task.canonical_url, policy, max_age=None)
+    an API recipe's too with `api` (`recent_capture`), with no fetch; without one the task fails `not_cached`."""
+    row = await recent_capture(conn, site.id, task.canonical_url, policy, max_age=None, api=api)
     recent = None if row is None else await reread(fetching.store, row, formats)
     if recent is None:
         return Ended(Failed(NOT_CACHED, transient=False))
@@ -321,12 +332,14 @@ async def store_further_pages(
     *,
     caller_supplied: bool,
     llm: LLMClient,
-) -> None:
-    """Extract and store a listing recipe's further pages under the task, with what the job pinned."""
+    result: Finished,
+) -> Finished:
+    """Extract and store a listing recipe's further pages under the task, with what the job pinned: the first page's
+    `result`, `partial` when a further page's extraction failed, as a scrape's is."""
     if not page.further:
-        return
+        return result
     extracted = await extract_further(page.further, records.schema, records.config, records.data, _role_c(task, llm))
-    await store_further(
+    stored = await store_further(
         conn,
         store,
         task,
@@ -336,6 +349,7 @@ async def store_further_pages(
         records.margins,
         caller_supplied=caller_supplied,
     )
+    return replace(result, outcome="partial") if stored.failed else result
 
 
 async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage | Ended) -> None:

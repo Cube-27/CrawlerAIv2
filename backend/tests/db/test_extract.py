@@ -369,6 +369,50 @@ async def test_a_prompt_without_a_draft_fails_its_job_with_no_tasks(
     assert urls[3] not in web.fetched
 
 
+async def test_a_cache_only_prompt_is_drafted_from_stored_captures_and_fetches_nothing(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    prompt: str,
+    engine_data: EngineData,
+    kettle_schema: SchemaDef,
+) -> None:
+    urls = [f"{own_origin}/p/1", f"{own_origin}/p/2"]
+    web.serve(urls[0], _page("Blue kettle"))
+    web.serve(urls[1], _page("Red kettle"))
+    stored = await submit_extract(
+        engine, fetching, _request(urls[:1], _by_id(kettle_schema)), llm=NO_LLM, data=engine_data
+    )
+    await _run(engine, fetching, engine_data, stored.job_id)
+    fetched = len(web.fetched)
+    provider = FakeProvider([_draft_reply()])
+    request = _request(urls, {"prompt": prompt}, fetch={"cache": "only"})
+
+    await submit_extract(engine, fetching, request, llm=MeteredClient([provider], engine), data=engine_data)
+
+    # `cache: only` never fetches (jobs spec, "Request context and actions per page"): the sample is the stored page;
+    # the page with no capture is none.
+    (call,) = provider.calls
+    assert "Blue kettle boils" in call.user
+    assert "Red kettle" not in call.user
+    assert len(web.fetched) == fetched
+
+
+async def test_a_cache_only_prompt_without_a_stored_capture_fetches_nothing_and_fails(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str, engine_data: EngineData
+) -> None:
+    url = f"{own_origin}/p/1"
+    web.serve(url, _page("Blue kettle"))
+    request = _request([url], {"prompt": prompt}, fetch={"cache": "only"})
+    llm = MeteredClient([FakeProvider([_draft_reply()])], engine)
+
+    with pytest.raises(NoSamplePage):
+        await submit_extract(engine, fetching, request, llm=llm, data=engine_data)
+
+    assert web.fetched == []
+
+
 async def test_a_draft_past_its_timeout_fails_its_job(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str, engine_data: EngineData
 ) -> None:

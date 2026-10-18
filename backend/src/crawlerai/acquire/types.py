@@ -61,9 +61,16 @@ class RequestContext(_Frozen):
     headers: tuple[SecretPair, ...] = ()
     cookies: tuple[SecretPair, ...] = ()
 
-    @field_serializer("headers", "cookies")
-    def _redacted(self, pairs: tuple[SecretPair, ...]) -> list[tuple[str, str]]:
-        return [(name, REDACTED) for name, _ in pairs]
+    # Serialized as the names alone, in one canonical form, so that a stored capture's context compares equal to a
+    # request's whatever order the caller gave them in (`services.stored_captures`): sorted, and header names lowercased
+    # (RFC 9110 §5.1: field names are case-insensitive; cookie names are not, RFC 6265 §4.1.1).
+    @field_serializer("headers")
+    def _redacted_headers(self, pairs: tuple[SecretPair, ...]) -> list[tuple[str, str]]:
+        return [(name, REDACTED) for name in sorted(name.lower() for name, _ in pairs)]
+
+    @field_serializer("cookies")
+    def _redacted_cookies(self, pairs: tuple[SecretPair, ...]) -> list[tuple[str, str]]:
+        return [(name, REDACTED) for name in sorted(name for name, _ in pairs)]
 
     def header_names(self) -> frozenset[str]:
         return frozenset(name.lower() for name, _ in self.headers)

@@ -1,7 +1,13 @@
 import type { CrawlRequest, CrawlStrategy } from "../../../api/jobs";
 import { isJsonObject } from "../../../api/json";
-import type { MethodHint, PageKind } from "../../../api/scrape";
-import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } from "../advanced";
+import type { FetchMember, MethodHint, PageKind, ScrapeFormat } from "../../../api/scrape";
+import {
+  DEFAULT_ADVANCED,
+  fetchMember,
+  storedAdvanced,
+  withFetchErrors,
+  type AdvancedFetch,
+} from "../advanced";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import {
@@ -59,9 +65,13 @@ export interface CrawlOptions extends FormatSettings {
   fields: readonly string[];
   maxDepth: number;
   limit: number;
-  /** How the frontier is ordered (D-1440); `query` orders a best-first crawl only. */
+  /**
+   * How the frontier is ordered (jobs spec, "Crawl strategy and best-first scoring"); `query` and `keywords` order a
+   * best-first crawl only.
+   */
   strategy: CrawlStrategy;
   query: string;
+  keywords: readonly string[];
   allowSubdomains: boolean;
   allowExternal: boolean;
   methodHint: MethodHint;
@@ -84,6 +94,7 @@ export const DEFAULT_CRAWL_OPTIONS: CrawlOptions = {
   // CrawlRequest's own defaults (D-1440).
   strategy: "bfs",
   query: "",
+  keywords: [],
   allowSubdomains: false,
   allowExternal: false,
   // FetchPolicy's own default (SPEC-02 §4.2).
@@ -135,7 +146,22 @@ function fieldsErrors(rules: readonly RuleRow[]): Readonly<Record<string, string
  * or field names it asks for `records` alone, which needs a rule; every rule is for the schema's page kind, and field
  * names take rules of one page kind. Without either it asks for at least one format. */
 export function crawlErrors(form: CrawlFormState): Readonly<Record<string, string>> {
-  return withWebhookErrors(requestErrors(form), form.options.webhook);
+  const formats = jobFormats(form);
+  return withFetchErrors(
+    withWebhookErrors(requestErrors(form), form.options.webhook),
+    crawlFetch(form, formats),
+    formats,
+  );
+}
+
+function crawlFetch(form: CrawlFormState, formats: readonly ScrapeFormat[]): FetchMember {
+  const { options } = form;
+  return fetchMember(
+    options.methodHint,
+    options.maxRows,
+    options.advanced,
+    screenshotArea(formats, options),
+  );
 }
 
 function requestErrors(form: CrawlFormState): Readonly<Record<string, string>> {
@@ -166,12 +192,7 @@ export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
     })),
     include: [...options.include],
     exclude: [...options.exclude],
-    fetch: fetchMember(
-      options.methodHint,
-      options.maxRows,
-      options.advanced,
-      screenshotArea(formats, options),
-    ),
+    fetch: crawlFetch(form, formats),
     ...formatMembers(formats, options),
     ...optionalNumber("max_depth", options.maxDepth),
     ...optionalNumber("limit", options.limit),
@@ -182,14 +203,21 @@ export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
   };
 }
 
-/** The request's `strategy` when it is not the default, and the `query` that orders a best-first crawl: a query on
- * another strategy is not sent, which the server refuses. */
-function crawlStrategy(options: CrawlOptions): { strategy?: CrawlStrategy; query?: string } {
+/** The request's `strategy` when it is not the default, and the `query` and `keywords` that order a best-first
+ * crawl: on another strategy they are not sent, which the server refuses. */
+function crawlStrategy(options: CrawlOptions): {
+  strategy?: CrawlStrategy;
+  query?: string;
+  keywords?: string[];
+} {
   if (options.strategy === "bfs") return {};
+  if (options.strategy !== "best_first") return { strategy: options.strategy };
   const query = options.query.trim();
-  return options.strategy === "best_first" && query !== ""
-    ? { strategy: options.strategy, query }
-    : { strategy: options.strategy };
+  return {
+    strategy: options.strategy,
+    ...(query === "" ? {} : { query }),
+    ...(options.keywords.length === 0 ? {} : { keywords: [...options.keywords] }),
+  };
 }
 
 /** The stored rules, as rows; a rule without a pattern or a page kind is not one the server took. */
@@ -231,6 +259,7 @@ export function crawlForm(request: StoredRequest): CrawlFormState {
       limit: count(request, "limit"),
       strategy: strategyOf(request),
       query: text(request, "query"),
+      keywords: texts(request, "keywords"),
       allowSubdomains: flag(request, "allow_subdomains", false),
       allowExternal: flag(request, "allow_external", false),
       methodHint: methodHint(request),

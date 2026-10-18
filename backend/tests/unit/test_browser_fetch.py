@@ -720,6 +720,23 @@ def test_a_refused_document_is_labelled_with_the_vendor_whose_cookie_the_context
     assert (structural.block_class, structural.attempts[0].challenge) == ("blocked", "structural")
 
 
+def test_a_refusal_after_a_cross_host_redirect_is_read_against_the_host_that_served_it(
+    browser: Browser, server: Server
+) -> None:
+    # Links to other pages of the refusal's own host make it a page of that site (acquisition spec, "HTTP and browser
+    # rungs"); they resolve against the URL that served it (RFC 3986 §5), past the redirect, not the URL
+    # first asked for.
+    links = "".join(f'<a href="{server.url(f"/c/{i}", "other.example.test")}">Section {i}</a>' for i in range(6))
+    body = f"<html><body><script>window.__seen = 1;</script><nav>{links}</nav></body></html>".encode()
+    server.routes["/hop-away"] = Reply(302, headers=(("Location", server.url("/refused-away", "other.example.test")),))
+    server.routes["/refused-away"] = Reply(403, body=body)
+
+    refused = browser.fetch(server.url("/hop-away"))
+
+    assert refused.bundle.manifest.final_url == server.url("/refused-away", "other.example.test")
+    assert (refused.block_class, refused.attempts[0].challenge) == ("blocked", None)
+
+
 def test_a_pool_endpoint_that_no_browser_fetch_gets_through_is_quarantined(browser: Browser, server: Server) -> None:
     with socket.socket() as closed:
         closed.bind(("127.0.0.1", 0))
@@ -804,6 +821,21 @@ def test_a_file_the_browser_is_too_slow_to_make_is_left_out_and_the_others_stay(
     files = asyncio.run(capture_artifacts(cast(Page, SlowPage()), FetchPolicy(screenshot="viewport", pdf=True)))
 
     assert files == {"screenshot.png": b"png"}
+
+
+def test_a_file_the_browser_fails_to_make_is_left_out_and_the_next_is_still_made() -> None:
+    class FailingScreenshot:
+        async def screenshot(self, **_: object) -> bytes:
+            raise PlaywrightError("screenshot failed")
+
+        async def pdf(self, **_: object) -> bytes:
+            return b"pdf"
+
+    policy = FetchPolicy(screenshot="viewport", pdf=True)
+
+    files = asyncio.run(capture_artifacts(cast(Page, FailingScreenshot()), policy))
+
+    assert files == {"page.pdf": b"pdf"}
 
 
 def test_a_viewport_screenshot_is_a_png_of_the_visible_area_and_leaves_the_bundle_as_it_was(

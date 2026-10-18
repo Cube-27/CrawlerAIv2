@@ -6,19 +6,28 @@ are (§4.6, §4.7), and the plain HTTP fetches of a site's sitemaps.
 """
 
 import asyncio
-from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from functools import partial
 from urllib.parse import urlsplit
 
-from sqlalchemy import update
+from sqlalchemy import cast, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
+from crawlerai.acquire.browser_tab import Tab
 from crawlerai.acquire.politeness import Admit, HostLimiter
 from crawlerai.acquire.rungs import RenderCheck, Rung, Rungs, acquire
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
-from crawlerai.acquire.types import AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch, Validators
+from crawlerai.acquire.types import (
+    ActionsReport,
+    AttemptRecord,
+    BrowserActions,
+    FetchPolicy,
+    FetchResult,
+    PagedFetch,
+    Validators,
+)
 from crawlerai.config_ir.api_recipe.execute import MAX_PAGES, RecipeRung, unserved
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replay, Replays
@@ -111,11 +120,19 @@ def site_rungs(fetching: Fetching, host: str, site: SiteRow) -> Rungs:
 
 
 async def store_declines(conn: AsyncConnection, site: SiteRow, host: str, rungs: Rungs) -> None:
-    """Store on the site of `host` the adapter declines `rungs` hold for it (`site_rungs`) when they differ from what
-    its row held: a decline made, or one that ran out (D-1384)."""
-    declined = rungs.adapters.declined_for(host)
-    if declined != site.adapter_declined:
-        await conn.execute(update(Site).where(Site.id == site.id).values(adapter_declined=declined))
+    """Store on the site of `host` the adapter declines `rungs` made for it (`site_rungs`): those that differ from what
+    its row held (adapters spec, "Fallback to the page rungs (INV-40)"). They are merged into the stored ones in one
+    statement (a JSONB concatenation), so fetches that read the row before either stored keep each other's declines. One
+    that ran out stays stored, and holds back nothing (`Registry.for_host` reads its time): the row holds at most one
+    per adapter."""
+    made = {
+        name: until
+        for name, until in rungs.adapters.declined_for(host).items()
+        if site.adapter_declined.get(name) != until
+    }
+    if made:
+        merged = Site.adapter_declined.op("||")(cast(made, JSONB))
+        await conn.execute(update(Site).where(Site.id == site.id).values(adapter_declined=merged))
 
 
 @dataclass
@@ -227,38 +244,35 @@ def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
 @dataclass
 class RecipePages:
     """A listing's pages as its active config's listing recipe (one with pagination, Appendix A #59) serves them, up
-    to `limit` requests; the pages after the first are kept in `further` and their attempts added to `attempts`."""
+    to `limit` requests and until `deadline`; the pages after the first are kept in `further` and their attempts added
+    to `attempts`. `refused` is the SSRF guard's refusal of a further page's request, which fails the fetch (INV-16):
+    a refused page is never stored, and the listing is not cut short silently."""
 
     limit: int = MAX_PAGES
     attempts: list[AttemptRecord] = field(default_factory=list)
     further: list[FetchResult] = field(default_factory=list)
+    refused: str | None = None
+    deadline: float | None = None  # on `time.monotonic`: no page request starts after it
 
     async def rung(self, recipe: RecipeRung, url: str, policy: FetchPolicy) -> Rung | None:
         """The recipe rung `acquire` fetches the page through: one that answers with the first page the listing recipe
         served, its further pages kept, so `acquire` keeps or falls back from that one answer as from any recipe's
         (SPEC-09 §4.8); None when it served no page. Each page request waits for its host's rate on its own
         (`recipe_rung`)."""
-        pages = [page async for page in recipe.pages(url, policy, records=None, limit=self.limit)]
+        pages = [
+            page async for page in recipe.pages(url, policy, records=None, limit=self.limit, deadline=self.deadline)
+        ]
         if not pages:
             return None
         first, further = pages[0], pages[1:]
         self.attempts.extend(attempt for page in further for attempt in page.attempts)
-        self.further[:] = _until_refused(further) if first.block_class == "ok" else []
+        self.further[:] = further if first.block_class == "ok" else []
+        self.refused = next((refused for page in self.further if (refused := refusal(page)) is not None), None)
 
         async def served(_url: str, _policy: FetchPolicy) -> FetchResult:
             return first
 
         return served
-
-
-def _until_refused(pages: Sequence[FetchResult]) -> list[FetchResult]:
-    """The pages before the first one the SSRF guard refused a request of (INV-16): a refused page is never stored."""
-    kept: list[FetchResult] = []
-    for page in pages:
-        if refusal(page) is not None:
-            break
-        kept.append(page)
-    return kept
 
 
 async def grown(
@@ -271,19 +285,35 @@ async def grown(
     known: HostRules,
 ) -> PagedFetch:
     """The listing at `url` from the listing rung with the paging driver (`crawl.paging.collect`, owner #52): each
-    action waits for a turn at the site's rate (`admit_next`), and a next page is followed only on the listing's own
-    host, when its robots.txt (`known`) allows it."""
+    action waits for a turn at the site's rate (`admit_next`), and acts only on the listing's own host, where its
+    robots.txt (`known`) allows it: a next page it navigates to, or the document the tab shows for a click or a scroll
+    (the caller's steps may have navigated it elsewhere). That host's robots.txt and rate say nothing of another's
+    (RFC 9309 §2.3: the rules are per origin)."""
     rung = fetching.rungs.listing
     if rung is None:
         raise RuntimeError("this process has no listing rung")
     host = urlsplit(url).hostname or ""
+    drive = partial(_on_host, request=actions, deadline=deadline, host=host, known=known, admit_next=admit_next)
+    return await rung(url, policy, drive)
+
+
+async def _on_host(
+    tab: Tab, *, request: BrowserActions, deadline: float, host: str, known: HostRules, admit_next: Admit
+) -> ActionsReport:
+    """`collect` on `tab`, each action admitted only on `host` (`grown`)."""
+
+    # The listing's own navigation may have been redirected to another host (RFC 9110 §15.4); the fetch already
+    # followed it under the listing's robots.txt, so that host is the listing's too. A host the caller's steps moved
+    # the tab to is not.
+    own = {host, urlsplit(tab.landed).hostname or ""}
 
     async def gate(next_url: str | None) -> bool:
-        if next_url is not None and (urlsplit(next_url).hostname != host or not known.allows(next_url)):
+        acted_on = tab.url if next_url is None else next_url
+        if urlsplit(acted_on).hostname not in own or not known.allows(acted_on):
             return False
         return await admit_next()
 
-    return await rung(url, policy, partial(collect, request=actions, gate=gate, deadline=deadline))
+    return await collect(tab, request, gate, deadline)
 
 
 @dataclass

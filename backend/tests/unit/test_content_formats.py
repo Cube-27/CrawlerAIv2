@@ -311,6 +311,12 @@ def test_a_json_body_that_does_not_parse_has_no_links() -> None:
     assert links(ParsedPage('{"url": "https://jobs.example.test/1"', json_body=True), FINAL_URL) == ()
 
 
+@pytest.mark.parametrize("body", ['{"a": 1e400}', "[-1e999]"])
+def test_a_json_body_whose_number_decodes_to_no_finite_value_has_no_markdown(body: str) -> None:
+    # RFC 8259 §6 has no Infinity or NaN; a JSON block must not print one.
+    assert markdown(ParsedPage(body, json_body=True), FINAL_URL) == ""
+
+
 @given(st.recursive(st.none() | st.booleans() | st.integers() | st.text(), _json_containers, max_leaves=20))
 def test_every_link_of_a_json_body_is_one_of_its_strings_canonicalized(document: object) -> None:
     found = links(ParsedPage(json.dumps(document), json_body=True), FINAL_URL)

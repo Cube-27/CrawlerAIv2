@@ -6,7 +6,8 @@ runs of one crawl are the records crawls with the same scope: start URL, globs, 
 schema. A run's listing is the URLs its frontier gave a page kind, on the host the start page is on
 (`job.start_location`): every URL of the catalog the crawl found, whether or not its page was then reached; and, for a
 listing schema, the row URLs of the records its pages stand for (`resolve.records.row_url_fields`), which no task
-fetches.
+fetches. The row URL fields are the schema's as the job pinned it at submit (INV-28, `job.pinned`), so an edit made
+while the job ran never changes which of its records' fields are read.
 
 `close_run` diffs a run as its job ends (the queue's `ending` hook), in that transaction and before the end event:
 - each URL of the listing is seen: `missing_runs` 0, `gone_at` cleared, and the run noted as the last to hold it;
@@ -52,7 +53,7 @@ from crawlerai.db.models import (
 )
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.records import row_url_fields
-from crawlerai.schemas import registry
+from crawlerai.schemas.types import SchemaDef
 
 __all__ = ["GONE_AFTER_RUNS", "SITEMAPS_TIMED_OUT", "URL_GONE", "close_run"]
 
@@ -69,7 +70,7 @@ _SCOPE: Final = ("url", "include", "exclude", "max_depth", "limit", "page_kind_r
 # The outcomes of a page the crawl handler read no links from (`crawlerai.worker.handlers.crawl`).
 _UNREACHED: Final[frozenset[TaskOutcome]] = frozenset({"blocked", "shell", "failed"})
 
-_JobRow = Row[str, SchemaId | None, dict[str, Any], str | None]
+_JobRow = Row[str, SchemaId | None, dict[str, Any], str | None, dict[str, Any] | None]
 
 
 @dataclass(frozen=True)
@@ -86,7 +87,7 @@ async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> 
     """Diff the job's listing against the earlier runs of its crawl, as the job ends in `status`."""
     if status != "completed":
         return
-    columns = (Job.kind, Job.schema_id, Job.request, Job.start_location)
+    columns = (Job.kind, Job.schema_id, Job.request, Job.start_location, Job.pinned)
     job: _JobRow = (await conn.execute(select(*columns).where(Job.id == job_id))).one()
     if job.kind != "crawl" or job.schema_id is None:
         return
@@ -96,7 +97,7 @@ async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> 
     site_id = (await conn.execute(site)).scalar_one_or_none()
     if site_id is None:
         return
-    listing = await _listing(conn, job_id, host, job.schema_id)
+    listing = await _listing(conn, job_id, host, job.pinned)
     if not listing.urls:
         return
     await _seen(conn, site_id, job_id, listing.urls)
@@ -106,20 +107,21 @@ async def close_run(conn: AsyncConnection, job_id: JobId, status: JobStatus) -> 
         await record_event(conn, job_id, URL_GONE, {"url": url})
 
 
-async def _listing(conn: AsyncConnection, job_id: JobId, host: str | None, schema_id: SchemaId) -> _Listing:
-    """The job's listing, of its URLs on `host`: its tasks' and its rows'."""
+async def _listing(conn: AsyncConnection, job_id: JobId, host: str | None, pinned: dict[str, Any] | None) -> _Listing:
+    """The job's listing, of its URLs on `host`: its tasks' and, with what it `pinned`, its rows'."""
     query = select(UrlTask.canonical_url, UrlTask.page_kind, UrlTask.outcome).where(UrlTask.job_id == job_id)
     tasks = (await conn.execute(query)).all()
     listed = {url for url, page_kind, _ in tasks if page_kind is not None and urlsplit(url).hostname == host}
-    listed.update(url for url in await _row_urls(conn, job_id, schema_id) if urlsplit(url).hostname == host)
+    row_urls = [] if pinned is None else await _row_urls(conn, job_id, SchemaDef.model_validate(pinned["schema"]))
+    listed.update(url for url in row_urls if urlsplit(url).hostname == host)
     unreached = any(page_kind is None and outcome in _UNREACHED for _, page_kind, outcome in tasks)
     return _Listing(sorted(listed), len(tasks), unreached)
 
 
-async def _row_urls(conn: AsyncConnection, job_id: JobId, schema_id: SchemaId) -> list[str]:
+async def _row_urls(conn: AsyncConnection, job_id: JobId, schema: SchemaDef) -> list[str]:
     """The canonical row URLs of the records the job's tasks stand for, found unchanged or stored: the first
-    `row_url_fields` value a record publishes. None for a schema that is no listing or names no row URL."""
-    schema = await registry.get_by_id(conn, schema_id)
+    `row_url_fields` value of `schema` a record publishes; a record that publishes none names no row URL. None for a
+    schema that is no listing or names no row URL."""
     fields = row_url_fields(schema)
     if schema.page_kind != "listing" or not fields:
         return []
@@ -128,7 +130,7 @@ async def _row_urls(conn: AsyncConnection, job_id: JobId, schema_id: SchemaId) -
         select(row_url)
         .join(TaskRecord, TaskRecord.record_id == Record.id)
         .join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
-        .where(UrlTask.job_id == job_id)
+        .where(UrlTask.job_id == job_id, row_url.is_not(None))
         .distinct()
     )
     return [url for url in map(canonicalize, (await conn.execute(of_job)).scalars()) if url is not None]

@@ -88,6 +88,20 @@ def test_an_answer_without_results_gives_none(body: bytes) -> None:
     assert parse(body, None, HERE) == []
 
 
+def test_an_answer_in_a_charset_python_does_not_know_is_read_as_utf_8() -> None:
+    body = _json({"results": [{"url": "https://a.example.test/caf\u00e9", "title": "Caf\u00e9"}]})
+
+    assert parse(body, "x-unknown", HERE) == parse(body, "utf-8", HERE)
+
+
+@pytest.mark.parametrize("url", ["HTTPS://a.example.test/x", "Http://a.example.test/x"])
+def test_a_url_scheme_in_any_case_is_a_result(url: str) -> None:
+    # RFC 3986 §3.1: schemes are case-insensitive.
+    body = _json({"results": [{"url": url, "title": "T"}]})
+
+    assert [hit.title for hit in parse(body, None, HERE)] == ["T"]
+
+
 async def test_searxng_is_asked_for_json_and_reads_further_pages_until_the_limit() -> None:
     asked: list[dict[str, list[str]]] = []
     pages = {
@@ -108,6 +122,24 @@ async def test_searxng_is_asked_for_json_and_reads_further_pages_until_the_limit
     assert [(q["q"], q["format"], q["pageno"]) for q in asked] == [
         (["kettles & tea"], ["json"], [page]) for page in ("1", "2")
     ]
+
+
+async def test_searxng_results_are_read_by_their_documented_members() -> None:
+    result = {
+        "engine": "general",
+        "template": "default.html",
+        "url": "https://a.example.test/x",
+        "title": "The title",
+        "content": "",
+        "publishedDate": "2026-01-01T00:00:00",
+    }
+
+    async def get(url: str) -> tuple[bytes, str | None]:
+        return _json({"results": [result]}), "utf-8"
+
+    hits = await SearxngProvider("https://searx.example.test/", get).search("q", 1)
+
+    assert hits == [Hit("https://a.example.test/x", "The title", "")]
 
 
 async def test_a_template_is_filled_with_the_encoded_query_and_the_limit() -> None:

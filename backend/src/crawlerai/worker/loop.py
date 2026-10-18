@@ -155,7 +155,7 @@ async def _execute(
 ) -> None:
     job = (await conn.execute(select(Job.kind, Job.cancel_requested).where(Job.id == task.job_id))).one()
     if job.cancel_requested:
-        await cancel_task(conn, task)
+        await cancel_task(conn, task, ending=ending)
         return
     handler = handlers.get(job.kind)
     if handler is None:
@@ -184,7 +184,7 @@ async def _execute(
         case Postpone(after):
             await release_task(conn, task, after=after)
         case Skipped():
-            await cancel_task(conn, task)
+            await cancel_task(conn, task, ending=ending)
         case unreachable:
             assert_never(unreachable)
 

@@ -10,6 +10,7 @@ import asyncio
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -21,20 +22,24 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.rungs import Rungs, adapter_registry
+from crawlerai.acquire.rungs import Rungs, acquire, adapter_registry
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import Job, JobId, JobKind, Record, Site, SiteId
+from crawlerai.db.models import Job, JobId, JobKind, Record, Site, SiteId, UrlTask
 from crawlerai.llm.client import NO_LLM
+from crawlerai.normalize.url_key import canonicalize
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
-from crawlerai.services.fetching import Fetching
+from crawlerai.services.crawl import CrawlRequest, submit_crawl
+from crawlerai.services.fetching import Fetching, store_declines
 from crawlerai.services.scrape import ScrapeRequest, scrape
+from crawlerai.services.scrape_steps import site_row
 from crawlerai.storage.fs import FsStore
+from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import TaskHandler, run_worker
 from tests.db.conftest import resolve
@@ -272,7 +277,10 @@ async def _run_job(engine: AsyncEngine, fetching: Fetching, data: EngineData, jo
     url = engine.url.render_as_string(hide_password=False)
     settings = Settings(database_url=SecretStr(url), object_store="fs:///unused")
     stop = asyncio.Event()
-    handlers: dict[JobKind, TaskHandler] = {"batch_scrape": scrape_handler(fetching, data, None, llm=NO_LLM)}
+    handlers: dict[JobKind, TaskHandler] = {
+        "batch_scrape": scrape_handler(fetching, data, None, llm=NO_LLM),
+        "crawl": crawl_handler(fetching, data, None, llm=NO_LLM),
+    }
     loop = asyncio.create_task(run_worker(settings, handlers, stop, ending=close_run))
     async with asyncio.timeout(60):
         while True:
@@ -308,3 +316,67 @@ async def test_a_batch_task_of_a_storefront_collection_is_served_over_the_platfo
         record: dict[str, Any] = (await conn.execute(query)).scalar_one()
     assert (web.page_fetches(), len(web.requested)) == ([], 1)
     assert (record["title"], record["price"]) == ("Desk Lamp", {"amount": "19.50", "currency": "EUR"})
+
+
+async def test_a_crawl_task_served_by_an_adapter_stores_its_page_as_where_it_was_fetched(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    site: SiteId,
+    lamp_schema: SchemaDef,
+    data: EngineData,
+) -> None:
+    url = f"{own_origin}/collections/lamps"
+    web.pages[url] = PAGE
+    rules = [{"pattern": url, "page_kind": "listing"}]
+    schema = {"id": str(lamp_schema.id)}
+    body = {"url": url, "formats": ["records"], "schema": schema, "page_kind_rules": rules, "max_depth": 0, "limit": 1}
+    submitted = await submit_crawl(engine, fetching.connector, CrawlRequest.model_validate(body), data=data)
+
+    await _run_job(engine, fetching, data, submitted.job_id)
+
+    async with engine.connect() as conn:
+        query = select(UrlTask.final_url).where(UrlTask.job_id == submitted.job_id)
+        final_url = (await conn.execute(query)).scalar_one()
+    # The adapter's endpoint is not the page: the frontier must not take it for a fetched page (jobs spec,
+    # "Crawl frontier and page-kind rules").
+    assert len(web.requested) == 1
+    assert final_url == canonicalize(url)
+
+
+async def test_a_page_whose_recipe_failed_is_still_served_by_the_adapter_its_canonical_url_names(
+    fetching: Fetching, web: Web, fetch_result: Callable[..., FetchResult], own_origin: str
+) -> None:
+    # A page no adapter detected is asked of the adapter its canonical URL names, recipe or not (adapters spec,
+    # "Referral from a tenant's own host").
+    canonical = f"{own_origin}/collections/lamps"
+    url = f"{canonical}?ref=footer"
+    web.pages[url] = PAGE.replace(b"</title>", f'</title><link rel="canonical" href="{canonical}">'.encode())
+
+    async def failed_recipe(page_url: str, policy: FetchPolicy) -> FetchResult:
+        return fetch_result(page_url, 500, b"{}", block_class="error", method="api")
+
+    result = await acquire(url, FetchPolicy(), "http", fetching.rungs, recipe=failed_recipe, send=web.json)
+
+    assert (result.method, result.block_class) == ("api", "ok")
+    assert [(a.method, a.status) for a in result.attempts] == [("api", 500), ("http", 200), ("api", 200)]
+
+
+async def test_declines_stored_from_one_stale_site_row_by_two_fetches_are_both_kept(
+    engine: AsyncEngine, fetching: Fetching, own_origin: str, site: SiteId
+) -> None:
+    host = own_origin.removeprefix("https://")
+    until = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    async with engine.connect() as conn:
+        stale = await site_row(conn, host)
+    first = replace(fetching.rungs, adapters=fetching.rungs.adapters.for_host(host, {"one": until}))
+    second = replace(fetching.rungs, adapters=fetching.rungs.adapters.for_host(host, {"two": until}))
+
+    for rungs in (first, second):  # two fetches that each read the row before either stored
+        async with engine.begin() as conn:
+            await store_declines(conn, stale, host, rungs)
+
+    async with engine.connect() as conn:
+        stored = (await conn.execute(select(Site.adapter_declined).where(Site.id == site))).scalar_one()
+    assert stored == {"one": until, "two": until}

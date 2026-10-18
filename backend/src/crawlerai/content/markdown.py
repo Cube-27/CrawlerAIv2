@@ -87,10 +87,10 @@ def markdown(
 def json_block(text: str) -> str:
     """A JSON text (RFC 8259) pretty-printed, two spaces per level and its characters as written, in a fenced code
     block: the fence is a run of backticks longer than any inside the text, so none closes it (CommonMark §4.5). `""`
-    for a text that is no JSON."""
+    for a text that is no JSON, or holds a number that decodes to no finite value (`1e400`)."""
     try:
         value = json_text.parse(text)
-        pretty = json.dumps(value, indent=2, ensure_ascii=False)
+        pretty = json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False)  # RFC 8259 §6: no Infinity, NaN
     except (ValueError, RecursionError):  # writing a value back nests as deep as reading it
         return ""
     fence = "`" * max(3, 1 + max((len(run) for run in re.findall("`+", pretty)), default=0))

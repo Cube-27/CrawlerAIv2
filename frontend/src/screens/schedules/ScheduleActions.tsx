@@ -42,7 +42,7 @@ export function ScheduleActions({
       >
         Run now
       </Button>
-      <EditSchedule key={schedule.updated_at} schedule={schedule} />
+      <EditSchedule schedule={schedule} />
       <ConfirmDialog
         trigger={
           <Button size="sm" variant="danger-soft">

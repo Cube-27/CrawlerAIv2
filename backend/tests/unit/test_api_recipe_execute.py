@@ -359,8 +359,28 @@ def test_a_response_whose_rows_hold_no_object_ends_the_listing() -> None:
 
     pages = _pages(api, limit=10)
 
-    assert len(pages) == 1
+    assert [page.block_class for page in pages] == ["ok", "error"]
     assert [r.url.params["offset"] for r in api.requests] == ["0", "2"]
+
+
+def test_a_response_with_no_rows_is_yielded_unserved_with_its_attempts() -> None:
+    # Every request sent counts as usage: the response that ends the listing, the first one too, carries its attempt.
+    def empty(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"items": []})
+
+    pages = _pages(StandIn(empty), limit=10)
+
+    assert [page.block_class for page in pages] == ["error"]
+    assert [(a.method, a.status) for a in pages[0].attempts] == [("api", 200)]
+
+
+def test_the_response_that_ends_a_listing_is_yielded_last_with_its_attempt() -> None:
+    api = StandIn(_offsets)
+
+    pages = _pages(api, limit=10)
+
+    assert [page.block_class for page in pages] == ["ok", "ok", "ok", "error"]
+    assert sum(len(page.attempts) for page in pages) == len(api.requests)
 
 
 def test_a_recipe_without_pagination_has_no_pages() -> None:

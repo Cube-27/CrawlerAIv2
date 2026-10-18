@@ -126,11 +126,12 @@ def clause_codes(text: str, entries: Iterable[Entries]) -> frozenset[str]:
 
 
 def _clauses(text: str) -> list[str]:
-    """The runs of letters, marks, spaces, dashes and connectors (`_continues`) between the other characters."""
+    """The runs of letters, marks, spaces, dashes, connectors and word-internal apostrophes (`_continues`) between the
+    other characters."""
     clauses: list[str] = []
     current: list[str] = []
-    for char in text:
-        if _continues(char):
+    for i, char in enumerate(text):
+        if _continues(text, i):
             current.append(char)
         elif current:
             clauses.append("".join(current))
@@ -140,11 +141,11 @@ def _clauses(text: str) -> list[str]:
 
 def first_clause(text: str) -> str:
     """The text's first clause: from its first letter, through letters, marks, spaces, dashes and connectors (Unicode
-    general categories L, M, Zs, Pd, Pc, UAX #44), up to the first other character: a punctuation mark, symbol, digit
-    or line break ends it. Leading spaces, punctuation and symbols ("✓ In stock") are skipped; a leading digit is
-    not ("0 in stock"), so the clause is then empty."""
+    general categories L, M, Zs, Pd, Pc, UAX #44) and apostrophes between two letters, up to the first other character:
+    a punctuation mark, symbol, digit or line break ends it. Leading spaces, punctuation and symbols ("✓ In stock") are
+    skipped; a leading digit is not ("0 in stock"), so the clause is then empty."""
     start = next((i for i, char in enumerate(text) if not _leads(char)), len(text))
-    end = next((i for i in range(start, len(text)) if not _continues(text[i])), len(text))
+    end = next((i for i in range(start, len(text)) if not _continues(text, i)), len(text))
     return text[start:end]
 
 
@@ -157,9 +158,21 @@ def _leads(char: str) -> bool:
     return char.isspace() or unicodedata.category(char)[0] in "PS"
 
 
-def _continues(char: str) -> bool:
-    category = unicodedata.category(char)
-    return category[0] in "LM" or category in _CLAUSE_JOINERS
+# Apostrophes UAX #29 does not break a word at when a letter is on each side (WB6/WB7: Single_Quote U+0027 and the
+# apostrophes of MidNumLet, U+2019 and U+FF07): "Remote's" is one word, so it does not end its clause.
+_WORD_APOSTROPHES = frozenset({"\u0027", "\u2019", "\uff07"})
+
+
+def _continues(text: str, i: int) -> bool:
+    category = unicodedata.category(text[i])
+    if category[0] in "LM" or category in _CLAUSE_JOINERS:
+        return True
+    between_letters = 0 < i < len(text) - 1 and _is_letter(text[i - 1]) and _is_letter(text[i + 1])
+    return text[i] in _WORD_APOSTROPHES and between_letters
+
+
+def _is_letter(char: str) -> bool:
+    return unicodedata.category(char)[0] == "L"
 
 
 @cache

@@ -13,8 +13,11 @@ from hypothesis import strategies as st
 from jsonschema import Draft202012Validator
 from pydantic import JsonValue
 
+from crawlerai.collect import schema_org_map
+from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import request_hash
+from crawlerai.llm.roles import s_schema
 from crawlerai.llm.roles.s_schema import (
     SAMPLE_MAX_CHARS,
     draft_name,
@@ -199,3 +202,26 @@ def test_the_fields_request_holds_the_sorted_names_and_page_kind_and_no_job() ->
     assert (req.prompt_kind, req.model_class, req.job_id) == ("s_draft", "strong", None)
     assert '<fields page_kind="listing">\ncolour\nprice\n</fields>' in req.user
     assert "<sample_page" not in req.user
+
+
+def _vocabulary() -> Vocabulary:
+    terms: list[JsonValue] = [
+        {"@id": "schema:Thing", "@type": "rdfs:Class"},
+        {"@id": "schema:Product", "@type": "rdfs:Class", "rdfs:subClassOf": {"@id": "schema:Thing"}},
+        {"@id": "schema:name", "@type": "rdf:Property"},
+    ]
+    return Vocabulary.parse({"@graph": terms})
+
+
+@pytest.mark.parametrize(("path", "refused"), [("Product.name", False), ("Product.notAProperty", True)])
+def test_the_reply_check_refuses_a_draft_naming_a_term_the_pinned_vocabulary_lacks(
+    monkeypatch: pytest.MonkeyPatch, path: str, refused: bool
+) -> None:
+    monkeypatch.setattr(schema_org_map, "default_vocabulary", _vocabulary)
+    draft = json.loads(json.dumps(DRAFT))
+    draft["fields"]["title"]["schema_org"] = path
+
+    reason = s_schema._invalid(to_wire(draft), "draft_000000000000")
+
+    assert (reason is not None) is refused
+    assert reason is None or "notAProperty is not a schema.org property" in reason

@@ -25,7 +25,11 @@ def sign(secret: str, body: bytes) -> str:
 
 def verify_signature(secret: str, body: bytes, signature: str | None) -> bool:
     """Whether `signature` (the header's value) is `body`'s, compared in constant time."""
-    return signature is not None and hmac.compare_digest(sign(secret, body), signature)
+    if signature is None:
+        return False
+    # Bytes, not str: `compare_digest` raises TypeError on a str with non-ASCII characters, which any sender can put
+    # in the header; surrogateescape keeps undecodable header bytes comparable instead of raising.
+    return hmac.compare_digest(sign(secret, body).encode(), signature.encode("utf-8", "surrogateescape"))
 
 
 def parse_webhook(secret: str, body: bytes, signature: str | None) -> JobSummary:

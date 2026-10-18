@@ -7,7 +7,8 @@ Three strategies, all keeping a code block whole in one chunk and never joining 
   words is split by sentences, as `sentence` does;
 - `sentence`: sentences (UAX #29 sentence boundaries, approximated: a full stop, `!` or `?` followed by whitespace and
   not by a lower-case letter, or an ideographic full stop) packed into chunks of at most `size` words;
-- `token`: a window of `size` words moved by `size - overlap` words over each section's text.
+- `token`: a window of `size` words moved by `size - overlap` words over each section's text between its code blocks;
+  each code block is a chunk of its own.
 
 `overlap` is the words at the end of a chunk that the next chunk of the same section starts with: for `sentence`, as
 many whole trailing sentences as fit in it. The chunk's `heading_path` is the titles of its headings, outermost first.
@@ -95,8 +96,27 @@ def _pieces(section: _Section, options: ChunkOptions) -> list[str]:
     if options.strategy == "heading" and len(_WORD.findall(text)) <= options.size:
         return [text]
     if options.strategy == "token":
-        return list(_windows(text, options))
+        return [piece for run in _runs(section.blocks) for piece in _token_pieces(run, options)]
     return list(_packed(_sentences(section.blocks), options))
+
+
+def _runs(blocks: list[Block]) -> list[list[Block]]:
+    """The blocks split at each code block: a code block is a run of its own, the blocks between are another."""
+    runs: list[list[Block]] = []
+    for block in blocks:
+        if block.kind == "code" or not runs or runs[-1][-1].kind == "code":
+            runs.append([block])
+        else:
+            runs[-1].append(block)
+    return runs
+
+
+def _token_pieces(run: list[Block], options: ChunkOptions) -> Iterator[str]:
+    """A code block whole, as one piece whatever its size; other blocks' text in word windows."""
+    if run[0].kind == "code":
+        yield run[0].text
+    else:
+        yield from _windows("\n\n".join(block.text for block in run), options)
 
 
 def _windows(text: str, options: ChunkOptions) -> Iterator[str]:

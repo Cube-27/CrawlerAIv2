@@ -162,10 +162,14 @@ class SiteSessions:
     def settle(self, session: SiteSession | None, result: FetchResult) -> None:
         """Record how the fetch `session` served went. `blocked` drops it: its cookies no longer pass. A session that
         is refused (`blocked` or `shell`) before it served an `ok` never carried the site, so it is dropped and the
-        site opens no other for `SESSION_TTL`: its fetches go to the browser rather than solving over and over."""
+        site opens no other for `SESSION_TTL`: its fetches go to the browser rather than solving over and over. An `ok`
+        it then serves (a fetch that was in flight) lifts that refusal."""
         if session is None:
             return
         if result.block_class == "ok":
+            if not session.passed:
+                # A concurrent fetch's refusal may have been settled first: the session did carry the site after all.
+                self._refused.pop((session.site, session.pool), None)
             session.passed = True
         elif result.block_class in ("blocked", "shell") and not session.passed:
             self._refused[session.site, session.pool] = self.clock() + SESSION_TTL.total_seconds()

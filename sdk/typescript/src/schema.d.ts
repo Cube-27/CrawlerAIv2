@@ -1405,7 +1405,7 @@ export interface components {
          *     pages are extracted. The webhook options are `WebhookOptions` (§4.2).
          *
          *     `strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the
-         *     links that best match `query` and `keywords` first (`crawl.scoring`). `max_pages` is `limit`. `allow_subdomains`
+         *     links that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`
          *     keeps the start host's subdomains without an `include`, and `allow_external` any host (D-1440, D-1441).
          */
         CrawlRequest: {
@@ -1444,7 +1444,7 @@ export interface components {
             keywords?: string[];
             /**
              * Limit
-             * @description At most this many pages are fetched; alias `max_pages`.
+             * @description At most this many pages are fetched.
              * @default 500
              */
             limit: number;

@@ -58,7 +58,11 @@ export function LimitsSection() {
   );
 }
 
-/** A cap as a whole number of calls; empty (NaN) is no limit. */
+/** The largest cap the server stores: a PostgreSQL `integer` column, a 4-byte signed integer (PostgreSQL docs
+ * §8.1.1). */
+const MAX_CAP = 2_147_483_647;
+
+/** A cap as a whole number of calls, at most `MAX_CAP`; empty (NaN) is no limit. */
 function CapField({
   name,
   label,
@@ -79,6 +83,7 @@ function CapField({
       name={name}
       value={value}
       minValue={0}
+      maxValue={MAX_CAP}
       isDisabled={isDisabled}
       formatOptions={{ maximumFractionDigits: 0, useGrouping: false }}
       onChange={onChange}

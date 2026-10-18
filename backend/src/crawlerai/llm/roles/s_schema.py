@@ -26,6 +26,7 @@ from typing import Final
 from pydantic import JsonValue, ValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from crawlerai.collect.schema_org_map import pinned_reference_errors
 from crawlerai.db.models import JobId, PageKind
 from crawlerai.llm.client import LLMClient, LLMRequest, ReplyCheck
 from crawlerai.llm.roles.c_extract import DETAIL_MAX_CHARS
@@ -194,13 +195,17 @@ def _document(data: dict[str, JsonValue], name: str) -> SchemaDocument:
 
 
 def _parsed(data: dict[str, JsonValue], name: str) -> SchemaDocument | str:
-    """The document `data` holds, or why it is not a valid one."""
+    """The document `data` holds, or why it is not a valid one: a broken document, or one naming a schema.org term the
+    pinned vocabulary lacks, which a user's schema is refused for too (schemas spec, "schema.org paths")."""
     try:
-        return _document(data, name)
+        document = _document(data, name)
     except ValidationError as error:
         return "; ".join(f"at {'.'.join(map(str, e['loc'])) or 'root'}: {e['msg']}" for e in error.errors())
     except ValueError as error:
         return str(error)
+    if errors := pinned_reference_errors(document.fields):
+        return "; ".join(f"at {path}: {reason}" for path, reason in errors)
+    return document
 
 
 def _invalid(data: dict[str, JsonValue], name: str) -> str | None:

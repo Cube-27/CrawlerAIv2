@@ -179,9 +179,11 @@ async def send(
 
 
 def _usable(session: SiteSession | None, pool: ProxyPool | None) -> SiteSession | None:
-    """`session` unless its endpoint is quarantined: its cookies were earned from that endpoint's address."""
+    """`session` unless its endpoint is quarantined: its cookies were earned from that endpoint's address. A session
+    left out gets back the fetch `SiteSessions.take` spent on it, as it serves none."""
     if session is None or pool is None or session.proxy is None or pool.health.available(session.proxy):
         return session
+    session.fetches_left += 1
     return None
 
 

@@ -12,31 +12,46 @@ import json
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.browser_tab import Drive
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SafeConnector
+from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import Capture, Extraction, ExtractionConfig, Job, JobId, JobKind, Record, SiteId, UrlTask
+from crawlerai.db.models import (
+    Capture,
+    Extraction,
+    ExtractionConfig,
+    Job,
+    JobId,
+    JobKind,
+    Record,
+    Site,
+    SiteId,
+    UrlTask,
+    UsageEvent,
+)
 from crawlerai.llm.client import NO_LLM
 from crawlerai.recurring.listing_diff import close_run
-from crawlerai.resolve.pipeline import EngineData
+from crawlerai.resolve.pipeline import EngineData, extract_page
+from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import SchemaDef, document_digest
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.crawl import CrawlRequest, submit_crawl
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
+from crawlerai.storage.capture_bundle import CaptureBundle
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.handlers.scrape import scrape_handler
@@ -58,6 +73,9 @@ class Web:
     origin: str
     up: bool = True
     down: int = 500
+    empty: bool = False
+    names: list[str] = field(default_factory=lambda: list(NAMES))
+    refused: str | None = None  # the cursor of the page whose request the SSRF guard refuses
     requested: list[JsonRequest] = field(default_factory=list)
     listed: list[str] = field(default_factory=list)
     pages: list[str] = field(default_factory=list)
@@ -75,12 +93,16 @@ class Web:
         if not self.up:
             return self.fetch_result(request.page_url, self.down, b"{}", block_class="error", method="api")
         after = parse_qs(urlsplit(request.url).query).get("after", ["0"])[0]
+        if after == self.refused:
+            error = f"{SSRF_REJECTED} a private address"
+            return self.fetch_result(request.page_url, 0, b"", block_class="error", error=error, method="api")
         start = int(after)
         rows = [
             {"label": name, "href": f"{self.origin}/kettles/{start + i}"}
-            for i, name in enumerate(NAMES[start : start + PAGE_SIZE])
+            for i, name in enumerate(self.names[start : start + PAGE_SIZE])
+            if not self.empty
         ]
-        following = start + PAGE_SIZE if start + PAGE_SIZE < len(NAMES) else None
+        following = start + PAGE_SIZE if start + PAGE_SIZE < len(self.names) else None
         body = json.dumps({"result": {"rows": rows, "next": None if following is None else str(following)}})
         return self.fetch_result(request.page_url, 200, body.encode(), method="api")
 
@@ -341,12 +363,26 @@ async def test_a_crawl_task_of_a_listing_recipe_serves_its_pages_up_to_the_crawl
 
 
 async def _batch(
-    engine: AsyncEngine, fetching: Fetching, url: str, schema: SchemaDef, data: EngineData, *, first_attempt: bool
-) -> None:
-    body = {"urls": [url], "formats": ["records"], "schema": {"id": str(schema.id)}, "page_kind": "listing"}
+    engine: AsyncEngine,
+    fetching: Fetching,
+    url: str,
+    schema: SchemaDef,
+    data: EngineData,
+    *,
+    first_attempt: bool,
+    **fetch: Any,
+) -> JobId:
+    body = {
+        "urls": [url],
+        "formats": ["records"],
+        "schema": {"id": str(schema.id)},
+        "page_kind": "listing",
+        "fetch": fetch,
+    }
     submitted = await submit_batch(engine, fetching.connector, BatchScrapeRequest.model_validate(body), data=data)
     handlers: dict[JobKind, TaskHandler] = {"batch_scrape": scrape_handler(fetching, data, None, llm=NO_LLM)}
     await _run(engine, handlers, submitted.job_id, first_attempt=first_attempt)
+    return submitted.job_id
 
 
 async def test_a_batch_task_whose_recipe_fails_its_first_page_requests_it_once_then_fetches_the_page(
@@ -382,3 +418,158 @@ async def test_a_batch_task_whose_recipe_is_asked_to_slow_down_sends_nothing_mor
     await _batch(engine, fetching, url, schema, engine_data, first_attempt=True)
 
     assert (len(web.requested), web.pages) == (1, [])
+
+
+async def test_a_listing_the_recipe_does_not_serve_is_not_rendered_without_a_turn_at_the_sites_rate(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    site: SiteId,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    # The recipe's request takes the caller's turn; the next is two minutes off, past what a caller waits in place.
+    async with engine.begin() as conn:
+        await conn.execute(update(Site).where(Site.id == site).values(crawl_delay_ms=120_000))
+    web.up = False
+    url = f"{own_origin}/kettles"
+
+    result = await scrape(engine, fetching, _request(url, schema, records=5), data=engine_data)
+
+    assert (web.listed, len(web.requested)) == ([], 1)
+    assert result.fetch is not None
+    assert result.fetch.method == "api"
+
+
+async def test_a_batch_task_whose_recipe_answers_no_rows_counts_that_request_then_fetches_the_page(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    web.empty = True
+    url = f"{own_origin}/kettles"
+
+    job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+
+    async with engine.connect() as conn:
+        query = select(UsageEvent.metadata_["method"].astext).where(UsageEvent.job_id == job_id)
+        counted: list[str] = sorted((await conn.execute(query)).scalars())
+    assert len(web.requested) == 1
+    assert counted.count("api") == 1
+
+
+async def test_a_batch_task_whose_further_recipe_page_the_guard_refuses_fails(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    web.refused = "3"  # INV-16: a refused request fails the task, never truncates its listing silently
+    url = f"{own_origin}/kettles"
+
+    job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+
+    async with engine.connect() as conn:
+        task = (await conn.execute(select(UrlTask.status, UrlTask.last_error).where(UrlTask.job_id == job_id))).one()
+    titles, _ = await _titles(engine, job_id)
+    assert task.status == "failed"
+    assert (task.last_error or "").startswith(SSRF_REJECTED)
+    assert titles == []
+
+
+async def test_a_batch_task_whose_further_recipe_page_fails_its_extraction_is_partial(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def failing_later_pages(bundle: CaptureBundle, *args: Any, **kwargs: Any) -> ExtractionResult:
+        result = await extract_page(bundle, *args, **kwargs)
+        later = NAMES[PAGE_SIZE].encode() in bundle.body  # the second page's first row
+        return result.model_copy(update={"outcome": "error", "entity": None, "rows": ()}) if later else result
+
+    monkeypatch.setattr("crawlerai.services.scrape_steps.extract_page", failing_later_pages)
+    url = f"{own_origin}/kettles"
+
+    job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+
+    async with engine.connect() as conn:
+        outcome = (await conn.execute(select(UrlTask.outcome).where(UrlTask.job_id == job_id))).scalar_one()
+    assert outcome == "partial"
+
+
+async def test_a_recurring_listing_whose_later_recipe_page_changed_is_extracted_again(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/kettles"
+    await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+    web.names[PAGE_SIZE] = "Kettle Z"  # the first page reads the same; the second does not
+
+    job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+
+    async with engine.connect() as conn:
+        outcome = (await conn.execute(select(UrlTask.outcome).where(UrlTask.job_id == job_id))).scalar_one()
+    titles, _ = await _titles(engine, job_id)
+    assert outcome == "extracted"
+    assert "Kettle Z" in titles
+
+
+async def test_a_batch_task_requests_no_further_recipe_page_past_its_deadline(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The pages' share of the lease is spent at once: the first page is served, and no page request follows it.
+    monkeypatch.setattr("crawlerai.worker.handlers.steps.RECIPE_PAGES_SHARE", timedelta(0))
+    url = f"{own_origin}/kettles"
+
+    job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+
+    titles, _ = await _titles(engine, job_id)
+    assert len(web.requested) == 1
+    assert sorted(titles) == NAMES[:PAGE_SIZE]
+
+
+async def test_a_cache_only_batch_task_reads_the_capture_its_sites_recipe_stored(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/kettles"
+    await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+    sent = len(web.requested)
+
+    job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False, cache="only")
+
+    async with engine.connect() as conn:
+        task = (await conn.execute(select(UrlTask.status, UrlTask.last_error).where(UrlTask.job_id == job_id))).one()
+    assert (task.status, task.last_error) == ("done", None)
+    assert len(web.requested) == sent  # read from the stored capture, nothing fetched

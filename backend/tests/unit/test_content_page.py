@@ -18,6 +18,7 @@ from crawlerai.storage.capture_bundle import (
     CaptureManifest,
     Headers,
     NetworkBody,
+    decode_body,
     network_file,
     sha256_hex,
 )
@@ -107,6 +108,37 @@ def test_a_browser_capture_is_utf8_whatever_the_server_declared() -> None:
     page = ParsedPage.of(CaptureBundle(manifest=manifest, body=plain.body, network=()))
 
     assert page.cleaned_text.text == "a \u2013 b"
+
+
+@pytest.mark.parametrize(
+    ("method", "content_type"),
+    [
+        ("api", "application/json; charset=iso-8859-1"),
+        ("api", "text/plain; charset=windows-1252"),
+        ("api", ""),
+        ("http", "application/problem+json; charset=windows-1252"),
+        ("http", "text/json; charset=iso-8859-1"),
+    ],
+)
+def test_a_json_body_decodes_as_utf8_whatever_charset_it_is_labelled_with(method: str, content_type: str) -> None:
+    # RFC 8259 §8.1, §11: JSON text is exchanged as UTF-8 and its media type has no charset parameter; an API
+    # capture's body is a JSON document (`body.json`; acquisition spec, "Structural outcome classification (INV-24)")
+    # unless it is labelled HTML.
+    headers = (("content-type", content_type),) if content_type else ()
+    plain = _bundle('{"name": "café \u2013 b"}'.encode(), headers)
+    manifest = plain.manifest.model_copy(update={"method": method})
+
+    text = decode_body(CaptureBundle(manifest=manifest, body=plain.body, network=()))
+
+    assert text == '{"name": "café \u2013 b"}'
+
+
+def test_an_api_answer_labelled_html_decodes_as_html() -> None:
+    # A refused API answer may be an HTML document, whose charset decodes it (HTML Standard §13.2.3.2).
+    plain = _bundle(b"<p>a \x96 b</p>", (("content-type", "text/html; charset=windows-1252"),))
+    manifest = plain.manifest.model_copy(update={"method": "api", "status_code": 403, "block_class": "blocked"})
+
+    assert decode_body(CaptureBundle(manifest=manifest, body=plain.body, network=())) == "<p>a \u2013 b</p>"
 
 
 @pytest.mark.parametrize(("method", "json_body"), [("api", True), ("http", False), ("browser", False)])

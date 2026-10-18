@@ -685,7 +685,7 @@ class ModelRoleUsage(BaseModel):
 
 
 class IntervalS(RootModel[int]):
-    root: Annotated[int, Field(ge=60, title="Interval S")]
+    root: Annotated[int, Field(ge=60, le=2147483647, title="Interval S")]
 
 
 class RequiredGroup(RootModel[str]):
@@ -818,11 +818,11 @@ class Problem(BaseModel):
 
 
 class DraftCallCap(RootModel[int]):
-    root: Annotated[int, Field(ge=0, title="Draft Call Cap")]
+    root: Annotated[int, Field(ge=0, le=2147483647, title="Draft Call Cap")]
 
 
 class LlmCallCap(RootModel[int]):
-    root: Annotated[int, Field(ge=0, title="Llm Call Cap")]
+    root: Annotated[int, Field(ge=0, le=2147483647, title="Llm Call Cap")]
 
 
 class ProjectSettings(BaseModel):
@@ -1738,7 +1738,7 @@ class CrawlRequest(BaseModel):
     limit: Annotated[
         int | None,
         Field(
-            description="At most this many pages are fetched; alias `max_pages`.",
+            description="At most this many pages are fetched.",
             ge=1,
             le=5000,
             title="Limit",

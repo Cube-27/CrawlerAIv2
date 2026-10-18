@@ -92,7 +92,7 @@ site's CXS endpoints on the page's host (`POST .../jobs` in pages of 20 by `offs
 list, else a short page; `GET .../job/...`), and map rows with their job URL (site root + `externalPath`) and jobs with
 title, description, locations as written, date posted, employment type, hiring organization and URL, as in
 `adapters/workday.py`. It SHALL refer a page on another host to the career site it names as itself or, for a listing,
-the one site all its Workday links belong to. A list URL with a query falls through to the page rungs. Refs: D-1177,
+the one site all its Workday links belong to (in the locale those links all state, when they agree). A list URL with a query falls through to the page rungs. Refs: D-1177,
 D-1300, D-1302.
 (Previously: the first page of 20 only, and career sites on the platform's hosts only.)
 #### Scenario: Listing row URL
@@ -208,8 +208,9 @@ Refs: §7.2, D-0559, D-0560.
 A recipe SHALL be accepted only for a schema whose HTML config validated, when every map field reproduces on every
 held-out page (at least 3) where it was published (for a listing: replaying its first two pages gives the rows of the
 page's captured calls, in order, each mapped raw value equal); `validation_report.api_recipe` records the result or
-the refusal reason either way, and an error of the recipe learner that is not an LLM failure refuses the recipe
-(`recipe_error: <type>`) without failing the run. Refs: §7.2, Appendix A #59, D-0581, D-0583, D-0735, D-1365, D-1389.
+the refusal reason either way, and an error of the recipe learner that is neither an LLM failure nor a database
+error (a replay's usage not stored fails the run) refuses the recipe (`recipe_error: <type>`) without failing the run.
+Refs: §7.2, Appendix A #59, D-0581, D-0583, D-0735, D-1365, D-1389, D-1584.
 (Previously: such an error failed the learning run.)
 #### Scenario: Second page changed
 - **WHEN** a held-out listing's replayed second page answers other rows than its captured second call

@@ -1005,3 +1005,161 @@ Entries written before the OpenSpec conversion (#223), when this file was `docs/
 - Blocked: rows on client-rendered listings whose HTTP body holds other repeated blocks; nothing else.
 - Reversible: yes
 - Owner answer: confirmed 2026-10-17, option (a) (owner decision #54). Implemented in #242 (D-1246–D-1249).
+
+### D-1580 — A page's language subtags that CLDR does not know are dropped before the count unit-label lookup
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `normalize.count._names_a_measure` intersects `vocab.context_languages(ctx)` with the primary language
+  subtags CLDR has locale data for (`_cldr_languages`, from `babel.localedata.locale_identifiers`) before calling the
+  cached `_measure_labels`. So the cache keys only on languages CLDR knows. A page whose only stated subtags are
+  unknown now reads like a page that states no language, which means every locale's unit labels. Before, it meant no
+  labels, so a `unitText` such as "kg" beside `C62` was accepted.
+- Alternatives: an `lru_cache(maxsize=...)` bound (it still stores a full label set per garbage combination, up to
+  the bound); keep the empty label set for unknown-only tags through a sentinel key (two meanings for "no usable
+  language").
+- Why: review finding on #245. Garbage subtags beside a real one each stored a fresh copy of the whole CLDR label set,
+  so the cache grew without bound over a long crawl. An unknown subtag gives no CLDR data either way, so the
+  conservative reading is "no language stated", the rule that already applies (D-1271).
+- Reversible: yes
+
+### D-1581 — The SearXNG provider reads results by SearXNG's documented JSON members
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `SearxngProvider` passes `SEARXNG_FIELDS = {"url": "url", "title": "title", "snippet": "content"}` to
+  `search.results.parse`, the members of SearXNG's documented Search API JSON response (`format=json`). The template
+  provider is still read by the answer's shape (D-1443), with the operator's `CRAWLERAI_SEARCH_FIELDS` when given.
+- Alternatives: keep reading SearXNG by shape (an empty `content` takes `template`, "default.html", or `engine` as
+  the snippet; a member order with `engine` before `title` gives every title wrong).
+- Why: review finding on #261. The provider is named in configuration and its response schema is documented, so this
+  is no site rule (C3): it is the same field mapping the operator can already state for a template provider.
+- Reversible: yes — a constant.
+
+### D-1582 — Role S drafts get the schema.org reference check user schemas get, in the reply check
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `collect.schema_org_map.pinned_reference_errors(fields)` runs `reference_errors` against
+  `default_vocabulary()`. It returns `[]` on `VocabularyMissing`, so a process without the file checks syntax only.
+  `services.schemas._check_references` (user create and inline schemas) and role S's reply check
+  (`llm.roles.s_schema._parsed`) both call it. A draft that names an unknown schema.org type, property or enumeration
+  therefore takes the client's one retry, then `OutputInvalid`, and is never stored.
+- Alternatives: check after the reply in `_drafted` and raise (no retry for the model to correct it); a second copy of
+  the try/except in role S (C8).
+- Why: review finding on #255. Role S stored drafts through `registry.create` directly, past the check SPEC-04 §4.2
+  states for every schema document.
+- Reversible: yes
+
+### D-1583 — long_text word overlap drops numbers, so texts that differ only in a figure match
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: needs-owner
+- Question: `normalize.text.word_overlap`, which scores long_text in the evaluation (D-1462, threshold 0.9), builds
+  its words with `vocab.tokens`, which keeps letters and marks only. Two descriptions that differ only in a number
+  ("lasts 10 hours" / "lasts 20 hours") score 1.0, so a wrong value counts as TP (review finding on #264).
+- Options: (a) count runs of letters, marks and numbers as words (UAX #29 WB9/WB10) in `word_overlap` only, keeping
+  `vocab.tokens` for vocabulary matching; (b) leave it.
+- Recommendation: (a). It can only lower long_text TP counts where output and label state other figures.
+- Blocked: nothing; it changes what counts as a long_text match, a scoring rule (`CLAUDE.md` §4), so it was not
+  changed in #277. An implementation of (a) with a property test was drafted and left out.
+- Reversible: yes
+
+### D-1584 — A database error during recipe learning fails the learn run
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `config_ir.learning._learned` re-raises `sqlalchemy.exc.SQLAlchemyError` from `learn_recipe` (beside `LLMFailure`), so the run ends failed (`error`) and no config activates; every other exception is still a refused recipe (`recipe_error: <type>`, D-1389). The adapters spec's held-out validation requirement says so.
+- Alternatives: a dedicated `UsageNotRecorded` exception raised by `services.fetching.learning_replay` around its usage write (needs an edit in a file PR #273 rewrites, and catches only that one write, not the replay's other database reads).
+- Why: a database error is never the recipe's own; letting it through keeps a replay whose usage was not stored from leaving the request unaccounted (D-1381) while the job reports completion.
+- Reversible: yes
+
+### D-1585 — A job's records page places a record at the task whose link came first
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `services.records._job_page` places each record at the job's task whose `task_record` link has the smallest (`created_at`, `url_task_id`), not the smallest task id. The cursor stays a record id (no API change).
+- Alternatives: encode the position (task id, record id) in the cursor (an API shape change); stamp `task_record.created_at` at commit with a trigger as `record` is (a baseline-migration edit in a file PR #273 rewrites).
+- Why: links only accrue, so an older task that comes to stand for a record later no longer moves it under a cursor already given and skips the records between. Residual: `created_at` is the transaction's start (`now()`), so two task transactions that overlap and link the same record can still order by start rather than commit; the window is one task transaction.
+- Reversible: yes
+
+### D-1586 — The listing diff reads row URLs with the schema the job pinned
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `recurring.listing_diff` reads the row URL fields from `job.pinned["schema"]` (INV-28, `JobPins`), not the live schema by id, and filters records that publish none of them (SQL NULL) before canonicalizing. A job without pins (no records) lists no row URLs. It reads only the `schema` member, as `recurring` sits below `services` and cannot import `JobPins`.
+- Alternatives: keep the live schema and only filter NULLs (an edit mid-crawl still changes which fields are read: false misses and `url_gone`).
+- Why: the records were extracted with the pinned schema; reading them with another is a different listing.
+- Reversible: yes
+
+### D-1587 — Request members stored in an `integer` column are bounded by its range
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `core.validation.PG_INTEGER_MAX` (2^31 − 1, PostgreSQL §8.1.1) bounds `ProjectSettings.llm_call_cap`/`draft_call_cap` and the schedules' `interval_s` (create and update) with `le=`; the settings form's cap fields take `maxValue` 2147483647. The jobs spec's schedule line states the interval range.
+- Alternatives: widen the columns to `bigint` (a baseline-migration edit, and no use case for caps or intervals that large).
+- Why: a larger value passed validation and failed at the write with a 500; it is now a 422 naming the bound. OpenAPI gains `maximum` on those members (the lead regenerates the clients).
+- Reversible: yes
+
+### D-1588 — Only extractions outside config mode count as "role C was asked" for absent fields
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `config_ir/held_out.py` sets `StoredPage.asked_llm` only for extractions whose `mode` is not `config`. In config mode role C is asked only for the fields the active config does not cover, so its LLM call says nothing about a covered field. A forced re-learn whose pages are all config-mode extractions therefore lists no field absent.
+- Why: a covered field whose steps missed on drifted pages could otherwise be listed absent although the site states it (review finding on #252). Losing an absent entry costs one role C ask per page; a wrong absent entry hides a stated field.
+- Alternatives: persist the field names role C was asked per extraction and test membership in `absent._unstated` (exact, but a new column for a rare case).
+- Reversible: yes
+
+### D-1589 — A row-mapped field's path refuses the `>` ranking
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `schemas/types.py:_check_row_mapping` refuses `>` in a row path, as it refuses `+`. Row discovery (`resolve/rows.py:_reached`) pools every alternative's rows, so a ranked row path was accepted but not honoured. No preset uses `>` in a row path (the one `>` in the presets is a scalar field's). The schemas spec line on row-mapped lists says so.
+- Why: the smallest fix of review finding T161 on #270 that keeps resolve/ (phase 2a) untouched; a document that asks for a ranking it would not get is refused rather than silently pooled.
+- Alternatives: make `_reached` return the first rank that reaches rows (a resolve/ change, left to phase 2a).
+- Reversible: yes (lifting the refusal once `_reached` honours ranks)
+
+### D-1590 — A page with more links than `MAX_LINKS` states no links for referral
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `acquire/page_refs.page_refs` returns `links=()` when a page has more than `MAX_LINKS` (5000) distinct http(s) link targets, instead of the first 5000. Its own URLs (final URL, canonical, `og:url`) still count.
+- Why: a prefix of a large page's links can name one career site where the whole names two, so `Referring.referred` would refer it wrongly (review finding on #248); the cap's comment already said such a page is not judged by its links.
+- Reversible: yes
+
+### D-1591 — The request context serializes its names canonically
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `RequestContext` serializes `headers` as its names lowercased and sorted, and `cookies` as its names sorted (case kept), each with the redacted value; values stay out of every serialization (D-1432). Stored captures' `fetch_policy.context` therefore compares equal for the same names in any order or header case, and `recent_capture` reuses them. `recent_capture` also requires the same `screenshot` area when the request asks for a screenshot.
+- Why: header field names are case-insensitive (RFC 9110 §5.1), cookie names are not (RFC 6265 §4.1.1); a context is a set of names. Review findings on #262 (T131) and #260 (T99). Captures stored before the change keep their old order and may miss once (greenfield, no migration).
+- Reversible: yes
+
+### D-1592 — Token-like query values are withheld by (name, value), from any samples
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `binding.withhold_tokens` withholds each percent-decoded `(name, value)` query item that every sample's endpoint URL holds and that is token-like, unless a page value binds it; it strips items by name and value together. It no longer gives up when the samples' query names differ or when no binding can be built (one sample, mixed methods): the page-value check runs without the binding's own two-sample and one-method checks, so a single sample's token-like values are withheld before role D.
+- Why: review findings T80/T81/T82 on #258: an ordinary item sharing a token's name was dropped, and a constant token could reach role D and the stored recipe, against model.py's "never stored unless the page states it". With one sample a constant cannot be told from a parameter, so the stricter reading (withhold) is taken; the replay shows whether the endpoint needs it.
+- Reversible: yes
+
+### D-1593 — Task leasing order across jobs: a scored crawl's tasks lease before other jobs' tasks
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: needs-owner
+- Question: `db/queue.claim_tasks` leases by priority, then score, then id across all jobs, as the jobs spec
+  ("Crawl strategy and best-first scoring") requires. A best-first crawl's scored tasks therefore lease before every
+  other job's unscored tasks at the same priority (review finding on #261).
+- Options: (a) order by score only within a job (score as a tie-break after job fairness, e.g. per-job round robin
+  or oldest job first); (b) leave it, since priority already separates job kinds.
+- Recommendation: (a), as a jobs-spec change; it changes a requirement, so it was not changed in #277.
+- Blocked: fairness between a large scored crawl and other jobs at the same priority; nothing else.
+- Reversible: yes
+
+### D-1594 — The public CrawlRequest schema does not advertise the `max_pages` alias
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `max_pages` stays accepted by the server as an alias of `limit` (jobs spec, D-1440/D-1446), but the `limit` field description and the CrawlRequest docstring no longer name it; the validator's own docstring records the alias. The SDKs expose `limit` only.
+- Why: the alias is a before-validator the OpenAPI schema cannot carry, so a client generated from the schema with extra members forbidden (the Python SDK) refused `max_pages` although the description offered it. Advertising only what the schema can express removes the contract mismatch without a compat shim or a second request member.
+- Reversible: yes
+
+### D-1595 — The playground names fetch combinations the server always refuses, on their field, before sending
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `withFetchErrors` (frontend `screens/playground/advanced.ts`) mirrors the two server rules that refuse a fetch combination outright — a screenshot/PDF, `wait_for` or actions with `method_hint: http` (`check_formats`, `FetchOptions._coherent`) and headers with the browser, `wait_for` or actions (INV-44) — as errors on `fetch.method_hint` / `fetch.headers` in Scrape, Batch, Crawl and Extract, so the send is held, like the existing webhook checks. Fields are not disabled.
+- Why: the forms let a request reach the API that always 422s. Form-coherence checks of request members are what the forms already do (webhook, page kind); the frontend spec's "MUST NOT validate selectors or schema rules" is about extraction rules, not this. An inline error keeps every field editable and tells the user which change resolves it.
+- Reversible: yes
+
+### D-1596 — Crawl's options carry best-first keywords
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: the Crawl options hold `keywords` (a tag list under Query), restored from a stored crawl and sent with `strategy: best_first` only, as `query` is.
+- Why: editing a stored crawl that used `keywords` (from the API or an SDK) silently dropped them, so the re-run ranked pages differently. Showing the member is the smallest change that round-trips a stored request; hiding it while preserving it would be a second, invisible path.
+- Reversible: yes
+
+### D-1597 — A JSON body decodes as UTF-8: JSON-labelled, or an API capture's not labelled HTML
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `storage/capture_bundle.decode_html` decodes a body as JSON text (UTF-8, with the UTF-16/32 forms told from the first bytes by `json.detect_encoding`, as `core.json_text` reads it) when its last Content-Type essence is a JSON MIME type (`application/json`, `text/json`, `+json`; WHATWG MIME Sniffing §4.6), or when it is an `api` capture (`body.json`, SPEC-01 §4.5) not labelled `text/html` or `application/xhtml+xml`. The label's charset parameter is ignored for such a body. Every other body keeps HTML encoding sniffing (D-1152).
+- Why: RFC 8259 §8.1 makes JSON exchanged between systems UTF-8 and §11 gives its media type no charset parameter, so a charset label (or an adapter's re-encoded body keeping the first answer's charset) must not decode it. A refused API answer can be an HTML document, which its own charset decodes; the `api` method alone would misread it.
+- Reversible: yes
+
+### D-1598 — The browser's JSON body reads stay bounded by Chromium's DevTools buffer, not a pre-read decoded-size check
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `acquire/browser._json_body` keeps its pre-read check on `Content-Length`/wire size and its post-read 2 MB cap; no check on the decoded size is added before `response.body()`. A compressed JSON body that decodes past the cap is read once and dropped.
+- Why: no decoded size is available before the read: Playwright exposes neither the decoded length nor its own CDP session, and a second CDP session's `Network.enable` `maxResourceBufferSize` does not apply to Playwright's `getResponseBody` (measured with the pinned Patchright Chromium: a 5 MB body still read under a 2 MB limit set on another session). Chromium's default per-resource DevTools buffer bounds one read (measured: a gzip JSON decoding to 19.9 MB is returned, one of 20.1 MB is evicted and `body()` fails), and bodies are read one at a time and dropped past the cap, so the worker holds at most about 20 MB transiently per read. Skipping compressed bodies by an assumed ratio would drop legitimate JSON.
+- Reversible: yes (a decoded-size cap can be added if Playwright exposes one, or via request interception that streams the body)
+
+### D-1599 — A listing's content fingerprint reads its links as well as its words
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: decided (owner-delegated 2026-10-17)
+- Decision: `page_fingerprint` fingerprints a listing by its visible words followed by the canonical URLs it links to, in document order (`content.links`), instead of by its words alone (links only when it had no words, D-1383). A detail page is still fingerprinted by its words. The jobs spec's "Conditional GET and content fingerprint" requirement says so.
+- Why: a listing whose rows keep their titles but link to other items (reposted items with new IDs) read as unchanged, so the task linked standing records with stale row URLs and the listing diff never saw the change. The spec already holds standing records valid only "while that task extracted the page the way it would be now"; reading the links restores that. The cost is more re-extraction on listings whose hrefs churn (session or tracking parameters): never a stale record, only a skipped optimisation.
+- Reversible: yes

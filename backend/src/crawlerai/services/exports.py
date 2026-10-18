@@ -70,7 +70,7 @@ class _Reached(NamedTuple):
 
 async def job_llms_txt(conn: AsyncConnection, store: ObjectStore, job_id: JobId, *, full: bool) -> str:
     """The job's `llms.txt`, or its `llms-full.txt` with `full`. Raises `JobNotFound`, and `NotExportable` for a job
-    that reached no page."""
+    that reached no page or keeps none of their captures."""
     if (await conn.execute(select(Job.id).where(Job.id == job_id))).one_or_none() is None:
         raise JobNotFound(f"no job {job_id}")
     limit = MAX_FULL_PAGES if full else MAX_PAGES
@@ -78,6 +78,9 @@ async def job_llms_txt(conn: AsyncConnection, store: ObjectStore, job_id: JobId,
     if not reached:
         raise NotExportable(f"job {job_id} has reached no page, so it has nothing to list")
     made = await asyncio.to_thread(_made, store, reached, full)
+    if not made:
+        # Retention deleted every bundle the rows named (`scheduler.retention.expire_captures`).
+        raise NotExportable(f"job {job_id} keeps no capture of a page it reached, so it has nothing to list")
     pages = [page for page, _ in made]
     return llms_full_txt(pages, [text for _, text in made]) if full else llms_txt(pages)
 

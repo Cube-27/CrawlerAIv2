@@ -223,6 +223,18 @@ def test_pages_without_calls_are_rendered_with_their_browser_actions(scripted_ap
     assert rendered == [f"{SITE}/c/{CATEGORIES[n]}" for n in (0, 1, 2, 5, 6, 7)]
 
 
+def test_the_sample_pages_take_at_most_their_renders_and_none_twice(scripted_api: ScriptedApi) -> None:
+    # The sample pages get three renders and the held-out pages the rest (adapters spec, "Recipe discovery and
+    # binding"), though the first renders show no pagination and so ask for a second look.
+    def render(url: str, kind: PageKind) -> Sequence[CaptureBundle]:
+        return [_bundle(url, (1,))]  # one state, one call: no next page shown
+
+    learned, _, rendered = _learn(scripted_api, [_page(n, pages=()) for n in range(8)], render)
+
+    assert (learned.report.refused or "").startswith("no_pagination:")
+    assert rendered == [f"{SITE}/c/{CATEGORIES[n]}" for n in (0, 1, 2)]
+
+
 def test_a_detail_recipe_still_refuses_without_network_bodies_and_no_render(scripted_api: ScriptedApi) -> None:
     detail = SCHEMA.model_copy(update={"page_kind": "detail"})
     sent: list[JsonRequest] = []

@@ -17,7 +17,7 @@ import asyncio
 import contextlib
 import re
 import time
-from collections.abc import AsyncIterator, Awaitable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -52,6 +52,7 @@ from crawlerai.storage.capture_bundle import (
 __all__ = [
     "DATA_REQUESTS",
     "JSON_BODIES_MAX",
+    "JSON_PAGE_MAX_BYTES",
     "BrowserSession",
     "DataCalls",
     "Failed",
@@ -83,7 +84,7 @@ _PROXY_ALL_LOOPBACK = "<-loopback>"
 # 10 MB of them per page in all.
 _JSON_BODY_MAX_BYTES = 2_000_000
 JSON_BODIES_MAX = 50
-_JSON_PAGE_MAX_BYTES = 10_000_000
+JSON_PAGE_MAX_BYTES = 10_000_000
 # Fetch Standard §2.2.5: requests whose destination is the empty string (fetch() and XMLHttpRequest) or `document`
 # carry data or a new document; Playwright names them `fetch`, `xhr` and `document`. Scripts, styles, images and fonts
 # are the page's code and media, not data it loads.
@@ -204,7 +205,7 @@ async def fetch_browser(
                 artifacts = await capture_artifacts(page.page, policy)
         text = markup(content)
         block_class = await classified(exchange, text)
-        challenge = await challenge_of(block_class, exchange, text, url, cookies)
+        challenge = await challenge_of(block_class, exchange, text, cookies)
         if export is not None:
             export.cookies, export.proxy = cookies, proxy
     except Failed as failed:
@@ -262,16 +263,27 @@ async def capture_artifacts(page: Page, policy: FetchPolicy) -> dict[str, bytes]
     PDF print (HTML Standard §6.6 print media). Reading changes nothing in the page (INV-42). A file the browser could
     not make in `_ARTIFACT_TIMEOUT_S`, or one past `_ARTIFACT_MAX_BYTES`, is left out: the fetch still reached its
     page."""
+    asked: list[tuple[str, Callable[[], Awaitable[bytes]]]] = []
+    if (screenshot := policy.screenshot) is not None:
+        asked.append((SCREENSHOT, lambda: page.screenshot(type="png", full_page=screenshot == "full_page")))
+    if policy.pdf:
+        asked.append((PDF, lambda: page.pdf(print_background=True)))
+    # One budget for all the files; each is made on its own, so one the browser fails to make leaves out only itself.
+    deadline = asyncio.get_running_loop().time() + _ARTIFACT_TIMEOUT_S
     files: dict[str, bytes] = {}
+    for name, make in asked:
+        data = await _made(make, deadline)
+        if data is not None and len(data) <= _ARTIFACT_MAX_BYTES:
+            files[name] = data
+    return files
+
+
+async def _made(make: Callable[[], Awaitable[bytes]], deadline: float) -> bytes | None:
     try:
-        async with asyncio.timeout(_ARTIFACT_TIMEOUT_S):
-            if policy.screenshot is not None:
-                files[SCREENSHOT] = await page.screenshot(type="png", full_page=policy.screenshot == "full_page")
-            if policy.pdf:
-                files[PDF] = await page.pdf(print_background=True)
+        async with asyncio.timeout_at(deadline):
+            return await make()
     except (PlaywrightError, TimeoutError):
-        pass  # the files made so far are kept
-    return {name: data for name, data in files.items() if len(data) <= _ARTIFACT_MAX_BYTES}
+        return None
 
 
 async def context_cookies(context: BrowserContext) -> tuple[SessionCookie, ...]:
@@ -289,14 +301,16 @@ def markup(content: Content) -> str:
 
 
 async def challenge_of(
-    block_class: BlockClass, exchange: Exchange, text: str, url: str, cookies: tuple[SessionCookie, ...]
+    block_class: BlockClass, exchange: Exchange, text: str, cookies: tuple[SessionCookie, ...]
 ) -> str | None:
     """The challenge label of a `CHALLENGED` document (`acquire.challenge`), from its response headers, the names of
-    the cookies the context holds (its capture records no `Set-Cookie`) and its markup `text`."""
+    the cookies the context holds (its capture records no `Set-Cookie`) and its markup `text`, whose links resolve
+    against the URL that served it (RFC 3986 §5), past any redirect."""
     if block_class not in CHALLENGED:
         return None
     names = tuple(cookie.name for cookie in cookies)
-    return await asyncio.to_thread(challenge_label, exchange.status, exchange.response_headers, text, url, names)
+    status, headers = exchange.status, exchange.response_headers
+    return await asyncio.to_thread(challenge_label, status, headers, text, exchange.url, names)
 
 
 async def classified(exchange: Exchange, text: str) -> BlockClass:
@@ -620,7 +634,7 @@ async def json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[Netw
         if len(captured) == JSON_BODIES_MAX:
             break
         data = await _json_body(response)
-        if data is None or total + len(data) > _JSON_PAGE_MAX_BYTES:
+        if data is None or total + len(data) > JSON_PAGE_MAX_BYTES:
             continue
         sent = response.request.post_data_buffer
         if len(sent or b"") > _JSON_BODY_MAX_BYTES:

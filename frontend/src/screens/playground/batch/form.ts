@@ -1,6 +1,12 @@
 import type { BatchRequest } from "../../../api/jobs";
-import type { MethodHint, PageKind } from "../../../api/scrape";
-import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } from "../advanced";
+import type { FetchMember, MethodHint, PageKind, ScrapeFormat } from "../../../api/scrape";
+import {
+  DEFAULT_ADVANCED,
+  fetchMember,
+  storedAdvanced,
+  withFetchErrors,
+  type AdvancedFetch,
+} from "../advanced";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import { badUrlLine } from "./urls";
@@ -95,7 +101,22 @@ export function initialBatch(urls: string): BatchFormState {
 export function batchErrors(form: BatchFormState): Readonly<Record<string, string>> {
   const bad = badUrlLine(form.urls);
   if (bad !== null) return { urls: `Line ${String(bad.line)} is not a web address: ${bad.text}` };
-  return withWebhookErrors(pageKindErrors(form), form.options.webhook);
+  const formats = jobFormats(form);
+  return withFetchErrors(
+    withWebhookErrors(pageKindErrors(form), form.options.webhook),
+    batchFetch(form, formats),
+    formats,
+  );
+}
+
+function batchFetch(form: BatchFormState, formats: readonly ScrapeFormat[]): FetchMember {
+  const { options } = form;
+  return fetchMember(
+    options.methodHint,
+    options.maxRows,
+    options.advanced,
+    screenshotArea(formats, options),
+  );
 }
 
 /** The batch request for `form`, or null when it can't be sent (`batchErrors`). A batch's results are records or page
@@ -108,12 +129,7 @@ export function buildBatch(form: BatchFormState): BatchRequest | null {
     formats,
     schema: requestSchema(form),
     page_kind: requestPageKind(form),
-    fetch: fetchMember(
-      form.options.methodHint,
-      form.options.maxRows,
-      form.options.advanced,
-      screenshotArea(formats, form.options),
-    ),
+    fetch: batchFetch(form, formats),
     ...formatMembers(formats, form.options),
     ...llmBudget(form.options.llmCalls),
     ...webhook(form.options.webhook),

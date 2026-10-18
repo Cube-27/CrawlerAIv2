@@ -28,7 +28,7 @@ from pydantic import ValidationError
 from crawlerai.acquire.api import JsonRequest, fetch_json
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.outcome import Traffic
-from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions
+from crawlerai.acquire.session import SESSION_FETCHES, CookieExport, SessionCookie, SiteSessions
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.tunnel import open_tunnel
@@ -437,6 +437,21 @@ def test_inv29_a_site_session_whose_endpoint_is_quarantined_is_not_used(
     assert origin.cookies == [None]
 
 
+def test_a_fetch_that_cannot_use_a_quarantined_session_spends_none_of_its_fetches(
+    origin: Origin, proxy: StubProxy, second_proxy: StubProxy
+) -> None:
+    pools = _pools(proxy.endpoint(), second_proxy.endpoint(), mode="sticky")
+    for _ in range(QUARANTINE_AFTER):
+        pools["dc"].report(second_proxy.endpoint(), healthy=False)
+    sessions = _session_through(second_proxy.endpoint())
+
+    _fetch("http://shop.example.test/p", pools, sessions=sessions)
+
+    session = sessions.take("http://shop.example.test/", "http://shop.example.test/", "dc")
+    assert session is not None
+    assert session.fetches_left == SESSION_FETCHES - 1  # this take's only
+
+
 def test_an_endpoint_that_keeps_failing_is_left_out_until_its_quarantine_ends(
     origin: Origin, proxy: StubProxy, second_proxy: StubProxy
 ) -> None:
@@ -716,3 +731,13 @@ def test_a_browser_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, pr
     assert b"<h1>Catalogue</h1>" in through_pool.bundle.body
     assert set(proxy.tunnels) == {"shop.example.test:80"}
     assert _outcome(unknown) == (0, "error", "proxy_pool_unknown")
+
+
+def test_a_sticky_pool_spreads_hosts_over_endpoints_that_differ_only_in_password() -> None:
+    first = ProxyEndpoint.parse("http://user:one@proxy.example.com:3128")
+    second = ProxyEndpoint.parse("http://user:two@proxy.example.com:3128")
+    pool = ProxyPool((first, second), "sticky")
+
+    picked = {pool.pick(f"site{n}.example.test") for n in range(100)}
+
+    assert picked == {first, second}

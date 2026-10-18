@@ -73,6 +73,9 @@ async def test_config_approval_is_off_until_set(client: httpx.AsyncClient) -> No
     [
         {**NONE, "llm_call_cap": -1},
         {**NONE, "draft_call_cap": -1},
+        # Past a PostgreSQL `integer` column's range (§8.1.1): refused, not a failed write.
+        {**NONE, "llm_call_cap": 2**31},
+        {**NONE, "draft_call_cap": 2**31},
         {"llm_call_cap": None, "draft_call_cap": None},
         {},
         {**NONE, "other": 1},

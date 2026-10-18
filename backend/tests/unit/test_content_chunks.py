@@ -101,3 +101,22 @@ def test_every_word_of_the_markdown_is_in_some_chunk(blocks: list[str], size: in
     markdown = "\n\n".join(blocks)
     made = chunks(markdown, ChunkOptions(strategy=strategy, size=size))  # type: ignore[arg-type]
     assert set(markdown.split()) <= {word for chunk in made for word in chunk.text.split()}
+
+
+@given(
+    st.integers(min_value=0, max_value=12),
+    st.integers(min_value=1, max_value=30),
+    st.integers(min_value=0, max_value=12),
+    st.integers(min_value=2, max_value=12),
+    st.sampled_from(["heading", "sentence", "token"]),
+)
+def test_every_strategy_keeps_a_code_block_whole_in_each_chunk_that_holds_it(
+    before: int, code_words: int, after: int, size: int, strategy: str
+) -> None:
+    code = "```\n" + " ".join(f"c{i}" for i in range(code_words)) + "\n```"
+    parts = [" ".join(["w"] * before), code, " ".join(["v"] * after)]
+    markdown = "\n\n".join(part for part in parts if part)
+    made = chunks(markdown, ChunkOptions(strategy=strategy, size=size, overlap=size // 2))  # type: ignore[arg-type]
+    holding = [c.text for c in made if "c0" in c.text or f"c{code_words - 1}" in c.text]
+    assert holding
+    assert all(code in text for text in holding)

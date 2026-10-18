@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from crawlerai.acquire.politeness import retry_after
+from crawlerai.acquire.ssrf import SSRF_REJECTED
 from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult, StepOutcome
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
@@ -140,6 +141,8 @@ def report_proxy(pool: ProxyPool | None, endpoint: ProxyEndpoint | None, result:
     if pool is None or endpoint is None:
         return
     attempt = result.attempts[-1]
+    if _not_the_endpoints(attempt.error):
+        return
     if attempt.block_class == "blocked" or (attempt.status is None and _unanswered(attempt.error)):
         pool.report(endpoint, healthy=False)
     elif attempt.error is None or attempt.status is not None:
@@ -148,3 +151,13 @@ def report_proxy(pool: ProxyPool | None, endpoint: ProxyEndpoint | None, result:
 
 def _unanswered(error: str | None) -> bool:
     return error is not None and (error == "timeout" or error.startswith("network_error"))
+
+
+# The errors our own limits set on an answer the endpoint relayed: a body past the cap, a body that does not decode.
+_OWN_FAILURES = frozenset({"body_cap", "decode_error"})
+
+
+def _not_the_endpoints(error: str | None) -> bool:
+    """A failure of our own limits or guard, not of the endpoint: a cap or a decoding error keeps the status of an
+    answer the endpoint did relay, which says nothing either way (acquisition spec, "Proxy pools")."""
+    return error is not None and (error in _OWN_FAILURES or error.startswith(SSRF_REJECTED))

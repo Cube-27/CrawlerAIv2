@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.politeness import Admit
+from crawlerai.acquire.rungs import slow_down
 from crawlerai.acquire.types import AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Render
@@ -51,6 +52,10 @@ def check_browser_actions(
         raise ValueError("browser_actions needs page_kind listing")
     if max_age:
         raise ValueError("browser_actions fetches the page, so max_age must be 0")
+    if fetch.cache == "only":
+        # A stored capture's key holds the page steps and context, not the browser actions (jobs spec,
+        # "Request context and actions per page"): it would stand for the listing without its further pages.
+        raise ValueError("browser_actions fetches the page, so fetch.cache cannot be only")
     if fetch.method_hint == "http":
         raise ValueError("browser_actions runs in the browser, so method_hint cannot be http")
 
@@ -109,8 +114,10 @@ async def _recipe_pages(
 ) -> PagedFetch | None:
     """The listing's pages as `recipe` serves them (`RecipeRung.pages`) when it has pagination, until the records
     target or the deadline of `until`, with their attempts added to `attempts`; None when it served no first page,
-    after waiting for the turn of the request that follows (`polite`'s `Admit`). Each page request waits for its host's
-    rate on its own (`recipe_rung`, by `polite`'s rules): the caller's admitted turn goes to the first."""
+    after waiting for the turn of the request that follows (`polite`'s `Admit`). A first page that asks for fewer
+    requests, or whose following request the site's rate does not admit, is kept, and nothing more is sent, as
+    `acquire` keeps a recipe's outcome (adapters spec, "Recipe execution and fallback"). Each page request waits for its
+    host's rate on its own (`recipe_rung`, by `polite`'s rules): the caller's admitted turn goes to the first."""
     rules, admit_next = polite
     if recipe is None or recipe.pagination is None or policy.steps:
         # The caller's page steps (a cookie banner, a filter) change the page and need the browser (D-1513).
@@ -121,10 +128,11 @@ async def _recipe_pages(
     records, deadline = until
     pages = tuple([page async for page in rung.pages(url, policy, records=records, deadline=deadline)])
     record_states(pages, attempts)
+    if pages and pages[0].block_class != "ok" and (slow_down(pages[0]) or not await admit_next()):
+        return PagedFetch(pages=pages[:1], report=None)
     if not pages or pages[0].block_class != "ok":
-        await admit_next()
         return None
-    return PagedFetch(pages=tuple(pages), report=None)
+    return PagedFetch(pages=pages, report=None)
 
 
 # A learning render's browser actions stop past this many rows: two or three pages show how the listing asks for its

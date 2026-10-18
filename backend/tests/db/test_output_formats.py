@@ -328,6 +328,26 @@ async def test_llms_txt_of_a_job_that_reached_nothing_is_a_conflict(client: http
     assert (await client.get(f"/v1/jobs/{'0' * 8}-0000-7000-8000-{'0' * 12}/llms.txt")).status_code == 404
 
 
+async def test_llms_txt_of_a_job_whose_bundles_are_all_gone_is_a_conflict(
+    client: httpx.AsyncClient,
+    pages: dict[str, tuple[int, bytes]],
+    own_origin: str,
+    fetching: Fetching,
+    database: AsyncEngine,
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    pages[url] = (200, PAGE)
+    body = await _scrape(client, url, formats=["markdown"])
+    # Retention deleted the bundle, and its row is still there (`scheduler.retention.expire_captures`).
+    async with database.connect() as conn:
+        key = (await conn.execute(select(Capture.object_key).where(Capture.id == body["capture_id"]))).scalar_one()
+    fetching.store.delete(key)
+
+    response = await client.get(f"/v1/jobs/{body['job_id']}/llms.txt")
+
+    assert response.status_code == 409
+
+
 async def _records_job(
     client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], origin: str, schema_name: str, names: list[str]
 ) -> str:

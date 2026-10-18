@@ -12,7 +12,7 @@ import os
 import sys
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -42,10 +42,10 @@ from crawlerai.db.models import (
     SiteId,
     WebhookDelivery,
 )
-from crawlerai.llm.client import Unconfigured
+from crawlerai.llm.client import LLMRequest, ProviderUnavailable, Unconfigured
 from crawlerai.llm.setup import LLMSetup
 from crawlerai.mcp_server.output import MARKDOWN_PAGE_CHARS
-from crawlerai.mcp_server.server import UNTRUSTED, build_server
+from crawlerai.mcp_server.server import UNTRUSTED, AnyContext, build_server
 from crawlerai.mcp_server.stdio import key_bind
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
@@ -434,6 +434,29 @@ async def test_a_revoked_key_stops_the_stdio_server_at_its_next_call(
     assert not before.isError
     assert after.isError
     assert _texts(after) == ["Error executing tool list_schemas: CRAWLERAI_API_KEY is unknown or revoked"]
+
+
+async def test_an_uncharged_llm_call_over_stdio_counts_against_the_keys_draft_cap(
+    key: CreatedKey, engine: AsyncEngine, fetching: Fetching, engine_data: EngineData
+) -> None:
+    runtime = Runtime(engine, fetching, Unconfigured("no LLM"), engine_data, None, LLMSetup.unavailable("no LLM"))
+    caller = await key_bind(runtime, key.key)(cast(AnyContext, None))
+    # A role S draft (field names), which no job pays for (llm spec "Per-key cap").
+    draft = LLMRequest(
+        prompt_kind="s_draft",
+        model_class="fast",
+        system="s",
+        user="u",
+        output_schema={"type": "object", "additionalProperties": False},
+        max_output_tokens=10,
+        job_id=None,
+    )
+
+    with pytest.raises(ProviderUnavailable):
+        await caller.runtime.llm.complete_json(draft)
+
+    async with engine.connect() as conn:
+        assert (await conn.execute(select(ApiKey.draft_calls).where(ApiKey.id == key.id))).scalar_one() == 1
 
 
 async def test_a_status_cursor_that_is_not_one_is_refused_with_why(session: ClientSession, own_origin: str) -> None:

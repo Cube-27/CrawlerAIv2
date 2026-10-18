@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobEvent, JobId, JobKind, JobStatus, Project, UrlTask, UrlTaskId
 from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask, claim_tasks
-from crawlerai.worker.loop import Failed, Finished, Postpone, TaskHandler, TaskResult, run_worker
+from crawlerai.worker.loop import Failed, Finished, Postpone, Skipped, TaskHandler, TaskResult, run_worker
 
 pytestmark = pytest.mark.anyio
 
@@ -150,6 +150,27 @@ async def test_a_finished_result_records_its_reason(engine: AsyncEngine) -> None
     await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
 
     assert await _tasks(engine) == [("done", "blocked", 1, "robots")]
+
+
+async def test_a_skipped_last_task_ends_its_job_through_the_ending(engine: AsyncEngine) -> None:
+    job_id, _ = await _job(engine, 1)
+    endings: list[JobStatus] = []
+
+    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
+        return Skipped()
+
+    async def ending(conn: AsyncConnection, ended: JobId, status: JobStatus) -> None:
+        endings.append(status)
+
+    stop = asyncio.Event()
+    loop = asyncio.create_task(run_worker(_settings(engine), {"crawl": handler}, stop, ending=ending))
+    async with asyncio.timeout(60):
+        while not await _job_ended(engine, job_id)():
+            await asyncio.sleep(0.1)
+    stop.set()
+    await loop
+
+    assert endings == ["completed"]
 
 
 async def test_the_worker_logs_its_start_each_tasks_start_and_result_and_its_stop(
