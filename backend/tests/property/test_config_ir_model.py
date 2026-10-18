@@ -27,7 +27,7 @@ _xpath = st.sampled_from(
     ["//h1", "normalize-space(//h1[@data-testid='t'])", "//a[@rel='next']/@href", "//ul/li[1]", "string(//p)"]
 )
 _css = st.sampled_from(["div.x > span", "a#i1", "li[data-k='v']", "ul li:nth-child(2)", "p:not(.y)"])
-# The RFC 9535 subset the engine reads: name, wildcard and index segments (`json_doc.select`).
+# The RFC 9535 subset the engine reads: name, wildcard and index segments (the `select` of `json_doc`).
 _jsonpath = st.from_regex(r"\$(\['[a-z][A-Za-z]{0,8}'\]|\[\*\]|\[[0-9]\]){1,3}", fullmatch=True)
 _regex = st.sampled_from([r"sku:\s*(\w+)", r"(\d+)", r"^\s*(.+?)\s*$"])
 _post: st.SearchStrategy[list[dict[str, Any]]] = st.lists(

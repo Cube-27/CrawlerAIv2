@@ -202,7 +202,7 @@ def test_steps_the_engine_cannot_run_are_diagnostics_and_the_next_step_runs() ->
 @pytest.mark.parametrize("key", ["jsonld", "jsonpath"])
 def test_a_jsonpath_outside_the_subset_the_engine_reads_is_no_step(key: str, query: str) -> None:
     # SPEC-08 §4.2: a step validates only in a form both executors run; the engine reads RFC 9535 name, wildcard and
-    # index segments (`json_doc.select`), so dot notation, descendants and filters are refused before any page.
+    # index segments (the `select` of `json_doc`), so dot notation, descendants and filters are refused before any page.
     step = {key: query, **({"source": "jsonld"} if key == "jsonpath" else {})}
     with pytest.raises(ValidationError, match="name, wildcard and index segments"):
         _ir({"title": [step]})
