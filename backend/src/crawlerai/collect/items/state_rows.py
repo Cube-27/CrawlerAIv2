@@ -64,24 +64,26 @@ def state_rows(page: ParsedPage, documents: Sequence[Document], schema: SchemaDe
     if schema.page_kind != "listing" or not url_fields:
         return StateRows()
     reader = _Reader(page, schema, ctx, url_fields[0])
-    rows: list[Entity] = []
-    candidates: list[Candidate] = []
-    notes: list[str] = []
-    for document in documents:
-        sources: list[str] = []
-        for path, value in json_doc.nodes(document.data):
-            if not isinstance(value, list) or any(path.startswith(f"{source}[") for source in sources):
-                continue
-            objects: list[tuple[str, JsonValue]] = [
-                (f"{path}[{i}]", item) for i, item in enumerate(value) if isinstance(item, dict)
-            ]
-            if len(objects) < MIN_ITEMS or (read := reader.read(document.address, objects)) is None:
-                continue
+    read = [found for document in documents for found in _sources(reader, document)]
+    return StateRows(
+        tuple(row for found in read for row in found.rows),
+        tuple(c for found in read for c in found.candidates),
+        tuple(note for found in read for note in found.diagnostics),
+    )
+
+
+def _sources(reader: "_Reader", document: Document) -> Iterator[StateRows]:
+    """The rows of each array of `document` that is a row source, arrays inside a source left out."""
+    sources: list[str] = []
+    for path, value in json_doc.nodes(document.data):
+        if not isinstance(value, list) or any(path.startswith(f"{source}[") for source in sources):
+            continue
+        objects: list[tuple[str, JsonValue]] = [
+            (f"{path}[{i}]", item) for i, item in enumerate(value) if isinstance(item, dict)
+        ]
+        if len(objects) >= MIN_ITEMS and (read := reader.read(document.address, objects)) is not None:
             sources.append(path)
-            rows.extend(read.rows)
-            candidates.extend(read.candidates)
-            notes.extend(read.diagnostics)
-    return StateRows(tuple(rows), tuple(candidates), tuple(notes))
+            yield read
 
 
 class _Reader:

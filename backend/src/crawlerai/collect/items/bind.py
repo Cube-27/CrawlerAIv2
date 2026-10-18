@@ -153,18 +153,18 @@ def _sections(listing: Listing, chosen: Items) -> Items:
     featured copy)."""
     required = {name for name in chosen.fields if listing.schema.fields[name].required}
     kinds = {_url_kind(block.link) for block in chosen.blocks}
-    groups: list[Items] = []
-    elements: set[HtmlElement] = set()
-    for group in (chosen, *(g for g in listing.items if g is not chosen)):
-        shaped = group.fields == chosen.fields or (required <= group.fields and len(group.fields) > 1)
-        alike = sum(_url_kind(block.link) in kinds for block in group.blocks) >= quorum(len(group.blocks))
-        overlaps = any(_overlaps(block.element, elements) for block in group.blocks)
-        if group is not chosen and (not shaped or not alike or overlaps):
-            continue
-        groups.append(group)
-        elements.update(block.element for block in group.blocks)
-    if len(groups) < 2:
-        return chosen
+    groups = [chosen]
+    elements = {block.element for block in chosen.blocks}
+    for group in listing.items:
+        if group is not chosen and _section_of(group, chosen, required, kinds, elements):
+            groups.append(group)
+            elements.update(block.element for block in group.blocks)
+    return chosen if len(groups) < 2 else _merged(listing, groups)
+
+
+def _merged(listing: Listing, groups: Sequence[Items]) -> Items:
+    """`groups` as one, the first's group and fields kept (`_sections`)."""
+    chosen = groups[0]
     position = {element: i for i, element in enumerate(listing.page.lxml_tree.iter())}
     ordered = sorted((b for g in groups for b in g.blocks), key=lambda b: position.get(b.element, len(position)))
     seen = _Index((), session_parameters([b.link for b in ordered], listing.page_urls))
@@ -177,6 +177,15 @@ def _sections(listing: Listing, chosen: Items) -> Items:
     candidates = tuple(c for group in groups for c in group.candidates if c.entity_id in kept)
     note = f"item layer: {len(groups)} sections read, {len(blocks)} blocks"
     return Items(tuple(blocks), candidates, chosen.group, (note,), chosen.fields)
+
+
+def _section_of(
+    group: Items, chosen: Items, required: set[str], kinds: set[tuple[str, int, str]], elements: set[HtmlElement]
+) -> bool:
+    """Whether `group` is a further section of the chosen group's listing (`_sections`)."""
+    shaped = group.fields == chosen.fields or (required <= group.fields and len(group.fields) > 1)
+    alike = sum(_url_kind(block.link) in kinds for block in group.blocks) >= quorum(len(group.blocks))
+    return shaped and alike and not any(_overlaps(block.element, elements) for block in group.blocks)
 
 
 def _url_kind(url: str) -> tuple[str, int, str]:
