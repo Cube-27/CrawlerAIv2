@@ -76,3 +76,17 @@ def test_failed_check_fails(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert result.stdout.splitlines() == checks
     assert result.stderr.strip() == "ERROR a check did not pass"
+
+
+def test_cancelled_run_superseded_by_a_newer_run_is_ignored(tmp_path: Path) -> None:
+    checks = ["backend COMPLETED CANCELLED", *GREEN_CHECKS]
+    result = run_wait_ci(tmp_path, pr_view("MERGEABLE CLEAN", checks), no_run_s=0)
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == GREEN_CHECKS
+
+
+def test_cancelled_check_without_another_run_fails(tmp_path: Path) -> None:
+    checks = ["backend COMPLETED CANCELLED", "SonarCloud Code Analysis COMPLETED SUCCESS"]
+    result = run_wait_ci(tmp_path, pr_view("MERGEABLE CLEAN", checks))
+    assert result.returncode == 1
+    assert result.stderr.strip() == "ERROR a check did not pass"
