@@ -51,8 +51,11 @@ async def fetch_pages(
     kept = result
     count = rows(answers[0])
     progress = count
-    while count < target and progress and clock() < deadline and (request := next_page(answers)) is not None:
-        page = await send(request, policy)
+    while (
+        count < target and progress and (left := deadline - clock()) > 0 and (request := next_page(answers)) is not None
+    ):
+        # A page sent just before the deadline may take only what is left of the budget, not a whole request timeout.
+        page = await send(request, policy.model_copy(update={"timeout_s": min(policy.timeout_s, left)}))
         # Every request is an attempt of the result, a refused or failed one too: the caller reads them for the guard's
         # refusals (INV-16) and the slow-downs.
         kept = kept.model_copy(

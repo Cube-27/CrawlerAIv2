@@ -167,3 +167,19 @@ def test_the_walk_stops_when_its_time_budget_is_spent(scripted_api: ScriptedApi)
 
     assert json.loads(result.bundle.body) == list(range(2 * SIZE))
     assert len(sent) == 2
+
+
+def test_a_later_page_may_take_only_the_time_left_in_the_budget(scripted_api: ScriptedApi) -> None:
+    sent: list[JsonRequest] = []
+    timeouts: list[float] = []
+    table = scripted_api(_table(2 * SIZE), sent)
+
+    async def send(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
+        timeouts.append(policy.timeout_s)
+        return await table(request, policy)
+
+    ticks = iter([0.0, BUDGET_S - 1.0, BUDGET_S - 0.5])
+
+    _walk(send, FetchPolicy(timeout_s=30.0), clock=lambda: next(ticks))
+
+    assert timeouts == [30.0, 1.0, 0.5]  # the first page has the request's own timeout
