@@ -3333,7 +3333,9 @@ export interface components {
          * @description The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
          *     must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds
          *     its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched
-         *     within that many seconds. `browser_actions` collects more of a listing's rows in the browser (owner #52).
+         *     within that many seconds. `browser_actions` collects more of a listing's rows in the browser (owner #52); a listing
+         *     scrape for `records` in `auto` without it takes the default actions where its page is rendered (master plan
+         *     2026-10-18 decision 11).
          */
         ScrapeRequest: {
             browser_actions?: components["schemas"]["BrowserActions"] | null;
@@ -3378,9 +3380,10 @@ export interface components {
          * @description The answer to a scrape (§4.4). A page that robots.txt kept from being fetched has no capture, so
          *     `capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`
          *     does (SPEC-02 §4.6): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
-         *     9309 §2.3.1.4); for a fetched listing whose extraction gave no rows, `no_rows: <cause>` (`no_rows` in
-         *     `resolve.pipeline`, D-1475); None for any other page that was fetched. `schema` is the draft of a
-         *     `schema.prompt`.
+         *     9309 §2.3.1.4), `slow_down` for a host whose turn at its rate was more than a minute off; for a fetched page a
+         *     vendor's challenge kept out, `challenge: <vendor>`; for a fetched listing whose extraction gave no rows,
+         *     `no_rows: <cause>` (`no_rows` in `resolve.pipeline`, D-1475); None for any other page that was fetched. `schema`
+         *     is the draft of a `schema.prompt`.
          */
         ScrapeResult: {
             browser_actions?: components["schemas"]["ActionsReport"];

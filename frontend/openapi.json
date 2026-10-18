@@ -6319,7 +6319,7 @@
       },
       "ScrapeRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds\nits draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched\nwithin that many seconds. `browser_actions` collects more of a listing's rows in the browser (owner #52).",
+        "description": "The body of `POST /v1/scrape` (\u00a74.4). `records` needs a schema and a `page_kind`, and the schema's page kind\nmust be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds\nits draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched\nwithin that many seconds. `browser_actions` collects more of a listing's rows in the browser (owner #52); a listing\nscrape for `records` in `auto` without it takes the default actions where its page is rendered (master plan\n2026-10-18 decision 11).",
         "properties": {
           "browser_actions": {
             "anyOf": [
@@ -6465,7 +6465,7 @@
         "type": "object"
       },
       "ScrapeResult": {
-        "description": "The answer to a scrape (\u00a74.4). A page that robots.txt kept from being fetched has no capture, so\n`capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`\ndoes (SPEC-02 \u00a74.6): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC\n9309 \u00a72.3.1.4); for a fetched listing whose extraction gave no rows, `no_rows: <cause>` (`no_rows` in\n`resolve.pipeline`, D-1475); None for any other page that was fetched. `schema` is the draft of a\n`schema.prompt`.",
+        "description": "The answer to a scrape (\u00a74.4). A page that robots.txt kept from being fetched has no capture, so\n`capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`\ndoes (SPEC-02 \u00a74.6): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC\n9309 \u00a72.3.1.4), `slow_down` for a host whose turn at its rate was more than a minute off; for a fetched page a\nvendor's challenge kept out, `challenge: <vendor>`; for a fetched listing whose extraction gave no rows,\n`no_rows: <cause>` (`no_rows` in `resolve.pipeline`, D-1475); None for any other page that was fetched. `schema`\nis the draft of a `schema.prompt`.",
         "properties": {
           "browser_actions": {
             "$ref": "#/components/schemas/ActionsReport"

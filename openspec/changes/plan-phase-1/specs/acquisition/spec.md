@@ -8,8 +8,9 @@ browser outcome only when `ok`; and an HTTP `ok` page the caller's structural re
 (`services/scrape_steps.RenderNeed`, no extraction and no LLM): a detail page whose schema requires a `money` field and
 whose capture holds no Offer entity and no `money` candidate, or a listing (`acquire/render_need.py`) whose DOM shows
 fewer than `MIN_ITEMS` item blocks, whose text inside `hidden` or `display:none` containers outweighs its visible text,
-or whose structured list names fewer entries than its DOM shows item blocks; that browser outcome is kept only when
-`ok` and the check no longer holds. An HTTP listing shell kept with no browser outcome is `ok` when it is a shell by the
+or whose structured list names fewer entries than its DOM shows item blocks (item blocks counted only when they show
+more than their link); that browser outcome is kept only when `ok` and the check no longer holds, a listing's also
+when the render lists more items than the HTTP page (owner #54: the capture with more rows is kept). An HTTP listing shell kept with no browser outcome is `ok` when it is a shell by the
 listing rule alone. Any later request of a fetch is sent only when `admit_next` allows. The browser MUST NOT be the
 default. Role C runs once, on the kept capture. (Previously: a listing was rendered when its extraction, role C
 included, gave no rows.)
@@ -91,7 +92,8 @@ Enforced by: the site-literal scan (INV-03), classify and challenge tests and re
 The system SHALL fetch every page and JSON request through one polite fetch (`services/polite.py`): robots.txt, then
 the host's rate, then the fetch, then the observation and the back-off. It SHALL space requests to a host by
 `crawl_delay_ms`, else 1 req/s, never below robots `Crawl-delay`, postponing a worker task rather than sleeping (a
-caller that waits waits in place), and SHALL double a host's spacing on a 429, a 503 or a challenge (at most 15 min),
+caller that waits waits in place up to one minute, a turn further off answering `blocked`, reason `slow_down`, with
+nothing sent), and SHALL double a host's spacing on a 429, a 503 or a challenge (at most 15 min),
 shrinking it by 10% after 20 `ok` answers in a row, never below that interval. On 429/503 it SHALL pause the host by
 one rule (`acquire/politeness.backoff`): the `Retry-After`, else 30 s doubling per try, at most 15 min, a `Retry-After`
 past 15 min ending the fetch `blocked`; each answer spends an attempt; a further request of a fetch (the 503
