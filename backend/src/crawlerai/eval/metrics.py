@@ -16,6 +16,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
+from crawlerai.collect.item_links import is_item_url
 from crawlerai.core.capture import BlockClass
 from crawlerai.db.models import EvalCategory, ExtractionMode, FieldStatus, PageKind, SourceKind, Split
 from crawlerai.eval.labels import (
@@ -513,7 +514,8 @@ def _judge_page(
     ]
     if schema.page_kind == "detail":
         return judgments, 0
-    matches = _match_rows(labels.rows, output.rows, schema.fields, output.session_params.get("url", ()))
+    url_field = _url_field(schema.fields)
+    matches = _match_rows(labels.rows, output.rows, schema.fields, output.session_params.get(url_field, ()), url_field)
     stale = 0
     for i, row in enumerate(labels.rows):
         if i not in matches and row.stale:
@@ -666,20 +668,26 @@ def _keyed_output(out: FieldOutput | None, session: Collection[str]) -> FieldOut
 _RowMatch = Callable[[LabelRow, Mapping[str, FieldOutput]], bool]
 
 
+def _url_field(specs: Mapping[str, FieldSpec]) -> str:
+    """The row field holding the item URL, as the engine reads it (`is_item_url`); `url` when the schema has none."""
+    return next((name for name, spec in specs.items() if is_item_url(spec)), "url")
+
+
 def _match_rows(
     label_rows: Sequence[LabelRow],
     rows: Sequence[Mapping[str, FieldOutput]],
     specs: Mapping[str, FieldSpec],
     session: Collection[str] = (),
+    url_field: str = "url",
 ) -> dict[int, int]:
     """Label row index → engine row index, one to one, in page order: by canonical `url` with the page's session
     parameters dropped from the label's as the engine dropped them from its rows (evaluation spec, "Row matching");
     then, for the rows left, by URL path with equal text fields; then, for a label row without a URL, by equal text
     fields alone."""
     passes: tuple[_RowMatch, ...] = (
-        lambda label, row: _same_url(label, row, session),
-        lambda label, row: _same_path(label, row) and _same_texts(label, row, specs),
-        lambda label, row: _url_of(label) is None and _same_texts(label, row, specs),
+        lambda label, row: _same_url(label, row, session, url_field),
+        lambda label, row: _same_path(label, row, url_field) and _same_texts(label, row, specs),
+        lambda label, row: _url_of(label, url_field) is None and _same_texts(label, row, specs),
     )
     matches: dict[int, int] = {}
     for matching in passes:
@@ -704,23 +712,23 @@ def _match_pass(
             taken.add(j)
 
 
-def _url_of(label_row: LabelRow) -> str | None:
-    label = label_row.fields.get("url")
+def _url_of(label_row: LabelRow, field: str) -> str | None:
+    label = label_row.fields.get(field)
     return label.value if label is not None and not label.absent and isinstance(label.value, str) else None
 
 
-def _engine_url(row: Mapping[str, FieldOutput]) -> str | None:
-    out = row.get("url")
+def _engine_url(row: Mapping[str, FieldOutput], field: str) -> str | None:
+    out = row.get(field)
     return out.value if out is not None and out.status == "published" and isinstance(out.value, str) else None
 
 
-def _same_url(label_row: LabelRow, row: Mapping[str, FieldOutput], session: Collection[str]) -> bool:
-    label, engine = _url_of(label_row), _engine_url(row)
+def _same_url(label_row: LabelRow, row: Mapping[str, FieldOutput], session: Collection[str], field: str) -> bool:
+    label, engine = _url_of(label_row, field), _engine_url(row, field)
     return label is not None and engine is not None and equal(without_parameters(label, session), engine, _URL)
 
 
-def _same_path(label_row: LabelRow, row: Mapping[str, FieldOutput]) -> bool:
-    label, engine = _url_of(label_row), _engine_url(row)
+def _same_path(label_row: LabelRow, row: Mapping[str, FieldOutput], field: str) -> bool:
+    label, engine = _url_of(label_row, field), _engine_url(row, field)
     return label is not None and engine is not None and _host_path(label) == _host_path(engine)
 
 

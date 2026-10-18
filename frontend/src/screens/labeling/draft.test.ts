@@ -50,6 +50,7 @@ describe("draftFrom and toLabels", () => {
     expect(draft).toEqual({
       fields: { title: emptyField, price: emptyField },
       rows: [],
+      stale: [],
       lists: {},
       notes: "",
     });
@@ -138,6 +139,35 @@ describe("draftFrom and toLabels", () => {
         stale: false,
       },
     ]);
+  });
+
+  it("keeps a stored row's stale mark through a save", () => {
+    const row = (stale: boolean) => ({
+      fields: { title: { value: "Cup", absent: false, locator: null, distractors: [] } },
+      stale,
+    });
+    const stored = {
+      label_version: 1 as const,
+      status: "draft" as const,
+      labeler: null,
+      checker: null,
+      prefill_source: null,
+      fields: {},
+      rows: [row(true), row(false)],
+      lists: {},
+      notes: "",
+    };
+
+    const draft = draftFrom("listing", listingShapes, stored);
+    const built = toLabels({
+      draft,
+      status: "draft",
+      labeler: "",
+      checker: null,
+      prefillSource: null,
+    });
+
+    expect(built.kind === "labels" && built.labels.rows.map((r) => r.stale)).toEqual([true, false]);
   });
 
   it("drops the value and locator of an absent field", () => {

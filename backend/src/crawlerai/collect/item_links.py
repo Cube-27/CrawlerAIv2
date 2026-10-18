@@ -174,10 +174,10 @@ def _dom_candidate(
 
 def item_url_fields(schema: SchemaDef) -> tuple[str, ...]:
     """The schema's row fields that `row_links` fills: the item's own URL (`_ITEM_URL`)."""
-    return tuple(name for name, spec in schema.fields.items() if _item_url(spec))
+    return tuple(name for name, spec in schema.fields.items() if is_item_url(spec))
 
 
-def _item_url(spec: FieldSpec) -> bool:
+def is_item_url(spec: FieldSpec) -> bool:
     return (
         spec.scope == "row"
         and spec.type is FieldType.URL
