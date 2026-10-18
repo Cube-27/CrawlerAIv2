@@ -154,7 +154,8 @@ def checkable(raw: Raw, spec: FieldSpec) -> bool:
 
 def _list(raw: Raw, item: FieldSpec, ctx: Context) -> NormalizeResult:
     """normalization spec: `Ok` with the items that normalize, the others dropped and reported; with none, the list
-    declines. A single value stands for a list of one (JSON-LD 1.1 §4.3.1: a value and an array of it are the same)."""
+    declines. A single value stands for a list of one (JSON-LD 1.1 §4.3.1: a value and an array of it are the same).
+    A list of images keeps each file once (`url.distinct_files`)."""
     items = raw if isinstance(raw, list) else [raw]
     if not items:
         return Invalid("empty")
@@ -170,7 +171,8 @@ def _list(raw: Raw, item: FieldSpec, ctx: Context) -> NormalizeResult:
             ambiguous = ambiguous or isinstance(result, Ambiguous)
             reasons.append(f"[{i}]: {result.reason}")
     if values:
-        return Ok(values, tuple(reasons))
+        # One file is one image (`url.resource_key`): a list names each once, by its largest rendition.
+        return Ok(url.distinct_files(values) if item.type is FieldType.IMAGE_URL else values, tuple(reasons))
     # No item normalized; an ambiguous one might, once the context settles it.
     return Ambiguous("no_item", ()) if ambiguous else Invalid("no_item")
 

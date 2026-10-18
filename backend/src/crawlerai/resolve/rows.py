@@ -11,6 +11,7 @@ Each variant resolves its sub-fields with the resolver's own rules, its scope st
 from collections.abc import Callable, Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final, TypeGuard
+from urllib.parse import urlsplit
 
 from pydantic import JsonValue
 
@@ -32,7 +33,12 @@ RowOf = Callable[[Candidate], str | None]
 NOT_IN_ROW: Final = "not_in_row"
 SINGLE_ROW: Final = "single_row"
 # Why a row-mapped field publishes nothing, from the earliest stage to the furthest; the furthest reached is the reason.
-_NO_ROWS = ("no_rows", "no_row_key", "row_key_conflict", "key_unpublished")
+_NO_ROWS = ("no_rows", "no_row_key", "row_key_conflict", "key_unpublished", "url_only", "other_page")
+# variants spec, own variants: a row that states nothing of itself but a URL is a link (schema.org: a Product node with
+# only `url` names a thing described elsewhere), and a row whose URL names another resource than the page (RFC 3986
+# §3.2, §3.3: authority and path identify the resource; the query may select a variant of it) is another product.
+URL_ONLY: Final = "url_only"
+OTHER_PAGE: Final = "other_page"
 _URL = FieldSpec(type=FieldType.URL)
 # Owner, 2026-10-16 (Appendix A #48): a product without variants has no variant list; the list is published only for
 # two or more variants, and one row's values publish at the top level by the common-value rule (INV-38).
@@ -85,7 +91,7 @@ def resolve_rows(row_field: RowField, candidates: Sequence[Candidate]) -> FieldO
         return _published(resolved.published, tuple(resolved.dropped), tuple(resolved.rejected))
     if resolved.published:
         return _single_row(resolved, in_rows)
-    reasons += ["key_unpublished"] * len(variants)
+    reasons += resolved.reasons
     abstained = bool(variants) and resolved.abstained and set(reasons) == {"key_unpublished"}
     status: FieldStatus = "abstained" if abstained else "missing"
     return FieldOutcome(
@@ -134,19 +140,41 @@ class _Resolved:
     dropped: list[DroppedRow]
     published: list[tuple[str, RowOutcome]] = field(default_factory=list)
     abstained: bool = True
+    reasons: list[str] = field(default_factory=list)  # why each resolved variant that did not publish was dropped
 
     def add(self, row_field: RowField, variant: "_Variant", candidates: Sequence[Candidate], row_of: RowOf) -> None:
         ids = {row.id for row in variant.rows}
         own = [c for c in candidates if row_of(c) in ids]
         outcome = _resolve_variant(row_field, own, ids, row_of)
         keys = [outcome.fields[sub].status for sub in row_field.key]
-        if "published" in keys:
+        # §4.5: a row publishes when at least one key sub-field publishes, and it is the target's own variant.
+        reason = _not_own(row_field, outcome) if "published" in keys else "key_unpublished"
+        if reason is None:
             self.published.append((variant.rows[0].id, outcome))
             return
-        # §4.5: a row publishes when at least one key sub-field publishes.
         self.abstained = self.abstained and "abstained" in keys
-        self.dropped.append(DroppedRow(locators=tuple(row.id for row in variant.rows), reason="key_unpublished"))
-        self.rejected.extend((c, "key_unpublished") for c in own)
+        self.reasons.append(reason)
+        self.dropped.append(DroppedRow(locators=tuple(row.id for row in variant.rows), reason=reason))
+        self.rejected.extend((c, reason) for c in own)
+
+
+def _not_own(row_field: RowField, outcome: RowOutcome) -> str | None:
+    """Why a published variant is not one of the target's own (`URL_ONLY`, `OTHER_PAGE`), or None when it is."""
+    published = {sub: o.value for sub, o in outcome.fields.items() if o.status == "published"}
+    urls = {sub for sub in published if row_field.sub_fields[sub].type is FieldType.URL}
+    if not published.keys() - urls:
+        return URL_ONLY
+    pages = {_resource(u) for u in (*row_field.page_urls, *row_field.target.urls)} - {None}
+    stated = {_resource(published[sub]) for sub in urls} - {None}
+    return OTHER_PAGE if pages and stated - pages else None
+
+
+def _resource(value: JsonValue) -> tuple[str, str] | None:
+    """The authority and path of an absolute URL (RFC 3986 §3.2, §3.3), the resource it names; None otherwise."""
+    if not isinstance(value, str):
+        return None
+    parts = urlsplit(value)
+    return (parts.netloc.lower(), parts.path.rstrip("/")) if parts.scheme and parts.netloc else None
 
 
 def row_entities(graph: EntityGraph, target: Entity, spec: FieldSpec) -> list[Entity]:

@@ -47,6 +47,17 @@ Refs: §10, Appendix A #37, #39. Enforced by: resolver test; active.
 - **WHEN** one row's scope holds two Offers with different prices
 - **THEN** that row's `price` is `conflict` with reason `offers_disagree`
 
+### Requirement: Own variants
+A published row SHALL be the target's own variant: a row whose only published sub-fields are URLs is dropped `url_only`
+(a link to a thing described elsewhere), and a row whose published URL names another resource than the page and the
+target (RFC 3986 authority and path, a trailing `/` aside; its query may select the variant) is dropped `other_page` (another product's
+page, such as a sibling colourway). Rows of one variant are already one by their shared key (INV-33). (Previously:
+every row with a published key sub-field published.) Refs: owner 2026-10-18.
+#### Scenario: Sibling products listed as members
+- **WHEN** a ProductGroup's `hasVariant` lists two variants at the page's URL with a `size` query, Products stating only
+  a URL of another product page, and a Product with a sku at another product's page
+- **THEN** `variants` holds the two variants only
+
 ### Requirement: Row-mapped field outcome (INV-34)
 A row-mapped field SHALL publish when two or more rows publish, with `items` (a `FieldOutcome` per sub-field of each
 published row, published ones with full provenance) and `dropped` rows with reasons; one published row leaves it

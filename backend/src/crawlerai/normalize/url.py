@@ -6,8 +6,8 @@ other JSON value is `Invalid("not_a_string")`. A relative reference resolves aga
 
 import re
 import string
-from collections.abc import Hashable
-from urllib.parse import SplitResult, quote, unquote, urljoin, urlsplit
+from collections.abc import Hashable, Sequence
+from urllib.parse import SplitResult, parse_qsl, quote, unquote, urljoin, urlsplit
 
 from pydantic import JsonValue
 
@@ -93,6 +93,66 @@ def _without_dimensions(path: str) -> str:
     kept = [segment for segment in path.split("/") if not _SEGMENT.fullmatch(segment)]
     stripped = _OPTIONS.sub("", "/".join(kept))
     return _CONVERSION.sub(r"\1", _SIZE_SUFFIX.sub("", stripped))
+
+
+# A size has a few digits; a longer run (an id or a stamp) is no size, and stays clear of `int`'s digit limit.
+_NUMBER = re.compile(r"(?<!\d)\d{1,9}(?!\d)")
+
+
+def largest_rendition(values: Sequence[str]) -> int:
+    """The index of the largest of renditions of one file (`resource_key`), or 0 when not every one states its size.
+
+    A rendition states its size in what `resource_key` sets aside: the path's dimension segments, size suffix and
+    options, and query parameters (RFC 3986 §3.4) with a decimal value that differ between the renditions (a parameter
+    equal in all, such as a version stamp, says nothing of size). Its size is the largest such number; of equal sizes
+    the first wins. A rendition stating none may be the unresized file or a default one, so nothing is ranked then."""
+    sizes = [_stated_size(value, values) for value in values]
+    if not sizes or None in sizes:
+        return 0
+    known = [size for size in sizes if size is not None]
+    return known.index(max(known))
+
+
+def _stated_size(value: str, renditions: Sequence[str]) -> int | None:
+    parts = urlsplit(value)
+    path = parts.path
+    stated = [m.group() for m in (_SIZE_SUFFIX.search(path), _OPTIONS.search(path)) if m is not None]
+    stated += [segment for segment in path.split("/") if _SEGMENT.fullmatch(segment)]
+    query = _numeric_query(parts.query)
+    others = [_numeric_query(urlsplit(r).query) for r in renditions]
+    varying = [v for name, v in query.items() if any(o.get(name) != v for o in others)]
+    numbers = [int(n) for text in stated for n in _NUMBER.findall(text)] + varying
+    return max(numbers) if numbers else None
+
+
+def _numeric_query(query: str) -> dict[str, int]:
+    return {name: int(v) for name, v in parse_qsl(query) if _NUMBER.fullmatch(v)}
+
+
+def distinct_files(values: Sequence[JsonValue]) -> list[JsonValue]:
+    """Image values with each file once (`resource_key`), at the place of the file's first rendition: of its
+    renditions the largest (`largest_rendition`) of those over `https` if any is (RFC 9110 §4.2.2: the same file
+    reached over TLS). Values that are no absolute URL are kept as they are."""
+    groups: dict[Hashable, list[str]] = {}
+    for value in values:
+        key = resource_key(value)
+        if key is not None and isinstance(value, str):
+            groups.setdefault(key, []).append(value)
+    kept: list[JsonValue] = []
+    for value in values:
+        key = resource_key(value)
+        group = groups.pop(key, None) if key is not None else None
+        if group is not None:
+            kept.append(preferred_rendition(group))
+        elif key is None:
+            kept.append(value)
+    return kept
+
+
+def preferred_rendition(renditions: Sequence[str]) -> str:
+    """Of renditions of one file, the largest (`largest_rendition`) of those over `https`, else of all."""
+    secure = [r for r in renditions if urlsplit(r).scheme == "https"] or list(renditions)
+    return secure[largest_rendition(secure)]
 
 
 def is_absolute(raw: Raw) -> bool:

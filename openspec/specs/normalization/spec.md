@@ -126,7 +126,14 @@ canonicalizes and declines non-http(s) or hostless URLs, never repairing. Refs: 
 
 ### Requirement: list and object
 A list SHALL be `Ok` when at least one item normalizes, reporting dropped items; an object declines when a required
-sub-field declines (`normalize/dispatch.py`). Refs: D-0325, D-0326.
+sub-field declines (`normalize/dispatch.py`). A list of `image_url` items names each file (`resource_key`) once, at its
+first rendition's place, as its largest rendition over `https` (`url.distinct_files`): the largest number a rendition's
+size statement holds (the path's size parts, and decimal query values that differ between the renditions), ranked only
+when every rendition states one, else the first. (Previously: renditions of one file were kept as separate items.)
+Refs: D-0325, D-0326, D-1665.
+#### Scenario: One image in four widths
+- **WHEN** a list states one image file at widths 100, 300, 600 and 900
+- **THEN** it normalizes to the one width-900 URL
 
 ### Requirement: Equality per type
 `equal(a, b, spec)` SHALL be reflexive and symmetric for any JSON value, comparing each type's normalized form
