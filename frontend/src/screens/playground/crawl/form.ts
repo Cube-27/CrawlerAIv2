@@ -1,7 +1,13 @@
 import type { CrawlRequest, CrawlStrategy } from "../../../api/jobs";
 import { isJsonObject } from "../../../api/json";
-import type { MethodHint, PageKind } from "../../../api/scrape";
-import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } from "../advanced";
+import type { FetchMember, MethodHint, PageKind, ScrapeFormat } from "../../../api/scrape";
+import {
+  DEFAULT_ADVANCED,
+  fetchMember,
+  storedAdvanced,
+  withFetchErrors,
+  type AdvancedFetch,
+} from "../advanced";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import {
@@ -135,7 +141,22 @@ function fieldsErrors(rules: readonly RuleRow[]): Readonly<Record<string, string
  * or field names it asks for `records` alone, which needs a rule; every rule is for the schema's page kind, and field
  * names take rules of one page kind. Without either it asks for at least one format. */
 export function crawlErrors(form: CrawlFormState): Readonly<Record<string, string>> {
-  return withWebhookErrors(requestErrors(form), form.options.webhook);
+  const formats = jobFormats(form);
+  return withFetchErrors(
+    withWebhookErrors(requestErrors(form), form.options.webhook),
+    crawlFetch(form, formats),
+    formats,
+  );
+}
+
+function crawlFetch(form: CrawlFormState, formats: readonly ScrapeFormat[]): FetchMember {
+  const { options } = form;
+  return fetchMember(
+    options.methodHint,
+    options.maxRows,
+    options.advanced,
+    screenshotArea(formats, options),
+  );
 }
 
 function requestErrors(form: CrawlFormState): Readonly<Record<string, string>> {
@@ -166,12 +187,7 @@ export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
     })),
     include: [...options.include],
     exclude: [...options.exclude],
-    fetch: fetchMember(
-      options.methodHint,
-      options.maxRows,
-      options.advanced,
-      screenshotArea(formats, options),
-    ),
+    fetch: crawlFetch(form, formats),
     ...formatMembers(formats, options),
     ...optionalNumber("max_depth", options.maxDepth),
     ...optionalNumber("limit", options.limit),

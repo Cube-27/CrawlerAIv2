@@ -1,5 +1,18 @@
-import type { MethodHint, PageKind, PagingHint, ScrapeRequest } from "../../../api/scrape";
-import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } from "../advanced";
+import type {
+  FetchMember,
+  MethodHint,
+  PageKind,
+  PagingHint,
+  ScrapeFormat,
+  ScrapeRequest,
+} from "../../../api/scrape";
+import {
+  DEFAULT_ADVANCED,
+  fetchMember,
+  storedAdvanced,
+  withFetchErrors,
+  type AdvancedFetch,
+} from "../advanced";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import {
@@ -9,8 +22,9 @@ import {
   type FormatSettings,
 } from "../formatOptions";
 import {
-  canSend,
   llmBudget,
+  NO_ERRORS,
+  pageKindErrors,
   optionalNumber,
   requestFormats,
   requestPageKind,
@@ -87,23 +101,34 @@ export const INITIAL_FORM: ScrapeFormState = {
   options: DEFAULT_OPTIONS,
 };
 
-/** The request for `form`, or null when it can't be sent (`canSend`). Empty limits are left out, so the server's
- * defaults apply. */
+/** Why `form` can't be sent, by field: what `pageKindErrors` finds, then the `fetch` member's (`withFetchErrors`). */
+export function scrapeErrors(form: ScrapeFormState): Readonly<Record<string, string>> {
+  const formats = requestFormats(form);
+  return withFetchErrors(pageKindErrors(form), scrapeFetch(form, formats), formats);
+}
+
+function scrapeFetch(form: ScrapeFormState, formats: readonly ScrapeFormat[]): FetchMember {
+  const { options } = form;
+  return fetchMember(
+    options.methodHint,
+    options.maxRows,
+    options.advanced,
+    screenshotArea(formats, options),
+  );
+}
+
+/** The request for `form`, or null when it can't be sent (`scrapeErrors`). Empty limits are left out, so the
+ * server's defaults apply. */
 export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
   const { options } = form;
-  if (!canSend(form)) return null;
+  if (scrapeErrors(form) !== NO_ERRORS) return null;
   const formats = requestFormats(form);
   return {
     url: form.url.trim(),
     formats,
     schema: requestSchema(form),
     page_kind: requestPageKind(form),
-    fetch: fetchMember(
-      options.methodHint,
-      options.maxRows,
-      options.advanced,
-      screenshotArea(formats, options),
-    ),
+    fetch: scrapeFetch(form, formats),
     ...formatMembers(formats, options),
     ...optionalNumber("max_age", options.maxAge),
     ...optionalNumber("timeout_s", options.timeoutS),

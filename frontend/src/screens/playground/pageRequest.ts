@@ -203,11 +203,6 @@ export function pageKindErrors(form: PageKindForm): Readonly<Record<string, stri
   return schemaPageKindErrors(form.schemaPageKind) ?? NO_ERRORS;
 }
 
-/** Whether `form` can be sent: `pageKindErrors` finds nothing. */
-export function canSend(form: PageKindForm): boolean {
-  return pageKindErrors(form) === NO_ERRORS;
-}
-
 /** SameValue (ECMA-262), so an empty limit (NaN) equals the default; a list equals one with the same entries, and a
  * group of settings (Advanced) one with the same members. */
 function sameSetting(value: unknown, other: unknown): boolean {

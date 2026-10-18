@@ -1,7 +1,13 @@
 import type { ExtractRequest } from "../../../api/jobs";
 import { parseJsonObject } from "../../../api/json";
-import type { MethodHint, PageKind, SchemaRef } from "../../../api/scrape";
-import { DEFAULT_ADVANCED, fetchMember, storedAdvanced, type AdvancedFetch } from "../advanced";
+import type { FetchMember, MethodHint, PageKind, SchemaRef } from "../../../api/scrape";
+import {
+  DEFAULT_ADVANCED,
+  fetchMember,
+  storedAdvanced,
+  withFetchErrors,
+  type AdvancedFetch,
+} from "../advanced";
 import type { SchemaPageKind } from "../../../api/schemas";
 import {
   llmBudget,
@@ -130,7 +136,16 @@ const SOURCE_ERRORS: Readonly<Record<SchemaSource, Readonly<Record<string, strin
 /** Why `form` can't be sent, by field: an extract needs a schema, and records of one page kind (SPEC-10 §4.6,
  * SPEC-07 §4.4). */
 export function extractErrors(form: ExtractFormState): Readonly<Record<string, string>> {
-  return withWebhookErrors(requestErrors(form), form.options.webhook);
+  return withFetchErrors(
+    withWebhookErrors(requestErrors(form), form.options.webhook),
+    extractFetch(form),
+    [],
+  );
+}
+
+function extractFetch(form: ExtractFormState): FetchMember {
+  const { options } = form;
+  return fetchMember(options.methodHint, options.maxRows, options.advanced);
 }
 
 function requestErrors(form: ExtractFormState): Readonly<Record<string, string>> {
@@ -150,7 +165,7 @@ export function buildExtract(form: ExtractFormState): ExtractRequest | null {
     urls: [form.url, ...options.urls],
     schema,
     page_kind: kind,
-    fetch: fetchMember(options.methodHint, options.maxRows, options.advanced),
+    fetch: extractFetch(form),
     ...optionalNumber("limit", options.limit),
     ...llmBudget(options.llmCalls),
     ...webhook(options.webhook),

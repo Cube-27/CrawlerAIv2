@@ -159,6 +159,51 @@ export function fetchMember(
   };
 }
 
+/** The page steps that make a fetch run in the browser: `wait_for` or any action (`FetchOptions.in_browser`). */
+function hasBrowserSteps(fetch: FetchMember): boolean {
+  return fetch.wait_for !== undefined || (fetch.actions?.length ?? 0) > 0;
+}
+
+/** The formats only a browser makes (`CAPTURE_FORMATS` of the server). */
+const CAPTURE_FORMATS: ReadonlySet<string> = new Set(["screenshot", "pdf"]);
+const CAPTURE_OVER_HTTP = {
+  "fetch.method_hint": "Screenshots and PDFs are made in the browser: choose Auto or Browser.",
+};
+const STEPS_OVER_HTTP = {
+  "fetch.method_hint": "Wait for and page actions run in the browser: choose Auto or Browser.",
+};
+const HEADERS_IN_BROWSER = {
+  "fetch.headers":
+    "Headers are sent over HTTP only: remove them, or use neither the Browser method, wait for nor page actions.",
+};
+
+function methodHintError(
+  fetch: FetchMember,
+  formats: readonly string[],
+): Readonly<Record<string, string>> | null {
+  if (fetch.method_hint !== "http") return null;
+  if (formats.some((format) => CAPTURE_FORMATS.has(format))) return CAPTURE_OVER_HTTP;
+  return hasBrowserSteps(fetch) ? STEPS_OVER_HTTP : null;
+}
+
+function headersError(fetch: FetchMember): Readonly<Record<string, string>> | null {
+  const inBrowser = fetch.method_hint === "browser" || hasBrowserSteps(fetch);
+  return fetch.headers !== undefined && inBrowser ? HEADERS_IN_BROWSER : null;
+}
+
+/** `errors` with the `fetch` member's own after them; `errors` itself when it has none. The server always refuses
+ * these combinations (`FetchOptions._coherent`, `check_formats`): a screenshot, a PDF, `wait_for` or actions need the
+ * browser, so not the `http` method; headers go over HTTP only (INV-44), so not with the browser. */
+export function withFetchErrors(
+  errors: Readonly<Record<string, string>>,
+  fetch: FetchMember,
+  formats: readonly string[],
+): Readonly<Record<string, string>> {
+  const method = methodHintError(fetch, formats);
+  const headers = headersError(fetch);
+  return method === null && headers === null ? errors : { ...errors, ...method, ...headers };
+}
+
 const CACHE_MODES: readonly CacheMode[] = ["default", "bypass", "only"];
 
 /** The Advanced settings of a stored request. Header and cookie values come back redacted (D-1432), so they are not
