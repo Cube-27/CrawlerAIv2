@@ -355,3 +355,15 @@ def test_a_datetime_field_is_not_spotted_without_a_label() -> None:
     schema = _schema("detail", posted=_field(FieldType.DATETIME, "Article.dateModified"))
 
     assert _collect("<main><p>2026-10-01T10:00:00Z</p></main>", schema) == {}
+
+
+def test_a_json_body_is_no_markup_to_read_pairs_from() -> None:
+    page = ParsedPage('{"brand": "Example Brand"}', json_body=True)
+
+    assert DomCollector().collect(page, SCHEMA, CTX).candidates == ()
+
+
+def test_a_row_value_that_lines_also_state_among_others_is_kept() -> None:
+    body = "<main><table><tr><th>Brand</th><td>A</td></tr></table><p>Brand: A</p><p>Brand: B</p></main>"
+
+    assert _values(body) == {"brand": ["A"]}

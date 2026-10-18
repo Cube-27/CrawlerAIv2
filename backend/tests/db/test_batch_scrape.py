@@ -379,7 +379,7 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text_as_a_
 ) -> None:
     # SPEC-10 §4.3: a batch's handler is the scrape's steps, role C included (D-1006), charged to the batch's job.
     url = f"{own_origin}/kettles/blue"
-    body = _page("Blue kettle", offers=False).replace(b"</main>", b"<p>19.90 EUR</p></main>")
+    body = _page("Blue kettle", offers=False).replace(b"</main>", b"<aside>19.90 EUR</aside></main>")
     web.pages[url] = (200, body)
     llm = MeteredClient([FakeProvider([_price_reply(fetch_result, url, body)])], engine)
     submitted = await submit_batch(engine, fetching.connector, _records([url], kettle_schema), data=engine_data)
@@ -404,7 +404,7 @@ async def test_a_batch_budget_of_no_llm_calls_leaves_the_field_missing(
 ) -> None:
     # SPEC-10 §4.3 `budget`: the job's `llm_calls` bound role C as a scrape's do (SPEC-06 §4.2).
     url = f"{own_origin}/kettles/blue"
-    body = _page("Blue kettle", offers=False).replace(b"</main>", b"<p>19.90 EUR</p></main>")
+    body = _page("Blue kettle", offers=False).replace(b"</main>", b"<aside>19.90 EUR</aside></main>")
     web.pages[url] = (200, body)
     provider = FakeProvider([_price_reply(fetch_result, url, body)])
     request = _batch(

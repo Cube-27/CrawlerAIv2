@@ -96,7 +96,7 @@ Words = tuple[str, ...]
 
 class DomCollector:
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult:
-        if schema.page_kind != "detail":
+        if schema.page_kind != "detail" or page.json_body:
             return CollectResult(entities=(), candidates=())
         diagnostics: list[str] = []
         candidates = []
@@ -158,7 +158,8 @@ def _pairs_found(page: ParsedPage, schema: SchemaDef) -> Iterator[Found]:
     for (name, raw), value in found.items():
         # Lines and sibling pairs repeat for the items a page lists besides its own (related products, variants): a
         # field they give several values is ambiguous there. Rows and description lists are the page's own.
-        if all(len(kinds[(name, kind)]) == 1 for kind in _REPEATING if raw in kinds.get((name, kind), ())):
+        stated = raw in kinds.get((name, _TABLE), ())
+        if stated or all(len(kinds[(name, kind)]) == 1 for kind in _REPEATING if raw in kinds.get((name, kind), ())):
             yield name, raw, node_xpath(value)
 
 
@@ -287,8 +288,8 @@ def _short_texts(region: LexborNode) -> list[tuple[LexborNode, str]]:
 
 
 def _apart_ids(region: LexborNode, extra: frozenset[str] = frozenset()) -> frozenset[int]:
-    """The elements in the region's tangential content, in a dialog or a media element's fallback (as `_set_apart`
-    reads them), or inside one of the `extra` tags."""
+    """The elements in the region's tangential content, in a dialog or a media element's fallback, or inside one of
+    the `extra` tags."""
     selector = ",".join(
         (*_TANGENTIAL, *_MEDIA, *extra, "dialog", *(f'[role~="{role}"]' for role in sorted(_DIALOG_ROLES)))
     )
@@ -321,13 +322,14 @@ def _main_region(page: ParsedPage) -> LexborNode | None:
 def _main_image(region: LexborNode, ctx: Context) -> tuple[LexborNode, str] | None:
     here = canonical_url(ctx.page_url, None) if ctx.page_url is not None else None
     base = ctx.base_url or ctx.page_url
+    apart = _apart_ids(region)
     for image in region.css("img"):
         source = image_source(image.attributes)
         if (
             source is not None
             and shown(image)
             and not decorative(image.attributes)
-            and not _set_apart(image, region)
+            and image.mem_id not in apart
             and not _link_card(image, region, here, base)
         ):
             return image, source
@@ -347,25 +349,6 @@ def image_source(attributes: Mapping[str, str | None]) -> str | None:
 def decorative(attributes: Mapping[str, str | None]) -> bool:
     """Whether an `img` is decorative: an empty `alt` (HTML Standard §4.8.4.4), or roles `none`/`presentation`."""
     return attributes.get("alt") == "" or not _PRESENTATIONAL.isdisjoint(tokens(attributes.get("role")))
-
-
-def _set_apart(image: LexborNode, region: LexborNode) -> bool:
-    """Whether the image is in the region's tangential content, in a dialog, or a media element's fallback."""
-    node: LexborNode | None = image.parent
-    while node is not None and node != region:
-        if node.tag in _TANGENTIAL or node.tag in _MEDIA or _is_dialog(node):
-            return True
-        node = node.parent
-    return False
-
-
-def _is_dialog(node: LexborNode) -> bool:
-    return node.tag == "dialog" or not _DIALOG_ROLES.isdisjoint(_roles(node))
-
-
-def _roles(node: LexborNode) -> list[str]:
-    # WAI-ARIA 1.2 §4.1: `role` is a list of space-separated tokens.
-    return tokens(node.attributes.get("role"))
 
 
 def _link_card(image: LexborNode, region: LexborNode, here: str | None, base: str | None) -> bool:

@@ -329,7 +329,7 @@ async def test_role_c_completes_a_discovered_page_whose_price_is_only_in_its_tex
     # (D-0346), so the task writes the job's usage only after the extraction.
     url = f"{own_origin}/p/blue"
     status, body, block_class = page(product="Blue kettle", offers=False)
-    body = body.replace(b"</main>", b"<p>19.90 EUR</p></main>")
+    body = body.replace(b"</main>", b"<aside>19.90 EUR</aside></main>")
     web.pages[url] = (status, body, block_class)
     text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
     start = text.index("19.90 EUR")
