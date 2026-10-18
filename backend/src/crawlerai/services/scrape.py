@@ -57,9 +57,17 @@ from crawlerai.resolve.task import ActiveConfig, StoredRecord
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetch_options import CacheMode, check_proxy_pool
-from crawlerai.services.fetching import Fetching, PagePlan, TargetRejected, check_target, fetch_now, site_rungs
+from crawlerai.services.fetching import (
+    Fetching,
+    Growth,
+    PagePlan,
+    TargetRejected,
+    check_target,
+    fetch_now,
+    site_rungs,
+)
 from crawlerai.services.records import RecordField, ScrapedRecord, page_fields
-from crawlerai.services.scrape_paging import check_browser_actions, paged_fetch
+from crawlerai.services.scrape_paging import actions_deadline, check_browser_actions, paged_fetch
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     CAPTURE_FORMATS,
@@ -364,9 +372,12 @@ async def _run(
         )
         page, further, report = _pages(paged)
     else:
+        growth = _growth(request, fetching)
         rungs = site_rungs(fetching, host, site)
-        page_request = PagePlan(rungs, site, policy, attempts, recipe=recipe, needs_render=check)
-        page = await fetch_now(engine, fetching, request.url, page_request)
+        plan = PagePlan(rungs, site, policy, attempts, recipe=recipe, needs_render=check, growth=growth)
+        page = await fetch_now(engine, fetching, request.url, plan)
+        if growth is not None and isinstance(page, FetchResult) and (grew := growth.of(page)) is not None:
+            further, report = grew.pages[1:], grew.report
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = await _derive_reached(engine, work, request, task, page, recent, config, check)
@@ -440,6 +451,18 @@ async def _derive_reached(
     files = frozenset(page.artifacts) if recent is None else recent.artifacts
     reached = (page, parsed_page(page.bundle, check))
     return await _derive(engine, work, request, task, reached, config, files=files)
+
+
+def _growth(request: ScrapeRequest, fetching: Fetching) -> Growth | None:
+    """The default browser actions of a listing scrape for `records` in `auto` that asks for none, used where its page
+    is rendered (master plan 2026-10-18 decision 11, amending owner #52): `records`' default, within the actions' share
+    of its `timeout_s`; none for a page captured as a file (its first render) or without the listing rung. Batch and
+    crawl tasks never grow (`worker.handlers`)."""
+    reads_rows = request.page_kind == "listing" and "records" in request.formats
+    first_render = bool(CAPTURE_FORMATS.intersection(request.formats))
+    if not reads_rows or first_render or request.fetch.method_hint != "auto" or fetching.rungs.listing is None:
+        return None
+    return Growth(BrowserActions(), actions_deadline(request.timeout_s))
 
 
 def _pages(paged: PagedFetch | str) -> tuple[FetchResult | str, tuple[FetchResult, ...], ActionsReport | None]:

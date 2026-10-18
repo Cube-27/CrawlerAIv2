@@ -14,7 +14,6 @@ a further kept state; when the recipe does not serve the first page, the browser
 """
 
 import time
-from functools import partial
 from typing import Final
 from urllib.parse import urlsplit
 
@@ -24,9 +23,8 @@ from crawlerai.acquire.politeness import Admit
 from crawlerai.acquire.types import AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Render
-from crawlerai.crawl.paging import collect
 from crawlerai.db.models import PageKind
-from crawlerai.services.fetching import Fetching, TargetRejected, recipe_rung, refusal
+from crawlerai.services.fetching import Fetching, TargetRejected, grown, recipe_rung, refusal
 from crawlerai.services.polite import IN_PLACE, HostRules, ReadRules, Refused, polite_fetch, rules_of
 from crawlerai.services.scrape_steps import FetchOptions
 from crawlerai.storage.capture_bundle import CaptureBundle
@@ -34,6 +32,12 @@ from crawlerai.storage.capture_bundle import CaptureBundle
 # D-1222: the actions' time cap; the probe's slowest passing listing took under 50 s.
 MAX_ACTIONS_S: Final = 60.0
 _TIMEOUT_SHARE: Final = 0.5
+
+
+def actions_deadline(timeout_s: float) -> float:
+    """When a scrape's browser actions stop: at its actions' share of `timeout_s`, and at most `MAX_ACTIONS_S`, from
+    now (on `time.monotonic`)."""
+    return time.monotonic() + min(MAX_ACTIONS_S, _TIMEOUT_SHARE * timeout_s)
 
 
 def check_browser_actions(
@@ -65,7 +69,7 @@ async def paged_fetch(
     `recipe`, the site's active API recipe, when it has pagination and serves the first page. The attempts,
     robots.txt's too, are added to `attempts`. Raises `TargetRejected` when the guard refused a request of the fetch
     (INV-16)."""
-    deadline = time.monotonic() + min(MAX_ACTIONS_S, _TIMEOUT_SHARE * timeout_s)
+    deadline = actions_deadline(timeout_s)
     rules = rules_of(engine, fetching.rungs.http, attempts)
     paged: list[PagedFetch] = []
 
@@ -92,31 +96,6 @@ def _record(pages: tuple[FetchResult, ...], attempts: list[AttemptRecord]) -> No
         attempts.extend(page.attempts)
         if (refused := refusal(page)) is not None:
             raise TargetRejected(refused)
-
-
-async def grown(
-    fetching: Fetching,
-    url: str,
-    policy: FetchPolicy,
-    actions: BrowserActions,
-    deadline: float,
-    admit_next: Admit,
-    known: HostRules,
-) -> PagedFetch:
-    """The listing at `url` from the listing rung with the paging driver (`crawl.paging.collect`): each action waits for
-    a turn at the site's rate (`admit_next`), and a next page is followed only on the listing's own host, when its
-    robots.txt (`known`) allows it."""
-    rung = fetching.rungs.listing
-    if rung is None:
-        raise RuntimeError("this process has no listing rung")
-    host = urlsplit(url).hostname or ""
-
-    async def gate(next_url: str | None) -> bool:
-        if next_url is not None and (urlsplit(next_url).hostname != host or not known.allows(next_url)):
-            return False
-        return await admit_next()
-
-    return await rung(url, policy, partial(collect, request=actions, gate=gate, deadline=deadline))
 
 
 async def _recipe_pages(

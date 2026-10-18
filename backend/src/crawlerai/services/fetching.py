@@ -8,6 +8,7 @@ are (§4.6, §4.7), and the plain HTTP fetches of a site's sitemaps.
 import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
+from functools import partial
 from urllib.parse import urlsplit
 
 from sqlalchemy import update
@@ -17,12 +18,13 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.politeness import Admit, HostLimiter
 from crawlerai.acquire.rungs import RenderCheck, Rung, Rungs, acquire
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, Validators
+from crawlerai.acquire.types import AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch, Validators
 from crawlerai.config_ir.api_recipe.execute import MAX_PAGES, RecipeRung, unserved
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replay, Replays
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
+from crawlerai.crawl.paging import collect
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
 from crawlerai.db.models import JobId, Site
 from crawlerai.recurring.conditional import Unchanged, fetch_unless_unchanged
@@ -259,12 +261,63 @@ def _until_refused(pages: Sequence[FetchResult]) -> list[FetchResult]:
     return kept
 
 
+async def grown(
+    fetching: Fetching,
+    url: str,
+    policy: FetchPolicy,
+    actions: BrowserActions,
+    deadline: float,
+    admit_next: Admit,
+    known: HostRules,
+) -> PagedFetch:
+    """The listing at `url` from the listing rung with the paging driver (`crawl.paging.collect`, owner #52): each
+    action waits for a turn at the site's rate (`admit_next`), and a next page is followed only on the listing's own
+    host, when its robots.txt (`known`) allows it."""
+    rung = fetching.rungs.listing
+    if rung is None:
+        raise RuntimeError("this process has no listing rung")
+    host = urlsplit(url).hostname or ""
+
+    async def gate(next_url: str | None) -> bool:
+        if next_url is not None and (urlsplit(next_url).hostname != host or not known.allows(next_url)):
+            return False
+        return await admit_next()
+
+    return await rung(url, policy, partial(collect, request=actions, gate=gate, deadline=deadline))
+
+
+@dataclass
+class Growth:
+    """A single-URL listing scrape's browser actions where its page is rendered (master plan 2026-10-18 decision 11,
+    amending owner #52): the browser rung of the fetch grows the list toward `actions.records` until `deadline`, and
+    keeps the document states it made in `paged`."""
+
+    actions: BrowserActions
+    deadline: float
+    paged: list[PagedFetch] = field(default_factory=list)
+
+    def rung(self, fetching: Fetching, admit_next: Admit, known: HostRules) -> Rung:
+        async def browse(url: str, policy: FetchPolicy) -> FetchResult:
+            paged = await grown(fetching, url, policy, self.actions, self.deadline, admit_next, known)
+            self.paged.append(paged)
+            return paged.pages[0]
+
+        return browse
+
+    def of(self, kept: FetchResult) -> PagedFetch | None:
+        """The listing's states, when the fetch kept the first one."""
+        first = self.paged[-1].pages[0] if self.paged else None
+        same = first is not None and first.bundle.manifest.capture_id == kept.bundle.manifest.capture_id
+        return self.paged[-1] if same else None
+
+
 @dataclass(frozen=True)
 class PagePlan:
     """How a page is fetched: the site's rungs (`site_rungs`), its row, the policy, the attempts every request of the
     fetch is added to, the site's active API `recipe` (with `pages` when it serves a listing in pages), the check that
     renders an HTTP page lacking what the caller reads (owner #49, #54), and the validators the page last answered with
-    when a record stands for it (SPEC-11 §4.2)."""
+    when a record stands for it (SPEC-11 §4.2); `growth`, a single-URL listing scrape's browser actions in `auto`
+    (`Growth`)."""
 
     rungs: Rungs
     site: SiteRow
@@ -275,6 +328,7 @@ class PagePlan:
     needs_render: RenderCheck | None = None
     validators: Validators | None = None
     has_record: bool = False
+    growth: Growth | None = None
 
 
 def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Waiting) -> PageFetch:
@@ -291,12 +345,16 @@ def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Wa
         if recipe is not None:
             rung = recipe if page.pages is None else await page.pages.rung(recipe, url, page.policy)
 
+        rungs = page.rungs
+        if page.growth is not None and page.policy.method_hint == "auto":
+            rungs = replace(rungs, browser=page.growth.rung(fetching, admit_next, known))
+
         async def once(validators: Validators | None) -> FetchResult:
             result = await acquire(
                 url,
                 page.policy,
                 page.site.fetch_method,
-                page.rungs,
+                rungs,
                 recipe=rung,
                 validators=validators,
                 admit_next=admit_next,
