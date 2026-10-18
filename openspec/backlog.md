@@ -32,6 +32,16 @@ throwaway databases.
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
+- Learning live (#269): role A reads 180k to 285k input tokens per call (5 sample pages of up to 120,000 characters
+  of reduced HTML, sent again in each repair round), USD 0.15 to 2.70 of role A per learned host against about
+  USD 0.002 per role C page: measure a smaller `CRAWLERAI_LLM_A_MAX_CHARS` or prompt caching across rounds. Synthesis
+  still wants the row selector to select exactly the engine's rows on each sample page (D-1500), so a sample page whose
+  role C rows left items out pushes the repair toward a narrower selector. An XPath element value is its string-value,
+  so a long_text only the DOM states (blocks without whitespace between them) cannot be reproduced; rendering the
+  element needs the parsed tree's render without a second parse (INV-26). A listing learns only the fields its cold
+  rows publish: role C rows without an item URL give no `url` step. The dev eval database's `job_listing` predates
+  `locations` (it holds `location`): re-import or sync it before measuring listing configs. The learning-configs spec
+  is past 100 lines: split it (configs and learning).
 - Sweep fixes 2 (#266): a hosted career page whose API host's robots.txt disallows the adapter still gives 0 rows
   (`no_rows: none_listed`). Listing role C requests changed (D-1478, D-1496), so recorded dev replays of listings need
   re-recording.

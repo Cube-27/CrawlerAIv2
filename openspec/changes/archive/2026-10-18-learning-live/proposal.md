@@ -23,7 +23,7 @@ markup in JSON-LD could not be reproduced by any step; role A wrote JSONPath for
 
 ## Impact
 
-- Capabilities: [learning-configs](../../specs/learning-configs/spec.md).
+- Capabilities: [learning-configs](../../../specs/learning-configs/spec.md).
 - Code: `backend/src/crawlerai/config_ir/` (`validation.py`, `release_check.py`, new `row_alignment.py`, `executor.py`,
   `release_executor.py`, `release_rules.py`, `model.py`), `backend/src/crawlerai/collect/schema_org_map.py`,
   `backend/src/crawlerai/llm/prompts/a_synth.txt`, `backend/src/crawlerai/acquire/browser_tab.py`.

@@ -4,7 +4,7 @@
 Each step SHALL have exactly one selector key, limited to forms both executors run: XPath 1.0 only (`xpath1.py`), CSS
 stored with its pinned cssselect translation, a regex subset Python and PCRE both accept (`portable_regex.py`),
 JSONPath of RFC 9535 name, wildcard and index segments only (`json_doc.select`), and the post ops in `model.py`. LLM
-output is never executed (INV-17, [llm](../llm/spec.md)). Refs: §12.1, D-0034, D-0460, D-1501.
+output is never executed (INV-17, [llm](../../../../../specs/llm/spec.md)). Refs: §12.1, D-0034, D-0460, D-1501.
 (Previously: any JSONPath starting with `$`.)
 #### Scenario: Non-portable selector
 - **WHEN** a step uses `matches()` in its `xpath` or `$.name` as its JSONPath, or a bump changes a pinned translation in
