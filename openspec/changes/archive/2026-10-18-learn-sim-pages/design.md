@@ -14,5 +14,6 @@
 - Why: a held-out page is one learning never read (D-1685 measured only coverage). The sample is the first `--pages`
   pages in capture order and the rest are held out, repeated to the validation minimum when fewer; a host with no later
   page validates on its sample as before, so a split of one page per host reports as it did and `held_out_hosts` says
-  how many were held out. `--validate same-page` keeps the old measure for comparison.
+  how many were held out. The pages are split at the sample before any is dropped for a missing recording, so a dropped
+  page never moves a later one into the sample. `--validate same-page` keeps the old measure for comparison.
 - Reversible: yes

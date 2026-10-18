@@ -253,13 +253,15 @@ async def _eval_import_pages(file: Path, pages_per_site: int) -> None:
     settings = Settings()
     sites = parse_site_list(file.read_text(encoding="utf-8"), pages_per_site)
     database_url = settings.database_url.get_secret_value()
-    schemas = await active_schemas(database_url, {request.schema_name for request in sites.requests})
     engine = create_async_engine(database_url)
     try:
         async with aclosing(dev_store(settings)) as store, _fetching(settings, SafeConnector()) as fetching:
+            existing = await store.page_urls()
+            names = {request.schema_name for request in sites.requests if request.url not in existing}
+            schemas = await active_schemas(database_url, names) if names else {}
             data = load_engine_data(fetching.rungs.adapters)
             fetch = partial(_polite_page, engine, fetching, data)
-            outcomes = await page_import.import_pages(store, schemas, sites.requests, fetch, await store.page_urls())
+            outcomes = await page_import.import_pages(store, schemas, sites.requests, fetch, existing)
     finally:
         await engine.dispose()
     sys.stdout.write(report([*outcomes, *sites.over_limit]))

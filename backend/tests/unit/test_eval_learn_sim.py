@@ -3,8 +3,6 @@ the aggregates by category. No provider is called."""
 
 import asyncio
 from dataclasses import replace
-from types import SimpleNamespace
-from typing import Any
 
 import pytest
 from pydantic import JsonValue
@@ -133,24 +131,16 @@ def test_hosts_tokens_are_summed_and_an_unpriced_host_leaves_the_total_cost_unkn
     assert (mixed["role_a_usd"], mixed["role_a_live_hosts"]) == (None, 2)  # type: ignore[index,call-overload]
 
 
-def _pages(count: int) -> list[Any]:
-    return [SimpleNamespace(name=f"p{n}") for n in range(count)]
+def test_the_config_is_validated_on_the_later_pages() -> None:
+    assert validation_pages(["a", "b", "c"], ["d", "e", "f", "g"]) == ["d", "e", "f", "g"]
 
 
-def test_the_config_is_validated_on_the_pages_after_the_sample() -> None:
-    pages = _pages(6)
-    learning, validating = validation_pages(pages, 3)
-    assert [p.name for p in learning] == ["p0", "p1", "p2"]
-    assert [p.name for p in validating] == ["p3", "p4", "p5"]
+def test_later_pages_fewer_than_the_minimum_are_repeated() -> None:
+    assert validation_pages(["a", "b", "c"], ["d"]) == ["d", "d", "d"]
 
 
-def test_later_pages_fewer_than_the_minimum_are_repeated_and_none_falls_back_to_the_sample() -> None:
-    learning, validating = validation_pages(_pages(4), 3)
-    assert [p.name for p in learning] == ["p0", "p1", "p2"]
-    assert [p.name for p in validating] == ["p3", "p3", "p3"]
-    learning, validating = validation_pages(_pages(2), 3)
-    assert [p.name for p in validating] == ["p0", "p1", "p0"]
-    assert len(learning) == 2
+def test_with_no_later_page_the_config_is_validated_on_the_learning_pages() -> None:
+    assert validation_pages(["a", "b"], []) == ["a", "b", "a"]
 
 
 def test_hosts_validated_on_later_pages_are_counted() -> None:

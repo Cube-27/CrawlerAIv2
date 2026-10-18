@@ -234,15 +234,16 @@ async def _host_run(
     role_a: LLMClient | None,
     max_chars: int,
 ) -> HostRun:
-    stored = [s for page in pages if (s := await _stored(engine, schema, page, recorded)) is not None]
+    learning = [s for page in pages[:sample] if (s := await _stored(engine, schema, page, recorded)) is not None]
+    later = [s for page in pages[sample:] if (s := await _stored(engine, schema, page, recorded)) is not None]
     counter = RoleACounter(recorded, role_a)
     ir: ExtractionConfigIR | None = None
     held = 0
-    if stored:
-        learning, validating = validation_pages(stored, sample)
-        held = len({s.held_out.capture_id for s in validating} - {s.held_out.capture_id for s in learning})
+    if learning:
+        validating = validation_pages(learning, later)
+        held = len({s.held_out.capture_id for s in later})
         # The fetch method a config names does not change what its steps extract.
-        fetch: FetchMethod = "http" if stored[0].bundle.manifest.method == "http" else "browser"
+        fetch: FetchMethod = "http" if learning[0].bundle.manifest.method == "http" else "browser"
         target = Target(schema, pages[0].host, fetch, None)
         held_out = [s.held_out for s in validating]
         try:
@@ -255,7 +256,7 @@ async def _host_run(
     return HostRun(
         category=pages[0].row.category,
         page_kind=schema.page_kind,
-        pages=len(learning) if stored else 0,
+        pages=len(learning),
         activated=ir is not None,
         fields=config_fields(ir),
         executability=class_counts(ir),
@@ -266,12 +267,11 @@ async def _host_run(
     )
 
 
-def validation_pages[T](stored: Sequence[T], sample: int) -> tuple[list[T], list[T]]:
-    """The learning sample (the first `sample` pages) and the pages its config is validated on: the later pages, or
-    the sample when there are none, repeated to `MIN_HELD_OUT` pages when fewer."""
-    learning = list(stored[:sample])
-    later = list(stored[sample:]) or learning
-    return learning, list(islice(cycle(later), max(MIN_HELD_OUT, len(later))))
+def validation_pages[T](learning: Sequence[T], later: Sequence[T]) -> list[T]:
+    """The pages the config learned from `learning` is validated on: the `later` pages, or `learning` when there are
+    none, repeated to `MIN_HELD_OUT` pages when fewer."""
+    pool = list(later or learning)
+    return list(islice(cycle(pool), max(MIN_HELD_OUT, len(pool))))
 
 
 def config_fields(ir: ExtractionConfigIR | None) -> int:
