@@ -42,7 +42,8 @@ from crawlerai.config_ir.api_recipe.replay import Render, Replays
 from crawlerai.config_ir.api_recipe.validate import attach, refused
 from crawlerai.config_ir.held_out import StoredPage, load_pages
 from crawlerai.config_ir.induction import Induction, SamplePage, induce
-from crawlerai.config_ir.model import ExtractionConfigIR, Fetch, Provenance, SchemaRef
+from crawlerai.config_ir.listing_induction import ListingInduction, induce_listing
+from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR, Fetch, Provenance, SchemaRef
 from crawlerai.config_ir.progressive import (
     LEARN_AFTER_PAGES,
     NotLearning,
@@ -51,7 +52,7 @@ from crawlerai.config_ir.progressive import (
     lock_state,
 )
 from crawlerai.config_ir.synthesis import synthesize
-from crawlerai.config_ir.validation import Validated, ValidationReport, validate, with_unlearned
+from crawlerai.config_ir.validation import HeldOutPage, Validated, ValidationReport, validate, with_unlearned
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.jobs import JOB_TRANSITIONS, record_event, transition_job
 from crawlerai.db.models import (
@@ -245,13 +246,10 @@ async def _learned(
 ) -> Validated:
     """The config learned from the run's sample and validated on its held-out pages, with its API recipe."""
     sample, held_out = split(run.schema, run.pages)
-    absent = absent_fields(run.schema, run.pages)
-    ir, unlearned = await _learn(client, run, [page.sample for page in sample], vocabulary, max_chars, absent)
-    # A field no page stated has no value to learn a step from; the config lists it instead (D-1341).
-    ir = ir.model_copy(update={"absent": [name for name in absent if name in unlearned]})
-    held_out_pages = [page.held_out for page in held_out]
-    validated = await asyncio.to_thread(validate, ir, run.schema, held_out_pages, vocabulary)
-    validated = with_unlearned(validated, unlearned)
+    target = Target(run.schema, run.host, run.fetch, run.job_id)
+    validated = await learn_config(
+        client, target, sample, [page.held_out for page in held_out], vocabulary, max_chars, absent_from=run.pages
+    )
     # A recipe enters a validated config only (`attach`, D-0583), so nothing is replayed for a refused one.
     if validated.ir is None or replay is None:
         return validated
@@ -278,35 +276,94 @@ async def _learned(
     return attach(validated, recipe)
 
 
+@dataclass(frozen=True, slots=True)
+class Target:
+    """What a run learns a config for: the schema, the site's host and fetch method, and the job role A is charged to
+    (None for a simulated run, which no job pays for)."""
+
+    schema: SchemaDef
+    host: str
+    fetch: FetchMethod
+    job_id: JobId | None
+
+
+async def learn_config(
+    client: LLMClient,
+    target: Target,
+    sample: Sequence[StoredPage],
+    held_out: Sequence[HeldOutPage],
+    vocabulary: Vocabulary,
+    max_chars: int,
+    *,
+    absent_from: Sequence[StoredPage],
+) -> Validated:
+    """The config induction, and role A where induction leaves a required field, learn from `sample`, validated on
+    `held_out` (§4.5 to §4.7). `absent_from` are the pages the run read, which say what the site never states."""
+    absent = absent_fields(target.schema, absent_from)
+    ir, unlearned = await _learn(client, target, [page.sample for page in sample], vocabulary, max_chars, absent)
+    # A field no page stated has no value to learn a step from; the config lists it instead (D-1341).
+    ir = ir.model_copy(update={"absent": [name for name in absent if name in unlearned]})
+    validated = await asyncio.to_thread(validate, ir, target.schema, held_out, vocabulary)
+    return with_unlearned(validated, unlearned)
+
+
 async def _learn(
     client: LLMClient,
-    run: _Run,
+    target: Target,
     sample: list[SamplePage],
     vocabulary: Vocabulary,
     max_chars: int,
     absent: Sequence[str],
 ) -> tuple[ExtractionConfigIR, dict[str, str]]:
-    """The config induction and synthesis learn from the sample, and why each other schema field got no steps: the
-    reason induction left it with and, when synthesis tried it too, synthesis's last diagnostics. Synthesis does not
-    try an `absent` field: no page states a value its selectors could find."""
-    schema, row_fields = learnable(run.schema)
+    """The config induction, then synthesis, learn from the sample, and why each other schema field got no steps: the
+    reason induction left it with and, when synthesis tried it too, synthesis's last diagnostics. Synthesis runs only
+    when induction leaves a required field (or every member of a required group) that some page states, and then tries
+    every field induction left; it does not try an `absent` field: no page states a value its selectors could find."""
+    schema, row_fields = learnable(target.schema)
     induction = await asyncio.to_thread(induce, schema, sample, vocabulary)
-    ir = _induced(run, induction)
+    listed = ListingInduction()
+    if schema.page_kind == "listing":
+        listed = await asyncio.to_thread(induce_listing, schema, sample, vocabulary)
+    ir, left = _induced(target, induction, listed)
     # Fields an adapter or API recipe maps keep coming from it: they need no steps (D-0556).
-    reasons = {name: reason for name, reason in induction.to_synthesize.items() if name not in induction.mapped}
+    reasons = {name: reason for name, reason in left.items() if name not in induction.mapped}
     for name in set(absent).intersection(reasons):
         reasons[name] = ABSENT
     tried = [name for name, reason in reasons.items() if reason != ABSENT]
-    if sample and tried:
+    covered = {*_stepped(ir), *induction.mapped, *absent, *_unpublished(schema, sample)}
+    if sample and tried and _uncovered(schema, covered):
         synthesis = await synthesize(
-            client, ir, schema, sample, tried, vocabulary, max_chars=max_chars, job_id=run.job_id
+            client, ir, schema, sample, tried, vocabulary, max_chars=max_chars, job_id=target.job_id
         )
         ir = synthesis.ir
         for name, diagnostics in synthesis.unresolved.items():
             if name in reasons:
                 reasons[name] += f"; synthesis: {_brief(diagnostics)}"
-    learned = set(ir.fields) | (set(ir.listing.fields) if ir.listing is not None else set())
+    learned = _stepped(ir)
     return ir, {name: reason for name, reason in reasons.items() if name not in learned} | row_fields
+
+
+def _stepped(ir: ExtractionConfigIR) -> set[str]:
+    """The fields a config runs steps for, a listing's next page's URL included."""
+    listing = ir.listing
+    if listing is None:
+        return set(ir.fields)
+    return {*ir.fields, *listing.fields, *((NEXT_PAGE_FIELD,) if listing.next is not None else ())}
+
+
+def _unpublished(schema: SchemaDef, sample: Sequence[SamplePage]) -> set[str]:
+    """The fields no sample page (nor any of its rows) published a value for: no step role A gives verifies for them,
+    so they do not make role A run."""
+    stated = {name for page in sample for name in page.published}
+    stated |= {name for page in sample for row in page.rows for name in row}
+    return set(schema.fields) - stated
+
+
+def _uncovered(schema: SchemaDef, covered: set[str]) -> bool:
+    """Whether a required field, or every member of a required group, is not `covered` (learned, mapped or absent):
+    role A runs for what a record needs (§10), not for an optional field alone."""
+    required = {name for name, spec in schema.fields.items() if spec.required}
+    return bool(required - covered) or any(not covered.intersection(group) for group in schema.required_groups)
 
 
 def learnable(schema: SchemaDef) -> tuple[SchemaDef, dict[str, str]]:
@@ -325,20 +382,33 @@ def _brief(diagnostics: Sequence[str]) -> str:
     return text if len(text) <= REASON_CHARS else text[: REASON_CHARS - 1] + "…"
 
 
-def _induced(run: _Run, induction: Induction) -> ExtractionConfigIR:
+def _induced(
+    target: Target, induction: Induction, listed: ListingInduction
+) -> tuple[ExtractionConfigIR, dict[str, str]]:
+    """The induced config, a listing's next page's URL as its listing's `next` step, and the fields it left with why."""
+    fields = dict(induction.fields)
+    left = {**induction.to_synthesize, **listed.to_synthesize}
+    next_steps = fields.pop(NEXT_PAGE_FIELD, None) if target.schema.page_kind == "listing" else None
+    listing = listed.listing
+    if listing is not None and next_steps is not None:
+        listing = listing.model_copy(update={"next": next_steps.steps[0]})
+    elif next_steps is not None:
+        left[NEXT_PAGE_FIELD] = "no_listing"
     # SPEC-08 §4.5: a config whose fields an adapter maps is the adapter's.
     origin: ConfigOrigin = "adapter" if induction.mapped else "induced"
-    return ExtractionConfigIR(
+    ir = ExtractionConfigIR(
         ir_version="1",
-        site=run.host,
-        schema_=SchemaRef(name=run.schema.name, digest=document_digest(run.schema)),
-        page_kind=run.schema.page_kind,
-        fetch=Fetch(method=run.fetch),
-        fields=induction.fields,
+        site=target.host,
+        schema_=SchemaRef(name=target.schema.name, digest=document_digest(target.schema)),
+        page_kind=target.schema.page_kind,
+        fetch=Fetch(method=target.fetch),
+        fields=fields,
+        listing=listing,
         provenance=Provenance(
             origin=origin, validated_on=[], learned_at=datetime.now(UTC), engine_version=ENGINE_VERSION
         ),
     )
+    return ir, left
 
 
 async def _finish(conn: AsyncConnection, run: _Run, validated: Validated) -> Learned:
