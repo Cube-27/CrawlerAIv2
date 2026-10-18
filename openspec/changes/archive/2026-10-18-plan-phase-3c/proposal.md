@@ -13,7 +13,8 @@ files.
   prefix) of a longer candidate, or an Open Graph description with a longer description of another kind, ranks
   nowhere; a `text` candidate that is another kind's value plus ` - ` or ` | ` and more text ranks nowhere.
   Superseded candidates stay kept and may agree.
-- **Image resource key**: the key also ignores a `<width>x<height>` path segment and name suffix.
+- **Image resource key**: the key also ignores a stated size in the path, a format-conversion extension and a
+  trailing `=<options>`.
 
 ## Impact
 

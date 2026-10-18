@@ -7,5 +7,5 @@
 
 ## 2. Image key
 
-- [x] 2.1 `normalize.url.resource_key` ignores a stated `<w>x<h>` path segment and name suffix. (#284)
+- [x] 2.1 `normalize.url.resource_key` ignores the renditions a path states (size, conversion, options). (#284)
 - [x] 2.2 Golden-set before/after, no LLM. (#284)

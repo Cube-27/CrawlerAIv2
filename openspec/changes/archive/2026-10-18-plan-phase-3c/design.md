@@ -30,19 +30,20 @@
   A `+`, a bracket or an unspaced hyphen is not decoration (it joins or qualifies a product name).
 - Reversible: n/a
 
-### D-1663 — The image resource key ignores a stated `<width>x<height>`
+### D-1663 — The image resource key ignores renditions the path states
 - Date: 2026-10-18 · Change/PR: plan-phase-3c (#284) · Status: decided (owner-delegated 2026-10-17)
-- Decision: `normalize.url.resource_key` (scheme- and query-insensitive already) also drops a whole path segment
-  `<digits>x<digits>` and a `-`/`_<digits>x<digits>` suffix before the file extension. The extension stays: another
-  format is another file. Published values keep a real URL, `https` first (unchanged). Scoring's `_same_file` reads
-  the same function (`eval.scoring`), so no scoring rule text changed; it matches the renditions the resolver treats
-  as one.
+- Decision: `normalize.url.resource_key` (scheme- and query-insensitive already) also drops a path segment
+  `<digits>x<digits>` or a list of `<letters>_<digits>` pairs, a size before the extension (`-300x200`, `_1024x`,
+  `@2x`), a format conversion appended as a second extension (`.jpg.webp`) and a trailing `=<options>`. The
+  extension itself stays: another format is another file. Published values keep a real URL, `https` first
+  (unchanged). Scoring's `_same_file` reads the same function (`eval.scoring`), so no scoring rule text changed; it
+  matches the renditions the resolver treats as one.
 - Reversible: yes
 
-### D-1664 — Measured on the dev copy without role C
+### D-1664 — Measured on the full dev copy, no LLM (`--llm unanswered`)
 - Date: 2026-10-18 · Change/PR: plan-phase-3c (#284) · Status: decided (owner-delegated 2026-10-17)
-- Decision: On the dev eval copy used here every field type's precision and coverage are unchanged: the golden
-  truncated or summary descriptions there have no longer candidate among the collected ones (the full text is a DOM
-  block no collector reads), and no image field is scored. The rules are enforced by tests; the gain is for pages that
-  state both forms, and is to be measured on the next full dev run.
+- Decision: image_url P 0.625 → 0.875, C 0.769 → 0.824; list P 0.364 → 0.455, C 0.800 → 0.833; every other type
+  unchanged. Descriptions do not move: the false publishes there state one collected candidate (an Open Graph
+  summary) or no fuller candidate exists, because the full text is a DOM block no collector reads, so there is
+  nothing to prefer.
 - Reversible: n/a
