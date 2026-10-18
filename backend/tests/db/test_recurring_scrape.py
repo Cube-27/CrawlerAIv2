@@ -437,6 +437,34 @@ async def test_a_listing_without_words_is_unchanged_while_its_links_are(
     assert grown == Run({url: ("extracted", True)}, extractions=1)
 
 
+def _titled(page: bytes, names: list[str], first: int) -> bytes:
+    """A listing page whose rows are links titled by their item's name, to items numbered from `first`."""
+    cells = "".join(f'<a href="/kettles/{n}">{name}</a>' for n, name in enumerate(names, start=first))
+    return page.replace(b"<body></body>", f"<body><main>{cells}</main></body>".encode())
+
+
+async def test_a_listing_whose_rows_keep_their_words_but_link_elsewhere_is_extracted_again(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    origin: Origin,
+    own_origin: str,
+    schema_name: str,
+    engine_data: EngineData,
+) -> None:
+    schema = await listing_schema(engine, schema_name)
+    url = f"{own_origin}/kettles"
+    listing = {"formats": ["records"], "schema": {"id": str(schema.id)}, "page_kind": "listing"}
+    names = ["Blue kettle", "Red kettle"]
+    origin.pages = {url: _titled(listing_page(own_origin, names), names, first=1)}
+
+    first = await _run_job(engine, fetching, engine_data, [url], listing)
+    origin.pages[url] = _titled(listing_page(own_origin, names, first=11), names, first=11)  # reposted items
+    moved = await _run_job(engine, fetching, engine_data, [url], listing)
+
+    assert first == Run({url: ("extracted", True)}, extractions=1)
+    assert moved == Run({url: ("extracted", True)}, extractions=1)
+
+
 async def test_an_unchanged_listing_is_not_extracted_again_and_still_lists_its_rows(
     engine: AsyncEngine,
     fetching: Fetching,
