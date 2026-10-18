@@ -31,11 +31,14 @@ class Derived:
 
 def is_page_url_field(schema: SchemaDef, spec: FieldSpec, primary: frozenset[str]) -> bool:
     """Whether the field is the URL of the page's entity: on a detail page, a url field whose path is `T.url` for a
-    primary type T (schema.org Thing.url, "URL of the item"; intent's primary types, §4.6), in every alternative."""
+    primary type T (schema.org Thing.url, "URL of the item"; intent's primary types, §4.6), in every alternative of its
+    last rank: the page's URL stands in only where no alternative reaches a value, after every rank (D-1493)."""
     if schema.page_kind != "detail" or spec.type is not FieldType.URL or spec.schema_org is None:
         return False
+    paths = parse_paths(spec.schema_org)
+    last = paths[-1].rank
     return all(
-        path.root in primary and path.steps == ("url",) and path.joined is None for path in parse_paths(spec.schema_org)
+        path.root in primary and path.steps == ("url",) and path.joined is None for path in paths if path.rank == last
     )
 
 

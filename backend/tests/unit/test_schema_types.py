@@ -88,10 +88,21 @@ def test_required_groups_name_existing_fields(groups: list[list[str]], message: 
 
 @pytest.mark.parametrize(
     "path",
-    ["Product", "product.sku", "Product.sku+price+priceCurrency"],
+    [
+        "Product",
+        "product.sku",
+        "Product.sku+price+priceCurrency",
+        "Thing.a>",
+        "Thing.a|Thing.b>Thing.c>Thing.d|Thing.e",
+    ],
 )
 def test_malformed_schema_org_paths_are_rejected(path: str) -> None:
     assert "schema_org" in _rejection(_document({"f": _text(schema_org=path)}))
+
+
+def test_alternatives_may_be_ranked() -> None:
+    document = _document({"f": _text(schema_org="Thing.a|Thing.b>Thing.c")})
+    assert SchemaDocument.model_validate(document).fields["f"].schema_org == "Thing.a|Thing.b>Thing.c"
 
 
 @pytest.mark.parametrize("vocab", ["ItemAvailability", "x:y"])
@@ -164,7 +175,8 @@ def test_the_presets_are_exactly_the_section_5_3_documents() -> None:
         "date_posted": "date",
     }
     assert presets["job_detail"].fields["locations"].item.type is FieldType.LOCATION  # type: ignore[union-attr]
-    assert presets["job_detail"].fields["apply_url"].schema_org == "JobPosting.url"  # D-0015
+    # D-0015, D-1493: a stated apply link, ranked above the posting's URL.
+    assert presets["job_detail"].fields["apply_url"].schema_org == "JobPosting.potentialAction.target>JobPosting.url"
     for listing, optional in (("commerce_listing", "price"), ("job_listing", "locations")):
         fields = presets[listing].fields
         assert _core(presets[listing]) == {"title": "text", "url": "url"}

@@ -15,7 +15,7 @@ from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Shape
+from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Shape, apply_action
 from crawlerai.db.models import PageKind
 
 # Job site host -> the Postings API base of the same instance. A site is `/{site}`, a posting `/{site}/{posting_id}`.
@@ -29,8 +29,9 @@ JOB_SITE_APIS: Final[Mapping[str, str]] = {
 _LIST_FILTERS: Final = frozenset({"location", "commitment", "team", "department", "level", "group"})
 
 # A posting object as a schema.org JobPosting (Postings API documentation, JSON fields): property -> the member names
-# leading to its value. `description` is the opening and body as HTML. The documentation names no posting date and no
-# company name, so those properties have no value here.
+# leading to its value. `description` is the opening and body as HTML; on a posting's page, `applyUrl`, its application
+# form, is the `target` of its schema.org ApplyAction (D-1493). The documentation names no posting date and no company
+# name, so those properties have no value here.
 _POSTING: Final = Shape(
     type="JobPosting",
     properties={
@@ -43,7 +44,7 @@ _POSTING: Final = Shape(
 # The retrieve response is one posting; the list response is an array of postings (schema.org ItemList,
 # `itemListElement`).
 _SHAPES: Final[dict[PageKind, tuple[Shape, ...]]] = {
-    "detail": (_POSTING,),
+    "detail": (replace(_POSTING, nodes={"potentialAction": (apply_action("applyUrl"),)}),),
     "listing": (Shape(type="ItemList", nodes={"itemListElement": (replace(_POSTING, at=(ALL,)),)}),),
 }
 

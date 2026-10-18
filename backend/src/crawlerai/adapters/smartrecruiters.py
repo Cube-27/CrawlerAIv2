@@ -20,7 +20,7 @@ from pydantic import JsonValue
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.answer import serving
-from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Shape
+from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Shape, apply_action
 from crawlerai.adapters.paging import fetch_pages
 
 API: Final = "https://api.smartrecruiters.com/v1/companies"
@@ -34,8 +34,9 @@ PAGE_SIZE: Final = 100
 _POSTING: Final = re.compile(r"(\d+)(?:-.*)?", re.ASCII)
 
 # A posting as a schema.org JobPosting: a listed posting's page is `/{company}/{id}` on the career host (the prefix
-# `shapes` puts before `id`); the posting's own answer gives `postingUrl`. `jobDescription` is the posting's own text
-# as HTML. The hiring organization is the posting's `company`.
+# `shapes` puts before `id`); the posting's own answer gives `postingUrl`, and `applyUrl`, its application form, the
+# `target` of its schema.org ApplyAction (D-1493). `jobDescription` is the posting's own text as HTML. The hiring
+# organization is the posting's `company`.
 _EMPLOYER: Final = Shape(type="Organization", at=("company",), properties={"name": ("name",)})
 _COMMON: Final = {
     "title": ("name",),
@@ -57,7 +58,10 @@ _DETAIL: Final = Shape(
         "url": ("postingUrl",),
         "description": ("jobAd", "sections", "jobDescription", "text"),
     },
-    nodes={"hiringOrganization": (_EMPLOYER,)},
+    nodes={
+        "hiringOrganization": (_EMPLOYER,),
+        "potentialAction": (apply_action("applyUrl"),),
+    },
 )
 
 

@@ -2618,7 +2618,7 @@
           "schema_org": {
             "anyOf": [
               {
-                "pattern": "^[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?(\\|[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?){0,3}$",
+                "pattern": "^[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?([|>][A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?){0,3}$",
                 "type": "string"
               },
               {
@@ -2742,7 +2742,7 @@
           "schema_org": {
             "anyOf": [
               {
-                "pattern": "^[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?(\\|[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?){0,3}$",
+                "pattern": "^[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?([|>][A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?){0,3}$",
                 "type": "string"
               },
               {

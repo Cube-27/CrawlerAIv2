@@ -120,7 +120,8 @@ def test_a_lever_detail_response_reads_each_documented_member() -> None:
         "title": "adapter:lever:$['text']",
         "locations": "adapter:lever:$['categories']['location']",
         "description": "adapter:lever:$['description']",
-        "apply_url": "adapter:lever:$['hostedUrl']",
+        # D-1493: the posting's application form, its ApplyAction's target, ranks above its URL.
+        "apply_url": "adapter:lever:$['applyUrl']",
     }
 
 
