@@ -279,6 +279,30 @@ class DayUsage(BaseModel):
     unpriced_tokens: Annotated[int, Field(title="Unpriced Tokens")]
 
 
+class Status2(Enum):
+    pending = "pending"
+    delivered = "delivered"
+    failed = "failed"
+
+
+class DeliveryOut(BaseModel):
+    attempts: Annotated[int, Field(title="Attempts")]
+    created_at: Annotated[AwareDatetime, Field(title="Created At")]
+    event_count: Annotated[int, Field(title="Event Count")]
+    id: Annotated[UUID, Field(title="Id")]
+    last_error: Annotated[str | None, Field(title="Last Error")] = None
+    next_attempt_at: Annotated[AwareDatetime | None, Field(title="Next Attempt At")] = (
+        None
+    )
+    response_code: Annotated[int | None, Field(title="Response Code")] = None
+    status: Annotated[Status2, Field(title="Status")]
+
+
+class DeliveryPage(BaseModel):
+    items: Annotated[list[DeliveryOut], Field(title="Items")]
+    next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
+
+
 class DroppedRowMeta(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -380,7 +404,7 @@ class FieldErrorOut(BaseModel):
     reason: Annotated[str, Field(title="Reason")]
 
 
-class Status2(Enum):
+class Status3(Enum):
     corroborated = "corroborated"
     uncorroborated = "uncorroborated"
     operator = "operator"
@@ -403,7 +427,7 @@ class FieldReport(BaseModel):
     pages: Annotated[int, Field(title="Pages")]
     published: Annotated[int, Field(title="Published")]
     reproduced: Annotated[int, Field(title="Reproduced")]
-    status: Annotated[Status2 | None, Field(title="Status")] = None
+    status: Annotated[Status3 | None, Field(title="Status")] = None
     valid: Annotated[int, Field(title="Valid")]
     validity: Annotated[Validity | None, Field(title="Validity")] = None
     yield_: Annotated[float, Field(alias="yield", ge=0.0, le=1.0, title="Yield")]
@@ -525,7 +549,7 @@ class Kind(Enum):
     learn = "learn"
 
 
-class Status4(Enum):
+class Status5(Enum):
     queued = "queued"
     running = "running"
     completed = "completed"
@@ -592,7 +616,7 @@ class Labeler(RootModel[str]):
     root: Annotated[str, Field(min_length=1, title="Labeler")]
 
 
-class Status5(Enum):
+class Status6(Enum):
     draft = "draft"
     labeled = "labeled"
     checked = "checked"
@@ -725,7 +749,7 @@ class PageMetadata(BaseModel):
     title: Annotated[str | None, Field(title="Title")] = None
 
 
-class Status7(Enum):
+class Status8(Enum):
     queued = "queued"
     claimed = "claimed"
     done = "done"
@@ -733,7 +757,7 @@ class Status7(Enum):
     cancelled = "cancelled"
 
 
-class Status8(Enum):
+class Status9(Enum):
     draft = "draft"
     labeled = "labeled"
     checked = "checked"
@@ -751,7 +775,7 @@ class PageSummary(BaseModel):
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
     schema_name: Annotated[str, Field(title="Schema Name")]
     split: Annotated[Literal["dev"], Field(title="Split")]
-    status: Annotated[Status8 | None, Field(title="Status")] = None
+    status: Annotated[Status9 | None, Field(title="Status")] = None
 
 
 class ParamPagination(BaseModel):
@@ -883,7 +907,7 @@ class SourceKind(Enum):
     dom = "dom"
 
 
-class Status9(Enum):
+class Status10(Enum):
     published = "published"
     missing = "missing"
     conflict = "conflict"
@@ -1006,7 +1030,7 @@ class Origin3(Enum):
     prompt_draft = "prompt_draft"
 
 
-class Status10(Enum):
+class Status11(Enum):
     active = "active"
     retired = "retired"
 
@@ -1134,7 +1158,7 @@ class StepOutcome(BaseModel):
     outcome: Annotated[Outcome3, Field(title="Outcome")]
 
 
-class Status11(Enum):
+class Status12(Enum):
     published = "published"
     missing = "missing"
     conflict = "conflict"
@@ -1151,7 +1175,7 @@ class SubFieldMeta(BaseModel):
     locator: Annotated[str | None, Field(title="Locator")] = None
     reason: Annotated[str | None, Field(title="Reason")] = None
     source_kind: Annotated[SourceKind | None, Field(title="Source Kind")] = None
-    status: Annotated[Status11, Field(title="Status")]
+    status: Annotated[Status12, Field(title="Status")]
 
 
 class TaskCounts(BaseModel):
@@ -1405,7 +1429,7 @@ class JobSummary(BaseModel):
     schedule_id: Annotated[UUID | None, Field(title="Schedule Id")] = None
     start_url: Annotated[str | None, Field(title="Start Url")] = None
     started_at: Annotated[AwareDatetime | None, Field(title="Started At")] = None
-    status: Annotated[Status4, Field(title="Status")]
+    status: Annotated[Status5, Field(title="Status")]
     url_count: Annotated[int | None, Field(title="Url Count")] = None
     usage: Annotated[dict[str, int], Field(title="Usage")]
     webhook_url: Annotated[str | None, Field(title="Webhook Url")] = None
@@ -1480,7 +1504,7 @@ class PageOutput(BaseModel):
     pdf: Artifact | None = None
     raw_html: Annotated[str | None, Field(title="Raw Html")] = None
     screenshot: Artifact | None = None
-    status: Annotated[Status7, Field(title="Status")]
+    status: Annotated[Status8, Field(title="Status")]
     task_id: Annotated[UUID, Field(title="Task Id")]
     url: Annotated[str, Field(title="Url")]
 
@@ -1527,7 +1551,7 @@ class SchemaDef(BaseModel):
     required_groups: Annotated[
         list[list[RequiredGroup]] | None, Field(title="Required Groups")
     ] = []
-    status: Annotated[Status10, Field(title="Status")]
+    status: Annotated[Status11, Field(title="Status")]
 
 
 class SchemaInline(BaseModel):
@@ -1861,7 +1885,7 @@ class Labels(BaseModel):
     notes: Annotated[str | None, Field(title="Notes")] = ""
     prefill_source: Annotated[str | None, Field(title="Prefill Source")] = None
     rows: Annotated[list[LabelRow] | None, Field(title="Rows")] = []
-    status: Annotated[Status5, Field(title="Status")]
+    status: Annotated[Status6, Field(title="Status")]
 
 
 class NewBatchSchedule(BaseModel):
@@ -1932,7 +1956,7 @@ class PageDetail(BaseModel):
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
     schema_name: Annotated[str, Field(title="Schema Name")]
     split: Annotated[Literal["dev"], Field(title="Split")]
-    status: Annotated[Status5 | None, Field(title="Status")] = None
+    status: Annotated[Status6 | None, Field(title="Status")] = None
     text: Annotated[str | None, Field(title="Text")] = None
     url: Annotated[str, Field(title="Url")]
 
@@ -1950,7 +1974,7 @@ class RecordField(BaseModel):
     locator: Annotated[str | None, Field(title="Locator")] = None
     reason: Annotated[str | None, Field(title="Reason")] = None
     source_kind: Annotated[SourceKind | None, Field(title="Source Kind")] = None
-    status: Annotated[Status9, Field(title="Status")]
+    status: Annotated[Status10, Field(title="Status")]
     value: JsonValue
 
 
@@ -2070,7 +2094,7 @@ class FieldSteps(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    status: Annotated[Status2, Field(title="Status")]
+    status: Annotated[Status3, Field(title="Status")]
     steps: Annotated[
         list[
             XPathStepOutput
