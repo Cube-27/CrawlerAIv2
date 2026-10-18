@@ -2,7 +2,7 @@
   "provider": "anthropic",
   "currency": "USD",
   "checked": "2026-10-14",
-  "scope": "Source page and retrieval date: this file's entry in ../manifest.json. Standard first-party API rates per million tokens: base input and output. Batch, prompt-cache, fast-mode, data-residency and inference_geo prices are not listed; the client uses none of them. effective_from is the date checked: earlier prices were not checked. effective_until is exclusive. A prompt-length tier applies when a call's input tokens are within [min_prompt_tokens, max_prompt_tokens].",
+  "scope": "Source page and retrieval date: this file's entry in ../manifest.json. Standard first-party API rates per million tokens: base input and output, and the 5-minute prompt-cache write (1.25 times base input) and cache read (0.1 times base input) rates, which the client uses for role A. Batch, fast-mode, data-residency and inference_geo prices are not listed; the client uses none of them. effective_from is the date checked: earlier prices were not checked. effective_until is exclusive. A prompt-length tier applies when a call's input tokens are within [min_prompt_tokens, max_prompt_tokens].",
   "prices": [
     {
       "model": "claude-fable-5-1",
@@ -11,7 +11,9 @@
       "min_prompt_tokens": 0,
       "max_prompt_tokens": null,
       "input_usd_per_mtok": "10",
-      "output_usd_per_mtok": "50"
+      "output_usd_per_mtok": "50",
+      "cache_read_usd_per_mtok": "1",
+      "cache_write_usd_per_mtok": "12.5"
     },
     {
       "model": "claude-fable-5",
@@ -20,7 +22,9 @@
       "min_prompt_tokens": 0,
       "max_prompt_tokens": null,
       "input_usd_per_mtok": "10",
-      "output_usd_per_mtok": "50"
+      "output_usd_per_mtok": "50",
+      "cache_read_usd_per_mtok": "1",
+      "cache_write_usd_per_mtok": "12.5"
     },
     {
       "model": "claude-opus-5-5",
@@ -29,7 +33,9 @@
       "min_prompt_tokens": 0,
       "max_prompt_tokens": null,
       "input_usd_per_mtok": "4",
-      "output_usd_per_mtok": "20"
+      "output_usd_per_mtok": "20",
+      "cache_read_usd_per_mtok": "0.4",
+      "cache_write_usd_per_mtok": "5"
     },
     {
       "model": "claude-opus-5",
@@ -38,7 +44,9 @@
       "min_prompt_tokens": 0,
       "max_prompt_tokens": null,
       "input_usd_per_mtok": "5",
-      "output_usd_per_mtok": "25"
+      "output_usd_per_mtok": "25",
+      "cache_read_usd_per_mtok": "0.5",
+      "cache_write_usd_per_mtok": "6.25"
     },
     {
       "model": "claude-opus-4-8",
@@ -47,7 +55,9 @@
       "min_prompt_tokens": 0,
       "max_prompt_tokens": null,
       "input_usd_per_mtok": "5",
-      "output_usd_per_mtok": "25"
+      "output_usd_per_mtok": "25",
+      "cache_read_usd_per_mtok": "0.5",
+      "cache_write_usd_per_mtok": "6.25"
     },
     {
       "model": "claude-opus-4-7",
@@ -56,7 +66,9 @@
       "min_prompt_tokens": 0,
       "max_prompt_tokens": null,
       "input_usd_per_mtok": "5",
-      "output_usd_per_mtok": "25"
+      "output_usd_per_mtok": "25",
+      "cache_read_usd_per_mtok": "0.5",
+      "cache_write_usd_per_mtok": "6.25"
     },
     {
       "model": "claude-opus-4-6",
@@ -65,7 +77,9 @@
       "min_prompt_tokens": 0,
       "max_prompt_tokens": null,
       "input_usd_per_mtok": "5",
-      "output_usd_per_mtok": "25"
+      "output_usd_per_mtok": "25",
+      "cache_read_usd_per_mtok": "0.5",
+      "cache_write_usd_per_mtok": "6.25"
     },
     {
       "model": "claude-sonnet-5-5",
@@ -74,7 +88,9 @@
       "min_prompt_tokens": 0,
       "max_prompt_tokens": null,
       "input_usd_per_mtok": "2",
-      "output_usd_per_mtok": "10"
+      "output_usd_per_mtok": "10",
+      "cache_read_usd_per_mtok": "0.2",
+      "cache_write_usd_per_mtok": "2.5"
     },
     {
       "model": "claude-sonnet-5",
@@ -83,7 +99,9 @@
       "min_prompt_tokens": 0,
       "max_prompt_tokens": null,
       "input_usd_per_mtok": "2",
-      "output_usd_per_mtok": "10"
+      "output_usd_per_mtok": "10",
+      "cache_read_usd_per_mtok": "0.2",
+      "cache_write_usd_per_mtok": "2.5"
     },
     {
       "model": "claude-sonnet-4-6",
@@ -92,7 +110,9 @@
       "min_prompt_tokens": 0,
       "max_prompt_tokens": null,
       "input_usd_per_mtok": "3",
-      "output_usd_per_mtok": "15"
+      "output_usd_per_mtok": "15",
+      "cache_read_usd_per_mtok": "0.3",
+      "cache_write_usd_per_mtok": "3.75"
     },
     {
       "model": "claude-haiku-5-5",
@@ -101,7 +121,9 @@
       "min_prompt_tokens": 0,
       "max_prompt_tokens": 100000,
       "input_usd_per_mtok": "0.10",
-      "output_usd_per_mtok": "0.50"
+      "output_usd_per_mtok": "0.50",
+      "cache_read_usd_per_mtok": "0.01",
+      "cache_write_usd_per_mtok": "0.125"
     },
     {
       "model": "claude-haiku-5-5",
@@ -110,7 +132,9 @@
       "min_prompt_tokens": 100001,
       "max_prompt_tokens": null,
       "input_usd_per_mtok": "0.50",
-      "output_usd_per_mtok": "2.50"
+      "output_usd_per_mtok": "2.50",
+      "cache_read_usd_per_mtok": "0.05",
+      "cache_write_usd_per_mtok": "0.625"
     },
     {
       "model": "claude-haiku-4-5",
@@ -119,7 +143,9 @@
       "min_prompt_tokens": 0,
       "max_prompt_tokens": null,
       "input_usd_per_mtok": "1",
-      "output_usd_per_mtok": "5"
+      "output_usd_per_mtok": "5",
+      "cache_read_usd_per_mtok": "0.1",
+      "cache_write_usd_per_mtok": "1.25"
     }
   ]
 }

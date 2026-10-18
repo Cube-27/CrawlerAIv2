@@ -16,7 +16,7 @@ from collections.abc import Mapping
 
 import httpx2
 from anthropic import APIConnectionError, APIStatusError, AsyncAnthropic
-from anthropic.types import OutputConfigParam, TextBlock
+from anthropic.types import CacheControlEphemeralParam, OutputConfigParam, TextBlock, TextBlockParam
 
 from crawlerai.core.retry import is_transient
 from crawlerai.llm.client import (
@@ -28,6 +28,24 @@ from crawlerai.llm.client import (
     redacted,
 )
 from crawlerai.llm.setup import CHECK_TIMEOUT_S
+
+_CACHE: CacheControlEphemeralParam = {"type": "ephemeral"}
+
+
+def _system(call: ProviderCall) -> str | list[TextBlockParam]:
+    """The system prompt; a call with cached parts caches it too (a breakpoint is the end of a cached prefix: tools,
+    system, then the messages' blocks in order)."""
+    if not call.cached:
+        return call.system
+    return [{"type": "text", "text": call.system, "cache_control": _CACHE}]
+
+
+def _content(call: ProviderCall) -> str | list[TextBlockParam]:
+    """The user message: each cached part is a block ending a cached prefix, then the uncached `user` text."""
+    if not call.cached:
+        return call.user
+    blocks: list[TextBlockParam] = [{"type": "text", "text": part, "cache_control": _CACHE} for part in call.cached]
+    return [*blocks, {"type": "text", "text": call.user}]
 
 
 class AnthropicProvider:
@@ -50,8 +68,8 @@ class AnthropicProvider:
             message = await self._sdk.messages.create(
                 model=model,
                 max_tokens=call.max_output_tokens,
-                system=call.system,
-                messages=[{"role": "user", "content": call.user}],
+                system=_system(call),
+                messages=[{"role": "user", "content": _content(call)}],
                 output_config=output,
                 timeout=call.timeout_s,
             )
@@ -69,6 +87,8 @@ class AnthropicProvider:
             text=text,
             tokens_in=message.usage.input_tokens,
             tokens_out=message.usage.output_tokens,
+            cache_read_tokens=message.usage.cache_read_input_tokens or 0,
+            cache_write_tokens=message.usage.cache_creation_input_tokens or 0,
             cut=message.stop_reason == "max_tokens",
         )
 

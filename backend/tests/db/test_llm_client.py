@@ -94,6 +94,8 @@ async def test_a_call_writes_its_usage_events_and_counters(engine: AsyncEngine) 
         "latency_ms": response.latency_ms,
         # The call's prompt length, which a price tiered by prompt length needs for the output tokens too (§4.8).
         "tokens_in": 120,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
     }
     assert await _events(engine, job_id) == [
         ("llm_calls", "fake", "fake-model", 1, metadata),
@@ -101,6 +103,27 @@ async def test_a_call_writes_its_usage_events_and_counters(engine: AsyncEngine) 
         ("llm_tokens_out", "fake", "fake-model", 7, metadata),
     ]
     assert await _usage(engine, job_id) == {"llm_calls": 1, "llm_tokens_in": 120, "llm_tokens_out": 7}
+
+
+async def test_cache_tokens_are_recorded_in_the_calls_metadata_and_its_prompt_length(engine: AsyncEngine) -> None:
+    job_id = await _job(engine)
+    answer = ProviderReply(
+        model="fake-model", text='{"n": 1}', tokens_in=20, tokens_out=7, cache_read_tokens=300, cache_write_tokens=50
+    )
+    client = MeteredClient([FakeProvider([answer])], engine)
+
+    response = await client.complete_json(request(job_id))
+
+    assert (response.cache_read_tokens, response.cache_write_tokens) == (300, 50)
+    assert [(c.tokens_in, c.cache_read_tokens, c.cache_write_tokens) for c in response.answered] == [(20, 300, 50)]
+    rows = await _events(engine, job_id)
+    assert {resource: quantity for resource, _, _, quantity, _ in rows} == {
+        "llm_calls": 1,
+        "llm_tokens_in": 20,
+        "llm_tokens_out": 7,
+    }
+    for *_, metadata in rows:
+        assert (metadata["tokens_in"], metadata["cache_read_tokens"], metadata["cache_write_tokens"]) == (370, 300, 50)
 
 
 async def test_a_retry_is_a_second_call(engine: AsyncEngine) -> None:

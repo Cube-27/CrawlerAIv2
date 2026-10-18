@@ -41,6 +41,10 @@ class _Row(BaseModel):
     max_prompt_tokens: int | None
     input_usd_per_mtok: Decimal = Field(ge=0)
     output_usd_per_mtok: Decimal = Field(ge=0)
+    # Prompt-cache prices: what a token read from, or written to, the cache costs; null for a provider whose client
+    # does not cache (its cache tokens, if any appeared, would have no price).
+    cache_read_usd_per_mtok: Decimal | None = Field(default=None, ge=0)
+    cache_write_usd_per_mtok: Decimal | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _ranges(self) -> Self:
@@ -78,6 +82,23 @@ class Price(_Row):
 
 
 @dataclass(frozen=True)
+class CacheTokens:
+    """A call's prompt tokens read from the provider's prompt cache and written to it."""
+
+    read: int
+    write: int
+
+
+def _call_usd(price: Price, tokens_in: int, tokens_out: int, cache: CacheTokens) -> Decimal | None:
+    cached = [(cache.read, price.cache_read_usd_per_mtok), (cache.write, price.cache_write_usd_per_mtok)]
+    if any(tokens and rate is None for tokens, rate in cached):
+        return None
+    total = tokens_in * price.input_usd_per_mtok + tokens_out * price.output_usd_per_mtok
+    total += sum(tokens * rate for tokens, rate in cached if rate is not None)
+    return total / TOKENS_PER_PRICE_UNIT
+
+
+@dataclass(frozen=True)
 class Pricing:
     """Every known price; at most one applies to any call (`of` refuses lists where two could). The matching rule
     itself is SQL, where the calls are (`crawlerai.services.llm_costs`)."""
@@ -94,17 +115,22 @@ class Pricing:
                 raise OverlappingPrices(f"{a.provider} {a.model}: two prices apply to the same calls")
         return cls(prices)
 
-    def call_usd(self, provider: str, model: str, tokens_in: int, tokens_out: int, on: date) -> Decimal | None:
+    def call_usd(
+        self, provider: str, model: str, tokens_in: int, tokens_out: int, on: date, cache: "CacheTokens | None" = None
+    ) -> Decimal | None:
         """The price of one call made on `on`, by the rule `services.llm_costs` applies in SQL to stored calls: the
-        provider's price for the model in effect that day and, when priced by prompt length, for `tokens_in`; `None`
-        when none applies (never guessed). For the eval report, whose replayed calls are not stored."""
+        provider's price for the model in effect that day and, when priced by prompt length, for the prompt's tokens
+        (`tokens_in` and the cache tokens); `None` when none applies, or when cache tokens have no cache price (never
+        guessed). For the eval report, whose replayed calls are not stored."""
+        cache = cache or CacheTokens(0, 0)
+        prompt = tokens_in + cache.read + cache.write
         for price in self.prices:
             in_effect = price.effective_from <= on and (price.effective_until is None or on < price.effective_until)
-            in_tier = price.min_prompt_tokens <= tokens_in and (
-                price.max_prompt_tokens is None or tokens_in <= price.max_prompt_tokens
+            in_tier = price.min_prompt_tokens <= prompt and (
+                price.max_prompt_tokens is None or prompt <= price.max_prompt_tokens
             )
             if (price.provider, price.model) == (provider, model) and in_effect and in_tier:
-                return (tokens_in * price.input_usd_per_mtok + tokens_out * price.output_usd_per_mtok) / 1_000_000
+                return _call_usd(price, tokens_in, tokens_out, cache)
         return None
 
     @classmethod

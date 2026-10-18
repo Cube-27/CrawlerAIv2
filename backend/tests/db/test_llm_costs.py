@@ -68,6 +68,10 @@ PRICING = Pricing.of(
                     _row("dated", effective_from="2031-01-10", input_usd_per_mtok="3", output_usd_per_mtok="6"),
                     _row("tiered", max_prompt_tokens=1000),
                     _row("tiered", min_prompt_tokens=1001, input_usd_per_mtok="5", output_usd_per_mtok="10"),
+                    _row(
+                        "cached", cache_read_usd_per_mtok="0.1", cache_write_usd_per_mtok="1.25", max_prompt_tokens=5000
+                    ),
+                    _row("cached", min_prompt_tokens=5001, input_usd_per_mtok="5", output_usd_per_mtok="10"),
                 ],
             }
         )
@@ -110,13 +114,16 @@ class World:
         tokens_in: int = 1000,
         tokens_out: int = 100,
         tokens_in_recorded: bool = True,
+        cache_read: int = 0,
+        cache_write: int = 0,
     ) -> None:
         """One answered call as the client records it: `llm_calls`, `llm_tokens_in` and `llm_tokens_out` rows that
         share the call's metadata. `tokens_in_recorded=False` leaves the prompt length out, as rows written before it
         was recorded do."""
         metadata: dict[str, Any] = {"prompt_kind": kind, "model": model, "request_hash": "h", "latency_ms": 1}
         if tokens_in_recorded:
-            metadata["tokens_in"] = tokens_in
+            metadata["tokens_in"] = tokens_in + cache_read + cache_write  # the prompt's length, cache tokens included
+        metadata |= {"cache_read_tokens": cache_read, "cache_write_tokens": cache_write}
         rows: list[tuple[UsageResource, int]] = [
             ("llm_calls", 1),
             ("llm_tokens_in", tokens_in),
@@ -206,6 +213,37 @@ async def test_a_call_over_a_prompt_length_tier_pays_its_prices_for_input_and_ou
         pytest.approx(_usd(1000, 100)),
         pytest.approx(_usd(1001, 100, "5", "10")),
     ]
+
+
+async def test_cache_tokens_are_priced_by_the_cache_prices_and_counted_in_the_calls_input(world: World) -> None:
+    job_id = await world.job()
+    await world.call(job_id, _day(2), model="cached", tokens_in=1000, tokens_out=100, cache_read=2000, cache_write=500)
+
+    report = await world.report(date(2031, 1, 2), date(2031, 1, 2))
+
+    expected = _usd(1000, 100) + (2000 * 0.1 + 500 * 1.25) / 1_000_000
+    assert report.total.estimated_usd == pytest.approx(expected)
+    assert (report.total.tokens_in, report.total.tokens_out, report.total.unpriced_tokens) == (3500, 100, 0)
+
+
+async def test_the_prompt_length_tier_counts_the_cache_tokens(world: World) -> None:
+    job_id = await world.job()
+    # 1,000 input tokens alone are in the first tier; with 9,000 read from the cache the prompt is in the second.
+    await world.call(job_id, _day(2), model="cached", tokens_in=1000, tokens_out=100, cache_read=9000)
+
+    report = await world.report(date(2031, 1, 2), date(2031, 1, 2))
+
+    # The second tier lists no cache prices: its input (not the priced output) is unpriced, never guessed.
+    assert (report.total.estimated_usd, report.total.unpriced_tokens) == (None, 10_000)
+
+
+async def test_cache_tokens_of_a_model_without_cache_prices_are_unpriced(world: World) -> None:
+    job_id = await world.job()
+    await world.call(job_id, _day(2), model="flat", tokens_in=1000, tokens_out=100, cache_read=400)
+
+    report = await world.report(date(2031, 1, 2), date(2031, 1, 2))
+
+    assert (report.total.estimated_usd, report.total.unpriced_tokens) == (None, 1400)
 
 
 async def test_tokens_without_a_price_make_their_cost_unknown_never_guessed(world: World) -> None:
