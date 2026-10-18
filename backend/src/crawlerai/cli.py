@@ -35,7 +35,7 @@ from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.keys import create_key, revoke_key
-from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, ScheduleId
+from crawlerai.db.models import EvalCategory, PageKind, ScheduleId
 from crawlerai.eval import calibrate, label_file, learn_sim, rekey
 from crawlerai.eval.cli import (
     EvalCliError,
@@ -461,18 +461,16 @@ def _data_dir() -> Path:
     return data_dir(backend)
 
 
-async def _eval_fit(command: str, run_id: EvalRunId) -> None:
-    """`calibrate` or `fit-precedence`: fit on dev run `run_id` and write the file."""
+def _eval_fit(command: str, report_path: Path) -> None:
+    """`fit-calibration` or `fit-precedence`: fit on the dev report at `report_path` and write the file."""
     directory = _data_dir()
-    # Read before the store is opened: without a current order there is nothing to refit.
-    current = calibrate.read_precedence(directory) if command == "fit-precedence" else None
-    async with aclosing(dev_store(Settings())) as dev:
-        run = await dev.get_run(run_id)
-    if current is None:
-        path = calibrate.write_calibration(calibrate.calibrate(run), directory)
+    report = calibrate.read_report(report_path)
+    if command == "fit-calibration":
+        path = calibrate.write_calibration(calibrate.fit_calibration(report), directory)
     else:
-        path = calibrate.write_precedence(calibrate.fit_precedence(run, current), directory)
-    print(json.dumps({"written": str(path), "eval_run_id": str(run.id), "source_split": run.split}))
+        current = calibrate.read_precedence(directory)
+        path = calibrate.write_precedence(calibrate.fit_precedence(report, current), directory)
+    print(json.dumps({"written": str(path), "git_sha": report.git_sha, "source_split": report.split}))
 
 
 def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -535,13 +533,13 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     )
     _add_learn_sim(eval_commands)
     for name, help_ in (
-        ("calibrate", "write backend/data/calibration.json from a dev eval run"),
-        ("fit-precedence", "write backend/data/source_precedence.yaml from a dev eval run"),
+        ("fit-calibration", "write backend/data/calibration.json from a dev eval report"),
+        ("fit-precedence", "write backend/data/source_precedence.yaml from a dev eval report"),
     ):
         fit = eval_commands.add_parser(name, help=help_)
         fit.set_defaults(handler=_run_eval, eval_handler=_run_eval_fit)
         fit.add_argument("--split", choices=splits, required=True)
-        fit.add_argument("--run", type=uuid.UUID, required=True, help="the id of the dev eval run to fit on")
+        fit.add_argument("--report", type=Path, required=True, help="the report `eval run --out` wrote, to fit on")
 
 
 def _add_learn_sim(eval_commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -792,5 +790,5 @@ def _run_eval_learn_sim(parser: argparse.ArgumentParser, args: argparse.Namespac
     asyncio.run(_eval_learn_sim(args.pages, args.llm, args.role_a, args.llm_max_calls, out))
 
 
-def _run_eval_fit(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    asyncio.run(_eval_fit(args.eval_command, EvalRunId(args.run)))
+def _run_eval_fit(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    _eval_fit(args.eval_command, _under_cwd(parser, "--report", args.report))

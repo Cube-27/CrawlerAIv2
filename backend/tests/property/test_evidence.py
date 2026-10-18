@@ -1,17 +1,15 @@
 """Evidence properties (SPEC-05 §4.9, ARCHITECTURE §8.1, §10): `agreed` requires two independent candidates of
 different source kinds, and a calibrated bucket below τ never publishes."""
 
-import uuid
-
 from hypothesis import given
 from hypothesis import strategies as st
 
 from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.collect.locator import Locator, parse_locator
-from crawlerai.db.models import EvalRunId, SourceKind
+from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.derive import Derived
-from crawlerai.resolve.evidence import Bucket, Calibration, assess, evidence_of
+from crawlerai.resolve.evidence import MIN_CALIBRATED_N, Bucket, Calibration, assess, evidence_of
 from crawlerai.resolve.preference import Chosen
 from crawlerai.resolve.types import Derivation
 from crawlerai.schemas.types import FieldType
@@ -58,7 +56,7 @@ def test_a_calibrated_bucket_below_tau_never_publishes(
     chosen, *agreeing = supporting
     evidence = evidence_of(chosen, tuple(agreeing), corroborated=False)
     buckets = {} if evidence is None else {f"identifier|{evidence}": Bucket(n=n, precision=precision)}
-    calibration = Calibration(eval_run_id=EvalRunId(uuid.uuid4()), git_sha="a", buckets=buckets)
+    calibration = Calibration(git_sha="a", buckets=buckets)
 
     outcome = assess(
         FieldType.IDENTIFIER,
@@ -70,7 +68,7 @@ def test_a_calibrated_bucket_below_tau_never_publishes(
 
     if outcome.status == "published":
         assert not outcome.calibrated or (outcome.confidence is not None and outcome.confidence >= tau)
-    calibrated_below = evidence is not None and n >= 30 and precision < tau
+    calibrated_below = evidence is not None and n >= MIN_CALIBRATED_N and precision < tau
     assert (outcome.status == "abstained" and outcome.reason == "below_tau") == calibrated_below
 
 
@@ -83,15 +81,13 @@ def test_a_calibrated_bucket_below_tau_never_publishes(
 def test_a_derived_page_url_keeps_its_provenance_and_its_buckets_tau(
     derived_by: Derivation, n: int, precision: float | None, tau: float
 ) -> None:
-    calibration = Calibration(
-        eval_run_id=EvalRunId(uuid.uuid4()), git_sha="a", buckets={"url|derived": Bucket(n=n, precision=precision)}
-    )
+    calibration = Calibration(git_sha="a", buckets={"url|derived": Bucket(n=n, precision=precision)})
 
     outcome = assess(
         FieldType.URL, Derived("https://example.com/p", derived_by, None), calibration, tau=tau, corroborated=False
     )
 
-    calibrated_below = n >= 30 and precision is not None and precision < tau
+    calibrated_below = n >= MIN_CALIBRATED_N and precision is not None and precision < tau
     assert outcome.status == ("abstained" if calibrated_below else "published")
     assert outcome.evidence == "derived"
     if outcome.status == "published":

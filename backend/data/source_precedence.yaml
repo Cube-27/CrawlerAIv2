@@ -1,7 +1,42 @@
-# SPEC-05 §4.7: the initial source precedence, before any fit. `crawlerai eval fit-precedence` rewrites this file
-# from a dev eval run (§4.11); it is checked by its stamp, not pinned in manifest.json (D-0444).
 source_split: dev
-text: [adapter, api, jsonld, microdata, og, dom, config, llm, xhr]
-long_text: [adapter, api, jsonld, microdata, og, dom, config, llm, xhr]
-url: [adapter, api, jsonld, microdata, og, dom, config, llm, xhr]
-image_url: [adapter, api, jsonld, microdata, og, dom, config, llm, xhr]
+git_sha: 309e98d4b1acea8723eff8a702c9387ff10c60b4
+text:
+- adapter
+- api
+- jsonld
+- microdata
+- og
+- dom
+- config
+- llm
+- xhr
+long_text:
+- adapter
+- api
+- jsonld
+- microdata
+- dom
+- og
+- config
+- llm
+- xhr
+url:
+- adapter
+- api
+- xhr
+- jsonld
+- microdata
+- og
+- dom
+- config
+- llm
+image_url:
+- adapter
+- api
+- jsonld
+- microdata
+- og
+- dom
+- config
+- llm
+- xhr

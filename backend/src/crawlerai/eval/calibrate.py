@@ -1,9 +1,10 @@
-"""`crawlerai eval calibrate` and `crawlerai eval fit-precedence`: write `calibration.json` and
-`source_precedence.yaml` from a stored run on the golden set.
+"""`crawlerai eval fit-calibration` and `crawlerai eval fit-precedence`: write `calibration.json` and
+`source_precedence.yaml` from a dev report (`crawlerai eval run --out`).
 
-Each stamps what it writes with `source_split: dev`, the run's id and its commit; the engine reads them back with
-`resolve.evidence` and `resolve.preference`. Calibration is the run's bucket table; precedence is fitted from its
-per-kind table (`by_source`) by `resolve.calibrate`.
+Each stamps what it writes with `source_split: dev` and the report's commit; the engine reads them back with
+`resolve.evidence` and `resolve.preference`. Both files hold bucket and source-kind names and numbers only, no site.
+The report must be scored on the labeled rows (D-1480) by an engine without a calibration: a calibrated run measures
+only what τ let through, so a fit on it would be of its own selection.
 """
 
 import json
@@ -12,15 +13,14 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from crawlerai.core.engine_version import CALIBRATION_FILE
-from crawlerai.db.models import EvalRunId, SourceKind
+from crawlerai.db.models import SourceKind
 from crawlerai.eval.cli import EvalCliError
-from crawlerai.eval.metrics import PrecisionMetrics, Report, SourceMetrics
-from crawlerai.eval.store import EvalRunRow
-from crawlerai.resolve.calibrate import Measured, fit_orders
-from crawlerai.resolve.evidence import Bucket, Calibration
+from crawlerai.eval.metrics import Report, SourceMetrics
+from crawlerai.resolve.calibrate import Measured, fit_buckets, fit_orders
+from crawlerai.resolve.evidence import Calibration
 from crawlerai.resolve.preference import PRECEDENCE_FILE, parse_orders
 from crawlerai.storage.fs import FsStore
 
@@ -31,33 +31,47 @@ class PrecedenceMissing(EvalCliError):
     """There is no current source precedence to refit."""
 
 
+class ReportRefused(EvalCliError):
+    """The report is not one a fit may read."""
+
+
 class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 class Precedence(_Model):
     source_split: Literal["dev"] = "dev"
-    eval_run_id: EvalRunId
     git_sha: str
     orders: Orders
 
 
-def calibrate(run: EvalRunRow) -> Calibration:
-    report = Report.model_validate(run.metrics)
-    return Calibration(eval_run_id=run.id, git_sha=run.git_sha, buckets=_buckets(report.by_bucket))
+def read_report(path: Path) -> Report:
+    """The dev report at `path`, refused unless it is a fit's input: scored on the labeled rows, by an engine whose
+    calibration was absent."""
+    try:
+        report = Report.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValidationError) as e:
+        raise ReportRefused(f"cannot read {path.name} as a report: {type(e).__name__}") from e
+    if report.split != "dev":
+        raise ReportRefused(f"{path.name} is a {report.split} report: a fit reads the dev split only")
+    if report.rows_scored != "labeled":
+        raise ReportRefused(f"{path.name} scores every engine row: fit on the report `eval run --out` writes")
+    if not report.engine_version.endswith("+cal.none"):
+        raise ReportRefused(f"{path.name} was run with a calibration: move calibration.json away and run again")
+    return report
 
 
-def fit_precedence(run: EvalRunRow, current: Mapping[str, Sequence[SourceKind]]) -> Precedence:
-    report = Report.model_validate(run.metrics)
-    return Precedence(eval_run_id=run.id, git_sha=run.git_sha, orders=fit_orders(current, _measured(report.by_source)))
+def fit_calibration(report: Report) -> Calibration:
+    cells = {key: (cell.n, cell.precision) for key, cell in report.by_bucket.items()}
+    return Calibration(git_sha=report.git_sha, buckets=fit_buckets(cells))
 
 
-def _buckets(cells: Mapping[str, PrecisionMetrics]) -> dict[str, Bucket]:
-    return {key: Bucket(n=cell.n, precision=cell.precision) for key, cell in sorted(cells.items())}
+def fit_precedence(report: Report, current: Mapping[str, Sequence[SourceKind]]) -> Precedence:
+    return Precedence(git_sha=report.git_sha, orders=fit_orders(current, _measured(report.by_source)))
 
 
 def _measured(cells: Mapping[str, SourceMetrics]) -> dict[str, Measured]:
-    return {key: Measured(n=cell.n, precision=cell.precision, coverage=cell.coverage) for key, cell in cells.items()}
+    return {key: Measured(n=cell.n, precision=cell.precision) for key, cell in cells.items()}
 
 
 def write_calibration(calibration: Calibration, data_dir: Path) -> Path:

@@ -13,6 +13,7 @@ from crawlerai.db.models import EvalRunId, SchemaId, SourceKind
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.derive import Derived
 from crawlerai.resolve.evidence import (
+    MIN_CALIBRATED_N,
     Bucket,
     Calibration,
     assess,
@@ -57,7 +58,6 @@ def _candidate(kind: SourceKind = "jsonld", value: str = "A-1", *, independent: 
 
 def _calibration(**buckets: tuple[int, float | None]) -> Calibration:
     return Calibration(
-        eval_run_id=RUN_ID,
         git_sha="a" * 40,
         buckets={key.replace("__", "|"): Bucket(n=n, precision=p) for key, (n, p) in buckets.items()},
     )
@@ -134,8 +134,8 @@ def test_a_bucket_of_another_type_does_not_apply() -> None:
     assert (outcome.confidence, outcome.calibrated) == (None, False)
 
 
-@pytest.mark.parametrize(("n", "calibrated"), [(29, False), (30, True)])
-def test_a_bucket_is_calibrated_from_30_dev_labels(n: int, calibrated: bool) -> None:
+@pytest.mark.parametrize(("n", "calibrated"), [(MIN_CALIBRATED_N - 1, False), (MIN_CALIBRATED_N, True)])
+def test_a_bucket_is_calibrated_from_the_floor_of_dev_labels(n: int, calibrated: bool) -> None:
     outcome = _assess(_chosen(_candidate()), _calibration(identifier__structured=(n, 0.5)))
     assert (outcome.calibrated, outcome.status) == (calibrated, "abstained" if calibrated else "published")
     assert outcome.confidence == 0.5
@@ -144,7 +144,7 @@ def test_a_bucket_is_calibrated_from_30_dev_labels(n: int, calibrated: bool) -> 
 @pytest.mark.parametrize(("precision", "status"), [(0.969, "abstained"), (0.97, "published")])
 def test_a_required_field_abstains_below_tau(precision: float, status: str) -> None:
     chosen = _candidate()
-    outcome = _assess(_chosen(chosen), _calibration(identifier__structured=(30, precision)))
+    outcome = _assess(_chosen(chosen), _calibration(identifier__structured=(MIN_CALIBRATED_N, precision)))
     assert outcome.status == status
     if status == "abstained":
         assert (outcome.reason, outcome.value, outcome.evidence, outcome.confidence) == (
@@ -243,7 +243,7 @@ def test_required_fields_are_the_required_ones_and_the_group_members() -> None:
 
 
 def test_optional_fields_abstain_below_the_optional_tau_only() -> None:
-    calibration = _calibration(identifier__structured=(30, 0.96))
+    calibration = _calibration(identifier__structured=(MIN_CALIBRATED_N, 0.96))
     decisions = {name: _chosen(_candidate()) for name in ("sku", "gtin", "mpn", "note")}
     outcomes = assess_fields(_schema(), decisions, calibration, frozenset())
     assert {name: o.status for name, o in outcomes.items()} == {
@@ -271,8 +271,7 @@ def test_a_missing_calibration_file_means_no_calibration(tmp_path: Path) -> None
 def test_a_calibration_not_fitted_on_dev_is_refused(tmp_path: Path) -> None:
     path = tmp_path / "calibration.json"
     path.write_text(
-        f'{{"calibration_version": 1, "source_split": "hidden", "eval_run_id": "{RUN_ID}", "git_sha": "a",'
-        ' "buckets": {}}',
+        '{"calibration_version": 1, "source_split": "hidden", "git_sha": "a", "buckets": {}}',
         encoding="utf-8",
     )
     with pytest.raises(ValidationError, match="source_split"):
