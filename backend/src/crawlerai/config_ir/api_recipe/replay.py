@@ -96,11 +96,11 @@ async def compare(
 async def _compare_listing(
     spec: RequestSpec, pagination: Pagination, fields: Mapping[str, str], page: ReplayPage, replay: Replay
 ) -> dict[str, bool]:
-    """For each `fields` entry the captured first page has a value for, whether replaying the listing's first pages
-    gives every captured page's rows with the same raw values there."""
+    """For each `fields` entry any captured page has a value for, whether replaying the listing's first pages gives
+    every captured page's rows with the same raw values there."""
     captured = page.listing[:REPLAYED_PAGES]
     wanted = [row_values(pagination.rows, fields, document) for document in captured]
-    compared = {name: True for name in fields if wanted and any(v is not None for v in wanted[0][name])}
+    compared = dict.fromkeys(_valued(fields, wanted), True)
     bound = request_for(spec, page.sample.page_url, page.sample.page_data)
     request = None if bound is None else first_request(pagination, bound)
     for number, want in enumerate(wanted):
@@ -112,6 +112,11 @@ async def _compare_listing(
             compared[name] = compared[name] and got[name] == want[name]
         request = next_request(pagination, request, number + 1, document[0], document[1])
     return compared
+
+
+def _valued(fields: Mapping[str, str], wanted: Sequence[Mapping[str, list[Scalar | None]]]) -> list[str]:
+    """The `fields` some captured page's rows have a value for."""
+    return [name for name in fields if any(value is not None for want in wanted for value in want[name])]
 
 
 async def _replayed(request: JsonRequest, replay: Replay) -> tuple[JsonValue, HeaderList] | None:
