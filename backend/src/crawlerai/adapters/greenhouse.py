@@ -7,6 +7,11 @@ board's URL.
 
 Only the hosted boards whose API host the documentation names are detected; a board on another regional host is
 left to the generic rungs rather than sent to an API that may not hold it.
+
+A job's `absolute_url` is where the board's owner publishes the job: the hosted board's job page with the board's
+`gh_jid` routing query, or the owner's own career page that embeds the board. A page on a hosted board names its jobs
+by the board's own route, `/{board_token}/jobs/{job_id}` on the board's host, so a job read for a hosted board page has
+that URL; one read for an embedded board keeps `absolute_url`, the page the embedding site states (D-1483).
 """
 
 import re
@@ -65,7 +70,8 @@ class Greenhouse:
         segments = parts.path.strip("/").split("/")
         if segments[0] == "embed":
             return _embedded(segments[1:], parse_qs(parts.query))
-        return _hosted(segments)
+        hosted = _hosted(segments)
+        return None if hosted is None else replace(hosted, host=parts.hostname)
 
     def serves(self, match: AdapterMatch, endpoint: str) -> bool:
         # The board's own endpoints, as `fetch` asks them: `{API}/{board_token}/jobs...`.
@@ -80,7 +86,17 @@ class Greenhouse:
         return await send(JsonRequest(url=endpoint, page_url=url), policy)
 
     def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
-        return _SHAPES[match.page_kind]
+        if match.host is None:
+            return _SHAPES[match.page_kind]
+        # A hosted board page: each job's URL is its page on the board's route, the job object's `id` after it.
+        on_board = replace(
+            _JOB,
+            properties={**_JOB.properties, "url": ("id",)},
+            prefixes={"url": f"https://{match.host}/{quote(match.tenant, safe='')}/jobs/"},
+        )
+        if match.page_kind == "detail":
+            return (on_board,)
+        return (replace(_SHAPES["listing"][0], nodes={"itemListElement": (replace(on_board, at=("jobs", ALL)),)}),)
 
 
 def _hosted(segments: list[str]) -> AdapterMatch | None:

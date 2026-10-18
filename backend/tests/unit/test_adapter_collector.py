@@ -177,8 +177,8 @@ def test_every_candidate_is_the_normalized_value_its_locator_selects(
         # A list field's candidate holds every value its property reaches and is located at the first.
         (raw,) = candidate.raw if isinstance(candidate.raw, list) else [candidate.raw]
         assert select(path, document) == [(path, raw)]
-        # A text value holding markup (a job description's HTML) reads as the fragment's text.
-        fragment = fragment_text(candidate.raw) if isinstance(candidate.raw, str) else None
+        # A text value holding markup (a job description's HTML, written escaped too) reads as the fragment's text.
+        fragment = fragment_text(html.unescape(candidate.raw)) if isinstance(candidate.raw, str) else None
         read = candidate.raw if fragment is None else html.escape(fragment, quote=False)
         assert candidate.normalized == normalize(read, schema.fields[candidate.field], CTX)
         assert path.startswith(candidate.entity_id.removeprefix(f"adapter:{adapter.name}:"))
@@ -365,18 +365,21 @@ def test_a_property_read_from_several_members_holds_the_first_members_values_the
     )
 
 
-def test_a_prefixed_property_reads_each_string_value_after_its_prefix() -> None:
+def test_a_prefixed_property_reads_each_string_or_integer_value_after_its_prefix() -> None:
     rows = Shape(
         type="JobPosting", at=("jobs", ALL), properties={"url": ("path",)}, prefixes={"url": "https://a.test/s"}
     )
     listing = Shape(type="ItemList", nodes={"itemListElement": (rows,)})
-    body = json.dumps({"jobs": [{"path": "/job/1"}, {"path": 7}]})
+    body = json.dumps({"jobs": [{"path": "/job/1"}, {"path": 7}, {"path": True}, {"path": 1.5}]})
 
     result = _collect(_StandIn(listing), "listing", body, _schema("listing", url=_url("JobPosting.url")))
 
+    # An integer (an API's numeric id) goes in its digits; a boolean or a fraction is no path and stays as it is.
     assert [(c.entity_id, c.raw) for c in result.candidates] == [
         ("adapter:stand-in:$['jobs'][0]", "https://a.test/s/job/1"),
-        ("adapter:stand-in:$['jobs'][1]", 7),
+        ("adapter:stand-in:$['jobs'][1]", "https://a.test/s7"),
+        ("adapter:stand-in:$['jobs'][2]", True),
+        ("adapter:stand-in:$['jobs'][3]", 1.5),
     ]
     assert result.entities[1].urls == ("https://a.test/s/job/1",)
 
@@ -405,3 +408,26 @@ def test_a_node_with_mapped_properties_is_read_as_an_object_of_schema_org_names(
     found = _values(result)
     assert found[("adapter:stand-in:$", "salary")][0] == {"currency": "EUR", "minValue": 10, "maxValue": 20}
     assert found[("adapter:stand-in:$", "place")][0] == {"name": "Town"}  # no mapped property: the API's own object
+
+
+@pytest.mark.parametrize(
+    ("page_kind", "fixture", "preset", "field"),
+    [
+        ("listing", "greenhouse/jobs.json", "job_listing", "url"),
+        ("detail", "greenhouse/job.json", "job_detail", "apply_url"),
+    ],
+)
+def test_a_hosted_board_names_each_job_by_the_board_route_on_its_host(
+    page_kind: PageKind, fixture: str, preset: str, field: str
+) -> None:
+    # D-1483: a hosted board page links its jobs by `/{board}/jobs/{id}` on its own host, not by `absolute_url`.
+    match = AdapterMatch("example-tenant", page_kind, host="board.example.test")
+    result = AdapterCollector(GREENHOUSE, match, VOCABULARY).collect(
+        ParsedPage(_fixture(fixture)), _preset(preset), CTX
+    )
+
+    urls = [(c.raw, c.locator) for c in result.candidates if c.field == field]
+    document = json.loads(_fixture(fixture))
+    jobs = document["jobs"] if page_kind == "listing" else [document]
+    assert [raw for raw, _ in urls] == [f"https://board.example.test/example-tenant/jobs/{job['id']}" for job in jobs]
+    assert all(locator.endswith("['id']") for _, locator in urls)
