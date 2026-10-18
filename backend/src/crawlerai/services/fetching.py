@@ -347,7 +347,9 @@ def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Wa
 
         rungs = page.rungs
         if page.growth is not None and page.policy.method_hint == "auto":
-            rungs = replace(rungs, browser=page.growth.rung(fetching, admit_next, known))
+            # The growing render serves every browser attempt, the one after a refusal too: that one opens no site
+            # session (INV-29's exception), whose cookies serve later HTTP fetches only.
+            rungs = replace(rungs, browser=page.growth.rung(fetching, admit_next, known), exporting=None)
 
         async def once(validators: Validators | None) -> FetchResult:
             result = await acquire(
