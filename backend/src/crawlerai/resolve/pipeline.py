@@ -488,8 +488,7 @@ class _Listing:
         row_fields = tuple(name for name, spec in schema.fields.items() if spec.scope == "row")
         if not row_fields or covered.intersection(row_fields):
             return None
-        replaced = not self.rows or (self.network and not self._complete())
-        if not replaced and all(any(_published(row, name) for row in self.rows) for name in row_fields):
+        if not self._replaced() and all(any(_published(row, name) for row in self.rows) for name in row_fields):
             return None
         page_missing = tuple(
             name for name, outcome in self.fields.items() if outcome.status == "missing" and name not in covered
@@ -506,7 +505,7 @@ class _Listing:
         links = row_links(page.page, page.schema, page.ctx, reply.rows, reply.candidates)
         candidates = (*self.candidates, *reply.candidates, *links)
         diagnostics = (*self.diagnostics, *reply.diagnostics)
-        filled = self._filled(page, graph, reply, candidates) if self.entities and not self.network else None
+        filled = None if self._replaced() else self._filled(page, graph, reply, candidates)
         if filled is not None:
             bound = filled
             fields, rows = page.resolve_listing(bound.candidates, self.entities)
@@ -542,6 +541,11 @@ class _Listing:
             role_c=reply.failure or NONE_LISTED,
             entities=reply.rows if not network else self.entities,
         )
+
+    def _replaced(self) -> bool:
+        """Whether role C's rows replace the listing's: it has none, or its rows are its captured calls' and leave a
+        record incomplete (listings spec, "Rows from captured calls"); otherwise role C's rows fill the rows."""
+        return not self.rows or (self.network and not self._complete())
 
     def _filled(
         self, page: _Page, graph: EntityGraph, reply: ListingGapReply, candidates: tuple[Candidate, ...]

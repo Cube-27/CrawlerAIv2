@@ -1,5 +1,4 @@
-"""Item URLs of a listing's role C rows from the page's repeated item blocks (extraction spec, "Cold listing rows and
-pagination").
+"""Item URLs of a listing's role C rows from the page's repeated item blocks (listings spec, "Role C rows").
 
 Role C reads a listing's rows from the cleaned text, which holds no link targets, so its rows carry no item URL. The
 page's repeated item blocks (`ParsedPage.item_groups`, the item layer's segment step) hold each item's own link. A

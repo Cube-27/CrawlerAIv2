@@ -908,6 +908,20 @@ def test_rows_of_a_call_stand_when_role_c_reads_no_rows() -> None:
     assert [row["url"].value for row in result.rows] == [f"https://shop.example.test/p/{n}" for n in (1, 2, 3)]
 
 
+def test_role_c_asked_beside_complete_call_rows_fills_them_and_never_replaces_them() -> None:
+    # Listings spec, "Rows from captured calls" and "Role C rows": an optional row field the call lacks asks role C,
+    # whose rows fill the call rows they name; complete call rows stand.
+    brand = FieldSpec(type=FieldType.TEXT, description="d", schema_org="Product.brand.name")
+    schema = _schema("listing", url=LISTING.fields["url"], price=LISTING.fields["price"], brand=brand)
+    role_c = FakeRoleC(listing_reply=ROWS_REPLY)
+
+    result = _extract(_network_listing(*NETWORK_ITEMS), schema, role_c=role_c, data=COMMITTED)
+
+    assert len(role_c.listing_requests) == 1
+    assert [row["url"].value for row in result.rows] == [f"https://shop.example.test/p/{n}" for n in (1, 2, 3)]
+    assert result.outcome == "extracted"
+
+
 def test_complete_rows_of_a_call_do_not_call_role_c() -> None:
     role_c = FakeRoleC()
     schema = _schema("listing", url=LISTING.fields["url"], price=LISTING.fields["price"])
