@@ -36,13 +36,9 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.politeness import refuse
-from crawlerai.acquire.robots import Robots
-from crawlerai.acquire.rungs import RenderCheck, acquire
 from crawlerai.acquire.types import ActionsReport, AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.collect.run import Adapters
 from crawlerai.config_ir.active import active_config, recipe_of
-from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.chunks import Chunk, ChunkOptions
@@ -61,21 +57,7 @@ from crawlerai.resolve.task import ActiveConfig, StoredRecord
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetch_options import CacheMode, check_proxy_pool
-from crawlerai.services.fetching import (
-    Fetching,
-    TargetRejected,
-    adapter_send,
-    admitted,
-    check_target,
-    engine_rules,
-    observed,
-    page_host_first,
-    recipe_rung,
-    refusal,
-    site_rules,
-    site_rungs,
-    store_declines,
-)
+from crawlerai.services.fetching import Fetching, PagePlan, TargetRejected, check_target, fetch_now, site_rungs
 from crawlerai.services.records import RecordField, ScrapedRecord, page_fields
 from crawlerai.services.scrape_paging import check_browser_actions, paged_fetch
 from crawlerai.services.scrape_steps import (
@@ -95,7 +77,6 @@ from crawlerai.services.scrape_steps import (
     SchemaPrompt,
     SchemaRequest,
     SchemaUnusable,
-    SiteRow,
     StoredFurther,
     check_formats,
     check_records,
@@ -375,22 +356,13 @@ async def _run(
         page = recent.result
     elif request.browser_actions is not None:
         paged = await paged_fetch(
-            engine,
-            fetching,
-            request.url,
-            host,
-            policy,
-            site,
-            attempts,
-            request.browser_actions,
-            request.timeout_s,
-            recipe=recipe,
+            engine, fetching, request.url, policy, attempts, request.browser_actions, request.timeout_s, recipe=recipe
         )
         page, further, report = _pages(paged)
     else:
-        page = await polite_fetch(
-            engine, fetching, request.url, host, policy, site, attempts, recipe=recipe, needs_render=check
-        )
+        rungs = site_rungs(fetching, host, site)
+        page_request = PagePlan(rungs, site, policy, attempts, recipe=recipe, needs_render=check)
+        page = await fetch_now(engine, fetching, request.url, page_request)
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = await _derive_reached(engine, work, request, task, page, recent, config, check)
@@ -571,60 +543,6 @@ def _fetch_members(result: FetchResult, capture_id: CaptureId, adapters: Adapter
             final_url=manifest.final_url,
         ),
     )
-
-
-async def polite_fetch(
-    engine: AsyncEngine,
-    fetching: Fetching,
-    url: str,
-    host: str,
-    policy: FetchPolicy,
-    site: SiteRow,
-    attempts: list[AttemptRecord],
-    *,
-    recipe: ApiRecipe | None = None,
-    needs_render: RenderCheck | None = None,
-) -> FetchResult | str:
-    """The page at `url`, on `host`, as fetched while the caller waits, or why robots.txt kept it from being fetched
-    (SPEC-02 §4.6); served by `recipe`, the site's active API recipe, when one is given (`recipe_rung`), and rendered
-    once more when `needs_render` finds its HTTP page lacking (owner #49, #54). The attempts
-    of every fetch made, robots.txt's too, are added to `attempts`. Raises `TargetRejected` when the guard refused a
-    request of the fetch (INV-16)."""
-    robots: Robots | None = None
-    if policy.respect_robots:
-        robots = await site_rules(engine, fetching.rungs.http, site, url, policy, attempts)
-        # RFC 9309 §2.3.1.4: an unreachable robots.txt allows nothing.
-        if robots is None:
-            return "robots_unreachable"
-    # SPEC-15 §4.6: an adapter that serves the URL requests its API, whose own robots.txt `send` reads; the page's
-    # governs only the page rungs it would fall back to, which a disallow then admits none of.
-    disallowed = robots is not None and not robots.allows(url)
-    rungs = site_rungs(fetching, host, site)
-    if disallowed and not rungs.adapters.would_serve(url):
-        return "robots"
-    await admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
-    # The page's host goes by the rules just read for the page (D-1384); another host's are read on first use.
-    rules = page_host_first(host, (site.crawl_delay_ms, robots), engine_rules(engine, fetching.rungs.http, attempts))
-    rung = None if recipe is None else recipe_rung(fetching, recipe, host, rules)
-    admit_next = refuse if disallowed else partial(admitted, fetching.limiter, host, site.crawl_delay_ms, robots)
-    send = adapter_send(fetching, host, rules)
-    result = await acquire(
-        url,
-        policy,
-        site.fetch_method,
-        rungs,
-        recipe=rung,
-        admit_next=admit_next,
-        send=send,
-        needs_render=needs_render,
-    )
-    observed(fetching.limiter, host, site.crawl_delay_ms, robots, result, page=True)
-    async with engine.begin() as conn:
-        await store_declines(conn, site, host, rungs)
-    attempts.extend(result.attempts)
-    if (refused := refusal(result)) is not None:
-        raise TargetRejected(refused)
-    return "robots" if disallowed and result.block_class != "ok" else result
 
 
 class _Finished(NamedTuple):

@@ -8,6 +8,13 @@ from typing import Final
 FIRST_BACKOFF: Final = timedelta(seconds=30)
 
 
+def backoff_delay(tries: int) -> timedelta:
+    """The backoff after try `tries` (1 for the first) failed: `FIRST_BACKOFF`, doubled per try. The queue retries a
+    task after it, and the polite fetch pauses a host by it (`acquire.politeness.backoff`)."""
+    delay: timedelta = FIRST_BACKOFF * 2 ** (tries - 1)
+    return delay
+
+
 def is_transient(status: int) -> bool:
     """Whether an HTTP status says the server did not answer this time: 408 Request Timeout (RFC 9110 §15.5.9),
     429 Too Many Requests (RFC 6585 §4) or a 5xx server error (RFC 9110 §15.6). Other errors are the request's own

@@ -41,7 +41,8 @@ from crawlerai.crawl.sitemaps import SitemapReader, roots
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import Job, JobId
 from crawlerai.normalize.url_key import canonicalize
-from crawlerai.services.fetching import Fetching, PoliteHttp, TargetRejected, check_target, site_rules
+from crawlerai.services.fetching import Fetching, SiteHttp, TargetRejected, check_target
+from crawlerai.services.polite import rules_of
 from crawlerai.services.scrape_steps import (
     DEFAULT_PROJECT,
     SiteRow,
@@ -186,7 +187,7 @@ async def _discover(
     before the sitemaps, which can take the rest of the timeout. The start page is fetched even when its links are not
     taken, for where it is: when the site redirects it to another host of the site (`crawl.rules.located`), the scope,
     robots.txt and the sitemaps are that host's."""
-    polite = await _polite(engine, fetching, site, found.scope.host, request.url, attempts)
+    polite = await _polite(engine, fetching, site, request.url, attempts)
     if polite is None:
         return
     page = await polite.fetch(request.url, polite.policy)
@@ -196,7 +197,7 @@ async def _discover(
         found.scope = replace(found.scope, host=host)
         async with engine.begin() as conn:
             site = await site_row(conn, host)
-        polite = await _polite(engine, fetching, site, host, site_url, attempts)
+        polite = await _polite(engine, fetching, site, site_url, attempts)
     if page is not None and page.block_class == "ok" and request.llms_txt:
         found.start_page = await asyncio.to_thread(_start_page, page.bundle)
     if request.use_links and page is not None and page.block_class == "ok":
@@ -207,20 +208,18 @@ async def _discover(
 
 
 async def _polite(
-    engine: AsyncEngine, fetching: Fetching, site: SiteRow, host: str, url: str, attempts: list[AttemptRecord]
-) -> PoliteHttp | None:
-    """Fetches from `site`, on `host`, under the robots.txt of `url` there; `None` when that robots.txt is
-    unreachable."""
+    engine: AsyncEngine, fetching: Fetching, site: SiteRow, url: str, attempts: list[AttemptRecord]
+) -> SiteHttp | None:
+    """Fetches from `site` under the robots.txt of `url` there; `None` when that robots.txt is unreachable."""
     policy = FetchPolicy(method_hint="http", proxy_pool=site.proxy_pool)
-    robots = await site_rules(engine, fetching.rungs.http, site, url, policy, attempts)
-    if robots is None:
-        return None
-    return PoliteHttp(fetching, host, site.crawl_delay_ms, robots, policy, attempts)
+    rules = await rules_of(engine, fetching.rungs.http, attempts)(url, policy)
+    return None if rules is None else SiteHttp(fetching, rules, policy, attempts)
 
 
-async def _read_sitemaps(polite: PoliteHttp, site_url: str, found: _Found) -> None:
+async def _read_sitemaps(polite: SiteHttp, site_url: str, found: _Found) -> None:
     """Add to `found` the URLs of the sitemaps of the start page's host, `site_url` there, until it is full."""
-    listed = () if polite.robots is None else polite.robots.sitemaps
+    robots = polite.rules.robots
+    listed = () if robots is None else robots.sitemaps
     reader = SitemapReader(polite.sitemap_body, found.scope.host)
     async with aclosing(reader.urls(roots(site_url, listed))) as urls:
         async for url in urls:

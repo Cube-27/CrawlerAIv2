@@ -1,38 +1,45 @@
-"""What the services that fetch while their caller waits (`scrape`, `map`) share, and the worker's handlers fetch with:
-the rungs and guard of this process, the SSRF guard's refusals (INV-16), a site's robots.txt rules, and admission at
-its rate (SPEC-02 §4.6); and an active config's API recipe bound to the rungs, its requests sent as politely as a
-page's (SPEC-09 §4.8), as a learning run's recipe replays are (§4.6, §4.7).
+"""What the services that fetch while their caller waits (`scrape`, `map`, `extract`) and the worker's handlers fetch
+with: the rungs and guard of this process, the SSRF guard's refusals (INV-16), and the page fetch they send through
+the one polite fetch (`services.polite`, SPEC-02 §4.6): the page through `acquire`, its adapter's and active config's
+API recipe's requests sent as politely as a page's (SPEC-09 §4.8, SPEC-15 §4.6), as a learning run's recipe replays
+are (§4.6, §4.7), and the plain HTTP fetches of a site's sitemaps.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, replace
-from datetime import timedelta
-from typing import Final
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
 from urllib.parse import urlsplit
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.politeness import BACKOFF_MAX, HostLimiter, asked_pause, interval, page_requests, slowed_down
-from crawlerai.acquire.robots import Fetch, Robots, site_robots
-from crawlerai.acquire.rungs import Rung, Rungs
+from crawlerai.acquire.politeness import Admit, HostLimiter
+from crawlerai.acquire.rungs import RenderCheck, Rung, Rungs, acquire
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.config_ir.api_recipe.execute import RecipeRung, unserved
+from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult, Validators
+from crawlerai.config_ir.api_recipe.execute import MAX_PAGES, RecipeRung, unserved
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replay, Replays
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
 from crawlerai.db.models import JobId, Site
-from crawlerai.services.scrape_steps import SiteRow, record_fetch_usage, site_row
+from crawlerai.recurring.conditional import Unchanged, fetch_unless_unchanged
+from crawlerai.services.polite import (
+    IN_PLACE,
+    SLOW_DOWN,
+    HostRules,
+    PageFetch,
+    ReadRules,
+    Refused,
+    Waiting,
+    page_first,
+    polite_fetch,
+    rules_of,
+)
+from crawlerai.services.scrape_steps import SiteRow, record_fetch_usage
 from crawlerai.storage.base import ObjectStore
-
-# D-1263: the longest pause a site asked for that a service waits out in place before its one further request: the
-# caller is waiting for the answer.
-SLOW_DOWN_WAIT_MAX: Final = timedelta(minutes=1)
 
 
 @dataclass(frozen=True)
@@ -96,98 +103,6 @@ def refusal(result: FetchResult) -> str | None:
     return next((a.error for a in result.attempts if a.error is not None and a.error.startswith(SSRF_REJECTED)), None)
 
 
-async def site_rules(
-    engine: AsyncEngine, http: Rung, site: SiteRow, url: str, policy: FetchPolicy, attempts: list[AttemptRecord]
-) -> Robots | None:
-    """The robots.txt rules for `url` on `site`, fetched over `http` when its snapshot is stale; `None` when robots.txt
-    is unreachable. The attempts of a fetch of robots.txt are added to `attempts`."""
-
-    async with engine.begin() as conn:
-        return await site_robots(conn, site.id, site.robots_snapshot, url, recording(http, policy, attempts))
-
-
-def recording(rung: Rung, policy: FetchPolicy, attempts: list[AttemptRecord]) -> Fetch:
-    """A fetch of robots.txt through `rung` with `policy` that adds the attempts of each fetch to `attempts`. The
-    caller's request context and page steps are the page's, not robots.txt's (D-1432): it goes without them."""
-    policy = policy.model_copy(update={"context": None, "steps": ()})
-
-    async def fetch(url: str) -> FetchResult:
-        result = await rung(url, policy)
-        attempts.extend(result.attempts)
-        return result
-
-    return fetch
-
-
-async def admitted(
-    limiter: HostLimiter,
-    host: str,
-    crawl_delay_ms: int | None,
-    robots: Robots | None,
-    *,
-    after: timedelta = timedelta(0),
-) -> bool:
-    """Wait until the site's rate admits a request (SPEC-02 §4.6), and answer True. The caller is waiting anyway, so
-    the service waits in place, within its timeout, where a worker would postpone the task. A pause the site asked
-    for (`after`, `Admit`) is waited out in place only up to `SLOW_DOWN_WAIT_MAX`; a longer one answers False."""
-    gap = interval(crawl_delay_ms, None if robots is None else robots.crawl_delay)
-    if after:
-        return await limiter.wait(host, gap, SLOW_DOWN_WAIT_MAX, after=after)
-    return await limiter.wait(host, gap)
-
-
-def observed(
-    limiter: HostLimiter,
-    host: str,
-    crawl_delay_ms: int | None,
-    robots: Robots | None,
-    result: FetchResult,
-    *,
-    page: bool = False,
-) -> None:
-    """Adapt the host's rate to the answers of `result` (D-1327, `HostLimiter.observe`); for a `page` fetch, to its
-    requests to the page's host only (`page_requests`): its API requests were observed on their endpoint's host."""
-    attempts = page_requests(result.attempts) if page else result.attempts
-    limiter.observe(host, interval(crawl_delay_ms, None if robots is None else robots.crawl_delay), attempts)
-
-
-# The rules a request to a URL goes by on its host: the host's interval setting and robots.txt (None when the policy
-# does not respect it), or why robots.txt keeps the request from being sent.
-SiteRules = Callable[[str, FetchPolicy], Awaitable[tuple[int | None, Robots | None] | str]]
-
-
-async def endpoint_rules(
-    conn: AsyncConnection, url: str, policy: FetchPolicy, fetch_robots: Fetch
-) -> tuple[int | None, Robots | None] | str:
-    """The `SiteRules` of `url`, read in `conn`: its host's site, created on first use as a page's is, and its
-    robots.txt, fetched with `fetch_robots` when the site's snapshot is stale."""
-    site = await site_row(conn, urlsplit(url).hostname or "")
-    if not policy.respect_robots:
-        return site.crawl_delay_ms, None
-    robots = await site_robots(conn, site.id, site.robots_snapshot, url, fetch_robots)
-    if robots is None:
-        return "robots_unreachable"  # RFC 9309 §2.3.1.4: an unreachable robots.txt allows nothing
-    return (site.crawl_delay_ms, robots) if robots.allows(url) else "robots"
-
-
-def page_host_first(page_host: str, known: tuple[int | None, Robots | None], rules: SiteRules) -> SiteRules:
-    """`rules`, except for a URL on `page_host`, whose rules the caller read before fetching its page (`known`: the
-    host's interval setting and robots.txt, None when the policy does not respect it) and which are not read again
-    (D-1384)."""
-    crawl_delay_ms, robots = known
-
-    async def first(url: str, policy: FetchPolicy) -> tuple[int | None, Robots | None] | str:
-        if (urlsplit(url).hostname or "") != page_host:
-            return await rules(url, policy)
-        if not policy.respect_robots:
-            return crawl_delay_ms, None
-        if robots is None:
-            return "robots_unreachable"  # RFC 9309 §2.3.1.4: an unreachable robots.txt allows nothing
-        return (crawl_delay_ms, robots) if robots.allows(url) else "robots"
-
-    return first
-
-
 def site_rungs(fetching: Fetching, host: str, site: SiteRow) -> Rungs:
     """This process's rungs with an adapter registry knowing the declines stored on the site of `host` (D-1384)."""
     return replace(fetching.rungs, adapters=fetching.rungs.adapters.for_host(host, site.adapter_declined))
@@ -199,17 +114,6 @@ async def store_declines(conn: AsyncConnection, site: SiteRow, host: str, rungs:
     declined = rungs.adapters.declined_for(host)
     if declined != site.adapter_declined:
         await conn.execute(update(Site).where(Site.id == site.id).values(adapter_declined=declined))
-
-
-def engine_rules(engine: AsyncEngine, http: Rung, attempts: list[AttemptRecord]) -> SiteRules:
-    """`endpoint_rules` read in a transaction of their own, robots.txt fetched over `http`, its attempts added to
-    `attempts`: for a service that holds no connection while it fetches."""
-
-    async def rules(url: str, policy: FetchPolicy) -> tuple[int | None, Robots | None] | str:
-        async with engine.begin() as conn:
-            return await endpoint_rules(conn, url, policy, recording(http, policy, attempts))
-
-    return rules
 
 
 @dataclass
@@ -225,7 +129,9 @@ class _Turn:
         return taken
 
 
-def recipe_rung(fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: SiteRules) -> RecipeRung | None:
+def recipe_rung(
+    fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: ReadRules, waiting: Waiting = IN_PLACE
+) -> RecipeRung | None:
     """`recipe` bound to this process's rungs (SPEC-09 §4.8), for a page on `page_host` whose robots.txt the caller
     has checked and whose turn at the host's rate it has taken. That turn goes to the first request to the host: the
     HTML page the recipe fetches to bind, or else its endpoint. An endpoint is requested only where its host's
@@ -242,10 +148,12 @@ def recipe_rung(fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: Si
         turn.host = None  # the page is the first request: its host's turn is the one the caller took
         return await http(url, policy)
 
-    return RecipeRung(recipe, _polite_send(fetching, json, rules, turn), page, ENGINE_VERSION)
+    return RecipeRung(recipe, _polite_send(fetching, json, rules, turn, waiting), page, ENGINE_VERSION)
 
 
-def adapter_send(fetching: Fetching, page_host: str, rules: SiteRules) -> JsonFetcher | None:
+def adapter_send(
+    fetching: Fetching, page_host: str, rules: ReadRules, waiting: Waiting = IN_PLACE
+) -> JsonFetcher | None:
     """The JSON fetch an adapter requests its API with (SPEC-15 §4.6), for a page on `page_host` whose robots.txt the
     caller has checked and whose turn at the host's rate it has taken: an endpoint is requested only where its host's
     robots.txt (`rules`) allows it, at that host's rate; the first request to the page's host takes the caller's turn,
@@ -254,12 +162,36 @@ def adapter_send(fetching: Fetching, page_host: str, rules: SiteRules) -> JsonFe
     json = fetching.rungs.json
     if json is None:
         return None
-    return _polite_send(fetching, json, rules, _Turn(page_host))
+    return _polite_send(fetching, json, rules, _Turn(page_host), waiting)
 
 
-def _polite_send(fetching: Fetching, json: JsonFetcher, rules: SiteRules, turn: _Turn) -> JsonFetcher:
+def _polite_send(
+    fetching: Fetching, json: JsonFetcher, rules: ReadRules, turn: _Turn, waiting: Waiting = IN_PLACE
+) -> JsonFetcher:
+    """Each request sent through the polite fetch to its endpoint's host (`polite_fetch`), the first request to the
+    page's host on the caller's turn (`turn`); one robots.txt keeps from being sent, or whose turn is further off than
+    the caller waits, answers `blocked` with the reason and sends nothing."""
+
     async def send(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
-        return await _polite_json(fetching.limiter, json, rules, request, policy, turn.take)
+        async def fetch(_url: str, _admit: Admit, _known: HostRules) -> FetchResult:
+            return await json(request, policy)
+
+        host = urlsplit(request.url).hostname or ""
+        result = await polite_fetch(
+            request.url,
+            policy,
+            rules,
+            fetching.limiter,
+            replace(waiting, postpone=False),
+            fetch,
+            turn_taken=turn.take(host),
+            endpoint=True,
+        )
+        if isinstance(result, FetchResult):
+            return result
+        # A request not sent is the recipe's or adapter's unserved page, as a page robots.txt keeps out is `blocked`.
+        reason = result.reason if isinstance(result, Refused) else SLOW_DOWN
+        return unserved(request.page_url, policy, ENGINE_VERSION, "blocked", reason)
 
     return send
 
@@ -279,8 +211,8 @@ def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
 
         async def replay(request: JsonRequest) -> FetchResult:
             attempts: list[AttemptRecord] = []
-            rules = engine_rules(engine, fetching.rungs.http, attempts)
-            result = await _polite_json(fetching.limiter, json, rules, request, policy, lambda _host: False)
+            rules = rules_of(engine, fetching.rungs.http, attempts)
+            result = await _polite_send(fetching, json, rules, _Turn(None))(request, policy)
             async with engine.begin() as conn:
                 await record_fetch_usage(conn, job_id, [*attempts, *result.attempts], proxy_pool)
             return result
@@ -290,61 +222,152 @@ def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
     return replays
 
 
-async def _polite_json(
-    limiter: HostLimiter,
-    json: JsonFetcher,
-    rules: SiteRules,
-    request: JsonRequest,
-    policy: FetchPolicy,
-    take_turn: Callable[[str], bool],
-) -> FetchResult:
-    """`request` sent where its host's robots.txt allows it, at that host's rate unless `take_turn` says the caller's
-    admitted turn there goes to it; else a `blocked` result that sent nothing. A slow-down pauses the host for its
-    `Retry-After`, else the first backoff (at most `BACKOFF_MAX`, SPEC-02 §4.6), so the next request there, the page's
-    fallback too, waits it out."""
-    allowed = await rules(request.url, policy)
-    if isinstance(allowed, str):
-        # As a page robots.txt keeps from being fetched: `blocked`.
-        return unserved(request.page_url, policy, ENGINE_VERSION, "blocked", allowed)
-    host = urlsplit(request.url).hostname or ""
-    if not take_turn(host):
-        await admitted(limiter, host, *allowed)
-    result = await json(request, policy)
-    observed(limiter, host, *allowed, result)
-    slowed = slowed_down(result.attempts)
-    if slowed is not None:
-        # SPEC-02 §4.6: the pause asked for, else the first backoff.
-        limiter.pause(host, min(asked_pause(slowed), BACKOFF_MAX))
+@dataclass
+class RecipePages:
+    """A listing's pages as its active config's listing recipe (one with pagination, Appendix A #59) serves them, up
+    to `limit` requests; the pages after the first are kept in `further` and their attempts added to `attempts`."""
+
+    limit: int = MAX_PAGES
+    attempts: list[AttemptRecord] = field(default_factory=list)
+    further: list[FetchResult] = field(default_factory=list)
+
+    async def rung(self, recipe: RecipeRung, url: str, policy: FetchPolicy) -> Rung | None:
+        """The recipe rung `acquire` fetches the page through: one that answers with the first page the listing recipe
+        served, its further pages kept, so `acquire` keeps or falls back from that one answer as from any recipe's
+        (SPEC-09 §4.8); None when it served no page. Each page request waits for its host's rate on its own
+        (`recipe_rung`)."""
+        pages = [page async for page in recipe.pages(url, policy, records=None, limit=self.limit)]
+        if not pages:
+            return None
+        first, further = pages[0], pages[1:]
+        self.attempts.extend(attempt for page in further for attempt in page.attempts)
+        self.further[:] = _until_refused(further) if first.block_class == "ok" else []
+
+        async def served(_url: str, _policy: FetchPolicy) -> FetchResult:
+            return first
+
+        return served
+
+
+def _until_refused(pages: Sequence[FetchResult]) -> list[FetchResult]:
+    """The pages before the first one the SSRF guard refused a request of (INV-16): a refused page is never stored."""
+    kept: list[FetchResult] = []
+    for page in pages:
+        if refusal(page) is not None:
+            break
+        kept.append(page)
+    return kept
+
+
+@dataclass(frozen=True)
+class PagePlan:
+    """How a page is fetched: the site's rungs (`site_rungs`), its row, the policy, the attempts every request of the
+    fetch is added to, the site's active API `recipe` (with `pages` when it serves a listing in pages), the check that
+    renders an HTTP page lacking what the caller reads (owner #49, #54), and the validators the page last answered with
+    when a record stands for it (SPEC-11 §4.2)."""
+
+    rungs: Rungs
+    site: SiteRow
+    policy: FetchPolicy
+    attempts: list[AttemptRecord]
+    recipe: ApiRecipe | None = None
+    pages: RecipePages | None = None
+    needs_render: RenderCheck | None = None
+    validators: Validators | None = None
+    has_record: bool = False
+
+
+def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Waiting) -> PageFetch:
+    """The page through `acquire`, as the polite fetch calls it: the adapter that detects the URL and the active
+    config's API recipe ask their endpoints politely (`adapter_send`, `recipe_rung`; endpoints on the page's host by the
+    rules the polite fetch read, D-1384, others by `rules`), and every attempt is added to the request's attempts."""
+
+    async def fetch(url: str, admit_next: Admit, known: HostRules) -> FetchResult | Unchanged:
+        host = urlsplit(url).hostname or ""
+        here = page_first(host, known, rules)
+        send = adapter_send(fetching, host, here, waiting)
+        rung: Rung | None = None
+        recipe = None if page.recipe is None else recipe_rung(fetching, page.recipe, host, here, waiting)
+        if recipe is not None:
+            rung = recipe if page.pages is None else await page.pages.rung(recipe, url, page.policy)
+
+        async def once(validators: Validators | None) -> FetchResult:
+            result = await acquire(
+                url,
+                page.policy,
+                page.site.fetch_method,
+                page.rungs,
+                recipe=rung,
+                validators=validators,
+                admit_next=admit_next,
+                send=send,
+                needs_render=page.needs_render,
+            )
+            page.attempts.extend(result.attempts)
+            return result
+
+        return await fetch_unless_unchanged(once, page.validators, has_record=page.has_record)
+
+    return fetch
+
+
+async def fetch_now(
+    engine: AsyncEngine, fetching: Fetching, url: str, page: PagePlan, *, tries: int = 1
+) -> FetchResult | str:
+    """The page at `url` fetched while the caller waits (`polite_fetch`, `IN_PLACE`), or why nothing was sent
+    (`polite.Refused`); the adapter declines it made are stored on the site (D-1384). Raises `TargetRejected` when the
+    guard refused a request of the fetch (INV-16)."""
+    host = urlsplit(url).hostname or ""
+    rules = rules_of(engine, fetching.rungs.http, page.attempts)
+    fetch = page_fetch(fetching, page, rules, IN_PLACE)
+    by_adapter = page.rungs.adapters.would_serve(url)
+    result = await polite_fetch(
+        url, page.policy, rules, fetching.limiter, IN_PLACE, fetch, by_adapter=by_adapter, tries=tries
+    )
+    async with engine.begin() as conn:
+        await store_declines(conn, page.site, host, page.rungs)
+    if isinstance(result, Refused):
+        return result.reason
+    if not isinstance(result, FetchResult):  # no validators are sent and nothing is postponed while the caller waits
+        raise TypeError(f"a fetch the caller waits for answered {type(result).__name__}")
+    if (refused := refusal(result)) is not None:
+        raise TargetRejected(refused)
     return result
 
 
 @dataclass(frozen=True)
-class PoliteHttp:
-    """Fetches from one site while the caller waits: politely (robots.txt when `robots` is given, the site's rate),
-    over HTTP with `policy`, recording the attempts of every fetch in `attempts`."""
+class SiteHttp:
+    """Plain HTTP fetches from one site through the polite fetch (robots.txt by its known `rules`, the site's rate,
+    back-off), each with its attempts added to `attempts`: a site's sitemaps."""
 
     fetching: Fetching
-    host: str
-    crawl_delay_ms: int | None
-    robots: Robots | None
+    rules: HostRules
     policy: FetchPolicy
     attempts: list[AttemptRecord]
+    waiting: Waiting = IN_PLACE
 
     async def fetch(self, url: str, policy: FetchPolicy) -> FetchResult | None:
-        """`url` as fetched, or `None` when robots.txt disallows it. Raises `TargetRejected` when the guard refused a
-        request of the fetch."""
-        if self.robots is not None and not self.robots.allows(url):
+        """`url` as fetched, or None when nothing was sent (robots.txt, or the host's turn too far off). Raises
+        `TargetRejected` when the guard refused a request of the fetch."""
+        http = self.fetching.rungs.http
+
+        async def known(_url: str, _policy: FetchPolicy) -> HostRules:
+            return self.rules
+
+        async def once(target: str, _admit: Admit, _known: HostRules) -> FetchResult:
+            result = await http(target, policy)
+            self.attempts.extend(result.attempts)
+            return result
+
+        result = await polite_fetch(url, policy, known, self.fetching.limiter, self.waiting, once, endpoint=True)
+        if not isinstance(result, FetchResult):
             return None
-        await admitted(self.fetching.limiter, self.host, self.crawl_delay_ms, self.robots)
-        result = await self.fetching.rungs.http(url, policy)
-        observed(self.fetching.limiter, self.host, self.crawl_delay_ms, self.robots, result)
-        self.attempts.extend(result.attempts)
         if (refused := refusal(result)) is not None:
             raise TargetRejected(refused)
         return result
 
     async def sitemap_body(self, url: str) -> bytes | None:
-        """The body of the sitemap at `url`, or `None` when there is none to read: disallowed, not a 2xx, or failed.
+        """The body of the sitemap at `url`, or `None` when there is none to read: not sent, not a 2xx, or failed.
         Raises `TargetRejected` as `fetch` does."""
         # sitemaps.org: a sitemap may be up to 50 MB uncompressed, larger than a page may be.
         policy = self.policy.model_copy(

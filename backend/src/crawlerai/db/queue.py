@@ -28,7 +28,7 @@ from typing import Any, Final
 from sqlalchemy import Executable, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.core.retry import FIRST_BACKOFF
+from crawlerai.core.retry import backoff_delay
 from crawlerai.db.jobs import (
     InvalidTransition,
     blocking_statuses,
@@ -172,12 +172,6 @@ def retried(task: ClaimedTask, *, transient: bool) -> bool:
     return transient and task.attempts < MAX_ATTEMPTS
 
 
-def retry_delay(attempts: int) -> timedelta:
-    """The backoff before retrying a task that failed transiently on attempt `attempts` (1 for the first)."""
-    delay: timedelta = FIRST_BACKOFF * 2 ** (attempts - 1)
-    return delay
-
-
 async def fail_task(
     conn: AsyncConnection,
     task: ClaimedTask,
@@ -190,14 +184,14 @@ async def fail_task(
     ending: JobEnding | None = None,
 ) -> None:
     """Record a failure. A transient one is retried until `MAX_ATTEMPTS` (D-0006): after `after` when the target
-    asked for a delay (a `Retry-After`, SPEC-02 §4.6), else after `retry_delay`. A permanent failure, or the last
+    asked for a delay (a `Retry-After`, SPEC-02 §4.6), else after `backoff_delay`. A permanent failure, or the last
     attempt, ends the task with `exhausted`: `failed`, or the outcome the failure stands for (a 429 is `blocked`).
     `capture_id` is the page the failed attempt fetched, if it fetched one. `ending` runs if this ends the job."""
     values: dict[str, Any] = {"last_error": _cut(error)}
     if capture_id is not None:
         values["capture_id"] = capture_id
     if retried(task, transient=transient):
-        delay = retry_delay(task.attempts) if after is None else after
+        delay = backoff_delay(task.attempts) if after is None else after
         await _move(conn, task, "queued", next_attempt_at=func.now() + delay, **values)
     elif exhausted == "failed":
         await _finish(conn, task, "failed", ending, outcome="failed", **values)

@@ -2,7 +2,7 @@
 (`crawlerai.services.scrape_steps`), run by a worker instead of while a caller waits. An `extract` job is a records job
 whose URLs are all caller-supplied, as a batch's are (ARCHITECTURE §10), so its tasks run as a records batch's do.
 
-The page is fetched politely (`crawlerai.worker.polite`): robots.txt over HTTP, the site's rate, backoff through the
+The page is fetched politely (`crawlerai.services.polite`): robots.txt over HTTP, the site's rate, backoff through the
 queue. Its capture is stored, and for `records` it is extracted with what the job pinned when it was submitted
 (INV-28): the schema document, the precedence orders and calibration, and the site's active config then, if it had one
 (`config` mode; the page joins the config's drift window, as a scrape's does). Its record is stored. Page outputs are

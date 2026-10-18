@@ -28,7 +28,7 @@ from crawlerai.acquire.browser_tab import ListingRung
 from crawlerai.acquire.challenge import portable
 from crawlerai.acquire.classify import classify, interstitial
 from crawlerai.acquire.page_refs import canonical_link, page_refs
-from crawlerai.acquire.politeness import SLOW_DOWN, Admit, asked_pause
+from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
 from crawlerai.acquire.session import CookieExport, SiteSessions, identity
 from crawlerai.acquire.types import (
     AttemptRecord,
@@ -297,8 +297,11 @@ async def _interstitial_unavailable(result: FetchResult) -> bool:
 
 
 def _paused_by(result: FetchResult) -> timedelta:
-    """The pause a slow-down `result` asks for before the browser attempt (SPEC-02 §4.6); none for another result."""
-    return asked_pause(result.attempts[-1]) if slow_down(result) else timedelta(0)
+    """The pause a slow-down `result` asks for before the browser attempt (`politeness.backoff`); none for another
+    result. A pause past the longest backoff is longer than any caller waits in place, so the attempt is not sent."""
+    if not slow_down(result):
+        return timedelta(0)
+    return backoff(result.attempts[-1]) or BACKOFF_MAX
 
 
 async def _as_last_page(result: FetchResult) -> FetchResult:

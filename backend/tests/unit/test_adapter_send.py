@@ -21,7 +21,8 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.greenhouse import BOARD_HOSTS
 from crawlerai.core.settings import AcquireSettings
-from crawlerai.services.fetching import Fetching, adapter_send, page_host_first
+from crawlerai.services.fetching import Fetching, adapter_send
+from crawlerai.services.polite import HostRules, page_first
 from crawlerai.storage.capture_bundle import HeaderList
 from crawlerai.storage.fs import FsStore
 
@@ -84,8 +85,8 @@ def _request(host: str) -> JsonRequest:
     )
 
 
-async def _allowed(_url: str, _policy: FetchPolicy) -> tuple[int | None, Robots | None]:
-    return None, None
+async def _allowed(_url: str, _policy: FetchPolicy) -> HostRules:
+    return HostRules(None)
 
 
 def test_the_first_request_to_the_page_host_takes_the_callers_turn_and_later_ones_wait(tmp_path: Path) -> None:
@@ -107,8 +108,8 @@ def test_the_first_request_to_the_page_host_takes_the_callers_turn_and_later_one
 def test_a_request_robots_txt_disallows_is_not_sent_and_is_blocked(tmp_path: Path) -> None:
     sent: list[str] = []
 
-    async def disallowed(_url: str, _policy: FetchPolicy) -> str:
-        return "robots"
+    async def disallowed(_url: str, _policy: FetchPolicy) -> HostRules:
+        return HostRules(None, Robots("User-agent: *\nDisallow: /\n"))
 
     send = adapter_send(_fetching(tmp_path, sent, CountingLimiter()), PAGE_HOST, disallowed)
     assert send is not None
@@ -208,24 +209,20 @@ def test_a_request_on_the_page_host_goes_by_the_rules_read_for_the_page_without_
     # D-1384: the caller read the page host's robots.txt before the fetch; only another host's rules are read.
     read: list[str] = []
 
-    async def rules(url: str, policy: FetchPolicy) -> tuple[int | None, Robots | None] | str:
+    async def rules(url: str, _policy: FetchPolicy) -> HostRules:
         read.append(url)
-        return 1000, None
+        return HostRules(1000)
 
-    robots = Robots("User-agent: *\nDisallow: /private/\n")
-    first = page_host_first(PAGE_HOST, (250, robots), rules)
+    known = HostRules(250, Robots("User-agent: *\nDisallow: /private/\n"))
+    first = page_first(PAGE_HOST, known, rules)
 
-    overridden = FetchPolicy(respect_robots=False, robots_override_reason="synthetic")
-
-    async def run() -> list[object]:
+    async def run() -> list[HostRules | None]:
         return [
             await first(f"https://{PAGE_HOST}/api/products", FetchPolicy()),
-            await first(f"https://{PAGE_HOST}/private/x", FetchPolicy()),
-            await first(f"https://{PAGE_HOST}/private/x", overridden),
             await first(f"https://{GREENHOUSE_BOARD}/v1/boards/x/jobs", FetchPolicy()),
         ]
 
     answers = asyncio.run(run())
 
-    assert answers == [(250, robots), "robots", (250, None), (1000, None)]
+    assert answers == [known, HostRules(1000)]
     assert read == [f"https://{GREENHOUSE_BOARD}/v1/boards/x/jobs"]

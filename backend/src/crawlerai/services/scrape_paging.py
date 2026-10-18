@@ -2,11 +2,11 @@
 gate its actions go through.
 
 A listing scrape that asks for browser actions is fetched by the listing rung (`acquire.browser_tab.fetch_listing`)
-with the paging driver (`crawl.paging.collect`), after robots.txt and the site's rate admit it, as `polite_fetch`
-admits a page. Each action waits for the site's rate too, and a next page is admitted only on the same host, when
-robots.txt allows it. The caller's `fetch.actions` and `wait_for` run first on the settled page (D-1513), and the
-site's API recipe is not used then: the steps need the browser. The actions get at most half the scrape's `timeout_s`,
-and at most `MAX_ACTIONS_S`, so the kept states' extraction still fits in the scrape (D-0028: `timeout_s` ≤ 120).
+with the paging driver (`crawl.paging.collect`), through the polite fetch (`services.polite`), as a page is. Each
+action waits for the site's rate too, and a next page is admitted only on the same host, when robots.txt allows it.
+The caller's `fetch.actions` and `wait_for` run first on the settled page (D-1513), and the site's API recipe is not
+used then: the steps need the browser. The actions get at most half the scrape's `timeout_s`, and at most
+`MAX_ACTIONS_S`, so the kept states' extraction still fits in the scrape (D-0028: `timeout_s` ≤ 120).
 
 A site whose active config has a listing recipe (one with pagination, Appendix A #59) is served by it instead, over
 HTTP with no browser: one response per page its pagination names, until the request's `records` target, each page
@@ -21,22 +21,14 @@ from urllib.parse import urlsplit
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.politeness import Admit
-from crawlerai.acquire.robots import Robots
 from crawlerai.acquire.types import AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Render
 from crawlerai.crawl.paging import collect
 from crawlerai.db.models import PageKind
-from crawlerai.services.fetching import (
-    Fetching,
-    TargetRejected,
-    admitted,
-    engine_rules,
-    recipe_rung,
-    refusal,
-    site_rules,
-)
-from crawlerai.services.scrape_steps import FetchOptions, SiteRow
+from crawlerai.services.fetching import Fetching, TargetRejected, recipe_rung, refusal
+from crawlerai.services.polite import IN_PLACE, HostRules, ReadRules, Refused, polite_fetch, rules_of
+from crawlerai.services.scrape_steps import FetchOptions
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 # D-1222: the actions' time cap; the probe's slowest passing listing took under 50 s.
@@ -63,79 +55,93 @@ async def paged_fetch(
     engine: AsyncEngine,
     fetching: Fetching,
     url: str,
-    host: str,
     policy: FetchPolicy,
-    site: SiteRow,
     attempts: list[AttemptRecord],
     actions: BrowserActions,
     timeout_s: float,
     recipe: ApiRecipe | None = None,
 ) -> PagedFetch | str:
-    """The listing at `url` with `actions`, or why robots.txt kept it from being fetched (SPEC-02 §4.6); served by
+    """The listing at `url` with `actions` through the polite fetch (`polite_fetch`), or why nothing was sent; served by
     `recipe`, the site's active API recipe, when it has pagination and serves the first page. The attempts,
     robots.txt's too, are added to `attempts`. Raises `TargetRejected` when the guard refused a request of the fetch
     (INV-16)."""
     deadline = time.monotonic() + min(MAX_ACTIONS_S, _TIMEOUT_SHARE * timeout_s)
-    robots: Robots | None = None
-    if policy.respect_robots:
-        robots = await site_rules(engine, fetching.rungs.http, site, url, policy, attempts)
-        # RFC 9309 §2.3.1.4: an unreachable robots.txt allows nothing.
-        if robots is None:
-            return "robots_unreachable"
-        if not robots.allows(url):
-            return "robots"
-    await admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
-    admit_next = partial(admitted, fetching.limiter, host, site.crawl_delay_ms, robots)
-    served = await _recipe_pages(
-        engine, fetching, url, host, policy, attempts, recipe, (actions.records, deadline), admit_next
-    )
-    if served is not None:
-        return served
-    rung = fetching.rungs.listing
-    if rung is None:
-        raise RuntimeError("this process has no listing rung")
+    rules = rules_of(engine, fetching.rungs.http, attempts)
+    paged: list[PagedFetch] = []
 
-    async def gate(next_url: str | None) -> bool:
-        if next_url is not None and not _allowed(next_url, host, robots):
-            return False
-        return await admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
+    async def fetch(target: str, admit_next: Admit, known: HostRules) -> FetchResult:
+        until = (actions.records, deadline)
+        served = await _recipe_pages(fetching, target, policy, attempts, recipe, until, (rules, admit_next))
+        if served is None:
+            served = await grown(fetching, target, policy, actions, deadline, admit_next, known)
+            _record(served.pages, attempts)
+        paged.append(served)
+        return served.pages[0]
 
-    drive = partial(collect, request=actions, gate=gate, deadline=deadline)
-    paged = await rung(url, policy, drive)
-    for page in paged.pages:
-        attempts.extend(page.attempts)
-        if (refused := refusal(page)) is not None:
-            raise TargetRejected(refused)
-    return paged
+    result = await polite_fetch(url, policy, rules, fetching.limiter, IN_PLACE, fetch)
+    if isinstance(result, Refused):
+        return result.reason
+    if not paged:  # the polite fetch sends nothing it does not answer, and postpones nothing in place
+        raise RuntimeError("the listing was fetched without its pages")
+    return paged[0]
 
 
-async def _recipe_pages(
-    engine: AsyncEngine,
-    fetching: Fetching,
-    url: str,
-    host: str,
-    policy: FetchPolicy,
-    attempts: list[AttemptRecord],
-    recipe: ApiRecipe | None,
-    until: tuple[int, float],
-    admit_next: Admit,
-) -> PagedFetch | None:
-    """The listing's pages as `recipe` serves them (`RecipeRung.pages`) when it has pagination, until the records
-    target or the deadline of `until`, with their attempts added to `attempts`; None when it served no first page,
-    after waiting for the turn of the request that follows. Each page request waits for its host's rate on its own
-    (`recipe_rung`): the caller's admitted turn goes to the first."""
-    if recipe is None or recipe.pagination is None or policy.steps:
-        # The caller's page steps (a cookie banner, a filter) change the page and need the browser (D-1513).
-        return None
-    rung = recipe_rung(fetching, recipe, host, engine_rules(engine, fetching.rungs.http, attempts))
-    if rung is None:
-        return None
-    records, deadline = until
-    pages = [page async for page in rung.pages(url, policy, records=records, deadline=deadline)]
+def _record(pages: tuple[FetchResult, ...], attempts: list[AttemptRecord]) -> None:
+    """Add the attempts of `pages` to `attempts`. Raises `TargetRejected` when the guard refused a request of one."""
     for page in pages:
         attempts.extend(page.attempts)
         if (refused := refusal(page)) is not None:
             raise TargetRejected(refused)
+
+
+async def grown(
+    fetching: Fetching,
+    url: str,
+    policy: FetchPolicy,
+    actions: BrowserActions,
+    deadline: float,
+    admit_next: Admit,
+    known: HostRules,
+) -> PagedFetch:
+    """The listing at `url` from the listing rung with the paging driver (`crawl.paging.collect`): each action waits for
+    a turn at the site's rate (`admit_next`), and a next page is followed only on the listing's own host, when its
+    robots.txt (`known`) allows it."""
+    rung = fetching.rungs.listing
+    if rung is None:
+        raise RuntimeError("this process has no listing rung")
+    host = urlsplit(url).hostname or ""
+
+    async def gate(next_url: str | None) -> bool:
+        if next_url is not None and (urlsplit(next_url).hostname != host or not known.allows(next_url)):
+            return False
+        return await admit_next()
+
+    return await rung(url, policy, partial(collect, request=actions, gate=gate, deadline=deadline))
+
+
+async def _recipe_pages(
+    fetching: Fetching,
+    url: str,
+    policy: FetchPolicy,
+    attempts: list[AttemptRecord],
+    recipe: ApiRecipe | None,
+    until: tuple[int, float],
+    polite: tuple[ReadRules, Admit],
+) -> PagedFetch | None:
+    """The listing's pages as `recipe` serves them (`RecipeRung.pages`) when it has pagination, until the records
+    target or the deadline of `until`, with their attempts added to `attempts`; None when it served no first page,
+    after waiting for the turn of the request that follows (`polite`'s `Admit`). Each page request waits for its host's
+    rate on its own (`recipe_rung`, by `polite`'s rules): the caller's admitted turn goes to the first."""
+    rules, admit_next = polite
+    if recipe is None or recipe.pagination is None or policy.steps:
+        # The caller's page steps (a cookie banner, a filter) change the page and need the browser (D-1513).
+        return None
+    rung = recipe_rung(fetching, recipe, urlsplit(url).hostname or "", rules)
+    if rung is None:
+        return None
+    records, deadline = until
+    pages = tuple([page async for page in rung.pages(url, policy, records=records, deadline=deadline)])
+    _record(pages, attempts)
     if not pages or pages[0].block_class != "ok":
         await admit_next()
         return None
@@ -148,39 +154,28 @@ RENDER_RECORDS: Final = 60
 
 
 def learning_render(engine: AsyncEngine, fetching: Fetching) -> Render | None:
-    """A learning run's browser renders (`api_recipe.learn`): the page politely (robots.txt, the site's rate), with
-    network capture, a listing with browser actions toward `RENDER_RECORDS` rows; the document states kept, none for a
-    page robots.txt disallows or that was not reached. A `learn` job names no fetch policy, so renders go with the
-    default one. None without the listing rung."""
-    listing = fetching.rungs.listing
-    if listing is None:
+    """A learning run's browser renders (`api_recipe.learn`) through the polite fetch: the page with network capture, a
+    listing with browser actions toward `RENDER_RECORDS` rows; the document states kept, none for a page that was not
+    sent or not reached. A `learn` job names no fetch policy, so renders go with the default one. None without the
+    listing rung."""
+    if fetching.rungs.listing is None:
         return None
 
     async def render(url: str, page_kind: PageKind) -> tuple[CaptureBundle, ...]:
         policy = FetchPolicy(method_hint="browser", page_kind=page_kind)
-        rules = await engine_rules(engine, fetching.rungs.http, [])(url, policy)
-        if isinstance(rules, str):  # robots.txt disallows the page, or could not be read
-            return ()
-        host = urlsplit(url).hostname or ""
-        crawl_delay_ms, robots = rules
-        await admitted(fetching.limiter, host, crawl_delay_ms, robots)
-        if page_kind != "listing":
-            pages: tuple[FetchResult, ...] = (await fetching.rungs.browser(url, policy),)
-        else:
+        kept: list[FetchResult] = []
 
-            async def gate(next_url: str | None) -> bool:
-                if next_url is not None and not _allowed(next_url, host, robots):
-                    return False
-                return await admitted(fetching.limiter, host, crawl_delay_ms, robots)
+        async def fetch(target: str, admit_next: Admit, known: HostRules) -> FetchResult:
+            if page_kind != "listing":
+                kept.append(await fetching.rungs.browser(target, policy))
+            else:
+                actions = BrowserActions(records=RENDER_RECORDS)
+                deadline = time.monotonic() + MAX_ACTIONS_S
+                kept.extend((await grown(fetching, target, policy, actions, deadline, admit_next, known)).pages)
+            return kept[0]
 
-            actions = BrowserActions(records=RENDER_RECORDS)
-            drive = partial(collect, request=actions, gate=gate, deadline=time.monotonic() + MAX_ACTIONS_S)
-            pages = (await listing(url, policy, drive)).pages
-        return tuple(page.bundle for page in pages if page.block_class == "ok")
+        rules = rules_of(engine, fetching.rungs.http, [])
+        await polite_fetch(url, policy, rules, fetching.limiter, IN_PLACE, fetch)
+        return tuple(page.bundle for page in kept if page.block_class == "ok")
 
     return render
-
-
-def _allowed(url: str, host: str, robots: Robots | None) -> bool:
-    """A next page on the listing's own host that robots.txt allows: the rate and rules admitted are that host's."""
-    return urlsplit(url).hostname == host and (robots is None or robots.allows(url))

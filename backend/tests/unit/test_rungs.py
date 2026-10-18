@@ -13,6 +13,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from crawlerai.acquire.politeness import BACKOFF_MAX
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass, CaptureMethod
@@ -523,9 +524,10 @@ def test_a_503_interstitial_is_rendered_once_after_its_retry_after_or_the_first_
 
 
 def test_a_503_interstitial_whose_pause_is_not_admitted_keeps_the_503() -> None:
+    # A pause past the longest backoff is asked as the longest, which no caller waits for in place.
     pauses, browser, result = _acquire_slowed(503, _CHALLENGE, timedelta(hours=1), admits=False)
 
-    assert pauses == [timedelta(hours=1)]
+    assert pauses == [BACKOFF_MAX]
     assert browser.calls == []
     assert result.bundle.manifest.status_code == 503
 

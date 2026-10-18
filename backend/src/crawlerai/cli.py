@@ -62,11 +62,10 @@ from crawlerai.schemas.types import SchemaDef
 from crawlerai.services import schedules as schedules_service
 from crawlerai.services import schemas as schemas_service
 from crawlerai.services.fetch_options import FetchOptions, UnknownProxyPool, check_proxy_pool, fetch_policy
-from crawlerai.services.fetching import Fetching, TargetRejected, learning_replay
+from crawlerai.services.fetching import Fetching, PagePlan, TargetRejected, fetch_now, learning_replay, site_rungs
 from crawlerai.services.records import MAX_PAGE
 from crawlerai.services.runtime import fetching_from_settings
 from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
-from crawlerai.services.scrape import polite_fetch
 from crawlerai.services.scrape_paging import learning_render
 from crawlerai.services.scrape_steps import content_check, load_drift_margins, load_engine_data, site_row
 from crawlerai.storage import open_store
@@ -282,7 +281,7 @@ async def _eval_rekey(file: Path) -> None:
 async def _polite_page(
     engine: AsyncEngine, fetching: Fetching, data: EngineData | None, url: str, schema: SchemaDef
 ) -> FetchResult | str:
-    """The page as a worker fetches it for `schema` (`polite_fetch`): robots.txt, the site's rate, its adapters, and
+    """The page as a worker fetches it for `schema` (`fetch_now`): robots.txt, the site's rate, its adapters, and
     a render when the HTTP page lacks what the schema reads; or why it was not fetched."""
     host = http_host(url)
     if host is None:  # `labeled_pages` refuses such a URL
@@ -290,10 +289,11 @@ async def _polite_page(
     async with engine.begin() as conn:
         site = await site_row(conn, host, schema.page_kind)
     policy = FetchPolicy(page_kind=schema.page_kind, proxy_pool=site.proxy_pool)
+    page = PagePlan(
+        site_rungs(fetching, host, site), site, policy, [], needs_render=content_check(schema, data, None, None)
+    )
     try:
-        return await polite_fetch(
-            engine, fetching, url, host, policy, site, [], needs_render=content_check(schema, data, None, None)
-        )
+        return await fetch_now(engine, fetching, url, page)
     except TargetRejected:
         return "target_rejected"
 
