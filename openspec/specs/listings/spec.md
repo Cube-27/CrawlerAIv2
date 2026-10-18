@@ -30,8 +30,9 @@ a place shared by a quorum of the blocks whose value its normalizer accepts: the
 links lead to, not the page in another state, an image file or an item's own nested list), the name (the accessible
 name of the item link, WCAG label in name, or the block's heading; never a URL; text every block repeats is the
 template's), the image, and typed value spotting for money, dates and check-digit identifiers (text in `s`/`del`
-excluded, also from the lines of the elements holding it; an element's line is not read where two text nodes run digits together, a token boundary the text does not
-show; an element holding others is also read in each of its own text nodes). Values are `dom` candidates with locators; the group aligning most fields is first. Refs: owner #67.
+excluded, also from the lines of the elements holding it; an element's line is not read where two text nodes run digits
+together, a token boundary the text does not show; an element holding others is also read in each of its own text
+nodes). Values are `dom` candidates with locators; the group aligning most fields is first. Refs: owner #67.
 #### Scenario: Cards with title, link and price
 - **WHEN** a listing shows cards of varying tags and class tokens, each with a heading link and one price
 - **THEN** each card is a row with its title, URL and price
