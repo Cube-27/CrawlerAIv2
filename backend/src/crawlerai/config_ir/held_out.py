@@ -287,6 +287,11 @@ async def _parsed(store: ObjectStore, object_key: str) -> tuple[CaptureBundle, P
 
 def _read(blob: bytes) -> tuple[CaptureBundle, ParsedPage, Context]:
     bundle = decode(blob)
+    return bundle, *read_bundle(bundle)
+
+
+def read_bundle(bundle: CaptureBundle) -> tuple[ParsedPage, Context]:
+    """The bundle's page, parsed, with its context and the currencies it states, as the engine reads it."""
     page = ParsedPage.of(bundle)
     ctx = page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at)
-    return bundle, page, with_stated_currencies(ctx, page)
+    return page, with_stated_currencies(ctx, page)

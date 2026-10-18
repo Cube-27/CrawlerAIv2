@@ -1,23 +1,30 @@
 """Induction (SPEC-08 §4.5, ARCHITECTURE §8.3 step 1): selectors generalized from the locators of the values the engine
-published on the learning sample, without an LLM.
+published on the learning sample, without an LLM. What the engine published is the learning oracle: its own values and
+role C's grounded ones (a verbatim span of the cleaned text, INV-12, or a link's or image's element).
 
 For each field, every sample page's published locator proposes candidate steps:
 - `jsonld:<block>:<path>`: a `jsonld` step relative to each schema.org node the value is nested in (nearest first),
   typed by the node's types, with array indices stripped (`[*]`), then with them kept;
-- `microdata:<xpath>`, `dom:<xpath>` and `config:` XPaths that select one element: for each anchor on the element and
-  its ancestors (nearest first), the path from the anchored ancestor down to the element without positional
-  predicates, read as `normalize-space(...)`, then as each of the element's attributes;
+- `js_state:` and `xhr:` paths: a `jsonpath` step over the page's documents of that source, indices stripped, then kept;
+- `meta:<name>`: the `content` of the `meta` element with that `property`, then that `name`;
+- `microdata:<xpath>`, `dom:<xpath>` and `config:` XPaths that select one element, and `text:` spans (the innermost
+  element holding the span): for each anchor on the element and its ancestors (nearest first), the path from the
+  anchored ancestor down to the element without positional predicates, read as `normalize-space(...)`, then as each of
+  the element's attributes (a URL field's resolved against the base URL first);
 - `adapter:`/`api:` with the same mapping name on every page: the field comes from that mapping (`origin=adapter`);
-- anything else (`text:` from role C, `meta:`, `js_state:`, `xhr:`): no induction, the field goes to synthesis.
+- anything else (`derived:`): no induction, the field goes to synthesis.
 
-A candidate is kept only if every sample page proposes it and, on every page, it selects exactly one node whose value
-the engine executor normalizes to the published value (`equal`). The first such candidate wins; a field without one
-goes to synthesis (§4.6). Site strings exist only in the steps produced, which are IR data (C3, INV-03).
+A page's locators may differ in scheme from another's (a value role C found on one page, the DOM collector on another):
+a candidate is kept only if every sample page proposes it and, on every page, it selects exactly one node whose value
+the engine executor normalizes to the published value (`equal`). Of those, the one most pages propose, then the first,
+wins; a field without one goes to synthesis (§4.6). Site strings exist only in the steps produced, which are IR data
+(C3, INV-03). A listing's rows are induced from the item layer's blocks (`listing_induction`).
 """
 
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Final
 
 from lxml import etree
 from lxml.html import HtmlElement
@@ -29,14 +36,22 @@ from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.locator import InvalidLocator, Locator, parse_locator
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.executor import field_candidate
-from crawlerai.config_ir.model import FieldSteps, JsonLdStep, Step, XPathStep
+from crawlerai.config_ir.model import (
+    AbsolutizeUrlOp,
+    FieldSteps,
+    JsonLdStep,
+    JsonPathStep,
+    JsonSource,
+    Step,
+    XPathStep,
+)
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.text import name_test
 from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal
-from crawlerai.schemas.types import FieldSpec, SchemaDef
+from crawlerai.schemas.types import NEXT_PAGE_FIELD, FieldSpec, FieldType, SchemaDef
 
 # A class token that reads as a word or kebab-case words is a stable anchor; tokens that build tools hash carry
 # uppercase letters, underscores or long digit runs. A structural property of the token (SPEC-08 §4.5, D-0031), not a
@@ -46,6 +61,14 @@ _DIGIT_RUN = re.compile(r"\d{3}", re.ASCII)
 # RFC 9535 §2.3.3: an index segment.
 _INDEX = re.compile(r"\[\d+\]", re.ASCII)
 _STATUS: FieldStatus = "uncorroborated"  # until validation (§4.7) records corroboration
+_ABSOLUTIZE: Final = AbsolutizeUrlOp.model_validate({"absolutize_url": {}})
+# The schemes whose values come from an adapter's or API recipe's mapping, which the config reuses.
+MAPPED: Final = frozenset({"adapter", "api"})
+# The schemes of values read from a JSON document or a meta element: one step reads a list as well as a value.
+STRUCTURED: Final = frozenset({"jsonld", "meta", "js_state", "xhr"})
+# The schemes of values read from one element: structured markup, the DOM, a config's step, and role C's grounded
+# claims (a verbatim span of the cleaned text, INV-12, or a link's or image's element).
+ELEMENTS: Final = frozenset({"microdata", "dom", "config", "text"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,14 +113,21 @@ class _Candidate:
 
 
 def induce(schema: SchemaDef, sample: Sequence[SamplePage], vocabulary: Vocabulary) -> Induction:
-    """Steps for the fields of a detail schema whose published locators generalize over `sample`. A listing's rows
-    are synthesized (§4.6), so a listing schema induces nothing."""
-    if schema.page_kind != "detail" or not sample:
-        return Induction(to_synthesize=dict.fromkeys(schema.fields, "listing" if sample else "no_sample"))
+    """Steps for the page-level fields whose published locators generalize over `sample`: every field of a detail
+    schema, a listing's page-scoped fields and its next page's URL. A listing's rows are `listing_induction`'s."""
+    names = [name for name in schema.fields if page_level(schema, name)]
+    if not sample:
+        return Induction(to_synthesize=dict.fromkeys(names, "no_sample"))
     result = Induction()
-    for name, spec in schema.fields.items():
-        _induce_field(_Field(name, spec, schema, sample, vocabulary), result)
+    for name in names:
+        _induce_field(_Field(name, schema.fields[name], schema, sample, vocabulary), result)
     return result
+
+
+def page_level(schema: SchemaDef, name: str) -> bool:
+    """Whether a field runs on the whole page: any field of a detail schema; a listing's page-scoped fields and its next
+    page's URL, which the listing's `next` step finds (IR §12.1)."""
+    return schema.page_kind == "detail" or name == NEXT_PAGE_FIELD or schema.fields[name].scope == "page"
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,15 +145,14 @@ def _induce_field(f: _Field, result: Induction) -> None:
         result.to_synthesize[f.name] = "not_published_on_every_page"
         return
     schemes = {locator.scheme for locator in locators}
-    if len(schemes) != 1:
-        result.to_synthesize[f.name] = "no_common_pattern"
+    if schemes & MAPPED:
+        if len(schemes) == 1:
+            _mapped(f.name, schemes.pop(), locators, result)
+        else:
+            result.to_synthesize[f.name] = "no_common_pattern"
         return
-    (scheme,) = schemes
-    if scheme in ("adapter", "api"):
-        _mapped(f.name, scheme, locators, result)
-        return
-    if not (scheme == "jsonld" or (scheme in ("microdata", "dom", "config") and f.spec.item is None)):
-        result.to_synthesize[f.name] = f"not_induced:{scheme}"
+    if unread := sorted(scheme for scheme in schemes if not _reads(scheme, f.spec)):
+        result.to_synthesize[f.name] = f"not_induced:{unread[0]}"
         return
     step = _induced_step(
         [_proposals(locator, sample, f) for locator, sample in zip(locators, f.sample, strict=True)], f
@@ -132,6 +161,12 @@ def _induce_field(f: _Field, result: Induction) -> None:
         result.to_synthesize[f.name] = "no_verified_selector"
     else:
         result.fields[f.name] = FieldSteps(steps=[step], status=_STATUS)
+
+
+def _reads(scheme: str, spec: FieldSpec) -> bool:
+    """Whether induction proposes steps for a value located under `scheme`: an element's (one per value, so not for a
+    list), a JSON document's, or a meta element's."""
+    return scheme in STRUCTURED or (scheme in ELEMENTS and spec.item is None)
 
 
 def _induced_step(proposals: Sequence[list[_Candidate]], f: _Field) -> Step | None:
@@ -168,10 +203,19 @@ def _mapped(name: str, scheme: str, locators: Sequence[Locator], result: Inducti
 
 
 def _proposals(locator: Locator, sample: SamplePage, f: _Field) -> list[_Candidate]:
-    """The page's candidate steps for its `jsonld`, `microdata`, `dom` or `config` locator, in order of preference."""
-    if locator.scheme == "jsonld":
-        return list(_jsonld_candidates(sample.page, f.vocabulary, locator))
-    return list(_xpath_candidates(sample.page.lxml_tree, locator.parts[-1]))
+    """The page's candidate steps for the locator of its published value, in order of preference."""
+    match locator.scheme:
+        case "jsonld":
+            return list(_jsonld_candidates(sample.page, f.vocabulary, locator))
+        case "meta":
+            return list(_meta_candidates(locator.parts[0]))
+        case "js_state" | "xhr":
+            return list(_jsonpath_candidates(locator))
+        case "text":
+            element = span_element(sample.page, int(locator.parts[0]), int(locator.parts[1]))
+            return [] if element is None else list(xpath_candidates(element, f.spec))
+        case _:
+            return list(_xpath_candidates(sample.page.lxml_tree, locator.parts[-1], f.spec))
 
 
 def _verified(candidate: _Candidate, f: _Field) -> bool:
@@ -201,22 +245,39 @@ def _select(tree: HtmlElement, xpath: str) -> list[object]:
 
 def _jsonld_candidates(page: ParsedPage, vocabulary: Vocabulary, locator: Locator) -> Iterator[_Candidate]:
     """For each schema.org node the value is nested in, nearest first, and each of its types: the path from the node
-    to the value with array indices stripped, then as written."""
+    to the value with array indices stripped, then as written; then the same for the object holding the value, which a
+    composite field reads whole (`Offer.price+priceCurrency` is the offer, not its `price` alone)."""
     block, path = locator.parts
     try:
-        parts = segments(path)
+        written = segments(path)
     except ValueError:  # a member name the engine's JSONPath reader does not take
         return
     typed = {node: types for node, types, _ in JsonLdCollector(vocabulary).nodes(page)}
-    for at in range(len(parts), -1, -1):
-        types = typed.get(f"jsonld:{block}:{ROOT}" + "".join(parts[:at]), ())
-        rest = parts[at:]
-        stripped = ROOT + "".join("[*]" if _INDEX.fullmatch(s) else s for s in rest)
-        written = ROOT + "".join(rest)
-        for type_ in types:
-            for query in dict.fromkeys((stripped, written)):
-                if (step := _jsonld_step(query, type_)) is not None:
-                    yield _Candidate(step)
+    for parts in _and_holder(written):
+        for at in range(len(parts), -1, -1):
+            types = typed.get(f"jsonld:{block}:{ROOT}" + "".join(parts[:at]), ())
+            yield from _typed_candidates(types, parts[at:])
+
+
+def _typed_candidates(types: Sequence[str], rest: Sequence[str]) -> Iterator[_Candidate]:
+    """A `jsonld` step for each of the node's types, reading `rest` from it."""
+    for type_ in types:
+        for query in _queries(rest):
+            if (step := _jsonld_step(query, type_)) is not None:
+                yield _Candidate(step)
+
+
+def _and_holder(parts: list[str]) -> Iterator[list[str]]:
+    """A JSON value's path, then its holder's: the object it is a member of (RFC 9535 §2.5.1 name segments)."""
+    yield parts
+    if parts and not _INDEX.fullmatch(parts[-1]):
+        yield parts[:-1]
+
+
+def _queries(parts: Sequence[str]) -> Iterator[str]:
+    """The path with array indices stripped (`[*]`), then as written, each once."""
+    stripped = ROOT + "".join("[*]" if _INDEX.fullmatch(s) else s for s in parts)
+    yield from dict.fromkeys((stripped, ROOT + "".join(parts)))
 
 
 def _jsonld_step(query: str, type_: str) -> JsonLdStep | None:
@@ -226,36 +287,90 @@ def _jsonld_step(query: str, type_: str) -> JsonLdStep | None:
         return None
 
 
+# --- meta, embedded state, captured calls ---------------------------------------------------------------------------
+
+
+def _meta_candidates(name: str) -> Iterator[_Candidate]:
+    """HTML Standard §4.2.5: a `meta` element names its value by `name`, and RDFa (as OpenGraph writes it) by
+    `property`; the value is its `content`."""
+    if (literal := _literal(name)) is None:
+        return
+    for attribute in ("property", "name"):
+        nodes = f"//meta[@{attribute}={literal}]"
+        if (step := _xpath_step(f"{nodes}/@content")) is not None:
+            yield _Candidate(step, nodes)
+
+
+def _jsonpath_candidates(locator: Locator) -> Iterator[_Candidate]:
+    """A `jsonpath` step over the page's documents of the locator's source (embedded state, captured calls): the path
+    with array indices stripped (`[*]`), then as written; then the same for the object holding the value."""
+    source: JsonSource = "js_state" if locator.scheme == "js_state" else "xhr"
+    try:
+        written = segments(locator.parts[-1])
+    except ValueError:  # a member name the engine's JSONPath reader does not take
+        return
+    for parts in _and_holder(written):
+        for query in _queries(parts):
+            try:
+                yield _Candidate(JsonPathStep(jsonpath=query, source=source))
+            except ValidationError:  # outside the RFC 9535 subset the IR accepts
+                continue
+
+
+# --- role C's spans ---------------------------------------------------------------------------------------------------
+
+
+def span_element(page: ParsedPage, start: int, end: int) -> HtmlElement | None:
+    """The innermost element whose text holds the cleaned text's `[start, end)` (a role C value grounded as a verbatim
+    span, INV-12), when its node path resolves to one element of the lxml tree; None otherwise."""
+    paths = [run.node_path for run in page.cleaned_text.offsets if run.start < end and start < run.end]
+    if not paths:
+        return None
+    steps = [path.split("/") for path in paths]
+    common = []
+    for parts in zip(*steps, strict=False):
+        if len(set(parts)) != 1:
+            break
+        common.append(parts[0])
+    found = _select(page.lxml_tree, "/".join(common))
+    return found[0] if len(found) == 1 and isinstance(found[0], HtmlElement) else None
+
+
 # --- xpath ----------------------------------------------------------------------------------------------------------
 
 
-def _xpath_candidates(tree: HtmlElement, xpath: str) -> Iterator[_Candidate]:
-    """For a selector of one element: each anchored path to it, nearest anchor first, read as its normalized text, then
-    as each of its attributes. Any other selector (an expression of a config step) is proposed as it is."""
+def _xpath_candidates(tree: HtmlElement, xpath: str, spec: FieldSpec) -> Iterator[_Candidate]:
+    """For a selector of one element: each anchored path to it (`xpath_candidates`). Any other selector (an expression
+    of a config step) is proposed as it is."""
     found = _select(tree, xpath)
     if len(found) == 1 and isinstance(found[0], HtmlElement):
-        element = found[0]
-        for nodes in _anchored_paths(element):
-            for reading in _readings(nodes, element):
-                yield _Candidate(reading, nodes)
+        yield from xpath_candidates(found[0], spec)
     elif (step := _xpath_step(xpath)) is not None:
         yield _Candidate(step)
 
 
-def _anchored_paths(element: HtmlElement) -> Iterator[str]:
+def xpath_candidates(element: HtmlElement, spec: FieldSpec) -> Iterator[_Candidate]:
+    """Each anchored path to `element`, nearest anchor first, read as its normalized text, then as each of its
+    attributes."""
+    for nodes in anchored_paths(element):
+        for reading in readings(nodes, element, spec):
+            yield _Candidate(reading, nodes)
+
+
+def anchored_paths(element: HtmlElement) -> Iterator[str]:
     """`//anchor-test[anchor]/child/.../element` for each anchor of `element` and its ancestors, nearest first, without
     positional predicates (SPEC-08 §4.5)."""
     below = ""
     node: HtmlElement | None = element
     while node is not None and isinstance(node.tag, str):
         test = name_test(node.tag)
-        for anchor in _anchors(node):
+        for anchor in anchors(node):
             yield f"//{test}[{anchor}]{below}"
         below = f"/{test}{below}"
         node = node.getparent()
 
 
-def _anchors(node: HtmlElement) -> Iterator[str]:
+def anchors(node: HtmlElement) -> Iterator[str]:
     """The node's stable anchors: `@id`, `@itemprop`, `@data-*` and stable class tokens (SPEC-08 §4.5)."""
     for name in ("id", "itemprop"):
         if (value := node.get(name)) and (literal := _literal(value)) is not None:
@@ -280,15 +395,25 @@ def _literal(value: str) -> str | None:
     return f'"{value}"' if '"' not in value else None
 
 
-def _readings(nodes: str, element: HtmlElement) -> Iterator[Step]:
+def readings(nodes: str, element: HtmlElement, spec: FieldSpec) -> Iterator[Step]:
     """The node's normalized text (XPath 1.0 §4.2 `normalize-space`), then each of its attributes."""
-    for xpath in (f"normalize-space({nodes})", *(f"{nodes}/@{name}" for name in element.attrib)):
-        if (step := _xpath_step(xpath)) is not None:
-            yield step
+    for attribute in (None, *element.attrib):
+        yield from reading(nodes, attribute, spec)
 
 
-def _xpath_step(xpath: str) -> XPathStep | None:
+def reading(nodes: str, attribute: str | None, spec: FieldSpec) -> Iterator[Step]:
+    """The node's normalized text, or its `attribute`; a URL field's attribute resolved against the document base URL
+    first (RFC 3986 §5: an `href` or `src` may be relative)."""
+    xpath = f"normalize-space({nodes})" if attribute is None else f"{nodes}/@{attribute}"
+    urls = spec.type in (FieldType.URL, FieldType.IMAGE_URL)
+    if urls and attribute is not None and (step := _xpath_step(xpath, absolutize=True)) is not None:
+        yield step
+    if (step := _xpath_step(xpath)) is not None:
+        yield step
+
+
+def _xpath_step(xpath: str, *, absolutize: bool = False) -> XPathStep | None:
     try:
-        return XPathStep(xpath=xpath)
+        return XPathStep(xpath=xpath, post=[_ABSOLUTIZE] if absolutize else [])
     except ValidationError:  # outside XPath 1.0 as the IR accepts it (an attribute name with a prefix)
         return None

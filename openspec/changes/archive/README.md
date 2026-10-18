@@ -95,6 +95,7 @@ candidates (Appendix A #37, #46).
 | — | [Plan phase 3a: role C on detail pages asks every missing field and claims links and images by id; no apply_url derivation](2026-10-18-plan-phase-3a/proposal.md) ([tasks](2026-10-18-plan-phase-3a/tasks.md), [decisions](2026-10-18-plan-phase-3a/design.md)) | §8.4, §9, §11 | 05, 06 | — | tasks 1.1–3.2 (#283) |
 | — | [Plan phase 3b: the label–value collector reads every two-column structure — label lines, sibling pairs, one-value typed spotting](2026-10-18-plan-phase-3b/proposal.md) ([tasks](2026-10-18-plan-phase-3b/tasks.md), [decisions](2026-10-18-plan-phase-3b/design.md)) | §8.1 | 05 | — | tasks 1.1–3.1 (#282) |
 | — | [Plan phase 3c: fragments of a text value rank nowhere; image resource key ignores a stated size](2026-10-18-plan-phase-3c/proposal.md) ([tasks](2026-10-18-plan-phase-3c/tasks.md), [decisions](2026-10-18-plan-phase-3c/design.md)) | §10 | 05 | — | tasks 1.1–2.2 (#284) |
+| — | [Plan phase 4a: induction over block alignment, role C's grounded values in the oracle, role A only for required fields induction left](2026-10-18-plan-phase-4a/proposal.md) ([tasks](2026-10-18-plan-phase-4a/tasks.md), [decisions](2026-10-18-plan-phase-4a/design.md)) | §8.3, §10 | 06, 08 | — | tasks 1.1–3.1 (#285) |
 
 Where the labeling tool lives: SPEC-03 (L0), as the first screen of the frontend skeleton from SPEC-00, because
 it must exist before any extraction code and is inseparable from the eval store's custodian access model.

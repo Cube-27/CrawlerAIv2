@@ -72,7 +72,8 @@ from crawlerai.worker.learn import run_learner
 
 pytestmark = pytest.mark.anyio
 
-PRICE_STEP = {"xpath": "normalize-space(//p[@class='price'])"}
+# The price is in an element with no stable anchor, so induction verifies no selector for it and role A is asked.
+PRICE_STEP = {"xpath": "normalize-space(//body/p)"}
 # The API an API-backed site's pages fetch their values from: page `/p/<n>` from `<ENDPOINT>/<n>`.
 ENDPOINT = "https://api.example.test/v1/products"
 StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
@@ -84,10 +85,12 @@ def _document(name: str) -> SchemaDocument:
     return SchemaDocument(name=name, page_kind="detail", fields={"title": title, "price": price})
 
 
-def _page(n: int) -> bytes:
+def _page(n: int, *, anchored: bool = False) -> bytes:
+    """Product page `n`; with `anchored`, its price element carries a stable class."""
     node = f'{{"@context": "https://schema.org", "@type": "Product", "name": "Kettle {n}"}}'
     script = f'<script type="application/ld+json">{node}</script>'
-    body = f"<h1>Kettle {n}</h1><p class='price'>{n}.50 EUR</p>"
+    price = "<p class='price'>" if anchored else "<p>"
+    body = f"<h1>Kettle {n}</h1>{price}{n}.50 EUR</p>"
     return f"<html><head>{script}</head><body>{body}</body></html>".encode()
 
 
@@ -192,11 +195,11 @@ class LearnSite:
     def key(self) -> StateKey:
         return StateKey(self.site_id, self.schema.id, "detail")
 
-    async def extract(self, n: int, role_c: TextRoleC, *, api: bool = False) -> Stored:
+    async def extract(self, n: int, role_c: TextRoleC, *, api: bool = False, anchored: bool = False) -> Stored:
         """Page `n` fetched and extracted by a scrape job's task, with the site's active config if it has one; with
         `api`, fetched by the browser, which captured the API's answer for it."""
         url = f"{self.origin}/p/{n}"
-        fetched = self.fetch_result(url, 200, _page(n), (("Content-Type", "text/html"),))
+        fetched = self.fetch_result(url, 200, _page(n, anchored=anchored), (("Content-Type", "text/html"),))
         if api:
             fetched = _browser_capture(fetched, n)
         async with self.engine.begin() as conn:
@@ -229,12 +232,12 @@ class LearnSite:
             )
         return stored
 
-    async def pages(self, count: int, *, api: bool = False) -> None:
+    async def pages(self, count: int, *, api: bool = False, anchored: bool = False) -> None:
         async with self.engine.begin() as conn:
             await conn.execute(insert(ProgressiveState).values(**self.key.columns()))
         role_c = TextRoleC()
         for n in range(1, count + 1):
-            assert (await self.extract(n, role_c, api=api)).outcome == "extracted"
+            assert (await self.extract(n, role_c, api=api, anchored=anchored)).outcome == "extracted"
 
     async def learn(self, role_a: RoleA, replay: Replays | None = None) -> tuple[JobId, Learned | None]:
         async with self.engine.begin() as conn:
@@ -331,6 +334,27 @@ async def test_a_site_with_8_extracted_pages_is_learned_and_then_served_from_its
             await conn.execute(select(Record.mode).where(Record.extraction_id == stored.extraction_id))
         ).scalar_one()
     assert (extraction.mode, extraction.config_version, extraction.llm_calls, record_mode) == ("config", 1, 0, "config")
+
+
+async def test_a_value_role_c_grounded_in_an_anchored_element_is_induced_without_role_a(site: LearnSite) -> None:
+    # Learning's oracle holds role C's grounded values: the price's text span lies in `<p class='price'>`, whose
+    # stable class induction verifies on every sample page, so the config activates with role A asked nothing.
+    await site.pages(8, anchored=True)
+    async with site.engine.begin() as conn:
+        assert await trigger_learning(conn, batch=10) == 1
+
+    role_a = RoleA(PRICE_REPLY)
+    _, learned = await site.learn(role_a)
+
+    assert learned is not None
+    assert learned.config_id is not None
+    assert role_a.requests == []
+    async with site.engine.connect() as conn:
+        config = (await conn.execute(select(ExtractionConfig).where(ExtractionConfig.id == learned.config_id))).one()
+    assert (config.status, config.origin) == ("active", "induced")
+    assert config.ir["fields"]["price"]["steps"][0]["xpath"] == (
+        "normalize-space(//p[contains(concat(' ', normalize-space(@class), ' '), ' price ')])"
+    )
 
 
 class AskedRoleC(TextRoleC):
@@ -459,7 +483,7 @@ async def test_a_field_role_a_gives_no_working_steps_is_reported_as_not_learned_
         "status": None,
         "yield": 0.0,
         "validity": None,
-        "dropped": "not_learned: not_induced:text; synthesis: page 1: no_match; page 2: no_match",
+        "dropped": "not_learned: no_verified_selector; synthesis: page 1: no_match; page 2: no_match",
     }
     assert [r.prompt_kind for r in role_a.requests] == ["a_synth", "a_repair", "a_repair", "a_repair"]
 
