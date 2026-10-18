@@ -256,10 +256,15 @@ def _jsonld_candidates(page: ParsedPage, vocabulary: Vocabulary, locator: Locato
     for parts in _and_holder(written):
         for at in range(len(parts), -1, -1):
             types = typed.get(f"jsonld:{block}:{ROOT}" + "".join(parts[:at]), ())
-            for type_ in types:
-                for query in _queries(parts[at:]):
-                    if (step := _jsonld_step(query, type_)) is not None:
-                        yield _Candidate(step)
+            yield from _typed_candidates(types, parts[at:])
+
+
+def _typed_candidates(types: Sequence[str], rest: Sequence[str]) -> Iterator[_Candidate]:
+    """A `jsonld` step for each of the node's types, reading `rest` from it."""
+    for type_ in types:
+        for query in _queries(rest):
+            if (step := _jsonld_step(query, type_)) is not None:
+                yield _Candidate(step)
 
 
 def _and_holder(parts: list[str]) -> Iterator[list[str]]:

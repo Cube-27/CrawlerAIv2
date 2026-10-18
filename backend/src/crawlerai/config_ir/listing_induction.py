@@ -4,8 +4,8 @@ sample, without an LLM.
 
 On each sample page the item layer's align step (`collect.items.align`) finds the group of repeated item blocks; the
 group whose item URLs the published rows name most is the page's. Then:
-- **row selector**: for each block, each anchored path to it (`induction`, SPEC-08 §4.5: stable attributes only, no
-  positions), then its tag path from the document with the ancestors' positions; one is kept when, on every page, it
+- **row selector**: for each block, each anchored path to it (`induction`: stable attributes only, no positions),
+  then its tag path from the document with the ancestors' positions; one is kept when, on every page, it
   selects every block that leads to an item and nothing outside the group (DEPTA's partial alignment, Zhai and Liu
   2005: a block the page does not repeat is no row);
 - **row fields**: each published row is paired with the block whose item URL it publishes (RFC 3986 §6: compared
@@ -13,8 +13,8 @@ group whose item URLs the published rows name most is the page's. Then:
   normalizes to the row's published value proposes relative paths to itself: through each stable anchor on it or an
   ancestor inside the block, then its tag path, then its tag path with positions. A path is kept when the most rows
   propose it among those every page verifies: run by the engine executor under the row selector, it gives a valid value
-  on every row, and the published value on every row the engine published, rows aligned in document order as held-out
-  validation aligns them (`row_alignment`, D-1500).
+  on every row, and the published value on every row paired with a block, rows aligned in document order as held-out
+  validation aligns them (`row_alignment`).
 
 What the engine published is the oracle: its own values and role C's grounded ones, which the published rows hold
 alike. Site strings exist only in the steps produced, which are IR data (C3, INV-03).
@@ -25,8 +25,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Final
 
+from lxml import etree
 from lxml.html import HtmlElement
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import Items, align
@@ -146,8 +147,17 @@ def _pairs(
 def _row_selector(pages: Sequence[_Page]) -> Step | None:
     """The row selector every page proposes that selects each page's blocks and nothing outside its group."""
     proposals = [[xpath for block in page.blocks for xpath in _block_paths(block)] for page in pages]
-    xpath = induced(proposals, len(pages), lambda candidate: all(_selects_blocks(candidate, p) for p in pages))
+    xpath = induced(proposals, len(pages), lambda candidate: _selects_all(candidate, pages))
     return None if xpath is None else XPathStep(xpath=xpath)
+
+
+def _selects_all(xpath: str, pages: Sequence[_Page]) -> bool:
+    """Whether `xpath` is a step the IR accepts and selects each page's blocks and nothing outside its group."""
+    try:
+        XPathStep(xpath=xpath)
+    except ValidationError:  # outside XPath 1.0 as the IR accepts it
+        return False
+    return all(_selects_blocks(xpath, page) for page in pages)
 
 
 def _block_paths(block: HtmlElement) -> Iterator[str]:
@@ -170,7 +180,10 @@ def _position(node: HtmlElement) -> int:
 
 
 def _selects_blocks(xpath: str, page: _Page) -> bool:
-    found = page.sample.page.lxml_tree.xpath(xpath)
+    try:
+        found = page.sample.page.lxml_tree.xpath(xpath)
+    except etree.XPathError:  # an attribute name lxml's HTML parser accepts and XPath does not (`data-a:b`)
+        return False
     if not isinstance(found, list) or not found:
         return False
     selected = set(found)

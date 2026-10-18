@@ -151,3 +151,16 @@ def test_published_rows_no_block_holds_do_not_keep_a_field_from_being_induced() 
     induced = induce_listing(SCHEMA, sample, VOCABULARY)
     assert induced.listing is not None
     assert (set(induced.listing.fields), induced.to_synthesize) == ({"title", "url", "badge"}, {})
+
+
+def test_a_block_attribute_xpath_cannot_name_is_passed_over() -> None:
+    # `data-a:b` parses as HTML but reads as a namespace prefix in XPath: its path is refused, the class still anchors.
+    sample = [
+        SamplePage(
+            ParsedPage(_html(page).replace("<li class='card'>", "<li class='card' data-a:b='x'>")), CTX, {}, s.rows
+        )
+        for page, s in enumerate(SAMPLE, start=1)
+    ]
+    listing = induce_listing(SCHEMA, sample, VOCABULARY).listing
+    assert listing is not None
+    assert listing.row == XPathStep(xpath="//li[contains(concat(' ', normalize-space(@class), ' '), ' card ')]")

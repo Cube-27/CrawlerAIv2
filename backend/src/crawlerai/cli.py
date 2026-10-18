@@ -553,7 +553,11 @@ def _add_learn_sim(eval_commands: "argparse._SubParsersAction[argparse.ArgumentP
     sim.add_argument("--pages", type=_positive_int, default=3, help="the pages per host learning reads")
     sim.add_argument("--llm", choices=["recorded", "unanswered", "live"], default="unanswered", help="role C misses")
     sim.add_argument("--role-a", choices=["abstain", "live"], default="abstain", help="count role A, or call it")
-    sim.add_argument("--llm-max-calls", type=_positive_int, help="with a live client: the most provider calls each")
+    sim.add_argument(
+        "--llm-max-calls",
+        type=_positive_int,
+        help="with a live client: the most provider calls each makes in the whole simulation",
+    )
     sim.add_argument("--out", type=Path, help="write each host's run (JSON, no host names) here")
 
 

@@ -34,7 +34,7 @@ from crawlerai.db.models import CaptureId, FetchMethod
 from crawlerai.eval.engine import PipelineEngine
 from crawlerai.eval.replay import RecordedLLM, RecordingMissing, RecordingUnreadable
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalStore
-from crawlerai.llm.client import LLMClient, LLMRequest, LLMResponse, ReplyCheck, request_hash
+from crawlerai.llm.client import LLMClient, LLMFailure, LLMRequest, LLMResponse, ReplyCheck, request_hash
 from crawlerai.llm.pricing import default_pricing
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.records import RecordContent
@@ -43,7 +43,7 @@ from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.base import ObjectNotFound
 from crawlerai.storage.capture_bundle import CaptureBundle, CorruptBundle
 
-# Role A's prompt kinds (SPEC-08 §4.6).
+# Role A's prompt kinds: its first request and its repairs (learning-configs, "Induction, then role A synthesis").
 ROLE_A: Final = frozenset({"a_synth", "a_repair"})
 FIRST_CALL: Final = "a_synth"
 # The most role A calls a simulation makes when role A runs live and no other bound is given.
@@ -80,9 +80,9 @@ class HostRun:
 
 
 class RoleACounter:
-    """An `LLMClient` that counts role A's first calls and their characters, answering role A from `role_a` or, without
-    one, with no step; every other call goes to `other` (role C, replayed). Repairs are not counted: an abstaining role
-    A's repairs say nothing of a live one's."""
+    """An `LLMClient` that counts role A's calls and their characters, answering role A from `role_a` or, without one,
+    with no step; every other call goes to `other` (role C, replayed). A live role A's repairs are counted, as the
+    provider is called for them; an abstaining one's are not: they say nothing of a live one's."""
 
     def __init__(self, other: LLMClient, role_a: LLMClient | None) -> None:
         self._other = other
@@ -93,7 +93,7 @@ class RoleACounter:
     async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
         if req.prompt_kind not in ROLE_A:
             return await self._other.complete_json(req, check)
-        if req.prompt_kind == FIRST_CALL:
+        if req.prompt_kind == FIRST_CALL or self._role_a is not None:
             self.calls += 1
             self.chars += len(req.system) + len(req.user)
         if self._role_a is not None:
@@ -175,11 +175,14 @@ async def _host_run(
         fetch: FetchMethod = "http" if stored[0].bundle.manifest.method == "http" else "browser"
         target = Target(schema, pages[0].host, fetch, None)
         held_out = list(islice(cycle([s.held_out for s in stored]), max(MIN_HELD_OUT, len(stored))))
-        validated = await learn_config(
-            counter, target, stored, held_out, engine.data.vocabulary, max_chars, absent_from=stored
-        )
-        activated = validated.ir is not None
-        fields = config_fields(validated.ir)
+        try:
+            validated = await learn_config(
+                counter, target, stored, held_out, engine.data.vocabulary, max_chars, absent_from=stored
+            )
+        except LLMFailure:  # a live role A failed or its budget ran out: as a learning run, nothing activates
+            validated = None
+        activated = validated is not None and validated.ir is not None
+        fields = 0 if validated is None else config_fields(validated.ir)
     return HostRun(
         category=pages[0].row.category,
         page_kind=schema.page_kind,

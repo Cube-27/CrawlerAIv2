@@ -3,6 +3,8 @@ the aggregates by category. No provider is called."""
 
 import asyncio
 
+from pydantic import JsonValue
+
 from crawlerai.config_ir.synthesis import output_schema
 from crawlerai.eval.learn_sim import NO_STEP, HostRun, RoleACounter, summary
 from crawlerai.llm.client import LLMRequest
@@ -61,3 +63,12 @@ def test_a_host_is_zero_touch_when_its_config_activates_without_role_a() -> None
         "role_a_usd_estimate": 0.4,
     }
     assert found["all"]["zero_touch"] == 0.5  # type: ignore[index,call-overload]
+
+
+def test_a_live_role_a_has_its_repairs_counted_as_the_provider_is_called_for_them() -> None:
+    reply: dict[str, JsonValue] = {"fields": [], "listing": {"row": NO_STEP, "fields": []}}
+    live = ScriptedClient(reply, reply)
+    counter = RoleACounter(ScriptedClient(), live)
+    asyncio.run(counter.complete_json(_request("a_synth", "abcd")))
+    asyncio.run(counter.complete_json(_request("a_repair", "abcdefgh")))
+    assert (counter.calls, counter.chars, len(live.requests)) == (2, 14, 2)
