@@ -235,7 +235,6 @@ def test_a_requisitions_details_are_one_posting_with_its_stated_fields() -> None
         (job, "company"): "Example Employer Inc",
         (job, "locations"): ["Northtown, Example Region, Exampleland", "Southville"],
         (job, "description"): "<p>Build example platforms.</p>",
-        (job, "apply_url"): f"{ROOT}/job/100001",
         (job, "date_posted"): "2026-09-30T08:15:00+00:00",
         (job, "posted"): "2026-09-30T08:15:00+00:00",
         (job, "employment_type"): "Full time",

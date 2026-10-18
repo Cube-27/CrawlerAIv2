@@ -124,7 +124,8 @@ class EngineData:
 
 @dataclass(frozen=True, slots=True)
 class GapRequest:
-    """§4.13: the fields of `target` that resolution left missing, for role C to read from the page text."""
+    """The fields of `target` that resolution left missing, for role C to read from the page text (llm spec, "When role
+    C is asked")."""
 
     page: ParsedPage
     schema: SchemaDef
@@ -578,9 +579,9 @@ def _scoped(schema: SchemaDef, fields: FieldSet, scope: Scope) -> FieldSet:
 
 def _missing(schema: SchemaDef, fields: FieldSet, covered: frozenset[str]) -> tuple[str, ...]:
     """The fields role C is asked for on a detail page (llm spec, "When role C is asked"), in schema order: every
-    `missing` field, optional ones included, that the active config does not run (ARCHITECTURE §8.4), never a
-    conflict or an abstention. An `object` field, and a list of objects (a row-mapped field included), is never asked:
-    a claim is one verbatim span or element, which cannot hold typed sub-fields (SPEC-13 §4.9)."""
+    `missing` field, optional ones included, that the active config does not run, never a conflict or an abstention.
+    An `object` field, and a list of objects (a row-mapped field included), is never asked: a claim is one verbatim
+    span or element (llm spec, "Role C input, claims and candidates"), which cannot hold typed sub-fields."""
     return tuple(
         name
         for name, outcome in fields.items()

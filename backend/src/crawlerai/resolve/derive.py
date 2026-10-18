@@ -31,9 +31,10 @@ class Derived:
 
 def is_page_url_field(schema: SchemaDef, spec: FieldSpec, primary: frozenset[str]) -> bool:
     """Whether the field is the URL of the page's entity: on a detail page, a url field whose path is `T.url` for a
-    primary type T (schema.org Thing.url, "URL of the item"; intent's primary types, §4.6) in every alternative. A field
-    with any other alternative (an apply link, `JobPosting.potentialAction.target`) names a link the page states, which
-    the page's own URL never stands in for (resolution spec, "Derived values")."""
+    primary type T (schema.org Thing.url, "URL of the item"; the primary types of identity-and-intent's target
+    selection) in every alternative. A field with any other alternative (an apply link,
+    `JobPosting.potentialAction.target`) names a link the page states, which the page's own URL never stands in for
+    (resolution spec, "Derived values")."""
     if schema.page_kind != "detail" or spec.type is not FieldType.URL or spec.schema_org is None:
         return False
     paths = parse_paths(spec.schema_org)
