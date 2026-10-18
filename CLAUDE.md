@@ -70,7 +70,8 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
   migration. Record versions, draft and active configs and `engine_version` stay.
 - An architecture change deletes what it supersedes in the same PR. Code comments cite the spec requirement or the
   standard, not `D-NNNN`, `ARCHITECTURE §N` or `SPEC-NN`.
-- Tests: behaviour and Hypothesis property tests over generated inputs; replay tests of stored synthetic captures
+- Tests: few, behaviour-level; no eval loops — one timeboxed regression run per PR; accuracy claims only from a fresh
+  batch's first score. Behaviour and Hypothesis property tests over generated inputs; replay tests of stored synthetic captures
   for extraction; a `pytest.raises` block holds one call.
 - Decisions within one change's scope are yours: log them in the PR body. Escalate to the owner anything that alters
   the contract, `openspec/design/`, a public API or schema other capabilities rely on, the evaluation procedure or
