@@ -74,10 +74,10 @@ run.) Refs: owner (2026-10-18, master plan decision 10).
 - **THEN** it exits non-zero and writes nothing
 
 ### Requirement: Claims before and after milestone M
-Until calibration is fitted confidence SHALL be `calibrated=false` and precedence and drift margins their defaults;
-improvement claims come only from golden-set results (a change's dev delta, a fresh batch's first score), and no
-doc, PR or UI claims accuracy beyond them. (Previously: improvement claims from fresh results, a hidden drop a
-regression.) Refs: owner (2026-10-18, master plan decision 2).
+Confidence SHALL be `calibrated=true` only for the buckets `calibration.json` (fitted on dev) holds, and precedence and drift margins stay their defaults until fitted; improvement claims come only from golden-set results (a change's dev delta, a fresh batch's first score), and no doc, PR or UI claims accuracy beyond them. (Previously: until calibration was fitted confidence was `calibrated=false`.) Refs: owner (2026-10-18, master plan decision 2), D-1772.
+
+### Requirement: Gated eval run
+`eval run --min-confidence` SHALL replay the split with that minimum confidence and store no run, so a fit never reads what a gate let through. Refs: D-1771.
 
 ### Requirement: Retired evaluation invariants (INV-01, INV-02, INV-04, INV-19, INV-21, INV-25)
 INV-01 (private store), INV-02 (fitting on dev only), INV-04 (hidden-host scan), INV-19 (protected CI job), INV-21
