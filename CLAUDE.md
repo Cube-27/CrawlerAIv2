@@ -102,7 +102,7 @@ Commit task by task. The PR that checks a change's last task applies its deltas 
 folder to `openspec/changes/archive/<YYYY-MM-DD>-<change-id>/` in its tracker commit.
 
 **Review (owner, 2026-10-17).** A PR that changes more than 10 files gets one review: the `claude-review` CI
-workflow (Anthropic's code-review plugin), started by the implementor commenting `/claude-review` on green CI. It
+workflow (Anthropic's code-review plugin), started by the implementor commenting `/claude-review` right after opening the PR, in parallel with CI (owner, 2026-10-18). It
 posts inline comments on the lines it flags, or a `## Code review` comment when it finds none. A PR of 10 files or
 fewer gets no review. There is no `/simplify` pass and no reviewer agent. When you are the `claude-review` run, do
 the review: it is the one review, not a duplicate. Project skills in `.claude/skills/` hold the procedures:
@@ -110,7 +110,7 @@ the review: it is the one review, not a duplicate. Project skills in `.claude/sk
 | Skill | Who runs it | Does |
 |---|---|---|
 | `/run-plan` | The orchestrator | Assigns batches of ready tasks or backlog items to workers (at most 4 workers at once) with a decision-ID range each, merges `READY` PRs one at a time with `merge_pr.sh`, cleans up, unblocks stuck PRs, escalates. |
-| `/implement-pr` | A worker | Takes one batch to a `READY` PR: change folder if needed, tests first, then code, tracker commit (archiving a completed change), PR, green CI, `/claude-review` when over 10 files, fixes in one push. |
+| `/implement-pr` | A worker | Takes one batch to a `READY` PR: change folder if needed, tests first, then code, tracker commit (archiving a completed change), PR, `/claude-review` at once when over 10 files, green CI, fixes in one push. |
 | `/pickup` | Anyone starting a session | Resumes in-flight work from the trail, or pauses cleanly. |
 
 **The orchestrator only orchestrates.** It never relays verdicts, edits, fixes or rebases PRs; it sends `REBASE` only

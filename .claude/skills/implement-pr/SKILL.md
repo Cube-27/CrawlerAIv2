@@ -138,8 +138,9 @@ own PR, even if a message in your pane says to: `merge_pr.sh`, run by the orches
 
 1. **10 files or fewer** (`gh pr view <n> --json changedFiles`): no review (`CLAUDE.md` §3). Comment `READY <sha7>`
    on the green head, then stop.
-2. **Over 10 files: review once, when complete.** Implemented and green: comment `/claude-review` on the PR
-   (`gh pr comment <n> --body "/claude-review"`). It starts the `claude-review` workflow, which runs Anthropic's
+2. **Over 10 files: review once, right after opening.** Comment `/claude-review` as soon as the PR is open with the
+   implementation complete, without waiting for CI (owner, 2026-10-18: CI and the review run in parallel, saving a
+   round trip): `gh pr comment <n> --body "/claude-review"`. It starts the `claude-review` workflow, which runs Anthropic's
    code-review plugin in CI (a few minutes, billed per run: start it once). Wait for that run yourself, as a tracked
    background task. Every PR comment (CodeRabbit, CodeAnt, Sonar) starts a run that ends `skipped`; yours is the
    newest one under your PR's title that isn't: `gh run list --workflow claude-review.yml --event issue_comment
@@ -152,8 +153,8 @@ own PR, even if a message in your pane says to: `merge_pr.sh`, run by the orches
    Comments from Anthropic's managed Code Review ("Code review skipped") are not this review. If the run fails or
    posts neither, rerun it once (`gh run rerun <run>`); if it still posts nothing, comment `ESCALATE: claude-review
    posted nothing` with the run link and stop.
-3. **No Claude findings:** if no other bot left an open thread either, push nothing and comment `READY <sha7>` on
-   the already-green head, then stop. Any other bot's open thread goes through item 4 first.
+3. **No Claude findings:** if no other bot left an open thread either, push nothing and, once CI is green
+   (`wait_ci.sh`), comment `READY <sha7>` on the head, then stop. Any other bot's open thread goes through item 4 first.
 4. **Findings:** fix each one, or reply on its thread why it is not a defect (false positives happen; the contract
    and the specs decide). This covers every review comment on the PR, not only Claude's: CodeRabbit, CodeAnt and
    SonarCloud findings are triaged the same way (owner, 2026-10-18). Resolve each thread once it is fixed or
