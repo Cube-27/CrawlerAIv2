@@ -53,6 +53,13 @@ class Shape:
     anchor: Members = ()
 
 
+def apply_action(member: str) -> Shape:
+    """The schema.org ApplyAction whose `target` is a posting's application form, the URL at `member` of the posting's
+    object (an API's apply link): a `potentialAction` of the JobPosting, which `apply_url` ranks above its `url`
+    (D-1493)."""
+    return Shape(type="ApplyAction", anchor=(member,), properties={"target": (member,)})
+
+
 @dataclass(frozen=True)
 class AdapterMatch:
     tenant: str  # the platform's identifier for the tenant (a board token, a site name, a shop's host)

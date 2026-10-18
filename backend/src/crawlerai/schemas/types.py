@@ -46,11 +46,13 @@ NAME_PATTERN = r"[a-z][a-z0-9_]{0,63}"
 Name = Annotated[str, StringConstraints(pattern=rf"^{NAME_PATTERN}$")]
 # schema.org naming conventions: types are UpperCamelCase, properties lowerCamelCase. A path starts at a type and
 # follows properties; `+` joins a second property of the last type into one atomic value (`Offer.price+priceCurrency`).
-# `|` separates up to four alternatives, whose candidates are pooled (SPEC-13 §4.1): `Product.sku|Offer.sku`.
+# `|` separates up to four alternatives, whose candidates are pooled (SPEC-13 §4.1): `Product.sku|Offer.sku`; `>` ranks
+# them: the alternatives after it are read on an entity only when those before it reach no value there
+# (`JobPosting.potentialAction.target>JobPosting.url`, D-1493).
 _ALTERNATIVE = r"[A-Z][A-Za-z0-9]*(\.[a-z][A-Za-z0-9]*)+(\+[a-z][A-Za-z0-9]*)?"
 MAX_ALTERNATIVES = 4
 SchemaOrgPath = Annotated[
-    str, StringConstraints(pattern=rf"^{_ALTERNATIVE}(\|{_ALTERNATIVE}){{0,{MAX_ALTERNATIVES - 1}}}$")
+    str, StringConstraints(pattern=rf"^{_ALTERNATIVE}([|>]{_ALTERNATIVE}){{0,{MAX_ALTERNATIVES - 1}}}$")
 ]
 # `schema:<Enumeration>` names a schema.org enumeration (a type, so UpperCamelCase); `type:<name>` names a
 # language-tagged vocabulary in `crawlerai.normalize.vocab`.

@@ -3,71 +3,70 @@ admitted by the owner 2026-10-16).
 
 Role C reads a listing's rows from the cleaned text, which holds no link targets, so its rows carry no item URL. The
 page's repeated item blocks (`acquire.items.item_groups`: sibling elements of one shape that each are or hold a
-hyperlink) hold each item's own link. A row's block is the one block whose text holds all the row's grounded values
-(D-1122, D-1242); among several, the one where most of them are an element's whole text, when one is. A block no
-other row has as its block gives the row's fields that are the item's own schema.org `url` the one document its
-hyperlinks (HTML Standard §4.6.1) lead to other than the page, or else the one document its hyperlinks labelled with
-a row value (their whole text is one) lead to (§4.5.1: an `a` element's content labels its link; D-1243). The rows
-are looked for in every group of repeated items, and the group that places most rows is theirs (D-1244). Block text
-is read as the cleaned text shows it (`content.text`: hidden and non-rendered elements left out, NFC, an ellipsis cut
-completed by its `title`; D-1241). A row in no block or in several, a block two rows have, or a block whose links
-lead to several documents with none labelled by the row gives no candidate: the rule declines rather than guesses
-(C7).
+hyperlink) hold each item's own link. A row's block is the one block whose span of the cleaned text
+(`content.item_text.block_spans`) holds every grounded value of the row at its offsets (INV-12): where the values
+sit in the page, not what they say, so items that repeat a title and price (one product in several colours) each
+keep their own block (D-1490). A block no other row has as its block gives the row's fields that are the item's own
+schema.org `url` the one document its hyperlinks (HTML Standard §4.6.1) lead to other than the page, or else the one
+document its hyperlinks labelled with a row value (their whole text is one) lead to (§4.5.1: an `a` element's content
+labels its link; D-1243). The rows are looked for in every group of repeated items, and the group that places most
+rows is theirs (D-1244). Block text, for the labels, is read as the cleaned text shows it (`content.text`: hidden and
+non-rendered elements left out, NFC, an ellipsis cut completed by its `title`; D-1241). A row in no block, a block two
+rows have, or a block whose links lead to several documents with none labelled by the row gives no candidate: the
+rule declines rather than guesses (C7).
 """
 
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
+from urllib.parse import parse_qsl, urlsplit
 
 from lxml.html import HtmlElement
 
 from crawlerai.acquire.items import is_hyperlink, item_groups
 from crawlerai.collect.base import Candidate, Entity
-from crawlerai.collect.locator import format_locator
+from crawlerai.collect.locator import format_locator, parse_locator
 from crawlerai.collect.schema_org_map import candidate, parse_paths
+from crawlerai.content.item_text import block_spans
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.text import completed, hidden, xpath_step
-from crawlerai.normalize.base import Context
+from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.text import compose
 from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
+# A span of the cleaned text: its start and end offsets.
+_Span = tuple[int, int]
 # schema.org Thing.url, "URL of the item": a path straight to it from the row's type names the item's own URL.
 _ITEM_URL = ("url",)
 
 
 @dataclass(frozen=True, slots=True)
 class _Block:
-    """One repeated item block as the cleaned text shows it, white space dropped (`_squeezed`): its whole text, and
-    each element's whole text, by element."""
+    """One repeated item block and each element's whole text in it as the cleaned text shows it, white space dropped
+    (`_squeezed`)."""
 
     element: HtmlElement
     texts: dict[HtmlElement, str]
-    wholes: frozenset[str]
 
     @classmethod
     def read(cls, element: HtmlElement) -> "_Block":
-        texts = _shown_texts(element)
-        return cls(element, texts, frozenset(texts.values()))
-
-    @property
-    def text(self) -> str:
-        return self.texts.get(self.element, "")
+        return cls(element, _shown_texts(element))
 
 
 def row_links(
     page: ParsedPage, schema: SchemaDef, ctx: Context, rows: Sequence[Entity], candidates: Sequence[Candidate]
 ) -> tuple[Candidate, ...]:
     """`dom` candidates of the item URL fields for the `rows` role C read, from their blocks (module docstring).
-    `candidates` are role C's, which ground each row's values."""
-    fields = {name: spec for name, spec in schema.fields.items() if _item_url(spec)}
+    `candidates` are role C's, which ground each row's values at `text` locators."""
+    fields = {name: schema.fields[name] for name in item_url_fields(schema)}
     if not fields or not rows:
         return ()
-    values = {row.id: _grounded_values(row, candidates) for row in rows}
+    grounded = {row.id: _grounded(row, candidates) for row in rows}
     here = canonical_url(ctx.page_url, None) if ctx.page_url is not None else None
     links: list[Candidate] = []
     diagnostics: list[str] = []  # a URL the candidate model refuses is not a link of the block's own
-    for row, block in _rows_group(rows, values, item_groups(page.lxml_tree)).items():
-        if (link := _one_link(block, values[row.id], ctx.base_url, here)) is None:
+    for row, element in _rows_group(page, rows, grounded).items():
+        if (link := _one_link(page, _Block.read(element), grounded[row.id], ctx.base_url, here)) is None:
             continue
         href, xpath = link
         for name, spec in fields.items():
@@ -77,38 +76,105 @@ def row_links(
 
 
 def _rows_group(
-    rows: Sequence[Entity], values: dict[str, list[str]], groups: Iterable[Sequence[HtmlElement]]
-) -> dict[Entity, _Block]:
+    page: ParsedPage, rows: Sequence[Entity], grounded: dict[str, list[tuple[str, _Span]]]
+) -> dict[Entity, HtmlElement]:
     """The rows' blocks in the group that places most rows; on a tie, the larger group, then the first."""
-    best: dict[Entity, _Block] = {}
+    best: dict[Entity, HtmlElement] = {}
     best_size = 0
-    for group in groups:
-        placed = _blocks_of(rows, values, [_Block.read(element) for element in group])
+    for group in item_groups(page.lxml_tree):
+        spans = block_spans(page, group)
+        placed = _blocks_of(rows, grounded, spans)
         if (len(placed), len(group)) > (len(best), best_size):
-            best, best_size = placed, len(group)
+            best, best_size = {row: group[i] for row, i in placed.items()}, len(group)
     return best
 
 
-def _blocks_of(rows: Sequence[Entity], values: dict[str, list[str]], blocks: Sequence[_Block]) -> dict[Entity, _Block]:
+def _blocks_of(
+    rows: Sequence[Entity], grounded: dict[str, list[tuple[str, _Span]]], spans: Sequence[_Span | None]
+) -> dict[Entity, int]:
     """Each row's block (`_block_of`), when no other row has it as its block."""
     rows_in: dict[int, list[Entity]] = {}
     for row in rows:
-        if (found := _block_of(values[row.id], blocks)) is not None:
+        if (found := _block_of([span for _, span in grounded[row.id]], spans)) is not None:
             rows_in.setdefault(found, []).append(row)
-    return {owners[0]: blocks[i] for i, owners in rows_in.items() if len(owners) == 1}
+    return {owners[0]: i for i, owners in rows_in.items() if len(owners) == 1}
 
 
-def _block_of(values: list[str], blocks: Sequence[_Block]) -> int | None:
-    """The one block whose text holds all `values`; among several, the one where most of them are an element's whole
-    text (an item's name is an element's text in its own block, while a longer name holding it is not); else None."""
+def _block_of(values: Sequence[_Span], spans: Sequence[_Span | None]) -> int | None:
+    """The block whose span holds every value's span; None when the row has no value or no one block holds them all
+    (sibling blocks do not overlap, so at most one does)."""
     if not values:
         return None
-    found = [i for i, block in enumerate(blocks) if all(value in block.text for value in values)]
-    if len(found) > 1:
-        wholes = {i: sum(value in blocks[i].wholes for value in values) for i in found}
-        most = max(wholes.values())
-        found = [i for i in found if wholes[i] == most]
-    return found[0] if len(found) == 1 else None
+    return next(
+        (
+            i
+            for i, span in enumerate(spans)
+            if span is not None and all(span[0] <= start and end <= span[1] for start, end in values)
+        ),
+        None,
+    )
+
+
+def as_block_links(
+    page: ParsedPage, schema: SchemaDef, ctx: Context, candidates: Sequence[Candidate], rows: frozenset[str]
+) -> tuple[Candidate, ...]:
+    """`candidates` with each structured item URL of a row in `rows` that names a link of the page's repeated item
+    blocks but for a trailing slash or a query that link does not carry replaced by that link, as a `dom` candidate
+    (D-1495). The page links the item at that URL: the structured URL names the same path (RFC 3986 §3.3) with the
+    page's link's query widened or its last segment's slash added or dropped, so it is the page's own link's spelling.
+    A URL that two links equally match, or none, is kept as it is (C7)."""
+    fields = frozenset(item_url_fields(schema))
+    if not fields or not rows:
+        return tuple(candidates)
+    links = _page_links(page, ctx.base_url)
+    diagnostics: list[str] = []
+    replaced: list[Candidate] = []
+    for c in candidates:
+        own = _own_link(c, links) if c.field in fields and c.entity_id in rows else None
+        found = None if own is None else _dom_candidate(c, schema, own, ctx, diagnostics)
+        replaced.append(c if found is None else found)
+    return tuple(replaced)
+
+
+def _page_links(page: ParsedPage, base: str | None) -> dict[str, tuple[str, HtmlElement]]:
+    """Every document the page's repeated item blocks link to, with its first anchor and that anchor's `href`."""
+    return _targets(
+        (anchor for group in item_groups(page.lxml_tree) for block in group for anchor in _hyperlinks(block)),
+        base,
+        None,
+    )
+
+
+def _own_link(c: Candidate, links: dict[str, tuple[str, HtmlElement]]) -> tuple[str, HtmlElement] | None:
+    """The one block link the candidate's URL spells with another trailing slash or a wider query; None when its URL
+    is a block link already, or no single link matches."""
+    value = c.normalized.value if isinstance(c.normalized, Ok) else None
+    if c.source_kind in {"llm", "dom"} or not isinstance(value, str) or value in links:
+        return None
+    matching = [link for url, link in links.items() if _respelled(value, url)]
+    return matching[0] if len(matching) == 1 else None
+
+
+def _respelled(value: str, link: str) -> bool:
+    """Whether `value` is `link` with its path's trailing slash added or dropped, or with query parameters `link` does
+    not carry added (each of `link`'s parameters kept)."""
+    ours, theirs = urlsplit(value), urlsplit(link)
+    if (ours.scheme, ours.netloc, ours.path.rstrip("/")) != (theirs.scheme, theirs.netloc, theirs.path.rstrip("/")):
+        return False
+    return set(parse_qsl(theirs.query, keep_blank_values=True)) <= set(parse_qsl(ours.query, keep_blank_values=True))
+
+
+def _dom_candidate(
+    c: Candidate, schema: SchemaDef, link: tuple[str, HtmlElement], ctx: Context, diagnostics: list[str]
+) -> Candidate | None:
+    href, anchor = link
+    spec = schema.fields[c.field]
+    return candidate(c.field, spec, c.entity_id, "dom", href, format_locator("dom", _xpath(anchor)), ctx, diagnostics)
+
+
+def item_url_fields(schema: SchemaDef) -> tuple[str, ...]:
+    """The schema's row fields that `row_links` fills: the item's own URL (`_ITEM_URL`)."""
+    return tuple(name for name, spec in schema.fields.items() if _item_url(spec))
 
 
 def _item_url(spec: FieldSpec) -> bool:
@@ -120,11 +186,17 @@ def _item_url(spec: FieldSpec) -> bool:
     )
 
 
-def _grounded_values(row: Entity, candidates: Sequence[Candidate]) -> list[str]:
-    """The row's grounded values, white space dropped: role C's values of any of its fields, each a span of the
-    cleaned text (SPEC-06 §4.3, INV-12)."""
-    grounded = (c.raw for c in candidates if c.entity_id == row.id and c.source_kind == "llm")
-    return [squeezed for raw in grounded if isinstance(raw, str) and (squeezed := _squeezed(raw))]
+def _grounded(row: Entity, candidates: Sequence[Candidate]) -> list[tuple[str, _Span]]:
+    """The row's grounded values, white space dropped, with their spans of the cleaned text: role C's values of any of
+    its fields, each a span of the cleaned text at its `text` locator (SPEC-06 §4.3, INV-12)."""
+    found: list[tuple[str, _Span]] = []
+    for c in candidates:
+        if c.entity_id != row.id or c.source_kind != "llm" or not isinstance(c.raw, str):
+            continue
+        locator = parse_locator(c.locator)
+        if locator.scheme == "text" and (squeezed := _squeezed(c.raw)):
+            found.append((squeezed, (int(locator.parts[0]), int(locator.parts[1]))))
+    return found
 
 
 def _squeezed(text: str) -> str:
@@ -153,18 +225,49 @@ def _shown_texts(root: HtmlElement) -> dict[HtmlElement, str]:
     return texts
 
 
-def _one_link(block: _Block, values: list[str], base: str | None, here: str | None) -> tuple[str, str] | None:
+def _one_link(
+    page: ParsedPage, block: _Block, values: Sequence[tuple[str, _Span]], base: str | None, here: str | None
+) -> tuple[str, str] | None:
     """The `href` and XPath of the block's first hyperlink to the one document its hyperlinks lead to, other than this
-    page (`canonical_url`: http(s), without the fragment); when they lead to several, of the one document its
-    hyperlinks whose whole text is a row value lead to; None when there is no such one document."""
+    page (`canonical_url`: http(s), without the fragment); when they lead to several, of the one document the
+    hyperlinks a row value labels lead to (`_labelled`); None when there is no such one document."""
     targets = _targets(_hyperlinks(block.element), base, here)
     if len(targets) > 1:
-        labelled = (a for a in _hyperlinks(block.element) if block.texts.get(a) in values)
-        targets = _targets(labelled, base, here)
+        targets = _without_queries(targets) or _targets(_labelled(page, block, values), base, here)
     if len(targets) != 1:
         return None
     ((href, anchor),) = targets.values()
     return href, _xpath(anchor)
+
+
+def _without_queries(targets: dict[str, tuple[str, HtmlElement]]) -> dict[str, tuple[str, HtmlElement]]:
+    """The one target without a query when every other target is that document's URL with a query added: the block
+    links to one path (RFC 3986 §3.3: the path names the resource within its authority), which some of its links
+    refine with a query (§3.4), such as a variant chosen by a swatch; else empty."""
+    bare = [url for url in targets if not urlsplit(url).query]
+    if len(bare) != 1:
+        return {}
+    (one,) = bare
+    if all(url == one or url.startswith(f"{one}?") for url in targets):
+        return {one: targets[one]}
+    return {}
+
+
+def _labelled(page: ParsedPage, block: _Block, values: Sequence[tuple[str, _Span]]) -> list[HtmlElement]:
+    """The block's hyperlinks a row value labels (HTML Standard §4.5.1: an `a` element's content labels its link):
+    those whose content holds a grounded value at its offsets, or whose whole text is a row value (D-1243)."""
+    anchors = list(_hyperlinks(block.element))
+    texts = {text for text, _ in values}
+    spans = block_spans(page, anchors)
+    return [
+        anchor
+        for anchor, span in zip(anchors, spans, strict=True)
+        if block.texts.get(anchor) in texts or (span is not None and _holds(span, [at for _, at in values]))
+    ]
+
+
+def _holds(span: _Span, values: Iterable[_Span]) -> bool:
+    return any(span[0] <= start and end <= span[1] for start, end in values)
 
 
 def _targets(anchors: Iterable[HtmlElement], base: str | None, here: str | None) -> dict[str, tuple[str, HtmlElement]]:

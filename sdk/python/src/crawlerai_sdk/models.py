@@ -445,7 +445,7 @@ class SchemaOrg(RootModel[str]):
     root: Annotated[
         str,
         Field(
-            pattern="^[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?(\\|[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?){0,3}$",
+            pattern="^[A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?([|>][A-Z][A-Za-z0-9]*(\\.[a-z][A-Za-z0-9]*)+(\\+[a-z][A-Za-z0-9]*)?){0,3}$",
             title="Schema Org",
         ),
     ]

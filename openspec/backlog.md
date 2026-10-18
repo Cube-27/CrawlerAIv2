@@ -32,20 +32,16 @@ throwaway databases.
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
-- Sweep fixes 2 (#266): role C rows of a listing whose items repeat their values (colour variants: same title and
-  price) get no item URL (`collect/item_links.py` places a row by its values: 53 of 55 rows `not_owned` on one
-  collection page); place a row by the node paths of its grounded spans instead. Role C reads at most
-  `16384 // (row fields x 96)` items per call (56 for three row fields; one page shows 146): measure whether a second
-  call over the rest is worth it. A hosted career page whose API host's robots.txt disallows the adapter still gives
-  0 rows (`no_rows: none_listed`). Listing role C requests changed (D-1478), so recorded dev replays of listings need
+- Sweep fixes 2 (#266): a hosted career page whose API host's robots.txt disallows the adapter still gives 0 rows
+  (`no_rows: none_listed`). Listing role C requests changed (D-1478, D-1496), so recorded dev replays of listings need
   re-recording.
-- Draft dev baseline (#264, #267): money's locale set reads every alternate link's `hreflang`, so `$` on a page tagged
-  with one territory is ambiguous when its alternates name others; reading only the alternates that link to the page
-  itself (D-1482) is right but publishes prices on role C rows that carry no URL, lowering listing money precision:
-  land it once role C rows carry their URL. Shops with several presentment currencies keep listing rows unpriced until
-  the owner admits reading the currency the page shows (D-1481). A separately stated apply link needs a ranked
-  `schema_org` path for `apply_url` (D-1485). Generic listing rows whose URL carries a query the labels drop, or a
-  trailing slash, still match no label row.
+- Accuracy round 2 (#270): role C rows of a listing whose item blocks the item text does not find (fewer than
+  `MIN_ITEMS` in the cleaned text) are placed in no block and left out (one dev listing, 30 rows). One dev listing's
+  role C reply lists 1 row of the 56 items it reads. Some labels' row titles add a variant or the company the page
+  shows apart from the title, so matched rows score their title wrong; settle the label convention. Shops with several
+  presentment currencies keep listing rows unpriced (D-1481, D-1492): a page currency source needs a standard or the
+  platform's documentation, and new captures (the dev ones hold the API answer only). Role C rows whose block link
+  carries a query the labels drop stay as they are.
 - Request context and actions (#262, #268): steps are per request; per-URL steps in a batch are a later member if callers
   ask. A schedule keeps no secret value (D-1510), so a recurring crawl of a page behind the caller's own cookies or
   headers has no home: add it with a deployment key setting that encrypts the values on the schedule if callers need it.

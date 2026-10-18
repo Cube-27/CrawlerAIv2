@@ -212,17 +212,23 @@ class MappedPath(NamedTuple):
     root: str  # the type the path starts at
     steps: tuple[str, ...]  # the properties followed, the last one holding the value
     joined: str | None  # `+r`: a property of the last node joined to the value
+    rank: int = 0  # how many `>` come before it: read on an entity only when no lower rank reaches a value there
 
 
 def parse_paths(path: str) -> tuple[MappedPath, ...]:
-    """A `schema_org` path's alternatives, already checked by the schema document's pattern (SPEC-04 §4.2)."""
-    return tuple(_parse_alternative(alternative) for alternative in path.split("|"))
+    """A `schema_org` path's alternatives, in order, each with its rank, already checked by the schema document's
+    pattern (SPEC-04 §4.2)."""
+    return tuple(
+        _parse_alternative(alternative, rank)
+        for rank, ranked in enumerate(path.split(">"))
+        for alternative in ranked.split("|")
+    )
 
 
-def _parse_alternative(path: str) -> MappedPath:
+def _parse_alternative(path: str, rank: int) -> MappedPath:
     path, _, joined = path.partition("+")
     root, *steps = path.split(".")
-    return MappedPath(root, tuple(steps), joined or None)
+    return MappedPath(root, tuple(steps), joined or None, rank)
 
 
 def named_property(path: MappedPath) -> str:
@@ -417,18 +423,34 @@ def _selections(
     """What each alternative reaches on each entity of its root type, by entity id, and with `entries` (a listing's
     row field) on each list entry without an item (`ENTRY`). The same value of one entity that two alternatives reach
     is one selection (SPEC-13 §4.1): its locator names it. One alternative's selections are all kept, as a path's
-    are."""
+    are. An alternative of a higher rank (after a `>`) reads no entity on which a lower rank reached a stated value
+    (a string or a number: a node reaching the end of a path states none the field can read)."""
     earlier: set[tuple[str, str]] = set()
+    held: set[str] = set()  # the entities a lower rank reached a stated value on
+    stated: set[str] = set()
+    rank = 0
     for path in paths:
-        reached: set[tuple[str, str]] = set()
-        for entity in entities:
-            if not (any(vocabulary.is_a(t, path.root) for t in entity.types) or (entries and _bare_entry(entity))):
-                continue
-            for selected in select(entity.node, path, as_list=as_list):
-                if (entity.id, selected.locator) not in earlier:
-                    reached.add((entity.id, selected.locator))
-                    yield entity.id, selected
-        earlier |= reached
+        if path.rank != rank:
+            rank, held = path.rank, held | stated
+        readable = [e for e in entities if e.id not in held and _reads(e, path, vocabulary, entries)]
+        reached = list(_reached(readable, path, as_list=as_list, earlier=earlier))
+        earlier |= {(entity_id, selected.locator) for entity_id, selected in reached}
+        stated |= {entity_id for entity_id, selected in reached if isinstance(selected.raw, str | int | float)}
+        yield from reached
+
+
+def _reached(
+    entities: Sequence[Typed], path: MappedPath, *, as_list: bool, earlier: set[tuple[str, str]]
+) -> Iterator[tuple[str, Selected]]:
+    """What `path` reaches on each entity that no earlier alternative reached."""
+    for entity in entities:
+        for selected in select(entity.node, path, as_list=as_list):
+            if (entity.id, selected.locator) not in earlier:
+                yield entity.id, selected
+
+
+def _reads(entity: Typed, path: MappedPath, vocabulary: Vocabulary, entries: bool) -> bool:
+    return any(vocabulary.is_a(t, path.root) for t in entity.types) or (entries and _bare_entry(entity))
 
 
 def _bare_entry(entity: Typed) -> bool:

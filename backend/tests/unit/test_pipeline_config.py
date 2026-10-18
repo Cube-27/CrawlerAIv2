@@ -365,7 +365,10 @@ def test_a_listing_config_without_rows_leaves_rows_to_role_c() -> None:
     )
     role_c = FakeRoleC(reply)
     config = _config({"page_title": _steps("normalize-space(//h1)")}, page_kind="listing")
-    result = _extract(_html(body=CARDS), config, LISTING, role_c, LISTING_URL)
+    # An optional url, so the row stays without the item URL its card would give (D-1491).
+    url = LISTING.fields["url"].model_copy(update={"required": False})
+    schema = LISTING.model_copy(update={"fields": {**LISTING.fields, "url": url}})
+    result = _extract(_html(body=CARDS), config, schema, role_c, LISTING_URL)
     (request,) = role_c.listing_requests
     # The page field the config runs is not asked again.
     assert (request.row_fields, request.page_missing) == (("title", "url"), ())

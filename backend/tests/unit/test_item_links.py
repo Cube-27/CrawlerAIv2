@@ -1,5 +1,6 @@
 """Item URLs of role C's listing rows from the repeated item blocks (ARCHITECTURE §8.6, D-1024 option (a)): a row takes
-the link of the one block holding its text values, and gets none whenever that is not one block with one link.
+the link of the one block whose span of the cleaned text holds its grounded values (D-1490), and gets none whenever
+that is not one block with one link.
 
 Pages are synthetic (`example.test`, C3).
 """
@@ -9,7 +10,7 @@ from datetime import UTC, datetime
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate, Entity
-from crawlerai.collect.item_links import row_links
+from crawlerai.collect.item_links import as_block_links, row_links
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
@@ -36,20 +37,31 @@ def _row(n: int) -> Entity:
     return Entity(id=f"llm:rows[{n}]", types=("page",), urls=(), parent=None)
 
 
-def _value(n: int, field: str, value: str) -> Candidate:
+def _value(n: int, field: str, value: str, occurrence: int = 0) -> Candidate:
+    """Row `n`'s role C value, grounded at its `occurrence`-th place in the cleaned text by `_links` (the locator is a
+    placeholder until then)."""
     return Candidate(
         field=field,
         entity_id=f"llm:rows[{n}]",
         source_kind="llm",
         raw=value,
         normalized=Ok(value),
-        locator="text:0-1",
+        locator=f"text:{occurrence}-{occurrence + 1}",
         independent=True,
     )
 
 
-def _title(n: int, title: str) -> Candidate:
-    return _value(n, "title", title)
+def _title(n: int, title: str, occurrence: int = 0) -> Candidate:
+    return _value(n, "title", title, occurrence)
+
+
+def _grounded(text: str, c: Candidate) -> Candidate:
+    """`c` at the `occurrence`-th place of its value in the cleaned `text` (INV-12: a role C value is a span of it)."""
+    assert isinstance(c.raw, str)
+    start = -1
+    for _ in range(int(c.locator.removeprefix("text:").split("-")[0]) + 1):
+        start = text.index(c.raw, start + 1)
+    return c.model_copy(update={"locator": f"text:{start}-{start + len(c.raw)}"})
 
 
 def _card(title: str, *hrefs: str) -> str:
@@ -63,44 +75,60 @@ def _links(
     page = ParsedPage(f"<html><body><main>{''.join(cards)}</main></body></html>")
     rows = [_row(n) for n in range(len(titles))]
     candidates = [_title(n, title) for n, title in enumerate(titles)] if candidates is None else candidates
-    found = row_links(page, schema, CTX, rows, candidates)
+    grounded = [_grounded(page.cleaned_text.text, c) for c in candidates]
+    found = row_links(page, schema, CTX, rows, grounded)
     return {c.entity_id: (c.field, c.normalized.value if isinstance(c.normalized, Ok) else None) for c in found}
 
 
 def test_each_row_takes_the_link_of_the_block_holding_its_title() -> None:
     cards = [_card(f"Widget {n}", f"/p/{n}", f"https://shop.example.test/p/{n}#top") for n in (1, 2, 3)]
 
-    assert _links(cards, ["Widget 1", "Widget   3"]) == {
+    assert _links(cards, ["Widget 1", "Widget 3"]) == {
         "llm:rows[0]": ("url", "https://shop.example.test/p/1"),
         "llm:rows[1]": ("url", "https://shop.example.test/p/3"),
     }
 
 
-def test_a_title_that_is_an_elements_whole_text_picks_its_block_among_several() -> None:
-    # "Widget 1" is in the text of "Widget 10" too, but only the first card has an element whose text it is.
-    cards = [_card(name, f"/p/{i}") for i, name in enumerate(["Widget 1", "Widget 10", "Widget 2"])]
+def test_items_that_repeat_their_values_each_keep_their_own_link() -> None:
+    # One product in three colours: the same title and price in each card; each row is placed by where its values
+    # are grounded, not by what they say.
+    cards = [_card("Widget", f"/p/widget-{colour}") for colour in ("red", "blue", "green")]
+    candidates = [c for n in range(3) for c in (_title(n, "Widget", n), _value(n, "price", "5.00 EUR", n))]
 
-    assert _links(cards, ["Widget 1", "Widget 10"]) == {
-        "llm:rows[0]": ("url", "https://shop.example.test/p/0"),
-        "llm:rows[1]": ("url", "https://shop.example.test/p/1"),
+    assert _links(cards, ["Widget"] * 3, candidates=candidates) == {
+        "llm:rows[0]": ("url", "https://shop.example.test/p/widget-red"),
+        "llm:rows[1]": ("url", "https://shop.example.test/p/widget-blue"),
+        "llm:rows[2]": ("url", "https://shop.example.test/p/widget-green"),
     }
 
 
-def test_a_title_two_blocks_show_as_a_whole_takes_no_link() -> None:
-    cards = [_card("Widget", "/p/1"), _card("Widget", "/p/2"), _card("Gadget", "/p/3")]
+def test_a_row_whose_values_sit_in_two_blocks_takes_no_link() -> None:
+    cards = [_card(f"Widget {n}", f"/p/{n}") for n in (1, 2, 3)]
+    candidates = [_title(0, "Widget 1"), _value(0, "price", "5.00 EUR", 1), _title(1, "Widget 3")]
 
-    assert _links(cards, ["Widget", "Gadget"]) == {"llm:rows[1]": ("url", "https://shop.example.test/p/3")}
+    assert _links(cards, ["Widget 1", "Widget 3"], candidates=candidates) == {
+        "llm:rows[1]": ("url", "https://shop.example.test/p/3")
+    }
+
+
+def test_two_rows_grounded_in_one_block_take_no_link() -> None:
+    cards = [_card("Widget", "/p/1"), _card("Widget", "/p/2"), _card("Gadget", "/p/3")]
+    candidates = [_title(0, "Widget"), _title(1, "Widget"), _title(2, "Gadget")]
+
+    assert _links(cards, ["Widget", "Widget", "Gadget"], candidates=candidates) == {
+        "llm:rows[2]": ("url", "https://shop.example.test/p/3")
+    }
 
 
 def test_every_grounded_value_of_the_row_places_it() -> None:
-    # Two cards share a title; the row's grounded place (a location field, not text) is in one of them only.
+    # Two cards share a title; the row's grounded place (a location field, not text) is in the second only.
     cards = [
         '<div class="card"><a href="/j/1">Cook</a><p>Town A</p></div>',
         '<div class="card"><a href="/j/2">Cook</a><p>Town B</p></div>',
         '<div class="card"><a href="/j/3">Baker</a><p>Town A</p></div>',
     ]
     schema = _schema(title=TITLE, url=URL, location=PLACE)
-    candidates = [_title(0, "Cook"), _value(0, "location", "Town B"), _title(1, "Baker")]
+    candidates = [_title(0, "Cook", 1), _value(0, "location", "Town B"), _title(1, "Baker")]
 
     assert _links(cards, ["Cook", "Baker"], schema, candidates) == {
         "llm:rows[0]": ("url", "https://shop.example.test/j/2"),
@@ -140,6 +168,29 @@ def test_a_block_linking_to_several_documents_takes_the_one_its_row_labels() -> 
         "llm:rows[0]": ("url", "https://shop.example.test/p/1"),
         "llm:rows[1]": ("url", "https://shop.example.test/p/3"),
     }
+
+
+def test_the_link_whose_content_holds_a_grounded_value_labels_the_item() -> None:
+    # The item link holds the title and the price; the cart and compare links lead elsewhere.
+    card = (
+        '<li class="product"><a href="/p/{n}"><h2>Coin {n}</h2><span>{n}.50 EUR</span></a>'
+        '<a href="?add-to-cart={n}">Add to cart</a><a href="/compare">Compare</a></li>'
+    )
+    cards = [card.format(n=n) for n in (1, 2, 3)]
+    candidates = [_title(0, "Coin 2"), _value(0, "price", "2.50 EUR")]
+
+    assert _links(cards, ["Coin 2"], candidates=candidates) == {"llm:rows[0]": ("url", "https://shop.example.test/p/2")}
+
+
+def test_links_that_add_a_query_to_the_items_link_refine_it() -> None:
+    # Swatches link the item's path with a variant query: the block still links to one item (RFC 3986 §3.3, §3.4).
+    card = (
+        '<div class="card"><span>Bud {n}</span><a href="/p/bud-{n}"><img alt=""></a>'
+        '<a href="/p/bud-{n}?variant=1"><img alt=""></a><a href="/p/bud-{n}?variant=2"><img alt=""></a></div>'
+    )
+    cards = [card.format(n=n) for n in (1, 2, 3)]
+
+    assert _links(cards, ["Bud 1"]) == {"llm:rows[0]": ("url", "https://shop.example.test/p/bud-1")}
 
 
 def test_the_group_holding_the_rows_wins_over_a_larger_one() -> None:
@@ -205,3 +256,57 @@ def test_a_link_whose_text_only_holds_a_row_value_does_not_label_it() -> None:
     cards = [card.format(n=n) for n in (1, 2, 3)]
 
     assert _links(cards, ["Ann 2"]) == {}
+
+
+# --- structured row URLs respelling an item block's link (D-1495) ---
+
+
+def _structured(n: int, url: str) -> Candidate:
+    return Candidate(
+        field="url",
+        entity_id=f"jsonld:row{n}",
+        source_kind="jsonld",
+        raw=url,
+        normalized=Ok(url),
+        locator=f"jsonld:0:$.itemListElement[{n}].url",
+        independent=True,
+    )
+
+
+def _respelled(cards: list[str], urls: list[str]) -> list[tuple[str, JsonValue]]:
+    page = ParsedPage(f"<html><body><main>{''.join(cards)}</main></body></html>")
+    rows = frozenset(f"jsonld:row{n}" for n in range(len(urls)))
+    found = as_block_links(page, LISTING, CTX, [_structured(n, url) for n, url in enumerate(urls)], rows)
+    return [(c.source_kind, c.normalized.value if isinstance(c.normalized, Ok) else None) for c in found]
+
+
+def test_a_row_url_with_a_query_or_slash_the_blocks_link_lacks_takes_the_pages_link() -> None:
+    cards = [_card(f"Widget {n}", f"/p/{n}?colour=red") for n in (1, 2)] + [_card("Widget 3", "/p/3/")]
+    urls = [
+        "https://shop.example.test/p/1?colour=red&ref=list",
+        "https://shop.example.test/p/2/?colour=red",
+        "https://shop.example.test/p/3",
+    ]
+
+    assert _respelled(cards, urls) == [
+        ("dom", "https://shop.example.test/p/1?colour=red"),
+        ("dom", "https://shop.example.test/p/2?colour=red"),
+        ("dom", "https://shop.example.test/p/3/"),
+    ]
+
+
+def test_a_row_url_that_is_a_link_another_path_or_one_of_two_links_stays() -> None:
+    cards = [_card("Widget 1", "/p/1"), _card("Widget 2", "/p/2?colour=red", "/p/2?colour=blue"), _card("W", "/p/3")]
+    urls = [
+        "https://shop.example.test/p/1",
+        "https://shop.example.test/p/2?colour=red&colour=blue",
+        "https://shop.example.test/q/3",
+        "https://shop.example.test/p/1?size=s",
+    ]
+
+    assert _respelled(cards, urls) == [
+        ("jsonld", "https://shop.example.test/p/1"),
+        ("jsonld", "https://shop.example.test/p/2?colour=red&colour=blue"),
+        ("jsonld", "https://shop.example.test/q/3"),
+        ("dom", "https://shop.example.test/p/1"),
+    ]

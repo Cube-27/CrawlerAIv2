@@ -254,6 +254,54 @@ def test_a_value_two_alternatives_reach_on_one_entity_is_one_candidate() -> None
     ]
 
 
+@dataclass(frozen=True)
+class _BracketNode(_Node):
+    """A node whose values are located in JSON path bracket notation: `jsonld:0:$['<node>']['<prop>'][<i>]`."""
+
+    def values(self, prop: str) -> list[Value]:
+        return [
+            Value(v.raw, f"jsonld:0:$['{self.name}']['{prop}'][{i}]", v.node)
+            for i, v in enumerate(super().values(prop))
+        ]
+
+
+APPLY_URL = FieldSpec(
+    type=FieldType.URL, description="d", schema_org="JobPosting.potentialAction.target>JobPosting.url"
+)
+
+
+def _posting(name: str, **values: list[JsonValue | _Node]) -> Typed:
+    return Typed(name, ("JobPosting",), _JsonNode(name, {"url": [f"https://jobs.example.test/{name}"], **values}))
+
+
+def test_a_ranked_alternative_is_read_only_where_the_ones_before_it_reach_no_value() -> None:
+    # D-1493: a stated apply link ranks above the posting's URL, on each entity, so the field holds one value there.
+    action = _BracketNode("act", {"target": ["https://jobs.example.test/a/apply"]})
+    entities = (_posting("a", potentialAction=[action]), _posting("b"))
+
+    assert _found(entities, _schema(apply_url=APPLY_URL)) == [
+        ("apply_url", "a", "jsonld:0:$['act']['target'][0]"),
+        ("apply_url", "b", "jsonld:0:$.b.url[0]"),
+    ]
+
+
+def test_a_node_reached_by_a_ranked_alternative_states_no_value_and_keeps_the_next_rank() -> None:
+    entry_point = _JsonNode("ep", {"urlTemplate": ["https://jobs.example.test/a/apply"]})
+    action = _JsonNode("act", {"target": [entry_point]})
+
+    found = _found((_posting("a", potentialAction=[action]),), _schema(apply_url=APPLY_URL))
+
+    assert ("apply_url", "a", "jsonld:0:$.a.url[0]") in found
+
+
+def test_paths_carry_their_rank() -> None:
+    assert [(p.steps, p.rank) for p in parse_paths("Thing.alternateName|Thing.description>Thing.url")] == [
+        (("alternateName",), 0),
+        (("description",), 0),
+        (("url",), 1),
+    ]
+
+
 def test_a_row_mapped_field_gives_its_sub_fields_candidates_and_its_rows_none() -> None:
     assert _found(ENTITIES, _schema(variants=VARIANTS)) == [
         ("variants.sku", "variant-a", "jsonld:0:$.variant-a.sku[0]"),

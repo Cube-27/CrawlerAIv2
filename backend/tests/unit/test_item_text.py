@@ -64,15 +64,20 @@ def test_a_page_with_too_few_items_has_no_item_text() -> None:
     assert item_text(ParsedPage("<html><body><p>Nothing listed</p></body></html>")) is None
 
 
-def test_the_first_pieces_view_ends_at_its_last_piece() -> None:
-    view = item_text(_listing(4))
+def test_a_slice_of_the_view_holds_its_pieces_text_and_maps_back_to_the_cleaned_text() -> None:
+    page = _listing(4)
+    view = item_text(page)
     assert view is not None
 
-    first = view.first(2)
+    first, rest = view.slice(0, 2), view.slice(2, 4)
 
     assert first.pieces == view.pieces[:2]
     assert first.text == "Widget 1\n1.50 EUR\nWidget 2\n2.50 EUR"
-    assert view.first(10) is view
+    assert rest.text == "Widget 3\n3.50 EUR\nWidget 4\n4.50 EUR"
+    span = rest.source_span(rest.text.index("Widget 4"), rest.text.index("Widget 4") + 8)
+    assert span is not None
+    assert page.cleaned_text.text[span[0] : span[1]] == "Widget 4"
+    assert view.slice(0, 10) is view
 
 
 @given(st.text(max_size=60), st.data())
