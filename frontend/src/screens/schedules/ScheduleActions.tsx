@@ -4,8 +4,9 @@ import { useDeleteSchedule, useRunSchedule, useSetSchedulePaused } from "../../a
 import type { Schedule } from "../../api/schedules";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { runPath } from "../playground/modes";
+import { EditSchedule } from "./EditSchedule";
 
-/** A schedule's Pause or Resume, Run now (which opens the run it starts) and Delete (asked first; its jobs stay). */
+/** A schedule's Edit, Pause or Resume, Run now (which opens the run it starts) and Delete (asked first; its jobs stay). */
 export function ScheduleActions({
   schedule,
   onDeleted,
@@ -41,6 +42,7 @@ export function ScheduleActions({
       >
         Run now
       </Button>
+      <EditSchedule key={schedule.updated_at} schedule={schedule} />
       <ConfirmDialog
         trigger={
           <Button size="sm" variant="danger-soft">

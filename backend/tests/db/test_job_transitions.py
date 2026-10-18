@@ -1,9 +1,11 @@
 from datetime import timedelta
+from typing import Any
 
 import pytest
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.core.redaction import REDACTED
 from crawlerai.db.jobs import InvalidTransition, record_event, transition_job, transition_task
 from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, Project, TaskStatus, UrlTask, UrlTaskId
 
@@ -77,6 +79,33 @@ async def test_ending_a_job_stamps_finished_at_and_records_one_event(conn: Async
     assert finished_at == ended_at
     assert ended_at - created_at >= timedelta(milliseconds=50)
     assert await _events(conn, job_id) == [("completed", {})]
+
+
+@pytest.mark.parametrize("target", ["completed", "failed", "cancelled"])
+async def test_an_ended_job_keeps_no_secret_value_of_its_request_only_their_names(
+    conn: AsyncConnection, target: JobStatus
+) -> None:
+    job_id = await _job(conn, "running")
+    fetch = {"method_hint": "http", "headers": {"X-Api-Token": "s3cret"}, "cookies": {"sid": "abc"}}
+    await conn.execute(
+        update(Job).where(Job.id == job_id).values(request={"urls": ["https://example.test/"], "fetch": fetch})
+    )
+
+    await transition_job(conn, job_id, target)
+
+    stored: dict[str, Any] = (await conn.execute(select(Job.request).where(Job.id == job_id))).scalar_one()
+    shown = {"method_hint": "http", "headers": {"X-Api-Token": REDACTED}, "cookies": {"sid": REDACTED}}
+    assert stored == {"urls": ["https://example.test/"], "fetch": shown}
+
+
+async def test_a_running_job_keeps_its_secret_values_for_its_workers(conn: AsyncConnection) -> None:
+    job_id = await _job(conn, "queued")
+    request = {"fetch": {"cookies": {"sid": "abc"}}}
+    await conn.execute(update(Job).where(Job.id == job_id).values(request=request))
+
+    await transition_job(conn, job_id, "running")
+
+    assert (await conn.execute(select(Job.request).where(Job.id == job_id))).scalar_one() == request
 
 
 async def test_requeueing_a_claimed_task_releases_its_lease(conn: AsyncConnection) -> None:

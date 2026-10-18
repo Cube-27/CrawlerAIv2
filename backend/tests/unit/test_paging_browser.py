@@ -22,11 +22,13 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from patchright.async_api import Error as PlaywrightError
+from pydantic import TypeAdapter
 
 from crawlerai.acquire.browser import BrowserSession, open_browser
 from crawlerai.acquire.browser_tab import fetch_listing
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
-from crawlerai.acquire.types import BrowserActions, FetchPolicy, PagedFetch
+from crawlerai.acquire.types import BrowserActions, FetchPolicy, PagedFetch, PageStep
+from crawlerai.config_ir.page_actions import Action, to_steps
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.crawl.paging import Caps, collect
 
@@ -191,6 +193,12 @@ _OVERLAY = _page(
     f'<ul class="grid">{_cards(0, 12)}</ul><button id="more">+</button>'
     '<div style="position: fixed; inset: 0; background: white; z-index: 10">Layer</div>'
 )
+# The load-more list under a layer over the whole viewport (a consent banner) that its own button removes.
+_CONSENT = _LOAD_MORE.replace(
+    b"</main>",
+    b'<div id="layer" style="position: fixed; inset: 0; background: white; z-index: 10">Layer'
+    b'<button id="accept" onclick="document.getElementById(\'layer\').remove()">OK</button></div></main>',
+)
 _ROUTES: dict[str, bytes] = {
     "/ajax": _AJAX,
     "/load-more": _LOAD_MORE,
@@ -201,6 +209,7 @@ _ROUTES: dict[str, bytes] = {
     "/still": _STILL,
     "/elsewhere": _page("<p>Another document.</p>"),
     "/overlay": _OVERLAY,
+    "/consent": _CONSENT,
 }
 
 
@@ -295,7 +304,14 @@ class Browser:
     server: Server
     gated: list[str | None] = field(default_factory=list)
 
-    def run(self, path: str, request: BrowserActions, caps: Caps | None = None, refuse: str = "") -> PagedFetch:
+    def run(
+        self,
+        path: str,
+        request: BrowserActions,
+        caps: Caps | None = None,
+        refuse: str = "",
+        steps: tuple[PageStep, ...] = (),
+    ) -> PagedFetch:
         self.gated.clear()
 
         async def gate(url: str | None) -> bool:
@@ -306,7 +322,7 @@ class Browser:
         return self.runner.run(
             fetch_listing(
                 self.server.url(path),
-                FetchPolicy(browser_timeout_s=15, page_kind="listing"),
+                FetchPolicy(browser_timeout_s=15, page_kind="listing", steps=steps),
                 drive,
                 session=self.session,
                 engine_version=ENGINE_VERSION,
@@ -495,3 +511,22 @@ def test_a_layer_that_takes_the_click_is_reported_not_worked_around(browser: Bro
     fetched = browser.run("/overlay", BrowserActions(hint="load_more"))
 
     assert _summary(fetched) == (None, "click_intercepted", 1, 12)
+
+
+def test_the_callers_steps_run_before_the_paging_driver_and_the_first_state_reports_them(browser: Browser) -> None:
+    accept = to_steps(TypeAdapter(list[Action]).validate_python([{"type": "click", "selector": "#accept"}]), None)
+
+    fetched = browser.run("/consent", BrowserActions(hint="load_more"), steps=accept)
+
+    # With the layer gone the control's clicks reach it, as on a page without one.
+    assert _summary(fetched) == ("load_more", "end", 1, 50)
+    assert [(step.action, step.outcome) for step in fetched.pages[0].attempts[-1].steps] == [("click", "done")]
+
+
+def test_a_step_that_finds_nothing_leaves_the_layer_and_the_run_reports_it(browser: Browser) -> None:
+    missing = to_steps(TypeAdapter(list[Action]).validate_python([{"type": "click", "selector": "#absent"}]), None)
+
+    fetched = browser.run("/consent", BrowserActions(hint="load_more"), steps=missing)
+
+    assert _summary(fetched) == (None, "click_intercepted", 1, 10)
+    assert [(step.action, step.outcome) for step in fetched.pages[0].attempts[-1].steps] == [("click", "not_found")]

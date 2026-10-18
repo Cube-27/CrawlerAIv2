@@ -36,11 +36,13 @@ from crawlerai.acquire.browser import (
     json_bodies,
     read_state,
     rendered,
+    stepped,
 )
 from crawlerai.acquire.challenge import count
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
+from crawlerai.acquire.page_steps import steps_budget_s
 from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import ActionsReport, BlockClass, FetchPolicy, FetchResult, PagedFetch
+from crawlerai.acquire.types import ActionsReport, BlockClass, FetchPolicy, FetchResult, PagedFetch, StepOutcome
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
 from crawlerai.storage.capture_bundle import NetworkBody
 
@@ -153,8 +155,11 @@ ListingRung = Callable[[str, FetchPolicy, Drive], Awaitable[PagedFetch]]
 
 
 class _PatchrightTab:
-    def __init__(self, page: Rendered, *, url: str, engine_version: str, started: float) -> None:
+    def __init__(
+        self, page: Rendered, *, url: str, engine_version: str, started: float, steps: tuple[StepOutcome, ...]
+    ) -> None:
         self._page = page
+        self._steps = steps  # the caller's page steps, run on the first document; its state's attempt reports them
         self._url = url  # the URL the shown document was asked for; `_at` is where that navigation ended
         self._at = page.page.url
         self._engine_version = engine_version
@@ -290,6 +295,7 @@ class _PatchrightTab:
             content=content,
             block_class=block_class,
             error=None,
+            steps=() if self.kept else self._steps,
         )
 
 
@@ -339,22 +345,30 @@ async def _listing(
     exchange: Exchange | None = None
     try:
         async with AsyncExitStack() as stack:
-            async with asyncio.timeout(policy.browser_timeout_s):
+            async with asyncio.timeout(policy.browser_timeout_s + steps_budget_s(policy.steps)):
                 page = await stack.enter_async_context(
                     rendered(url, policy, session, connector, proxy, started, {}, traffic)
                 )
+                steps = await stepped(page)  # the caller's steps first (D-1513), then the paging driver reads the page
                 exchange, content = await read_state(page)
                 block_class = await classified(exchange, content)
             if block_class != "ok":
                 cookies = await context_cookies(page.page.context)
                 challenge = await challenge_of(block_class, exchange, content, url, cookies)
                 count(challenge, "browser")
-                one = _Outcome(exchange, content, block_class, None, challenge)
+                one = _Outcome(exchange, content, block_class, None, challenge, steps)
                 return _one(url, policy, engine_version, fetched_at, started, one)
-            tab = _PatchrightTab(page, url=url, engine_version=engine_version, started=started)
+            tab = _PatchrightTab(page, url=url, engine_version=engine_version, started=started, steps=steps)
             report = await _driven(drive, tab)
             if not tab.kept and not await tab.keep():
-                return _one(url, policy, engine_version, fetched_at, started, _Outcome(exchange, content, block_class))
+                return _one(
+                    url,
+                    policy,
+                    engine_version,
+                    fetched_at,
+                    started,
+                    _Outcome(exchange, content, block_class, steps=steps),
+                )
             return PagedFetch(pages=tuple(tab.kept), report=report.model_copy(update={"pages": len(tab.kept)}))
     except Failed as failed:
         return _failed(url, policy, engine_version, fetched_at, started, failed.error, failed.exchange)
@@ -378,6 +392,7 @@ class _Outcome:
     block_class: BlockClass
     error: str | None = None
     challenge: str | None = None
+    steps: tuple[StepOutcome, ...] = ()
 
 
 def _one(
@@ -395,6 +410,7 @@ def _one(
         block_class=outcome.block_class,
         error=outcome.error,
         challenge=outcome.challenge,
+        steps=outcome.steps,
     )
     return PagedFetch(pages=(result,), report=None)
 

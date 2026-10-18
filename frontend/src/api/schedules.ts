@@ -19,6 +19,17 @@ export interface NewSchedule {
   timezone: string;
 }
 
+/** The members of a schedule to change (`PATCH /v1/schedules/{id}`): any left out stay. A `request` comes with its
+ * `kind`; a `cron` replaces an interval and an `interval_s` a cron expression. */
+export interface ScheduleChange {
+  name?: string;
+  kind?: ScheduleKind;
+  request?: object;
+  cron?: string;
+  interval_s?: number;
+  timezone?: string;
+}
+
 export function listSchedules(
   client: ApiClient,
   { cursor, limit }: { cursor: string | null; limit: number },
@@ -42,6 +53,22 @@ export function createSchedule(client: ApiClient, body: NewSchedule): Promise<Ap
     // The generated body is a union of four request shapes; the server validates the request against its kind.
     () => client.POST("/v1/schedules", { body: body as never }),
     "Creating the schedule",
+  );
+}
+
+export function updateSchedule(
+  client: ApiClient,
+  id: string,
+  change: ScheduleChange,
+): Promise<ApiResult<Schedule>> {
+  return apiResult(
+    () =>
+      client.PATCH("/v1/schedules/{schedule_id}", {
+        params: { path: { schedule_id: id } },
+        // The generated `request` is a loose object; the server checks it against the kind.
+        body: change as never,
+      }),
+    "Saving the schedule",
   );
 }
 

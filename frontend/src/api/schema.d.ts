@@ -511,6 +511,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs/{job_id}/webhook-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job Webhook Deliveries
+         * @description The job's webhook deliveries, newest first, for debugging a receiver: each one's status (`pending`, `delivered`
+         *     or `failed`), attempts, the last attempt's error and the HTTP status the target answered with, and how many events
+         *     it carries. Ended deliveries are kept 30 days. Pass a page's `next_cursor` as `cursor` for the page after it.
+         */
+        get: operations["job_webhook_deliveries_v1_jobs__job_id__webhook_deliveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/map": {
         parameters: {
             query?: never;
@@ -1530,6 +1552,50 @@ export interface components {
             tokens_out: number;
             /** Unpriced Tokens */
             unpriced_tokens: number;
+        };
+        /**
+         * DeliveryOut
+         * @description One delivery: its status, attempts, when the next one is due (while pending), the last attempt's error and the
+         *     status the target answered it with (null before an attempt, or when the target gave none), and how many events it
+         *     carries.
+         */
+        DeliveryOut: {
+            /** Attempts */
+            attempts: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Event Count */
+            event_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Next Attempt At */
+            next_attempt_at: string | null;
+            /** Response Code */
+            response_code: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "delivered" | "failed";
+        };
+        /**
+         * DeliveryPage
+         * @description One page of a job's deliveries, newest first; `next_cursor` is the `cursor` of the page after it, None on the
+         *     last.
+         */
+        DeliveryPage: {
+            /** Items */
+            items: components["schemas"]["DeliveryOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /**
          * DistractorKey
@@ -5526,6 +5592,71 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    job_webhook_deliveries_v1_jobs__job_id__webhook_deliveries_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

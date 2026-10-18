@@ -150,23 +150,25 @@ async def _deliver(conn: AsyncConnection, row: _Due, post: Poster) -> None:
         SIGNATURE_HEADER: signature(row.secret, body),
         DELIVERY_HEADER: str(row.id),
     }
-    error = await _attempt(post, row.url, body, headers)
+    code, error = await _attempt(post, row.url, body, headers)
+    # The attempt's answer is kept as it came: `response_code` is None when the target gave none.
+    seen = {"attempts": attempts, "last_error": error, "response_code": code}
     if error is None:
-        await _set(conn, row.id, status="delivered", attempts=attempts, last_error=None)
+        await _set(conn, row.id, status="delivered", **seen)
     elif attempts >= MAX_ATTEMPTS:
-        await _set(conn, row.id, status="failed", attempts=attempts, last_error=error)
+        await _set(conn, row.id, status="failed", **seen)
     else:
-        retry_at = func.now() + retry_delay(attempts)
-        await _set(conn, row.id, attempts=attempts, last_error=error, next_attempt_at=retry_at)
+        await _set(conn, row.id, next_attempt_at=func.now() + retry_delay(attempts), **seen)
 
 
-async def _attempt(post: Poster, url: str, body: bytes, headers: Mapping[str, str]) -> str | None:
-    """None when the target accepted the delivery (a 2xx, RFC 9110 §15.3); else why not."""
+async def _attempt(post: Poster, url: str, body: bytes, headers: Mapping[str, str]) -> tuple[int | None, str | None]:
+    """The target's status (None when it gave none) and why the attempt failed (None when the target accepted the
+    delivery with a 2xx, RFC 9110 §15.3)."""
     try:
         status = await post(url, body, headers)
     except (SsrfRejected, RequestFailed) as e:
-        return str(e)
-    return None if 200 <= status < 300 else f"status {status}"
+        return None, str(e)
+    return status, None if 200 <= status < 300 else f"status {status}"
 
 
 async def _set(conn: AsyncConnection, delivery_id: WebhookDeliveryId, **values: Any) -> None:

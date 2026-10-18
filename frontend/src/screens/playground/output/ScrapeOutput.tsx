@@ -5,10 +5,11 @@ import type { ScrapeResponse } from "../../../api/scrape";
 import { EmptyView } from "../../../components/EmptyView";
 import { JsonView } from "../../../components/JsonView";
 import { OutcomeLabel } from "../../../components/OutcomeLabel";
-import { RecordList } from "../../../components/RecordFields";
+import { FieldsTable, RecordList } from "../../../components/RecordFields";
 import { Timestamp } from "../../../components/Timestamp";
 import { hasUncalibrated, UncalibratedBadge } from "../../../components/UncalibratedBadge";
 import { scrapeJson } from "./cleanJson";
+import { reasonSentence } from "./reasonText";
 import {
   ArtifactViews,
   ChunksView,
@@ -58,7 +59,32 @@ function TableTab({
       <EmptyView title="No records">Choose a schema to extract records from the page.</EmptyView>
     );
   }
-  return <RecordList records={response.records} fieldTypes={fieldTypes} />;
+  return (
+    <div className="flex flex-col gap-6">
+      <RecordList records={response.records} fieldTypes={fieldTypes} />
+      {response.page === undefined ? null : (
+        <section className="flex flex-col gap-2">
+          <Typography.Heading level={3}>Page fields</Typography.Heading>
+          <Typography.Paragraph size="sm" color="muted">
+            The listing's own fields, such as the next page's URL, beside the rows it kept.
+          </Typography.Paragraph>
+          <FieldsTable label="Page fields" fields={response.page} fieldTypes={fieldTypes} />
+        </section>
+      )}
+    </div>
+  );
+}
+
+/** Why the page gave what it did: a sentence for a listing with no rows, with the server's reason as its tooltip, else
+ * the reason as it is. */
+function Reason({ reason }: Readonly<{ reason: string }>) {
+  const sentence = reasonSentence(reason);
+  if (sentence === null) return <Typography.Code>{reason}</Typography.Code>;
+  return (
+    <Typography.Paragraph size="sm" title={reason}>
+      {sentence}
+    </Typography.Paragraph>
+  );
 }
 
 /** The page formats the response carries, each in its own tab. */
@@ -158,7 +184,7 @@ export const ScrapeOutput = memo(function ScrapeOutput({
       <div className="flex flex-wrap items-center gap-3">
         <Typography.Heading level={2}>Result</Typography.Heading>
         <OutcomeLabel outcome={response.outcome} />
-        {response.reason === null ? null : <Typography.Code>{response.reason}</Typography.Code>}
+        {response.reason === null ? null : <Reason reason={response.reason} />}
         {response.final_url === null ? null : (
           <Typography.Code>{response.final_url}</Typography.Code>
         )}

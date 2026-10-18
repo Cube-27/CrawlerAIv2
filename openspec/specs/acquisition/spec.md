@@ -215,16 +215,16 @@ and `evaluate` runs only in Patchright's isolated world. Refs: owner #50, D-1204
 Enforced by: `tests/unit/test_browser_setup.py` (launch and context options, source scan); active.
 
 ### Requirement: Listing browser actions
-Only for a scrape that asks for them, the browser rung SHALL, after its settle, act on the item group (the
+Only for a scrape that asks for them, the browser rung SHALL run the caller's `fetch.actions` and `wait_for` on the
+settled page first (the site's API recipe is not used then), and then act on the item group (the
 `acquire/items.py` group with the largest rendered area; on a page with no linked items, the rows of the first series
 of its latest data calls, `collect/network_match.py`) through Patchright's isolated world (`crawl/paging.py`): the
 hinted mechanism, else next or numbered links, a numbered pager's integer controls, scroll (two rounds), then the
 visible control after the last item; it waits up to 5 s per action for new items or a new first item, keeps a document
 state before each page turn, and before each scroll or control click a state it drops again when the state after still
 shows all its items, and stops at `records` distinct items, at the list's end, at 40 actions or at its time cap, with
-the reason. A control click that changes the URL is undone and not taken as load-more. (Previously: only linked items
-counted, and a growing state was kept only once the list had dropped items.) Refs: owner #52, D-1218–D-1225, D-1404,
-D-1405.
+the reason. A control click that changes the URL is undone and not taken as load-more. (Previously: the caller's steps
+were refused with browser actions.) Refs: owner #52, D-1218–D-1225, D-1404, D-1405, D-1513.
 Enforced by: `tests/unit/test_paging_browser.py` (synthetic pages per mechanism) and `tests/property/test_paging.py`;
 active.
 #### Scenario: Load-more control
@@ -236,9 +236,9 @@ active.
 #### Scenario: Virtualised list
 - **WHEN** a scroll listing of 48 items keeps only its last 16 in the document
 - **THEN** the kept captures together hold all 48 items
-#### Scenario: Items without links
-- **WHEN** a scroll listing shows its call rows as text with no item link
-- **THEN** the run scrolls to the list's end, counting the call rows, and keeps one capture with every call
+#### Scenario: Consent layer
+- **WHEN** a load-more listing sits under a layer whose button removes it, and the caller's first step clicks that button
+- **THEN** the run clicks the control to the list's end, and the first kept state's attempt reports the step as `done`
 
 ### Requirement: Challenge labels
 A `blocked` or `shell` attempt of any rung SHALL carry `challenge`: the vendor whose signature (`adapters/challenges.py`:

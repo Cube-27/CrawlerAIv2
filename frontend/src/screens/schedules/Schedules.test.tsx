@@ -7,8 +7,9 @@ import type { Schedule } from "../../api/schedules";
 import { stubApi, type Call } from "../../test/api";
 import { jobSummary } from "../../test/jobs";
 import { fill, openOptions, closeOptions, openPlayground, posted } from "../../test/playground";
+import { problem } from "../../test/api";
 import { runApi } from "../../test/runs";
-import { cadenceText } from "./cadence";
+import { cadenceText, scheduleChange } from "./cadence";
 
 // `fetch` answers `/v1/schedules` and `/v1/jobs` with the shapes the rest-api spec defines (D-1417).
 
@@ -154,6 +155,143 @@ describe("schedules", () => {
     expect(await screen.findByRole("grid", { name: "Jobs" })).toBeInTheDocument();
     const listed = calls.find(({ path }) => path === "/v1/jobs");
     expect(new URLSearchParams(listed?.query).get("schedule_id")).toBe(SCHEDULE_ID);
+  });
+
+  it("edits a schedule's name and cadence and sends only what changed", async () => {
+    let current = schedule();
+    const calls = stubApi({
+      [`GET /v1/schedules/${SCHEDULE_ID}`]: () => Response.json(current),
+      [`PATCH /v1/schedules/${SCHEDULE_ID}`]: (call) => {
+        current = schedule({
+          ...(call.body as Partial<Schedule>),
+          cron: "0 6 * * 1-5",
+          interval_s: null,
+        });
+        return Response.json(current);
+      },
+      "GET /v1/jobs": () => Response.json({ items: [], next_cursor: null }),
+    });
+    await openAt(`/schedules/${SCHEDULE_ID}`, "Shop crawl");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Edit Shop crawl" }));
+    expect(dialog.getByRole("textbox", { name: "Request (JSON)" })).toHaveValue(
+      JSON.stringify(current.request, null, 2),
+    );
+    await fill(dialog.getByRole("textbox", { name: "Name" }), " renamed");
+    await userEvent.click(dialog.getByRole("radio", { name: "Cron expression" }));
+    await fill(dialog.getByRole("textbox", { name: /Cron expression/ }), "0 6 * * 1-5");
+    await userEvent.click(dialog.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: /Edit/ })).not.toBeInTheDocument();
+    });
+    const sent = calls.find(({ method }) => method === "PATCH");
+    expect(sent?.body).toEqual({
+      name: "Shop crawl renamed",
+      timezone: "UTC",
+      cron: "0 6 * * 1-5",
+    });
+    expect(await screen.findByText("Cron 0 6 * * 1-5 (UTC)")).toBeInTheDocument();
+  });
+
+  it("edits a schedule's request as JSON, sent with its kind, and shows the server's problem", async () => {
+    const calls = stubApi({
+      [`GET /v1/schedules/${SCHEDULE_ID}`]: () => Response.json(schedule()),
+      [`PATCH /v1/schedules/${SCHEDULE_ID}`]: () =>
+        problem(422, {
+          type: "validation",
+          title: "Invalid request",
+          detail: "the schedule the update would make is not valid",
+        }),
+      "GET /v1/jobs": () => Response.json({ items: [], next_cursor: null }),
+    });
+    await openAt(`/schedules/${SCHEDULE_ID}`, "Shop crawl");
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Edit Shop crawl" }));
+
+    const request = dialog.getByRole("textbox", { name: "Request (JSON)" });
+    await userEvent.clear(request);
+    await userEvent.click(request);
+    await userEvent.paste('{"url": "https://shop.test/new", "formats": ["links"]}');
+    await userEvent.click(dialog.getByRole("button", { name: "Save changes" }));
+
+    expect(
+      await dialog.findByText("the schedule the update would make is not valid"),
+    ).toBeVisible();
+    expect(calls.find(({ method }) => method === "PATCH")?.body).toEqual({
+      kind: "crawl",
+      request: { url: "https://shop.test/new", formats: ["links"] },
+    });
+  });
+
+  it("refuses an edited request that is not a JSON object, and sends nothing", async () => {
+    const calls = stubApi({
+      [`GET /v1/schedules/${SCHEDULE_ID}`]: () => Response.json(schedule()),
+      "GET /v1/jobs": () => Response.json({ items: [], next_cursor: null }),
+    });
+    await openAt(`/schedules/${SCHEDULE_ID}`, "Shop crawl");
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Edit Shop crawl" }));
+
+    const request = dialog.getByRole("textbox", { name: "Request (JSON)" });
+    await userEvent.clear(request);
+    await userEvent.click(request);
+    await userEvent.paste("[1, 2");
+    await userEvent.click(dialog.getByRole("button", { name: "Save changes" }));
+
+    expect(await dialog.findByText("The request is a JSON object.")).toBeVisible();
+    expect(calls.filter(({ method }) => method === "PATCH")).toEqual([]);
+  });
+
+  it("schedules a stored run's request from its page, with the secrets as the server shows them", async () => {
+    const stored = {
+      urls: ["https://shop.test/a"],
+      formats: ["markdown"],
+      fetch: { method_hint: "auto" },
+    };
+    const calls = runApi(
+      { submit: "POST /v1/batch/scrape", jobId: JOB_ID, kind: "batch_scrape", request: stored },
+      {
+        "POST /v1/schedules": () =>
+          Response.json(schedule({ kind: "batch_scrape", request: stored }), { status: 201 }),
+        [`GET /v1/schedules/${SCHEDULE_ID}`]: () => Response.json(schedule()),
+      },
+    );
+    await openPlayground(`/batch?job=${JOB_ID}`);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Schedule this run" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Schedule this request" }));
+    await fill(dialog.getByRole("textbox", { name: "Name" }), "Shop batch");
+    await userEvent.click(dialog.getByRole("button", { name: "Create schedule" }));
+
+    await screen.findByRole("heading", { level: 1, name: "Shop crawl" });
+    expect(posted(calls)).toEqual({
+      name: "Shop batch",
+      kind: "batch_scrape",
+      request: stored,
+      interval_s: 3600,
+      timezone: expect.any(String) as unknown,
+    });
+  });
+
+  it("changes only what the edit changed: nothing for an untouched draft, an interval as seconds", () => {
+    const current = schedule();
+    const draft = {
+      name: "Shop crawl",
+      every: "interval",
+      minutes: 60,
+      cron: "",
+      timezone: "UTC",
+    } as const;
+    const text = JSON.stringify(current.request, null, 2);
+
+    expect(scheduleChange(current, draft, { text, initial: text })).toEqual({});
+    expect(scheduleChange(current, { ...draft, minutes: 15 }, { text, initial: text })).toEqual({
+      timezone: "UTC",
+      interval_s: 900,
+    });
+    expect(scheduleChange(current, draft, { text: "{", initial: text })).toBeNull();
   });
 
   it("says how often a schedule runs", () => {

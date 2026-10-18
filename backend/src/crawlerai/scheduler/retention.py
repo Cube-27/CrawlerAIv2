@@ -1,4 +1,5 @@
-"""Retention (SPEC-01 §2, §4.4; ARCHITECTURE §6, §15): the scheduler's `expire_captures` and `expire_candidates`.
+"""Retention (SPEC-01 §2, §4.4; ARCHITECTURE §6, §15): the scheduler's `expire_captures`, `expire_candidates` and
+`expire_webhooks`.
 
 Only production captures expire: a row is deleted only when its `object_key` is under `captures/`, so dev eval
 bundles under `eval/` are never touched, whatever their row says (C1). Hidden and fresh bundles live in another
@@ -12,12 +13,14 @@ from typing import Final
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Candidate, Capture
+from crawlerai.db.models import Candidate, Capture, WebhookDelivery, WebhookEvent
 from crawlerai.storage.artifacts import ARTIFACT_TYPES, artifact_key
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import CAPTURES_PREFIX
 
 CANDIDATE_TTL: Final = timedelta(days=30)  # ARCHITECTURE §6: candidates are kept 30 days
+# An ended webhook delivery and its events are kept 30 days, for `GET /v1/jobs/{id}/webhook-deliveries` (D-1511).
+WEBHOOK_TTL: Final = timedelta(days=30)
 # Rows per transaction. It bounds how long a run holds row locks, and how many bundles one failed run leaves deleted
 # under rows that stay; the scheduler runs a full batch again at once, so a backlog still drains in one turn.
 RETENTION_BATCH: Final = 1000
@@ -62,4 +65,20 @@ async def expire_candidates(conn: AsyncConnection, *, batch: int) -> int:
         .limit(batch)
     )
     deleted = await conn.execute(delete(Candidate).where(Candidate.id.in_(due)))
+    return deleted.rowcount
+
+
+async def expire_webhooks(conn: AsyncConnection, *, batch: int) -> int:
+    """Delete up to `batch` ended webhook deliveries (`delivered` or `failed`) created more than `WEBHOOK_TTL` ago, the
+    oldest first, with the events they carried, and return how many deliveries. A pending delivery is never deleted:
+    it is still owed."""
+    due = (
+        select(WebhookDelivery.id)
+        .where(WebhookDelivery.status != "pending", WebhookDelivery.created_at < func.now() - WEBHOOK_TTL)
+        .order_by(WebhookDelivery.created_at)
+        .limit(batch)
+    )
+    ids = list((await conn.execute(due)).scalars())
+    await conn.execute(delete(WebhookEvent).where(WebhookEvent.delivery_id.in_(ids)))
+    deleted = await conn.execute(delete(WebhookDelivery).where(WebhookDelivery.id.in_(ids)))
     return deleted.rowcount

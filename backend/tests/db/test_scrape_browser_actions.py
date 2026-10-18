@@ -119,6 +119,31 @@ async def test_each_kept_state_is_a_capture_and_the_answer_lists_every_record_on
     assert (extractions, captures) == (2, 2)
 
 
+async def test_the_callers_page_steps_go_to_the_listing_rung_with_the_paging_actions(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    listing: Listing,
+    own_origin: str,
+    schema_name: str,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/kettles"
+    listing.pages = [(url, listing_page(own_origin, ["Blue kettle", "Red kettle"]))]
+    schema = await listing_schema(engine, schema_name)
+    request = _request(
+        url,
+        schema.id,
+        browser_actions={},
+        fetch={"wait_for": 500, "actions": [{"type": "click", "text": "Accept"}]},
+    )
+
+    result = await scrape(engine, fetching, request, data=engine_data)
+
+    ((_, policy),) = listing.asked
+    assert [(step.action, step.text) for step in policy.steps] == [("wait", None), ("click", "Accept")]
+    assert (result.outcome, result.browser_actions) == ("extracted", REPORT)
+
+
 async def test_a_listing_robots_txt_disallows_is_not_fetched(
     engine: AsyncEngine,
     fetching: Fetching,

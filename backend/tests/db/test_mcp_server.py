@@ -1,5 +1,5 @@
-"""The MCP server (SPEC-10 §4.7): the SDK's client calls each of the twenty tools over streamable HTTP at `/mcp` in the
-API app, and over stdio from `python -m crawlerai.mcp_server`. What each tool does is its service's, tested with the
+"""The MCP server (SPEC-10 §4.7): the SDK's client calls each of the twenty-one tools over streamable HTTP at `/mcp` in
+the API app, and over stdio from `python -m crawlerai.mcp_server`. What each tool does is its service's, tested with the
 service; here, that a tool reaches it with the caller's key, and answers by the output rules (§13.3).
 
 The app runs as the REST tests run it: real settings against the test database, its fetching a stub web of synthetic
@@ -31,7 +31,17 @@ from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.db.keys import CreatedKey, create_key, revoke_key
-from crawlerai.db.models import ApiKey, ExtractionConfig, ExtractionConfigId, Job, Project, Schedule, Site, SiteId
+from crawlerai.db.models import (
+    ApiKey,
+    ExtractionConfig,
+    ExtractionConfigId,
+    Job,
+    Project,
+    Schedule,
+    Site,
+    SiteId,
+    WebhookDelivery,
+)
 from crawlerai.llm.client import Unconfigured
 from crawlerai.llm.setup import LLMSetup
 from crawlerai.mcp_server.output import MARKDOWN_PAGE_CHARS
@@ -69,6 +79,7 @@ TOOLS = {
     "resume_schedule",
     "run_schedule",
     "delete_schedule",
+    "webhook_deliveries",
 }
 # The tools that answer with page content say that it is untrusted (§4.7).
 CONTENT_TOOLS = {"scrape", "map", "search", "crawl_status", "extract_status", "llms_txt"}
@@ -174,7 +185,7 @@ def _texts(result: CallToolResult) -> list[str]:
     return [block.text for block in result.content if isinstance(block, TextContent)]
 
 
-async def test_the_twenty_tools_are_listed_and_those_with_page_content_say_it_is_untrusted(
+async def test_the_twenty_one_tools_are_listed_and_those_with_page_content_say_it_is_untrusted(
     session: ClientSession,
 ) -> None:
     tools = (await session.list_tools()).tools
@@ -500,3 +511,32 @@ async def test_a_schedule_is_created_run_listed_paused_and_deleted_as_rest_does(
     assert (paused["paused"], rest["paused"], rest["last_job_id"]) == (True, True, run["job_id"])
     assert created["id"] in [item["id"] for item in listed["items"]]
     assert (await app_client.get(f"/v1/schedules/{created['id']}")).status_code == 404
+
+
+async def test_a_jobs_webhook_deliveries_are_listed_as_rest_does(
+    session: ClientSession, app_client: httpx.AsyncClient, engine: AsyncEngine
+) -> None:
+    project = select(Project.id).where(Project.name == "default").scalar_subquery()
+    job = insert(Job).values(project_id=project, kind="batch_scrape", request={}, engine_version="e")
+    async with engine.begin() as conn:
+        job_id = (await conn.execute(job.returning(Job.id))).scalar_one()
+        failed = {"status": "failed", "attempts": 5, "last_error": "status 410", "response_code": 410}
+        await conn.execute(insert(WebhookDelivery).values(job_id=job_id, **failed))
+
+    listed = await _call(session, "webhook_deliveries", job_id=str(job_id))
+    rest = (await app_client.get(f"/v1/jobs/{job_id}/webhook-deliveries")).json()
+    unknown = await session.call_tool("webhook_deliveries", {"job_id": "0192f5a4-0000-7000-8000-000000000001"})
+    unknown_rest = await app_client.get("/v1/jobs/0192f5a4-0000-7000-8000-000000000001/webhook-deliveries")
+
+    [item] = listed["items"]
+    assert (item["status"], item["attempts"], item["last_error"], item["response_code"]) == (
+        "failed",
+        5,
+        "status 410",
+        410,
+    )
+    assert (listed, unknown_rest.status_code) == (rest, 404)
+    assert (unknown.isError, _texts(unknown)) == (
+        True,
+        ["Error executing tool webhook_deliveries: no job 0192f5a4-0000-7000-8000-000000000001"],
+    )

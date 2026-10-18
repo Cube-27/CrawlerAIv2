@@ -16,8 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
-from crawlerai.acquire.types import REDACTED, FetchPolicy, FetchResult
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.capture import CaptureMethod
+from crawlerai.core.redaction import REDACTED
 from crawlerai.db.models import Job, UrlTask
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetch_options import UnknownProxyPool

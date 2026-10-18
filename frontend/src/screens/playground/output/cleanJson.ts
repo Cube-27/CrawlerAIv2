@@ -47,19 +47,30 @@ function cleanObject(fields: FieldTypes, data: JsonObject): CleanRecord {
   return clean;
 }
 
-/** A record's clean form: each field's published value (SPEC-07 §4.4: `value` is null unless published). */
-function cleanRecord(record: ScrapeRecord, fieldTypes: FieldTypes): CleanRecord {
+/** Fields in clean form: each one's published value (SPEC-07 §4.4: `value` is null unless published). */
+function cleanFields(fields: ScrapeRecord["fields"], fieldTypes: FieldTypes): CleanRecord {
   const data = Object.fromEntries(
-    Object.entries(record.fields).map(([name, field]) => [name, field.value ?? null]),
+    Object.entries(fields).map(([name, field]) => [name, field.value ?? null]),
   );
   return cleanObject(fieldTypes, data);
 }
 
+function cleanRecord(record: ScrapeRecord, fieldTypes: FieldTypes): CleanRecord {
+  return cleanFields(record.fields, fieldTypes);
+}
+
 /** A page's JSON as the playground shows it: its one record as an object, or its records as an array (none, or a
- * listing's), with no URL or outcome around them. With `metadata` (Metadata in JSON) they sit under `data`. */
-export function pageJson(records: readonly CleanRecord[], metadata?: unknown): unknown {
+ * listing's), with no URL or outcome around them. With `metadata` (Metadata in JSON), or `page` (the page's own fields
+ * of a listing that kept no record, D-1476), they sit under `data` beside them. */
+export function pageJson(
+  records: readonly CleanRecord[],
+  metadata?: unknown,
+  page?: CleanRecord,
+): unknown {
   const data = records.length === 1 ? records[0] : records;
-  return metadata === undefined || metadata === null ? data : { data, metadata };
+  const hasMetadata = metadata !== undefined && metadata !== null;
+  if (!hasMetadata && page === undefined) return data;
+  return { data, ...(hasMetadata ? { metadata } : {}), ...(page === undefined ? {} : { page }) };
 }
 
 /** One scrape's page JSON (`pageJson`), its records cleaned as the server cleans a job's (`json_values`). */
@@ -69,5 +80,6 @@ export function scrapeJson(
   withMetadata: boolean,
 ): unknown {
   const records = (response.records ?? []).map((record) => cleanRecord(record, fieldTypes));
-  return pageJson(records, withMetadata ? response.metadata : undefined);
+  const page = response.page === undefined ? undefined : cleanFields(response.page, fieldTypes);
+  return pageJson(records, withMetadata ? response.metadata : undefined, page);
 }

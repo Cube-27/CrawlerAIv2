@@ -271,6 +271,30 @@ async def test_a_network_failure_is_a_failed_attempt(engine: AsyncEngine, key: C
     assert (await _delivery(engine, job_id))[:3] == ("pending", 1, "timeout")
 
 
+async def _response_code(engine: AsyncEngine, job_id: JobId) -> int | None:
+    async with engine.connect() as conn:
+        query = select(WebhookDelivery.response_code).where(WebhookDelivery.job_id == job_id)
+        return (await conn.execute(query)).scalar_one()
+
+
+async def test_a_delivery_keeps_the_status_of_its_last_attempt_and_none_when_the_target_gave_none(
+    engine: AsyncEngine, key: CreatedKey
+) -> None:
+    job_id = await _ended(engine, key.id)
+
+    await _deliver(engine, Receiver([503]))
+    refused = await _response_code(engine, job_id)
+    await _make_due(engine, job_id)
+    await _deliver(engine, Receiver([RequestFailed("timeout")]))
+    unanswered = await _response_code(engine, job_id)
+    await _make_due(engine, job_id)
+    await _deliver(engine, Receiver([204]))
+    accepted = await _response_code(engine, job_id)
+
+    assert (refused, unanswered, accepted) == (503, None, 204)
+    assert (await _delivery(engine, job_id))[:3] == ("delivered", 3, None)
+
+
 async def test_a_webhook_url_that_resolves_to_a_private_address_is_never_posted(
     engine: AsyncEngine, key: CreatedKey
 ) -> None:

@@ -29,6 +29,9 @@ export type JsonValuesPage = Schemas["JsonValuesPage"];
 export type JsonValuesItem = Schemas["JsonValuesItem"];
 export type PageKindRule = Schemas["PageKindRule"];
 export type MapResult = Schemas["MapResult"];
+/** A webhook delivery of a job and a page of them (D-1511). */
+export type WebhookDelivery = Schemas["DeliveryOut"];
+export type WebhookDeliveryPage = Schemas["DeliveryPage"];
 /** A webhook event a queued request can ask for (SPEC-10 §4.2, D-1414). */
 export type WebhookEvent = NonNullable<Schemas["BatchScrapeRequest"]["webhook_events"]>[number];
 
@@ -158,6 +161,22 @@ export function getJobRequest(
   return apiResult(
     () => client.GET("/v1/jobs/{job_id}/request", { params: { path: { job_id: id } } }),
     "Loading the job's request",
+  );
+}
+
+/** One page of the job's webhook deliveries, newest first (`GET /v1/jobs/{id}/webhook-deliveries`). */
+export function listWebhookDeliveries(
+  client: ApiClient,
+  id: string,
+  { cursor, limit }: { cursor: string | null; limit: number },
+): Promise<ApiResult<WebhookDeliveryPage>> {
+  const query = { ...(cursor === null ? {} : { cursor }), limit };
+  return apiResult(
+    () =>
+      client.GET("/v1/jobs/{job_id}/webhook-deliveries", {
+        params: { path: { job_id: id }, query },
+      }),
+    "Listing the webhook deliveries",
   );
 }
 

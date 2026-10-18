@@ -28,6 +28,7 @@ from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.errors import Refusal
+from crawlerai.core.redaction import redacted_request
 from crawlerai.db.jobs import JOB_TRANSITIONS, transition_job
 from crawlerai.db.models import (
     Capture,
@@ -51,7 +52,6 @@ from crawlerai.db.queue import settle_job
 from crawlerai.llm.pricing import default_pricing
 from crawlerai.resolve.records import FieldMeta, RecordContent
 from crawlerai.schemas import registry
-from crawlerai.services.fetch_options import redacted_request
 from crawlerai.services.llm_costs import costs_of_jobs
 from crawlerai.services.records import MAX_PAGE, RecordFilter, RecordPage, StoredRecord, list_records
 from crawlerai.services.scrape_steps import (
