@@ -47,7 +47,7 @@ locales = st.sampled_from(["", "en-US/", "fr-FR/", "ja-JP/"])
 @given(tenant=labels, dc=labels, site=sites, locale=locales)
 def test_a_career_site_url_is_a_listing_of_its_root(tenant: str, dc: str, site: str, locale: str) -> None:
     root = f"https://{tenant}.{dc}.{JOBS_DOMAIN}/{site}"
-    expected = AdapterMatch(tenant=root, page_kind="listing")
+    expected = AdapterMatch(tenant=root, page_kind="listing", locale=locale.strip("/") or None)
     assert ADAPTER.detect(f"https://{tenant}.{dc}.{JOBS_DOMAIN}/{locale}{site}") == expected
     assert ADAPTER.detect(f"http://{tenant.upper()}.{dc}.{JOBS_DOMAIN}/{locale}{site}/") == expected
 
@@ -151,3 +151,16 @@ def test_every_listing_row_carries_its_jobs_url_under_the_career_site_root() -> 
         (row.format(2), "title"): "Placeholder Designer",
         (row.format(2), "url"): f"{ROOT}/job/Remote/Placeholder-Designer_R-0003",
     }
+
+
+def test_a_listing_under_a_locale_has_rows_equal_to_the_links_the_page_renders() -> None:
+    match = ADAPTER.detect(f"https://{HOST}/en-US/{SITE}")
+    assert match is not None
+    candidates = _candidates(match, "jobs.json", "job_listing")
+
+    urls = sorted(str(v) for (_, field), v in candidates.items() if field == "url")
+    assert urls == [
+        f"https://{HOST}/en-US/{SITE}/job/Northtown/Synthetic-Data-Engineer_R-0001",
+        f"https://{HOST}/en-US/{SITE}/job/Remote/Placeholder-Designer_R-0003",
+        f"https://{HOST}/en-US/{SITE}/job/Southville/Example-Support-Analyst_R-0002",
+    ]

@@ -13,7 +13,8 @@ the last page is the first with fewer than `limit` postings.
 A career site is `https://{tenant}.{data center}.myworkdayjobs.com/[{locale}/]{site}`, or on the shared host
 `https://{data center}.myworkdaysite.com/[{locale}/]recruiting/{tenant}/{site}`; a job page is the site's URL followed
 by `/job/{location}/{slug}`, the posting's `externalPath`. The endpoints are on the page's own host. The match's tenant
-is the site's root, its URL without the locale, which is what a posting's `externalUrl` starts with.
+is the site's root, its URL without the locale, which is what a posting's `externalUrl` starts with; a listing's rows
+are the links the page renders, under the root led by the page's own locale.
 """
 
 import json
@@ -58,7 +59,7 @@ class _Page:
 
 
 # A listed posting as a schema.org JobPosting: `externalPath` is the job page's path under the site's root (the match's
-# tenant, prefixed in `shapes`); `locationsText` is the location as the list writes it.
+# tenant under the page's locale, prefixed in `shapes`); `locationsText` is the location as the list writes it.
 _LISTED: Final = Shape(
     type="JobPosting",
     at=("jobPostings", ALL),
@@ -138,7 +139,7 @@ class Workday:
     def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
         if match.page_kind == "detail":
             return (_JOB,)
-        listed = replace(_LISTED, prefixes={"url": match.tenant})
+        listed = replace(_LISTED, prefixes={"url": _under(match)})
         return (replace(_LISTING, nodes={"itemListElement": (listed,)}),)
 
 
@@ -191,7 +192,9 @@ def _page(url: str) -> _Page | None:
             item = f"job/{place}/{slug}"
         case _:
             return None
-    match = AdapterMatch(tenant=origin + base, page_kind="listing" if item is None else "detail", item=item)
+    match = AdapterMatch(
+        tenant=origin + base, page_kind="listing" if item is None else "detail", item=item, locale=locale
+    )
     return _Page(api=f"{origin}/wday/cxs/{tenant}/{base.rsplit('/', 1)[1]}", locale=locale, match=match)
 
 
@@ -211,6 +214,11 @@ def _linked_site(url: str) -> tuple[str, str | None] | None:
     tracking query, its sign-in or one of its pages names the site as a job link does."""
     located = _located(url)
     return None if located is None else (f"https://{located[0].hostname}{located[2][1]}", located[1])
+
+
+def _under(match: AdapterMatch) -> str:
+    """The URL a listing's job links start with: the site's root, led by the page's locale when its path has one."""
+    return match.tenant if match.locale is None else _localized(match.tenant, match.locale)
 
 
 def _localized(root: str, locale: str) -> str:
