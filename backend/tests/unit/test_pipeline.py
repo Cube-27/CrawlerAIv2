@@ -6,7 +6,6 @@ Pages are synthetic (`example.test`); the schema.org vocabulary is the synthetic
 import asyncio
 import json
 from collections.abc import Mapping
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -21,7 +20,6 @@ from crawlerai.adapters.registry import Registry
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import EvalRunId, PageKind, SchemaId, SourceKind
@@ -673,12 +671,20 @@ def test_a_numbered_link_is_a_next_page_but_fills_no_field() -> None:
     assert result.entity["next_page_url"].status == "missing"
 
 
-def test_role_c_is_not_asked_for_a_listing_whose_structured_data_gives_rows() -> None:
-    # ARCHITECTURE §8.6: rows come from structured data or from role C; a row's own gaps stay missing (D-0516).
+def test_role_c_is_not_asked_when_the_rows_publish_every_row_field() -> None:
     role_c = FakeRoleC()
-    result = _listing(_html(_item_list({"@type": "Product", "url": "https://shop.example.test/p/1"})), role_c=role_c)
-    assert _row_values(result) == [{"url": "https://shop.example.test/p/1"}]
+    result = _listing(_html(_item_list(_row(1), _row(2))), role_c=role_c)
+    assert len(result.rows) == 2
     assert (role_c.requests, role_c.listing_requests) == ([], [])
+
+
+def test_role_c_rows_fill_the_rows_they_name_when_a_row_field_publishes_on_no_row() -> None:
+    # Listings spec, "Role C rows": the stub row has no title; role C's row naming its item URL gives it one.
+    role_c = FakeRoleC(listing_reply=ROWS_REPLY)
+    result = _listing(_html(_item_list({"@type": "Product", "url": "https://shop.example.test/p/1"})), role_c=role_c)
+    (request,) = role_c.listing_requests
+    assert request.row_fields == ("title", "url", "price")
+    assert _row_values(result) == [{"url": "https://shop.example.test/p/1", "title": "Widget 1"}]
 
 
 LISTING_CALL = CALL.model_copy(update={"prompt_kind": "c_extract_listing"})
@@ -825,25 +831,25 @@ def _card(n: int, *links: str) -> str:
     return f'<li class="card"><h3>{anchors or f"Widget {n}"}</h3><span>{n}.50 EUR</span></li>'
 
 
-def test_a_role_c_row_takes_the_item_url_of_the_one_repeated_item_block_holding_its_title() -> None:
-    # ARCHITECTURE §8.6, D-1024 (a): the block's own link, as a `dom` candidate; role C's ungrounded url stays out.
+def test_a_grid_of_cards_gives_its_rows_before_role_c_is_asked() -> None:
+    # Listings spec, "Rows from blocks": each card's heading link and price; its `#reviews` link is the same document.
     cards = "".join(_card(n, f"/p/{n}", f"/p/{n}#reviews") for n in (1, 2, 3))
-    html = _html(body=f"<ul>{cards}</ul>")
-    text = ParsedPage(html).cleaned_text.text
-    titles = [_llm("title", f"llm:rows[{n - 1}]", f"Widget {n}", text.index(f"Widget {n}")) for n in (1, 2)]
-    reply = replace(ROWS_REPLY, candidates=(*titles, ROWS_REPLY.candidates[-1]))
+    role_c = FakeRoleC(listing_reply=ROWS_REPLY)
 
-    result = _listing(html, role_c=FakeRoleC(listing_reply=reply), data=COMMITTED)
+    result = _listing(_html(body=f"<ul>{cards}</ul>"), role_c=role_c, data=COMMITTED)
 
     assert _row_values(result) == [
-        {"title": "Widget 1", "url": "https://shop.example.test/p/1"},
-        {"title": "Widget 2", "url": "https://shop.example.test/p/2"},
+        {
+            "title": f"Widget {n}",
+            "url": f"https://shop.example.test/p/{n}",
+            "price": {"amount": f"{n}.50", "currency": "EUR"},
+        }
+        for n in (1, 2, 3)
     ]
     assert [(row["url"].source_kind, row["url"].locator) for row in result.rows] == [
-        ("dom", "dom:/html[1]/body[1]/ul[1]/li[1]/h3[1]/a[1]"),
-        ("dom", "dom:/html[1]/body[1]/ul[1]/li[2]/h3[1]/a[1]"),
+        ("dom", f"dom:/html[1]/body[1]/ul[1]/li[{n}]/h3[1]/a[1]") for n in (1, 2, 3)
     ]
-    assert result.outcome == "extracted"
+    assert (role_c.listing_requests, result.outcome) == ([], "extracted")
 
 
 # --- listing rows from captured calls (Appendix A #58) ---
@@ -879,8 +885,11 @@ def test_a_listing_without_structured_rows_takes_the_rows_of_its_captured_call()
         {"url": f"https://shop.example.test/p/{n}", "price": {"amount": f"{n}.50", "currency": "EUR"}}
         for n in (1, 2, 3)
     ]
-    assert {(row["price"].evidence, row["price"].source_kind) for row in result.rows} == {("network", "xhr")}
-    assert [row["url"].locator for row in result.rows] == [f"xhr:0:$['results'][{i}]['href']" for i in range(3)]
+    # The cards show each item's link and price: the price agrees with the call's, the link is the page's spelling.
+    assert {(row["price"].evidence, row["price"].source_kind) for row in result.rows} == {("agreed", "xhr")}
+    assert [row["url"].locator for row in result.rows] == [
+        f"dom:/html[1]/body[1]/ul[1]/li[{n}]/a[1]" for n in (1, 2, 3)
+    ]
     # The titles are text, admitted by equality only: every row lacks its required title.
     assert result.outcome == "partial"
 

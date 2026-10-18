@@ -16,7 +16,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
-from crawlerai.collect.item_links import is_item_url
+from crawlerai.collect.schema_org_map import is_item_url
 from crawlerai.core.capture import BlockClass
 from crawlerai.db.models import EvalCategory, ExtractionMode, FieldStatus, PageKind, SourceKind, Split
 from crawlerai.eval.labels import (

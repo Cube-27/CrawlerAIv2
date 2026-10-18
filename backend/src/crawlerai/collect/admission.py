@@ -258,9 +258,12 @@ class _Rows:
         self._owners: dict[tuple[int, str], str | None] = {}  # each owning row and its enclosing rows, with its parent
 
     def see(self, index: int, leaf: _Leaf) -> None:
-        """Note `leaf` as one of its innermost row's URLs when it is written as one (`_WRITTEN_URL`)."""
+        """Note `leaf` as one of its innermost row's URLs when it is written as one (`_WRITTEN_URL`); a row writing a
+        URL names an item, so it is an entity (with its enclosing rows) even when it owns no value: a listing's rows
+        bind to it by that URL (`collect.items.bind`)."""
         if leaf.rows and isinstance(leaf.value, str) and _WRITTEN_URL.match(leaf.value):
             self._urls.setdefault((index, leaf.rows[-1]), []).append(leaf.value)
+            self.owner(index, leaf)
 
     def owner(self, index: int, leaf: _Leaf) -> str:
         """The entity owning a visible value: its innermost row, else the page."""

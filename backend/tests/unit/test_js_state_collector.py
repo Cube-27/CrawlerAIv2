@@ -318,6 +318,7 @@ def test_a_rows_urls_stop_at_its_nested_rows_and_a_nested_row_names_its_parent()
 
     outer, inner = f"{ROWS}[0]", f"{ROWS}[0]['sizes'][1]"
     assert [c.entity_id for c in result.candidates] == [inner]
+    # A row writing a URL names an item, so it is an entity though it owns no value (listings spec, bind step).
     assert result.entities == (
         Entity(
             id=outer,
@@ -325,7 +326,11 @@ def test_a_rows_urls_stop_at_its_nested_rows_and_a_nested_row_names_its_parent()
             urls=("https://shop.example.test/p/9", "https://cdn.example.test/9.jpg"),
             parent=PAGE,
         ),
+        Entity(
+            id=f"{ROWS}[0]['sizes'][0]", types=(ARRAY_ROW,), urls=("https://shop.example.test/p/9?s=1",), parent=outer
+        ),
         Entity(id=inner, types=(ARRAY_ROW,), urls=(), parent=outer),
+        Entity(id=f"{ROWS}[1]", types=(ARRAY_ROW,), urls=("https://shop.example.test/p/8",), parent=PAGE),
     )
 
 
