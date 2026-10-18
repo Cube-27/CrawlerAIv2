@@ -7,7 +7,8 @@
 # GitHub starts no pull_request workflow on a PR that conflicts with its base (#109 waited 30 minutes for checks that
 # never came), so a conflicting PR is an error at once, and so is a head whose `backend` check (reported even when
 # the `changes` job skips it) has not appeared after WAIT_CI_NO_RUN_S seconds (default 300). WAIT_CI_POLL_S (default
-# 15) is the poll interval.
+# 15) is the poll interval. A CANCELLED run of a check is ignored when the same check also has a run that is not
+# cancelled on the head: a workflow run superseded by a newer one (a re-push, or a base change) is cancelled, not failed.
 pr=$1; sha=$2; deadline=$(( $(date +%s) + ${3:-45} * 60 )); lag_end=$(( $(date +%s) + 180 )); first=""
 poll=${WAIT_CI_POLL_S:-15}; no_run_s=${WAIT_CI_NO_RUN_S:-300}; no_run_end=$(( $(date +%s) + no_run_s ))
 err() { echo "ERROR $*" >&2; exit 1; }
@@ -30,6 +31,13 @@ check_ci_started() {
   return 0
 }
 
+# Drops a check's CANCELLED lines when another line of the same check is not CANCELLED.
+drop_superseded() {
+  awk '{ name = $0; sub(/ [^ ]+ [^ ]+$/, "", name); lines[NR] = $0; names[NR] = name
+         if ($NF != "CANCELLED") kept[name] = 1 }
+       END { for (i = 1; i <= NR; i++) if (!(lines[i] ~ / CANCELLED$/ && kept[names[i]])) print lines[i] }'
+}
+
 while (( $(date +%s) < deadline )); do
   out=$(gh pr view "$pr" --json headRefOid,mergeable,mergeStateStatus,statusCheckRollup --jq '
     "\(.headRefOid[:7]) \(.mergeable) \(.mergeStateStatus)",
@@ -42,7 +50,7 @@ while (( $(date +%s) < deadline )); do
     sleep "$poll"; continue   # GitHub has not caught up with the push yet
   fi
   [[ $head == "$sha" ]] || { sleep "$poll"; continue; }   # gh failed; retry
-  checks=$(tail -n +2 <<< "$out")
+  checks=$(tail -n +2 <<< "$out" | drop_superseded)
   check_conflict "$merge"
   check_ci_started "$checks"
   if grep -q '^SonarCloud' <<< "$checks" && grep -q '^backend ' <<< "$checks" && ! grep -qv ' COMPLETED ' <<< "$checks"; then
