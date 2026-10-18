@@ -14,13 +14,22 @@ from collections.abc import Iterable
 from typing import Final
 
 from crawlerai.acquire.classify import classify, interstitial, is_html
-from crawlerai.acquire.types import BlockClass
+from crawlerai.acquire.types import BlockClass, FetchResult
 from crawlerai.adapters.challenges import SIGNATURES, stand_in_vendor, vendor_of
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import HeaderList
 
-__all__ = ["CHALLENGED", "STRUCTURAL", "block_class_of", "challenge_label", "challenge_signal", "count", "portable"]
+__all__ = [
+    "CHALLENGED",
+    "STRUCTURAL",
+    "block_class_of",
+    "challenge_label",
+    "challenge_signal",
+    "count",
+    "portable",
+    "vendor_block",
+]
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +67,15 @@ def challenge_label(
     if signature is not None:
         return signature.vendor
     return STRUCTURAL if challenge_signal(status, headers, text, url) else None
+
+
+def vendor_block(result: FetchResult) -> str | None:
+    """The vendor whose challenge kept a `blocked` fetch from its page: the label of its latest attempt that names one
+    (not `STRUCTURAL`); None for any other fetch. Such a page is a `blocked` outcome naming the vendor, never an engine
+    failure to retry as one (master plan 2026-10-18 §3.1; owner #50: nothing is evaded)."""
+    if result.block_class != "blocked":
+        return None
+    return next((a.challenge for a in reversed(result.attempts) if a.challenge not in (None, STRUCTURAL)), None)
 
 
 def portable(label: str | None) -> bool:

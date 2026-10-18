@@ -86,6 +86,7 @@ from crawlerai.services.scrape_steps import (
     SchemaRequest,
     SchemaUnusable,
     StoredFurther,
+    blocked_reason,
     check_formats,
     check_records,
     check_usable,
@@ -595,8 +596,10 @@ async def _finish(
         await fail_task(conn, task, error, transient=False, capture_id=capture_id)
         return _Finished(outcome)
     if derived.extraction is None or derived.schema is None:
-        await complete_task(conn, task, outcome, capture_id=capture_id)
-        return _Finished(outcome)
+        # A vendor's challenge says why the page was not reached; the caller waits, so it is not retried.
+        reason = blocked_reason(result)
+        await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id)
+        return _Finished(outcome, reason=reason)
     extraction = derived.extraction
     stored = await store_page_record(
         conn,

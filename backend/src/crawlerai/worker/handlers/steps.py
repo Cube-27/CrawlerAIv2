@@ -29,6 +29,7 @@ from crawlerai.config_ir.api_recipe.execute import MAX_PAGES
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
+from crawlerai.core.retry import backoff_delay
 from crawlerai.db.models import CaptureId, Job, RecordId, SchemaId, SiteId
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
@@ -65,6 +66,7 @@ from crawlerai.services.scrape_steps import (
     PageFormat,
     RenderNeed,
     SiteRow,
+    blocked_reason,
     extract_further,
     fetch_policy,
     new_capture,
@@ -81,6 +83,8 @@ from crawlerai.worker.loop import Failed, Finished, Postpone, TaskResult
 
 # The `last_error` of a records task in a worker that has not loaded the engine's data files (D-0492).
 RECORDS_UNAVAILABLE: Final = "records_unavailable"
+# A page a vendor's challenge kept out is fetched at most this many times (master plan 2026-10-18 §3.1).
+_VENDOR_TRIES: Final = 2
 
 _JobRow = Row[dict[str, object], SchemaId | None, dict[str, object] | None]
 
@@ -353,13 +357,22 @@ async def _standing(
     return () if record is None else (record,)
 
 
-def unreached(page: FetchedPage) -> TaskResult | None:
+def unreached(page: FetchedPage, task: ClaimedTask) -> TaskResult | None:
     """The result of a page that was not reached: its outcome (`blocked`, `shell`, `not_found`), or a transient
-    failure for a fetch error (D-0632); None for a reached page."""
+    failure for a fetch error (D-0632); None for a reached page. A page a vendor's challenge kept out ends `blocked`
+    naming the vendor (`blocked_reason`), after at most one retry, once the back-off of its first try is over."""
     outcome = BLOCK_OUTCOMES[page.result.block_class]
+    capture_id = page.capture_id
     if outcome == "failed":
-        return Failed(page.result.attempts[-1].error or outcome, transient=True, capture_id=page.capture_id)
-    return None if outcome == "extracted" else Finished(outcome, capture_id=page.capture_id)
+        return Failed(page.result.attempts[-1].error or outcome, transient=True, capture_id=capture_id)
+    if outcome == "extracted":
+        return None
+    reason = blocked_reason(page.result)
+    if reason is not None and task.attempts < _VENDOR_TRIES:
+        return Failed(
+            reason, transient=True, after=backoff_delay(task.attempts), exhausted="blocked", capture_id=capture_id
+        )
+    return Finished(outcome, reason=reason, capture_id=capture_id)
 
 
 async def extract_records(

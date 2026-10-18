@@ -109,7 +109,7 @@ async def _settle(
     llm: LLMClient,
 ) -> TaskResult:
     """The fetched page's result: its outcome when it was not reached or the job has no records, else its record's."""
-    ended = unreached(page)
+    ended = unreached(page, task)
     if ended is not None:
         return ended
     if records is None:

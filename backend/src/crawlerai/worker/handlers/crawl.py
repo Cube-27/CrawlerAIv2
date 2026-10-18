@@ -179,7 +179,7 @@ async def _visit(
     conn: AsyncConnection, store: ObjectStore, crawl: _Crawl, page: FetchedPage
 ) -> tuple[TaskResult, Links]:
     """The result of the fetched page and the links it contributes (none when it was not reached)."""
-    ended = unreached(page)
+    ended = unreached(page, crawl.task)
     if ended is not None:
         return ended, Links()
     bundle = page.result.bundle

@@ -19,6 +19,7 @@ from sqlalchemy import and_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.challenge import vendor_block
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.rungs import remember_fetch_method, remembered_as
 from crawlerai.acquire.types import AttemptRecord, FetchResult, fetched_as
@@ -125,6 +126,16 @@ BLOCK_OUTCOMES: Final[dict[BlockClass, PageOutcome]] = {
     "not_found": "not_found",
     "error": "failed",
 }
+# The reason a page a vendor's challenge kept from being reached ends `blocked` with (`challenge.vendor_block`).
+CHALLENGE_REASON: Final = "challenge: {vendor}"
+
+
+def blocked_reason(result: FetchResult) -> str | None:
+    """Why the fetched page ended `blocked`, when a vendor's challenge says (`CHALLENGE_REASON`); else None."""
+    vendor = vendor_block(result)
+    return None if vendor is None else CHALLENGE_REASON.format(vendor=vendor)
+
+
 # The usage a fetch attempt counts (SPEC-02 §4.7, §4.8): a request per HTTP or API attempt, the seconds of a browser's.
 _REQUEST_METHODS: Final[frozenset[CaptureMethod]] = frozenset({"http", "api"})
 # Jobs and sites belong to the project migrations create (single tenant, ARCHITECTURE §1).

@@ -9,6 +9,7 @@ import sys
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from contextlib import aclosing, asynccontextmanager, suppress
+from dataclasses import replace
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
@@ -293,7 +294,8 @@ async def _polite_page(
     )
     page = PagePlan(site_rungs(fetching, host, site), site, policy, [], needs_render=render_need(schema, data, None))
     try:
-        return await fetch_now(engine, fetching, url, page)
+        # A page not reached is fetched again after the back-off, and the closest capture kept (`best_fetch`).
+        return await label_file.best_fetch(lambda: fetch_now(engine, fetching, url, replace(page, attempts=[])))
     except TargetRejected:
         return "target_rejected"
 

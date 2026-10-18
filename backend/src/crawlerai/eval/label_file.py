@@ -20,13 +20,16 @@ it. Drafts name no labeler and never count as ground truth (§16.2): only a dev 
 them (D-1461). Nothing printed or raised names a URL, host or value: pages are reported by their position in the file.
 """
 
+import asyncio
 import json
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence, Set
 from dataclasses import dataclass
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
-from crawlerai.acquire.types import FetchResult
+from crawlerai.acquire.types import BlockClass, FetchResult
+from crawlerai.core.retry import backoff_delay
 from crawlerai.core.validation import field_error
 from crawlerai.db.models import EvalCategory, PageKind
 from crawlerai.eval.cli import Captured, EvalCliError, PageRequest, SchemaRef, Skipped, http_host, store_page
@@ -39,6 +42,34 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # Fetch a page as a page of the schema: its `FetchResult`, or why it was not fetched (robots.txt, the target guard).
 PageFetch = Callable[[str, SchemaDef], Awaitable[FetchResult | str]]
+# A page not reached at import is fetched again, up to this many fetches in all (master plan 2026-10-18 §3.1): a page
+# that answered at screening may refuse one fetch and answer the next.
+IMPORT_TRIES: Final = 3
+# Which capture of a page's fetches is kept: the first reached, else the one that came closest to it.
+_CLOSEST: Final[dict[BlockClass, int]] = {"ok": 0, "shell": 1, "blocked": 2, "not_found": 3, "error": 4}
+
+
+async def best_fetch(
+    fetch: Callable[[], Awaitable[FetchResult | str]],
+    *,
+    tries: int = IMPORT_TRIES,
+    wait: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> FetchResult | str:
+    """The page fetched with `fetch` until it is reached, at most `tries` times, waiting the back-off of each try
+    (`core.retry.backoff_delay`) before the next; the capture closest to reached is kept (`_CLOSEST`, the earliest of
+    equals). Why it was not fetched, when its first fetch sent nothing (robots.txt, the target guard)."""
+    best: FetchResult | None = None
+    for attempt in range(1, tries + 1):
+        if attempt > 1:
+            await wait(backoff_delay(attempt - 1).total_seconds())
+        page = await fetch()
+        if isinstance(page, str):
+            return page if best is None else best
+        if best is None or _CLOSEST[page.block_class] < _CLOSEST[best.block_class]:
+            best = page
+        if best.block_class == "ok":
+            break
+    return page if best is None else best
 
 
 class _Page(BaseModel):
