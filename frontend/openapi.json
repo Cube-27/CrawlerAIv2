@@ -1209,7 +1209,7 @@
       },
       "CrawlRequest": {
         "additionalProperties": false,
-        "description": "The body of `POST /v1/crawl` (\u00a74.5). The formats, `schema`, `fetch` and `locale` are a batch's (\u00a74.3), for every\npage the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted\nwhile the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does\n(D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\npages are extracted. The webhook options are `WebhookOptions` (\u00a74.2).\n\n`strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the\nlinks that best match `query` and `keywords` first (`crawl.scoring`). `max_pages` is `limit`. `allow_subdomains`\nkeeps the start host's subdomains without an `include`, and `allow_external` any host (D-1440, D-1441).",
+        "description": "The body of `POST /v1/crawl` (\u00a74.5). The formats, `schema`, `fetch` and `locale` are a batch's (\u00a74.3), for every\npage the crawl extracts: `records` is asked alone, a `schema.prompt` is not taken, and `schema.fields` is drafted\nwhile the caller waits. `budget.llm_calls` bounds the job's LLM calls, and without a `budget` the project's cap does\n(D-1286). `include` and `exclude` globs scope the URLs followed, as `map`'s do; `page_kind_rules` decide which\npages are extracted. The webhook options are `WebhookOptions` (\u00a74.2).\n\n`strategy` orders the frontier: `bfs` (breadth first), `dfs` (deepest first) or `best_first`, which leases the\nlinks that best match `query` and `keywords` first (`crawl.scoring`). `allow_subdomains`\nkeeps the start host's subdomains without an `include`, and `allow_external` any host (D-1440, D-1441).",
         "properties": {
           "allow_external": {
             "default": false,
@@ -1309,7 +1309,7 @@
           },
           "limit": {
             "default": 500,
-            "description": "At most this many pages are fetched; alias `max_pages`.",
+            "description": "At most this many pages are fetched.",
             "maximum": 5000.0,
             "minimum": 1.0,
             "title": "Limit",
@@ -4121,6 +4121,7 @@
           "interval_s": {
             "anyOf": [
               {
+                "maximum": 2147483647.0,
                 "minimum": 60.0,
                 "type": "integer"
               },
@@ -4180,6 +4181,7 @@
           "interval_s": {
             "anyOf": [
               {
+                "maximum": 2147483647.0,
                 "minimum": 60.0,
                 "type": "integer"
               },
@@ -4239,6 +4241,7 @@
           "interval_s": {
             "anyOf": [
               {
+                "maximum": 2147483647.0,
                 "minimum": 60.0,
                 "type": "integer"
               },
@@ -4345,6 +4348,7 @@
           "interval_s": {
             "anyOf": [
               {
+                "maximum": 2147483647.0,
                 "minimum": 60.0,
                 "type": "integer"
               },
@@ -5232,6 +5236,7 @@
           "draft_call_cap": {
             "anyOf": [
               {
+                "maximum": 2147483647.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -5244,6 +5249,7 @@
           "llm_call_cap": {
             "anyOf": [
               {
+                "maximum": 2147483647.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -6034,6 +6040,7 @@
           "interval_s": {
             "anyOf": [
               {
+                "maximum": 2147483647.0,
                 "minimum": 60.0,
                 "type": "integer"
               },
