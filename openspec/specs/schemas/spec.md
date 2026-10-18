@@ -56,8 +56,9 @@ D-0240, D-1374, D-1493. (Previously: alternatives were equal-ranked only, and `a
 - **THEN** `apply_url` publishes the target, without a conflict; without the action, the `url`
 
 ### Requirement: Row-mapped lists and key
-A `list` of `object` with a `schema_org` path SHALL be row-mapped: leaf sub-fields only, and a `key` of 1–3
-`identifier` or `url` sub-fields; `key` is required there and refused elsewhere. Row resolution is
+A `list` of `object` with a `schema_org` path SHALL be row-mapped: leaf sub-fields only, a row path that neither
+joins (`+`) nor ranks (`>`) its alternatives, and a `key` of 1–3 `identifier` or `url` sub-fields; `key` is required
+there and refused elsewhere. Row resolution is
 [variants](../variants/spec.md). Refs: §5.2, SPEC-13 §4.2.
 #### Scenario: Misplaced key or nested row field
 - **WHEN** a `text` field declares `key`, or a row item has a `list` sub-field

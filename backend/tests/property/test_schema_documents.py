@@ -152,6 +152,7 @@ def _row_breakers() -> st.SearchStrategy[tuple[str, Any]]:
     """A change to a row-mapped field that breaks a SPEC-13 §4.2 rule, as (what it changes, the new value)."""
     return st.one_of(
         st.builds(lambda path, p: ("schema_org", f"{path}+{p}"), _row_path, _property),  # a row path joins no value
+        st.builds(lambda a, b: ("schema_org", f"{a}>{b}"), _steps, _steps),  # nor ranks its alternatives
         st.just(("key", None)),  # a row-mapped field needs a key
         st.just(("key", [])),
         st.builds(lambda names: ("key", names), st.lists(_names, min_size=4, max_size=5, unique=True)),
