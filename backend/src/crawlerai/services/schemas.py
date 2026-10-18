@@ -13,14 +13,23 @@ from functools import cache
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.collect.labels import labelled
 from crawlerai.collect.schema_org_map import pinned_reference_errors
 from crawlerai.config_ir.progressive import relearn_schema
 from crawlerai.core.errors import Refusal
 from crawlerai.core.validation import field_error
 from crawlerai.db.models import SchemaId, SchemaStatus
 from crawlerai.schemas import registry
-from crawlerai.schemas.registry import SchemaExists
-from crawlerai.schemas.types import FieldSpec, Name, SchemaChanges, SchemaContent, SchemaDef, SchemaDocument
+from crawlerai.schemas.registry import SchemaExists, SchemaNotFound
+from crawlerai.schemas.types import (
+    FieldLabels,
+    FieldSpec,
+    Name,
+    SchemaChanges,
+    SchemaContent,
+    SchemaDef,
+    SchemaDocument,
+)
 
 
 class NewSchema(SchemaContent):
@@ -124,6 +133,20 @@ async def update(conn: AsyncConnection, schema_id: SchemaId, content: SchemaCont
     if edited != current:
         await relearn_schema(conn, schema_id)
     return edited
+
+
+async def set_labels(conn: AsyncConnection, schema_id: SchemaId, labels: FieldLabels) -> SchemaDef:
+    """Replace the schema's label synonyms (`SchemaDef.labels`), a preset's too: they are no part of its document, so
+    nothing is learned again. A retired schema is refused, and so is a field it lacks or no label can name."""
+    current = await registry.get_by_id(conn, schema_id)
+    if current.status == "retired":
+        raise SchemaConflict(f"schema {current.name} is retired")
+    if unknown := sorted(n for n in labels if n not in current.fields or not labelled(current.fields[n])):
+        raise InvalidSchema([(f"labels.{name}", "no labelled field of the schema has this name") for name in unknown])
+    stored = await registry.store_labels(conn, schema_id, labels)
+    if stored is None:
+        raise SchemaNotFound(f"no schema with id {schema_id}")
+    return stored
 
 
 async def sync_presets(conn: AsyncConnection, presets: Sequence[SchemaDocument] | None = None) -> list[SchemaDef]:

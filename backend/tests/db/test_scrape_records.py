@@ -140,7 +140,11 @@ def _document(name: str, **fields: dict[str, Any]) -> dict[str, Any]:
 async def kettle_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
     document = SchemaDocument.model_validate(_document(schema_name))
     async with engine.begin() as conn:
-        return await registry.create(conn, document, "user")
+        created = await registry.create(conn, document, "user")
+        # Its label synonyms are drafted (none), so role C's scripted replies answer the only model calls.
+        labelled = await registry.store_labels(conn, created.id, {})
+    assert labelled is not None
+    return labelled
 
 
 def _records(url: str, schema: dict[str, Any], *formats: str, **fields: Any) -> ScrapeRequest:

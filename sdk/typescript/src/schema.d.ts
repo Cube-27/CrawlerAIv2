@@ -790,6 +790,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/schemas/{schema_id}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Labels
+         * @description Replaces the schema's label synonyms (drafted by role S on its first use) with `body`, and returns it. They are
+         *     no part of its document, so nothing is learned again; a preset's can be edited too. A retired schema is refused
+         *     (409).
+         */
+        put: operations["set_labels_v1_schemas__schema_id__labels_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/scrape": {
         parameters: {
             query?: never;
@@ -3287,6 +3309,10 @@ export interface components {
          * SchemaDef
          * @description A `schema_def` row (ARCHITECTURE §6): a document plus where it came from and whether it is in use. One row per
          *     name, edited in place.
+         *
+         *     `labels` are the synonyms role S drafted for its fields' labels, by field (extraction spec, "Label vocabulary"),
+         *     editable; None until drafted, and again after an edit of the document. They are no part of the document, so
+         *     they change neither its digest nor what was learned for it.
          */
         SchemaDef: {
             /** Fields */
@@ -3298,6 +3324,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Labels */
+            labels?: {
+                [key: string]: string[];
+            } | null;
             /** Name */
             name: string;
             /**
@@ -3332,6 +3362,16 @@ export interface components {
         /** SchemaInline */
         SchemaInline: {
             inline: components["schemas"]["NewSchema"];
+        };
+        /**
+         * SchemaLabels
+         * @description The label synonyms of a schema's fields, by field: the labels pages write next to each field's value.
+         */
+        SchemaLabels: {
+            /** Labels */
+            labels: {
+                [key: string]: string[];
+            };
         };
         /** SchemaList */
         SchemaList: {
@@ -6858,6 +6898,82 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    set_labels_v1_schemas__schema_id__labels_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schema_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchemaLabels"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaDef"];
+                };
             };
             /** @description Unauthorized */
             401: {

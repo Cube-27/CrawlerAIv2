@@ -86,8 +86,8 @@ values serialized unchanged (INV-22, INV-27), and `usage` SHALL count every fetc
 (INV-23). Refs: §13.1, §17, D-0430.
 
 ### Requirement: Schema, config, record and replay endpoints
-`/v1/schemas` SHALL offer create, list, get, replace and retire (presets, retired schemas and taken names are 409) and
-`/v1/schemas/draft`; config endpoints expose [learning-configs](../learning-configs/spec.md), with
+`/v1/schemas` SHALL offer create, list, get, replace and retire (presets, retired schemas and taken names are 409),
+`PUT /v1/schemas/{id}/labels` (the label synonyms, [schemas](../schemas/spec.md)) and `/v1/schemas/draft`; config endpoints expose [learning-configs](../learning-configs/spec.md), with
 `POST /v1/configs/{id}/approve` and `POST /v1/configs/{id}/reject` (each 409 unless the config is the latest version
 and `pending_approval`); `GET /v1/records` pages newest first by
 keyset cursor (≤ 200) with `changed_since` (see [jobs](../jobs/spec.md)), and with `job_id` by the job's tasks, newest

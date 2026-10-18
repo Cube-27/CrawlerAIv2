@@ -1,17 +1,18 @@
 """A per-key cap on uncharged role S calls (D-1282, D-0926): the field-name drafts of `schema.fields` and
-`POST /v1/schemas/draft`, which no job exists yet to pay for (`LLMRequest.job_id` None), so no job budget bounds them.
+`POST /v1/schemas/draft`, and a schema's label synonyms (`roles.s_labels`), which no job exists yet to pay for
+(`LLMRequest.job_id` None), so no job budget bounds them.
 
 `project.draft_call_cap` is the most such calls one API key may make in all; null bounds none. A key's calls are
-counted in `api_key.draft_calls` as they are made, an answer or a failure alike, and a stored draft needs no call and
-so counts nothing. `KeyCapped` wraps the API's client for one request's key; a call a job pays for passes through, as
-the job's own budget bounds it (`db.usage.budget_remaining`).
+counted in `api_key.draft_calls` as they are made, an answer or a failure alike; a stored draft needs no call, and a
+process without a provider makes none, so neither counts. `KeyCapped` wraps the API's client for one request's key; a
+call a job pays for passes through, as the job's own budget bounds it (`db.usage.budget_remaining`).
 """
 
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.db.models import ApiKey, ApiKeyId, Project
-from crawlerai.llm.client import LLMClient, LLMFailure, LLMRequest, LLMResponse, ReplyCheck
+from crawlerai.llm.client import LLMClient, LLMFailure, LLMRequest, LLMResponse, ReplyCheck, Unconfigured
 
 DRAFT_CAP_REACHED = "draft_cap_reached"
 CAP_NAME = "draft_call_cap"
@@ -52,6 +53,7 @@ class KeyCapped:
         self._key_id = key_id
 
     async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
-        if req.job_id is None:
+        # A process without a provider makes no call, so it counts none.
+        if req.job_id is None and not isinstance(self._inner, Unconfigured):
             await take_draft_call(self._engine, self._key_id)
         return await self._inner.complete_json(req, check)

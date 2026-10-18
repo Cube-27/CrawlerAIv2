@@ -58,6 +58,11 @@ SchemaOrgPath = Annotated[
 # language-tagged vocabulary in `crawlerai.normalize.vocab`.
 VocabRef = Annotated[str, StringConstraints(pattern=r"^(schema:[A-Z][A-Za-z0-9]*|type:[a-z][a-z0-9_]*)$")]
 Description = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+# A label a page writes next to a field's value (a table header, a `dt`, the text before a colon): a few words.
+Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+MAX_LABELS = 32
+"""The most drafted labels one field keeps (`SchemaDef.labels`): a bound on the vocabulary, far above a field's."""
+FieldLabels = dict[Name, Annotated[list[Label], Field(max_length=MAX_LABELS)]]
 
 MAX_DEPTH = 3
 """Nesting depth (§5.1): a top-level field is depth 1, and each `list.item` or `object.fields` level adds one."""
@@ -188,11 +193,17 @@ def _check_field(path: str, spec: FieldSpec, *, depth: int, described: bool) -> 
 
 class SchemaDef(SchemaDocument):
     """A `schema_def` row (ARCHITECTURE §6): a document plus where it came from and whether it is in use. One row per
-    name, edited in place."""
+    name, edited in place.
+
+    `labels` are the synonyms role S drafted for its fields' labels, by field (extraction spec, "Label vocabulary"),
+    editable; None until drafted, and again after an edit of the document. They are no part of the document, so
+    they change neither its digest nor what was learned for it.
+    """
 
     id: SchemaId
     origin: SchemaOrigin
     status: SchemaStatus
+    labels: FieldLabels | None = None
 
 
 def document_digest(schema: SchemaDocument) -> str:

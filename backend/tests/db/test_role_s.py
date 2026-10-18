@@ -1,5 +1,6 @@
 """Role S against Postgres (SPEC-06 §4.5, §7): a prompt's draft is stored once as `prompt_draft`, a repeat of the
-prompt reuses it without a call, and an invalid document is retried once, then refused."""
+prompt reuses it without a call, and an invalid document is retried once, then refused. A schema's label synonyms are
+drafted once and stored with it."""
 
 import asyncio
 import json
@@ -13,10 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.db.models import Job, JobId, Project, UsageEvent
 from crawlerai.db.models import SchemaDef as SchemaRow
-from crawlerai.llm.client import MeteredClient, OutputInvalid, ProviderReply
+from crawlerai.llm.client import NO_LLM, MeteredClient, OutputInvalid, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
+from crawlerai.llm.roles.s_labels import with_labels
 from crawlerai.llm.roles.s_schema import draft_name, draft_schema
 from crawlerai.llm.roles.s_wire import to_wire
+from crawlerai.schemas import registry
+from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
 
 pytestmark = pytest.mark.anyio
 
@@ -128,3 +132,42 @@ async def test_a_document_invalid_twice_is_refused_and_not_stored(drafts: AsyncE
         await draft_schema(drafts, client, prompt=prompt, samples=["page"], job_id=job_id)
 
     assert await _rows(drafts, draft_name(prompt)) == 0
+
+
+async def _stored_draft(engine: AsyncEngine) -> SchemaDef:
+    document = SchemaDocument.model_validate({**DRAFT, "name": f"draft_{uuid.uuid4().hex[:12]}"})
+    async with engine.begin() as conn:
+        return await registry.create(conn, document, "prompt_draft")
+
+
+def _labels_reply(labels: dict[str, list[str]]) -> ProviderReply:
+    fields = [{"name": name, "labels": given} for name, given in labels.items()]
+    return ProviderReply(model="fake-strong", text=json.dumps({"fields": fields}), tokens_in=300, tokens_out=40)
+
+
+async def test_label_synonyms_are_drafted_once_stored_with_the_schema_and_cleared_by_an_edit(
+    drafts: AsyncEngine,
+) -> None:
+    schema = await _stored_draft(drafts)
+    labels = {"title": ["Event", "Veranstaltung", "event", "Title"], "starts": ["Begins", "Beginn"]}
+    provider = FakeProvider([_labels_reply(labels)])
+    client = MeteredClient([provider], drafts)
+
+    drafted = await with_labels(drafts, client, schema)
+    async with drafts.connect() as conn:
+        stored = await registry.get_by_id(conn, schema.id)
+    again = await with_labels(drafts, client, stored)
+
+    # A label repeating another's words, or the field's own name, is dropped.
+    assert drafted.labels == {"title": ["Event", "Veranstaltung"], "starts": ["Begins", "Beginn"]}
+    assert again == drafted
+    assert len(provider.calls) == 1
+    async with drafts.begin() as conn:
+        edited = await registry.update_schema(conn, stored, SchemaChanges(required_groups=[["starts"]]))
+    assert edited.labels is None
+
+
+async def test_without_a_model_the_schema_keeps_its_own_words(drafts: AsyncEngine) -> None:
+    schema = await _stored_draft(drafts)
+
+    assert await with_labels(drafts, NO_LLM, schema) == schema

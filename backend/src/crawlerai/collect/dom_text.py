@@ -11,8 +11,8 @@ reviews and related items:
   outermost wins: a description's paragraphs are siblings, and the block holding them all is the description.
 - **Labelled section.** The content that follows a heading (HTML Standard §4.3.6, WAI-ARIA `heading`) up to the next
   heading, or that a section names with `aria-label` or `aria-labelledby` (WAI-ARIA 1.2), when the label's words are
-  the field's name or the words of the schema.org property its path names (`collect.dom.words`), as label-value
-  pairs are read (C4: the schema's words, never a list).
+  one of the field's labels (`collect.labels`: its name, schema.org property, description and drafted synonyms), as
+  label-value pairs are read (C4: the schema's words, never a list).
 
 Prose is a block that holds no table, form control, button, image, media, frame or other element that is not running
 text (HTML Standard §3.2.5: flow and phrasing content). A block's text is the cleaned text of its element
@@ -29,7 +29,8 @@ from typing import NamedTuple
 from selectolax.lexbor import LexborNode
 
 from crawlerai.collect.base import PAGE, Candidate, CollectResult
-from crawlerai.collect.dom import content_region, field_labels, properties, words
+from crawlerai.collect.dom import OTHER_ITEMS, content_region
+from crawlerai.collect.labels import field_labels, properties, words
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate
 from crawlerai.content.dom import tokens
@@ -63,9 +64,6 @@ _NOT_PROSE = (
 )
 # WAI-ARIA 1.2 §5.4: roles of content set apart from the main content.
 _APART_ROLES = ("dialog", "alertdialog", "form", "navigation", "complementary", "banner", "contentinfo")
-# schema.org properties whose values are other things' content: the properties `review`, `isRelatedTo`, `isSimilarTo`.
-_OTHER_ITEMS = ("review", "isRelatedTo", "isSimilarTo")
-_REVIEW_TYPE = "/Review"  # the `itemtype` URL of schema.org's Review ends with it (HTML Standard §5.4)
 _HEADING = 'h1,h2,h3,h4,h5,h6,[role~="heading"]'
 _OPEN_GRAPH = "og"  # the protocol defines og:description as a one-to-two sentence summary
 _DESCRIPTION = "description"  # schema.org `Thing.description`
@@ -89,8 +87,7 @@ class _Blocks:
                 *_TANGENTIAL,
                 *_NOT_PROSE,
                 *(f'[role~="{role}"]' for role in _APART_ROLES),
-                *(f'[itemprop*="{prop}"]' for prop in _OTHER_ITEMS),
-                f'[itemtype*="{_REVIEW_TYPE}"]',
+                OTHER_ITEMS,
             )
         )
         roots = region.css(selector)

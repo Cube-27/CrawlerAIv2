@@ -6236,7 +6236,7 @@
       },
       "SchemaDef": {
         "additionalProperties": false,
-        "description": "A `schema_def` row (ARCHITECTURE \u00a76): a document plus where it came from and whether it is in use. One row per\nname, edited in place.",
+        "description": "A `schema_def` row (ARCHITECTURE \u00a76): a document plus where it came from and whether it is in use. One row per\nname, edited in place.\n\n`labels` are the synonyms role S drafted for its fields' labels, by field (extraction spec, \"Label vocabulary\"),\neditable; None until drafted, and again after an edit of the document. They are no part of the document, so\nthey change neither its digest nor what was learned for it.",
         "properties": {
           "fields": {
             "minProperties": 1,
@@ -6252,6 +6252,28 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "patternProperties": {
+                  "^[a-z][a-z0-9_]{0,63}$": {
+                    "items": {
+                      "maxLength": 80,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
           },
           "name": {
             "pattern": "^[a-z][a-z0-9_]{0,63}$",
@@ -6339,6 +6361,32 @@
           "inline"
         ],
         "title": "SchemaInline",
+        "type": "object"
+      },
+      "SchemaLabels": {
+        "additionalProperties": false,
+        "description": "The label synonyms of a schema's fields, by field: the labels pages write next to each field's value.",
+        "properties": {
+          "labels": {
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "items": {
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              }
+            },
+            "title": "Labels",
+            "type": "object"
+          }
+        },
+        "required": [
+          "labels"
+        ],
+        "title": "SchemaLabels",
         "type": "object"
       },
       "SchemaList": {
@@ -12900,6 +12948,130 @@
           }
         ],
         "summary": "Update Schema",
+        "tags": [
+          "schemas"
+        ]
+      }
+    },
+    "/v1/schemas/{schema_id}/labels": {
+      "put": {
+        "description": "Replaces the schema's label synonyms (drafted by role S on its first use) with `body`, and returns it. They are\nno part of its document, so nothing is learned again; a preset's can be edited too. A retired schema is refused\n(409).",
+        "operationId": "set_labels_v1_schemas__schema_id__labels_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schema_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Schema Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchemaLabels"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaDef"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Labels",
         "tags": [
           "schemas"
         ]

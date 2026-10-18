@@ -1,5 +1,6 @@
 """The structural DOM collector (SPEC-05 §4.5, ARCHITECTURE §8.1, §22 admitted 2026-10-16): label-value pairs whose
-label is a field's name or the schema.org property its path names, and the main content's first image. Every
+label is one of a field's labels (its name, schema.org property, description or drafted synonyms), the main region's
+one typed value outside other items, and the main content's first image. Every
 candidate is the page's, independent, with a `dom:` locator naming the element its value came from. Pages are
 synthetic (`example.test`, C3, C9)."""
 
@@ -373,3 +374,30 @@ def test_a_price_the_main_region_holds_itself_is_spotted() -> None:
     found = _collect("<main>€19.99</main>", MONEY_SCHEMA)
 
     assert found["price"][0][1] == "dom:/html[1]/body[1]/main[1]"
+
+
+def test_a_label_names_a_field_through_the_schemas_drafted_vocabulary() -> None:
+    body = (
+        "<main><table><tr><th>Art.-Nr.</th><td>W-100</td></tr><tr><th>Item no.</th><td>W-100</td></tr></table></main>"
+    )
+    drafted = MONEY_SCHEMA.model_copy(update={"labels": {"sku": ["Art.-Nr.", "Item no."]}})
+
+    assert _values(body, MONEY_SCHEMA) == {}
+    assert _values(body, drafted) == {"sku": ["W-100"]}
+
+
+def test_a_checked_identifier_is_read_from_an_unlabelled_pair_but_not_from_other_items() -> None:
+    cards = '<ul><li><a href="/p/2">Other</a> 5901234123457</li><li><a href="/p/3">Another</a> 9780306406157</li></ul>'
+    related = '<div itemprop="isRelatedTo">EAN: 4012345678901</div>'
+
+    assert _values(f"<main><p>EAN: 4006381333931</p>{cards}{related}</main>", MONEY_SCHEMA) == {
+        "gtin": ["4006381333931"]
+    }
+    assert _values(f"<main>{related}</main>", MONEY_SCHEMA) == {}
+    assert _values('<main><a href="/p/2">4006381333931</a></main>', MONEY_SCHEMA) == {}
+
+
+def test_an_identifier_two_pairs_give_different_values_is_read_from_neither() -> None:
+    body = "<main><table><tr><th>SKU</th><td>W-100</td></tr></table><dl><dt>SKU</dt><dd>W-200</dd></dl></main>"
+
+    assert _values(body, MONEY_SCHEMA) == {}

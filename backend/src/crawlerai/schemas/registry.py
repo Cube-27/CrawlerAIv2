@@ -10,14 +10,14 @@ from collections.abc import Sequence
 from importlib.resources import files
 from typing import Any
 
-from sqlalchemy import Row, insert, select, update
+from sqlalchemy import Row, insert, null, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.core.errors import Refusal
 from crawlerai.db.models import SchemaDef as SchemaRow
 from crawlerai.db.models import SchemaId, SchemaOrigin, SchemaStatus
-from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
+from crawlerai.schemas.types import FieldLabels, SchemaChanges, SchemaDef, SchemaDocument
 
 
 class SchemaNotFound(Refusal):
@@ -40,6 +40,7 @@ _COLUMNS = (
     SchemaRow.required_groups,
     SchemaRow.origin,
     SchemaRow.status,
+    SchemaRow.labels,
 )
 
 
@@ -115,10 +116,24 @@ async def retire(conn: AsyncConnection, schema_id: SchemaId) -> SchemaDef:
     return _from_row(row)
 
 
+async def store_labels(
+    conn: AsyncConnection, schema_id: SchemaId, labels: FieldLabels, *, drafted: bool = False
+) -> SchemaDef | None:
+    """Store the schema's label synonyms (`SchemaDef.labels`) and return the schema; with `drafted`, only while it has
+    none, so of two drafts the first stays: None when another draft was stored first (or no schema has the id)."""
+    query = update(SchemaRow).where(SchemaRow.id == schema_id)
+    if drafted:
+        query = query.where(SchemaRow.labels.is_(None))
+    row = (await conn.execute(query.values(labels=labels).returning(*_COLUMNS))).one_or_none()
+    return None if row is None else _from_row(row)
+
+
 async def _write_if_changed(conn: AsyncConnection, current: SchemaDef, document: SchemaDocument) -> SchemaDef:
+    """Write `document` over the stored one when it differs. Label synonyms were drafted for the old document's fields,
+    so they go with it, to be drafted again (`SchemaDef.labels`)."""
     if document.model_dump(exclude_none=True) == _document(current):
         return current
-    values = document.model_dump(mode="json", exclude_none=True, exclude={"name"})
+    values = document.model_dump(mode="json", exclude_none=True, exclude={"name"}) | {"labels": null()}
     query = update(SchemaRow).where(SchemaRow.id == current.id).values(**values).returning(*_COLUMNS)
     return _from_row((await conn.execute(query)).one())
 

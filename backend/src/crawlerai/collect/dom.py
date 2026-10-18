@@ -8,14 +8,18 @@ whose meaning the HTML Standard defines, for pages whose structured data leaves 
   their descriptions (§4.4.9: groups of `dt` then `dd`, each group optionally wrapped in a `div`); an element that
   starts with a label and a colon, the value being the text after it or the one element holding it; and sibling
   containers of one shape (two or more) that each hold a label element then a value element. A label names a field
-  when its words are the field's name (`review_count`: "Review count") or the words of the schema.org property its
-  `schema_org` path names (`reviewCount`, `brand` for `Product.brand.name`), lower-cased (`named_property`). These
-  words come from the schema and the pinned schema.org vocabulary it is validated against, never from a list (C4), so
-  only labels written in those words match. Lines and sibling pairs repeat for the items a page lists besides its own
-  (related products, variants), so a field they give several values reads none from them.
+  when its words are one of the field's labels (`collect.labels`: its name, the schema.org property its path names,
+  its description and the synonyms role S drafted for the schema), never words from a list in code (C4). Lines and
+  sibling pairs repeat for the items a page lists besides its own (related products, variants), so a field they give
+  several values reads none from them; an identifier field that pairs of any kind give two values reads none.
+- **Other items.** Values held by other items than the page's own are not read: schema.org microdata's related and
+  similar items and reviews, and sibling blocks that each link to one other document (a list of cards). Nor is an
+  identifier inside a hyperlink to another document, which names that document's item.
 - **Typed values.** A money field's or a checked identifier's value the main region shows once, read with the item
   layer's spotting (`collect.items.spot`): the text an element holds itself that the field's normalizer parses, not
-  struck through (`s`, `del`), not set apart, shown. Several distinct values read none.
+  struck through (`s`, `del`), not set apart, shown; for a checked identifier (a GS1 or ISO 2108 check digit), also
+  the value of a pair whose label names no field. Several distinct values read none. An identifier without a check
+  digit (sku, mpn) is read only next to one of its labels.
 - **The main image.** The first image of the page's main region (the `main` element, else the one `role="main"`
   landmark, WAI-ARIA 1.2; else the document's one `article`, §4.3.2), outside the region's tangential content
   (`nav`, `header`, `footer`, `aside`, §4.3), its dialogs (`dialog`, roles `dialog` and `alertdialog`) and the
@@ -32,16 +36,17 @@ skipped: a page-level pair says nothing of one row.
 
 import mimetypes
 import re
-import unicodedata
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from selectolax.lexbor import LexborNode
 
 from crawlerai.collect.base import PAGE, CollectResult
 from crawlerai.collect.items.spot import is_typed, spots
+from crawlerai.collect.labels import Words, field_labels, properties, words
 from crawlerai.collect.locator import format_locator
-from crawlerai.collect.schema_org_map import candidate, named_property, parse_paths
+from crawlerai.collect.schema_org_map import NAMESPACES, candidate
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.content.text import CELLS, shown
@@ -69,10 +74,6 @@ _MEDIA_TYPES = mimetypes.MimeTypes()
 _IMAGE = "image"
 # RFC 2397: a `data:` URL carries its content inline; it addresses no image resource.
 _INLINE = "data:"
-# Words of a label or a name: runs of letters and digits; a lower-case letter or digit followed by a capital starts a
-# new word, as schema.org's lowerCamelCase property names join theirs (schema.org, "Data model": naming conventions).
-_WORD = re.compile(r"[^\W_]+")
-_CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 # A label's end: a colon (U+003A, or the fullwidth U+FF1A that CJK text writes) after optional white space.
 _COLON = re.compile(r"\s*[:\uff1a]")
 
@@ -90,8 +91,19 @@ _SPOTTED_TYPES = frozenset({FieldType.MONEY, FieldType.IDENTIFIER})
 _SPOT_LENGTH = 64
 # HTML Standard §4.5.4 `s` and §4.7.2 `del`: text that is no longer accurate or was removed is no current value.
 _STRUCK = frozenset({"s", "del"})
-
-Words = tuple[str, ...]
+# schema.org properties whose values are other things than the page's item: `review`, `isRelatedTo`, `isSimilarTo`,
+# as an `itemprop` token names them, bare or as an IRI in either namespace; and a Review item, whose `itemtype` URL ends
+# with `/Review` (HTML Standard §5.4: microdata).
+OTHER_ITEMS = ",".join(
+    (
+        *(
+            f'[itemprop~="{namespace}{prop}"]'
+            for prop in ("review", "isRelatedTo", "isSimilarTo")
+            for namespace in ("", *NAMESPACES)
+        ),
+        '[itemtype$="/Review"]',
+    )
+)
 
 
 class DomCollector:
@@ -100,9 +112,13 @@ class DomCollector:
             return CollectResult(entities=(), candidates=())
         diagnostics: list[str] = []
         candidates = []
+        content = _Content.of(page, ctx)
+        labels = field_labels(schema)
+        pairs = content.pairs(page) if content is not None else []
+        unlabelled = [pair for pair in pairs if words(pair[0]) not in labels]
         for name, raw, xpath in (
-            *_pairs_found(page, schema),
-            *_typed_found(page, schema, ctx),
+            *_pairs_found(pairs, labels, schema, content),
+            *_typed_found(page, schema, ctx, content, unlabelled),
             *_image_found(page, schema, ctx),
         ):
             locator = format_locator("dom", xpath)
@@ -112,55 +128,67 @@ class DomCollector:
         return CollectResult(entities=(), candidates=tuple(candidates), diagnostics=tuple(diagnostics))
 
 
-def field_labels(schema: SchemaDef) -> dict[Words, list[str]]:
-    """The fields each label's words name. A list or an object holds several values, and a table cell is one."""
-    labels: dict[Words, list[str]] = {}
-    for name, spec in schema.fields.items():
-        if spec.type in (FieldType.LIST, FieldType.OBJECT):
-            continue
-        for form in dict.fromkeys([words(name), *map(words, properties(spec))]):
-            labels.setdefault(form, []).append(name)
-    return labels
-
-
-def properties(spec: FieldSpec) -> list[str]:
-    """The schema.org properties a field's paths name (`named_property`)."""
-    return [named_property(p) for p in parse_paths(spec.schema_org)] if spec.schema_org is not None else []
-
-
-def words(text: str) -> Words:
-    """`text`'s words, case-folded, after Unicode NFKC (UAX #15): "Review count:", `review_count` and `reviewCount`
-    are all ("review", "count")."""
-    spaced = _CAMEL.sub(" ", unicodedata.normalize("NFKC", text))
-    return tuple(word.casefold() for word in _WORD.findall(spaced))
-
-
 Found = tuple[str, str, str]  # a field, the raw value, the XPath of the element it came from
+Pair = tuple[str, LexborNode, str, str]  # a label's text, the element holding its value, its text and the kind
 
 
-def _pairs_found(page: ParsedPage, schema: SchemaDef) -> Iterator[Found]:
-    labels: Mapping[Words, Sequence[str]] = field_labels(schema)
-    region = content_region(page)
-    if region is None:
-        return
+@dataclass(frozen=True, slots=True)
+class _Content:
+    """The page's content region with the elements of it whose values are not the page's own: those `apart` (its
+    tangential content, dialogs and media fallback, and other items' content, `_other_items`), and those `linked`
+    (the content of a hyperlink to another document, which names that document's item)."""
+
+    region: LexborNode
+    apart: frozenset[int]
+    linked: frozenset[int]
+
+    @classmethod
+    def of(cls, page: ParsedPage, ctx: Context) -> "_Content | None":
+        region = content_region(page)
+        if region is None:
+            return None
+        links = _Links.of(region, ctx)
+        apart = _apart_ids(region) | _inside(_other_items(region, links))
+        return cls(region, apart, _inside(a for a in region.css("a[href]") if links.of_block(a)))
+
+    def pairs(self, page: ParsedPage) -> list[Pair]:
+        """The region's label-value pairs whose value is shown and is not set apart."""
+        return [
+            pair
+            for pair in _pairs(self.region)
+            if pair[2] and pair[1].mem_id not in self.apart and page.visible_values.visible(pair[2])
+        ]
+
+
+def _pairs_found(
+    pairs: Sequence[Pair], labels: Mapping[Words, Sequence[str]], schema: SchemaDef, content: "_Content | None"
+) -> Iterator[Found]:
     # A value's wrappers read it too: of the elements giving a field the same value, the innermost (last in document
     # order) is its place.
-    apart = _apart_ids(region)
     found: dict[tuple[str, str], LexborNode] = {}
     kinds: dict[tuple[str, str], set[str]] = {}
-    for label, value, raw, kind in _pairs(region):
-        fields = labels.get(words(label))
-        if not fields or not raw or value.mem_id in apart or not page.visible_values.visible(raw):
-            continue
-        for name in fields:
+    linked = content.linked if content is not None else frozenset()
+    for label, value, raw, kind in pairs:
+        for name in labels.get(words(label), ()):
+            if schema.fields[name].type is FieldType.IDENTIFIER and value.mem_id in linked:
+                continue
             found[(name, raw)] = value
             kinds.setdefault((name, kind), set()).add(raw)
     for (name, raw), value in found.items():
-        # Lines and sibling pairs repeat for the items a page lists besides its own (related products, variants): a
-        # field they give several values is ambiguous there. Rows and description lists are the page's own.
-        stated = raw in kinds.get((name, _TABLE), ())
-        if stated or all(len(kinds[(name, kind)]) == 1 for kind in _REPEATING if raw in kinds.get((name, kind), ())):
+        if _unambiguous(name, raw, kinds, schema.fields[name]):
             yield name, raw, node_xpath(value)
+
+
+def _unambiguous(name: str, raw: str, kinds: Mapping[tuple[str, str], set[str]], spec: FieldSpec) -> bool:
+    """Whether a field's pair value is the page's own. Lines and sibling pairs repeat for the items a page lists
+    besides its own (related products, variants): a field they give several values is ambiguous there, while rows and
+    description lists are the page's own. An identifier identifies one thing (GS1, ISO 2108, a seller's sku), so a
+    field that pairs of any kind give two identifiers reads neither: one may be another item's."""
+    if spec.type is FieldType.IDENTIFIER:
+        return all(given <= {raw} for (field, _), given in kinds.items() if field == name)
+    if raw in kinds.get((name, _TABLE), ()):
+        return True
+    return all(len(kinds[(name, kind)]) == 1 for kind in _REPEATING if raw in kinds.get((name, kind), ()))
 
 
 def content_region(page: ParsedPage) -> LexborNode | None:
@@ -175,9 +203,6 @@ def _own_text(node: LexborNode) -> str:
 
 def _text(node: LexborNode) -> str:
     return " ".join(node.text(deep=True, separator=" ").split())
-
-
-Pair = tuple[str, LexborNode, str, str]  # a label's text, the element holding its value, its text and the kind
 
 
 def _pairs(region: LexborNode) -> Iterator[Pair]:
@@ -264,27 +289,70 @@ def _children(node: LexborNode) -> list[LexborNode]:
     return [child for child in node.iter(include_text=False) if child.is_element_node]
 
 
-def _typed_found(page: ParsedPage, schema: SchemaDef, ctx: Context) -> Iterator[Found]:
+def _typed_found(
+    page: ParsedPage, schema: SchemaDef, ctx: Context, content: _Content | None, unlabelled: Sequence[Pair]
+) -> Iterator[Found]:
     """A money or checked-identifier field's value the main region shows once: the elements whose own text the field's
-    normalizer parses (`items.spot`), current (not struck), not set apart and shown. Several distinct values are
-    ambiguous (a price among related products' prices): nothing is read."""
+    normalizer parses (`items.spot`), current (not struck), not set apart and shown; for an identifier, also the value
+    of a pair whose label names no field (`EAN: <digits>`), outside hyperlinks to other documents. A check digit (GS1,
+    ISO 2108) makes the syntax checkable; an identifier without one needs a label (`_pairs_found`). Several distinct
+    values are ambiguous (a price among related products' prices): nothing is read."""
     fields = [n for n, spec in schema.fields.items() if is_typed(spec) and spec.type in _SPOTTED_TYPES]
-    region = _main_region(page) if fields else None
-    if region is None:
+    if not fields or content is None or _main_region(page) is None:
         return
-    texts = _short_texts(region)
+    shorts = _short_texts(content.region, _apart_ids(content.region, _STRUCK) | content.apart)
     for name in fields:
         spec = schema.fields[name]
-        hits = [(element, spot) for element, text in texts for spot in spots(text, spec, ctx, "", "") if shown(element)]
-        if len({equality_key(spot.normalized.value, spec) for _, spot in hits}) == 1:
-            yield name, hits[0][1].raw, node_xpath(hits[0][0])
+        texts = _identifier_texts(shorts, unlabelled, content) if spec.type is FieldType.IDENTIFIER else shorts
+        if (one := _one_value(texts, spec, ctx)) is not None:
+            yield name, *one
 
 
-def _short_texts(region: LexborNode) -> list[tuple[LexborNode, str]]:
-    """The region's elements with the short text each holds itself, outside struck text and set-apart content."""
-    excluded = _apart_ids(region, _STRUCK)
+def _one_value(texts: Sequence[tuple[LexborNode, str]], spec: FieldSpec, ctx: Context) -> tuple[str, str] | None:
+    """The raw value and the XPath of its element when the shown texts the field's normalizer parses give one value."""
+    hits = [(element, spot) for element, text in texts for spot in spots(text, spec, ctx, "", "") if shown(element)]
+    if len({equality_key(spot.normalized.value, spec) for _, spot in hits}) != 1:
+        return None
+    return hits[0][1].raw, node_xpath(hits[0][0])
+
+
+def _identifier_texts(
+    shorts: Sequence[tuple[LexborNode, str]], unlabelled: Sequence[Pair], content: _Content
+) -> list[tuple[LexborNode, str]]:
+    """The short texts and the short values of pairs no field's label names, outside hyperlinks to other documents."""
+    values = ((value, raw) for _, value, raw, _ in unlabelled if len(raw) <= _SPOT_LENGTH)
+    return [(element, text) for element, text in (*shorts, *values) if element.mem_id not in content.linked]
+
+
+def _short_texts(region: LexborNode, excluded: frozenset[int]) -> list[tuple[LexborNode, str]]:
+    """The region's elements with the short text each holds itself, outside the `excluded` elements."""
     texts = ((element, _own_text(element)) for element in (region, *region.css("*")) if element.mem_id not in excluded)
     return [(element, text) for element, text in texts if text and len(text) <= _SPOT_LENGTH]
+
+
+def _inside(roots: Iterable[LexborNode]) -> frozenset[int]:
+    """The elements `roots` are and hold."""
+    return frozenset(inside.mem_id for root in roots for inside in (root, *root.css("*")))
+
+
+def _other_items(region: LexborNode, links: "_Links") -> Iterator[LexborNode]:
+    """The region's elements holding items besides the page's own: what schema.org microdata marks as a related or
+    similar item or a review (`itemprop` `isRelatedTo`, `isSimilarTo`, `review`; a `Review` item), and sibling blocks
+    of one tag (two or more) that each link to one other document, a different one each: a list of other documents'
+    cards (related products), whose values are theirs (HTML Standard §4.6.1: a hyperlink leads to its document)."""
+    yield from region.css(OTHER_ITEMS)
+    for parent in (region, *region.css("*")):
+        groups: dict[str, list[LexborNode]] = {}
+        for child in _children(parent):
+            groups.setdefault(child.tag or "", []).append(child)
+        for group in groups.values():
+            if len(group) >= _MIN_REPEATS and _cards(group, links):
+                yield from group
+
+
+def _cards(group: Sequence[LexborNode], links: "_Links") -> bool:
+    targets = [links.of_block(block) for block in group]
+    return all(len(t) == 1 for t in targets) and len(set().union(*targets)) == len(group)
 
 
 def _apart_ids(region: LexborNode, extra: frozenset[str] = frozenset()) -> frozenset[int]:
@@ -318,8 +386,7 @@ def _main_region(page: ParsedPage) -> LexborNode | None:
 
 
 def _main_image(region: LexborNode, ctx: Context) -> tuple[LexborNode, str] | None:
-    here = canonical_url(ctx.page_url, None) if ctx.page_url is not None else None
-    base = ctx.base_url or ctx.page_url
+    links = _Links.of(region, ctx)
     apart = _apart_ids(region)
     for image in region.css("img"):
         source = image_source(image.attributes)
@@ -328,7 +395,7 @@ def _main_image(region: LexborNode, ctx: Context) -> tuple[LexborNode, str] | No
             and shown(image)
             and not decorative(image.attributes)
             and image.mem_id not in apart
-            and not _link_card(image, region, here, base)
+            and not _link_card(image, region, links)
         ):
             return image, source
     return None
@@ -349,28 +416,38 @@ def decorative(attributes: Mapping[str, str | None]) -> bool:
     return attributes.get("alt") == "" or not _PRESENTATIONAL.isdisjoint(tokens(attributes.get("role")))
 
 
-def _link_card(image: LexborNode, region: LexborNode, here: str | None, base: str | None) -> bool:
+def _link_card(image: LexborNode, region: LexborNode, links: "_Links") -> bool:
     """Whether the nearest block around the image that holds a hyperlink to another document holds no other image and
     leads to one document only: the card of that document, whose image is the document's, not this page's entity."""
     node: LexborNode | None = image.parent
     while node is not None and node != region:
         if len(node.css("img")) > 1:
             return False
-        targets = _link_targets(node, here, base)
+        targets = links.of_block(node)
         if targets:
             return len(targets) == 1
         node = node.parent
     return False
 
 
-def _link_targets(block: LexborNode, here: str | None, base: str | None) -> set[str]:
-    """The other documents the block's hyperlinks (HTML Standard §4.6.1: an `a` with `href`) lead to, canonical
-    (`canonical_url`: http(s), without the fragment), other than this page and other than images (a larger copy)."""
-    anchors = block.css("a[href]")
-    if block.tag == "a" and "href" in block.attributes:
-        anchors.append(block)
-    targets = {canonical_url(anchor.attributes.get("href") or "", base) for anchor in anchors}
-    return {t for t in targets if t is not None and t != here and not is_image_url(t)}
+@dataclass(frozen=True, slots=True)
+class _Links:
+    """The other document each hyperlink of a region leads to (HTML Standard §4.6.1: an `a` with `href`), by element:
+    canonical (`canonical_url`: http(s), without the fragment), other than the page itself and other than images (a
+    larger copy)."""
+
+    targets: Mapping[int, str]
+
+    @classmethod
+    def of(cls, region: LexborNode, ctx: Context) -> "_Links":
+        here = canonical_url(ctx.page_url, None) if ctx.page_url is not None else None
+        base = ctx.base_url or ctx.page_url
+        found = {a.mem_id: canonical_url(a.attributes.get("href") or "", base) for a in region.css("a[href]")}
+        return cls({key: t for key, t in found.items() if t is not None and t != here and not is_image_url(t)})
+
+    def of_block(self, block: LexborNode) -> set[str]:
+        """The other documents the block's hyperlinks lead to, the block's own included when it is one."""
+        return {self.targets[a.mem_id] for a in (block, *block.css("a[href]")) if a.mem_id in self.targets}
 
 
 def is_image_url(url: str) -> bool:

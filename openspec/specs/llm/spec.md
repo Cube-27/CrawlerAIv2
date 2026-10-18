@@ -121,6 +121,17 @@ repeat returns the stored draft without a call ([schemas](../schemas/spec.md)). 
 - **WHEN** the same prompt (up to whitespace) or the same names in another order are sent again
 - **THEN** one `schema_def` row exists and no LLM call is made
 
+### Requirement: Role S label synonyms
+Role S SHALL draft, once per schema and never per page, the labels pages write next to each labelled field's value, in
+English and other languages (`llm/roles/s_labels.py`, `prompt_kind` `s_labels`), from the fields' names, types,
+schema.org paths and descriptions; they are stored with the schema (`schema_def.labels`) when a request first uses
+it (by id, inline, field names or a prompt with `records`). Labels repeating a field's own words or each other's are
+dropped, at most 32 per field. Without a reply (no provider, a failure, the key's draft cap) the schema is used as it
+is and the next use asks again. The call is charged to no job.
+#### Scenario: Schema used twice
+- **WHEN** two scrapes use one schema with a configured provider
+- **THEN** one `s_labels` call is made and both extract with the stored synonyms
+
 ### Requirement: LLM output is never executed (INV-17)
 Page text SHALL sit in a delimited data section, the model gets no tools, and prompts hold no site names (INV-03, see
 `openspec/project.md`). LLM output SHALL never be executed (no `exec`, `eval`, `compile` or shell call); selectors,
@@ -131,9 +142,9 @@ active. Refs: §11, §18.
 - **THEN** CI fails
 
 ### Requirement: Per-key cap on uncharged role S calls
-A model call no job pays for (a field-names draft: `POST /v1/schemas/draft`, `schema.fields`) SHALL count against its
-API key's `draft_calls` and be refused with `draft_cap_reached` (429) once the key has made `project.draft_call_cap`
-of them; null is no cap. A stored draft needs no call and counts nothing. Refs: §17, D-0926, D-1282.
+A model call no job pays for (a field-names draft: `POST /v1/schemas/draft`, `schema.fields`; label synonyms) SHALL
+count against its API key's `draft_calls` and be refused with `draft_cap_reached` (429) once the key has made `project.draft_call_cap`
+of them; null is no cap. A stored draft needs no call and counts nothing, nor does a process without a provider. Refs: §17, D-0926, D-1282.
 #### Scenario: Key at the cap
 - **WHEN** a key with a cap of 1 drafts two different sets of field names
 - **THEN** the first is drafted and the second is a 429 with no model call; the first set again is returned stored
