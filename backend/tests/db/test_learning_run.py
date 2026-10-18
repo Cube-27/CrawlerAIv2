@@ -31,6 +31,7 @@ from crawlerai.config_ir import learning
 from crawlerai.config_ir.active import active_config, config_by_id, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe, Proof
 from crawlerai.config_ir.api_recipe.replay import Replays
+from crawlerai.config_ir.held_out import load_pages
 from crawlerai.config_ir.learning import (
     LEARN_RUN_TIMEOUT,
     LEARNING_FINISHED,
@@ -370,6 +371,23 @@ async def test_a_required_field_no_page_states_is_learned_as_absent_and_not_aske
     assert stored.result.entity is not None
     sku_outcome = stored.result.entity["sku"]
     assert (role_c.calls, sku_outcome.status, sku_outcome.reason) == (0, "missing", "absent")
+
+
+async def test_only_an_extraction_that_could_ask_role_c_for_every_gap_counts_as_asked(site: LearnSite) -> None:
+    # A config-mode extraction asks role C only for the fields its config does not cover, so its LLM call says
+    # nothing about a covered field: it never makes that field absent (D-1341).
+    async with site.engine.begin() as conn:
+        await conn.execute(insert(ProgressiveState).values(**site.key.columns()))
+    role_c = AskedRoleC()
+    await site.extract(1, role_c)
+    configured = await site.extract(2, role_c)
+    async with site.engine.begin() as conn:
+        await conn.execute(
+            update(Extraction).where(Extraction.id == configured.extraction_id).values(mode="config", config_version=1)
+        )
+        pages = await load_pages(conn, site.store, site.site_id, site.schema, limit=10)
+
+    assert [page.asked_llm for page in pages] == [False, True]  # most recent first: the config-mode one
 
 
 @pytest.fixture
