@@ -179,3 +179,4 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   statement of it stay two entities (D-1290) [#247].
 - Output formats: `markdown_fit` and `chunks` count words, not model tokens; a tokenizer-backed size needs a licensed tokenizer, which no LLM-free path has [#260].
 - Output formats: no OCR or visual diff of a screenshot, and no scheduled screenshot history per URL [#260].
+- Collect: golden detail labels under labels the schema words do not name (a stock code, a model, a current-stock line; other languages) stay `no_candidates`; needs an owner-approved label vocabulary source (C4) [#282].

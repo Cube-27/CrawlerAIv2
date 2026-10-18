@@ -51,15 +51,15 @@ from pydantic import ValidationError
 from crawlerai.acquire.items import MIN_ITEMS, Group, is_hyperlink
 from crawlerai.collect.base import ITEM_BLOCK, Candidate, Entity
 from crawlerai.collect.dom import decorative, image_source, is_image_url
+from crawlerai.collect.items.spot import Spot, is_typed, spots
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate, is_item_url, named_property, parse_paths
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.segment import hyperlinks, shows_more, text_path
 from crawlerai.content.text import hidden, xpath_step
-from crawlerai.normalize.base import Ambiguous, Context, Ok, raw_key
-from crawlerai.normalize.dispatch import equality_key, normalize
-from crawlerai.normalize.identifier import has_check_digit
+from crawlerai.normalize.base import Ambiguous, Context, raw_key
+from crawlerai.normalize.dispatch import equality_key
 from crawlerai.normalize.url import canonical_url, is_absolute
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent
 
@@ -77,23 +77,10 @@ _HEADINGS: Final = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 _HEADING_ROLE: Final = "heading"
 # HTML Standard §4.5.4 `s` ("contents that are no longer accurate or no longer relevant") and §4.7.2 `del` (a removal).
 _STRUCK: Final = frozenset({"s", "del"})
-# The types whose normalizer checks a syntax, so a block's text it accepts is a value of the type (ISO 4217 and CLDR
-# amounts, ISO 8601 and CLDR dates); identifiers qualify under a scheme with a check digit (`_role`).
-_SPOTTED: Final = frozenset({FieldType.MONEY, FieldType.DATE, FieldType.DATETIME})
 # The places of the rules that read one value per block.
 _LINK, _LINK_NAME, _HEADING, _PICTURED, _PICTURE = "@link", "@link-name", "@heading", "@pictured", "@image"
 
 Role = Literal["url", "name", "image", "typed"]
-
-
-@dataclass(frozen=True, slots=True)
-class Spot:
-    """One value read in a block: its raw text, its normalized value, the XPath of its element and its place."""
-
-    raw: str
-    normalized: Ok
-    xpath: str
-    place: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,7 +183,7 @@ def _role(spec: FieldSpec) -> Role | None:
         return "name" if not _NAMES.isdisjoint(properties) else None
     if spec.type is FieldType.IMAGE_URL:
         return "image" if _IMAGE in properties else None
-    if spec.type in _SPOTTED or (spec.type is FieldType.IDENTIFIER and has_check_digit(spec)):
+    if is_typed(spec):
         return "typed"
     return None
 
@@ -385,7 +372,7 @@ class _View:
         """The field's values in the block, at every place its rule reads."""
         if role == "url":
             anchor_path = self.paths.get(self.anchors[0], self.path) if self.anchors else self.path
-            return _spots(self.href, spec, ctx, anchor_path, _LINK)
+            return spots(self.href, spec, ctx, anchor_path, _LINK)
         if role == "name":
             names = (*self._link_name(spec, ctx), *self._heading(spec, ctx), *self._pictured_name(spec, ctx))
             # A URL is not prose (RFC 3986 §4.3, an absolute URI): a link whose label is its own address names nothing.
@@ -401,10 +388,10 @@ class _View:
         shown = [anchor for anchor in self.anchors if anchor in self.paths]
         for anchor in shown:
             if (text := self.line(anchor)) is not None:
-                return _spots(text, spec, ctx, self.paths[anchor], _LINK_NAME)
+                return spots(text, spec, ctx, self.paths[anchor], _LINK_NAME)
         for anchor in shown:
             if (name := self._accessible_name(anchor)) is not None:
-                return _spots(name, spec, ctx, self.paths[anchor], _LINK_NAME)
+                return spots(name, spec, ctx, self.paths[anchor], _LINK_NAME)
         return ()
 
     def _heading(self, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
@@ -412,7 +399,7 @@ class _View:
         if not headings or len({text for _, text in headings}) != 1:
             return ()
         element, text = headings[0]
-        return _spots(text, spec, ctx, self.paths[element], _HEADING)
+        return spots(text, spec, ctx, self.paths[element], _HEADING)
 
     def _pictured_name(self, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
         """The block's one-line text that its item's image names (`alt`, HTML Standard §4.8.4.4: the image's text
@@ -425,7 +412,7 @@ class _View:
         names = {name for name in stated if name}
         for element in self.elements:
             if (text := self.line(element)) is not None and _squeezed_text(text) in names:
-                return _spots(text, spec, ctx, self.paths[element], _PICTURED)
+                return spots(text, spec, ctx, self.paths[element], _PICTURED)
         return ()
 
     def _accessible_name(self, anchor: HtmlElement) -> str | None:
@@ -463,7 +450,7 @@ class _View:
                 continue
             attributes = dict(element.attrib)
             if not decorative(attributes) and (source := image_source(attributes)) is not None:
-                return _spots(source, spec, ctx, self.paths[element], _PICTURE)
+                return spots(source, spec, ctx, self.paths[element], _PICTURE)
         return ()
 
     def _typed(self, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
@@ -471,7 +458,7 @@ class _View:
         for element in self.elements:
             if element in self.struck or (text := self.line(element)) is None:
                 continue
-            hits.extend((element, spot) for spot in _spots(text, spec, ctx, self.paths[element], self.places[element]))
+            hits.extend((element, spot) for spot in spots(text, spec, ctx, self.paths[element], self.places[element]))
         return tuple(spot for element, spot in hits if not _inner_hit(element, spot, hits, spec))
 
 
@@ -500,11 +487,6 @@ def _contains(outer: HtmlElement, inner: HtmlElement) -> bool:
             return True
         node = node.getparent()
     return False
-
-
-def _spots(raw: str, spec: FieldSpec, ctx: Context, xpath: str, place: str) -> tuple[Spot, ...]:
-    normalized = normalize(raw, spec, ctx)
-    return (Spot(raw, normalized, xpath, place),) if isinstance(normalized, Ok) else ()
 
 
 def _heading_links(block: HtmlElement, sublists: frozenset[HtmlElement]) -> list[HtmlElement]:

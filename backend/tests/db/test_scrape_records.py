@@ -332,7 +332,7 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
 ) -> None:
     # SPEC-07 §4.4 step 3: `records` extracts with role C when required fields are missing (SPEC-06).
     url = f"{own_origin}/kettles/blue"
-    body = _product_page(url, offers=False).replace(b"</main>", b"<p>19.90 EUR</p></main>")
+    body = _product_page(url, offers=False).replace(b"</main>", b"<aside>19.90 EUR</aside></main>")
     web.pages[url] = (200, body, "ok")
     text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
     start = text.index("19.90 EUR")

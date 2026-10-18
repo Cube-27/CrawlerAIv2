@@ -40,7 +40,8 @@ from crawlerai.collect import json_doc
 from crawlerai.collect.admission import Document, StateKind
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.induce import induced
-from crawlerai.collect.items.align import AMBIGUOUS_IN_BLOCK, Block, Items, Spot, field_roles
+from crawlerai.collect.items.align import AMBIGUOUS_IN_BLOCK, Block, Items, field_roles
+from crawlerai.collect.items.spot import Spot
 from crawlerai.collect.js_state import state_documents
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate, item_url_fields

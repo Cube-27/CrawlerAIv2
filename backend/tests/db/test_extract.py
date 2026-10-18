@@ -510,7 +510,7 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     # SPEC-10 §4.6, SPEC-05 §4.13: an extract page is extracted cold, and role C reads a missing required field from
     # the page text. The client commits its usage on its own connection while the task's transaction is open (D-0346).
     url = f"{own_origin}/p/1"
-    body = _page("Blue kettle", offers=False).replace(b"</main>", b"<p>19.90 EUR</p></main>")
+    body = _page("Blue kettle", offers=False).replace(b"</main>", b"<aside>19.90 EUR</aside></main>")
     web.serve(url, body)
     text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
     start = text.index("19.90 EUR")
