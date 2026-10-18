@@ -90,12 +90,12 @@ the URL (C7); a stored answer of a shop of several currencies reads without pric
 It SHALL detect career sites on `{tenant}.{dc}.myworkdayjobs.com/[{locale}/]{site}` and
 `{dc}.myworkdaysite.com/[{locale}/]recruiting/{tenant}/{site}` and their `/job/{location}/{slug}` pages, fetch the
 site's CXS endpoints on the page's host (`POST .../jobs` in pages of 20 by `offset`, the first page's `total` ending the
-list, else a short page; `GET .../job/...`), and map rows with their job URL (site root + `externalPath`) and jobs with
+list, else a short page; `GET .../job/...`), and map rows with their job URL (site root, led by the page's own locale when its path has one, + `externalPath`, so a row's URL equals the link the page renders) and jobs with
 title, description, locations as written, date posted, employment type, hiring organization and URL, as in
 `adapters/workday.py`. It SHALL refer a page on another host to the career site it names as itself or, for a listing,
 the one site all its Workday links belong to (in the locale those links all state, when they agree). A list URL with a query falls through to the page rungs. Refs: D-1177,
 D-1300, D-1302.
-(Previously: the first page of 20 only, and career sites on the platform's hosts only.)
+(Previously: the first page of 20 only, and career sites on the platform's hosts only; row URLs without the page's locale.)
 #### Scenario: Listing row URL
 - **WHEN** a listing answer row has `externalPath` `/job/Northtown/Engineer_R-1` for the site `https://t.wd1.myworkdayjobs.com/External`
 - **THEN** the row's URL is `https://t.wd1.myworkdayjobs.com/External/job/Northtown/Engineer_R-1`

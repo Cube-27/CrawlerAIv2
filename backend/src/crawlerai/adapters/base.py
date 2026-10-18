@@ -70,6 +70,9 @@ class AdapterMatch:
     # The host the platform serves the page on, for an adapter whose shapes name the page's items by the platform's
     # routes on that host (a hosted board's job pages); None when the shapes need none.
     host: str | None = None
+    # The locale the page's path leads with (a Workday career site's `/en-US/`), for an adapter whose shapes name the
+    # page's items by the links the page itself renders, which keep it; None when the path states none.
+    locale: str | None = None
 
 
 @dataclass(frozen=True)
