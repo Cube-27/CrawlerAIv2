@@ -309,5 +309,5 @@ A fetch whose kept attempt is `blocked` with a vendor challenge label SHALL end 
 `challenge: <vendor>`; a worker task retries it at most once, after the back-off, and a caller that waits does not
 retry it; no evasion is attempted (owner #50; master plan 2026-10-18 decision 7: managed access deferred).
 #### Scenario: Vendor block in a batch
-- **WHEN** a batch task's HTTP and browser attempts are both `blocked` with label `cloudflare`
-- **THEN** the task is retried once after the back-off, then ends `blocked` with `last_error` `challenge: cloudflare`
+- **WHEN** a batch task's HTTP and browser attempts are both `blocked` with a vendor's label `V`
+- **THEN** the task is retried once after the back-off, then ends `blocked` with `last_error` `challenge: V`
