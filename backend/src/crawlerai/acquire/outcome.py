@@ -47,6 +47,9 @@ class Content:
     body: bytes
     raw_body: bytes | None = None  # browser only: the navigation response body
     network: tuple[tuple[NetworkBody, bytes], ...] = ()  # browser only: captured JSON bodies
+    item_areas: dict[str, float] | None = (
+        None  # browser listings only: rendered area of item blocks (`CaptureManifest`)
+    )
 
 
 def fetch_result(
@@ -92,6 +95,7 @@ def fetch_result(
         network_bodies=tuple(entry for entry, _ in content.network),
         fetch_policy=policy.model_dump(mode="json"),
         engine_version=engine_version,
+        item_areas=content.item_areas,
     )
     status = exchange.status or None
     attempt = AttemptRecord(

@@ -93,6 +93,9 @@ class CaptureManifest(_Frozen):
     network_bodies: tuple[NetworkBody, ...]
     fetch_policy: dict[str, JsonValue]
     engine_version: str
+    # Browser listing captures: the rendered area (CSS pixels) of each repeated item block, by its element path in the
+    # body (`acquire.items.element_path`); None when not measured (the segment step then ranks by structure).
+    item_areas: dict[str, float] | None = None
 
 
 class CaptureBundle(_Frozen):

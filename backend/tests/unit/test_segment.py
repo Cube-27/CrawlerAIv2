@@ -1,19 +1,26 @@
-"""A page's repeated items (`acquire.items`, ARCHITECTURE §8.6): sibling blocks one template renders, each holding a
-hyperlink, read from the document's structure only. Pages are synthetic."""
+"""A page's repeated item groups and their one ranking (listings spec, "Item groups"; `acquire.items`,
+`content.segment`): sibling blocks one template renders, each holding a hyperlink, read from the document's structure
+only, ranked by rendered area when measured, else by what the blocks show. Pages are synthetic (RFC 2606 names)."""
 
 from hypothesis import given
 from hypothesis import strategies as st
 from lxml import html
 
-from crawlerai.acquire.items import item_blocks, shown_items
+from crawlerai.acquire.items import element_path, item_groups, lxml_root
+from crawlerai.content.page import ParsedPage
+from crawlerai.content.segment import rank, shown_blocks
 
 
-def _page(content: str) -> html.HtmlElement:
-    return html.document_fromstring(f"<html><body><main><h1>Kettles</h1>{content}</main></body></html>")
+def _page(content: str) -> ParsedPage:
+    return ParsedPage(f"<html><body><main><h1>Kettles</h1>{content}</main></body></html>")
 
 
-def _hrefs(page: html.HtmlElement) -> list[str | None]:
-    return [next(block.iter("a")).get("href") for block in item_blocks(page)]
+def _first(page: ParsedPage) -> tuple[html.HtmlElement, ...]:
+    return page.item_groups[0] if page.item_groups else ()
+
+
+def _hrefs(page: ParsedPage) -> list[str | None]:
+    return [next(block.iter("a")).get("href") for block in _first(page)]
 
 
 def _grid(classes: list[str]) -> str:
@@ -41,7 +48,7 @@ def test_siblings_that_share_no_class_token_with_most_others_are_not_grouped() -
     # Three blocks of different templates (no token is on most of them) are not a listing's items.
     page = _page(_grid(["hero", "promo", "story"]))
 
-    assert item_blocks(page) == ()
+    assert _first(page) == ()
 
 
 def test_a_sibling_without_the_tokens_most_share_is_left_out() -> None:
@@ -113,5 +120,52 @@ def test_script_style_and_template_text_is_not_a_run_of_visible_text() -> None:
     )
     cards = "".join(f'<li><a href="/p/{i}">Kettle {i}</a><span>{i}9.90 EUR</span></li>' for i in range(4))
 
-    assert shown_items(_page(f"<ul>{links}</ul>")) == 0
-    assert shown_items(_page(f"<ul>{cards}</ul>")) == 4
+    assert shown_blocks(_first(_page(f"<ul>{links}</ul>"))) == 0
+    assert shown_blocks(_first(_page(f"<ul>{cards}</ul>"))) == 4
+
+
+def test_measured_areas_rank_a_grid_of_large_cards_over_a_sidebar_of_more_links() -> None:
+    # CSSOM View `getBoundingClientRect`: the browser rung's areas, by element path; the sidebar has more blocks.
+    side = '<ul class="side">' + "".join(f'<li><a href="/c/{i}">Category {i}</a> x</li>' for i in range(20)) + "</ul>"
+    page = _page(side + _grid([f"tile order-{i}" for i in range(6)]))
+    groups = item_groups(page.lxml_tree)
+    areas = {element_path(b): (300.0 * 400.0 if b.tag == "div" else 200.0 * 20.0) for g in groups for b in g}
+
+    measured = ParsedPage(page.html, item_areas=areas)
+
+    assert _hrefs(measured) == [f"/p/{i}" for i in range(6)]
+    assert _hrefs(page) == [f"/c/{i}" for i in range(20)]  # without geometry: as many blocks show more, the larger
+
+
+def test_a_block_with_no_rendered_area_is_not_one_of_its_groups_blocks() -> None:
+    page = _page(_grid([f"tile order-{i}" for i in range(4)]))
+    (group,) = item_groups(page.lxml_tree)
+    areas = {element_path(block): 0.0 if i == 1 else 100.0 for i, block in enumerate(group)}
+
+    assert _hrefs(ParsedPage(page.html, item_areas=areas)) == ["/p/0", "/p/2", "/p/3"]
+
+
+def test_a_block_the_html_rendering_rules_hide_is_left_out_without_geometry() -> None:
+    # HTML Standard §15.3.1: `[hidden]` is `display: none`; an inline `display: none` hides the block too.
+    tiles = [f'<div class="tile"><a href="/p/{i}">Kettle {i}</a><span>{i} EUR</span></div>' for i in range(5)]
+    tiles[1] = tiles[1].replace('class="tile"', 'class="tile" hidden')
+    tiles[3] = tiles[3].replace('class="tile"', 'class="tile" style="display: none"')
+
+    assert _hrefs(_page(f'<div class="grid">{"".join(tiles)}</div>')) == ["/p/0", "/p/2", "/p/4"]
+
+
+def test_a_group_left_with_no_rendered_block_is_dropped() -> None:
+    page = _page(_grid([f"tile order-{i}" for i in range(3)]))
+    groups = item_groups(page.lxml_tree)
+
+    assert rank(groups, dict.fromkeys((element_path(b) for g in groups for b in g), 0.0)) == ()
+
+
+def test_an_element_path_names_the_same_element_in_a_parse_of_the_same_document() -> None:
+    # DOM Standard `document.evaluate`: the browser evaluates the path on the document the capture keeps.
+    page = _page("<!-- a comment --><p>x</p>" + _grid([f"tile order-{i}" for i in range(4)]))
+    again = lxml_root(page.html)
+
+    for block in _first(page):
+        (found,) = again.xpath(element_path(block))
+        assert next(found.iter("a")).get("href") == next(block.iter("a")).get("href")

@@ -23,7 +23,7 @@ from urllib.parse import urljoin, urlsplit
 
 from selectolax.lexbor import LexborHTMLParser
 
-from crawlerai.acquire.items import MIN_ITEMS, item_blocks, lxml_root
+from crawlerai.acquire.items import MIN_ITEMS, item_groups, lxml_root
 from crawlerai.acquire.types import BlockClass
 from crawlerai.core import json_text
 from crawlerai.db.models import PageKind
@@ -229,5 +229,6 @@ def _lists(document: object) -> list[int]:
 
 
 def lists_items(text: str) -> bool:
-    """Whether the page shows repeated items (`item_blocks`); lxml reads it, as the markdown format does."""
-    return bool(item_blocks(lxml_root(text)))
+    """Whether the page shows repeated items: any group of them (`acquire.items.item_groups`, the walk the item layer's
+    segment step ranks); lxml reads it, as the segment step does."""
+    return bool(item_groups(lxml_root(text)))
