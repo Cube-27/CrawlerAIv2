@@ -166,6 +166,7 @@ LISTING = {"url": URL, "formats": ["markdown"], "page_kind": "listing"}
         ({"page_kind": None}, "browser_actions needs page_kind listing"),
         ({"max_age": 60}, "max_age must be 0"),
         ({"fetch": {"method_hint": "http"}}, "method_hint cannot be http"),
+        ({"fetch": {"cache": "only"}}, "fetch.cache cannot be only"),
     ],
 )
 def test_refuses_browser_actions_outside_a_fresh_listing_fetch(fields: dict[str, Any], message: str) -> None:

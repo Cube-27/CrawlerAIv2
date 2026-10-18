@@ -52,6 +52,10 @@ def check_browser_actions(
         raise ValueError("browser_actions needs page_kind listing")
     if max_age:
         raise ValueError("browser_actions fetches the page, so max_age must be 0")
+    if fetch.cache == "only":
+        # A stored capture's key holds the page steps and context, not the browser actions (D-1435): it would stand for
+        # the listing without its further pages.
+        raise ValueError("browser_actions fetches the page, so fetch.cache cannot be only")
     if fetch.method_hint == "http":
         raise ValueError("browser_actions runs in the browser, so method_hint cannot be http")
 

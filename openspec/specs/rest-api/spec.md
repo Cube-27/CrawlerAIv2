@@ -133,7 +133,7 @@ exception is logged and answered `UNEXPECTED`. Refs: §13.3, §18, D-0696, D-069
 ### Requirement: Scrape browser actions
 `POST /v1/scrape` SHALL take an optional `browser_actions` (`records`, a soft row target, default 100; `hint`:
 `load_more`, `show_more`, `pagination`, `next` or `scroll`), refused 422 unless `page_kind` is `listing`, and with
-`max_age` > 0 or `method_hint` `http`; batch has no such member. A listing scrape asking for `records` in `auto` without
+`max_age` > 0, `method_hint` `http` or `fetch.cache` `only`; batch has no such member. A listing scrape asking for `records` in `auto` without
 it grows its list with the default `browser_actions` when its page is rendered (owner decision 11 of the master plan,
 2026-10-18). The request's `fetch.actions` and `wait_for` run first on the settled page. With `records` asked, each
 further kept document state is a capture with its own extraction under its own URL, stored once the first state's did
