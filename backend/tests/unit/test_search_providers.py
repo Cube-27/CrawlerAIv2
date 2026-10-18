@@ -94,6 +94,14 @@ def test_an_answer_in_a_charset_python_does_not_know_is_read_as_utf_8() -> None:
     assert parse(body, "x-unknown", HERE) == parse(body, "utf-8", HERE)
 
 
+@pytest.mark.parametrize("url", ["HTTPS://a.example.test/x", "Http://a.example.test/x"])
+def test_a_url_scheme_in_any_case_is_a_result(url: str) -> None:
+    # RFC 3986 §3.1: schemes are case-insensitive.
+    body = _json({"results": [{"url": url, "title": "T"}]})
+
+    assert [hit.title for hit in parse(body, None, HERE)] == ["T"]
+
+
 async def test_searxng_is_asked_for_json_and_reads_further_pages_until_the_limit() -> None:
     asked: list[dict[str, list[str]]] = []
     pages = {
