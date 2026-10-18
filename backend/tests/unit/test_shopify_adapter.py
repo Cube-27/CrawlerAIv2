@@ -20,7 +20,7 @@ from pydantic import JsonValue
 from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import AdapterMatch
+from crawlerai.adapters.base import NOT_SERVED, AdapterMatch
 from crawlerai.adapters.shopify import API_VERSION, Shopify
 from tests.stand_in import IMPERSONATE, handler_transport
 
@@ -114,3 +114,15 @@ def test_a_page_is_asked_of_the_storefront_api_with_its_handle_as_a_variable() -
     manifest = result.bundle.manifest
     assert (manifest.method, manifest.block_class, manifest.url, manifest.final_url) == ("api", "ok", page, ENDPOINT)
     assert json.loads(result.bundle.body) == answer
+
+
+@pytest.mark.parametrize("currencies", [["EUR", "SEK"], []])
+def test_a_shop_whose_page_may_show_another_currency_is_left_to_the_page_path(currencies: list[JsonValue]) -> None:
+    # The answer prices in the shop's primary market and the page in its visitor's: the page path reads the prices the
+    # page shows, where the answer could give none (C7).
+    shop: JsonValue = {"paymentSettings": {"enabledPresentmentCurrencies": currencies}}
+    answer: JsonValue = {"data": {"shop": shop, "collection": {"products": {"nodes": []}}}}
+
+    result = _fetch(PAGE, _platform(answer))
+
+    assert (result.block_class, result.attempts[-1].error) == ("error", NOT_SERVED)
