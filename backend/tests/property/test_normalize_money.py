@@ -95,6 +95,7 @@ def test_a_lone_separator_is_ambiguous_until_the_page_locale_settles_it() -> Non
         ({"price": float("nan"), "priceCurrency": "EUR"}, "unparsable_amount"),
         ({"price": "1000000000000", "priceCurrency": "EUR"}, "out_of_range"),
         ({"price": "0", "priceCurrency": "EUR"}, "not_positive"),
+        ("EUR 1." + "9" * 40, "out_of_range"),
     ],
 )
 def test_what_is_no_positive_single_price_is_invalid(raw: JsonValue, reason: str) -> None:

@@ -237,8 +237,11 @@ def _is_letter(char: str) -> bool:
 
 
 def _money(amount: Decimal, currency: _Currency) -> NormalizeResult:
-    # Trailing zeros are not precision: `12.5000000` fits six fraction digits.
-    exponent = amount.normalize().as_tuple().exponent
+    # Trailing zeros are not precision: `12.5000000` fits six fraction digits. Counted from the digits, not by
+    # `Decimal.normalize`, which rounds to the context's 28 digits and would pass `1.999…9` (40 digits) as `2`.
+    _, digits, exponent = amount.as_tuple()
+    if isinstance(exponent, int):
+        exponent += len(digits) - len("".join(map(str, digits)).rstrip("0") or "0")
     # A JSON number is finite (RFC 8259 §6); a NaN or infinity reaching here is no amount.
     if not isinstance(exponent, int):
         return Invalid("unparsable_amount")
