@@ -15,10 +15,19 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
+from crawlerai.acquire.browser_tab import Tab
 from crawlerai.acquire.politeness import Admit, HostLimiter
 from crawlerai.acquire.rungs import RenderCheck, Rung, Rungs, acquire
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
-from crawlerai.acquire.types import AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch, Validators
+from crawlerai.acquire.types import (
+    ActionsReport,
+    AttemptRecord,
+    BrowserActions,
+    FetchPolicy,
+    FetchResult,
+    PagedFetch,
+    Validators,
+)
 from crawlerai.config_ir.api_recipe.execute import MAX_PAGES, RecipeRung, unserved
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replay, Replays
@@ -275,19 +284,30 @@ async def grown(
     known: HostRules,
 ) -> PagedFetch:
     """The listing at `url` from the listing rung with the paging driver (`crawl.paging.collect`, owner #52): each
-    action waits for a turn at the site's rate (`admit_next`), and a next page is followed only on the listing's own
-    host, when its robots.txt (`known`) allows it."""
+    action waits for a turn at the site's rate (`admit_next`), and acts only on the listing's own host, where its
+    robots.txt (`known`) allows it: a next page it navigates to, or the document the tab shows for a click or a scroll
+    (the caller's steps may have navigated it elsewhere). That host's robots.txt and rate say nothing of another's
+    (RFC 9309 §2.3: the rules are per origin)."""
     rung = fetching.rungs.listing
     if rung is None:
         raise RuntimeError("this process has no listing rung")
     host = urlsplit(url).hostname or ""
+    drive = partial(_on_host, request=actions, deadline=deadline, host=host, known=known, admit_next=admit_next)
+    return await rung(url, policy, drive)
+
+
+async def _on_host(
+    tab: Tab, *, request: BrowserActions, deadline: float, host: str, known: HostRules, admit_next: Admit
+) -> ActionsReport:
+    """`collect` on `tab`, each action admitted only on `host` (`grown`)."""
 
     async def gate(next_url: str | None) -> bool:
-        if next_url is not None and (urlsplit(next_url).hostname != host or not known.allows(next_url)):
+        acted_on = tab.url if next_url is None else next_url
+        if urlsplit(acted_on).hostname != host or not known.allows(acted_on):
             return False
         return await admit_next()
 
-    return await rung(url, policy, partial(collect, request=actions, gate=gate, deadline=deadline))
+    return await collect(tab, request, gate, deadline)
 
 
 @dataclass

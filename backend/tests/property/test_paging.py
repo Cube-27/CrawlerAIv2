@@ -11,14 +11,23 @@ import hashlib
 import json
 import time
 from collections.abc import Sequence
+from datetime import timedelta
+from pathlib import Path
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from crawlerai.acquire.browser_tab import Click, Ref
-from crawlerai.acquire.types import BrowserActions
+from crawlerai.acquire.browser_tab import Click, Drive, Ref
+from crawlerai.acquire.politeness import HostLimiter
+from crawlerai.acquire.rungs import Rungs
+from crawlerai.acquire.ssrf import SafeConnector
+from crawlerai.acquire.types import BrowserActions, FetchPolicy, FetchResult, PagedFetch
+from crawlerai.config_ir.api_recipe.execute import unserved
 from crawlerai.crawl.paging import Caps, collect
+from crawlerai.services.fetching import Fetching, grown
+from crawlerai.services.polite import HostRules
 from crawlerai.storage.capture_bundle import NetworkBody
+from crawlerai.storage.fs import FsStore
 
 _URL = "https://shop.example.test/list"
 _WAIT_S, _POLL_S = 0.02, 0.001  # fast waits: the simulated tab changes at once
@@ -241,3 +250,56 @@ def test_a_scroll_listing_without_item_links_is_counted_by_its_call_rows(calls: 
         assert report.stop in ("records", "end")
         assert report.items == (total if report.stop == "end" else report.items)
         assert report.items >= min(records, total)
+
+
+async def _refused(url: str | None) -> bool:
+    return False
+
+
+@settings(deadline=None, max_examples=20)
+@given(total=st.integers(6, 60), batch=st.integers(3, 5))
+def test_a_scroll_the_gate_refuses_is_not_made(total: int, batch: int) -> None:
+    # A scroll acts on the shown document: it waits for its turn at the site's rate like any action (SPEC-02 §4.6).
+    tab = _ScrollTab(total, batch, None)
+    caps = Caps(wait_s=_WAIT_S, poll_s=_POLL_S)
+
+    report = asyncio.run(
+        collect(tab, BrowserActions(records=10_000, hint="scroll"), _refused, time.monotonic() + 60, caps)
+    )
+
+    assert (report.stop, report.actions, tab.shown) == ("not_admitted", 0, batch)
+
+
+class _ElsewhereTab(_ScrollTab):
+    """A scroll listing the caller's steps navigated to another host before the driver runs."""
+
+    @property
+    def url(self) -> str:
+        return "https://elsewhere.example.test/list"
+
+
+def test_a_listing_whose_tab_left_its_host_is_not_driven(tmp_path: Path) -> None:
+    tab = _ElsewhereTab(30, 5, None)
+
+    async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
+        report = await drive(tab)
+        return PagedFetch(pages=(unserved(url, policy, "test", "error", "unused"),), report=report)
+
+    async def unused(url: str, policy: FetchPolicy) -> FetchResult:
+        raise AssertionError("no page is fetched")
+
+    async def admit(*, after: timedelta = timedelta(0)) -> bool:
+        return True
+
+    fetching = Fetching(
+        Rungs(http=unused, browser=unused, listing=listing), SafeConnector(), FsStore(tmp_path), HostLimiter()
+    )
+    actions = BrowserActions(records=10_000, hint="scroll")
+
+    paged = asyncio.run(
+        grown(fetching, _URL, FetchPolicy(), actions, time.monotonic() + 60, admit, HostRules(crawl_delay_ms=None))
+    )
+
+    # The listing's host's robots.txt and rate say nothing of another host's (RFC 9309 §2.3: rules are per origin).
+    assert paged.report is not None
+    assert (paged.report.stop, tab.shown) == ("not_admitted", 5)

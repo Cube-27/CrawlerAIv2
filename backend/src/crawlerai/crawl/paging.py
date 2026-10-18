@@ -61,7 +61,8 @@ from crawlerai.resolve.pagination import NextLink, next_page_links
 __all__ = ["Caps", "Gate", "collect"]
 
 # Admits a browser action, waiting for the site's rate (SPEC-02 §4.6): for a navigation, its URL, which robots.txt
-# must allow; for a click or a scroll, None. False when the action may not be taken.
+# must allow; for a click or a scroll, None: it acts on the document the tab shows. False when the action may not be
+# taken.
 Gate = Callable[[str | None], Awaitable[bool]]
 
 # A page's ordinal as a pager labels it: ASCII digits only (not other scripts' digits, which `\d` would take).
@@ -324,7 +325,8 @@ class _Run:
     # --- scroll ---
 
     async def _scroll(self, view: _View) -> _Step:
-        await self.gate(None)
+        if not await self.gate(None):
+            return "not_admitted"
         held = await self._hold(view)
         if held is False:
             return "error"
