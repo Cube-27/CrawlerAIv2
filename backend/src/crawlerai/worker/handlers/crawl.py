@@ -160,8 +160,11 @@ def _formats_of(task: ClaimedTask, request: CrawlRequest) -> Sequence[PageFormat
 
 
 async def _record_final_url(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage) -> None:
-    """Store where the task's page was fetched, in canonical form, before the task adds any URL (D-1382)."""
-    final_url = canonicalize(page.result.bundle.manifest.final_url)
+    """Store where the task's page was fetched, in canonical form, before the task adds any URL (D-1382). An adapter's
+    or API recipe's capture (method `api`) stands for the page it was asked for: its final URL is the endpoint, which
+    is no page of the crawl (as `rules.located` reads it)."""
+    manifest = page.result.bundle.manifest
+    final_url = canonicalize(manifest.url if manifest.method == "api" else manifest.final_url)
     await conn.execute(update(UrlTask).where(UrlTask.id == task.id).values(final_url=final_url))
 
 
