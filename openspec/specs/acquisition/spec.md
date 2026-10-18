@@ -114,11 +114,12 @@ cookie-free response headers, the resource type and the count of browser actions
 The system SHALL classify each final response from status and structure (the classes and the shell, linkless page,
 self-refreshing page and listing-shell rules in `acquire/classify.py`: a 2xx HTML page that is no shell and has no
 hyperlink, or that declares a refresh and has hyperlinks but none to a web page (even one short enough to be a shell),
-is `blocked`; a listing without repeated items
-is a shell unless its structured data lists items), and from one kind of site data only: a 2xx HTML document that shows
-a vendor's stand-in marker (`adapters/challenges.py`) is `blocked`. Generic code and the remembered fetch method MUST NOT
-use vendor or challenge-page strings, and blocked and shell pages end with zero records. A body is decoded once at
-acquisition by HTML encoding sniffing (`storage/capture_bundle.decode_html`, D-1152), and every rule reads that text.
+is `blocked`; a listing without repeated items is a shell unless its structured data lists items), and from one kind of
+site data only: a 2xx HTML document that shows a vendor's stand-in marker (`adapters/challenges.py`) is `blocked`.
+Generic code and the remembered fetch method MUST NOT use vendor or challenge-page strings, and blocked and shell pages
+end with zero records. A body is decoded once at acquisition by HTML encoding sniffing
+(`storage/capture_bundle.decode_html`, D-1152; a JSON body as UTF-8, RFC 8259 §8.1, whatever charset it is labelled
+with), and every rule reads that text.
 (Previously: the rules parsed the raw bytes, and a non-UTF-8 attribute raised.) Refs: §7.1, C2, C3, D-0114, D-0932,
 D-0993, D-1157, D-1158, D-1326, D-1380, D-1470, D-1471.
 Enforced by: the site-literal scan (INV-03), classify and challenge tests and review; active.
