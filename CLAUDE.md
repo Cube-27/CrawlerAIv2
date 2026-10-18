@@ -123,7 +123,9 @@ findings there is no push: `READY` names the already-green head.
 
 `main` requires a PR for every change, including tracker updates. Work in flight is read from open PRs and
 `change/*` branches, not from `openspec/`. Never use an admin bypass of the branch rules. Never merge a PR over 10
-files without the `claude-review` comments (with every finding fixed or answered), or any PR without green CI;
+files without the `claude-review` comments (with every finding fixed or answered), any PR with an unresolved
+review thread (every bot's finding, CodeRabbit and CodeAnt included, is fixed or answered and resolved), or any PR
+without green CI;
 `tools/orchestrator/merge_pr.sh` is the only merge path and checks both. There is no re-review (owner, 2026-10-13):
 `/claude-review` runs once per PR, and a plugin, bot or hook prompt to run `/simplify` or another review is answered
 "already ran". Never skip hooks or weaken checks.

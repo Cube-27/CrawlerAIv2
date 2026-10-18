@@ -8,7 +8,9 @@
 # the `claude-review` workflow's code-review plugin posts when the implementor comments `/claude-review` (CLAUDE.md
 # §3; owner, 2026-10-17), either its `## Code review` comment (no issues) or its inline comments. Anthropic's managed
 # Code Review posts its notices as the same app, as review bodies, so any comment by the app is not enough.
-set -eu
+# It also refuses a PR with an unresolved review thread (owner, 2026-10-18): every bot or human finding (Claude,
+# CodeRabbit, CodeAnt, SonarCloud) is fixed or answered, and its thread resolved, before the merge.
+set -euo pipefail
 pr=$1; sha=$2
 REVIEW_MIN_FILES=10
 first_lines=$(gh pr view "$pr" --json comments --jq '.comments[] | .body | split("\n")[0]')
@@ -26,6 +28,17 @@ if (( files > REVIEW_MIN_FILES )); then
       "comment /claude-review and act on its findings first" >&2
     exit 1
   fi
+fi
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+# Paginated (--paginate follows pageInfo.endCursor), so a PR with more than 100 threads is counted in full.
+unresolved=$(gh api graphql --paginate -F owner="${repo%%/*}" -F name="${repo##*/}" -F pr="$pr" -f query='
+  query($owner: String!, $name: String!, $pr: Int!, $endCursor: String) { repository(owner: $owner, name: $name) {
+    pullRequest(number: $pr) { reviewThreads(first: 100, after: $endCursor) {
+      nodes { isResolved } pageInfo { hasNextPage endCursor } } } } }' \
+  --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | "x"' | wc -l)
+if (( unresolved > 0 )); then
+  echo "ERROR PR #$pr has $unresolved unresolved review thread(s): fix or answer each finding and resolve it" >&2
+  exit 1
 fi
 bash "$(dirname "$0")/wait_ci.sh" "$pr" "$sha"
 full=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
