@@ -46,8 +46,8 @@ committed as `frontend/openapi.json`. Refs: D-0365, D-0366, D-0935.
 `POST /v1/scrape` SHALL fetch one URL inline under a `job(kind='scrape')` with one task and return one member per
 requested format (unrequested ones omitted); past `timeout_s` (≤ 120) it is 504 `timeout` and the job `failed`.
 `budget` is optional, with no default ([jobs](../jobs/spec.md)). With `max_age > 0` and `fetch.cache` `default` it
-reuses the latest `ok`, unexpired capture of the canonical URL that recent and made with the same actions and context
-names, with no fetch, robots.txt check or usage; `bypass` always fetches; `only` serves such a capture (any age when
+reuses the latest `ok`, unexpired capture of the canonical URL that recent and made with the same actions, context
+names (in any order, header names in any case) and, for a `screenshot`, the same area, with no fetch, robots.txt check or usage; `bypass` always fetches; `only` serves such a capture (any age when
 `max_age` is 0) or is 404 `not_cached` with the job `failed`. (Previously: no `cache`.) Refs: §13.1, D-0028, D-0427,
 D-0431, D-0503, D-1435.
 #### Scenario: Cache only, nothing stored
