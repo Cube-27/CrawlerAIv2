@@ -1183,3 +1183,22 @@ archived ARCHITECTURE.md.
   to 0). Owner to choose: raise precision first, lower τ, or apply τ only to buckets above it.
 - Why: C10 forbids a golden-set precision or coverage drop without a scoring or label reason.
 - Reversible: yes (`crawlerai eval fit-calibration --report <eval run --out file>`)
+
+### D-1775 — Rows from page state, grounded by the page's text and links (supersedes D-1774)
+- Date: 2026-10-18 · Change/PR: listing-state-sections (#293) · Status: decided (owner-delegated 2026-10-17)
+- Decision: A listing no other source gives rows reads them from a state array of `MIN_ITEMS`+ objects. A field's key
+  is the row member named by the field's name or schema.org property (the schema's own words), its value normalized
+  and shown in the page text; the item URL may instead be a rendered link's target. A row stands only when its URL is
+  such a link or its name is shown; else it abstains.
+- Why: grounding every value in what the page renders keeps key names from guessing (INV-12's rule applied to state);
+  running only where nothing else gives rows leaves every current listing unchanged.
+- Reversible: yes
+
+### D-1776 — A listing's sections of one row shape and URL kind are read together
+- Date: 2026-10-18 · Change/PR: listing-state-sections (#293) · Status: decided (owner-delegated 2026-10-17)
+- Decision: Beside the chosen group, bind reads every aligned group of its field set (or holding its required fields
+  and a field beyond the item URL) whose blocks lead, a quorum of them, to URLs of its blocks' kind (host, path depth, first segment),
+  apart from blocks already read; blocks in document order, one per item (session parameters aside).
+- Why: on the dev set, without the URL kind check footer and category lists of the same shape became rows (FP);
+  with it, listing rows TP 935 to 999, FN 926 to 862, FP 181 to 180 (`--llm unanswered`).
+- Reversible: yes

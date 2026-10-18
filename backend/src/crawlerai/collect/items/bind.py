@@ -8,6 +8,11 @@ Beside stated rows of which one or more is bound to a block, the group's unbound
 listing, and a block no stated row names is an item the structured data left out (a list grown after its script was
 written, a later batch a call loaded).
 
+**Sections.** A listing split into sections reads them all: beside the chosen group, each aligned group of its row
+shape (or holding every required field it aligns and a field beyond the item URL), whose blocks lead to documents of
+the kind its blocks lead to and lie apart from the blocks already read (`_sections`); one item two sections show is
+one block.
+
 **Binding.** A row and a block are one item when the row names the block's item URL, and neither names another's (one
 to one, else neither binds: C7). URLs are compared as the page's links name items: without the page's session
 parameters (`normalize.url_key.session_parameters`, from the blocks' links), the path's trailing slash aside (RFC 3986
@@ -33,6 +38,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from urllib.parse import parse_qsl, urlsplit
 
+from lxml.html import HtmlElement
 from pydantic import JsonValue
 
 from crawlerai.acquire.items import MIN_ITEMS
@@ -40,7 +46,7 @@ from crawlerai.collect import json_doc
 from crawlerai.collect.admission import Document, StateKind
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.induce import induced
-from crawlerai.collect.items.align import AMBIGUOUS_IN_BLOCK, Block, Items, field_roles
+from crawlerai.collect.items.align import AMBIGUOUS_IN_BLOCK, Block, Items, field_roles, quorum
 from crawlerai.collect.items.spot import Spot
 from crawlerai.collect.js_state import state_documents
 from crawlerai.collect.locator import format_locator
@@ -97,12 +103,16 @@ class Listing:
 
 def bind(listing: Listing) -> Bound:
     """The listing's rows and candidates (module docstring), from the aligned group the most stated rows bind to (the
-    first on a tie: the align step's order), the other groups' candidates left out."""
+    first on a tie: the align step's order) and the sections read with it (`_sections`), the other blocks' candidates
+    left out."""
     urls = _RowUrls(listing)
-    chosen = _chosen(listing, urls)
-    others = {block.entity.id for group in listing.items if group is not chosen for block in group.blocks}
+    first = _chosen(listing, urls)
+    chosen = _sections(listing, first)
+    read = {block.entity.id for block in chosen.blocks}
+    others = {block.entity.id for group in listing.items for block in group.blocks if block.entity.id not in read}
     candidates = tuple(c for c in listing.candidates if c.entity_id not in others)
     binder = _Binder(replace(listing, candidates=candidates), chosen, urls)
+    binder.notes.extend(() if chosen is first else chosen.diagnostics)
     rows = binder.rows()
     binder.bind_array_rows(rows)
     induced_values = binder.induced_values()
@@ -133,6 +143,66 @@ def _chosen(listing: Listing, row_urls: _RowUrls) -> Items:
     session = session_parameters([b.link for group in listing.items for b in group.blocks], listing.page_urls)
     bound = [len(_Index([(b.entity.id, b.link) for b in group.blocks], session).find(urls)) for group in listing.items]
     return listing.items[max(range(len(bound)), key=lambda i: (bound[i], -i))]
+
+
+def _sections(listing: Listing, chosen: Items) -> Items:
+    """The chosen group with the listing's other sections, as one group (module docstring): each aligned group of the
+    chosen one's fields, or of other fields among which every required field the chosen one aligns and one beyond the
+    item URL, a quorum of whose blocks lead to documents of a kind the chosen one's lead to (`_url_kind`), none of whose
+    blocks is, holds or lies in a block already read. Blocks are in document order; a block
+    leading to an item an earlier one leads to, as the page's links name items (`_Index`), is that item again (a
+    featured copy)."""
+    required = {name for name in chosen.fields if listing.schema.fields[name].required}
+    kinds = {_url_kind(block.link) for block in chosen.blocks}
+    groups = [chosen]
+    elements = {block.element for block in chosen.blocks}
+    for group in listing.items:
+        if group is not chosen and _section_of(group, chosen, required, kinds, elements):
+            groups.append(group)
+            elements.update(block.element for block in group.blocks)
+    return chosen if len(groups) < 2 else _merged(listing, groups)
+
+
+def _merged(listing: Listing, groups: Sequence[Items]) -> Items:
+    """`groups` as one, the first's group and fields kept (`_sections`)."""
+    chosen = groups[0]
+    position = {element: i for i, element in enumerate(listing.page.lxml_tree.iter())}
+    ordered = sorted((b for g in groups for b in g.blocks), key=lambda b: position.get(b.element, len(position)))
+    seen = _Index((), session_parameters([b.link for b in ordered], listing.page_urls))
+    blocks: list[Block] = []
+    for block in ordered:
+        if not seen.matching([block.link]):
+            seen.add(block.entity.id, block.link)
+            blocks.append(block)
+    kept = {block.entity.id for block in blocks}
+    candidates = tuple(c for group in groups for c in group.candidates if c.entity_id in kept)
+    note = f"item layer: {len(groups)} sections read, {len(blocks)} blocks"
+    return Items(tuple(blocks), candidates, chosen.group, (note,), chosen.fields)
+
+
+def _section_of(
+    group: Items, chosen: Items, required: set[str], kinds: set[tuple[str, int, str]], elements: set[HtmlElement]
+) -> bool:
+    """Whether `group` is a further section of the chosen group's listing (`_sections`)."""
+    shaped = group.fields == chosen.fields or (required <= group.fields and len(group.fields) > 1)
+    alike = sum(_url_kind(block.link) in kinds for block in group.blocks) >= quorum(len(group.blocks))
+    return shaped and alike and not any(_overlaps(block.element, elements) for block in group.blocks)
+
+
+def _url_kind(url: str) -> tuple[str, int, str]:
+    """The kind of document a URL names, as a site lays its items out: its host, its number of path segments and its
+    first one when it has more (RFC 3986 §3.3: a path's segments are its hierarchy), so `/p/7` is `/p/3`'s kind, while a
+    category page, an article or another site's page is not."""
+    split = urlsplit(url)
+    segments = [segment for segment in split.path.split("/") if segment]
+    return split.netloc, len(segments), segments[0] if len(segments) > 1 else ""
+
+
+def _overlaps(element: HtmlElement, elements: set[HtmlElement]) -> bool:
+    """Whether `element` is, holds or lies in one of `elements`."""
+    if element in elements or any(ancestor in elements for ancestor in element.iterancestors()):
+        return True
+    return any(inner in elements for inner in element.iterdescendants())
 
 
 @dataclass
@@ -410,8 +480,11 @@ class _Index:
         self._session = session
         self._by_path: dict[str, list[tuple[str, Counter[tuple[str, str]]]]] = defaultdict(list)
         for entity, url in named:
-            path, query = _parts(without_parameters(url, session))
-            self._by_path[path].append((entity, query))
+            self.add(entity, url)
+
+    def add(self, entity: str, url: str) -> None:
+        path, query = _parts(without_parameters(url, self._session))
+        self._by_path[path].append((entity, query))
 
     def find(self, urls: Iterable[str]) -> set[str]:
         """The entities naming one of `urls`, each URL matching one entity only."""

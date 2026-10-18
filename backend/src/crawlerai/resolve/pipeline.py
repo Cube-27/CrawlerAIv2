@@ -443,10 +443,14 @@ class _Listing:
         holders = frozenset(c.entity_id for c in page.collected.candidates if c.field in row_fields)
         structured = listing_rows(page.graph, page.primary, page.target, holders)
         # Appendix A #59: the rows of the page's captured calls are the stated rows where structured data and the
-        # config give none.
+        # config give none; the rows of its state JSON where no source, blocks included, gives any (listings spec,
+        # "Rows from page state"): their candidates join only then.
         stated = structured or page.config.rows or page.collected.rows
         # A config's row selector was validated against every item (learning-configs spec), so its rows stand alone.
         items = () if not structured and page.config.rows else page.collected.items
+        if not stated and not items and page.collected.state.rows:
+            stated = page.collected.state.rows
+            candidates = (*candidates, *page.collected.state.candidates)
         # The item layer (listings spec, "Stated rows and blocks"): the blocks of the page's repeated items are the rows
         # where the stated rows are none or stubs, and extend them; state and call array rows bind to the rows by URL.
         bound = bind(
