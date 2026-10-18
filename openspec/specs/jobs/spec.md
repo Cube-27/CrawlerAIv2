@@ -99,8 +99,8 @@ start host. Refs: §13.1, D-0037, D-0038, D-0650, D-0651, D-0991.
 The crawl frontier SHALL seed the start URL and sitemap URLs, add in-scope links and pagination candidates, dedupe by
 `(job_id, canonical_url)` and by the canonical final URL each fetched task stores (`url_task.final_url`), and cut at
 `max_depth` and `limit`. The start task stores where its page is (`job.start_location`, after the site's redirects to a
-host of the same site), which gives every later task its scope host; a URL a task was redirected to is never added as
-a task. A task takes its first matching page-kind rule; one with no match is fetched for links only (`links_only`); a
+host of the same site), which gives every later task its scope host; once a task's final URL is stored, a URL it was
+redirected to is not added as a task (one queued before then stays a task). A task takes its first matching page-kind rule; one with no match is fetched for links only (`links_only`); a
 matched page missing a required field is `no_match` with no record. No automatic page-type gate (§22). The scope is the
 start host, plus its subdomains with `allow_subdomains` and any host with `allow_external`, less `exclude` and within
 `include` when given. (Previously: only the start page's redirect target was kept out; subdomains needed an `include`.)

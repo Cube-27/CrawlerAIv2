@@ -5,8 +5,9 @@
 A reached page contributes its links and next-page candidates at its depth plus one. The scope is on the host the start
 page is on: when the site redirects the start URL to another host of the same site (its `www.` subdomain, or back), the
 crawl follows it there (D-0991). The start task stores where its page is on the job (`job.start_location`), the way
-every other task reads it. Every task stores where its page was fetched (`url_task.final_url`), and the URL a task was
-redirected to is never a task of its own: that page is the redirected task's (D-1285, D-1382).
+every other task reads it. Every task stores where its page was fetched (`url_task.final_url`), and once it is stored,
+the URL the task was redirected to is not added as a task of its own: that page is the redirected task's (D-1285,
+D-1382). A task queued for that URL before then stays a task.
 
 The start URL's task also reads the site's sitemaps (`crawlerai.crawl.sitemaps`: robots.txt `Sitemap:` lines, else
 `/sitemap.xml`) and adds their URLs as seeds, at depth 0, even when its own page was not reached, on the attempt that
