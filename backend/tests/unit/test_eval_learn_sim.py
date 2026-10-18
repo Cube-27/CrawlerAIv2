@@ -2,13 +2,16 @@
 the aggregates by category. No provider is called."""
 
 import asyncio
+from dataclasses import replace
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from pydantic import JsonValue
 
 from crawlerai.config_ir.executability import Executability
 from crawlerai.config_ir.synthesis import output_schema
-from crawlerai.eval.learn_sim import NO_STEP, HostRun, RoleACounter, RoleATokens, summary
+from crawlerai.eval.learn_sim import NO_STEP, HostRun, RoleACounter, RoleATokens, summary, validation_pages
 from crawlerai.llm.client import AnsweredCall, LLMRequest
 from crawlerai.llm.providers.fake import ScriptedClient
 
@@ -57,6 +60,7 @@ def test_a_host_is_zero_touch_when_its_config_activates_without_role_a() -> None
     assert found["job_board"] == {
         "hosts": 3,
         "pages_per_host": 1.0,
+        "held_out_hosts": 0,
         "zero_touch": 0.333,
         "activated": 0.667,
         "fields_per_host": 3.33,
@@ -127,3 +131,29 @@ def test_hosts_tokens_are_summed_and_an_unpriced_host_leaves_the_total_cost_unkn
     assert both["role_a_tokens_in"] == 20  # type: ignore[index,call-overload]
     mixed = summary([host(priced), host(unpriced), host(RoleATokens())], usd_per_char=None)["all"]
     assert (mixed["role_a_usd"], mixed["role_a_live_hosts"]) == (None, 2)  # type: ignore[index,call-overload]
+
+
+def _pages(count: int) -> list[Any]:
+    return [SimpleNamespace(name=f"p{n}") for n in range(count)]
+
+
+def test_the_config_is_validated_on_the_pages_after_the_sample() -> None:
+    pages = _pages(6)
+    learning, validating = validation_pages(pages, 3)
+    assert [p.name for p in learning] == ["p0", "p1", "p2"]
+    assert [p.name for p in validating] == ["p3", "p4", "p5"]
+
+
+def test_later_pages_fewer_than_the_minimum_are_repeated_and_none_falls_back_to_the_sample() -> None:
+    learning, validating = validation_pages(_pages(4), 3)
+    assert [p.name for p in learning] == ["p0", "p1", "p2"]
+    assert [p.name for p in validating] == ["p3", "p3", "p3"]
+    learning, validating = validation_pages(_pages(2), 3)
+    assert [p.name for p in validating] == ["p0", "p1", "p0"]
+    assert len(learning) == 2
+
+
+def test_hosts_validated_on_later_pages_are_counted() -> None:
+    held = replace(_run("job_board", activated=True, calls=0, fields=1), held_out=2)
+    found = summary([held, _run("job_board", activated=True, calls=0, fields=1)], usd_per_char=None)
+    assert found["all"]["held_out_hosts"] == 1  # type: ignore[index,call-overload]

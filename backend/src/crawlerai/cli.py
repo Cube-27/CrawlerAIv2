@@ -36,7 +36,7 @@ from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.keys import create_key, revoke_key
 from crawlerai.db.models import EvalCategory, PageKind, ScheduleId
-from crawlerai.eval import calibrate, label_file, learn_sim, rekey
+from crawlerai.eval import calibrate, label_file, learn_sim, page_import, rekey
 from crawlerai.eval.cli import (
     EvalCliError,
     PageRequest,
@@ -248,6 +248,23 @@ async def _eval_import_sites(file: Path, pages_per_site: int) -> None:
     sys.stdout.write(report([*await run_capture(Settings(), sites.requests), *sites.over_limit]))
 
 
+async def _eval_import_pages(file: Path, pages_per_site: int) -> None:
+    """Capture a site list's pages into dev through the worker's acquisition path, one page at a time, unlabeled."""
+    settings = Settings()
+    sites = parse_site_list(file.read_text(encoding="utf-8"), pages_per_site)
+    database_url = settings.database_url.get_secret_value()
+    schemas = await active_schemas(database_url, {request.schema_name for request in sites.requests})
+    engine = create_async_engine(database_url)
+    try:
+        async with aclosing(dev_store(settings)) as store, _fetching(settings, SafeConnector()) as fetching:
+            data = load_engine_data(fetching.rungs.adapters)
+            fetch = partial(_polite_page, engine, fetching, data)
+            outcomes = await page_import.import_pages(store, schemas, sites.requests, fetch, await store.page_urls())
+    finally:
+        await engine.dispose()
+    sys.stdout.write(report([*outcomes, *sites.over_limit]))
+
+
 async def _eval_import_labels(file: Path) -> None:
     """Capture a label file's pages into dev through the worker's acquisition path, one page at a time, and store
     their labels as drafts (D-1460)."""
@@ -352,8 +369,11 @@ async def _eval_run(
     print(json.dumps(summary))
 
 
-async def _eval_learn_sim(pages: int, llm_mode: str, role_a: str, max_calls: int | None, out: Path | None) -> None:
-    """Simulate learning on each dev host's first `pages` pages and print the aggregates (`eval.learn_sim`)."""
+async def _eval_learn_sim(
+    pages: int, validation: learn_sim.Validation, llm_mode: str, role_a: str, max_calls: int | None, out: Path | None
+) -> None:
+    """Simulate learning on each dev host's first `pages` pages, validated on its later ones, and print the aggregates
+    (`eval.learn_sim`)."""
     settings = Settings()
     data = load_engine_data(adapter_registry(settings.disabled_adapters))
     if data is None:
@@ -371,6 +391,7 @@ async def _eval_learn_sim(pages: int, llm_mode: str, role_a: str, max_calls: int
                 live=_replay_llm(llm_mode, settings, db, max_calls),
                 role_a=None if strong is None else CappedLLM(strong, max_calls or learn_sim.ROLE_A_CALLS),
                 max_chars=settings.llm_a_max_chars,
+                validation=validation,
             )
     finally:
         await db.dispose()
@@ -499,6 +520,14 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     import_sites.add_argument("--split", choices=splits, required=True)
     import_sites.add_argument("--file", type=Path, required=True)
     import_sites.add_argument("--pages-per-site", type=_positive_int, required=True)
+    import_pages = eval_commands.add_parser(
+        "import-pages",
+        help="capture the pages of a site list through the worker's acquisition path, unlabeled, for learn-sim",
+    )
+    import_pages.set_defaults(handler=_run_eval, eval_handler=_run_eval_import_pages)
+    import_pages.add_argument("--split", choices=splits, required=True)
+    import_pages.add_argument("--file", type=Path, required=True, help="the site list, under the working directory")
+    import_pages.add_argument("--pages-per-site", type=_positive_int, required=True)
     import_labels = eval_commands.add_parser(
         "import-labels", help="capture a label file's pages into dev and store their labels as drafts"
     )
@@ -560,6 +589,12 @@ def _add_learn_sim(eval_commands: "argparse._SubParsersAction[argparse.ArgumentP
     sim.set_defaults(handler=_run_eval, eval_handler=_run_eval_learn_sim)
     sim.add_argument("--split", choices=["dev"], required=True)
     sim.add_argument("--pages", type=_positive_int, default=3, help="the pages per host learning reads")
+    sim.add_argument(
+        "--validate",
+        choices=["held-out", "same-page"],
+        default="held-out",
+        help="validate on the host's later pages (a host with none: the learning pages), or on the learning pages",
+    )
     sim.add_argument("--llm", choices=["recorded", "unanswered", "live"], default="unanswered", help="role C misses")
     sim.add_argument("--role-a", choices=["abstain", "live"], default="abstain", help="count role A, or call it")
     sim.add_argument(
@@ -789,6 +824,10 @@ def _run_eval_import_sites(parser: argparse.ArgumentParser, args: argparse.Names
     asyncio.run(_eval_import_sites(sites, args.pages_per_site))
 
 
+def _run_eval_import_pages(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    asyncio.run(_eval_import_pages(_under_cwd(parser, "--file", args.file), args.pages_per_site))
+
+
 def _run_eval_import_labels(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     asyncio.run(_eval_import_labels(_under_cwd(parser, "file", args.file)))
 
@@ -805,7 +844,7 @@ def _run_eval_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
 
 def _run_eval_learn_sim(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     out = None if args.out is None else _under_cwd(parser, "--out", args.out)
-    asyncio.run(_eval_learn_sim(args.pages, args.llm, args.role_a, args.llm_max_calls, out))
+    asyncio.run(_eval_learn_sim(args.pages, args.validate, args.llm, args.role_a, args.llm_max_calls, out))
 
 
 def _run_eval_fit(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:

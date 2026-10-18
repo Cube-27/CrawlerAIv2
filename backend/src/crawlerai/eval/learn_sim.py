@@ -2,10 +2,10 @@
 first pages, without a database run or a job.
 
 Each host's pages (a host is the final URL's, per schema) are replayed cold in capture order through the engine, as
-`replay_split` replays them, and the first `pages` of them are both the learning sample and the pages the config is
-validated on: the dev split holds too few pages per host for a held-out set of its own, so this measures what
-induction and role A cover, not how a config generalizes (a held-out page is a page learning never read). A page
-list shorter than `MIN_HELD_OUT` is repeated to that length, which validates on the same pages as before.
+`replay_split` replays them, and the first `pages` of them are the learning sample. The config is validated on the
+host's later pages (held out: pages learning never read), or, when it has none or `same-page` is asked, on the
+sample itself, which measures what induction and role A cover, not how a config generalizes. A validation list
+shorter than `MIN_HELD_OUT` is repeated to that length.
 
 Role A abstains unless asked to run: its first call is counted, with the characters of the request as the measure of
 its cost, and answers no step. A host is **zero-touch** when its config activates with no role A call. Only
@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import reduce
 from itertools import cycle, islice
-from typing import Final
+from typing import Final, Literal
 from urllib.parse import urlsplit
 
 from pydantic import JsonValue
@@ -44,6 +44,8 @@ from crawlerai.resolve.types import ExtractionResult, FieldSet
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.base import ObjectNotFound
 from crawlerai.storage.capture_bundle import CaptureBundle, CorruptBundle
+
+Validation = Literal["held-out", "same-page"]
 
 # Role A's prompt kinds: its first request and its repairs (learning-configs, "Induction, then role A synthesis").
 ROLE_A: Final = frozenset({"a_synth", "a_repair"})
@@ -77,6 +79,7 @@ class HostRun:
     role_a_calls: int
     role_a_chars: int
     role_a_tokens: "RoleATokens"
+    held_out: int = 0  # the distinct pages the config was validated on that learning did not read
 
     @property
     def zero_touch(self) -> bool:
@@ -195,8 +198,10 @@ async def simulate(
     live: LLMClient | None,
     role_a: LLMClient | None,
     max_chars: int,
+    validation: Validation = "held-out",
 ) -> list[HostRun]:
-    """One `HostRun` per (host, schema) of the store's split, from its first `pages` pages in capture order. Role C's
+    """One `HostRun` per (host, schema) of the store's split, learning from its first `pages` pages in capture order
+    and validating on the later ones (`validation`, see `validation_pages`). Role C's
     calls are answered from the recordings, then by `live` (`RecordedLLM`); role A's by `role_a`, or not at all."""
     recorded = RecordedLLM(store, live)
     by_host: dict[tuple[str, str], list[_Page]] = defaultdict(list)
@@ -206,8 +211,10 @@ async def simulate(
             by_host[(page.host, row.schema_name)].append(page)
     runs = []
     for (_, schema_name), found in sorted(by_host.items()):
-        ordered = sorted(found, key=lambda p: (p.bundle.manifest.fetched_at, p.row.capture_id))[:pages]
-        runs.append(await _host_run(engine, engine.schema(schema_name), ordered, recorded, role_a, max_chars))
+        ordered = sorted(found, key=lambda p: (p.bundle.manifest.fetched_at, p.row.capture_id))
+        if validation == "same-page":
+            ordered = ordered[:pages]
+        runs.append(await _host_run(engine, engine.schema(schema_name), ordered, pages, recorded, role_a, max_chars))
     return runs
 
 
@@ -222,6 +229,7 @@ async def _host_run(
     engine: PipelineEngine,
     schema: SchemaDef,
     pages: Sequence[_Page],
+    sample: int,
     recorded: LLMClient,
     role_a: LLMClient | None,
     max_chars: int,
@@ -229,14 +237,17 @@ async def _host_run(
     stored = [s for page in pages if (s := await _stored(engine, schema, page, recorded)) is not None]
     counter = RoleACounter(recorded, role_a)
     ir: ExtractionConfigIR | None = None
+    held = 0
     if stored:
+        learning, validating = validation_pages(stored, sample)
+        held = len({s.held_out.capture_id for s in validating} - {s.held_out.capture_id for s in learning})
         # The fetch method a config names does not change what its steps extract.
         fetch: FetchMethod = "http" if stored[0].bundle.manifest.method == "http" else "browser"
         target = Target(schema, pages[0].host, fetch, None)
-        held_out = list(islice(cycle([s.held_out for s in stored]), max(MIN_HELD_OUT, len(stored))))
+        held_out = [s.held_out for s in validating]
         try:
             validated = await learn_config(
-                counter, target, stored, held_out, engine.data.vocabulary, max_chars, absent_from=stored
+                counter, target, learning, held_out, engine.data.vocabulary, max_chars, absent_from=learning
             )
         except LLMFailure:  # a live role A failed or its budget ran out: as a learning run, nothing activates
             validated = None
@@ -244,14 +255,23 @@ async def _host_run(
     return HostRun(
         category=pages[0].row.category,
         page_kind=schema.page_kind,
-        pages=len(stored),
+        pages=len(learning) if stored else 0,
         activated=ir is not None,
         fields=config_fields(ir),
         executability=class_counts(ir),
         role_a_calls=counter.calls,
         role_a_chars=counter.chars,
         role_a_tokens=counter.tokens,
+        held_out=held,
     )
+
+
+def validation_pages[T](stored: Sequence[T], sample: int) -> tuple[list[T], list[T]]:
+    """The learning sample (the first `sample` pages) and the pages its config is validated on: the later pages, or
+    the sample when there are none, repeated to `MIN_HELD_OUT` pages when fewer."""
+    learning = list(stored[:sample])
+    later = list(stored[sample:]) or learning
+    return learning, list(islice(cycle(later), max(MIN_HELD_OUT, len(later))))
 
 
 def config_fields(ir: ExtractionConfigIR | None) -> int:
@@ -331,6 +351,7 @@ def _aggregate(runs: Sequence[HostRun], usd_per_char: float | None) -> dict[str,
     return {
         "hosts": hosts,
         "pages_per_host": round(sum(r.pages for r in runs) / hosts, 2),
+        "held_out_hosts": sum(r.held_out > 0 for r in runs),
         "zero_touch": round(sum(r.zero_touch for r in runs) / hosts, 3),
         "activated": round(sum(r.activated for r in runs) / hosts, 3),
         "fields_per_host": round(sum(r.fields for r in runs) / hosts, 2),
