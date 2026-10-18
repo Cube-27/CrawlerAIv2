@@ -38,6 +38,8 @@ Agents can't do these.
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
+- Bot review findings left for phase 2 (#277): item blocks ranked by summed evidence (a large image-only gallery outranks a smaller grid, `acquire/items.item_blocks`); `resolve/pipeline` holders miss row-mapped `field.sub` candidates; `resolve/preference` keeps the winner's http image over a lower source's https twin; `resolve/identity` keeps only the first of two ProductGroups under one isVariantOf; `LearnedCalls.matches` ignores fixed query values and body shape; `resolve/pagination` `int()` on a digit run over 4300 digits; role C sees only item text for page fields on a listing with item blocks; the first role C listing chunk's budget omits page-field claims; listing rows uncapped at 200 across calls; `item_links._respelled` strips every trailing slash and compares query items as a set; `schema_org_map._selections` never counts a list or joined value as stated. Fix in the layer phase 2 rebuilds, or delete with it.
+- Extract with `fetch.cache: only` (#277): sample URLs read stored captures, but globs are still expanded by a live map.
 - Golden report (#272): `eval re-key` marks 206 of 748 golden label rows stale by a written-form search of the
   capture; a row whose title the capture writes only in a script-escaped or transformed form may be marked stale
   wrongly. Spot-check stale rows against the captures before the next fresh batch, and keep the stale count in each PR.
