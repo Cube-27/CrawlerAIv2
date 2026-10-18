@@ -1046,6 +1046,10 @@ class SchemaById(BaseModel):
     id: Annotated[UUID, Field(title="Id")]
 
 
+class Label(RootModel[str]):
+    root: Annotated[str, Field(max_length=80, min_length=1)]
+
+
 class Origin3(Enum):
     preset = "preset"
     user = "user"
@@ -1064,6 +1068,13 @@ class SchemaFields(BaseModel):
     fields: Annotated[
         list[FieldModel], Field(max_length=50, min_length=1, title="Fields")
     ]
+
+
+class SchemaLabels(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    labels: Annotated[dict[str, list[Label]], Field(title="Labels")]
 
 
 class SchemaPrompt(BaseModel):
@@ -1568,6 +1579,7 @@ class SchemaDef(BaseModel):
     )
     fields: Annotated[dict[str, FieldSpecOutput], Field(title="Fields")]
     id: Annotated[UUID, Field(title="Id")]
+    labels: Annotated[dict[str, list[Label]] | None, Field(title="Labels")] = None
     name: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,63}$", title="Name")]
     origin: Annotated[Origin3, Field(title="Origin")]
     page_kind: Annotated[PageKind, Field(title="Page Kind")]

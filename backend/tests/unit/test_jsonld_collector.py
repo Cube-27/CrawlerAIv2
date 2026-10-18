@@ -430,3 +430,18 @@ def test_a_text_value_holding_element_markup_is_read_as_its_rendered_text(
         ("title", raw, Ok(title)),
         ("description", raw, Ok(description)),
     ]
+
+
+def test_a_property_value_a_field_label_names_gives_its_value_to_the_entity_holding_it() -> None:
+    def pair(value: str) -> dict[str, Any]:
+        return {"@type": "PropertyValue", "name": "Model number", "value": value}
+
+    related = {"@type": "Product", "name": "Other", "additionalProperty": [pair("M-8")]}
+    block = {"@context": SCHEMA_ORG, "@type": "Product", "additionalProperty": pair("M-7"), "isRelatedTo": related}
+    mpn = FieldSpec(type=FieldType.IDENTIFIER, scheme="mpn", description="Manufacturer part number")
+    schema = _schema(mpn=mpn).model_copy(update={"labels": {"mpn": ["Model number"]}})
+
+    found = [(c.entity_id, c.raw) for c in _collect(block, schema=schema).candidates]
+
+    assert found == [("jsonld:0:$", "M-7"), ("jsonld:0:$['isRelatedTo']", "M-8")]
+    assert _collect(block, schema=_schema(mpn=mpn)).candidates == ()

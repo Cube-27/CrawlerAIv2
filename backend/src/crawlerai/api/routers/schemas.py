@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.api.auth import require_api_key
@@ -16,7 +17,7 @@ from crawlerai.api.submissions import submission_problems
 from crawlerai.db.models import ApiKeyId, PageKind, SchemaId, SchemaStatus
 from crawlerai.llm.draft_cap import KeyCapped
 from crawlerai.schemas.registry import SchemaNotFound
-from crawlerai.schemas.types import Name, SchemaContent, SchemaDef
+from crawlerai.schemas.types import FieldLabels, Name, SchemaContent, SchemaDef
 from crawlerai.services import schemas
 from crawlerai.services.schemas import InvalidSchema, NewSchema, SchemaConflict
 from crawlerai.services.scrape_steps import SchemaFields, fields_schema
@@ -98,6 +99,23 @@ async def update_schema(schema_id: SchemaId, body: SchemaContent, request: Reque
     and its sites learn again. A retired schema or a preset is refused (409)."""
     async with _transaction(request) as conn:
         return await schemas.update(conn, schema_id, body)
+
+
+class SchemaLabels(BaseModel):
+    """The label synonyms of a schema's fields, by field: the labels pages write next to each field's value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    labels: FieldLabels
+
+
+@router.put("/{schema_id}/labels", responses=_CHANGES)
+async def set_labels(schema_id: SchemaId, body: SchemaLabels, request: Request) -> SchemaDef:
+    """Replaces the schema's label synonyms (drafted by role S on its first use) with `body`, and returns it. They are
+    no part of its document, so nothing is learned again; a preset's can be edited too. A retired schema is refused
+    (409)."""
+    async with _transaction(request) as conn:
+        return await schemas.set_labels(conn, schema_id, body.labels)
 
 
 @router.delete("/{schema_id}", status_code=204, responses=_CHANGES)

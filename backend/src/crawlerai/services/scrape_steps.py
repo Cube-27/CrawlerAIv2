@@ -55,6 +55,7 @@ from crawlerai.db.models import (
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.db.usage import record_usage
 from crawlerai.llm.client import LLMClient
+from crawlerai.llm.roles.s_labels import with_labels
 from crawlerai.llm.roles.s_schema import MAX_FIELD_NAMES, draft_fields, normalize_prompt
 from crawlerai.normalize.url import canonical_url
 from crawlerai.normalize.url_key import canonicalize
@@ -263,9 +264,17 @@ async def fields_schema(engine: AsyncEngine, llm: LLMClient, fields: list[Name],
 async def named_schema(
     engine: AsyncEngine, schema: SchemaRequest | None, page_kind: PageKind | None, llm: LLMClient
 ) -> SchemaDef | None:
-    """The schema a request names by id, stores (or matches) inline, or drafts from field names with `llm`; None for a
-    prompt, whose draft needs a page. Raises `SchemaUnusable`, the schemas service's `SchemaConflict` or
-    `InvalidSchema` for an inline schema, and the LLM client's `LLMFailure` for field names it could not draft."""
+    """The schema a request names by id, stores (or matches) inline, or drafts from field names with `llm`, with its
+    label synonyms (`s_labels.with_labels`); None for a prompt, whose draft needs a page. Raises `SchemaUnusable`, the
+    schemas service's `SchemaConflict` or `InvalidSchema` for an inline schema, and the LLM client's `LLMFailure` for
+    field names it could not draft."""
+    found = await _stated_schema(engine, schema, page_kind, llm)
+    return None if found is None else await with_labels(engine, llm, found)
+
+
+async def _stated_schema(
+    engine: AsyncEngine, schema: SchemaRequest | None, page_kind: PageKind | None, llm: LLMClient
+) -> SchemaDef | None:
     match schema:
         case SchemaFields(fields=fields):
             if page_kind is None:

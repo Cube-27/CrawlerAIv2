@@ -192,3 +192,15 @@ async def test_every_route_needs_an_api_key(client: httpx.AsyncClient) -> None:
 
     assert [r.status_code for r in responses] == [401] * 5
     assert {r.json()["type"] for r in responses} == {"unauthorized"}
+
+
+async def test_put_labels_edits_the_label_synonyms_without_editing_the_document(client: httpx.AsyncClient) -> None:
+    created = await _created(client)
+
+    response = await client.put(f"/v1/schemas/{created['id']}/labels", json={"labels": {"title": ["Event", "Anlass"]}})
+    unknown = await client.put(f"/v1/schemas/{created['id']}/labels", json={"labels": {"venue": ["Venue"]}})
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {**created, "labels": {"title": ["Event", "Anlass"]}}
+    assert unknown.status_code == 422
+    assert [e["field"] for e in unknown.json()["errors"]] == ["labels.venue"]

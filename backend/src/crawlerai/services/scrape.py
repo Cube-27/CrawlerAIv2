@@ -50,6 +50,7 @@ from crawlerai.core.errors import Refusal
 from crawlerai.db.models import CaptureId, Job, JobId, PageKind, SiteId
 from crawlerai.db.queue import ClaimedTask, complete_task, fail_task, insert_claimed
 from crawlerai.llm.client import NO_LLM, LLMClient, LLMFailure
+from crawlerai.llm.roles.s_labels import with_labels
 from crawlerai.llm.roles.s_schema import draft_schema
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData, extract_page
@@ -545,6 +546,8 @@ async def _derive(
         return _Derived(formats, drafted)
     if drafted is not None:
         check_usable(drafted, request.page_kind)
+        # The drafted schema extracts here: its label synonyms first (`s_labels`).
+        schema = drafted = await with_labels(engine, work.llm, drafted)
     # §4.4 step 3: role C fills required fields left missing, charged to the job. No write to the job's row is open
     # here: the job was committed before the fetch, and the task is written after (D-0346).
     config = None if config is None else config.for_capture(result.bundle.manifest, work.data.adapters)

@@ -94,6 +94,7 @@ def upgrade() -> None:
         ),
         sa.Column("origin", sa.Text(), nullable=False),
         sa.Column("status", sa.Text(), nullable=False),
+        sa.Column("labels", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.CheckConstraint("origin IN ('preset', 'user', 'prompt_draft')", name=op.f("ck_schema_def_origin")),
         sa.CheckConstraint("page_kind IN ('detail', 'listing')", name=op.f("ck_schema_def_page_kind")),
         sa.CheckConstraint("status IN ('active', 'retired')", name=op.f("ck_schema_def_status")),

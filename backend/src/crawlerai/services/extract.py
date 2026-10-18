@@ -38,6 +38,7 @@ from crawlerai.crawl.rules import MAX_PATTERNS, UrlGlob, is_glob, url_glob
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind, ScheduleId, SiteId
 from crawlerai.llm.client import LLMClient
+from crawlerai.llm.roles.s_labels import with_labels
 from crawlerai.llm.roles.s_schema import MAX_SAMPLES, draft_schema
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData
@@ -246,6 +247,7 @@ async def _drafted(
             samples = await _samples(engine, fetching, request, job_id, list(urls.values())[:MAX_SAMPLES])
             drafted = await draft_schema(engine, llm, prompt=prompt, samples=samples, job_id=job_id)
         check_usable(drafted, request.page_kind)
+        drafted = await with_labels(engine, llm, drafted)
     except Exception as e:
         async with engine.begin() as conn:
             await transition_job(conn, job_id, "failed")

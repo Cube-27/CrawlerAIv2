@@ -94,6 +94,15 @@ only when its `schema_digest` matches; a job runs with the document pinned at su
 - **WHEN** a user schema with an active config gains a field
 - **THEN** the config becomes `suspended` and the site's progressive state `cold`
 
+### Requirement: Label synonyms
+A schema row SHALL carry `labels`, the label synonyms role S drafted for its labelled fields (every field but a list
+or an object), by field ([llm](../llm/spec.md)): null until drafted, editable through
+`PUT /v1/schemas/{id}/labels` (a preset's too; a retired schema is 409, an unknown or unlabelled field 422), and
+cleared when the document changes. They are no part of the document: they change neither its digest nor its configs.
+#### Scenario: Edit clears the synonyms
+- **WHEN** a schema with drafted synonyms gains a required group
+- **THEN** its `labels` are null and its next use drafts them again
+
 ### Requirement: Prompt and field-name drafts
 A prompt (scrape, extract) or a list of 1–50 field names (scrape, batch, crawl, extract) SHALL be drafted by role S
 ([llm](../llm/spec.md)) into a stored `prompt_draft` schema named `draft_` + 12 hex digits of a digest of the

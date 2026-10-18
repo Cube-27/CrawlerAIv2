@@ -35,6 +35,7 @@ const ROLE_LABELS: Readonly<Record<string, string>> = {
   a_repair: "Config repair",
   d_bind: "API binding",
   s_draft: "Schema drafting",
+  s_labels: "Label vocabulary",
 };
 
 /** The role's name; a kind this screen does not know is shown as the API names it. */

@@ -84,16 +84,33 @@ value was an entity.) Refs: §8.1, Appendix A #34, #55, D-0418, D-0943, D-1250�
 - **WHEN** an array's only object writes another page's URL and a visible price
 - **THEN** the price is owned by that object's `array_row` entity and is not the detail target's
 
+### Requirement: Label vocabulary
+A field's labels SHALL be its name, the schema.org property its path names, its description and the synonyms role S
+drafted for the schema (`schema_def.labels`, [llm](../llm/spec.md)), compared as NFKC case-folded words
+(`collect/labels.py`); collectors hold no phrase list. Without drafted synonyms the vocabulary is the schema's own
+words. A schema.org `PropertyValue` under an entity's `additionalProperty` or `identifier` whose `name` or
+`propertyID` is a field's label gives that field its scalar `value`, owned by that entity
+(`collect/property_values.py`). (Previously: a label matched only the field's name or schema.org property.)
+#### Scenario: Drafted synonym
+- **WHEN** a schema's `sku` has the synonym `Item no.` and a row reads `Item no. | W-100`
+- **THEN** `sku` has the candidate `W-100`; without the synonym, none
+#### Scenario: Related item's property value
+- **WHEN** a related Product's `PropertyValue` is labelled with a field's label
+- **THEN** its candidate is owned by the related Product, not the page's item
+
 ### Requirement: Structural DOM values
 On a detail page the system SHALL take label–value pairs from the page's main region (`main`, else the one
-`role=main`, else the one `article`, else the body) outside chrome, dialogs and media fallback: two-cell `tr` rows, `dl`
-groups, elements starting with `Label:` and sibling containers of one shape (two or more) holding a label element and a
-value element, whose label's words equal the field's or its schema.org property's name; lines and sibling pairs that
-give a field several values are dropped. It SHALL also take a money or check-digit identifier field's one shown value
-in the main region (`collect/items/spot.py`; none when several differ), and the main image of the one
-`main`/`role=main`/`article` outside chrome, decorative images and link cards (`collect/dom.py`); values MUST be
-visible. (Previously: only two-cell rows and `dl` groups of the whole document.) Refs: Appendix A #42, D-0955, D-1096,
-D-1640, D-1641, D-1642, D-1643.
+`role=main`, else the one `article`, else the body) outside chrome, dialogs, media fallback and other items' content
+(microdata `isRelatedTo`, `isSimilarTo`, `review`, Review items; sibling blocks that each link to one other document):
+two-cell `tr` rows, `dl` groups, elements starting with `Label:` and sibling containers of one shape (two or more)
+holding a label element and a value element, whose label is one of the field's labels; lines and sibling pairs that
+give a field several values are dropped, and an identifier field given two values by any pairs reads none. It SHALL
+also take a money or check-digit identifier field's one shown value in the main region (`collect/items/spot.py`; for
+an identifier also an unlabelled pair's value, never inside a hyperlink to another document; none when several
+differ); an identifier without a check digit is read only next to one of its labels. It SHALL take the main image of
+the one `main`/`role=main`/`article` outside chrome, decorative images and link cards (`collect/dom.py`); values MUST
+be visible. (Previously: labels were only names, and other items' content was read.) Refs: Appendix A #42, D-0955,
+D-1096, D-1640, D-1641, D-1642, D-1643.
 #### Scenario: Label line
 - **WHEN** the main region holds `Brand: <span>Example Brand</span>`
 - **THEN** `brand` has the candidate `Example Brand` located at the span
@@ -103,6 +120,9 @@ D-1640, D-1641, D-1642, D-1643.
 #### Scenario: One price
 - **WHEN** the main region shows one amount and a struck amount
 - **THEN** `price` has the shown amount as a candidate; with two shown amounts, none
+#### Scenario: Related products' identifiers
+- **WHEN** the main region shows `EAN: <gtin>` and a list of cards linking to other products, each with a GTIN
+- **THEN** `gtin` has the page's GTIN as its one candidate; an identifier inside a link to another product is none
 
 ### Requirement: No generic DOM heuristics
 Collectors SHALL contain no hostname, class fragment, phrase list or card selector; per-site selectors live only in

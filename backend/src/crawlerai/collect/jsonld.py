@@ -23,6 +23,7 @@ from pydantic import JsonValue
 
 from crawlerai.collect.base import CollectResult, descends
 from crawlerai.collect.json_doc import member
+from crawlerai.collect.property_values import labelled_values
 from crawlerai.collect.schema_org_map import (
     NAMESPACES,
     Typed,
@@ -183,8 +184,11 @@ class JsonLdCollector:
         entities = [found for found in graph.objects if found.types]
         parents, vias = _parents(entities, graph)
         typed = [Typed(found.id, found.types, _Node(found, graph)) for found in entities]
-        candidates = field_candidates(
-            typed, schema, ctx, vocabulary=self.vocabulary, source_kind="jsonld", diagnostics=diagnostics
+        candidates = (
+            *field_candidates(
+                typed, schema, ctx, vocabulary=self.vocabulary, source_kind="jsonld", diagnostics=diagnostics
+            ),
+            *labelled_values(typed, schema, ctx, source_kind="jsonld", diagnostics=diagnostics),
         )
         return CollectResult(
             entities=tuple(entity(t, ctx, self.vocabulary, parent=parents[t.id], via=vias[t.id]) for t in typed),

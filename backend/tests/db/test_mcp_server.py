@@ -42,7 +42,8 @@ from crawlerai.db.models import (
     SiteId,
     WebhookDelivery,
 )
-from crawlerai.llm.client import LLMRequest, ProviderUnavailable, Unconfigured
+from crawlerai.llm.client import LLMRequest, MeteredClient, ProviderError, ProviderUnavailable, Unconfigured
+from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.setup import LLMSetup
 from crawlerai.mcp_server.output import MARKDOWN_PAGE_CHARS
 from crawlerai.mcp_server.server import UNTRUSTED, AnyContext, build_server
@@ -439,7 +440,9 @@ async def test_a_revoked_key_stops_the_stdio_server_at_its_next_call(
 async def test_an_uncharged_llm_call_over_stdio_counts_against_the_keys_draft_cap(
     key: CreatedKey, engine: AsyncEngine, fetching: Fetching, engine_data: EngineData
 ) -> None:
-    runtime = Runtime(engine, fetching, Unconfigured("no LLM"), engine_data, None, LLMSetup.unavailable("no LLM"))
+    # A provider that does not answer: the call is made, so it counts (a process without one makes none).
+    down = MeteredClient([FakeProvider([ProviderError("down")])], engine)
+    runtime = Runtime(engine, fetching, down, engine_data, None, LLMSetup.unavailable("no LLM"))
     caller = await key_bind(runtime, key.key)(cast(AnyContext, None))
     # A role S draft (field names), which no job pays for (llm spec "Per-key cap").
     draft = LLMRequest(

@@ -249,6 +249,8 @@ class SchemaDef(Base):
     required_groups: Mapped[list[list[str]]] = mapped_column(JSONB, server_default=empty_array_default())
     origin: Mapped[SchemaOrigin] = mapped_column(Text)
     status: Mapped[SchemaStatus] = mapped_column(Text)
+    # Role S's drafted label synonyms by field (`schemas.types.SchemaDef.labels`); null until drafted.
+    labels: Mapped[dict[str, list[str]] | None] = mapped_column(JSONB)
 
 
 class Capture(Base):
