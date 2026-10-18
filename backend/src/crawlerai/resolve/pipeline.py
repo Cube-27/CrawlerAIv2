@@ -57,6 +57,7 @@ from crawlerai.resolve.preference import (
     load_precedence,
 )
 from crawlerai.resolve.records import is_complete, record_confidence
+from crawlerai.resolve.row_keys import keyed_rows
 from crawlerai.resolve.rows import RowField, resolve_rows
 from crawlerai.resolve.types import ExtractionResult, FieldSet, LLMCallRecord, Outcome
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, Scope
@@ -503,11 +504,13 @@ class _Listing:
 
     def result(self, mode: ExtractionMode) -> ExtractionResult:
         schema = self.page.schema
-        records = self._records()
+        keyed, session = keyed_rows(self.rows, item_url_fields(schema), self.page.page_urls)
+        listing = replace(self, rows=keyed)
+        records = listing._records()
         return ExtractionResult(
-            outcome="extracted" if self._complete() else "partial",
+            outcome="extracted" if listing._complete() else "partial",
             entity=self.fields,
-            rows=self.rows,
+            rows=keyed,
             candidates=self.candidates,
             llm_calls=self.llm_calls,
             mode=mode,
@@ -515,6 +518,7 @@ class _Listing:
             diagnostics=self.diagnostics,
             next_pages=self.next_pages,
             reason=None if self.rows else no_rows(self.role_c),
+            session_params=session,
         )
 
 

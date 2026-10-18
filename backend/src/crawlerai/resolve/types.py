@@ -133,6 +133,8 @@ class ExtractionResult(_Model):
     next_pages: tuple[str, ...] = ()
     # Why a listing gave no rows (`no_rows` in `resolve.pipeline`); None for a listing with rows and for a detail page.
     reason: str | None = None
+    # The query parameters a listing's row item URLs were rid of (`resolve.row_keys`), for matching labels alike.
+    session_params: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _outcome_fits(self) -> Self:
