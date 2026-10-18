@@ -7,12 +7,18 @@ jobs too. `draft_call_cap` bounds the uncharged role S calls (field-name drafts)
 before it serves (D-1342, `store_pending` in `config_ir.activation`); off, it activates once validated.
 """
 
-from pydantic import NonNegativeInt
+from typing import Annotated
+
+from pydantic import Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.core.validation import PG_INTEGER_MAX
 from crawlerai.db.models import Project
 from crawlerai.services.scrape_steps import Input
+
+# A cap is stored in an `integer` column.
+_Cap = Annotated[int, Field(ge=0, le=PG_INTEGER_MAX)]
 
 
 class ProjectSettings(Input):
@@ -21,8 +27,8 @@ class ProjectSettings(Input):
     `require_config_approval`: whether a learned config waits for approval (`POST /v1/configs/{id}/approve`) before it
     serves."""
 
-    llm_call_cap: NonNegativeInt | None
-    draft_call_cap: NonNegativeInt | None
+    llm_call_cap: _Cap | None
+    draft_call_cap: _Cap | None
     require_config_approval: bool
 
 
