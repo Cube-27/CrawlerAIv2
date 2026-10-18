@@ -92,7 +92,7 @@ site's CXS endpoints on the page's host (`POST .../jobs` in pages of 20 by `offs
 list, else a short page; `GET .../job/...`), and map rows with their job URL (site root + `externalPath`) and jobs with
 title, description, locations as written, date posted, employment type, hiring organization and URL, as in
 `adapters/workday.py`. It SHALL refer a page on another host to the career site it names as itself or, for a listing,
-the one site all its Workday links belong to. A list URL with a query falls through to the page rungs. Refs: D-1177,
+the one site all its Workday links belong to (in the locale those links all state, when they agree). A list URL with a query falls through to the page rungs. Refs: D-1177,
 D-1300, D-1302.
 (Previously: the first page of 20 only, and career sites on the platform's hosts only.)
 #### Scenario: Listing row URL
