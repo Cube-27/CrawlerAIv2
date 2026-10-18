@@ -312,6 +312,7 @@ def upgrade() -> None:
         sa.Column("attempts", sa.Integer(), server_default=sa.text("0"), nullable=False),
         sa.Column("next_attempt_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("last_error", sa.Text(), nullable=True),
+        sa.Column("response_code", sa.Integer(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.CheckConstraint("status IN ('pending', 'delivered', 'failed')", name=op.f("ck_webhook_delivery_status")),
         sa.CheckConstraint("attempts >= 0", name=op.f("ck_webhook_delivery_attempts_non_negative")),
@@ -319,6 +320,13 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_webhook_delivery")),
     )
     op.create_index(op.f("ix_webhook_delivery_job_id"), "webhook_delivery", ["job_id"], unique=False)
+    op.create_index(
+        op.f("ix_webhook_delivery_created_at"),
+        "webhook_delivery",
+        ["created_at"],
+        unique=False,
+        postgresql_where=sa.text("status <> 'pending'"),
+    )
     op.create_index(
         op.f("ix_webhook_delivery_next_attempt_at"),
         "webhook_delivery",

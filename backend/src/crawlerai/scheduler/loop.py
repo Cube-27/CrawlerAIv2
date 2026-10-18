@@ -29,7 +29,7 @@ from crawlerai.db.queue import LEASE_BATCH, STALLED_BATCH, fail_stalled_jobs, re
 from crawlerai.db.webhook_outbox import FORM_BATCH, form_deliveries
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.recheck import RECHECK_BATCH, recheck_fetch_method
-from crawlerai.scheduler.retention import RETENTION_BATCH, expire_candidates, expire_captures
+from crawlerai.scheduler.retention import RETENTION_BATCH, expire_candidates, expire_captures, expire_webhooks
 from crawlerai.services.schedules import SCHEDULE_BATCH, Submitting, run_due_schedules
 from crawlerai.storage.base import ObjectStore
 
@@ -72,6 +72,12 @@ def periodic(store: ObjectStore, fetch: Rung, post: Poster, submitting: Submitti
             "expire_candidates",
             timedelta(hours=1),
             partial(expire_candidates, batch=RETENTION_BATCH),
+            batch=RETENTION_BATCH,
+        ),
+        Periodic(
+            "expire_webhooks",
+            timedelta(hours=1),
+            partial(expire_webhooks, batch=RETENTION_BATCH),
             batch=RETENTION_BATCH,
         ),
         Periodic(

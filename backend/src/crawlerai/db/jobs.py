@@ -12,6 +12,7 @@ from typing import Any, Final
 from sqlalchemy import ColumnElement, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.core.redaction import has_secrets, redacted_request
 from crawlerai.db.models import Job, JobEvent, JobId, JobStatus, TaskStatus, UrlTask, UrlTaskId
 from crawlerai.db.webhook_outbox import emit_job_event
 
@@ -95,7 +96,8 @@ async def _move[S: str](
 
 async def transition_job(conn: AsyncConnection, job_id: JobId, target: JobStatus) -> None:
     """Move a job to `target`. Starting stamps `started_at`; ending stamps `finished_at` and records an event of the
-    same kind, which SSE reports and which owes the job's end webhook event, if it asked for one (SPEC-10 §4.2)."""
+    same kind, which SSE reports and which owes the job's end webhook event, if it asked for one (SPEC-10 §4.2). An
+    ended job's request keeps no secret value (D-1510)."""
     values: dict[str, Any] = {}
     if target == "running":
         values["started_at"] = func.now()
@@ -107,7 +109,16 @@ async def transition_job(conn: AsyncConnection, job_id: JobId, target: JobStatus
         values["finished_at"] = ended_at
     await _move(conn, Job, job_id, JOB_TRANSITIONS, target, values)
     if ended_at is not None:
+        await _scrub_secrets(conn, job_id)
         await record_event(conn, job_id, target, ts=ended_at)
+
+
+async def _scrub_secrets(conn: AsyncConnection, job_id: JobId) -> None:
+    """Replace the caller's header and cookie values in the ended job's request by `REDACTED` (D-1510): its workers read
+    them while it ran, and nothing reads them after it ends."""
+    request: dict[str, Any] = (await conn.execute(select(Job.request).where(Job.id == job_id))).scalar_one()
+    if has_secrets(request):
+        await conn.execute(update(Job).where(Job.id == job_id).values(request=redacted_request(request)))
 
 
 async def start_jobs(conn: AsyncConnection, job_ids: Collection[JobId]) -> None:

@@ -16,6 +16,7 @@ from pydantic import (
 )
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
+from crawlerai.core.redaction import REDACTED
 from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import CaptureBundle
 
@@ -50,8 +51,6 @@ def check_robots_override(respect_robots: bool, reason: str | None) -> None:
 
 # A caller's header or cookie: its name and secret value.
 SecretPair = tuple[str, SecretStr]
-# What a capture, a log line or an answer shows for a secret value (pydantic's `SecretStr` rendering).
-REDACTED = "**********"
 
 
 class RequestContext(_Frozen):

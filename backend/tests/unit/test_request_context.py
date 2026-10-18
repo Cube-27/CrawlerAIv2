@@ -16,9 +16,10 @@ from pydantic import SecretStr, ValidationError
 
 from crawlerai.acquire.api import JsonRequest, fetch_json
 from crawlerai.acquire.http import fetch_http
-from crawlerai.acquire.types import REDACTED, FetchPolicy, FetchResult, RequestContext
+from crawlerai.acquire.types import FetchPolicy, FetchResult, RequestContext
 from crawlerai.cli import main
 from crawlerai.config_ir.page_actions import to_steps
+from crawlerai.core.redaction import REDACTED, has_secrets, redacted_request
 from crawlerai.core.settings import IMPERSONATE_DEFAULT
 from crawlerai.services.fetch_options import (
     KEEP_SECRETS,
@@ -26,7 +27,6 @@ from crawlerai.services.fetch_options import (
     UnknownProxyPool,
     check_proxy_pool,
     fetch_policy,
-    redacted_request,
 )
 from tests.local_server import LoopbackConnector, Reply, Server, serving
 
@@ -267,3 +267,23 @@ def test_the_fetch_command_refuses_a_proxy_pool_not_configured(
 
     assert stopped.value.code == 2
     assert "no proxy pool named 'eu'" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("fetch", "expected"),
+    [
+        ({"headers": {"X-Token": "s3cret"}}, True),
+        ({"cookies": {"sid": "abc"}}, True),
+        ({"headers": {"X-Token": REDACTED}, "cookies": {"sid": REDACTED}}, False),
+        ({"headers": {}, "cookies": {}, "method_hint": "http"}, False),
+        ({"headers": {"X-Token": REDACTED}, "cookies": {"sid": "abc"}}, True),
+    ],
+)
+def test_a_request_holds_secrets_while_any_header_or_cookie_value_is_not_the_placeholder(
+    fetch: dict[str, object], expected: bool
+) -> None:
+    assert has_secrets({"fetch": fetch}) is expected
+
+
+def test_a_request_without_a_fetch_member_holds_no_secrets() -> None:
+    assert has_secrets({"urls": ["https://example.test/"]}) is False

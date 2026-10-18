@@ -1,4 +1,4 @@
-"""The MCP server (SPEC-10 §4.7, ARCHITECTURE §13.3): twenty tools, each one call into `crawlerai.services`,
+"""The MCP server (SPEC-10 §4.7, ARCHITECTURE §13.3): twenty-one tools, each one call into `crawlerai.services`,
 answered as `output` shapes them. It holds no logic of its own (§3).
 
 One server runs over stdio (`python -m crawlerai.mcp_server`) and over streamable HTTP at `/mcp` in the API app
@@ -22,7 +22,7 @@ from pydantic import ValidationError
 
 from crawlerai.config_ir.exporters.configs import ConfigFormat
 from crawlerai.core.errors import UNEXPECTED, Refusal
-from crawlerai.db.models import ApiKeyId, ExtractionConfigId, JobId, ScheduleId, SchemaStatus
+from crawlerai.db.models import ApiKeyId, ExtractionConfigId, JobId, ScheduleId, SchemaStatus, WebhookDeliveryId
 from crawlerai.mcp_server.output import MAX_IMAGE_BYTES, InvalidCursor, MarkdownCursor, markdown_page, tool_result
 from crawlerai.schemas.types import Name
 from crawlerai.services import captures, configs, crawl, exports, extract, jobs, schedules, schemas
@@ -40,6 +40,7 @@ from crawlerai.services.schedules import NewSchedule, ScheduleListQuery, Submitt
 from crawlerai.services.schemas import NewSchema
 from crawlerai.services.scrape import ScrapeRequest
 from crawlerai.services.search import SearchRequest
+from crawlerai.services.webhook_deliveries import DeliveryListQuery, list_deliveries
 from crawlerai.storage.artifacts import SCREENSHOT
 
 log = logging.getLogger(__name__)
@@ -182,6 +183,14 @@ class _Tools:
             except (jobs.JobNotFound, jobs.NotExportable) as e:
                 raise ToolError(str(e)) from e
         return tool_result({"job_id": str(job_id), "llms_txt": text})
+
+    async def webhook_deliveries(
+        self, ctx: AnyContext, job_id: JobId, cursor: WebhookDeliveryId | None = None
+    ) -> CallToolResult:
+        runtime = (await self._bind(ctx)).runtime
+        async with runtime.database.connect() as conn:
+            page = await list_deliveries(conn, job_id, DeliveryListQuery(cursor=cursor))
+        return tool_result(page.model_dump(mode="json"))
 
     async def create_schedule(self, ctx: AnyContext, schedule: NewSchedule) -> CallToolResult:
         caller = await self._bind(ctx)
@@ -327,6 +336,13 @@ _TOOLS: Final = {
         "validated on.",
         _READ_ONLY,
     ),
+    "webhook_deliveries": (
+        "webhook_deliveries",
+        "A job's webhook deliveries, newest first, as `GET /v1/jobs/{id}/webhook-deliveries` answers them: status "
+        "(pending, delivered, failed), attempts, last error, the receiver's HTTP status and the events carried; pass "
+        "`next_cursor` as `cursor` for more.",
+        _READ_ONLY,
+    ),
     "create_schedule": ("create_schedule", _CREATE_SCHEDULE, _WRITES),
     "list_schedules": (
         "list_schedules",
@@ -381,7 +397,7 @@ def _answered[**P](tool: Callable[P, Awaitable[CallToolResult]]) -> Callable[P, 
 
 
 def build_server(bind: Bind) -> FastMCP:
-    """The server with its twenty tools. `bind` gives a call its runtime and API key, and refuses an unauthenticated
+    """The server with its twenty-one tools. `bind` gives a call its runtime and API key, and refuses an unauthenticated
     one. Over HTTP the server is stateless and answers JSON, so any API process can take any request; DNS-rebinding
     protection is off, since a request authenticates with a bearer key a browser never sends on its own (§18)."""
     server = FastMCP(

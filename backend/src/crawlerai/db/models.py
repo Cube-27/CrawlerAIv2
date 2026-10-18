@@ -511,6 +511,8 @@ class WebhookDelivery(Base):
         # The scheduler reads the pending deliveries that are due.
         Index(None, "next_attempt_at", postgresql_where=text("status = 'pending'")),
         Index(None, "job_id"),
+        # Retention reads the ended deliveries, oldest first (`scheduler.retention.expire_webhooks`).
+        Index(None, "created_at", postgresql_where=text("status <> 'pending'")),
     )
 
     id: Mapped[WebhookDeliveryId] = mapped_column(primary_key=True, default=uuid7)
@@ -519,6 +521,8 @@ class WebhookDelivery(Base):
     attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_error: Mapped[str | None] = mapped_column(Text)
+    # The HTTP status the target answered the last attempt with; NULL before one, or when it gave no response.
+    response_code: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = created_at_column()
 
 

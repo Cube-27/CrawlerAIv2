@@ -6,10 +6,11 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from crawlerai.acquire.politeness import retry_after
-from crawlerai.acquire.types import REDACTED, AttemptRecord, BlockClass, FetchPolicy, FetchResult, StepOutcome
+from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult, StepOutcome
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool
+from crawlerai.core.redaction import REDACTED
 from crawlerai.storage.capture_bundle import (
     CaptureBundle,
     CaptureManifest,

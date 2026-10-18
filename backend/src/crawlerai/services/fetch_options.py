@@ -11,7 +11,7 @@ the one that stores an asynchronous job's request for its workers (`KEEP_SECRETS
 """
 
 import re
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable
 from typing import Annotated, Final, Literal, Self
 
 from pydantic import (
@@ -26,9 +26,10 @@ from pydantic import (
     model_validator,
 )
 
-from crawlerai.acquire.types import REDACTED, FetchPolicy, RequestContext, check_robots_override
+from crawlerai.acquire.types import FetchPolicy, RequestContext, check_robots_override
 from crawlerai.config_ir.page_actions import MAX_ACTIONS, Action, WaitFor, to_steps, wait_for_action
 from crawlerai.core.errors import Refusal
+from crawlerai.core.redaction import REDACTED
 from crawlerai.db.models import PageKind
 
 __all__ = [
@@ -39,7 +40,6 @@ __all__ = [
     "UnknownProxyPool",
     "check_proxy_pool",
     "fetch_policy",
-    "redacted_request",
 ]
 
 # The serialization context that keeps secret values: only an asynchronous job's stored request, which its workers read.
@@ -201,15 +201,3 @@ def fetch_policy(
         context=options.context(),
         steps=to_steps(options.actions, options.wait_for),
     )
-
-
-def redacted_request(request: Mapping[str, object]) -> dict[str, object]:
-    """A stored job request with its `fetch` secrets shown as `**********` (D-1432), for every answer that shows it."""
-    fetch = request.get("fetch")
-    if not isinstance(fetch, Mapping):
-        return dict(request)
-    shown = dict(fetch)
-    for member in ("headers", "cookies"):
-        if isinstance(values := fetch.get(member), Mapping):
-            shown[member] = dict.fromkeys(values, REDACTED)
-    return {**request, "fetch": shown}

@@ -27,6 +27,7 @@ from crawlerai.services.jobs import (
     ResultsQuery,
 )
 from crawlerai.services.records import RecordPage
+from crawlerai.services.webhook_deliveries import DeliveryListQuery, DeliveryPage, list_deliveries
 
 router = APIRouter(
     prefix="/v1/jobs",
@@ -63,6 +64,20 @@ async def get_job_request(job_id: JobId, request: Request) -> dict[str, Any]:
     async with engine.connect() as conn:
         try:
             return await jobs.job_request(conn, job_id)
+        except JobNotFound as e:
+            raise not_found(str(e)) from e
+
+
+@router.get("/{job_id}/webhook-deliveries")
+async def job_webhook_deliveries(
+    job_id: JobId, query: Annotated[DeliveryListQuery, Query()], request: Request
+) -> DeliveryPage:
+    """The job's webhook deliveries, newest first, for debugging a receiver: each one's status (`pending`, `delivered`
+    or `failed`), attempts, the last attempt's error and the HTTP status the target answered with, and how many events
+    it carries. Ended deliveries are kept 30 days. Pass a page's `next_cursor` as `cursor` for the page after it."""
+    async with database(request).connect() as conn:
+        try:
+            return await list_deliveries(conn, job_id, query)
         except JobNotFound as e:
             raise not_found(str(e)) from e
 

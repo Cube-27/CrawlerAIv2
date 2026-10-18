@@ -135,6 +135,9 @@ async def test_schedule_problems(submit_client: httpx.AsyncClient, engine: Async
             submit_client, kind="batch_scrape", request=BATCH, cron="0 0 * * *", timezone="X"
         ),
         "browser actions": await _create(submit_client, kind="scrape", request=actions, interval_s=60),
+        "secret values": await _create(
+            submit_client, kind="batch_scrape", request={**BATCH, "fetch": {"cookies": {"sid": "abc"}}}, interval_s=60
+        ),
     }
 
     statuses = {name: (r.status_code, r.json()["type"]) for name, r in responses.items()}
@@ -146,6 +149,7 @@ async def test_schedule_problems(submit_client: httpx.AsyncClient, engine: Async
         "six fields": (422, "validation"),
         "unknown zone": (422, "validation"),
         "browser actions": (422, "validation"),
+        "secret values": (422, "validation"),
     }
     async with engine.connect() as conn:
         assert (await conn.execute(select(Schedule.id))).all() == []

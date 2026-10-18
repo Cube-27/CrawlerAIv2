@@ -7,7 +7,9 @@ at once: the targets pass the SSRF guard, and a `records` schema is resolved and
 field names is drafted once, not at every run, and an edit of the schema applies to the runs after it (INV-28 pins
 it per job). A scrape is scheduled as the batch of its one URL, the queued form of a scrape; its `browser_actions` and
 `timeout_s` belong to a scrape answered while the caller waits, so a request with browser actions is refused. A
-`schema.prompt` is refused: its draft needs fetched pages, and a schedule runs a schema it already has.
+`schema.prompt` is refused: its draft needs fetched pages, and a schedule runs a schema it already has. A request with
+caller headers or cookies is refused too: a schedule keeps no secret value (D-1510), and a run submitted with the
+placeholder it would store sends that placeholder as the value.
 
 Running: `run_due_schedules`, a scheduler entry, locks the due schedules that are not paused (`FOR UPDATE SKIP LOCKED`),
 submits each one's job through the jobs services in that same transaction, and moves it to its next due time, so a run
@@ -61,7 +63,7 @@ class ScheduleNotFound(Refusal, LookupError):
 
 
 class Unschedulable(Refusal):
-    """The request cannot run on a schedule (a scrape's browser actions, a schema prompt)."""
+    """The request cannot run on a schedule (a scrape's browser actions, a schema prompt, secret values)."""
 
 
 class _Cadence(Input):
@@ -416,7 +418,12 @@ async def _checked(
     engine: AsyncEngine, submitting: Submitting, new: NewSchedule
 ) -> tuple[ScheduledKind, ScheduledRequest]:
     """`new`'s job kind and request, as a run submits it: a scrape as a batch, its targets checked by the SSRF guard
-    and its `records` schema by id."""
+    and its `records` schema by id. A request with `fetch.headers` or `fetch.cookies` is `Unschedulable` (D-1510)."""
+    if new.request.fetch.headers or new.request.fetch.cookies:
+        raise Unschedulable(
+            "a schedule keeps no secret values, so its request takes no fetch.headers or fetch.cookies: "
+            "a stored placeholder would be sent as the value"
+        )
     match new:
         case NewScrapeSchedule(request=scrape):
             return "batch_scrape", await _batch_checked(engine, submitting, _as_batch(scrape))
