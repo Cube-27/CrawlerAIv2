@@ -170,6 +170,18 @@ def test_values_are_stored_as_the_normalizer_reads_them() -> None:
     assert all(not label.absent for label in labels.fields.values())
 
 
+def test_a_location_in_its_normalized_form_is_read_by_its_text() -> None:
+    # A reference extractor writes places as normalized locations: their text is the place as the page writes it.
+    places: JsonValue = [{"text": "Lakeside", "remote_flag": False}, {"text": "Hilltop, Valley", "locality": None}]
+
+    labels, declined = draft_labels(labeled({"title": "Item", "places": places}), DETAIL, CTX)
+
+    assert declined == ()
+    value = labels.fields["places"].value
+    assert isinstance(value, list)
+    assert [place["text"] for place in value if isinstance(place, dict)] == ["Lakeside", "Hilltop, Valley"]
+
+
 def test_values_the_normalizer_declines_are_left_unlabeled_and_reported() -> None:
     labels, declined = draft_labels(
         labeled(

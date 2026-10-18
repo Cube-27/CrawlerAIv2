@@ -273,6 +273,22 @@ class DevEvalStore:
         )
         return (await conn.execute(query)).scalar_one_or_none()
 
+    async def pages_by_url(self) -> dict[str, EvalPageRow]:
+        """The pages by the URL their capture requested, in page order; the first page wins for a URL captured twice."""
+        page = self._page.c
+        query = (
+            select(self._page, Capture.url.label("capture_url"))
+            .join(Capture, Capture.id == page.capture_id)
+            .where(page.split == self._split)
+            .order_by(page.id)
+        )
+        async with self._engine.connect() as conn:
+            rows = (await conn.execute(query)).mappings().all()
+        found: dict[str, EvalPageRow] = {}
+        for row in rows:
+            found.setdefault(row["capture_url"], _row(EvalPageRow, row))
+        return found
+
     async def page_urls(self) -> set[str]:
         """The URLs of this split's pages' captures, as they were requested."""
         page = self._page.c

@@ -2,10 +2,10 @@
 without session parameters"; `normalize.url_key.session_parameters`), so two visits of one listing key its items
 alike and an item's URL is the one its page states without the visit's query."""
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 
 from crawlerai.normalize.url_key import session_parameters, without_parameters
-from crawlerai.resolve.types import FieldSet
+from crawlerai.resolve.types import FieldOutcome, FieldSet
 
 
 def keyed_rows(
@@ -17,13 +17,22 @@ def keyed_rows(
     keyed = [dict(row) for row in rows]
     dropped: set[str] = set()
     for name in url_fields:
-        published = [row[name] for row in keyed if name in row and row[name].status == "published"]
-        names = session_parameters([o.value for o in published if isinstance(o.value, str)], page)
-        if not names:
-            continue
-        dropped |= names
-        for row in keyed:
-            outcome = row.get(name)
-            if outcome is not None and outcome.status == "published" and isinstance(outcome.value, str):
-                row[name] = outcome.model_copy(update={"value": without_parameters(outcome.value, names)})
+        urls = [url for row in keyed if (url := _published_url(row.get(name))) is not None]
+        names = session_parameters(urls, page)
+        if names:
+            dropped |= names
+            for row in keyed:
+                if name in row:
+                    row[name] = _without(row[name], names)
     return tuple(keyed), tuple(sorted(dropped))
+
+
+def _published_url(outcome: FieldOutcome | None) -> str | None:
+    if outcome is None or outcome.status != "published" or not isinstance(outcome.value, str):
+        return None
+    return outcome.value
+
+
+def _without(outcome: FieldOutcome, names: Collection[str]) -> FieldOutcome:
+    url = _published_url(outcome)
+    return outcome if url is None else outcome.model_copy(update={"value": without_parameters(url, names)})

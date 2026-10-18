@@ -9,10 +9,11 @@ A label file is JSON, `{"pages": [<page>, ...]}`; other top-level keys are ignor
 - `rows`: `[{name: value}, ...]`, a listing's rows in page order;
 - `notes`: free text, kept on the labels.
 Other keys of a page are ignored. A value is what the field type's normalizer reads (SPEC-04 §4.4): a string, or the
-structured forms it accepts (money `{amount, currency}`, an enum member's schema.org IRI, a schema.org `Place`). It
-is stored as the normalizer's value, normalized in the captured page's context, as the pipeline normalizes what it
-collects; `null` leaves the field unlabeled. A value the normalizer declines, a list of which it drops an item, and a
-row-mapped field (whose rows a labeler labels, SPEC-13 §4.10) are left unlabeled and reported by path and reason.
+structured forms it accepts (money `{amount, currency}`, an enum member's schema.org IRI, a schema.org `Place`), or a
+location in its normalized form (`{text, ...}`), read by its `text` as the page writes it. It is stored as the
+normalizer's value, normalized in the captured page's context, as the pipeline normalizes what it collects; `null`
+leaves the field unlabeled. A value the normalizer declines, a list of which it drops an item, and a row-mapped field
+(whose rows a labeler labels, SPEC-13 §4.10) are left unlabeled and reported by path and reason.
 
 A field the file does not give is unlabeled, never `absent`: a draft claims nothing about it, and metrics don't score
 it. Drafts name no labeler and never count as ground truth (§16.2): only a dev report that asks for drafts scores
@@ -184,12 +185,25 @@ def _field_labels(
 def _label_value(raw: JsonValue, spec: FieldSpec, ctx: Context) -> Ok | str:
     """The normalized value of a label, or the reason it is not one. A list whose items did not all normalize is not
     the labeled list, so it is declined too."""
-    result = normalize(raw, spec, ctx)
+    result = normalize(_as_written(raw, spec), spec, ctx)
     if not isinstance(result, Ok):
         return result.reason
     if spec.type is FieldType.LIST and result.reasons:
         return "items_dropped"
     return result
+
+
+# The keys of a normalized location (`normalize.location`): a label in that form names its place by `text`.
+_LOCATION_KEYS = frozenset({"text", "locality", "region", "country", "remote_flag"})
+
+
+def _as_written(raw: JsonValue, spec: FieldSpec) -> JsonValue:
+    """A location label given in its normalized form as its `text`, the place as the page writes it, which the location
+    normalizer reads as the pipeline reads a page's text; a list of them item by item; any other label as given."""
+    if spec.type is FieldType.LIST and spec.item is not None and isinstance(raw, list):
+        return [_as_written(item, spec.item) for item in raw]
+    written = isinstance(raw, dict) and isinstance(raw.get("text"), str) and raw.keys() <= _LOCATION_KEYS
+    return raw["text"] if spec.type is FieldType.LOCATION and written and isinstance(raw, dict) else raw
 
 
 async def import_pages(
