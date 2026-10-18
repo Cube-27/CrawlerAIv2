@@ -41,7 +41,7 @@ from crawlerai.services.crawl import CrawlRequest, submit_crawl
 from crawlerai.services.extract import ExtractRequest, submit_extract
 from crawlerai.services.fetching import Fetching, check_targets
 from crawlerai.services.records import MAX_PAGE
-from crawlerai.services.scrape import ScrapeRequest
+from crawlerai.services.scrape import RecordsUnavailable, ScrapeRequest
 from crawlerai.services.scrape_steps import (
     DEFAULT_PROJECT,
     Input,
@@ -452,6 +452,9 @@ async def _checked(
             if isinstance(extract.schema_, SchemaPrompt):
                 raise Unschedulable("a schedule runs a schema it has: draft the prompt's schema first, then name it")
             await check_targets(submitting.fetching.connector, extract.targets(), webhook_url=extract.webhook_url)
+            if submitting.data is None:
+                # An extract always stores records, as `submit_extract` refuses it without the data.
+                raise RecordsUnavailable("this process has not loaded the engine's data files")
             schema = await named_schema(engine, extract.schema_, extract.page_kind, submitting.llm)
             return "extract", _by_id(extract, schema)
         case _:

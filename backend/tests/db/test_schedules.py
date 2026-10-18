@@ -27,6 +27,7 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import schedules
 from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.schedules import NewBatchSchedule, NewExtractSchedule, Submitting, Unschedulable
+from crawlerai.services.scrape import RecordsUnavailable
 from crawlerai.storage.fs import FsStore
 from tests.db.conftest import PRIVATE_HOST, resolve
 
@@ -409,3 +410,21 @@ async def test_the_cli_lists_pauses_and_resumes_schedules(
     with pytest.raises(SystemExit) as exited:
         await cli("schedules", "pause", "0192a000-0000-7000-8000-00000000dead")
     assert exited.value.code == 2
+
+
+async def test_a_records_extract_is_refused_without_the_engines_data(
+    engine: AsyncEngine, submitting: Submitting, schema_name: str
+) -> None:
+    inline = {
+        "name": schema_name,
+        "page_kind": "detail",
+        "fields": {"title": {"type": "text", "required": True, "description": "The name"}},
+    }
+    request = {"urls": [URL], "page_kind": "detail", "schema": {"inline": inline}}
+    new = NewExtractSchedule.model_validate({"name": "e", "kind": "extract", "request": request, "interval_s": 60})
+    without_data = Submitting(submitting.fetching, None, submitting.llm)
+
+    with pytest.raises(RecordsUnavailable):
+        await schedules.create_schedule(engine, without_data, new, api_key_id=None)
+    async with engine.connect() as conn:
+        assert (await conn.execute(select(Schedule.id))).all() == []
