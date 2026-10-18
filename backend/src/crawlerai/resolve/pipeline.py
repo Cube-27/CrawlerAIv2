@@ -522,7 +522,8 @@ class _Listing:
             )
         # Rows of captured calls stand when role C reads none.
         network = self.network and not reply.rows
-        fields, rows = page.resolve_listing(candidates, page.collected.rows if network else reply.rows)
+        # Without role C's rows, the listing's rows stand: its call rows and the blocks bound beside them.
+        fields, rows = page.resolve_listing(candidates, self.entities if network else reply.rows)
         if reply.failure is not None:
             fields = _unanswered(fields, asked, reply.failure)
         if not network:

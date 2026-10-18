@@ -202,9 +202,10 @@ class _PatchrightTab:
 
     async def areas(self, elements: Sequence[Ref]) -> list[float]:
         try:
-            return cast(list[float], await self._page.page.evaluate(AREAS_JS, [list(e) for e in elements]))
+            areas = cast(list[float], await self._page.page.evaluate(AREAS_JS, [list(e) for e in elements]))
         except PlaywrightError:
             return [0.0] * len(elements)
+        return [max(area, 0.0) for area in areas]  # an element no longer found has no area here
 
     def _act(self) -> None:
         """Count a browser action: the data responses that arrive from now on followed it (`NetworkBody.action`)."""

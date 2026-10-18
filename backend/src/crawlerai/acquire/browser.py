@@ -138,11 +138,12 @@ _ARTIFACT_MAX_BYTES = 25_000_000
 # Seconds the files of a page may take beyond the fetch's own budget (Playwright's default per-operation timeout): a
 # slow file is left out, it never turns a page that loaded into a timeout.
 _ARTIFACT_TIMEOUT_S = 30
-# The rendered area of each named element in CSS pixels (CSSOM View `getBoundingClientRect`); 0 when the path names no
-# element of that tag or the element is not rendered visible (CSS 2.1 §11.2 `visibility`, `display: none` has no box).
+# The rendered area of each named element in CSS pixels (CSSOM View `getBoundingClientRect`); 0 when the element is not
+# rendered visible (CSS 2.1 §11.2 `visibility`, `display: none` has no box), -1 when the path names no element of that
+# tag (the live document no longer is the one the path was read from).
 AREAS_JS: Final = """(elements) => Array.from(elements, ([path, tag]) => {
   const node = document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-  if (node === null || node.nodeType !== Node.ELEMENT_NODE || node.localName !== tag) return 0;
+  if (node === null || node.nodeType !== Node.ELEMENT_NODE || node.localName !== tag) return -1;
   if (getComputedStyle(node).visibility !== 'visible') return 0;
   const box = node.getBoundingClientRect();
   return box.width * box.height;
@@ -537,6 +538,8 @@ async def item_areas(page: Page, body: bytes) -> dict[str, float] | None:
     try:
         areas = cast(list[float], await page.evaluate(AREAS_JS, [list(ref) for ref in refs]))
     except PlaywrightError:
+        return None
+    if any(area < 0 for area in areas):  # the live document changed since it was kept: rank by structure instead
         return None
     return {path: round(area, 1) for (path, _), area in zip(refs, areas, strict=True)}
 

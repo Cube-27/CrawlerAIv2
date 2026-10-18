@@ -40,8 +40,10 @@ def rank(groups: Sequence[Group], areas: Areas | None = None) -> tuple[Group, ..
 
 
 def _rendered(group: Group, areas: Areas | None) -> Group:
+    """The group's blocks the page renders: with geometry, those not measured with no area (a block past the browser
+    rung's measuring cap has no entry and stays); else those the rendering rules do not hide."""
     if areas is not None:
-        return tuple(block for block in group if areas.get(element_path(block), 0.0) > 0)
+        return tuple(block for block in group if areas.get(element_path(block), 1.0) > 0)
     return tuple(block for block in group if not _hidden(block))
 
 

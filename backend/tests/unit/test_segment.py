@@ -169,3 +169,12 @@ def test_an_element_path_names_the_same_element_in_a_parse_of_the_same_document(
     for block in _first(page):
         (found,) = again.xpath(element_path(block))
         assert next(found.iter("a")).get("href") == next(block.iter("a")).get("href")
+
+
+def test_a_block_past_the_measuring_cap_has_no_area_entry_and_stays() -> None:
+    # The browser rung measures at most 2,000 blocks; an unmeasured block is no unrendered one.
+    page = _page(_grid([f"tile order-{i}" for i in range(4)]))
+    (group,) = item_groups(page.lxml_tree)
+    areas = {element_path(block): 100.0 for block in group[:2]}
+
+    assert _hrefs(ParsedPage(page.html, item_areas=areas)) == [f"/p/{i}" for i in range(4)]

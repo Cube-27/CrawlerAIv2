@@ -5,7 +5,7 @@ Pages are synthetic (`example.test`); the schema.org vocabulary is the synthetic
 
 import asyncio
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -855,9 +855,10 @@ def test_a_grid_of_cards_gives_its_rows_before_role_c_is_asked() -> None:
 # --- listing rows from captured calls (Appendix A #58) ---
 
 
-def _network_listing(*items: Mapping[str, Any]) -> CaptureBundle:
-    """A rendered listing showing each item's link and price, and the call it loaded them with."""
-    cards = "".join(f'<li><a href="{i["href"]}">{i["href"]}</a> <span>{i["price"]}</span></li>' for i in items)
+def _network_listing(*items: Mapping[str, Any], shown: Sequence[Mapping[str, Any]] | None = None) -> CaptureBundle:
+    """A rendered listing showing each item's link and price (`shown`'s, else the call's), and the call it loaded
+    `items` with."""
+    cards = "".join(f'<li><a href="{i["href"]}">{i["href"]}</a> <span>{i["price"]}</span></li>' for i in shown or items)
     raw = f'<html lang="en"><body><h1>All widgets</h1><ul>{cards}</ul></body></html>'.encode()
     data = json.dumps({"results": list(items)}).encode()
     entry = NetworkBody(
@@ -900,6 +901,16 @@ def test_rows_of_a_call_that_leave_a_record_incomplete_go_to_role_c_whose_rows_r
 
     assert [r.row_fields for r in role_c.listing_requests] == [("title", "url", "price")]
     assert _row_values(result) == [{"title": "Widget 1", "url": "https://shop.example.test/p/1"}]
+
+
+def test_the_blocks_beside_rows_of_a_call_stand_when_role_c_reads_no_rows() -> None:
+    # Listings spec, "Stated rows and blocks": a fourth card no call row names is a row beside them.
+    fourth = {"name": "Widget 4", "href": "https://shop.example.test/p/4", "price": "€4.50"}
+    bundle = _network_listing(*NETWORK_ITEMS, shown=[*NETWORK_ITEMS, fourth])
+
+    result = _extract(bundle, LISTING, role_c=FakeRoleC(), data=COMMITTED)
+
+    assert [row["url"].value for row in result.rows] == [f"https://shop.example.test/p/{n}" for n in (1, 2, 3, 4)]
 
 
 def test_rows_of_a_call_stand_when_role_c_reads_no_rows() -> None:
