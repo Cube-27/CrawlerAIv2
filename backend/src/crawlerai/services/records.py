@@ -149,7 +149,7 @@ async def _job_page(
     conn: AsyncConnection, statement: Select[Any], job_id: JobId, query: RecordFilter
 ) -> tuple[Sequence[Row[Any]], RecordId | None]:
     """The page of the job's records (SPEC-11 §4.2, §4.4): those its tasks stand for, stored or found unchanged, each at
-    the first task of the job that stands for it, newest task first and, within a task, newest record first. The page
+    the first task of the job that stood for it, newest task first and, within a task, newest record first. The page
     is read from the job's tasks by id (keyset, `ix_url_task_job_id_id`), so it never builds the job's whole set of
     `task_record` rows; the cursor stays a record id, and stands where that record does in the job. A cursor of a
     record the job has no task for gives an empty page."""
@@ -157,9 +157,10 @@ async def _job_page(
 
     def first_task(record: Any) -> ScalarSelect[UrlTaskId]:
         of_record = select(link.url_task_id).join(owner, owner.id == link.url_task_id)
-        # No `min` of a uuid in PostgreSQL: the smallest id is the first of the order.
-        first = of_record.where(link.record_id == record, owner.job_id == job_id).order_by(link.url_task_id).limit(1)
-        return first.scalar_subquery()
+        # The first task is the one whose link came first, not the oldest task: links only accrue, so a task that
+        # comes to stand for the record later (tasks run concurrently) never moves it under a cursor already given.
+        first = of_record.where(link.record_id == record, owner.job_id == job_id)
+        return first.order_by(link.created_at, link.url_task_id).limit(1).scalar_subquery()
 
     statement = (
         statement.join(TaskRecord, TaskRecord.record_id == Record.id)
