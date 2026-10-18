@@ -13,7 +13,6 @@ from collections.abc import Hashable
 
 from pydantic import JsonValue
 
-from crawlerai.normalize import vocab
 from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -46,15 +45,32 @@ def key(value: JsonValue, spec: FieldSpec) -> Hashable:
 
 
 def word_overlap(a: JsonValue, b: JsonValue) -> float | None:
-    """The Sørensen-Dice coefficient of two texts' word multisets (`vocab.tokens`: case, accents of form and
-    punctuation aside): 1 for the same words in any order, 0 for none in common; `None` unless both are strings with a
-    word. Linear in the texts' length, so a 100k-character long_text is cheap to compare."""
+    """The Sørensen-Dice coefficient of two texts' word multisets (`_words`: letters, marks and numbers; case, form
+    and punctuation aside): 1 for the same words in any order, 0 for none in common; `None` unless both are strings
+    with a word. Linear in the texts' length, so a 100k-character long_text is cheap to compare."""
     if not (isinstance(a, str) and isinstance(b, str)):
         return None
-    words_a, words_b = Counter(vocab.tokens(a)), Counter(vocab.tokens(b))
+    words_a, words_b = Counter(_words(a)), Counter(_words(b))
     if not words_a or not words_b:
         return None
     return 2 * (words_a & words_b).total() / (words_a.total() + words_b.total())
+
+
+def _words(text: str) -> list[str]:
+    """NFKC, casefold, split on every character that is not a letter, mark or number (UAX #29 WB9, WB10: a digit and
+    a letter continue one word), so texts that differ only in a figure differ. Vocabulary matching keeps
+    `vocab.tokens`, which has letters and marks only (D-1583)."""
+    words: list[str] = []
+    word: list[str] = []
+    for char in unicodedata.normalize("NFKC", text).casefold():
+        if unicodedata.category(char)[0] in "LMN":
+            word.append(char)
+        elif word:
+            words.append("".join(word))
+            word = []
+    if word:
+        words.append("".join(word))
+    return words
 
 
 def compose(s: str) -> str:

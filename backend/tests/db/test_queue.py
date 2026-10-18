@@ -480,3 +480,28 @@ async def test_the_shared_reaper_picks_running_jobs_of_its_kinds_older_than_its_
     assert taskless == [stale_map]
     assert maps == sorted([stale_map, with_tasks])
     assert first == [min(stale_learn, stale_map, with_tasks)]
+
+
+async def test_claim_alternates_between_jobs_and_orders_by_score_only_within_a_job(conn: AsyncConnection) -> None:
+    # D-1593: a scored crawl does not lease ahead of another job's tasks at the same priority.
+    scored, plain = await _job(conn), await _job(conn)
+    low, high = await _tasks(conn, scored, 2)
+    await conn.execute(update(UrlTask).where(UrlTask.id == low).values(score=0.2))
+    await conn.execute(update(UrlTask).where(UrlTask.id == high).values(score=0.9))
+    [other] = await _tasks(conn, plain, 1, url="o", canonical_url="o")
+
+    claimed = await claim_tasks(conn, "w1", 3)
+
+    assert {task.id for task in claimed[:2]} == {high, other}
+    assert [task.id for task in claimed if task.job_id == scored] == [high, low]
+    assert claimed[2].id == low
+
+
+async def test_claim_fairness_does_not_outrank_priority(conn: AsyncConnection) -> None:
+    first, second = await _job(conn), await _job(conn)
+    [a1, a2] = await _tasks(conn, first, 2, priority=5)
+    [b1] = await _tasks(conn, second, 1, url="b", canonical_url="b")
+
+    claimed = await claim_tasks(conn, "w1", 3)
+
+    assert [task.id for task in claimed] == [a1, a2, b1]

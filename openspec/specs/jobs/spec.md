@@ -165,11 +165,13 @@ and context names, or fails the task `not_cached`; `bypass` sends no validators.
 ### Requirement: Crawl strategy and best-first scoring
 A crawl SHALL take `strategy` `bfs` (default), `dfs` or `best_first`; `query` and `keywords` are accepted only with
 `best_first`. A scored crawl stores each task's score (`url_task.score`, 0 to 1) and `claim_tasks` SHALL lease by
-`priority`, then score descending (none last), then id. Best first scores a link by BM25 of its anchor text and URL path
+`priority`, then round robin between jobs (each job's best task first), then id; score (descending, none last) orders only
+within a job, so a scored crawl does not lease ahead of other jobs' tasks. (Previously: by priority, then score across all
+jobs.) Best first scores a link by BM25 of its anchor text and URL path
 against the query, the holding page's relevance, the sitemap `priority` and depth (`crawl/scoring.py`), with no
 vocabulary list. A scored crawl SHALL fetch at most `limit` pages: it queues up to five times as many candidates,
 keeps the best when full, skips a leased task once the finished and higher-ranked leased pages reach `limit`, and
-cancels the queued rest when the last page is spent. `max_pages` is an alias of `limit`. Refs: D-1440, D-1446.
+cancels the queued rest when the last page is spent. `max_pages` is an alias of `limit`. Refs: D-1440, D-1446, D-1593.
 #### Scenario: Best first spends the limit on matches
 - **WHEN** a `best_first` crawl with `query` "rate limits" and `limit` 3 starts on a page linking `/guides/rate-limits`,
   `/blog/news` and `/about`, and the guide links `/guides/rate-limits/retry`

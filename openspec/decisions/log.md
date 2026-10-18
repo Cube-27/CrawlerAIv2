@@ -1046,15 +1046,16 @@ archived ARCHITECTURE.md.
 - Reversible: yes
 
 ### D-1583 — long_text word overlap drops numbers, so texts that differ only in a figure match
-- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: needs-owner
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277), owner-items · Status: decided (owner 2026-10-18)
+- Decision: option (a), implemented in `normalize.text._words`; `word_overlap` counts runs of letters, marks and numbers; `vocab.tokens` is unchanged.
 - Question: `normalize.text.word_overlap`, which scores long_text in the evaluation (D-1462, threshold 0.9), builds
   its words with `vocab.tokens`, which keeps letters and marks only. Two descriptions that differ only in a number
   ("lasts 10 hours" / "lasts 20 hours") score 1.0, so a wrong value counts as TP (review finding on #264).
 - Options: (a) count runs of letters, marks and numbers as words (UAX #29 WB9/WB10) in `word_overlap` only, keeping
   `vocab.tokens` for vocabulary matching; (b) leave it.
 - Recommendation: (a). It can only lower long_text TP counts where output and label state other figures.
-- Blocked: nothing; it changes what counts as a long_text match, a scoring rule (`CLAUDE.md` §4), so it was not
-  changed in #277. An implementation of (a) with a property test was drafted and left out.
+- Blocked: nothing; it changes what counts as a long_text match, a scoring rule (`CLAUDE.md` §4), so it waited for the
+  owner, who approved (a) on 2026-10-18.
 - Reversible: yes
 
 ### D-1584 — A database error during recipe learning fails the learn run
@@ -1118,13 +1119,14 @@ archived ARCHITECTURE.md.
 - Reversible: yes
 
 ### D-1593 — Task leasing order across jobs: a scored crawl's tasks lease before other jobs' tasks
-- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277) · Status: needs-owner
+- Date: 2026-10-18 · Change/PR: bot-review-fixes (#277), owner-items · Status: decided (owner 2026-10-18)
+- Decision: option (a): `claim_tasks` leases by priority, then round robin between jobs (rank within the job by score, then id), then job id, then task id. Score orders only within a job. The jobs spec's requirement says so.
 - Question: `db/queue.claim_tasks` leases by priority, then score, then id across all jobs, as the jobs spec
   ("Crawl strategy and best-first scoring") requires. A best-first crawl's scored tasks therefore lease before every
   other job's unscored tasks at the same priority (review finding on #261).
 - Options: (a) order by score only within a job (score as a tie-break after job fairness, e.g. per-job round robin
   or oldest job first); (b) leave it, since priority already separates job kinds.
-- Recommendation: (a), as a jobs-spec change; it changes a requirement, so it was not changed in #277.
+- Recommendation: (a), as a jobs-spec change; it changes a requirement, so it waited for the owner, who approved (a) on 2026-10-18.
 - Blocked: fairness between a large scored crawl and other jobs at the same priority; nothing else.
 - Reversible: yes
 
@@ -1164,8 +1166,8 @@ archived ARCHITECTURE.md.
 - Why: a listing whose rows keep their titles but link to other items (reposted items with new IDs) read as unchanged, so the task linked standing records with stale row URLs and the listing diff never saw the change. The spec already holds standing records valid only "while that task extracted the page the way it would be now"; reading the links restores that. The cost is more re-extraction on listings whose hrefs churn (session or tracking parameters): never a stale record, only a skipped optimisation.
 - Reversible: yes
 
-### D-1665 — Scoring follows the wider resource key; owner to confirm
-- Date: 2026-10-18 · Change/PR: plan-phase-3c (#284) · Status: pending-owner (work proceeds on it)
+### D-1665 — Scoring follows the wider resource key
+- Date: 2026-10-18 · Change/PR: plan-phase-3c (#284), owner-items · Status: decided (owner 2026-10-18: accepted as implemented)
 - Decision: `eval.scoring._same_file` already reads `resource_key` (D-1484), so the wider key also makes two images
   that differ only in a path-stated size, conversion or options score as one image. Its test case "another path"
   (`a_1200x.jpg` vs `a_1024x.jpg`) is now a rendition; the other-path case is `a.jpg` vs `b.jpg`. This is a scoring

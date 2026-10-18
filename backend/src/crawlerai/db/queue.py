@@ -95,17 +95,33 @@ class LeaseLost(Exception):
 
 
 async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[ClaimedTask]:
-    """Lease up to `n` due tasks to `worker`: highest priority first, then best crawl score (`UrlTask.score`, a task
-    with none after one with), then oldest; and start their queued jobs."""
+    """Lease up to `n` due tasks to `worker`: highest priority first, then round robin between jobs (each job's
+    best task, then each job's second best, and so on), then job and id; within a job, best crawl score
+    (`UrlTask.score`, a task with none after one with), then oldest (D-1593). Their queued jobs start."""
     # The CTE runs exactly once (MATERIALIZED, PostgreSQL docs, "WITH Queries"). As a plain `IN (subquery)`, the
     # planner may rescan the subquery once per row of a semi-join; each rescan skips the rows already claimed and
     # yields `n` more, so a single claim could take every due task.
+    # The rank is a window function, which FOR UPDATE refuses, so the rows are ranked in a subquery and locked after.
+    rank = (
+        func.row_number()
+        .over(
+            partition_by=(UrlTask.priority, UrlTask.job_id),
+            order_by=(UrlTask.score.desc().nulls_last(), UrlTask.id),
+        )
+        .label("rank")
+    )
+    ranked = (
+        select(UrlTask.id, UrlTask.priority, UrlTask.job_id, rank)
+        .where(UrlTask.status == "queued", UrlTask.next_attempt_at <= func.now())
+        .subquery("ranked")
+    )
     due = (
         select(UrlTask.id)
-        .where(UrlTask.status == "queued", UrlTask.next_attempt_at <= func.now())
-        .order_by(UrlTask.priority.desc(), UrlTask.score.desc().nulls_last(), UrlTask.id)
+        .join(ranked, ranked.c.id == UrlTask.id)
+        .where(UrlTask.status == "queued")
+        .order_by(ranked.c.priority.desc(), ranked.c.rank, ranked.c.job_id, UrlTask.id)
         .limit(n)
-        .with_for_update(skip_locked=True)
+        .with_for_update(of=UrlTask, skip_locked=True)
         .cte("due")
         .prefix_with("MATERIALIZED")
     )
@@ -124,7 +140,20 @@ async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[Claime
     if tasks:
         await start_jobs(conn, {task.job_id for task in tasks})
     # UPDATE ... RETURNING does not keep the subquery's order.
-    return sorted(tasks, key=lambda task: (-task.priority, -(task.score or 0.0), task.id))
+    return _in_claim_order(tasks)
+
+
+def _in_claim_order(tasks: list[ClaimedTask]) -> list[ClaimedTask]:
+    """`tasks` in the order `claim_tasks` ranks them: priority, rank within the job, job, id."""
+    by_job: dict[tuple[int, JobId], list[ClaimedTask]] = {}
+    for task in sorted(tasks, key=lambda task: (task.score is None, -(task.score or 0.0), task.id)):
+        by_job.setdefault((task.priority, task.job_id), []).append(task)
+    keyed = [
+        ((-task.priority, rank, task.job_id, task.id), task)
+        for group in by_job.values()
+        for rank, task in enumerate(group)
+    ]
+    return [task for _, task in sorted(keyed, key=lambda pair: pair[0])]
 
 
 async def insert_claimed(
