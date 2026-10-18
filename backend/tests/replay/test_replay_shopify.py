@@ -32,7 +32,7 @@ DATA = EngineData(
     vocabulary=VOCABULARY,
     orders=dict.fromkeys(PRECEDENCE_TYPES, ORDER),
     calibration=None,
-    adapters=Registry([Shopify()], active={"shopify"}),
+    adapters=Registry([Shopify()]),
 )
 SHOP = "https://shop.example.test"
 ENDPOINT = f"{SHOP}/api/{API_VERSION}/graphql.json"

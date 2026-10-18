@@ -3,7 +3,7 @@ from typing import get_args
 
 import pytest
 
-from crawlerai.config_ir.progressive import LearnEvent, next_mode
+from crawlerai.config_ir.progressive import TRANSITIONS, LearnEvent
 from crawlerai.db.models import ProgressiveMode
 
 # Every (mode, event) pair: the mode it leads to, or None where the event is refused (SPEC-08 §4.4, §4.8, §4.10;
@@ -44,4 +44,4 @@ EXPECTED: dict[tuple[ProgressiveMode, LearnEvent], ProgressiveMode | None] = {
 # Parametrized over every (mode, event) pair the types allow, so a pair missing from EXPECTED fails with a KeyError.
 @pytest.mark.parametrize(("mode", "event"), list(product(get_args(ProgressiveMode), get_args(LearnEvent))))
 def test_transitions(mode: ProgressiveMode, event: LearnEvent) -> None:
-    assert next_mode(mode, event) == EXPECTED[mode, event]
+    assert TRANSITIONS[event].get(mode) == EXPECTED[mode, event]

@@ -100,18 +100,6 @@ def type_vocabularies_within(members: frozenset[str]) -> tuple[Mapping[str, Entr
     )
 
 
-def find_codes(by_language: Mapping[str, Entries], words: Tokens, ctx: Context) -> frozenset[str] | None:
-    """The codes of a type vocabulary whose phrases `words` hold, or `None` when it has no entries for the page.
-
-    The page's own languages choose the phrases (ARCHITECTURE §9: language-tagged vocabularies). A page that states
-    none is matched against every language; a disagreement then shows as two codes.
-    """
-    entries = entries_for(by_language, context_languages(ctx))
-    if not entries:
-        return None
-    return frozenset().union(*(e.find(words) for e in entries))
-
-
 def stated_codes(text: str, entries: Iterable[Entries]) -> frozenset[str]:
     """The codes `text` states (D-0782, INV-37): the code whose phrase is the text's whole first clause, with every
     code a phrase names anywhere else in the text (`Entries.find`), so a different code later makes it ambiguous.

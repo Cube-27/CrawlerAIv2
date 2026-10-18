@@ -14,10 +14,11 @@ from urllib.parse import urlsplit
 import pytest
 from pydantic import JsonValue
 
+from crawlerai.acquire import rungs as rungs_module
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.outcome import Content, Exchange, as_error, fetch_result
 from crawlerai.acquire.politeness import Admit
-from crawlerai.acquire.rungs import Rungs, acquire
+from crawlerai.acquire.rungs import Rungs, acquire, adapter_registry
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.adapters.base import NOT_PLATFORM, NOT_SERVED, Adapter, AdapterMatch, PageRefs, Shape
 from crawlerai.adapters.registry import DECLINE_FOR, Registry, platform_adapters
@@ -97,29 +98,31 @@ class Clock:
 
 def test_an_active_adapter_answers_for_the_urls_it_detects() -> None:
     board = StubAdapter("board", "board.example.test")
-    registry = Registry([StubAdapter("other", "other.example.test"), board], active={"other", "board"})
+    registry = Registry([StubAdapter("other", "other.example.test"), board])
 
     assert registry.detect(BOARD) is board
     assert registry.detect("https://shop.example.test/item") is None
 
 
-def test_an_inactive_adapter_never_answers() -> None:
-    board = StubAdapter("board", "board.example.test")
+def test_a_disabled_adapter_never_answers(monkeypatch: pytest.MonkeyPatch) -> None:
+    board, other = StubAdapter("board", "board.example.test"), StubAdapter("other", "other.example.test")
+    monkeypatch.setattr(rungs_module, "platform_adapters", lambda: (board, other))
 
-    assert Registry([board], active=()).detect(BOARD) is None
-    assert Registry([board], active={"board"}).detect(BOARD) is board
+    registry = adapter_registry({"other"})
+
+    assert registry.detect(BOARD) is board
+    assert registry.detect("https://other.example.test/item") is None
 
 
-def test_an_unknown_active_name_is_refused() -> None:
-    adapters = [StubAdapter("board", "board.example.test")]
+def test_an_unknown_disabled_name_is_refused() -> None:
     with pytest.raises(ValueError, match="no adapter named"):
-        Registry(adapters, active={"missing"})
+        adapter_registry({"missing"})
 
 
 def test_two_adapters_with_one_name_are_refused() -> None:
     adapters = [StubAdapter("board", "board.example.test"), StubAdapter("board", "other.example.test")]
     with pytest.raises(ValueError, match="repeat"):
-        Registry(adapters, active=())
+        Registry(adapters)
 
 
 def test_every_platform_adapter_has_its_own_name() -> None:
@@ -143,13 +146,13 @@ def test_every_platform_adapter_has_its_own_name() -> None:
         "personio",
         "adp",
     }
-    Registry(adapters, active=names)  # refuses repeated names
+    Registry(adapters)  # refuses repeated names
 
 
 def test_a_capture_is_read_by_the_adapter_that_detects_its_page_and_serves_its_endpoint() -> None:
     # INV-39.
     board = StubAdapter("board", "board.example.test")
-    registry = Registry([board], active={"board"})
+    registry = Registry([board])
 
     found = registry.reader(BOARD, "https://board.example.test/api/tenant/list")
     assert found is not None
@@ -162,7 +165,7 @@ def test_a_capture_is_read_by_the_adapter_that_detects_its_page_and_serves_its_e
 def test_a_detected_url_served_by_its_adapter_takes_no_other_rung() -> None:
     adapter = StubAdapter("board", "board.example.test")
     http, browser = Rung("http"), Rung("browser")
-    rungs = Rungs(http=http, browser=browser, adapters=Registry([adapter], active={"board"}))
+    rungs = Rungs(http=http, browser=browser, adapters=Registry([adapter]))
 
     result = asyncio.run(acquire(BOARD, FetchPolicy(), "http", rungs, send=_send))
 
@@ -174,7 +177,7 @@ def test_a_detected_url_served_by_its_adapter_takes_no_other_rung() -> None:
 def test_no_adapter_runs_without_a_json_fetch() -> None:
     adapter = StubAdapter("board", "board.example.test")
     http = Rung("http")
-    rungs = Rungs(http=http, browser=Rung("browser"), adapters=Registry([adapter], active={"board"}))
+    rungs = Rungs(http=http, browser=Rung("browser"), adapters=Registry([adapter]))
 
     result = asyncio.run(acquire(BOARD, FetchPolicy(), "http", rungs))
 
@@ -194,7 +197,7 @@ def test_a_page_its_adapter_does_not_serve_is_fetched_by_the_page_rungs(answer: 
     # INV-40: the fallback goes after its own turn at the site's rate, and the result lists both attempts.
     adapter = StubAdapter("board", "board.example.test", answer)
     http = Rung("http")
-    rungs = Rungs(http=http, browser=Rung("browser"), adapters=Registry([adapter], active={"board"}))
+    rungs = Rungs(http=http, browser=Rung("browser"), adapters=Registry([adapter]))
     admitted: list[bool] = []
 
     async def admit_next(*, after: timedelta = timedelta(0)) -> bool:
@@ -224,7 +227,7 @@ def test_an_adapter_answer_asking_for_fewer_requests_falls_back_to_the_page_on_i
     # the pause the endpoint asked for) admits it.
     adapter = StubAdapter("board", "board.example.test", Rung("api", status=status, block_class="blocked"))
     http = Rung("http")
-    rungs = Rungs(http=http, browser=Rung("browser"), adapters=Registry([adapter], active={"board"}))
+    rungs = Rungs(http=http, browser=Rung("browser"), adapters=Registry([adapter]))
     asked: list[bool] = []
 
     result = asyncio.run(acquire(BOARD, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(True, asked)))
@@ -236,7 +239,7 @@ def test_an_adapter_answer_asking_for_fewer_requests_falls_back_to_the_page_on_i
 def test_an_adapter_answer_asking_for_fewer_requests_is_kept_when_the_page_is_not_admitted() -> None:
     adapter = StubAdapter("board", "board.example.test", Rung("api", status=429, block_class="blocked"))
     http = Rung("http")
-    rungs = Rungs(http=http, browser=Rung("browser"), adapters=Registry([adapter], active={"board"}))
+    rungs = Rungs(http=http, browser=Rung("browser"), adapters=Registry([adapter]))
     asked: list[bool] = []
 
     result = asyncio.run(acquire(BOARD, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(False, asked)))
@@ -248,7 +251,7 @@ def test_a_host_answering_without_the_platform_signal_is_declined_for_the_window
     # INV-40: one request per host per window, and after the window the host is tried again.
     adapter = StubAdapter("board", "board.example.test", Rung("api", status=404, reason=NOT_PLATFORM))
     clock = Clock()
-    registry = Registry([adapter], active={"board"}, clock=clock)
+    registry = Registry([adapter], clock=clock)
 
     asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
     clock.now = T0 + DECLINE_FOR - timedelta(seconds=1)
@@ -263,7 +266,7 @@ def test_a_decline_is_read_back_from_what_the_site_row_stored() -> None:
     # D-1384: the window holds across registries, so across processes, through `site.adapter_declined`.
     adapter = StubAdapter("board", "board.example.test", Rung("api", status=404, reason=NOT_PLATFORM))
     clock = Clock()
-    base = Registry([adapter], active={"board"}, clock=clock)
+    base = Registry([adapter], clock=clock)
     first = base.for_host("board.example.test", {})
     asyncio.run(first.serve(BOARD, FetchPolicy(), _send))
     stored = first.declined_for("board.example.test")
@@ -282,7 +285,7 @@ def test_a_decline_is_read_back_from_what_the_site_row_stored() -> None:
 
 def test_an_answer_the_platform_gives_for_another_page_declines_no_host() -> None:
     adapter = StubAdapter("board", "board.example.test", Rung("api", reason=NOT_SERVED))
-    registry = Registry([adapter], active={"board"})
+    registry = Registry([adapter])
 
     asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
     again = asyncio.run(registry.serve(BOARD, FetchPolicy(), _send))
@@ -332,7 +335,7 @@ def _canonical(href: str, base: str = "") -> str:
 
 
 def _by_canonical(page: PageRung, adapter: StubAdapter, asked: list[bool], url: str) -> FetchResult:
-    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter], active={adapter.name}))
+    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter]))
     return asyncio.run(acquire(url, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(True, asked)))
 
 
@@ -387,7 +390,7 @@ def test_a_canonical_the_adapter_does_not_serve_keeps_the_page_and_lists_both_at
 
 def test_a_canonical_request_the_site_rate_refuses_is_not_sent() -> None:
     adapter, page, asked = ListAdapter("list", ""), PageRung(_canonical(SHOP_LIST)), list[bool]()
-    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter], active={"list"}))
+    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter]))
     url = f"{SHOP_LIST}?from=newsletter"
 
     result = asyncio.run(acquire(url, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(False, asked)))
@@ -399,7 +402,7 @@ def test_a_canonical_of_a_host_its_adapter_declined_takes_no_turn() -> None:
     # INV-40: the declined host is not asked again, so no turn at the site's rate is spent on it.
     adapter = ListAdapter("list", "", Rung("api", status=404, block_class="not_found", reason=NOT_PLATFORM))
     page, asked = PageRung(_canonical(SHOP_LIST)), list[bool]()
-    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter], active={"list"}))
+    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter]))
 
     def fetch(url: str) -> FetchResult:
         return asyncio.run(acquire(url, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(True, asked)))
@@ -435,7 +438,7 @@ def _linking(*hrefs: str) -> str:
 def _referred(
     page: PageRung, adapter: StubAdapter, asked: list[bool], kind: PageKind | None = "listing"
 ) -> FetchResult:
-    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter], active={adapter.name}))
+    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter]))
     return asyncio.run(
         acquire(CAREERS, FetchPolicy(page_kind=kind), "http", rungs, send=_send, admit_next=_admit(True, asked))
     )
@@ -479,7 +482,7 @@ def test_an_adapter_without_a_referral_is_never_asked_for_the_pages_references()
 
 def test_a_referred_page_the_sites_rate_does_not_admit_stays_the_page() -> None:
     adapter, page = ReferringAdapter("platform", "platform.example.test"), PageRung(_linking(PLATFORM))
-    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter], active={"platform"}))
+    rungs = Rungs(http=page, browser=Rung("browser"), adapters=Registry([adapter]))
 
     result = asyncio.run(acquire(CAREERS, FetchPolicy(), "http", rungs, send=_send, admit_next=_admit(False, [])))
 
@@ -504,7 +507,7 @@ async def _lacks_rows(result: FetchResult) -> bool:
 
 def _rendered_or_referred(adapter: ReferringAdapter, browser: Rung) -> FetchResult:
     page = PageRung(_linking(PLATFORM))
-    rungs = Rungs(http=page, browser=browser, adapters=Registry([adapter], active={adapter.name}))
+    rungs = Rungs(http=page, browser=browser, adapters=Registry([adapter]))
     policy = FetchPolicy(page_kind="listing")
     fetch = acquire(CAREERS, policy, "http", rungs, send=_send, admit_next=_admit(True, []), needs_render=_lacks_rows)
     return asyncio.run(fetch)
@@ -532,7 +535,7 @@ def test_a_referral_that_does_not_serve_leaves_the_render_and_is_not_asked_again
 
 def test_a_host_the_adapter_declined_is_not_referred_to() -> None:
     adapter = ReferringAdapter("platform", "platform.example.test", Rung("api", status=404, reason=NOT_PLATFORM))
-    registry = Registry([adapter], active={"platform"})
+    registry = Registry([adapter])
     asyncio.run(registry.serve(PLATFORM, FetchPolicy(), _send))
 
     assert registry.referred(lambda: PageRefs(own=(), links=(PLATFORM,)), "listing") is None

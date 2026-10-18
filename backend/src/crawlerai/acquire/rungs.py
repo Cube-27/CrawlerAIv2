@@ -80,7 +80,7 @@ _NETWORK_ERROR = "network_error"
 class Rungs:
     http: Rung
     browser: Rung
-    adapters: Registry = field(default_factory=lambda: Registry((), active=()))
+    adapters: Registry = field(default_factory=lambda: Registry(()))
     # The HTTP rung in its conditional form, for fetches given validators; without it they are sent nowhere.
     conditional: ConditionalRung | None = None
     # JSON over HTTP (`acquire.api.fetch_json`), which an active config's API recipe sends its request with
@@ -102,7 +102,7 @@ def adapter_registry(disabled: Collection[str]) -> Registry:
     names = {adapter.name for adapter in adapters}
     if unknown := sorted(set(disabled) - names):
         raise ValueError(f"no adapter named {unknown}")
-    return Registry(adapters, names - set(disabled))
+    return Registry(adapter for adapter in adapters if adapter.name not in disabled)
 
 
 async def acquire(
