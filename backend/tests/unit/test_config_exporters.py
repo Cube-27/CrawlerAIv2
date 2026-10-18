@@ -125,7 +125,12 @@ def test_a_field_the_release_check_fails_is_marked_manual() -> None:
     listing = exported.model_dump(mode="json")["export"]["listing"]
     assert (listing["fields"]["link"]["manual"], listing["fields"]["sku"]["manual"]) == (True, False)
     assert exported.release.listing is not None
-    assert exported.release.listing.fields["link"].model_dump() == {"published": 3, "reproduced": 2, "manual": True}
+    assert exported.release.listing.fields["link"].model_dump() == {
+        "published": 3,
+        "reproduced": 2,
+        "manual": True,
+        "executability": "static-html",
+    }
 
 
 def _released(ir: ExtractionConfigIR, page: HeldOutPage) -> Any:

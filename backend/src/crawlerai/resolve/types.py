@@ -115,8 +115,10 @@ class LLMCallRecord(_Model):
     provider: str
     model: str
     request_hash: str
-    tokens_in: int
+    tokens_in: int  # not served from, or written to, the provider's prompt cache
     tokens_out: int
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
 
 
 class ExtractionResult(_Model):

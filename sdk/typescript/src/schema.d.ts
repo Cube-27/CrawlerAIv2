@@ -3076,9 +3076,15 @@ export interface components {
         /**
          * ReleaseField
          * @description One field on the held-out pages: `published`, pages where the engine published it; `reproduced`, those where the
-         *     release executor gave that value; `manual`, the field failed the check.
+         *     release executor gave that value; `manual`, the field failed the check; `executability`, what the field's steps
+         *     need to run (`config_ir.executability`).
          */
         ReleaseField: {
+            /**
+             * Executability
+             * @enum {string}
+             */
+            executability: "static-html" | "needs-browser" | "api-call" | "unexecutable";
             /** Manual */
             manual: boolean;
             /** Published */
@@ -3096,9 +3102,14 @@ export interface components {
         };
         /**
          * ReleaseReport
-         * @description The release check of one config: the held-out captures it ran on, and each field's result.
+         * @description The release check of one config: the held-out captures it ran on, each field's result, and how many of the
+         *     config's fields are in each executability class.
          */
         ReleaseReport: {
+            /** Executability */
+            executability: {
+                [key: string]: number;
+            };
             /** Fields */
             fields: {
                 [key: string]: components["schemas"]["ReleaseField"];

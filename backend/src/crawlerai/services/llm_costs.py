@@ -256,6 +256,8 @@ def _price_table(pricing: Pricing) -> FromClause:
         column("max_prompt", BigInteger),
         column("usd_in", Numeric),
         column("usd_out", Numeric),
+        column("usd_cache_read", Numeric),
+        column("usd_cache_write", Numeric),
     )
     rows = [
         (
@@ -267,6 +269,9 @@ def _price_table(pricing: Pricing) -> FromClause:
             p.max_prompt_tokens,
             p.input_usd_per_mtok,
             p.output_usd_per_mtok,
+            # Typed: a column of NULLs only (a provider that does not cache) would be text.
+            literal(p.cache_read_usd_per_mtok, Numeric),
+            literal(p.cache_write_usd_per_mtok, Numeric),
         )
         for p in pricing.prices
     ]
@@ -282,9 +287,17 @@ def _costed(pricing: Pricing, days: tuple[date, date] | None, job_ids: Sequence[
     event = UsageEvent
     price = _price_table(pricing)
     is_tokens = event.resource.in_(_TOKENS)
-    # The call's prompt length: the input row's quantity, or the metadata the client puts on each of its rows.
+    is_in = event.resource == "llm_tokens_in"
+
+    def metadata_tokens(key: str) -> ColumnElement[int]:
+        return func.coalesce(cast(event.metadata_[key].astext, BigInteger), 0)
+
+    # The input row's prompt-cache tokens (the client puts them on each of the call's rows; they are priced once).
+    cache_read = case((is_in, metadata_tokens("cache_read_tokens")), else_=0)
+    cache_write = case((is_in, metadata_tokens("cache_write_tokens")), else_=0)
+    # The call's prompt length: the input row's quantity and cache tokens, or the metadata on each of its rows.
     prompt_tokens = case(
-        (event.resource == "llm_tokens_in", event.quantity),
+        (is_in, event.quantity + cache_read + cache_write),
         else_=cast(event.metadata_["tokens_in"].astext, BigInteger),
     )
     applies = and_(
@@ -301,12 +314,21 @@ def _costed(pricing: Pricing, days: tuple[date, date] | None, job_ids: Sequence[
             ),
         ),
     )
-    per_mtok = case((event.resource == "llm_tokens_in", price.c.usd_in), else_=price.c.usd_out)
+    per_mtok = case((is_in, price.c.usd_in), else_=price.c.usd_out)
+    # Cache tokens with no cache price leave the call's input unpriced, as a call with no price at all (C7).
+    cache_priced = and_(
+        or_(cache_read == 0, price.c.usd_cache_read.is_not(None)),
+        or_(cache_write == 0, price.c.usd_cache_write.is_not(None)),
+    )
+    priced = and_(price.c.provider.is_not(None), cache_priced)
+    cache_usd = (
+        cache_read * func.coalesce(price.c.usd_cache_read, 0) + cache_write * func.coalesce(price.c.usd_cache_write, 0)
+    ) / TOKENS_PER_PRICE_UNIT
 
     def quantity_if(condition: ColumnElement[bool]) -> ColumnElement[int]:
         return case((condition, event.quantity), else_=0)
 
-    priced = price.c.provider.is_not(None)
+    input_tokens = quantity_if(is_in) + cache_read + cache_write
     statement = (
         select(
             func.date(func.timezone("UTC", _event_time())).label("day"),
@@ -315,10 +337,14 @@ def _costed(pricing: Pricing, days: tuple[date, date] | None, job_ids: Sequence[
             event.model_or_pool.label("model"),
             event.metadata_["prompt_kind"].astext.label("prompt_kind"),
             quantity_if(event.resource == "llm_calls").label("calls"),
-            quantity_if(event.resource == "llm_tokens_in").label("tokens_in"),
+            input_tokens.label("tokens_in"),
             quantity_if(event.resource == "llm_tokens_out").label("tokens_out"),
-            quantity_if(and_(is_tokens, ~priced)).label("unpriced_tokens"),
-            case((priced, event.quantity * per_mtok / TOKENS_PER_PRICE_UNIT), else_=Decimal(0)).label("usd"),
+            case((priced, Decimal(0)), else_=quantity_if(is_tokens) + cache_read + cache_write).label(
+                "unpriced_tokens"
+            ),
+            case((priced, event.quantity * per_mtok / TOKENS_PER_PRICE_UNIT + cache_usd), else_=Decimal(0)).label(
+                "usd"
+            ),
         )
         .select_from(event)
         .outerjoin(price, applies)

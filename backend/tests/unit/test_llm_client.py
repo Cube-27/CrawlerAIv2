@@ -128,6 +128,14 @@ def test_each_part_of_the_request_changes_the_hash(field: str, value: Any) -> No
     assert request_hash(REQUEST.model_copy(update={field: value})) != request_hash(REQUEST)
 
 
+def test_cached_parts_change_the_hash_and_none_leaves_it_as_it_was() -> None:
+    cached = REQUEST.model_copy(update={"cached": ("a", "b")})
+    assert request_hash(cached) != request_hash(REQUEST)
+    assert request_hash(cached) != request_hash(REQUEST.model_copy(update={"cached": ("a", "c")}))
+    # A request without cached parts hashes as it did before they existed: recordings of other roles still replay.
+    assert request_hash(REQUEST.model_copy(update={"cached": ()})) == request_hash(REQUEST)
+
+
 def test_the_token_cap_and_the_job_do_not_change_the_hash() -> None:
     # A recording replays for any job, and the cap bounds the reply rather than shaping the prompt.
     other = REQUEST.model_copy(update={"max_output_tokens": 1, "job_id": JobId(uuid7())})
@@ -156,6 +164,8 @@ def test_a_valid_reply_becomes_the_response() -> None:
         "model": "fake-model",
         "tokens_in": 12,
         "tokens_out": 4,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
         "request_hash": request_hash(REQUEST),
         "retried": (),
     }

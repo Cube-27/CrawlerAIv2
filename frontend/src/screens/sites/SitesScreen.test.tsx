@@ -546,10 +546,11 @@ describe("config screen: learn and export", () => {
         release: {
           held_out: HELD_OUT,
           fields: {
-            title: { published: 2, reproduced: 2, manual: false },
-            price: { published: 2, reproduced: 1, manual: true },
+            title: { published: 2, reproduced: 2, manual: false, executability: "static-html" },
+            price: { published: 2, reproduced: 1, manual: true, executability: "needs-browser" },
           },
           listing: null,
+          executability: { "static-html": 1, "needs-browser": 1, "api-call": 0, unexecutable: 0 },
         },
       }),
     });

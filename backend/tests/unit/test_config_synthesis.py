@@ -19,7 +19,7 @@ from crawlerai.config_ir.synthesis import ROW, Synthesis, synthesize
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId, SchemaId
-from crawlerai.llm.client import BudgetExhausted
+from crawlerai.llm.client import BudgetExhausted, LLMRequest
 from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -105,10 +105,11 @@ def _run(
     sample: list[SamplePage] = SAMPLE,
     schema: SchemaDef | None = None,
     ir: ExtractionConfigIR | None = None,
+    max_chars: int = 60_000,
 ) -> Synthesis:
     schema = schema or _schema()
     ir = ir or _ir(schema.page_kind)
-    return asyncio.run(synthesize(client, ir, schema, sample, fields, VOCABULARY, max_chars=120_000, job_id=JOB))
+    return asyncio.run(synthesize(client, ir, schema, sample, fields, VOCABULARY, max_chars=max_chars, job_id=JOB))
 
 
 # --- the request ---
@@ -124,7 +125,7 @@ def test_the_first_request_is_a_strong_synthesis_call_charged_to_the_job() -> No
 def test_the_request_shows_each_field_and_each_pages_published_value_and_html() -> None:
     client = ScriptedClient(_fields(title=[TITLE]))
     _run(client)
-    user = client.requests[0].user
+    user = _prompt(client.requests[0])
     assert "- title (text): Name of the item" in user
     assert user.count("<sample_page n=") == 5
     assert '- title: "Item 3"' in user
@@ -205,9 +206,48 @@ def test_a_repair_asks_only_for_the_fields_that_failed() -> None:
     sku = {"xpath": "normalize-space(//p[@class='sku'])"}
     client = ScriptedClient(_fields(title=[TITLE], sku=[WRONG]), _fields(sku=[sku]))
     result = _run(client, ("sku", "title"), sample=sample, schema=schema)
-    repair: Any = client.requests[1].output_schema
-    assert repair["properties"]["fields"]["items"]["properties"]["field"]["enum"] == ["sku"]
+    first, repair = client.requests
+    # The schema stays the first round's (a changed schema misses the prompt cache); the tail names what is wanted.
+    assert repair.output_schema == first.output_schema
+    assert "for these items only, and an empty `steps` list for every other field: sku." in repair.user
     assert sorted(result.ir.fields) == ["sku", "title"]
+
+
+def test_a_repair_repeats_the_first_requests_cached_prefix_with_one_page() -> None:
+    client = ScriptedClient(_fields(title=[WRONG]), _fields(title=[TITLE]))
+    _run(client)
+    first, repair = client.requests
+    assert first.system == repair.system  # one system prompt for every round: the cache serves the repair
+    assert len(first.cached) == 2
+    assert repair.cached == first.cached[:1]
+    assert first.cached[0].count("<sample_page n=") == 1
+    assert first.cached[1].count("<sample_page n=") == 4
+    assert "<sample_page" not in repair.user
+    assert first.user != repair.user
+
+
+def test_a_pages_json_keys_and_html_together_stay_within_the_limit() -> None:
+    members = ", ".join(f'"key{n}": 1' for n in range(500))
+    body = "<p>filler</p>" * 400 + '<h1 id="t">Item 1</h1>'
+    page = ParsedPage(
+        f'<html><head><script type="application/json">{{{members}}}</script></head><body>{body}</body></html>'
+    )
+    sample = [SamplePage(page, CTX, {"title": Published("Item 1", "microdata:/html/body/h1")})]
+    client = ScriptedClient(_fields(title=[TITLE]))
+    _run(client, sample=sample, max_chars=1_000)
+    block = client.requests[0].cached[0]
+    keys, html = block.split("JSON documents (key paths)")[1].split("\nHTML (")
+    keys_text = keys.split(":\n", 1)[1]
+    html_text = html.split(":\n", 1)[1].split("\n</sample_page>")[0]
+    assert len(keys_text.strip()) <= 500
+    assert len(keys_text.strip()) + len(html_text) <= 1_000
+    assert "Item 1" in html_text
+
+
+def test_a_pages_input_is_cut_to_the_limit() -> None:
+    client = ScriptedClient(_fields(title=[TITLE]))
+    _run(client, max_chars=60)
+    assert "HTML (characters 15 to 75 of 112):" in client.requests[0].cached[0]
 
 
 @pytest.mark.parametrize(
@@ -254,7 +294,7 @@ def test_induced_fields_are_kept_and_not_asked() -> None:
     client = ScriptedClient(_fields(title=[TITLE]))
     result = _run(client, schema=schema, ir=_ir(fields=induced))
     assert sorted(result.ir.fields) == ["sku", "title"]
-    assert "- sku" not in client.requests[0].user
+    assert "- sku" not in _prompt(client.requests[0])
 
 
 def test_a_field_outside_the_schema_is_refused() -> None:
@@ -305,6 +345,10 @@ def _listing_reply(row: dict[str, Any] | None = None, **fields: list[dict[str, A
     return listing
 
 
+def _prompt(req: LLMRequest) -> str:
+    return "\n\n".join([*req.cached, req.user])
+
+
 def _run_listing(client: ScriptedClient, sample: list[SamplePage] = LISTING_SAMPLE) -> Synthesis:
     fields = ("link", "next_page_url", "title")
     return _run(client, fields, sample=sample, schema=_schema("listing", **LISTING_SCHEMA))
@@ -330,7 +374,7 @@ def test_next_takes_one_step() -> None:
         **_fields(next_page_url=[wrong, NEXT_STEP]),
         "listing": _listing_reply(ROW_STEP, title=[ROW_TITLE], link=[ROW_LINK]),
     }
-    client = ScriptedClient(first, _fields(next_page_url=[NEXT_STEP]))
+    client = ScriptedClient(first, {**_fields(next_page_url=[NEXT_STEP]), "listing": _listing_reply(ROW_STEP)})
     result = _run_listing(client)
     assert "  - step 1: invalid_step(next_page_url takes one step)" in client.requests[1].user
     assert result.ir.listing is not None
@@ -342,7 +386,7 @@ def test_a_row_selector_with_too_few_rows_is_repaired_with_its_row_fields() -> N
         **_fields(next_page_url=[NEXT_STEP]),
         "listing": _listing_reply({"css": "ul > li:first-child"}, title=[ROW_TITLE], link=[ROW_LINK]),
     }
-    second = {"listing": _listing_reply(ROW_STEP, title=[ROW_TITLE], link=[ROW_LINK])}
+    second = {**_fields(), "listing": _listing_reply(ROW_STEP, title=[ROW_TITLE], link=[ROW_LINK])}
     client = ScriptedClient(first, second)
     result = _run_listing(client)
     assert "  - page 1: rows(1, 3)" in client.requests[1].user
@@ -357,12 +401,11 @@ def test_a_row_field_that_fails_is_repaired_under_the_verified_row() -> None:
         **_fields(next_page_url=[NEXT_STEP]),
         "listing": _listing_reply(ROW_STEP, title=[ROW_TITLE], link=[{"attr": "class"}]),
     }
-    second = {"listing": _listing_reply(link=[ROW_LINK])}
+    second = {**_fields(), "listing": _listing_reply(ROW_STEP, link=[ROW_LINK])}
     client = ScriptedClient(first, second)
     result = _run_listing(client)
     repair = client.requests[1]
-    schema: Any = repair.output_schema
-    assert list(schema["properties"]) == ["listing"]
+    assert "every other field: row field link." in repair.user
     assert 'the row selector is {"expression": "ul > li", "post": [], "selector": "css"' in repair.user
     assert result.ir.listing is not None
     assert result.ir.listing.fields["link"].steps == [XPathStep(xpath="a/@href")]
@@ -373,7 +416,8 @@ def test_without_a_verified_row_there_is_no_listing_and_next_is_left_out() -> No
         **_fields(next_page_url=[NEXT_STEP]),
         "listing": _listing_reply({"attr": "class"}, title=[ROW_TITLE], link=[ROW_LINK]),
     }
-    client = ScriptedClient(reply, *[{"listing": _listing_reply({"attr": "class"}, title=[], link=[])}] * 3)
+    empty = {**_fields(), "listing": _listing_reply({"attr": "class"}, title=[], link=[])}
+    client = ScriptedClient(reply, *[empty] * 3)
     result = _run_listing(client)
     assert (result.ir.listing, result.ir.fields) == (None, {})
     assert result.unresolved["next_page_url"] == ("no_listing",)

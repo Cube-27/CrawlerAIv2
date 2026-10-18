@@ -24,7 +24,7 @@
       "url": "https://platform.claude.com/docs/en/about-claude/pricing",
       "version": "pricing page as checked on 2026-10-14",
       "retrieved": "2026-10-14",
-      "sha256": "9ebaec7183c30e520c7c46f40800dd7afae5fcf4d30277e3cdf163125bd44d54",
+      "sha256": "d0279b503d909c2613005cf512c8a9d4bb5a0ecf269485aaa19dad061e240052",
       "license": "Prices transcribed from the provider's public pricing page (facts; no license stated)",
       "justification": "USD prices per million input and output tokens of the anthropic models, for the estimated LLM cost shown for visibility, not billing (SPEC-06 §4.8, ARCHITECTURE §1)."
     },

@@ -83,9 +83,11 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Master plan phase 1 (#273): default listing growth ran on 10 of 40 golden listings in a live scrape and is not in the
   eval numbers (the import follows the worker path, D-1549); the items it adds become records only through structured
   data or role C until the item layer reads blocks.
-- Learning live (#269): role A reads 180k to 285k input tokens per call (5 sample pages of up to 120,000 characters
-  of reduced HTML, sent again in each repair round), USD 0.15 to 2.70 of role A per learned host against about
-  USD 0.002 per role C page: measure a smaller `CRAWLERAI_LLM_A_MAX_CHARS` or prompt caching across rounds. Synthesis
+- Learning live (#269, #287): role A's input is cached and a repair sends one page (a page's input is at most 60,000
+  characters; 8 live hosts cost USD 0.10 of role A per host, 58% of the input tokens read from the cache, against 1.9
+  before). Only cache hits on 1-page samples were measured; measure 5-page samples, where the cached pages repeat more.
+  The release report's executability classes are not shown in the UI (the export panel), and the learn-sim dev hosts
+  have only `static-html` fields: `needs-browser` and `api-call` classes are untested on real configs. Synthesis
   still wants the row selector to select exactly the engine's rows on each sample page (D-1500), so a sample page whose
   rows left items out pushes the repair toward a narrower selector. An XPath element value is its string-value,
   so a long_text only the DOM states (blocks without whitespace between them) cannot be reproduced; rendering the

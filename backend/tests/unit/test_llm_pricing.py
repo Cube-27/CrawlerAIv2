@@ -10,7 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from crawlerai.core.settings import LLMSettings
-from crawlerai.llm.pricing import OverlappingPrices, PriceList, Pricing
+from crawlerai.llm.pricing import CacheTokens, OverlappingPrices, PriceList, Pricing
 
 BACKEND = Path(__file__).resolve().parents[2]
 D1 = date(2030, 1, 1)
@@ -138,3 +138,32 @@ def test_a_call_is_priced_by_the_price_of_its_day_and_prompt_length() -> None:
     assert pricing.call_usd("fakeai", "dated", 10, 10, date(2029, 1, 1)) is None
     assert pricing.call_usd("otherai", "dated", 10, 10, D1) is None
     assert pricing.call_usd("fakeai", "unknown", 10, 10, D1) is None
+
+
+def test_cache_tokens_are_priced_by_the_cache_prices_and_count_toward_the_prompt_tier() -> None:
+    pricing = Pricing.of(
+        [
+            _list(
+                _row(
+                    "cached", cache_read_usd_per_mtok="0.1", cache_write_usd_per_mtok="1.25", max_prompt_tokens=10_000
+                ),
+                _row("cached", min_prompt_tokens=10_001, input_usd_per_mtok="9"),
+                _row("uncached"),
+            )
+        ]
+    )
+    cache = CacheTokens(read=1_000_000, write=2_000_000)
+    # 1,000 input tokens at 1 and 5,000 read at 0.1 per MTok; a prompt past the first tier has that tier's price, which
+    # has no cache prices.
+    assert pricing.call_usd("fakeai", "cached", 1_000, 0, D1, CacheTokens(read=5_000, write=0)) == Decimal("0.0015")
+    assert pricing.call_usd("fakeai", "cached", 1_000_000, 0, D1, cache) is None
+    # A price without cache prices leaves cache tokens unpriced; without cache tokens it prices as before.
+    assert pricing.call_usd("fakeai", "uncached", 10, 10, D1, CacheTokens(read=1, write=0)) is None
+    assert pricing.call_usd("fakeai", "uncached", 1_000_000, 0, D1, CacheTokens(0, 0)) == Decimal(1)
+
+
+def test_the_shipped_anthropic_prices_have_cache_prices_of_a_tenth_and_one_and_a_quarter_of_the_input_price() -> None:
+    shipped = Pricing.read(BACKEND / "data")
+    for price in (p for p in shipped.prices if p.provider == "anthropic"):
+        assert price.cache_read_usd_per_mtok == price.input_usd_per_mtok / 10
+        assert price.cache_write_usd_per_mtok == price.input_usd_per_mtok * Decimal("1.25")

@@ -53,6 +53,11 @@ class LLMRequest(_Model):
     prompt_kind: PromptKind
     model_class: ModelClass
     system: str
+    # Leading parts of the user message that repeat across requests: a provider that caches prompts caches the prompt
+    # up to the end of each (role A's field definitions and sample pages, which every repair round sends again). The
+    # user message is these parts, then `user`; every part is as stable as the part before it (the system prompt and
+    # output schema included), or the cache misses.
+    cached: tuple[str, ...] = ()
     user: str
     output_schema: dict[str, JsonValue]  # JSON Schema (draft 2020-12) of the response
     max_output_tokens: int
@@ -84,8 +89,10 @@ class AnsweredCall(_Model):
     provider: str
     model: str
     request_hash: str
-    tokens_in: int
+    tokens_in: int  # input tokens not served from, or written to, the prompt cache
     tokens_out: int
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
 
 
 class LLMResponse(_Model):
@@ -96,6 +103,8 @@ class LLMResponse(_Model):
     tokens_out: int
     latency_ms: int
     request_hash: str
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     # The answered call whose invalid reply was retried (§4.2), if any: charged like the one that gave `data`.
     retried: tuple[AnsweredCall, ...] = ()
 
@@ -109,6 +118,8 @@ class LLMResponse(_Model):
             request_hash=self.request_hash,
             tokens_in=self.tokens_in,
             tokens_out=self.tokens_out,
+            cache_read_tokens=self.cache_read_tokens,
+            cache_write_tokens=self.cache_write_tokens,
         )
         return (*self.retried, final)
 
@@ -124,10 +135,13 @@ class LLMClient(Protocol):
 
 
 def request_hash(req: LLMRequest) -> str:
-    """sha256 of (prompt kind, model class, system, user, output schema) as a canonical JSON array (INV-10): an array
-    keeps the parts apart, and sorted keys make the schema's key order irrelevant. The model is the requested class;
-    the provider picks the concrete model after the request exists (failover), so the hash can't depend on it."""
-    parts = [req.prompt_kind, req.model_class, req.system, req.user, req.output_schema]
+    """sha256 of (prompt kind, model class, system, user, output schema, and the cached parts when there are any) as a
+    canonical JSON array (INV-10): an array keeps the parts apart, and sorted keys make the schema's key order
+    irrelevant. The model is the requested class; the provider picks the concrete model after the request exists
+    (failover), so the hash can't depend on it."""
+    parts: list[JsonValue] = [req.prompt_kind, req.model_class, req.system, req.user, req.output_schema]
+    if req.cached:
+        parts.append(list(req.cached))
     canonical = json.dumps(parts, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return sha256_hex(canonical.encode())
 
@@ -137,6 +151,7 @@ class ProviderCall(_Model):
 
     model_class: ModelClass
     system: str
+    cached: tuple[str, ...]
     user: str
     output_schema: dict[str, JsonValue]
     max_output_tokens: int
@@ -146,8 +161,10 @@ class ProviderCall(_Model):
 class ProviderReply(_Model):
     model: str
     text: str  # the raw reply, parsed and validated by the client
-    tokens_in: int
+    tokens_in: int  # input tokens not served from, or written to, the prompt cache
     tokens_out: int
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     cut: bool = False  # the reply stopped at the call's `max_output_tokens`
 
 
@@ -272,6 +289,8 @@ class _Answer:
             request_hash=key,
             tokens_in=reply.tokens_in,
             tokens_out=reply.tokens_out,
+            cache_read_tokens=reply.cache_read_tokens,
+            cache_write_tokens=reply.cache_write_tokens,
         )
 
 
@@ -308,6 +327,8 @@ class MeteredClient:
             model=answer.reply.model,
             tokens_in=answer.reply.tokens_in,
             tokens_out=answer.reply.tokens_out,
+            cache_read_tokens=answer.reply.cache_read_tokens,
+            cache_write_tokens=answer.reply.cache_write_tokens,
             latency_ms=answer.latency_ms,
             request_hash=key,
             retried=retried,
@@ -329,6 +350,7 @@ class MeteredClient:
         call = ProviderCall(
             model_class=req.model_class,
             system=req.system,
+            cached=req.cached,
             user=user,
             output_schema=req.output_schema,
             max_output_tokens=req.max_output_tokens,
@@ -373,8 +395,11 @@ class MeteredClient:
             "model": reply.model,
             "request_hash": key,
             "latency_ms": answer.latency_ms,
-            # On every row of the call, so its output tokens can be priced by its prompt length too (§4.8).
-            "tokens_in": reply.tokens_in,
+            # On every row of the call, so its output tokens can be priced by its prompt length too (§4.8). The
+            # prompt's length is its input tokens plus its cache tokens; `tokens_in` is the uncached ones.
+            "tokens_in": reply.tokens_in + reply.cache_read_tokens + reply.cache_write_tokens,
+            "cache_read_tokens": reply.cache_read_tokens,
+            "cache_write_tokens": reply.cache_write_tokens,
         }
         usage: tuple[tuple[UsageResource, int], ...] = (
             ("llm_calls", 1),

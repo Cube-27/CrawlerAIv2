@@ -39,6 +39,7 @@ SCHEMA: dict[str, Any] = {
 CALL = ProviderCall(
     model_class="strong",
     system="system prompt",
+    cached=(),
     user="user prompt",
     output_schema=SCHEMA,
     max_output_tokens=256,
@@ -137,6 +138,43 @@ def test_anthropic_asks_for_the_class_model_with_a_json_schema_output() -> None:
         "messages": [{"role": "user", "content": "user prompt"}],
         "output_config": {"format": {"type": "json_schema", "schema": SCHEMA}},
     }
+
+
+def test_an_anthropic_call_with_cached_parts_marks_a_cache_breakpoint_after_each_and_the_system_prompt() -> None:
+    requests: list[Any] = []
+    call = CALL.model_copy(update={"cached": ("field definitions", "pages")})
+    run(ANTHROPIC.build(requests, answering(ANTHROPIC)), call)
+
+    [request] = requests
+    body = json.loads(request.content)
+    ephemeral = {"type": "ephemeral"}
+    assert body["system"] == [{"type": "text", "text": "system prompt", "cache_control": ephemeral}]
+    assert body["messages"] == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "field definitions", "cache_control": ephemeral},
+                {"type": "text", "text": "pages", "cache_control": ephemeral},
+                {"type": "text", "text": "user prompt"},
+            ],
+        }
+    ]
+
+
+def test_an_anthropic_reply_reports_its_cache_tokens() -> None:
+    body = anthropic_body(ANSWER)
+    body["usage"] = {**body["usage"], "cache_read_input_tokens": 30, "cache_creation_input_tokens": 7}
+    requests: list[Any] = []
+    reply = run(ANTHROPIC.build(requests, lambda _request: (200, body)))
+    assert (reply.tokens_in, reply.cache_read_tokens, reply.cache_write_tokens) == (12, 30, 7)
+
+
+def test_gemini_joins_the_cached_parts_before_the_user_text() -> None:
+    requests: list[Any] = []
+    call = CALL.model_copy(update={"cached": ("field definitions", "pages")})
+    run(GEMINI.build(requests, answering(GEMINI)), call)
+    [request] = requests
+    assert json.loads(request.content)["contents"][0]["parts"][0]["text"] == "field definitions\n\npages\n\nuser prompt"
 
 
 def test_an_anthropic_fast_call_asks_for_low_effort() -> None:

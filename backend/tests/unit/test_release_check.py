@@ -213,3 +213,20 @@ def test_a_listing_without_next_reports_none() -> None:
     report = release_check(_config({}, {**ROWS, "next": None}), LISTING, [_listing(["A", "B", "C"])] * 3)
     assert report.listing is not None
     assert (report.listing.next, _triple(report.listing.fields["name"])) == (None, (3, 3, False))
+
+
+def test_the_report_names_each_fields_executability_and_counts_the_classes() -> None:
+    config = _config(
+        {
+            "name": {"steps": [NAME], "status": "uncorroborated"},
+            "other": {"steps": [NAME, {"jsonpath": "$['a']", "source": "xhr"}], "status": "uncorroborated"},
+            "gone": {"steps": [NAME], "status": "suspended"},
+        }
+    )
+    report = release_check(config, DETAIL, _pages(3, 0))
+    assert {name: f.executability for name, f in report.fields.items()} == {
+        "name": "static-html",
+        "other": "needs-browser",
+        "gone": "unexecutable",
+    }
+    assert report.executability == {"static-html": 1, "needs-browser": 1, "api-call": 0, "unexecutable": 1}

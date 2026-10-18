@@ -70,18 +70,19 @@ def cut_around(text: str, values: Iterable[str], limit: int) -> Cut:
     return Cut(text[start : start + limit], f"characters {start} to {start + limit} of {len(text)}")
 
 
-def json_keys(page: ParsedPage) -> Cut:
+def json_keys(page: ParsedPage, limit: int) -> Cut:
     """One line per JSON document of the page (JSON-LD blocks, script state, captured responses) with its key paths,
-    array indices as `[*]` (RFC 9535 §2.5.1.2), cut to `KEYS_MAX_CHARS`."""
+    array indices as `[*]` (RFC 9535 §2.5.1.2), cut to `limit` characters (at most `KEYS_MAX_CHARS`)."""
+    limit = min(limit, KEYS_MAX_CHARS)
     documents = [
         *((f"jsonld block {index}", data) for index, data in jsonld.blocks(page, [])),
         *((f"js_state {document.address}", document.data) for document in js_state.state_documents(page, [])),
         *((f"xhr {document.address}", document.data) for document in xhr.network_documents(page, [])),
     ]
     text = "\n".join(f"{name}: {' '.join(_key_paths(data))}" for name, data in documents)
-    if len(text) <= KEYS_MAX_CHARS:
+    if len(text) <= limit:
         return Cut(text)
-    return Cut(text[:KEYS_MAX_CHARS], f"the first {KEYS_MAX_CHARS} of {len(text)} characters of JSON keys")
+    return Cut(text[:limit], f"the first {limit} of {len(text)} characters of JSON keys")
 
 
 def _key_paths(document: JsonValue) -> Iterable[str]:

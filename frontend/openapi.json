@@ -5700,8 +5700,18 @@
       },
       "ReleaseField": {
         "additionalProperties": false,
-        "description": "One field on the held-out pages: `published`, pages where the engine published it; `reproduced`, those where the\nrelease executor gave that value; `manual`, the field failed the check.",
+        "description": "One field on the held-out pages: `published`, pages where the engine published it; `reproduced`, those where the\nrelease executor gave that value; `manual`, the field failed the check; `executability`, what the field's steps\nneed to run (`config_ir.executability`).",
         "properties": {
+          "executability": {
+            "enum": [
+              "static-html",
+              "needs-browser",
+              "api-call",
+              "unexecutable"
+            ],
+            "title": "Executability",
+            "type": "string"
+          },
           "manual": {
             "title": "Manual",
             "type": "boolean"
@@ -5718,7 +5728,8 @@
         "required": [
           "published",
           "reproduced",
-          "manual"
+          "manual",
+          "executability"
         ],
         "title": "ReleaseField",
         "type": "object"
@@ -5753,8 +5764,23 @@
       },
       "ReleaseReport": {
         "additionalProperties": false,
-        "description": "The release check of one config: the held-out captures it ran on, and each field's result.",
+        "description": "The release check of one config: the held-out captures it ran on, each field's result, and how many of the\nconfig's fields are in each executability class.",
         "properties": {
+          "executability": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "static-html",
+                "needs-browser",
+                "api-call",
+                "unexecutable"
+              ]
+            },
+            "title": "Executability",
+            "type": "object"
+          },
           "fields": {
             "additionalProperties": {
               "$ref": "#/components/schemas/ReleaseField"
@@ -5784,7 +5810,8 @@
         "required": [
           "held_out",
           "fields",
-          "listing"
+          "listing",
+          "executability"
         ],
         "title": "ReleaseReport",
         "type": "object"

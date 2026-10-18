@@ -31,7 +31,7 @@ from crawlerai.llm.client import (
     ReplyCheck,
     request_hash,
 )
-from crawlerai.llm.pricing import default_pricing
+from crawlerai.llm.pricing import CacheTokens, default_pricing
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.types import ExtractionResult, FieldOutcome, FieldSet
 from crawlerai.schemas.types import SchemaDef
@@ -194,7 +194,14 @@ def page_output(
     prices = [
         None
         if fetched_on is None
-        else default_pricing().call_usd(c.provider, c.model, c.tokens_in, c.tokens_out, fetched_on)
+        else default_pricing().call_usd(
+            c.provider,
+            c.model,
+            c.tokens_in,
+            c.tokens_out,
+            fetched_on,
+            CacheTokens(c.cache_read_tokens, c.cache_write_tokens),
+        )
         for c in calls
     ]
     return PageOutput(

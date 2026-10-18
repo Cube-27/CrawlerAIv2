@@ -922,10 +922,18 @@ class RegexReplaceParams(BaseModel):
     repl: Annotated[str, Field(title="Repl")]
 
 
+class Executability(Enum):
+    static_html = "static-html"
+    needs_browser = "needs-browser"
+    api_call = "api-call"
+    unexecutable = "unexecutable"
+
+
 class ReleaseField(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    executability: Annotated[Executability, Field(title="Executability")]
     manual: Annotated[bool, Field(title="Manual")]
     published: Annotated[int, Field(title="Published")]
     reproduced: Annotated[int, Field(title="Reproduced")]
@@ -943,6 +951,7 @@ class ReleaseReport(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    executability: Annotated[dict[str, int], Field(title="Executability")]
     fields: Annotated[dict[str, ReleaseField], Field(title="Fields")]
     held_out: Annotated[list[UUID], Field(title="Held Out")]
     listing: ReleaseListing | None = None

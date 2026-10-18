@@ -18,6 +18,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import reduce
 from itertools import cycle, islice
 from typing import Final
 from urllib.parse import urlsplit
@@ -25,6 +26,7 @@ from urllib.parse import urlsplit
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate
+from crawlerai.config_ir.executability import CLASSES, Executability, class_counts
 from crawlerai.config_ir.held_out import StoredCandidate, StoredPage, StoredRecord, facts_of, published_of, read_bundle
 from crawlerai.config_ir.induction import SamplePage
 from crawlerai.config_ir.learning import Target, learn_config
@@ -34,8 +36,8 @@ from crawlerai.db.models import CaptureId, FetchMethod
 from crawlerai.eval.engine import PipelineEngine
 from crawlerai.eval.replay import RecordedLLM, RecordingMissing, RecordingUnreadable
 from crawlerai.eval.store import EvalNotFound, EvalPageRow, EvalStore
-from crawlerai.llm.client import LLMClient, LLMFailure, LLMRequest, LLMResponse, ReplyCheck, request_hash
-from crawlerai.llm.pricing import default_pricing
+from crawlerai.llm.client import AnsweredCall, LLMClient, LLMFailure, LLMRequest, LLMResponse, ReplyCheck, request_hash
+from crawlerai.llm.pricing import CacheTokens, default_pricing
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.records import RecordContent
 from crawlerai.resolve.types import ExtractionResult, FieldSet
@@ -71,12 +73,58 @@ class HostRun:
     pages: int
     activated: bool
     fields: int
+    executability: dict[Executability, int]
     role_a_calls: int
     role_a_chars: int
+    role_a_tokens: "RoleATokens"
 
     @property
     def zero_touch(self) -> bool:
         return self.activated and self.role_a_calls == 0
+
+
+@dataclass(frozen=True, slots=True)
+class RoleATokens:
+    """The tokens a live role A's answered calls used, and what the provider charged for them at the model's prices
+    (None when a call has no price): `tokens_in` are the uncached input tokens."""
+
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cache_read: int = 0
+    cache_write: int = 0
+    usd: float | None = 0.0
+
+    @property
+    def used(self) -> bool:
+        return bool(self.tokens_in + self.tokens_out + self.cache_read + self.cache_write)
+
+    def combined(self, other: "RoleATokens") -> "RoleATokens":
+        """The sum; its cost is unknown when either has none."""
+        usd = None if self.usd is None or other.usd is None else self.usd + other.usd
+        return RoleATokens(
+            self.tokens_in + other.tokens_in,
+            self.tokens_out + other.tokens_out,
+            self.cache_read + other.cache_read,
+            self.cache_write + other.cache_write,
+            usd,
+        )
+
+    def plus(self, call: AnsweredCall) -> "RoleATokens":
+        price = default_pricing().call_usd(
+            call.provider,
+            call.model,
+            call.tokens_in,
+            call.tokens_out,
+            datetime.now(UTC).date(),
+            CacheTokens(call.cache_read_tokens, call.cache_write_tokens),
+        )
+        return RoleATokens(
+            self.tokens_in + call.tokens_in,
+            self.tokens_out + call.tokens_out,
+            self.cache_read + call.cache_read_tokens,
+            self.cache_write + call.cache_write_tokens,
+            None if price is None or self.usd is None else self.usd + float(price),
+        )
 
 
 class RoleACounter:
@@ -89,15 +137,22 @@ class RoleACounter:
         self._role_a = role_a
         self.calls = 0
         self.chars = 0
+        self.tokens = RoleATokens()
 
     async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
         if req.prompt_kind not in ROLE_A:
             return await self._other.complete_json(req, check)
         if req.prompt_kind == FIRST_CALL or self._role_a is not None:
             self.calls += 1
-            self.chars += len(req.system) + len(req.user)
+            self.chars += len(req.system) + sum(map(len, req.cached)) + len(req.user)
         if self._role_a is not None:
-            return await self._role_a.complete_json(req, check)
+            try:
+                response = await self._role_a.complete_json(req, check)
+            except LLMFailure as failure:  # the calls that answered before it failed were charged
+                self._charge(failure.answered)
+                raise
+            self._charge(response.answered)
+            return response
         return LLMResponse(
             data=_abstained(req.output_schema),
             provider="none",
@@ -107,6 +162,10 @@ class RoleACounter:
             latency_ms=0,
             request_hash=request_hash(req),
         )
+
+    def _charge(self, answered: Sequence[AnsweredCall]) -> None:
+        for call in answered:
+            self.tokens = self.tokens.plus(call)
 
 
 def _abstained(output_schema: Mapping[str, JsonValue]) -> dict[str, JsonValue]:
@@ -169,7 +228,7 @@ async def _host_run(
 ) -> HostRun:
     stored = [s for page in pages if (s := await _stored(engine, schema, page, recorded)) is not None]
     counter = RoleACounter(recorded, role_a)
-    activated, fields = False, 0
+    ir: ExtractionConfigIR | None = None
     if stored:
         # The fetch method a config names does not change what its steps extract.
         fetch: FetchMethod = "http" if stored[0].bundle.manifest.method == "http" else "browser"
@@ -181,16 +240,17 @@ async def _host_run(
             )
         except LLMFailure:  # a live role A failed or its budget ran out: as a learning run, nothing activates
             validated = None
-        activated = validated is not None and validated.ir is not None
-        fields = 0 if validated is None else config_fields(validated.ir)
+        ir = None if validated is None else validated.ir
     return HostRun(
         category=pages[0].row.category,
         page_kind=schema.page_kind,
         pages=len(stored),
-        activated=activated,
-        fields=fields,
+        activated=ir is not None,
+        fields=config_fields(ir),
+        executability=class_counts(ir),
         role_a_calls=counter.calls,
         role_a_chars=counter.chars,
+        role_a_tokens=counter.tokens,
     )
 
 
@@ -267,14 +327,22 @@ def summary(runs: Sequence[HostRun], usd_per_char: float | None) -> dict[str, Js
 def _aggregate(runs: Sequence[HostRun], usd_per_char: float | None) -> dict[str, JsonValue]:
     hosts = len(runs)
     chars = sum(r.role_a_chars for r in runs)
+    tokens = reduce(RoleATokens.combined, (r.role_a_tokens for r in runs), RoleATokens())
     return {
         "hosts": hosts,
         "pages_per_host": round(sum(r.pages for r in runs) / hosts, 2),
         "zero_touch": round(sum(r.zero_touch for r in runs) / hosts, 3),
         "activated": round(sum(r.activated for r in runs) / hosts, 3),
         "fields_per_host": round(sum(r.fields for r in runs) / hosts, 2),
+        "executability": {name: sum(r.executability.get(name, 0) for r in runs) for name in CLASSES},
         "role_a_hosts": sum(r.role_a_calls > 0 for r in runs),
         "role_a_calls": sum(r.role_a_calls for r in runs),
         "role_a_chars": chars,
         "role_a_usd_estimate": None if usd_per_char is None else round(chars * usd_per_char, 2),
+        "role_a_live_hosts": sum(r.role_a_tokens.used for r in runs),
+        "role_a_tokens_in": tokens.tokens_in,
+        "role_a_tokens_out": tokens.tokens_out,
+        "role_a_cache_read_tokens": tokens.cache_read,
+        "role_a_cache_write_tokens": tokens.cache_write,
+        "role_a_usd": None if not tokens.used or tokens.usd is None else round(tokens.usd, 4),
     }

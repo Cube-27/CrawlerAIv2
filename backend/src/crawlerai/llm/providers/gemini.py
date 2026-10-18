@@ -47,7 +47,9 @@ class GeminiProvider:
             http_options=types.HttpOptions(timeout=call.timeout_s * 1000),  # milliseconds
         )
         try:
-            response = await self._sdk.aio.models.generate_content(model=model, contents=call.user, config=config)
+            response = await self._sdk.aio.models.generate_content(
+                model=model, contents="\n\n".join([*call.cached, call.user]), config=config
+            )
         except httpx.TransportError as error:  # includes timeouts
             raise ProviderError(f"no response ({type(error).__name__})") from error
         except errors.APIError as error:
