@@ -370,7 +370,10 @@ async def _standing(
     conn: AsyncConnection, task: ClaimedTask, site_id: SiteId, records: Records
 ) -> tuple[RecordId, ...]:
     """The records that stand for the page while it is unchanged, for the config the job pinned (None: `adhoc`): a
-    listing's (`standing_listing`), or its detail page's one (`standing_record`)."""
+    listing's (`standing_listing`), or its detail page's one (`standing_record`). None stand for a job with a
+    `min_confidence`: the minimum changes which values a record holds, so another job's record is not its answer."""
+    if records.data.min_confidence is not None:
+        return ()
     version = None if records.config is None else records.config.version
     if records.schema.page_kind == "listing":
         return await standing_listing(conn, site_id, task.canonical_url, records.schema, version)

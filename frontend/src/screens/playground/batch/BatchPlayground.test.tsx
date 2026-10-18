@@ -207,7 +207,7 @@ describe("batch playground: the command bar", () => {
     const minimum = options.getByRole("textbox", { name: "Minimum confidence (%)" });
     expect(minimum).toHaveAttribute("placeholder", "Publish all");
 
-    await userEvent.type(minimum, "90");
+    await userEvent.type(minimum, "87.6");
     await closeOptions();
     await start();
 
@@ -218,7 +218,7 @@ describe("batch playground: the command bar", () => {
       schema: null,
       page_kind: null,
       fetch: { method_hint: "auto" },
-      min_confidence: 0.9,
+      min_confidence: 0.876,
     });
   });
 

@@ -66,7 +66,7 @@ export function llmCalls(request: StoredRequest): number {
 
 /** `min_confidence` as a percent; NaN when absent. */
 export function minConfidencePercent(request: StoredRequest): number {
-  return Math.round(count(request, "min_confidence") * 100);
+  return Number((count(request, "min_confidence") * 100).toFixed(4));
 }
 
 /** The stored schema's id, or "" when the request names none by id. */

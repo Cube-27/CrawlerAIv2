@@ -528,15 +528,14 @@ async def test_a_jobs_minimum_confidence_leaves_a_calibrated_bucket_below_it_unp
     # Only the price's bucket is measured, so the title publishes either way and the record is kept.
     calibration = Calibration(git_sha="0" * 40, buckets={"money|structured": Bucket(n=40, precision=0.6)})
     calibrated = replace(engine_data, calibration=calibration)
-    # Two pages, as a job's page unchanged since another job's is not extracted again.
-    blue, red = f"{own_origin}/kettles/blue", f"{own_origin}/kettles/red"
+    # One page, so the gated job meets a record that stands for it: it is extracted again, not linked to it.
+    blue = f"{own_origin}/kettles/blue"
     web.pages[blue] = (200, _page("Blue kettle"))
-    web.pages[red] = (200, _page("Red kettle"))
     free = await submit_batch(engine, fetching.connector, _records([blue], kettle_schema), data=calibrated)
-    gated_request = _records([red], kettle_schema).model_copy(update={"min_confidence": 0.9})
+    gated_request = _records([blue], kettle_schema).model_copy(update={"min_confidence": 0.9})
+    await _run(engine, fetching, calibrated, free.job_id)
     gated = await submit_batch(engine, fetching.connector, gated_request, data=calibrated)
-
-    await _run(engine, fetching, calibrated, free.job_id, gated.job_id)
+    await _run(engine, fetching, calibrated, gated.job_id)
 
     async with engine.connect() as conn:
         rows = await conn.execute(

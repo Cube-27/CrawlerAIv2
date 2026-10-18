@@ -17,7 +17,7 @@
   `below_min_confidence` (was `below_tau`) and keeps its measurement. An uncalibrated bucket never abstains: nothing
   measures it. It is a request member of scrape, batch, crawl and extract (stored in the job's request, read by the
   worker), the playground's Options hold it as a percent, MCP takes the request bodies, and the CLI has it on
-  `eval run` only, whose gated run is not stored (a fit on it would be of its own selection).
+  `eval run` only, whose gated run is not stored (a fit on it would be of its own selection). A job with a `min_confidence` is never answered by a standing record (the unchanged-page shortcut is skipped): the minimum changes which values a record holds. The reverse is not prevented: a later job without one can be linked to a record a gated job extracted.
 - Why: a per-field threshold needs a schema-level notion nobody asked for; one number is the smallest control.
 - Reversible: yes
 

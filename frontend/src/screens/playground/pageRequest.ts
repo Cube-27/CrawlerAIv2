@@ -107,7 +107,7 @@ export function llmBudget(llmCalls: number): { budget?: { llm_calls: number } } 
 /** The optional `min_confidence` member, from the percent the form holds (0 to 100), left out while empty (NaN): every
  * value then publishes with its confidence. */
 export function minConfidence(percent: number): { min_confidence?: number } {
-  return Number.isNaN(percent) ? {} : { min_confidence: percent / 100 };
+  return Number.isNaN(percent) ? {} : { min_confidence: Number((percent / 100).toFixed(6)) };
 }
 
 /** What the toolbar's Format and Schema hold, the Metadata in JSON view option and the field names, in every mode

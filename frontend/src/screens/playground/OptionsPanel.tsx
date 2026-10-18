@@ -211,6 +211,7 @@ export function NumberRow({
   minValue,
   maxValue,
   placeholder = "Default",
+  fractionDigits = 0,
   isDisabled = false,
   onChange,
 }: Readonly<{
@@ -220,6 +221,7 @@ export function NumberRow({
   value: number;
   minValue: number;
   maxValue?: number;
+  fractionDigits?: number;
   placeholder?: string;
   isDisabled?: boolean;
   onChange: (value: number) => void;
@@ -231,7 +233,7 @@ export function NumberRow({
       value={value}
       minValue={minValue}
       {...(maxValue === undefined ? {} : { maxValue })}
-      formatOptions={{ maximumFractionDigits: 0, useGrouping: false }}
+      formatOptions={{ maximumFractionDigits: fractionDigits, useGrouping: false }}
       isDisabled={isDisabled}
       onChange={onChange}
     >

@@ -139,6 +139,7 @@ export function MinConfidenceRow<O extends { minConfidence: number }>({
       value={options.minConfidence}
       minValue={0}
       maxValue={100}
+      fractionDigits={4}
       placeholder="Publish all"
       onChange={(minConfidence) => {
         onChange({ ...options, minConfidence });
