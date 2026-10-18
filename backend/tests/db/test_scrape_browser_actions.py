@@ -228,6 +228,8 @@ async def test_a_listing_scrape_that_renders_grows_its_list_by_default(
     (drive,) = listing.drives
     assert isinstance(drive, partial)
     assert drive.keywords["request"] == BrowserActions()
+    # Each kept state's browser time is the job's usage, as it is for requested actions.
+    assert result.usage.browser_seconds == len(listing.pages)
 
 
 async def test_a_listing_scrape_whose_http_page_shows_its_items_is_not_rendered_nor_grown(

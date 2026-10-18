@@ -11,6 +11,7 @@ import pytest
 from crawlerai.acquire.challenge import STRUCTURAL, vendor_block
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
+from crawlerai.adapters.challenges import SIGNATURES
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.core.retry import FIRST_BACKOFF
@@ -22,6 +23,8 @@ from crawlerai.worker.handlers.steps import FetchedPage, unreached
 from crawlerai.worker.loop import Failed, Finished
 
 URL = "https://shop.example.test/item/1"
+# Vendor labels come from the adapter package's signature data (C3).
+VENDOR, OTHER = SIGNATURES[0].vendor, SIGNATURES[1].vendor
 
 
 def _result(block_class: BlockClass, *labels: str | None) -> FetchResult:
@@ -51,11 +54,11 @@ def _result(block_class: BlockClass, *labels: str | None) -> FetchResult:
 @pytest.mark.parametrize(
     ("result", "vendor"),
     [
-        pytest.param(_result("blocked", "cloudflare", "cloudflare"), "cloudflare", id="vendor"),
-        pytest.param(_result("blocked", "datadome", STRUCTURAL), "datadome", id="latest-vendor-label"),
+        pytest.param(_result("blocked", VENDOR, VENDOR), VENDOR, id="vendor"),
+        pytest.param(_result("blocked", OTHER, STRUCTURAL), OTHER, id="latest-vendor-label"),
         pytest.param(_result("blocked", STRUCTURAL), None, id="structural"),
         pytest.param(_result("blocked", None), None, id="unlabelled"),
-        pytest.param(_result("ok", "akamai"), None, id="reached"),
+        pytest.param(_result("ok", VENDOR), None, id="reached"),
     ],
 )
 def test_a_vendor_block_is_a_blocked_fetch_whose_attempt_names_a_vendor(
@@ -87,14 +90,14 @@ def _fetched(result: FetchResult) -> FetchedPage:
 
 
 def test_a_vendor_blocked_task_is_retried_once_after_the_back_off_then_ends_blocked_naming_the_vendor() -> None:
-    page = _fetched(_result("blocked", "cloudflare", "cloudflare"))
+    page = _fetched(_result("blocked", VENDOR, VENDOR))
 
     first, second = unreached(page, _task(1)), unreached(page, _task(2))
 
     assert first == Failed(
-        "challenge: cloudflare", transient=True, after=FIRST_BACKOFF, exhausted="blocked", capture_id=page.capture_id
+        f"challenge: {VENDOR}", transient=True, after=FIRST_BACKOFF, exhausted="blocked", capture_id=page.capture_id
     )
-    assert second == Finished("blocked", reason="challenge: cloudflare", capture_id=page.capture_id)
+    assert second == Finished("blocked", reason=f"challenge: {VENDOR}", capture_id=page.capture_id)
 
 
 def test_a_block_no_vendor_names_ends_blocked_at_once() -> None:

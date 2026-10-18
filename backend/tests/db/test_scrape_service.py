@@ -22,6 +22,7 @@ from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.adapters.challenges import SIGNATURES
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.db.models import Capture, Job, Site, SiteFetchMethod, UrlTask, UsageEvent
 from crawlerai.llm.client import (
@@ -238,13 +239,14 @@ async def test_a_page_a_vendors_challenge_kept_out_is_blocked_naming_the_vendor_
     # Master plan 2026-10-18 §3.1: an outcome, not an engine failure; the caller waits, so nothing is fetched again.
     url = f"{own_origin}/kettles/blue"
     web.pages[url] = (403, b"<html><body><script>check()</script></body></html>", "blocked", None)
+    vendor = SIGNATURES[0].vendor  # the adapter package's signature data (C3)
 
     def labelled(method: CaptureMethod) -> Callable[[str, FetchPolicy], Any]:
         fetch = web.rung(method)
 
         async def challenged(target: str, policy: FetchPolicy) -> FetchResult:
             result: FetchResult = await fetch(target, policy)
-            attempts = tuple(a.model_copy(update={"challenge": "cloudflare"}) for a in result.attempts)
+            attempts = tuple(a.model_copy(update={"challenge": vendor}) for a in result.attempts)
             return result.model_copy(update={"attempts": attempts})
 
         return challenged
@@ -254,10 +256,10 @@ async def test_a_page_a_vendors_challenge_kept_out_is_blocked_naming_the_vendor_
 
     result = await scrape(engine, fetching, request(url, "markdown"))
 
-    assert (result.outcome, result.reason) == ("blocked", "challenge: cloudflare")
+    assert (result.outcome, result.reason) == ("blocked", f"challenge: {vendor}")
     assert web.page_fetches() == [("http", url), ("browser", url)]
     task = await _row(engine, select(UrlTask.outcome, UrlTask.last_error).where(UrlTask.job_id == result.job_id))
-    assert tuple(task) == ("blocked", "challenge: cloudflare")
+    assert tuple(task) == ("blocked", f"challenge: {vendor}")
 
 
 async def test_a_failed_fetch_fails_the_task_and_the_job(

@@ -78,7 +78,7 @@ async def paged_fetch(
         served = await _recipe_pages(fetching, target, policy, attempts, recipe, until, (rules, admit_next))
         if served is None:
             served = await grown(fetching, target, policy, actions, deadline, admit_next, known)
-            _record(served.pages, attempts)
+            record_states(served.pages, attempts)
         paged.append(served)
         return served.pages[0]
 
@@ -90,7 +90,7 @@ async def paged_fetch(
     return paged[0]
 
 
-def _record(pages: tuple[FetchResult, ...], attempts: list[AttemptRecord]) -> None:
+def record_states(pages: tuple[FetchResult, ...], attempts: list[AttemptRecord]) -> None:
     """Add the attempts of `pages` to `attempts`. Raises `TargetRejected` when the guard refused a request of one."""
     for page in pages:
         attempts.extend(page.attempts)
@@ -120,7 +120,7 @@ async def _recipe_pages(
         return None
     records, deadline = until
     pages = tuple([page async for page in rung.pages(url, policy, records=records, deadline=deadline)])
-    _record(pages, attempts)
+    record_states(pages, attempts)
     if not pages or pages[0].block_class != "ok":
         await admit_next()
         return None

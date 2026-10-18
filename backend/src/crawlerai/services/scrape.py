@@ -67,7 +67,7 @@ from crawlerai.services.fetching import (
     site_rungs,
 )
 from crawlerai.services.records import RecordField, ScrapedRecord, page_fields
-from crawlerai.services.scrape_paging import actions_deadline, check_browser_actions, paged_fetch
+from crawlerai.services.scrape_paging import actions_deadline, check_browser_actions, paged_fetch, record_states
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     CAPTURE_FORMATS,
@@ -382,6 +382,7 @@ async def _run(
         page = await fetch_now(engine, fetching, request.url, plan)
         if growth is not None and isinstance(page, FetchResult) and (grew := growth.of(page)) is not None:
             further, report = grew.pages[1:], grew.report
+            record_states(further, attempts)  # the first state's attempts came with the page
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = await _derive_reached(engine, work, request, task, page, recent, config, check)
