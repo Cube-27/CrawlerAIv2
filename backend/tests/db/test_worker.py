@@ -78,13 +78,20 @@ def _job_ended(engine: AsyncEngine, job_id: JobId) -> Callable[[], Awaitable[boo
 async def test_8_claimers_take_1000_tasks_each_exactly_once_and_at_most_7_a_claim(engine: AsyncEngine) -> None:
     _, ids = await _job(engine, 1000)
     sizes: list[int] = []
+    # Every claimer has made its first claim before any claims again: 8 first claims take 56 of the 1000 tasks, so each
+    # takes some, whatever the order the event loop runs them in.
+    first_claims_made = asyncio.Barrier(8)
 
     async def claimer(worker: str) -> list[UrlTaskId]:
         claimed: list[UrlTaskId] = []
+        first = True
         async with engine.connect() as conn:
             while True:
                 async with conn.begin():
                     batch = await claim_tasks(conn, worker, 7)
+                if first:
+                    first = False
+                    await first_claims_made.wait()
                 if not batch:
                     return claimed
                 sizes.append(len(batch))
@@ -95,7 +102,7 @@ async def test_8_claimers_take_1000_tasks_each_exactly_once_and_at_most_7_a_clai
     claims = Counter(task_id for batch in batches for task_id in batch)
     assert claims == Counter(ids)
     assert max(sizes) == 7
-    assert sum(1 for batch in batches if batch) > 1
+    assert all(batches)
 
 
 async def test_tasks_of_a_cancelled_job_are_not_run(engine: AsyncEngine) -> None:
