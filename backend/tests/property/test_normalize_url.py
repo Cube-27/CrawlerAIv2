@@ -213,9 +213,16 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
         ("https://cdn.example.test/i/a.jpg", "https://img.example.test/i/a.jpg", False),
         # RFC 3986 §3.2-§3.3: the authority and path name the resource; http and https only reach it.
         ("http://cdn.example.test/i/a.jpg", "https://cdn.example.test/i/a.jpg?w=1", True),
+        # A size the path states (a `<w>x<h>` segment, or a name suffix) only picks the rendition.
+        ("https://cdn.example.test/300x200/i/a.jpg", "https://cdn.example.test/i/a.jpg", True),
+        ("https://cdn.example.test/i/a-300x200.jpg", "https://cdn.example.test/i/a_64x64.jpg", True),
+        ("https://cdn.example.test/i/a-300x200.jpg", "https://cdn.example.test/i/b-300x200.jpg", False),
+        ("https://cdn.example.test/i/a-300x200.jpg", "https://cdn.example.test/i/a-300x200.png", False),
+        ("https://cdn.example.test/i/a300x200.jpg", "https://cdn.example.test/i/a.jpg", False),
+        ("https://cdn.example.test/i/300x200", "https://cdn.example.test/i", True),
     ],
 )
-def test_the_resource_key_ignores_only_the_scheme_and_the_query(a: str, b: str, same: bool) -> None:
+def test_the_resource_key_ignores_only_the_scheme_the_query_and_a_stated_size(a: str, b: str, same: bool) -> None:
     key_a, key_b = url.resource_key(a), url.resource_key(b)
 
     assert key_a is not None

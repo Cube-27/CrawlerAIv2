@@ -32,6 +32,7 @@ from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
 from crawlerai.normalize.dispatch import equal, equality_key, resource_key
 from crawlerai.normalize.text import text_form
 from crawlerai.resolve.ownership import OFFER, EntityGraph
+from crawlerai.resolve.supersede import superseded
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 PRECEDENCE_FILE = "source_precedence.yaml"
@@ -222,11 +223,14 @@ class Resolver:
         self, spec: FieldSpec, kept: list[Candidate], choosable: list[Candidate], rejected: list[Rejection]
     ) -> Preference:
         order = self.orders[rule_type(spec)]
+        # A fragment of another candidate's value (`supersede`) ranks nowhere; it can still agree with the winner.
+        fragments = superseded(spec.type, kept)
+        live, live_choosable = _without(kept, fragments), _without(choosable, fragments)
         # A kind outside the order is not ranked on dev, so it never wins; it can still agree.
-        kind = next((k for k in order if any(c.source_kind == k for c in choosable)), None)
+        kind = next((k for k in order if any(c.source_kind == k for c in live_choosable)), None)
         if kind is None:
             return _all_rejected("missing", "unranked", kept, rejected)
-        chosen = _winner(spec, kind, kept, choosable, order)
+        chosen = _winner(spec, kind, live, live_choosable, order)
         if chosen is None:
             return _all_rejected("conflict", "disagree", kept, rejected)
         agreeing: list[Candidate] = []
@@ -249,6 +253,10 @@ def intent_ambiguous(schema: SchemaDef, candidates: Sequence[Candidate]) -> dict
         )
         for name in schema.fields
     }
+
+
+def _without(candidates: Sequence[Candidate], excluded: Sequence[Candidate]) -> list[Candidate]:
+    return [c for c in candidates if not any(c is e for e in excluded)]
 
 
 def _by_agreement(spec: FieldSpec, kept: list[Candidate], chosen: Candidate, rejected: list[Rejection]) -> Preference:
