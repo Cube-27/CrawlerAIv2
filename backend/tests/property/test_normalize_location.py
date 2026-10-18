@@ -75,7 +75,11 @@ def test_the_text_is_the_place_as_written_its_name_and_address_lines_each_part_o
         value("Old Hall, 1 Mill Lane, Alderton, UF 12345", "Alderton", "UF", "US")
     )
     # A name that is the address's first line is written once; a country stated by name stays in the text.
-    lines = {"streetAddress": "OLD HALL, Mill Lane", "postalCode": "AB1 2CD", "addressCountry": "Freedonia"}
+    lines: dict[str, JsonValue] = {
+        "streetAddress": "OLD HALL, Mill Lane",
+        "postalCode": "AB1 2CD",
+        "addressCountry": "Freedonia",
+    }
     assert norm({"name": "Old Hall", "address": lines}) == Ok(value("Old Hall, Mill Lane, Freedonia, AB1 2CD"))
 
 

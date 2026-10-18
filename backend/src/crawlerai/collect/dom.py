@@ -40,6 +40,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
+from pydantic import JsonValue
 from selectolax.lexbor import LexborNode
 
 from crawlerai.collect.base import PAGE, CollectResult
@@ -133,7 +134,7 @@ A_HREF = "a[href]"
 
 # A field, the raw value, the XPath of the element it came from, and what the field reads of it when that is not the
 # raw value (a list field's items).
-Found = tuple[str, str, str, list[str] | None]
+Found = tuple[str, str, str, JsonValue]
 Pair = tuple[str, LexborNode, str, str]  # a label's text, the element holding its value, its text and the kind
 
 
@@ -195,7 +196,7 @@ def _pairs_found(
                 name,
                 raw,
                 node_xpath(value),
-                list_items(value) if schema.fields[name].type is FieldType.LIST else None,
+                [*list_items(value)] if schema.fields[name].type is FieldType.LIST else None,
             )
 
 
