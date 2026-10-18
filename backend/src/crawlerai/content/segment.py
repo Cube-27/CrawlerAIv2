@@ -94,6 +94,16 @@ def block_links(block: HtmlElement, base: str | None) -> Iterator[str]:
             yield url
 
 
+def page_links(root: HtmlElement, base: str | None) -> frozenset[str]:
+    """The canonical URLs the page's rendered hyperlinks lead to (HTML Standard §4.6.1; hidden ones left out, as
+    `rank` leaves out unrendered blocks)."""
+    return frozenset(
+        url
+        for anchor in hyperlinks(root)
+        if not _hidden(anchor) and (url := canonical_url(anchor.get("href") or "", base)) is not None
+    )
+
+
 def group_links(groups: Sequence[Group], base: str | None) -> list[frozenset[str]]:
     """The documents each group's blocks link to, by group."""
     return [frozenset(url for block in group for url in block_links(block, base)) for group in groups]

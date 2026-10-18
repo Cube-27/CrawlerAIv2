@@ -4,12 +4,14 @@ and diagnostics as one result.
 The standard collectors run first, each on its own: one that raises gives no candidates and a diagnostic, and the
 others still run. An `api` capture of an active adapter adds that adapter's collector (D-0445). Then js_state and xhr
 admit their values against the candidates of the other kinds (D-0418); on a listing, xhr also reads the rows of the
-page's captured calls (Appendix A #59), which resolution takes where structured data and the config give none.
+page's captured calls (Appendix A #59), which resolution takes where structured data and the config give none; on a
+listing none of whose groups aligns and with no call rows, the rows of its state JSON are read too
+(`collect.items.state_rows`), resolution taking them, and their candidates, only where no other source gives rows.
 """
 
 import logging
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 
 from crawlerai.adapters.registry import Registry
@@ -19,7 +21,8 @@ from crawlerai.collect.base import Candidate, Collector, Entity
 from crawlerai.collect.dom import DomCollector
 from crawlerai.collect.dom_text import DescriptionCollector
 from crawlerai.collect.items.align import Items, align
-from crawlerai.collect.js_state import JsStateCollector
+from crawlerai.collect.items.state_rows import StateRows, state_rows
+from crawlerai.collect.js_state import JsStateCollector, state_documents
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.microdata import MicrodataCollector
 from crawlerai.collect.network_match import LearnedCalls
@@ -46,6 +49,9 @@ class Collected:
     # A listing's aligned groups of item blocks (the item layer), best first; their entities and candidates are among
     # the others.
     items: tuple[Items, ...] = ()
+    # A listing's rows from its state JSON, read only when no group aligns and no call gives rows; their entities are
+    # among `entities`, their candidates only here.
+    state: StateRows = field(default_factory=StateRows)
 
 
 def collect_page(
@@ -90,8 +96,13 @@ def collect_page(
         for c in admitting
         if (a := _isolated(c, partial(c.collect, page, schema, ctx, others), diagnostics)) is not None
     ]
+    rows = tuple(row for result in admitted for row in result.rows)
+    state = StateRows()
+    if schema.page_kind == "listing" and not items and not rows:
+        read = partial(state_rows, page, state_documents(page, []), schema, ctx)
+        state = _isolated(state_rows, read, diagnostics) or StateRows()
     return Collected(
-        entities=entities + tuple(entity for result in admitted for entity in result.entities),
+        entities=(*entities, *(entity for result in admitted for entity in result.entities), *state.rows),
         candidates=(
             *others,
             *(candidate for group in items[1:] for candidate in group.candidates),
@@ -101,10 +112,12 @@ def collect_page(
             *(d for result in results for d in result.diagnostics),
             *(d for group in items for d in group.diagnostics),
             *(d for result in admitted for d in result.diagnostics),
+            *state.diagnostics,
             *diagnostics,
         ),
-        rows=tuple(row for result in admitted for row in result.rows),
+        rows=rows,
         items=items,
+        state=state,
     )
 
 
