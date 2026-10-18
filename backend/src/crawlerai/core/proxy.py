@@ -114,8 +114,11 @@ class ProxyPool:
 
 
 def _weight(key: str, endpoint: ProxyEndpoint) -> bytes:
-    """The rendezvous weight of `endpoint` for `key`: a hash of both, the same in every process."""
-    return hashlib.sha256(f"{key}\n{endpoint.host}:{endpoint.port}\n{endpoint.username or ''}".encode()).digest()
+    """The rendezvous weight of `endpoint` for `key`: a hash of both, the same in every process. Every part of the
+    endpoint goes in, its password too (a pool's endpoints differ in at least one part), so no two endpoints tie; the
+    digest is never shown."""
+    identity = f"{endpoint.host}:{endpoint.port}\n{endpoint.username or ''}\n{endpoint.password or ''}"
+    return hashlib.sha256(f"{key}\n{identity}".encode()).digest()
 
 
 class UnknownProxyPool(Exception):

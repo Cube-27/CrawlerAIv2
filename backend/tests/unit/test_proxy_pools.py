@@ -716,3 +716,13 @@ def test_a_browser_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, pr
     assert b"<h1>Catalogue</h1>" in through_pool.bundle.body
     assert set(proxy.tunnels) == {"shop.example.test:80"}
     assert _outcome(unknown) == (0, "error", "proxy_pool_unknown")
+
+
+def test_a_sticky_pool_spreads_hosts_over_endpoints_that_differ_only_in_password() -> None:
+    first = ProxyEndpoint.parse("http://user:one@proxy.example.com:3128")
+    second = ProxyEndpoint.parse("http://user:two@proxy.example.com:3128")
+    pool = ProxyPool((first, second), "sticky")
+
+    picked = {pool.pick(f"site{n}.example.test") for n in range(100)}
+
+    assert picked == {first, second}
