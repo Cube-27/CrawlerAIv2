@@ -222,9 +222,9 @@ def schema_org_paths(file: Path) -> Iterator[str]:
 
 
 def _paths(value: object) -> Iterator[str]:
-    """The paths of a field's `schema_org` value, one per `|` alternative, each up to any `+`."""
+    """The paths of a field's `schema_org` value, one per `|` or `>` alternative (D-1493), each up to any `+`."""
     if isinstance(value, str):
-        for alternative in value.split("|"):
+        for alternative in re.split(r"[|>]", value):
             if match := SCHEMA_ORG_PATH.fullmatch(alternative):
                 yield match[1]
 

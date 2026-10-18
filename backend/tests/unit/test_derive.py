@@ -87,11 +87,11 @@ def test_the_page_url_field_is_a_detail_schemas_url_of_its_primary_type() -> Non
 
 def test_a_url_field_whose_last_rank_is_the_items_url_is_the_page_url_field() -> None:
     # D-1493: the page's URL stands in after every rank; an earlier rank that names another URL does not change that.
-    ranked = URL.model_copy(update={"schema_org": "Product.potentialAction.target>Product.url"})
-    first = URL.model_copy(update={"schema_org": "Product.url>Product.potentialAction.target"})
+    ranked = URL.model_copy(update={"schema_org": "JobPosting.potentialAction.target>JobPosting.url"})
+    first = URL.model_copy(update={"schema_org": "JobPosting.url>JobPosting.potentialAction.target"})
     schema = _schema(ranked=ranked, first=first)
 
-    assert [n for n, spec in schema.fields.items() if is_page_url_field(schema, spec, frozenset({"Product"}))] == [
+    assert [n for n, spec in schema.fields.items() if is_page_url_field(schema, spec, frozenset({"JobPosting"}))] == [
         "ranked"
     ]
 

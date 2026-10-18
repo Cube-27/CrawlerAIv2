@@ -494,6 +494,7 @@ def test_staged_mode_keeps_exemptions_and_names_from_the_whole_repo(tmp_path: Pa
 PRODUCT_NAME = ".".join(["Product", "name"])
 BRAND_NAME = ".".join(["Product", "brand", "name"])
 OFFER_NAME = ".".join(["Offer", "name"])
+THING_NAME = ".".join(["Thing", "name"])
 # A host in the place of a schema.org path; it is in no allowlist the tests pass.
 SHOP = ".".join(["shop", "example", "com"])
 
@@ -508,12 +509,13 @@ PRESET = schema_document(
         "title": {"type": "text", "schema_org": PRODUCT_NAME},
         "rows": {"type": "list", "item": {"type": "object", "fields": {"brand": {"schema_org": BRAND_NAME}}}},
         "price": {"type": "money", "schema_org": "Offer.price+priceCurrency"},
+        "label": {"type": "text", "schema_org": f"Product.alternateName>{THING_NAME}"},
     }
 )
 
 
 def test_schema_org_paths_the_schema_documents_define_are_not_hosts(tmp_path: Path) -> None:
-    refs = f'A = "{PRODUCT_NAME}"\n# maps to {BRAND_NAME}\n'
+    refs = f'A = "{PRODUCT_NAME}"\n# maps to {BRAND_NAME}, ranked after another: {THING_NAME}\n'
     repo = make_repo(tmp_path / "repo", {"schemas/p.json": PRESET, "refs.py": refs})
 
     result = run_scan(repo, allowlist=[])
