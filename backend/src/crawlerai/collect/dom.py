@@ -116,13 +116,13 @@ class DomCollector:
         labels = field_labels(schema)
         pairs = content.pairs(page) if content is not None else []
         unlabelled = [pair for pair in pairs if words(pair[0]) not in labels]
-        for name, raw, xpath in (
+        for name, raw, xpath, read in (
             *_pairs_found(pairs, labels, schema, content),
             *_typed_found(page, schema, ctx, content, unlabelled),
             *_image_found(page, schema, ctx),
         ):
             locator = format_locator("dom", xpath)
-            found = candidate(name, schema.fields[name], PAGE, "dom", raw, locator, ctx, diagnostics)
+            found = candidate(name, schema.fields[name], PAGE, "dom", raw, locator, ctx, diagnostics, read=read or None)
             if found is not None:
                 candidates.append(found)
         return CollectResult(entities=(), candidates=tuple(candidates), diagnostics=tuple(diagnostics))
@@ -131,7 +131,9 @@ class DomCollector:
 # A hyperlink (HTML Standard §4.6.1: an `a` element with an `href` attribute).
 A_HREF = "a[href]"
 
-Found = tuple[str, str, str]  # a field, the raw value, the XPath of the element it came from
+# A field, the raw value, the XPath of the element it came from, and what the field reads of it when that is not the
+# raw value (a list field's items).
+Found = tuple[str, str, str, list[str] | None]
 Pair = tuple[str, LexborNode, str, str]  # a label's text, the element holding its value, its text and the kind
 
 
@@ -163,8 +165,15 @@ class _Content:
         return [
             pair
             for pair in _pairs(self.region)
-            if pair[2] and pair[1].mem_id not in self.apart and page.visible_values.visible(pair[2])
+            if pair[2] and pair[1].mem_id not in self.apart and _shown(page, pair[1], pair[2])
         ]
+
+
+def _shown(page: ParsedPage, value: LexborNode, text: str) -> bool:
+    """Whether a pair's value is shown: its text, or, for a value that is a list, each of its items (a list's items are
+    lines of their own, so the text joining them is on none)."""
+    visible = page.visible_values.visible
+    return visible(text) or (bool(items := list_items(value)) and all(map(visible, items)))
 
 
 def _pairs_found(
@@ -182,7 +191,12 @@ def _pairs_found(
             kinds.setdefault((name, kind), set()).add(raw)
     for (name, raw), value in found.items():
         if _unambiguous(name, raw, kinds, schema.fields[name]):
-            yield name, raw, node_xpath(value)
+            yield (
+                name,
+                raw,
+                node_xpath(value),
+                list_items(value) if schema.fields[name].type is FieldType.LIST else None,
+            )
 
 
 def _unambiguous(name: str, raw: str, kinds: Mapping[tuple[str, str], set[str]], spec: FieldSpec) -> bool:
@@ -209,6 +223,32 @@ def _own_text(node: LexborNode) -> str:
 
 def _text(node: LexborNode) -> str:
     return " ".join(node.text(deep=True, separator=" ").split())
+
+
+# HTML Standard §4.4.5-§4.4.7: the list elements, whose `li` children are their items.
+_LISTS = frozenset({"ul", "ol", "menu"})
+
+
+def list_items(element: LexborNode) -> list[str]:
+    """The text of each item of the lists an element is or holds (HTML Standard §4.4.5-§4.4.8: the `li` children of a
+    `ul`, `ol` or `menu`), in document order. A list inside an item is part of that item, not a list of its own."""
+    lists = [element] if element.tag in _LISTS else element.css(",".join(_LISTS))
+    items = [
+        item
+        for lst in lists
+        if not any(ancestor.tag == "li" for ancestor in _up_to(lst, element))
+        for item in _children(lst)
+        if item.tag == "li"
+    ]
+    return [text for text in map(_text, items) if text]
+
+
+def _up_to(node: LexborNode, top: LexborNode) -> Iterator[LexborNode]:
+    """The ancestors of `node` below `top`."""
+    parent = node.parent if node != top else None
+    while parent is not None and parent != top:
+        yield parent
+        parent = parent.parent
 
 
 def _pairs(region: LexborNode) -> Iterator[Pair]:
@@ -311,7 +351,7 @@ def _typed_found(
         spec = schema.fields[name]
         texts = _identifier_texts(shorts, unlabelled, content) if spec.type is FieldType.IDENTIFIER else shorts
         if (one := _one_value(texts, spec, ctx)) is not None:
-            yield name, *one
+            yield name, *one, None
 
 
 def _one_value(texts: Sequence[tuple[LexborNode, str]], spec: FieldSpec, ctx: Context) -> tuple[str, str] | None:
@@ -380,7 +420,7 @@ def _image_found(page: ParsedPage, schema: SchemaDef, ctx: Context) -> Iterator[
     image, source = found
     xpath = node_xpath(image)
     for name in fields:
-        yield name, source, xpath
+        yield name, source, xpath, None
 
 
 def _main_region(page: ParsedPage) -> LexborNode | None:

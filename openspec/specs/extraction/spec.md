@@ -90,10 +90,18 @@ drafted for the schema (`schema_def.labels`, [llm](../llm/spec.md)), compared as
 (`collect/labels.py`); collectors hold no phrase list. Without drafted synonyms the vocabulary is the schema's own
 words. A schema.org `PropertyValue` under an entity's `additionalProperty` or `identifier` whose `name` or
 `propertyID` is a field's label gives that field its scalar `value`, owned by that entity
-(`collect/property_values.py`). (Previously: a label matched only the field's name or schema.org property.)
+(`collect/property_values.py`). A list of values (not of lists or objects) has labels too: a label-value pair naming
+it gives the items of the lists its value holds (HTML Standard §4.4.5-§4.4.8 `li`), each shown, else its one value;
+on a detail page, a heading naming it gives the items of the lists in its section (`collect/dom_text.py`), and sections
+listing different items give none. (Previously: a label matched only the field's name or schema.org property; a list
+field had no labels.)
 #### Scenario: Drafted synonym
 - **WHEN** a schema's `sku` has the synonym `Item no.` and a row reads `Item no. | W-100`
 - **THEN** `sku` has the candidate `W-100`; without the synonym, none
+#### Scenario: Listed under a heading
+- **WHEN** a detail page's heading `Requirements` is followed by a `ul` of two items, and the schema has a list field
+  `requirements` of text
+- **THEN** `requirements` has the candidate of those two items, from `dom`
 #### Scenario: Related item's property value
 - **WHEN** a related Product's `PropertyValue` is labelled with a field's label
 - **THEN** its candidate is owned by the related Product, not the page's item

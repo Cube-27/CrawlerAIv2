@@ -402,3 +402,20 @@ def test_an_identifier_two_pairs_give_different_values_is_read_from_neither() ->
     body = "<main><table><tr><th>SKU</th><td>W-100</td></tr></table><dl><dt>SKU</dt><dd>W-200</dd></dl></main>"
 
     assert _values(body, MONEY_SCHEMA) == {}
+
+
+def test_a_pair_naming_a_list_field_gives_its_value_list_items_or_its_one_value() -> None:
+    schema = _schema(
+        "detail",
+        tags=_field(FieldType.LIST, None, item={"type": "text"}),
+        places=_field(FieldType.LIST, "JobPosting.jobLocation", item={"type": "location"}),
+    )
+
+    found = _collect(
+        "<dl><dt>Tags</dt><dd><ul><li>Kettles</li><li>Tea</li></ul></dd></dl><p>Places: Lakeside</p>", schema
+    )
+
+    assert {name: [value for value, _ in values] for name, values in found.items()} == {
+        "tags": [["Kettles", "Tea"]],
+        "places": [[{"text": "Lakeside", "locality": None, "region": None, "country": None, "remote_flag": None}]],
+    }

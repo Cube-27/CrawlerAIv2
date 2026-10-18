@@ -23,8 +23,12 @@ Words = tuple[str, ...]
 
 
 def labelled(spec: FieldSpec) -> bool:
-    """Whether a label can name the field's value: a list or an object holds several values, and a label names one."""
-    return spec.type not in (FieldType.LIST, FieldType.OBJECT)
+    """Whether a label can name the field's value: an object holds several fields, and a label names one; a list of
+    values (a page's tags, a job's places) is named by the label its items are written under, a list of lists or of
+    objects by none."""
+    if spec.type is FieldType.LIST:
+        return spec.item is not None and spec.item.type not in (FieldType.LIST, FieldType.OBJECT)
+    return spec.type is not FieldType.OBJECT
 
 
 def field_labels(schema: SchemaDef) -> dict[Words, list[str]]:
