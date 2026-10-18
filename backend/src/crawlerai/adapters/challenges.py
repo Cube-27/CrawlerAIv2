@@ -76,7 +76,7 @@ SIGNATURES: tuple[ChallengeSignature, ...] = (
 )
 
 
-def vendor_of(header_names: Iterable[str], cookie_names: Iterable[str], body: bytes) -> ChallengeSignature | None:
+def vendor_of(header_names: Iterable[str], cookie_names: Iterable[str], markup: str) -> ChallengeSignature | None:
     """The first signature the response shows, if any: header names compared case-insensitively (RFC 9110 §5.1),
     cookie names exactly (RFC 6265 §4.1.1)."""
     headers = {name.lower() for name in header_names}
@@ -86,11 +86,11 @@ def vendor_of(header_names: Iterable[str], cookie_names: Iterable[str], body: by
             return signature
         if any(name.startswith(signature.cookie_prefixes) for name in cookies if signature.cookie_prefixes):
             return signature
-        if any(path.encode() in body for path in (*signature.script_paths, *signature.stand_in_markers)):
+        if any(path in markup for path in (*signature.script_paths, *signature.stand_in_markers)):
             return signature
     return None
 
 
-def stand_in_vendor(body: bytes) -> ChallengeSignature | None:
+def stand_in_vendor(markup: str) -> ChallengeSignature | None:
     """The first signature whose stand-in marker the markup shows, if any."""
-    return next((s for s in SIGNATURES if any(m.encode() in body for m in s.stand_in_markers)), None)
+    return next((s for s in SIGNATURES if any(m in markup for m in s.stand_in_markers)), None)

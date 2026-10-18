@@ -10,13 +10,13 @@ _HTML = (("content-type", "text/html; charset=utf-8"),)
 _JSON = (("content-type", "application/json"),)
 
 
-def _page(text_chars: int, links: int, extra: str = "") -> bytes:
+def _page(text_chars: int, links: int, extra: str = "") -> str:
     anchors = "".join(f'<a href="/p/{i}"></a>' for i in range(links))
-    return f"<html><head><title>t</title></head><body><p>{'x' * text_chars}</p>{anchors}{extra}</body></html>".encode()
+    return f"<html><head><title>t</title></head><body><p>{'x' * text_chars}</p>{anchors}{extra}</body></html>"
 
 
 _FULL = _page(400, 20)
-_EMPTY_APP = b'<html><head><script src="/app.js"></script></head><body><div id="root"></div></body></html>'
+_EMPTY_APP = '<html><head><script src="/app.js"></script></head><body><div id="root"></div></body></html>'
 
 
 @pytest.mark.parametrize(
@@ -47,7 +47,7 @@ def test_status_decides_before_the_body(status: int, expected: BlockClass) -> No
     ("body", "expected"),
     [
         (_EMPTY_APP, "shell"),
-        (b"", "shell"),
+        ("", "shell"),
         (_page(199, 4), "shell"),
         (_page(200, 1), "ok"),
         # Enough text, but no hyperlink (`test_a_document_that_links_nowhere_is_blocked_whatever_else_it_holds`).
@@ -70,32 +70,32 @@ def test_status_decides_before_the_body(status: int, expected: BlockClass) -> No
         # Whitespace is not visible text.
         (_page(10, 0, "<p>" + " \n\t" * 300 + "</p>"), "shell"),
         # The title is not part of the body.
-        (b"<html><head><title>" + b"t" * 500 + b"</title></head><body></body></html>", "shell"),
+        ("<html><head><title>" + "t" * 500 + "</title></head><body></body></html>", "shell"),
     ],
 )
-def test_shell_rule_on_html(body: bytes, expected: BlockClass) -> None:
+def test_shell_rule_on_html(body: str, expected: BlockClass) -> None:
     assert classify(200, _HTML, body) == expected
 
 
 def test_visible_text_counts_characters_not_bytes() -> None:
     # 150 two-byte characters: 300 bytes, 150 characters.
-    body = "<html><body><p>{}</p></body></html>".format("é" * 150).encode()
+    body = "<html><body><p>{}</p></body></html>".format("é" * 150)
     assert classify(200, _HTML, body) == "shell"
 
 
 def test_shell_rule_applies_only_to_html() -> None:
     # A small JSON or plain-text body is a complete response, not an unrendered page.
-    assert classify(200, _JSON, b'{"id": 1}') == "ok"
-    assert classify(200, (("Content-Type", "text/plain"),), b"ok") == "ok"
+    assert classify(200, _JSON, '{"id": 1}') == "ok"
+    assert classify(200, (("Content-Type", "text/plain"),), "ok") == "ok"
     assert classify(200, (("Content-Type", "application/xhtml+xml"),), _EMPTY_APP) == "shell"
     # Without a declared type the body is treated as HTML.
     assert classify(200, (), _EMPTY_APP) == "shell"
 
 
-def _terminal(message_chars: int, extra: str = "") -> bytes:
+def _terminal(message_chars: int, extra: str = "") -> str:
     """An error document's shape: a title, a heading and a message, and nothing that links, loads or runs anything."""
     message = " ".join("w" * 9 for _ in range(message_chars // 10))
-    return f"<html><head><title>Error</title></head><body><h1>Error</h1><p>{message}</p>{extra}</body></html>".encode()
+    return f"<html><head><title>Error</title></head><body><h1>Error</h1><p>{message}</p>{extra}</body></html>"
 
 
 @pytest.mark.parametrize("message_chars", [250, 500])
@@ -164,12 +164,12 @@ _NAV = "<nav><ul>" + "".join(f'<li><a href="/c/{i}">Section {i}</a></li>' for i 
 _PROSE = "<p>" + "A shop that sells kettles and other things for the kitchen. " * 6 + "</p>"
 
 
-def _listing(grid: str, *, head: str = "", main: bool = True) -> bytes:
+def _listing(grid: str, *, head: str = "", main: bool = True) -> str:
     """A listing page's chrome (navigation, prose, a footer of links) around `grid`."""
     footer = "<footer>" + "".join(f'<a href="/help/{i}">Help {i}</a>' for i in range(6)) + "</footer>"
     content = f"<h1>Kettles</h1>{_PROSE}{grid}"
     body = f"<header>{_NAV}</header>{f'<main>{content}</main>' if main else content}{footer}"
-    return f"<html><head><title>Kettles</title>{head}</head><body>{body}</body></html>".encode()
+    return f"<html><head><title>Kettles</title>{head}</head><body>{body}</body></html>"
 
 
 def _tiles(count: int, *, tag: str = "li", linked: bool = True) -> str:
@@ -224,7 +224,7 @@ def test_a_listing_without_repeated_linked_items_is_a_shell_for_the_listing_kind
         _listing(_SCRIPT_GRID + '<div itemscope itemtype="https://schema.org/Product"></div>' * 3),
     ],
 )
-def test_a_listing_with_repeated_linked_items_or_structured_rows_is_ok(page: bytes) -> None:
+def test_a_listing_with_repeated_linked_items_or_structured_rows_is_ok(page: str) -> None:
     assert classify(200, _HTML, page, page_kind="listing") == "ok"
 
 
@@ -246,7 +246,7 @@ def test_a_listing_with_repeated_linked_items_or_structured_rows_is_ok(page: byt
         _listing(_SCRIPT_GRID + '<script type="application/json">{"items": []}</script>'),
     ],
 )
-def test_a_listing_whose_structured_data_lists_no_items_is_a_shell(page: bytes) -> None:
+def test_a_listing_whose_structured_data_lists_no_items_is_a_shell(page: str) -> None:
     assert classify(200, _HTML, page, page_kind="listing") == "shell"
 
 
@@ -260,7 +260,7 @@ def test_a_listing_whose_structured_data_lists_no_items_is_a_shell(page: bytes) 
         _listing("", main=False),
     ],
 )
-def test_too_few_items_unlinked_items_or_only_chrome_links_are_no_listing(page: bytes) -> None:
+def test_too_few_items_unlinked_items_or_only_chrome_links_are_no_listing(page: str) -> None:
     assert classify(200, _HTML, page, page_kind="listing") == "shell"
 
 
@@ -268,7 +268,7 @@ def test_too_few_items_unlinked_items_or_only_chrome_links_are_no_listing(page: 
     ("body", "expected"),
     [(_EMPTY_APP, True), (_page(199, 4), True), (_page(400, 0), True), (_page(200, 1), False), (_FULL, False)],
 )
-def test_site_structure_is_judged_by_the_2xx_rules_whatever_the_status(body: bytes, expected: bool) -> None:
+def test_site_structure_is_judged_by_the_2xx_rules_whatever_the_status(body: str, expected: bool) -> None:
     # The browser reads it on a 403/429/503 document (D-1206), where `classify` answers by status alone.
     assert lacks_site_structure(body) is expected
     assert lacks_site_structure(body) is (classify(200, _HTML, body) != "ok")
@@ -294,13 +294,13 @@ _OFF_SITE = (
     [
         pytest.param(403, _HTML, _EMPTY_APP, True, id="script-shell"),
         pytest.param(503, _HTML, _page(400, 0, _SCRIPT), True, id="script-linkless"),
-        pytest.param(429, _HTML, _OFF_SITE.replace("</body>", _SCRIPT + "</body>").encode(), True, id="no-site-link"),
+        pytest.param(429, _HTML, _OFF_SITE.replace("</body>", _SCRIPT + "</body>"), True, id="no-site-link"),
         pytest.param(
             403, _HTML, _page(400, 20, '<meta http-equiv="Refresh" content="5">'), True, id="meta-refresh-with-links"
         ),
         pytest.param(403, (*_HTML, ("refresh", "3")), _page(10, 0), True, id="refresh-header"),
         pytest.param(403, _HTML, _page(10, 0), False, id="static-no-script"),
-        pytest.param(403, _HTML, _OFF_SITE.encode(), False, id="static-off-site"),
+        pytest.param(403, _HTML, _OFF_SITE, False, id="static-off-site"),
         pytest.param(403, _HTML, _page(400, 20, _SCRIPT), False, id="site-page-with-script"),
         pytest.param(401, _HTML, _EMPTY_APP, False, id="asks-for-credentials"),
         pytest.param(451, _HTML, _EMPTY_APP, False, id="legal-refusal"),
@@ -309,7 +309,7 @@ _OFF_SITE = (
     ],
 )
 def test_an_interstitial_is_a_refusal_that_can_navigate_and_is_no_page_of_the_site(
-    status: int, headers: tuple[tuple[str, str], ...], body: bytes, expected: bool
+    status: int, headers: tuple[tuple[str, str], ...], body: str, expected: bool
 ) -> None:
     assert interstitial(status, headers, body, _AT) is expected
 

@@ -31,33 +31,33 @@ _SET_COOKIE = "set-cookie"  # RFC 6265 §4.1
 CHALLENGED: Final[frozenset[BlockClass]] = frozenset({"blocked", "shell"})
 
 
-def block_class_of(status: int, headers: HeaderList, body: bytes, page_kind: PageKind | None = None) -> BlockClass:
-    """The response's block class (`classify`), except that a 2xx HTML document (RFC 9110 §15.3) showing a vendor's
-    stand-in marker (`adapters.challenges`) is `blocked`: the vendor served it in place of the page, whatever its
-    status says, and the browser may pass it where HTTP did not."""
-    block_class = classify(status, headers, body, page_kind)
-    if block_class == "ok" and 200 <= status < 300 and is_html(headers) and stand_in_vendor(body) is not None:
+def block_class_of(status: int, headers: HeaderList, text: str, page_kind: PageKind | None = None) -> BlockClass:
+    """The block class of a response whose body decoded to `text` (`classify`), except that a 2xx HTML document
+    (RFC 9110 §15.3) showing a vendor's stand-in marker (`adapters.challenges`) is `blocked`: the vendor served it in
+    place of the page, whatever its status says, and the browser may pass it where HTTP did not."""
+    block_class = classify(status, headers, text, page_kind)
+    if block_class == "ok" and 200 <= status < 300 and is_html(headers) and stand_in_vendor(text) is not None:
         return "blocked"
     return block_class
 
 
-def challenge_signal(status: int, headers: HeaderList, body: bytes, url: str) -> bool:
+def challenge_signal(status: int, headers: HeaderList, text: str, url: str) -> bool:
     """The generic, structural signal: a refusal a page's own script or refresh may lift, served by a document that
     stands in for the page (`classify.interstitial`: 403, 429 or 503; a script or refresh; no page of the site)."""
-    return interstitial(status, headers, body, url)
+    return interstitial(status, headers, text, url)
 
 
 def challenge_label(
-    status: int, headers: HeaderList, body: bytes, url: str, cookie_names: Iterable[str] = ()
+    status: int, headers: HeaderList, text: str, url: str, cookie_names: Iterable[str] = ()
 ) -> str | None:
     """The label of a response in a `CHALLENGED` class. `headers` are as received, `Set-Cookie` included: only
     the cookie names are read (RFC 6265 §4.1.1, the name before the first `=`), never a value. `cookie_names` adds the
     names a browser holds for the page, whose capture records no `Set-Cookie`."""
     names = (*_cookie_names(headers), *cookie_names)
-    signature = vendor_of((name for name, _ in headers), names, body)
+    signature = vendor_of((name for name, _ in headers), names, text)
     if signature is not None:
         return signature.vendor
-    return STRUCTURAL if challenge_signal(status, headers, body, url) else None
+    return STRUCTURAL if challenge_signal(status, headers, text, url) else None
 
 
 def portable(label: str | None) -> bool:

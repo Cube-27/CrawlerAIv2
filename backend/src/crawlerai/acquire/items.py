@@ -12,6 +12,8 @@ the whole class list. They are looked for in the page's content: its main landma
 from collections import Counter
 from typing import Final
 
+from lxml import etree
+from lxml import html as lxml_html
 from lxml.html import HtmlElement
 
 # A listing shows at least this many items; resolution takes as many top-level entities for a listing's rows (SPEC-05
@@ -23,6 +25,16 @@ _CHROME_TAGS: Final = frozenset({"nav", "header", "footer", "aside"})
 _CHROME_ROLES: Final = frozenset({"navigation", "banner", "contentinfo", "complementary"})
 # HTML Standard §4.6.1: `a` and `area` elements with an `href` are hyperlinks.
 _LINKS: Final = ("a", "area")
+
+
+def lxml_root(text: str) -> HtmlElement:
+    """The lxml tree of a decoded document. lxml refuses a str that carries an XML encoding declaration, so it reads
+    the text again as UTF-8 with the encoding named, and the declaration is ignored: both parsers read the same
+    characters."""
+    try:
+        return lxml_html.document_fromstring(text.encode("utf-8"), parser=lxml_html.HTMLParser(encoding="utf-8"))
+    except etree.ParserError:  # an empty or all-whitespace document has no root element
+        return lxml_html.Element("html")
 
 
 def is_hyperlink(element: HtmlElement) -> bool:

@@ -32,7 +32,7 @@ from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.core import json_text
 from crawlerai.core.proxy import ProxyPool
-from crawlerai.storage.capture_bundle import HeaderList
+from crawlerai.storage.capture_bundle import HeaderList, decode_html
 
 __all__ = ["ACCEPT", "JsonFetcher", "JsonRequest", "fetch_json"]
 
@@ -148,7 +148,10 @@ async def fetch_json(
 
 
 def _label(last: Wire, url: str) -> str | None:
-    return challenge_label(last.status, last.response_headers, last.body, url)
+    # A refused API answer is labelled by its markup, decoded as a page's is (`decode_html`).
+    return challenge_label(
+        last.status, last.response_headers, decode_html(last.body, last.response_headers, "api"), url
+    )
 
 
 def _outcome(status: int, body: bytes, raw: bool) -> tuple[BlockClass, str | None]:
@@ -161,7 +164,7 @@ def _outcome(status: int, body: bytes, raw: bool) -> tuple[BlockClass, str | Non
             return "error", "decode_error"
         return "ok", None
     # The status rules of SPEC-02 §4.3; the body is not HTML, so it is never a shell.
-    block_class = classify(status, (), b"")
+    block_class = classify(status, (), "")
     return ("error", "unexpected_status") if block_class == "ok" else (block_class, None)
 
 

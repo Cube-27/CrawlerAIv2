@@ -41,6 +41,7 @@ from crawlerai.acquire.types import (
 )
 from crawlerai.adapters.registry import Registry, platform_adapters
 from crawlerai.db.models import FetchMethod, PageKind, SiteFetchMethod, SiteId
+from crawlerai.storage.capture_bundle import decode_body
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
 # Whether an HTTP `ok` page lacks what the caller reads from it and a render may hold (offer data, owner #49; a
@@ -289,9 +290,9 @@ async def _interstitial_unavailable(result: FetchResult) -> bool:
     manifest = result.bundle.manifest
     if manifest.status_code != _UNAVAILABLE or manifest.method != "http":
         return False
-    body = result.bundle.body
+    text = decode_body(result.bundle)
     return await asyncio.to_thread(
-        interstitial, manifest.status_code, manifest.headers.response, body, manifest.final_url
+        interstitial, manifest.status_code, manifest.headers.response, text, manifest.final_url
     )
 
 
@@ -308,7 +309,8 @@ async def _as_last_page(result: FetchResult) -> FetchResult:
     manifest = result.bundle.manifest
     if result.block_class != "shell" or manifest.method != "http" or fetched_as(manifest.fetch_policy) != "listing":
         return result
-    unlisted = await asyncio.to_thread(classify, manifest.status_code, manifest.headers.response, result.bundle.body)
+    text = decode_body(result.bundle)
+    unlisted = await asyncio.to_thread(classify, manifest.status_code, manifest.headers.response, text)
     if unlisted != "ok":
         return result
     bundle = result.bundle.model_copy(update={"manifest": manifest.model_copy(update={"block_class": "ok"})})

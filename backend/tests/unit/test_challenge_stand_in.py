@@ -13,9 +13,9 @@ _STAND_INS = [s for s in SIGNATURES if s.stand_in_markers]
 URL = "https://shop.example.test/item/1"
 
 
-def _page(extra: str = "") -> bytes:
+def _page(extra: str = "") -> str:
     """A page with site structure: enough text and links to other pages of its host."""
-    return f"<html><body><h1>Item</h1><p>{'word ' * 80}</p>{_LINKS}{extra}</body></html>".encode()
+    return f"<html><body><h1>Item</h1><p>{'word ' * 80}</p>{_LINKS}{extra}</body></html>"
 
 
 def test_some_vendor_has_stand_in_markers() -> None:
@@ -33,7 +33,7 @@ def test_a_2xx_page_showing_a_stand_in_marker_is_blocked_and_labelled(sig: Chall
 
 @pytest.mark.parametrize("signature", _STAND_INS, ids=[s.vendor for s in _STAND_INS])
 def test_a_marker_in_a_body_that_is_no_html_document_changes_nothing(signature: ChallengeSignature) -> None:
-    body = f'{{"note": "{signature.stand_in_markers[0]}"}}'.encode()
+    body = f'{{"note": "{signature.stand_in_markers[0]}"}}'
 
     assert block_class_of(200, (("content-type", "application/json"),), body) == "ok"
 

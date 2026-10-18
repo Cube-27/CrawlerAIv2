@@ -25,6 +25,7 @@ from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, Validators
 from crawlerai.core.proxy import ProxyPool
+from crawlerai.storage.capture_bundle import decode_html
 
 
 async def fetch_http(
@@ -59,12 +60,14 @@ async def fetch_http(
     last, challenge = sent.last, None
     block_class: BlockClass = "error"
     if sent.error is None and last is not None:
-        # Classifying parses HTML synchronously; a thread keeps the event loop free.
+        # The body is decoded once (`decode_html`), and every rule reads that text. Classifying parses HTML
+        # synchronously; a thread keeps the event loop free.
+        text = decode_html(last.body, last.response_headers, "http")
         block_class = await asyncio.to_thread(
-            block_class_of, last.status, last.response_headers, last.body, policy.page_kind
+            block_class_of, last.status, last.response_headers, text, policy.page_kind
         )
         if block_class in CHALLENGED:
-            challenge = await asyncio.to_thread(challenge_label, last.status, last.response_headers, last.body, url)
+            challenge = await asyncio.to_thread(challenge_label, last.status, last.response_headers, text, url)
     count(challenge, "http")
     result = fetch_result(
         url=url,

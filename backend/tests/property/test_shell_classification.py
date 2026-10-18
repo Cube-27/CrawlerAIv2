@@ -13,11 +13,11 @@ _HIDDEN = st.lists(
 )
 
 
-def _document(visible: str, paragraph: int, links: int, hidden: list[tuple[str, str]]) -> bytes:
+def _document(visible: str, paragraph: int, links: int, hidden: list[tuple[str, str]]) -> str:
     paragraphs = "".join(f"<p>{visible[i : i + paragraph]}</p>\n" for i in range(0, len(visible), paragraph))
     anchors = "".join(f'<a href="/{i}"></a>' for i in range(links))
     hidden_blocks = "".join(f"<{tag}>{text}</{tag}>" for tag, text in hidden)
-    return f"<!doctype html><html><body>{hidden_blocks}{paragraphs}{anchors}</body></html>".encode()
+    return f"<!doctype html><html><body>{hidden_blocks}{paragraphs}{anchors}</body></html>"
 
 
 @given(st.text(_ALPHABET, min_size=200, max_size=600), st.integers(1, 80), st.integers(0, 10), _HIDDEN)
@@ -51,6 +51,6 @@ def test_a_listing_is_a_shell_exactly_when_it_shows_fewer_than_three_linked_item
     tiles = "".join(f'<{tag} class="t"><a href="/p/{i}">Item {i}</a></{tag}>' for i in range(items))
     content = f"<p>{'words ' * 50}</p><section>{tiles}</section>"
     body = f"<nav><ul>{chrome}</ul></nav>{f'<main>{content}</main>' if main else content}"
-    document = f"<!doctype html><html><head><title>t</title></head><body>{body}</body></html>".encode()
+    document = f"<!doctype html><html><head><title>t</title></head><body>{body}</body></html>"
 
     assert classify(200, (), document, page_kind="listing") == ("ok" if items >= 3 else "shell")

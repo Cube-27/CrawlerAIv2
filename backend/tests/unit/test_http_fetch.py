@@ -146,6 +146,21 @@ def test_a_2xx_page_showing_a_vendors_stand_in_marker_is_blocked_and_labelled(se
     assert (stood_in.block_class, stood_in.attempts[0].challenge) == ("blocked", signature.vendor)
 
 
+@pytest.mark.parametrize("declared", ["header", "meta"])
+def test_a_page_in_a_legacy_encoding_is_classified_from_its_decoded_text(server: Server, declared: str) -> None:
+    # HTML Standard §13.2.3.2: the charset the Content-Type or a `meta` declaration names decodes the body once; a
+    # parser handed the raw bytes would read the non-ASCII attributes below as UTF-8 and raise.
+    meta = '<meta charset="euc-jp">' if declared == "meta" else ""
+    links = "".join(f'<a href="/商品/{i}" title="商品{i}">商品 {i}</a>' for i in range(8))
+    page = f'<html><head>{meta}<meta http-equiv="content-language" content="日本語"></head><body>{links}</body></html>'
+    content_type = "text/html; charset=EUC-JP" if declared == "header" else "text/html"
+    server.route("/p", Reply(200, (("Content-Type", content_type),), page.encode("euc-jp")))
+
+    result = fetch(server, server.url("/p"))
+
+    assert outcome(result) == (200, "ok", None)
+
+
 def test_a_page_fetched_as_a_listing_is_classified_as_one(server: Server) -> None:
     # Text and a link but no repeated linked items: complete as a detail page, a shell as a listing. `_PAGE` lists
     # its items.
