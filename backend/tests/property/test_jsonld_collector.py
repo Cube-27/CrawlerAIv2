@@ -1,6 +1,7 @@
 """JSON-LD collector properties (SPEC-05 §4.5, INV-22): any JSON in a block is collected without raising, every
 entity names a JSON object of its block, and each candidate's locator reads its raw value back."""
 
+import html
 import json
 import re
 from datetime import UTC, datetime
@@ -128,10 +129,12 @@ def test_paragraph_markup_reads_as_the_lines_of_its_text(paragraphs: list[str]) 
     # HTML Standard rendering: each `p` is a block box, so a fragment of paragraphs reads as their texts, one a line.
     plain = "\n".join(paragraphs)
     markup = "".join(f"<p>{p}</p>" for p in paragraphs)
+    # The same fragment with its markup written escaped, as an API documenting escaped HTML text writes it (D-1486).
+    escaped = html.escape(markup, quote=False)
 
-    read = [_described(raw) for raw in (plain, markup)]
+    read = [_described(raw) for raw in (plain, markup, escaped)]
 
-    assert read[0] == read[1]
+    assert read[0] == read[1] == read[2]
 
 
 def _described(raw: str) -> object:

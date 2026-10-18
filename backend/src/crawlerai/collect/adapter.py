@@ -110,13 +110,23 @@ class _Node:
     def _read(self, members: Members, prefix: str) -> list[Value]:
         # RFC 8259 `null`: the API states no value.
         return [
-            Value(prefix + raw if prefix and isinstance(raw, str) else raw, self._locator(at))
+            Value(_prefixed(prefix, raw), self._locator(at))
             for at, raw in _select(members, self.data, self.path)
             if raw is not None
         ]
 
     def _locator(self, path: str) -> str:
         return format_locator("adapter", self.adapter, path)
+
+
+def _prefixed(prefix: str, raw: JsonValue) -> JsonValue:
+    """`raw` after `prefix`: a string as written, an integer (an API's numeric id, RFC 8259 §6) in its decimal digits;
+    any other value, or any value without a prefix, as it is."""
+    if not prefix or isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return prefix + raw
+    return prefix + str(raw) if isinstance(raw, int) else raw
 
 
 def _one(values: list[JsonValue]) -> JsonValue:

@@ -39,10 +39,10 @@ class Shape:
     object (the document, for a root) to this node's object; `properties`, the members from that object to each
     schema.org property's values; `also`, further members to values of a property in `properties`, read after its
     own in order (an API that keeps a primary value apart from the others: a primary location and the further ones);
-    `prefixes`, text that goes before each string value of a property, for an API that states the value relative to a
-    root the page's URL names (a job's path under its career site); `nodes`, the shapes of the nodes each property's
-    values are; and `anchor`, the members that name a node sharing its enclosing node's object (`at=()`), so that it
-    is an entity of its own."""
+    `prefixes`, text that goes before each string or integer value of a property, for an API that states the value
+    relative to a root the page's URL names (a job's path under its career site, a job id under a board's job route);
+    `nodes`, the shapes of the nodes each property's values are; and `anchor`, the members that name a node sharing its
+    enclosing node's object (`at=()`), so that it is an entity of its own."""
 
     type: str
     at: Members = ()
@@ -60,6 +60,9 @@ class AdapterMatch:
     # The platform's identifier for the page's item (a posting, a product), or for the list a listing shows when the
     # platform names its lists (a collection); None for a list the tenant alone names.
     item: str | None = None
+    # The host the platform serves the page on, for an adapter whose shapes name the page's items by the platform's
+    # routes on that host (a hosted board's job pages); None when the shapes need none.
+    host: str | None = None
 
 
 @dataclass(frozen=True)

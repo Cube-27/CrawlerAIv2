@@ -353,10 +353,16 @@ def field_candidates(
 def _fragment_read(raw: JsonValue, spec: FieldSpec) -> str | None:
     """What a text field reads of a structured-data value holding element markup: the fragment's rendered text
     (`fragment_text`), its references already decoded once, so they are escaped again for the text normalizer, which
-    decodes them (a literal `&amp;` stays text). `None` for any other value."""
+    decodes them (a literal `&amp;` stays text). A value whose markup is written escaped (`&lt;p&gt;…&lt;/p&gt;`, a
+    fragment serialized with its `<` and `>` as character references, as an API that documents its text as escaped
+    HTML writes it) is that fragment: its references decoded once (HTML Standard, character references) give elements,
+    and their rendered text is what the value says. `None` for any other value: one that decodes to no element
+    (`1 &lt; 2`) is text."""
     if spec.type not in _TEXT_TYPES or not isinstance(raw, str):
         return None
     text = fragment_text(raw)
+    if text is None and "&" in raw:
+        text = fragment_text(html.unescape(raw))
     return None if text is None else html.escape(text, quote=False)
 
 

@@ -31,8 +31,8 @@ ADAPTER = Greenhouse()
 
 
 @given(host=st.sampled_from(sorted(BOARD_HOSTS)), token=tokens, scheme=st.sampled_from(["http", "https"]))
-def test_a_board_url_is_a_listing_of_its_tenant(host: str, token: str, scheme: str) -> None:
-    expected = AdapterMatch(tenant=token, page_kind="listing")
+def test_a_board_url_is_a_listing_of_its_tenant_on_its_host(host: str, token: str, scheme: str) -> None:
+    expected = AdapterMatch(tenant=token, page_kind="listing", host=host)
     assert ADAPTER.detect(f"{scheme}://{host}/{token}") == expected
     assert ADAPTER.detect(f"{scheme}://{host.upper()}/{token}/") == expected
 
@@ -40,7 +40,7 @@ def test_a_board_url_is_a_listing_of_its_tenant(host: str, token: str, scheme: s
 @given(host=st.sampled_from(sorted(BOARD_HOSTS)), token=tokens, job_id=job_ids)
 def test_a_job_url_is_a_detail_page_of_its_job(host: str, token: str, job_id: str) -> None:
     assert ADAPTER.detect(f"https://{host}/{token}/jobs/{job_id}?source=x#apply") == AdapterMatch(
-        tenant=token, page_kind="detail", item=job_id
+        tenant=token, page_kind="detail", item=job_id, host=host
     )
 
 

@@ -316,11 +316,14 @@ async def _eval_run(
             cases = await replay_split(
                 store, pipeline, live=_replay_llm(llm_mode, settings, db, max_calls), statuses=statuses
             )
-            result = build_report(cases, "dev", pipeline.version, git_sha, statuses)
-            # A run is a baseline and what calibration fits on: drafts never become one (§16.2, D-1461).
+            # D-1480: the report scores the engine rows of the labeled page (`rows="labeled"`), and every row too.
+            result = build_report(cases, "dev", pipeline.version, git_sha, statuses, rows="labeled")
+            all_rows = build_report(cases, "dev", pipeline.version, git_sha, statuses)
+            # A run is a baseline and what calibration fits on: drafts never become one (§16.2, D-1461). It keeps every
+            # engine row (§4.6), as the gate's runs do.
             run = None
             if statuses == CHECKED:
-                metrics = result.model_dump(mode="json")
+                metrics = all_rows.model_dump(mode="json")
                 run = await store.put_run(
                     EvalRunRow(split="dev", engine_version=pipeline.version, git_sha=git_sha, metrics=metrics)
                 )
@@ -328,6 +331,8 @@ async def _eval_run(
         await db.dispose()
     if out is not None:
         out.write_text(result.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        all_rows_out = out.with_name(f"{out.stem}.all-rows{out.suffix}")
+        all_rows_out.write_text(all_rows.model_dump_json(indent=2) + "\n", encoding="utf-8")
     dropped = sum(page.error is not None for page in result.pages or ())
     summary = {
         "eval_run_id": None if run is None else str(run),
@@ -335,6 +340,7 @@ async def _eval_run(
         "dropped": dropped,
         "label_statuses": list(result.label_statuses),
         "by_field_type": {k: v.model_dump(mode="json") for k, v in result.by_field_type.items()},
+        "by_field_type_all_rows": {k: v.model_dump(mode="json") for k, v in all_rows.by_field_type.items()},
     }
     print(json.dumps(summary))
 
@@ -506,7 +512,14 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
         help="for a call no recording holds: drop the page, answer nothing, or call the configured providers",
     )
     run.add_argument("--llm-max-calls", type=_positive_int, help="with --llm live: the most provider calls to make")
-    run.add_argument("--out", type=Path, help="write the full report (JSON) here, under the working directory")
+    run.add_argument(
+        "--out",
+        type=Path,
+        help=(
+            "write the full report (JSON) here, under the working directory, with the engine rows of the labeled page"
+            " (D-1480); the report scoring every row goes beside it as <name>.all-rows.json"
+        ),
+    )
     promote_command = eval_commands.add_parser(
         "promote", help="move the fresh sites whose pages are all checked into dev, keeping their labels"
     )

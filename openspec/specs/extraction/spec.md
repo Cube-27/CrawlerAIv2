@@ -47,7 +47,11 @@ RDFa IRI value is a URL, never text, D-1153) and Open Graph
 description, and the `product:` namespace; no translation, site-default blocks skipped) through the field's
 `schema_org` path; a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
-element markup is read as the fragment's rendered text. Refs: §8.1, D-0388..D-0406, D-0940, D-1180, D-1183, D-1186.
+element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. Refs: §8.1,
+D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486.
+#### Scenario: Escaped markup
+- **WHEN** a text value is block markup written escaped (`&lt;p&gt;…&lt;/p&gt;&lt;ul&gt;…`)
+- **THEN** it normalizes as the unescaped markup does; an escaped `<` that makes no element (`1 &lt; 2`) stays text
 #### Scenario: gtin13 for a gtin field
 - **WHEN** a Product states `gtin13` and the schema's identifier field maps `Product.gtin`
 - **THEN** the `gtin13` value is a candidate for that field
