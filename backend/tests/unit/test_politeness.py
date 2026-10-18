@@ -213,11 +213,27 @@ def test_a_slow_down_doubles_the_spacing_and_the_next_turn_comes_that_much_later
     limiter.observe(_HOST, _SECOND, [_answer(429, "blocked")])
     limiter.observe(_HOST, _SECOND, [_answer(503, "blocked")])
     clock.now += 1
+    assert limiter.admit(_HOST, _SECOND) == 3 * _SECOND  # the slow-down pushed the reservation made at admission
+    clock.now += 3
     assert limiter.admit(_HOST, _SECOND) == timedelta(0)
 
     assert limiter.spacing(_HOST, _SECOND) == 4 * _SECOND
     assert limiter.admit(_HOST, _SECOND) == 4 * _SECOND
     assert limiter.spacing("b.example.test", _SECOND) == _SECOND  # per host
+
+
+def test_a_slow_down_answered_after_admission_delays_the_turn_already_reserved() -> None:
+    clock = Clock()
+    limiter = HostLimiter(clock)
+    assert limiter.admit(_HOST, _SECOND) == timedelta(0)  # reserves the next turn 1 s on
+
+    clock.now += 0.5
+    limiter.observe(_HOST, _SECOND, [_answer(429, "blocked")])  # spacing now 2 s
+    clock.now += 0.5
+
+    assert limiter.admit(_HOST, _SECOND) > timedelta(0)
+    clock.now += 1.5
+    assert limiter.admit(_HOST, _SECOND) == timedelta(0)
 
 
 def test_a_challenge_slows_the_host_as_a_slow_down_does() -> None:
