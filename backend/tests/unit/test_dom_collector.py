@@ -313,3 +313,45 @@ def test_a_typed_value_one_element_holds_inside_another_is_read_once() -> None:
     found = _collect("<main><div><span>€19.99</span></div></main>", MONEY_SCHEMA)
 
     assert found["price"][0][1] == "dom:/html[1]/body[1]/main[1]/div[1]/span[1]"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "<p>\n  <b>Brand:</b> Example Brand</p>",  # indented markup: a blank text node comes first
+        "<p>Brand: Example Brand <span>SKU: A-1</span></p>",  # a second label on the line ends the first value
+    ],
+)
+def test_a_label_line_gives_its_own_value_on_indented_or_shared_lines(body: str) -> None:
+    assert _values(body)["brand"] == ["Example Brand"]
+
+
+def test_two_labels_in_a_line_with_one_value_each_are_both_read() -> None:
+    body = "<p><span>Brand: Example Brand</span> <span>Gender: Unisex</span></p>"
+
+    assert _values(body) == {"brand": ["Example Brand"], "gender": ["Unisex"]}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # Rows and groups are the page's own: several values and a conflicting line do not drop them.
+        "<table><tr><th>Brand</th><td>A</td></tr><tr><th>Brand</th><td>B</td></tr></table>",
+        "<dl><div><dt>Brand</dt><dd>A</dd></div><div><dt>Brand</dt><dd>B</dd></div></dl>",
+        "<table><tr><th>Brand:</th><td>A</td></tr><tr><th>Brand:</th><td>B</td></tr></table>",
+    ],
+)
+def test_table_rows_and_description_groups_are_not_dropped_by_the_line_and_sibling_rule(body: str) -> None:
+    assert sorted(map(str, _values(body)["brand"])) == ["A", "B"]
+
+
+def test_a_conflicting_line_does_not_drop_a_table_row() -> None:
+    body = "<main><table><tr><th>Brand:</th><td>A</td></tr></table><p>Brand: B</p></main>"
+
+    assert sorted(map(str, _values(body)["brand"])) == ["A", "B"]
+
+
+def test_a_datetime_field_is_not_spotted_without_a_label() -> None:
+    schema = _schema("detail", posted=_field(FieldType.DATETIME, "Article.dateModified"))
+
+    assert _collect("<main><p>2026-10-01T10:00:00Z</p></main>", schema) == {}

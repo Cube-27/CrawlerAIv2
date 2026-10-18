@@ -80,8 +80,12 @@ _COLON = re.compile(r"\s*[:\uff1a]")
 # and sibling containers of one shape.
 _TABLE, _LINE, _SIBLINGS = "table", "line", "siblings"
 _REPEATING = (_LINE, _SIBLINGS)
+# HTML Standard §4.9 (tables) and §4.4.9 (description lists): the elements whose rows and groups `_pairs` reads itself.
+_TABULAR = frozenset({"table", "thead", "tbody", "tfoot", "tr", "dl"})
 # Sibling containers repeat from two on.
 _MIN_REPEATS = 2
+# The typed fields read without a label: dates and datetimes have sources of their own.
+_SPOTTED_TYPES = frozenset({FieldType.MONEY, FieldType.IDENTIFIER})
 # The longest text a typed value is spotted in: an amount or an identifier is short, a longer text is prose around one.
 _SPOT_LENGTH = 64
 # HTML Standard §4.5.4 `s` and §4.7.2 `del`: text that is no longer accurate or was removed is no current value.
@@ -208,28 +212,43 @@ def _groups(dl: LexborNode) -> Iterator[tuple[LexborNode, LexborNode]]:
 
 
 def _colon_line(element: LexborNode) -> Iterator[Pair]:
-    """An element whose text starts with a label and a colon, in its first child (`Model: <span>x</span>`, a label
-    element and a value element, `<b>Model:</b> x`): the label is the text before the colon, the value what follows,
-    held by the element's one other child when the value fills it, else by the element itself."""
-    first = element.child
-    if first is None:
+    """An element whose text starts with a label and a colon, in its first non-blank child (`Model: <span>x</span>`, a
+    label element and a value element, `<b>Model:</b> x`): the label is the text before the colon, the value what
+    follows it. A value with another colon in it holds another label (`Brand: x SKU: y`): nothing is read."""
+    first = None if _structured(element) else next((c for c in element.iter(include_text=True) if _text(c)), None)
+    if first is None or _structured(first):
         return
-    lead = _text(first)
-    full = _text(element)
+    lead, full = _text(first), _text(element)
     cut = _COLON.search(full)
-    if cut is None or cut.start() > len(lead) or not full[cut.end() :].strip():
+    if cut is None or cut.start() > len(lead):
         return
-    rest = full[cut.end() :].strip()
+    value = _line_value(element, first, full[cut.end() :].strip(), lead[cut.end() :].strip())
+    if value is not None and not _COLON.search(value[1]):
+        yield full[: cut.start()], value[0], value[1], _LINE
+
+
+def _line_value(element: LexborNode, first: LexborNode, rest: str, inner: str) -> tuple[LexborNode, str] | None:
+    """The element holding a line's value and the value: what follows the colon in the first child when it holds some
+    (`inner`), else the rest of the element (`rest`), held by its one other child when that child fills it."""
+    if inner:
+        return (first if first.is_element_node else element), inner
+    if not rest:
+        return None
     others = [child for child in _children(element) if child != first]
-    holder = others[0] if len(others) == 1 and _text(others[0]) == rest else element
-    yield full[: cut.start()], holder, rest, _LINE
+    return (others[0] if len(others) == 1 and _text(others[0]) == rest else element), rest
+
+
+def _structured(element: LexborNode) -> bool:
+    """Whether the element is part of a table or a description list, whose rows and groups are read as such."""
+    parent = element.parent
+    return element.is_element_node and (element.tag in _TABULAR or (parent is not None and parent.tag == "dl"))
 
 
 def _repeated_pairs(parent: LexborNode) -> Iterator[Pair]:
     """Sibling containers of one shape (the same tag, each with two children of the same tags) hold a label and its
     value: the first child labels the second. One such container is no repetition, so no structure."""
     shapes: dict[tuple[str, ...], list[LexborNode]] = {}
-    for child in _children(parent):
+    for child in () if _structured(parent) else _children(parent):
         parts = _children(child)
         if len(parts) == 2:
             shapes.setdefault((child.tag or "", parts[0].tag or "", parts[1].tag or ""), []).append(child)
@@ -245,35 +264,26 @@ def _children(node: LexborNode) -> list[LexborNode]:
 
 
 def _typed_found(page: ParsedPage, schema: SchemaDef, ctx: Context) -> Iterator[Found]:
-    """A money or checked-identifier field's value the main region shows once: the elements whose one-line text the
-    field's normalizer parses (`items.spot`), the innermost of nested ones, current (not struck) and not set apart.
-    Several distinct values are ambiguous (a price among related products' prices): nothing is read."""
-    fields = [n for n, spec in schema.fields.items() if is_typed(spec) and spec.type is not FieldType.DATE]
+    """A money or checked-identifier field's value the main region shows once: the elements whose own text the field's
+    normalizer parses (`items.spot`), current (not struck), not set apart and shown. Several distinct values are
+    ambiguous (a price among related products' prices): nothing is read."""
+    fields = [n for n, spec in schema.fields.items() if is_typed(spec) and spec.type in _SPOTTED_TYPES]
     region = _main_region(page) if fields else None
     if region is None:
         return
-    excluded = _apart_ids(region, _STRUCK)
-    texts = [
-        (element, text)
-        for element in region.css("*")
-        if element.mem_id not in excluded and (text := _own_text(element)) and len(text) <= _SPOT_LENGTH
-    ]
+    texts = _short_texts(region)
     for name in fields:
         spec = schema.fields[name]
         hits = [(element, spot) for element, text in texts for spot in spots(text, spec, ctx, "", "") if shown(element)]
-        inner = [(element, spot) for element, spot in hits if not any(_within(other, element) for other, _ in hits)]
-        if len({equality_key(spot.normalized.value, spec) for _, spot in inner}) == 1:
-            spot = inner[0][1]
-            yield name, spot.raw, node_xpath(inner[0][0])
+        if len({equality_key(spot.normalized.value, spec) for _, spot in hits}) == 1:
+            yield name, hits[0][1].raw, node_xpath(hits[0][0])
 
 
-def _within(inner: LexborNode, outer: LexborNode) -> bool:
-    node = inner.parent
-    while node is not None:
-        if node == outer:
-            return True
-        node = node.parent
-    return False
+def _short_texts(region: LexborNode) -> list[tuple[LexborNode, str]]:
+    """The region's elements with the short text each holds itself, outside struck text and set-apart content."""
+    excluded = _apart_ids(region, _STRUCK)
+    texts = ((element, _own_text(element)) for element in region.css("*") if element.mem_id not in excluded)
+    return [(element, text) for element, text in texts if text and len(text) <= _SPOT_LENGTH]
 
 
 def _apart_ids(region: LexborNode, extra: frozenset[str] = frozenset()) -> frozenset[int]:

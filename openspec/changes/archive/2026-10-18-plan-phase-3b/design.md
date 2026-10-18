@@ -12,7 +12,8 @@ checked-identifier field. Shape: a pair is `(label text, value element, value te
 - Decision: An element whose first child holds a label and a colon (U+003A or U+FF1A) gives the text after it, and
   sibling containers of one shape (two or more) each of a label element and a value element give their pairs. For a
   field, these two kinds read their values only when they give one distinct value; rows and `dl` groups keep their
-  earlier reading.
+  earlier reading (their elements are not read as lines or sibling pairs). A value holding another colon holds another
+  label and is not read.
 - Why: such lines and pairs repeat for related products and variants (a golden detail page lost a correct `sku` to
   three lines of other items before the rule); rows and `dl` groups are the page's own specification by the HTML
   Standard.
@@ -49,8 +50,7 @@ checked-identifier field. Shape: a pair is `(label text, value element, value te
 ### D-1644 — Measured effect on the golden detail pages
 - Date: 2026-10-18 · Change/PR: plan-phase-3b (#282) · Status: decided (owner-delegated 2026-10-17)
 - Decision: Detail cells with no LLM (`eval run --split dev --labels all`, drafts included) went from TP/FP/FN
-  198/57/56 to 200/57/54; `no_candidates` from 37 to 35 (colour and price gained a correct value, material a
-  disagreeing one). The 20–28 target is not reached: most remaining values sit under labels the schema words do not
+  198/57/56 to 201/57/53; `no_candidates` from 37 to 35 (colour, price and material gained a correct value). The 20–28 target is not reached: most remaining values sit under labels the schema words do not
   name (D-1642) or only in structured data and scripts.
 - Why: recorded as the PR's measure; a dev-draft report is no gate (owner #65).
 - Reversible: yes
