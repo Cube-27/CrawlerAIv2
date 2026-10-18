@@ -4,7 +4,6 @@
 
 Variants covers products with several variants: row-mapped `list<object>` fields, row discovery and key matching,
 per-row resolution, and the common-value rule for top-level offer fields (`resolve/rows.py`).
-Rationale: ARCHITECTURE §10 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-13.
 
 ## Requirements
 
@@ -69,9 +68,6 @@ Enforced by: `tests/unit/test_common_variant_fields.py` and `tests/property/test
 #### Scenario: URL names one variant
 - **WHEN** the request URL is a variant's own URL and the variants' prices differ
 - **THEN** top-level `price` is `conflict` (`offers_disagree`) and each price is in its `variants` row
-
-### Requirement: Selected variant by URL (INV-36, superseded)
-INV-36 SHALL NOT apply: superseded by INV-38 (owner, 2026-10-16, Appendix A #44). Enforced by: nothing; superseded.
 
 ### Requirement: Variant fill for sku and gtin
 A top-level `sku` or `gtin` field with no candidate owned by the target SHALL take its variants' value only when every

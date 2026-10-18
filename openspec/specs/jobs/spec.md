@@ -3,8 +3,7 @@
 ## Purpose
 
 Async work and discovery: queue, worker, scheduler, batch scrape, extract, map, crawl, job endpoints and change
-detection for re-submitted runs; shared API rules in [rest-api](../rest-api/spec.md). Rationale: ARCHITECTURE §6-§17
-([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-01, SPEC-10, SPEC-11.
+detection for re-submitted runs; shared API rules in [rest-api](../rest-api/spec.md).
 
 ## Requirements
 

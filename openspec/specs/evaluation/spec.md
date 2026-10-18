@@ -4,8 +4,7 @@
 
 Measuring extraction quality on the golden set, the one eval split (`dev`), grown in fresh batches scored once before
 any change is made on them: two-pass labels and draft label import, a replay harness, metrics, and fitting on the
-golden set. Rationale: owner decision #67 (master improvement plan, 2026-10-18), ARCHITECTURE §16
-([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-03. Storage is in
+golden set. Storage is in
 [persistence-storage](../persistence-storage/spec.md); the labeling screen in [frontend](../frontend/spec.md).
 
 ## Requirements
@@ -78,11 +77,6 @@ Confidence SHALL be `calibrated=true` only for the buckets `calibration.json` (f
 
 ### Requirement: Gated eval run
 `eval run --min-confidence` SHALL replay the split with that minimum confidence and store no run, so a fit never reads what a gate let through. Refs: D-1771.
-
-### Requirement: Retired evaluation invariants (INV-01, INV-02, INV-04, INV-19, INV-21, INV-25)
-INV-01 (private store), INV-02 (fitting on dev only), INV-04 (hidden-host scan), INV-19 (protected CI job), INV-21
-(merge gate) and INV-25 (complementary suppression) SHALL NOT apply: retired with the hidden and fresh splits (owner,
-2026-10-18, master plan decision 2). Enforced by: nothing; retired.
 
 ### Requirement: Row matching
 Listing label rows SHALL match engine rows one to one by canonical URL after dropping the page's session parameters

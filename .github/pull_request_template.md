@@ -1,4 +1,4 @@
-<!-- One-minute briefing. Rules: CLAUDE.md §2 and CONTRIBUTING.md. -->
+<!-- One-minute briefing. Rules: CLAUDE.md and CONTRIBUTING.md. -->
 
 ## Why
 
@@ -29,7 +29,7 @@ or acquire/ (C10). Otherwise write "Not applicable".
 
 ## Decisions
 
-<!-- The ID of each decision the tracker commit logs, with its status (`decided` or `needs-owner`); or "None". -->
+<!-- The ID of each decision the PR logs, with its status (`decided` or `needs-owner`); or "None". -->
 
 ## Checklist
 
@@ -38,5 +38,5 @@ or acquire/ (C10). Otherwise write "Not applicable".
 - [ ] No §22 candidate implemented (C13).
 - [ ] Aggregate report attached, if `collect/`, `normalize/`, `resolve/`, `llm/`, `config_ir/` or `acquire/` changed: golden-set delta per field type shown, no unexplained precision drop (C10).
 - [ ] Property or replay tests added; no test is named after a site or asserts one site's output (C9).
-- [ ] Behaviour changes have a spec delta in the change folder; if this PR completes the change, the deltas are applied to `openspec/specs/` and the change is archived.
-- [ ] Decisions listed above, and logged in the tracker commit (`openspec/decisions/README.md`, "Where an entry goes").
+- [ ] Behaviour changes have a spec delta in the change folder; if this PR completes the change, the deltas are applied to `openspec/specs/` and the folder is deleted.
+- [ ] Decisions listed above, and logged (`openspec/decisions/README.md`, "Where an entry goes").

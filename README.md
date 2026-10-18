@@ -3,9 +3,8 @@
 Clean, normalized, typed records from any website, for any schema, plus an executable per-site extraction config
 that a deterministic crawler can run.
 
-> **Status: implemented, not yet measured.** The core pipeline, API, MCP server and UI are built (16 specs done,
-> [openspec/changes/archive/](openspec/changes/archive/README.md)). Accuracy is unknown until labels exist (milestone
-> M). Work in progress: [openspec/changes/](openspec/changes/) and [openspec/backlog.md](openspec/backlog.md).
+> **Status: implemented; accuracy is measured on the golden set only.** Work in progress:
+> [openspec/backlog.md](openspec/backlog.md).
 
 **Agents: read CLAUDE.md before changing anything.**
 
@@ -42,21 +41,20 @@ around a [generalization contract](openspec/project.md#generalization-contract-c
 ## Documentation
 
 The docs follow the [OpenSpec](https://github.com/Fission-AI/OpenSpec) layout: current behaviour as requirements per
-capability, in-flight work as change folders, done work archived.
+capability, in-flight work as change folders (deleted once their deltas are applied).
 
 | Document | Purpose |
 |---|---|
 | [CLAUDE.md](CLAUDE.md) | Rules for coding agents working in this repo, what to read, and every command |
 | [openspec/project.md](openspec/project.md) | Project context, the generalization contract C1–C13, open owner items |
 | [openspec/specs/](openspec/specs/) | The current behaviour, one `spec.md` of requirements per capability (invariants `INV-NN` included) |
-| [openspec/changes/](openspec/changes/) | In-flight changes (proposal, tasks, spec deltas); [archive/](openspec/changes/archive/README.md) holds the done specs SPEC-00 … SPEC-15 |
 | [openspec/backlog.md](openspec/backlog.md) | Current focus, follow-ups and human-only tasks |
-| [openspec/design/](openspec/design/overview.md) | Design rationale (goals, contract evidence, candidates register) and the owner decisions; the full former ARCHITECTURE.md is archived |
+| [openspec/design/](openspec/design/overview.md) | Design rationale (goals, contract evidence, candidates register) and the owner decisions |
 | [openspec/decisions/](openspec/decisions/README.md) | How decisions are logged, and the cross-cutting log |
 | [openspec/OPEN_QUESTIONS.md](openspec/OPEN_QUESTIONS.md) | Decisions still open, each with a recommended default |
 | [openspec/conventions/](openspec/conventions/) | `ENGINEERING.md` (engineering principles), `DESIGN.md` (frontend conventions), `RECURRING.md` (recurring agent mistakes) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute: checks, pull requests, the evaluation report |
-| [.claude/skills/](.claude/skills/) | Agent procedures: `run-plan`, `implement-pr`, `pickup` |
+| [.claude/skills/](.claude/skills/) | The `implement-pr` procedure |
 
 ## Stack
 
@@ -81,7 +79,7 @@ it to a key from `cd backend && uv run crawlerai apikey create --label ui` first
 To run everything at once (API, worker, scheduler and the frontend on http://localhost:5173, in one terminal; Ctrl+C
 stops all of them), use `make up` instead. It also creates the UI key and writes it to `.env` when that key is unset
 or no longer in the database (after the database is recreated).
-Every other command, including the checks CI runs, is in [CLAUDE.md §7](CLAUDE.md#7-commands).
+Every other command, including the checks CI runs, is in [CLAUDE.md](CLAUDE.md).
 
 ## Repository layout
 
@@ -94,15 +92,14 @@ sdk/                    Python (pure httpx, pydantic) and TypeScript clients, ge
 frontend/               Vite + React + TypeScript + HeroUI v3; generated API client in src/api/
 infra/                  docker-compose.yml (Postgres), Dockerfile (the backend image), postgres/init.sql
 tools/                  repo checks: site-literal scan, data manifest, license scan, no-size-gates, file length
-openspec/               project context, capability specs, changes and archive, design, decisions, conventions
+openspec/               project context, capability specs, design, decisions, conventions
 .github/                CI workflows and the pull request template
 .claude/skills/         agent procedures
 ```
 
 The backend packages follow the pipeline: `acquire`, `collect`, `normalize`, `resolve`, `llm`, `config_ir`,
 `content`, `crawl`, `recurring`, `eval`, `api`, `mcp_server`, `worker`, `scheduler`, on top of `core`, `db`,
-`storage` and `schemas`. [SPEC-00 §4.1](openspec/changes/archive/2026-10-12-spec-00-project-setup/SPEC-00-project-setup.md#41-repo-layout)
-describes each.
+`storage` and `schemas`.
 
 ## License
 

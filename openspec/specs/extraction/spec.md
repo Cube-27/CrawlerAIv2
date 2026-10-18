@@ -5,7 +5,6 @@
 Extraction turns one capture into owned, located candidates from standards-based collectors (`collect/`) and renders
 page content formats; a listing's rows are in [listings](../listings/spec.md), and what publishes is in
 [resolution](../resolution/spec.md).
-Rationale: ARCHITECTURE §8 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-05, SPEC-07.
 
 ## Requirements
 

@@ -4,8 +4,7 @@
 
 The FastAPI app under `/v1` and the MCP server: auth, rate limits, problem responses, the synchronous scrape, schema,
 config, record, replay and usage endpoints, and the twelve MCP tools, all thin calls into `crawlerai.services`. Job
-endpoints, `map` and `crawl` are in [jobs](../jobs/spec.md). Rationale: ARCHITECTURE §13, §17, §18
-([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-07, SPEC-10.
+endpoints, `map` and `crawl` are in [jobs](../jobs/spec.md).
 
 ## Requirements
 

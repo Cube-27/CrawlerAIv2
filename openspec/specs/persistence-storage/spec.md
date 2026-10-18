@@ -3,9 +3,7 @@
 ## Purpose
 
 Where CrawlerAI v2 keeps its state: one PostgreSQL database, the data model in one baseline migration, capture
-bundles in an object store, retention, deterministic replay and the engine version stamp. Rationale: ARCHITECTURE
-§6, §15, Appendix A #43 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history:
-SPEC-01. Queue and job state are in [jobs](../jobs/spec.md); the golden set in
+bundles in an object store, retention, deterministic replay and the engine version stamp. Queue and job state are in [jobs](../jobs/spec.md); the golden set in
 [evaluation](../evaluation/spec.md).
 
 ## Requirements

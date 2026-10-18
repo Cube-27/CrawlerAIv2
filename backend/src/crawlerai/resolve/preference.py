@@ -5,7 +5,7 @@ from the request URL's query (INV-13); every other one is rejected with its reas
 exact-match type publishes only when all agree (INV-14); text, long_text, url and image_url take the first source kind
 of the type's order in `source_precedence.yaml`. A page's Offer fields come from one Offer (INV-15).
 
-On a detail page (SPEC-13 §4.6, INV-38; INV-36 is superseded), no variant is a default: every Offer of the target and of
+On a detail page (SPEC-13 §4.6, INV-38), no variant is a default: every Offer of the target and of
 its variants joins the atomic-offer rule, so a value that varies across variants publishes only in the row-mapped
 `variants` field. An identifier field the target states nothing for takes the value every variant states alike (variant
 fill).

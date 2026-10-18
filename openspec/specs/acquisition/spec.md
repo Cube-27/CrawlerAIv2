@@ -4,8 +4,6 @@
 
 Acquisition gets pages and records what happened: the HTTP and browser rungs, outcome classification, politeness,
 the SSRF guard, proxies, body bounds, per-fetch cookies and site sessions, and the capture bundle.
-Rationale: ARCHITECTURE §7, §15, §18 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md));
-history: SPEC-02.
 
 ## Requirements
 
