@@ -204,7 +204,7 @@ async def fetch_browser(
                 artifacts = await capture_artifacts(page.page, policy)
         text = markup(content)
         block_class = await classified(exchange, text)
-        challenge = await challenge_of(block_class, exchange, text, url, cookies)
+        challenge = await challenge_of(block_class, exchange, text, cookies)
         if export is not None:
             export.cookies, export.proxy = cookies, proxy
     except Failed as failed:
@@ -300,14 +300,16 @@ def markup(content: Content) -> str:
 
 
 async def challenge_of(
-    block_class: BlockClass, exchange: Exchange, text: str, url: str, cookies: tuple[SessionCookie, ...]
+    block_class: BlockClass, exchange: Exchange, text: str, cookies: tuple[SessionCookie, ...]
 ) -> str | None:
     """The challenge label of a `CHALLENGED` document (`acquire.challenge`), from its response headers, the names of
-    the cookies the context holds (its capture records no `Set-Cookie`) and its markup `text`."""
+    the cookies the context holds (its capture records no `Set-Cookie`) and its markup `text`, whose links resolve
+    against the URL that served it (RFC 3986 §5), past any redirect."""
     if block_class not in CHALLENGED:
         return None
     names = tuple(cookie.name for cookie in cookies)
-    return await asyncio.to_thread(challenge_label, exchange.status, exchange.response_headers, text, url, names)
+    status, headers = exchange.status, exchange.response_headers
+    return await asyncio.to_thread(challenge_label, status, headers, text, exchange.url, names)
 
 
 async def classified(exchange: Exchange, text: str) -> BlockClass:

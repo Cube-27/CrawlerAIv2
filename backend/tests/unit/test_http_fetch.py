@@ -146,6 +146,20 @@ def test_a_2xx_page_showing_a_vendors_stand_in_marker_is_blocked_and_labelled(se
     assert (stood_in.block_class, stood_in.attempts[0].challenge) == ("blocked", signature.vendor)
 
 
+def test_a_refusal_after_a_cross_host_redirect_is_read_against_the_host_that_served_it(server: Server) -> None:
+    # D-1206: a refusal whose links lead to other pages of its own host is a page of that site, not a stand-in; its
+    # links are resolved against the URL that answered (RFC 3986 §5), the last hop, not the URL first asked for.
+    final = server.url("/end", "other.example.test")
+    links = "".join(f'<a href="{server.url(f"/item/{i}", "other.example.test")}">Item {i}</a>' for i in range(8))
+    server.route("/start", redirect(final))
+    server.route("/end", html(f"<html><body><script>track()</script>{links}</body></html>".encode(), 403))
+
+    refused = fetch(server, server.url("/start"))
+
+    assert refused.bundle.manifest.final_url == final
+    assert (refused.block_class, refused.attempts[-1].challenge) == ("blocked", None)
+
+
 @pytest.mark.parametrize("declared", ["header", "meta"])
 def test_a_page_in_a_legacy_encoding_is_classified_from_its_decoded_text(server: Server, declared: str) -> None:
     # HTML Standard §13.2.3.2: the charset the Content-Type or a `meta` declaration names decodes the body once; a

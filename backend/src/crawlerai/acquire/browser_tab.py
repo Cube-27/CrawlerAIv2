@@ -358,7 +358,7 @@ async def _listing(
                 block_class = await classified(exchange, text)
             if block_class != "ok":
                 cookies = await context_cookies(page.page.context)
-                challenge = await challenge_of(block_class, exchange, text, url, cookies)
+                challenge = await challenge_of(block_class, exchange, text, cookies)
                 count(challenge, "browser")
                 one = _Outcome(exchange, content, block_class, None, challenge, steps)
                 return _one(url, policy, engine_version, fetched_at, started, one)

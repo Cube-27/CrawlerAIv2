@@ -67,7 +67,9 @@ async def fetch_http(
             block_class_of, last.status, last.response_headers, text, policy.page_kind
         )
         if block_class in CHALLENGED:
-            challenge = await asyncio.to_thread(challenge_label, last.status, last.response_headers, text, url)
+            # The document's links resolve against the URL that served it (RFC 3986 §5), the last hop's.
+            served = last.exchange.url
+            challenge = await asyncio.to_thread(challenge_label, last.status, last.response_headers, text, served)
     count(challenge, "http")
     result = fetch_result(
         url=url,
