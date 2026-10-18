@@ -405,7 +405,7 @@ def test_a_row_field_that_fails_is_repaired_under_the_verified_row() -> None:
     client = ScriptedClient(first, second)
     result = _run_listing(client)
     repair = client.requests[1]
-    assert "every other field: listing.fields.link." in repair.user
+    assert "every other field: row field link." in repair.user
     assert 'the row selector is {"expression": "ul > li", "post": [], "selector": "css"' in repair.user
     assert result.ir.listing is not None
     assert result.ir.listing.fields["link"].steps == [XPathStep(xpath="a/@href")]

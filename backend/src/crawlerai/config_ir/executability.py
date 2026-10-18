@@ -40,17 +40,17 @@ def field_class(steps: FieldSteps, *, has_recipe: bool) -> Executability:
 
 
 def config_classes(ir: ExtractionConfigIR) -> dict[str, Executability]:
-    """The class of each of the config's fields: page fields by name, row fields as `listing.<name>`, and a
-    listing's `next` as `listing.next` (a listing's row selector runs with the fields and is not listed)."""
+    """The class of each of the config's fields: page fields by name, row fields as `listing:<name>`, and a
+    listing's `next` as `listing:next` (a listing's row selector runs with the fields and is not listed)."""
     recipe = ir.api_recipe is not None
     classes: dict[str, Executability] = {
         name: field_class(steps, has_recipe=recipe) for name, steps in ir.fields.items()
     }
     listing = ir.listing
     if listing is not None:
-        classes.update({f"listing.{n}": field_class(steps, has_recipe=recipe) for n, steps in listing.fields.items()})
+        classes.update({f"listing:{n}": field_class(steps, has_recipe=recipe) for n, steps in listing.fields.items()})
         if listing.next is not None:
-            classes["listing.next"] = step_class(listing.next, has_recipe=recipe)
+            classes["listing:next"] = step_class(listing.next, has_recipe=recipe)
     return classes
 
 

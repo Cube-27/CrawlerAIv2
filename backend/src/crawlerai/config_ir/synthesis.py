@@ -356,7 +356,11 @@ class _Learning:
         return (head, "\n\n".join(blocks[1:])) if len(blocks) > 1 else (head,)
 
     def _repair_tail(self, ask: _Ask, failures: Mapping[str, _Failure]) -> str:
-        wanted = [*ask.page, *(["listing.row"] if ask.row else []), *(f"listing.fields.{n}" for n in ask.rows)]
+        wanted = [
+            *ask.page,
+            *(["the listing's row selector"] if ask.row else []),
+            *(f"row field {n}" for n in ask.rows),
+        ]
         parts = [
             REPAIR_RULES,
             f"Sample page 1 is shown above; the diagnostics also cover the sample pages not shown. Write new steps for "

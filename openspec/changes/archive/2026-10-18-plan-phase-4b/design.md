@@ -58,7 +58,7 @@ last. A config's fields are classed by the input their steps read (`config_ir/ex
 ### D-1725 — Unexecutable fields, and what is classed
 - Date: 2026-10-18 · Change/PR: plan-phase-4b (#287) · Status: decided (owner-delegated 2026-10-17)
 - Decision: A suspended field (no executor runs it) and an `api` source without an API recipe are `unexecutable`. The
-  classes cover the config's fields (page fields, `listing.<name>` row fields and `listing.next`), not role C's
+  classes cover the config's fields (page fields, `listing:<name>` row fields and `listing:next`), not role C's
   published locators (`text:` spans), which are not config steps. The release report carries the class per field
   and the counts per class; the API document and the generated clients change with it.
 - Why: the release check is the report of a config; a locator that is not a step is not executed by the config.

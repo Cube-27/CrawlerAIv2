@@ -82,9 +82,9 @@ def test_a_configs_fields_are_classed_with_listing_fields_and_next() -> None:
         "name": "static-html",
         "price": "needs-browser",
         "gone": "unexecutable",
-        "listing.title": "static-html",
-        "listing.rating": "unexecutable",
-        "listing.next": "needs-browser",
+        "listing:title": "static-html",
+        "listing:rating": "unexecutable",
+        "listing:next": "needs-browser",
     }
     assert class_counts(config) == {"static-html": 2, "needs-browser": 2, "api-call": 0, "unexecutable": 2}
 

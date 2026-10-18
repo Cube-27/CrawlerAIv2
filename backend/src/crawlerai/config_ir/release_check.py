@@ -72,10 +72,10 @@ def release_check(ir: ExtractionConfigIR, schema: SchemaDef, held_out: Sequence[
     fields = {name: _field(runs, name, schema, _page_seen, classes[name]) for name in ir.fields}
     listing = None
     if ir.listing is not None:
-        rows = {name: _field(runs, name, schema, _row_seen, classes[f"listing.{name}"]) for name in ir.listing.fields}
+        rows = {name: _field(runs, name, schema, _row_seen, classes[f"listing:{name}"]) for name in ir.listing.fields}
         next_ = None
         if ir.listing.next is not None:
-            next_ = _field(runs, NEXT_PAGE_FIELD, schema, _page_seen, classes["listing.next"])
+            next_ = _field(runs, NEXT_PAGE_FIELD, schema, _page_seen, classes["listing:next"])
         listing = ReleaseListing(fields=rows, next=next_)
     return ReleaseReport(
         held_out=[page.capture_id for page in held_out], fields=fields, listing=listing, executability=class_counts(ir)
