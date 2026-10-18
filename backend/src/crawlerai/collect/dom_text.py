@@ -260,7 +260,9 @@ def _labelled_by(blocks: _Blocks, element: LexborNode, named: list[tuple[str, ..
         return []
     lead = " ".join(label.split())
     form = block.form[len(lead) :].strip() if block.form.startswith(lead) else block.form
-    return [_Block(block.node, block.raw if form == block.form else form, form)] if form else []
+    if not form:
+        return []
+    return [block if form == block.form else _Block(block.node, form, form)]
 
 
 def _label(blocks: _Blocks, element: LexborNode) -> str | None:
