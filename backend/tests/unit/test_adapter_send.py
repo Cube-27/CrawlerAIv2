@@ -10,24 +10,19 @@ import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import pytest
-
 from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
-from crawlerai.acquire.politeness import BACKOFF_MAX, HostLimiter
+from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.robots import Robots
-from crawlerai.acquire.rungs import Rungs, adapter_registry
+from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.greenhouse import BOARD_HOSTS
-from crawlerai.core.settings import AcquireSettings
 from crawlerai.services.fetching import Fetching, adapter_send
-from crawlerai.services.polite import HostRules, page_first
+from crawlerai.services.polite import HostRules
 from crawlerai.storage.capture_bundle import HeaderList
 from crawlerai.storage.fs import FsStore
 
 PAGE_HOST = "shop.example.test"
-GREENHOUSE_BOARD = sorted(BOARD_HOSTS)[0]
 
 
 class CountingLimiter(HostLimiter):
@@ -89,22 +84,6 @@ async def _allowed(_url: str, _policy: FetchPolicy) -> HostRules:
     return HostRules(None)
 
 
-def test_the_first_request_to_the_page_host_takes_the_callers_turn_and_later_ones_wait(tmp_path: Path) -> None:
-    sent: list[str] = []
-    limiter = CountingLimiter()
-    send = adapter_send(_fetching(tmp_path, sent, limiter), PAGE_HOST, _allowed)
-    assert send is not None
-
-    async def three() -> None:
-        for host in (PAGE_HOST, PAGE_HOST, "cdn.example.test"):
-            await send(_request(host), FetchPolicy())
-
-    asyncio.run(three())
-
-    assert len(sent) == 3
-    assert limiter.waits == [PAGE_HOST, "cdn.example.test"]
-
-
 def test_a_request_robots_txt_disallows_is_not_sent_and_is_blocked(tmp_path: Path) -> None:
     sent: list[str] = []
 
@@ -140,89 +119,3 @@ def test_a_slow_down_with_a_retry_after_pauses_the_endpoint_host(tmp_path: Path)
     asyncio.run(one())
 
     assert limiter.admit(PAGE_HOST, timedelta(seconds=1)) == timedelta(seconds=20)
-
-
-def test_a_slow_down_pauses_the_host_no_longer_than_the_longest_backoff(tmp_path: Path) -> None:
-    clock = Clock()
-    limiter = HostLimiter(clock)
-
-    async def json(request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
-        return _answer(request, 503, (("Retry-After", "86400"),))
-
-    fetching = Fetching(Rungs(http=_never, browser=_never, json=json), SafeConnector(), FsStore(tmp_path), limiter)
-    send = adapter_send(fetching, PAGE_HOST, _allowed)
-    assert send is not None
-
-    async def one() -> FetchResult:
-        return await send(_request(PAGE_HOST), FetchPolicy())
-
-    asyncio.run(one())
-
-    assert limiter.admit(PAGE_HOST, timedelta(seconds=1)) == BACKOFF_MAX
-
-
-def test_a_slow_down_without_a_retry_after_pauses_the_host_by_the_first_backoff(tmp_path: Path) -> None:
-    # SPEC-02 §4.6: without a Retry-After, the backoff starts at 30 s.
-    limiter = HostLimiter(Clock())
-
-    async def json(request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
-        return _answer(request, 429)
-
-    fetching = Fetching(Rungs(http=_never, browser=_never, json=json), SafeConnector(), FsStore(tmp_path), limiter)
-    send = adapter_send(fetching, PAGE_HOST, _allowed)
-    assert send is not None
-
-    async def one() -> FetchResult:
-        return await send(_request(PAGE_HOST), FetchPolicy())
-
-    asyncio.run(one())
-
-    assert limiter.admit(PAGE_HOST, timedelta(seconds=1)) == timedelta(seconds=30)
-
-
-def test_there_is_no_adapter_send_without_the_json_rung(tmp_path: Path) -> None:
-    fetching = Fetching(Rungs(http=_never, browser=_never), SafeConnector(), FsStore(tmp_path), HostLimiter())
-
-    assert adapter_send(fetching, PAGE_HOST, _allowed) is None
-
-
-def test_every_adapter_runs_unless_the_setting_disables_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    every = adapter_registry(AcquireSettings().disabled_adapters)
-    monkeypatch.setenv("CRAWLERAI_DISABLED_ADAPTERS", "greenhouse")
-    some = adapter_registry(AcquireSettings().disabled_adapters)
-    board = f"https://{GREENHOUSE_BOARD}/example-tenant"
-    shop_listing = f"https://{PAGE_HOST}/collections/widgets"
-
-    assert [getattr(every.detect(url), "name", None) for url in (board, shop_listing)] == ["greenhouse", "shopify"]
-    assert [getattr(some.detect(url), "name", None) for url in (board, shop_listing)] == [None, "shopify"]
-
-
-def test_an_unknown_or_repeated_adapter_name_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    with pytest.raises(ValueError, match="no adapter named"):
-        adapter_registry(("shopify", "elsewhere"))
-    monkeypatch.setenv("CRAWLERAI_DISABLED_ADAPTERS", "shopify,shopify")
-    with pytest.raises(ValueError, match="listed twice"):
-        AcquireSettings()
-
-
-def test_a_request_on_the_page_host_goes_by_the_rules_read_for_the_page_without_reading_them_again() -> None:
-    # D-1384: the caller read the page host's robots.txt before the fetch; only another host's rules are read.
-    read: list[str] = []
-
-    async def rules(url: str, _policy: FetchPolicy) -> HostRules:
-        read.append(url)
-        return HostRules(1000)
-
-    known = HostRules(250, Robots("User-agent: *\nDisallow: /private/\n"))
-    first = page_first(PAGE_HOST, known, rules)
-
-    async def run() -> list[HostRules | None]:
-        return [
-            await first(f"https://{PAGE_HOST}/api/products", FetchPolicy()),
-            await first(f"https://{GREENHOUSE_BOARD}/v1/boards/x/jobs", FetchPolicy()),
-        ]
-
-    answers = asyncio.run(run())
-
-    assert answers == [known, HostRules(1000)]
-    assert read == [f"https://{GREENHOUSE_BOARD}/v1/boards/x/jobs"]

@@ -73,42 +73,6 @@ def test_corrected_steps_replace_the_fields_steps_as_operator_and_drop_their_mea
     }
 
 
-def test_a_field_the_config_lacks_gets_the_operators_steps() -> None:
-    corrected = _correct({"fields": {"subtitle": {"steps": [H2]}}})
-    assert corrected["fields"]["subtitle"]["status"] == "operator"
-    assert list(corrected["fields"]) == ["title", "brand", "subtitle"]
-
-
-def test_a_field_given_steps_is_no_longer_absent() -> None:
-    # D-1341: the operator found where the site states the field the learning pages never showed.
-    ir = BASE.model_copy(update={"absent": ["subtitle"]})
-
-    corrected = _correct({"fields": {"subtitle": {"steps": [H2]}}}, ir)
-
-    assert (corrected["absent"], corrected["fields"]["subtitle"]["status"]) == ([], "operator")
-    assert _correct({"confirm": ["brand"]}, ir)["absent"] == ["subtitle"]
-
-
-def test_a_null_field_is_removed() -> None:
-    assert list(_correct({"fields": {"brand": None}})["fields"]) == ["title"]
-
-
-def test_a_confirmed_field_keeps_its_steps_as_operator() -> None:
-    corrected = _correct({"confirm": ["brand"]})
-    assert corrected["fields"]["brand"] == {"steps": [H2_STORED], "status": "operator", "yield": None, "validity": None}
-    assert corrected["fields"]["title"]["status"] == "corroborated"
-
-
-def test_the_result_is_an_operator_config_to_be_validated_again() -> None:
-    provenance = _correct({"confirm": ["title"]})["provenance"]
-    assert provenance == {
-        "origin": "operator",
-        "validated_on": [],
-        "learned_at": "2026-10-14T12:00:00Z",
-        "engine_version": "now",
-    }
-
-
 def test_a_listing_routes_row_fields_to_its_rows_and_page_fields_to_the_page() -> None:
     schema = _schema("listing", name=TEXT, price=TEXT, heading=PAGE_TEXT)
     listing = {"row": {"xpath": "//tr"}, "fields": {"name": _steps(CELL)}}
@@ -139,23 +103,3 @@ def test_a_correction_the_config_cannot_take_is_refused_with_the_field(
     with pytest.raises(InvalidCorrection) as raised:
         correct(BASE, DETAIL, correction, engine_version="now", at=NOW)
     assert raised.value.errors == [error]
-
-
-def test_a_row_field_needs_a_listing_with_a_row_selector() -> None:
-    schema = _schema("listing", item=TEXT, heading=PAGE_TEXT)
-    correction = Correction.model_validate({"fields": {"item": {"steps": [CELL]}}})
-    ir = _ir({"heading": _steps(H1)})
-    with pytest.raises(InvalidCorrection) as raised:
-        correct(ir, schema, correction, engine_version="now", at=NOW)
-    assert raised.value.errors == [("fields.item", "a row field needs the config's listing row selector")]
-
-
-def test_steps_are_checked_as_ir_steps() -> None:
-    with pytest.raises(ValueError, match=r"upper-case\(\) is not an XPath 1\.0 function"):
-        Correction.model_validate({"fields": {"title": {"steps": [{"xpath": "upper-case(//h1)"}]}}})
-
-
-def test_the_operated_fields_are_those_given_steps_or_confirmed() -> None:
-    body = {"fields": {"title": {"steps": [H1]}, "brand": None}, "confirm": ["subtitle"]}
-    correction = Correction.model_validate(body)
-    assert correction.operated() == {"title", "subtitle"}

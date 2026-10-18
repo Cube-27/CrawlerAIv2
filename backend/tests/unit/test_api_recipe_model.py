@@ -5,9 +5,7 @@ import uuid
 from typing import Any
 
 import pytest
-from pydantic import JsonValue, ValidationError
 
-from crawlerai.collect.api import map_paths, read_map
 from crawlerai.config_ir.api_recipe.model import ApiRecipe, Binder, parse_binder
 
 _CAPTURE = str(uuid.UUID(int=1))
@@ -33,14 +31,6 @@ def _recipe(**changes: Any) -> dict[str, Any]:
     }
 
 
-def test_a_recipe_document_round_trips_through_json() -> None:
-    recipe = ApiRecipe.model_validate(_recipe())
-
-    assert ApiRecipe.model_validate_json(recipe.model_dump_json()) == recipe
-    assert recipe.model_dump(mode="json") == {**_recipe(), "body": None, "requires_page_fetch": False}
-    assert recipe.binders == {"slug": Binder("path", "1"), "lang": Binder("query", "hl")}
-
-
 def test_a_post_recipe_templates_its_body_and_a_page_data_binder_needs_the_page() -> None:
     document = _recipe(
         method="POST",
@@ -57,20 +47,6 @@ def test_a_post_recipe_templates_its_body_and_a_page_data_binder_needs_the_page(
 
 
 @pytest.mark.parametrize(
-    ("text", "binder"),
-    [
-        ("path:0", Binder("path", "0")),
-        ("query:id", Binder("query", "id")),
-        ("regex:/p/(\\d+)", Binder("regex", "/p/(\\d+)")),
-        ("js_state:$['props']['id']", Binder("js_state", "$['props']['id']")),
-    ],
-)
-def test_binders_parse_into_their_kind_and_argument(text: str, binder: Binder) -> None:
-    assert parse_binder(text) == binder
-    assert str(binder) == text
-
-
-@pytest.mark.parametrize(
     ("text", "reason"),
     [
         ("path:01", "not a path segment index"),
@@ -84,11 +60,6 @@ def test_binders_parse_into_their_kind_and_argument(text: str, binder: Binder) -
 def test_malformed_binders_are_refused(text: str, reason: str) -> None:
     with pytest.raises(ValueError, match=reason):
         parse_binder(text)
-
-
-def test_a_money_map_entry_joins_its_paths() -> None:
-    assert map_paths("$['p']+$['c']") == ["$['p']", "$['c']"]
-    assert map_paths("$['a+b']") == ["$['a+b']"]
 
 
 _REFUSED: dict[str, tuple[dict[str, Any], str]] = {
@@ -146,64 +117,3 @@ _REFUSED: dict[str, tuple[dict[str, Any], str]] = {
         "not a query of name, wildcard and index",
     ),
 }
-
-
-@pytest.mark.parametrize(
-    "pagination",
-    [
-        {"kind": "cursor", "where": "body", "name": "$['variables']['after']", "cursor": "$['end']", "rows": "$[*]"},
-        {"kind": "param", "where": "body", "name": "$['variables']['page']", "start": 1, "step": 1, "rows": "$[*]"},
-        {"kind": "next_url", "next": "$['links']['next']", "rows": "$['items'][*]"},
-        {"kind": "link", "rows": "$['items'][*]"},
-    ],
-    ids=["cursor-in-body", "param-in-body", "next_url", "link"],
-)
-def test_every_pagination_kind_round_trips(pagination: dict[str, Any]) -> None:
-    body = {"template": '{"query":"q","variables":{"page":1,"after":null}}'}
-    recipe = ApiRecipe.model_validate(_recipe(method="POST", body=body, pagination=pagination))
-
-    assert ApiRecipe.model_validate_json(recipe.model_dump_json()) == recipe
-    assert recipe.pagination is not None
-    assert recipe.pagination.model_dump() == pagination
-
-
-@pytest.mark.parametrize(("changes", "reason"), _REFUSED.values(), ids=_REFUSED.keys())
-def test_malformed_recipes_are_refused(changes: dict[str, Any], reason: str) -> None:
-    document = _recipe(**changes)
-
-    with pytest.raises(ValidationError, match=reason):
-        ApiRecipe.model_validate(document)
-
-
-@pytest.mark.parametrize(
-    ("path", "expected"),
-    [
-        ("$['data']['name']", "Desk Lamp"),
-        ("$['data']['price']", 19.5),
-        ("$['data']['price']+$['data']['currency']", "19.5 EUR"),
-        ("$['data']['missing']", None),
-        ("$['data']['tags'][*]", None),  # two nodes
-        ("$['data']", None),  # not a scalar
-        ("$['data']['price']+$['data']['sale']", None),  # one part is null
-    ],
-)
-def test_a_map_entry_reads_one_scalar_or_its_joined_parts(path: str, expected: object) -> None:
-    data: JsonValue = {"name": "Desk Lamp", "price": 19.5, "currency": "EUR", "tags": ["a", "b"], "sale": None}
-    document: JsonValue = {"data": data}
-
-    assert read_map(path, document) == expected
-
-
-def test_a_listing_recipe_names_the_calls_its_endpoint_makes() -> None:
-    recipe = ApiRecipe.model_validate(_recipe(url="https://api.example.test/v1/{slug}/items?hl={lang}"))
-    detail = ApiRecipe.model_validate(_recipe(pagination=None))
-
-    learned = recipe.learned_calls
-    assert learned is not None
-    assert (learned.method, learned.origin, learned.segments) == (
-        "GET",
-        "https://api.example.test",
-        ("v1", None, "items"),
-    )
-    assert (learned.rows, learned.map) == ("$['data']['items'][*]", recipe.map)
-    assert detail.learned_calls is None

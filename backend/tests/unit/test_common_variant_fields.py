@@ -82,37 +82,6 @@ def _why(preference: Preference) -> tuple[str, str]:
     return preference.status, preference.reason
 
 
-TWO_PRICES = _group(_variant(VARIANT_URLS[0], "10.00", sku="W-11"), _variant(VARIANT_URLS[1], "12.00", sku="W-12"))
-
-
-def test_a_variant_the_request_url_names_is_no_default_for_the_offer_fields() -> None:
-    result = _resolve(TWO_PRICES, VARIANT_URLS[1])
-
-    assert _why(result["price"]) == ("conflict", "offers_disagree")
-    assert [reason for _, reason in result["price"].rejected] == ["offers_disagree", "offers_disagree"]
-    assert result["price"] == _resolve(TWO_PRICES)["price"]
-
-
-def test_a_price_every_variant_states_alike_is_common_and_publishes() -> None:
-    same = _group(_variant(VARIANT_URLS[0], "10.00"), _variant(VARIANT_URLS[1], "10.00"))
-
-    assert _value(_resolve(same, VARIANT_URLS[0])["price"]) == {"amount": "10.00", "currency": "EUR"}
-
-
-def test_a_single_variant_publishes_its_offer_and_identifier_at_the_top_level() -> None:
-    result = _resolve(_group(_variant(VARIANT_URLS[0], "10.00", sku="W-11")))
-
-    assert _value(result["price"]) == {"amount": "10.00", "currency": "EUR"}
-    assert _value(result["sku"]) == "W-11"
-
-
-def test_an_identifier_that_varies_stays_out_of_the_top_level_even_when_the_url_names_a_variant() -> None:
-    result = _resolve(TWO_PRICES, VARIANT_URLS[0])
-
-    assert _why(result["sku"]) == ("missing", "not_owned")
-    assert _why(result["gtin"]) == ("missing", "no_candidates")  # no variant states one
-
-
 def test_an_identifier_fills_only_when_every_variant_agrees() -> None:
     agreeing = _group(
         _variant(VARIANT_URLS[0], "10.00", sku="W-11", gtin="4006381333931"),

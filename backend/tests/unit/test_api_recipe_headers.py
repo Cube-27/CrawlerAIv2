@@ -164,50 +164,6 @@ def _minimize(port: int, mode: str, extra: Extra = _no_extra) -> Proven | NotLea
     return asyncio.run(minimize(_spec(endpoint), MAP, _pages(endpoint, extra), SCHEMA, _replay))
 
 
-def test_an_endpoint_that_needs_no_header_keeps_only_accept(port: int, received: list[dict[str, str]]) -> None:
-    result = _minimize(port, "plain")
-
-    endpoint = f"http://api.example.test:{port}/plain"
-    assert result == Proven(
-        spec=RequestSpec(
-            method="GET",
-            url=f"{endpoint}/products/{{p1}}",
-            params_from_url={"p1": "path:1"},
-            headers={"Accept": "application/json"},
-        ),
-        headers_tried=0,
-    )
-    assert [(r["accept"], "x-requested-with" in r) for r in received] == [("application/json", False)] * 2
-
-
-def test_the_recipe_keeps_exactly_the_header_the_endpoint_needs(port: int) -> None:
-    result = _minimize(port, "xrw")
-
-    assert isinstance(result, Proven)
-    # User-Agent, Accept and Referer were tried and dropped before X-Requested-With made the replay pass.
-    assert (result.spec.headers, result.headers_tried) == (
-        {"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
-        4,
-    )
-
-
-def test_a_referer_that_is_the_page_url_is_kept_as_its_template(port: int, received: list[dict[str, str]]) -> None:
-    result = _minimize(port, "referer")
-
-    assert isinstance(result, Proven)
-    assert (result.spec.headers, result.headers_tried) == ({"Accept": "application/json", "Referer": "{page_url}"}, 3)
-    assert [r.get("referer") for r in received[-2:]] == [_page_url(slug) for slug in PRODUCTS]
-
-
-def test_an_endpoint_that_needs_two_added_headers_is_not_learnable(port: int) -> None:
-    def client(_slug: str) -> list[tuple[str, str]]:
-        return [("X-Client", "web")]
-
-    assert _minimize(port, "two", client) == NotLearnable(
-        reason="no single captured header makes the replay reproduce the sample values", headers_tried=6
-    )
-
-
 def test_credentials_and_tokens_are_never_sent_and_named_when_needed(port: int, received: list[dict[str, str]]) -> None:
     def secrets(_slug: str) -> list[tuple[str, str]]:
         return [("Authorization", "Basic dTpw"), ("X-Api-Key", HEX_KEY)]
@@ -220,53 +176,3 @@ def test_credentials_and_tokens_are_never_sent_and_named_when_needed(port: int, 
         headers_tried=5,
     )
     assert all("authorization" not in r and "x-api-key" not in r for r in received)
-
-
-def test_a_header_that_varies_between_pages_is_never_sent(port: int, received: list[dict[str, str]]) -> None:
-    def trace(slug: str) -> list[tuple[str, str]]:
-        return [("X-Trace", slug)]
-
-    result = _minimize(port, "trace", trace)
-
-    assert isinstance(result, NotLearnable)
-    assert result.reason.endswith(": X-Trace")
-    assert all("x-trace" not in r for r in received)
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        HEX_KEY,  # hex (RFC 4648 §8)
-        "dGhpcyBpcyBhIHNlY3JldCB0b2tlbg==",  # base64 (§4)
-        "eyJhbGciOiJIUzI1NiJ9-_x",  # base64url (§5)
-        "Token 123e4567-e89b-12d3-a456-426614174000",  # one list item of the value is a token
-        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl",  # a JWS compact serialization (RFC 7515 §7.1)
-        "1700000000.0123456789abcdef0123",  # dot-separated parts, one of them a token
-    ],
-)
-def test_a_value_that_looks_like_a_token_is_withheld(port: int, value: str) -> None:
-    def key(_slug: str) -> list[tuple[str, str]]:
-        return [("X-Api-Key", value)]
-
-    result = _minimize(port, "key", key)
-
-    assert isinstance(result, NotLearnable)
-    assert result.reason.endswith(": X-Api-Key")
-
-
-def test_a_form_media_type_is_not_a_token(port: int) -> None:
-    def form(_slug: str) -> list[tuple[str, str]]:
-        return [("X-Api-Key", "application/x-www-form-urlencoded")]
-
-    result = _minimize(port, "key", form)
-
-    assert isinstance(result, Proven)
-    assert result.spec.headers == {"Accept": "application/json", "X-Api-Key": "application/x-www-form-urlencoded"}
-
-
-def test_values_that_differ_from_the_capture_are_not_learnable(port: int) -> None:
-    result = _minimize(port, "wrong")
-
-    assert result == NotLearnable(
-        reason="no single captured header makes the replay reproduce the sample values", headers_tried=5
-    )

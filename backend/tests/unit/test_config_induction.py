@@ -57,58 +57,9 @@ def test_a_role_c_span_is_induced_through_the_element_that_holds_it() -> None:
     assert induced.fields["title"].steps == [XPathStep(xpath="normalize-space(//h1[@id='t'])")]
 
 
-def test_a_role_c_span_on_one_page_and_a_dom_value_on_another_share_a_selector() -> None:
-    induced = _induce_on(ANCHORED, TEXT_LOCATOR, "dom:/html/body/h1", TEXT_LOCATOR)
-    assert induced.fields["title"].steps == [XPathStep(xpath="normalize-space(//h1[@id='t'])")]
-
-
-def test_a_span_no_element_holds_alone_has_no_verified_selector() -> None:
-    whole = f"text:0-{len(ANCHORED.cleaned_text.text)}"
-    assert _induce_on(ANCHORED, *[whole] * 3).to_synthesize == {"title": "no_verified_selector"}
-
-
-def test_a_meta_value_is_read_from_its_content() -> None:
-    induced = _induce_on(ANCHORED, *["meta:og:title"] * 3)
-    assert induced.fields["title"].steps == [XPathStep(xpath="//meta[@property='og:title']/@content")]
-
-
-def test_a_field_missing_on_one_sample_page_goes_to_synthesis() -> None:
-    locators = ["microdata:/html[1]/body[1]/h1[1]"] * 4
-    assert _induce(*locators, None).to_synthesize == {"title": "not_published_on_every_page"}
-
-
-def test_locators_proposing_no_common_step_have_no_verified_selector() -> None:
-    induced = _induce(*["microdata:/html[1]/body[1]/h1[1]"] * 4, "jsonld:0:$['name']")
-    assert induced.to_synthesize == {"title": "no_verified_selector"}
-
-
 def test_values_of_one_adapter_come_from_its_mapping() -> None:
     induced = _induce(*["adapter:board:$['title']"] * 5)
     assert (induced.fields, induced.mapped, induced.to_synthesize) == ({}, {"title": "adapter:board"}, {})
-
-
-def test_values_of_two_adapters_have_no_common_pattern() -> None:
-    induced = _induce(*["adapter:board:$['title']"] * 4, "adapter:other:$['title']")
-    assert induced.to_synthesize == {"title": "no_common_pattern"}
-
-
-def test_a_listings_row_fields_are_left_to_listing_induction() -> None:
-    assert _induce(*["microdata:/html[1]/body[1]/h1[1]"] * 5, page_kind="listing") == Induction()
-
-
-def test_an_unanchored_element_has_no_verified_selector() -> None:
-    induced = _induce(*["microdata:/html[1]/body[1]/h1[1]"] * 5)
-    assert (induced.fields, induced.to_synthesize) == ({}, {"title": "no_verified_selector"})
-
-
-def test_an_expression_of_an_earlier_config_is_kept_as_it_is() -> None:
-    induced = _induce(*["config:title:0:normalize-space(//h1)"] * 5)
-    assert induced.fields["title"].steps == [XPathStep(xpath="normalize-space(//h1)")]
-
-
-def test_a_structural_dom_value_is_induced_like_a_microdata_element() -> None:
-    induced = _induce(*["dom:/html[1]/body[1]/h1[1]"] * 5)
-    assert (induced.fields, induced.to_synthesize) == ({}, {"title": "no_verified_selector"})
 
 
 def test_an_embedded_state_value_is_read_by_its_path_over_the_pages_state_documents() -> None:

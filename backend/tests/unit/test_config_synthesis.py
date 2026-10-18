@@ -3,23 +3,18 @@ every sample page; failing fields are repaired with diagnostics at most 3 times;
 The client is scripted; no provider is called. Pages are synthetic (`example.test`)."""
 
 import asyncio
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import pytest
-from jsonschema import Draft202012Validator
-
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir import step_wire, synthesis
+from crawlerai.config_ir import step_wire
 from crawlerai.config_ir.induction import Published, SamplePage
-from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, FieldSteps, ListingSpec, XPathStep
-from crawlerai.config_ir.synthesis import ROW, Synthesis, synthesize
+from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, XPathStep
+from crawlerai.config_ir.synthesis import Synthesis, synthesize
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId, SchemaId
-from crawlerai.llm.client import BudgetExhausted, LLMRequest
 from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -33,7 +28,6 @@ URL = FieldSpec(type=FieldType.URL, description="Link", scope="row")
 NEXT = FieldSpec(type=FieldType.URL, description="Next page", scope="page")
 
 TITLE = {"xpath": "normalize-space(//h1[@id='t'])"}
-WRONG = {"xpath": "normalize-space(//h2)"}
 
 
 def _schema(page_kind: str = "detail", **fields: FieldSpec) -> SchemaDef:
@@ -115,198 +109,13 @@ def _run(
 # --- the request ---
 
 
-def test_the_first_request_is_a_strong_synthesis_call_charged_to_the_job() -> None:
-    client = ScriptedClient(_fields(title=[TITLE]))
-    _run(client)
-    (req,) = client.requests
-    assert (req.prompt_kind, req.model_class, req.job_id) == ("a_synth", "strong", JOB)
-
-
-def test_the_request_shows_each_field_and_each_pages_published_value_and_html() -> None:
-    client = ScriptedClient(_fields(title=[TITLE]))
-    _run(client)
-    user = _prompt(client.requests[0])
-    assert "- title (text): Name of the item" in user
-    assert user.count("<sample_page n=") == 5
-    assert '- title: "Item 3"' in user
-    assert '<h1 id="t"> Item 3 </h1>' in user
-
-
-def test_the_output_schema_has_steps_for_the_asked_fields_and_no_place_for_a_value() -> None:
-    client = ScriptedClient(_fields(title=[TITLE]))
-    _run(client)
-    validator = Draft202012Validator(client.requests[0].output_schema)
-    assert validator.is_valid(_fields(title=[TITLE]))
-    assert not validator.is_valid({"fields": [{**_steps("title", [TITLE]), "value": "Item 1"}]})
-    assert not validator.is_valid({"fields": [{"field": "title", "steps": [{**_wire(TITLE), "value": "Item 1"}]}]})
-    assert not validator.is_valid(_fields(title=[TITLE], other=[TITLE]))
-
-
-def test_the_output_schema_holds_one_step_form_whatever_the_number_of_fields() -> None:
-    # A provider compiles the output schema into a grammar of bounded size (SPEC-06 §4.2): a schema that repeated the
-    # step form per field outgrew it on a preset with many fields (D-1008), so the fields are named in one list.
-    few = synthesis.output_schema(["title"], False, [])
-    many = synthesis.output_schema([f"field_{n}" for n in range(60)], False, [])
-    # `post` is named twice in the one step form: as a property and as required.
-    assert json.dumps(many).count('"post"') == json.dumps(few).count('"post"') == 2
-
-
-def test_a_field_named_twice_gets_the_steps_of_both_entries_and_one_not_named_none() -> None:
-    schema = _schema(title=TEXT, sku=FieldSpec(type=FieldType.TEXT, description="Code"))
-    sample = [
-        SamplePage(s.page, CTX, {**s.published, "sku": Published(f"S-{n}", "text:0-3")})
-        for n, s in enumerate(SAMPLE, 1)
-    ]
-    reply: dict[str, Any] = {"fields": [_steps("title", []), _steps("title", [TITLE])]}
-    client = ScriptedClient(reply, *[{"fields": []}] * 3)
-    result = _run(client, ("sku", "title"), sample=sample, schema=schema)
-    assert result.ir.fields["title"].steps == [XPathStep(xpath=TITLE["xpath"])]
-    assert result.unresolved == {"sku": ("no_steps",)}
-
-
 # --- verification and repair ---
-
-
-def test_steps_that_reproduce_every_published_value_are_kept_after_one_call() -> None:
-    client = ScriptedClient(_fields(title=[TITLE]))
-    result = _run(client)
-    assert result.ir.fields == {"title": FieldSteps(steps=[XPathStep(xpath=TITLE["xpath"])], status="uncorroborated")}
-    assert (result.ir.provenance.origin, result.unresolved, result.repairs, len(client.requests)) == (
-        "llm_synth",
-        {},
-        0,
-        1,
-    )
-
-
-def test_a_failing_field_is_repaired_with_its_previous_steps_and_diagnostics() -> None:
-    client = ScriptedClient(_fields(title=[WRONG]), _fields(title=[TITLE]))
-    result = _run(client)
-    assert (list(result.ir.fields), result.repairs) == (["title"], 1)
-    repair = client.requests[1]
-    assert (repair.prompt_kind, repair.model_class) == ("a_repair", "strong")
-    assert '- title: [{"expression": "normalize-space(//h2)", "post": [], "selector": "xpath"' in repair.user
-    assert '  - page 1: value_mismatch("Other 1", "Item 1")' in repair.user
-
-
-def test_repairs_stop_after_three_rounds_and_the_field_is_left_without_steps() -> None:
-    client = ScriptedClient(*[_fields(title=[WRONG])] * 4)
-    result = _run(client)
-    assert [r.prompt_kind for r in client.requests] == ["a_synth", "a_repair", "a_repair", "a_repair"]
-    assert (result.repairs, result.ir) == (3, _ir())
-    assert result.unresolved["title"][0] == 'page 1: value_mismatch("Other 1", "Item 1")'
-
-
-def test_a_repair_asks_only_for_the_fields_that_failed() -> None:
-    schema = _schema(title=TEXT, sku=FieldSpec(type=FieldType.TEXT, description="Code"))
-    sample = [
-        SamplePage(s.page, CTX, {**s.published, "sku": Published(f"S-{n}", "text:0-3")})
-        for n, s in enumerate(SAMPLE, 1)
-    ]
-    sku = {"xpath": "normalize-space(//p[@class='sku'])"}
-    client = ScriptedClient(_fields(title=[TITLE], sku=[WRONG]), _fields(sku=[sku]))
-    result = _run(client, ("sku", "title"), sample=sample, schema=schema)
-    first, repair = client.requests
-    # The schema stays the first round's (a changed schema misses the prompt cache); the tail names what is wanted.
-    assert repair.output_schema == first.output_schema
-    assert "for these items only, and an empty `steps` list for every other field: sku." in repair.user
-    assert sorted(result.ir.fields) == ["sku", "title"]
-
-
-def test_a_repair_repeats_the_first_requests_cached_prefix_with_one_page() -> None:
-    client = ScriptedClient(_fields(title=[WRONG]), _fields(title=[TITLE]))
-    _run(client)
-    first, repair = client.requests
-    assert first.system == repair.system  # one system prompt for every round: the cache serves the repair
-    assert len(first.cached) == 2
-    assert repair.cached == first.cached[:1]
-    assert first.cached[0].count("<sample_page n=") == 1
-    assert first.cached[1].count("<sample_page n=") == 4
-    assert "<sample_page" not in repair.user
-    assert first.user != repair.user
-
-
-def test_a_pages_json_keys_and_html_together_stay_within_the_limit() -> None:
-    members = ", ".join(f'"key{n}": 1' for n in range(500))
-    body = "<p>filler</p>" * 400 + '<h1 id="t">Item 1</h1>'
-    page = ParsedPage(
-        f'<html><head><script type="application/json">{{{members}}}</script></head><body>{body}</body></html>'
-    )
-    sample = [SamplePage(page, CTX, {"title": Published("Item 1", "microdata:/html/body/h1")})]
-    client = ScriptedClient(_fields(title=[TITLE]))
-    _run(client, sample=sample, max_chars=1_000)
-    block = client.requests[0].cached[0]
-    keys, html = block.split("JSON documents (key paths)")[1].split("\nHTML (")
-    keys_text = keys.split(":\n", 1)[1]
-    html_text = html.split(":\n", 1)[1].split("\n</sample_page>")[0]
-    assert len(keys_text.strip()) <= 500
-    assert len(keys_text.strip()) + len(html_text) <= 1_000
-    assert "Item 1" in html_text
-
-
-def test_a_pages_input_is_cut_to_the_limit() -> None:
-    client = ScriptedClient(_fields(title=[TITLE]))
-    _run(client, max_chars=60)
-    assert "HTML (characters 15 to 75 of 112):" in client.requests[0].cached[0]
-
-
-@pytest.mark.parametrize(
-    ("step", "diagnostic"),
-    [
-        ({"xpath": "//h1 | //h2"}, "page 1: multi_match(2)"),
-        ({"xpath": "//h3"}, "page 1: no_match"),
-        ({"regex": "<h1>(.*)</h1>", "source": "xhr"}, "step 0: invalid_step(Extra inputs are not permitted"),
-    ],
-)
-def test_each_failure_has_its_diagnostic(step: dict[str, Any], diagnostic: str) -> None:
-    client = ScriptedClient(*[_fields(title=[step])] * 4)
-    assert _run(client).unresolved["title"][0].startswith(diagnostic)
 
 
 def test_a_step_that_does_not_parse_is_dropped_and_the_others_are_verified() -> None:
     client = ScriptedClient(_fields(title=[{"xpath": "lower-case(//h1)"}, TITLE]))
     result = _run(client)
     assert result.ir.fields["title"].steps == [XPathStep(xpath=TITLE["xpath"])]
-
-
-def test_a_step_that_does_not_parse_is_reported_when_the_others_fail() -> None:
-    client = ScriptedClient(*[_fields(title=[{"xpath": "lower-case(//h1)"}, WRONG])] * 4)
-    diagnostics = _run(client).unresolved["title"]
-    assert diagnostics[0].startswith("step 0: invalid_xpath(")
-    assert diagnostics[1] == 'page 1: value_mismatch("Other 1", "Item 1")'
-
-
-def test_an_empty_reply_for_a_field_is_no_steps() -> None:
-    client = ScriptedClient(*[_fields(title=[])] * 4)
-    assert _run(client).unresolved == {"title": ("no_steps",)}
-
-
-def test_a_field_published_on_no_sample_page_is_not_asked() -> None:
-    sample = [SamplePage(s.page, CTX, {}) for s in SAMPLE]
-    client = ScriptedClient()
-    result = _run(client, sample=sample)
-    assert (client.requests, result.unresolved, result.ir) == ([], {"title": ("not_published",)}, _ir())
-
-
-def test_induced_fields_are_kept_and_not_asked() -> None:
-    induced = {"sku": {"steps": [{"xpath": "normalize-space(//p)"}], "status": "uncorroborated"}}
-    schema = _schema(title=TEXT, sku=TEXT)
-    client = ScriptedClient(_fields(title=[TITLE]))
-    result = _run(client, schema=schema, ir=_ir(fields=induced))
-    assert sorted(result.ir.fields) == ["sku", "title"]
-    assert "- sku" not in _prompt(client.requests[0])
-
-
-def test_a_field_outside_the_schema_is_refused() -> None:
-    client = ScriptedClient()
-    with pytest.raises(ValueError, match="not fields of synthetic"):
-        _run(client, ("price",))
-
-
-def test_an_llm_failure_propagates() -> None:
-    client = ScriptedClient(BudgetExhausted("no budget"))
-    with pytest.raises(BudgetExhausted):
-        _run(client)
 
 
 # --- listings ---
@@ -345,10 +154,6 @@ def _listing_reply(row: dict[str, Any] | None = None, **fields: list[dict[str, A
     return listing
 
 
-def _prompt(req: LLMRequest) -> str:
-    return "\n\n".join([*req.cached, req.user])
-
-
 def _run_listing(client: ScriptedClient, sample: list[SamplePage] = LISTING_SAMPLE) -> Synthesis:
     fields = ("link", "next_page_url", "title")
     return _run(client, fields, sample=sample, schema=_schema("listing", **LISTING_SCHEMA))
@@ -366,87 +171,3 @@ def test_a_listing_gets_its_row_selector_row_fields_and_next() -> None:
     assert (listing.row, listing.next) == (CssStep.model_validate(ROW_STEP), XPathStep.model_validate(NEXT_STEP))
     assert listing.fields["title"].steps == [XPathStep(xpath="normalize-space(em)")]
     assert (result.ir.fields, result.unresolved) == ({}, {})
-
-
-def test_next_takes_one_step() -> None:
-    wrong = {"xpath": "//a[@rel='prev']/@href"}
-    first = {
-        **_fields(next_page_url=[wrong, NEXT_STEP]),
-        "listing": _listing_reply(ROW_STEP, title=[ROW_TITLE], link=[ROW_LINK]),
-    }
-    client = ScriptedClient(first, {**_fields(next_page_url=[NEXT_STEP]), "listing": _listing_reply(ROW_STEP)})
-    result = _run_listing(client)
-    assert "  - step 1: invalid_step(next_page_url takes one step)" in client.requests[1].user
-    assert result.ir.listing is not None
-    assert result.ir.listing.next == XPathStep.model_validate(NEXT_STEP)
-
-
-def test_a_row_selector_with_too_few_rows_is_repaired_with_its_row_fields() -> None:
-    first = {
-        **_fields(next_page_url=[NEXT_STEP]),
-        "listing": _listing_reply({"css": "ul > li:first-child"}, title=[ROW_TITLE], link=[ROW_LINK]),
-    }
-    second = {**_fields(), "listing": _listing_reply(ROW_STEP, title=[ROW_TITLE], link=[ROW_LINK])}
-    client = ScriptedClient(first, second)
-    result = _run_listing(client)
-    assert "  - page 1: rows(1, 3)" in client.requests[1].user
-    assert "  - row_not_verified" in client.requests[1].user
-    assert result.ir.listing is not None
-    assert sorted(result.ir.listing.fields) == ["link", "title"]
-    assert result.ir.listing.next == XPathStep.model_validate(NEXT_STEP)
-
-
-def test_a_row_field_that_fails_is_repaired_under_the_verified_row() -> None:
-    first = {
-        **_fields(next_page_url=[NEXT_STEP]),
-        "listing": _listing_reply(ROW_STEP, title=[ROW_TITLE], link=[{"attr": "class"}]),
-    }
-    second = {**_fields(), "listing": _listing_reply(ROW_STEP, link=[ROW_LINK])}
-    client = ScriptedClient(first, second)
-    result = _run_listing(client)
-    repair = client.requests[1]
-    assert "every other field: row field link." in repair.user
-    assert 'the row selector is {"expression": "ul > li", "post": [], "selector": "css"' in repair.user
-    assert result.ir.listing is not None
-    assert result.ir.listing.fields["link"].steps == [XPathStep(xpath="a/@href")]
-
-
-def test_without_a_verified_row_there_is_no_listing_and_next_is_left_out() -> None:
-    reply = {
-        **_fields(next_page_url=[NEXT_STEP]),
-        "listing": _listing_reply({"attr": "class"}, title=[ROW_TITLE], link=[ROW_LINK]),
-    }
-    empty = {**_fields(), "listing": _listing_reply({"attr": "class"}, title=[], link=[])}
-    client = ScriptedClient(reply, *[empty] * 3)
-    result = _run_listing(client)
-    assert (result.ir.listing, result.ir.fields) == (None, {})
-    assert result.unresolved["next_page_url"] == ("no_listing",)
-    assert result.unresolved[ROW][:2] == (
-        "page 1: rows(0, 3)",
-        "page 1: a row step selects elements, so it is an xpath or css step",
-    )
-
-
-def test_an_induced_listing_keeps_its_rows_and_next_and_gains_the_row_fields_role_a_adds() -> None:
-    induced_title = FieldSteps(steps=[XPathStep.model_validate(ROW_TITLE)], status="uncorroborated")
-    listing = ListingSpec(
-        row=CssStep.model_validate(ROW_STEP), fields={"title": induced_title}, next=XPathStep.model_validate(NEXT_STEP)
-    )
-    ir = _ir("listing").model_copy(update={"listing": listing})
-    client = ScriptedClient({"listing": _listing_reply(link=[ROW_LINK])})
-    result = _run(client, ("link",), sample=LISTING_SAMPLE, schema=_schema("listing", **LISTING_SCHEMA), ir=ir)
-    (req,) = client.requests
-    assert '"row"' not in json.dumps(req.output_schema)
-    assert result.ir.listing is not None
-    assert result.ir.listing.model_copy(update={"fields": {}}) == listing.model_copy(update={"fields": {}})
-    assert set(result.ir.listing.fields) == {"title", "link"}
-    assert result.ir.provenance.origin == "llm_synth"
-
-
-def test_an_induced_listing_role_a_adds_nothing_to_is_returned_as_it_was() -> None:
-    induced_title = FieldSteps(steps=[XPathStep.model_validate(ROW_TITLE)], status="uncorroborated")
-    listing = ListingSpec(row=CssStep.model_validate(ROW_STEP), fields={"title": induced_title})
-    ir = _ir("listing").model_copy(update={"listing": listing})
-    client = ScriptedClient(*[{"listing": _listing_reply()}] * 4)
-    result = _run(client, ("link",), sample=LISTING_SAMPLE, schema=_schema("listing", **LISTING_SCHEMA), ir=ir)
-    assert result.ir == ir

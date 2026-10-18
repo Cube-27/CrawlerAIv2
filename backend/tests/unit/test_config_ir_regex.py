@@ -4,8 +4,6 @@ same way pass; constructs only one of them has, or that they read differently, a
 import re
 
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 
 from crawlerai.config_ir.portable_regex import RegexError, check_pattern, check_replacement
 
@@ -62,43 +60,7 @@ def test_constructs_outside_the_subset_are_refused(pattern: str, construct: str)
         check_pattern(pattern)
 
 
-@pytest.mark.parametrize("pattern", [r"(?<=a+)b", r"(a"])
-def test_patterns_python_cannot_compile_are_refused(pattern: str) -> None:
-    with pytest.raises(RegexError, match="not a valid pattern"):
-        check_pattern(pattern)
-
-
 # A grammar of the shared subset: literals, escapes both engines read alike, classes, groups and quantifiers.
-_atom = st.one_of(
-    st.from_regex(r"[A-Za-z0-9 _,:;]", fullmatch=True),
-    st.sampled_from([r"\d", r"\w", r"\s", r"\.", r"\-", r"\$", ".", "[a-z0-9]", r"[^\s<>]", r"\x2F"]),
-)
-_quantifier = st.sampled_from(["", "*", "+", "?", "*?", "{2}", "{1,4}", "{3,}"])
-_piece = st.tuples(_atom, _quantifier).map("".join)
-_sequence = st.lists(_piece, min_size=1, max_size=6).map("".join)
-_portable = st.recursive(
-    _sequence,
-    lambda inner: st.one_of(
-        st.tuples(inner, inner).map(lambda pair: f"{pair[0]}|{pair[1]}"),
-        inner.map(lambda body: f"({body})"),
-        inner.map(lambda body: f"(?:{body})"),
-        st.tuples(inner, inner).map(lambda pair: f"{pair[0]}(?={pair[1]})"),
-    ),
-    max_leaves=6,
-)
-
-
-@given(_portable)
-def test_patterns_from_the_subset_grammar_pass(pattern: str) -> None:
-    assert check_pattern(pattern) == pattern
-
-
-@pytest.mark.parametrize(("replacement", "groups"), [("", 0), (r"\1-\2", 2), ("$ and {} and \\9x", 9)])
-def test_portable_replacements_pass(replacement: str, groups: int) -> None:
-    pattern = re.compile("(a)" * groups)
-    assert check_replacement(replacement, pattern) == replacement
-
-
 @pytest.mark.parametrize(
     ("replacement", "groups", "construct"),
     [

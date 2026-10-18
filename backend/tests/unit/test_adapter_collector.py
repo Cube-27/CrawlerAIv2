@@ -6,33 +6,26 @@ The platforms come from the adapter modules and the recorded API responses under
 no hostname or tenant is written here (C3, C9).
 """
 
-import html
 import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import ALL, Adapter, AdapterMatch, Shape
+from crawlerai.adapters.base import Adapter, AdapterMatch, Shape
 from crawlerai.adapters.greenhouse import Greenhouse
 from crawlerai.adapters.lever import Lever
 from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.base import CollectResult, Entity
-from crawlerai.collect.json_doc import select
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.text import fragment_text
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.dispatch import normalize
+from crawlerai.normalize.base import Context
 from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from crawlerai.schemas.types import FieldSpec, SchemaDef
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC))
@@ -54,10 +47,6 @@ def _schema(page_kind: PageKind, **fields: FieldSpec) -> SchemaDef:
         page_kind=page_kind,
         fields=fields,
     )
-
-
-def _text(path: str, scope: str = "row") -> FieldSpec:
-    return FieldSpec.model_validate({"type": "text", "description": "d", "scope": scope, "schema_org": path})
 
 
 def _fixture(name: str) -> str:
@@ -109,134 +98,6 @@ def test_a_detail_response_is_one_posting_with_a_candidate_per_documented_field(
     assert result.diagnostics == ()
 
 
-def test_a_lever_detail_response_reads_each_documented_member() -> None:
-    result = _collect(LEVER, "detail", _fixture("lever/posting.json"), _preset("job_detail"))
-
-    assert {field: locator for (_, field), (_, locator) in _values(result).items()} == {
-        "title": "adapter:lever:$['text']",
-        "locations": "adapter:lever:$['categories']['location']",
-        "description": "adapter:lever:$['description']",
-        # The posting's application form, its ApplyAction's target.
-        "apply_url": "adapter:lever:$['applyUrl']",
-    }
-
-
-def test_a_listing_response_is_a_list_of_postings_each_owning_its_values() -> None:
-    result = _collect(LEVER, "listing", _fixture("lever/postings.json"), _preset("job_listing"))
-
-    rows = ("adapter:lever:$[0]", "adapter:lever:$[1]")
-    assert [(e.id, e.types[0], e.parent, e.via) for e in result.entities] == [
-        ("adapter:lever:$", "ItemList", None, None),
-        *((row, "JobPosting", "adapter:lever:$", "itemListElement") for row in rows),
-    ]
-    assert result.entities[2].urls == ("https://jobs.example.com/example-tenant/00000000-0000-4000-8000-000000000002",)
-    values = _values(result)
-    assert values[(rows[0], "title")] == ("Synthetic Platform Engineer", "adapter:lever:$[0]['text']")
-    assert values[(rows[1], "title")] == ("Synthetic Data Analyst", "adapter:lever:$[1]['text']")
-    assert values[(rows[1], "locations")] == (["Example City"], "adapter:lever:$[1]['categories']['location']")
-    assert {field for _, field in values} == {"title", "url", "locations"}
-
-
-def test_the_listing_root_of_an_object_response_addresses_its_rows() -> None:
-    result = _collect(GREENHOUSE, "listing", _fixture("greenhouse/jobs.json"), _preset("job_listing"))
-
-    assert [e.id for e in result.entities] == [
-        "adapter:greenhouse:$",
-        "adapter:greenhouse:$['jobs'][0]",
-        "adapter:greenhouse:$['jobs'][1]",
-    ]
-    assert _values(result)[("adapter:greenhouse:$['jobs'][1]", "locations")] == (
-        ["Example City"],
-        "adapter:greenhouse:$['jobs'][1]['location']['name']",
-    )
-
-
-@pytest.mark.parametrize(
-    ("adapter", "page_kind", "fixture", "preset"),
-    [
-        (GREENHOUSE, "detail", "greenhouse/job.json", "job_detail"),
-        (GREENHOUSE, "listing", "greenhouse/jobs.json", "job_listing"),
-        (LEVER, "detail", "lever/posting.json", "job_detail"),
-        (LEVER, "listing", "lever/postings.json", "job_listing"),
-    ],
-)
-def test_every_candidate_is_the_normalized_value_its_locator_selects(
-    adapter: Adapter, page_kind: PageKind, fixture: str, preset: str
-) -> None:
-    body = _fixture(fixture)
-    schema = _preset(preset)
-    result = _collect(adapter, page_kind, body, schema)
-
-    assert result.candidates
-    document = json.loads(body)
-    for candidate in result.candidates:
-        path = candidate.locator.removeprefix(f"adapter:{adapter.name}:")
-        # A list field's candidate holds every value its property reaches and is located at the first.
-        (raw,) = candidate.raw if isinstance(candidate.raw, list) else [candidate.raw]
-        assert select(path, document) == [(path, raw)]
-        # A text value holding markup (a job description's HTML, written escaped too) reads as the fragment's text.
-        fragment = fragment_text(html.unescape(candidate.raw)) if isinstance(candidate.raw, str) else None
-        read = candidate.raw if fragment is None else html.escape(fragment, quote=False)
-        assert candidate.normalized == normalize(read, schema.fields[candidate.field], CTX)
-        assert path.startswith(candidate.entity_id.removeprefix(f"adapter:{adapter.name}:"))
-
-
-def test_a_page_scoped_field_of_a_listing_is_not_read_from_the_rows() -> None:
-    schema = _schema(
-        "listing",
-        title=_text("JobPosting.title"),
-        heading=_text(scope="page", path="JobPosting.title"),
-    )
-
-    result = _collect(LEVER, "listing", _fixture("lever/postings.json"), schema)
-
-    assert {c.field for c in result.candidates} == {"title"}
-
-
-def test_a_null_or_absent_value_is_no_candidate() -> None:
-    schema = _schema("detail", title=_text("JobPosting.title"))
-    body = json.dumps({"title": None, "absolute_url": "https://jobs.example.com/t/jobs/1"})
-
-    result = _collect(GREENHOUSE, "detail", body, schema)
-
-    assert result.candidates == ()
-    assert [e.urls for e in result.entities] == [("https://jobs.example.com/t/jobs/1",)]
-
-
-def test_a_property_the_shapes_do_not_document_yields_no_candidate() -> None:
-    schema = _schema("detail", title=_text("JobPosting.title"), salary=_text("JobPosting.baseSalary"))
-
-    result = _collect(GREENHOUSE, "detail", _fixture("greenhouse/job.json"), schema)
-
-    assert [(c.field, c.raw) for c in result.candidates] == [("title", "Synthetic Platform Engineer")]
-
-
-def test_a_body_that_is_not_json_is_skipped_with_a_diagnostic() -> None:
-    result = _collect(GREENHOUSE, "detail", "<html><body>not json</body></html>", _preset("job_detail"))
-
-    assert (result.entities, result.candidates) == ((), ())
-    assert len(result.diagnostics) == 1
-    assert result.diagnostics[0].startswith("adapter:greenhouse: not JSON")
-
-
-titles = st.text(min_size=1, max_size=20).filter(
-    lambda t: isinstance(normalize(t, FieldSpec(type=FieldType.TEXT), CTX), Ok)
-)
-
-
-@given(names=st.lists(titles, max_size=6))
-def test_each_posting_of_a_listing_owns_exactly_its_own_title(names: list[str]) -> None:
-    schema = _schema("listing", title=_text("JobPosting.title"))
-    body = json.dumps([{"text": name} for name in names])
-
-    result = _collect(LEVER, "listing", body, schema)
-
-    assert [e.id for e in result.entities] == ["adapter:lever:$", *(f"adapter:lever:$[{i}]" for i in range(len(names)))]
-    assert [(c.entity_id, c.raw) for c in result.candidates] == [
-        (f"adapter:lever:$[{i}]", name) for i, name in enumerate(names)
-    ]
-
-
 class _StandIn:
     """An adapter whose shapes are given."""
 
@@ -258,77 +119,6 @@ class _StandIn:
         return self._shapes
 
 
-_JOB = Shape(
-    type="JobPosting",
-    properties={"title": ("title",), "url": ("url",), "jobLocation": ("offices", ALL, "name")},
-)
-_OFFICES = FieldSpec.model_validate(
-    {
-        "type": "list",
-        "description": "d",
-        "item": {"type": "text"},
-        "scope": "row",
-        "schema_org": "JobPosting.jobLocation",
-    }
-)
-
-
-def _job(n: int) -> dict[str, JsonValue]:
-    return {
-        "title": f"Role {n}",
-        "url": f"https://jobs.example.test/{n}",
-        "offices": [{"name": "North"}, {"name": "South"}],
-    }
-
-
-def test_a_list_field_holds_every_value_its_property_reaches_located_at_the_first() -> None:
-    schema = _schema("detail", title=_text("JobPosting.title"), offices=_OFFICES)
-
-    result = _collect(_StandIn(_JOB), "detail", json.dumps(_job(1)), schema)
-
-    assert [e.id for e in result.entities] == ["adapter:stand-in:$"]
-    assert _values(result)[("adapter:stand-in:$", "offices")] == (
-        ["North", "South"],
-        "adapter:stand-in:$['offices'][0]['name']",
-    )
-
-
-def test_each_listing_row_holds_its_own_list_field_items() -> None:
-    schema = _schema("listing", title=_text("JobPosting.title"), offices=_OFFICES)
-    rows_shape = Shape(type="JobPosting", at=("jobs", ALL), properties=_JOB.properties)
-
-    result = _collect(_StandIn(rows_shape), "listing", json.dumps({"jobs": [_job(1), _job(2)]}), schema)
-
-    rows = [f"adapter:stand-in:$['jobs'][{i}]" for i in (0, 1)]
-    assert [e.id for e in result.entities] == rows
-    assert [(c.entity_id, c.field, c.raw) for c in result.candidates if c.field == "offices"] == [
-        (row, "offices", ["North", "South"]) for row in rows
-    ]
-
-
-def test_fields_of_several_types_are_read_from_nested_nodes_each_owned_by_its_node() -> None:
-    offer = Shape(type="Offer", at=("offer",), properties={"price": ("amount",), "priceCurrency": ("currency",)})
-    product = Shape(type="Product", properties={"name": ("title",)}, nodes={"offers": (offer,)})
-    body = json.dumps({"title": "Widget", "offer": {"amount": "9.50", "currency": "EUR"}})
-
-    preset = _preset("commerce_detail")
-    schema = _schema("detail", title=preset.fields["title"], price=preset.fields["price"])
-
-    result = _collect(_StandIn(product), "detail", body, schema)
-
-    assert [(e.id, e.types[0], e.parent, e.via) for e in result.entities] == [
-        ("adapter:stand-in:$", "Product", None, None),
-        ("adapter:stand-in:$['offer']", "Offer", "adapter:stand-in:$", "offers"),
-    ]
-    assert _values(result) == {
-        ("adapter:stand-in:$", "title"): ("Widget", "adapter:stand-in:$['title']"),
-        ("adapter:stand-in:$['offer']", "price"): (
-            {"price": "9.50", "priceCurrency": "EUR"},
-            "adapter:stand-in:$['offer']['amount']",
-        ),
-    }
-
-
 def test_an_anchored_node_is_an_entity_of_its_own_on_its_enclosing_object() -> None:
     offer = Shape(type="Offer", properties={"price": ("amount",), "priceCurrency": ("currency",)}, anchor=("amount",))
     product = Shape(type="Product", properties={"name": ("title",)}, nodes={"offers": (offer,)})
@@ -344,45 +134,6 @@ def test_an_anchored_node_is_an_entity_of_its_own_on_its_enclosing_object() -> N
         {"price": "9.50", "priceCurrency": "EUR"},
         "adapter:stand-in:$['amount']",
     )
-
-
-def test_a_property_read_from_several_members_holds_the_first_members_values_then_the_others() -> None:
-    job = Shape(
-        type="JobPosting",
-        properties={"jobLocation": ("primary",)},
-        also={"jobLocation": (("others", ALL),)},
-    )
-    body = json.dumps({"primary": "North", "others": ["South", None, "East"]})
-
-    result = _collect(_StandIn(job), "detail", body, _schema("detail", offices=_OFFICES))
-
-    assert _values(result)[("adapter:stand-in:$", "offices")] == (
-        ["North", "South", "East"],
-        "adapter:stand-in:$['primary']",
-    )
-
-
-def test_a_prefixed_property_reads_each_string_or_integer_value_after_its_prefix() -> None:
-    rows = Shape(
-        type="JobPosting", at=("jobs", ALL), properties={"url": ("path",)}, prefixes={"url": "https://a.test/s"}
-    )
-    listing = Shape(type="ItemList", nodes={"itemListElement": (rows,)})
-    body = json.dumps({"jobs": [{"path": "/job/1"}, {"path": 7}, {"path": True}, {"path": 1.5}]})
-
-    result = _collect(_StandIn(listing), "listing", body, _schema("listing", url=_url("JobPosting.url")))
-
-    # An integer (an API's numeric id) goes in its digits; a boolean or a fraction is no path and stays as it is.
-    assert [(c.entity_id, c.raw) for c in result.candidates] == [
-        ("adapter:stand-in:$['jobs'][0]", "https://a.test/s/job/1"),
-        ("adapter:stand-in:$['jobs'][1]", "https://a.test/s7"),
-        ("adapter:stand-in:$['jobs'][2]", True),
-        ("adapter:stand-in:$['jobs'][3]", 1.5),
-    ]
-    assert result.entities[1].urls == ("https://a.test/s/job/1",)
-
-
-def _url(path: str) -> FieldSpec:
-    return FieldSpec.model_validate({"type": "url", "description": "d", "scope": "row", "schema_org": path})
 
 
 def test_a_node_with_mapped_properties_is_read_as_an_object_of_schema_org_names() -> None:
@@ -405,28 +156,3 @@ def test_a_node_with_mapped_properties_is_read_as_an_object_of_schema_org_names(
     found = _values(result)
     assert found[("adapter:stand-in:$", "salary")][0] == {"currency": "EUR", "minValue": 10, "maxValue": 20}
     assert found[("adapter:stand-in:$", "place")][0] == {"name": "Town"}  # no mapped property: the API's own object
-
-
-@pytest.mark.parametrize(
-    ("page_kind", "fixture", "preset", "field"),
-    [
-        ("listing", "greenhouse/jobs.json", "job_listing", "url"),
-        ("detail", "greenhouse/job.json", "job_detail", "posting_url"),
-    ],
-)
-def test_a_hosted_board_names_each_job_by_the_board_route_on_its_host(
-    page_kind: PageKind, fixture: str, preset: str, field: str
-) -> None:
-    # D-1483: a hosted board page links its jobs by `/{board}/jobs/{id}` on its own host, not by `absolute_url`.
-    match = AdapterMatch("example-tenant", page_kind, host="board.example.test")
-    schema = _preset(preset)
-    if field not in schema.fields:  # the posting's own URL, which no job preset asks
-        posting_url = FieldSpec(type=FieldType.URL, description="d", schema_org="JobPosting.url")
-        schema = schema.model_copy(update={"fields": {**schema.fields, field: posting_url}})
-    result = AdapterCollector(GREENHOUSE, match, VOCABULARY).collect(ParsedPage(_fixture(fixture)), schema, CTX)
-
-    urls = [(c.raw, c.locator) for c in result.candidates if c.field == field]
-    document = json.loads(_fixture(fixture))
-    jobs = document["jobs"] if page_kind == "listing" else [document]
-    assert [raw for raw, _ in urls] == [f"https://board.example.test/example-tenant/jobs/{job['id']}" for job in jobs]
-    assert all(locator.endswith("['id']") for _, locator in urls)

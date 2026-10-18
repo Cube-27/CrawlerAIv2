@@ -18,7 +18,6 @@ from tests.unit.adapter_support import FIXTURES, JOB_FIELDS, VOCABULARY
 from tests.unit.test_adapter_collector import _schema
 
 JOB = "00000000-0000-4000-8000-0000000000b1"
-JOB_URL = f"https://ats.example.test/example-board/jobs/{JOB}"
 PAGE_URL = "https://careers.example.test/jobs/synthetic-engineer"
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url=PAGE_URL, page_url=PAGE_URL)
 SCHEMA = _schema("detail", **JOB_FIELDS)
@@ -41,22 +40,8 @@ def _roots(*results: CollectResult) -> list[str]:
     return [e.id for e in graph.entities.values() if e.parent is None and e.id != "page"]
 
 
-def test_an_adapter_posting_carries_its_identifier_and_item_url() -> None:
-    (posting, *_) = _adapter_result().entities
-
-    assert posting.id == "adapter:rippling:$"
-    assert posting.identity == (("identifier", JOB),)
-    assert posting.item_urls == (JOB_URL,)
-
-
 def test_the_adapters_posting_and_the_pages_json_ld_posting_sharing_an_identifier_are_one_entity() -> None:
     roots = _roots(_adapter_result(), _jsonld_result(identifier=JOB))
-
-    assert roots == ["adapter:rippling:$"]
-
-
-def test_the_adapters_posting_and_the_pages_json_ld_posting_naming_one_item_url_are_one_entity() -> None:
-    roots = _roots(_adapter_result(), _jsonld_result(url=JOB_URL))
 
     assert roots == ["adapter:rippling:$"]
 

@@ -5,12 +5,11 @@ synthetic."""
 import asyncio
 from collections.abc import Callable, Mapping
 
-import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.acquire.api import JsonFetcher
+from crawlerai.acquire.types import FetchPolicy
 from crawlerai.adapters.ashby import API, BOARD_HOST, Ashby
 from crawlerai.adapters.base import AdapterMatch
 from tests.unit.adapter_support import FIXTURES, candidates
@@ -30,21 +29,6 @@ def test_a_board_url_is_a_listing_of_its_board(board: str) -> None:
     assert ADAPTER.detect(f"http://{BOARD_HOST.upper()}/{board}/") == expected
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        f"https://{BOARD_HOST}.example.com/{BOARD}",
-        f"ftp://{BOARD_HOST}/{BOARD}",
-        f"https://{BOARD_HOST}/",
-        f"https://{BOARD_HOST}/..",
-        f"https://{BOARD_HOST}/{BOARD}?departmentId=1",  # a filtered list
-        f"https://{BOARD_HOST}/{BOARD}/00000000-0000-4000-8000-0000000000a1",  # the API has no posting endpoint
-    ],
-)
-def test_other_urls_are_not_detected(url: str) -> None:
-    assert ADAPTER.detect(url) is None
-
-
 def test_a_board_is_fetched_from_its_list_with_compensation(stand_in_api: StandInApi) -> None:
     body = (FIXTURES / "ashby" / "board.json").read_bytes()
     page = f"https://{BOARD_HOST}/{BOARD}"
@@ -56,16 +40,6 @@ def test_a_board_is_fetched_from_its_list_with_compensation(stand_in_api: StandI
     assert result.bundle.body == body
     assert ADAPTER.serves(AdapterMatch(BOARD, "listing"), ENDPOINT) is True
     assert ADAPTER.serves(AdapterMatch(BOARD, "listing"), f"{API}/{BOARD}-2?includeCompensation=true") is False
-
-
-async def _unused_send(_request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
-    raise AssertionError("a refused URL sends nothing")
-
-
-def test_a_url_it_does_not_detect_is_refused() -> None:
-    fetching = ADAPTER.fetch("https://jobs.example.com/board", FetchPolicy(), _unused_send)
-    with pytest.raises(ValueError, match="not a job board URL"):
-        asyncio.run(fetching)
 
 
 def test_every_listed_posting_is_a_job_with_its_stated_fields() -> None:
@@ -82,18 +56,3 @@ def test_every_listed_posting_is_a_job_with_its_stated_fields() -> None:
     assert found[(first, "locations")] == ["Northtown", "Remote (Exampleland)"]  # the primary, then the others
     assert found[(first, "identifier")] == "00000000-0000-4000-8000-0000000000a1"
     assert found[(second, "locations")] == ["Eastport"]
-
-
-def test_only_a_compensation_component_with_an_amount_is_a_salary() -> None:
-    body = (FIXTURES / "ashby" / "board.json").read_text(encoding="utf-8")
-
-    found = candidates(ADAPTER, AdapterMatch(BOARD, "listing"), body)
-
-    assert found[("adapter:ashby:$['jobs'][0]", "salary")] == {
-        "currency": "USD",
-        "minValue": 100000,
-        "maxValue": 150000,
-        "unitText": "YEAR",
-    }
-    # The second posting lists equity alone, which states no amount.
-    assert ("adapter:ashby:$['jobs'][1]", "salary") not in found

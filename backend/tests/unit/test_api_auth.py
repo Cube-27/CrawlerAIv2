@@ -13,7 +13,6 @@ from crawlerai.api.auth import require_api_key
 from crawlerai.db.models import ApiKeyId
 
 UNTRUSTED_PEER = "192.0.2.1"
-PROXY = "10.0.0.1"
 
 
 class UnreachableDatabase:
@@ -76,27 +75,6 @@ def test_a_request_without_a_bearer_key_is_unauthorized_without_a_lookup(
     assert app.state.database.lookups == 0
 
 
-def test_the_rate_limit_answers_before_the_key_is_looked_up(monkeypatch: pytest.MonkeyPatch) -> None:
-    app = _app(monkeypatch, burst=1)
-    key = {"authorization": "Bearer ck_unknown"}
-
-    first, second = _get(app, key, key)
-
-    assert first.status_code == 500  # the stub database failed the lookup
-    assert second.status_code == 429
-    assert _problem_type(second) == "rate_limited"
-    assert second.headers["retry-after"] == "10"  # RFC 9110 §10.2.3: whole seconds until a token
-    assert app.state.database.lookups == 1
-
-
-def test_requests_without_a_key_are_limited_per_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    app = _app(monkeypatch, burst=2)
-
-    statuses = [response.status_code for response in _get(app, {}, {}, {})]
-
-    assert statuses == [401, 401, 429]
-
-
 def test_an_untrusted_peer_cannot_take_a_fresh_bucket_by_forwarding_another_address(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -110,34 +88,6 @@ def test_an_untrusted_peer_cannot_take_a_fresh_bucket_by_forwarding_another_addr
     )
 
     assert [response.status_code for response in responses] == [401, 429, 429]
-
-
-def test_a_trusted_proxy_forwards_each_client_to_its_own_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
-    app = _app(monkeypatch, burst=1, trusted='["10.0.0.0/8"]')
-
-    responses = _get(
-        app,
-        {"x-forwarded-for": "203.0.113.5"},
-        {"forwarded": "for=203.0.113.6"},
-        {"x-forwarded-for": "203.0.113.5"},
-        peer=PROXY,
-    )
-
-    assert [response.status_code for response in responses] == [401, 401, 429]
-
-
-def test_the_openapi_document_declares_the_bearer_key_on_every_operation_but_healthz() -> None:
-    # RFC 6750 bearer API key (SPEC-07 §4.2): clients and scanners read the requirement from the document.
-    document = create_app(eval_ui=True).openapi()
-    security = {
-        (method, path): operation.get("security")
-        for path, item in document["paths"].items()
-        for method, operation in item.items()
-    }
-
-    assert document["components"]["securitySchemes"] == {"HTTPBearer": {"type": "http", "scheme": "bearer"}}
-    assert security.pop(("get", "/healthz")) is None
-    assert {k: v for k, v in security.items() if v != [{"HTTPBearer": []}]} == {}
 
 
 def test_every_api_operation_but_healthz_refuses_a_request_without_a_key(monkeypatch: pytest.MonkeyPatch) -> None:

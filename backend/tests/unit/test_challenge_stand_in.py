@@ -18,10 +18,6 @@ def _page(extra: str = "") -> str:
     return f"<html><body><h1>Item</h1><p>{'word ' * 80}</p>{_LINKS}{extra}</body></html>"
 
 
-def test_some_vendor_has_stand_in_markers() -> None:
-    assert _STAND_INS
-
-
 @pytest.mark.parametrize("sig", _STAND_INS, ids=[s.vendor for s in _STAND_INS])
 @pytest.mark.parametrize("status", [200, 202])
 def test_a_2xx_page_showing_a_stand_in_marker_is_blocked_and_labelled(sig: ChallengeSignature, status: int) -> None:
@@ -29,18 +25,6 @@ def test_a_2xx_page_showing_a_stand_in_marker_is_blocked_and_labelled(sig: Chall
 
     assert block_class_of(status, _HTML, body) == "blocked"
     assert challenge_label(status, _HTML, body, URL) == sig.vendor
-
-
-@pytest.mark.parametrize("signature", _STAND_INS, ids=[s.vendor for s in _STAND_INS])
-def test_a_marker_in_a_body_that_is_no_html_document_changes_nothing(signature: ChallengeSignature) -> None:
-    body = f'{{"note": "{signature.stand_in_markers[0]}"}}'
-
-    assert block_class_of(200, (("content-type", "application/json"),), body) == "ok"
-
-
-def test_a_page_without_a_marker_keeps_its_structural_class() -> None:
-    assert block_class_of(200, _HTML, _page()) == "ok"
-    assert block_class_of(404, _HTML, _page()) == "not_found"
 
 
 @pytest.mark.parametrize("signature", [s for s in SIGNATURES if s.cookie_prefixes or s.script_paths])

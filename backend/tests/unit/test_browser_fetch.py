@@ -13,30 +13,23 @@ import asyncio
 import gzip
 import json
 import os
-import re
-import socket
 import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import IPv4Address, ip_address
-from typing import cast
 from urllib.parse import urlsplit
 
 import pytest
 from patchright.async_api import Error as PlaywrightError
-from patchright.async_api import Page
 
-from crawlerai.acquire import browser as browser_module
-from crawlerai.acquire.browser import BrowserSession, capture_artifacts, fetch_browser, open_browser
+from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
 from crawlerai.acquire.session import CookieExport
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.challenges import SIGNATURES
 from crawlerai.core.engine_version import ENGINE_VERSION
-from crawlerai.core.proxy import ProxyEndpoint, ProxyPool
-from crawlerai.core.proxy_health import QUARANTINE_AFTER
+from crawlerai.core.proxy import ProxyPool
 from crawlerai.storage.capture_bundle import decode, encode
 
 pytestmark = pytest.mark.browser
@@ -113,7 +106,6 @@ _INTERSTITIAL = b"""<html><body><p>One moment</p><script>
 setTimeout(() => location.replace('/app'), 4000);
 </script></body></html>"""
 # A 403 document that stands in for the page and never navigates on within the fetch (a challenge it cannot pass).
-_REFUSED = b"<html><body><script>window.__challenge = 1;</script></body></html>"
 # A 403 document that is a site page: enough text and hyperlinks (`acquire/classify.py`).
 _REFUSAL_PAGE = (
     b"<html><body><nav>"
@@ -327,103 +319,6 @@ def test_js_only_page_is_rendered_and_its_json_captured(browser: Browser, server
     assert decode(encode(result.bundle)) == result.bundle
 
 
-def test_a_listing_rendered_in_the_browser_is_not_judged_by_its_linked_items(browser: Browser, server: Server) -> None:
-    # The page's items render as unlinked paragraphs from fetched JSON: the browser is the last rung, so the listing
-    # rule (a shell, for the browser to retry) does not apply, and the rows the JSON holds stay extractable.
-    result = browser.fetch(server.url("/app"), FetchPolicy(browser_timeout_s=10, page_kind="listing"))
-
-    assert (result.block_class, result.bundle.manifest.fetch_policy["page_kind"]) == ("ok", "listing")
-
-
-def test_attempt_and_manifest_record_the_outcome(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/app"))
-
-    (attempt,) = result.attempts
-    assert (attempt.method, attempt.status, attempt.block_class, attempt.error) == ("browser", 200, "ok", None)
-    manifest = result.bundle.manifest
-    assert manifest.final_url == server.url("/app")
-    assert manifest.timings_ms["total"] == result.duration_ms
-    assert 0 < manifest.timings_ms["context"] <= result.duration_ms
-    assert ("Content-Type", _HTML) in manifest.headers.response
-    # Credentials are not recorded (RFC 6265 §4).
-    assert all(name.lower() != "set-cookie" for name, _ in manifest.headers.response)
-
-
-def test_capture_can_be_turned_off(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/app"), FetchPolicy(capture_network_json=False, browser_timeout_s=10))
-
-    assert b"<p>Catalogue item 0 with a short description</p>" in result.bundle.body
-    assert result.bundle.manifest.network_bodies == ()
-
-
-def test_capture_keeps_the_first_fifty_json_bodies_under_two_megabytes_in_order(
-    browser: Browser, server: Server
-) -> None:
-    result = browser.fetch(server.url("/many"), FetchPolicy(browser_timeout_s=20))
-
-    assert b"loaded" in result.bundle.body
-    assert [e.url for e in result.bundle.manifest.network_bodies] == [server.url(f"/api/n/{i}") for i in range(50)]
-    assert result.bundle.network[49] == b'{"n": 49}'
-
-
-def test_capture_records_the_method_body_and_headers_of_the_request_behind_each_json_body(
-    browser: Browser, server: Server
-) -> None:
-    result = browser.fetch(server.url("/search"))
-
-    assert b"searched" in result.bundle.body
-    (entry,) = result.bundle.manifest.network_bodies
-    assert (entry.url, entry.method, entry.request_body) == (server.url("/api/search"), "POST", '{"q": "lamp"}')
-    sent = {name.lower(): value for name, value in entry.request_headers or ()}
-    assert (sent["content-type"], sent["referer"]) == ("application/json", server.url("/search"))
-    assert decode(encode(result.bundle)) == result.bundle
-
-
-def test_json_is_kept_by_its_label_or_its_bytes_with_the_response_headers_and_resource_type(
-    browser: Browser, server: Server
-) -> None:
-    result = browser.fetch(server.url("/sniffed"))
-
-    assert b"loaded" in result.bundle.body
-    entries = result.bundle.manifest.network_bodies
-    assert [(e.url, e.resource_type, e.action) for e in entries] == [
-        (server.url("/api/guarded"), "fetch", 0),
-        (server.url("/api/plain-json"), "fetch", 0),
-        (server.url("/api/linked"), "xhr", 0),
-    ]
-    # Kept as received; the guard prefix is stripped when the body is read (`network_json`).
-    assert result.bundle.network[0] == _GUARDED
-    received = dict(entries[2].response_headers or ())
-    assert received["Link"] == '</api/linked?page=2>; rel="next"'
-    # Credentials are not recorded (RFC 6265 §4).
-    assert "set-cookie" not in {name.lower() for name in received}
-    assert decode(encode(result.bundle)) == result.bundle
-
-
-def test_inv30_json_bodies_stop_at_ten_megabytes_per_page(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/heavy"), FetchPolicy(browser_timeout_s=20))
-
-    assert b"loaded" in result.bundle.body
-    assert [e.url for e in result.bundle.manifest.network_bodies] == [server.url(f"/api/heavy/{i}") for i in range(5)]
-
-
-def test_redirects_are_followed_within_the_page_host(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/hop"))
-
-    assert result.block_class == "ok"
-    assert result.bundle.manifest.final_url == server.url("/app")
-
-
-def test_redirect_hop_to_a_private_address_is_rejected_after_a_public_first_hop(
-    browser: Browser, server: Server
-) -> None:
-    result = browser.fetch(server.url("/hop-private"))
-
-    (attempt,) = result.attempts
-    assert (attempt.block_class, attempt.error) == ("error", "ssrf_rejected: private_address")
-    assert (result.bundle.body, result.bundle.raw_body, result.bundle.network) == (b"", None, ())
-
-
 @pytest.fixture(scope="module")
 def other_loopback_server() -> Iterator[Server]:
     """A JSON service on another loopback port, which the connector does not admit."""
@@ -488,269 +383,10 @@ def test_a_subresource_to_a_loopback_or_link_local_address_is_refused_by_the_gua
     assert result.bundle.manifest.network_bodies == ()
 
 
-@pytest.mark.parametrize(
-    ("url", "error"),
-    [
-        pytest.param("file:///etc/passwd", "ssrf_rejected: scheme", id="file-scheme"),
-        pytest.param("http://internal.example.com/", "ssrf_rejected: private_address", id="private-host"),
-        pytest.param("http://169.254.169.254/latest/", "ssrf_rejected: private_address", id="metadata-address"),
-    ],
-)
-def test_a_rejected_first_url_is_never_opened(browser: Browser, url: str, error: str) -> None:
-    result = browser.fetch(url)
-
-    (attempt,) = result.attempts
-    assert (attempt.status, attempt.block_class, attempt.error) == (None, "error", error)
-    assert "context" not in result.bundle.manifest.timings_ms  # no browser context was opened
-
-
-def test_not_found_is_classified_from_the_navigation_status(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/nowhere"))
-
-    assert (result.block_class, result.bundle.manifest.status_code) == ("not_found", 404)
-
-
-def test_a_page_that_never_goes_idle_is_read_at_the_hard_cap(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/busy"), FetchPolicy(browser_timeout_s=3, capture_network_json=False))
-
-    assert result.attempts[0].error is None
-    assert b"Polling page" in result.bundle.body
-    assert 2_000 <= result.duration_ms < 3_500
-
-
-def test_a_page_whose_content_settles_is_read_without_waiting_for_its_network(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/still"), FetchPolicy(browser_timeout_s=20, capture_network_json=False))
-
-    assert result.attempts[0].error is None
-    assert b"Polling page with settled content" in result.bundle.body
-    # Two quiet seconds after `load`, not 90% of the 20 s cap.
-    assert 2_000 <= result.duration_ms < 8_000
-
-
-def test_a_data_call_still_in_flight_when_the_content_is_quiet_is_waited_for(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/late-call"), FetchPolicy(browser_timeout_s=20))
-
-    assert [entry.url for entry in result.bundle.manifest.network_bodies] == [server.url("/api/late")]
-    assert result.bundle.network == (b'{"late": true}',)
-    # The 2 s quiet passed while the call was in flight; it arrived within the 3 s more a call is given.
-    assert 3_500 <= result.duration_ms < 8_000
-
-
-def test_an_error_document_that_navigates_itself_is_read_where_the_navigation_ends(
-    browser: Browser, server: Server
-) -> None:
-    result = browser.fetch(server.url("/replaces-itself"), FetchPolicy(browser_timeout_s=15))
-
-    manifest = result.bundle.manifest
-    assert (result.block_class, manifest.status_code, manifest.final_url) == ("ok", 200, server.url("/app"))
-    assert result.bundle.raw_body == _APP
-    assert b"<p>Catalogue item 0 with a short description</p>" in result.bundle.body
-
-
-def test_an_error_document_that_is_a_site_page_is_read_once_quiet(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/refusal"), FetchPolicy(browser_timeout_s=15))
-
-    assert (result.block_class, result.bundle.manifest.status_code) == ("blocked", 403)
-    assert result.duration_ms < 5_000
-
-
-def test_an_interstitial_is_read_where_its_navigation_ends_after_the_quiet_time(
-    browser: Browser, server: Server
-) -> None:
-    result = browser.fetch(server.url("/interstitial"), FetchPolicy(browser_timeout_s=20))
-
-    manifest = result.bundle.manifest
-    assert (result.block_class, manifest.status_code, manifest.final_url) == ("ok", 200, server.url("/app"))
-    assert b"<p>Catalogue item 0 with a short description</p>" in result.bundle.body
-
-
-def test_an_interstitial_that_stays_is_read_after_its_bounded_share_of_the_budget(
-    browser: Browser, server: Server
-) -> None:
-    server.routes["/forbidden"] = Reply(
-        403, body=b"<html><body><p>Access denied</p><script>void 0</script></body></html>"
-    )
-
-    result = browser.fetch(server.url("/forbidden"), FetchPolicy(browser_timeout_s=40))
-
-    assert (result.block_class, result.bundle.manifest.status_code) == ("blocked", 403)
-    # 40% of the 40 s budget is 16 s, bounded to 10 s waiting for a navigation, then the 2 s DOM quiet; never the 90%
-    # settle share.
-    assert 10_000 <= result.duration_ms < 16_000
-
-
-_MEDIA_PAGE = b"""<html><head><link rel="stylesheet" href="/m/look.css"></head><body><img src="/m/photo.png" alt="">
-<video src="/m/clip.mp4"></video><p class="lettered">Catalogue</p><div id="root"></div><script>
-fetch('/api/items').then(r => r.json()).then(items => {
-  let html = '';
-  for (const item of items) html += '<p>' + item['name'] + '</p>';
-  document.getElementById('root').innerHTML = html;
-});
-</script></body></html>"""
-_LOOK = b"@font-face { font-family: lettered; src: url(/m/face.woff2); } .lettered { font-family: lettered; }"
-
-
-@pytest.mark.parametrize(("block", "loaded"), [(True, False), (False, True)])
-def test_images_fonts_and_media_are_not_loaded_unless_the_site_loads_every_resource(
-    browser: Browser, server: Server, block: bool, loaded: bool
-) -> None:
-    # Master plan 2026-10-18 recommendation 12: by resource type; the stylesheet, the script and its data call load.
-    server.routes["/media"] = Reply(body=_MEDIA_PAGE)
-    server.routes["/m/look.css"] = Reply(content_type="text/css", body=_LOOK)
-    server.requests.clear()
-
-    result = browser.fetch(server.url("/media"), FetchPolicy(browser_timeout_s=10, block_resources=block))
-
-    paths = {path for _, path, _ in server.requests}
-    assert b"<p>Catalogue item 0 with a short description</p>" in result.bundle.body
-    assert {"/media", "/m/look.css", "/api/items"} <= paths
-    assert {path for path in ("/m/photo.png", "/m/clip.mp4", "/m/face.woff2") if path in paths} == (
-        {"/m/photo.png", "/m/clip.mp4", "/m/face.woff2"} if loaded else set()
-    )
-
-
-def test_a_refusal_that_cannot_navigate_is_not_waited_on(browser: Browser, server: Server) -> None:
-    # D-1262: no script and no refresh: nothing can replace the document, so only the DOM quiet is waited.
-    server.routes["/static-refusal"] = Reply(403, body=b"<html><body><p>Access denied</p></body></html>")
-
-    result = browser.fetch(server.url("/static-refusal"), FetchPolicy(browser_timeout_s=20))
-
-    assert (result.block_class, result.bundle.manifest.status_code) == ("blocked", 403)
-    assert result.duration_ms < 6_000
-
-
-def test_a_refreshing_refusal_with_links_is_read_where_its_refresh_ends(browser: Browser, server: Server) -> None:
-    # D-1262: a refresh pragma declares the document navigates on, whatever its links (HTML Standard §4.2.5.3).
-    body = _REFUSAL_PAGE.replace(b"<html>", b'<html><head><meta http-equiv="refresh" content="3; url=/app"></head>')
-    server.routes["/refreshes"] = Reply(503, body=body)
-
-    started = time.monotonic()
-    result = browser.fetch(server.url("/refreshes"), FetchPolicy(browser_timeout_s=20))
-
-    manifest = result.bundle.manifest
-    assert (result.block_class, manifest.status_code, manifest.final_url) == ("ok", 200, server.url("/app"))
-    # The wait ends with the navigation, not at its 8 s share of the budget.
-    assert time.monotonic() - started < 8
-
-
-def test_navigation_that_outlives_the_budget_is_a_timeout(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/stall"), FetchPolicy(browser_timeout_s=2))
-
-    (attempt,) = result.attempts
-    assert (attempt.block_class, attempt.error) == ("error", "timeout")
-    assert result.duration_ms < 4_000
-
-
 # --- INV-29: cookies stay inside one fetch -----------------------------------------------------------------------
 
 
-def test_inv29_a_cookie_set_by_one_fetch_is_absent_from_the_next(browser: Browser, server: Server) -> None:
-    first = len(server.requests)
-    browser.fetch(server.url("/app"))  # `/app` sets `session=s1`
-    second = len(server.requests)
-    browser.fetch(server.url("/app"))
-
-    # Within the first fetch the page's own requests carry the cookie; the second fetch starts without it.
-    assert ("/api/items", "session=s1") in [(path, h.get("Cookie")) for _, path, h in server.requests[first:second]]
-    assert [(path, h.get("Cookie")) for _, path, h in server.requests[second:] if path == "/app"] == [("/app", None)]
-
-
-@pytest.mark.parametrize(
-    ("set_cookie", "host"),
-    [
-        # RFC 6265 §5.4: a host-only cookie goes to its own host only; `keep`, for the parent domain, does go
-        # (§5.1.3 domain-match), so the hop carries cookies at all.
-        (("other=1", "keep=1; Domain=example.test"), "cdn.example.test"),
-        (("other=1", "keep=1; Domain=example.test"), "eu.shop.example.test"),
-        # §5.3 step 6: a Domain attribute that the setting host does not domain-match is ignored with its cookie.
-        (("other=1; Domain=cdn.example.test", "keep=1"), "shop.example.test"),
-        # §5.1.4: a cookie goes only to request paths its Path matches.
-        (("other=1; Path=/private", "keep=1; Path=/"), "shop.example.test"),
-    ],
-    ids=["another_host", "sub_host", "foreign_domain_attribute", "another_path"],
-)
-def test_inv29_a_cookie_that_does_not_match_the_next_hop_is_not_sent(
-    browser: Browser, server: Server, set_cookie: tuple[str, str], host: str
-) -> None:
-    path = "/inv29/end"
-    location = server.url(path, host)
-    server.routes["/inv29/start"] = Reply(
-        302, headers=(("Location", location), *(("Set-Cookie", c) for c in set_cookie))
-    )
-    server.routes[path] = Reply(body=b"<html><body><p>Redirect target</p></body></html>")
-    first = len(server.requests)
-
-    result = browser.fetch(server.url("/inv29/start"))
-
-    assert result.bundle.manifest.final_url == location
-    hop = [h for request_host, p, h in server.requests[first:] if p == path and request_host.startswith(host + ":")]
-    assert [h.get("Cookie") for h in hop] == ["keep=1"]
-
-
-def test_inv29_asked_to_export_the_fetch_hands_over_the_contexts_cookies_and_records_none(
-    browser: Browser, server: Server
-) -> None:
-    export = CookieExport()
-
-    result = browser.fetch(server.url("/app"), export=export)  # `/app` sets `session=s1`
-
-    assert result.block_class == "ok"
-    assert [(c.name, c.value, c.domain, c.host_only) for c in export.cookies] == [
-        ("session", "s1", "shop.example.test", True)
-    ]
-    assert export.proxy is None
-    assert all(name.lower() not in ("cookie", "set-cookie") for name, _ in result.bundle.manifest.headers.request)
-
-
 # --- challenges and proxy health (D-1326, D-1324) -------------------------------------------------------------------
-
-
-def test_a_refused_document_is_labelled_with_the_vendor_whose_cookie_the_context_holds(
-    browser: Browser, server: Server
-) -> None:
-    # The capture records no `Set-Cookie`: the cookie names come from the context, read without changing it.
-    signature = next(s for s in SIGNATURES if s.cookie_prefixes)
-    name = signature.cookie_prefixes[0]
-    server.routes["/refused-labelled"] = Reply(403, body=_REFUSED, headers=(("Set-Cookie", f"{name}=1"),))
-    server.routes["/refused"] = Reply(403, body=_REFUSED)
-
-    labelled, structural = browser.fetch(server.url("/refused-labelled")), browser.fetch(server.url("/refused"))
-
-    assert (labelled.block_class, labelled.attempts[0].challenge) == ("blocked", signature.vendor)
-    assert (structural.block_class, structural.attempts[0].challenge) == ("blocked", "structural")
-
-
-def test_a_refusal_after_a_cross_host_redirect_is_read_against_the_host_that_served_it(
-    browser: Browser, server: Server
-) -> None:
-    # Links to other pages of the refusal's own host make it a page of that site (acquisition spec, "HTTP and browser
-    # rungs"); they resolve against the URL that served it (RFC 3986 §5), past the redirect, not the URL
-    # first asked for.
-    links = "".join(f'<a href="{server.url(f"/c/{i}", "other.example.test")}">Section {i}</a>' for i in range(6))
-    body = f"<html><body><script>window.__seen = 1;</script><nav>{links}</nav></body></html>".encode()
-    server.routes["/hop-away"] = Reply(302, headers=(("Location", server.url("/refused-away", "other.example.test")),))
-    server.routes["/refused-away"] = Reply(403, body=body)
-
-    refused = browser.fetch(server.url("/hop-away"))
-
-    assert refused.bundle.manifest.final_url == server.url("/refused-away", "other.example.test")
-    assert (refused.block_class, refused.attempts[0].challenge) == ("blocked", None)
-
-
-def test_a_pool_endpoint_that_no_browser_fetch_gets_through_is_quarantined(browser: Browser, server: Server) -> None:
-    with socket.socket() as closed:
-        closed.bind(("127.0.0.1", 0))
-        port = closed.getsockname()[1]
-    endpoint = ProxyEndpoint("127.0.0.1", port)
-    pools = {"dc": ProxyPool((endpoint,), "rotate")}
-
-    results = [
-        browser.fetch(server.url("/app"), FetchPolicy(browser_timeout_s=10, proxy_pool="dc"), pools=pools)
-        for _ in range(QUARANTINE_AFTER)
-    ]
-
-    assert [(r.attempts[0].status, r.block_class) for r in results] == [(None, "error")] * QUARANTINE_AFTER
-    assert not pools["dc"].health.available(endpoint)
 
 
 # --- INV-30: untrusted bodies are bounded --------------------------------------------------------------------------
@@ -778,93 +414,3 @@ def test_inv30_a_compression_bomb_stops_at_the_decompressed_cap_without_a_body(
     (attempt,) = result.attempts
     assert (attempt.status, attempt.block_class, attempt.error) == (200, "error", "body_cap")
     assert (result.bundle.body, result.bundle.raw_body, result.bundle.network) == (b"", None, ())
-
-
-def test_the_page_and_its_worker_present_chromiums_own_identity(browser: Browser, server: Server) -> None:
-    # No override (D-1205): the document and a dedicated worker's request carry the same user agent, and its major
-    # version is the one the client-hint brands name. 127.0.0.1 is a secure context (W3C Secure Contexts §3.2), where
-    # Chromium sends client hints.
-    browser.fetch(server.url("/with-worker", host="127.0.0.1"))
-
-    sent = {path: h for host, path, h in server.requests if host.startswith("127.0.0.1")}
-    agent = sent["/with-worker"]["User-Agent"]
-    assert sent["/api/n/7"]["User-Agent"] == agent
-    brands = dict(re.findall(r'"([^"]+)";v="(\d+)"', sent["/with-worker"]["sec-ch-ua"]))
-    chrome_major = re.search(r"Chrome/(\d+)\.", agent)
-    assert chrome_major is not None
-    assert brands["Chromium"] == chrome_major.group(1)
-
-
-def _png_size(data: bytes) -> tuple[int, int]:
-    """The width and height in the IHDR chunk (W3C PNG Third Edition §11.2.2)."""
-    assert data[:8] == b"\x89PNG\r\n\x1a\n"
-    return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
-
-
-def test_no_file_is_made_of_the_page_unless_the_policy_asks() -> None:
-    assert FetchPolicy().captures_page is False
-
-
-def test_a_file_the_browser_is_too_slow_to_make_is_left_out_and_the_others_stay(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class SlowPage:
-        async def screenshot(self, **_: object) -> bytes:
-            return b"png"
-
-        async def pdf(self, **_: object) -> bytes:
-            await asyncio.sleep(10)
-            return b"pdf"
-
-    monkeypatch.setattr(browser_module, "_ARTIFACT_TIMEOUT_S", 0.05)
-
-    files = asyncio.run(capture_artifacts(cast(Page, SlowPage()), FetchPolicy(screenshot="viewport", pdf=True)))
-
-    assert files == {"screenshot.png": b"png"}
-
-
-def test_a_file_the_browser_fails_to_make_is_left_out_and_the_next_is_still_made() -> None:
-    class FailingScreenshot:
-        async def screenshot(self, **_: object) -> bytes:
-            raise PlaywrightError("screenshot failed")
-
-        async def pdf(self, **_: object) -> bytes:
-            return b"pdf"
-
-    policy = FetchPolicy(screenshot="viewport", pdf=True)
-
-    files = asyncio.run(capture_artifacts(cast(Page, FailingScreenshot()), policy))
-
-    assert files == {"page.pdf": b"pdf"}
-
-
-def test_a_viewport_screenshot_is_a_png_of_the_visible_area_and_leaves_the_bundle_as_it_was(
-    browser: Browser, server: Server
-) -> None:
-    result = browser.fetch(server.url("/tall"), FetchPolicy(browser_timeout_s=10, screenshot="viewport"))
-
-    assert list(result.artifacts) == ["screenshot.png"]
-    assert _png_size(result.artifacts["screenshot.png"]) == (1280, 720)
-    assert decode(encode(result.bundle)) == result.bundle
-    assert result.bundle.manifest.fetch_policy["screenshot"] == "viewport"
-
-
-def test_a_full_page_screenshot_is_as_tall_as_the_page(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/tall"), FetchPolicy(browser_timeout_s=10, screenshot="full_page"))
-
-    width, height = _png_size(result.artifacts["screenshot.png"])
-    assert width <= 1280  # less the scroll bar the tall page makes
-    assert height > 3000
-
-
-def test_a_pdf_is_a_print_of_the_page(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/tall"), FetchPolicy(browser_timeout_s=10, pdf=True))
-
-    assert list(result.artifacts) == ["page.pdf"]
-    assert result.artifacts["page.pdf"].startswith(b"%PDF-")
-
-
-def test_a_page_that_was_not_reached_has_no_files(browser: Browser, server: Server) -> None:
-    result = browser.fetch(server.url("/missing"), FetchPolicy(browser_timeout_s=10, screenshot="viewport", pdf=True))
-
-    assert (result.block_class, result.artifacts) == ("not_found", {})

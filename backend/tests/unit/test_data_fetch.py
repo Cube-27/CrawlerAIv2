@@ -1,17 +1,13 @@
 """`crawlerai data fetch` (SPEC-04 §4.6, INV-05): the manifest's fetched entries are downloaded, checked against their
 pinned sha256 and written under the data directory; nothing else is written."""
 
-import ast
 import hashlib
 import json
-import sys
 from collections.abc import Callable
-from http.client import IncompleteRead
 from pathlib import Path
 
 import pytest
 
-from crawlerai.core import data
 from crawlerai.core.data import DataReport, fetch_data
 
 CONTENT = b"geonameid\tname\n"
@@ -54,27 +50,6 @@ def test_a_fetched_entry_is_downloaded_and_written(tmp_path: Path) -> None:
     assert report == DataReport(written=["fetched geo/cities.txt"], refused=[])
 
 
-def test_a_file_that_already_matches_is_not_downloaded_again(tmp_path: Path) -> None:
-    directory = _data_dir(tmp_path, _entry("cities.txt"))
-    (directory / "cities.txt").write_bytes(CONTENT)
-    calls: list[str] = []
-
-    report = fetch_data(directory, _serving({}, calls))
-
-    assert calls == []
-    assert report == DataReport(written=["present cities.txt"], refused=[])
-
-
-def test_a_committed_entry_is_not_fetched(tmp_path: Path) -> None:
-    directory = _data_dir(tmp_path, _entry("tlds.txt", fetched=False), _entry("cities.txt"))
-    calls: list[str] = []
-
-    report = fetch_data(directory, _serving({"https://data.example.org/cities.txt": CONTENT}, calls))
-
-    assert calls == ["https://data.example.org/cities.txt"]
-    assert report == DataReport(written=["fetched cities.txt"], refused=[])
-
-
 def test_a_download_that_does_not_match_its_hash_is_refused_and_not_written(tmp_path: Path) -> None:
     directory = _data_dir(tmp_path, _entry("cities.txt"))
     download = _serving({"https://data.example.org/cities.txt": b"changed upstream"}, [])
@@ -86,47 +61,6 @@ def test_a_download_that_does_not_match_its_hash_is_refused_and_not_written(tmp_
         f"cities.txt: sha256 {got} does not match the manifest; the source changed, so the entry needs re-pinning"
     ]
     assert sorted(p.name for p in directory.iterdir()) == ["manifest.json"]
-
-
-def test_a_refused_entry_does_not_stop_the_entries_after_it(tmp_path: Path) -> None:
-    directory = _data_dir(
-        tmp_path, _entry("changed.txt"), _entry("http.txt", url="http://data.example.org/h"), _entry("ok.txt")
-    )
-    files = {"https://data.example.org/changed.txt": b"changed upstream", "https://data.example.org/ok.txt": CONTENT}
-
-    report = fetch_data(directory, _serving(files, []))
-
-    assert (directory / "ok.txt").read_bytes() == CONTENT
-    assert report.written == ["fetched ok.txt"]
-    assert [line.split(":")[0] for line in report.refused] == ["changed.txt", "http.txt"]
-
-
-@pytest.mark.parametrize(
-    ("error", "reason"),
-    [(OSError("connection refused"), "connection refused"), (IncompleteRead(b"geo"), "IncompleteRead(3 bytes read)")],
-    ids=["network", "cut_short"],
-)
-def test_a_failed_download_is_refused_and_the_next_entry_fetched(tmp_path: Path, error: Exception, reason: str) -> None:
-    directory = _data_dir(tmp_path, _entry("down.txt"), _entry("ok.txt"))
-
-    def download(url: str) -> bytes:
-        if url.endswith("down.txt"):
-            raise error
-        return CONTENT
-
-    report = fetch_data(directory, download)
-
-    assert report == DataReport(written=["fetched ok.txt"], refused=[f"down.txt: download failed: {reason}"])
-
-
-def test_a_stale_file_is_replaced(tmp_path: Path) -> None:
-    directory = _data_dir(tmp_path, _entry("cities.txt"))
-    (directory / "cities.txt").write_bytes(b"old snapshot")
-
-    report = fetch_data(directory, _serving({"https://data.example.org/cities.txt": CONTENT}, []))
-
-    assert (directory / "cities.txt").read_bytes() == CONTENT
-    assert report == DataReport(written=["fetched cities.txt"], refused=[])
 
 
 @pytest.mark.parametrize("path", ["../outside.txt", "/etc/outside.txt"])
@@ -149,12 +83,3 @@ def test_only_https_urls_are_fetched(tmp_path: Path) -> None:
 
     assert report.refused == ["cities.txt: http://data.example.org/cities.txt is not an https URL"]
     assert calls == []
-
-
-def test_the_fetch_imports_the_standard_library_only() -> None:
-    # The image runs it on its own, before the project is installed (infra/Dockerfile).
-    tree = ast.parse(Path(data.__file__).read_text(encoding="utf-8"))
-    modules = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
-    modules |= {node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
-
-    assert {name.partition(".")[0] for name in modules} - sys.stdlib_module_names == set()

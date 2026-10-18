@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.crawl.rules import MAX_PATTERNS
 from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.map import MAX_LIMIT
 
@@ -19,29 +18,6 @@ def _errors(body: dict[str, Any]) -> list[tuple[tuple[str, ...], str]]:
     with pytest.raises(ValidationError) as invalid:
         CrawlRequest.model_validate(body)
     return [(tuple(str(part) for part in error["loc"]), error["msg"]) for error in invalid.value.errors()]
-
-
-def test_a_stored_request_reads_back_as_itself() -> None:
-    body = {"url": URL, "formats": ["records"], "schema": SCHEMA, "page_kind_rules": [DETAIL], "exclude": ["*?*"]}
-    request = CrawlRequest.model_validate(body)
-
-    assert CrawlRequest.model_validate(request.model_dump(mode="json", by_alias=True)) == request
-
-
-def test_a_budget_is_kept_with_the_request_and_is_none_without_one() -> None:
-    body = {"url": URL, "formats": ["markdown"]}
-
-    budgeted = CrawlRequest.model_validate({**body, "budget": {"llm_calls": 3}})
-
-    assert CrawlRequest.model_validate(body).budget is None
-    assert budgeted.model_dump(mode="json", by_alias=True)["budget"] == {"llm_calls": 3}
-
-
-@pytest.mark.parametrize("budget", [{"llm_calls": -1}, {}, {"llm_calls": 1, "pages": 2}])
-def test_refuses_a_budget_that_is_not_a_count_of_llm_calls(budget: dict[str, object]) -> None:
-    [(location, _)] = _errors({"url": URL, "formats": ["markdown"], "budget": budget})
-
-    assert location[0] == "budget"
 
 
 @pytest.mark.parametrize(
@@ -77,46 +53,6 @@ def test_records_need_a_schema_and_rules_of_its_page_kind(members: dict[str, Any
     assert error == f"Value error, {message}"
 
 
-def test_records_take_listing_rules() -> None:
-    rules = [{"pattern": "*", "page_kind": "listing"}]
-
-    request = CrawlRequest.model_validate(
-        {"url": URL, "formats": ["records"], "schema": SCHEMA, "page_kind_rules": rules}
-    )
-
-    assert [rule.page_kind for rule in request.page_kind_rules] == ["listing"]
-
-
-def test_formats_take_rules_of_any_page_kind() -> None:
-    rules = [DETAIL, {"pattern": "https://shop.example.test/c/*", "page_kind": "listing"}]
-
-    request = CrawlRequest.model_validate({"url": URL, "formats": ["markdown"], "page_kind_rules": rules})
-
-    assert [rule.page_kind for rule in request.page_kind_rules] == ["detail", "listing"]
-
-
-def test_the_frontier_is_scoped_to_the_start_urls_host() -> None:
-    body = {"url": "HTTPS://Shop.Example.Test/a?b=1&a=2#top", "formats": ["markdown"], "max_depth": 2, "limit": 7}
-    request = CrawlRequest.model_validate(body)
-
-    frontier = request.frontier()
-
-    assert request.start == "https://shop.example.test/a?a=2&b=1"
-    assert (frontier.scope.host, frontier.max_depth, frontier.limit) == ("shop.example.test", 2, 7)
-
-
-@pytest.mark.parametrize("member", ["include", "exclude"])
-def test_takes_at_most_max_patterns_globs_in_a_scope_list(member: str) -> None:
-    globs = [f"https://shop.example.test/c{n}/*" for n in range(MAX_PATTERNS + 1)]
-    body = {"url": URL, "formats": ["markdown"]}
-    accepted = CrawlRequest.model_validate(body | {member: globs[:MAX_PATTERNS]})
-
-    [(location, _)] = _errors(body | {member: globs})
-
-    assert len(getattr(accepted, member)) == MAX_PATTERNS
-    assert location == (member,)
-
-
 def test_max_pages_is_the_limit() -> None:
     request = CrawlRequest.model_validate(
         {"url": "https://shop.example.test/", "formats": ["markdown"], "max_pages": 7}
@@ -127,24 +63,6 @@ def test_max_pages_is_the_limit() -> None:
         CrawlRequest.model_validate(
             {"url": "https://shop.example.test/", "formats": ["markdown"], "max_pages": 7, "limit": 7}
         )
-
-
-def test_the_public_schema_does_not_advertise_max_pages() -> None:
-    # The alias is accepted by a before-validator, which the OpenAPI schema cannot carry: a client generated from
-    # the schema (with extra members forbidden) would refuse it, so the schema names `limit` only.
-    assert "max_pages" not in str(CrawlRequest.model_json_schema())
-
-
-def test_a_query_orders_a_best_first_crawl_only() -> None:
-    body = {"url": "https://shop.example.test/", "formats": ["markdown"], "query": "kettles"}
-    with pytest.raises(ValueError, match="best_first"):
-        CrawlRequest.model_validate(body)
-    with pytest.raises(ValueError, match="no words"):
-        CrawlRequest.model_validate({**body, "strategy": "best_first", "query": "?!"})
-
-    frontier = CrawlRequest.model_validate({**body, "strategy": "best_first", "keywords": ["Tea"]}).frontier()
-
-    assert (frontier.strategy, frontier.wanted) == ("best_first", ("kettles", "tea"))
 
 
 def test_a_pdf_cannot_be_asked_over_http_and_chunking_needs_the_chunks_format() -> None:

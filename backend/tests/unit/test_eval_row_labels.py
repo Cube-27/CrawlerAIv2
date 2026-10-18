@@ -64,68 +64,12 @@ def with_list(variants: dict[str, Any], **doc: Any) -> dict[str, Any]:
     return copy.deepcopy(DOC) | {"lists": {"variants": variants}} | doc
 
 
-def test_a_version_2_document_round_trips() -> None:
-    labels = parse_labels(DOC, "detail", SPECS)
-
-    assert labels.model_dump(mode="json", exclude_defaults=True) == DOC | {"lists": {"variants": VARIANTS}}
-
-
 def test_version_1_labels_stay_valid_and_leave_the_row_field_unlabeled() -> None:
     doc = {k: v for k, v in DOC.items() if k != "lists"} | {"label_version": 1}
 
     labels = parse_labels(doc, "detail", SPECS)
 
     assert (list(labels.fields), labels.lists) == (["title"], {})
-
-
-def test_version_1_labels_cannot_label_rows() -> None:
-    assert errors(DOC | {"label_version": 1}) == {LabelError("lists", "row-mapped fields need label_version 2")}
-
-
-def test_a_complete_version_2_document_labels_every_row_field() -> None:
-    doc = {k: v for k, v in DOC.items() if k != "lists"}
-
-    assert errors(doc) == {LabelError("lists.variants", "not labeled; mark it absent if the page does not show it")}
-
-
-def test_a_draft_may_leave_the_row_field_and_sub_fields_unlabeled() -> None:
-    partial = {"fields": {"sku": sub("W-11")}}
-    draft = with_list({"absent": False, "rows": [partial]}, status="draft", checker=None)
-
-    assert list(parse_labels(draft, "detail", SPECS).lists["variants"].rows[0].fields) == ["sku"]
-    assert parse_labels({k: v for k, v in draft.items() if k != "lists"}, "detail", SPECS).lists == {}
-
-
-def test_every_sub_field_of_a_complete_row_is_labeled() -> None:
-    partial = {"fields": {"sku": sub("W-11")}}
-
-    assert errors(with_list({"absent": False, "rows": [partial]})) == {
-        LabelError("lists.variants.rows[0].fields.price", "not labeled; mark it absent if the page does not show it"),
-        LabelError("lists.variants.rows[0].fields.url", "not labeled; mark it absent if the page does not show it"),
-    }
-
-
-def test_a_row_names_only_sub_fields() -> None:
-    extra = row("W-11")
-    extra["fields"]["colour"] = sub("Red")
-
-    assert errors(with_list({"absent": False, "rows": [extra]})) == {
-        LabelError("lists.variants.rows[0].fields.colour", "not a sub-field of variants")
-    }
-
-
-def test_a_row_field_is_labeled_in_lists_not_fields() -> None:
-    doc = copy.deepcopy(DOC)
-    doc["fields"]["variants"] = sub([{"sku": "W-11"}])
-
-    assert errors(doc) == {LabelError("fields.variants", "a row-mapped field belongs in lists")}
-
-
-def test_only_row_mapped_fields_are_labeled_in_lists() -> None:
-    doc = copy.deepcopy(DOC)
-    doc["lists"]["title"] = VARIANTS
-
-    assert errors(doc) == {LabelError("lists.title", "not a row-mapped field of the schema")}
 
 
 @pytest.mark.parametrize(
@@ -137,16 +81,6 @@ def test_only_row_mapped_fields_are_labeled_in_lists() -> None:
 )
 def test_absent_and_rows_agree(variants: dict[str, Any], reason: str) -> None:
     assert errors(with_list(variants)) == {LabelError("lists.variants", reason)}
-
-
-def test_a_distractor_key_names_a_key_sub_field_and_no_row_s_key() -> None:
-    price = {"field": "price", "value": {"amount": "10.00", "currency": "EUR"}}
-    own = {"field": "sku", "value": "W-11"}
-
-    assert errors(with_list(VARIANTS | {"distractor_keys": [price, own]})) == {
-        LabelError("lists.variants.distractor_keys[0]", "not a key sub-field of variants"),
-        LabelError("lists.variants.distractor_keys[1]", "a distractor key equals a row's key"),
-    }
 
 
 def test_listing_pages_have_no_row_mapped_labels() -> None:

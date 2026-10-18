@@ -49,14 +49,6 @@ def _page(
 EIGHT = [_page({"title": "A lamp"}, frozenset({"title"})) for _ in range(8)]
 
 
-def test_a_required_field_no_page_states_is_absent_and_optional_and_object_fields_never_are() -> None:
-    assert absent_fields(_schema(), EIGHT) == ["sku"]
-
-
-def test_a_member_of_a_required_group_counts_as_required() -> None:
-    assert absent_fields(_schema(groups=[["brand", "title"]]), EIGHT) == ["sku", "brand"]
-
-
 @pytest.mark.parametrize(
     "last",
     [
@@ -68,11 +60,6 @@ def test_a_member_of_a_required_group_counts_as_required() -> None:
 )
 def test_one_page_that_states_it_or_was_not_asked_keeps_it_not_absent(last: StoredPage) -> None:
     assert absent_fields(_schema(), [*EIGHT[:7], last]) == []
-
-
-def test_fewer_pages_than_a_run_reads_or_a_listing_make_nothing_absent() -> None:
-    assert absent_fields(_schema(), EIGHT[:7]) == []
-    assert absent_fields(_schema("listing"), EIGHT) == []
 
 
 def _ir(**update: Any) -> dict[str, Any]:

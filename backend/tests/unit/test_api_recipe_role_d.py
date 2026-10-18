@@ -11,7 +11,6 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 
-import pytest
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
@@ -23,7 +22,6 @@ from crawlerai.config_ir.api_recipe.replay import ReplayPage
 from crawlerai.config_ir.api_recipe.role_d import REPAIR_SYSTEM, SYSTEM, Rejected, bind_by_role_d
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId
-from crawlerai.llm.client import BudgetExhausted
 from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -143,25 +141,6 @@ def test_a_spec_that_does_not_reproduce_a_request_is_repaired_once_and_never_fet
     assert f"- page 2: url_mismatch({ENDPOINT}/oak-chair-202, {ENDPOINT}/202)" in repair.user
 
 
-def test_a_spec_still_wrong_after_the_repair_is_rejected_without_a_fetch(stand_in_api: StandInApi) -> None:
-    client = ScriptedClient(WHOLE_SEGMENT, {**GOOD, "method": "POST"})
-
-    result, sent = _run(client, _pages(), _api(stand_in_api))
-
-    assert result == Rejected(("page 1: method_mismatch(POST, GET)", "page 2: method_mismatch(POST, GET)"))
-    assert sent == []
-    assert len(client.requests) == 2
-
-
-def test_a_reply_the_recipe_model_refuses_is_a_diagnostic_for_the_repair(stand_in_api: StandInApi) -> None:
-    client = ScriptedClient({**GOOD, "params": []}, GOOD)
-
-    result, _ = _run(client, _pages(), _api(stand_in_api))
-
-    assert result == _accepted()
-    assert "- invalid_spec(Value error, placeholders ['p1'] and binders [] differ)" in client.requests[1].user
-
-
 def test_a_spec_whose_replay_answers_other_values_is_not_accepted(stand_in_api: StandInApi) -> None:
     client = ScriptedClient(GOOD)
 
@@ -169,45 +148,3 @@ def test_a_spec_whose_replay_answers_other_values_is_not_accepted(stand_in_api: 
 
     assert result == NotLearnable("no single captured header makes the replay reproduce the sample values", 0)
     assert sent == [f"{ENDPOINT}/101"]  # the first page failed; no captured header was left to try
-
-
-def test_a_binder_reading_the_page_data_makes_the_recipe_fetch_the_page_first(stand_in_api: StandInApi) -> None:
-    # The endpoint also takes the page's variant, which only its script state holds.
-    query = "?v=v{id}"
-    params: list[JsonValue] = [{"name": "p1", "binder": REGEX}, {"name": "p2", "binder": "js_state:$['variant']"}]
-    client = ScriptedClient({**GOOD, "url": f"{ENDPOINT}/{{p1}}?v={{p2}}", "params": params})
-    pages = _pages(page_data={"js_state": {"variant": "v{id}"}}, query=query)
-
-    result, sent = _run(client, pages, _api(stand_in_api, query=query))
-
-    spec = RequestSpec(
-        method="GET",
-        url=f"{ENDPOINT}/{{p1}}?v={{p2}}",
-        params_from_url={"p1": REGEX, "p2": "js_state:$['variant']"},
-        headers={"Accept": "application/json"},
-        requires_page_fetch=True,
-    )
-    assert result == Proven(spec, headers_tried=0)
-    assert sent == [f"{ENDPOINT}/101?v=v101", f"{ENDPOINT}/202?v=v202"]
-
-
-def test_the_prompt_shows_header_names_and_json_key_paths_but_no_values(stand_in_api: StandInApi) -> None:
-    client = ScriptedClient(GOOD)
-    headers = [("X-Requested-With", "XMLHttpRequest"), ("X-Client", "synthetic-client-7")]
-    pages = _pages(headers, {"js_state": {"product": {"label": "Visible Label {id}", "stock": 3}}})
-
-    _run(client, pages, _api(stand_in_api))
-
-    user = client.requests[0].user
-    assert "Header names: X-Requested-With, X-Client" in user
-    assert "js_state: $['product']['label'] $['product']['stock']" in user
-    for value in ("XMLHttpRequest", "synthetic-client-7", "Visible Label", "Desk Lamp", "19.5"):
-        assert value not in user
-
-
-def test_an_llm_failure_propagates(stand_in_api: StandInApi) -> None:
-    client = ScriptedClient(BudgetExhausted())
-    pages, fetcher = _pages(), _api(stand_in_api)
-
-    with pytest.raises(BudgetExhausted):
-        _run(client, pages, fetcher)

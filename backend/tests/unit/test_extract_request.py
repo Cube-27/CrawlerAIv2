@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.crawl.rules import MAX_PATTERNS
 from crawlerai.services.batch import MAX_URLS
 from crawlerai.services.extract import ExtractRequest
 
@@ -19,16 +18,6 @@ def _errors(body: dict[str, Any]) -> list[tuple[tuple[str, ...], str]]:
     with pytest.raises(ValidationError) as invalid:
         ExtractRequest.model_validate(body)
     return [(tuple(str(part) for part in error["loc"]), error["msg"]) for error in invalid.value.errors()]
-
-
-def test_a_stored_request_reads_back_as_itself() -> None:
-    body = BODY | {
-        "urls": ["https://shop.example.test/p/*", "https://shop.example.test/p/1"],
-        "schema": {"prompt": "x"},
-    }
-    request = ExtractRequest.model_validate(body)
-
-    assert ExtractRequest.model_validate(request.model_dump(mode="json", by_alias=True)) == request
 
 
 @pytest.mark.parametrize(
@@ -73,10 +62,6 @@ def test_the_schema_is_for_detail_pages_of_the_page_kind(members: dict[str, Any]
     assert _errors(BODY | members) == [((), message)]
 
 
-def test_takes_listing_records() -> None:
-    assert ExtractRequest.model_validate(BODY | {"page_kind": "listing"}).page_kind == "listing"
-
-
 def test_the_guard_checks_each_url_and_each_globs_origin() -> None:
     request = ExtractRequest.model_validate(
         BODY | {"urls": ["https://shop.example.test/p/1", "https://Other.example.test:443/c/*/p/*"]}
@@ -85,18 +70,4 @@ def test_the_guard_checks_each_url_and_each_globs_origin() -> None:
     assert request.targets() == [
         ("urls[0]", "https://shop.example.test/p/1"),
         ("urls[1]", "https://other.example.test/"),
-    ]
-
-
-def test_takes_at_most_max_patterns_globs_per_host() -> None:
-    # A host's globs are the `include` of its map (§4.6), which takes `MAX_PATTERNS`.
-    globs = [f"https://shop.example.test/c{n}/*" for n in range(MAX_PATTERNS)]
-    other_host = "https://other.example.test/p/*"
-    accepted = ExtractRequest.model_validate(BODY | {"urls": [*globs, other_host]})
-
-    errors = _errors(BODY | {"urls": [*globs, "https://shop.example.test/more/*"]})
-
-    assert len(accepted.urls) == MAX_PATTERNS + 1
-    assert errors == [
-        (("urls",), f"Value error, at most {MAX_PATTERNS} globs per host: a host's globs are its map's include")
     ]

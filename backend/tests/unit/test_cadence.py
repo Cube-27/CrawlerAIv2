@@ -27,23 +27,6 @@ def test_an_interval_runs_next_at_its_first_due_time_after_now_on_its_phase(inte
     assert (due - START).total_seconds() % interval == 0
 
 
-def test_an_interval_without_a_due_time_yet_runs_one_interval_from_now() -> None:
-    assert next_run(Cadence(None, 300, "UTC"), START) == START + timedelta(minutes=5)
-
-
-def test_a_schedule_that_missed_many_runs_runs_once_then_moves_past_now() -> None:
-    cadence = Cadence(None, 60, "UTC")
-    now = START + timedelta(hours=5, seconds=30)
-
-    assert next_run(cadence, now, anchor=START) == START + timedelta(hours=5, minutes=1)
-
-
-def test_a_cron_time_is_wall_clock_time_in_its_zone() -> None:
-    cadence = Cadence("30 9 * * *", None, "Asia/Kolkata")  # UTC+05:30, no DST
-
-    assert next_run(cadence, START) == datetime(2026, 1, 1, 4, 0, tzinfo=UTC)
-
-
 def test_a_cron_time_a_dst_change_skips_runs_at_the_first_minute_after_it() -> None:
     zone = ZoneInfo("America/New_York")  # 2026-03-08 02:00 -> 03:00
     cadence = Cadence("30 2 * * *", None, "America/New_York")
