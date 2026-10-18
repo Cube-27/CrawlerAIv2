@@ -6,7 +6,9 @@ published it, the config matches it and the engine executor and the independent 
 the published value (`equal`), and every value it matches on any page is valid by its normalizer. A single-valued
 field that matches more than once is invalid (§4.3), so "exactly one match" is part of validity. A field the engine
 published on no held-out page cannot be checked and is dropped. A listing keeps its rows only if `row` selects at
-least 3 on every page; its row fields are checked row by row against the engine's rows, in document order.
+least 3 on every page; its row fields are checked row by row against the engine's rows, in document order, the
+engine's rows aligned with the config's as an order-preserving subsequence (`row_alignment`, D-1500): role C may leave
+items out of a listing, and the config is then checked on the rows the engine did publish.
 
 A kept field is `corroborated` when the config's values equal the structured-data or adapter values on the comparable
 held-out pages (§8.3 step 4); a field an operator confirmed or corrected stays `operator`.
@@ -25,6 +27,7 @@ from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR, FieldSteps, ListingSpec, Ratio, Step
 from crawlerai.config_ir.release_executor import Released, ReleasePage, Value, release_run
 from crawlerai.config_ir.release_rules import release_rules
+from crawlerai.config_ir.row_alignment import align
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import CaptureId, FieldStatus
 from crawlerai.normalize.base import Context, Ok
@@ -213,22 +216,47 @@ def release_on(ir: ExtractionConfigIR, schema: SchemaDef, page: HeldOutPage) -> 
 
 @dataclass(frozen=True, slots=True)
 class _PageRun:
-    """Both executors' output on one held-out page: the engine's config candidates by owner and field."""
+    """Both executors' output on one held-out page: the engine's config candidates by owner and field, and for each of
+    the engine's listing rows the config row it aligns with (`row_alignment`, D-1500)."""
 
     page: HeldOutPage
     candidates: Mapping[tuple[str, str], Candidate]
     rows: int
     released: Released
+    aligned: Sequence[int | None] = ()
 
     @classmethod
     def of(cls, executor: EngineExecutor, schema: SchemaDef, page: HeldOutPage) -> "_PageRun":
         executed = executor.execute(page.page, schema, page.ctx)
+        candidates = {(c.entity_id, c.field): c for c in executed.candidates}
+        config_rows = [_valid_values(candidates, row_id(n)) for n in range(len(executed.rows))]
+        engine_rows = [facts.published for facts in page.rows]
         return cls(
             page=page,
-            candidates={(c.entity_id, c.field): c for c in executed.candidates},
+            candidates=candidates,
             rows=len(executed.rows),
             released=release_on(executor.ir, schema, page),
+            aligned=align(engine_rows, config_rows, agreeing(schema)),
         )
+
+
+def _valid_values(candidates: Mapping[tuple[str, str], Candidate], owner: str) -> dict[str, JsonValue]:
+    return {
+        name: candidate.normalized.value
+        for (entity, name), candidate in candidates.items()
+        if entity == owner and isinstance(candidate.normalized, Ok)
+    }
+
+
+def agreeing(schema: SchemaDef) -> Callable[[str, JsonValue, JsonValue], bool]:
+    """Whether a config's value for a field of `schema` agrees with the value the engine published (`equal`), as rows
+    are aligned (D-1500)."""
+
+    def agrees(name: str, value: JsonValue, published: JsonValue) -> bool:
+        spec = schema.fields.get(name)
+        return spec is not None and equal(value, published, spec)
+
+    return agrees
 
 
 def release_value(values: Mapping[str, Value], name: str, spec: FieldSpec, ctx: Context) -> JsonValue | None:
@@ -271,19 +299,21 @@ def _page_slots(run: _PageRun, name: str, spec: FieldSpec) -> tuple[list[_Slot],
 
 
 def _row_slots(run: _PageRun, name: str, spec: FieldSpec) -> tuple[list[_Slot], bool]:
-    """A row field has one slot per row, the config's n-th row against the engine's n-th; the rows align when both
-    executors and the engine have as many."""
+    """A row field has one slot per engine row, against the config row it aligns with (none when it aligns with none),
+    and one per config row no engine row aligns with, which the engine did not publish (D-1500). The rows align when
+    both executors select as many rows and the engine published no more."""
     facts, released = run.page.rows, run.released.rows
-    slots = [
-        _slot(
-            run.candidates.get((row_id(n), name)),
-            release_value(released[n], name, spec, run.page.ctx) if n < len(released) else None,
-            facts[n] if n < len(facts) else Facts(),
-            name,
-        )
-        for n in range(max(run.rows, len(facts), len(released)))
-    ]
-    return slots, run.rows == len(facts) == len(released)
+
+    def config_slot(n: int | None, published: Facts) -> _Slot:
+        if n is None:
+            return _slot(None, None, published, name)
+        value = release_value(released[n], name, spec, run.page.ctx) if n < len(released) else None
+        return _slot(run.candidates.get((row_id(n), name)), value, published, name)
+
+    paired = set(run.aligned)
+    slots = [config_slot(n, published) for n, published in zip(run.aligned, facts, strict=True)]
+    slots += [config_slot(n, Facts()) for n in range(run.rows) if n not in paired]
+    return slots, run.rows == len(released) and len(facts) <= run.rows
 
 
 @dataclass(frozen=True, slots=True)
