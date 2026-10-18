@@ -16,6 +16,8 @@ FULL_SHA = SHA + "0" * 33
 FAKE_GH = f"""#!/bin/bash
 case "$*" in
   *changedFiles*) echo "$FAKE_FILES" ;;
+  *nameWithOwner*) echo "owner/repo" ;;
+  *graphql*) echo "${{FAKE_UNRESOLVED:-0}}" ;;
   *"Code review"*) printf '%s' "$FAKE_SUMMARY" ;;
   *"pulls/7/comments"*) printf '%s' "$FAKE_INLINE" ;;
   *"--json comments"*) cat "$FAKE_COMMENTS" ;;
@@ -32,7 +34,7 @@ pytestmark = pytest.mark.skipif(BASH is None, reason="needs bash")
 
 
 def run_merge_pr(
-    tmp_path: Path, comments: list[str], files: int = 3, summary: str = "", inline: str = ""
+    tmp_path: Path, comments: list[str], files: int = 3, summary: str = "", inline: str = "", unresolved: int = 0
 ) -> tuple[subprocess.CompletedProcess[str], str]:
     listed = tmp_path / "comments.txt"
     listed.write_text("".join(f"{line}\n" for line in comments), newline="\n")
@@ -45,6 +47,7 @@ def run_merge_pr(
         FAKE_FILES=str(files),
         FAKE_SUMMARY=summary,
         FAKE_INLINE=inline,
+        FAKE_UNRESOLVED=str(unresolved),
         FAKE_LOG=log.as_posix(),
         WAIT_CI_POLL_S="1",
     )
@@ -108,5 +111,15 @@ def test_a_pr_over_ten_files_without_claude_review_is_not_merged(tmp_path: Path)
     assert result.stderr == (
         "ERROR PR #7 changes 11 files (over 10) and has no Claude review:"
         " comment /claude-review and act on its findings first\n"
+    )
+    assert calls == ""
+
+
+def test_a_pr_with_an_unresolved_review_thread_is_not_merged(tmp_path: Path) -> None:
+    result, calls = run_merge_pr(tmp_path, [READY], unresolved=2)
+
+    assert result.returncode == 1
+    assert result.stderr == (
+        "ERROR PR #7 has 2 unresolved review thread(s): fix or answer each finding and resolve it\n"
     )
     assert calls == ""
