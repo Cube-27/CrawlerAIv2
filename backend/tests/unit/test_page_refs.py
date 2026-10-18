@@ -67,8 +67,14 @@ def test_links_are_the_http_targets_in_document_order_each_once() -> None:
     )
 
 
-def test_a_page_with_more_links_than_the_cap_keeps_the_first() -> None:
-    html = "<body>" + "".join(f'<a href="/{i}">x</a>' for i in range(MAX_LINKS + 10)) + "</body>"
+def test_a_page_with_more_links_than_the_cap_keeps_none_so_no_site_is_judged_by_a_part_of_them() -> None:
+    html = "<body>" + "".join(f'<a href="/{i}">x</a>' for i in range(MAX_LINKS + 1)) + "</body>"
+
+    assert page_refs(_page(html)).links == ()
+
+
+def test_a_page_with_as_many_links_as_the_cap_keeps_them_all() -> None:
+    html = "<body>" + "".join(f'<a href="/{i}">x</a>' for i in range(MAX_LINKS)) + "</body>"
 
     links = page_refs(_page(html)).links
 

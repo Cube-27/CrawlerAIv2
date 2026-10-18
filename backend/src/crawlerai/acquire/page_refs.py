@@ -9,7 +9,8 @@ from crawlerai.acquire.types import FetchResult
 from crawlerai.adapters.base import PageRefs
 from crawlerai.storage.capture_bundle import decode_body
 
-# The most links a page's references keep: a page with more is a listing of a size no single platform site is judged by.
+# The most links a page's references keep: a page with more is a listing of a size no single platform site is judged
+# by, so it keeps none.
 MAX_LINKS = 5000
 
 
@@ -23,8 +24,8 @@ def canonical_link(page: FetchResult) -> str | None:
 def page_refs(page: FetchResult) -> PageRefs:
     """The URLs that name the page itself, strongest first: its final URL (after the redirects of its fetch), its
     canonical link (RFC 6596) and its `og:url` (Open Graph protocol, "og:url": the object's canonical URL); and the
-    absolute `http` and `https` targets of its links (HTML Standard §4.6 `a href`), in document order, each once. A
-    reference no URL parser reads is skipped."""
+    absolute `http` and `https` targets of its links (HTML Standard §4.6 `a href`), in document order, each once, none
+    on a page with more than `MAX_LINKS`. A reference no URL parser reads is skipped."""
     tree = LexborHTMLParser(decode_body(page.bundle))
     base = _base(tree, page)
     own = [page.bundle.manifest.final_url]
@@ -35,12 +36,20 @@ def page_refs(page: FetchResult) -> PageRefs:
             url := _join(base, meta.attributes.get("content") or "")
         ):
             own.append(url)
+    return PageRefs(own=tuple(own), links=_links(tree, base))
+
+
+def _links(tree: LexborHTMLParser, base: str) -> tuple[str, ...]:
+    """The page's distinct `http` and `https` link targets in document order, or none past `MAX_LINKS`: a part of a
+    larger page's links could name one site where the whole names two."""
     links: dict[str, None] = {}
     for anchor in tree.css("a[href]"):
         target = _join(base, anchor.attributes.get("href") or "")
-        if target is not None and urlsplit(target).scheme in {"http", "https"} and len(links) < MAX_LINKS:
+        if target is not None and urlsplit(target).scheme in {"http", "https"}:
             links[target] = None
-    return PageRefs(own=tuple(own), links=tuple(links))
+            if len(links) > MAX_LINKS:
+                return ()
+    return tuple(links)
 
 
 def _join(base: str, reference: str) -> str | None:
