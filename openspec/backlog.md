@@ -8,9 +8,9 @@ commit and delete the lines their PR closes; a follow-up that grows into work be
 ## Current focus
 
 The master improvement plan (owner, 2026-10-18, `design/owner-decisions.md` #67), by phase:
-- **Phase 0, measure what is real:** golden set as the only measure (#271); row URL keys with per-page
-  session-parameter removal, label re-keying, list labels, presence ceiling and FN/FP split in the eval report
-  (`plan-phase-0-2`); decode once at acquire (phase-1 batch).
+- **Phase 0, measure what is real:** done but for decode once at acquire (phase-1 batch): golden set as the only
+  measure (#271); row keys without session parameters, label re-keying, list labels, presence ceiling, FN/FP kinds
+  and cost per correct field (#272). Golden TP share with recorded role C: 30.0% → 46.9% after re-keying.
 - **Phase 1, acquisition robustness:** one polite fetch, structural render-need without role C, resource blocking,
   bounded scroll/next by default for single-URL listing scrapes, `blocked` with the vendor label.
 - **Phase 2, the item layer:** segment, align (typed value spotting), bind; role C per block; delete the item-link,
@@ -37,6 +37,13 @@ Agents can't do these.
 ## Follow-ups
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
+
+- Golden report (#272): `eval re-key` marks 206 of 748 golden label rows stale by a written-form search of the
+  capture; a row whose title the capture writes only in a script-escaped or transformed form may be marked stale
+  wrongly. Spot-check stale rows against the captures before the next fresh batch, and keep the stale count in each PR.
+  Presence of amounts, numbers, dates and enums is unknown (no written form to search); executability classes and
+  per-failure-class deltas (plan §8) are not built. The no-LLM `list` precision fell (0.36 → 0.20) only because the
+  `locations` labels now import (n 12 → 287): the engine's listing locations are scored for the first time.
 
 - Learning live (#269): role A reads 180k to 285k input tokens per call (5 sample pages of up to 120,000 characters
   of reduced HTML, sent again in each repair round), USD 0.15 to 2.70 of role A per learned host against about

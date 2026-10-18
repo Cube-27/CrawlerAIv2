@@ -25,7 +25,7 @@ something before any engine coverage work.
 
 ## Impact
 
-- Capabilities: [evaluation](../../specs/evaluation/spec.md), [extraction](../../specs/extraction/spec.md).
+- Capabilities: [evaluation](../../../specs/evaluation/spec.md), [extraction](../../../specs/extraction/spec.md).
 - Files: `backend/src/crawlerai/normalize/url_key.py`, `resolve/row_keys.py` (new), `resolve/pipeline.py`,
   `resolve/types.py`, `eval/` (`metrics.py`, `presence.py` and `rekey.py` new, `labels.py`, `label_file.py`,
   `replay.py`), `cli.py`, `llm/pricing.py`.
