@@ -1,32 +1,66 @@
-"""The currencies a page's structured data states (schemas spec): the ISO 4217 codes written as
-schema.org `priceCurrency` (on an Offer, AggregateOffer, PriceSpecification or any other node, in JSON-LD, microdata
-or RDFa Lite) and as the OGP `product:price:currency`. They settle a currency symbol the page writes in text (`$` on a
-page whose Offer says USD) and nothing else: a page currency never supplies a missing sign (D-0301).
+"""The currencies a page states for its prices (normalization spec, "money"), as evidence the money rules weigh.
 
-Only what the page states is read (C7): a value that is not an ISO 4217 code as written (three uppercase letters
-that ISO 4217 lists) is not a currency here, and nothing is inferred from the host, the language or other prices.
+- Stated in structured data: the ISO 4217 codes written as schema.org `priceCurrency` (on an Offer, AggregateOffer,
+  PriceSpecification or any other node, in JSON-LD, microdata or RDFa Lite).
+- Declared page-wide: the OGP `product:price:currency` and `og:price:currency`, and a currency in the page's state
+  JSON, a member named `currency`, `currencyCode` or `activeCurrency` (letter case and `_` aside) holding an ISO 4217
+  code (owner decision of 2026-10-18: generic member names only).
+
+Only what the page writes is read (C7): a value that is not an ISO 4217 code as written (three uppercase letters that
+ISO 4217 lists) is not a currency here. The page's language and ccTLD are weighed by the money rules themselves.
 """
 
+from collections.abc import Iterator
+
+from pydantic import JsonValue
+
 from crawlerai.collect import jsonld, microdata, og
+from crawlerai.collect.js_state import state_documents
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context
 from crawlerai.normalize.money import is_currency_code
 
 # schema.org `priceCurrency`: "The currency of the price … Use standard formats: ISO 4217 currency format".
 _PROPERTY = "priceCurrency"
+# Owner decision 2026-10-18: the member names of a page-wide currency in state JSON, compared without letter case or
+# `_` (`currency_code`, `CurrencyCode`).
+_STATE_MEMBERS = frozenset({"currency", "currencycode", "activecurrency"})
 
 
 def stated_currencies(page: ParsedPage) -> tuple[str, ...]:
-    """The ISO 4217 codes the page states, each once, in the order first written (JSON-LD, microdata, then OGP)."""
-    written = [
-        *jsonld.property_scalars(page, _PROPERTY),
-        *microdata.property_scalars(page, _PROPERTY),
-        *og.price_currencies(page),
-    ]
+    """The ISO 4217 codes the page's structured data states, each once, in the order first written (JSON-LD, then
+    microdata)."""
+    return _codes([*jsonld.property_scalars(page, _PROPERTY), *microdata.property_scalars(page, _PROPERTY)])
+
+
+def declared_currencies(page: ParsedPage) -> tuple[str, ...]:
+    """The ISO 4217 codes the page declares page-wide, each once: OGP's, then its state JSON's."""
+    state = [value for document in state_documents(page, []) for value in _state_currencies(document.data)]
+    return _codes([*og.price_currencies(page), *state])
+
+
+def with_stated_currencies(ctx: Context, page: ParsedPage) -> Context:
+    """`ctx` with the currencies `page` states (`page_currencies`) and declares (`declared_currencies`)."""
+    return ctx.model_copy(
+        update={"page_currencies": stated_currencies(page), "declared_currencies": declared_currencies(page)}
+    )
+
+
+def _codes(written: list[JsonValue]) -> tuple[str, ...]:
     found = (value.strip() for value in written if isinstance(value, str))
     return tuple(dict.fromkeys(code for code in found if is_currency_code(code)))
 
 
-def with_stated_currencies(ctx: Context, page: ParsedPage) -> Context:
-    """`ctx` with `page_currencies` set to what `page` states."""
-    return ctx.model_copy(update={"page_currencies": stated_currencies(page)})
+def _state_currencies(document: JsonValue) -> Iterator[JsonValue]:
+    """The values of the currency members anywhere in a state document (RFC 8259 objects and arrays)."""
+    stack = [document]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            for name, member in node.items():
+                if name.replace("_", "").lower() in _STATE_MEMBERS and isinstance(member, str):
+                    yield member
+                elif isinstance(member, (dict, list)):
+                    stack.append(member)
+        elif isinstance(node, list):
+            stack.extend(node)

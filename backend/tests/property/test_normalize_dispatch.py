@@ -84,9 +84,7 @@ def test_a_dollar_sign_is_ambiguous_without_evidence_and_settled_by_a_page_curre
     lo, hi = bounds
     raw = f"${lo} - ${hi} per year"
 
-    result = normalize(raw, _spec(FieldType.RANGE), CTX)
-
-    assert isinstance(result, Ambiguous)  # C7: never USD by default
-    assert len({o["currency"] for o in result.options if isinstance(o, dict)}) > 1
+    # C7: never USD by default; a range states one currency or none (the money rules leave `$` unknown).
+    assert normalize(raw, _spec(FieldType.RANGE), CTX) == Ambiguous("currency_unknown", ())
     settled = Context(captured_at=AT, page_currencies=("CAD",))
     assert normalize(raw, _spec(FieldType.RANGE), settled) == Ok(_range(lo, hi, "CAD", "YEAR"))

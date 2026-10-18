@@ -9,11 +9,17 @@ import re
 from collections.abc import Hashable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
 from crawlerai.schemas.types import FieldSpec
+
+# normalization spec, money: where a value's currency came from when the value itself does not state it. `page` is a
+# page-level declaration, `locale` the page's language and region narrowing a shared sign, `unknown` none (the
+# currency is null). Weakest last.
+Basis = Literal["page", "locale", "unknown"]
+BASES: tuple[Basis, ...] = ("page", "locale", "unknown")
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,11 +27,16 @@ class Ok:
     """The normalized value, in the type's JSON form (the form labels and records store).
 
     `reasons` reports the parts of a list or object that declined and were dropped (normalization spec), each as
-    `<path>: <reason>` (`[2]: empty`, `address.locality: no_match`); a scalar has none.
+    `<path>: <reason>` (`[2]: empty`, `address.locality: no_match`); a scalar has none. `basis` is the weaker evidence
+    a part of the value rests on (`Basis`), `None` when the raw value states it all. `checked` is whether the raw value
+    shows the type's checked syntax, so that its normalizing is evidence of the type (extraction spec): money text
+    without a currency sign is only a number.
     """
 
     value: JsonValue
     reasons: tuple[str, ...] = ()
+    basis: Basis | None = None
+    checked: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +85,8 @@ class Context(BaseModel):
     og_locale: str | None = None
     hreflang: tuple[str, ...] = ()
     page_currencies: tuple[str, ...] = ()  # ISO 4217 codes stated in the page's structured data
+    declared_currencies: tuple[str, ...] = ()  # ISO 4217 codes the page declares page-wide (OGP, page state)
+    content_language: tuple[str, ...] = ()  # RFC 9110 §8.5 Content-Language and its HTML pragma, as written
     cctld_territory: str | None = None  # from the URL's ccTLD through CLDR territory data; None for gTLDs
     request_locale: str | None = None  # the caller's hint
     captured_at: datetime  # for relative dates

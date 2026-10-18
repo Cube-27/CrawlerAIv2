@@ -91,3 +91,9 @@ def test_another_money_field_or_a_schema_currency_field_names_its_currency_after
         "price": "9.50",
         "price_currency": "EUR",
     }
+
+
+def test_a_price_whose_currency_is_unknown_exports_its_amount_with_a_null_currency() -> None:
+    schema = SchemaDocument(name="thing", page_kind="detail", fields={"price": _MONEY})
+
+    assert clean_record(schema, {"price": {"amount": "9.50", "currency": None}}) == {"price": "9.50", "currency": None}

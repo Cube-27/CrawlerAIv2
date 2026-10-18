@@ -1,4 +1,4 @@
-"""Money normalizer (normalization spec): `{"amount": "<decimal>", "currency": "<ISO 4217>"}`.
+"""Money normalizer (normalization spec): `{"amount": "<decimal>", "currency": "<ISO 4217>" | null}`.
 
 Accepts:
 - a string, from the DOM or an LLM: the one amount in it, and the currency sign written next to it (a CLDR symbol
@@ -7,25 +7,31 @@ Accepts:
 - a JSON object from a structured source: schema.org `price` + `priceCurrency` (Offer, PriceSpecification), or the
   normalized form `amount` + `currency`. The amount is a JSON number or a string of digits with `.` as the decimal
   point (schema.org `price`: no grouping, no currency sign); a `price` written as display text instead (`$1,295.99`)
-  is read like text, in the stated currency, which any sign it writes must denote (D-1240).
+  is read like text, in the stated currency, which any sign it writes must denote.
 
-Any other JSON value is `Invalid("not_money")`. Nothing is defaulted (C7): a sign that names several currencies, or
-an amount the locales read differently, is `Ambiguous`.
+A grounded amount always gives a value; its currency comes from the best evidence (normalization spec, "money"): the
+sign or code written with it, the item's structured data, a page-level declaration, the page's locale and region
+narrowing a shared sign to one currency, else none (`null`, basis `unknown`). Nothing is invented: a currency is
+only ever one the page or its locale names. Any other JSON value is `Invalid("not_money")`; an amount the locales
+read differently is `Ambiguous`.
 """
 
 import re
 import unicodedata
-from collections.abc import Callable, Hashable, Iterable, Mapping
+from collections.abc import Callable, Hashable, Mapping, Sequence
+from dataclasses import dataclass
 from decimal import Decimal
 from functools import cache
+from urllib.parse import urlsplit
 
 from babel import Locale
+from babel.core import get_global
 from babel.numbers import list_currencies
 from price_parser import Price
 from pydantic import JsonValue
 
 from crawlerai.normalize import numbers
-from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, raw_key
+from crawlerai.normalize.base import Ambiguous, Basis, Context, Invalid, NormalizeResult, Ok, Raw, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org `price`: ASCII digits with `.` (U+002E) as the decimal point and no grouping symbols.
@@ -50,15 +56,23 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
     return Invalid("not_money")
 
 
+@dataclass(frozen=True, slots=True)
+class _Currency:
+    """A value's currency (`None`: unknown), the weaker evidence it rests on, and whether a sign or a structured
+    currency is written with the amount (`Ok.checked`)."""
+
+    code: str | None
+    basis: Basis | None
+    written: bool
+
+
 def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
     amount_key, currency_key = ("price", "priceCurrency") if "price" in raw else ("amount", "currency")
     amount, currency = raw.get(amount_key), raw.get(currency_key)
     if amount is None:
         return Invalid("no_amount")
-    if currency is None:
-        return Invalid("no_currency")
-    if not isinstance(currency, str) or currency not in _currencies():
-        return Invalid("unknown_currency")
+    # ISO 4217 as written; a code ISO 4217 does not list (`eur`, `$`) states no currency (C7: the case is not guessed).
+    stated = currency if isinstance(currency, str) and currency in _currencies() else None
     if (number := numbers.json_decimal(amount)) is not None:
         value = number
     elif isinstance(amount, str) and _SCHEMA_ORG_PRICE.fullmatch(stripped := amount.strip()):
@@ -66,10 +80,12 @@ def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
     elif isinstance(amount, str) and amount_key == "price":
         # schema.org `priceCurrency` states the currency of a `price` the page wrote as display text (a sign,
         # grouping), so the text reader reads it with that currency stated (CLDR symbols and number symbols).
-        return _text(amount, ctx, stated=currency)
+        return _text(amount, ctx, stated=stated)
     else:
         return Invalid("unparsable_amount")
-    return _money(value, currency)
+    # The structured value names its amount a price, so it publishes; without a currency it takes the page's.
+    found = _Currency(stated, None, True) if stated is not None else _unwritten(ctx, written=True)
+    return _money(value, found)
 
 
 def _text(raw: str, ctx: Context, stated: str | None = None) -> NormalizeResult:
@@ -81,34 +97,81 @@ def _text(raw: str, ctx: Context, stated: str | None = None) -> NormalizeResult:
     text, before, after = found.text, found.before, found.after
     if numbers.negated(before):
         return Invalid("not_positive")
-    locales = numbers.locale_set(ctx)
-    currencies = _currencies_of(text, before, after, locales, ctx, stated)
-    if isinstance(currencies, Invalid):
-        return currencies
-    amounts = numbers.readings(found.written, locales)
+    currency = _currency_of(text, before, after, ctx, stated)
+    if isinstance(currency, Invalid):
+        return currency
+    amounts = numbers.readings(found.written, numbers.locale_set(ctx))
     if not amounts:
         return Invalid("unparsable_amount")
-    if len(currencies) == 1 and len(amounts) == 1:
-        return _money(amounts[0], currencies[0])
-    options = [_value(a, c) for c in currencies for a in amounts]
-    reason = "decimal_separator" if len(currencies) == 1 else "currency_symbol"
-    return Ambiguous(reason, tuple(options))
+    if len(amounts) == 1:
+        return _money(amounts[0], currency)
+    return Ambiguous("decimal_separator", tuple(_value(a, currency.code) for a in amounts))
 
 
-def _currencies_of(
-    text: str, before: str, after: str, locales: frozenset[str], ctx: Context, stated: str | None
-) -> list[str] | Invalid:
-    """The ISO 4217 codes the text's signs can denote; with a `stated` currency, that one when the signs can denote it
-    or the text writes none."""
+def _currency_of(text: str, before: str, after: str, ctx: Context, stated: str | None) -> _Currency | Invalid:
+    """The currency of a text amount: a `stated` one, which any sign must be able to denote; else the one the signs
+    denote, narrowed by the evidence (`_narrowed`); else, with no sign, the page's (`_unwritten`). Two signs that share
+    no currency (`USD 12 EUR`), or a sign that cannot denote the stated currency, contradict each other: `Invalid`."""
     signs = _signs(text, before, after)
-    if stated is None:
-        return signs if isinstance(signs, Invalid) else _agreed_currencies(signs, locales, ctx)
     if isinstance(signs, Invalid):
-        return [stated] if signs.reason == "no_currency" else signs
-    agreed = _agreed_currencies(signs, locales, ctx.model_copy(update={"page_currencies": (stated,)}))
-    if isinstance(agreed, Invalid) or stated not in agreed:
-        return Invalid("currency_conflict")
-    return [stated]
+        return _Currency(stated, None, True) if stated is not None else _unwritten(ctx, written=False)
+    denoted = _agreed_currencies(signs)
+    if isinstance(denoted, Invalid):
+        return denoted
+    if stated is not None:
+        return _Currency(stated, None, True) if stated in denoted else Invalid("currency_conflict")
+    if not denoted:
+        # A sign `price-parser` locates that no CLDR symbol or ISO 4217 code is: written, but no currency.
+        return _unwritten(ctx, written=True)
+    return _narrowed(signs, denoted, ctx)
+
+
+def _unwritten(ctx: Context, *, written: bool) -> _Currency:
+    """The currency of an amount written without one: the one currency the page states and declares, when every
+    statement agrees (normalization spec, "a page-level declaration ... consistent across the page"); else unknown."""
+    declared = set(ctx.page_currencies) | set(ctx.declared_currencies)
+    if len(declared) == 1:
+        return _Currency(declared.pop(), "page", written)
+    return _Currency(None, "unknown", written)
+
+
+def _narrowed(signs: Sequence[str], denoted: frozenset[str], ctx: Context) -> _Currency:
+    """Of the currencies a written sign can denote, the one the evidence settles, strongest first: the page's
+    structured data (schema.org `priceCurrency`), its page-level declarations, then its locale and region (CLDR
+    currency symbols of the locales its language tags and ccTLD name). Each step narrows what the one before left;
+    none settling it leaves the currency unknown, never a default (C7)."""
+    if len(denoted) == 1:
+        return _Currency(next(iter(denoted)), None, True)
+    steps: tuple[tuple[Callable[[], frozenset[str]], Basis | None], ...] = (
+        (lambda: frozenset(ctx.page_currencies), None),
+        (lambda: frozenset(ctx.declared_currencies), "page"),
+        (lambda: _regional(signs, ctx), "locale"),
+    )
+    left = denoted
+    for evidence, basis in steps:
+        narrowed = left & evidence()
+        if len(narrowed) == 1:
+            return _Currency(next(iter(narrowed)), basis, True)
+        left = narrowed or left
+    return _Currency(None, "unknown", True)
+
+
+def _regional(signs: Sequence[str], ctx: Context) -> frozenset[str]:
+    """The currencies the signs stand for in the CLDR locales of the page's language and region: its language tags
+    (`numbers.locale_set`), its Content-Language (RFC 9110 §8.5), and the territory its ccTLD names."""
+    territory = ctx.cctld_territory or cctld_territory(ctx.page_url)
+    tags = ctx.model_copy(update={"cctld_territory": territory, "hreflang": (*ctx.hreflang, *ctx.content_language)})
+    locales = numbers.locale_set(tags)
+    symbols = [unicodedata.normalize("NFKC", sign) for sign in signs]
+    return frozenset(code for loc in locales for sign in symbols for code in _locale_symbols(loc).get(sign, ()))
+
+
+def cctld_territory(url: str | None) -> str | None:
+    """The territory a URL's country-code top-level domain names (RFC 1591 §2: a two-letter ISO 3166-1 code), when
+    CLDR knows it as a territory; `None` for a generic TLD or no URL."""
+    host = urlsplit(url).hostname if url else None
+    label = (host or "").rstrip(".").rpartition(".")[2].upper()
+    return label if len(label) == 2 and label in _territories() else None
 
 
 def _signs(text: str, before: str, after: str) -> list[str] | Invalid:
@@ -125,14 +188,15 @@ def _signs(text: str, before: str, after: str) -> list[str] | Invalid:
     return [located]
 
 
-def _agreed_currencies(signs: list[str], locales: frozenset[str], ctx: Context) -> list[str] | Invalid:
-    """The ISO 4217 codes every sign can denote, sorted."""
+def _agreed_currencies(signs: list[str]) -> frozenset[str] | Invalid:
+    """The ISO 4217 codes every sign can denote (CLDR currency symbols anywhere); empty for a lone sign CLDR does not
+    know."""
     # A sign on each side of the amount (`$5 USD`) must agree: the currencies both can denote. Two signs that share
     # none (`USD 12 EUR`) state two currencies, never one money value.
-    each = [_currencies_for(sign, locales, ctx.page_currencies) for sign in signs]
-    currencies = sorted(set(each[0]).intersection(*each[1:]))
-    if not currencies:
-        return Invalid("currency_conflict" if len(each) > 1 and all(each) else "unknown_currency")
+    each = [_currencies_for(sign) for sign in signs]
+    currencies = each[0].intersection(*each[1:])
+    if not currencies and len(each) > 1 and all(each):
+        return Invalid("currency_conflict")
     return currencies
 
 
@@ -172,7 +236,7 @@ def _is_letter(char: str) -> bool:
     return bool(char) and unicodedata.category(char).startswith("L")
 
 
-def _money(amount: Decimal, currency: str) -> NormalizeResult:
+def _money(amount: Decimal, currency: _Currency) -> NormalizeResult:
     # Trailing zeros are not precision: `12.5000000` fits six fraction digits.
     exponent = amount.normalize().as_tuple().exponent
     # A JSON number is finite (RFC 8259 §6); a NaN or infinity reaching here is no amount.
@@ -183,28 +247,21 @@ def _money(amount: Decimal, currency: str) -> NormalizeResult:
         return Invalid("not_positive")
     if amount >= _MAX_AMOUNT or exponent < _MAX_EXPONENT:
         return Invalid("out_of_range")
-    return Ok(_value(amount, currency))
+    return Ok(_value(amount, currency.code), basis=currency.basis, checked=currency.written)
 
 
-def _value(amount: Decimal, currency: str) -> JsonValue:
+def _value(amount: Decimal, currency: str | None) -> JsonValue:
     # Fixed-point notation, with the digits as written: `19.90` stays `19.90` (§4.5 compares amounts as Decimals).
     return {"amount": format(amount, "f"), "currency": currency}
 
 
-def _currencies_for(sign: str, locales: frozenset[str], page_currencies: Iterable[str]) -> list[str]:
-    """The ISO 4217 codes `sign` can denote, given the evidence (normalization spec)."""
+def _currencies_for(sign: str) -> frozenset[str]:
+    """The ISO 4217 codes `sign` can denote anywhere (normalization spec)."""
     if sign in _currencies():
         # ISO 4217 alphabetic codes are three uppercase letters; a code names itself.
-        return [sign]
-    sign = unicodedata.normalize("NFKC", sign)
-    # CLDR currency symbols: the currencies the sign stands for anywhere, then in the page's own locales.
-    anywhere = _symbol_currencies().get(sign, frozenset())
-    # normalization spec: a currency the page's structured data states settles the sign, when the sign can denote it.
-    stated = anywhere.intersection(page_currencies)
-    if stated:
-        return sorted(stated)
-    in_locales = frozenset(code for loc in locales for code in _locale_symbols(loc).get(sign, ()))
-    return sorted(in_locales or anywhere)
+        return frozenset({sign})
+    # CLDR currency symbols: the currencies the sign stands for in any locale.
+    return _symbol_currencies().get(unicodedata.normalize("NFKC", sign), frozenset())
 
 
 def is_currency_code(code: str) -> bool:
@@ -216,6 +273,12 @@ def is_currency_code(code: str) -> bool:
 @cache
 def _currencies() -> frozenset[str]:
     return frozenset(list_currencies())
+
+
+@cache
+def _territories() -> frozenset[str]:
+    """The CLDR territories with currency data: the ISO 3166-1 regions a ccTLD can name."""
+    return frozenset(get_global("territory_currencies"))
 
 
 @cache
@@ -254,11 +317,14 @@ def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
     return raw_key(value) if money is None else ("money", money)
 
 
-def _money_value(value: JsonValue) -> tuple[Decimal, str] | None:
-    """A normalized money value (`{amount, currency}`) as (amount, ISO 4217 code), or `None` for any other value."""
+def _money_value(value: JsonValue) -> tuple[Decimal, str | None] | None:
+    """A normalized money value (`{amount, currency}`) as (amount, ISO 4217 code or `None` when unknown), or `None` for
+    any other value."""
     if not isinstance(value, dict) or value.keys() != {"amount", "currency"}:
         return None
     amount, currency = value["amount"], value["currency"]
-    if not (isinstance(amount, str) and _SCHEMA_ORG_PRICE.fullmatch(amount) and isinstance(currency, str)):
+    if not (isinstance(amount, str) and _SCHEMA_ORG_PRICE.fullmatch(amount)):
+        return None
+    if not (currency is None or isinstance(currency, str)):
         return None
     return Decimal(amount), currency

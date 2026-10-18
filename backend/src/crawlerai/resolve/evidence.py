@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from crawlerai.collect.base import Candidate
 from crawlerai.collect.locator import format_locator
 from crawlerai.db.models import SourceKind
-from crawlerai.normalize.base import Ok
+from crawlerai.normalize.base import Basis, Ok
 from crawlerai.resolve.derive import Derived
 from crawlerai.resolve.preference import Chosen, Preference
 from crawlerai.resolve.types import Derivation, Evidence, FieldOutcome, FieldSet, Probability
@@ -25,6 +25,9 @@ from crawlerai.schemas.types import FieldType, SchemaDef
 
 # The reason of a field a calibrated bucket kept from publishing under the request's `min_confidence`.
 BELOW_MIN_CONFIDENCE: Final = "below_min_confidence"
+# Owner decision 2026-10-18 (resolution spec): a money value whose currency only the page's locale settles, or that
+# nothing settles, publishes with lower confidence: its bucket is measured apart, `<type>|<evidence>|<basis>`.
+_APART: frozenset[Basis] = frozenset({"locale", "unknown"})
 # A bucket with fewer than 20 dev labels reports `calibrated=false` (the `resolution` spec's floor).
 MIN_CALIBRATED_N: Final = 20
 # Buckets by source kind: an adapter or an API recipe; one structured-data standard (schema.org
@@ -62,14 +65,21 @@ class Calibration(_Model):
     git_sha: str
     buckets: dict[str, Bucket]
 
-    def measure(self, type_: FieldType, evidence: Evidence, *, row: bool = False) -> tuple[float | None, bool]:
+    def measure(
+        self, type_: FieldType, evidence: Evidence, *, row: bool = False, basis: Basis | None = None
+    ) -> tuple[float | None, bool]:
         """The bucket's confidence and whether it is calibrated: measured on at least `MIN_CALIBRATED_N` fields. A row
         sub-field's bucket is `list.<type>|<evidence>` (variants spec): a row value can be wrong in a way a page value
         cannot (a wrong row match), so it is measured apart."""
-        bucket = self.buckets.get(f"{'list.' if row else ''}{type_.value}|{evidence}")
+        bucket = self.buckets.get(bucket_key(f"{'list.' if row else ''}{type_.value}", evidence, basis))
         if bucket is None:
             return None, False
         return bucket.precision, bucket.precision is not None and bucket.n >= MIN_CALIBRATED_N
+
+
+def bucket_key(type_: str, evidence: Evidence, basis: Basis | None) -> str:
+    """A calibration bucket's key, `<type>|<evidence>`, with `|<basis>` for a value measured apart (`_APART`)."""
+    return f"{type_}|{evidence}|{basis}" if basis in _APART else f"{type_}|{evidence}"
 
 
 def load_calibration(path: Path) -> Calibration | None:
@@ -140,7 +150,9 @@ def assess(
         if isinstance(candidate, FieldOutcome):
             return candidate
         published = candidate
-    confidence, calibrated = calibration.measure(type_, published.evidence, row=row) if calibration else (None, False)
+    basis = _basis(published.chosen)
+    measured = calibration.measure(type_, published.evidence, row=row, basis=basis) if calibration else None
+    confidence, calibrated = measured or (None, False)
     if min_confidence is not None and calibrated and confidence is not None and confidence < min_confidence:
         below = () if published.chosen is None else ((published.chosen, BELOW_MIN_CONFIDENCE),)
         return _unpublished(
@@ -163,9 +175,15 @@ def assess(
         locator=published.locator,
         derived_by=published.derived_by,
         chosen=published.chosen,
+        basis=basis,
         kept=published.kept,
         rejected=published.rejected,
     )
+
+
+def _basis(chosen: Candidate | None) -> Basis | None:
+    """The chosen value's weaker evidence (`Ok.basis`), noted on the field."""
+    return chosen.normalized.basis if chosen is not None and isinstance(chosen.normalized, Ok) else None
 
 
 @dataclass(frozen=True, slots=True)

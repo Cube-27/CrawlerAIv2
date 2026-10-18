@@ -104,7 +104,12 @@ async def parsed_with_context(bundle: CaptureBundle) -> tuple[ParsedPage, Contex
     """The captured page parsed, and the normalizers' context it states (locales, currencies), as the pipeline reads
     them: what a label value is normalized in."""
     page = await asyncio.to_thread(ParsedPage.of, bundle)  # parsing is CPU work
-    return page, with_stated_currencies(page_context(page, bundle.manifest.final_url, bundle.manifest.fetched_at), page)
+    return page, with_stated_currencies(
+        page_context(
+            page, bundle.manifest.final_url, bundle.manifest.fetched_at, headers=bundle.manifest.headers.response
+        ),
+        page,
+    )
 
 
 def _labels_by_owner(candidates: tuple[Candidate, ...]) -> dict[str, dict[str, FieldLabel]]:

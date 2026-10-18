@@ -219,6 +219,9 @@ def _label_value(raw: JsonValue, spec: FieldSpec, ctx: Context) -> Ok | str:
     result = normalize(_as_written(raw, spec), spec, ctx)
     if not isinstance(result, Ok):
         return result.reason
+    if result.basis == "unknown":
+        # Ground truth states its currency; a label whose currency nothing settles is not one (normalization spec).
+        return "unknown_currency"
     if spec.type is FieldType.LIST and result.reasons:
         return "items_dropped"
     return result
