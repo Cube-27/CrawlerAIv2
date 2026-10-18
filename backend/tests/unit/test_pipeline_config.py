@@ -219,7 +219,7 @@ def test_covered_fields_are_never_asked_of_role_c() -> None:
     )
     role_c = FakeRoleC()
     result = _extract(_html(body=PRICE_TEXT), config, role_c=role_c)
-    assert (role_c.requests, result.llm_calls) == ([], ())
+    assert [r.missing for r in role_c.requests] == [("sku",)]  # the missing field the config does not run
     assert result.outcome == "extracted"
 
 
@@ -230,7 +230,7 @@ def test_a_covered_required_field_the_config_misses_stays_missing() -> None:
     )
     role_c = FakeRoleC()
     result = _extract(_html(), config, role_c=role_c)
-    assert role_c.requests == []
+    assert [r.missing for r in role_c.requests] == [("sku",)]
     assert result.entity is not None
     assert (result.entity["price"].status, result.outcome) == ("missing", "partial")
 
@@ -244,8 +244,7 @@ def test_an_absent_field_is_not_asked_of_role_c_and_is_missing_as_absent() -> No
 
     result = _extract(_html(), config, role_c=role_c)
 
-    # The optional sku alone never makes role C run.
-    assert (role_c.requests, result.llm_calls) == ([], ())
+    assert [r.missing for r in role_c.requests] == [("sku",)]
     assert result.entity is not None
     price = result.entity["price"]
     assert (price.status, price.reason, result.outcome) == ("missing", "absent", "partial")

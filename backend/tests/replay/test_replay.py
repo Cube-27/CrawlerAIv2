@@ -55,7 +55,7 @@ SCHEMA = SchemaDef(
     page_kind="detail",
     fields={
         "title": FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name"),
-        "summary": FieldSpec(type=FieldType.TEXT, description="d"),
+        "summary": FieldSpec(type=FieldType.TEXT, description="d", schema_org="Product.description"),
     },
 )
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
@@ -614,7 +614,8 @@ def test_a_schema_of_another_page_kind_stops_the_run() -> None:
 
 
 def jsonld_page(n: int) -> CaptureBundle:
-    node = {"@context": "https://schema.org", "@type": "Product", "name": f"Item {n}"}
+    # Every field stated, so role C, asked for any missing field, is not called.
+    node = {"@context": "https://schema.org", "@type": "Product", "name": f"Item {n}", "description": f"About {n}"}
     body = f'<html><head><script type="application/ld+json">{json.dumps(node)}</script></head></html>'.encode()
     original = bundle(n)
     manifest = original.manifest.model_copy(update={"html_sha256": sha256_hex(body)})
@@ -642,12 +643,26 @@ def test_the_pipeline_engine_replays_pages_through_extract_page() -> None:
     assert report.n_pages == 2
 
 
+# A config that runs every field of the schema, so role C, asked for any field the config does not run, is not called.
+SUMMARY_IR: dict[str, JsonValue] = {
+    **IR,
+    "fields": {
+        "title": {"steps": [{"xpath": "normalize-space(//h1)"}], "status": "corroborated"},
+        "summary": {"steps": [{"xpath": "normalize-space(//p)"}], "status": "corroborated"},
+    },
+}
+SUMMARY_SNAPSHOT: dict[str, JsonValue] = {
+    "ir": SUMMARY_IR,
+    "field_status": {"title": "corroborated", "summary": "corroborated"},
+}
+
+
 def test_the_pipeline_engine_replays_a_config_snapshot_in_config_mode() -> None:
     # SPEC-08 §6 "dev replay": a page with its site's config snapshot runs that config, and its config fields'
     # precision is reported per field status.
     store = MemoryStore()
     for n in (1, 2):
-        asyncio.run(add_page(store, n, config_snapshot=SNAPSHOT))
+        asyncio.run(add_page(store, n, config_snapshot=SUMMARY_SNAPSHOT))
     engine = PipelineEngine(DATA, {SCHEMA.name: SCHEMA})
 
     cases = asyncio.run(replay_split(store, engine, live=None))
@@ -757,8 +772,10 @@ class GroundingLLM:
         start = text.index(title)
         # Every asked field is claimed, empty when the page does not show it (SPEC-06 §4.4).
         asked = json.loads(json.dumps(req.output_schema))["properties"]["fields"]["required"]
-        claims: dict[str, JsonValue] = {name: {"shown": False, "value": "", "start": 0, "end": 0} for name in asked}
-        claims["title"] = {"shown": True, "value": title, "start": start, "end": start + len(title)}
+        claims: dict[str, JsonValue] = {
+            name: {"shown": False, "ref": "", "value": "", "start": 0, "end": 0} for name in asked
+        }
+        claims["title"] = {"shown": True, "ref": "", "value": title, "start": start, "end": start + len(title)}
         return LLMResponse(
             data={"fields": claims},
             provider="provider-a",
@@ -890,9 +907,11 @@ class PriceLLM:
     async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
         text = req.user.split("<page_text>\n", 1)[1].rsplit("\n</page_text>", 1)[0]
         asked = json.loads(json.dumps(req.output_schema))["properties"]["fields"]["required"]
-        claims: dict[str, JsonValue] = {name: {"shown": False, "value": "", "start": 0, "end": 0} for name in asked}
+        claims: dict[str, JsonValue] = {
+            name: {"shown": False, "ref": "", "value": "", "start": 0, "end": 0} for name in asked
+        }
         start = text.index("$12.50")
-        claims["price"] = {"shown": True, "value": "$12.50", "start": start, "end": start + len("$12.50")}
+        claims["price"] = {"shown": True, "ref": "", "value": "$12.50", "start": start, "end": start + len("$12.50")}
         return LLMResponse(
             data={"fields": claims},
             provider="provider-a",

@@ -514,7 +514,7 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     web.serve(url, body)
     text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
     start = text.index("19.90 EUR")
-    price = {"shown": True, "value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
+    price = {"shown": True, "ref": "", "value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
     reply = ProviderReply(model="fake-fast", text=json.dumps({"fields": {"price": price}}), tokens_in=7, tokens_out=3)
     llm = MeteredClient([FakeProvider([reply])], engine)
     request = _request([url], _by_id(kettle_schema))

@@ -18,6 +18,7 @@ from crawlerai.collect.base import PAGE, Candidate, Entity
 from crawlerai.collect.items.lines import BlockText
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.text import CleanedText
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId, SchemaId
 from crawlerai.llm.client import (
@@ -73,7 +74,7 @@ OWNER = "jsonld:0:$"
 
 
 def span(value: str, start: int, end: int | None = None) -> dict[str, JsonValue]:
-    return {"shown": True, "value": value, "start": start, "end": start + len(value) if end is None else end}
+    return {"shown": True, "ref": "", "value": value, "start": start, "end": start + len(value) if end is None else end}
 
 
 def specs(*names: str) -> dict[str, FieldSpec]:
@@ -81,11 +82,11 @@ def specs(*names: str) -> dict[str, FieldSpec]:
 
 
 def extract(client: ScriptedClient, fields: Sequence[str] = ("title", "released"), text: str = TEXT) -> Filled:
-    return asyncio.run(extract_detail(client, text, specs(*fields), CTX, owner=OWNER, job_id=JOB))
+    return asyncio.run(extract_detail(client, CleanedText(text, ()), specs(*fields), CTX, owner=OWNER, job_id=JOB))
 
 
 # The claim of a field the page does not show.
-ABSENT: dict[str, JsonValue] = {"shown": False, "value": "", "start": 0, "end": 0}
+ABSENT: dict[str, JsonValue] = {"shown": False, "ref": "", "value": "", "start": 0, "end": 0}
 
 
 def claims(fields: Mapping[str, dict[str, JsonValue] | None]) -> dict[str, JsonValue]:
@@ -134,7 +135,9 @@ def test_the_output_schema_takes_one_span_of_each_requested_field() -> None:
     assert not validator.is_valid(reply(title=span("Widget One", 0)))  # every field is claimed
     assert not validator.is_valid(reply(title=None, released=None, sku=span("W-1", 0)))  # no other field
     assert not validator.is_valid(reply(title={"value": "Widget One", "start": 0, "end": 10}, released=None))
-    assert not validator.is_valid(reply(title={"shown": True, "value": "Widget One", "start": 0}, released=None))
+    assert not validator.is_valid(
+        reply(title={"shown": True, "ref": "", "value": "Widget One", "start": 0}, released=None)
+    )
     assert not validator.is_valid(reply(title={**span("Widget One", 0), "note": "x"}, released=None))
     assert not validator.is_valid({"fields": [span("Widget One", 0)]})  # no list of claims
     assert not validator.is_valid({**reply(title=None, released=None), "note": "x"})
@@ -174,8 +177,8 @@ def test_a_grounded_value_becomes_an_llm_candidate_owned_by_the_target() -> None
     "claim",
     [
         # D-1097: the model says the page does not show the field; a value it gives anyway is not taken (C7).
-        {"shown": False, "value": "Widget One", "start": 0, "end": 10},
-        {"shown": True, "value": "", "start": 0, "end": 0},  # shown, but no span: nothing to ground
+        {"shown": False, "ref": "", "value": "Widget One", "start": 0, "end": 10},
+        {"shown": True, "ref": "", "value": "", "start": 0, "end": 0},  # shown, but no span: nothing to ground
     ],
 )
 def test_a_claim_not_shown_or_without_a_value_gives_no_candidate(claim: dict[str, JsonValue]) -> None:
@@ -293,6 +296,82 @@ def test_the_hook_reads_the_cleaned_text_and_records_the_call() -> None:
     assert (answer.failure, answer.diagnostics) == (None, ())
 
 
+LINKED_SCHEMA = SCHEMA.model_copy(
+    update={
+        "fields": {
+            **SCHEMA.fields,
+            "apply_url": FieldSpec(type=FieldType.URL, description="Where to apply"),
+            "image": FieldSpec(type=FieldType.IMAGE_URL, description="Main image"),
+        }
+    }
+)
+LINKED_PAGE = (
+    '<html><body><h1>Widget One</h1><img src="/img/w1.png" alt="Widget One, front">'
+    '<p><a href="/p/1/apply">Apply</a> <a href="#top">Top</a></p>'
+    "<p>Released 2026-09-30</p><p>Ships 2026-09-30</p></body></html>"
+)
+LINKED_CTX = CTX.model_copy(update={"base_url": PAGE_URL})
+
+
+def element(ref: str) -> dict[str, JsonValue]:
+    return {"shown": True, "ref": ref, "value": "", "start": 0, "end": 0}
+
+
+def linked_request(*missing: str) -> GapRequest:
+    target = Entity(id=OWNER, types=("Product",), urls=(PAGE_URL,), parent=None)
+    return GapRequest(ParsedPage(LINKED_PAGE), LINKED_SCHEMA, LINKED_CTX, target, missing)
+
+
+def test_the_text_marks_the_links_and_images_the_fields_asked_can_claim() -> None:
+    client = ScriptedClient(reply(apply_url=None, image=None, title=None))
+
+    fill(client, linked_request("apply_url", "image", "title"))
+    only_text = ScriptedClient(reply(title=None))
+    fill(only_text, linked_request("title"))
+
+    page_text = "Widget One[I1: Widget One, front]\nApply[L1] Top\nReleased 2026-09-30\nShips 2026-09-30"
+    assert f"<page_text>\n{page_text}\n</page_text>" in client.requests[0].user
+    assert "<page_text>\nWidget One\nApply Top\nReleased 2026-09-30\nShips 2026-09-30\n</page_text>" in (
+        only_text.requests[0].user
+    )
+
+
+def test_a_claimed_link_or_image_is_its_href_or_src_from_the_dom() -> None:
+    # INV-12: the value is the element's attribute, resolved like any collector's raw URL, never the model's text.
+    client = ScriptedClient(reply(apply_url=element("L1"), image=element("I1")))
+
+    answer = fill(client, linked_request("apply_url", "image"))
+
+    assert [(c.field, c.raw, c.locator, c.normalized, c.source_kind) for c in answer.candidates] == [
+        ("apply_url", "/p/1/apply", "dom:/html[1]/body[1]/p[1]/a[1]", Ok(f"{PAGE_URL}/apply"), "llm"),
+        ("image", "/img/w1.png", "dom:/html[1]/body[1]/img[1]", Ok("https://shop.example.test/img/w1.png"), "llm"),
+    ]
+    assert answer.diagnostics == ()
+
+
+@pytest.mark.parametrize(
+    ("field", "claim"),
+    [("apply_url", element("I1")), ("apply_url", element("L2")), ("image", element("L1")), ("title", element("L1"))],
+)
+def test_an_id_of_no_element_of_the_fields_kind_is_dropped(field: str, claim: dict[str, JsonValue]) -> None:
+    # The same-document `#top` link has no id; an image id holds no link's target; a text field claims no element.
+    client = ScriptedClient(reply(**{field: claim}))
+
+    answer = fill(client, linked_request(field))
+
+    assert (answer.candidates, answer.diagnostics) == ((), (f"role C: {field} ungrounded",))
+
+
+def test_a_span_after_an_id_is_grounded_at_its_offsets_in_the_cleaned_text() -> None:
+    # The first date is at 57 of the marked text and 30 of the cleaned text, where the second is at 47: read unmapped,
+    # the claimed offset would pick the second.
+    client = ScriptedClient(reply(apply_url=None, image=None, released=span("2026-09-30", 57)))
+
+    answer = fill(client, linked_request("apply_url", "image", "released"))
+
+    assert [(c.field, c.raw, c.locator) for c in answer.candidates] == [("released", "2026-09-30", "text:30-40")]
+
+
 def test_a_failed_call_is_recorded_as_the_hooks_failure_without_a_call() -> None:
     request = gap_request("<html><body><h1>Widget One</h1></body></html>", ("title",))
 
@@ -377,7 +456,7 @@ RECORDED_FIELDS = (
     *("additional_images", "availability", "brand", "color", "condition", "description", "gender", "gtin"),
     *("material", "mpn", "price", "product_id", "rating", "review_count", "sku", "stock_quantity", "title"),
 )
-_EMPTY = {"shown": False, "value": "", "start": 0, "end": 0}
+_EMPTY = {"shown": False, "ref": "", "value": "", "start": 0, "end": 0}
 RECORDED_DESCRIPTION = (
     "A young mapmaker crosses seven islands to relight the lanterns that guide ships home, solving tide "
     "puzzles on the way."
@@ -385,10 +464,10 @@ RECORDED_DESCRIPTION = (
 RECORDED_REPLY = {
     "fields": {
         **dict.fromkeys(RECORDED_FIELDS, _EMPTY),
-        "availability": {"shown": True, "value": "In stock", "start": 62, "end": 70},
-        "description": {"shown": True, "value": RECORDED_DESCRIPTION, "start": 97, "end": 216},
-        "price": {"shown": True, "value": "64,50 €", "start": 54, "end": 61},
-        "title": {"shown": True, "value": "Lantern Quest", "start": 40, "end": 53},
+        "availability": {"shown": True, "ref": "", "value": "In stock", "start": 62, "end": 70},
+        "description": {"shown": True, "ref": "", "value": RECORDED_DESCRIPTION, "start": 97, "end": 216},
+        "price": {"shown": True, "ref": "", "value": "64,50 €", "start": 54, "end": 61},
+        "title": {"shown": True, "ref": "", "value": "Lantern Quest", "start": 40, "end": 53},
     }
 }
 

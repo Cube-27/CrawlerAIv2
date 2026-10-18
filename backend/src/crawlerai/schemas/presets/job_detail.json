@@ -31,7 +31,7 @@
       "type": "url",
       "required": true,
       "description": "URL where a candidate applies for the job",
-      "schema_org": "JobPosting.potentialAction.target>JobPosting.url"
+      "schema_org": "JobPosting.potentialAction.target"
     },
     "date_posted": {
       "type": "date",

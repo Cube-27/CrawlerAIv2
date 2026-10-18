@@ -40,13 +40,13 @@ async def prefill(
     valid reply: a pre-fill without values is not a draft worth storing."""
     fields = {name: spec for name, spec in fields.items() if not spec.row_mapped}
     page, ctx = await parsed_with_context(bundle)
-    text = page.cleaned_text.text
     kind = c_extract.PREFILL_PROMPT_KIND
     row_fields = {name: spec for name, spec in fields.items() if spec.scope == "row"}
     if page_kind == "detail" or not row_fields:
         # A detail page's fields are its one entity's; a listing schema without row fields has only the page's,
         # so role C is asked for no rows.
-        filled = [await c_extract.extract_detail(llm, text, fields, ctx, owner=PAGE, job_id=None, kind=kind)]
+        cleaned = page.cleaned_text
+        filled = [await c_extract.extract_detail(llm, cleaned, fields, ctx, owner=PAGE, job_id=None, kind=kind)]
         rows: tuple[str, ...] = ()
     else:
         blocks = await asyncio.to_thread(_blocks, page, ctx, fields)
@@ -81,8 +81,10 @@ async def _listing(
         listed = {name: fields[name] for block in blocks for name in block.fields}
         filled.append(await c_extract.extract_listing(llm, blocks, listed, ctx, job_id=None, kind=kind))
     if page_fields := {name: spec for name, spec in fields.items() if spec.scope == "page"}:
-        text = page.cleaned_text.text
-        filled.append(await c_extract.extract_detail(llm, text, page_fields, ctx, owner=PAGE, job_id=None, kind=kind))
+        cleaned = page.cleaned_text
+        filled.append(
+            await c_extract.extract_detail(llm, cleaned, page_fields, ctx, owner=PAGE, job_id=None, kind=kind)
+        )
     return filled
 
 

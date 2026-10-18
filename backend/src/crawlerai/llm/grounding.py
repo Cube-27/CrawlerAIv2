@@ -6,13 +6,19 @@ otherwise the value is searched for exactly, and the occurrence nearest the clai
 does not contain is dropped. There is no fuzzy, case- or whitespace-insensitive matching: the cleaned text's own
 normalization (SPEC-05 §4.4) is the only one. Offsets count code points of the cleaned text, as Python `str` indices
 do.
+
+A claim of a link or an image names the id the text gave it (`llm.marked`): it is kept only when that id marks an
+element of the kind the field takes on the page, and its value is the element's `href` or `src` as the DOM states it,
+never text of the model's.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict
 
 from crawlerai.collect.locator import format_locator
+from crawlerai.content.text import Mark, MarkKind
 
 
 class SpanClaim(BaseModel):
@@ -36,6 +42,26 @@ class GroundedSpan:
     @property
     def locator(self) -> str:
         return format_locator("text", str(self.start), str(self.end))
+
+
+@dataclass(frozen=True)
+class GroundedElement:
+    """A link's `href` or an image's `src` as the page's DOM states it, at the element's path."""
+
+    value: str
+    path: str
+
+    @property
+    def locator(self) -> str:
+        return format_locator("dom", self.path)
+
+
+def ground_element(ref: str, kind: MarkKind, elements: Mapping[str, Mark]) -> GroundedElement | None:
+    """The element `ref` names when it is one of `elements` and of `kind`, else None (ungrounded)."""
+    mark = elements.get(ref)
+    if mark is None or mark.kind != kind:
+        return None
+    return GroundedElement(mark.target, mark.path)
 
 
 def align(claim: SpanClaim, cleaned_text: str) -> GroundedSpan | None:

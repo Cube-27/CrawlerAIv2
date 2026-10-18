@@ -3,7 +3,7 @@
 import pytest
 
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.text import TextRun
+from crawlerai.content.text import Mark, TextRun
 
 
 def _text(body: str) -> str:
@@ -146,3 +146,47 @@ def test_elided_text_is_completed_by_its_title(body: str, expected: str) -> None
     # HTML Standard §3.2.6.1: `title` is advisory information for its element, such as the full text it shows; an
     # ellipsis (U+2026, or three full stops, its compatibility decomposition) marks the text as cut.
     assert _text(body) == expected
+
+
+def test_shown_links_and_images_are_marked_where_they_render() -> None:
+    page = ParsedPage(
+        '<body><p>See <a href="/apply">Apply now</a>.</p>'
+        '<a href="/cart" aria-label="Basket"><img src="/i/cart.svg" alt="Cart icon"></a>'
+        '<img src="/i/a.png" alt=" Front  view ">'
+        '<a href="/hidden" hidden>Gone</a><a>No target</a><img alt="No source"></body>'
+    )
+
+    assert page.cleaned_text.text == "See Apply now.\nNo target"
+    assert page.cleaned_text.marks == (
+        Mark("link", 4, 13, "/html[1]/body[1]/p[1]/a[1]", "/apply", ""),
+        Mark("image", 14, 14, "/html[1]/body[1]/a[1]/img[1]", "/i/cart.svg", "Cart icon"),
+        Mark("link", 14, 14, "/html[1]/body[1]/a[1]", "/cart", "Basket"),
+        Mark("image", 14, 14, "/html[1]/body[1]/img[1]", "/i/a.png", "Front view"),
+    )
+
+
+def test_a_link_without_a_label_is_named_by_its_title_then_the_alt_of_its_image() -> None:
+    page = ParsedPage(
+        '<body><a href="/a" title="Size guide">?</a><a href="/b"><img src="/b.png" alt="Brand logo"></a></body>'
+    )
+
+    assert [(mark.kind, mark.name) for mark in page.cleaned_text.marks] == [
+        ("link", "Size guide"),
+        ("image", "Brand logo"),
+        ("link", "Brand logo"),
+    ]
+
+
+def test_a_link_is_not_named_by_an_image_it_hides() -> None:
+    page = ParsedPage(
+        '<body><a href="/a"><span hidden><img src="/h.png" alt="Hidden"></span>'
+        '<img src="/v.png" alt="Shown" style="visibility: hidden"><img src="/s.png" alt="Seen">Go</a></body>'
+    )
+
+    assert [(mark.kind, mark.name) for mark in page.cleaned_text.marks] == [("image", "Seen"), ("link", "Seen")]
+
+
+def test_an_invisible_link_is_not_marked() -> None:
+    page = ParsedPage('<body><div style="visibility: hidden"><a href="/x">X</a></div><p>Shown</p></body>')
+
+    assert page.cleaned_text.marks == ()

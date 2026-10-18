@@ -13,7 +13,7 @@ import re
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
@@ -62,12 +62,31 @@ class TextRun(NamedTuple):
     node_path: str
 
 
+MarkKind = Literal["link", "image"]
+
+
+class Mark(NamedTuple):
+    """A shown link (`a` with `href`, HTML Standard §4.6.1 hyperlink) or image (`img` with `src`): `text[start:end]` is
+    what it renders (empty for an image), `target` its `href` or `src` as the document states it, and `name` the name
+    it announces beside its text: WAI-ARIA `aria-label` or the HTML `title` for a link, else the `alt` of the image it
+    holds; an image's `alt` (HTML Standard §4.8.4.4)."""
+
+    kind: MarkKind
+    start: int
+    end: int
+    path: str
+    target: str
+    name: str
+
+
 @dataclass(frozen=True)
 class CleanedText:
-    """Lines of visible text, one per line box, separated by `\\n`; the runs are ordered and disjoint."""
+    """Lines of visible text, one per line box, separated by `\\n`; the runs are ordered and disjoint. `marks` are the
+    shown links and images in document order."""
 
     text: str
     offsets: tuple[TextRun, ...]
+    marks: tuple[Mark, ...] = ()
 
 
 class VisibleIndex:
@@ -108,9 +127,11 @@ def render(root: LexborNode) -> tuple[CleanedText, tuple[str, ...]]:
             builder.add(item.text, item.path)
         elif isinstance(item, _Separate):
             builder.separate(item.separator)
+        elif isinstance(item, _Mark):
+            builder.mark(item)
         else:
-            stack.extend(reversed(_enter(item, shown)))
-    return CleanedText("".join(builder.parts), tuple(builder.runs)), tuple(shown)
+            stack.extend(reversed(_enter(item, shown, len(builder.runs))))
+    return CleanedText("".join(builder.parts), tuple(builder.runs), tuple(builder.marks)), tuple(shown)
 
 
 def fragment_text(value: str) -> str | None:
@@ -141,12 +162,23 @@ class _Separate(NamedTuple):
     separator: str
 
 
-_Item = _Enter | _Text | _Separate
+class _Mark(NamedTuple):
+    """Ends a shown link or image; `first_run` is the number of text runs written before it began."""
+
+    kind: MarkKind
+    path: str
+    target: str
+    name: str
+    first_run: int
 
 
-def _enter(item: _Enter, shown: list[str]) -> list[_Item]:
-    """What an element contributes, in document order: its children, between the separators of its box. Adds its
-    shown attributes to `shown` when it is visible."""
+_Item = _Enter | _Text | _Separate | _Mark
+
+
+def _enter(item: _Enter, shown: list[str], runs: int) -> list[_Item]:
+    """What an element contributes, in document order: its children, between the separators of its box, and its mark
+    when it is a shown link or image (`runs`: the text runs written so far). Adds its shown attributes to `shown` when
+    it is visible."""
     attributes = item.node.attributes
     tag = item.node.tag or ""
     style = _declarations(attributes)
@@ -157,8 +189,53 @@ def _enter(item: _Enter, shown: list[str]) -> list[_Item]:
         shown.extend(value for name in _SHOWN_ATTRIBUTES if (value := attributes.get(name)))
     full = None if invisible else _completed(item.node, attributes.get("title"))
     children: list[_Item] = [_Text(full, item.path)] if full else _children(item.node, item.path, invisible)
+    mark = None if invisible else _mark(item.node, tag, item.path, runs)
+    children.extend((mark,) if mark else ())
     separator = _separator(tag)
     return [_Separate(separator), *children, _Separate(separator)] if separator else children
+
+
+def _mark(node: LexborNode, tag: str, path: str, runs: int) -> _Mark | None:
+    """The mark of a link (HTML Standard §4.6.1: an `a` element with an `href` is a hyperlink) or an image (§4.8.4: an
+    `img` with a `src`), else None. A link's announced name is WAI-ARIA 1.2's `aria-label`, then the HTML `title`
+    (advisory information), then the `alt` of the first shown image it holds, its replacement text."""
+    attributes = node.attributes
+    if tag == "img" and (src := attributes.get("src")):
+        return _Mark("image", path, src, _collapsed(attributes.get("alt")), runs)
+    if tag != "a" or not (href := attributes.get("href")):
+        return None
+    name = attributes.get("aria-label") or attributes.get("title") or _shown_alt(node)
+    return _Mark("link", path, href, _collapsed(name), runs)
+
+
+def _shown_alt(link: LexborNode) -> str | None:
+    """The `alt` of the first image in `link` that is shown: neither it nor an element between it and the link is
+    hidden or invisible (the link itself is shown, as only a shown link is marked)."""
+    for image in link.css("img[alt]"):
+        chain: list[LexborNode] = []
+        node: LexborNode | None = image
+        while node is not None and node.mem_id != link.mem_id:
+            chain.append(node)
+            node = node.parent
+        if _shown_chain(reversed(chain)):
+            return image.attributes.get("alt")
+    return None
+
+
+def _shown_chain(chain: Iterable[LexborNode]) -> bool:
+    """Whether the last of `chain` (elements from the outermost down, below a shown element) is shown."""
+    invisible = False
+    for node in chain:
+        attributes = node.attributes
+        style = _declarations(attributes)
+        if _hidden(node.tag or "", attributes, style):
+            return False
+        invisible = _invisible(style.get("visibility"), inherited=invisible)
+    return not invisible
+
+
+def _collapsed(value: str | None) -> str:
+    return " ".join(compose(value or "").split())
 
 
 def _completed(node: LexborNode, title: str | None) -> str | None:
@@ -283,6 +360,7 @@ class _TextBuilder:
     def __init__(self) -> None:
         self.parts: list[str] = []
         self.runs: list[TextRun] = []
+        self.marks: list[Mark] = []
         self._length = 0
         self._pending = ""
 
@@ -305,6 +383,12 @@ class _TextBuilder:
             self.runs.append(TextRun(start, self._length, path))
         if text[-1:].isspace():
             self.separate(" ")
+
+    def mark(self, mark: _Mark) -> None:
+        """Records a link or image that ends here: its span runs from the first text run written inside it, if any."""
+        written = self.runs[mark.first_run :]
+        start = written[0].start if written else self._length
+        self.marks.append(Mark(mark.kind, start, self._length, mark.path, mark.target, mark.name))
 
     def _append(self, piece: str) -> None:
         self.parts.append(piece)

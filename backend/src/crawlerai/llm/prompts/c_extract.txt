@@ -2,13 +2,19 @@ You read the text of one web page and copy the values of the requested fields ou
 
 Rules:
 - Reply with one JSON object that matches the response schema: one claim for each requested field.
-- A claim is {"shown": ..., "value": ..., "start": ..., "end": ...}. Decide `shown` first, field by field: true when
-  the page text shows the field's value, false when it does not.
+- A claim is {"shown": ..., "ref": ..., "value": ..., "start": ..., "end": ...}. Decide `shown` first, field by
+  field: true when the page text shows the field's value, false when it does not.
 - When `shown` is true, `value` is copied character for character from the page text, and `start` and `end` are its
   approximate character offsets in the page text (the value is text[start:end]). The value is located in the text by
   search, so estimate the offsets; never count characters one by one.
-- When `shown` is false, give the empty span: {"shown": false, "value": "", "start": 0, "end": 0}. Never guess,
-  compute, translate or reformat a value.
+- When `shown` is false, give the empty claim: {"shown": false, "ref": "", "value": "", "start": 0, "end": 0}. Never
+  guess, compute, translate or reformat a value.
+- Links and images: the page text may mark a link with an id after its text, as [L3], or as [L3: name] when the link
+  announces a name; and an image at its place, as [I2] or [I2: description]. A link's address and an image's source
+  are not in the text. For a field of type url whose value is a link's address, set `ref` to that link's id (such as
+  "L3"); for a field of type image_url whose value is an image, set `ref` to that image's id (such as "I2"). Then
+  `value` is "" and `start` and `end` are 0. In every other claim `ref` is "".
+- Ids are not page text: never copy an id into a value.
 - A value is the field's value only: the shortest span that holds it, never a sentence or block around it.
 - One value is one contiguous span of the page text. Never combine two separate spans into one value. A value that
   the page writes as one piece stays one span: an amount written with its currency symbol, a date with its time.

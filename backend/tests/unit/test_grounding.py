@@ -2,7 +2,8 @@
 
 import pytest
 
-from crawlerai.llm.grounding import GroundedSpan, SpanClaim, align
+from crawlerai.content.text import Mark
+from crawlerai.llm.grounding import GroundedElement, GroundedSpan, SpanClaim, align, ground_element
 
 _TEXT = "Price 12.50 EUR\nWas 12.50 EUR"
 
@@ -52,3 +53,21 @@ def test_a_claim_with_extra_keys_is_refused() -> None:
     reply = {"value": "EUR", "start": 12, "end": 15, "note": "x"}
     with pytest.raises(ValueError, match="note"):
         SpanClaim.model_validate(reply)
+
+
+_ELEMENTS = {
+    "L1": Mark("link", 0, 5, "/html[1]/body[1]/a[1]", "/apply", ""),
+    "I1": Mark("image", 5, 5, "/html[1]/body[1]/img[1]", "/a.png", "Front"),
+}
+
+
+def test_a_claimed_element_is_grounded_in_the_element_its_id_marks() -> None:
+    grounded = ground_element("L1", "link", _ELEMENTS)
+
+    assert grounded == GroundedElement("/apply", "/html[1]/body[1]/a[1]")
+    assert grounded.locator == "dom:/html[1]/body[1]/a[1]"
+
+
+@pytest.mark.parametrize(("ref", "kind"), [("L2", "link"), ("I1", "link"), ("L1", "image"), ("/apply", "link")])
+def test_an_unknown_id_or_an_element_of_another_kind_is_ungrounded(ref: str, kind: str) -> None:
+    assert ground_element(ref, kind, _ELEMENTS) is None  # type: ignore[arg-type]

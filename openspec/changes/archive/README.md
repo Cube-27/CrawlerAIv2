@@ -92,6 +92,7 @@ candidates (Appendix A #37, #46).
 | — | [Master plan phase 1: decode once, one polite fetch, structural render need, resource blocking, default listing growth, vendor blocks as outcomes](2026-10-18-plan-phase-1/proposal.md) ([tasks](2026-10-18-plan-phase-1/tasks.md), [decisions](2026-10-18-plan-phase-1/design.md)) | §7.1, §7.2 | 02, 03, 07, 10 | — | tasks 1.1–6.2 (#273) |
 | — | [Plan phase 2: the item layer — segment, align, bind, row key](2026-10-18-plan-phase-2/proposal.md) ([tasks](2026-10-18-plan-phase-2/tasks.md), [decisions](2026-10-18-plan-phase-2/design.md)) | §8.6 | 05, 06 | — | tasks 1.1–5.1 (#278) |
 | — | [Plan phase 2b: role C on listings reads the item layer's blocks — per-block lines and claims, page fields apart, no row placement](2026-10-18-plan-phase-2b/proposal.md) ([tasks](2026-10-18-plan-phase-2b/tasks.md), [decisions](2026-10-18-plan-phase-2b/design.md)) | §8.4, §8.6 | 05, 06, 07 | — | tasks 1.1–4.1 (#279) |
+| — | [Plan phase 3a: role C on detail pages asks every missing field and claims links and images by id; no apply_url derivation](2026-10-18-plan-phase-3a/proposal.md) ([tasks](2026-10-18-plan-phase-3a/tasks.md), [decisions](2026-10-18-plan-phase-3a/design.md)) | §8.4, §9, §11 | 05, 06 | — | tasks 1.1–3.2 (#283) |
 
 Where the labeling tool lives: SPEC-03 (L0), as the first screen of the frontend skeleton from SPEC-00, because
 it must exist before any extraction code and is inseparable from the eval store's custodian access model.

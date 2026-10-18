@@ -360,8 +360,8 @@ def test_with_the_committed_order_a_json_ld_complete_page_publishes_without_role
     assert (role_c.requests, result.llm_calls) == ([], ())
 
 
-@pytest.mark.parametrize(("sku", "asked"), [("W-1", []), (None, [("sku", "gtin")])])
-def test_role_c_is_asked_for_a_required_group_only_while_no_member_fills_it(
+@pytest.mark.parametrize(("sku", "asked"), [("W-1", [("gtin",)]), (None, [("sku", "gtin")])])
+def test_role_c_is_asked_for_each_missing_member_of_a_required_group(
     sku: str | None, asked: list[tuple[str, ...]]
 ) -> None:
     schema = _schema(
@@ -400,19 +400,20 @@ def test_role_c_is_not_called_for_conflicts() -> None:
 
 
 def test_missing_optional_fields_ride_along_with_a_required_gap() -> None:
-    # SPEC-06 §4.4, D-0025: one call, in schema order.
+    # Llm spec, "When role C is asked": one call, in schema order.
     role_c = FakeRoleC()
     node = {key: value for key, value in _product(price=None).items() if key != "sku"}
     _extract(_bundle(_html(node)), role_c=role_c)
     assert [r.missing for r in role_c.requests] == [("price", "sku")]
 
 
-def test_missing_optional_fields_alone_do_not_call_role_c() -> None:
+def test_a_missing_optional_field_alone_calls_role_c() -> None:
+    # Llm spec, "When role C is asked": on a detail page every missing field is asked, optional ones included.
     role_c = FakeRoleC()
     node = {key: value for key, value in _product().items() if key != "sku"}
     result = _extract(_bundle(_html(node)), role_c=role_c)
-    assert _statuses(result)["sku"] == ("missing", "no_candidates")
-    assert (role_c.requests, result.llm_calls) == ([], ())
+    assert [r.missing for r in role_c.requests] == [("sku",)]
+    assert result.llm_calls == (CALL,)
 
 
 def test_a_role_c_call_without_a_reply_leaves_the_asked_fields_missing_with_its_reason() -> None:

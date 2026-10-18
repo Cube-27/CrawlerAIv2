@@ -1,10 +1,12 @@
 """Role C: grounded values read from a page's cleaned text (llm spec, "Role C input, claims and candidates").
 
 On a detail page the model reads the page's cleaned text, never its HTML, with each requested field's name, type and
-description, and replies, for each field, whether the page shows it and, when it does, one verbatim span of its value.
-Each span is aligned to the text (`llm.grounding`, INV-12): a value the text does not contain is dropped, and an aligned
-one is normalized like any collector's raw value and proposed as a `source_kind='llm'` candidate with its
-`text:<start>-<end>` locator. Resolution then treats it like any candidate (`llm_grounded` bucket); a value its
+description, and replies, for each field, whether the page shows it and, when it does, one verbatim span of its value,
+or, for a url or image_url field, the id of the link or image the text marks (`llm.marked`). Each span is aligned to
+the text (`llm.grounding`, INV-12): a value the text does not contain is dropped, and an aligned one is normalized like
+any collector's raw value and proposed as a `source_kind='llm'` candidate with its `text:<start>-<end>` locator. A
+claimed id is kept only when it marks an element of the field's kind, and its candidate is that element's `href` or
+`src`, with its `dom:` locator. Resolution then treats it like any candidate (`llm_grounded` bucket); a value its
 normalizer declines stays a candidate, which preference rejects as `invalid`.
 
 On a listing the model reads the blocks of the item layer's bound group (`collect.items.lines`), one line each under
@@ -27,12 +29,14 @@ from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate
 from crawlerai.collect.items.lines import BlockText
+from crawlerai.content.text import CleanedText, MarkKind
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import LLMClient, LLMFailure, LLMRequest, LLMResponse, PromptKind, closed_object
-from crawlerai.llm.grounding import GroundedSpan, SpanClaim, align
+from crawlerai.llm.grounding import GroundedSpan, SpanClaim, align, ground_element
+from crawlerai.llm.marked import MarkedText, marked
 from crawlerai.normalize.base import Context
 from crawlerai.normalize.dispatch import normalize
-from crawlerai.schemas.types import FieldSpec
+from crawlerai.schemas.types import FieldSpec, FieldType
 
 _PROMPTS = files("crawlerai.llm").joinpath("prompts")
 SYSTEM: Final = _PROMPTS.joinpath("c_extract.txt").read_text(encoding="utf-8")
@@ -41,6 +45,7 @@ LISTING_SYSTEM: Final = _PROMPTS.joinpath("c_extract_listing.txt").read_text(enc
 # The cleaned text is cut to its first 40,000 characters on a detail page; a listing's calls read at most 80,000
 # characters of block lines each, and at most 200 blocks in all, as a listing keeps at most 200 rows (llm spec).
 DETAIL_MAX_CHARS: Final = 40_000
+DETAIL_MAX_ID_CHARS: Final = 10_000  # the ids of a detail page's links and images, together (`llm.marked`)
 LISTING_MAX_CHARS: Final = 80_000
 LISTING_MAX_BLOCKS: Final = 200
 MAX_OUTPUT_TOKENS: Final = 4_096
@@ -68,12 +73,19 @@ _ABSENT: Final = ""
 # The claim form is written once, in `$defs` (JSON Schema 2020-12 §8.2.4), and every field refers to it: a provider
 # compiles the schema into a grammar whose size it caps, and the form written out under each field outgrew Anthropic's
 # from 18 fields on (D-1008).
+#
+# `ref` names a link or an image the text marks, for a url or image_url field whose value is an element's `href` or
+# `src`, which the text never shows; it is empty for a span.
 _INTEGER: Final[JsonValue] = {"type": "integer"}
+_STRING: Final[JsonValue] = {"type": "string"}
 _CLAIM: Final = closed_object(
-    {"shown": {"type": "boolean"}, "value": {"type": "string"}, "start": _INTEGER, "end": _INTEGER}
+    {"shown": {"type": "boolean"}, "ref": _STRING, "value": _STRING, "start": _INTEGER, "end": _INTEGER}
 )
 _CLAIM_REF: Final[dict[str, JsonValue]] = {"$ref": "#/$defs/claim"}
-_SPAN: Final = tuple(SpanClaim.model_fields)  # the claim's span, without `shown`
+_SPAN: Final = tuple(SpanClaim.model_fields)  # the claim's span, without `shown` and `ref`
+# The element a field of each type can claim: a url is a link's target (HTML Standard §4.6.1 `href`), an image_url an
+# image's source (§4.8.4 `src`).
+_ELEMENT_OF: Final[Mapping[FieldType, MarkKind]] = {FieldType.URL: "link", FieldType.IMAGE_URL: "image"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,8 +116,8 @@ class FilledListing(Filled):
 
 
 def output_schema(fields: Sequence[str]) -> dict[str, JsonValue]:
-    """`{fields: {<field>: {shown, value, start, end}}}`: a claim per requested field, `shown: false` when the page does
-    not show it (§4.4)."""
+    """`{fields: {<field>: {shown, ref, value, start, end}}}`: a claim per requested field, `shown: false` when the page
+    does not show it (§4.4)."""
     return _with_claim(closed_object({"fields": _claims(fields)}))
 
 
@@ -170,7 +182,7 @@ def listing_request(
 
 async def extract_detail(
     client: LLMClient,
-    text: str,
+    cleaned: CleanedText,
     fields: Mapping[str, FieldSpec],
     ctx: Context,
     *,
@@ -178,9 +190,12 @@ async def extract_detail(
     job_id: JobId | None,
     kind: PromptKind = PROMPT_KIND,
 ) -> Filled:
-    """Role C's candidates for `fields` of the entity `owner`, read from the page's cleaned `text`."""
-    read, notes = _cut(text, DETAIL_MAX_CHARS)  # what the model reads, and so what its spans are aligned to
-    request = detail_request(read, fields, page_url=ctx.page_url, job_id=job_id, kind=kind)
+    """Role C's candidates for `fields` of the entity `owner`, read from the page's `cleaned` text with the links and
+    images the fields can claim marked in it."""
+    cut, notes = _cut(cleaned.text, DETAIL_MAX_CHARS)  # what the model reads, and so what its spans are aligned to
+    kinds = frozenset(_ELEMENT_OF[spec.type] for spec in fields.values() if spec.type in _ELEMENT_OF)
+    read = marked(cleaned, cut, kinds, ctx.base_url, ctx.page_url, DETAIL_MAX_ID_CHARS)
+    request = detail_request(read.text, fields, page_url=ctx.page_url, job_id=job_id, kind=kind)
     try:
         response = await client.complete_json(request)
     except LLMFailure as failure:
@@ -259,7 +274,7 @@ def _read_claims(
             continue
         taken.add((index, name))
         at = GroundedSpan(span.value, block.start + span.start, block.start + span.end)
-        candidates.append(_candidate(name, fields[name], block.row, at, ctx))
+        candidates.append(_candidate(name, fields[name], block.row, at.value, at.locator, ctx))
     return _Read(tuple(candidates), tuple(dropped))
 
 
@@ -344,33 +359,47 @@ class _Reader:
     """Reads a detail reply's claims into candidates."""
 
     fields: Mapping[str, FieldSpec]
-    text: str
+    text: MarkedText
     ctx: Context
 
     def read(self, claims: Mapping[str, Mapping[str, JsonValue]], owner: str) -> _Read:
-        """The claims' candidates, each grounded in the text."""
+        """The claims' candidates, each grounded in the text or in the element it names."""
         candidates: list[Candidate] = []
         dropped: list[str] = []
         for name in sorted(self.fields):
             claim = claims[name]
-            if claim["shown"] is not True or claim["value"] == _ABSENT:
+            if claim["shown"] is not True or claim["value"] == claim["ref"] == _ABSENT:
                 continue  # the page does not show it: the field stays missing
-            span = align(SpanClaim.model_validate({key: claim[key] for key in _SPAN}), self.text)
-            if span is None:
+            grounded = self._ground(self.fields[name], claim)
+            if grounded is None:
                 dropped.append(f"role C: {name} ungrounded")
             else:
-                candidates.append(_candidate(name, self.fields[name], owner, span, self.ctx))
+                candidates.append(_candidate(name, self.fields[name], owner, *grounded, self.ctx))
         return _Read(tuple(candidates), tuple(dropped))
 
+    def _ground(self, spec: FieldSpec, claim: Mapping[str, JsonValue]) -> tuple[str, str] | None:
+        """The claim's raw value and locator: the element its `ref` names, else its span of the cleaned text, its
+        offsets moved back past the ids before them; None when ungrounded (INV-12)."""
+        ref = str(claim["ref"])
+        if ref != _ABSENT:
+            kind = _ELEMENT_OF.get(spec.type)
+            element = None if kind is None else ground_element(ref, kind, self.text.elements)
+            return None if element is None else (element.value, element.locator)
+        span = SpanClaim.model_validate({key: claim[key] for key in _SPAN})
+        at = self.text.cleaned_offset
+        span = span.model_copy(update={"start": at(span.start), "end": at(span.end)})
+        grounded = align(span, self.text.cleaned)
+        return None if grounded is None else (grounded.value, grounded.locator)
 
-def _candidate(name: str, spec: FieldSpec, owner: str, span: GroundedSpan, ctx: Context) -> Candidate:
-    """The grounded span as `owner`'s candidate of the field, normalized like any collector's raw value."""
+
+def _candidate(name: str, spec: FieldSpec, owner: str, raw: str, locator: str, ctx: Context) -> Candidate:
+    """The grounded value as `owner`'s candidate of the field, normalized like any collector's raw value."""
     return Candidate(
         field=name,
         entity_id=owner,
         source_kind="llm",
-        raw=span.value,
-        normalized=normalize(span.value, spec, ctx),
-        locator=span.locator,
+        raw=raw,
+        normalized=normalize(raw, spec, ctx),
+        locator=locator,
         independent=True,
     )

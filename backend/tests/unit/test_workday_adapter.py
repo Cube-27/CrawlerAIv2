@@ -291,10 +291,6 @@ def test_a_job_answer_is_one_posting_with_its_stated_fields() -> None:
         ("adapter:workday:$", "description"): (
             "<p>Answer synthetic questions.</p><ul><li>Two years of example experience.</li></ul>"
         ),
-        (
-            "adapter:workday:$",
-            "apply_url",
-        ): "https://jobs.example.com/External/job/Southville/Example-Support-Analyst_R-0002",
         ("adapter:workday:$", "date_posted"): "2026-09-28",
         ("adapter:workday:$", "employment_type"): "Full time",
         ("adapter:workday:$", "locations"): ["Southville", "Eastport"],

@@ -33,7 +33,7 @@ class _RoleC:
         fields = {name: request.schema.fields[name] for name in request.missing}
         filled = await c_extract.extract_detail(
             self.client,
-            request.page.cleaned_text.text,
+            request.page.cleaned_text,
             fields,
             request.ctx,
             owner=request.target.id,
@@ -63,7 +63,7 @@ class _RoleC:
         if request.page_missing and failure is None:
             page = await c_extract.extract_detail(
                 self.client,
-                request.page.cleaned_text.text,
+                request.page.cleaned_text,
                 {name: fields[name] for name in request.page_missing},
                 request.ctx,
                 owner=PAGE,

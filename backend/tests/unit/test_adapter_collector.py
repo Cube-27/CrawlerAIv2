@@ -102,10 +102,6 @@ def test_a_detail_response_is_one_posting_with_a_candidate_per_documented_field(
             "&lt;p&gt;Build synthetic systems for a test fixture.&lt;/p&gt;",
             "adapter:greenhouse:$['content']",
         ),
-        (entity, "apply_url"): (
-            "https://jobs.example.com/example-tenant/jobs/4000001",
-            "adapter:greenhouse:$['absolute_url']",
-        ),
         (entity, "date_posted"): ("2026-09-01T09:00:00-04:00", "adapter:greenhouse:$['first_published']"),
     }
     assert {c.source_kind for c in result.candidates} == {"adapter"}
@@ -120,7 +116,7 @@ def test_a_lever_detail_response_reads_each_documented_member() -> None:
         "title": "adapter:lever:$['text']",
         "locations": "adapter:lever:$['categories']['location']",
         "description": "adapter:lever:$['description']",
-        # D-1493: the posting's application form, its ApplyAction's target, ranks above its URL.
+        # The posting's application form, its ApplyAction's target.
         "apply_url": "adapter:lever:$['applyUrl']",
     }
 
@@ -415,7 +411,7 @@ def test_a_node_with_mapped_properties_is_read_as_an_object_of_schema_org_names(
     ("page_kind", "fixture", "preset", "field"),
     [
         ("listing", "greenhouse/jobs.json", "job_listing", "url"),
-        ("detail", "greenhouse/job.json", "job_detail", "apply_url"),
+        ("detail", "greenhouse/job.json", "job_detail", "posting_url"),
     ],
 )
 def test_a_hosted_board_names_each_job_by_the_board_route_on_its_host(
@@ -423,9 +419,11 @@ def test_a_hosted_board_names_each_job_by_the_board_route_on_its_host(
 ) -> None:
     # D-1483: a hosted board page links its jobs by `/{board}/jobs/{id}` on its own host, not by `absolute_url`.
     match = AdapterMatch("example-tenant", page_kind, host="board.example.test")
-    result = AdapterCollector(GREENHOUSE, match, VOCABULARY).collect(
-        ParsedPage(_fixture(fixture)), _preset(preset), CTX
-    )
+    schema = _preset(preset)
+    if field not in schema.fields:  # the posting's own URL, which no job preset asks
+        posting_url = FieldSpec(type=FieldType.URL, description="d", schema_org="JobPosting.url")
+        schema = schema.model_copy(update={"fields": {**schema.fields, field: posting_url}})
+    result = AdapterCollector(GREENHOUSE, match, VOCABULARY).collect(ParsedPage(_fixture(fixture)), schema, CTX)
 
     urls = [(c.raw, c.locator) for c in result.candidates if c.field == field]
     document = json.loads(_fixture(fixture))
