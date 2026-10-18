@@ -47,6 +47,18 @@ function trimSlashes(url: string): string {
   return url.slice(0, end);
 }
 
+/** The members of an error body when it is a JSON object (RFC 9457 §3: a problem document is one); anything else
+ * (`null`, a number, a string, an array) carries none. */
+function asProblem(parsed: unknown): Partial<Problem> {
+  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Partial<Problem>) : {};
+}
+
+/** `/v1/jobs/{id}` with the id as one percent-encoded path segment (RFC 3986 §3.3), so `/`, `?` or `#` in it cannot
+ * change the path or add a query. */
+function jobPath(jobId: string): string {
+  return `/v1/jobs/${encodeURIComponent(jobId)}`;
+}
+
 const ENDED: ReadonlySet<JobStatus> = new Set(["completed", "failed", "cancelled"]);
 
 /** The API answered with a problem document (RFC 9457): `type` is its code (`validation`, `search_unavailable`, ...). */
@@ -113,8 +125,7 @@ export class CrawlerAI {
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });
     if (!response.ok) {
-      const problem = (await response.json().catch(() => ({}))) as Partial<Problem>;
-      throw new APIError(response.status, problem);
+      throw new APIError(response.status, asProblem(await response.json().catch(() => null)));
     }
     return response;
   }
@@ -160,12 +171,12 @@ export class CrawlerAI {
 
   /** `GET /v1/jobs/{id}`. */
   job(jobId: string): Promise<JobSummary> {
-    return this.#json("GET", `/v1/jobs/${jobId}`);
+    return this.#json("GET", jobPath(jobId));
   }
 
   /** `DELETE /v1/jobs/{id}`: ask the job to stop. */
   cancelJob(jobId: string): Promise<JobSummary> {
-    return this.#json("DELETE", `/v1/jobs/${jobId}`);
+    return this.#json("DELETE", jobPath(jobId));
   }
 
   /** One page of `GET /v1/jobs/{id}/results`. */
@@ -173,7 +184,7 @@ export class CrawlerAI {
     const query: Record<string, string> = { format: "json" };
     if (page.cursor !== undefined) query["cursor"] = page.cursor;
     if (page.limit !== undefined) query["limit"] = String(page.limit);
-    return this.#json("GET", `/v1/jobs/${jobId}/results`, undefined, query);
+    return this.#json("GET", `${jobPath(jobId)}/results`, undefined, query);
   }
 
   /** Every result of the job, page after page. */
@@ -201,13 +212,15 @@ export class CrawlerAI {
     const summary = await this.job(jobId);
     if (ENDED.has(summary.status)) return summary;
     if (Date.now() >= deadline) throw new JobTimeout(jobId, timeoutS);
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    // Never sleep past the deadline: the last poll happens at it, not up to an interval after it.
+    const wait = Math.min(intervalMs, deadline - Date.now());
+    await new Promise((resolve) => setTimeout(resolve, wait));
     return this.#poll(jobId, intervalMs, deadline, timeoutS);
   }
 
   /** The job's run events live (`GET /v1/jobs/{id}/events`), until its end event; resume with the last id seen. */
   async *events(jobId: string, lastEventId?: string): AsyncGenerator<JobEvent> {
-    const response = await this.#send("GET", `/v1/jobs/${jobId}/events`, {
+    const response = await this.#send("GET", `${jobPath(jobId)}/events`, {
       accept: "text/event-stream",
       ...(lastEventId === undefined ? {} : { headers: { "Last-Event-ID": lastEventId } }),
     });

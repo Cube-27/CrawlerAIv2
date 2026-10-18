@@ -164,3 +164,61 @@ test("the Python SDK and this one sign alike: HMAC-SHA256 of the body", async ()
     "sha256=5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
   );
 });
+
+test("waitForJob gives up at the deadline, not a whole poll interval after it", async () => {
+  const stuck = api(() => Response.json(summary("running")));
+  const started = Date.now();
+  await assert.rejects(stuck.client.waitForJob(JOB, { pollIntervalS: 5, timeoutS: 0.05 }), JobTimeout);
+  assert.ok(Date.now() - started < 1000);
+  assert.equal(stuck.seen.length, 2);
+});
+
+test("leaving events() early cancels the response body", async () => {
+  let cancelled = false;
+  const { client } = api(() => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('event: progress\ndata: {}\n\n'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    return new Response(body, { headers: { "content-type": "text/event-stream" } });
+  });
+
+  for await (const event of client.events(JOB)) {
+    assert.equal(event.kind, "progress");
+    break;
+  }
+  assert.equal(cancelled, true);
+});
+
+test("an error whose body is not a JSON object is still an APIError", async () => {
+  for (const body of ["null", "3", '"oops"', "[1]"]) {
+    const { client } = api(() => new Response(body, { status: 500, headers: { "content-type": "application/json" } }));
+    await assert.rejects(client.job(JOB), (error: unknown) => {
+      assert.ok(error instanceof APIError);
+      assert.equal(error.status, 500);
+      assert.equal(error.type, "error");
+      return true;
+    });
+  }
+});
+
+test("a job id is one path segment, percent-encoded", async () => {
+  const { client, seen } = api((request) =>
+    request.url.endsWith("/results?format=json") ? Response.json({ items: [], next_cursor: null }) : Response.json(summary("completed")),
+  );
+  await client.job("a/b?c#d");
+  await client.cancelJob("a/b");
+  await client.jobResults("a/b");
+  assert.deepEqual(
+    seen.map((request) => request.url),
+    [
+      "https://api.example.test/v1/jobs/a%2Fb%3Fc%23d",
+      "https://api.example.test/v1/jobs/a%2Fb",
+      "https://api.example.test/v1/jobs/a%2Fb/results?format=json",
+    ],
+  );
+});
