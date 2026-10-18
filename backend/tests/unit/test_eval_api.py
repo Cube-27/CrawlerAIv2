@@ -530,11 +530,11 @@ def test_normalize_is_not_implemented_yet() -> None:
 
 
 def _span(value: str, start: int) -> dict[str, JsonValue]:
-    return {"shown": True, "value": value, "start": start, "end": start + len(value)}
+    return {"shown": True, "ref": "", "value": value, "start": start, "end": start + len(value)}
 
 
 # Role C's claim of a field the page does not show.
-_ABSENT: dict[str, JsonValue] = {"shown": False, "value": "", "start": 0, "end": 0}
+_ABSENT: dict[str, JsonValue] = {"shown": False, "ref": "", "value": "", "start": 0, "end": 0}
 
 
 def test_prefill_stores_and_returns_a_draft_of_the_grounded_normalized_values() -> None:
