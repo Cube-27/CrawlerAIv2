@@ -17,6 +17,7 @@ needs a time and a numeric UTC offset; a date takes the calendar date the input 
 import re
 from collections.abc import Hashable
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from functools import cache, lru_cache
 from typing import Literal
 
@@ -105,12 +106,25 @@ def _from_rfc_3339(match: re.Match[str], want_time: bool) -> NormalizeResult:
         return Invalid("no_offset")
     iso = match.group("date")
     if time is not None:
-        iso += f"T{time}" + (f".{fraction[:6].ljust(6, '0')}" if fraction else "") + _offset(offset)
+        iso += f"T{_time(time, fraction)}" + _offset(offset)
     try:
         value = datetime.fromisoformat(iso)
     except ValueError:
         return Invalid("not_a_date")
     return _decide({value}, want_time)
+
+
+def _time(time: str, fraction: str | None) -> str:
+    """The time an RFC 3339 match writes, with seconds, as `datetime.fromisoformat` reads it. ISO 8601-1 §4.2.2.4: a
+    decimal fraction belongs to the lowest-order component written, so after `hh:mm` it is a fraction of the minute
+    (`10:30.5` is `10:30:30`). Digits past microseconds are cut, as for a fraction of a second."""
+    if not fraction:
+        return time
+    if time.count(":") == 2:
+        return f"{time}.{fraction[:6].ljust(6, '0')}"
+    seconds = Decimal(f"0.{fraction}") * 60
+    whole = int(seconds)
+    return f"{time}:{whole:02d}.{int((seconds - whole) * 1_000_000):06d}"
 
 
 def _offset(written: str | None) -> str:

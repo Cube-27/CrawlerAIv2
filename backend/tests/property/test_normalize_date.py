@@ -317,3 +317,16 @@ def test_a_zone_name_after_the_time_is_a_zero_offset(zone: str, value: datetime)
 @pytest.mark.parametrize("zone", [" IST", " CST", " EDT", " UTC+05:30"])
 def test_another_zone_abbreviation_fixes_no_offset(zone: str) -> None:
     assert normalize(f"2026-10-15 09:31:36{zone}", DATETIME, _ctx("en")) == Invalid("no_offset")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("2026-01-01T10:30.5Z", "2026-01-01T10:30:30Z"),
+        ("2026-01-01T10:30,25+00:00", "2026-01-01T10:30:15Z"),
+        ("2026-01-01T10:30.0001Z", "2026-01-01T10:30:00.006000Z"),
+    ],
+)
+def test_a_fraction_after_minutes_is_a_fraction_of_a_minute(raw: str, expected: str) -> None:
+    # ISO 8601-1 §4.2.2.4: a decimal fraction belongs to the lowest-order component written, here the minute.
+    assert normalize(raw, DATETIME) == Ok(expected)
