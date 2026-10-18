@@ -9,7 +9,7 @@ import sys
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from contextlib import aclosing, asynccontextmanager, suppress
-from dataclasses import replace
+from dataclasses import asdict, replace
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
@@ -36,7 +36,7 @@ from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.keys import create_key, revoke_key
 from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, ScheduleId
-from crawlerai.eval import calibrate, label_file, rekey
+from crawlerai.eval import calibrate, label_file, learn_sim, rekey
 from crawlerai.eval.cli import (
     EvalCliError,
     PageRequest,
@@ -346,6 +346,33 @@ async def _eval_run(
     print(json.dumps(summary))
 
 
+async def _eval_learn_sim(pages: int, llm_mode: str, role_a: str, max_calls: int | None, out: Path | None) -> None:
+    """Simulate learning on each dev host's first `pages` pages and print the aggregates (`eval.learn_sim`)."""
+    settings = Settings()
+    data = load_engine_data(adapter_registry(settings.disabled_adapters))
+    if data is None:
+        raise EvalCliError("the engine's data files are missing: run `crawlerai data fetch`")
+    database_url = settings.database_url.get_secret_value()
+    pipeline = PipelineEngine(data, await active_schemas(database_url))
+    db = create_async_engine(database_url)
+    try:
+        strong = llm_from_settings(settings, db)[0] if role_a == "live" else None
+        async with aclosing(dev_store(settings)) as store:
+            runs = await learn_sim.simulate(
+                store,
+                pipeline,
+                pages=pages,
+                live=_replay_llm(llm_mode, settings, db, max_calls),
+                role_a=None if strong is None else CappedLLM(strong, max_calls or learn_sim.ROLE_A_CALLS),
+                max_chars=settings.llm_a_max_chars,
+            )
+    finally:
+        await db.dispose()
+    if out is not None:
+        out.write_text(json.dumps([asdict(run) for run in runs], indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(learn_sim.summary(runs, learn_sim.usd_per_char(settings.llm_strong_model_anthropic))))
+
+
 def _replay_llm(mode: str, settings: Settings, db: AsyncEngine, max_calls: int | None) -> LLMClient | None:
     """What answers a call no recording holds (`RecordedLLM`): nothing, so the page is dropped (`recorded`, as in CI);
     a client that answers none, so its fields stay missing (`unanswered`, D-1464); or the configured providers, whose
@@ -506,6 +533,7 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
             " (D-1480); the report scoring every row goes beside it as <name>.all-rows.json"
         ),
     )
+    _add_learn_sim(eval_commands)
     for name, help_ in (
         ("calibrate", "write backend/data/calibration.json from a dev eval run"),
         ("fit-precedence", "write backend/data/source_precedence.yaml from a dev eval run"),
@@ -514,6 +542,19 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
         fit.set_defaults(handler=_run_eval, eval_handler=_run_eval_fit)
         fit.add_argument("--split", choices=splits, required=True)
         fit.add_argument("--run", type=uuid.UUID, required=True, help="the id of the dev eval run to fit on")
+
+
+def _add_learn_sim(eval_commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    sim = eval_commands.add_parser(
+        "learn-sim", help="simulate learning on each dev host's first pages and print zero-touch aggregates"
+    )
+    sim.set_defaults(handler=_run_eval, eval_handler=_run_eval_learn_sim)
+    sim.add_argument("--split", choices=["dev"], required=True)
+    sim.add_argument("--pages", type=_positive_int, default=3, help="the pages per host learning reads")
+    sim.add_argument("--llm", choices=["recorded", "unanswered", "live"], default="unanswered", help="role C misses")
+    sim.add_argument("--role-a", choices=["abstain", "live"], default="abstain", help="count role A, or call it")
+    sim.add_argument("--llm-max-calls", type=_positive_int, help="with a live client: the most provider calls each")
+    sim.add_argument("--out", type=Path, help="write each host's run (JSON, no host names) here")
 
 
 def _positive_int(value: str) -> int:
@@ -740,6 +781,11 @@ def _run_eval_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
     out = None if args.out is None else _under_cwd(parser, "--out", args.out)
     statuses: frozenset[LabelStatus] = CHECKED if args.labels == "checked" else frozenset(get_args(LabelStatus))
     asyncio.run(_eval_run(statuses, args.llm, out, args.llm_max_calls))
+
+
+def _run_eval_learn_sim(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    out = None if args.out is None else _under_cwd(parser, "--out", args.out)
+    asyncio.run(_eval_learn_sim(args.pages, args.llm, args.role_a, args.llm_max_calls, out))
 
 
 def _run_eval_fit(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
