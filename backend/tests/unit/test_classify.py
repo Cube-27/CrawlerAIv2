@@ -140,6 +140,20 @@ def test_a_self_refreshing_document_that_links_to_no_web_page_is_blocked(refresh
     assert classify(200, _HTML, body) == "blocked"
 
 
+def test_a_short_self_refreshing_document_that_links_only_to_mail_or_phone_is_blocked() -> None:
+    # Too little text not to be a shell, but its hyperlinks all lead to no web page: a stand-in, not a page the
+    # browser may render; a template's links are not in the document (HTML Standard §4.12.3).
+    template = '<template><a href="/item/2">next</a></template>'
+
+    assert classify(200, _HTML, _terminal(20, _REFRESH + '<a href="mailto:help@example.com">mail</a>')) == "blocked"
+    assert classify(200, _HTML, _terminal(20, _REFRESH + template + '<a href="tel:+15550100">call</a>')) == "blocked"
+
+
+def test_a_short_self_refreshing_document_without_hyperlinks_stays_a_shell() -> None:
+    # The shell rule decides first for a document that offers no link at all: a redirect stub or a script-built page.
+    assert classify(200, _HTML, _terminal(20, _REFRESH)) == "shell"
+
+
 def test_a_refresh_header_counts_as_declaring_a_refresh() -> None:
     headers = (*_HTML, ("Refresh", "30"))
 

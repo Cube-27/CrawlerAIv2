@@ -113,7 +113,8 @@ cookie-free response headers, the resource type and the count of browser actions
 ### Requirement: Structural outcome classification (INV-24)
 The system SHALL classify each final response from status and structure (the classes and the shell, linkless page,
 self-refreshing page and listing-shell rules in `acquire/classify.py`: a 2xx HTML page that is no shell and has no
-hyperlink, or that declares a refresh and has no hyperlink to a web page, is `blocked`; a listing without repeated items
+hyperlink, or that declares a refresh and has hyperlinks but none to a web page (even one short enough to be a shell),
+is `blocked`; a listing without repeated items
 is a shell unless its structured data lists items), and from one kind of site data only: a 2xx HTML document that shows
 a vendor's stand-in marker (`adapters/challenges.py`) is `blocked`. Generic code and the remembered fetch method MUST NOT
 use vendor or challenge-page strings, and blocked and shell pages end with zero records. A body is decoded once at

@@ -82,10 +82,11 @@ def classify(status: int, headers: HeaderList, text: str, page_kind: PageKind | 
     # Read before the shell rule strips script data blocks from the tree.
     structured = page_kind == "listing" and _structured_rows(tree)
     unstructured = _no_site_page(tree)
+    # Before the shell return: a short document that refreshes and links only to mail or phone is a stand-in too.
+    if unstructured == "blocked" or (_refreshes(tree, headers) and _offers_no_web_page(tree)):
+        return "blocked"
     if unstructured is not None:
         return unstructured
-    if _refreshes(tree, headers) and not _links_to_web(tree):
-        return "blocked"
     if page_kind == "listing" and not structured and not lists_items(text):
         return "shell"
     return "ok"
@@ -130,6 +131,12 @@ def _links_to_web(tree: LexborHTMLParser) -> bool:
         if scheme in ("", *_WEB_SCHEMES):
             return True
     return False
+
+
+def _offers_no_web_page(tree: LexborHTMLParser) -> bool:
+    """Whether the document has hyperlinks and none leads to a web page (`_links_to_web`). Read after the shell rule
+    strips the invisible elements: a `template`'s links are not in the document."""
+    return tree.css_first(_HYPERLINKS) is not None and not _links_to_web(tree)
 
 
 def _links_within(tree: LexborHTMLParser, url: str) -> bool:
