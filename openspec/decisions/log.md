@@ -1163,3 +1163,12 @@ Entries written before the OpenSpec conversion (#223), when this file was `docs/
 - Decision: `page_fingerprint` fingerprints a listing by its visible words followed by the canonical URLs it links to, in document order (`content.links`), instead of by its words alone (links only when it had no words, D-1383). A detail page is still fingerprinted by its words. The jobs spec's "Conditional GET and content fingerprint" requirement says so.
 - Why: a listing whose rows keep their titles but link to other items (reposted items with new IDs) read as unchanged, so the task linked standing records with stale row URLs and the listing diff never saw the change. The spec already holds standing records valid only "while that task extracted the page the way it would be now"; reading the links restores that. The cost is more re-extraction on listings whose hrefs churn (session or tracking parameters): never a stale record, only a skipped optimisation.
 - Reversible: yes
+
+### D-1665 — Scoring follows the wider resource key; owner to confirm
+- Date: 2026-10-18 · Change/PR: plan-phase-3c (#284) · Status: pending-owner (work proceeds on it)
+- Decision: `eval.scoring._same_file` already reads `resource_key` (D-1484), so the wider key also makes two images
+  that differ only in a path-stated size, conversion or options score as one image. Its test case "another path"
+  (`a_1200x.jpg` vs `a_1024x.jpg`) is now a rendition; the other-path case is `a.jpg` vs `b.jpg`. This is a scoring
+  change by effect, so the image_url gain above is partly a scoring fix (C10); the owner may keep the key narrow for
+  scoring only.
+- Reversible: yes

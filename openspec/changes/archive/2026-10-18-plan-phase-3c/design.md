@@ -47,3 +47,5 @@
   summary) or no fuller candidate exists, because the full text is a DOM block no collector reads, so there is
   nothing to prefer.
 - Reversible: n/a
+
+D-1665 (scoring follows the wider resource key) is `pending-owner`: see `openspec/decisions/log.md`.

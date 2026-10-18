@@ -79,6 +79,7 @@ def test_an_unmatched_row_inside_the_labeled_count_is_still_a_false_positive() -
     [
         ("http://cdn.example.com/i/a.jpg?v=1", "https://cdn.example.com/i/a.jpg?v=1&width=2000"),
         ("https://cdn.example.com/i/a.jpg?w=100", "https://cdn.example.com/i/a.jpg"),
+        ("https://cdn.example.com/i/a_1200x.jpg", "https://cdn.example.com/i/a_1024x.jpg"),  # a size the path states
     ],
 )
 def test_renditions_of_one_image_file_score_as_the_same_image(output: str, label: str) -> None:
@@ -89,7 +90,7 @@ def test_renditions_of_one_image_file_score_as_the_same_image(output: str, label
 @pytest.mark.parametrize(
     ("output", "label"),
     [
-        ("https://cdn.example.com/i/a_1200x.jpg", "https://cdn.example.com/i/a_1024x.jpg"),  # another path
+        ("https://cdn.example.com/i/a.jpg", "https://cdn.example.com/i/b.jpg"),  # another path
         ("https://cdn.example.net/i/a.jpg", "https://cdn.example.com/i/a.jpg"),  # another host
         ("not a url", "not a url either"),
     ],
