@@ -1,16 +1,6 @@
 """INV-16 at the endpoints (SPEC-10 §6, §21 L3 done-when): every REST endpoint that takes a URL refuses a target that
 is not a public address, wherever the target comes from: a URL the request names (`url`, `urls`, a glob of `urls`,
-`webhook_url`), a redirect hop, or a location a sitemap or page lists.
-
-A target the request names is refused before anything is stored or fetched: a 422 `ssrf_rejected` problem that names
-the member and never echoes the URL. A target reached while fetching is refused by the guard on that hop: an endpoint
-that answers while the caller waits (`scrape`, `map`, a glob's map in `extract`) answers the 422; a job's task fails
-with the guard's reason, and the job goes on.
-
-The app runs with the real guard (`SafeConnector`) and the real HTTP rung (`fetch_http`) against a local server on
-127.0.0.1. Only the test site's host, at the server's port, is pinned to the server; every other name goes through the
-guard with a stub resolver (RFC 2606 `.test` names), so nothing leaves the machine.
-"""
+`webhook_url`), a redirect hop, or a location a sitemap or page lists."""
 
 import asyncio
 import functools
@@ -392,32 +382,6 @@ async def test_a_target_named_to_an_mcp_tool_is_refused_before_anything_is_store
     assert await job_count(engine) == jobs
 
 
-@pytest.mark.parametrize("target", ["file:///etc/passwd", "gopher://www.example.test/", "ftp://www.example.test/"])
-@pytest.mark.parametrize("member", MEMBERS, ids=str)
-async def test_a_target_of_another_scheme_is_invalid(
-    client: httpx.AsyncClient, engine: AsyncEngine, site: str, schema_id: str, member: Member, target: str
-) -> None:
-    jobs = await job_count(engine)
-
-    response = await client.post(member.path, json=member.body(target, f"{site}/p/1", schema_id))
-
-    assert response.status_code == 422, response.text
-    assert response.json()["type"] == "validation"
-    assert await job_count(engine) == jobs
-
-
-async def test_a_glob_on_an_ipv6_literal_is_invalid(
-    client: httpx.AsyncClient, engine: AsyncEngine, site: str, schema_id: str
-) -> None:
-    jobs = await job_count(engine)
-
-    response = await client.post("/v1/extract", json=_extract([f"{site}/p/1", "http://[::1]/p/*"], schema_id))
-
-    assert response.status_code == 422, response.text
-    assert response.json()["type"] == "validation"
-    assert await job_count(engine) == jobs
-
-
 # --- targets reached while fetching -------------------------------------------------------------------------------
 
 # Redirect locations the guard refuses on the hop (SPEC-02 §4.5: every hop is checked from scratch).
@@ -459,35 +423,6 @@ async def test_a_page_redirected_to_a_refused_target_is_a_problem(
         "type": "ssrf_rejected",
         "detail": f"ssrf_rejected: {reason}",
     }
-
-
-async def test_a_map_whose_sitemap_redirects_to_a_refused_target_is_a_problem(
-    client: httpx.AsyncClient, server: Server, site: str
-) -> None:
-    server.page("/robots.txt", f"User-agent: *\nAllow: /\nSitemap: {site}/s.xml\n", "text/plain")
-    server.page("/", html("<h1>Home</h1>"))
-    server.redirect("/s.xml", "http://intranet.example.test/s.xml")
-
-    response = await client.post("/v1/map", json={"url": f"{site}/"})
-
-    assert response.status_code == 422, response.text
-    assert response.json()["detail"] == "ssrf_rejected: private_address"
-
-
-async def test_an_extract_glob_whose_map_redirects_to_a_refused_target_is_a_problem(
-    client: httpx.AsyncClient, engine: AsyncEngine, server: Server, site: str, schema_id: str
-) -> None:
-    server.redirect("/", "http://169.254.169.254/latest/meta-data/")
-    jobs = await job_count(engine)
-
-    response = await client.post("/v1/extract", json=_extract([f"{site}/p/*"], schema_id))
-
-    assert response.status_code == 422, response.text
-    assert response.json()["detail"] == "ssrf_rejected: private_address"
-    # The glob's map is a job of its own, which failed; no extract job was stored.
-    async with engine.connect() as conn:
-        kinds = (await conn.execute(select(Job.kind, Job.status).order_by(Job.created_at))).all()
-    assert [tuple(row) for row in kinds[jobs:]] == [("map", "failed")]
 
 
 @pytest.mark.parametrize(

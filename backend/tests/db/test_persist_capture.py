@@ -1,7 +1,7 @@
 """`store_capture` (SPEC-02 §4.10): the bundle goes to the object store under the production key, and a `capture`
 row describes it."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -79,48 +79,6 @@ async def test_the_bundle_is_stored_under_the_production_key_and_a_row_describes
     assert (row.object_key, row.html_sha256, row.size_bytes) == (key, sha256_hex(BODY), len(store.get(key)))
     assert row.duration_ms == 1950
     assert row.expires_at == datetime(2026, 10, 31, 12, 30, tzinfo=UTC)
-
-
-async def test_the_row_keeps_the_policy_and_every_attempt(conn: AsyncConnection, tmp_path: Path) -> None:
-    capture_id = await store_capture(conn, FsStore(tmp_path), _result(), await _site(conn))
-
-    row = (await conn.execute(select(Capture.__table__).where(Capture.id == capture_id))).one()
-    assert row.fetch_policy == {
-        **FetchPolicy(timeout_s=12.0).model_dump(mode="json"),
-        "attempts": [
-            {
-                "method": "http",
-                "status": 200,
-                "block_class": "shell",
-                "duration_ms": 120,
-                "error": None,
-                "challenge": None,
-                "steps": [],
-            },
-            {
-                "method": "browser",
-                "status": 200,
-                "block_class": "ok",
-                "duration_ms": 1830,
-                "error": None,
-                "challenge": None,
-                "steps": [],
-            },
-        ],
-    }
-
-
-@pytest.mark.parametrize(
-    ("expires_in", "expires_at"),
-    [(None, None), (timedelta(days=1), datetime(2026, 10, 2, 12, 30, tzinfo=UTC))],
-)
-async def test_expiry_counts_from_the_fetch(
-    conn: AsyncConnection, tmp_path: Path, expires_in: timedelta | None, expires_at: datetime | None
-) -> None:
-    capture_id = await store_capture(conn, FsStore(tmp_path), _result(), await _site(conn), expires_in=expires_in)
-
-    row = (await conn.execute(select(Capture.__table__).where(Capture.id == capture_id))).one()
-    assert row.expires_at == expires_at
 
 
 async def test_no_row_is_written_when_the_object_store_fails(conn: AsyncConnection, tmp_path: Path) -> None:

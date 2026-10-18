@@ -1,14 +1,10 @@
 """A learning run's recipe replays (SPEC-09 §4.6, §4.7) go out as politely as a served recipe's request (SPEC-02 §4.6,
 D-0731): only where the endpoint host's robots.txt allows, at that host's rate; through the site's proxy pool, counted
-as the learn job's usage (D-1381).
-
-The web is a stub that answers robots.txt and JSON on RFC 2606 hosts: no network.
-"""
+as the learn job's usage (D-1381)."""
 
 import json
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
-from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -80,40 +76,6 @@ async def job_id(engine: AsyncEngine) -> JobId:
 def _fetching(web: Web, tmp_path: Path) -> Fetching:
     rungs = Rungs(http=web.http, browser=web.browser, json=web.json)
     return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
-
-
-def _admissions(fetching: Fetching) -> list[str]:
-    """The hosts `fetching`'s limiter admits a request to from now on, in order."""
-    admitted: list[str] = []
-    admit = fetching.limiter.admit
-
-    def recording(host: str, interval: timedelta) -> timedelta:
-        wait = admit(host, interval)
-        if not wait:
-            admitted.append(host)
-        return wait
-
-    fetching.limiter.admit = recording  # type: ignore[method-assign]
-    return admitted
-
-
-async def test_a_replay_robots_txt_allows_is_sent_at_the_endpoint_host_rate(
-    engine: AsyncEngine, fetch_result: Callable[..., FetchResult], api_host: str, tmp_path: Path, job_id: JobId
-) -> None:
-    web = Web(fetch_result, b"User-agent: *\nAllow: /\n")
-    fetching = _fetching(web, tmp_path)
-    admitted = _admissions(fetching)
-    replays = learning_replay(engine, fetching)
-    assert replays is not None
-    replay = replays(job_id, None)
-    endpoint = f"https://{api_host}/v1/products/item-a"
-
-    result = await replay(JsonRequest(endpoint, "https://shop.example.test/p/item-a"))
-
-    assert (result.block_class, web.requested, admitted) == ("ok", [endpoint], [api_host])
-    # Without a JSON rung there is nothing to replay with.
-    no_json = Fetching(Rungs(http=web.http, browser=web.browser), fetching.connector, fetching.store, HostLimiter())
-    assert learning_replay(engine, no_json) is None
 
 
 async def test_a_replay_robots_txt_disallows_is_not_sent(

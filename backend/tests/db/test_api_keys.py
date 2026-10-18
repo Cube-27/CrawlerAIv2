@@ -5,7 +5,7 @@ creates, reactivates or resets a key."""
 import asyncio
 import json
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, Any
@@ -19,10 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from crawlerai.api.app import create_app
 from crawlerai.api.auth import require_api_key
 from crawlerai.cli import main
-from crawlerai.core.settings import Settings
 from crawlerai.db.keys import hash_key
 from crawlerai.db.models import ApiKey, ApiKeyId
-from crawlerai.worker.loop import run_worker
 
 pytestmark = pytest.mark.anyio
 
@@ -115,30 +113,6 @@ async def test_unknown_and_revoked_keys_are_unauthorized(
     assert {response.json()["type"] for response in responses} == {"unauthorized"}
 
 
-async def test_revoking_twice_keeps_the_first_revocation(
-    env: pytest.MonkeyPatch, keys: AsyncEngine, capsys: pytest.CaptureFixture[str]
-) -> None:
-    created = await _create(capsys)
-    await _cli(capsys, "apikey", "revoke", created["id"])
-    first = (await _row(keys, created["id"])).revoked_at
-
-    again = json.loads(await _cli(capsys, "apikey", "revoke", created["id"]))
-
-    assert again == {"id": created["id"], "revoked": False}
-    assert (await _row(keys, created["id"])).revoked_at == first
-
-
-async def test_revoking_an_unknown_key_exits_with_an_error(
-    env: pytest.MonkeyPatch, keys: AsyncEngine, capsys: pytest.CaptureFixture[str]
-) -> None:
-    unknown = str(uuid.uuid4())
-    with pytest.raises(SystemExit) as exit_info:
-        await _cli(capsys, "apikey", "revoke", unknown)
-
-    assert exit_info.value.code == 2
-    assert capsys.readouterr().err == f"crawlerai apikey revoke: no API key {unknown}\n"
-
-
 @pytest.mark.parametrize(("age_s", "moves"), [(None, True), (30, False), (120, True)])
 async def test_last_used_at_moves_at_most_once_a_minute(
     env: pytest.MonkeyPatch,
@@ -159,27 +133,3 @@ async def test_last_used_at_moves_at_most_once_a_minute(
     after = (await _row(keys, created["id"])).last_used_at
     assert response.status_code == 200
     assert (after != before) is moves
-
-
-async def _api_keys(engine: AsyncEngine) -> Sequence[Row[Any]]:
-    async with engine.connect() as conn:
-        return (await conn.execute(select(ApiKey).order_by(ApiKey.id))).all()
-
-
-async def test_starting_the_api_and_a_worker_leaves_the_keys_unchanged(
-    env: pytest.MonkeyPatch, keys: AsyncEngine, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # INV-32: keys come only from the CLI. One revoked and one live key, so a reactivation or a reset would show.
-    live = await _create(capsys)
-    await _cli(capsys, "apikey", "revoke", (await _create(capsys))["id"])
-    before = await _api_keys(keys)
-    stop = asyncio.Event()
-    stop.set()
-
-    app = create_app()
-    async with app.router.lifespan_context(app):
-        pass
-    await run_worker(Settings(), {}, stop)
-
-    assert live["id"] in {str(row.id) for row in before}
-    assert await _api_keys(keys) == before

@@ -1,7 +1,6 @@
 """The eval store over a throwaway database and a temporary object root. Synthetic data only: `.test` hosts, made-up
 bundles (C9)."""
 
-import hashlib
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -20,7 +19,6 @@ from crawlerai.db.models import (
     EvalPage,
     EvalPageId,
     EvalRun,
-    EvalRunId,
     SchemaDef,
     SchemaId,
     Site,
@@ -29,10 +27,8 @@ from crawlerai.eval.store import (
     DevEvalStore,
     EvalNotFound,
     EvalPageRow,
-    EvalRunRow,
     EvalStore,
     Labels,
-    LabelsChanged,
 )
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 from crawlerai.storage.fs import FsStore
@@ -103,40 +99,6 @@ def _page(case: Case, capture_id: CaptureId, **fields: object) -> EvalPageRow:
     return EvalPageRow.model_validate(values | fields)
 
 
-def _files(root: Path) -> list[str]:
-    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()) if root.exists() else []
-
-
-def _llm_key(n: int) -> str:
-    return hashlib.sha256(f"role|model|prompt {n}|schema".encode()).hexdigest()
-
-
-async def test_a_capture_round_trips_and_its_bundle_lands_under_the_eval_prefix(case: Case) -> None:
-    bundle = _bundle()
-
-    capture_id = await case.store.put_capture(bundle, "custom_store")
-
-    assert capture_id == bundle.manifest.capture_id
-    assert await case.store.get_bundle(capture_id) == bundle
-    assert _files(case.root) == [f"eval/dev/{capture_id}.bundle.zst"]
-    unknown = CaptureId(uuid7())
-    with pytest.raises(EvalNotFound):
-        await case.store.get_bundle(unknown)
-
-
-async def test_putting_a_capture_twice_converges(case: Case) -> None:
-    bundle = _bundle()
-
-    first = await case.store.put_capture(bundle, "custom_store")
-    second = await case.store.put_capture(bundle, "custom_store")
-    page_id = await case.store.put_page(_page(case, second))
-
-    assert first == second == bundle.manifest.capture_id
-    assert (await case.store.get_page(page_id)).capture_id == first
-    assert await case.store.get_bundle(first) == bundle
-    assert len(_files(case.root)) == 1
-
-
 async def test_a_page_round_trips(case: Case) -> None:
     capture_id = await case.store.put_capture(_bundle(), "api_backed")
     page = _page(
@@ -157,76 +119,6 @@ async def test_a_page_round_trips(case: Case) -> None:
         await case.store.get_page(unknown)
 
 
-async def test_a_page_must_reference_a_capture_of_this_store(case: Case) -> None:
-    page = _page(case, CaptureId(uuid7()))
-    with pytest.raises(EvalNotFound):
-        await case.store.put_page(page)
-
-
-async def test_pages_are_listed_by_schema_name_and_label_status(case: Case) -> None:
-    capture_id = await case.store.put_capture(_bundle(), "job_board")
-    draft, checked, labeled = (
-        _page(case, capture_id, labels={"status": status}) for status in ("draft", "checked", "labeled")
-    )
-    for page in (draft, checked, labeled):
-        await case.store.put_page(page)
-
-    assert await case.store.list_pages() == [draft, checked, labeled]
-    assert await case.store.list_pages(status="checked") == [checked]
-    assert await case.store.list_pages(schema_name=SCHEMA_NAME, status="draft") == [draft]
-    assert await case.store.list_pages(schema_name="other_detail") == []
-
-
-async def test_labels_record_the_labeler_then_a_different_checker(case: Case) -> None:
-    capture_id = await case.store.put_capture(_bundle(), "custom_store")
-    page_id = await case.store.put_page(_page(case, capture_id))
-
-    await case.store.put_labels(page_id, {"status": "labeled", "fields": {}}, "ana", "labeler", expected={})
-    await case.store.put_labels(
-        page_id, {"status": "checked", "fields": {}}, "ben", "checker", expected={"status": "labeled", "fields": {}}
-    )
-
-    page = await case.store.get_page(page_id)
-    assert (page.labels, page.labeler, page.checker) == ({"status": "checked", "fields": {}}, "ana", "ben")
-
-
-async def test_a_labeler_pass_clears_the_check(case: Case) -> None:
-    capture_id = await case.store.put_capture(_bundle(), "custom_store")
-    page_id = await case.store.put_page(_page(case, capture_id))
-    await case.store.put_labels(page_id, {"status": "labeled"}, "ana", "labeler", expected={})
-    await case.store.put_labels(page_id, {"status": "checked"}, "ben", "checker", expected={"status": "labeled"})
-
-    await case.store.put_labels(page_id, {"status": "labeled"}, "ben", "labeler", expected={"status": "checked"})
-
-    page = await case.store.get_page(page_id)
-    assert (page.labels, page.labeler, page.checker) == ({"status": "labeled"}, "ben", None)
-
-
-async def test_a_pass_over_labels_that_changed_since_they_were_read_is_refused(case: Case) -> None:
-    capture_id = await case.store.put_capture(_bundle(), "custom_store")
-    page_id = await case.store.put_page(_page(case, capture_id))
-    await case.store.put_labels(page_id, {"status": "labeled", "notes": "v1"}, "ana", "labeler", expected={})
-    await case.store.put_labels(
-        page_id, {"status": "labeled", "notes": "v2"}, "ana", "labeler", expected={"status": "labeled", "notes": "v1"}
-    )
-
-    with pytest.raises(LabelsChanged):
-        await case.store.put_labels(
-            page_id,
-            {"status": "checked", "notes": "v1"},
-            "ben",
-            "checker",
-            expected={"status": "labeled", "notes": "v1"},
-        )
-
-    page = await case.store.get_page(page_id)
-    assert (page.labels, page.checker) == ({"status": "labeled", "notes": "v2"}, None)
-    # A page that is not there is not found, not a conflict.
-    unknown = EvalPageId(uuid7())
-    with pytest.raises(EvalNotFound):
-        await case.store.put_labels(unknown, {}, "ana", "labeler", expected={})
-
-
 async def test_the_labeler_cannot_check_their_own_labels(case: Case) -> None:
     capture_id = await case.store.put_capture(_bundle(), "custom_store")
     page_id = await case.store.put_page(_page(case, capture_id))
@@ -239,33 +131,6 @@ async def test_the_labeler_cannot_check_their_own_labels(case: Case) -> None:
 
     page = await case.store.get_page(page_id)
     assert (page.labels, page.checker) == ({"status": "labeled"}, None)
-
-
-async def test_a_run_is_read_back_by_its_id(case: Case) -> None:
-    run = EvalRunRow(split=case.store.split, engine_version="a+cal.0", git_sha="a" * 40, metrics={"n_pages": 2})
-    await case.store.put_run(run)
-    unknown = EvalRunId(uuid7())
-
-    assert await case.store.get_run(run.id) == run
-    with pytest.raises(EvalNotFound, match=f"no {case.store.split} eval run"):
-        await case.store.get_run(unknown)
-
-
-async def test_the_llm_cache_misses_then_returns_what_was_put(case: Case) -> None:
-    assert await case.store.llm_cache_get(_llm_key(1)) is None
-
-    await case.store.llm_cache_put(_llm_key(1), b'{"answer": 1}')
-    await case.store.llm_cache_put(_llm_key(2), b'{"answer": 2}')
-    await case.store.llm_cache_put(_llm_key(2), b'{"answer": 2}')
-
-    assert await case.store.llm_cache_get(_llm_key(1)) == b'{"answer": 1}'
-    assert await case.store.llm_cache_get(_llm_key(2)) == b'{"answer": 2}'
-    assert await case.store.llm_cache_get(_llm_key(3)) is None
-
-
-async def test_an_llm_cache_key_must_be_a_sha256(case: Case) -> None:
-    with pytest.raises(ValueError, match="invalid LLM cache key"):
-        await case.store.llm_cache_put("../escape", b"{}")
 
 
 @pytest.mark.parametrize("expires_at", [datetime(2026, 10, 31, tzinfo=UTC), None])

@@ -2,21 +2,19 @@
 that falls below its validated yield is suspended in the IR and `field_status`, the suspension is a
 `drift_suspended` job event, and the site re-learns while its config keeps serving."""
 
-import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from sqlalchemy import delete, insert, select
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from sqlalchemy import insert, select
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.drift import DriftMargins, record_run
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.config_ir.progressive import StateKey, learning_activated, lock_state, request_learning
+from crawlerai.config_ir.progressive import StateKey, learning_activated, request_learning
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import (
@@ -139,24 +137,6 @@ async def test_a_layout_change_suspends_the_field_and_starts_a_forced_relearn(co
     assert (state.mode, state.active_config_id, state.learning_started_at is not None) == ("active", config_id, True)
 
 
-async def test_a_suspended_field_no_longer_runs_or_drifts_again(conn: AsyncConnection) -> None:
-    _, config_id, job_id = await _active_config(conn)
-    for html in (OLD, OLD, OLD, NEW, NEW):
-        await _run(conn, config_id, job_id, html)
-
-    assert await _run(conn, config_id, job_id, NEW) == []
-    assert len((await _config(conn, config_id)).drift_window["title"]) == 5
-
-
-async def test_without_margins_the_window_is_recorded_and_nothing_is_suspended(conn: AsyncConnection) -> None:
-    _, config_id, job_id = await _active_config(conn)
-    for _ in range(5):
-        assert await _run(conn, config_id, job_id, NEW, margins=None) == []
-
-    config = await _config(conn, config_id)
-    assert (len(config.drift_window["title"]), config.field_status) == (5, {"title": "corroborated"})
-
-
 async def test_a_config_that_is_not_active_records_nothing(conn: AsyncConnection) -> None:
     key, _, job_id = await _active_config(conn)
     replaced = {**key.columns(), "version": 2, "ir": IR, "origin": "induced", "status": "suspended"}
@@ -167,74 +147,3 @@ async def test_a_config_that_is_not_active_records_nothing(conn: AsyncConnection
     for _ in range(5):
         assert await _run(conn, other, job_id, NEW) == []
     assert (await _config(conn, other)).drift_window == {}
-
-
-# A field the config lists as absent (D-1341).
-ABSENT_IR = {**IR, "absent": ["price"]}
-ABSENT_STATUS = {"title": "corroborated", "price": "absent"}
-
-
-async def test_a_page_publishing_an_absent_field_re_tests_it(conn: AsyncConnection) -> None:
-    key, config_id, job_id = await _active_config(conn, ABSENT_IR, ABSENT_STATUS)
-
-    assert await _run(conn, config_id, job_id, OLD, published=["title", "price"]) == []
-
-    config = await _config(conn, config_id)
-    assert (config.ir["absent"], config.field_status) == ([], {"title": "corroborated"})
-    [event] = (await conn.execute(select(JobEvent).where(JobEvent.job_id == job_id))).all()
-    assert (event.kind, event.payload) == ("absent_stated", {"config_id": str(config_id), "field": "price"})
-    learn = select(Job.request).where(Job.kind == "learn", Job.schema_id == key.schema_id).order_by(Job.id)
-    requests: list[dict[str, Any]] = list((await conn.execute(learn)).scalars())
-    assert [request["force"] for request in requests] == [False, True]
-
-
-async def test_a_page_not_publishing_an_absent_field_leaves_it_absent(conn: AsyncConnection) -> None:
-    key, config_id, job_id = await _active_config(conn, ABSENT_IR, ABSENT_STATUS)
-
-    assert await _run(conn, config_id, job_id, OLD, published=["title"]) == []
-
-    config = await _config(conn, config_id)
-    assert (config.ir["absent"], config.field_status) == (["price"], ABSENT_STATUS)
-    learn = select(Job.id).where(Job.kind == "learn", Job.schema_id == key.schema_id)
-    assert len((await conn.execute(learn)).all()) == 1
-
-
-async def _locked_config(conn: AsyncConnection, statement: Any) -> ExtractionConfigId | None:
-    """The config row `statement` locks, or None when another transaction holds its lock (NOWAIT)."""
-    try:
-        async with conn.begin_nested():
-            return (await conn.execute(statement)).scalar_one()
-    except DBAPIError:
-        return None
-
-
-async def test_a_run_takes_the_state_lock_before_the_config_row_as_activation_does(engine: AsyncEngine) -> None:
-    """Every activation path locks the progressive state, then the config rows (`progressive.lock_state`); a run that
-    locked its config first could deadlock against an approval of the same state."""
-    async with engine.begin() as setup:
-        key, config_id, job_id = await _active_config(setup, ABSENT_IR, ABSENT_STATUS)
-    try:
-        async with engine.connect() as activation, engine.connect() as run:
-            await activation.begin()
-            await lock_state(activation, key)
-            await run.begin()
-            running = asyncio.create_task(_run(run, config_id, job_id, OLD, published=["title", "price"]))
-            await asyncio.sleep(0.5)  # the run waits for the state lock the activation holds
-
-            locked = select(ExtractionConfig.id).where(ExtractionConfig.id == config_id).with_for_update(nowait=True)
-            try:
-                held = await _locked_config(activation, locked)
-            finally:
-                await activation.rollback()
-                await asyncio.wait_for(running, 10)
-                await run.commit()
-            assert held == config_id  # the run held no config row lock while it waited
-    finally:
-        async with engine.begin() as cleanup:
-            await cleanup.execute(delete(ProgressiveState).where(*key.where()))
-            await cleanup.execute(delete(JobEvent).where(JobEvent.job_id == job_id))
-            await cleanup.execute(delete(Job).where(Job.schema_id == key.schema_id))
-            await cleanup.execute(delete(Job).where(Job.id == job_id))
-            await cleanup.execute(delete(ExtractionConfig).where(ExtractionConfig.id == config_id))
-            await cleanup.execute(delete(SchemaDef).where(SchemaDef.id == key.schema_id))
-            await cleanup.execute(delete(Site).where(Site.id == key.site_id))

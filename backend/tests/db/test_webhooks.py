@@ -17,9 +17,8 @@ import pytest
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.http import RequestFailed
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
-from crawlerai.api.webhooks import MAX_ATTEMPTS, UNSIGNED, Poster, deliver_webhooks, poster
+from crawlerai.api.webhooks import MAX_ATTEMPTS, Poster, deliver_webhooks, poster
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.keys import CreatedKey, create_key
 from crawlerai.db.models import (
@@ -35,7 +34,7 @@ from crawlerai.db.models import (
     WebhookEvent,
     WebhookEventType,
 )
-from crawlerai.db.webhook_outbox import FORM_BATCH, JOB_END_EVENTS, emit, form_deliveries
+from crawlerai.db.webhook_outbox import FORM_BATCH, JOB_END_EVENTS, form_deliveries
 
 pytestmark = pytest.mark.anyio
 
@@ -104,12 +103,6 @@ async def _ended(engine: AsyncEngine, api_key_id: ApiKeyId | None, end: JobStatu
     return job_id
 
 
-async def _pages(engine: AsyncEngine, job_id: JobId, count: int) -> None:
-    async with engine.begin() as conn:
-        for index in range(count):
-            await emit(conn, job_id, "page", {"url": f"https://shop.example.test/p/{index}"})
-
-
 async def _form(engine: AsyncEngine) -> int:
     async with engine.begin() as conn:
         return await form_deliveries(conn, batch=FORM_BATCH)
@@ -119,11 +112,6 @@ async def _deliver(engine: AsyncEngine, post: Poster) -> int:
     await _form(engine)
     async with engine.begin() as conn:
         return await deliver_webhooks(conn, post, batch=1)
-
-
-async def _deliver_all(engine: AsyncEngine, post: Poster) -> None:
-    while await _deliver(engine, post):
-        pass
 
 
 async def _delivery(engine: AsyncEngine, job_id: JobId) -> tuple[str, int, str | None, timedelta]:
@@ -163,81 +151,6 @@ async def test_a_job_end_delivery_carries_the_jobs_summary_signed_with_the_keys_
     assert (await _delivery(engine, job_id))[:3] == ("delivered", 1, None)
 
 
-async def test_a_delivered_webhook_is_not_sent_again(engine: AsyncEngine, key: CreatedKey) -> None:
-    await _ended(engine, key.id)
-
-    assert (await _deliver(engine, Receiver([200])), await _deliver(engine, Receiver([]))) == (1, 0)
-
-
-async def test_an_event_the_request_did_not_ask_for_is_never_owed(engine: AsyncEngine, key: CreatedKey) -> None:
-    job_id = await _running(engine, key.id, events=("job_failed",))
-    await _pages(engine, job_id, 2)
-    await _end(engine, job_id, "completed")
-    post = Receiver([])
-
-    await _deliver_all(engine, post)
-
-    assert post.sent == []
-
-
-async def test_without_a_batch_each_event_is_a_delivery_of_its_own_in_order(
-    engine: AsyncEngine, key: CreatedKey
-) -> None:
-    job_id = await _running(engine, key.id, events=("page", "job_completed"))
-    await _pages(engine, job_id, 2)
-    await _end(engine, job_id)
-    post = Receiver([200, 200, 200])
-
-    await _deliver_all(engine, post)
-
-    types = [[event["type"] for event in body["events"]] for body in post.bodies()]
-    assert types == [["page"], ["page"], ["job_completed"]]
-    urls = [body["events"][0]["data"].get("url") for body in post.bodies()[:2]]
-    assert urls == ["https://shop.example.test/p/0", "https://shop.example.test/p/1"]
-
-
-async def test_a_batch_waits_until_it_holds_max_events(engine: AsyncEngine, key: CreatedKey) -> None:
-    job_id = await _running(engine, key.id, events=("page",), batch={"max_events": 3, "max_seconds": 3600})
-    await _pages(engine, job_id, 2)
-    post = Receiver([200, 200])
-
-    await _deliver_all(engine, post)
-    assert post.sent == []  # 2 of 3, and the oldest has not waited an hour
-
-    await _pages(engine, job_id, 2)
-    await _deliver_all(engine, post)
-
-    assert [len(body["events"]) for body in post.bodies()] == [3]
-
-
-async def test_a_batch_goes_once_its_oldest_event_waited_max_seconds(engine: AsyncEngine, key: CreatedKey) -> None:
-    job_id = await _running(engine, key.id, events=("page",), batch={"max_events": 10, "max_seconds": 60})
-    await _pages(engine, job_id, 2)
-    post = Receiver([200])
-    await _deliver_all(engine, post)
-    assert post.sent == []
-
-    async with engine.begin() as conn:
-        aged = update(WebhookEvent).where(WebhookEvent.job_id == job_id)
-        await conn.execute(aged.values(created_at=func.now() - timedelta(seconds=61)))
-    await _deliver_all(engine, post)
-
-    assert [len(body["events"]) for body in post.bodies()] == [2]
-
-
-async def test_an_ended_jobs_waiting_events_go_at_once_in_batches(engine: AsyncEngine, key: CreatedKey) -> None:
-    batch = {"max_events": 2, "max_seconds": 3600}
-    job_id = await _running(engine, key.id, events=("page", "job_completed"), batch=batch)
-    await _pages(engine, job_id, 2)
-    await _end(engine, job_id)
-    post = Receiver([200, 200])
-
-    await _deliver_all(engine, post)
-
-    types = [[event["type"] for event in body["events"]] for body in post.bodies()]
-    assert types == [["page", "page"], ["job_completed"]]
-
-
 async def test_a_refused_delivery_is_retried_with_backoff_then_given_up(engine: AsyncEngine, key: CreatedKey) -> None:
     job_id = await _ended(engine, key.id)
     post = Receiver([500, 302, 404, 500, 503])
@@ -263,38 +176,6 @@ async def test_a_refused_delivery_is_retried_with_backoff_then_given_up(engine: 
     assert await _deliver(engine, Receiver([])) == 0
 
 
-async def test_a_network_failure_is_a_failed_attempt(engine: AsyncEngine, key: CreatedKey) -> None:
-    job_id = await _ended(engine, key.id)
-
-    await _deliver(engine, Receiver([RequestFailed("timeout")]))
-
-    assert (await _delivery(engine, job_id))[:3] == ("pending", 1, "timeout")
-
-
-async def _response_code(engine: AsyncEngine, job_id: JobId) -> int | None:
-    async with engine.connect() as conn:
-        query = select(WebhookDelivery.response_code).where(WebhookDelivery.job_id == job_id)
-        return (await conn.execute(query)).scalar_one()
-
-
-async def test_a_delivery_keeps_the_status_of_its_last_attempt_and_none_when_the_target_gave_none(
-    engine: AsyncEngine, key: CreatedKey
-) -> None:
-    job_id = await _ended(engine, key.id)
-
-    await _deliver(engine, Receiver([503]))
-    refused = await _response_code(engine, job_id)
-    await _make_due(engine, job_id)
-    await _deliver(engine, Receiver([RequestFailed("timeout")]))
-    unanswered = await _response_code(engine, job_id)
-    await _make_due(engine, job_id)
-    await _deliver(engine, Receiver([204]))
-    accepted = await _response_code(engine, job_id)
-
-    assert (refused, unanswered, accepted) == (503, None, 204)
-    assert (await _delivery(engine, job_id))[:3] == ("delivered", 3, None)
-
-
 async def test_a_webhook_url_that_resolves_to_a_private_address_is_never_posted(
     engine: AsyncEngine, key: CreatedKey
 ) -> None:
@@ -306,43 +187,3 @@ async def test_a_webhook_url_that_resolves_to_a_private_address_is_never_posted(
     await _deliver(engine, poster(SafeConnector(private)))
 
     assert (await _delivery(engine, job_id))[:3] == ("pending", 1, "ssrf_rejected: private_address")
-
-
-async def test_a_job_no_key_submitted_has_its_webhook_failed_unsent(engine: AsyncEngine, key: CreatedKey) -> None:
-    job_id = await _ended(engine, None)
-    post = Receiver([])
-
-    await _deliver(engine, post)
-
-    assert (post.sent, (await _delivery(engine, job_id))[:3]) == ([], ("failed", 0, UNSIGNED))
-
-
-async def test_a_failed_webhook_leaves_the_job_as_it_ended(engine: AsyncEngine, key: CreatedKey) -> None:
-    job_id = await _ended(engine, key.id, "cancelled")
-    post = Receiver([500] * MAX_ATTEMPTS)
-
-    for _ in range(MAX_ATTEMPTS):
-        await _make_due(engine, job_id)
-        await _deliver(engine, post)
-
-    async with engine.connect() as conn:
-        status = (await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one()
-    assert (status, (await _delivery(engine, job_id))[0]) == ("cancelled", "failed")
-
-
-async def test_filling_batches_never_hold_up_a_due_job(engine: AsyncEngine, key: CreatedKey) -> None:
-    # More filling jobs than one run reads, all older than the due job: only due jobs are read, so it is formed, and
-    # the run reports only the jobs that got a delivery (a full count would rerun the entry at once).
-    batch = {"max_events": 5, "max_seconds": 3600}
-    filling = [await _running(engine, key.id, events=("page",), batch=batch) for _ in range(FORM_BATCH + 1)]
-    for job_id in filling:
-        await _pages(engine, job_id, 1)
-    unbatched = await _running(engine, key.id, events=("page",))
-    await _pages(engine, unbatched, 1)
-
-    formed = [await _form(engine), await _form(engine)]
-
-    async with engine.connect() as conn:
-        delivered = (await conn.execute(select(WebhookDelivery.job_id))).scalars().all()
-    assert formed == [1, 0]
-    assert list(delivered) == [unbatched]

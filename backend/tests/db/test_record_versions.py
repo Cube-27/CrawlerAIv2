@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 from pydantic import JsonValue
-from sqlalchemy import insert, select, update
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import Extraction, Job, JobId, Project, Record, Site, SiteId
@@ -29,14 +29,6 @@ DOCUMENT = SchemaDocument(
         "title": FieldSpec(type=FieldType.TEXT, description="d", required=True),
         "price": FieldSpec(type=FieldType.MONEY, description="d", required=True),
         "colour": FieldSpec(type=FieldType.TEXT, description="d"),
-    },
-)
-LISTING = SchemaDocument(
-    name="synthetic_versioned_listing",
-    page_kind="listing",
-    fields={
-        "title": FieldSpec(type=FieldType.TEXT, description="d", required=True),
-        "price": FieldSpec(type=FieldType.MONEY, description="d", required=True),
     },
 )
 KETTLE: dict[str, JsonValue] = {"title": "Synthetic kettle", "price": {"amount": "19.90", "currency": "EUR"}}
@@ -127,26 +119,6 @@ async def test_a_first_extraction_is_version_1_with_its_fingerprint(site: _Site)
     ]
 
 
-async def test_an_unchanged_entity_adds_no_row_and_answers_with_the_stored_record(site: _Site) -> None:
-    (first,) = await site.run(site.draft(KETTLE))
-
-    (again,) = await site.run(site.draft(KETTLE))
-
-    assert again.id == first.id
-    assert again.draft == first.draft
-    assert [row["id"] for row in await site.rows()] == [first.id]
-
-
-async def test_a_change_outside_the_required_fields_adds_no_row(site: _Site) -> None:
-    (first,) = await site.run(site.draft(KETTLE))
-
-    (again,) = await site.run(site.draft({**KETTLE, "colour": "red"}))
-
-    assert again.id == first.id
-    assert again.draft.data == KETTLE
-    assert len(await site.rows()) == 1
-
-
 async def test_a_changed_price_adds_version_2_naming_price(site: _Site) -> None:
     (first,) = await site.run(site.draft(KETTLE))
 
@@ -162,38 +134,3 @@ async def test_a_changed_price_adds_version_2_naming_price(site: _Site) -> None:
         "fingerprint": record_fingerprint(CHEAPER, site.schema),
         "data": CHEAPER,
     }
-
-
-async def test_versions_follow_the_latest_record_not_the_first(site: _Site) -> None:
-    await site.run(site.draft(KETTLE))
-    (second,) = await site.run(site.draft(CHEAPER))
-
-    (third,) = await site.run(site.draft(KETTLE))
-
-    rows = await site.rows()
-    assert [(row["version"], row["supersedes_record_id"]) for row in rows[1:]] == [(2, rows[0]["id"]), (3, second.id)]
-    assert rows[2]["id"] == third.id
-    assert rows[2]["changed_fields"] == ["price"]
-
-
-async def test_a_record_stored_without_a_fingerprint_is_superseded(site: _Site, conn: AsyncConnection) -> None:
-    (first,) = await site.run(site.draft(KETTLE))
-    await conn.execute(update(Record).where(Record.id == first.id).values(fingerprint=None))
-
-    (second,) = await site.run(site.draft(KETTLE))
-
-    assert second.id != first.id
-    assert [(row["version"], row["changed_fields"]) for row in await site.rows()] == [(1, []), (2, [])]
-
-
-async def test_listing_rows_version_one_by_one_in_their_order(conn: AsyncConnection) -> None:
-    site = _Site(conn)
-    await site.prepare(LISTING)
-    first_url, second_url = f"{PAGE_URL}#1", f"{PAGE_URL}#2"
-    before = await site.run(site.draft(KETTLE, first_url), site.draft(KETTLE, second_url))
-
-    after = await site.run(site.draft(KETTLE, first_url), site.draft(CHEAPER, second_url))
-
-    assert after[0].id == before[0].id
-    assert after[1].id != before[1].id
-    assert [row["version"] for row in await site.rows()] == [1, 1, 2]

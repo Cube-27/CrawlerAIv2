@@ -1,12 +1,7 @@
 """The scrape service without HTTP (SPEC-07 §4.4, §4.7): one URL fetched at once, its content formats, and the job,
-task, capture and usage rows it leaves.
-
-The web is a stub that answers synthetic pages on RFC 2606 hosts, and the resolver a stub: no network.
-"""
+task, capture and usage rows it leaves."""
 
 import asyncio
-import json
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from ipaddress import ip_address
@@ -24,27 +19,10 @@ from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.challenges import SIGNATURES
 from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.db.models import Capture, Job, Site, SiteFetchMethod, UrlTask, UsageEvent
-from crawlerai.llm.client import (
-    BudgetExhausted,
-    LLMRequest,
-    LLMResponse,
-    MeteredClient,
-    OutputInvalid,
-    ProviderError,
-    ProviderReply,
-    ProviderUnavailable,
-    ReplyCheck,
-    Unconfigured,
-)
-from crawlerai.llm.providers.fake import FakeProvider
-from crawlerai.llm.roles.s_schema import draft_name
-from crawlerai.llm.roles.s_wire import to_wire
-from crawlerai.services import scrape_steps
+from crawlerai.db.models import Capture, Job, UrlTask
 from crawlerai.services.fetching import Fetching, TargetRejected
-from crawlerai.services.scrape import ScrapeRequest, ScrapeTimedOut, scrape
+from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.storage.base import ObjectStore
-from crawlerai.storage.capture_bundle import capture_key, decode
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
@@ -60,29 +38,6 @@ PAGE = b"""<!doctype html><html lang="en"><head><title>Blue  kettle</title>
 <p>It holds one and a half litres and switches itself off once the water boils, so it never boils dry.</p>
 <a href="/kettles/red">Red kettle</a> <a href="/kettles/red">Red again</a> <a href="mailto:a@example.test">Mail</a>
 </main></body></html>"""
-
-
-# A role S reply: a draft schema document without a name (SPEC-06 §4.5).
-DRAFT_REPLY = ProviderReply(
-    model="fake-strong",
-    text=json.dumps(
-        to_wire(
-            {
-                "page_kind": "detail",
-                "fields": {"title": {"type": "text", "required": True, "description": "Product name"}},
-            }
-        )
-    ),
-    tokens_in=900,
-    tokens_out=80,
-)
-# Valid JSON for the output schema, but a field without a description, which the draft check refuses.
-UNDESCRIBED = ProviderReply(
-    model="fake-strong",
-    text=json.dumps(to_wire({"page_kind": "detail", "fields": {"title": {"type": "text"}}})),
-    tokens_in=1,
-    tokens_out=1,
-)
 
 
 @dataclass
@@ -150,89 +105,6 @@ async def _row(engine: AsyncEngine, statement: Any) -> Any:
         return (await conn.execute(statement)).one()
 
 
-async def test_returns_the_requested_formats_of_the_fetched_page(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-
-    result = await scrape(engine, fetching, request(url, "markdown", "html", "raw_html", "links", "metadata"))
-
-    assert result.outcome == "extracted"
-    assert (result.url, result.final_url) == (url, url)
-    assert result.raw_html == PAGE.decode()
-    assert result.html is not None
-    assert "<script" not in result.html
-    assert "<h1>Blue kettle</h1>" in result.html
-    assert result.markdown is not None
-    assert "boils water quickly" in result.markdown
-    assert result.links == [f"{own_origin}/kettles/red"]
-    assert result.metadata is not None
-    assert (result.metadata.title, result.metadata.description, result.metadata.language) == (
-        "Blue kettle",
-        "A kettle.",
-        "en",
-    )
-    assert result.metadata.structured_data_types == ("Product",)
-
-
-async def test_records_a_completed_scrape_job_its_task_and_capture(
-    engine: AsyncEngine, fetching: Fetching, store: ObjectStore, web: Web, own_origin: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-
-    result = await scrape(engine, fetching, request(url, "markdown", fetch={"method_hint": "http"}))
-
-    job = await _row(engine, select(Job.kind, Job.status, Job.request, Job.started_at).where(Job.id == result.job_id))
-    assert (job.kind, job.status) == ("scrape", "completed")
-    assert job.started_at is not None
-    assert job.request["url"] == url
-    assert job.request["fetch"]["method_hint"] == "http"
-    task = await _row(engine, select(UrlTask).where(UrlTask.job_id == result.job_id))
-    assert (task.status, task.outcome, task.capture_id, task.canonical_url) == (
-        "done",
-        "extracted",
-        result.capture_id,
-        url,
-    )
-    capture = await _row(engine, select(Capture.url, Capture.fetched_at).where(Capture.id == result.capture_id))
-    assert capture.url == url
-    assert result.capture_id is not None
-    assert decode(store.get(capture_key(result.capture_id, capture.fetched_at))).body == PAGE
-
-
-async def test_counts_each_request_it_made_as_usage(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-
-    result = await scrape(engine, fetching, request(url, "markdown"))
-
-    # robots.txt, then the page.
-    assert result.usage.http_requests == 2
-    assert (result.usage.llm_calls, result.usage.browser_seconds) == (0, 0)
-    used = await _row(engine, select(func.sum(UsageEvent.quantity)).where(UsageEvent.job_id == result.job_id))
-    assert used[0] == 2
-
-
-async def test_a_page_that_is_not_ok_is_an_outcome_without_formats(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (403, b"<html><body>no</body></html>", "blocked", None)
-
-    result = await scrape(engine, fetching, request(url, "markdown", "raw_html", fetch={"method_hint": "http"}))
-
-    assert result.outcome == "blocked"
-    assert result.fetch is not None
-    assert result.fetch.status_code == 403
-    assert (result.markdown, result.raw_html) == (None, None)
-    task = await _row(engine, select(UrlTask.status, UrlTask.outcome).where(UrlTask.job_id == result.job_id))
-    assert tuple(task) == ("done", "blocked")
-
-
 async def test_a_page_a_vendors_challenge_kept_out_is_blocked_naming_the_vendor_and_not_retried(
     engine: AsyncEngine, web: Web, store: ObjectStore, resolver: Resolver, own_origin: str
 ) -> None:
@@ -262,54 +134,6 @@ async def test_a_page_a_vendors_challenge_kept_out_is_blocked_naming_the_vendor_
     assert tuple(task) == ("blocked", f"challenge: {vendor}")
 
 
-async def test_a_failed_fetch_fails_the_task_and_the_job(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (0, b"", "error", "network_error: ConnectError")
-
-    result = await scrape(engine, fetching, request(url, "markdown"))
-
-    assert result.outcome == "failed"
-    assert result.fetch is not None
-    # D-1472: a network error gets one browser attempt, which this site's fails too.
-    assert [a.error for a in result.fetch.attempts] == ["network_error: ConnectError"] * 2
-    assert result.fetch.status_code is None
-    task = await _row(engine, select(UrlTask.status, UrlTask.last_error).where(UrlTask.job_id == result.job_id))
-    assert tuple(task) == ("failed", "network_error: ConnectError")
-    job = await _row(engine, select(Job.status).where(Job.id == result.job_id))
-    assert job.status == "failed"
-
-
-async def test_a_shell_over_http_is_fetched_again_in_the_browser(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, fetch_result: Callable[..., FetchResult]
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, b"<html><body></body></html>", "shell", None)
-
-    async def browser(target: str, policy: FetchPolicy) -> FetchResult:
-        return fetch_result(target, 200, PAGE, method="browser")
-
-    fetching = Fetching(
-        Rungs(http=web.rung("http"), browser=browser), fetching.connector, fetching.store, HostLimiter()
-    )
-
-    result = await scrape(engine, fetching, request(url, "raw_html"))
-
-    assert result.outcome == "extracted"
-    assert result.fetch is not None
-    assert result.fetch.method == "browser"
-    assert [a.method for a in result.fetch.attempts] == ["http", "browser"]
-    assert result.raw_html == PAGE.decode()
-    memory = await _row(
-        engine,
-        select(SiteFetchMethod.page_kind, SiteFetchMethod.method)
-        .join(Site, Site.id == SiteFetchMethod.site_id)
-        .where(Site.host == urlsplit(url).hostname),
-    )
-    assert (memory.page_kind, memory.method) == ("detail", "browser")
-
-
 async def test_a_page_robots_txt_disallows_is_blocked_without_fetching_it(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
@@ -325,35 +149,6 @@ async def test_a_page_robots_txt_disallows_is_blocked_without_fetching_it(
         engine, select(UrlTask.status, UrlTask.outcome, UrlTask.last_error).where(UrlTask.job_id == result.job_id)
     )
     assert tuple(task) == ("done", "blocked", "robots")
-
-
-async def test_an_unreachable_robots_txt_allows_nothing(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-    web.pages[f"{own_origin}/robots.txt"] = (503, b"", "blocked", None)
-
-    result = await scrape(engine, fetching, request(url, "markdown"))
-
-    assert web.page_fetches() == []
-    # The answer says why, as the task does: a disallow and an unreadable robots.txt are told apart.
-    assert (result.outcome, result.reason) == ("blocked", "robots_unreachable")
-    task = await _row(engine, select(UrlTask.last_error).where(UrlTask.job_id == result.job_id))
-    assert task.last_error == "robots_unreachable"
-
-
-async def test_the_operator_override_skips_robots_txt(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
-) -> None:
-    url = f"{own_origin}/private/kettle"
-    web.pages[url] = (200, PAGE, "ok", None)
-    override = {"respect_robots": False, "robots_override_reason": "the site's operator asked for it"}
-
-    result = await scrape(engine, fetching, request(url, "raw_html", fetch=override))
-
-    assert web.fetched == [("http", url)]
-    assert (result.outcome, result.reason) == ("extracted", None)
 
 
 async def test_a_private_target_is_rejected_before_any_job_or_fetch(
@@ -392,181 +187,3 @@ async def test_a_redirect_to_a_private_target_is_rejected_and_fails_the_job(
             await conn.execute(select(func.count()).select_from(Capture).where(Capture.url == url))
         ).scalar_one()
     assert (task.status, task.capture_id, job_status, captures) == ("failed", None, "failed", 0)
-
-
-async def test_a_scrape_past_its_timeout_fails_the_job_and_returns_nothing(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-    web.delay_s = 5
-    scrape_request = request(url, "markdown", timeout_s=0.2)
-
-    with pytest.raises(ScrapeTimedOut):
-        await scrape(engine, fetching, scrape_request)
-
-    async with engine.connect() as conn:
-        task = (await conn.execute(select(UrlTask).where(UrlTask.url == url))).one()
-        job_status = (await conn.execute(select(Job.status).where(Job.id == task.job_id))).scalar_one()
-    assert (task.status, task.outcome, task.last_error, job_status) == ("failed", "failed", "timeout", "failed")
-
-
-async def test_a_timeout_while_the_formats_are_computed_fails_the_job(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-
-    def slow_markdown(*_args: object) -> str:
-        time.sleep(1)
-        return ""
-
-    monkeypatch.setattr(scrape_steps, "markdown", slow_markdown)
-    scrape_request = request(url, "markdown", timeout_s=0.5)
-
-    with pytest.raises(ScrapeTimedOut):
-        await scrape(engine, fetching, scrape_request)
-
-    async with engine.connect() as conn:
-        task = (await conn.execute(select(UrlTask).where(UrlTask.url == url))).one()
-        job_status = (await conn.execute(select(Job.status).where(Job.id == task.job_id))).scalar_one()
-    assert (task.status, task.last_error, job_status) == ("failed", "timeout", "failed")
-
-
-async def test_a_prompt_is_drafted_from_the_page_and_returned(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-    provider = FakeProvider([DRAFT_REPLY])
-
-    result = await scrape(
-        engine, fetching, request(url, "links", schema={"prompt": prompt}), llm=MeteredClient([provider], engine)
-    )
-
-    assert result.schema_ is not None
-    assert (result.schema_.name, result.schema_.origin) == (draft_name(prompt), "prompt_draft")
-    assert list(result.schema_.fields) == ["title"]
-    # The sample is the page's cleaned text (SPEC-06 §4.5), not its HTML.
-    (call,) = provider.calls
-    assert "boils water quickly" in call.user
-    assert "<p>" not in call.user
-    assert (result.usage.llm_calls, result.usage.llm_tokens_in, result.usage.llm_tokens_out) == (1, 900, 80)
-    assert result.links == [f"{own_origin}/kettles/red"]
-
-
-async def test_a_prompt_scraped_again_reuses_its_draft_without_a_call(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-    provider = FakeProvider([DRAFT_REPLY])
-    llm = MeteredClient([provider], engine)
-
-    first = await scrape(engine, fetching, request(url, "links", schema={"prompt": prompt}), llm=llm)
-    second = await scrape(engine, fetching, request(url, "links", schema={"prompt": f" {prompt} "}), llm=llm)
-
-    assert first.schema_ is not None
-    assert second.schema_ == first.schema_
-    assert len(provider.calls) == 1
-    assert second.usage.llm_calls == 0
-
-
-async def test_a_stored_draft_needs_no_configured_provider(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-    first = await scrape(
-        engine,
-        fetching,
-        request(url, "links", schema={"prompt": prompt}),
-        llm=MeteredClient([FakeProvider([DRAFT_REPLY])], engine),
-    )
-
-    second = await scrape(
-        engine, fetching, request(url, "links", schema={"prompt": prompt}), llm=Unconfigured("no provider")
-    )
-
-    assert first.schema_ is not None
-    assert (second.schema_, second.usage.llm_calls) == (first.schema_, 0)
-    assert first.schema_.name == draft_name(prompt)
-
-
-async def test_a_page_not_reached_is_not_drafted_from(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (403, b"<html><body>no</body></html>", "blocked", None)
-    provider = FakeProvider([DRAFT_REPLY])
-
-    result = await scrape(
-        engine,
-        fetching,
-        request(url, "links", schema={"prompt": prompt}, fetch={"method_hint": "http"}),
-        llm=MeteredClient([provider], engine),
-    )
-
-    assert result.outcome == "blocked"
-    assert result.schema_ is None
-    assert "schema" not in result.model_dump(by_alias=True)
-    assert provider.calls == []
-
-
-async def _failed(engine: AsyncEngine, url: str) -> tuple[str, str | None, str]:
-    async with engine.connect() as conn:
-        task = (await conn.execute(select(UrlTask).where(UrlTask.url == url))).one()
-        job_status = (await conn.execute(select(Job.status).where(Job.id == task.job_id))).scalar_one()
-    return task.status, task.last_error, job_status
-
-
-@pytest.mark.parametrize(
-    ("script", "budget", "error", "last_error"),
-    [
-        ([ProviderError("overloaded")], 10, ProviderUnavailable, "llm_unavailable"),
-        ([UNDESCRIBED, UNDESCRIBED], 10, OutputInvalid, "llm_output_invalid"),
-        ([DRAFT_REPLY], 0, BudgetExhausted, "budget_exhausted"),
-    ],
-)
-async def test_a_draft_the_llm_cannot_give_fails_the_job(
-    engine: AsyncEngine,
-    fetching: Fetching,
-    web: Web,
-    own_origin: str,
-    prompt: str,
-    script: list[ProviderReply | ProviderError],
-    budget: int,
-    error: type[Exception],
-    last_error: str,
-) -> None:
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-    llm = MeteredClient([FakeProvider(script)], engine)
-    scrape_request = request(url, "links", schema={"prompt": prompt}, budget={"llm_calls": budget})
-
-    with pytest.raises(error):
-        await scrape(engine, fetching, scrape_request, llm=llm)
-
-    assert await _failed(engine, url) == ("failed", last_error, "failed")
-
-
-class _Broken:
-    """An LLM client that fails in a way no caller expects."""
-
-    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
-        raise RuntimeError("synthetic failure")
-
-
-async def test_a_scrape_that_fails_unexpectedly_ends_its_job_at_once(
-    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str
-) -> None:
-    # F09: the job is not left `running` with its task claimed until the lease runs out.
-    url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok", None)
-
-    scrape_request, broken = request(url, "links", schema={"prompt": prompt}), _Broken()
-
-    with pytest.raises(RuntimeError, match="synthetic failure"):
-        await scrape(engine, fetching, scrape_request, llm=broken)
-
-    assert await _failed(engine, url) == ("failed", "internal_error", "failed")

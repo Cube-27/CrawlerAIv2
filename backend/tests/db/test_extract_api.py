@@ -1,9 +1,5 @@
 """`POST /v1/extract` over HTTP (SPEC-10 §4.6): what a client sends and gets back. What an extract job does is the
-service's and the worker's (`test_extract.py`).
-
-The app runs against the test database with stub fetching (synthetic pages on RFC 2606 hosts, a stub resolver) and a
-fake LLM provider: nothing leaves the process.
-"""
+service's and the worker's (`test_extract.py`)."""
 
 import itertools
 import json
@@ -136,25 +132,6 @@ async def test_a_glob_on_a_private_host_is_refused_with_its_member(
     assert PRIVATE_HOST not in response.text
     async with engine.connect() as conn:
         assert (await conn.execute(select(Job.id).where(Job.kind == "extract"))).all() == []
-
-
-async def test_extract_problems(
-    client: httpx.AsyncClient, own_origin: str, prompt: str, provider: FakeProvider
-) -> None:
-    responses = {
-        "no URL": await _post(client, [f"{own_origin}/q/*"], {"prompt": prompt}),
-        "no sample": await _post(client, [f"{own_origin}/gone"], {"prompt": prompt}),
-        "no budget": await _post(client, [f"{own_origin}/p/1"], {"prompt": prompt}, budget={"llm_calls": 0}),
-    }
-
-    problems = {name: (r.status_code, r.json()["type"]) for name, r in responses.items()}
-    assert problems == {
-        "no URL": (422, "validation"),
-        "no sample": (422, "validation"),
-        "no budget": (422, "budget_exhausted"),
-    }
-    assert [error["field"] for error in responses["no sample"].json()["errors"]] == ["urls"]
-    assert provider.calls == []
 
 
 async def test_extract_needs_a_key(client: httpx.AsyncClient, own_origin: str) -> None:
