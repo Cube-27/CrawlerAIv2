@@ -10,7 +10,8 @@ from dataclasses import dataclass, field, replace
 from functools import partial
 from urllib.parse import urlsplit
 
-from sqlalchemy import update
+from sqlalchemy import cast, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
@@ -110,11 +111,18 @@ def site_rungs(fetching: Fetching, host: str, site: SiteRow) -> Rungs:
 
 
 async def store_declines(conn: AsyncConnection, site: SiteRow, host: str, rungs: Rungs) -> None:
-    """Store on the site of `host` the adapter declines `rungs` hold for it (`site_rungs`) when they differ from what
-    its row held: a decline made, or one that ran out (D-1384)."""
-    declined = rungs.adapters.declined_for(host)
-    if declined != site.adapter_declined:
-        await conn.execute(update(Site).where(Site.id == site.id).values(adapter_declined=declined))
+    """Store on the site of `host` the adapter declines `rungs` made for it (`site_rungs`): those that differ from what
+    its row held (D-1384). They are merged into the stored ones in one statement (a JSONB concatenation), so fetches
+    that read the row before either stored keep each other's declines. One that ran out stays stored, and holds back
+    nothing (`Registry.for_host` reads its time): the row holds at most one per adapter."""
+    made = {
+        name: until
+        for name, until in rungs.adapters.declined_for(host).items()
+        if site.adapter_declined.get(name) != until
+    }
+    if made:
+        merged = Site.adapter_declined.op("||")(cast(made, JSONB))
+        await conn.execute(update(Site).where(Site.id == site.id).values(adapter_declined=merged))
 
 
 @dataclass

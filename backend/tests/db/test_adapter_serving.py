@@ -10,6 +10,7 @@ import asyncio
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -34,8 +35,9 @@ from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.crawl import CrawlRequest, submit_crawl
-from crawlerai.services.fetching import Fetching
+from crawlerai.services.fetching import Fetching, store_declines
 from crawlerai.services.scrape import ScrapeRequest, scrape
+from crawlerai.services.scrape_steps import site_row
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.handlers.scrape import scrape_handler
@@ -357,3 +359,22 @@ async def test_a_page_whose_recipe_failed_is_still_served_by_the_adapter_its_can
 
     assert (result.method, result.block_class) == ("api", "ok")
     assert [(a.method, a.status) for a in result.attempts] == [("api", 500), ("http", 200), ("api", 200)]
+
+
+async def test_declines_stored_from_one_stale_site_row_by_two_fetches_are_both_kept(
+    engine: AsyncEngine, fetching: Fetching, own_origin: str, site: SiteId
+) -> None:
+    host = own_origin.removeprefix("https://")
+    until = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    async with engine.connect() as conn:
+        stale = await site_row(conn, host)
+    first = replace(fetching.rungs, adapters=fetching.rungs.adapters.for_host(host, {"one": until}))
+    second = replace(fetching.rungs, adapters=fetching.rungs.adapters.for_host(host, {"two": until}))
+
+    for rungs in (first, second):  # two fetches that each read the row before either stored
+        async with engine.begin() as conn:
+            await store_declines(conn, stale, host, rungs)
+
+    async with engine.connect() as conn:
+        stored = (await conn.execute(select(Site.adapter_declined).where(Site.id == site))).scalar_one()
+    assert stored == {"one": until, "two": until}
