@@ -566,7 +566,7 @@ async def _settle(
     # A navigation the page starts itself (a script's `location.replace`, a refresh) while the wait runs makes what was
     # quiet an interim document: the wait starts over on the document that committed, until `deadline`.
     while time.monotonic() < deadline:
-        shown = frame.commits
+        shown, latest = frame.commits, frame.latest
         waits = [asyncio.create_task(_content_quiet(page, frame, calls))]
         if frame.latest is None or frame.latest.status < _ERROR_STATUS:
             waits.append(asyncio.create_task(_network_idle(page, deadline)))
@@ -579,7 +579,7 @@ async def _settle(
             for wait in (*waits, navigated):
                 wait.cancel()
             await asyncio.gather(*waits, navigated, return_exceptions=True)
-        if frame.commits == shown:
+        if frame.commits == shown and frame.latest is latest:  # a response in before its commit counts too
             return
         with contextlib.suppress(PlaywrightTimeout):
             await page.wait_for_load_state("load", timeout=_ms_until(deadline))
