@@ -13,6 +13,7 @@ task's fetch attempts are counted as the job's usage at its end (`count_fetch`):
 the task commits.
 """
 
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Final
@@ -31,7 +32,7 @@ from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.retry import backoff_delay
 from crawlerai.db.models import CaptureId, Job, RecordId, SchemaId, SiteId
-from crawlerai.db.queue import ClaimedTask
+from crawlerai.db.queue import LEASE, ClaimedTask
 from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.conditional import Unchanged
 from crawlerai.recurring.state import record_fetch, standing_listing, standing_record, stored_validators
@@ -81,6 +82,10 @@ from crawlerai.services.stored_captures import NOT_CACHED, recent_capture, rerea
 from crawlerai.storage.base import ObjectStore
 from crawlerai.worker.loop import Failed, Finished, Postpone, TaskResult
 
+# A listing recipe's page requests start within this share of the task's lease (`LEASE`): each waits in place for its
+# turn at most `QUEUED.bound` (half the lease), so the last one ends inside the lease, its timeout and the extraction
+# after it included, and no other worker claims the task and sends its requests again.
+RECIPE_PAGES_SHARE: Final = LEASE / 4
 # The `last_error` of a records task in a worker that has not loaded the engine's data files (D-0492).
 RECORDS_UNAVAILABLE: Final = "records_unavailable"
 # A page a vendor's challenge kept out is fetched at most this many times (master plan 2026-10-18 §3.1).
@@ -216,7 +221,8 @@ def _plan(task: ClaimedTask, served: Records | None, llm: LLMClient, listing_pag
     recipe = None if served.config is None else recipe_of(served.config)
     lists = served.schema.page_kind == "listing" and recipe is not None and recipe.pagination is not None
     check = render_need(served.schema, served.data, served.config)
-    pages = RecipePages(listing_pages, plan.attempts) if lists else None
+    deadline = time.monotonic() + RECIPE_PAGES_SHARE.total_seconds()
+    pages = RecipePages(listing_pages, plan.attempts, deadline=deadline) if lists else None
     return replace(plan, recipe=recipe, pages=pages, needs_render=check)
 
 

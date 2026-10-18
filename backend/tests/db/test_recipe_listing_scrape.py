@@ -12,6 +12,7 @@ import json
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -517,3 +518,24 @@ async def test_a_recurring_listing_whose_later_recipe_page_changed_is_extracted_
     titles, _ = await _titles(engine, job_id)
     assert outcome == "extracted"
     assert "Kettle Z" in titles
+
+
+async def test_a_batch_task_requests_no_further_recipe_page_past_its_deadline(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The pages' share of the lease is spent at once: the first page is served, and no page request follows it.
+    monkeypatch.setattr("crawlerai.worker.handlers.steps.RECIPE_PAGES_SHARE", timedelta(0))
+    url = f"{own_origin}/kettles"
+
+    job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+
+    titles, _ = await _titles(engine, job_id)
+    assert len(web.requested) == 1
+    assert sorted(titles) == NAMES[:PAGE_SIZE]

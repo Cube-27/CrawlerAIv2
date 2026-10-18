@@ -226,21 +226,24 @@ def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
 @dataclass
 class RecipePages:
     """A listing's pages as its active config's listing recipe (one with pagination, Appendix A #59) serves them, up
-    to `limit` requests; the pages after the first are kept in `further` and their attempts added to `attempts`.
-    `refused` is the SSRF guard's refusal of a further page's request, which fails the fetch (INV-16): a refused page
-    is never stored, and the listing is not cut short silently."""
+    to `limit` requests and until `deadline`; the pages after the first are kept in `further` and their attempts added
+    to `attempts`. `refused` is the SSRF guard's refusal of a further page's request, which fails the fetch (INV-16):
+    a refused page is never stored, and the listing is not cut short silently."""
 
     limit: int = MAX_PAGES
     attempts: list[AttemptRecord] = field(default_factory=list)
     further: list[FetchResult] = field(default_factory=list)
     refused: str | None = None
+    deadline: float | None = None  # on `time.monotonic`: no page request starts after it
 
     async def rung(self, recipe: RecipeRung, url: str, policy: FetchPolicy) -> Rung | None:
         """The recipe rung `acquire` fetches the page through: one that answers with the first page the listing recipe
         served, its further pages kept, so `acquire` keeps or falls back from that one answer as from any recipe's
         (SPEC-09 §4.8); None when it served no page. Each page request waits for its host's rate on its own
         (`recipe_rung`)."""
-        pages = [page async for page in recipe.pages(url, policy, records=None, limit=self.limit)]
+        pages = [
+            page async for page in recipe.pages(url, policy, records=None, limit=self.limit, deadline=self.deadline)
+        ]
         if not pages:
             return None
         first, further = pages[0], pages[1:]
