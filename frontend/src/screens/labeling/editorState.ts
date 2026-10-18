@@ -99,12 +99,17 @@ export function useDraft(page: PageDetail, firstName: string | undefined) {
     setDraft((current) => ({
       ...current,
       rows: [...current.rows, newRow(page.page_kind, page.fields)],
+      stale: [...current.stale, false],
     }));
     setRowKeys((keys) => [...keys, key]);
   }
 
   function removeRow(index: number): void {
-    setDraft((current) => ({ ...current, rows: current.rows.filter((_row, j) => j !== index) }));
+    setDraft((current) => ({
+      ...current,
+      rows: current.rows.filter((_row, j) => j !== index),
+      stale: current.stale.filter((_mark, j) => j !== index),
+    }));
     setRowKeys((keys) => keys.filter((_key, j) => j !== index));
     setTarget(null);
   }

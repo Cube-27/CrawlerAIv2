@@ -20,6 +20,8 @@ export type FieldDrafts = Record<string, FieldDraft>;
 export interface Draft {
   fields: FieldDrafts; // detail-page fields, or a listing page's page-scoped fields
   rows: FieldDrafts[]; // listing pages only, in page order
+  // Each row's stored `stale` mark (`eval re-key`), in row order: the form does not edit it, and a save keeps it.
+  stale: boolean[];
   // Row-mapped fields' labels (SPEC-13 §4.10), as stored: the form does not edit them, and a save keeps them.
   lists: Labels["lists"];
   notes: string;
@@ -78,6 +80,7 @@ export function draftFrom(
   return {
     fields: fieldDrafts(names.page, labels?.fields ?? {}),
     rows: (labels?.rows ?? []).map((row) => fieldDrafts(names.row, row.fields)),
+    stale: (labels?.rows ?? []).map((row) => row.stale),
     lists: labels?.lists ?? {},
     notes: labels?.notes ?? "",
   };
@@ -163,10 +166,11 @@ export function toLabels({
     checker: checker === null ? null : checker.trim(),
     prefill_source: prefillSource,
     fields: fieldLabels("fields", draft.fields, errors),
-    // A row a person labels from the capture is one the capture shows: no labeled row is stale (`eval re-key`).
+    // A row added in the form is one the person labels from the capture, so it is not stale; a stored row keeps
+    // its mark (`eval re-key`).
     rows: draft.rows.map((row, i) => ({
       fields: fieldLabels(`rows[${String(i)}].fields`, row, errors),
-      stale: false,
+      stale: draft.stale[i] ?? false,
     })),
     lists: draft.lists,
     notes: draft.notes,

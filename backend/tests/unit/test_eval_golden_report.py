@@ -72,6 +72,32 @@ def test_a_label_url_matches_once_the_page_s_session_parameters_are_dropped() ->
     assert (_cell(report, "url").precision, _cell(report, "url").coverage) == (1.0, 1.0)
 
 
+def test_rows_match_by_the_schema_s_item_url_field_whatever_its_name() -> None:
+    schema = SchemaFields(
+        name="synthetic_listing",
+        page_kind="listing",
+        fields={
+            "title": FieldSpec(type=FieldType.TEXT),
+            "link": FieldSpec(type=FieldType.URL, schema_org="Product.url"),
+        },
+    )
+    # Two items share a title, so only their links tell them apart; the engine lists them in the other order.
+    labels = _labels(
+        [{"title": "Item", "link": f"{SHOP}/p/1?sid=abc"}, {"title": "Item", "link": f"{SHOP}/p/2?sid=abc"}]
+    )
+    rows = tuple(
+        {**_row("Item", None), "link": FieldOutput(status="published", value=f"{SHOP}/p/{n}", evidence="structured")}
+        for n in (2, 1)
+    )
+    output = PageOutput(block_class="ok", mode="adhoc", rows=rows, session_params={"link": ("sid",)})
+    case = EvalCase(page_id="p1", category="custom_store", schema_def=schema, labels=labels, output=output)
+
+    report = build_report([case], "dev", "e1", "abc", frozenset({"draft"}))
+
+    assert report.by_field["synthetic_listing|link"].precision == 1.0
+    assert report.by_field["synthetic_listing|link"].coverage == 1.0
+
+
 def test_each_source_kind_offering_the_url_with_the_session_parameter_is_scored_as_the_published_value() -> None:
     labels = _labels([{"title": "Item 1", "url": f"{SHOP}/p/1?sid=abc"}])
     url = FieldOutput(
