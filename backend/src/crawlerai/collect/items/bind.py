@@ -314,11 +314,12 @@ class _Binder:
         theirs = own.get(c.field, [])
         if spec is None or not theirs:
             return c.model_copy(update={"entity_id": row})
-        if by_url and c.field in self.url_fields and c.source_kind == "dom":
-            replaced.update(id(t) for t in theirs if t.source_kind != "dom")
-            return c.model_copy(update={"entity_id": row})
         values = [t.normalized.value for t in theirs if isinstance(t.normalized, Ok)]
         if isinstance(c.normalized, Ok) and any(equal(c.normalized.value, v, spec) for v in values):
+            return c.model_copy(update={"entity_id": row})
+        if by_url and c.field in self.url_fields and c.source_kind == "dom":
+            # The stated URL respells the block's link (a slash, an added query): the page's own spelling replaces it.
+            replaced.update(id(t) for t in theirs if t.source_kind != "dom")
             return c.model_copy(update={"entity_id": row})
         if isinstance(c.normalized, Ambiguous) and c.normalized.reason == AMBIGUOUS_IN_BLOCK:
             return self._agreeing_option(c, row, values)

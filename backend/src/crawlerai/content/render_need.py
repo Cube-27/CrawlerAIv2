@@ -15,7 +15,7 @@ non-whitespace makes the count independent of how text nodes are joined.
 from selectolax.lexbor import LexborNode
 
 from crawlerai.acquire.classify import structured_entries
-from crawlerai.acquire.items import MIN_ITEMS
+from crawlerai.acquire.items import MIN_ITEMS, item_groups
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.segment import shown_blocks
 from crawlerai.content.text import NOT_RENDERED, concealed
@@ -43,9 +43,11 @@ def lost_items(render: ParsedPage, over: ParsedPage) -> bool:
 
 
 def listed(page: ParsedPage) -> int:
-    """How many items the page lists: the item blocks it shows (`_shown`), or the items its structured data lists
-    (`structured_entries`), whichever is more."""
-    return max(_shown(page), structured_entries(page.tree))
+    """How many items the page lists: the blocks of its richest repeated item group that show more than their link,
+    a hidden segment's included (a streamed document's items wait there for its script, so they are the page's), or
+    the items its structured data lists (`structured_entries`), whichever is more."""
+    held = max((shown_blocks(group) for group in item_groups(page.lxml_tree)), default=0)
+    return max(held, structured_entries(page.tree))
 
 
 def _shown(page: ParsedPage) -> int:
