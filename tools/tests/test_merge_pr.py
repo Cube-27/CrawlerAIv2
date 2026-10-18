@@ -17,7 +17,7 @@ FAKE_GH = f"""#!/bin/bash
 case "$*" in
   *changedFiles*) echo "$FAKE_FILES" ;;
   *nameWithOwner*) echo "owner/repo" ;;
-  *graphql*) echo "${{FAKE_UNRESOLVED:-0}}" ;;
+  *graphql*) for ((i = 0; i < ${{FAKE_UNRESOLVED:-0}}; i++)); do echo x; done ;;
   *"Code review"*) printf '%s' "$FAKE_SUMMARY" ;;
   *"pulls/7/comments"*) printf '%s' "$FAKE_INLINE" ;;
   *"--json comments"*) cat "$FAKE_COMMENTS" ;;

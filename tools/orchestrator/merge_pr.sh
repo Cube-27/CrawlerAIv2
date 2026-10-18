@@ -30,10 +30,12 @@ if (( files > REVIEW_MIN_FILES )); then
   fi
 fi
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-unresolved=$(gh api graphql -F owner="${repo%%/*}" -F name="${repo##*/}" -F pr="$pr" -f query='
-  query($owner: String!, $name: String!, $pr: Int!) { repository(owner: $owner, name: $name) {
-    pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { isResolved } } } } }' \
-  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length')
+# Paginated (--paginate follows pageInfo.endCursor), so a PR with more than 100 threads is counted in full.
+unresolved=$(gh api graphql --paginate -F owner="${repo%%/*}" -F name="${repo##*/}" -F pr="$pr" -f query='
+  query($owner: String!, $name: String!, $pr: Int!, $endCursor: String) { repository(owner: $owner, name: $name) {
+    pullRequest(number: $pr) { reviewThreads(first: 100, after: $endCursor) {
+      nodes { isResolved } pageInfo { hasNextPage endCursor } } } } }' \
+  --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | "x"' | wc -l)
 if (( unresolved > 0 )); then
   echo "ERROR PR #$pr has $unresolved unresolved review thread(s): fix or answer each finding and resolve it" >&2
   exit 1
