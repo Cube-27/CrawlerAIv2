@@ -197,7 +197,9 @@ async def fetch_page(
         options, locale, site.proxy_pool, page_kind=task.page_kind, formats=formats, all_resources=all_resources
     )
     if options.cache == "only":
-        return await _stored_page(conn, fetching, task, site, policy, formats)
+        # A page the config's API recipe serves was stored as its JSON (SPEC-09 §4.8), as a scrape reads it.
+        api = served is not None and served.config is not None and recipe_of(served.config) is not None
+        return await _stored_page(conn, fetching, task, site, policy, formats, api=api)
     standing = () if recurring is None else await _standing(conn, task, site.id, recurring)
     # Validators go only where a record stands for a 304; without one, a 304 is fetched again whole (§4.6). A fetch
     # that bypasses what is stored sends none (D-1435).
@@ -309,10 +311,12 @@ async def _stored_page(
     site: SiteRow,
     policy: FetchPolicy,
     formats: Sequence[PageFormat],
+    *,
+    api: bool,
 ) -> FetchedPage | Ended:
     """The task's page from the latest stored capture made with `policy`'s steps and context (`cache: only`, D-1435),
-    with no fetch; without one the task fails `not_cached`."""
-    row = await recent_capture(conn, site.id, task.canonical_url, policy, max_age=None)
+    an API recipe's too with `api` (`recent_capture`), with no fetch; without one the task fails `not_cached`."""
+    row = await recent_capture(conn, site.id, task.canonical_url, policy, max_age=None, api=api)
     recent = None if row is None else await reread(fetching.store, row, formats)
     if recent is None:
         return Ended(Failed(NOT_CACHED, transient=False))

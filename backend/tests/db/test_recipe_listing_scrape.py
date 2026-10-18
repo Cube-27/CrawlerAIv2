@@ -363,9 +363,22 @@ async def test_a_crawl_task_of_a_listing_recipe_serves_its_pages_up_to_the_crawl
 
 
 async def _batch(
-    engine: AsyncEngine, fetching: Fetching, url: str, schema: SchemaDef, data: EngineData, *, first_attempt: bool
+    engine: AsyncEngine,
+    fetching: Fetching,
+    url: str,
+    schema: SchemaDef,
+    data: EngineData,
+    *,
+    first_attempt: bool,
+    **fetch: Any,
 ) -> JobId:
-    body = {"urls": [url], "formats": ["records"], "schema": {"id": str(schema.id)}, "page_kind": "listing"}
+    body = {
+        "urls": [url],
+        "formats": ["records"],
+        "schema": {"id": str(schema.id)},
+        "page_kind": "listing",
+        "fetch": fetch,
+    }
     submitted = await submit_batch(engine, fetching.connector, BatchScrapeRequest.model_validate(body), data=data)
     handlers: dict[JobKind, TaskHandler] = {"batch_scrape": scrape_handler(fetching, data, None, llm=NO_LLM)}
     await _run(engine, handlers, submitted.job_id, first_attempt=first_attempt)
@@ -539,3 +552,24 @@ async def test_a_batch_task_requests_no_further_recipe_page_past_its_deadline(
     titles, _ = await _titles(engine, job_id)
     assert len(web.requested) == 1
     assert sorted(titles) == NAMES[:PAGE_SIZE]
+
+
+async def test_a_cache_only_batch_task_reads_the_capture_its_sites_recipe_stored(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/kettles"
+    await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+    sent = len(web.requested)
+
+    job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False, cache="only")
+
+    async with engine.connect() as conn:
+        task = (await conn.execute(select(UrlTask.status, UrlTask.last_error).where(UrlTask.job_id == job_id))).one()
+    assert (task.status, task.last_error) == ("done", None)
+    assert len(web.requested) == sent  # read from the stored capture, nothing fetched
