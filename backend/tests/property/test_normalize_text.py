@@ -121,7 +121,7 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
 
 # --- word overlap (`text.word_overlap`, D-1462) ---
 
-# `vocab.tokens` words are runs of letters: digits and punctuation separate them.
+# Words are runs of letters, marks and numbers; punctuation separates them.
 _sentences = st.lists(st.from_regex(r"[A-Za-z]{1,12}", fullmatch=True), min_size=1, max_size=30)
 
 
@@ -147,3 +147,10 @@ def test_word_overlap_counts_repeated_words() -> None:
 @pytest.mark.parametrize(("a", "b"), [("words", None), (3, "words"), ("...", "words"), ("words", "")])
 def test_word_overlap_needs_two_texts_with_words(a: JsonValue, b: JsonValue) -> None:
     assert text.word_overlap(a, b) is None
+
+
+def test_word_overlap_tells_texts_that_differ_only_in_a_figure_apart() -> None:
+    # D-1583: "10" and "20" are words, so one of five words differs.
+    assert text.word_overlap("The battery lasts 10 hours", "The battery lasts 20 hours") == pytest.approx(0.8)
+    assert text.word_overlap("Model X1 ships", "model x1, ships!") == 1.0
+    assert text.word_overlap("Model X1", "Model X2") == pytest.approx(0.5)

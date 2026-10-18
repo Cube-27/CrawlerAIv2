@@ -480,3 +480,54 @@ async def test_the_shared_reaper_picks_running_jobs_of_its_kinds_older_than_its_
     assert taskless == [stale_map]
     assert maps == sorted([stale_map, with_tasks])
     assert first == [min(stale_learn, stale_map, with_tasks)]
+
+
+async def test_claim_alternates_between_jobs_and_orders_by_score_only_within_a_job(conn: AsyncConnection) -> None:
+    # D-1593: a scored crawl does not lease ahead of another job's tasks at the same priority.
+    scored, plain = await _job(conn), await _job(conn)
+    low, high = await _tasks(conn, scored, 2)
+    await conn.execute(update(UrlTask).where(UrlTask.id == low).values(score=0.2))
+    await conn.execute(update(UrlTask).where(UrlTask.id == high).values(score=0.9))
+    [other] = await _tasks(conn, plain, 1, url="o", canonical_url="o")
+
+    claimed = await claim_tasks(conn, "w1", 3)
+
+    assert {task.id for task in claimed[:2]} == {high, other}
+    assert [task.id for task in claimed if task.job_id == scored] == [high, low]
+    assert claimed[2].id == low
+
+
+async def test_claim_fairness_does_not_outrank_priority(conn: AsyncConnection) -> None:
+    first, second = await _job(conn), await _job(conn)
+    [a1, a2] = await _tasks(conn, first, 2, priority=5)
+    [b1] = await _tasks(conn, second, 1, url="b", canonical_url="b")
+
+    claimed = await claim_tasks(conn, "w1", 3)
+
+    assert [task.id for task in claimed] == [a1, a2, b1]
+
+
+async def test_claim_returns_tasks_in_the_ranked_order(conn: AsyncConnection) -> None:
+    # The returned order is the ranked one: round robin between jobs, score within a job.
+    first, second = await _job(conn), await _job(conn)
+    [a1, a2] = await _tasks(conn, first, 2)
+    [b1] = await _tasks(conn, second, 1, url="b", canonical_url="b")
+    await conn.execute(update(UrlTask).where(UrlTask.id == a1).values(score=0.9))
+    await conn.execute(update(UrlTask).where(UrlTask.id == a2).values(score=0.1))
+
+    claimed = await claim_tasks(conn, "w1", 3)
+
+    assert [task.id for task in claimed if task.job_id == first] == [a1, a2]
+    assert {task.id for task in claimed[:2]} == {a1, b1}
+
+
+async def test_claim_serves_the_job_with_fewer_leased_tasks_first(conn: AsyncConnection) -> None:
+    busy, idle = await _job(conn), await _job(conn)
+    await _tasks(conn, busy, 3)
+    [held] = await claim_tasks(conn, "w1", 1)
+    [idle_task] = await _tasks(conn, idle, 1, url="i", canonical_url="i")
+
+    [next_task] = await claim_tasks(conn, "w2", 1)
+
+    assert held.job_id == busy
+    assert next_task.id == idle_task
