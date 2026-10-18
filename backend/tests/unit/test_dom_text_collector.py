@@ -223,3 +223,8 @@ def test_review_marked_with_the_schema_iri_is_not_the_description() -> None:
     review = f'<div itemprop="https://schema.org/review"><p>{FIRST} Loved it.</p></div>'
     body = f"<main>{review}<div><p>{FIRST}</p></div></main>"
     assert _read(body, _stated("jsonld", SUMMARY)) == {"description": FIRST}
+
+
+def test_a_value_cut_inside_a_word_by_an_ellipsis_begins_the_block() -> None:
+    body = f"<main><div><p>{FIRST}</p><p>{SECOND}</p></div></main>"
+    assert _read(body, _stated("jsonld", "A sturdy kettle for everyday us...")) == {"description": f"{FIRST}\n{SECOND}"}

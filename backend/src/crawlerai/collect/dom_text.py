@@ -168,8 +168,8 @@ def _extending(blocks: _Blocks, stated: Sequence[tuple[str, str]]) -> _Block | N
     A block that equals a value other than the Open Graph summary is that value in full, and nothing beyond it. White
     space is not compared: a meta description joins the paragraphs a page's blocks separate."""
     solids = [_solid(form) for kind, form in stated if kind != _OPEN_GRAPH]
-    cuts = [cut for _, form in stated if (cut := _uncut(_solid(form)))]
-    matching = {b.node.mem_id: b for b in blocks.blocks.values() if any(_begins(b.form, cut) for cut in cuts)}
+    cuts = [(cut, _solid(form) != cut) for _, form in stated if (cut := _uncut(_solid(form)))]
+    matching = {b.node.mem_id: b for b in blocks.blocks.values() if any(_begins(b.form, *cut) for cut in cuts)}
     equal = [b for b in matching.values() if _solid(b.form) in solids]
     outer = [b for b in matching.values() if not any(a.mem_id in matching for a in _ancestors(b.node, blocks.region))]
     return _only(equal) or _only(outer)
@@ -180,16 +180,16 @@ def _uncut(solid: str) -> str:
     return solid.removesuffix(_ELLIPSES[0]) if solid.endswith(_ELLIPSES[0]) else solid.removesuffix(_ELLIPSES[1])
 
 
-def _begins(form: str, cut: str) -> bool:
+def _begins(form: str, cut: str, ellipsis: bool) -> bool:
     """Whether the collapsed `form` begins with `cut`, white space aside, without splitting a word (UAX #29
-    approximated by letters and digits)."""
+    approximated by letters and digits) unless an ellipsis marked the cut."""
     if not _solid(form).startswith(cut):
         return False
     left, end = len(cut), 0
     while left:
         left -= not form[end].isspace()
         end += 1
-    return not (end < len(form) and cut[-1].isalnum() and form[end].isalnum())
+    return ellipsis or not (end < len(form) and cut[-1].isalnum() and form[end].isalnum())
 
 
 def _solid(text: str) -> str:
