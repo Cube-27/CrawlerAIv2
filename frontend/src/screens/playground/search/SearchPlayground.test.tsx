@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
 import { problem, stubApi } from "../../../test/api";
@@ -10,6 +10,7 @@ import {
   posted,
   toggleFormats,
 } from "../../../test/playground";
+import { SearchOutput } from "./SearchOutput";
 
 // `fetch` answers `POST /v1/search` with the shape of D-1442.
 
@@ -70,6 +71,16 @@ describe("search playground", () => {
       limit: 5,
       scrape: { formats: ["markdown", "links"] },
     });
+  });
+
+  it("counts one result in the singular", () => {
+    render(
+      <SearchOutput
+        result={{ ...RESULT, results: RESULT.results.slice(0, 1), job_id: null, skipped: 0 }}
+      />,
+    );
+
+    expect(screen.getByText(/^1 result\.$/)).toBeInTheDocument();
   });
 
   it("sends nothing for an empty query", async () => {
