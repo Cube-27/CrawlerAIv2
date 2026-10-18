@@ -164,8 +164,10 @@ def pause_host(limiter: HostLimiter, host: str, attempts: Iterable[AttemptRecord
     """After a 429 or 503 to a request of a fetch that kept no `ok` answer, admit nothing more to `host` until the
     back-off is over (`politeness.backoff`; the longest backoff when the server asked for longer)."""
     slowed = slowed_down(attempts)
-    if slowed is not None:
-        limiter.pause(host, backoff(slowed, tries) or BACKOFF_MAX)
+    if slowed is None:
+        return
+    pause = backoff(slowed, tries)
+    limiter.pause(host, BACKOFF_MAX if pause is None else pause)
 
 
 def rules_in(conn: AsyncConnection, http: Rung, attempts: list[AttemptRecord]) -> ReadRules:

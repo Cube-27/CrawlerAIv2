@@ -308,7 +308,8 @@ def _paused_by(result: FetchResult) -> timedelta:
     result. A pause past the longest backoff is longer than any caller waits in place, so the attempt is not sent."""
     if not slow_down(result):
         return timedelta(0)
-    return backoff(result.attempts[-1]) or BACKOFF_MAX
+    pause = backoff(result.attempts[-1])
+    return BACKOFF_MAX if pause is None else pause
 
 
 async def _as_last_page(result: FetchResult) -> FetchResult:

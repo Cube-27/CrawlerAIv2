@@ -91,6 +91,8 @@ def test_robots_txt_that_disallows_the_url_or_cannot_be_read_sends_nothing() -> 
         ((("Retry-After", "20"),), timedelta(seconds=20)),
         ((), FIRST_BACKOFF),
         ((("Retry-After", "86400"),), BACKOFF_MAX),
+        # No pause asked: the host's next turn is its spacing's.
+        ((("Retry-After", "0"),), timedelta(seconds=1)),
     ],
 )
 def test_a_slow_down_pauses_the_host_by_the_one_back_off(headers: HeaderList, pause: timedelta) -> None:
