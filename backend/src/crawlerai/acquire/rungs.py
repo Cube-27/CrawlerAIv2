@@ -25,8 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.browser_tab import ListingRung
-from crawlerai.acquire.challenge import portable
-from crawlerai.acquire.classify import classify, interstitial
+from crawlerai.acquire.challenge import block_class_of, portable
+from crawlerai.acquire.classify import interstitial
 from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
 from crawlerai.acquire.session import CookieExport, SiteSessions, identity
@@ -315,13 +315,13 @@ def _paused_by(result: FetchResult) -> timedelta:
 async def _as_last_page(result: FetchResult) -> FetchResult:
     """D-1261: an HTTP page kept with no browser outcome is the last page of the fetch, which is extracted whatever its
     links, as the browser's is (`browser.classified`): a listing shell by the listing rule alone (a page with site
-    structure but no repeated items, `classify`) becomes `ok`, so the rows role C reads from it are kept. Its attempt
-    keeps the class HTTP gave it."""
+    structure but no repeated items, `classify`) becomes `ok`, so the rows role C reads from it are kept; one showing a
+    vendor's stand-in marker (`block_class_of`) stays as it is. Its attempt keeps the class HTTP gave it."""
     manifest = result.bundle.manifest
     if result.block_class != "shell" or manifest.method != "http" or fetched_as(manifest.fetch_policy) != "listing":
         return result
     text = decode_body(result.bundle)
-    unlisted = await asyncio.to_thread(classify, manifest.status_code, manifest.headers.response, text)
+    unlisted = await asyncio.to_thread(block_class_of, manifest.status_code, manifest.headers.response, text)
     if unlisted != "ok":
         return result
     bundle = result.bundle.model_copy(update={"manifest": manifest.model_copy(update={"block_class": "ok"})})

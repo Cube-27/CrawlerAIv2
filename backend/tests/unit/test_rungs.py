@@ -16,6 +16,7 @@ from hypothesis import strategies as st
 from crawlerai.acquire.politeness import BACKOFF_MAX
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.adapters.challenges import SIGNATURES
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import FetchMethod
@@ -481,6 +482,18 @@ def test_a_shell_without_site_structure_or_outside_a_listing_stays_a_shell(body:
     stubs = Web(_listing_shell(body), Rung("browser", "blocked"))
 
     result = stubs.acquire(policy)
+
+    assert (result.method, result.block_class) == ("http", "shell")
+
+
+def test_a_listing_shell_showing_a_vendors_stand_in_marker_stays_a_shell_when_its_render_fails() -> None:
+    # D-1470: a 2xx HTML document with a vendor's stand-in marker is no page of the site, so the last-page rule
+    # (D-1261) does not make it an `ok` page to extract.
+    signature = next(s for s in SIGNATURES if s.stand_in_markers)
+    body = _UNLISTED.replace(b"</main>", f"<!-- {signature.stand_in_markers[0]} --></main>".encode())
+    stubs = Web(_listing_shell(body), Rung("browser", "error"))
+
+    result = stubs.acquire(LISTING)
 
     assert (result.method, result.block_class) == ("http", "shell")
 
