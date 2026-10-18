@@ -4,7 +4,7 @@ a listed provider without an API key stops the client from being built, and the 
 import logging
 
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.core.settings import LLMSettings
@@ -78,3 +78,10 @@ def test_a_configured_client_logs_nothing(caplog: pytest.LogCaptureFixture) -> N
         client, _ = llm_from_settings(settings, create_async_engine("postgresql+asyncpg://127.0.0.1/unused"))
 
     assert (isinstance(client, MeteredClient), caplog.records) == (True, [])
+
+
+def test_role_a_page_input_is_capped_at_60k_characters() -> None:
+    assert LLMSettings.model_validate(KEYS).llm_a_max_chars == 60_000
+    assert LLMSettings.model_validate(KEYS | {"llm_a_max_chars": 1}).llm_a_max_chars == 1
+    with pytest.raises(ValidationError):
+        LLMSettings.model_validate(KEYS | {"llm_a_max_chars": 60_001})
