@@ -94,6 +94,19 @@ class Pricing:
                 raise OverlappingPrices(f"{a.provider} {a.model}: two prices apply to the same calls")
         return cls(prices)
 
+    def call_usd(self, provider: str, model: str, tokens_in: int, tokens_out: int, on: date) -> Decimal | None:
+        """The price of one call made on `on`, by the rule `services.llm_costs` applies in SQL to stored calls: the
+        provider's price for the model in effect that day and, when priced by prompt length, for `tokens_in`; `None`
+        when none applies (never guessed). For the eval report, whose replayed calls are not stored."""
+        for price in self.prices:
+            in_effect = price.effective_from <= on and (price.effective_until is None or on < price.effective_until)
+            in_tier = price.min_prompt_tokens <= tokens_in and (
+                price.max_prompt_tokens is None or tokens_in <= price.max_prompt_tokens
+            )
+            if (price.provider, price.model) == (provider, model) and in_effect and in_tier:
+                return (tokens_in * price.input_usd_per_mtok + tokens_out * price.output_usd_per_mtok) / 1_000_000
+        return None
+
     @classmethod
     def read(cls, directory: Path) -> Self:
         """The price lists of `PRICE_FILES` under the data directory `directory`."""

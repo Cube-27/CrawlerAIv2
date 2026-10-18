@@ -135,7 +135,7 @@ def test_the_engine_reason_and_unanswered_calls_reach_the_page_detail() -> None:
     [page] = r.pages
     assert page.llm_unanswered == 1
     assert [(j.cell, j.reason) for j in page.judgments] == [("FN", "llm_unavailable")]
-    assert r.disagreements == {"synthetic_detail|price": {"FN|llm_unavailable": 1}}
+    assert r.disagreements == {"synthetic_detail|price": {"FN|declined:llm_unavailable": 1}}
 
 
 def test_disagreements_count_each_kind_per_field() -> None:

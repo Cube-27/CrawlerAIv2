@@ -826,6 +826,39 @@ def test_a_field_output_offers_the_kept_values_of_each_kind() -> None:
     assert list(output.fields["title"].offered.items()) == [("jsonld", ("A",)), ("og", ("A", "B"))]
 
 
+def test_a_page_output_carries_the_session_parameters_and_the_calls_tokens_and_price() -> None:
+    call = LLMCallRecord(
+        prompt_kind="c_extract", provider="nopriceai", model="m", request_hash="0" * 64, tokens_in=30, tokens_out=10
+    )
+    result = ExtractionResult(
+        outcome="partial",
+        entity={},
+        rows=(),
+        candidates=(),
+        llm_calls=(call, call),
+        mode="adhoc",
+        record_confidence=None,
+        session_params={"url": ("sid",)},
+    )
+
+    output = page_output(result, "ok", fetched_on=datetime(2026, 10, 18, tzinfo=UTC).date())
+
+    assert (output.session_params, output.tokens_in, output.tokens_out) == ({"url": ("sid",)}, 60, 20)
+    # No price list names the provider: the cost is unknown, never zero.
+    assert output.llm_usd is None
+    assert page_output(result.model_copy(update={"llm_calls": ()}), "ok").llm_usd == 0.0
+
+
+def test_each_case_carries_its_capture_s_document() -> None:
+    store = MemoryStore()
+    asyncio.run(add_page(store, 1))
+
+    [case] = asyncio.run(replay_split(store, StubEngine(), live=LiveLLM()))
+
+    assert case.document is not None
+    assert "<" in case.document
+
+
 OFFER_SCHEMA = SchemaDef(
     id=SchemaId(uuid7()),
     origin="user",

@@ -79,7 +79,12 @@ describe("draftFrom and toLabels", () => {
     };
     const variants = {
       absent: false,
-      rows: [{ fields: { sku: { value: "W-11", absent: false, locator: null, distractors: [] } } }],
+      rows: [
+        {
+          fields: { sku: { value: "W-11", absent: false, locator: null, distractors: [] } },
+          stale: false,
+        },
+      ],
       distractor_keys: [],
     };
     const stored = {
@@ -128,7 +133,10 @@ describe("draftFrom and toLabels", () => {
     expect(draft.fields).toEqual({ total: emptyField });
     expect(newRow("listing", listingShapes)).toEqual({ title: emptyField });
     expect(built.kind === "labels" && built.labels.rows).toEqual([
-      { fields: { title: { value: "Cup", absent: false, locator: null, distractors: [] } } },
+      {
+        fields: { title: { value: "Cup", absent: false, locator: null, distractors: [] } },
+        stale: false,
+      },
     ]);
   });
 

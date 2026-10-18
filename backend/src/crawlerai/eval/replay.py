@@ -10,6 +10,7 @@ runs, with SPEC-03's signature (`eval.engine`); the engine holds its calibration
 (`core.engine_version`). Its `ExtractionResult` is scored as the `PageOutput` that `metrics` reads.
 """
 
+from datetime import UTC, date
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
@@ -30,11 +31,12 @@ from crawlerai.llm.client import (
     ReplyCheck,
     request_hash,
 )
+from crawlerai.llm.pricing import default_pricing
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.types import ExtractionResult, FieldOutcome, FieldSet
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.base import ObjectNotFound
-from crawlerai.storage.capture_bundle import CaptureBundle, CorruptBundle
+from crawlerai.storage.capture_bundle import CaptureBundle, CorruptBundle, decode_body
 
 
 class RecordingMissing(LookupError):
@@ -156,7 +158,7 @@ async def replay_split(
         schema = engine.schema(page.schema_name)
         if schema.page_kind != page.page_kind:
             raise ValueError(f"eval page {page.id} is a {page.page_kind} page; schema {schema.name} is not")
-        output, config_status = await _replay(store, engine, llm, page, schema)
+        output, config_status, document = await _replay(store, engine, llm, page, schema)
         cases.append(
             EvalCase(
                 page_id=str(page.id),
@@ -165,6 +167,7 @@ async def replay_split(
                 labels=parse_labels(page.labels, schema.page_kind, schema.fields),
                 output=output,
                 config_status=config_status,
+                document=document,
             )
         )
     return cases
@@ -181,16 +184,30 @@ def schema_fields(schema: SchemaDef) -> SchemaFields:
     )
 
 
-def page_output(result: ExtractionResult, block_class: BlockClass, llm_unanswered: int = 0) -> PageOutput:
+def page_output(
+    result: ExtractionResult, block_class: BlockClass, llm_unanswered: int = 0, fetched_on: date | None = None
+) -> PageOutput:
     """What metrics score of an extraction: each field's status, value, evidence, reason and the values each source
-    kind offered, and the page's LLM calls, answered and not."""
+    kind offered, the session parameters its rows' URLs were rid of, and the page's LLM calls, answered and not, with
+    their tokens and their price on the day the page was fetched (`None` without that day or a price)."""
+    calls = result.llm_calls
+    prices = [
+        None
+        if fetched_on is None
+        else default_pricing().call_usd(c.provider, c.model, c.tokens_in, c.tokens_out, fetched_on)
+        for c in calls
+    ]
     return PageOutput(
         block_class=block_class,
         mode=result.mode,
-        llm_calls=len(result.llm_calls),
+        llm_calls=len(calls),
         llm_unanswered=llm_unanswered,
         fields=_field_outputs(result.entity or {}),
         rows=tuple(_field_outputs(row) for row in result.rows),
+        session_params=result.session_params,
+        tokens_in=sum(c.tokens_in for c in calls),
+        tokens_out=sum(c.tokens_out for c in calls),
+        llm_usd=None if None in prices else float(sum(p for p in prices if p is not None)),
     )
 
 
@@ -220,11 +237,19 @@ def _offered(outcome: FieldOutcome) -> dict[SourceKind, tuple[JsonValue, ...]]:
 
 async def _replay(
     store: EvalStore, engine: Engine, llm: LLMClient, page: EvalPageRow, schema: SchemaDef
-) -> tuple[PageOutput | ReplayFailed, dict[str, FieldStatus]]:
+) -> tuple[PageOutput | ReplayFailed, dict[str, FieldStatus], str | None]:
+    """The page's output and config field status, and its capture's document (`None` when the bundle is gone)."""
     try:
         bundle = await store.get_bundle(page.capture_id)
     except (EvalNotFound, ObjectNotFound, CorruptBundle) as e:
-        return ReplayFailed(error=f"bundle unavailable: {type(e).__name__}: {e}"), {}
+        return ReplayFailed(error=f"bundle unavailable: {type(e).__name__}: {e}"), {}, None
+    output, status = await _extracted(engine, llm, page, schema, bundle)
+    return output, status, decode_body(bundle)
+
+
+async def _extracted(
+    engine: Engine, llm: LLMClient, page: EvalPageRow, schema: SchemaDef, bundle: CaptureBundle
+) -> tuple[PageOutput | ReplayFailed, dict[str, FieldStatus]]:
     config = None
     if page.config_snapshot is not None:
         try:
@@ -241,4 +266,5 @@ async def _replay(
     except RecordingUnreadable as e:
         return ReplayFailed(error=f"recording unreadable: {e}"), {}
     status = {} if config is None else config.field_status
-    return page_output(result, bundle.manifest.block_class, calls.unanswered), status
+    fetched_on = bundle.manifest.fetched_at.astimezone(UTC).date()
+    return page_output(result, bundle.manifest.block_class, calls.unanswered, fetched_on), status

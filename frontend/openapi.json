@@ -3612,6 +3612,11 @@
             },
             "title": "Fields",
             "type": "object"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
           }
         },
         "required": [

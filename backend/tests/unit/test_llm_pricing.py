@@ -117,3 +117,24 @@ def test_a_malformed_price_is_refused(fields: dict[str, Any]) -> None:
     row = _row("m", **fields)
     with pytest.raises(ValidationError):
         _list(row)
+
+
+def test_a_call_is_priced_by_the_price_of_its_day_and_prompt_length() -> None:
+    pricing = Pricing.of(
+        [
+            _list(
+                _row("dated", effective_until=D2.isoformat()),
+                _row("dated", effective_from=D2.isoformat(), input_usd_per_mtok="3"),
+                _row("tiered", max_prompt_tokens=1000),
+                _row("tiered", min_prompt_tokens=1001, input_usd_per_mtok="5"),
+            )
+        ]
+    )
+
+    assert pricing.call_usd("fakeai", "dated", 1_000_000, 500_000, D1) == Decimal(2)
+    assert pricing.call_usd("fakeai", "dated", 1_000_000, 0, D2) == Decimal(3)
+    assert pricing.call_usd("fakeai", "tiered", 2000, 0, D1) == Decimal("0.01")
+    # Before any price, another provider, an unknown model: unpriced, never guessed.
+    assert pricing.call_usd("fakeai", "dated", 10, 10, date(2029, 1, 1)) is None
+    assert pricing.call_usd("otherai", "dated", 10, 10, D1) is None
+    assert pricing.call_usd("fakeai", "unknown", 10, 10, D1) is None

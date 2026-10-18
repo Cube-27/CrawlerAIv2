@@ -35,7 +35,7 @@ from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.keys import create_key, revoke_key
 from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, ScheduleId
-from crawlerai.eval import calibrate, label_file
+from crawlerai.eval import calibrate, label_file, rekey
 from crawlerai.eval.cli import (
     EvalCliError,
     PageRequest,
@@ -267,6 +267,18 @@ async def _eval_import_labels(file: Path) -> None:
     sys.stdout.write(label_file.report(outcomes))
 
 
+async def _eval_rekey(file: Path) -> None:
+    """Recompute the draft labels of a label file's pages already in the golden set against their stored captures, and
+    mark the label rows the captures do not show (evaluation spec, "Label re-keying")."""
+    settings = Settings()
+    pages = label_file.read_label_file(file.read_text(encoding="utf-8"))
+    schemas = await active_schemas(settings.database_url.get_secret_value(), label_file.schema_names(pages))
+    labeled = label_file.labeled_pages(pages, schemas)
+    async with aclosing(dev_store(settings)) as store:
+        outcomes = await rekey.rekey_pages(store, schemas, labeled)
+    sys.stdout.write(rekey.report(outcomes))
+
+
 async def _polite_page(
     engine: AsyncEngine, fetching: Fetching, data: EngineData | None, url: str, schema: SchemaDef
 ) -> FetchResult | str:
@@ -462,6 +474,12 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     # Imported labels are drafts only: a labeled or checked page takes the two passes of §16.2 (D-1460).
     import_labels.add_argument("--split", choices=["dev"], required=True)
     import_labels.add_argument("--status", choices=["draft"], required=True)
+    rekey_command = eval_commands.add_parser(
+        "re-key", help="recompute golden pages' draft labels from a label file and mark rows their captures lack"
+    )
+    rekey_command.set_defaults(handler=_run_eval, eval_handler=_run_eval_rekey)
+    rekey_command.add_argument("file", type=Path, help="the label file (JSON), under the working directory")
+    rekey_command.add_argument("--split", choices=["dev"], required=True)
     run = eval_commands.add_parser("run", help="replay the dev split through the engine and print its report")
     run.set_defaults(handler=_run_eval, eval_handler=_run_eval_run)
     run.add_argument("--split", choices=["dev"], required=True)
@@ -710,6 +728,10 @@ def _run_eval_import_sites(parser: argparse.ArgumentParser, args: argparse.Names
 
 def _run_eval_import_labels(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     asyncio.run(_eval_import_labels(_under_cwd(parser, "file", args.file)))
+
+
+def _run_eval_rekey(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    asyncio.run(_eval_rekey(_under_cwd(parser, "file", args.file)))
 
 
 def _run_eval_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:

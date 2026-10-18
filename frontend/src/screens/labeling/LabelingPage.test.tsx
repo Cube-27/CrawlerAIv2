@@ -536,7 +536,10 @@ describe("listing pages", () => {
       expect.objectContaining({
         fields: { total: { value: null, absent: true, locator: null, distractors: [] } },
         rows: [
-          { fields: { title: { value: "Cup", absent: false, locator: null, distractors: [] } } },
+          {
+            fields: { title: { value: "Cup", absent: false, locator: null, distractors: [] } },
+            stale: false,
+          },
         ],
       }),
     );

@@ -81,7 +81,8 @@ LISTING: dict[str, Any] = {
             "fields": {
                 "title": {"value": "Item one", "absent": False, "locator": None, "distractors": []},
                 "url": {"value": "https://shop.example.test/p/1", "absent": False, "locator": None, "distractors": []},
-            }
+            },
+            "stale": False,
         },
     ],
     "notes": "",

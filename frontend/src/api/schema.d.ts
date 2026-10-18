@@ -2262,6 +2262,11 @@ export interface components {
             fields: {
                 [key: string]: components["schemas"]["FieldLabel"];
             };
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
         };
         /** Labels */
         Labels: {

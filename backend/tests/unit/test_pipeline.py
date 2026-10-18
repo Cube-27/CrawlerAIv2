@@ -562,6 +562,21 @@ def test_the_items_of_an_item_list_are_the_rows() -> None:
     assert result.outcome == "extracted"
 
 
+def test_row_urls_drop_the_session_parameters_every_row_shares_and_keep_identity_and_page_ones() -> None:
+    # `sid` names the visit (one value on every row, not on the page); `v` is identity; `page` is the page's own.
+    rows = [
+        _product(f"Widget {n}", f"https://shop.example.test/p/{n}?page=2&sid=abc&v={n}", price=f"{n}.50")
+        for n in (1, 2)
+    ]
+    result = _listing(_html(_item_list(*rows)))
+
+    assert [row["url"].value for row in result.rows] == [
+        "https://shop.example.test/p/1?page=2&v=1",
+        "https://shop.example.test/p/2?page=2&v=2",
+    ]
+    assert result.session_params == {"url": ("sid",)}
+
+
 def test_an_item_list_holding_the_items_directly_and_in_microdata_gives_rows() -> None:
     body = (
         '<ul itemscope itemtype="https://schema.org/ItemList">'
