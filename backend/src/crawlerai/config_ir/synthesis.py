@@ -216,15 +216,11 @@ class _Pages:
 
     @classmethod
     def of(cls, sample: Sequence[SamplePage], max_chars: int) -> "_Pages":
-        """`max_chars` bounds each page's whole input: the JSON key paths, then the HTML cut around the published
-        values to what is left (at least half, so a page of many JSON documents still shows its HTML)."""
-        keys = tuple(sample_view.json_keys(s.page) for s in sample)
+        """`max_chars` bounds each page's input: its JSON key paths take at most half, and the HTML, cut around the
+        published values, what they leave."""
+        keys = tuple(sample_view.json_keys(s.page, max_chars // 2) for s in sample)
         html = tuple(
-            sample_view.cut_around(
-                sample_view.reduced_html(s.page),
-                _published_strings(s),
-                max(max_chars - len(k.text), max_chars // 2),
-            )
+            sample_view.cut_around(sample_view.reduced_html(s.page), _published_strings(s), max_chars - len(k.text))
             for s, k in zip(sample, keys, strict=True)
         )
         return cls(html, keys)

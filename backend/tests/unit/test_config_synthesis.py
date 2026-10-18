@@ -226,6 +226,24 @@ def test_a_repair_repeats_the_first_requests_cached_prefix_with_one_page() -> No
     assert first.user != repair.user
 
 
+def test_a_pages_json_keys_and_html_together_stay_within_the_limit() -> None:
+    members = ", ".join(f'"key{n}": 1' for n in range(500))
+    body = "<p>filler</p>" * 400 + '<h1 id="t">Item 1</h1>'
+    page = ParsedPage(
+        f'<html><head><script type="application/json">{{{members}}}</script></head><body>{body}</body></html>'
+    )
+    sample = [SamplePage(page, CTX, {"title": Published("Item 1", "microdata:/html/body/h1")})]
+    client = ScriptedClient(_fields(title=[TITLE]))
+    _run(client, sample=sample, max_chars=1_000)
+    block = client.requests[0].cached[0]
+    keys, html = block.split("JSON documents (key paths)")[1].split("\nHTML (")
+    keys_text = keys.split(":\n", 1)[1]
+    html_text = html.split(":\n", 1)[1].split("\n</sample_page>")[0]
+    assert len(keys_text.strip()) <= 500
+    assert len(keys_text.strip()) + len(html_text) <= 1_000
+    assert "Item 1" in html_text
+
+
 def test_a_pages_input_is_cut_to_the_limit() -> None:
     client = ScriptedClient(_fields(title=[TITLE]))
     _run(client, max_chars=60)

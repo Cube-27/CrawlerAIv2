@@ -62,7 +62,7 @@ def test_json_documents_are_shown_as_key_paths_with_types_and_no_other_value() -
         '{"@type": "Product", "name": "Secret name", "offers": [{"price": 5}, {"price": 6}]}'
         '</script><script type="application/json">{"state": {"id": 7}}</script></head></html>'
     )
-    keys = json_keys(page)
+    keys = json_keys(page, KEYS_MAX_CHARS)
     assert keys.note is None
     assert keys.text.splitlines()[0] == "jsonld block 0: $['@type']=Product $['name'] $['offers'][*]['price']"
     assert keys.text.splitlines()[1].endswith(": $['state']['id']")
@@ -72,7 +72,14 @@ def test_json_documents_are_shown_as_key_paths_with_types_and_no_other_value() -
 def test_json_keys_are_cut_to_their_limit() -> None:
     members = ", ".join(f'"key{n}": 1' for n in range(5_000))
     page = ParsedPage(f'<html><head><script type="application/json">{{{members}}}</script></head></html>')
-    keys = json_keys(page)
+    keys = json_keys(page, KEYS_MAX_CHARS)
     assert len(keys.text) == KEYS_MAX_CHARS
     assert keys.note is not None
     assert keys.note.startswith(f"the first {KEYS_MAX_CHARS} of ")
+
+
+def test_json_keys_are_cut_to_a_smaller_limit_and_never_past_the_maximum() -> None:
+    members = ", ".join(f'"key{n}": 1' for n in range(5_000))
+    page = ParsedPage(f'<html><head><script type="application/json">{{{members}}}</script></head></html>')
+    assert len(json_keys(page, 100).text) == 100
+    assert len(json_keys(page, KEYS_MAX_CHARS * 2).text) == KEYS_MAX_CHARS

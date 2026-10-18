@@ -10,7 +10,7 @@ last. A config's fields are classed by the input their steps read (`config_ir/ex
 ### D-1720 — A sample page's input is at most 60,000 characters in all
 - Date: 2026-10-18 · Change/PR: plan-phase-4b (#287) · Status: decided (owner-delegated 2026-10-17)
 - Decision: `CRAWLERAI_LLM_A_MAX_CHARS` defaults to 60,000 and refuses a larger value. It bounds a page's JSON key paths
-  and reduced HTML together (the HTML gets what the key paths leave, at least half), not the HTML alone.
+  and reduced HTML together: the key paths are cut to at most half of it, and the HTML gets what they leave.
 - Why: the cap is the cost bound the owner asked for; it must not be raisable by an operator or leave 20,000 more
   characters of key paths beside it.
 - Reversible: yes
