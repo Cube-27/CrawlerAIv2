@@ -19,7 +19,7 @@ from selectolax.lexbor import LexborHTMLParser
 from crawlerai.core import json_text
 from crawlerai.normalize.url_key import canonicalize
 
-_SCHEMES = ("http://", "https://")  # RFC 9110 §4.2: the URI schemes a result is fetched over
+_SCHEMES = frozenset({"http", "https"})  # RFC 9110 §4.2: the URI schemes a result is fetched over
 _MAX_DEPTH = 6  # nesting a result array is looked for at; deeper is not a result list
 
 
@@ -32,7 +32,10 @@ class Hit:
 
 def _is_url(value: object) -> bool:
     # RFC 3986 §3.1: a scheme is case-insensitive, so `HTTPS://` names an https URL too.
-    return isinstance(value, str) and value[:8].lower().startswith(_SCHEMES) and canonicalize(value) is not None
+    if not isinstance(value, str):
+        return False
+    scheme, colon, rest = value.partition(":")
+    return bool(colon) and rest.startswith("//") and scheme.lower() in _SCHEMES and canonicalize(value) is not None
 
 
 Fields = Mapping[str, str]  # the JSON members that hold a result's "url", "title" and "snippet"
