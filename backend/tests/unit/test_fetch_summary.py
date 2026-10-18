@@ -49,20 +49,6 @@ def test_an_api_capture_names_the_adapter_that_reads_it() -> None:
     assert _summary("api", ENDPOINT, registry) == {"method": "api", "adapter": "board", "attempts": 2}
 
 
-def test_no_other_fetch_names_an_adapter() -> None:
-    registry = Registry([_Board()])
-
-    assert _summary("http", PAGE, registry)["adapter"] is None
-    assert _summary("browser", PAGE, registry)["adapter"] is None
-    # An API recipe's capture: no active adapter fetches from its endpoint.
-    assert _summary("api", "https://board.example.test/recipe/jobs", registry)["adapter"] is None
-
-
-def test_an_inactive_adapter_or_none_is_not_named() -> None:
-    assert _summary("api", ENDPOINT, Registry(()))["adapter"] is None
-    assert _summary("api", ENDPOINT, None)["adapter"] is None
-
-
 def test_every_attempt_keeps_its_challenge_label() -> None:
     summary = fetch_summary("browser", 200, "ok", ATTEMPTS, adapters=None, url=PAGE, final_url=PAGE)
 

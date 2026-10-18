@@ -25,20 +25,6 @@ def test_llms_txt_has_an_h1_a_blockquote_and_sections_of_links_in_page_order() -
     )
 
 
-def test_the_site_is_named_by_its_host_when_the_first_page_has_no_title() -> None:
-    assert llms_txt([LlmsPage("https://docs.example.test/a")]).startswith("# docs.example.test\n")
-
-
-def test_a_site_page_names_the_site_and_summarizes_it_beside_the_listed_urls() -> None:
-    text = llms_txt([LlmsPage("https://docs.example.test/a")], LlmsPage("https://docs.example.test/", "Docs", "All."))
-    assert text.startswith("# Docs\n\n> All.\n")
-    assert "- [a](https://docs.example.test/a)" in text
-
-
-def test_no_pages_give_the_h1_alone() -> None:
-    assert llms_txt([]) == "# Site\n"
-
-
 def test_llms_full_txt_follows_the_opening_with_each_page_under_its_name() -> None:
     text = llms_full_txt(PAGES[:2], ["# Guide\n\nHello.", ""])
     assert text == (

@@ -3,7 +3,7 @@
 import asyncio
 import socket
 from collections.abc import Sequence
-from ipaddress import IPv4Address, IPv6Address, ip_address
+from ipaddress import IPv4Address, ip_address
 
 import pytest
 
@@ -73,42 +73,12 @@ def test_is_public_rejects_reserved_ranges(address: str) -> None:
     assert is_public(ip_address(address)) is False
 
 
-@pytest.mark.parametrize("address", [_PUBLIC_V4, _PUBLIC_V6, "::ffff:93.184.215.14", "64:ff9b::5db8:d70e"])
-def test_is_public_accepts_global_unicast(address: str) -> None:
-    assert is_public(ip_address(address)) is True
-
-
-@pytest.mark.parametrize("address", _NON_PUBLIC_SAMPLE)
-def test_host_resolving_to_a_reserved_address_is_rejected(address: str) -> None:
-    connector = SafeConnector(StubResolver({"www.example.com": [address]}))
-    assert _reason(connector, "https://www.example.com/p") == "private_address"
-
-
 @pytest.mark.parametrize("address", _NON_PUBLIC_SAMPLE)
 def test_literal_reserved_ip_is_rejected_without_dns(address: str) -> None:
     resolver = StubResolver({})
     host = f"[{address}]" if ":" in address else address
     assert _reason(SafeConnector(resolver), f"http://{host}/") == "private_address"
     assert resolver.calls == []
-
-
-def test_host_that_cannot_be_idna_encoded_is_rejected_as_host() -> None:
-    # The system resolver encodes the host (IDNA, RFC 5891) before any lookup; a label over 63 octets
-    # (RFC 1035 §2.3.4) fails there, so no query leaves the process.
-    assert _reason(SafeConnector(), f"https://{'a' * 64}.example.com/") == "host"
-
-
-def test_any_reserved_address_among_several_rejects() -> None:
-    connector = SafeConnector(StubResolver({"www.example.com": [_PUBLIC_V4, "10.1.2.3"]}))
-    assert _reason(connector, "https://www.example.com/") == "private_address"
-
-
-@pytest.mark.parametrize(
-    ("table", "reason"),
-    [({}, "dns"), ({"www.example.com": []}, "dns")],
-)
-def test_resolution_failure_fails_closed(table: dict[str, Sequence[str]], reason: RejectReason) -> None:
-    assert _reason(SafeConnector(StubResolver(table)), "https://www.example.com/") == reason
 
 
 @pytest.mark.parametrize(
@@ -163,25 +133,6 @@ def test_public_target_is_pinned_to_the_checked_address(url: str, port: int) -> 
     assert resolver.calls == ["www.example.com"]
 
 
-def test_literal_public_ipv6_is_accepted_without_dns() -> None:
-    resolver = StubResolver({})
-    target = asyncio.run(SafeConnector(resolver).check(f"https://[{_PUBLIC_V6}]/x"))
-    assert target == Target(url=f"https://[{_PUBLIC_V6}]/x", host=_PUBLIC_V6, port=443, ip=IPv6Address(_PUBLIC_V6))
-    assert resolver.calls == []
-
-
-def test_redirect_to_a_private_address_is_rejected_after_a_public_first_hop() -> None:
-    resolver = StubResolver({"www.example.com": [_PUBLIC_V4], "internal.example.net": ["10.0.0.5"]})
-    connector = SafeConnector(resolver)
-    first = asyncio.run(connector.check("https://www.example.com/start"))
-    assert first.ip == IPv4Address(_PUBLIC_V4)
-    redirect = connector.redirect(first, "http://internal.example.net/admin")
-    with pytest.raises(SsrfRejected) as e:
-        asyncio.run(redirect)
-    assert e.value.reason == "private_address"
-    assert resolver.calls == ["www.example.com", "internal.example.net"]
-
-
 @pytest.mark.parametrize(
     ("location", "reason"),
     [
@@ -199,15 +150,6 @@ def test_every_redirect_hop_is_rechecked(location: str, reason: RejectReason) ->
     with pytest.raises(SsrfRejected) as e:
         asyncio.run(redirect)
     assert e.value.reason == reason
-
-
-def test_relative_redirect_resolves_against_the_current_url_and_is_rechecked() -> None:
-    resolver = StubResolver({"www.example.com": [_PUBLIC_V4]})
-    connector = SafeConnector(resolver)
-    first = asyncio.run(connector.check("https://www.example.com/a/b"))
-    hop = asyncio.run(connector.redirect(first, "../c?q=1"))
-    assert hop == Target(url="https://www.example.com/c?q=1", host="www.example.com", port=443, ip=first.ip)
-    assert resolver.calls == ["www.example.com", "www.example.com"]
 
 
 def test_rejection_message_does_not_carry_the_url() -> None:

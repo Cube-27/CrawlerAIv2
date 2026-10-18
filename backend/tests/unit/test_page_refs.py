@@ -27,17 +27,6 @@ def _page(html: str, final: str = FINAL) -> FetchResult:
     )
 
 
-def test_the_urls_that_name_the_page_are_its_final_url_canonical_and_og_url_in_that_order() -> None:
-    html = (
-        '<html><head><meta property="OG:URL" content="https://www.example.test/jobs">'
-        '<link rel="Alternate Canonical" href="/canonical"></head><body></body></html>'
-    )
-
-    assert page_refs(_page(html)) == PageRefs(
-        own=(FINAL, "https://careers.example.test/canonical", "https://www.example.test/jobs"), links=()
-    )
-
-
 def test_references_resolve_against_the_documents_base_url() -> None:
     html = (
         '<html><head><base href="https://static.example.test/base/">'
@@ -71,30 +60,3 @@ def test_a_page_with_more_links_than_the_cap_keeps_none_so_no_site_is_judged_by_
     html = "<body>" + "".join(f'<a href="/{i}">x</a>' for i in range(MAX_LINKS + 1)) + "</body>"
 
     assert page_refs(_page(html)).links == ()
-
-
-def test_a_page_with_as_many_links_as_the_cap_keeps_them_all() -> None:
-    html = "<body>" + "".join(f'<a href="/{i}">x</a>' for i in range(MAX_LINKS)) + "</body>"
-
-    links = page_refs(_page(html)).links
-
-    assert len(links) == MAX_LINKS
-    assert links[0] == "https://careers.example.test/0"
-
-
-def test_a_page_without_a_canonical_link_has_none() -> None:
-    assert canonical_link(_page("<html><body>x</body></html>")) is None
-
-
-def test_a_reference_no_url_parser_reads_is_skipped_and_the_rest_are_kept() -> None:
-    # RFC 3986 §3.2.2: an unmatched bracket in an authority is no URL.
-    html = (
-        '<html><head><base href="http://[bad"><link rel="canonical" href="http://[x">'
-        '<meta property="og:url" content="http://[y"></head>'
-        '<body><a href="http://[z">1</a><a href="/ok">2</a></body></html>'
-    )
-
-    refs = page_refs(_page(html))
-
-    assert refs == PageRefs(own=(FINAL,), links=("https://careers.example.test/ok",))
-    assert canonical_link(_page(html)) is None

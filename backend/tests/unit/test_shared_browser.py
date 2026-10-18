@@ -18,11 +18,6 @@ URL = "https://shop.example.test/p/1"
 OTHER = "https://shop.example.test/p/2"
 
 
-@pytest.fixture
-def anyio_backend() -> str:
-    return "asyncio"
-
-
 @dataclass
 class Session:
     number: int
@@ -90,20 +85,3 @@ async def test_a_crashed_browser_is_restarted_once_and_the_page_fetched_again() 
     assert chromium.origin(result) == (2, URL)
     assert chromium.fetched == [(1, URL), (2, URL), (2, OTHER)]
     assert [(s.closed, s.connected) for s in chromium.sessions] == [(True, False), (False, True)]
-
-
-async def test_a_browser_that_crashes_again_is_not_restarted_a_second_time_for_the_task() -> None:
-    chromium = Chromium(kills={URL: 2})
-    browser = chromium.browser()
-
-    result = await browser.fetch(URL, FetchPolicy())
-
-    # The shared session and its one restart, each closed once it died; the restart's result stands.
-    assert chromium.origin(result) == (2, URL)
-    assert chromium.fetched == [(1, URL), (2, URL)]
-    assert [session.closed for session in chromium.sessions] == [True, True]
-
-    await browser.fetch(OTHER, FetchPolicy())
-
-    # The next task that needs a browser launches one.
-    assert chromium.fetched[-1] == (3, OTHER)

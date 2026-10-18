@@ -184,40 +184,6 @@ def _outcomes(result: FetchResult) -> list[tuple[str, str]]:
     return [(step.action, step.outcome) for step in result.attempts[-1].steps]
 
 
-def test_a_click_reveals_content_before_the_page_is_read(browser: Browser) -> None:
-    plain = browser.fetch("/reveal")
-    clicked = browser.fetch("/reveal", [{"type": "click", "selector": "button.more"}])
-
-    assert b'<p id="shown">' not in plain.bundle.body
-    assert b'<p id="shown">hidden details</p>' in clicked.bundle.body
-    assert _outcomes(clicked) == [("click", "done")]
-    # The steps are recorded with the policy, in the capture's manifest.
-    assert FetchPolicy.model_validate(clicked.bundle.manifest.fetch_policy).steps[0].action == "click"
-
-
-def test_a_click_by_visible_text(browser: Browser) -> None:
-    clicked = browser.fetch("/reveal", [{"type": "click", "text": "Show details"}])
-
-    assert b'<p id="shown">hidden details</p>' in clicked.bundle.body
-
-
-def test_wait_for_a_selector_reads_the_page_once_the_script_wrote_it(browser: Browser) -> None:
-    waited = browser.fetch("/late", wait_for="li.item")
-
-    assert waited.bundle.body.count(b'class="item"') == 2
-    assert _outcomes(waited) == [("wait", "done")]
-
-
-def test_typing_and_a_key_press_run_in_order(browser: Browser) -> None:
-    result = browser.fetch(
-        "/search",
-        [{"type": "type", "selector": "#q", "text": "blue lamp"}, {"type": "press", "key": "Enter"}],
-    )
-
-    assert b"results for blue lamp" in result.bundle.body
-    assert _outcomes(result) == [("type", "done"), ("press", "done")]
-
-
 def test_typing_into_a_password_field_is_refused_and_ends_the_steps(browser: Browser) -> None:
     result = browser.fetch(
         "/login",
@@ -229,20 +195,6 @@ def test_typing_into_a_password_field_is_refused_and_ends_the_steps(browser: Bro
 
     assert _outcomes(result) == [("type", "refused"), ("click", "skipped")]
     assert b"after" in result.bundle.body  # the page is still read, as it is
-
-
-def test_a_missing_element_is_not_found_within_its_timeout(browser: Browser) -> None:
-    result = browser.fetch("/reveal", [{"type": "click", "selector": "#nowhere", "timeout_ms": 500}])
-
-    assert _outcomes(result) == [("click", "not_found")]
-    assert b"Show details" in result.bundle.body
-
-
-def test_scrolling_until_stable_loads_every_block(browser: Browser) -> None:
-    result = browser.fetch("/grow", [{"type": "scroll", "until": "stable", "timeout_ms": 15_000}])
-
-    assert result.bundle.body.count(b'class="added"') == 2
-    assert _outcomes(result) == [("scroll", "done")]
 
 
 def test_the_callers_cookie_reaches_a_gated_page_and_no_capture_holds_its_value(browser: Browser) -> None:

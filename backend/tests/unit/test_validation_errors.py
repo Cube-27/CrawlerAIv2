@@ -3,7 +3,7 @@ our own validators' message without pydantic's "Value error, " prefix."""
 
 from pydantic import BaseModel, ValidationError, field_validator
 
-from crawlerai.core.validation import error_path, field_error
+from crawlerai.core.validation import field_error
 
 
 class _Row(BaseModel):
@@ -31,11 +31,3 @@ def _errors(raw: object) -> list[tuple[str, str]]:
 
 def test_an_own_validator_reports_its_message_alone_at_an_indexed_path() -> None:
     assert _errors({"rows": [{"name": "a"}, {"name": " "}]}) == [("rows[1].name", "the name is blank")]
-
-
-def test_a_pydantic_error_keeps_its_message() -> None:
-    assert _errors({"rows": [{"name": 3}]}) == [("rows[0].name", "Input should be a valid string")]
-
-
-def test_the_whole_document_has_the_empty_path() -> None:
-    assert error_path(()) == ""

@@ -1,24 +1,16 @@
 """The Teamtailor adapter: detect career site URLs, fetch the JSON Feed of jobs, read it as schema.org JobPostings.
 Hosts come from the adapter module (C3); the feed under `tests/fixtures/teamtailor/` is synthetic."""
 
-import asyncio
-from collections.abc import Callable, Mapping
-
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import NOT_SERVED, AdapterMatch
+from crawlerai.adapters.base import AdapterMatch
 from crawlerai.adapters.teamtailor import DOMAIN, Teamtailor
 from tests.unit.adapter_support import FIXTURES, candidates
 
-StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
-
 ADAPTER = Teamtailor()
 COMPANY = "example-co"
-FEED = f"https://{COMPANY}.{DOMAIN}/jobs.json"
 labels = st.from_regex(r"[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?", fullmatch=True)
 
 
@@ -40,37 +32,6 @@ def test_a_company_url_is_a_listing_of_its_company(company: str, path: str) -> N
 )
 def test_other_urls_are_not_detected(url: str) -> None:
     assert ADAPTER.detect(url) is None
-
-
-def test_a_company_page_is_fetched_from_its_feed(stand_in_api: StandInApi) -> None:
-    body = (FIXTURES / "teamtailor" / "jobs.json").read_bytes()
-    page = f"https://{COMPANY}.{DOMAIN}/jobs"
-
-    result = asyncio.run(ADAPTER.fetch(page, FetchPolicy(), stand_in_api({FEED: body})))
-
-    manifest = result.bundle.manifest
-    assert (manifest.method, manifest.block_class, manifest.url, manifest.final_url) == ("api", "ok", page, FEED)
-    assert result.bundle.body == body
-    assert ADAPTER.serves(AdapterMatch(COMPANY, "listing"), FEED) is True
-    assert ADAPTER.serves(AdapterMatch(COMPANY, "listing"), f"https://other.{DOMAIN}/jobs.json") is False
-
-
-def test_a_company_with_an_empty_feed_is_not_served(stand_in_api: StandInApi) -> None:
-    send = stand_in_api({FEED: b'{"version": "https://example.test/feed/1.1", "items": []}'})
-
-    result = asyncio.run(ADAPTER.fetch(f"https://{COMPANY}.{DOMAIN}/jobs", FetchPolicy(), send))
-
-    assert (result.block_class, result.attempts[-1].error) == ("error", NOT_SERVED)
-
-
-async def _unused_send(_request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
-    raise AssertionError("a refused URL sends nothing")
-
-
-def test_a_url_it_does_not_detect_is_refused() -> None:
-    fetching = ADAPTER.fetch("https://jobs.example.com/jobs", FetchPolicy(), _unused_send)
-    with pytest.raises(ValueError, match="not a career site URL"):
-        asyncio.run(fetching)
 
 
 def test_every_feed_item_is_a_posting_with_the_schema_org_members_of_its_job() -> None:

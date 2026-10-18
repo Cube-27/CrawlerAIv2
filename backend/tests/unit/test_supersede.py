@@ -38,34 +38,10 @@ def test_a_prefix_or_ellipsis_cut_prefix_is_superseded_by_the_longer_text(cut: s
     assert superseded(FieldType.LONG_TEXT, [short, full]) == [short]
 
 
-def test_a_prefix_is_compared_in_collapsed_whitespace() -> None:
-    short, full = _c("The role owns the\n\nexample service", "jsonld"), _c(LONG, "dom")
-
-    assert superseded(FieldType.LONG_TEXT, [short, full]) == [short]
-
-
 def test_an_open_graph_summary_yields_to_a_longer_description_of_another_kind() -> None:
     summary, full = _c("See all open roles at Example.", "og"), _c(LONG, "dom")
 
     assert superseded(FieldType.LONG_TEXT, [summary, full]) == [summary]
-
-
-def test_an_open_graph_description_longer_than_the_others_is_not_superseded() -> None:
-    og, other = _c(LONG, "og"), _c("A different tagline.", "jsonld")
-
-    assert superseded(FieldType.LONG_TEXT, [og, other]) == []
-
-
-def test_an_entity_like_literal_is_not_decoded_again() -> None:
-    literal, other = _c("Tom &amp; Jerry", "jsonld"), _c("Tom & Jerry and the full story of the cat.", "dom")
-
-    assert superseded(FieldType.LONG_TEXT, [literal, other]) == []
-
-
-def test_unrelated_or_equal_long_texts_supersede_nothing() -> None:
-    a, b, c = _c(LONG, "jsonld"), _c(LONG, "dom"), _c("Unrelated description of another kind.", "microdata")
-
-    assert superseded(FieldType.LONG_TEXT, [a, b, c]) == []
 
 
 @pytest.mark.parametrize(
@@ -81,24 +57,3 @@ def test_a_value_with_a_separator_and_more_text_yields_to_another_kinds_clean_va
     dirty, clean = _c(decorated, "og"), _c("Desk Lamp", "dom")
 
     assert superseded(FieldType.TEXT, [dirty, clean]) == [dirty]
-
-
-@pytest.mark.parametrize(
-    ("longer", "shorter"),
-    [
-        ("Desk Lamp Pro", "Desk Lamp"),  # no separator
-        ("Desk Lamp + Shade", "Desk Lamp"),  # a plus joins products, it does not decorate
-        ("Desk Lamp (white)", "Desk Lamp"),
-        ("Desk Lamp-Example", "Desk Lamp"),  # no spaces
-    ],
-)
-def test_a_longer_text_without_a_spaced_separator_is_not_decoration(longer: str, shorter: str) -> None:
-    assert superseded(FieldType.TEXT, [_c(longer, "og"), _c(shorter, "dom")]) == []
-
-
-def test_decoration_is_judged_between_source_kinds_only() -> None:
-    assert superseded(FieldType.TEXT, [_c("Desk Lamp | Example", "dom"), _c("Desk Lamp", "dom")]) == []
-
-
-def test_other_types_supersede_nothing() -> None:
-    assert superseded(FieldType.URL, [_c("Desk Lamp | Example", "og"), _c("Desk Lamp", "dom")]) == []

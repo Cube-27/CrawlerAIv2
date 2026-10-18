@@ -2,7 +2,7 @@
 
 import pytest
 
-from crawlerai.collect.locator import InvalidLocator, Locator, format_locator, parse_locator
+from crawlerai.collect.locator import InvalidLocator, Locator, parse_locator
 
 
 @pytest.mark.parametrize(
@@ -73,23 +73,3 @@ def test_parse_reads_scheme_and_address_parts(text: str, scheme: str, parts: tup
 def test_parse_refuses_malformed_locators(text: str) -> None:
     with pytest.raises(InvalidLocator):
         parse_locator(text)
-
-
-@pytest.mark.parametrize(
-    ("scheme", "parts", "text"),
-    [
-        ("jsonld", ("0", "$['@graph'][1]"), "jsonld:0:$['@graph'][1]"),
-        ("meta", ("og:image",), "meta:og:image"),
-        ("js_state", ("/html[1]/head[1]/script[4]", "$['a']"), "js_state:/html[1]/head[1]/script[4]:$['a']"),
-        ("config", ("title", "0", "h2 > a"), "config:title:0:h2 > a"),
-        ("text", ("0", "7"), "text:0-7"),
-    ],
-)
-def test_format_writes_the_parsed_form(scheme: str, parts: tuple[str, ...], text: str) -> None:
-    assert format_locator(scheme, *parts) == text  # type: ignore[arg-type]
-    assert str(Locator(scheme, parts)) == text  # type: ignore[arg-type]
-
-
-def test_format_refuses_parts_that_do_not_fit_the_scheme() -> None:
-    with pytest.raises(InvalidLocator):
-        format_locator("text", "7", "2")

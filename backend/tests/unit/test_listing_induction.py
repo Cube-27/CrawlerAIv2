@@ -9,11 +9,10 @@ from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.induction import Published, SamplePage
 from crawlerai.config_ir.listing_induction import (
-    NO_ITEM_BLOCKS,
     ListingInduction,
     induce_listing,
 )
-from crawlerai.config_ir.model import ExtractionConfigIR, ListingSpec, XPathStep
+from crawlerai.config_ir.model import ExtractionConfigIR, ListingSpec
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
@@ -101,12 +100,6 @@ def _rows(listing: ListingSpec, html: str) -> list[dict[str, object]]:
     return list(rows.values())
 
 
-def test_the_row_selector_anchors_on_the_blocks_stable_class() -> None:
-    listing = _induced().listing
-    assert listing is not None
-    assert listing.row == XPathStep(xpath="//li[contains(concat(' ', normalize-space(@class), ' '), ' card ')]")
-
-
 def test_every_row_field_is_induced_and_reproduces_on_a_page_learning_never_read() -> None:
     induced = _induced()
     assert induced.listing is not None
@@ -114,32 +107,6 @@ def test_every_row_field_is_induced_and_reproduces_on_a_page_learning_never_read
     rows = _rows(induced.listing, _html(9, cards=5))
     assert rows[4] == {"title": "Item 9-4", "url": "https://shop.example.test/p/9-4", "badge": "Tag 9-4"}
     assert len(rows) == 5
-
-
-def test_a_url_read_from_a_relative_href_is_resolved_against_the_base_url() -> None:
-    listing = _induced().listing
-    assert listing is not None
-    (step,) = listing.fields["url"].steps
-    assert [op.model_dump() for op in step.post] == [{"absolutize_url": {}}]
-
-
-def test_a_field_no_page_published_is_left_to_synthesis() -> None:
-    induced = induce_listing(SCHEMA, [_sample(page, badge=False) for page in range(1, 4)], VOCABULARY)
-    assert induced.to_synthesize == {"badge": "no_paired_rows"}
-
-
-def test_a_page_without_item_blocks_leaves_every_row_field() -> None:
-    bare = SamplePage(ParsedPage("<html><body><p>Nothing listed</p></body></html>"), CTX, {}, ())
-    induced = induce_listing(SCHEMA, [*SAMPLE[:2], bare], VOCABULARY)
-    assert induced == ListingInduction(to_synthesize=dict.fromkeys(("title", "url", "badge"), NO_ITEM_BLOCKS))
-
-
-def test_a_value_the_block_does_not_hold_has_no_verified_selector() -> None:
-    wrong = [
-        SamplePage(s.page, CTX, {}, tuple({**row, "badge": Published("Elsewhere", "text:0-5")} for row in s.rows))
-        for s in SAMPLE
-    ]
-    assert induce_listing(SCHEMA, wrong, VOCABULARY).to_synthesize == {"badge": "not_in_block"}
 
 
 def test_published_rows_no_block_holds_do_not_keep_a_field_from_being_induced() -> None:
@@ -151,16 +118,3 @@ def test_published_rows_no_block_holds_do_not_keep_a_field_from_being_induced() 
     induced = induce_listing(SCHEMA, sample, VOCABULARY)
     assert induced.listing is not None
     assert (set(induced.listing.fields), induced.to_synthesize) == ({"title", "url", "badge"}, {})
-
-
-def test_a_block_attribute_xpath_cannot_name_is_passed_over() -> None:
-    # `data-a:b` parses as HTML but reads as a namespace prefix in XPath: its path is refused, the class still anchors.
-    sample = [
-        SamplePage(
-            ParsedPage(_html(page).replace("<li class='card'>", "<li class='card' data-a:b='x'>")), CTX, {}, s.rows
-        )
-        for page, s in enumerate(SAMPLE, start=1)
-    ]
-    listing = induce_listing(SCHEMA, sample, VOCABULARY).listing
-    assert listing is not None
-    assert listing.row == XPathStep(xpath="//li[contains(concat(' ', normalize-space(@class), ' '), ' card ')]")

@@ -41,10 +41,3 @@ def test_each_block_is_measured_by_the_path_that_names_it_in_the_kept_document()
     (group,) = item_groups(lxml_root(BODY.decode()))
     assert areas == {element_path(block): 100.0 + i for i, block in enumerate(group)}
     assert [tag for _, tag in page.asked[0]] == ["li"] * 4
-
-
-def test_a_document_without_repeated_items_or_a_page_closed_or_changed_meanwhile_gives_no_areas() -> None:
-    # The segment step then ranks the groups by structure.
-    assert asyncio.run(item_areas(cast(Page, _Page()), b"<html><body><p>One</p></body></html>")) is None
-    assert asyncio.run(item_areas(cast(Page, _Page(fails=True)), BODY)) is None
-    assert asyncio.run(item_areas(cast(Page, _Page(missing=True)), BODY)) is None

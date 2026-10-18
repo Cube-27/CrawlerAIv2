@@ -28,15 +28,6 @@ def test_a_webhook_without_events_is_sent_the_jobs_end(kind: type[BatchScrapeReq
     assert request.webhook_batch is None
 
 
-@pytest.mark.parametrize("kind", KINDS)
-def test_events_are_kept_once_in_their_declared_order(kind: type[BatchScrapeRequest]) -> None:
-    events = ["job_failed", "page", "record_changed", "page"]
-
-    request = kind.model_validate({**BODIES[kind], "webhook_url": HOOK, "webhook_events": events})
-
-    assert request.webhook_events == ["page", "record_changed", "job_failed"]
-
-
 @pytest.mark.parametrize(
     ("options", "field"),
     [

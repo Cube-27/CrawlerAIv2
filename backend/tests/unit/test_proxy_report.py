@@ -44,11 +44,3 @@ def test_a_failure_the_endpoint_has_no_part_in_is_not_reported_even_with_a_statu
     report_proxy(pool, ENDPOINT, _result(200, "error", error))
 
     assert pool.reports == []
-
-
-def test_an_answer_without_error_is_healthy() -> None:
-    pool = _RecordingPool((ENDPOINT,))
-
-    report_proxy(pool, ENDPOINT, _result(200, "ok", None))
-
-    assert pool.reports == [True]

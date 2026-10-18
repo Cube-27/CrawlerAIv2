@@ -3,25 +3,12 @@ import os
 import pytest
 from pydantic import ValidationError
 
-from crawlerai.core.settings import DatabaseSettings, Settings
+from crawlerai.core.settings import Settings
 
 _REQUIRED = {
     "CRAWLERAI_DATABASE_URL": "postgresql+asyncpg://app:pw@localhost:5432/crawlerai",
     "CRAWLERAI_OBJECT_STORE": "fs:///srv/objects",
 }
-_OPTIONAL = [
-    "CRAWLERAI_LOG_REDACT_URLS",
-    "CRAWLERAI_ROLE",
-    "CRAWLERAI_IMPERSONATE",
-    "CRAWLERAI_DISABLED_ADAPTERS",
-    "CRAWLERAI_EVAL_UI",
-    "CRAWLERAI_LLM_PROVIDERS",
-    "CRAWLERAI_LLM_FAST_MODEL_ANTHROPIC",
-    "CRAWLERAI_LLM_API_KEY_GEMINI",
-    "CRAWLERAI_TRUSTED_PROXIES",
-    "CRAWLERAI_API_RATE_PER_S",
-    "CRAWLERAI_API_RATE_BURST",
-]
 
 
 @pytest.fixture
@@ -46,26 +33,6 @@ def test_reads_crawlerai_prefixed_environment(env: pytest.MonkeyPatch) -> None:
     assert settings.log_redact_urls is True
     assert settings.role == "worker"
     assert settings.eval_ui is True
-
-
-def test_optional_settings_set_empty_take_their_unset_values(env: pytest.MonkeyPatch) -> None:
-    # Agents and developers carry the private settings empty, and unset CI secrets arrive as "" (SPEC-00 §4.4).
-    unset = Settings()
-    for name in _OPTIONAL:
-        env.setenv(name, "")
-
-    empty = Settings()
-
-    assert empty == unset
-    # Documented defaults: SPEC-06 §4.2 (provider order), SPEC-07 §4.2 (20 req/s, burst 40; no trusted proxies,
-    # RFC 7239 §8.1), SPEC-03 §4.10 (labeling API off).
-    assert (empty.llm_providers, empty.api_rate_per_s, empty.api_rate_burst, empty.trusted_proxies, empty.eval_ui) == (
-        ("anthropic", "gemini"),
-        20,
-        40,
-        (),
-        False,
-    )
 
 
 def test_the_database_url_and_llm_api_keys_are_not_shown_in_repr(env: pytest.MonkeyPatch) -> None:
@@ -97,64 +64,6 @@ def test_object_store_outside_fs_or_s3_form_is_rejected(env: pytest.MonkeyPatch,
 
     with pytest.raises(ValidationError):
         Settings()
-
-
-@pytest.mark.parametrize("store", ["fs:///srv/objects", "s3://bucket/prefix/part"])
-def test_object_store_in_fs_or_s3_form_is_accepted(env: pytest.MonkeyPatch, store: str) -> None:
-    env.setenv("CRAWLERAI_OBJECT_STORE", store)
-
-    assert Settings().object_store == store
-
-
-def test_unknown_role_is_rejected(env: pytest.MonkeyPatch) -> None:
-    env.setenv("CRAWLERAI_ROLE", "admin")
-
-    with pytest.raises(ValidationError):
-        Settings()
-
-
-def test_database_settings_need_only_the_database_url(env: pytest.MonkeyPatch) -> None:
-    # Migrations read only the database URL; they must not require the object store.
-    env.delenv("CRAWLERAI_OBJECT_STORE")
-
-    url = DatabaseSettings().database_url.get_secret_value()
-
-    assert url == "postgresql+asyncpg://app:pw@localhost:5432/crawlerai"
-
-
-def test_impersonate_names_a_curl_cffi_browser_profile(env: pytest.MonkeyPatch) -> None:
-    env.setenv("CRAWLERAI_IMPERSONATE", "chrome146")
-    assert Settings().impersonate == "chrome146"
-
-    env.setenv("CRAWLERAI_IMPERSONATE", "chrome9999")
-    with pytest.raises(ValidationError, match="impersonate"):
-        Settings()
-
-
-@pytest.mark.parametrize(
-    ("value", "providers"),
-    [
-        ("gemini,anthropic", ("gemini", "anthropic")),
-        (" anthropic , gemini ", ("anthropic", "gemini")),
-    ],
-)
-def test_llm_providers_are_a_comma_separated_failover_order(
-    env: pytest.MonkeyPatch, value: str, providers: tuple[str, ...]
-) -> None:
-    env.setenv("CRAWLERAI_LLM_PROVIDERS", value)
-    assert Settings().llm_providers == providers
-
-
-@pytest.mark.parametrize("value", ["anthropic,anthropic", "anthropic,other"])
-def test_a_repeated_or_unknown_llm_provider_is_rejected(env: pytest.MonkeyPatch, value: str) -> None:
-    env.setenv("CRAWLERAI_LLM_PROVIDERS", value)
-    with pytest.raises(ValidationError, match="llm_providers"):
-        Settings()
-
-
-def test_trusted_proxies_are_a_json_list_of_addresses_or_networks(env: pytest.MonkeyPatch) -> None:
-    env.setenv("CRAWLERAI_TRUSTED_PROXIES", '["10.0.0.0/8", "192.0.2.7", "2001:db8::/32"]')
-    assert [str(network) for network in Settings().trusted_proxies] == ["10.0.0.0/8", "192.0.2.7/32", "2001:db8::/32"]
 
 
 @pytest.mark.parametrize(

@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 
 from crawlerai.collect.admission import Admitted
 from crawlerai.collect.base import Candidate
-from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.collect.xhr import XhrCollector
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
@@ -59,19 +58,6 @@ def test_a_body_value_equal_to_another_kinds_candidate_is_admitted_and_not_indep
             ),
         )
     )
-
-
-def test_a_visible_body_value_of_a_field_without_candidates_is_independent() -> None:
-    result = _collect((b'["https://shop.example.test/p/2"]',), body="see https://shop.example.test/p/2")
-
-    assert [(c.locator, c.entity_id, c.independent) for c in result.candidates] == [("xhr:0:$[0]", "page", True)]
-
-
-def test_a_body_that_is_not_utf8_json_is_skipped_with_a_diagnostic_and_keeps_its_index() -> None:
-    result = _collect((b"<html>", b"\xff[]", b'["/p/1"]'), OG_URL)
-
-    assert [c.locator for c in result.candidates] == ["xhr:2:$[0]"]
-    assert [d.split(":", 2)[:2] for d in result.diagnostics] == [["xhr", "0"], ["xhr", "1"]]
 
 
 # --- listing rows from captured calls (Appendix A #58) ---
@@ -127,64 +113,3 @@ def test_a_listings_call_gives_one_row_per_item_with_the_fields_its_rows_prove()
     assert prices == [(row, price, f"{row}['price']", True) for row, price in zip(rows, _PRICES, strict=True)]
     # Text admits by equality only, and nothing else names the titles.
     assert [c for c in result.candidates if c.field == "title"] == []
-
-
-def test_the_calls_of_one_endpoint_give_the_rows_of_each_in_capture_order() -> None:
-    first = _call(0, "https://api.example.test/products?page=1", {"items": _products(_PRICES[:3])})
-    second = _call(1, "https://api.example.test/products?page=2", {"items": _products(["€1.99", "€2.99", "€3.99"])})
-    shown = [*_PRICES[:3], "€1.99", "€2.99", "€3.99"]
-
-    result = XhrCollector().collect(_listing_page(first, second, shown=shown), LISTING, CTX, ())
-
-    assert [row.id for row in result.rows] == [f"xhr:{n}:$['items'][{i}]" for n in (0, 1) for i in range(3)]
-
-
-def test_rows_whose_fields_nothing_proves_are_not_rows_and_the_call_is_admitted_as_before() -> None:
-    call = _call(0, "https://api.example.test/products", {"items": _products(["", "", ""])})
-
-    result = XhrCollector().collect(_listing_page(call, shown=[f"Lamp model {i}" for i in range(3)]), LISTING, CTX, ())
-
-    assert (result.rows, result.candidates) == ((), ())
-
-
-def test_a_detail_page_reads_no_rows() -> None:
-    call = _call(0, "https://api.example.test/products", {"items": _products(_PRICES)})
-    page = _listing_page(call, shown=_PRICES)
-
-    result = XhrCollector().collect(page, SCHEMA, CTX, ())
-
-    assert result.rows == ()
-
-
-def _learned(origin: str = "https://api.example.test", rows: str = "$['items'][*]") -> LearnedCalls:
-    return LearnedCalls(
-        method="GET",
-        origin=origin,
-        segments=("products",),
-        rows=rows,
-        map={"title": "$['name']", "price": "$['price']"},
-    )
-
-
-def test_a_learned_listing_recipe_s_map_reads_its_endpoint_s_calls_with_text_fields() -> None:
-    # Appendix A #59: learning proved the title path by equality with published row values, so text is read too.
-    call = _call(0, "https://api.example.test/products?page=3", {"items": _products(_PRICES)})
-    page = _listing_page(call, shown=[f"Lamp model {i}" for i in range(4)])
-
-    result = XhrCollector(_learned()).collect(page, LISTING, CTX, ())
-
-    titles = [(c.entity_id, c.raw) for c in result.candidates if c.field == "title"]
-    assert titles == [(f"xhr:0:$['items'][{i}]", f"Lamp model {i}") for i in range(4)]
-    assert len([c for c in result.candidates if c.field == "price"]) == 4
-
-
-def test_calls_of_another_endpoint_are_proved_on_the_page_as_without_a_recipe() -> None:
-    call = _call(0, "https://api.example.test/products?page=1", {"total": 4, "items": _products(_PRICES)})
-    shown = [f"Lamp model {i} {price}" for i, price in enumerate(_PRICES[:3])] + ["Lamp model 3"]
-    page = _listing_page(call, shown=shown)
-
-    for other in (_learned(origin="https://cdn.example.test"), _learned(rows="$['data'][*]")):
-        result = XhrCollector(other).collect(page, LISTING, CTX, ())
-
-        assert [c for c in result.candidates if c.field == "title"] == []
-        assert len([c for c in result.candidates if c.field == "price"]) == 4

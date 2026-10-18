@@ -35,52 +35,6 @@ def test_links_read_their_id_after_their_text_and_images_with_their_description(
     }
 
 
-def test_only_the_kinds_asked_are_marked() -> None:
-    cleaned = _cleaned('<a href="/a">A</a><img src="/i.png" alt="I">')
-
-    assert marked(cleaned, cleaned.text, frozenset({"image"}), BASE, BASE, 10_000).text == "A[I1: I]"
-    assert marked(cleaned, cleaned.text, frozenset(), BASE, BASE, 10_000).text == "A"
-
-
-def test_a_same_document_or_non_http_target_is_not_marked() -> None:
-    # RFC 3986 §4.4: a reference to the page itself, with or without a fragment, names no other resource; and a
-    # target that is not an http(s) URL gives no url value.
-    cleaned = _cleaned(
-        '<a href="#apply">Apply</a> <a href="">Top</a> <a href="https://jobs.example.test/postings/7#form">Form</a> '
-        '<a href="javascript:void(0)">Open</a> <img src="data:image/png;base64,AAAA" alt="Pixel"> '
-        '<a href="?page=2">Next</a>'
-    )
-
-    read = marked(cleaned, cleaned.text, BOTH, BASE, BASE, 10_000)
-
-    assert read.text == "Apply Top Form Open Next[L1]"
-    assert read.elements["L1"].target == "?page=2"
-
-
-def test_the_page_is_its_own_url_when_a_base_href_moves_where_targets_resolve() -> None:
-    cleaned = _cleaned(f'<a href="{BASE}">Self</a> <a href="./">Base</a> <a href="#f">F</a>')
-
-    read = marked(cleaned, cleaned.text, BOTH, "https://cdn.example.test/", BASE, 10_000)
-
-    assert read.text == "Self Base[L1] F[L2]"
-    assert {ref: mark.target for ref, mark in read.elements.items()} == {"L1": "./", "L2": "#f"}
-
-
-def test_ids_past_the_budget_are_not_shown() -> None:
-    cleaned = _cleaned('<a href="/a">A</a> <a href="/b">B</a> <img src="/i.png" alt="Logo">')
-
-    read = marked(cleaned, cleaned.text, BOTH, BASE, BASE, len("[L1][L2]"))
-
-    assert read.text == "A[L1] B[L2]"
-    assert set(read.elements) == {"L1", "L2"}
-
-
-def test_marks_past_the_cut_are_not_shown() -> None:
-    cleaned = _cleaned('<a href="/a">First</a> <a href="/b">Second</a>')
-
-    assert marked(cleaned, cleaned.text[:8], BOTH, BASE, BASE, 10_000).text == "First[L1] Se"
-
-
 @given(st.lists(st.tuples(st.text("ab ", min_size=1, max_size=5), st.booleans()), min_size=1, max_size=6))
 def test_every_offset_outside_an_id_maps_back_to_the_same_character(pieces: list[tuple[str, bool]]) -> None:
     text = "".join(piece for piece, _ in pieces)

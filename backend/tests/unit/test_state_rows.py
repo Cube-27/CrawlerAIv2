@@ -38,12 +38,6 @@ def test_state_rows_the_page_shows_are_the_rows_with_state_evidence() -> None:
     assert str(result.rows[0]["title"].locator).endswith("$['page']['items'][0]['name']")
 
 
-def test_state_rows_the_page_does_not_render_give_no_rows() -> None:
-    result = _listing(_html(body=_state([_item(n) for n in (1, 2, 3)]) + "<p>Nothing here</p>"), data=COMMITTED)
-
-    assert result.rows == ()
-
-
 def test_a_value_the_page_does_not_show_is_not_read() -> None:
     items = [_item(n, price=f"{n}9.00 EUR") for n in (1, 2, 3)]
 

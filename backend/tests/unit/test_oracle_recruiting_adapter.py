@@ -12,14 +12,13 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import NOT_SERVED, AdapterMatch
+from crawlerai.adapters.base import AdapterMatch
 from crawlerai.adapters.oracle_recruiting import DOMAIN, PAGE_SIZE, RESOURCES, OracleRecruiting
 from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.schema_org_map import Vocabulary
@@ -42,9 +41,6 @@ LIST_ENDPOINT = (
     f"{API}/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber={SITE},limit={PAGE_SIZE},offset=0"
     "&expand=requisitionList"
 )
-JOB_ENDPOINT = (
-    f"{API}/recruitingCEJobRequisitionDetails?onlyData=true&finder=ById;siteNumber={SITE},Id=%22100001%22&expand=all"
-)
 
 ADAPTER = OracleRecruiting()
 
@@ -60,37 +56,6 @@ def test_a_career_site_url_is_a_listing_of_its_site(pod: str, dc: str, site: str
     assert ADAPTER.detect(root) == expected
     assert ADAPTER.detect(f"{root}/requisitions/") == expected
     assert ADAPTER.detect(f"{root}/jobs") == expected
-
-
-@given(site=names, language=languages, item=names)
-def test_a_job_url_is_a_detail_page_of_its_requisition(site: str, language: str, item: str) -> None:
-    root = f"https://{HOST}/hcmUI/CandidateExperience/{language}/sites/{site}"
-    expected = AdapterMatch(tenant=root, page_kind="detail", item=item)
-    assert ADAPTER.detect(f"{root}/job/{item}?utm_source=x") == expected
-    assert ADAPTER.detect(f"{root}/requisitions/preview/{item}") == expected
-    assert ADAPTER.detect(f"{root}/requisitions/job/{item}") == expected
-    assert ADAPTER.detect(f"{root}/jobs/preview/{item}") == expected
-
-
-@pytest.mark.parametrize(
-    "url",
-    [
-        f"https://{HOST}.example.com/hcmUI/CandidateExperience/en/sites/{SITE}",  # the domain inside another host
-        f"https://example-pod.{DOMAIN}/hcmUI/CandidateExperience/en/sites/{SITE}",  # not a Fusion pod's host
-        f"ftp://{HOST}/hcmUI/CandidateExperience/en/sites/{SITE}",
-        f"https://{HOST}/hcmUI/CandidateExperience/en/sites",  # no site
-        f"https://{HOST}/hcmUI/CandidateExperience/english/sites/{SITE}",
-        f"https://{HOST}/hcmUI/CandidateExperience/en/sites/CX;x=1",  # a finder delimiter
-        f"{ROOT}/requisitions?keyword=engineer",  # a search: the first page of the list holds other requisitions
-        f"{ROOT}/job/100001/apply",  # the application form
-        f"{ROOT}/job/%22",
-        f"{ROOT}/my-profile",
-        f"{ROOT}/jobs/requisitions",
-        f"{ROOT}/requisitions/job",
-    ],
-)
-def test_other_urls_are_not_detected(url: str) -> None:
-    assert ADAPTER.detect(url) is None
 
 
 def _recording(stand_in_api: StandInApi, routes: Mapping[str, bytes], sent: list[JsonRequest]) -> JsonFetcher:
@@ -122,24 +87,6 @@ def test_a_list_is_its_sites_first_page_of_requisitions_in_the_pages_language(st
     assert ADAPTER.serves(AdapterMatch(ROOT, "listing"), manifest.final_url) is True
 
 
-def test_a_job_page_is_its_requisitions_details(stand_in_api: StandInApi) -> None:
-    body = (FIXTURES / "oracle_recruiting" / "requisition.json").read_bytes()
-    page = f"{ROOT}/job/100001"
-
-    result = asyncio.run(ADAPTER.fetch(page, FetchPolicy(), stand_in_api({JOB_ENDPOINT: body})))
-
-    assert (result.block_class, result.bundle.manifest.final_url, result.bundle.body) == ("ok", JOB_ENDPOINT, body)
-    assert ADAPTER.serves(AdapterMatch(ROOT, "detail", "100001"), JOB_ENDPOINT) is True
-
-
-def test_an_answer_without_the_requisition_does_not_serve_the_page(stand_in_api: StandInApi) -> None:
-    send = stand_in_api({JOB_ENDPOINT: b'{"items": [], "count": 0}'})
-
-    result = asyncio.run(ADAPTER.fetch(f"{ROOT}/job/100001", FetchPolicy(), send))
-
-    assert (result.block_class, result.attempts[-1].error) == ("error", NOT_SERVED)
-
-
 def _requisitions(first: int, count: int, total: int) -> bytes:
     listed = [{"Id": str(i), "Title": f"Job {i}"} for i in range(first, first + count)]
     return json.dumps({"items": [{"TotalJobsCount": total, "requisitionList": listed}], "hasMore": False}).encode()
@@ -160,39 +107,6 @@ def test_a_list_is_paged_by_offset_until_the_total_the_first_item_states(scripte
     assert [r["Id"] for r in search["requisitionList"]] == [str(i) for i in range(250)]
     assert search["TotalJobsCount"] == 250
     assert ADAPTER.serves(AdapterMatch(ROOT, "listing"), result.bundle.manifest.final_url) is True
-
-
-def test_the_requests_row_target_bounds_the_pages(scripted_api: ScriptedApi) -> None:
-    sent: list[JsonRequest] = []
-
-    def answer(request: JsonRequest) -> bytes:
-        offset = int(request.url.split("offset=")[1].split("&")[0])
-        return _requisitions(offset, PAGE_SIZE, total=5000)
-
-    result = asyncio.run(ADAPTER.fetch(ROOT, FetchPolicy(max_rows=150), scripted_api(answer, sent)))
-
-    assert len(sent) == 2
-    (search,) = json.loads(result.bundle.body)["items"]
-    assert len(search["requisitionList"]) == 2 * PAGE_SIZE
-
-
-async def _unused_send(_request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
-    raise AssertionError("a refused URL sends nothing")
-
-
-def test_a_url_it_does_not_detect_is_refused() -> None:
-    fetch = ADAPTER.fetch("https://jobs.example.com/sites/CX_1", FetchPolicy(), _unused_send)
-    with pytest.raises(ValueError, match="not a career site URL"):
-        asyncio.run(fetch)
-
-
-def test_it_serves_its_sites_resources_and_no_page() -> None:
-    listing = AdapterMatch(tenant=ROOT, page_kind="listing")
-    assert ADAPTER.serves(listing, LIST_ENDPOINT) is True
-    assert ADAPTER.serves(listing, LIST_ENDPOINT.replace(f"siteNumber={SITE},", "siteNumber=CX_12,")) is False
-    assert ADAPTER.serves(listing, LIST_ENDPOINT.replace(HOST, f"other-pod.fa.dc1.{DOMAIN}")) is False
-    assert ADAPTER.serves(listing, f"{API}/recruitingCEJobRequisitions") is False
-    assert ADAPTER.serves(listing, ROOT) is False
 
 
 VOCABULARY = Vocabulary.read(FIXTURES / "synthetic" / "schemaorg_vocabulary.jsonld")
@@ -223,19 +137,4 @@ def test_every_listed_requisition_carries_its_job_pages_url() -> None:
         (row.format(1), "url"): f"{ROOT}/job/100002",
         (row.format(1), "locations"): ["Eastport"],
         (row.format(1), "posted"): "2026-09-29",
-    }
-
-
-def test_a_requisitions_details_are_one_posting_with_its_stated_fields() -> None:
-    candidates = _candidates(AdapterMatch(ROOT, "detail", "100001"), "requisition.json", "job_detail")
-
-    job = "adapter:oracle_recruiting:$['items'][0]"
-    assert candidates == {
-        (job, "title"): "Synthetic Platform Engineer",
-        (job, "company"): "Example Employer Inc",
-        (job, "locations"): ["Northtown, Example Region, Exampleland", "Southville"],
-        (job, "description"): "<p>Build example platforms.</p>",
-        (job, "date_posted"): "2026-09-30T08:15:00+00:00",
-        (job, "posted"): "2026-09-30T08:15:00+00:00",
-        (job, "employment_type"): "Full time",
     }

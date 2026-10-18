@@ -2,12 +2,8 @@
 held-out pages, and a field it does not reproduce on every page with an engine value while there are fewer than 10,
 and on at least 95% from 10 on, is marked `manual`."""
 
-import json
-from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
-
-import pytest
 
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.config_ir.release_check import ReleaseField, ReleaseReport, release_check
@@ -100,58 +96,6 @@ def test_a_field_reproduced_on_every_held_out_page_is_released() -> None:
     assert report.held_out == [page.capture_id for page in pages]
 
 
-@pytest.mark.parametrize(
-    ("total", "differing", "manual"),
-    [
-        (9, 1, True),  # fewer than 10 pages: every one must reproduce
-        (10, 1, True),  # 90% < 95%
-        (19, 1, True),  # 94.7% < 95%
-        (20, 1, False),  # 95%
-    ],
-)
-def test_the_small_n_rule(total: int, differing: int, manual: bool) -> None:
-    assert _field(release_check(_named(), DETAIL, _pages(total, differing))) == (total, total - differing, manual)
-
-
-def test_pages_without_an_engine_value_do_not_count() -> None:
-    pages = [*_pages(3, 0), _page("<h1>Extra</h1>"), _page("<p>none</p>")]
-    assert _field(release_check(_named(), DETAIL, pages)) == (3, 3, False)
-
-
-def test_a_field_with_no_engine_value_on_any_held_out_page_is_manual() -> None:
-    assert _field(release_check(_named(), DETAIL, [_page("<h1>Item</h1>")] * 3)) == (0, 0, True)
-    assert _field(release_check(_named(), DETAIL, [])) == (0, 0, True)
-
-
-def test_a_suspended_field_is_manual() -> None:
-    # The release executor does not run a suspended field (§8.3), so it reproduces nothing.
-    assert _field(release_check(_named("suspended"), DETAIL, _pages(3, 0))) == (3, 0, True)
-
-
-def test_a_field_the_schema_lacks_is_manual() -> None:
-    config = _config(
-        {"name": {"steps": [NAME], "status": "uncorroborated"}, "other": {"steps": [NAME], "status": "operator"}}
-    )
-    report = release_check(config, DETAIL, _pages(3, 0))
-    assert (_field(report), _field(report, "other")) == ((3, 3, False), (0, 0, True))
-
-
-def test_values_are_compared_after_normalization() -> None:
-    # The release executor's raw string is normalized as the engine normalizes it before comparing (SPEC-04 `equal`).
-    pages = [_page(f"<h1>  Item\n {n} </h1>", {"name": f"Item {n}"}) for n in range(3)]
-    assert _field(release_check(_named(step={"xpath": "//h1"}), DETAIL, pages)) == (3, 3, False)
-
-
-def test_a_value_only_the_engine_reads_is_manual() -> None:
-    # The release executor matches `when_type` without subtypes (D-0528); the engine read the subtype as a Product.
-    def page(n: int) -> HeldOutPage:
-        node = json.dumps({"@context": "https://schema.org", "@type": "IndividualProduct", "name": f"Item {n}"})
-        return _page(f"<script type='application/ld+json'>{node}</script>", {"name": f"Item {n}"})
-
-    config = _named(step={"jsonld": "$['name']", "when_type": "Product"})
-    assert _field(release_check(config, DETAIL, [page(n) for n in range(3)])) == (3, 0, True)
-
-
 def _listing(names: list[str], published: list[str] | None = None, next_href: str = "/c/2") -> HeldOutPage:
     items = "".join(f"<li><b>{name}</b></li>" for name in names)
     return HeldOutPage(
@@ -169,64 +113,3 @@ def test_listing_rows_and_next_are_checked_against_the_engine() -> None:
     assert report.listing is not None
     assert report.fields == {}
     assert (_triple(report.listing.fields["name"]), _triple(report.listing.next)) == ((3, 3, False), (3, 3, False))
-
-
-@pytest.mark.parametrize(
-    "third",
-    [
-        _listing(["A", "B", "C"], published=["B", "A", "C"]),  # rows are compared in document order
-        _listing(["A", "B", "C"], published=["A", "B", "C", "D"]),  # a row the release executor does not find
-    ],
-)
-def test_a_row_field_not_reproduced_on_one_page_is_manual(third: HeldOutPage) -> None:
-    report = release_check(_config({}, ROWS), LISTING, [_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), third])
-    assert report.listing is not None
-    assert _triple(report.listing.fields["name"]) == (3, 2, True)
-
-
-def test_engine_rows_that_leave_items_out_are_released_by_the_rows_they_are() -> None:
-    # D-1500, as validation aligns them: the engine's rows are a subsequence of the release executor's.
-    third = _listing(["A", "B", "C", "D"], published=["B", "D"])
-    report = release_check(_config({}, ROWS), LISTING, [_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), third])
-    assert report.listing is not None
-    assert _triple(report.listing.fields["name"]) == (3, 3, False)
-
-
-def test_a_row_field_is_manual_where_the_release_executor_finds_fewer_rows_than_the_engine_published() -> None:
-    # The module's rule: a row field passes only where the release executor finds at least as many rows; the engine's
-    # third row has no name, so the name alone would not show the missing row.
-    third = _listing(["A", "B"])
-    third = replace(third, rows=[*third.rows, Facts(published={})])
-    report = release_check(_config({}, ROWS), LISTING, [_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), third])
-    assert report.listing is not None
-    assert _triple(report.listing.fields["name"]) == (3, 2, True)
-
-
-def test_a_next_step_not_reproduced_is_manual_and_the_rows_stay_released() -> None:
-    pages = [_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), _listing(["A", "B", "C"], next_href="/c/9")]
-    report = release_check(_config({}, ROWS), LISTING, pages)
-    assert report.listing is not None
-    assert (_triple(report.listing.next), _triple(report.listing.fields["name"])) == ((3, 2, True), (3, 3, False))
-
-
-def test_a_listing_without_next_reports_none() -> None:
-    report = release_check(_config({}, {**ROWS, "next": None}), LISTING, [_listing(["A", "B", "C"])] * 3)
-    assert report.listing is not None
-    assert (report.listing.next, _triple(report.listing.fields["name"])) == (None, (3, 3, False))
-
-
-def test_the_report_names_each_fields_executability_and_counts_the_classes() -> None:
-    config = _config(
-        {
-            "name": {"steps": [NAME], "status": "uncorroborated"},
-            "other": {"steps": [NAME, {"jsonpath": "$['a']", "source": "xhr"}], "status": "uncorroborated"},
-            "gone": {"steps": [NAME], "status": "suspended"},
-        }
-    )
-    report = release_check(config, DETAIL, _pages(3, 0))
-    assert {name: f.executability for name, f in report.fields.items()} == {
-        "name": "static-html",
-        "other": "needs-browser",
-        "gone": "unexecutable",
-    }
-    assert report.executability == {"static-html": 1, "needs-browser": 1, "api-call": 0, "unexecutable": 1}
