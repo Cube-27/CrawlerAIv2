@@ -88,10 +88,16 @@ class Filled:
 
 @dataclass(frozen=True, slots=True)
 class FilledListing(Filled):
-    """A listing call's `Filled`, with the entity of each row that proposed a value, in page order. `candidates`
-    holds the page fields' (owned by the page entity) and every row's (owned by its row)."""
+    """A listing's `Filled`, with the entity of each row that proposed a value, in page order. `candidates` holds the
+    page fields' (owned by the page entity) and every row's (owned by its row). `reply` is the first call's; `more`
+    are the replies of the calls over the items after it (D-1496), each charged too."""
 
     rows: tuple[Entity, ...]
+    more: tuple[LLMResponse | LLMFailure, ...] = ()
+
+    @property
+    def replies(self) -> tuple[LLMResponse | LLMFailure, ...]:
+        return (self.reply, *self.more)
 
 
 def output_schema(fields: Sequence[str]) -> dict[str, JsonValue]:
@@ -201,12 +207,38 @@ async def extract_listing(
 ) -> FilledListing:
     """Role C's rows of a listing, and the page entity's candidates for `page_fields`, from the cleaned `text`, or from
     a view of it (`content.item_text`, D-1478): the model reads the view, and each span it grounds there is located in
-    the cleaned text; a view holds no more items than their rows' claims fit the reply. A row whose every value is null
-    or dropped is no row. `row_fields` is not empty: with none there are no rows to ask for, so callers ask for the page
-    fields with `extract_detail`."""
-    view, notes = _fitted(text, len(row_fields)) if isinstance(text, TextView) else (TextView.whole(text), ())
-    read, cut = _cut(view.text, LISTING_MAX_CHARS)
-    notes = (*notes, *cut)
+    the cleaned text. A view's items are read in calls of as many items as their rows' claims fit the reply, one after
+    the other, up to `LISTING_MAX_ROWS` items (D-1496); the first call asks the page fields too, and a call without a
+    valid reply ends the reading with the rows read so far. A row whose every value is null or dropped is no row.
+    `row_fields` is not empty: with none there are no rows to ask for, so callers ask for the page fields with
+    `extract_detail`."""
+    views, notes = _chunks(text, len(row_fields)) if isinstance(text, TextView) else ((TextView.whole(text),), ())
+    first = await _listing_call(client, views[0], row_fields, page_fields, ctx, job_id, kind, 0)
+    candidates, rows, diagnostics = list(first.candidates), list(first.rows), [*notes, *first.diagnostics]
+    more: list[LLMResponse | LLMFailure] = []
+    for view in views[1:] if isinstance(first.reply, LLMResponse) else ():
+        filled = await _listing_call(client, view, row_fields, {}, ctx, job_id, kind, _next_position(first, more))
+        candidates.extend(filled.candidates)
+        rows.extend(filled.rows)
+        diagnostics.extend(filled.diagnostics)
+        more.append(filled.reply)
+        if not isinstance(filled.reply, LLMResponse):
+            break
+    return FilledListing(tuple(candidates), first.reply, tuple(diagnostics), tuple(rows), tuple(more))
+
+
+async def _listing_call(
+    client: LLMClient,
+    view: TextView,
+    row_fields: Mapping[str, FieldSpec],
+    page_fields: Mapping[str, FieldSpec],
+    ctx: Context,
+    job_id: JobId | None,
+    kind: PromptKind,
+    start: int,
+) -> FilledListing:
+    """One listing call over `view`, its rows numbered from `start`."""
+    read, notes = _cut(view.text, LISTING_MAX_CHARS)
     request = listing_request(read, row_fields, page_fields, page_url=ctx.page_url, job_id=job_id, kind=kind)
     try:
         response = await client.complete_json(request)
@@ -214,7 +246,12 @@ async def extract_listing(
         return FilledListing((), failure, (*notes, _failed(failure)), ())
     # As for a detail page, reading the reply runs in a thread.
     seen = TextView(read, view.pieces)
-    return await asyncio.to_thread(_read_listing, response, row_fields, page_fields, seen, ctx, notes)
+    return await asyncio.to_thread(_read_listing, response, row_fields, page_fields, seen, ctx, notes, start)
+
+
+def _next_position(first: FilledListing, more: Sequence[LLMResponse | LLMFailure]) -> int:
+    """The position the next call's first row takes: after every row the answered calls replied with."""
+    return sum(len(cast(list[JsonValue], r.data["rows"])) for r in (first.reply, *more) if isinstance(r, LLMResponse))
 
 
 def _read_listing(
@@ -224,6 +261,7 @@ def _read_listing(
     read: TextView,
     ctx: Context,
     notes: tuple[str, ...],
+    start: int = 0,
 ) -> FilledListing:
     replies = cast(list[JsonValue], response.data["rows"])  # the client checked it against the output schema
     if len(replies) > LISTING_MAX_ROWS:
@@ -232,7 +270,7 @@ def _read_listing(
     rows_reader = _Reader(row_fields, read.text, ctx, read)
     candidates, dropped, rows = list(page.candidates), list(page.dropped), list[Entity]()
     last = -1  # the item the previous row was placed in
-    for position, reply in enumerate(replies[:LISTING_MAX_ROWS]):
+    for position, reply in enumerate(replies[:LISTING_MAX_ROWS], start=start):
         entity = row_entity(position)
         claims = _claims_of(reply)
         item = _item_of(claims, read, last)
@@ -281,13 +319,15 @@ def _failed(failure: LLMFailure) -> str:
     return f"role C: {failure.field_reason}" + ("" if cause is None else f" ({cause})")
 
 
-def _fitted(view: TextView, row_fields: int) -> tuple[TextView, tuple[str, ...]]:
-    """The view's first items whose rows' claims fit the reply's token cap, and the diagnostic that records a cut."""
-    rows = min(LISTING_MAX_ROWS, LISTING_MAX_OUTPUT_TOKENS // (max(row_fields, 1) * ROW_CLAIM_TOKENS))
-    fitted = view.first(rows)
-    if len(fitted.pieces) == len(view.pieces):
-        return view, ()
-    return fitted, (f"role C read the first {rows} of {len(view.pieces)} items",)
+def _chunks(view: TextView, row_fields: int) -> tuple[tuple[TextView, ...], tuple[str, ...]]:
+    """The view's items in runs of as many as their rows' claims fit the reply's token cap, up to `LISTING_MAX_ROWS`
+    items in all, and the diagnostic that records items left unread."""
+    per = max(1, min(LISTING_MAX_ROWS, LISTING_MAX_OUTPUT_TOKENS // (max(row_fields, 1) * ROW_CLAIM_TOKENS)))
+    count = min(len(view.pieces), LISTING_MAX_ROWS)
+    chunks = tuple(view.slice(at, min(at + per, count)) for at in range(0, count, per))
+    if count == len(view.pieces):
+        return chunks, ()
+    return chunks, (f"role C read the first {count} of {len(view.pieces)} items",)
 
 
 def _cut(text: str, limit: int) -> tuple[str, tuple[str, ...]]:

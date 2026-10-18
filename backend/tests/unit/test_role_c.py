@@ -631,19 +631,72 @@ def test_a_row_value_found_only_in_another_item_is_left_out() -> None:
     assert filled.diagnostics == ("role C: rows[0].sku outside its item",)
 
 
-def test_a_view_holds_no_more_items_than_their_claims_fit_the_reply() -> None:
-    cards = "".join(f'<li class="c"><a href="/p/{n}">Item {n}</a><span>{n}</span></li>' for n in range(1, 151))
+def _cards(count: int) -> TextView:
+    cards = "".join(f'<li class="c"><a href="/p/{n}">Item {n}</a><p>{n} EUR</p></li>' for n in range(1, count + 1))
     view = item_text(ParsedPage(f"<html><body><main><ul>{cards}</ul></main></body></html>"))
     assert view is not None
-    client = ScriptedClient(rows_reply(heading=None))
-    fields = dict.fromkeys(("a", "b", "c", "d"), ROW_SPECS["title"])
+    return view
 
-    filled = asyncio.run(extract_listing(client, view, fields, PAGE_SPECS, CTX, job_id=JOB))
 
-    rows = LISTING_MAX_OUTPUT_TOKENS // (4 * ROW_CLAIM_TOKENS)
-    assert filled.diagnostics == (f"role C read the first {rows} of 150 items",)
-    assert f"Item {rows}" in client.requests[0].user
-    assert f"Item {rows + 1}" not in client.requests[0].user
+FOUR_FIELDS = dict.fromkeys(("a", "b", "c", "d"), ROW_SPECS["title"])
+PER_CALL = LISTING_MAX_OUTPUT_TOKENS // (4 * ROW_CLAIM_TOKENS)
+
+
+def _first_item_row(view_text: str) -> dict[str, JsonValue]:
+    item = view_text.split("\n")[0]
+    return {"rows": [claims(dict.fromkeys(FOUR_FIELDS, span(item, 0)))]}
+
+
+def test_a_long_listings_items_are_read_in_calls_whose_rows_fit_the_reply() -> None:
+    # D-1496: each call reads as many items as their claims fit the reply; the next call reads the items after them.
+    view = _cards(100)
+    chunks = [view.slice(at, at + PER_CALL) for at in range(0, 100, PER_CALL)]
+    client = ScriptedClient(
+        *(
+            _first_item_row(chunk.text) | ({"page": claims({"heading": None})} if n == 0 else {})
+            for n, chunk in enumerate(chunks)
+        )
+    )
+
+    filled = asyncio.run(extract_listing(client, view, FOUR_FIELDS, PAGE_SPECS, CTX, job_id=JOB))
+
+    assert len(client.requests) == len(chunks) == -(-100 // PER_CALL)
+    assert ["Page fields" in r.user for r in client.requests] == [True] + [False] * (len(chunks) - 1)
+    assert f"Item {PER_CALL}\n" in client.requests[0].user
+    assert f"Item {PER_CALL + 1}\n" not in client.requests[0].user
+    assert f"<page_text>\nItem {PER_CALL + 1}\n" in client.requests[1].user
+    assert [row.id for row in filled.rows] == [f"llm:rows[{n}]" for n in range(len(chunks))]
+    starts = {c.entity_id: int(c.locator.removeprefix("text:").split("-")[0]) for c in filled.candidates}
+    assert [starts[f"llm:rows[{n}]"] for n in range(len(chunks))] == [
+        view.pieces[n * PER_CALL].start for n in range(len(chunks))
+    ]
+    assert len(filled.replies) == len(chunks)
+    assert filled.diagnostics == ()
+
+
+def test_a_listing_reads_at_most_the_row_cap_of_items_and_records_the_rest() -> None:
+    view = _cards(LISTING_MAX_ROWS + 10)
+    calls = -(-LISTING_MAX_ROWS // PER_CALL)
+    client = ScriptedClient(rows_reply(heading=None), *({"rows": []} for _ in range(calls - 1)))
+
+    filled = asyncio.run(extract_listing(client, view, FOUR_FIELDS, PAGE_SPECS, CTX, job_id=JOB))
+
+    assert len(client.requests) == calls
+    assert f"Item {LISTING_MAX_ROWS}\n" in client.requests[-1].user
+    assert filled.diagnostics == (f"role C read the first {LISTING_MAX_ROWS} of {LISTING_MAX_ROWS + 10} items",)
+
+
+def test_a_later_call_without_a_valid_reply_keeps_the_rows_read_before_it() -> None:
+    view = _cards(PER_CALL * 3)
+    failure = ProviderUnavailable("fake: 503")
+    client = ScriptedClient(_first_item_row(view.text) | {"page": claims({"heading": None})}, failure)
+
+    filled = asyncio.run(extract_listing(client, view, FOUR_FIELDS, PAGE_SPECS, CTX, job_id=JOB))
+
+    assert len(client.requests) == 2
+    assert [row.id for row in filled.rows] == ["llm:rows[0]"]
+    assert filled.replies[1] is failure
+    assert filled.diagnostics == ("role C: llm_unavailable (fake: 503)",)
 
 
 def test_the_listing_hook_reads_the_items_text_of_a_page_that_shows_item_blocks() -> None:
@@ -654,3 +707,17 @@ def test_the_listing_hook_reads_the_items_text_of_a_page_that_shows_item_blocks(
     asyncio.run(role_c(client, job_id=JOB).listing(request))
 
     assert f"<page_text>\n{_view().text}\n</page_text>" in client.requests[0].user
+
+
+def test_the_listing_hook_records_every_call_of_a_long_listing() -> None:
+    cards = "".join(f'<li class="c"><a href="/p/{n}">Item {n}</a><p>{n} EUR</p></li>' for n in range(1, 101))
+    page = ParsedPage(f"<html><body><main><ul>{cards}</ul></main></body></html>")
+    schema = SCHEMA.model_copy(update={"page_kind": "listing", "fields": FOUR_FIELDS})
+    calls = -(-100 // PER_CALL)
+    client = ScriptedClient(*({"rows": []} for _ in range(calls)))
+    request = ListingGapRequest(page, schema, CTX, tuple(FOUR_FIELDS), ())
+
+    answer = asyncio.run(role_c(client, job_id=JOB).listing(request))
+
+    assert [call.request_hash for call in answer.llm_calls] == [request_hash(r) for r in client.requests]
+    assert len(answer.llm_calls) == calls

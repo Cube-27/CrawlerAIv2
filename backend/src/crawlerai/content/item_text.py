@@ -42,12 +42,14 @@ class TextView:
     def whole(cls, text: str) -> "TextView":
         return cls(text, (Piece(0, 0, len(text)),))
 
-    def first(self, count: int) -> "TextView":
-        """The view of the first `count` pieces."""
-        if count >= len(self.pieces):
+    def slice(self, start: int, end: int) -> "TextView":
+        """The view of pieces `start` to `end` (excluded), its text starting at the first of them."""
+        if start == 0 and end >= len(self.pieces):
             return self
-        kept = self.pieces[:count]
-        return TextView(self.text[: kept[-1].at + kept[-1].length], kept)
+        kept = self.pieces[start:end]
+        shift = kept[0].at
+        pieces = tuple(Piece(piece.at - shift, piece.start, piece.length) for piece in kept)
+        return TextView(self.text[shift : kept[-1].at + kept[-1].length], pieces)
 
     def piece_text(self, index: int) -> str:
         """The text of the view's piece `index` (cut short when the view's text was cut)."""
