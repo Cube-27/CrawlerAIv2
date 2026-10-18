@@ -213,9 +213,27 @@ def test_a_spec_of_another_type_is_a_programming_error(type_: FieldType) -> None
         ("https://cdn.example.test/i/a.jpg", "https://img.example.test/i/a.jpg", False),
         # RFC 3986 §3.2-§3.3: the authority and path name the resource; http and https only reach it.
         ("http://cdn.example.test/i/a.jpg", "https://cdn.example.test/i/a.jpg?w=1", True),
+        # A size the path states (a `<w>x<h>` segment, or a name suffix) only picks the rendition.
+        ("https://cdn.example.test/300x200/i/a.jpg", "https://cdn.example.test/i/a.jpg", True),
+        ("https://cdn.example.test/i/a-300x200.jpg", "https://cdn.example.test/i/a_64x64.jpg", True),
+        ("https://cdn.example.test/i/a-300x200.jpg", "https://cdn.example.test/i/b-300x200.jpg", False),
+        ("https://cdn.example.test/i/a-300x200.jpg", "https://cdn.example.test/i/a-300x200.png", False),
+        ("https://cdn.example.test/i/a300x200.jpg", "https://cdn.example.test/i/a.jpg", False),
+        ("https://cdn.example.test/i/300x200", "https://cdn.example.test/i", True),
+        ("https://cdn.example.test/i/a_1024x.png?v=1", "https://cdn.example.test/i/a_1200x1200.png?v=1", True),
+        ("https://cdn.example.test/i/a@2x.png", "https://cdn.example.test/i/a.png", True),
+        (
+            "https://cdn.example.test/m/a.jpg/fit/w_50,h_50,q_90/f.jpg",
+            "https://cdn.example.test/m/a.jpg/fit/w_500/f.jpg",
+            True,
+        ),
+        ("https://cdn.example.test/i/a.jpeg.webp", "https://cdn.example.test/i/a.jpeg", True),
+        ("https://cdn.example.test/i/a.jpeg.webp", "https://cdn.example.test/i/a.png", False),
+        ("https://cdn.example.test/i/Ab3=s220-c", "https://cdn.example.test/i/Ab3", True),
+        ("https://cdn.example.test/i/Ab3=s220-c", "https://cdn.example.test/i/Ab4", False),
     ],
 )
-def test_the_resource_key_ignores_only_the_scheme_and_the_query(a: str, b: str, same: bool) -> None:
+def test_the_resource_key_ignores_only_the_scheme_the_query_and_a_stated_size(a: str, b: str, same: bool) -> None:
     key_a, key_b = url.resource_key(a), url.resource_key(b)
 
     assert key_a is not None

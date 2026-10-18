@@ -76,7 +76,23 @@ def resource_key(value: JsonValue) -> Hashable | None:
     if not isinstance(url, Ok) or not isinstance(url.value, str):
         return None
     parts = urlsplit(url.value)
-    return ("resource", parts.netloc, parts.path)
+    return ("resource", parts.netloc, _without_dimensions(parts.path))
+
+
+# What an image path states about the rendition it serves, not the file: a whole segment `<width>x<height>` or a list
+# of `<letter>_<number>` transform pairs (`w_300,h_200`); a size closing the file's name before its extension
+# (`name-300x200.ext`, `name_1024x.ext`, `name@2x.ext`); a format conversion appended as a second extension
+# (`name.jpg.webp`); a trailing `=<options>` on the last segment.
+_SEGMENT = re.compile(r"\d+x\d+|[a-z]+_\d+(?:,[a-z]+_\d+)*", re.IGNORECASE)
+_SIZE_SUFFIX = re.compile(r"(?<=[^/])[-_@](?:\d+x\d*|x\d+)(?=\.[^./]+$)", re.IGNORECASE)
+_CONVERSION = re.compile(r"(\.[a-z0-9]{2,5})\.[a-z0-9]{2,5}$", re.IGNORECASE)
+_OPTIONS = re.compile(r"(?<=[^/=])=[\w,-]+$")
+
+
+def _without_dimensions(path: str) -> str:
+    kept = [segment for segment in path.split("/") if not _SEGMENT.fullmatch(segment)]
+    stripped = _OPTIONS.sub("", "/".join(kept))
+    return _CONVERSION.sub(r"\1", _SIZE_SUFFIX.sub("", stripped))
 
 
 def is_absolute(raw: Raw) -> bool:

@@ -198,6 +198,30 @@ def test_the_first_ranked_source_kind_wins_and_lower_ones_that_disagree_are_reje
     assert result["title"] == Chosen(jsonld, (og_same,), ((og, "precedence"),), (og, jsonld, og_same))
 
 
+DOM_ORDER: tuple[SourceKind, ...] = ("jsonld", "og", "dom")
+BODY = FieldSpec(type=FieldType.LONG_TEXT, description="d", schema_org="Product.description")
+FULL_BODY = "The lamp has a steel base and a linen shade. It ships flat, assembles in a minute and takes any bulb."
+
+
+def test_a_truncated_value_and_a_short_summary_yield_to_the_full_text_of_a_lower_kind() -> None:
+    cut = _candidate("body", FULL_BODY[:45] + "\u2026")
+    summary = _candidate("body", "Buy lamps at Example Shop.", PAGE, "og")
+    full = _candidate("body", FULL_BODY, PAGE, "dom")
+
+    result = _prefer(_schema(body=BODY), cut, summary, full, orders=dict.fromkeys(PRECEDENCE_TYPES, DOM_ORDER))
+
+    assert result["body"] == Chosen(full, (), ((cut, "precedence"), (summary, "precedence")), (cut, summary, full))
+
+
+def test_a_decorated_title_yields_to_another_kinds_clean_one_and_both_stay_kept() -> None:
+    decorated = _candidate("title", "Desk Lamp | Example Shop")
+    clean = _candidate("title", "Desk Lamp", PAGE, "dom")
+
+    result = _prefer(_schema(title=TITLE), decorated, clean, orders=dict.fromkeys(PRECEDENCE_TYPES, DOM_ORDER))
+
+    assert result["title"] == Chosen(clean, (), ((decorated, "precedence"),), (decorated, clean))
+
+
 def test_the_order_is_the_types_own() -> None:
     resolver = _resolver(orders={**ORDERS, FieldType.TEXT: ("og", "jsonld")})
     og = _candidate("title", "Lamp, the shop", PAGE, "og")

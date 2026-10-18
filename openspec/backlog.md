@@ -39,6 +39,7 @@ Agents can't do these.
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
 - Bot review findings left for phase 2 (#277): item groups ranked by summed evidence (a large image-only gallery outranks a smaller grid: `content/segment.rank`, whose first group feeds markdown and render need; the align step orders groups by fields aligned); `resolve/pipeline` holders miss row-mapped `field.sub` candidates; `resolve/preference` keeps the winner's http image over a lower source's https twin; `resolve/identity` keeps only the first of two ProductGroups under one isVariantOf; `LearnedCalls.matches` ignores fixed query values and body shape; `resolve/pagination` `int()` on a digit run over 4300 digits; `schema_org_map._selections` never counts a list or joined value as stated. Fix in the layer phase 2 rebuilds, or delete with it.
+- Text precedence (#284): company legal-form suffixes ("X Inc" vs "X") and a variant's sku beside the page's are not decided by a structural rule (D-1662); the full description a page states in a DOM block no collector reads is for the label-value collector (plan-phase-3b).
 - Role C on listings (#279): on the golden set's listings role C adds about no TP with either prompt (D-1600): the
   926 FN are mostly rows and fields the item layer does not find, which role C, filling bound rows only, cannot add.
   Call rows bound to no block and listings with no aligned group get no role C values; measure which listings lose

@@ -132,3 +132,4 @@ Decisions with status `needs-owner` or `pending-owner` (`CLAUDE.md` §5). Keep t
 | D-0915 | SimHash at Hamming 0 still misses some one-word edits | answered (owner delegation 2026-10-17): exact digest decides, D-1340, #60 |
 | D-1583 | long_text word overlap drops numbers (a scoring rule) | needs-owner (#277) |
 | D-1593 | Task leasing order across jobs: scored crawl tasks lease first | needs-owner (#277) |
+| D-1665 | Scoring follows the wider image resource key (sizes, conversions, options score as one image) | pending-owner (#284) |
