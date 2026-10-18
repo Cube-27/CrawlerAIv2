@@ -179,9 +179,11 @@ def _structured_rows(tree: LexborHTMLParser) -> bool:
 
 
 def structured_entries(tree: LexborHTMLParser) -> int:
-    """How many items the page's structured data lists: its top-level microdata items, or the entries of its longest
-    JSON-LD ItemList (schema.org `itemListElement`), whichever is more; 0 when it lists none."""
-    return max(len(tree.css(_MICRODATA)), *_item_lists(tree), 0)
+    """How many items the page's structured data lists: its top-level microdata items when they are as many as a
+    grid's (`MIN_ITEMS`; fewer are the page's own, such as its organization), or the entries of its longest JSON-LD
+    ItemList (schema.org `itemListElement`), whichever is more; 0 when it lists none."""
+    microdata = len(tree.css(_MICRODATA))
+    return max(microdata if microdata >= MIN_ITEMS else 0, *_item_lists(tree), 0)
 
 
 def _item_lists(tree: LexborHTMLParser) -> list[int]:

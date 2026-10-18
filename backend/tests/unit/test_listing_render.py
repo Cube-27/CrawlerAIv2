@@ -129,6 +129,11 @@ def _fetch(http: str, browser: str, hint: Literal["auto", "http"] = "auto") -> t
         pytest.param(GRID, False, id="grid"),
         pytest.param(_page(f"<ul>{_cards()}</ul>", head=_item_list(5)), False, id="structured-list-of-the-grid"),
         pytest.param(_page(f"<ul>{_cards()}</ul><div hidden><p>Menu</p></div>"), False, id="small-hidden-part"),
+        pytest.param(
+            _page(f"<div itemscope itemtype='https://schema.org/Organization'><p>Shop</p></div><ul>{_cards()}</ul>"),
+            False,
+            id="one-microdata-item-is-no-list",
+        ),
         pytest.param(_page(f"<ul style='display: none'>{_cards()}</ul><p>x</p>"), True, id="display-none-grid"),
     ],
 )
