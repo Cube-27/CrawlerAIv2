@@ -2,6 +2,7 @@
 
 - Shape: `fit_buckets(cells) -> dict[str, Bucket]` and `fit_order(current, measured)` in `resolve/calibrate.py`;
   `eval.calibrate` reads a `Report` and writes the two files; the engine's loaders are unchanged.
+- The first calibration table is not checked in: see D-1743 in the decision log.
 - Overfitting: the fit and the measurement use the same 79 pages, so the after numbers are optimistic. The floor of 20
   and the prior keep thin buckets uncalibrated, and the order moves only on separated intervals.
 
@@ -30,17 +31,12 @@
   run under τ measures only what τ let through.
 - Reversible: yes
 
-### D-1743 — τ is applied live as specified, though it abstains most page-level fields
-- Date: 2026-10-18 · Change/PR: plan-phase-3d · Status: decided (owner-delegated 2026-10-17)
-- Decision: A calibrated bucket below τ abstains, unchanged. On the golden set the calibrated text, url and money
-  buckets sit at 0.57-0.97, below τ, so those fields abstain almost wholly. τ is not lowered.
-- Why: the owner asked for τ live; lowering τ is the owner's call. The PR reports the coverage cost.
-- Reversible: yes (drop buckets from `calibration.json`, or refit after precision improves)
-
 ### D-1744 — Two order changes, no measured effect
 - Date: 2026-10-18 · Change/PR: plan-phase-3d · Status: decided (owner-delegated 2026-10-17)
-- Decision: `long_text`: dom before og (0.74 over 23 against 0.18 over 33). `url`: xhr before jsonld (0.98 over 46
-  against 0.80 over 182). `text` and `image_url` unchanged. The golden-set P/C per field type is identical with and
-  without them.
-- Why: separated intervals; the change is kept because it costs nothing and follows the data.
+- Decision: `long_text`: dom before og (0.74 over 23 against 0.18 over 33). `text` and `image_url` unchanged. `url`: the
+  fit also moves xhr ahead of jsonld and dom (0.98 over 46 against 0.80 over 182 and 0.84 over 416); that move is
+  not kept, because a listing's link would then take the captured call's spelling over the page's, which the listing
+  spec has the page win. `source_precedence.yaml` is the fit with that one exception. The golden-set P/C per field
+  type is identical with and without the kept change.
+- Why: separated intervals decide `long_text`; the `url` move contradicts a stated behaviour, and the owner can reverse it.
 - Reversible: yes

@@ -1,4 +1,4 @@
-"""Calibration and precedence fitting (SPEC-05 §4.11, ARCHITECTURE §10): the fits behind `crawlerai eval
+"""Calibration and precedence fitting (`resolution` and `evaluation` specs): the fits behind `crawlerai eval
 fit-calibration` and `fit-precedence` (`eval.calibrate`), from a dev run's measurements.
 
 A bucket's confidence is its dev precision under a Beta(1, 1) prior, `(tp + 1) / (n + 2)`: a small bucket is pulled
@@ -44,10 +44,10 @@ def fit_orders(
 
 
 def fit_order(current: Sequence[SourceKind], measured: Mapping[SourceKind, Measured]) -> tuple[SourceKind, ...]:
-    """§4.11: of the kinds measured on at least `MIN_CALIBRATED_N` fields, one whose interval of precision lies wholly
-    above the next measured kind's moves to just before it (D-1741); nothing else moves, so a kind the data does not
+    """Of the kinds measured on at least `MIN_CALIBRATED_N` fields, one whose 95% Wilson interval of precision lies
+    wholly above the next measured kind's moves to just before it; nothing else moves, so a kind the data does not
     separate keeps its place against every other, measured or not. The set of kinds is the current one: a kind the
-    order leaves out stays out (it never wins, D-0020)."""
+    order leaves out stays out (it never wins)."""
     order = list(current)
     moved = True
     while moved:  # each move removes one inversion among the measured kinds, so this ends

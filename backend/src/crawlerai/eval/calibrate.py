@@ -3,8 +3,8 @@
 
 Each stamps what it writes with `source_split: dev` and the report's commit; the engine reads them back with
 `resolve.evidence` and `resolve.preference`. Both files hold bucket and source-kind names and numbers only, no site.
-The report must be scored on the labeled rows (D-1480) by an engine without a calibration: a calibrated run measures
-only what τ let through, so a fit on it would be of its own selection.
+The report must be scored on the labeled rows (the `evaluation` spec) by an engine without a calibration: a
+calibrated run measures only what τ let through, so a fit on it would be of its own selection.
 """
 
 import json
@@ -50,7 +50,7 @@ def read_report(path: Path) -> Report:
     calibration was absent."""
     try:
         report = Report.model_validate_json(path.read_text(encoding="utf-8"))
-    except (OSError, ValidationError) as e:
+    except (OSError, UnicodeError, ValidationError) as e:
         raise ReportRefused(f"cannot read {path.name} as a report: {type(e).__name__}") from e
     if report.split != "dev":
         raise ReportRefused(f"{path.name} is a {report.split} report: a fit reads the dev split only")

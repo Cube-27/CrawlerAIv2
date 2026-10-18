@@ -23,13 +23,13 @@ long_text:
 url:
 - adapter
 - api
-- xhr
 - jsonld
 - microdata
 - og
 - dom
 - config
 - llm
+- xhr
 image_url:
 - adapter
 - api

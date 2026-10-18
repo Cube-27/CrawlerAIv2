@@ -131,6 +131,14 @@ def test_an_unreadable_report_is_refused(tmp_path: Path, text: str) -> None:
         read_report(path)
 
 
+def test_a_report_that_is_not_utf8_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "r.json"
+    path.write_bytes(b"\xff\xfe\x00")
+
+    with pytest.raises(ReportRefused, match=r"cannot read r\.json"):
+        read_report(path)
+
+
 def test_a_missing_report_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ReportRefused, match=r"cannot read r\.json"):
         read_report(tmp_path / "r.json")

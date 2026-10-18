@@ -24,7 +24,7 @@ from crawlerai.schemas.types import FieldType, SchemaDef
 # ARCHITECTURE §10, OPEN_QUESTIONS #3: a calibrated bucket below τ abstains.
 TAU_REQUIRED: Final = 0.97
 TAU_OPTIONAL: Final = 0.95
-# A bucket with fewer than 20 dev labels reports `calibrated=false` (owner-delegated, D-1740: ARCHITECTURE §10 said 30).
+# A bucket with fewer than 20 dev labels reports `calibrated=false` (the `resolution` spec's floor).
 MIN_CALIBRATED_N: Final = 20
 # ARCHITECTURE §10 buckets by source kind: an adapter or an API recipe; one structured-data standard (schema.org
 # JSON-LD and microdata, the Open Graph protocol); a structural DOM value (§8.1), which follows no structured-data

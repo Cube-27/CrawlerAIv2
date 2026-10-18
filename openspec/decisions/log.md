@@ -1172,3 +1172,12 @@ Entries written before the OpenSpec conversion (#223), when this file was `docs/
   change by effect, so the image_url gain above is partly a scoring fix (C10); the owner may keep the key narrow for
   scoring only.
 - Reversible: yes
+
+### D-1743 — The first calibration table is held back: τ would abstain most page-level fields
+- Date: 2026-10-18 · Change/PR: plan-phase-3d (#288) · Status: needs-owner
+- Decision: `fit-calibration` is shipped, `backend/data/calibration.json` is not. Fitted on the golden set, the 9 buckets
+  with n >= 20 (money, text, url; dev precision 0.57-0.97) all sit below τ (0.97 required, 0.95 optional), so with
+  the table live money, text and url coverage falls to about 0 (text 0.569 to 0.005, url 0.564 to 0.003, money 0.315
+  to 0). Owner to choose: raise precision first, lower τ, or apply τ only to buckets above it.
+- Why: C10 forbids a golden-set precision or coverage drop without a scoring or label reason.
+- Reversible: yes (`crawlerai eval fit-calibration --report <eval run --out file>`)

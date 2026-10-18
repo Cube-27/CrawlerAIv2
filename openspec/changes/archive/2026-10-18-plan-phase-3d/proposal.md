@@ -13,7 +13,7 @@ the golden set (master plan decision 10), so confidence and τ come from measure
 - `eval fit-precedence --report FILE` moves a source kind ahead of another only when their precision intervals
   separate (n >= 20 each).
 - Both fit on a dev report (`eval run --out`) of an uncalibrated engine, not on a stored run; the files carry no site.
-- The checked-in `calibration.json` and `source_precedence.yaml` are the first fit.
+- The checked-in `source_precedence.yaml` is the first fit; the calibration table is held back (D-1743).
 
 ## Impact
 
