@@ -93,18 +93,9 @@ setInterval(() => fetch('/api/n/0'), 100);
 _LATE_CALL = b"""<html><body><p>Static page whose data arrives late</p><script>
 fetch('/api/late').then(r => r.json());
 </script></body></html>"""
-# An error document that replaces itself (`location.replace`, HTML Standard §7.2.4) after a countdown.
-_REPLACES_ITSELF = b"""<html><body><p>One moment</p><script>
-setTimeout(() => location.replace('/app'), 1000);
-</script></body></html>"""
-
 # A page that starts a dedicated worker (HTML Standard §10.2.6), which makes a request of its own.
 _WITH_WORKER = b"""<html><body><p>Worker page</p><script>new Worker('/worker.js');</script></body></html>"""
 
-# A 403 document with no site structure (a shell) that navigates on after longer than the 2 s DOM quiet.
-_INTERSTITIAL = b"""<html><body><p>One moment</p><script>
-setTimeout(() => location.replace('/app'), 4000);
-</script></body></html>"""
 # A 403 document that stands in for the page and never navigates on within the fetch (a challenge it cannot pass).
 # A 403 document that is a site page: enough text and hyperlinks (`acquire/classify.py`).
 _REFUSAL_PAGE = (
@@ -209,10 +200,8 @@ def server() -> Iterator[Server]:
             "/still": Reply(body=_STILL),
             "/late-call": Reply(body=_LATE_CALL),
             "/api/late": Reply(content_type=_JSON, body=b'{"late": true}', delay_s=3.5),
-            "/replaces-itself": Reply(403, body=_REPLACES_ITSELF),
             "/with-worker": Reply(body=_WITH_WORKER),
             "/worker.js": Reply(content_type="text/javascript", body=b"fetch('/api/n/7');"),
-            "/interstitial": Reply(403, body=_INTERSTITIAL),
             "/refusal": Reply(403, body=_REFUSAL_PAGE),
             "/stall": Reply(body=b"<html></html>", delay_s=8),
             "/hop": Reply(302, headers=(("Location", "/app"),)),
