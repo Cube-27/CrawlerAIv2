@@ -250,3 +250,13 @@ def test_a_remote_phrase_inside_other_words_of_a_postal_address_part_is_not_remo
     raw: JsonValue = {"@type": "PostalAddress", "addressLocality": "Not remote"}
 
     assert norm(raw) == Ok(value("Not remote", "Not remote"))
+
+
+@pytest.mark.parametrize("text", ["Remote's office", "Remote\u2019s office, Lakeside"])
+def test_a_word_internal_apostrophe_does_not_end_a_clause(text: str) -> None:
+    assert norm(text) == Ok(value(text))
+
+
+@pytest.mark.parametrize("text", ["Lakeside, Remote", "'Remote'", "Lakeside \u2019 Remote"])
+def test_an_apostrophe_not_between_letters_still_ends_a_clause(text: str) -> None:
+    assert norm(text) == Ok(value(text, remote=True))
