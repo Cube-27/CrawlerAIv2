@@ -14,7 +14,7 @@ from jsonschema import Draft202012Validator
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir import step_wire, synthesis
 from crawlerai.config_ir.induction import Published, SamplePage
-from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, FieldSteps, XPathStep
+from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, FieldSteps, ListingSpec, XPathStep
 from crawlerai.config_ir.synthesis import ROW, Synthesis, synthesize
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
@@ -381,3 +381,28 @@ def test_without_a_verified_row_there_is_no_listing_and_next_is_left_out() -> No
         "page 1: rows(0, 3)",
         "page 1: a row step selects elements, so it is an xpath or css step",
     )
+
+
+def test_an_induced_listing_keeps_its_rows_and_next_and_gains_the_row_fields_role_a_adds() -> None:
+    induced_title = FieldSteps(steps=[XPathStep.model_validate(ROW_TITLE)], status="uncorroborated")
+    listing = ListingSpec(
+        row=CssStep.model_validate(ROW_STEP), fields={"title": induced_title}, next=XPathStep.model_validate(NEXT_STEP)
+    )
+    ir = _ir("listing").model_copy(update={"listing": listing})
+    client = ScriptedClient({"listing": _listing_reply(link=[ROW_LINK])})
+    result = _run(client, ("link",), sample=LISTING_SAMPLE, schema=_schema("listing", **LISTING_SCHEMA), ir=ir)
+    (req,) = client.requests
+    assert '"row"' not in json.dumps(req.output_schema)
+    assert result.ir.listing is not None
+    assert result.ir.listing.model_copy(update={"fields": {}}) == listing.model_copy(update={"fields": {}})
+    assert set(result.ir.listing.fields) == {"title", "link"}
+    assert result.ir.provenance.origin == "llm_synth"
+
+
+def test_an_induced_listing_role_a_adds_nothing_to_is_returned_as_it_was() -> None:
+    induced_title = FieldSteps(steps=[XPathStep.model_validate(ROW_TITLE)], status="uncorroborated")
+    listing = ListingSpec(row=CssStep.model_validate(ROW_STEP), fields={"title": induced_title})
+    ir = _ir("listing").model_copy(update={"listing": listing})
+    client = ScriptedClient(*[{"listing": _listing_reply()}] * 4)
+    result = _run(client, ("link",), sample=LISTING_SAMPLE, schema=_schema("listing", **LISTING_SCHEMA), ir=ir)
+    assert result.ir == ir
