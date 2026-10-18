@@ -199,7 +199,9 @@ async def _visit(
         conn, crawl.task, page, crawl.records, caller_supplied=False, llm=crawl.llm, parsed=parsed
     )
     if isinstance(result, Finished):
-        await store_further_pages(conn, store, crawl.task, page, crawl.records, caller_supplied=False, llm=crawl.llm)
+        result = await store_further_pages(
+            conn, store, crawl.task, page, crawl.records, caller_supplied=False, llm=crawl.llm, result=result
+        )
     return result, links
 
 

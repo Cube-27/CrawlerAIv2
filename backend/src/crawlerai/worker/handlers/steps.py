@@ -322,12 +322,14 @@ async def store_further_pages(
     *,
     caller_supplied: bool,
     llm: LLMClient,
-) -> None:
-    """Extract and store a listing recipe's further pages under the task, with what the job pinned."""
+    result: Finished,
+) -> Finished:
+    """Extract and store a listing recipe's further pages under the task, with what the job pinned: the first page's
+    `result`, `partial` when a further page's extraction failed, as a scrape's is."""
     if not page.further:
-        return
+        return result
     extracted = await extract_further(page.further, records.schema, records.config, records.data, _role_c(task, llm))
-    await store_further(
+    stored = await store_further(
         conn,
         store,
         task,
@@ -337,6 +339,7 @@ async def store_further_pages(
         records.margins,
         caller_supplied=caller_supplied,
     )
+    return replace(result, outcome="partial") if stored.failed else result
 
 
 async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage | Ended) -> None:

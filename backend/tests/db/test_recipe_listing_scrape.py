@@ -43,12 +43,14 @@ from crawlerai.db.models import (
 )
 from crawlerai.llm.client import NO_LLM
 from crawlerai.recurring.listing_diff import close_run
-from crawlerai.resolve.pipeline import EngineData
+from crawlerai.resolve.pipeline import EngineData, extract_page
+from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import SchemaDef, document_digest
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.crawl import CrawlRequest, submit_crawl
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
+from crawlerai.storage.capture_bundle import CaptureBundle
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.handlers.scrape import scrape_handler
@@ -441,10 +443,8 @@ async def test_a_batch_task_whose_recipe_answers_no_rows_counts_that_request_the
     job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
 
     async with engine.connect() as conn:
-        methods = (
-            await conn.execute(select(UsageEvent.metadata_["method"].astext).where(UsageEvent.job_id == job_id))
-        ).scalars()
-        counted = sorted(methods)
+        query = select(UsageEvent.metadata_["method"].astext).where(UsageEvent.job_id == job_id)
+        counted: list[str] = sorted((await conn.execute(query)).scalars())
     assert len(web.requested) == 1
     assert counted.count("api") == 1
 
@@ -469,3 +469,28 @@ async def test_a_batch_task_whose_further_recipe_page_the_guard_refuses_fails(
     assert task.status == "failed"
     assert (task.last_error or "").startswith(SSRF_REJECTED)
     assert titles == []
+
+
+async def test_a_batch_task_whose_further_recipe_page_fails_its_extraction_is_partial(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def failing_later_pages(bundle: CaptureBundle, *args: Any, **kwargs: Any) -> ExtractionResult:
+        result = await extract_page(bundle, *args, **kwargs)
+        later = NAMES[PAGE_SIZE].encode() in bundle.body  # the second page's first row
+        return result.model_copy(update={"outcome": "error", "entity": None, "rows": ()}) if later else result
+
+    monkeypatch.setattr("crawlerai.services.scrape_steps.extract_page", failing_later_pages)
+    url = f"{own_origin}/kettles"
+
+    job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+
+    async with engine.connect() as conn:
+        outcome = (await conn.execute(select(UrlTask.outcome).where(UrlTask.job_id == job_id))).scalar_one()
+    assert outcome == "partial"

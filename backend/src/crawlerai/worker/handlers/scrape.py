@@ -124,7 +124,9 @@ async def _settle(
         return Finished("unchanged", capture_id=page.capture_id)
     result = await extract_records(conn, task, page, records, caller_supplied=True, llm=llm, parsed=parsed)
     if isinstance(result, Finished):
-        await store_further_pages(conn, fetching.store, task, page, records, caller_supplied=True, llm=llm)
+        result = await store_further_pages(
+            conn, fetching.store, task, page, records, caller_supplied=True, llm=llm, result=result
+        )
         # The validators are stored with the record made from the content they describe, never without it.
         await record_fetch(conn, page.site.id, task.canonical_url, page.result)
         if records.schema.page_kind == "listing":
