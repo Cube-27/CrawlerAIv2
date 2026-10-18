@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate, Entity
-from crawlerai.collect.item_links import row_links
+from crawlerai.collect.item_links import as_block_links, row_links
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
@@ -256,3 +256,57 @@ def test_a_link_whose_text_only_holds_a_row_value_does_not_label_it() -> None:
     cards = [card.format(n=n) for n in (1, 2, 3)]
 
     assert _links(cards, ["Ann 2"]) == {}
+
+
+# --- structured row URLs respelling an item block's link (D-1495) ---
+
+
+def _structured(n: int, url: str) -> Candidate:
+    return Candidate(
+        field="url",
+        entity_id=f"jsonld:row{n}",
+        source_kind="jsonld",
+        raw=url,
+        normalized=Ok(url),
+        locator=f"jsonld:0:$.itemListElement[{n}].url",
+        independent=True,
+    )
+
+
+def _respelled(cards: list[str], urls: list[str]) -> list[tuple[str, JsonValue]]:
+    page = ParsedPage(f"<html><body><main>{''.join(cards)}</main></body></html>")
+    rows = frozenset(f"jsonld:row{n}" for n in range(len(urls)))
+    found = as_block_links(page, LISTING, CTX, [_structured(n, url) for n, url in enumerate(urls)], rows)
+    return [(c.source_kind, c.normalized.value if isinstance(c.normalized, Ok) else None) for c in found]
+
+
+def test_a_row_url_with_a_query_or_slash_the_blocks_link_lacks_takes_the_pages_link() -> None:
+    cards = [_card(f"Widget {n}", f"/p/{n}?colour=red") for n in (1, 2)] + [_card("Widget 3", "/p/3/")]
+    urls = [
+        "https://shop.example.test/p/1?colour=red&ref=list",
+        "https://shop.example.test/p/2/?colour=red",
+        "https://shop.example.test/p/3",
+    ]
+
+    assert _respelled(cards, urls) == [
+        ("dom", "https://shop.example.test/p/1?colour=red"),
+        ("dom", "https://shop.example.test/p/2?colour=red"),
+        ("dom", "https://shop.example.test/p/3/"),
+    ]
+
+
+def test_a_row_url_that_is_a_link_another_path_or_one_of_two_links_stays() -> None:
+    cards = [_card("Widget 1", "/p/1"), _card("Widget 2", "/p/2?colour=red", "/p/2?colour=blue"), _card("W", "/p/3")]
+    urls = [
+        "https://shop.example.test/p/1",
+        "https://shop.example.test/p/2?colour=red&colour=blue",
+        "https://shop.example.test/q/3",
+        "https://shop.example.test/p/1?size=s",
+    ]
+
+    assert _respelled(cards, urls) == [
+        ("jsonld", "https://shop.example.test/p/1"),
+        ("jsonld", "https://shop.example.test/p/2?colour=red&colour=blue"),
+        ("jsonld", "https://shop.example.test/q/3"),
+        ("dom", "https://shop.example.test/p/1"),
+    ]

@@ -18,7 +18,7 @@ rule declines rather than guesses (C7).
 
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 from lxml.html import HtmlElement
 
@@ -29,7 +29,7 @@ from crawlerai.collect.schema_org_map import candidate, parse_paths
 from crawlerai.content.item_text import block_spans
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.text import completed, hidden, xpath_step
-from crawlerai.normalize.base import Context
+from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.text import compose
 from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -113,6 +113,63 @@ def _block_of(values: Sequence[_Span], spans: Sequence[_Span | None]) -> int | N
         ),
         None,
     )
+
+
+def as_block_links(
+    page: ParsedPage, schema: SchemaDef, ctx: Context, candidates: Sequence[Candidate], rows: frozenset[str]
+) -> tuple[Candidate, ...]:
+    """`candidates` with each structured item URL of a row in `rows` that names a link of the page's repeated item
+    blocks but for a trailing slash or a query that link does not carry replaced by that link, as a `dom` candidate
+    (D-1495). The page links the item at that URL: the structured URL names the same path (RFC 3986 §3.3) with the
+    page's link's query widened or its last segment's slash added or dropped, so it is the page's own link's spelling.
+    A URL that two links equally match, or none, is kept as it is (C7)."""
+    fields = frozenset(item_url_fields(schema))
+    if not fields or not rows:
+        return tuple(candidates)
+    links = _page_links(page, ctx.base_url)
+    diagnostics: list[str] = []
+    replaced: list[Candidate] = []
+    for c in candidates:
+        own = _own_link(c, links) if c.field in fields and c.entity_id in rows else None
+        found = None if own is None else _dom_candidate(c, schema, own, ctx, diagnostics)
+        replaced.append(c if found is None else found)
+    return tuple(replaced)
+
+
+def _page_links(page: ParsedPage, base: str | None) -> dict[str, tuple[str, HtmlElement]]:
+    """Every document the page's repeated item blocks link to, with its first anchor and that anchor's `href`."""
+    return _targets(
+        (anchor for group in item_groups(page.lxml_tree) for block in group for anchor in _hyperlinks(block)),
+        base,
+        None,
+    )
+
+
+def _own_link(c: Candidate, links: dict[str, tuple[str, HtmlElement]]) -> tuple[str, HtmlElement] | None:
+    """The one block link the candidate's URL spells with another trailing slash or a wider query; None when its URL
+    is a block link already, or no single link matches."""
+    value = c.normalized.value if isinstance(c.normalized, Ok) else None
+    if c.source_kind in {"llm", "dom"} or not isinstance(value, str) or value in links:
+        return None
+    matching = [link for url, link in links.items() if _respelled(value, url)]
+    return matching[0] if len(matching) == 1 else None
+
+
+def _respelled(value: str, link: str) -> bool:
+    """Whether `value` is `link` with its path's trailing slash added or dropped, or with query parameters `link` does
+    not carry added (each of `link`'s parameters kept)."""
+    ours, theirs = urlsplit(value), urlsplit(link)
+    if (ours.scheme, ours.netloc, ours.path.rstrip("/")) != (theirs.scheme, theirs.netloc, theirs.path.rstrip("/")):
+        return False
+    return set(parse_qsl(theirs.query, keep_blank_values=True)) <= set(parse_qsl(ours.query, keep_blank_values=True))
+
+
+def _dom_candidate(
+    c: Candidate, schema: SchemaDef, link: tuple[str, HtmlElement], ctx: Context, diagnostics: list[str]
+) -> Candidate | None:
+    href, anchor = link
+    spec = schema.fields[c.field]
+    return candidate(c.field, spec, c.entity_id, "dom", href, format_locator("dom", _xpath(anchor)), ctx, diagnostics)
 
 
 def item_url_fields(schema: SchemaDef) -> tuple[str, ...]:

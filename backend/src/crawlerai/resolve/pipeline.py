@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.currencies import with_stated_currencies
-from crawlerai.collect.item_links import item_url_fields, row_links
+from crawlerai.collect.item_links import as_block_links, item_url_fields, row_links
 from crawlerai.collect.run import Adapters, Collected, collect_page
 from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canonical_urls
 from crawlerai.content.context import page_context
@@ -438,7 +438,10 @@ class _Listing:
             call = (page.collected.rows, page.candidates, page.page, page.ctx.base_url)
             rows, joined = with_call_rows(page.graph, page.schema, rows, *call)
             candidates = (*candidates, *joined)
-        fields, resolved = page.resolve_listing(candidates, rows or page.collected.rows)
+        listed = rows or page.collected.rows
+        # D-1495: a row URL that respells an item block's link takes the page's own spelling of it.
+        candidates = as_block_links(page.page, page.schema, page.ctx, candidates, frozenset(r.id for r in listed))
+        fields, resolved = page.resolve_listing(candidates, listed)
         next_pages = tuple(link.url for link in links)
         return cls(page, fields, resolved, next_pages, candidates, tuple(diagnostics), network=network)
 
