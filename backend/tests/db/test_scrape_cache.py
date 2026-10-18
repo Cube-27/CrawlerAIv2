@@ -26,6 +26,7 @@ from crawlerai.services.fetching import Fetching
 from crawlerai.services.jobs import job_request
 from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.services.stored_captures import NotCached
+from crawlerai.storage.artifacts import SCREENSHOT
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
@@ -46,7 +47,10 @@ class Web:
         async def fetch(url: str, policy: FetchPolicy) -> FetchResult:
             self.fetched.append((method, url))
             body = b"User-agent: *\nAllow: /\n" if url.endswith("/robots.txt") else _PAGE
-            return self.fetch_result(url, 200, body, method=method, policy=policy)
+            result: FetchResult = self.fetch_result(url, 200, body, method=method, policy=policy)
+            if policy.screenshot is not None:  # the browser's PNG of the page, stored beside the capture
+                result = result.model_copy(update={"artifacts": {SCREENSHOT: b"\x89PNG"}})
+            return result
 
         return fetch
 
@@ -115,6 +119,39 @@ async def test_a_capture_made_with_page_steps_does_not_stand_for_the_page_withou
     assert web.pages()[0] == ("browser", url)  # the steps run in the browser
     assert reused.capture_id == made.capture_id
     assert plain.capture_id != made.capture_id
+
+
+async def test_a_capture_stands_for_the_same_header_and_cookie_names_in_any_order_or_header_case(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+) -> None:
+    # RFC 9110 §5.1: header field names are case-insensitive; a context is a set of names, so their order says nothing.
+    url = f"{own_origin}/lamps/a"
+    made = await scrape(
+        engine,
+        fetching,
+        _scrape(url, fetch={"headers": {"X-Beta": "1", "x-alpha": "2"}, "cookies": {"b": "1", "a": "2"}}),
+    )
+
+    reread = {"headers": {"X-Alpha": "3", "x-beta": "4"}, "cookies": {"a": "3", "b": "4"}}
+    reused = await scrape(engine, fetching, _scrape(url, max_age=3600, fetch=reread))
+
+    assert reused.capture_id == made.capture_id
+    assert web.pages() == [("http", url)]
+
+
+async def test_a_screenshot_of_another_area_is_not_reused(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+) -> None:
+    url = f"{own_origin}/lamps/b"
+    viewport = await scrape(engine, fetching, _scrape(url, formats=["screenshot"]))
+
+    full = await scrape(
+        engine, fetching, _scrape(url, formats=["screenshot"], max_age=3600, fetch={"screenshot": "full_page"})
+    )
+    again = await scrape(engine, fetching, _scrape(url, formats=["screenshot"], max_age=3600))
+
+    assert full.capture_id != viewport.capture_id
+    assert again.capture_id == viewport.capture_id
 
 
 async def test_a_scrape_stores_its_request_with_the_cookie_redacted(
