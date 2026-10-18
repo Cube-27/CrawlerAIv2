@@ -116,9 +116,11 @@ class DomCollector:
         content = _Content.of(page, ctx)
         labels = field_labels(schema)
         pairs = content.pairs(page) if content is not None else []
+        listed = content.listed_pairs(page) if content is not None else []
         unlabelled = [pair for pair in pairs if words(pair[0]) not in labels]
         for name, raw, xpath, read in (
             *_pairs_found(pairs, labels, schema, content),
+            *_pairs_found(listed, field_labels(lists := _list_fields(schema)), lists, content),
             *_typed_found(page, schema, ctx, content, unlabelled),
             *_image_found(page, schema, ctx),
         ):
@@ -166,15 +168,28 @@ class _Content:
         return [
             pair
             for pair in _pairs(self.region)
-            if pair[2] and pair[1].mem_id not in self.apart and _shown(page, pair[1], pair[2])
+            if pair[2] and pair[1].mem_id not in self.apart and page.visible_values.visible(pair[2])
+        ]
+
+    def listed_pairs(self, page: ParsedPage) -> list[Pair]:
+        """The region's pairs whose value is a list whose items are each shown, though its text is on no line (a list's
+        items are lines of their own): values only a list field reads."""
+        visible = page.visible_values.visible
+        return [
+            pair
+            for pair in _pairs(self.region)
+            if pair[2]
+            and pair[1].mem_id not in self.apart
+            and not visible(pair[2])
+            and (items := list_items(pair[1]))
+            and all(map(visible, items))
         ]
 
 
-def _shown(page: ParsedPage, value: LexborNode, text: str) -> bool:
-    """Whether a pair's value is shown: its text, or, for a value that is a list, each of its items (a list's items are
-    lines of their own, so the text joining them is on none)."""
-    visible = page.visible_values.visible
-    return visible(text) or (bool(items := list_items(value)) and all(map(visible, items)))
+def _list_fields(schema: SchemaDef) -> SchemaDef:
+    """The schema with its list fields only."""
+    fields = {name: spec for name, spec in schema.fields.items() if spec.type is FieldType.LIST}
+    return schema.model_copy(update={"fields": fields})
 
 
 def _pairs_found(
