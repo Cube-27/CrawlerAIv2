@@ -1,5 +1,6 @@
 """The pipeline's LLM hook bound to a client (SPEC-05 §4.13, SPEC-06 §4.4, D-0483): role C for `extract_page`, on a
-detail page's gaps and on a listing without structured rows.
+detail page's gaps and on a listing without structured rows, which it reads through its items' text when the page
+shows repeated item blocks (`content.item_text`, D-1478).
 
 `resolve` and `llm` don't import each other (C8 layering), so the hook is bound here, in the first layer above both;
 the worker and the replay harness (`eval.engine`) bind it the same way.
@@ -8,8 +9,10 @@ The client commits each call's usage on a connection of its own (D-0346). A call
 must not hold an uncommitted write to the job's row meanwhile: the client's usage update would wait on it.
 """
 
+import asyncio
 from dataclasses import dataclass
 
+from crawlerai.content.item_text import item_text
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import LLMClient, LLMFailure, PromptKind
 from crawlerai.llm.roles import c_extract
@@ -42,9 +45,12 @@ class _RoleC:
 
     async def listing(self, request: ListingGapRequest) -> ListingGapReply:
         fields = request.schema.fields
+        # D-1478: the items' text when the page shows repeated item blocks, so the model reads the items, not the
+        # menus around them; finding them parses HTML, so a thread keeps the event loop free.
+        items = await asyncio.to_thread(item_text, request.page)
         filled = await c_extract.extract_listing(
             self.client,
-            request.page.cleaned_text.text,
+            request.page.cleaned_text.text if items is None else items,
             {name: fields[name] for name in request.row_fields},
             {name: fields[name] for name in request.page_missing},
             request.ctx,

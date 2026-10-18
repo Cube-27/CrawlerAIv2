@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import JsonValue
@@ -39,6 +39,7 @@ from crawlerai.resolve.pipeline import (
 )
 from crawlerai.resolve.preference import PRECEDENCE_FILE, PRECEDENCE_TYPES, load_precedence
 from crawlerai.resolve.types import ExtractionResult, LLMCallRecord
+from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import (
     CaptureBundle,
@@ -482,6 +483,40 @@ def test_an_api_capture_from_another_endpoint_of_a_detected_page_is_not_the_adap
     assert result.diagnostics == ("adapter: no active adapter reads this api capture",)
 
 
+class BoardAdapter(FakeAdapter):
+    """A board whose API keeps each posting's primary place apart from its further ones."""
+
+    def detect(self, url: str) -> AdapterMatch | None:
+        return AdapterMatch(tenant="t", page_kind="listing") if "/jobs/" in url else None
+
+    def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
+        posting = Shape(
+            type="JobPosting",
+            at=("jobs", "*"),
+            properties={"title": ("title",), "url": ("url",), "jobLocation": ("place",)},
+            also={"jobLocation": (("more", "*"),)},
+        )
+        return (Shape(type="ItemList", nodes={"itemListElement": (posting,)}),)
+
+
+def test_a_job_listing_row_publishes_every_place_its_posting_states() -> None:
+    # D-1477: `job_listing.locations` is a list, so a posting's primary and further places publish together.
+    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([BoardAdapter()], active=["synthetic"]))
+    jobs = [
+        {"title": "Engineer", "url": f"{JOB_URL}/a", "place": "Northtown", "more": ["Eastport", "Southville"]},
+        {"title": "Analyst", "url": f"{JOB_URL}/b", "place": "Eastport", "more": []},
+    ]
+    bundle = _bundle(json.dumps({"jobs": jobs}), method="api", url=JOB_URL, final_url=JOB_API)
+    preset = next(p for p in load_presets() if p.name == "job_listing")
+    schema = SchemaDef(**preset.model_dump(), id=SchemaId(uuid7()), origin="preset", status="active")
+
+    result = _extract(bundle, schema, data=data)
+
+    places = [[place["text"] for place in cast(list[dict[str, str]], row["locations"].value)] for row in result.rows]
+    assert [row["locations"].status for row in result.rows] == ["published", "published"]
+    assert places == [["Northtown", "Eastport", "Southville"], ["Eastport"]]
+
+
 # --- cold listings (§4.7 "Listings", §8.6) ---
 
 LISTING_URL = "https://shop.example.test/c/widgets?page=2"
@@ -698,6 +733,30 @@ def test_a_listing_role_c_failure_leaves_the_asked_page_fields_missing_with_its_
         "next_page_url": ("missing", "llm_unavailable"),
     }
     assert (result.rows, result.outcome, result.diagnostics) == ((), "partial", ("role C: x",))
+
+
+@pytest.mark.parametrize(
+    ("role_c", "reason"),
+    [
+        (None, "no_rows: not_asked"),
+        (FakeRoleC(), "no_rows: none_listed"),
+        (FakeRoleC(listing_reply=ListingGapReply((), (), failure="llm_unavailable")), "no_rows: llm_unavailable"),
+        (FakeRoleC(listing_reply=ListingGapReply((), (), failure="llm_budget")), "no_rows: llm_budget"),
+    ],
+)
+def test_a_listing_without_rows_says_why_and_keeps_its_page_fields(role_c: FakeRoleC | None, reason: str) -> None:
+    # D-1475: the next page the page states still resolves, and the reason names what role C did.
+    result = _listing(_html(head='<link rel="next" href="/c/widgets?page=3">'), role_c=role_c, data=COMMITTED)
+
+    assert (result.rows, result.reason) == ((), reason)
+    assert result.entity is not None
+    assert result.entity["next_page_url"].value == "https://shop.example.test/c/widgets?page=3"
+
+
+def test_a_listing_with_rows_or_a_detail_page_has_no_reason() -> None:
+    assert _listing(_html(_item_list(_row(1))), data=COMMITTED).reason is None
+    assert _listing(_html(body="<p>Widget 1</p>"), role_c=FakeRoleC(listing_reply=ROWS_REPLY)).reason is None
+    assert _extract(_bundle(_html(_product()))).reason is None
 
 
 def test_a_listing_schema_without_row_fields_does_not_call_role_c() -> None:

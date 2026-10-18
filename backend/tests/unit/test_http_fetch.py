@@ -25,6 +25,7 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.public_suffix import PublicSuffixes
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.adapters.challenges import SIGNATURES
 from crawlerai.cli import main
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.settings import IMPERSONATE_DEFAULT
@@ -133,6 +134,16 @@ def test_a_refusal_standing_in_for_the_page_is_labelled_a_challenge_and_stays_bl
 
     assert (refused.block_class, refused.attempts[0].challenge) == ("blocked", "structural")
     assert (kept.block_class, kept.attempts[0].challenge) == ("ok", None)
+
+
+def test_a_2xx_page_showing_a_vendors_stand_in_marker_is_blocked_and_labelled(server: Server) -> None:
+    # D-1470: the vendor data's stand-in marker, in a page that otherwise has site structure.
+    signature = next(s for s in SIGNATURES if s.stand_in_markers)
+    server.route("/p", html(_PAGE.replace(b"</body>", f"<!-- {signature.stand_in_markers[0]} --></body>".encode())))
+
+    stood_in = fetch(server, server.url("/p"))
+
+    assert (stood_in.block_class, stood_in.attempts[0].challenge) == ("blocked", signature.vendor)
 
 
 def test_a_page_fetched_as_a_listing_is_classified_as_one(server: Server) -> None:

@@ -2155,6 +2155,7 @@ class ScrapeResult(BaseModel):
     markdown_fit: Annotated[str | None, Field(title="Markdown Fit")] = None
     metadata: PageMetadata | None = None
     outcome: Annotated[Outcome2, Field(title="Outcome")]
+    page: Annotated[dict[str, RecordField] | None, Field(title="Page")] = None
     pdf: Artifact | None = None
     raw_html: Annotated[str | None, Field(title="Raw Html")] = None
     reason: Annotated[str | None, Field(title="Reason")] = None

@@ -217,11 +217,11 @@ def test_every_listed_requisition_carries_its_job_pages_url() -> None:
     assert candidates == {
         (row.format(0), "title"): "Synthetic Platform Engineer",
         (row.format(0), "url"): f"{ROOT}/job/100001",
-        (row.format(0), "location"): "Northtown, Example Region, Exampleland",
+        (row.format(0), "locations"): ["Northtown, Example Region, Exampleland"],
         (row.format(0), "posted"): "2026-09-30",
         (row.format(1), "title"): "Placeholder Analyst",
         (row.format(1), "url"): f"{ROOT}/job/100002",
-        (row.format(1), "location"): "Eastport",
+        (row.format(1), "locations"): ["Eastport"],
         (row.format(1), "posted"): "2026-09-29",
     }
 

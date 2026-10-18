@@ -136,8 +136,8 @@ def test_a_listing_response_is_a_list_of_postings_each_owning_its_values() -> No
     values = _values(result)
     assert values[(rows[0], "title")] == ("Synthetic Platform Engineer", "adapter:lever:$[0]['text']")
     assert values[(rows[1], "title")] == ("Synthetic Data Analyst", "adapter:lever:$[1]['text']")
-    assert values[(rows[1], "location")] == ("Example City", "adapter:lever:$[1]['categories']['location']")
-    assert {field for _, field in values} == {"title", "url", "location"}
+    assert values[(rows[1], "locations")] == (["Example City"], "adapter:lever:$[1]['categories']['location']")
+    assert {field for _, field in values} == {"title", "url", "locations"}
 
 
 def test_the_listing_root_of_an_object_response_addresses_its_rows() -> None:
@@ -148,8 +148,8 @@ def test_the_listing_root_of_an_object_response_addresses_its_rows() -> None:
         "adapter:greenhouse:$['jobs'][0]",
         "adapter:greenhouse:$['jobs'][1]",
     ]
-    assert _values(result)[("adapter:greenhouse:$['jobs'][1]", "location")] == (
-        "Example City",
+    assert _values(result)[("adapter:greenhouse:$['jobs'][1]", "locations")] == (
+        ["Example City"],
         "adapter:greenhouse:$['jobs'][1]['location']['name']",
     )
 

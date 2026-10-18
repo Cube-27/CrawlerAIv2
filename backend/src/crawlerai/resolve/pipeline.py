@@ -394,6 +394,19 @@ def _read_and_resolve(source: _Source) -> tuple[_Page, FieldSet]:
     return page, page.resolve(page.candidates)
 
 
+# D-1475: why a listing gave no rows, as `no_rows: <cause>`: structured data, the config and the captured calls gave
+# none and role C was not asked (`NOT_ASKED`: no hook, a schema without row fields, or a config that runs a row field),
+# gave no valid reply (its failure's reason: `llm_unavailable`, `llm_budget`, ...), or listed none it could ground
+# (`NONE_LISTED`).
+NO_ROWS: Final = "no_rows"
+NOT_ASKED: Final = "not_asked"
+NONE_LISTED: Final = "none_listed"
+
+
+def no_rows(cause: str) -> str:
+    return f"{NO_ROWS}: {cause}"
+
+
 @dataclass(frozen=True, slots=True)
 class _Listing:
     page: _Page
@@ -404,6 +417,7 @@ class _Listing:
     diagnostics: tuple[str, ...]
     llm_calls: tuple[LLMCallRecord, ...] = ()
     network: bool = False  # the rows are those of the page's captured calls (Appendix A #59)
+    role_c: str = NOT_ASKED  # what role C did when the listing has no rows (`no_rows`)
 
     @classmethod
     def read(cls, source: _Source) -> "_Listing":
@@ -469,6 +483,7 @@ class _Listing:
             diagnostics=diagnostics,
             llm_calls=reply.llm_calls,
             network=network,
+            role_c=reply.failure or NONE_LISTED,
         )
 
     def _records(self) -> list[FieldSet]:
@@ -492,6 +507,7 @@ class _Listing:
             record_confidence=_least_confident(record_confidence(schema, record) for record in records),
             diagnostics=self.diagnostics,
             next_pages=self.next_pages,
+            reason=None if self.rows else no_rows(self.role_c),
         )
 
 

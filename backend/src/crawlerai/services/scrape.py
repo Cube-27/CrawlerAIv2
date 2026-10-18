@@ -28,7 +28,7 @@ from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
-from typing import Final, Self, TypedDict
+from typing import Final, NamedTuple, Self, TypedDict
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, field_validator, model_validator
@@ -76,7 +76,7 @@ from crawlerai.services.fetching import (
     site_rungs,
     store_declines,
 )
-from crawlerai.services.records import ScrapedRecord
+from crawlerai.services.records import RecordField, ScrapedRecord, page_fields
 from crawlerai.services.scrape_paging import check_browser_actions, paged_fetch
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
@@ -189,7 +189,9 @@ class ScrapeResult(BaseModel):
     """The answer to a scrape (§4.4). A page that robots.txt kept from being fetched has no capture, so
     `capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`
     does (SPEC-02 §4.6): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
-    9309 §2.3.1.4); None for a page that was fetched. `schema` is the draft of a `schema.prompt`."""
+    9309 §2.3.1.4); for a fetched listing whose extraction gave no rows, `no_rows: <cause>` (`no_rows` in
+    `resolve.pipeline`, D-1475); None for any other page that was fetched. `schema` is the draft of a
+    `schema.prompt`."""
 
     model_config = ConfigDict(validate_by_name=True, serialize_by_alias=True)
 
@@ -212,6 +214,8 @@ class ScrapeResult(BaseModel):
     pdf: Artifact | None = format_member()
     schema_: SchemaDef | None = format_member(alias="schema")
     records: list[ScrapedRecord] | None = format_member()
+    # A listing that kept no record: its page-scope fields (`next_page_url`), in the record field shape (D-1476).
+    page: dict[str, RecordField] | None = format_member()
     browser_actions: ActionsReport | None = format_member()
     usage: Usage
 
@@ -391,28 +395,29 @@ async def _run(
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = await _derive_reached(engine, work, request, task, page, recent, config, check)
     extra = await _extract_more(work, task, derived, config, further)
-    members, records, reason = _NOT_FETCHED, None, None
+    members, finished = _NOT_FETCHED, _Finished("blocked")
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
             capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page)
             more = partial(_store_more, conn, fetching.store, task, site.id, derived, extra, work.margins)
-            outcome, records = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, more)
+            finished = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, more)
             members = _fetch_members(page, capture_id, fetching.rungs.adapters)
         else:
-            outcome, reason = "blocked", page
-            await complete_task(conn, task, outcome, reason=reason)
+            finished = _Finished("blocked", reason=page)
+            await complete_task(conn, task, "blocked", reason=page)
         await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
         usage = await _usage(conn, task.job_id)
-    if outcome == "failed":
+    if finished.outcome == "failed":
         derived = _NOTHING  # §4.8: nothing derived from the page is returned on failure
     return ScrapeResult(
         job_id=task.job_id,
         url=request.url,
-        outcome=outcome,
-        reason=reason,
+        outcome=finished.outcome,
+        reason=finished.reason,
         usage=usage,
         schema_=derived.drafted,
-        records=records,
+        records=finished.records,
+        page=finished.page,
         browser_actions=report,
         **members,
         **derived.formats,
@@ -622,6 +627,16 @@ async def polite_fetch(
     return "robots" if disallowed and result.block_class != "ok" else result
 
 
+class _Finished(NamedTuple):
+    """How a scrape's task ended: its outcome, the records `records` kept, why (`ScrapeResult.reason`), and a listing's
+    page fields when it kept no record."""
+
+    outcome: PageOutcome
+    records: list[ScrapedRecord] | None = None
+    reason: str | None = None
+    page: dict[str, RecordField] | None = None
+
+
 async def _finish(
     conn: AsyncConnection,
     task: ClaimedTask,
@@ -631,19 +646,20 @@ async def _finish(
     derived: _Derived,
     margins: DriftMargins | None,
     more: Callable[[], Awaitable[StoredFurther]] | None = None,
-) -> tuple[PageOutcome, list[ScrapedRecord] | None]:
+) -> _Finished:
     """Settle the task with the page's outcome, after storing its extraction and record when `records` asked, and
     the page's run of an active config in its drift window. `more` stores a listing's further kept states (owner
     #52), once the page's own extraction did not fail: the answer lists every record once, and a further state whose
-    extraction failed makes the outcome `partial`."""
+    extraction failed makes the outcome `partial`. A listing that kept no record says why, in the answer and the task's
+    `last_error` (D-1475), and answers its page fields (D-1476)."""
     outcome = BLOCK_OUTCOMES[result.block_class]
     if outcome == "failed":
         error = result.attempts[-1].error or outcome
         await fail_task(conn, task, error, transient=False, capture_id=capture_id)
-        return outcome, None
+        return _Finished(outcome)
     if derived.extraction is None or derived.schema is None:
         await complete_task(conn, task, outcome, capture_id=capture_id)
-        return outcome, None
+        return _Finished(outcome)
     extraction = derived.extraction
     stored = await store_page_record(
         conn,
@@ -657,15 +673,23 @@ async def _finish(
     )
     if stored.outcome == "failed":
         await fail_task(conn, task, EXTRACTION_ERROR, transient=False, capture_id=capture_id)
-        return "failed", None
+        return _Finished("failed")
     further = StoredFurther() if more is None else await more()
     # A detail page's one record, or a listing's one per row (none when it listed nothing, SPEC-05 §4.10).
     kept = {record.id: (record, extraction) for record in stored.records} | {r.id: (r, e) for r, e in further.records}
     outcome = records_outcome(tuple(record for record, _ in kept.values()))
     if further.failed:
         outcome = "partial"
-    await complete_task(conn, task, outcome, capture_id=capture_id)
-    return outcome, [_scraped(record, of) for record, of in kept.values()]
+    reason, page = _unlisted(derived.schema, extraction) if not kept else (None, None)
+    await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id)
+    return _Finished(outcome, [_scraped(record, of) for record, of in kept.values()], reason, page)
+
+
+def _unlisted(schema: SchemaDef, extraction: ExtractionResult) -> tuple[str | None, dict[str, RecordField] | None]:
+    """A listing without a kept record: why it has no rows, if it has none, and its page fields."""
+    if schema.page_kind != "listing" or extraction.entity is None:
+        return None, None
+    return extraction.reason, page_fields(schema, extraction.entity)
 
 
 def _scraped(kept: StoredRecord, extraction: ExtractionResult) -> ScrapedRecord:

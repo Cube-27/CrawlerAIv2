@@ -18,8 +18,7 @@ from curl_cffi import CurlOpt
 from curl_cffi.requests import AsyncSession, BrowserTypeLiteral
 from curl_cffi.requests.exceptions import RequestException
 
-from crawlerai.acquire.challenge import CHALLENGED, challenge_label, count
-from crawlerai.acquire.classify import classify
+from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
 from crawlerai.acquire.curl_client import Hop, pinned, reason, send
 from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
 from crawlerai.acquire.session import SiteSessions
@@ -60,8 +59,10 @@ async def fetch_http(
     last, challenge = sent.last, None
     block_class: BlockClass = "error"
     if sent.error is None and last is not None:
-        # classify parses HTML synchronously; a thread keeps the event loop free.
-        block_class = await asyncio.to_thread(classify, last.status, last.response_headers, last.body, policy.page_kind)
+        # Classifying parses HTML synchronously; a thread keeps the event loop free.
+        block_class = await asyncio.to_thread(
+            block_class_of, last.status, last.response_headers, last.body, policy.page_kind
+        )
         if block_class in CHALLENGED:
             challenge = await asyncio.to_thread(challenge_label, last.status, last.response_headers, last.body, url)
     count(challenge, "http")

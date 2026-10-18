@@ -380,7 +380,8 @@ async def extract_records(
     """Extract the reached page with what the job pinned and store it (`store_page_record`): `config` mode with the
     pinned config, else cold. Role C on `llm`, charged to the job, fills required fields left missing (SPEC-05 §4.13).
     `parsed` is the page's parse when the handler already has one (INV-26); a listing its fetch's
-    check extracted is not extracted again (owner #54). A crawl-discovered page may end `no_match`."""
+    check extracted is not extracted again (owner #54). A crawl-discovered page may end `no_match`. A listing without
+    rows ends with the reason (`ExtractionResult.reason`)."""
     schema = records.schema
     config = None
     if records.config is not None:
@@ -403,7 +404,8 @@ async def extract_records(
     )
     if stored.outcome == "failed":
         return Failed(EXTRACTION_ERROR, transient=False, capture_id=page.capture_id)
-    return Finished(stored.outcome, capture_id=page.capture_id)
+    # A listing without rows says why in the task's `last_error` (D-1475).
+    return Finished(stored.outcome, reason=extraction.reason, capture_id=page.capture_id)
 
 
 def _role_c(task: ClaimedTask, llm: LLMClient) -> RoleC:

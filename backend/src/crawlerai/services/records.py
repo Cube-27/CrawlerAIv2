@@ -30,7 +30,7 @@ from crawlerai.db.models import (
 )
 from crawlerai.db.paging import keyset_page
 from crawlerai.resolve.records import FieldMeta, RecordContent, record_confidence
-from crawlerai.resolve.types import Probability
+from crawlerai.resolve.types import FieldSet, Probability
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef
 
@@ -195,6 +195,14 @@ def _stored(row: RowMapping, schema: SchemaDef) -> StoredRecord:
     names = ("id", "capture_id", "schema_id", "version", "changed_fields", "mode", "complete")
     columns = {name: row[name] for name in names}
     return StoredRecord(**columns, confidence=record_confidence(schema, fields), fields=fields)
+
+
+def page_fields(schema: SchemaDef, fields: FieldSet) -> dict[str, RecordField]:
+    """A listing's page-scope fields (SPEC-01 §4.3 `scope: page`) in the record field shape: what a listing that kept
+    no record still resolved, such as its next page."""
+    scoped = {name: outcome for name, outcome in fields.items() if schema.fields[name].scope == "page"}
+    data = {name: outcome.value for name, outcome in scoped.items() if outcome.status == "published"}
+    return _fields(data, {name: FieldMeta.of(outcome) for name, outcome in scoped.items()})
 
 
 def _fields(data: Mapping[str, Any], meta: Mapping[str, FieldMeta]) -> dict[str, RecordField]:
