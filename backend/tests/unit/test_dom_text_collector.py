@@ -112,3 +112,10 @@ def test_a_heading_naming_a_list_field_gives_the_items_of_its_section_lists() ->
     # Two sections that list different items under the field's heading leave it unread.
     twice = body.replace("</main>", "<h3>Requirements</h3><ol><li>Cups</li></ol></main>")
     assert DescriptionCollector().collect(ParsedPage(twice), schema, CTX, ()).candidates == ()
+    # A hidden item is no item, and a hidden heading names nothing.
+    hidden = body.replace("<li>Kettles</li>", '<li>Kettles</li><li style="display:none">Spoons</li>')
+    assert [c.normalized for c in DescriptionCollector().collect(ParsedPage(hidden), schema, CTX, ()).candidates] == [
+        Ok(["Kettles", "Tea leaves"])
+    ]
+    unshown = body.replace("<h2>Requirements</h2>", "<h2 hidden>Requirements</h2>")
+    assert DescriptionCollector().collect(ParsedPage(unshown), schema, CTX, ()).candidates == ()

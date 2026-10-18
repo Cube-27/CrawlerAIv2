@@ -61,6 +61,8 @@ def test_a_postal_address_keeps_its_parts_and_a_stated_code() -> None:
     assert norm(address) == expected
     assert norm({"@type": "Place", "address": address}) == expected
     assert norm({**address, "addressCountry": {"@type": "Country", "identifier": "de"}}) == expected
+    # A stated code alone is a location with no text.
+    assert norm({"addressCountry": "de"}) == Ok(value(None, None, None, "DE"))
 
 
 def test_the_text_is_the_place_as_written_its_name_and_address_lines_each_part_once() -> None:

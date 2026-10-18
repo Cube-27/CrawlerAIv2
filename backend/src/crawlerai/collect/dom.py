@@ -119,8 +119,8 @@ class DomCollector:
         listed = content.listed_pairs(page) if content is not None else []
         unlabelled = [pair for pair in pairs if words(pair[0]) not in labels]
         for name, raw, xpath, read in (
-            *_pairs_found(pairs, labels, schema, content),
-            *_pairs_found(listed, field_labels(lists := _list_fields(schema)), lists, content),
+            *_pairs_found(page, pairs, labels, schema, content),
+            *_pairs_found(page, listed, field_labels(lists := _list_fields(schema)), lists, content),
             *_typed_found(page, schema, ctx, content, unlabelled),
             *_image_found(page, schema, ctx),
         ):
@@ -181,7 +181,7 @@ class _Content:
             if pair[2]
             and pair[1].mem_id not in self.apart
             and not visible(pair[2])
-            and (items := list_items(pair[1]))
+            and (items := list_items(pair[1], page))
             and all(map(visible, items))
         ]
 
@@ -193,7 +193,11 @@ def _list_fields(schema: SchemaDef) -> SchemaDef:
 
 
 def _pairs_found(
-    pairs: Sequence[Pair], labels: Mapping[Words, Sequence[str]], schema: SchemaDef, content: "_Content | None"
+    page: ParsedPage,
+    pairs: Sequence[Pair],
+    labels: Mapping[Words, Sequence[str]],
+    schema: SchemaDef,
+    content: "_Content | None",
 ) -> Iterator[Found]:
     # A value's wrappers read it too: of the elements giving a field the same value, the innermost (last in document
     # order) is its place.
@@ -211,7 +215,7 @@ def _pairs_found(
                 name,
                 raw,
                 node_xpath(value),
-                [*list_items(value)] if schema.fields[name].type is FieldType.LIST else None,
+                [*list_items(value, page)] if schema.fields[name].type is FieldType.LIST else None,
             )
 
 
@@ -245,16 +249,17 @@ def _text(node: LexborNode) -> str:
 _LISTS = frozenset({"ul", "ol", "menu"})
 
 
-def list_items(element: LexborNode) -> list[str]:
-    """The text of each item of the lists an element is or holds (HTML Standard §4.4.5-§4.4.8: the `li` children of a
-    `ul`, `ol` or `menu`), in document order. A list inside an item is part of that item, not a list of its own."""
+def list_items(element: LexborNode, page: ParsedPage) -> list[str]:
+    """The text of each shown item of the lists an element is or holds (HTML Standard §4.4.5-§4.4.8: the `li` children
+    of a `ul`, `ol` or `menu`), in document order: an item that renders no text in the page's cleaned text
+    (`ParsedPage.text_spans`) is not shown. A list inside an item is part of that item, not a list of its own."""
     lists = [element] if element.tag in _LISTS else element.css(",".join(_LISTS))
     items = [
         item
         for lst in lists
         if not any(ancestor.tag == "li" for ancestor in _up_to(lst, element))
         for item in _children(lst)
-        if item.tag == "li"
+        if item.tag == "li" and node_xpath(item) in page.text_spans
     ]
     return [text for text in map(_text, items) if text]
 

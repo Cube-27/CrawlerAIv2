@@ -142,7 +142,7 @@ def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
     if text := _written(lines, stated):
         # The written parts are the location's text, so a `type:remote` clause in it reads as it does in a string.
         return Ok(_value(text, parts, remote or _says_remote(text, ctx)))
-    return Ok(_value(None, parts, remote)) if remote else Invalid("no_match")
+    return Ok(_value(None, parts, remote)) if remote or parts.get("country") else Invalid("no_match")
 
 
 def _written(lines: Sequence[str | None], parts: Sequence[str | None]) -> str | None:

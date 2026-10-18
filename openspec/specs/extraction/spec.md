@@ -92,7 +92,7 @@ words. A schema.org `PropertyValue` under an entity's `additionalProperty` or `i
 `propertyID` is a field's label gives that field its scalar `value`, owned by that entity
 (`collect/property_values.py`). A list of values (not of lists or objects) has labels too: a label-value pair naming
 it gives the items of the lists its value holds (HTML Standard §4.4.5-§4.4.8 `li`), each shown, else its one value;
-on a detail page, a heading naming it gives the items of the lists in its section (`collect/dom_text.py`), and sections
+on a detail page, a shown heading naming it gives the shown items of the lists in its section (`collect/dom_text.py`), and sections
 listing different items give none. (Previously: a label matched only the field's name or schema.org property; a list
 field had no labels.)
 #### Scenario: Drafted synonym

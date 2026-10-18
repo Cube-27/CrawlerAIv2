@@ -83,7 +83,7 @@ class _Blocks:
     """The prose elements of a region with their cleaned text, in document order."""
 
     def __init__(self, page: ParsedPage, region: LexborNode) -> None:
-        self.region = region
+        self.page, self.region = page, region
         spans, text = page.text_spans, page.cleaned_text.text
         selector = ",".join(
             (
@@ -175,7 +175,8 @@ def _listed(blocks: _Blocks, labels: dict[tuple[str, ...], list[str]], name: str
     found = [
         listed
         for heading in blocks.region.css(_HEADING)
-        if words(" ".join(heading.text(deep=True, separator=" ").split())) in named
+        if node_xpath(heading) in blocks.page.text_spans
+        and words(" ".join(heading.text(deep=True, separator=" ").split())) in named
         and (listed := _section_items(blocks, heading)) is not None
     ]
     return found[0] if found and all(items == found[0][1] for _, items in found) else None
@@ -183,7 +184,9 @@ def _listed(blocks: _Blocks, labels: dict[tuple[str, ...], list[str]], name: str
 
 def _section_items(blocks: _Blocks, heading: LexborNode) -> tuple[_Block, JsonValue] | None:
     """The items of the lists in a heading's section, with the first block holding one."""
-    listed = [(part, items) for part in _section_parts(blocks, heading) if (items := list_items(part.node))]
+    listed = [
+        (part, items) for part in _section_parts(blocks, heading) if (items := list_items(part.node, blocks.page))
+    ]
     if not listed:
         return None
     return listed[0][0], [*(item for _, items in listed for item in items)]
