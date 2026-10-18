@@ -466,30 +466,28 @@ class _Listing:
 
     def gap(self) -> ListingGapRequest | None:
         """The role C request (listings spec, "Role C rows"): the blocks whose rows lack row fields, each with the
-        fields its row lacks, and the page fields still `missing` when a required one is; none of them a field the
+        fields its row lacks, and the missing page fields a detail page would ask (`_gaps`); none of them a field the
         config runs, and no block beside a config that runs a row field (role C's values could not join its rows)."""
         schema = self.page.schema
         covered = self.page.config.covered
         row_fields = tuple(name for name, spec in schema.fields.items() if spec.scope == "row")
         blocks = () if covered.intersection(row_fields) else self._blocks(row_fields)
-        missing = [name for name, outcome in self.fields.items() if outcome.status == "missing" and name not in covered]
-        page_missing = tuple(missing) if any(schema.fields[name].required for name in missing) else ()
+        page_missing = _gaps(schema, self.fields, covered)
         if not blocks and not page_missing:
             return None
         return ListingGapRequest(self.page.page, schema, self.page.ctx, blocks, page_missing)
 
     def _blocks(self, row_fields: Sequence[str]) -> tuple[BlockText, ...]:
-        """The blocks whose rows lack a row field, asked when some row lacks a required one or some row field is
-        published on no row; the item URL is the block's link, which its text does not show, so it is never asked."""
+        """The blocks whose rows lack a row field role C can claim, asked when some row lacks a required one or one is
+        published on no row: never the item URL, the block's link, which its text does not show, nor an object."""
         schema = self.page.schema
         rows = dict(zip((entity.id for entity in self.entities), self.rows, strict=True))
-        urls = frozenset(item_url_fields(schema))
+        askable = _askable(schema, row_fields)
         lacking = {
-            block.row: [name for name in row_fields if name not in urls and not _published(rows[block.row], name)]
-            for block in self.blocks
+            block.row: [name for name in askable if not _published(rows[block.row], name)] for block in self.blocks
         }
-        unpublished = any(not any(_published(row, name) for row in self.rows) for name in row_fields)
-        required = {name for name in row_fields if schema.fields[name].required}
+        unpublished = any(not any(_published(row, name) for row in self.rows) for name in askable)
+        required = {name for name in askable if schema.fields[name].required}
         if not unpublished and not any(required.intersection(names) for names in lacking.values()):
             return ()
         texts = (block_text(self.page.page, block, lacking[block.row]) for block in self.blocks if lacking[block.row])
@@ -593,6 +591,13 @@ def _gaps(schema: SchemaDef, fields: FieldSet, covered: frozenset[str]) -> tuple
     if not any(schema.fields[name].required or name in unmet for name in missing):
         return ()
     return tuple(missing)
+
+
+def _askable(schema: SchemaDef, row_fields: Sequence[str]) -> list[str]:
+    """The row fields role C can claim in a block: not the item URL, the block's link, which its text does not show,
+    nor an object, whose sub-fields one verbatim span cannot hold."""
+    urls = frozenset(item_url_fields(schema))
+    return [name for name in row_fields if name not in urls and not _holds_objects(schema.fields[name])]
 
 
 def _holds_objects(spec: FieldSpec) -> bool:

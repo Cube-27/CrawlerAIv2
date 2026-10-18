@@ -732,6 +732,33 @@ def test_only_block_rows_lacking_a_required_row_field_are_asked() -> None:
     assert [(block.index, block.fields) for block in request.blocks] == [(1, ("title",))]
 
 
+def test_an_object_row_field_no_row_publishes_is_never_asked() -> None:
+    # A claim is one verbatim span, which cannot hold an object's sub-fields: the blocks are not asked for it.
+    dims = FieldSpec.model_validate(
+        {"type": "object", "description": "d", "fields": {"w": {"type": "text", "description": "d"}}}
+    )
+    schema = _schema("listing", title=LISTING.fields["title"], url=LISTING.fields["url"], dims=dims)
+    role_c = FakeRoleC()
+
+    _listing(_html(body=f"<ul>{''.join(_branded(n) for n in (1, 2, 3))}</ul>"), schema, role_c=role_c, data=COMMITTED)
+
+    assert role_c.listing_requests == []
+
+
+def test_the_page_members_of_an_unmet_required_group_are_asked() -> None:
+    # As on a detail page: no member of a required group publishes, so its optional members are asked.
+    optional = LISTING.fields["page_title"]
+    schema = _schema(
+        "listing", title=LISTING.fields["title"], url=LISTING.fields["url"], heading=optional, subtitle=optional
+    ).model_copy(update={"required_groups": [["heading", "subtitle"]]})
+    role_c = FakeRoleC()
+
+    _listing(_html(body=f"<ul>{''.join(_branded(n) for n in (1, 2, 3))}</ul>"), schema, role_c=role_c, data=COMMITTED)
+
+    (request,) = role_c.listing_requests
+    assert (request.blocks, request.page_missing) == ((), ("heading", "subtitle"))
+
+
 def test_a_listing_without_rows_does_not_ask_role_c_for_rows() -> None:
     # Role C fills the rows of blocks: with none, and no required page field missing, it is not asked.
     role_c = FakeRoleC()

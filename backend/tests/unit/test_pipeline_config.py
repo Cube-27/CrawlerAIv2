@@ -362,7 +362,7 @@ def test_a_listing_config_without_rows_leaves_the_blocks_missing_row_fields_to_r
                 source_kind="llm",
                 raw="Acme 1",
                 normalized=Ok("Acme 1"),
-                locator="text:9-15",
+                locator="text:29-35",  # the first block's "Acme 1", as checked below
                 independent=True,
             ),
         ),
@@ -376,4 +376,6 @@ def test_a_listing_config_without_rows_leaves_the_blocks_missing_row_fields_to_r
     # item URL; the page field the config runs is not asked again.
     assert [block.fields for block in request.blocks] == [("title", "brand")] * 3
     assert request.page_missing == ()
+    first = request.blocks[0]
+    assert first.start + first.text.index("Acme 1") == 29
     assert [row.get("brand") for row in _rows(result)] == [("Acme 1", "llm_grounded"), None, None]
