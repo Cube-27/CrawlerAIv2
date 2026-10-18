@@ -8,6 +8,7 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
@@ -92,3 +93,16 @@ def test_every_listed_product_is_a_row_with_a_price_only_when_its_range_is_one_p
         for n, (low, high) in enumerate(prices)
     ]
     assert [_published(row) for row in result.rows] == expected
+
+
+@pytest.mark.parametrize("currencies", [("EUR", "SEK"), ()])
+def test_a_shop_that_may_show_another_currency_lists_its_products_without_prices(currencies: tuple[str, ...]) -> None:
+    # The API prices in the shop's primary market; a shop presenting several currencies may show the page in another
+    # one, so no listed price is the page's for certain (C7).
+    answer = _collection([("1.00", "1.00"), ("2.00", "2.00")], currencies)
+
+    result = _extract(f"{SHOP}/collections/widgets", answer, LISTING)
+
+    assert [_published(row) for row in result.rows] == [
+        {"title": f"Widget {n}", "url": f"{SHOP}/products/widget-{n}"} for n in (0, 1)
+    ]
