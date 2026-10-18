@@ -32,4 +32,6 @@ def is_typed(spec: FieldSpec) -> bool:
 
 def spots(raw: str, spec: FieldSpec, ctx: Context, xpath: str, place: str) -> tuple[Spot, ...]:
     normalized = normalize(raw, spec, ctx)
-    return (Spot(raw, normalized, xpath, place),) if isinstance(normalized, Ok) else ()
+    # Only a text showing the checked syntax is a value of the type (`Ok.checked`): an amount without a currency sign
+    # is any number.
+    return (Spot(raw, normalized, xpath, place),) if isinstance(normalized, Ok) and normalized.checked else ()

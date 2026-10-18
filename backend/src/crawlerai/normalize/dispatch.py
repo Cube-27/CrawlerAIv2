@@ -6,7 +6,7 @@ their items and sub-fields.
 """
 
 from collections import Counter
-from collections.abc import Hashable, Iterator, Sequence
+from collections.abc import Hashable, Iterable, Iterator, Sequence
 from functools import partial
 
 from pydantic import JsonValue
@@ -14,7 +14,9 @@ from pydantic import JsonValue
 from crawlerai.normalize import count, date, enum, identifier, location, money, number, text, url
 from crawlerai.normalize import range as range_
 from crawlerai.normalize.base import (
+    BASES,
     Ambiguous,
+    Basis,
     Context,
     Equality,
     EqualityKey,
@@ -161,20 +163,28 @@ def _list(raw: Raw, item: FieldSpec, ctx: Context) -> NormalizeResult:
         return Invalid("empty")
     values: list[JsonValue] = []
     reasons: list[str] = []
+    kept: list[Ok] = []
     ambiguous = False
     for i, entry in enumerate(items):
         result = normalize(entry, item, ctx)
         if isinstance(result, Ok):
             values.append(result.value)
+            kept.append(result)
             reasons.extend(_nested(f"[{i}]", result.reasons))
         else:
             ambiguous = ambiguous or isinstance(result, Ambiguous)
             reasons.append(f"[{i}]: {result.reason}")
     if values:
         # One file is one image (`url.resource_key`): a list names each once, by its largest rendition.
-        return Ok(url.distinct_files(values) if item.type is FieldType.IMAGE_URL else values, tuple(reasons))
+        value = url.distinct_files(values) if item.type is FieldType.IMAGE_URL else values
+        # A list is as checked as its least checked item, and its currency evidence is its weakest item's (`Ok`).
+        return Ok(value, tuple(reasons), basis=_weakest(r.basis for r in kept), checked=all(r.checked for r in kept))
     # No item normalized; an ambiguous one might, once the context settles it.
     return Ambiguous("no_item", ()) if ambiguous else Invalid("no_item")
+
+
+def _weakest(bases: Iterable[Basis | None]) -> Basis | None:
+    return max((b for b in bases if b is not None), key=BASES.index, default=None)
 
 
 def _object(raw: Raw, fields: dict[str, FieldSpec], ctx: Context) -> NormalizeResult:

@@ -6,7 +6,7 @@ import re
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from functools import cache
 
 from babel import Locale, UnknownLocaleError
@@ -87,7 +87,8 @@ def readings(written: str, locales: frozenset[str]) -> list[Decimal]:
         text = "".join(group if unicodedata.category(c) == "Zs" else c for c in written) if group.isspace() else written
         try:
             values.add(parse_decimal(text, loc, strict=True))
-        except NumberFormatError:
+        except (NumberFormatError, InvalidOperation):
+            # A digit run longer than the decimal context holds (Python `decimal`, 28 digits) is no amount either.
             continue
     return sorted(values)
 

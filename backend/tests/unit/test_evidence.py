@@ -2,10 +2,11 @@
 dev-measured confidence, the `calibrated` flag, and abstention below a request's minimum confidence."""
 
 import pytest
+from pydantic import JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.db.models import SourceKind
-from crawlerai.normalize.base import Ok
+from crawlerai.normalize.base import Basis, Ok
 from crawlerai.resolve.derive import Derived
 from crawlerai.resolve.evidence import (
     MIN_CALIBRATED_N,
@@ -99,6 +100,26 @@ def test_a_field_abstains_below_the_requests_minimum_confidence(precision: float
             precision,
         )
         assert outcome.rejected == ((chosen, "below_min_confidence"),)
+
+
+@pytest.mark.parametrize(
+    ("basis", "measured"),
+    [(None, (0.97, True)), ("page", (0.97, True)), ("locale", (0.8, True)), ("unknown", (None, False))],
+)
+def test_a_price_on_weak_currency_evidence_is_noted_and_measured_apart(
+    basis: Basis | None, measured: tuple[float | None, bool]
+) -> None:
+    # Owner decision 2026-10-18: a currency only the locale settles, or none, publishes with lower confidence.
+    value: JsonValue = {"amount": "10", "currency": None if basis == "unknown" else "USD"}
+    chosen = _candidate().model_copy(update={"field": "price", "raw": value, "normalized": Ok(value, basis=basis)})
+    calibration = _calibration(
+        money__structured=(MIN_CALIBRATED_N, 0.97), money__structured__locale=(MIN_CALIBRATED_N, 0.8)
+    )
+
+    outcome = _assess(_chosen(chosen), calibration, type_=FieldType.MONEY)
+
+    assert (outcome.status, outcome.value, outcome.basis) == ("published", value, basis)
+    assert (outcome.confidence, outcome.calibrated) == measured
 
 
 # Unpublished and derived decisions

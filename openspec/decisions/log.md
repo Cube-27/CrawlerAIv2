@@ -1202,3 +1202,27 @@ archived ARCHITECTURE.md.
 - Why: on the dev set, without the URL kind check footer and category lists of the same shape became rows (FP);
   with it, listing rows TP 935 to 999, FN 926 to 862, FP 181 to 180 (`--llm unanswered`).
 - Reversible: yes
+
+### D-1777 — Price over currency certainty: what still declines
+- Date: 2026-10-18 · Change/PR: price-currency · Status: decided (applies owner #68)
+- Decision: A contradiction still declines: two signs sharing no currency (`USD 12 EUR`) and a sign that cannot
+  denote the structured `priceCurrency` stay `Invalid`. A monetary range keeps declining on a `null` currency
+  (`currency_unknown`), and a label import declines a money label whose currency is unknown (ground truth states it).
+- Why: owner #68 covers a price whose currency could not be determined, not one the page states two ways.
+- Reversible: yes
+
+### D-1778 — Currency evidence: buckets, region signals, checked syntax
+- Date: 2026-10-18 · Change/PR: price-currency · Status: decided (applies owner #68)
+- Decision: Only `locale` and `unknown` money values are measured apart (`money|<evidence>|<basis>`, uncalibrated until
+  n >= 20); `page` is noted in `field_meta.basis` and keeps its bucket. The ccTLD and Content-Language narrow a shared
+  currency sign only; number and date readings ignore them. A signless amount is `Ok.checked=false`: never spotted and
+  never admitted from state or XHR without an anchor.
+- Why: owner #68 asks lower confidence for steps 4-5 only; a bare number is no evidence that a text is a price.
+- Reversible: yes
+
+### D-1779 — A multi-currency shop's stored answer stays unpriced
+- Date: 2026-10-18 · Change/PR: price-currency · Status: decided (applies owner #68)
+- Decision: The Shopify guard stays: such a shop is not served live, so the page path publishes the price the page
+  shows (its currency or unknown); a stored answer's rows stay unpriced, since its amounts are the primary market's.
+- Why: publishing another market's amount with an unknown currency would be a wrong price, not a missing currency.
+- Reversible: yes

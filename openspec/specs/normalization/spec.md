@@ -29,7 +29,9 @@ Refs: §9, D-0256, D-0773, D-1482.
 
 ### Requirement: Decline rather than guess (INV-06)
 A normalizer SHALL NOT return `Ok` for empty or whitespace-only input, map an ambiguous symbol without context, read
-a host table, or apply a default (C7). Enforced by: Hypothesis property tests per type; active.
+a host table, or apply a default (C7). Money is the one exception to declining: a grounded amount publishes with its
+currency unknown (`null`) rather than decline, and never with a currency nothing on the page names (owner #68).
+(Previously: an ambiguous currency sign declined.) Enforced by: Hypothesis property tests per type; active.
 #### Scenario: Empty input
 - **WHEN** any type's normalizer gets `"   "`
 - **THEN** the result is `Invalid`
@@ -44,15 +46,32 @@ A derived value SHALL fill only an empty field, carry `derived_by`, and come fro
 justification ([resolution](../resolution/spec.md)). Refs: Appendix A #40, D-0355.
 
 ### Requirement: money
-`normalize/money.py` SHALL return `{amount, currency}` only when the currency is stated (ISO code, or a sign resolved
-through CLDR and page currencies); a sign several currencies share is `Ambiguous`, no sign is `Invalid`, and the
-amount must be positive. A structured `price` written as display text is read as text under its `priceCurrency`, and
-a sign it writes must denote that currency. A text's one amount is read through `numbers.stated`, as count and number
-read theirs: none is `no_amount`, two are `range`. Refs: §9, D-0300–D-0306, D-1240, D-1370.
-(Previously: money kept its own copy of the surrogate, NFKC and one-run steps.)
+`normalize/money.py` SHALL return `{amount, currency}` for every grounded positive amount (owner #68: a price is never
+skipped for its currency), the currency from the best evidence, in order: (1) an ISO 4217 code or a sign written with
+the amount that denotes one currency (CLDR symbols), or the value's own structured `priceCurrency`/`currency`;
+(2) the page's structured data (schema.org `priceCurrency`, `page_currencies`); (3) a page-level declaration
+(`declared_currencies`: OGP `og:price:currency` and `product:price:currency`, and a state JSON member named
+`currency`, `currencyCode` or `activeCurrency` holding an ISO 4217 code; `collect/currencies.py`); (4) the CLDR
+currency symbols of the locales the page's language tags, Content-Language (RFC 9110 §8.5, its HTML pragma) and ccTLD
+(RFC 1591, a CLDR territory) name, when they narrow a shared sign to one currency; (5) else `null`. A shared sign is
+narrowed by (2), then (3), then (4), each step keeping what the last left; an amount written without any sign takes
+the page's currency only when (2) and (3) together name exactly one, else `null`. `Ok.basis` notes the evidence of a
+currency below (2): `page`, `locale` or `unknown`; `Ok.checked` is false for a text without a sign, which only a
+grounded source may publish (extraction spec). Two signs that share no currency, or a sign that cannot denote the
+structured `priceCurrency`, contradict each other and are `Invalid`; amounts the locales read differently are
+`Ambiguous`, and the amount must be positive. A text's one amount is read through `numbers.stated`, as count and
+number read theirs: none is `no_amount`, two are `range`. A monetary range keeps declining on a `null` currency
+(`currency_unknown`). Refs: §9, owner #68, D-1240, D-1370.
+(Previously: a sign several currencies share was `Ambiguous`, no sign was `Invalid`, a page currency never supplied a
+missing sign, and the locale settled a sign at full confidence.)
 #### Scenario: Ambiguous dollar
 - **WHEN** the text is `$10` with `html_lang="en"` and no page currency
-- **THEN** the result is `Ambiguous`; with `page_currencies=("CAD",)` it is `Ok({amount: "10", currency: "CAD"})`
+- **THEN** the result is `Ok({amount: "10", currency: null})` with basis `unknown`; with `page_currencies=("CAD",)` it
+  is `Ok({amount: "10", currency: "CAD"})`; with `html_lang="en-AU"` it is AUD with basis `locale`
+#### Scenario: A price without a sign
+- **WHEN** the text is `12` and the page declares only `og:price:currency` SEK
+- **THEN** the result is `Ok({amount: "12", currency: "SEK"})` with basis `page`, not `checked`; with a second
+  currency stated elsewhere on the page the currency is `null`
 #### Scenario: Structured price with its sign
 - **WHEN** a structured value is `{price: "$1,295.99", priceCurrency: "USD"}`
 - **THEN** the result is `Ok({amount: "1295.99", currency: "USD"})`; with `price: "€12"` it is `Invalid`

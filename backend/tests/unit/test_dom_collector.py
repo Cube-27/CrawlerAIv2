@@ -304,6 +304,7 @@ def test_the_main_region_s_one_price_and_one_checked_identifier_are_spotted() ->
         "<p>€19.99</p>",  # no main region
         "<main><p>EAN 4006381333932</p></main>",  # a wrong check digit
         '<main><p style="display:none">€19.99</p></main>',  # not shown
+        "<main><p>Only <span>19.99</span> left</p></main>",  # a number without a currency sign: no checked syntax
     ],
 )
 def test_a_typed_value_is_not_spotted_when_it_is_ambiguous_struck_apart_or_not_shown(body: str) -> None:

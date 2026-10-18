@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from crawlerai.collect.locator import LocatorText
 from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.db.models import SiteId, SourceKind
+from crawlerai.normalize.base import Basis
 from crawlerai.resolve.evidence import required_fields
 from crawlerai.resolve.types import Derivation, Evidence, FieldOutcome, FieldSet, FieldStatus, Probability
 from crawlerai.schemas.types import FieldType, SchemaDef
@@ -42,6 +43,9 @@ class SubFieldMeta(_Model):
     calibrated: bool
     source_kind: SourceKind | None
     locator: LocatorText | None
+    # A published money value's weaker currency evidence (`page`, `locale`, `unknown`: resolution spec); left out
+    # when the value states its currency.
+    basis: Basis | None = Field(default=None, exclude_if=_absent)
 
     @classmethod
     def of(cls, outcome: FieldOutcome) -> "SubFieldMeta":

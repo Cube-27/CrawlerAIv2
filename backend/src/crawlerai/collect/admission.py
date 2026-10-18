@@ -344,7 +344,10 @@ def _normalized(
     if anchors is None and not (checkable(raw, spec) and visible()):
         return None
     normalized = normalize(raw, spec, ctx)
-    return normalized if isinstance(normalized, Ok) else None
+    if not isinstance(normalized, Ok) or (anchors is None and not normalized.checked):
+        # Without an anchor, only the checked syntax makes a visible value the field's (`Ok.checked`).
+        return None
+    return normalized
 
 
 def _owners(value: JsonValue, spec: FieldSpec, anchors: FieldAnchors | None) -> Iterator[tuple[str, bool]]:

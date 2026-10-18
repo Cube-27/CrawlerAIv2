@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from crawlerai.collect.base import Candidate
 from crawlerai.collect.locator import LocatorText, PageUrlDerivation
 from crawlerai.db.models import ExtractionMode, SourceKind
+from crawlerai.normalize.base import Basis
 
 # Evidence buckets.
 Evidence = Literal[
@@ -60,6 +61,8 @@ class FieldOutcome(_Model):
     locator: LocatorText | None
     derived_by: Derivation | None
     chosen: Candidate | None
+    # A published money value's weaker currency evidence (`Ok.basis`: `page`, `locale`, `unknown`), noted; else None.
+    basis: Basis | None = None
     kept: tuple[Candidate, ...] = ()  # the candidates that passed screening (validity, ownership, INV-13)
     rejected: tuple[tuple[Candidate, str], ...]  # each with its reject reason
     items: "tuple[RowOutcome, ...] | None" = None

@@ -224,6 +224,7 @@ def _field_outputs(fields: FieldSet) -> dict[str, FieldOutput]:
             status=outcome.status,
             value=outcome.value,
             evidence=outcome.evidence,
+            basis=outcome.basis,
             reason=outcome.reason,
             offered=_offered(outcome),
             # A row-mapped field's rows, each scored per sub-field (variants spec).

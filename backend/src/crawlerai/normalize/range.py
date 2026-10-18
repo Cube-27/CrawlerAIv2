@@ -96,12 +96,7 @@ def _from_structured(raw: dict[str, JsonValue], ctx: Context, money: MoneyRules)
     if currency is not None:
         if not isinstance(currency, str):
             return Invalid("currency_not_a_string")
-        # The money rules validate the ISO 4217 code and the amounts, as they do for Offer.price+priceCurrency.
-        return _monetary(
-            money({"price": format(lo, "f"), "priceCurrency": currency}, ctx),
-            money({"price": format(hi, "f"), "priceCurrency": currency}, ctx),
-            _period(unit_text, ctx) or _period(unit_code, ctx),
-        )
+        return _stated_monetary(lo, hi, currency, _period(unit_text, ctx) or _period(unit_code, ctx), ctx, money)
     period = unit_text.upper() if unit_text is not None else None
     period = period if period in _PERIODS else None
     unit = unit_code or (unit_text if period is None else None)
@@ -131,6 +126,11 @@ def _period(written: str | None, ctx: Context) -> str | None:
     return found[1][phrase.lastgroup or ""]
 
 
+# Far past the money rules' 18 digits (persistence-storage spec D-0005); they decline what lies between as out of
+# range.
+_MAX_ADJUSTED = 100
+
+
 def _bounds(quantity: dict[str, JsonValue]) -> tuple[Decimal, Decimal] | Invalid:
     # QuantitativeValue: `minValue` and `maxValue` bound a range; a lone `value` is both bounds.
     lo, hi = quantity.get("minValue"), quantity.get("maxValue")
@@ -152,7 +152,8 @@ def _decimal(value: JsonValue) -> Decimal | None:
         number = Decimal(str(value).strip())
     except InvalidOperation:
         return None
-    return number if number.is_finite() else None
+    # An exponent past any amount (`1e1000000000`) is no bound either: its fixed-point form would not fit in memory.
+    return number if number.is_finite() and abs(number.adjusted()) <= _MAX_ADJUSTED else None
 
 
 def _string(value: JsonValue) -> str | None:
@@ -264,6 +265,18 @@ def _around_amount(bound: str) -> Parts | None:
     return bound[: m.start()], m.group(), bound[m.end() :]
 
 
+def _stated_monetary(
+    lo: Decimal, hi: Decimal, currency: str, period: str | None, ctx: Context, money: MoneyRules
+) -> NormalizeResult:
+    """A structured monetary range in its stated `currency`. The money rules validate the ISO 4217 code and the
+    amounts, as they do for Offer.price+priceCurrency; a value they read in another currency than the stated one
+    (`Ok.basis`) means the code was not one."""
+    low, high = (money({"price": format(b, "f"), "priceCurrency": currency}, ctx) for b in (lo, hi))
+    if any(isinstance(r, Ok) and r.basis is not None for r in (low, high)):
+        return Invalid("unknown_currency")
+    return _monetary(low, high, period)
+
+
 def _monetary(lo: NormalizeResult, hi: NormalizeResult, period: str | None) -> NormalizeResult:
     """Combine the money results of the two bounds: a decline on either is the range's decline (money's reason)."""
     match lo, hi:
@@ -276,19 +289,29 @@ def _monetary(lo: NormalizeResult, hi: NormalizeResult, period: str | None) -> N
                 _value(a[0], b[0], currency=a[1], unit=None, period=period)
                 for a in map(_amount, _options(lo))
                 for b in hi_readings
-                if a[1] == b[1] and a[0] <= b[0]
+                if a[1] is not None and a[1] == b[1] and a[0] <= b[0]
             )
             return Ambiguous(reason, options)
         case Ok(value=lo_value), Ok(value=hi_value):
-            (lo_amount, lo_currency), (hi_amount, hi_currency) = _amount(lo_value), _amount(hi_value)
-            if lo_currency != hi_currency:
-                return Invalid("currency_mismatch")
-            if lo_amount > hi_amount:
-                return Invalid("min_greater_than_max")
-            if period is None:
-                return Ambiguous("period_missing", ())
-            return Ok(_value(lo_amount, hi_amount, currency=lo_currency, unit=None, period=period))
+            return _bounded_money(_amount(lo_value), _amount(hi_value), period)
     raise TypeError("a normalize result is Ok, Ambiguous or Invalid")
+
+
+def _bounded_money(
+    lo: tuple[Decimal, str | None], hi: tuple[Decimal, str | None], period: str | None
+) -> NormalizeResult:
+    (lo_amount, lo_currency), (hi_amount, hi_currency) = lo, hi
+    if lo_currency is None or hi_currency is None:
+        # A range states one currency or a unit (schemas spec); a sign the money rules leave unknown is neither, so
+        # the range declines rather than publish a bare pair of numbers.
+        return Ambiguous("currency_unknown", ())
+    if lo_currency != hi_currency:
+        return Invalid("currency_mismatch")
+    if lo_amount > hi_amount:
+        return Invalid("min_greater_than_max")
+    if period is None:
+        return Ambiguous("period_missing", ())
+    return Ok(_value(lo_amount, hi_amount, currency=lo_currency, unit=None, period=period))
 
 
 def _options(result: NormalizeResult) -> tuple[JsonValue, ...]:
@@ -299,11 +322,11 @@ def _options(result: NormalizeResult) -> tuple[JsonValue, ...]:
     raise TypeError("only Ok and Ambiguous results have readings")
 
 
-def _amount(money_value: JsonValue) -> tuple[Decimal, str]:
-    """A money value (`{amount, currency}`, normalization spec) as (amount, ISO 4217 code)."""
+def _amount(money_value: JsonValue) -> tuple[Decimal, str | None]:
+    """A money value (`{amount, currency}`, normalization spec) as (amount, ISO 4217 code, `None` when unknown)."""
     fields = money_value if isinstance(money_value, dict) else {}
     amount, currency = _decimal(fields.get("amount")), fields.get("currency")
-    if amount is None or not isinstance(currency, str):
+    if amount is None or not (currency is None or isinstance(currency, str)):
         raise TypeError(f"the money rules returned {money_value!r}, not a money value")
     return amount, currency
 

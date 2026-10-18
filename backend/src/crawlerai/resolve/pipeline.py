@@ -295,7 +295,9 @@ class _Page:
     def read(cls, source: _Source) -> "_Page":
         manifest, schema, data = source.bundle.manifest, source.schema, source.data
         page = ParsedPage.of(source.bundle) if source.parsed is None else source.parsed
-        ctx = with_stated_currencies(page_context(page, manifest.final_url, manifest.fetched_at), page)
+        ctx = with_stated_currencies(
+            page_context(page, manifest.final_url, manifest.fetched_at, headers=manifest.headers.response), page
+        )
         learned = None if source.config is None else source.config.learned_calls
         collected = collect_page(
             page, manifest, schema, ctx, vocabulary=data.vocabulary, adapters=data.adapters, learned=learned

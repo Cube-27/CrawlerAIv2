@@ -1,11 +1,12 @@
-"""The currencies a page's structured data states (schemas spec): schema.org `priceCurrency` in JSON-LD, microdata
-and RDFa Lite, and the OGP `product:price:currency`; ISO 4217 codes as written, each once."""
+"""The currencies a page states (normalization spec, money): schema.org `priceCurrency` in JSON-LD, microdata and RDFa
+Lite, and page-wide declarations (OGP price currency, generic currency members of state JSON); ISO 4217 codes as
+written, each once."""
 
 import json
 from datetime import UTC, datetime
 from typing import Any
 
-from crawlerai.collect.currencies import stated_currencies, with_stated_currencies
+from crawlerai.collect.currencies import declared_currencies, stated_currencies, with_stated_currencies
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize import money
 from crawlerai.normalize.base import Context, Ok
@@ -45,7 +46,26 @@ def test_the_stated_currency_settles_a_symbol_the_page_writes_in_text() -> None:
     page = _page(_jsonld({"@context": "https://schema.org", "@type": "Offer", "priceCurrency": "USD"}))
     spec = FieldSpec(type=FieldType.MONEY, description="d")
 
-    assert not isinstance(money.normalize("$12.50", spec, CTX), Ok)
+    assert money.normalize("$12.50", spec, CTX) == Ok({"amount": "12.50", "currency": None}, basis="unknown")
     assert money.normalize("$12.50", spec, with_stated_currencies(CTX, page)) == Ok(
         {"amount": "12.50", "currency": "USD"}
+    )
+
+
+def test_a_page_declares_currencies_in_ogp_and_in_generic_state_members() -> None:
+    state = {"shop": {"activeCurrency": "SEK", "cart": [{"currency_code": "SEK"}, {"currency": "sek"}]}, "price": "EUR"}
+    page = _page(
+        '<meta property="og:price:currency" content="SEK"><meta property="product:price:currency" content="NOK">',
+        f'<script type="application/json">{json.dumps(state)}</script>',
+    )
+
+    assert set(declared_currencies(page)) == {"SEK", "NOK"}
+    # A price written without a sign takes the page's currency only when every statement agrees.
+    one = _page('<meta property="og:price:currency" content="SEK">')
+    spec = FieldSpec(type=FieldType.MONEY, description="d")
+    assert money.normalize("12", spec, with_stated_currencies(CTX, one)) == Ok(
+        {"amount": "12", "currency": "SEK"}, basis="page", checked=False
+    )
+    assert money.normalize("12", spec, with_stated_currencies(CTX, page)) == Ok(
+        {"amount": "12", "currency": None}, basis="unknown", checked=False
     )

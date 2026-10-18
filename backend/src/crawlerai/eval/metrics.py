@@ -31,8 +31,10 @@ from crawlerai.eval.labels import (
 )
 from crawlerai.eval.presence import Capture
 from crawlerai.eval.scoring import same
+from crawlerai.normalize.base import Basis
 from crawlerai.normalize.dispatch import equal
 from crawlerai.normalize.url_key import without_parameters
+from crawlerai.resolve.evidence import bucket_key
 from crawlerai.resolve.preference import rule_type
 from crawlerai.resolve.types import Evidence
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -62,6 +64,7 @@ class FieldOutput(_Model):
     status: Literal["published", "missing", "conflict", "abstained"]
     value: JsonValue = None
     evidence: Evidence | None = None
+    basis: Basis | None = None  # `FieldOutcome.basis`: a money value's weaker currency evidence
     # Why the field is not published (`FieldOutcome.reason`: `below_tau`, `llm_unavailable`, ...), for triage.
     reason: str | None = None
     # The normalized values of the field's kept candidates (valid, owned, not a URL parameter), per source kind,
@@ -132,6 +135,7 @@ class Judgment(_Model):
     on_absent: bool  # the label says absent
     wrong_product: bool
     evidence: Evidence | None
+    basis: Basis | None = None  # the published value's `FieldOutput.basis`
     label_value: JsonValue
     output_value: JsonValue
     # The engine's reason for leaving the field unpublished, when it output the field and did not publish it.
@@ -220,7 +224,7 @@ class Report(_Model):
     n_pages: int
     by_field_type: dict[str, FieldMetrics]
     by_field: dict[str, FieldMetrics]  # "schema|field"
-    by_bucket: dict[str, PrecisionMetrics]  # "field_type|evidence"
+    by_bucket: dict[str, PrecisionMetrics]  # "field_type|evidence", or "field_type|evidence|basis" (`bucket_key`)
     by_config_status: dict[str, PrecisionMetrics]  # "field_type|status"
     by_category: dict[str, ZeroTouch]
     acquisition: dict[str, dict[BlockClass, int]]  # per category
@@ -296,7 +300,7 @@ def build_report(
             by_field[f"{case.schema_def.name}|{j.field}"].append(j)
             by_kind[f"{case.schema_def.page_kind}|{type_}"].append(j)
             if j.evidence is not None:
-                by_bucket[f"{type_}|{j.evidence}"].append(j)
+                by_bucket[bucket_key(type_, j.evidence, j.basis)].append(j)
             if (status := _config_status(case, j)) is not None:
                 by_config[f"{type_}|{status}"].append(j)
 
@@ -640,6 +644,7 @@ def _unmatched_row(
                 on_absent=False,
                 wrong_product=False,
                 evidence=out.evidence,
+                basis=out.basis,
                 label_value=None,
                 output_value=out.value,
                 sources=dict.fromkeys(out.offered, "FP"),
@@ -767,6 +772,7 @@ def _judge(
         on_absent=label.absent,
         wrong_product=published is not None and any(equal(value, d, spec) for d in label.distractors),
         evidence=published.evidence if published else None,
+        basis=published.basis if published else None,
         label_value=label.value,
         output_value=value,
         reason=None if out is None or published else out.reason,

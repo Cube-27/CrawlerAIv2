@@ -56,10 +56,9 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   role A: a role C span inside a longer text node (a company named mid-sentence), list fields from spans, and listings
   with no aligned group. Role A prompt caching (phase 4) is not done.
 - Extract with `fetch.cache: only` (#277): sample URLs read stored captures, but globs are still expanded by a live map.
-- Item layer (#278): block prices whose symbol is ambiguous without a stated currency (`$` on a page in `es` or `en`,
-  `Rs.`) decline in the money normalizer; on the golden set four listings show prices only so. A currency the page
-  states in its state or call JSON as an ISO 4217 code could settle the symbol, as structured data's does; measure
-  before admitting it. A WebPage `mainEntityOfPage` given only as an `@id` is not read as a row's item URL (D-1569).
+- Item layer (#278): a WebPage `mainEntityOfPage` given only as an `@id` is not read as a row's item URL (D-1569).
+  (Block prices with an ambiguous symbol now publish, with the page's declared currency, the locale's, or `null`:
+  owner #68.) A currency in captured call JSON is not read as a page declaration.
 - Item layer (#278): a state value read at a key the page's blocks proved (`collect.induce`) ranks in no text
   precedence and has no evidence bucket, so it never fills a row alone; a bucket for it is a resolution-spec change.
 - Golden report (#272): `eval re-key` marks 206 of 748 golden label rows stale by a written-form search of the

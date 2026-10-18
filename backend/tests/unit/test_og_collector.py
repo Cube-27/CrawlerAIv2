@@ -9,7 +9,7 @@ from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
-from crawlerai.normalize.base import Context, Invalid, Ok
+from crawlerai.normalize.base import Context, Ok
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 PAGE_URL = "https://shop.example.test/p/1"
@@ -111,12 +111,17 @@ def test_a_field_maps_only_when_its_type_matches_the_role() -> None:
     assert result.candidates == (_og("title", "Synthetic Widget", Ok("Synthetic Widget"), "meta:og:title"),)
 
 
-def test_a_price_without_a_currency_is_a_candidate_that_declines() -> None:
-    # C7: no fallback currency; validity (§10) rejects the candidate.
+def test_a_price_without_a_currency_publishes_its_amount_with_the_currency_unknown() -> None:
+    # Normalization spec, money: a grounded amount publishes; no currency is filled in (C7).
     result = _collect(("product:price:amount", "19.99"))
 
     assert result.candidates == (
-        _og("price", {"amount": "19.99"}, Invalid("no_currency"), "meta:product:price:amount"),
+        _og(
+            "price",
+            {"amount": "19.99"},
+            Ok({"amount": "19.99", "currency": None}, basis="unknown"),
+            "meta:product:price:amount",
+        ),
     )
 
 

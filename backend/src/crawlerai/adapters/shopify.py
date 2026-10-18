@@ -17,9 +17,10 @@ adapter row cap (`adapters.paging`, D-1385). A locale subfolder names the langua
 international domains documentation: `/{language}` or `/{language}-{country}`): the query asks the collection in that
 language with `@inContext(language:)` and is served only when the answer's `localization` says it holds that language
 (a shop without the language answers in its default one). The subfolder's country is not used: prices are read only
-from a shop with one presentment currency (D-1114, D-1386). A shop with several is not served: its page may show
-another currency than the answer's, and the page path reads the prices the page shows, where the answer could give
-none (C7). A stored answer of such a shop is still read without its prices.
+from a shop with one presentment currency (D-1114, D-1386). A shop with several is not served: the answer's amounts
+are its primary market's, while its page may show another market's amounts, so the page path publishes the price the
+page shows, with the currency the page states or, failing that, unknown (normalization spec, money). A stored answer
+of such a shop is still read without its prices: its amounts are not the page's, whatever their currency.
 
 Product pages are not served (D-1118): the page states fields the API's answer lacks (its default variant's sku,
 condition, rating, review count), so a product page takes the page path, which reads them with the variants the page

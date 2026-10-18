@@ -19,9 +19,10 @@ function joinParts(parts: readonly unknown[], separator: string): string {
     .join(separator);
 }
 
-// schemas spec: money is `{amount, currency}`, shown as "amount currency".
+// schemas spec: money is `{amount, currency}`, shown as "amount currency". A null currency is one the page did not
+// settle (normalization spec): the amount is shown with that said, never with a currency filled in.
 function money(value: JsonObject): string {
-  return joinParts([value.amount, value.currency], " ");
+  return joinParts([value.amount, value.currency ?? "(currency unknown)"], " ");
 }
 
 // schemas spec: location is `{text, locality, region, country, remote_flag}`. `text` is the place as the page writes

@@ -29,7 +29,7 @@ from crawlerai.collect.json_doc import scalars
 from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize import url
-from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
+from crawlerai.normalize.base import BASES, Ambiguous, Invalid, Ok, Raw
 from crawlerai.normalize.dispatch import equal, equality_key, resource_key
 from crawlerai.normalize.text import text_form
 from crawlerai.resolve.ownership import OFFER, EntityGraph
@@ -201,6 +201,7 @@ class Resolver:
     ) -> Preference:
         if not kept:
             return Unpublished("missing", _missing_reason(rejected), tuple(rejected))
+        kept, rejected = _best_settled(spec, kept, rejected)
         choosable = kept
         if anchor is not None:
             split = self._offer_split(spec, kept, anchor)
@@ -254,6 +255,29 @@ def intent_ambiguous(schema: SchemaDef, candidates: Sequence[Candidate]) -> dict
         )
         for name in schema.fields
     }
+
+
+def _best_settled(
+    spec: FieldSpec, kept: list[Candidate], rejected: list[Rejection]
+) -> tuple[list[Candidate], list[Rejection]]:
+    """Normalization spec, money: a value whose currency rests on weaker evidence (`Ok.basis`: the page, its locale,
+    or none) stands only where no better-settled candidate contradicts it. The others' values are kept when they equal
+    a best-settled one (they agree with it), else rejected `weaker_currency`; the best-settled come first, so one of
+    them is chosen."""
+    if rule_type(spec) is not FieldType.MONEY:
+        return kept, rejected
+    rank = {id(c): _settled_rank(c) for c in kept}
+    best = min(rank.values())
+    strongest = [c for c in kept if rank[id(c)] == best]
+    agreeing = [c for c in kept if rank[id(c)] == best or any(_equal(c, s, spec) for s in strongest)]
+    weaker = [(c, "weaker_currency") for c in kept if not any(c is a for a in agreeing)]
+    return sorted(agreeing, key=lambda c: rank[id(c)]), [*rejected, *weaker]
+
+
+def _settled_rank(candidate: Candidate) -> int:
+    """0 for a value that states its currency, else 1 + the place of its basis in `BASES` (weakest last)."""
+    basis = candidate.normalized.basis if isinstance(candidate.normalized, Ok) else None
+    return 0 if basis is None else 1 + BASES.index(basis)
 
 
 def _without(candidates: Sequence[Candidate], excluded: Sequence[Candidate]) -> list[Candidate]:

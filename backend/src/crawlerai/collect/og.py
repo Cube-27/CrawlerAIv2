@@ -55,9 +55,11 @@ _TABLE = (
 )
 # OGP `product` namespace: `product:price:amount` is the price and `product:price:currency` its ISO 4217 code.
 _AMOUNT, _CURRENCY = "product:price:amount", "product:price:currency"
+# The same declaration in the `og:` prefix (`og:price:currency`), which pages write for the whole page's prices.
+_OG_CURRENCY = "og:price:currency"
 # OGP "Optional Metadata": `og:site_name` is "the name of the overall site" the object is part of.
 _SITE_NAME = "og:site_name"
-_READ = frozenset(p for row in _TABLE for p in row.properties) | {_AMOUNT, _CURRENCY, _SITE_NAME}
+_READ = frozenset(p for row in _TABLE for p in row.properties) | {_AMOUNT, _CURRENCY, _OG_CURRENCY, _SITE_NAME}
 _SITE_TITLE = "og: og:title names the site, so og:title, og:image and og:description are not read"
 # The values a site-default block holds about the site rather than the object.
 _SITE_DEFAULTS = (_TITLE, *_IMAGES, _DESCRIPTION)
@@ -91,9 +93,9 @@ class OpenGraphCollector:
 
 
 def price_currencies(page: ParsedPage) -> list[str]:
-    """The `product:price:currency` values the page writes, in document order, read as `_metas` reads every OGP
-    property."""
-    return [meta.content for meta in _metas(page) if meta.property == _CURRENCY]
+    """The `product:price:currency` and `og:price:currency` values the page writes, in document order, read as `_metas`
+    reads every OGP property."""
+    return [meta.content for meta in _metas(page) if meta.property in (_CURRENCY, _OG_CURRENCY)]
 
 
 def _metas(page: ParsedPage) -> list[_Meta]:
@@ -171,7 +173,7 @@ def _first_or_all(found: Sequence[_Meta], *, as_list: bool) -> _Value | None:
 
 def _price(metas: Sequence[_Meta]) -> _Value | None:
     """The first price amount with the first currency, in the money normalizer's structured form. A missing currency
-    is left out, never filled in (C7), so the candidate declines."""
+    is left out, never filled in here: the money rules take the page's (normalization spec)."""
     amounts = [m.content for m in metas if m.property == _AMOUNT]
     if not amounts:
         return None

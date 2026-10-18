@@ -7,12 +7,13 @@ from pathlib import Path
 
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate, Entity
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId, SourceKind
-from crawlerai.normalize.base import Context, Ok
+from crawlerai.normalize.base import Basis, Context, Ok
 from crawlerai.resolve.derive import Derived, fill
 from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.resolve.preference import PRECEDENCE_TYPES, Chosen, PageFacts, Preference, Resolver, Unpublished
@@ -157,3 +158,31 @@ def test_only_a_missing_field_is_derived(preference: Preference, canonical: str 
         assert result.derived_by == ("final_url" if canonical is None else "canonical_link")
     else:
         assert result == preference
+
+
+_SETTLED = st.sampled_from([None, "page", "locale", "unknown"])
+
+
+@given(st.lists(st.tuples(st.sampled_from(["10.00", "12.00"]), _SETTLED), min_size=1, max_size=4))
+def test_a_price_on_weaker_currency_evidence_stands_only_where_no_better_settled_one_contradicts_it(
+    drawn: list[tuple[str, Basis | None]],
+) -> None:
+    # Normalization spec, money: the currency's evidence ranks the values; the best-settled publish by agreement.
+    candidates = []
+    for n, (amount, basis) in enumerate(drawn):
+        value: JsonValue = {"amount": amount, "currency": None if basis == "unknown" else "USD"}
+        candidate = _candidate("price", value, PAGE, "og", n)
+        candidates.append(candidate.model_copy(update={"normalized": Ok(value, basis=basis)}))
+
+    result = _resolver().prefer(_schema(price=PRICE), candidates)["price"]
+
+    rank = [None, "page", "locale", "unknown"]
+    best = min(rank.index(b) for _, b in drawn)
+    best_values = {(a, b == "unknown") for a, b in drawn if rank.index(b) == best}
+    if len(best_values) > 1:
+        assert isinstance(result, Unpublished)
+        assert result.status == "conflict"
+    else:
+        assert isinstance(result, Chosen)
+        assert isinstance(result.candidate.normalized, Ok)
+        assert rank.index(result.candidate.normalized.basis) == best

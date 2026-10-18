@@ -96,9 +96,12 @@ def test_every_listed_product_is_a_row_with_a_price_only_when_its_range_is_one_p
 
 
 @pytest.mark.parametrize("currencies", [("EUR", "SEK"), ()])
-def test_a_shop_that_may_show_another_currency_lists_its_products_without_prices(currencies: tuple[str, ...]) -> None:
+def test_a_shop_that_may_show_another_currency_lists_its_products_without_the_answers_prices(
+    currencies: tuple[str, ...],
+) -> None:
     # The API prices in the shop's primary market; a shop presenting several currencies may show the page in another
-    # one, so no listed price is the page's for certain (C7).
+    # market, with other amounts, so an answer's amount is not the page's price even with its currency unknown. Live,
+    # such a shop is not served (`test_shopify_adapter`) and the page path publishes the price the page shows.
     answer = _collection([("1.00", "1.00"), ("2.00", "2.00")], currencies)
 
     result = _extract(f"{SHOP}/collections/widgets", answer, LISTING)

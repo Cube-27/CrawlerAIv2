@@ -2,11 +2,13 @@
 language and URLs, and when it was fetched.
 
 Only evidence the page or the request states is read (C7): `<html lang>`, `og:locale`, the `hreflang` of the alternate
-links to the page itself, the document base URL and the final URL. `cctld_territory` is left empty, so a value that
-needs it declines rather than guesses. `page_currencies` comes from the page's structured data, which
-`collect.currencies` reads (this module sits below the collectors).
+links to the page itself, the Content-Language the response and the page declare, the document base URL and the final
+URL. `cctld_territory` is left empty, so a number or date that needs it declines rather than guesses; the money rules
+alone read the ccTLD, to narrow a shared currency sign (normalization spec). `page_currencies` and
+`declared_currencies` come from the page, which `collect.currencies` reads (this module sits below the collectors).
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 
 from crawlerai.content.dom import document_base_url, strip, tokens
@@ -17,12 +19,19 @@ from crawlerai.normalize.url import canonical_url
 
 
 def page_context(
-    page: ParsedPage, final_url: str, captured_at: datetime, *, request_locale: str | None = None
+    page: ParsedPage,
+    final_url: str,
+    captured_at: datetime,
+    *,
+    request_locale: str | None = None,
+    headers: Sequence[tuple[str, str]] = (),
 ) -> Context:
+    """The page's context; `headers` are the response's, as received."""
     return Context(
         html_lang=strip(html_lang(page)),
         og_locale=strip(open_graph(page).get("og:locale")),
         hreflang=hreflang(page, final_url),
+        content_language=content_language(page, headers),
         request_locale=request_locale,
         captured_at=captured_at,
         base_url=document_base_url(page, final_url),
@@ -45,3 +54,14 @@ def hreflang(page: ParsedPage, final_url: str) -> tuple[str, ...]:
         if canonical_url(node.attributes.get("href") or "", base) in own:
             found.setdefault(language)
     return tuple(found)
+
+
+def content_language(page: ParsedPage, headers: Sequence[tuple[str, str]]) -> tuple[str, ...]:
+    """The language tags the response's `Content-Language` field (RFC 9110 §8.5, a comma-separated list) and the page's
+    `<meta http-equiv="content-language">` pragma (HTML Living Standard §4.2.5.3) declare, each once, in that order."""
+    written = [value for name, value in headers if name.lower() == "content-language"]
+    for node in page.tree.css("meta[http-equiv][content]"):
+        if (node.attributes.get("http-equiv") or "").strip().lower() == "content-language":
+            written.append(node.attributes.get("content") or "")
+    tags = (tag.strip() for value in written for tag in value.split(","))
+    return tuple(dict.fromkeys(tag for tag in tags if tag))
