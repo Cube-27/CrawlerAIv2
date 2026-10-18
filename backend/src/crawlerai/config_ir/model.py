@@ -24,7 +24,7 @@ from pydantic import (
     model_validator,
 )
 
-from crawlerai.config_ir.api_recipe.model import ApiRecipe
+from crawlerai.config_ir.api_recipe.model import ApiRecipe, check_jsonpath
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS, check_pattern, check_replacement
 from crawlerai.config_ir.xpath1 import check_xpath1
 from crawlerai.db.models import CaptureId, ConfigOrigin, FetchMethod, FieldStatus, PageKind
@@ -36,8 +36,9 @@ JsonSource = Literal["jsonld", "js_state", "xhr", "api"]
 
 XPath1 = Annotated[str, AfterValidator(check_xpath1)]
 PortableRegex = Annotated[str, AfterValidator(check_pattern)]
-# RFC 9535 §2.2: a JSONPath query starts with the root identifier `$`.
-JsonPath = Annotated[str, StringConstraints(pattern=r"^\$")]
+# RFC 9535: the subset the engine reads (the `select` of `json_doc`: `$` and name, wildcard and index segments), so
+# that a step that validates is one both executors run (§4.2); RFC 9535 §2.2: it starts with the root identifier `$`.
+JsonPath = Annotated[str, StringConstraints(pattern=r"^\$"), AfterValidator(check_jsonpath)]
 # schema.org naming conventions: a type is UpperCamelCase.
 SchemaOrgType = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Za-z0-9]*$")]
 # An HTML attribute name an XPath `@name` test can reach: an XML NCName (Namespaces in XML §3), ASCII here.

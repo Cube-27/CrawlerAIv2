@@ -132,7 +132,8 @@ def _check_binder(text: str) -> str:
     return text
 
 
-def _check_jsonpath(path: str) -> str:
+def check_jsonpath(path: str) -> str:
+    """`path`, when it is a query the engine reads (the `select` of `json_doc`); raises `ValueError` otherwise."""
     _engine_jsonpath(path)
     return path
 
@@ -168,7 +169,7 @@ BinderText = Annotated[str, AfterValidator(_check_binder)]
 UrlTemplate = Annotated[str, AfterValidator(_check_url_template)]
 HeaderName = Annotated[str, StringConstraints(pattern=rf"^{_TOKEN.pattern}$")]
 HeaderValue = Annotated[str, AfterValidator(_check_header_value)]
-EngineJsonPath = Annotated[str, AfterValidator(_check_jsonpath)]
+EngineJsonPath = Annotated[str, AfterValidator(check_jsonpath)]
 MapPath = Annotated[str, AfterValidator(_check_map_path)]
 
 

@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from lxml import html as lxml_html
+from pydantic import ValidationError
 from selectolax import lexbor
 
 from crawlerai.collect.base import Candidate, Entity
@@ -190,12 +191,50 @@ def test_jsonpath_reads_the_documents_of_its_source() -> None:
 
 
 def test_steps_the_engine_cannot_run_are_diagnostics_and_the_next_step_runs() -> None:
-    steps = [{"jsonpath": "$['r']", "source": "api"}, {"jsonpath": "$..name", "source": "jsonld"}, {"xpath": "//h1"}]
+    steps = [{"jsonpath": "$['r']", "source": "api"}, {"xpath": "//h1"}]
     result = _run(_ir({"title": steps}), _ld({"name": "x"}) + "<h1>Mug</h1>", _schema(title=TEXT))
-    assert _only(result).locator == "config:title:2://h1"
-    assert [d.split(":", 3)[2] for d in result.diagnostics] == ["0", "1"]
+    assert _only(result).locator == "config:title:1://h1"
+    assert [d.split(":", 3)[2] for d in result.diagnostics] == ["0"]
     assert "SPEC-09" in result.diagnostics[0]
-    assert "unsupported_jsonpath" in result.diagnostics[1]
+
+
+@pytest.mark.parametrize("query", ["$.name", "$..name", "$['a'].b", "$[?(@.a)]", "$['a\\'b']"])
+@pytest.mark.parametrize("key", ["jsonld", "jsonpath"])
+def test_a_jsonpath_outside_the_subset_the_engine_reads_is_no_step(key: str, query: str) -> None:
+    # SPEC-08 §4.2: a step validates only in a form both executors run; the engine reads RFC 9535 name, wildcard and
+    # index segments (`json_doc.select`), so dot notation, descendants and filters are refused before any page.
+    step = {key: query, **({"source": "jsonld"} if key == "jsonpath" else {})}
+    with pytest.raises(ValidationError, match="name, wildcard and index segments"):
+        _ir({"title": [step]})
+
+
+def test_a_jsonpath_of_name_wildcard_and_index_segments_is_a_step() -> None:
+    assert _ir({"title": [{"jsonld": "$['@graph'][*]['offers'][0]['price']"}]}).ir.fields["title"].steps
+
+
+LONG_TEXT = FieldSpec(type=FieldType.LONG_TEXT, description="d", schema_org="JobPosting.description")
+
+
+@pytest.mark.parametrize("step", [{"jsonld": "$['description']"}, {"jsonpath": "$['description']", "source": "jsonld"}])
+def test_a_structured_text_value_holding_markup_reads_as_its_rendered_text(step: dict[str, str]) -> None:
+    # As the structured collectors read it (`schema_org_map.fragment_read`): block boxes on lines of their own, so a
+    # config reproduces the value the engine published from the same node.
+    html = _ld(
+        {"@context": "https://schema.org", "@type": "JobPosting", "description": "<h2>Role</h2><p>We &amp; you</p>"}
+    )
+    schema = _schema(description=LONG_TEXT)
+    candidate = _only(_run(_ir({"description": [step]}), html, schema))
+    assert candidate.normalized == Ok("Role\nWe & you")
+    # The collector's own value for the field is the same.
+    collected = JsonLdCollector(VOCABULARY).collect(ParsedPage(html), schema, CTX).candidates
+    assert [c.normalized for c in collected if c.field == "description"] == [candidate.normalized]
+
+
+def test_a_structured_value_without_markup_and_an_xpath_value_are_read_as_written() -> None:
+    html = _ld({"@context": "https://schema.org", "@type": "Product", "name": "1 < 2"}) + "<p>&lt;b&gt;x&lt;/b&gt;</p>"
+    schema = _schema(title=TEXT, note=TEXT)
+    result = _run(_ir({"title": [{"jsonld": "$['name']"}], "note": [{"xpath": "//p"}]}), html, schema)
+    assert [(c.field, c.normalized) for c in result.candidates] == [("title", Ok("1 < 2")), ("note", Ok("<b>x</b>"))]
 
 
 def test_post_ops_run_in_order_before_the_field_normalizer() -> None:

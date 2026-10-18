@@ -27,7 +27,8 @@ _xpath = st.sampled_from(
     ["//h1", "normalize-space(//h1[@data-testid='t'])", "//a[@rel='next']/@href", "//ul/li[1]", "string(//p)"]
 )
 _css = st.sampled_from(["div.x > span", "a#i1", "li[data-k='v']", "ul li:nth-child(2)", "p:not(.y)"])
-_jsonpath = st.from_regex(r"\$(\.[a-z][A-Za-z]{0,8}){1,3}", fullmatch=True)
+# The RFC 9535 subset the engine reads: name, wildcard and index segments (`json_doc.select`).
+_jsonpath = st.from_regex(r"\$(\['[a-z][A-Za-z]{0,8}'\]|\[\*\]|\[[0-9]\]){1,3}", fullmatch=True)
 _regex = st.sampled_from([r"sku:\s*(\w+)", r"(\d+)", r"^\s*(.+?)\s*$"])
 _post: st.SearchStrategy[list[dict[str, Any]]] = st.lists(
     st.one_of(
@@ -291,13 +292,13 @@ def _validate_step(step: object) -> None:
         {},
         {"post": []},
         {"xpath": "//a", "regex": "x"},
-        {"jsonld": "$.name", "jsonpath": "$.name", "source": "jsonld"},
+        {"jsonld": "$['name']", "jsonpath": "$['name']", "source": "jsonld"},
         {"attr": "href", "css": "a"},
         {"xpath": "//a", "when_type": "Product"},
-        {"jsonpath": "$.name"},
-        {"jsonpath": "$.name", "source": "cookies"},
+        {"jsonpath": "$['name']"},
+        {"jsonpath": "$['name']", "source": "cookies"},
         {"jsonld": "name"},
-        {"jsonld": "$.name", "when_type": "product"},
+        {"jsonld": "$['name']", "when_type": "product"},
         {"attr": "a b"},
         {"css": "a::attr(href)"},
         {"css": "a", "xpath": "//b"},

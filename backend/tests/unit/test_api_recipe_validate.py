@@ -213,7 +213,7 @@ IR = ExtractionConfigIR.model_validate(
         "schema": {"name": "synthetic", "digest": "0" * 64},
         "page_kind": "detail",
         "fetch": {"method": "http"},
-        "fields": {"title": {"steps": [{"jsonld": "$.name"}], "status": "uncorroborated"}},
+        "fields": {"title": {"steps": [{"jsonld": "$['name']"}], "status": "uncorroborated"}},
         "provenance": {
             "origin": "induced",
             "validated_on": [str(_capture(9))],
