@@ -20,11 +20,11 @@
 
 <!--
 Required if this PR changes anything under backend/src/crawlerai/ collect/, normalize/, resolve/, llm/, config_ir/
-or acquire/ (C10, INV-19). Otherwise write "Not applicable".
-- Dev delta per field type: from the `backend` job's dev report (the full report).
-- Hidden: pass/fail per field type only, from the `eval-protected` job comment. Never numbers.
-- Improvement claims come from fresh results only, never from hidden. Until milestone M the gate reports
-  `no_baseline`, and acceptance rests on tests, replays and review.
+or acquire/ (C10). Otherwise write "Not applicable".
+- Golden-set aggregate per field type, before and after (`crawlerai eval run --split dev --labels all`): precision,
+  coverage and n. No per-page or per-site numbers, hosts or URLs.
+- A precision drop on any field type needs a stated reason (a scoring fix, a label correction).
+- A claim that the engine generalizes cites a fresh batch's first score only.
 -->
 
 ## Decisions
@@ -36,7 +36,7 @@ or acquire/ (C10, INV-19). Otherwise write "Not applicable".
 - [ ] I did not add a site literal: no hostname, site, brand or retailer name, or string copied from a page outside `backend/src/crawlerai/adapters/` (C3). Adding a commercial site, retailer or job board to `tools/site_literal_allowlist.txt` is a C3 violation.
 - [ ] I did not add a list entry, word, selector or regex for a single page (C4, C5).
 - [ ] No §22 candidate implemented (C13).
-- [ ] Aggregate report attached, if `collect/`, `normalize/`, `resolve/`, `llm/`, `config_ir/` or `acquire/` changed: dev delta shown, hidden gate passed, no improvement claimed from hidden (C10).
+- [ ] Aggregate report attached, if `collect/`, `normalize/`, `resolve/`, `llm/`, `config_ir/` or `acquire/` changed: golden-set delta per field type shown, no unexplained precision drop (C10).
 - [ ] Property or replay tests added; no test is named after a site or asserts one site's output (C9).
 - [ ] Behaviour changes have a spec delta in the change folder; if this PR completes the change, the deltas are applied to `openspec/specs/` and the change is archived.
 - [ ] Decisions listed above, and logged in the tracker commit (`openspec/decisions/README.md`, "Where an entry goes").

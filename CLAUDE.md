@@ -24,9 +24,8 @@ need the design of code you are changing, and never edit them.
 The capability specs are the source of truth for behaviour. Where a spec, a change, `openspec/design/` or the
 contract disagree, stop and escalate (§5).
 
-You may read every project document under `openspec/`. You may never read or request hidden or fresh evaluation
-cases, the `HIDDEN_HOSTS` list, the values of `CRAWLERAI_EVAL_PRIVATE_*`, or the `Invoro` and CrawlerAI v1
-repositories (C1, C12).
+You may read every project document under `openspec/`. You may never read the `Invoro` and CrawlerAI v1 repositories
+(C12), and never look at a fresh batch's pages before its first score is taken (C1).
 
 ## 2. Hard rules
 
@@ -45,9 +44,9 @@ by improving the architecture in `openspec/design/` and the capability specs.
 The contract C1–C13 in `openspec/project.md` is binding: breaking a rule is a defect, even when it fixes a site.
 How it applies day to day:
 
-- **C1.** Don't request or use custodian credentials (`CRAWLERAI_EVAL_PRIVATE_*`), and don't try to read the private
-  eval database or object root. Work only with the aggregate pass/fail the protected CI job reports, and never try
-  to infer individual hidden cases from it.
+- **C1.** The golden set (`dev`) is the only measure (owner, 2026-10-18). It grows in fresh batches of 20–30 pages on
+  new hosts; a batch is scored once before any change is made on it, and only that first score supports a claim that
+  a change generalizes. Then it joins the golden set. Fit thresholds, precedence and calibration on the golden set.
 - **C2.** Every generic rule names its standard (schema.org, ISO, CLDR, RFC, HTML) or the structural property it
   uses, in a comment next to it. "Site X does Y" is never a justification.
 - **C3.** Hostnames, site, retailer and brand names, and strings copied from real pages are allowed only under
@@ -60,15 +59,11 @@ How it applies day to day:
 - **C7.** No defaults, no fallback currency, no host tables, no values taken from URL codes.
 - **C8.** If you need the same logic twice, you are in the wrong module.
 - **C9.** No test is named after a site or asserts one site's output. Write property tests and replay tests.
-- **C10 (gate).** A change must improve dev and must not regress hidden. Claim improvements only from fresh
-  results. How to read the results:
-  - The dev report is full. The hidden report is pass/fail plus aggregates per field type and evidence bucket,
-    with cells under 10 labeled fields suppressed; PR comments carry only the pass/fail per field type.
-  - Hidden regresses on a precision drop of more than 0.5 pt on any required field type, or on any wrong-product
-    value (that count stays 0). A dev improvement with a hidden drop is a regression, not a win.
-  - A PR that changes extraction behaviour includes the aggregate report in its description (the PR template's
-    evaluation section). Until milestone M the gate reports `no_baseline`, and acceptance rests on tests, replays
-    and review.
+- **C10 (acceptance).** A change that alters extraction must improve the golden set and must not drop any field
+  type's precision without a stated reason (a scoring fix, a label correction). How to report it:
+  - The PR description's evaluation section carries the golden-set aggregate per field type, before and after, with
+    no per-page or per-site numbers. A gain that comes from fewer than 3 hosts is flagged.
+  - Wrong-product values stay 0. A claim that the engine generalizes cites a fresh batch's first score only.
 - **C11.** Cognitive complexity is at most 15 per function: a hard check in CI and `make check` (complexipy for
   Python, an Oxlint rule for TS/TSX). A file has at most 800 lines: a soft limit that only warns. Past 800, split
   the file along logical boundaries (cohesive modules, field types per C8), never mechanically to meet the number;
@@ -145,7 +140,7 @@ choices.
 **Escalate** (§5) when:
 - the change would alter or contradict `openspec/design/`, the contract, or `openspec/OPEN_QUESTIONS.md`;
 - it would build anything in the candidates register (§22);
-- it touches evaluation split access, the protected CI job, or labels;
+- it touches the evaluation procedure (fresh batches, scoring rules that change what counts) or labels;
 - it needs credentials, secrets, paid accounts, labeling, or anything only a human can do;
 - it changes a public API or MCP shape, or a table other capabilities depend on, beyond what a requirement defines;
 - two capability specs, or a spec and a change, contradict each other;
@@ -177,6 +172,9 @@ choices.
 - `backlog.md`, `tasks.md`, decision logs and "Open owner items" are working documents: current, short and factual.
   Decision entries are append-only. No "Done: …" bullets: git history, the archive and the decision logs hold them.
 - Write plainly. No marketing language, and no claims that aren't backed by a test or eval result.
+- Code, comments and docstrings cite the spec requirement or the standard, never `D-NNNN` or a frozen `ARCHITECTURE
+  §N`/`SPEC-NN §x` (owner, 2026-10-18; `ENGINEERING.md`). An architecture change deletes what it supersedes in the
+  same PR, and leaves the specs and design documents describing one architecture.
 
 ## 7. Commands
 

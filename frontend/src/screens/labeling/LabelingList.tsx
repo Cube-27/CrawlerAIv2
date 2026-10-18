@@ -29,7 +29,7 @@ export function pageHref({ id }: PageSummary): string {
 }
 
 export function SplitBadge({ split }: Readonly<{ split: PageSummary["split"] }>) {
-  // The API serves dev only (D-0207); a private-split badge comes with hidden/fresh labeling (D-0214).
+  // The API serves the golden set, the one eval split.
   return <Chip>Split: {split}</Chip>;
 }
 
