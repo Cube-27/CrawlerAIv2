@@ -105,6 +105,11 @@ class Tab(Protocol):
         """The URL of the document the page shows now."""
         ...
 
+    @property
+    def landed(self) -> str:
+        """The URL where the listing's own navigation ended (its redirects followed), before the caller's steps ran."""
+        ...
+
     async def html(self) -> str | None:
         """The document serialized as it is now; None while it is being replaced."""
         ...
@@ -158,9 +163,17 @@ ListingRung = Callable[[str, FetchPolicy, Drive], Awaitable[PagedFetch]]
 
 class _PatchrightTab:
     def __init__(
-        self, page: Rendered, *, url: str, engine_version: str, started: float, steps: tuple[StepOutcome, ...]
+        self,
+        page: Rendered,
+        *,
+        url: str,
+        engine_version: str,
+        started: float,
+        steps: tuple[StepOutcome, ...],
+        landed: str | None = None,
     ) -> None:
         self._page = page
+        self.landed = page.page.url if landed is None else landed
         self._steps = steps  # the caller's page steps, run on the first document; its state's attempt reports them
         self._url = url  # the URL the shown document was asked for; `_at` is where that navigation ended
         self._at = page.page.url
@@ -362,6 +375,7 @@ async def _listing(
                 page = await stack.enter_async_context(
                     rendered(url, policy, session, connector, proxy, started, {}, traffic)
                 )
+                landed = page.page.url
                 steps = await stepped(page)  # the caller's steps first (D-1513), then the paging driver reads the page
                 exchange, content = await read_state(page)
                 text = markup(content)
@@ -372,7 +386,9 @@ async def _listing(
                 count(challenge, "browser")
                 one = _Outcome(exchange, content, block_class, None, challenge, steps)
                 return _one(url, policy, engine_version, fetched_at, started, one)
-            tab = _PatchrightTab(page, url=url, engine_version=engine_version, started=started, steps=steps)
+            tab = _PatchrightTab(
+                page, url=url, engine_version=engine_version, started=started, steps=steps, landed=landed
+            )
             report = await _driven(drive, tab)
             if not tab.kept and not await tab.keep():
                 return _one(

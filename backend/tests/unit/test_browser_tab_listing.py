@@ -21,7 +21,7 @@ def test_a_failed_first_read_keeps_the_outcomes_of_the_steps_that_ran(monkeypatc
 
     @asynccontextmanager
     async def rendered(*_: Any) -> AsyncIterator[Any]:
-        yield SimpleNamespace()
+        yield SimpleNamespace(page=SimpleNamespace(url="https://shop.example.test/list"))
 
     async def stepped(_page: Any) -> tuple[StepOutcome, ...]:
         return clicked

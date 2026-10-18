@@ -301,9 +301,14 @@ async def _on_host(
 ) -> ActionsReport:
     """`collect` on `tab`, each action admitted only on `host` (`grown`)."""
 
+    # The listing's own navigation may have been redirected to another host (RFC 9110 §15.4); the fetch already
+    # followed it under the listing's robots.txt, so that host is the listing's too. A host the caller's steps moved
+    # the tab to is not.
+    own = {host, urlsplit(tab.landed).hostname or ""}
+
     async def gate(next_url: str | None) -> bool:
         acted_on = tab.url if next_url is None else next_url
-        if urlsplit(acted_on).hostname != host or not known.allows(acted_on):
+        if urlsplit(acted_on).hostname not in own or not known.allows(acted_on):
             return False
         return await admit_next()
 

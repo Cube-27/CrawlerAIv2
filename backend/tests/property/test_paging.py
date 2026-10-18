@@ -45,6 +45,10 @@ class _LoadMoreTab:
     def url(self) -> str:
         return _URL
 
+    @property
+    def landed(self) -> str:
+        return _URL
+
     async def html(self) -> str:
         cards = "".join(f'<li class="card"><a href="/item/{i}">{i}</a></li>' for i in range(self.shown))
         control = "<button>+</button>" if self.shown < self.total else ""
@@ -303,3 +307,43 @@ def test_a_listing_whose_tab_left_its_host_is_not_driven(tmp_path: Path) -> None
     # The listing's host's robots.txt and rate say nothing of another host's (RFC 9309 §2.3: rules are per origin).
     assert paged.report is not None
     assert (paged.report.stop, tab.shown) == ("not_admitted", 5)
+
+
+class _RedirectedTab(_ScrollTab):
+    """A scroll listing whose own navigation was redirected to another host of the site, before any caller step."""
+
+    @property
+    def url(self) -> str:
+        return "https://www.shop.example.test/list"
+
+    @property
+    def landed(self) -> str:
+        return "https://www.shop.example.test/list"
+
+
+def test_a_listing_redirected_to_another_host_is_driven_there(tmp_path: Path) -> None:
+    tab = _RedirectedTab(30, 5, None)
+
+    async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
+        report = await drive(tab)
+        return PagedFetch(pages=(unserved(url, policy, "test", "error", "unused"),), report=report)
+
+    async def unused(url: str, policy: FetchPolicy) -> FetchResult:
+        raise AssertionError("no page is fetched")
+
+    async def admit(*, after: timedelta = timedelta(0)) -> bool:
+        return True
+
+    fetching = Fetching(
+        Rungs(http=unused, browser=unused, listing=listing), SafeConnector(), FsStore(tmp_path), HostLimiter()
+    )
+    actions = BrowserActions(records=10_000, hint="scroll")
+
+    paged = asyncio.run(
+        grown(fetching, _URL, FetchPolicy(), actions, time.monotonic() + 60, admit, HostRules(crawl_delay_ms=None))
+    )
+
+    # The redirect was followed by the listing's own fetch, so the host it ended on is the listing's.
+    assert paged.report is not None
+    assert paged.report.stop != "not_admitted"
+    assert tab.shown > 5
