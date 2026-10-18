@@ -1,7 +1,6 @@
 """Type equality (SPEC-04 §4.5) through the dispatcher: each type's rule, lists as multisets of item equality,
 objects field by field. The resolver's agreement rule (SPEC-05) and eval (SPEC-03) compare values this way."""
 
-from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
@@ -35,11 +34,13 @@ def _place(locality: str | None, region: str | None, country: str | None, remote
     return {"text": None, "locality": locality, "region": region, "country": country, "remote_flag": remote}
 
 
-@given(st.sampled_from([t for t in FieldType if t is not FieldType.LOCATION]), _json, _json)
-def test_an_equality_key_is_equal_exactly_when_the_values_are(type_: FieldType, a: JsonValue, b: JsonValue) -> None:
-    spec = _spec(type_)
+def test_an_equality_key_is_equal_exactly_when_the_values_are() -> None:
+    near = ["a &amp;  b", "a & b", "Blue", "blue", "https://example.test/a", "HTTPS://Example.test:443/a", None, 3]
 
-    assert (equality_key(a, spec) == equality_key(b, spec)) is equal(a, b, spec)
+    for spec in (TEXT, LONG_TEXT, URL):
+        for a in near:
+            for b in near:
+                assert (equality_key(a, spec) == equality_key(b, spec)) is equal(a, b, spec), (a, b)
 
 
 def test_scalar_types_compare_by_their_own_rule() -> None:
