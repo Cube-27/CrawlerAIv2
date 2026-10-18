@@ -104,6 +104,12 @@ export function llmBudget(llmCalls: number): { budget?: { llm_calls: number } } 
   return Number.isNaN(llmCalls) ? {} : { budget: { llm_calls: llmCalls } };
 }
 
+/** The optional `min_confidence` member, from the percent the form holds (0 to 100), left out while empty (NaN): every
+ * value then publishes with its confidence. */
+export function minConfidence(percent: number): { min_confidence?: number } {
+  return Number.isNaN(percent) ? {} : { min_confidence: percent / 100 };
+}
+
 /** What the toolbar's Format and Schema hold, the Metadata in JSON view option and the field names, in every mode
  * that takes them (Scrape, Batch, Crawl; SPEC-14 §4.2, §4.10). `schemaId` is a stored schema's id, or "" for none;
  * `schemaPageKind` is that schema's page kind. */

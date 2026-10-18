@@ -7,6 +7,7 @@ import {
   FieldsRow,
   FormatRows,
   LlmCallsRow,
+  MinConfidenceRow,
   MetadataRow,
   PageKindRow,
   WebhookRows,
@@ -61,6 +62,7 @@ export function BatchOptions({
           onChange({ ...options, llmCalls });
         }}
       />
+      <MinConfidenceRow options={options} onChange={onChange} />
       <MetadataRow
         isSelected={options.metadataInJson}
         onChange={(metadataInJson) => {

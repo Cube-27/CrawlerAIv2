@@ -124,6 +124,29 @@ export function LlmCallsRow({
   );
 }
 
+/** `min_confidence` (resolution spec, "Evidence and confidence"), as a percent: a records field whose calibrated
+ * confidence is below it is left unpublished. Empty leaves the member out, and every value publishes with its
+ * confidence. */
+export function MinConfidenceRow<O extends { minConfidence: number }>({
+  options,
+  onChange,
+}: Readonly<{ options: O; onChange: (options: O) => void }>) {
+  return (
+    <NumberRow
+      label="Minimum confidence (%)"
+      help="Records only: leave a field unpublished when its calibrated confidence is below this. Empty: every value publishes with its confidence."
+      name="min_confidence"
+      value={options.minConfidence}
+      minValue={0}
+      maxValue={100}
+      placeholder="Publish all"
+      onChange={(minConfidence) => {
+        onChange({ ...options, minConfidence });
+      }}
+    />
+  );
+}
+
 /** `webhook_url`, `webhook_events` and `webhook_batch` (SPEC-10 §4.2, D-1419): where the job's events are posted,
  * which, and how many at once. Without a URL the others are disabled and nothing is sent. */
 export function WebhookRows({

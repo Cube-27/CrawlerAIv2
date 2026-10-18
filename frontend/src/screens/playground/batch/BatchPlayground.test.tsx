@@ -199,6 +199,29 @@ describe("batch playground: the command bar", () => {
     });
   });
 
+  it("sends the minimum confidence as a fraction, and none while it is empty, which the field says publishes everything", async () => {
+    const calls = batchApi();
+    await openPlayground("/batch");
+    await typeUrls("https://shop.test/a");
+    const options = await openOptions();
+    const minimum = options.getByRole("textbox", { name: "Minimum confidence (%)" });
+    expect(minimum).toHaveAttribute("placeholder", "Publish all");
+
+    await userEvent.type(minimum, "90");
+    await closeOptions();
+    await start();
+
+    await pagesGrid();
+    expect(posted(calls)).toEqual({
+      urls: ["https://shop.test/a"],
+      formats: ["markdown"],
+      schema: null,
+      page_kind: null,
+      fetch: { method_hint: "auto" },
+      min_confidence: 0.9,
+    });
+  });
+
   it("names a line that is not a web address on the list, and sends nothing", async () => {
     const calls = batchApi();
     await openPlayground("/batch");

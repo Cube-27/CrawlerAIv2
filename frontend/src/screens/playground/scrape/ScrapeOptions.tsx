@@ -6,6 +6,7 @@ import {
   FieldsRow,
   FormatRows,
   LlmCallsRow,
+  MinConfidenceRow,
   MaxRowsRow,
   MetadataRow,
   PageKindRow,
@@ -82,6 +83,7 @@ export function ScrapeOptions({
           onChange({ ...options, llmCalls });
         }}
       />
+      <MinConfidenceRow options={options} onChange={onChange} />
       <MetadataRow
         isSelected={options.metadataInJson}
         onChange={(metadataInJson) => {

@@ -12,6 +12,7 @@ import {
 import {
   FetchMethodRow,
   MaxRowsRow,
+  MinConfidenceRow,
   FieldsRow,
   FormatRows,
   MetadataRow,
@@ -134,6 +135,7 @@ export function CrawlOptions({
           onChange({ ...options, maxRows });
         }}
       />
+      <MinConfidenceRow options={options} onChange={onChange} />
       <MetadataRow
         isSelected={options.metadataInJson}
         onChange={(metadataInJson) => {

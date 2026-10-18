@@ -18,6 +18,7 @@ import {
   NO_WEBHOOK,
   withWebhookErrors,
   type WebhookSettings,
+  minConfidence,
 } from "../pageRequest";
 import {
   count,
@@ -32,6 +33,7 @@ import {
   texts,
   webhookSettings,
   type StoredRequest,
+  minConfidencePercent,
 } from "../run/storedRequest";
 
 /** Where an extract's schema comes from (SPEC-10 §4.6), chosen in the toolbar's Schema: a stored one, inline JSON, or
@@ -54,6 +56,8 @@ export interface ExtractOptions {
   methodHint: MethodHint;
   /** `fetch.max_rows`: NaN while empty. */
   maxRows: number;
+  /** `min_confidence` as a percent; NaN (empty) leaves it out: every value publishes with its confidence. */
+  minConfidence: number;
   /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
   advanced: AdvancedFetch;
   llmCalls: number;
@@ -71,6 +75,7 @@ export const DEFAULT_EXTRACT_OPTIONS: ExtractOptions = {
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
   maxRows: Number.NaN,
+  minConfidence: Number.NaN,
   advanced: DEFAULT_ADVANCED,
   llmCalls: Number.NaN,
   webhook: NO_WEBHOOK,
@@ -168,6 +173,7 @@ export function buildExtract(form: ExtractFormState): ExtractRequest | null {
     fetch: extractFetch(form),
     ...optionalNumber("limit", options.limit),
     ...llmBudget(options.llmCalls),
+    ...minConfidence(options.minConfidence),
     ...webhook(options.webhook),
   };
 }
@@ -197,6 +203,7 @@ export function extractForm(request: StoredRequest): ExtractFormState {
       limit: count(request, "limit"),
       methodHint: methodHint(request),
       maxRows: maxRows(request),
+      minConfidence: minConfidencePercent(request),
       advanced: storedAdvanced(request),
       llmCalls: llmCalls(request),
       webhook: webhookSettings(request),
