@@ -36,8 +36,8 @@ fault.
 
 ## Impact
 
-- Capabilities: [acquisition](../../specs/acquisition/spec.md), [rest-api](../../specs/rest-api/spec.md),
-  [jobs](../../specs/jobs/spec.md), [evaluation](../../specs/evaluation/spec.md).
+- Capabilities: [acquisition](../../../specs/acquisition/spec.md), [rest-api](../../../specs/rest-api/spec.md),
+  [jobs](../../../specs/jobs/spec.md), [evaluation](../../../specs/evaluation/spec.md).
 - Code: `backend/src/crawlerai/acquire/` (`classify`, `challenge`, `http`, `browser`, `rungs`, `politeness`,
   `render_need`), `backend/src/crawlerai/adapters/challenges.py`, `backend/src/crawlerai/storage/capture_bundle.py`,
   `backend/src/crawlerai/services/` (`polite`, `fetching`, `scrape`, `scrape_steps`, `scrape_paging`, `extract`,

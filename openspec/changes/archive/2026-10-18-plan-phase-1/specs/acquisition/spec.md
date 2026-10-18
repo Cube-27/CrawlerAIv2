@@ -2,20 +2,19 @@
 
 ### Requirement: Browser on evidence
 In `auto`, the system SHALL retry in the browser an HTTP `shell` or `blocked` result other than 429/503, and an HTTP
-`error` whose reason is `network_error`, keeping the browser outcome only when `ok`; a 503 that
-`classify.interstitial` judges to stand in for the page, after the site's pause (`politeness.backoff`), keeping the
-browser outcome only when `ok`; and an HTTP `ok` page the caller's structural render check holds true for
-(`services/scrape_steps.RenderNeed`, no extraction and no LLM): a detail page whose schema requires a `money` field and
-whose capture holds no Offer entity and no `money` candidate, or a listing (`acquire/render_need.py`) whose DOM shows
-fewer than `MIN_ITEMS` item blocks, whose text inside `hidden` or `display:none` containers outweighs its visible text,
-or whose structured list names fewer entries than its DOM shows item blocks (item blocks counted only when they show
-more than their link); that browser outcome is kept only when `ok` and the check no longer holds, a listing's also
-when the render lists more items than the HTTP page (owner #54: the capture with more rows is kept). An HTTP listing shell kept with no browser outcome is `ok` when it is a shell by the
-listing rule alone. Any later request of a fetch is sent only when `admit_next` allows. The browser MUST NOT be the
-default. Role C runs once, on the kept capture. (Previously: a listing was rendered when its extraction, role C
-included, gave no rows.)
-Refs: §7.1, D-0009, D-0203, D-0865, D-0900, owner #49, D-1202, owner #54, D-1261, D-1263, D-1472, master plan
-2026-10-18 §3.1.
+`error` whose reason is `network_error`, keeping the browser outcome only when `ok`; a 503 that `classify.interstitial`
+judges to stand in for the page, after the site's pause (`politeness.backoff`), keeping the browser outcome only when
+`ok`; and an HTTP `ok` page the caller's structural render check holds true for (`services/scrape_steps.RenderNeed`, no
+extraction and no LLM): a detail page whose schema requires a `money` field and whose capture holds no Offer entity and
+no `money` candidate, or a listing (`content/render_need.py`) whose DOM shows fewer than `MIN_ITEMS` item blocks, whose
+text inside `hidden` or `display:none` containers outweighs its visible text, or whose structured list names fewer
+entries than its DOM shows item blocks (item blocks counted only when they show more than their link); that browser
+outcome is kept only when `ok` and the check no longer holds, a listing's also when the render lists more items than the
+HTTP page (owner #54: the capture with more rows is kept). An HTTP listing shell kept with no browser outcome is `ok`
+when it is a shell by the listing rule alone. Any later request of a fetch is sent only when `admit_next` allows. The
+browser MUST NOT be the default. Role C runs once, on the kept capture. (Previously: a listing was rendered when its
+extraction, role C included, gave no rows.) Refs: §7.1, D-0009, D-0203, D-0865, D-0900, owner #49, D-1202, owner #54,
+D-1261, D-1263, D-1472, master plan 2026-10-18 §3.1.
 #### Scenario: Client-rendered offer
 - **WHEN** an `auto` fetch of such a detail page answers HTTP `ok` with no Offer and no price, and the browser render
   holds an Offer
