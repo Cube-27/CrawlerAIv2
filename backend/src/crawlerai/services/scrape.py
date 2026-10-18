@@ -342,7 +342,12 @@ async def _run(
         config = await _config(conn, site.id, work)
         recipe = recipe_of(config) if config is not None and records_only else None
         policy = fetch_policy(
-            request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind, formats=request.formats
+            request.fetch,
+            request.locale,
+            site.proxy_pool,
+            page_kind=request.page_kind,
+            formats=request.formats,
+            all_resources=site.load_all_resources,
         )
         row = await _stored(conn, request, policy, site.id, task.canonical_url, api=recipe is not None)
     recent = await _read_stored(fetching.store, row, request.fetch.cache, request.formats)
@@ -369,7 +374,7 @@ async def _run(
     members, finished = _NOT_FETCHED, _Finished("blocked")
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
-            capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page)
+            capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page, check)
             more = partial(_store_more, conn, fetching.store, task, site.id, derived, extra, work.margins)
             finished = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, more)
             members = _fetch_members(page, capture_id, fetching.rungs.adapters)

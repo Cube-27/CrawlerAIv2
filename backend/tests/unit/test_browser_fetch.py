@@ -564,16 +564,47 @@ def test_an_interstitial_is_read_where_its_navigation_ends_after_the_quiet_time(
     assert b"<p>Catalogue item 0 with a short description</p>" in result.bundle.body
 
 
-def test_an_interstitial_that_stays_is_read_after_its_share_of_the_budget(browser: Browser, server: Server) -> None:
+def test_an_interstitial_that_stays_is_read_after_its_bounded_share_of_the_budget(
+    browser: Browser, server: Server
+) -> None:
     server.routes["/forbidden"] = Reply(
         403, body=b"<html><body><p>Access denied</p><script>void 0</script></body></html>"
     )
 
-    result = browser.fetch(server.url("/forbidden"), FetchPolicy(browser_timeout_s=20))
+    result = browser.fetch(server.url("/forbidden"), FetchPolicy(browser_timeout_s=40))
 
     assert (result.block_class, result.bundle.manifest.status_code) == ("blocked", 403)
-    # 40% of the 20 s budget waiting for a navigation, then the 2 s DOM quiet; never the 90% settle share.
-    assert 8_000 <= result.duration_ms < 14_000
+    # 40% of the 40 s budget is 16 s, bounded to 10 s waiting for a navigation, then the 2 s DOM quiet; never the 90%
+    # settle share.
+    assert 10_000 <= result.duration_ms < 16_000
+
+
+_MEDIA_PAGE = b"""<html><head><link rel="stylesheet" href="/m/look.css"></head><body><img src="/m/photo.png" alt="">
+<video src="/m/clip.mp4"></video><p class="lettered">Catalogue</p><div id="root"></div><script>
+fetch('/api/items').then(r => r.json()).then(items => {
+  document.getElementById('root').innerHTML = items.map(item => '<p>' + item['name'] + '</p>').join('');
+});
+</script></body></html>"""
+_LOOK = b"@font-face { font-family: lettered; src: url(/m/face.woff2); } .lettered { font-family: lettered; }"
+
+
+@pytest.mark.parametrize(("block", "loaded"), [(True, False), (False, True)])
+def test_images_fonts_and_media_are_not_loaded_unless_the_site_loads_every_resource(
+    browser: Browser, server: Server, block: bool, loaded: bool
+) -> None:
+    # Master plan 2026-10-18 recommendation 12: by resource type; the stylesheet, the script and its data call load.
+    server.routes["/media"] = Reply(body=_MEDIA_PAGE)
+    server.routes["/m/look.css"] = Reply(content_type="text/css", body=_LOOK)
+    server.requests.clear()
+
+    result = browser.fetch(server.url("/media"), FetchPolicy(browser_timeout_s=10, block_resources=block))
+
+    paths = {path for _, path, _ in server.requests}
+    assert b"<p>Catalogue item 0 with a short description</p>" in result.bundle.body
+    assert {"/media", "/m/look.css", "/api/items"} <= paths
+    assert {path for path in ("/m/photo.png", "/m/clip.mp4", "/m/face.woff2") if path in paths} == (
+        {"/m/photo.png", "/m/clip.mp4", "/m/face.woff2"} if loaded else set()
+    )
 
 
 def test_a_refusal_that_cannot_navigate_is_not_waited_on(browser: Browser, server: Server) -> None:

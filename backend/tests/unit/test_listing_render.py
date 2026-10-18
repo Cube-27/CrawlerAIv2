@@ -187,3 +187,17 @@ def test_a_render_that_lists_more_items_than_the_http_page_is_kept() -> None:
 
     assert result.method == "browser"
     assert render.calls == [URL]
+
+
+@pytest.mark.parametrize(("blocked", "lost"), [(True, True), (False, False)])
+def test_a_render_with_media_blocked_that_lists_fewer_items_marks_them_lost(blocked: bool, lost: bool) -> None:
+    # Master plan 2026-10-18 §3.1: what the render did not load may be what shows the items; the site opts out.
+    check = RenderNeed(SCHEMA, DATA)
+    render = Rung("browser", TEMPLATE)
+    rungs = Rungs(http=Rung("http", STREAMED), browser=render)
+    policy = FetchPolicy(block_resources=blocked)
+
+    result = asyncio.run(acquire(URL, policy, "http", rungs, needs_render=check))
+
+    assert (result.method, render.calls) == ("http", [URL])
+    assert check.lost_items is lost

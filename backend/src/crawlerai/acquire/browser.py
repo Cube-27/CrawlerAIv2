@@ -25,7 +25,7 @@ from typing import cast
 from urllib.parse import urlsplit
 
 from patchright._impl._api_structures import SetCookieParam
-from patchright.async_api import Browser, BrowserContext, Frame, Page, Request, Response, async_playwright
+from patchright.async_api import Browser, BrowserContext, Frame, Page, Request, Response, Route, async_playwright
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
@@ -123,9 +123,14 @@ _REDIRECTION = range(300, 400)
 # still replace itself, and is read once its content is quiet.
 _ERROR_STATUS = 400
 # D-1206, D-1262: for a document `interstitial` judges to stand in for the page, the wait for the main frame to navigate
-# on lasts up to this share of `browser_timeout_s`, not the 2 s DOM quiet, and ends as soon as a navigation commits.
-# Nothing is clicked or typed.
+# on lasts up to this share of `browser_timeout_s`, and at most `_INTERSTITIAL_MAX_S`, not the 2 s DOM quiet, and ends
+# as soon as a navigation commits. Nothing is clicked or typed. The bound is an unmeasured starting point (master plan
+# 2026-10-18 §6): a challenge that does not clear headless held each fetch for the whole share (backlog, #244).
 _INTERSTITIAL_SHARE = 0.4
+_INTERSTITIAL_MAX_S = 10.0
+# Fetch Standard §2.2.5 destinations Playwright names `image`, `font` and `media`: the page's pixels and sound, which
+# the rung never reads (master plan 2026-10-18 recommendation 12). By resource type, never by host.
+_MEDIA = frozenset({"image", "font", "media"})
 # A screenshot or PDF past this size is dropped rather than stored: the capture is kept without it.
 _ARTIFACT_MAX_BYTES = 25_000_000
 # Seconds the files of a page may take beyond the fetch's own budget (Playwright's default per-operation timeout): a
@@ -365,11 +370,22 @@ async def rendered(
         try:
             if policy.context is not None and policy.context.cookies:
                 await context.add_cookies(caller_cookies(url, policy.context))
+            if policy.block_resources and not policy.captures_page:
+                await context.route("**/*", _without_media)
             page = await context.new_page()
             yield await _navigate(page, url, first, policy, guard, started)
         finally:
             await context.close()
             timings["context"] = round((time.monotonic() - opened) * 1000)
+
+
+async def _without_media(route: Route) -> None:
+    """Abort a request for an image, a font or media (`_MEDIA`) and let every other one through: the page's documents,
+    scripts, styles and data calls load as they would, and what is read of the page is its DOM, not its pixels."""
+    if route.request.resource_type in _MEDIA:
+        await route.abort()
+    else:
+        await route.continue_()
 
 
 class _MainFrame:
@@ -441,7 +457,7 @@ async def _navigate(
         page,
         frame,
         started + _SETTLE_SHARE * policy.browser_timeout_s,
-        interstitial_deadline=started + _INTERSTITIAL_SHARE * policy.browser_timeout_s,
+        interstitial_deadline=started + min(_INTERSTITIAL_SHARE * policy.browser_timeout_s, _INTERSTITIAL_MAX_S),
         calls=calls,
     )
     return Rendered(page, frame, response, policy, calls)

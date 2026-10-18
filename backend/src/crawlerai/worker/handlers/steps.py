@@ -183,7 +183,10 @@ async def fetch_page(
     host = urlsplit(task.url).hostname or ""
     site = await site_row(conn, host, task.page_kind)
     rungs = site_rungs(fetching, host, site)
-    policy = fetch_policy(options, locale, site.proxy_pool, page_kind=task.page_kind, formats=formats)
+    all_resources = site.load_all_resources
+    policy = fetch_policy(
+        options, locale, site.proxy_pool, page_kind=task.page_kind, formats=formats, all_resources=all_resources
+    )
     if options.cache == "only":
         return await _stored_page(conn, fetching, task, site, policy, formats)
     standing = () if recurring is None else await _standing(conn, task, site.id, recurring)
@@ -226,9 +229,9 @@ async def _kept(
     site, attempts, pool = plan.site, tuple(plan.attempts), plan.policy.proxy_pool
     if isinstance(fetched, FetchResult):
         if (refused := refusal(fetched)) is None:
-            capture_id = await new_capture(conn, fetching.store, site.id, fetched)
-            further = () if plan.pages is None else tuple(plan.pages.further)
             check = plan.needs_render if isinstance(plan.needs_render, RenderNeed) else None
+            capture_id = await new_capture(conn, fetching.store, site.id, fetched, check)
+            further = () if plan.pages is None else tuple(plan.pages.further)
             return FetchedPage(site, fetched, capture_id, standing, attempts, pool, check, further)
         fetched = Failed(refused, transient=False)
     if isinstance(fetched, Unchanged):

@@ -8,6 +8,7 @@ The web is a stub answering synthetic pages on RFC 2606 hosts; no network.
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -16,16 +17,42 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.rungs import RenderCheck, Rungs, acquire, remember_fetch_method, with_attempts
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.capture import BlockClass, CaptureMethod
-from crawlerai.db.models import Capture, FetchMethod, PageKind, Project, Site, SiteFetchMethod, SiteId
+from crawlerai.core.ids import uuid7
+from crawlerai.db.models import Capture, FetchMethod, PageKind, Project, SchemaId, Site, SiteFetchMethod, SiteId
+from crawlerai.resolve.pipeline import EngineData
+from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.scheduler.recheck import recheck_fetch_method
-from crawlerai.services.scrape_steps import site_row
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from crawlerai.services.fetch_options import FetchOptions, fetch_policy
+from crawlerai.services.scrape_steps import RenderNeed, new_capture, site_row
+from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
 
 ORIGIN = "https://shop.example.test"
 PAGE = f"{ORIGIN}/item/1"
 DEFAULT_PROJECT = select(Project.id).where(Project.name == "default").scalar_subquery()
+_DATA = EngineData(
+    vocabulary=Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld"),
+    orders=dict.fromkeys(PRECEDENCE_TYPES, ("jsonld",)),
+    calibration=None,
+)
+
+
+def _listing_schema() -> SchemaDef:
+    title = FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name")
+    return SchemaDef(
+        id=SchemaId(uuid7()),
+        origin="user",
+        status="active",
+        name="synthetic",
+        page_kind="listing",
+        fields={"title": title},
+    )
+
+
 LONG_AGO = func.now() - timedelta(days=8)
 
 
@@ -410,3 +437,24 @@ async def test_a_listing_recheck_tries_the_latest_ok_listing_capture_as_a_listin
     assert http.fetched == [f"{ORIGIN}/robots.txt", listing]
     assert http.policies[-1] == FetchPolicy(page_kind="listing")
     assert (await _memory(conn, site_id, "listing"))[0] == "http"
+
+
+async def test_a_site_whose_render_lost_items_loads_every_resource_from_then_on(
+    conn: AsyncConnection, fetch_result: Callable[..., FetchResult], tmp_path: Path
+) -> None:
+    # Master plan 2026-10-18 §3.1: a render with images, fonts and media blocked that listed fewer items than the HTTP
+    # page opts the site out of the blocking; its next fetch policy loads them.
+    site_id = await _site(conn)
+    check = RenderNeed(_listing_schema(), _DATA)
+    check.lost_items = True
+    store = FsStore(tmp_path)
+    page = fetch_result(PAGE, 200, b"<html></html>")
+
+    before = await site_row(conn, "shop.example.test")
+    await new_capture(conn, store, site_id, page, check)
+    after = await site_row(conn, "shop.example.test")
+
+    assert (before.load_all_resources, after.load_all_resources) == (False, True)
+    options = FetchOptions()
+    assert fetch_policy(options, None, None, all_resources=before.load_all_resources).block_resources is True
+    assert fetch_policy(options, None, None, all_resources=after.load_all_resources).block_resources is False

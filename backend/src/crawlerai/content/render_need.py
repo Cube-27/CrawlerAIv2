@@ -34,6 +34,12 @@ def listing_needs_render(page: ParsedPage, over: ParsedPage | None = None) -> bo
     return 0 < structured_entries(page.tree) < blocks
 
 
+def lost_items(render: ParsedPage, over: ParsedPage) -> bool:
+    """Whether a `render` lists fewer items than the HTTP page it would replace (`over`): what the render did not load
+    (its images, fonts and media, `FetchPolicy.block_resources`) may be what shows them."""
+    return listed(render) < listed(over)
+
+
 def listed(page: ParsedPage) -> int:
     """How many items the page lists: the item blocks it shows (`shown_items`), or the items its structured data
     lists (`structured_entries`), whichever is more."""

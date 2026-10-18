@@ -15,7 +15,7 @@ from typing import Any, Final, Literal, TypedDict
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -34,7 +34,7 @@ from crawlerai.content.links import links
 from crawlerai.content.markdown import markdown
 from crawlerai.content.metadata import PageMetadata, metadata
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.render_need import listing_needs_render
+from crawlerai.content.render_need import listing_needs_render, lost_items
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.core.errors import Refusal
@@ -276,7 +276,8 @@ def check_usable(schema: SchemaDef, page_kind: PageKind | None) -> None:
 @dataclass(frozen=True, slots=True)
 class SiteRow:
     """A site as a fetch reads it: its id, the fetch method remembered for the page kind fetched, its proxy pool,
-    robots.txt snapshot and interval setting, and the adapters that declined its host (`Registry.for_host`)."""
+    robots.txt snapshot and interval setting, the adapters that declined its host (`Registry.for_host`), and whether
+    the browser loads all its resources."""
 
     id: SiteId
     fetch_method: FetchMethod
@@ -284,6 +285,7 @@ class SiteRow:
     robots_snapshot: str | None
     crawl_delay_ms: int | None
     adapter_declined: dict[str, str] = field(default_factory=dict)
+    load_all_resources: bool = False
 
 
 async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None = None) -> SiteRow:
@@ -300,11 +302,20 @@ async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None 
         Site.robots_snapshot,
         Site.crawl_delay_ms,
         Site.adapter_declined,
+        Site.load_all_resources,
     )
     query = select(*columns).select_from(Site).outerjoin(SiteFetchMethod, memory).where(Site.host == host)
     row = (await conn.execute(query)).one()
     method: FetchMethod = "browser" if row.method == "browser" else "http"
-    return SiteRow(row.id, method, row.proxy_pool, row.robots_snapshot, row.crawl_delay_ms, row.adapter_declined)
+    return SiteRow(
+        row.id,
+        method,
+        row.proxy_pool,
+        row.robots_snapshot,
+        row.crawl_delay_ms,
+        row.adapter_declined,
+        row.load_all_resources,
+    )
 
 
 @dataclass
@@ -319,6 +330,9 @@ class RenderNeed:
     schema: SchemaDef
     data: EngineData
     config: ConfigExecutor | None = None
+    # Whether a render with its images, fonts and media blocked listed fewer items than the HTTP page (`lost_items`):
+    # the site then loads every resource (`remember_resources`).
+    lost_items: bool = False
     _parsed: dict[UUID, ParsedPage] = field(default_factory=dict)
 
     async def __call__(self, result: FetchResult, over: FetchResult | None = None) -> bool:
@@ -327,6 +341,8 @@ class RenderNeed:
         # Parsing and reading the structure are CPU work: a thread keeps the event loop free.
         if self.schema.page_kind == "listing":
             replaced = None if over is None else self._read(over.bundle)
+            if replaced is not None and bundle.manifest.fetch_policy.get("block_resources"):
+                self.lost_items = self.lost_items or await asyncio.to_thread(lost_items, page, replaced)
             return await asyncio.to_thread(listing_needs_render, page, replaced)
         return await asyncio.to_thread(
             lacks_offer_data, bundle, self.schema, self.data, config=self.config, parsed=page
@@ -353,8 +369,14 @@ def parsed_page(bundle: CaptureBundle, check: RenderNeed | None) -> ParsedPage:
     return ParsedPage.of(bundle) if check is None else check.parse(bundle)
 
 
-async def new_capture(conn: AsyncConnection, store: ObjectStore, site_id: SiteId, page: FetchResult) -> CaptureId:
+async def new_capture(
+    conn: AsyncConnection, store: ObjectStore, site_id: SiteId, page: FetchResult, check: RenderNeed | None = None
+) -> CaptureId:
+    """Store the fetched page's capture, and remember on its site what the fetch learned: the method it needed
+    (`remember_fetch_method`), and that its renders need every resource when `check` saw a render lose items."""
     await remember_fetch_method(conn, site_id, page)
+    if check is not None and check.lost_items:
+        await conn.execute(update(Site).where(Site.id == site_id).values(load_all_resources=True))
     return await store_capture(conn, store, page, site_id)
 
 

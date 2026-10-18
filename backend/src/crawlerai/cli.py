@@ -288,7 +288,9 @@ async def _polite_page(
         raise EvalCliError("not an http or https URL with a host")
     async with engine.begin() as conn:
         site = await site_row(conn, host, schema.page_kind)
-    policy = FetchPolicy(page_kind=schema.page_kind, proxy_pool=site.proxy_pool)
+    policy = FetchPolicy(
+        page_kind=schema.page_kind, proxy_pool=site.proxy_pool, block_resources=not site.load_all_resources
+    )
     page = PagePlan(site_rungs(fetching, host, site), site, policy, [], needs_render=render_need(schema, data, None))
     try:
         return await fetch_now(engine, fetching, url, page)

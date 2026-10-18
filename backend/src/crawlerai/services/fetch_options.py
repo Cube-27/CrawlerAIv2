@@ -184,11 +184,14 @@ def fetch_policy(
     *,
     page_kind: PageKind | None = None,
     formats: Iterable[str] = (),
+    all_resources: bool = False,
 ) -> FetchPolicy:
     """The fetch policy of a page task. A screenshot or PDF among its `formats` is made in the browser, which then
-    fetches the page whatever the site's remembered method (`FetchPolicy.screenshot`, `pdf`)."""
+    fetches the page whatever the site's remembered method (`FetchPolicy.screenshot`, `pdf`). The browser loads
+    every resource of a site that loads `all_resources` (`site.load_all_resources`)."""
     wanted = set(formats)
     return FetchPolicy(
+        block_resources=not all_resources,
         page_kind=page_kind,
         method_hint="browser" if options.in_browser or CAPTURE_FORMATS & wanted else options.method_hint,
         screenshot=options.screenshot if "screenshot" in wanted else None,
