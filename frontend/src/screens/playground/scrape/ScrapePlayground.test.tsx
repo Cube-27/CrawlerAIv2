@@ -767,6 +767,74 @@ describe("scrape playground: formats and problems", () => {
     expect(screen.getByText("robots_unreachable")).toBeVisible();
   });
 
+  it("says in words why a listing gave no rows, with the server's reason on hover", async () => {
+    stubScrape({
+      "POST /v1/scrape": () =>
+        Response.json(
+          scrapeResponse({ outcome: "partial", reason: "no_rows: none_listed", records: [] }),
+        ),
+      [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
+    });
+    await openScrape();
+    await fillRecordsByIdForm();
+
+    await submit();
+
+    const sentence = await screen.findByText(/No rows: structured data, the config/);
+    expect(sentence).toHaveTextContent("found none it could ground in the page");
+    expect(sentence).toHaveAttribute("title", "no_rows: none_listed");
+    expect(screen.queryByText("no_rows: none_listed")).not.toBeInTheDocument();
+  });
+
+  it("names a row reader's own failure as the reason a listing gave no rows", async () => {
+    stubScrape({
+      "POST /v1/scrape": () =>
+        Response.json(
+          scrapeResponse({ outcome: "partial", reason: "no_rows: llm_budget", records: [] }),
+        ),
+      [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
+    });
+    await openScrape();
+    await fillRecordsByIdForm();
+
+    await submit();
+
+    expect(await screen.findByText("No rows: the row reader failed (llm_budget).")).toBeVisible();
+  });
+
+  it("shows the page's own fields of a listing that kept no record, in the table and the JSON", async () => {
+    const next = "https://store.test/items?page=2";
+    stubScrape({
+      "POST /v1/scrape": () =>
+        Response.json(
+          scrapeResponse({
+            outcome: "partial",
+            reason: "no_rows: none_listed",
+            records: [],
+            page: {
+              next_page_url: field({ value: next, source_kind: "dom", locator: "link[rel=next]" }),
+            },
+          }),
+        ),
+      [`GET /v1/schemas/${SCHEMA_ID}`]: () =>
+        Response.json({ ...itemSchema, fields: { next_page_url: { type: "url" } } }),
+    });
+    await openScrape();
+    await fillRecordsByIdForm();
+
+    await submit();
+
+    const table = await openTab("Table");
+    expect(table.getByRole("heading", { name: "Page fields" })).toBeVisible();
+    const row = within(table.getByRole("row", { name: /next_page_url/ }));
+    expect(row.getByText(next)).toBeInTheDocument();
+    expect(row.getByText("link[rel=next]")).toBeInTheDocument();
+    const json = await openTab("JSON");
+    expect(json.getByLabelText("Page JSON")).toHaveTextContent(
+      `"page": { "next_page_url": "${next}" }`,
+    );
+  });
+
   it("names the platform adapter that read the page, and each attempt's challenge label", async () => {
     stubScrape({
       "POST /v1/scrape": () =>

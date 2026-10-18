@@ -8,7 +8,9 @@ import { CancelJobAction } from "../../../components/CancelJobAction";
 import { JobStatusLabel } from "../../../components/JobStatusLabel";
 import { RunProgress } from "../../../components/RunProgress";
 import { StatusLabel } from "../../../components/StatusLabel";
+import { WebhookDeliveries } from "../../../components/WebhookDeliveries";
 import type { Problem } from "../../../api/problem";
+import { ScheduleRun } from "../../schedules/ScheduleRun";
 import { OutputArea, type OutputState } from "../OutputArea";
 import { RecentRuns } from "./RecentRuns";
 import { ResultsTable } from "./ResultsTable";
@@ -35,6 +37,7 @@ function RunSummary({
           <div className="flex flex-wrap items-start gap-2">
             {/* A cancel asked for ends the job once its claimed tasks end (SPEC-10 §4.2). */}
             <CancelJobAction id={job.id} isDisabled={cancel !== "cancellable"} />
+            <ScheduleRun job={job} />
             <RunExports jobId={job.id} withMetadata={withMetadata} outputs={outputs} />
           </div>
         </div>
@@ -62,6 +65,7 @@ function JobRunView({ job, withMetadata }: Readonly<{ job: JobSummary; withMetad
         outputs={outputs}
       />
       <ActivityFeed activity={activity} />
+      <WebhookDeliveries jobId={job.id} webhookUrl={job.webhook_url} />
     </>
   );
 }

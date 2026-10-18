@@ -13,6 +13,7 @@ import { RunProgress } from "../../components/RunProgress";
 import { Section } from "../../components/Section";
 import { StatusLabel } from "../../components/StatusLabel";
 import { Timestamp } from "../../components/Timestamp";
+import { WebhookDeliveries } from "../../components/WebhookDeliveries";
 import { UsageSummary } from "../../components/UsageSummary";
 import { formatUsd } from "../../components/usd";
 import { ExportActions } from "./ExportActions";
@@ -56,6 +57,7 @@ function JobView({ job }: Readonly<{ job: JobSummary }>) {
         </Typography.Paragraph>
       </Section>
       <EventLog jobId={job.id} />
+      <WebhookDeliveries jobId={job.id} webhookUrl={job.webhook_url} />
       <Section title="Results">
         <ExportActions jobId={job.id} />
         <JobResults jobId={job.id} />

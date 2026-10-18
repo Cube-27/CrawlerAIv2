@@ -7,7 +7,9 @@ import {
   listSchedules,
   runSchedule,
   setSchedulePaused,
+  updateSchedule,
   type NewSchedule,
+  type ScheduleChange,
 } from "../schedules";
 import { unwrap } from "./query";
 
@@ -44,6 +46,15 @@ export function useCreateSchedule() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (body: NewSchedule) => unwrap(createSchedule(client, body)),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateSchedule(id: string) {
+  const client = useApiClient();
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (change: ScheduleChange) => unwrap(updateSchedule(client, id, change)),
     onSuccess: invalidate,
   });
 }

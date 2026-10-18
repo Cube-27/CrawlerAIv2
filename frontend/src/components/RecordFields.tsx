@@ -27,15 +27,21 @@ export function RecordSummary({ record }: Readonly<{ record: ExtractedRecord }>)
   );
 }
 
-/** One record's fields, one row each, with every `field_meta` attribute the API returns (SPEC-07 §4.4). */
-export function RecordFieldsTable({
+/** Fields by name, one row each, with every `field_meta` attribute the API returns (SPEC-07 §4.4): a record's, or a
+ * listing page's own (`ScrapeResult.page`, D-1476). */
+export function FieldsTable({
   label,
-  record,
+  fields: named,
   fieldTypes,
-}: Readonly<{ label: string; record: ExtractedRecord; fieldTypes: FieldTypes }>) {
-  const fields: (RecordField & { name: string })[] = Object.entries(record.fields).map(
-    ([name, field]) => ({ ...field, name }),
-  );
+}: Readonly<{
+  label: string;
+  fields: Readonly<Record<string, RecordField>>;
+  fieldTypes: FieldTypes;
+}>) {
+  const fields: (RecordField & { name: string })[] = Object.entries(named).map(([name, field]) => ({
+    ...field,
+    name,
+  }));
   return (
     <Table>
       <Table.ScrollContainer>
@@ -88,6 +94,15 @@ export function RecordFieldsTable({
       </Table.ScrollContainer>
     </Table>
   );
+}
+
+/** One record's fields (`FieldsTable`). */
+export function RecordFieldsTable({
+  label,
+  record,
+  fieldTypes,
+}: Readonly<{ label: string; record: ExtractedRecord; fieldTypes: FieldTypes }>) {
+  return <FieldsTable label={label} fields={record.fields} fieldTypes={fieldTypes} />;
 }
 
 /** Records extracted from one page, each with its fields, or why there are none. */

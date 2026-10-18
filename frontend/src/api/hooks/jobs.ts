@@ -11,6 +11,7 @@ import {
   listJobs,
   listJobResults,
   listJobValues,
+  listWebhookDeliveries,
   mapUrls,
   searchWeb,
   submitBatch,
@@ -32,6 +33,9 @@ import { unwrap } from "./query";
 /** The job endpoints as TanStack Query hooks. Every key starts with `jobs`, so a job's end reads its summary and
  * results again. */
 const JOBS = ["jobs"] as const;
+
+/** How often a page with a pending delivery is read again: the scheduler tries deliveries every few seconds. */
+const DELIVERY_POLL_MS = 5000;
 
 export function jobKey(id: string) {
   return [...JOBS, "one", id] as const;
@@ -82,6 +86,19 @@ export function useJobResults(
     queryKey: [...jobResultsKey(id), page],
     queryFn: () => unwrap(listJobResults(client, id, page)),
     enabled,
+  });
+}
+
+/** The job's webhook deliveries at `cursor`. A delivery still pending is read again every few seconds, until none is. */
+export function useWebhookDeliveries(id: string, page: { cursor: string | null; limit: number }) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [...JOBS, "webhook-deliveries", id, page],
+    queryFn: () => unwrap(listWebhookDeliveries(client, id, page)),
+    refetchInterval: (query) =>
+      query.state.data?.items.some((delivery) => delivery.status === "pending")
+        ? DELIVERY_POLL_MS
+        : false,
   });
 }
 
