@@ -188,7 +188,8 @@ async def _listing_endpoint(
     pagination = await asyncio.to_thread(listing_pagination, with_calls, endpoint.key)
     if pagination is None:
         # The captures show one call each: the listing's browser actions show how it asks for the next page.
-        # The two passes share the sample's renders (D-1366): the rest are the held-out pages'.
+        # The two passes share the sample's renders (adapters spec, "Recipe discovery and binding"): the rest are the
+        # held-out pages'.
         unpaged = await renders.listing(
             with_calls,
             lambda page: len(page_series(page).get(endpoint.key, ())) < 2,

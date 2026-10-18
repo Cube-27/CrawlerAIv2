@@ -723,8 +723,9 @@ def test_a_refused_document_is_labelled_with_the_vendor_whose_cookie_the_context
 def test_a_refusal_after_a_cross_host_redirect_is_read_against_the_host_that_served_it(
     browser: Browser, server: Server
 ) -> None:
-    # D-1206: links to other pages of the refusal's own host make it a page of that site; they resolve against the URL
-    # that served it (RFC 3986 §5), past the redirect, not the URL first asked for.
+    # Links to other pages of the refusal's own host make it a page of that site (acquisition spec, "HTTP and browser
+    # rungs"); they resolve against the URL that served it (RFC 3986 §5), past the redirect, not the URL
+    # first asked for.
     links = "".join(f'<a href="{server.url(f"/c/{i}", "other.example.test")}">Section {i}</a>' for i in range(6))
     body = f"<html><body><script>window.__seen = 1;</script><nav>{links}</nav></body></html>".encode()
     server.routes["/hop-away"] = Reply(302, headers=(("Location", server.url("/refused-away", "other.example.test")),))

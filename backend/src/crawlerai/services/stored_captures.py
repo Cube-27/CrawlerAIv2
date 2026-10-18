@@ -3,8 +3,8 @@ service and the workers alike.
 
 A capture stands for a fetch only when it reached its page, has not expired, and was made the way the fetch would be:
 with the same page steps, the same request context names (the names of the caller's headers and cookies, in a
-canonical order and case; their values are never stored, D-1432) and, for a screenshot, the same area. A capture of a
-page with a click revealing content is not the page without it.
+canonical order and case; their values are never stored, acquisition spec, "Caller request context") and, for a
+screenshot, the same area. A capture of a page with a click revealing content is not the page without it.
 """
 
 import asyncio
@@ -60,7 +60,7 @@ async def recent_capture(
 ) -> CaptureRow | None:
     """The latest capture of `canonical` that reached its page (§4.8), within `max_age` seconds (None: any age), has
     not expired and was made with `policy`'s page steps and context names (and its screenshot area, when it asks for a
-    screenshot); one an API recipe fetched only with `api` (SPEC-09 §4.8: it holds JSON, not the page). Captures are
+    screenshot); one an API recipe fetched only with `api` (it holds JSON, not the page). Captures are
     found through the tasks that fetched them, which hold the canonical URL. Its bundle is read with `reread`, outside
     the transaction."""
     made = policy.model_dump(mode="json", include={"steps", "context", "screenshot"})

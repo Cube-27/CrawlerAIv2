@@ -81,8 +81,9 @@ class CrawlRequest(WebhookOptions):
     @model_validator(mode="before")
     @classmethod
     def _max_pages_is_limit(cls, data: Any) -> Any:
-        """`max_pages` is accepted as `limit` (jobs spec); a before-validator, so the OpenAPI schema and the clients
-        generated from it name `limit` only, and the schema does not advertise the alias (D-1594)."""
+        """`max_pages` is accepted as `limit` (jobs spec, "Crawl strategy and best-first scoring"); a before-validator,
+        so the OpenAPI schema and the clients generated from it name `limit` only, and the schema does not advertise the
+        alias."""
         if isinstance(data, dict) and "max_pages" in data:
             if "limit" in data:
                 raise ValueError("give limit or its alias max_pages, not both")

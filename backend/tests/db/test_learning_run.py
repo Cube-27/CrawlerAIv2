@@ -375,7 +375,7 @@ async def test_a_required_field_no_page_states_is_learned_as_absent_and_not_aske
 
 async def test_only_an_extraction_that_could_ask_role_c_for_every_gap_counts_as_asked(site: LearnSite) -> None:
     # A config-mode extraction asks role C only for the fields its config does not cover, so its LLM call says
-    # nothing about a covered field: it never makes that field absent (D-1341).
+    # nothing about a covered field: it never makes that field absent (learning-configs spec, "Absent fields").
     async with site.engine.begin() as conn:
         await conn.execute(insert(ProgressiveState).values(**site.key.columns()))
     role_c = AskedRoleC()
@@ -536,7 +536,8 @@ async def test_a_recipe_learning_error_refuses_the_recipe_and_the_config_still_a
 
 
 async def test_a_replays_usage_that_cannot_be_stored_fails_the_run_and_nothing_activates(site: LearnSite) -> None:
-    # A database error is the run's, not the recipe learner's: the replay's request would go unaccounted (D-1381).
+    # A database error is the run's, not the recipe learner's: the replay's request would go unaccounted (adapters spec,
+    # "Held-out validation").
     await site.pages(8, api=True)
     await _forced(site)
 

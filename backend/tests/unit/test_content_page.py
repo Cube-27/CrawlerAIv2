@@ -122,7 +122,8 @@ def test_a_browser_capture_is_utf8_whatever_the_server_declared() -> None:
 )
 def test_a_json_body_decodes_as_utf8_whatever_charset_it_is_labelled_with(method: str, content_type: str) -> None:
     # RFC 8259 §8.1, §11: JSON text is exchanged as UTF-8 and its media type has no charset parameter; an API
-    # capture's body is a JSON document (SPEC-01 §4.5, `body.json`) unless it is labelled HTML.
+    # capture's body is a JSON document (`body.json`; acquisition spec, "Structural outcome classification (INV-24)")
+    # unless it is labelled HTML.
     headers = (("content-type", content_type),) if content_type else ()
     plain = _bundle('{"name": "café \u2013 b"}'.encode(), headers)
     manifest = plain.manifest.model_copy(update={"method": method})

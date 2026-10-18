@@ -391,7 +391,8 @@ async def test_a_cache_only_prompt_is_drafted_from_stored_captures_and_fetches_n
 
     await submit_extract(engine, fetching, request, llm=MeteredClient([provider], engine), data=engine_data)
 
-    # `cache: only` never fetches (D-1435): the sample is the stored page; the page with no capture is none.
+    # `cache: only` never fetches (jobs spec, "Request context and actions per page"): the sample is the stored page;
+    # the page with no capture is none.
     (call,) = provider.calls
     assert "Blue kettle boils" in call.user
     assert "Red kettle" not in call.user

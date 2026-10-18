@@ -53,8 +53,8 @@ def check_browser_actions(
     if max_age:
         raise ValueError("browser_actions fetches the page, so max_age must be 0")
     if fetch.cache == "only":
-        # A stored capture's key holds the page steps and context, not the browser actions (D-1435): it would stand for
-        # the listing without its further pages.
+        # A stored capture's key holds the page steps and context, not the browser actions (jobs spec,
+        # "Request context and actions per page"): it would stand for the listing without its further pages.
         raise ValueError("browser_actions fetches the page, so fetch.cache cannot be only")
     if fetch.method_hint == "http":
         raise ValueError("browser_actions runs in the browser, so method_hint cannot be http")
@@ -116,8 +116,8 @@ async def _recipe_pages(
     target or the deadline of `until`, with their attempts added to `attempts`; None when it served no first page,
     after waiting for the turn of the request that follows (`polite`'s `Admit`). A first page that asks for fewer
     requests, or whose following request the site's rate does not admit, is kept, and nothing more is sent, as
-    `acquire` keeps a recipe's outcome (SPEC-02 §4.6). Each page request waits for its host's rate on its own
-    (`recipe_rung`, by `polite`'s rules): the caller's admitted turn goes to the first."""
+    `acquire` keeps a recipe's outcome (adapters spec, "Recipe execution and fallback"). Each page request waits for its
+    host's rate on its own (`recipe_rung`, by `polite`'s rules): the caller's admitted turn goes to the first."""
     rules, admit_next = polite
     if recipe is None or recipe.pagination is None or policy.steps:
         # The caller's page steps (a cookie banner, a filter) change the page and need the browser (D-1513).

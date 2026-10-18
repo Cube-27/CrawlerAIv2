@@ -199,8 +199,8 @@ async def _pages(
 
 async def _llm_calls(conn: AsyncConnection, ids: Sequence[ExtractionId]) -> dict[ExtractionId, int]:
     """Each extraction's LLM calls, counted only where role C could be asked for every missing field: a config-mode
-    extraction asks it only for the fields its config does not cover (ARCHITECTURE §8.4), so its call says nothing of
-    a covered one (`config_ir.absent`)."""
+    extraction asks it only for the fields its config does not cover (llm spec, "When role C is asked"), so its call
+    says nothing of a covered one (`config_ir.absent`)."""
     query = select(Extraction.id, Extraction.llm_calls).where(Extraction.id.in_(ids), Extraction.mode != "config")
     return {row.id: row.llm_calls for row in await conn.execute(query)}
 

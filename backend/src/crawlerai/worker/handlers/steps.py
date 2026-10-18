@@ -197,7 +197,7 @@ async def fetch_page(
         options, locale, site.proxy_pool, page_kind=task.page_kind, formats=formats, all_resources=all_resources
     )
     if options.cache == "only":
-        # A page the config's API recipe serves was stored as its JSON (SPEC-09 §4.8), as a scrape reads it.
+        # A page the config's API recipe serves was stored as its JSON, as a scrape reads it.
         api = served is not None and served.config is not None and recipe_of(served.config) is not None
         return await _stored_page(conn, fetching, task, site, policy, formats, api=api)
     standing = () if recurring is None else await _standing(conn, task, site.id, recurring)

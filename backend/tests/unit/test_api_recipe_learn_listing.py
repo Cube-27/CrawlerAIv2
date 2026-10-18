@@ -224,8 +224,8 @@ def test_pages_without_calls_are_rendered_with_their_browser_actions(scripted_ap
 
 
 def test_the_sample_pages_take_at_most_their_renders_and_none_twice(scripted_api: ScriptedApi) -> None:
-    # D-1366: the sample pages get three renders and the held-out pages the rest, though the first renders show no
-    # pagination and so ask for a second look.
+    # The sample pages get three renders and the held-out pages the rest (adapters spec, "Recipe discovery and
+    # binding"), though the first renders show no pagination and so ask for a second look.
     def render(url: str, kind: PageKind) -> Sequence[CaptureBundle]:
         return [_bundle(url, (1,))]  # one state, one call: no next page shown
 

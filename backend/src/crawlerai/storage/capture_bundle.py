@@ -236,8 +236,9 @@ def decode_html(body: bytes, headers: HeaderList, method: CaptureMethod) -> str:
 
 
 def _is_json(headers: HeaderList, method: CaptureMethod) -> bool:
-    """Whether a body is a JSON text: labelled with a JSON MIME type, or an API capture's (`body.json`, SPEC-01 §4.5)
-    not labelled HTML. The essence is the last Content-Type's, lower-cased, parameters dropped (RFC 9110 §8.3.1)."""
+    """Whether a body is a JSON text: labelled with a JSON MIME type, or an API capture's (`body.json`; acquisition
+    spec, "Structural outcome classification (INV-24)") not labelled HTML. The essence is the last Content-Type's,
+    lower-cased, parameters dropped (RFC 9110 §8.3.1)."""
     types = [value.split(";", 1)[0].strip().lower() for name, value in headers if name.lower() == "content-type"]
     essence = types[-1] if types else ""
     if essence in _JSON_TYPES or essence.endswith(_JSON_SUFFIX):

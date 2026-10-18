@@ -196,7 +196,7 @@ def _document(data: dict[str, JsonValue], name: str) -> SchemaDocument:
 
 def _parsed(data: dict[str, JsonValue], name: str) -> SchemaDocument | str:
     """The document `data` holds, or why it is not a valid one: a broken document, or one naming a schema.org term the
-    pinned vocabulary lacks, which a user's schema is refused for too (SPEC-04 §4.2)."""
+    pinned vocabulary lacks, which a user's schema is refused for too (schemas spec, "schema.org paths")."""
     try:
         document = _document(data, name)
     except ValidationError as error:

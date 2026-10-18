@@ -11,8 +11,9 @@ not stored: `/v1/jobs/{id}/results` makes them from the capture.
 A records task is how a recurring run sees a page again (SPEC-11 §4.2, §4.3). When records already stand for the page
 (`standing_record`, or `standing_listing` for a listing, in `crawlerai.recurring.state`), the page is fetched with the
 validators it last answered with, and a 304 ends the task `unchanged` with no capture (`steps.fetch_page`). A page
-fetched whole whose visible words are the same as last time (an equal content digest, D-1340), for a listing its words
-and links (D-1383), ends `unchanged` with its capture, and is not extracted. Having no extraction, an
+fetched whole whose visible words are the same as last time (an equal content digest), for a listing its words and
+links, ends `unchanged` with its capture, and is not extracted (jobs spec, "Conditional GET and content fingerprint").
+Having no extraction, an
 unchanged page joins no drift window (SPEC-08 §4.9) and does not count toward `pages_extracted` (ARCHITECTURE §8.3
 counts `extracted` and `partial` pages). Only records tasks read or write `url_state`: a fingerprint or validators
 stored without the record made from that content would let a stale record stand.
@@ -155,8 +156,8 @@ def page_fingerprint(parsed: ParsedPage, final_url: str, kind: PageKind) -> Cont
     """The fingerprint of the page's visible words; for a listing, of its words and the URLs it links to, in document
     order (`content.links`): its rows' links are part of what it lists, so rows that keep their words but link
     elsewhere (reposted items) are a change, and a listing without words (rows of images, text drawn by script) is
-    fingerprinted by its links alone (D-1383). None for a detail page without words, or a listing with neither words
-    nor links."""
+    fingerprinted by its links alone (jobs spec, "Conditional GET and content fingerprint"). None for a detail page
+    without words, or a listing with neither words nor links."""
     text = parsed.cleaned_text.text
     if kind != "listing":
         return content_fingerprint(text)

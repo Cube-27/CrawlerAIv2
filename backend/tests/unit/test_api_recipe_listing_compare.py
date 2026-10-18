@@ -1,5 +1,5 @@
-"""A listing recipe's replay compared with the captured pages (SPEC-09 §4.8): a field is compared when any captured
-page has a value for it, so a value found only on a later captured page is still checked."""
+"""A listing recipe's replay compared with the captured pages (adapters spec, "Held-out validation"): a field is
+compared when any captured page has a value for it, so a value found only on a later captured page is still checked."""
 
 import asyncio
 import json

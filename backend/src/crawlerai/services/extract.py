@@ -264,8 +264,8 @@ async def _samples(
 ) -> list[str]:
     """The cleaned text of each of `urls` reached, fetched one after another as a scrape fetches its page; the fetches
     count as the job's usage. With `fetch.cache` `only`, each is the latest stored capture of its URL made with the
-    request's steps and context, and nothing is fetched (D-1435); a URL without one is no sample. Raises `NoSamplePage`
-    when none was reached."""
+    request's steps and context, and nothing is fetched (jobs spec, "Request context and actions per page"); a URL
+    without one is no sample. Raises `NoSamplePage` when none was reached."""
     samples: list[str] = []
     for url in urls:
         host = urlsplit(url).hostname or ""

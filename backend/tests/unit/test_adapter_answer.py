@@ -1,5 +1,5 @@
-"""An adapter's answer recorded as JSON (SPEC-15 §4.10): the recorded body is UTF-8 JSON text, so it decodes as that,
-whatever charset the platform's own answer declared."""
+"""An adapter's answer recorded as JSON (acquisition spec, "Structural outcome classification (INV-24)"): the recorded
+body is UTF-8 JSON text, so it decodes as that, whatever charset the platform's own answer declared."""
 
 import time
 from datetime import UTC, datetime

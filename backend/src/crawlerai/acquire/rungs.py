@@ -153,7 +153,8 @@ async def acquire(
     ):
         return served
     refer = None
-    # A page no adapter detected (none answered, or only the recipe did) may name a URL one does (SPEC-15 §4.2).
+    # A page no adapter detected (none answered, or only the recipe did) may name a URL one does (adapters spec,
+    # "Referral from a tenant's own host").
     if send is not None and (served is None or by_recipe):
         asked: set[str] = set()
 

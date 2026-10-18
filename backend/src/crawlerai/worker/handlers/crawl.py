@@ -6,8 +6,8 @@ A reached page contributes its links and next-page candidates at its depth plus 
 page is on: when the site redirects the start URL to another host of the same site (its `www.` subdomain, or back), the
 crawl follows it there (D-0991). The start task stores where its page is on the job (`job.start_location`), the way
 every other task reads it. Every task stores where its page was fetched (`url_task.final_url`), and once it is stored,
-the URL the task was redirected to is not added as a task of its own: that page is the redirected task's (D-1285,
-D-1382). A task queued for that URL before then stays a task.
+the URL the task was redirected to is not added as a task of its own: that page is the redirected task's (jobs spec,
+"Crawl frontier and page-kind rules"). A task queued for that URL before then stays a task.
 
 The start URL's task also reads the site's sitemaps (`crawlerai.crawl.sitemaps`: robots.txt `Sitemap:` lines, else
 `/sitemap.xml`) and adds their URLs as seeds, at depth 0, even when its own page was not reached, on the attempt that
@@ -160,9 +160,9 @@ def _formats_of(task: ClaimedTask, request: CrawlRequest) -> Sequence[PageFormat
 
 
 async def _record_final_url(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage) -> None:
-    """Store where the task's page was fetched, in canonical form, before the task adds any URL (D-1382). An adapter's
-    or API recipe's capture (method `api`) stands for the page it was asked for: its final URL is the endpoint, which
-    is no page of the crawl (as `rules.located` reads it)."""
+    """Store where the task's page was fetched, in canonical form, before the task adds any URL (jobs spec, "Crawl
+    frontier and page-kind rules"). An adapter's or API recipe's capture (method `api`) stands for the page it was asked
+    for: its final URL is the endpoint, which is no page of the crawl (as `rules.located` reads it)."""
     manifest = page.result.bundle.manifest
     final_url = canonicalize(manifest.url if manifest.method == "api" else manifest.final_url)
     await conn.execute(update(UrlTask).where(UrlTask.id == task.id).values(final_url=final_url))

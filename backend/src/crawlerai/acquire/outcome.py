@@ -159,5 +159,5 @@ _OWN_FAILURES = frozenset({"body_cap", "decode_error"})
 
 def _not_the_endpoints(error: str | None) -> bool:
     """A failure of our own limits or guard, not of the endpoint: a cap or a decoding error keeps the status of an
-    answer the endpoint did relay, which says nothing either way (D-1324)."""
+    answer the endpoint did relay, which says nothing either way (acquisition spec, "Proxy pools")."""
     return error is not None and (error in _OWN_FAILURES or error.startswith(SSRF_REJECTED))

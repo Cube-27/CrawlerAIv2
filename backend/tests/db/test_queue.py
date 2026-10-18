@@ -296,7 +296,7 @@ async def test_cancelling_the_last_claimed_task_cancels_the_job(conn: AsyncConne
 
 async def test_a_skipped_last_task_runs_the_ending_of_the_job_it_completes(conn: AsyncConnection) -> None:
     # A scored crawl's last task may be skipped (over its limit): the job still ends through its ending (the listing
-    # diff, SPEC-11 §4.5).
+    # diff; jobs spec, "Listing diff and gone URLs").
     job_id = await _job(conn)
     await _tasks(conn, job_id, 1)
     task = await _claim_one(conn)

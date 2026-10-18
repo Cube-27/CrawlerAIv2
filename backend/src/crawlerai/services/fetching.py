@@ -121,9 +121,10 @@ def site_rungs(fetching: Fetching, host: str, site: SiteRow) -> Rungs:
 
 async def store_declines(conn: AsyncConnection, site: SiteRow, host: str, rungs: Rungs) -> None:
     """Store on the site of `host` the adapter declines `rungs` made for it (`site_rungs`): those that differ from what
-    its row held (D-1384). They are merged into the stored ones in one statement (a JSONB concatenation), so fetches
-    that read the row before either stored keep each other's declines. One that ran out stays stored, and holds back
-    nothing (`Registry.for_host` reads its time): the row holds at most one per adapter."""
+    its row held (adapters spec, "Fallback to the page rungs (INV-40)"). They are merged into the stored ones in one
+    statement (a JSONB concatenation), so fetches that read the row before either stored keep each other's declines. One
+    that ran out stays stored, and holds back nothing (`Registry.for_host` reads its time): the row holds at most one
+    per adapter."""
     made = {
         name: until
         for name, until in rungs.adapters.declined_for(host).items()

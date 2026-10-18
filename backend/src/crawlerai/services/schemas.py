@@ -46,8 +46,8 @@ class InvalidSchema(Refusal):
 
 
 def _check_references(fields: Mapping[str, FieldSpec]) -> None:
-    """Refuse `fields` naming a schema.org type, property or enumeration the pinned vocabulary lacks (SPEC-04 §4.2,
-    D-0240; `pinned_reference_errors`)."""
+    """Refuse `fields` naming a schema.org type, property or enumeration the pinned vocabulary lacks (schemas spec,
+    "schema.org paths"; `pinned_reference_errors`)."""
     if errors := pinned_reference_errors(fields):
         raise InvalidSchema(errors)
 

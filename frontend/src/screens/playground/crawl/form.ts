@@ -65,7 +65,10 @@ export interface CrawlOptions extends FormatSettings {
   fields: readonly string[];
   maxDepth: number;
   limit: number;
-  /** How the frontier is ordered (D-1440); `query` and `keywords` order a best-first crawl only. */
+  /**
+   * How the frontier is ordered (jobs spec, "Crawl strategy and best-first scoring"); `query` and `keywords` order a
+   * best-first crawl only.
+   */
   strategy: CrawlStrategy;
   query: string;
   keywords: readonly string[];

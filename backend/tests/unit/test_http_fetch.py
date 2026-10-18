@@ -147,8 +147,9 @@ def test_a_2xx_page_showing_a_vendors_stand_in_marker_is_blocked_and_labelled(se
 
 
 def test_a_refusal_after_a_cross_host_redirect_is_read_against_the_host_that_served_it(server: Server) -> None:
-    # D-1206: a refusal whose links lead to other pages of its own host is a page of that site, not a stand-in; its
-    # links are resolved against the URL that answered (RFC 3986 §5), the last hop, not the URL first asked for.
+    # A refusal whose links lead to other pages of its own host is a page of that site, not a stand-in (acquisition
+    # spec, "HTTP and browser rungs"); its links are resolved against the URL that answered (RFC 3986 §5), the last
+    # hop, not the URL first asked for.
     final = server.url("/end", "other.example.test")
     links = "".join(f'<a href="{server.url(f"/item/{i}", "other.example.test")}">Item {i}</a>' for i in range(8))
     server.route("/start", redirect(final))

@@ -269,7 +269,7 @@ async def _learned(
         raise  # D-0738: role D's failure ends the run as role A's does
     except SQLAlchemyError:
         # A database error is the run's, not the recipe's: a replay whose usage was not stored would go unaccounted
-        # (D-1381), so the run ends failed rather than activating the config.
+        # (adapters spec, "Held-out validation"), so the run ends failed rather than activating the config.
         raise
     except Exception as e:
         # D-1389: the recipe learner's own error refuses the recipe, not the config it would have joined.

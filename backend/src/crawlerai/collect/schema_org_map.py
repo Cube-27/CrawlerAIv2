@@ -171,8 +171,8 @@ def _path_problems(schema_org: str, vocabulary: Vocabulary) -> list[str]:
 
 def pinned_reference_errors(fields: Mapping[str, FieldSpec]) -> list[tuple[str, str]]:
     """`reference_errors` against the pinned vocabulary (`default_vocabulary`), for every path that stores a schema
-    (D-0240). A process without the vocabulary file checks syntax only, as it extracts no records
-    (`load_engine_data`)."""
+    (schemas spec, "schema.org paths"). A process without the vocabulary file checks syntax only, as it extracts no
+    records (`load_engine_data`)."""
     try:
         vocabulary = default_vocabulary()
     except VocabularyMissing:

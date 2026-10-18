@@ -339,7 +339,8 @@ async def test_a_crawl_task_served_by_an_adapter_stores_its_page_as_where_it_was
     async with engine.connect() as conn:
         query = select(UrlTask.final_url).where(UrlTask.job_id == submitted.job_id)
         final_url = (await conn.execute(query)).scalar_one()
-    # The adapter's endpoint is not the page: the frontier must not take it for a fetched page (D-1382).
+    # The adapter's endpoint is not the page: the frontier must not take it for a fetched page (jobs spec,
+    # "Crawl frontier and page-kind rules").
     assert len(web.requested) == 1
     assert final_url == canonicalize(url)
 
@@ -347,7 +348,8 @@ async def test_a_crawl_task_served_by_an_adapter_stores_its_page_as_where_it_was
 async def test_a_page_whose_recipe_failed_is_still_served_by_the_adapter_its_canonical_url_names(
     fetching: Fetching, web: Web, fetch_result: Callable[..., FetchResult], own_origin: str
 ) -> None:
-    # SPEC-15 §4.2: a page no adapter detected is asked of the adapter its canonical URL names, recipe or not.
+    # A page no adapter detected is asked of the adapter its canonical URL names, recipe or not (adapters spec,
+    # "Referral from a tenant's own host").
     canonical = f"{own_origin}/collections/lamps"
     url = f"{canonical}?ref=footer"
     web.pages[url] = PAGE.replace(b"</title>", f'</title><link rel="canonical" href="{canonical}">'.encode())

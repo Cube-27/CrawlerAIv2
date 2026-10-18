@@ -1,5 +1,6 @@
-"""A scored crawl's frontier replacing a queued task (SPEC-10 §4.5) while a worker claims it, over two connections: a
-task being claimed is never the one evicted, so its worker keeps its lease. Hosts are RFC 2606 names."""
+"""A scored crawl's frontier replacing a queued task (jobs spec, "Crawl strategy and best-first scoring") while a worker
+claims it, over two connections: a task being claimed is never the one evicted, so its worker keeps its lease. Hosts are
+RFC 2606 names."""
 
 import asyncio
 

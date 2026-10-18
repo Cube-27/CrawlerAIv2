@@ -263,7 +263,8 @@ async def _refused(url: str | None) -> bool:
 @settings(deadline=None, max_examples=20)
 @given(total=st.integers(6, 60), batch=st.integers(3, 5))
 def test_a_scroll_the_gate_refuses_is_not_made(total: int, batch: int) -> None:
-    # A scroll acts on the shown document: it waits for its turn at the site's rate like any action (SPEC-02 §4.6).
+    # A scroll acts on the shown document: it waits for its turn at the site's rate like any action (acquisition spec,
+    # "Per-site rate and backoff").
     tab = _ScrollTab(total, batch, None)
     caps = Caps(wait_s=_WAIT_S, poll_s=_POLL_S)
 
