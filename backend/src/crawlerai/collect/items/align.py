@@ -61,7 +61,7 @@ from crawlerai.normalize.base import Ambiguous, Context, Ok, raw_key
 from crawlerai.normalize.dispatch import equality_key, normalize
 from crawlerai.normalize.identifier import has_check_digit
 from crawlerai.normalize.url import canonical_url, is_absolute
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent
 
 # The share of a group's blocks a place must give a field's value in, besides `MIN_ITEMS` (master plan §3.2).
 QUORUM_SHARE: Final = 0.6
@@ -127,7 +127,7 @@ def quorum(blocks: int) -> int:
     return max(MIN_ITEMS, math.ceil(QUORUM_SHARE * blocks))
 
 
-def align(page: ParsedPage, schema: SchemaDef, ctx: Context) -> tuple[Items, ...]:
+def align(page: ParsedPage, schema: SchemaContent, ctx: Context) -> tuple[Items, ...]:
     """Every group of the page's repeated items that aligns, as rows, best first (module docstring): the most fields
     aligned, then the segment step's order. None for a detail schema, a schema without an item URL field, or a page
     none of whose groups links its items."""
@@ -179,7 +179,7 @@ def _owning_block(block: HtmlElement, owner_of: Mapping[HtmlElement, int], group
     return None
 
 
-def field_roles(schema: SchemaDef) -> dict[str, Role]:
+def field_roles(schema: SchemaContent) -> dict[str, Role]:
     """The row fields the align step reads, each with what it reads (module docstring)."""
     roles: dict[str, Role] = {}
     for name, spec in schema.fields.items():
@@ -214,7 +214,7 @@ class _Aligned:
         cls,
         page: ParsedPage,
         group: Group,
-        schema: SchemaDef,
+        schema: SchemaContent,
         roles: Mapping[str, Role],
         ctx: Context,
         sublists: frozenset[HtmlElement],
@@ -236,7 +236,7 @@ class _Aligned:
                 aligned.fields[name] = kept
         return aligned
 
-    def items(self, schema: SchemaDef, ctx: Context, number: int) -> Items:
+    def items(self, schema: SchemaContent, ctx: Context, number: int) -> Items:
         """The group's rows, its entities numbered `item_block:<number>:<block>`."""
         blocks: list[Block] = []
         candidates: list[Candidate] = []

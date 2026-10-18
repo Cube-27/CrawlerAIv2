@@ -59,13 +59,23 @@ _STATE_KINDS = ("js_state", "xhr")
 
 
 @dataclass(frozen=True, slots=True)
+class RowBlock:
+    """A listing row's block: its position in the bound group, the block, and the row entity it is or is bound to."""
+
+    index: int
+    block: Block
+    row: str
+
+
+@dataclass(frozen=True, slots=True)
 class Bound:
-    """The listing's rows and every candidate, with bound entities' values moved to their rows."""
+    """The listing's rows and every candidate, with bound entities' values moved to their rows, and the rows' blocks in
+    the bound group's order."""
 
     rows: tuple[Entity, ...]
     candidates: tuple[Candidate, ...]
     diagnostics: tuple[str, ...] = ()
-    joined: frozenset[str] = frozenset()  # the entities bound to a row, whose values moved to it
+    blocks: tuple[RowBlock, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,7 +105,7 @@ def bind(listing: Listing) -> Bound:
     rows = binder.rows()
     binder.bind_array_rows(rows)
     induced_values = binder.induced_values()
-    return Bound(rows, (*binder.result(), *induced_values), tuple(binder.notes), frozenset(binder.moves))
+    return Bound(rows, (*binder.result(), *induced_values), tuple(binder.notes), binder.row_blocks(rows))
 
 
 class _RowUrls:
@@ -180,6 +190,13 @@ class _Binder:
         self.blocks_of |= {entity.id: next(b for b in blocks if b.entity is entity) for entity in extra}
         self.notes.append(f"item layer: {len(bound)} stated rows bound to blocks, {len(extra)} blocks added")
         return (*stated, *extra)
+
+    def row_blocks(self, rows: Sequence[Entity]) -> tuple[RowBlock, ...]:
+        """The block of each of `rows` that has one, in the group's order."""
+        position = {block.entity.id: i for i, block in enumerate(self.items.blocks)}
+        listed = {row.id for row in rows}
+        found = (RowBlock(position[b.entity.id], b, row) for row, b in self.blocks_of.items() if row in listed)
+        return tuple(sorted(found, key=lambda row_block: row_block.index))
 
     def _stub(self, row: Entity) -> bool:
         """Whether the row holds no candidate of a row field but the item URL."""
