@@ -488,7 +488,10 @@ class _View:
         if len(element):
             text = self.page.cleaned_text.text
             own = (" ".join(text[start:end].split()) for start, end in self.page.own_runs.get(path, ()))
-            texts.extend((run, f"{self.places[element]}/text()") for run in own if run)
+            # The runs are keyed by the selectolax tree's paths; a run is this element's only if its lxml text holds it
+            # (the two parsers repair malformed markup differently).
+            written = " ".join(" ".join(t for t in (element.text, *(c.tail for c in element)) if t).split())
+            texts.extend((run, f"{self.places[element]}/text()") for run in own if run and run in written)
         return texts
 
 
