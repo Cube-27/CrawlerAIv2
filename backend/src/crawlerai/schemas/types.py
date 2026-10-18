@@ -48,7 +48,7 @@ Name = Annotated[str, StringConstraints(pattern=rf"^{NAME_PATTERN}$")]
 # follows properties; `+` joins a second property of the last type into one atomic value (`Offer.price+priceCurrency`).
 # `|` separates up to four alternatives, whose candidates are pooled (SPEC-13 §4.1): `Product.sku|Offer.sku`; `>` ranks
 # them: the alternatives after it are read on an entity only when those before it reach no value there
-# (`JobPosting.potentialAction.target>JobPosting.url`, D-1493).
+# (`Product.gtin13>Product.gtin`).
 _ALTERNATIVE = r"[A-Z][A-Za-z0-9]*(\.[a-z][A-Za-z0-9]*)+(\+[a-z][A-Za-z0-9]*)?"
 MAX_ALTERNATIVES = 4
 SchemaOrgPath = Annotated[

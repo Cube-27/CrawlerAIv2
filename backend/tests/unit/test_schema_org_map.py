@@ -23,6 +23,7 @@ from crawlerai.collect.schema_org_map import (
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context
+from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 VOCABULARY_FILE = Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld"
@@ -283,6 +284,15 @@ def test_a_ranked_alternative_is_read_only_where_the_ones_before_it_reach_no_val
         ("apply_url", "a", "jsonld:0:$['act']['target'][0]"),
         ("apply_url", "b", "jsonld:0:$.b.url[0]"),
     ]
+
+
+def test_the_job_presets_apply_url_is_the_postings_apply_action_target_only() -> None:
+    # Schemas spec, "Stated apply link": the posting's own `url` is not its apply link.
+    apply_url = next(p for p in load_presets() if p.name == "job_detail").fields["apply_url"]
+    action = _BracketNode("act", {"target": ["https://jobs.example.test/a/apply"]})
+    entities = (_posting("a", potentialAction=[action]), _posting("b"))
+
+    assert _found(entities, _schema(apply_url=apply_url)) == [("apply_url", "a", "jsonld:0:$['act']['target'][0]")]
 
 
 def test_a_node_reached_by_a_ranked_alternative_states_no_value_and_keeps_the_next_rank() -> None:

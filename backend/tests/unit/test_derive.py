@@ -85,14 +85,15 @@ def test_the_page_url_field_is_a_detail_schemas_url_of_its_primary_type() -> Non
     assert [name for name, spec in schema.fields.items() if is_page_url_field(schema, spec, primary)] == ["url"]
 
 
-def test_a_url_field_whose_last_rank_is_the_items_url_is_the_page_url_field() -> None:
-    # D-1493: the page's URL stands in after every rank; an earlier rank that names another URL does not change that.
+def test_a_url_field_with_another_alternative_is_not_the_page_url_field() -> None:
+    # An apply link the page does not state stays missing: the page's own URL never stands in for it.
     ranked = URL.model_copy(update={"schema_org": "JobPosting.potentialAction.target>JobPosting.url"})
-    first = URL.model_copy(update={"schema_org": "JobPosting.url>JobPosting.potentialAction.target"})
-    schema = _schema(ranked=ranked, first=first)
+    pooled = URL.model_copy(update={"schema_org": "JobPosting.url|JobPosting.sameAs"})
+    url = URL.model_copy(update={"schema_org": "JobPosting.url"})
+    schema = _schema(ranked=ranked, pooled=pooled, url=url)
 
     assert [n for n, spec in schema.fields.items() if is_page_url_field(schema, spec, frozenset({"JobPosting"}))] == [
-        "ranked"
+        "url"
     ]
 
 

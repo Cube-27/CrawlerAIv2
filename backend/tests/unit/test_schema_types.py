@@ -175,8 +175,8 @@ def test_the_presets_are_exactly_the_section_5_3_documents() -> None:
         "date_posted": "date",
     }
     assert presets["job_detail"].fields["locations"].item.type is FieldType.LOCATION  # type: ignore[union-attr]
-    # D-0015, D-1493: a stated apply link, ranked above the posting's URL.
-    assert presets["job_detail"].fields["apply_url"].schema_org == "JobPosting.potentialAction.target>JobPosting.url"
+    # The posting's ApplyAction target (schema.org potentialAction); the posting's own URL is not its apply link.
+    assert presets["job_detail"].fields["apply_url"].schema_org == "JobPosting.potentialAction.target"
     for listing, optional in (("commerce_listing", "price"), ("job_listing", "locations")):
         fields = presets[listing].fields
         assert _core(presets[listing]) == {"title": "text", "url": "url"}
