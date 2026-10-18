@@ -231,3 +231,36 @@ def test_short_or_varying_query_values_are_not_withheld(first: str, second: str)
     stripped, withheld = withhold_tokens(samples)
 
     assert (withheld, stripped) == ((), samples)
+
+
+def test_a_withheld_token_leaves_an_ordinary_item_of_the_same_name() -> None:
+    samples = [
+        _sample(f"{_PAGE}/c/mugs", f"{_API}/search?q=mugs&id=1&id={_KEY}"),
+        _sample(f"{_PAGE}/c/cups", f"{_API}/search?q=cups&id=1&id={_KEY}"),
+    ]
+
+    stripped, withheld = withhold_tokens(samples)
+
+    assert withheld == ("id",)
+    assert [s.request.url for s in stripped] == [f"{_API}/search?q=mugs&id=1", f"{_API}/search?q=cups&id=1"]
+
+
+def test_a_token_of_a_single_sample_is_withheld_before_role_d() -> None:
+    samples = [_sample(f"{_PAGE}/p/mug", f"{_API}/item?slug=mug&key={_KEY}")]
+
+    stripped, withheld = withhold_tokens(samples)
+
+    assert withheld == ("key",)
+    assert [s.request.url for s in stripped] == [f"{_API}/item?slug=mug"]
+
+
+def test_a_shared_token_is_withheld_when_the_samples_query_names_differ() -> None:
+    samples = [
+        _sample(f"{_PAGE}/c/mugs", f"{_API}/search?key={_KEY}&page=1"),
+        _sample(f"{_PAGE}/c/cups", f"{_API}/search?key={_KEY}&sort=x"),
+    ]
+
+    stripped, withheld = withhold_tokens(samples)
+
+    assert withheld == ("key",)
+    assert [s.request.url for s in stripped] == [f"{_API}/search?page=1", f"{_API}/search?sort=x"]
