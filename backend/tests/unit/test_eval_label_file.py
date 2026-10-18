@@ -262,9 +262,6 @@ class LabelStore:
     async def get_run(self, run_id: EvalRunId) -> EvalRunRow:
         raise NotImplementedError
 
-    async def latest_run(self, git_sha_on_main: str | None) -> EvalRunRow | None:
-        raise NotImplementedError
-
     async def llm_cache_get(self, key: str) -> bytes | None:
         raise NotImplementedError
 

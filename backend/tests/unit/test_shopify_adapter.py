@@ -190,7 +190,7 @@ def test_a_host_answering_a_slow_down_is_not_declined() -> None:
         sent.append(request.url.path)
         return httpx.Response(429)
 
-    registry = Registry([ADAPTER], active={"shopify"})
+    registry = Registry([ADAPTER])
     send = _send(handler)
     for _ in range(2):
         asyncio.run(registry.serve(PAGE, FetchPolicy(), send))

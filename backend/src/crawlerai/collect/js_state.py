@@ -16,9 +16,9 @@ from pydantic import JsonValue
 
 from crawlerai.collect.admission import Admitted, Document, admit
 from crawlerai.collect.base import Candidate
-from crawlerai.collect.json_doc import parse, parse_prefix
 from crawlerai.collect.jsonld import MEDIA_TYPE as JSONLD
 from crawlerai.content.page import ParsedPage, ScriptBlock
+from crawlerai.core.json_text import parse, parse_prefix
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 

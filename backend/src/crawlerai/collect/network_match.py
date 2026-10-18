@@ -25,6 +25,7 @@ from pydantic import JsonValue
 from crawlerai.acquire.items import MIN_ITEMS
 from crawlerai.collect import json_doc
 from crawlerai.content.page import ParsedPage
+from crawlerai.core import json_text
 from crawlerai.storage.capture_bundle import NetworkBody, network_json
 
 # RFC 9110 §15.3: the 2xx class.
@@ -61,7 +62,7 @@ def body_shape(body: str | None) -> tuple[str, ...] | None:
     if body is None:
         return None
     try:
-        document = json_doc.parse(body)
+        document = json_text.parse(body)
     except ValueError:
         return (body,)
     leaves = {path for path, value in json_doc.nodes(document, wildcard=True) if not isinstance(value, (dict, list))}

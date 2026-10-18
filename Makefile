@@ -81,7 +81,6 @@ check-tools:
 # run against a scratch database recreated each run, so the dev database keeps its data. 127.0.0.1, not localhost:
 # asyncpg can hang resolving localhost on Windows.
 CHECK_DATABASE_URL := postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai_check
-CHECK_PRIVATE_DATABASE_URL := postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai_private_check
 
 check-backend: db
 	cd backend && $(UV_RUN) ruff check
@@ -90,13 +89,11 @@ check-backend: db
 	cd backend && $(UV_RUN) lint-imports
 	cd backend && $(UV_RUN) patchright install --no-shell chromium
 	$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -q -U postgres \
-		-c 'DROP DATABASE IF EXISTS crawlerai_check' -c 'CREATE DATABASE crawlerai_check OWNER app' \
-		-c 'DROP DATABASE IF EXISTS crawlerai_private_check' -c 'CREATE DATABASE crawlerai_private_check OWNER app'
+		-c 'DROP DATABASE IF EXISTS crawlerai_check' -c 'CREATE DATABASE crawlerai_check OWNER app'
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic upgrade head
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic downgrade base
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic upgrade head
-	cd backend && CRAWLERAI_TEST_DATABASE_URL=$(CHECK_DATABASE_URL) \
-		CRAWLERAI_TEST_PRIVATE_DATABASE_URL=$(CHECK_PRIVATE_DATABASE_URL) $(UV_RUN) pytest
+	cd backend && CRAWLERAI_TEST_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) pytest
 
 ## Regenerate the Python and TypeScript SDKs' generated files from frontend/openapi.json (run `make api-client` first).
 sdk:

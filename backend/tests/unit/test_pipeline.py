@@ -454,7 +454,7 @@ JOB_API = "https://jobs.example.test/api/jobs/1"
 
 
 def test_an_api_capture_is_read_by_the_adapter_that_detects_its_page_url_and_serves_its_endpoint() -> None:
-    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([FakeAdapter()], active=["synthetic"]))
+    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([FakeAdapter()]))
     bundle = _bundle('{"title": "Engineer"}', method="api", url=JOB_URL, final_url=JOB_API)
     result = _extract(bundle, JOB, data=data)
     assert result.entity is not None
@@ -468,7 +468,7 @@ def test_an_api_capture_is_read_by_the_adapter_that_detects_its_page_url_and_ser
 
 
 def test_an_api_capture_no_active_adapter_detects_has_no_adapter_values() -> None:
-    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([FakeAdapter()], active=[]))
+    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry(()))
     bundle = _bundle('{"title": "Engineer"}', method="api", url=JOB_URL, final_url=JOB_API)
     result = _extract(bundle, JOB, data=data)
     assert (result.candidates, _statuses(result)) == ((), {"title": ("missing", "no_candidates")})
@@ -477,7 +477,7 @@ def test_an_api_capture_no_active_adapter_detects_has_no_adapter_values() -> Non
 
 def test_an_api_capture_from_another_endpoint_of_a_detected_page_is_not_the_adapters() -> None:
     # INV-39: an API recipe's capture of a page URL the adapter detects is the recipe's, not the adapter's.
-    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([FakeAdapter()], active=["synthetic"]))
+    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([FakeAdapter()]))
     bundle = _bundle('{"title": "Engineer"}', method="api", url=JOB_URL, final_url="https://data.example.test/1")
     result = _extract(bundle, JOB, data=data)
     assert (result.candidates, _statuses(result)) == ((), {"title": ("missing", "no_candidates")})
@@ -502,7 +502,7 @@ class BoardAdapter(FakeAdapter):
 
 def test_a_job_listing_row_publishes_every_place_its_posting_states() -> None:
     # D-1477: `job_listing.locations` is a list, so a posting's primary and further places publish together.
-    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([BoardAdapter()], active=["synthetic"]))
+    data = EngineData(VOCABULARY, DATA.orders, None, adapters=Registry([BoardAdapter()]))
     jobs = [
         {"title": "Engineer", "url": f"{JOB_URL}/a", "place": "Northtown", "more": ["Eastport", "Southville"]},
         {"title": "Analyst", "url": f"{JOB_URL}/b", "place": "Eastport", "more": []},

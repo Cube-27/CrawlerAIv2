@@ -1,5 +1,5 @@
-"""The `EvalStore` contract (SPEC-03 §4.2), run against the dev store and a private store over throwaway databases
-and temporary object roots. Synthetic data only: `.test` hosts, made-up bundles (C1, C9)."""
+"""The eval store over a throwaway database and a temporary object root. Synthetic data only: `.test` hosts, made-up
+bundles (C9)."""
 
 import hashlib
 import uuid
@@ -24,9 +24,7 @@ from crawlerai.db.models import (
     SchemaDef,
     SchemaId,
     Site,
-    Split,
 )
-from crawlerai.db.private_models import PrivateBase, PrivateEvalRun
 from crawlerai.eval.store import (
     DevEvalStore,
     EvalNotFound,
@@ -35,7 +33,6 @@ from crawlerai.eval.store import (
     EvalStore,
     Labels,
     LabelsChanged,
-    PrivateEvalStore,
 )
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 from crawlerai.storage.fs import FsStore
@@ -50,45 +47,27 @@ SCHEMA_NAME = "eval_store_detail"
 class Case:
     store: EvalStore
     root: Path  # the store's object root
-    other_root: Path  # the other kind of store's object root, which must stay empty
     schema_id: SchemaId
 
 
-@pytest.fixture(params=["dev", "hidden"])
-def split_url(request: pytest.FixtureRequest, database_url: str) -> tuple[Split, str]:
-    """The private database is requested only for the private store, so the dev store runs without one."""
-    if request.param == "dev":
-        return "dev", database_url
-    return "hidden", request.getfixturevalue("private_database_url")
-
-
 @pytest.fixture
-async def case(split_url: tuple[Split, str], tmp_path: Path) -> AsyncIterator[Case]:
-    split, url = split_url
-    engine = create_async_engine(url)
-    main_root, private_root = tmp_path / "main", tmp_path / "private"
-    if split == "dev":
-        async with engine.begin() as conn:
-            schema_id: SchemaId = (
-                await conn.execute(
-                    insert(SchemaDef)
-                    .values(name=SCHEMA_NAME, page_kind="detail", fields={}, origin="user", status="active")
-                    .returning(SchemaDef.id)
-                )
-            ).scalar_one()
-        yield Case(DevEvalStore(engine, FsStore(main_root)), main_root, private_root, schema_id)
-        async with engine.begin() as conn:
-            await conn.execute(delete(EvalPage))
-            await conn.execute(delete(EvalRun))
-            await conn.execute(delete(Capture).where(Capture.object_key.like("eval/dev/%")))
-            await conn.execute(delete(Site).where(Site.host == HOST))
-            await conn.execute(delete(SchemaDef).where(SchemaDef.id == schema_id))
-    else:
-        store = PrivateEvalStore("hidden", engine, FsStore(private_root))
-        yield Case(store, private_root, main_root, SchemaId(uuid7()))
-        async with engine.begin() as conn:
-            for table in reversed(PrivateBase.metadata.sorted_tables):
-                await conn.execute(delete(table))
+async def case(database_url: str, tmp_path: Path) -> AsyncIterator[Case]:
+    engine = create_async_engine(database_url)
+    async with engine.begin() as conn:
+        schema_id: SchemaId = (
+            await conn.execute(
+                insert(SchemaDef)
+                .values(name=SCHEMA_NAME, page_kind="detail", fields={}, origin="user", status="active")
+                .returning(SchemaDef.id)
+            )
+        ).scalar_one()
+    yield Case(DevEvalStore(engine, FsStore(tmp_path)), tmp_path, schema_id)
+    async with engine.begin() as conn:
+        await conn.execute(delete(EvalPage))
+        await conn.execute(delete(EvalRun))
+        await conn.execute(delete(Capture).where(Capture.object_key.like("eval/dev/%")))
+        await conn.execute(delete(Site).where(Site.host == HOST))
+        await conn.execute(delete(SchemaDef).where(SchemaDef.id == schema_id))
     await engine.dispose()
 
 
@@ -132,16 +111,14 @@ def _llm_key(n: int) -> str:
     return hashlib.sha256(f"role|model|prompt {n}|schema".encode()).hexdigest()
 
 
-async def test_a_capture_round_trips_and_its_bundle_lands_only_in_the_stores_own_root(case: Case) -> None:
+async def test_a_capture_round_trips_and_its_bundle_lands_under_the_eval_prefix(case: Case) -> None:
     bundle = _bundle()
 
     capture_id = await case.store.put_capture(bundle, "custom_store")
 
     assert capture_id == bundle.manifest.capture_id
     assert await case.store.get_bundle(capture_id) == bundle
-    expected_key = {"dev": f"eval/dev/{capture_id}.bundle.zst", "hidden": f"hidden/{capture_id}.bundle.zst"}
-    assert _files(case.root) == [expected_key[case.store.split]]
-    assert _files(case.other_root) == []
+    assert _files(case.root) == [f"eval/dev/{capture_id}.bundle.zst"]
     unknown = CaptureId(uuid7())
     with pytest.raises(EvalNotFound):
         await case.store.get_bundle(unknown)
@@ -178,17 +155,6 @@ async def test_a_page_round_trips(case: Case) -> None:
     unknown = EvalPageId(uuid7())
     with pytest.raises(EvalNotFound):
         await case.store.get_page(unknown)
-
-
-async def test_a_page_of_another_split_is_refused(case: Case) -> None:
-    capture_id = await case.store.put_capture(_bundle(), "mixed")
-    other: Split = "fresh" if case.store.split == "dev" else "dev"
-
-    page = _page(case, capture_id, split=other)
-    with pytest.raises(ValueError, match=f"a {other} page cannot be stored in the {case.store.split} store"):
-        await case.store.put_page(page)
-
-    assert await case.store.list_pages() == []
 
 
 async def test_a_page_must_reference_a_capture_of_this_store(case: Case) -> None:
@@ -275,20 +241,6 @@ async def test_the_labeler_cannot_check_their_own_labels(case: Case) -> None:
     assert (page.labels, page.checker) == ({"status": "labeled"}, None)
 
 
-async def test_the_latest_run_is_the_newest_optionally_of_one_commit(case: Case) -> None:
-    assert await case.store.latest_run(None) is None
-    runs = [
-        EvalRunRow(split=case.store.split, engine_version=f"{sha}+cal.0", git_sha=sha, metrics={"n_pages": n})
-        for sha, n in (("a" * 40, 1), ("b" * 40, 2), ("a" * 40, 3), ("c" * 40, 4))
-    ]
-    for run in runs:
-        assert await case.store.put_run(run) == run.id
-
-    assert await case.store.latest_run(None) == runs[3]
-    assert await case.store.latest_run("a" * 40) == runs[2]
-    assert await case.store.latest_run("d" * 40) is None
-
-
 async def test_a_run_is_read_back_by_its_id(case: Case) -> None:
     run = EvalRunRow(split=case.store.split, engine_version="a+cal.0", git_sha="a" * 40, metrics={"n_pages": 2})
     await case.store.put_run(run)
@@ -297,16 +249,6 @@ async def test_a_run_is_read_back_by_its_id(case: Case) -> None:
     assert await case.store.get_run(run.id) == run
     with pytest.raises(EvalNotFound, match=f"no {case.store.split} eval run"):
         await case.store.get_run(unknown)
-
-
-async def test_a_run_of_another_split_is_refused(case: Case) -> None:
-    other: Split = "fresh" if case.store.split == "dev" else "dev"
-
-    run = EvalRunRow(split=other, engine_version="x", git_sha="a" * 40, metrics={})
-    with pytest.raises(ValueError, match=f"a {other} run cannot be stored"):
-        await case.store.put_run(run)
-
-    assert await case.store.latest_run(None) is None
 
 
 async def test_the_llm_cache_misses_then_returns_what_was_put(case: Case) -> None:
@@ -319,7 +261,6 @@ async def test_the_llm_cache_misses_then_returns_what_was_put(case: Case) -> Non
     assert await case.store.llm_cache_get(_llm_key(1)) == b'{"answer": 1}'
     assert await case.store.llm_cache_get(_llm_key(2)) == b'{"answer": 2}'
     assert await case.store.llm_cache_get(_llm_key(3)) is None
-    assert _files(case.other_root) == []
 
 
 async def test_an_llm_cache_key_must_be_a_sha256(case: Case) -> None:
@@ -379,8 +320,8 @@ async def test_a_dev_page_cannot_reference_a_production_capture(
         await engine.dispose()
 
 
-async def test_the_main_database_refuses_hidden_and_fresh_pages_and_runs(database_url: str) -> None:
-    """INV-01 in structure: whatever writes to the main database, it cannot hold a hidden or fresh case."""
+async def test_the_database_refuses_pages_and_runs_of_another_split(database_url: str) -> None:
+    """The golden set is the one split: the CHECKs on `split` refuse any other."""
     engine = create_async_engine(database_url)
     try:
         for split in ("hidden", "fresh"):
@@ -399,16 +340,5 @@ async def test_the_main_database_refuses_hidden_and_fresh_pages_and_runs(databas
             async with engine.connect() as conn:
                 with pytest.raises(IntegrityError, match="ck_eval_page_split"):
                     await conn.execute(page)
-    finally:
-        await engine.dispose()
-
-
-async def test_the_private_database_refuses_dev_runs(private_database_url: str) -> None:
-    engine = create_async_engine(private_database_url)
-    try:
-        run = insert(PrivateEvalRun).values(id=uuid7(), split="dev", engine_version="x", git_sha="a" * 40, metrics={})
-        async with engine.connect() as conn:
-            with pytest.raises(IntegrityError, match="ck_eval_run_split"):
-                await conn.execute(run)
     finally:
         await engine.dispose()

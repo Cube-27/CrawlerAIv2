@@ -50,35 +50,34 @@ Full table and rejected alternatives: ARCHITECTURE §19 ([archived](changes/arch
 | [rest-api](specs/rest-api/spec.md) | Auth, `scrape`, schemas, configs, records, replay and usage endpoints, response shapes; the MCP server |
 | [jobs](specs/jobs/spec.md) | Async jobs and the queue, batch, map, crawl frontier, extract, results, events, webhooks, pinning; recurring crawls |
 | [persistence-storage](specs/persistence-storage/spec.md) | Databases, data model, captures, retention, replay |
-| [evaluation](specs/evaluation/spec.md) | Splits, custodian access, labels, metrics, suppression, the gate, the protected job |
+| [evaluation](specs/evaluation/spec.md) | The golden set and its fresh batches, labels, replay, metrics, fitting |
 | [frontend](specs/frontend/spec.md) | The web UI: shell, screens and the playground at `/` |
 
 ## Generalization contract (C1–C13)
 
-ARCHITECTURE §2.2, verbatim. Both earlier versions worked on the sites they were tuned on and produced garbage on new
+ARCHITECTURE §2.2, verbatim except C1, C6 and C10, rewritten by the owner on 2026-10-18 (Appendix A #67). Both earlier versions worked on the sites they were tuned on and produced garbage on new
 ones. These rules are binding. A change that conflicts with them is wrong, even if it fixes a site. Why:
 [design/overview.md](design/overview.md) (§2.1, §2.3, §20).
 
 | # | Rule | Enforcement |
 |---|---|---|
-| C1 | **Held-out data is never seen and never fitted.** Splits: dev, hidden, fresh (§16). Hidden and fresh pages, their captures and their site metadata live **only** in a private database and object store (§15), never in the main DB, the repo, logs or CI artifacts (the repo is public, so CI logs and artifacts are too). Agents see only aggregates. Hidden and fresh are never used to fit thresholds, precedence or calibration. Every label is confirmed by a human. | Separate database and store with custodian-only credentials; a protected CI job. |
+| C1 | **Claims rest on pages nobody fitted on.** The golden set (`dev`) is the only eval split and the only measure. It grows in **fresh batches** (20–30 pages, one per host not in any earlier batch, stratified by schema, language, platform and render mode); a batch is scored once, before any change is made on it, and that first score is the only generalization number; then it joins the golden set. Thresholds, precedence and calibration are fitted on the golden set. Labels, URLs and captures stay out of the repo (C3). | Fresh-batch procedure in the [evaluation](specs/evaluation/spec.md) spec; review. |
 | C2 | **Generic code encodes standards, types and structure only.** Admissible justifications: a published standard (schema.org, ISO 4217/8601/3166, CLDR, GS1, RFC, HTML, Open Graph), a property of a field type, or a structural regularity of HTML. "Site X does Y" is never admissible. Each generic rule names its justification. | Review. |
-| C3 | **No site literals outside site data.** Hostnames, retailer and brand names, and strings copied from pages appear only in the adapter package and in database rows. | CI scan of the whole repo with a domain regex and a reviewed allowlist (standards hosts such as schema.org, package registries, RFC 2606 example names). The scan against hidden and fresh hostnames runs in the protected job, from a secret list, reporting only file and line. |
+| C3 | **No site literals outside site data.** Hostnames, retailer and brand names, and strings copied from pages appear only in the adapter package and in database rows. | CI scan of the whole repo with a domain regex and a reviewed allowlist (standards hosts such as schema.org, package registries, RFC 2606 example names). Golden-set hosts never enter the repo, tests, docs or PR text: the scan and review. |
 | C4 | **No lists that grow one incident at a time.** Vocabularies come from versioned external data (CLDR, schema.org). A type vocabulary with no standard (such as availability phrases) lives in its normalizer, is tagged by language, and grows only under the C10 acceptance rule. | Review; PR report. |
 | C5 | **A failing site is fixed with data, not code.** Re-run learning (§8.3) or correct the site's config through the API. A PR changes generic behaviour only for a class of failures. | Review. |
-| C6 | **Adapters only for multi-tenant platforms**, evaluated on ≥ 3 tenants not used to build them. | Eval report. |
+| C6 | **Adapters only for multi-tenant platforms**, evaluated on ≥ 3 tenants not used to build them. | Measured in the golden-set eval, not enforced by a check (Appendix A #67). |
 | C7 | **Normalizers decline rather than guess** (§9). No defaults, no host tables, no values from URL codes. Derived values fill only empty fields and carry `derived_by`. | Property tests. |
 | C8 | **One module per field type.** | Import-linter independence and forbidden-import contracts, plus review. |
 | C9 | **Tests check type properties and replays, not specific sites.** No test is named after a site or asserts one site's output. | C3 scan; review. |
-| C10 | **How changes are accepted.** A change is accepted when it **improves dev** and **does not regress hidden** (§16.4). Claims that something *improved* are made only from **fresh** results, never from hidden. Accepting on "hidden improved" would fit hidden slowly through repeated selection. PR comments carry dev deltas and only the hidden pass/fail per field type. Numeric hidden aggregates go only to the custodian. Until labels exist (§21, milestone M), the gate reports `no_baseline` and acceptance rests on tests, replays and review. | CI; PR template. |
+| C10 | **How changes are accepted.** A change that alters extraction is accepted when it **improves the golden set** and drops **no field type's precision** without a stated reason (a scoring fix, a label correction). The PR reports the golden-set aggregate per field type before and after, never per-page or per-site numbers, and a gain that comes from fewer than 3 hosts is flagged. Claims that the engine *generalizes* are made only from a fresh batch's first score. | PR template; review. |
 | C11 | **Two size checks, no others** (Appendix A #33). Cognitive complexity is at most 15 per function (as SonarSource defines it), a hard check. A file has at most 800 lines, a soft limit: CI warns and never fails. A file past 800 is split along logical boundaries (cohesive modules, field types per C8), never mechanically to meet the number. No other LOC, complexity, coverage or ratchet gates. | Complexity check in CI and `make check`; file-length warning; CI meta-check that refuses any other gate. |
 | C12 | **Nothing is copied or ported from Invoro or v1:** code, lists, config, tests, prompts or data (Appendix A #24). | License scan; C3 scan. |
 | C13 | **Mechanisms are admitted by evidence.** A mechanism outside core is added only when evaluation results or production outcomes show a class of failures it fixes, and its effect is measured. "It makes sense" and "v1 had it" are not evidence. | §22 register; PR report. |
 
 ## Repo checks
 
-Every job in `.github/workflows/ci.yml` must pass before merge; `make check` runs them locally in CI order (without
-the protected hidden-host scan), and `.pre-commit-config.yaml` runs the fast ones on staged files.
+Every job in `.github/workflows/ci.yml` must pass before merge; `make check` runs them locally in CI order, and `.pre-commit-config.yaml` runs the fast ones on staged files.
 
 - **Path gating** — the `changes` job (`tools/ci_changes.py`) skips `backend`, `frontend` and `licenses` when a PR
   touches none of their inputs (a skipped job counts as passed); a push to `main` runs every job (D-0970).
@@ -97,8 +96,6 @@ the protected hidden-host scan), and `.pre-commit-config.yaml` runs the fast one
   `docs/`, `openspec/`, `.github/`, lockfiles and manifests (D-0004, D-1139); tests are not exempt, so the INV-03
   scan covers `tests/`. `tools/site_literal_allowlist.txt` holds only standards, tooling and RFC 2606/6761 names,
   each justified. Enforced by: the scan in CI and pre-commit; active.
-- **Hidden-host scan (INV-04)** — runs only in `eval-protected.yml`; see
-  [evaluation](specs/evaluation/spec.md).
 - **Pinned external data (INV-05)** — `tools/data_manifest_check.py` (CI `data-manifest`): every file under
   `backend/data/` is listed in `backend/data/manifest.json` with its source, version, license and matching sha256;
   the dev-fitted files (`source_precedence.yaml`, `calibration.json`, `drift_margins.json`) are not pinned and carry
@@ -117,7 +114,8 @@ the protected hidden-host scan), and `.pre-commit-config.yaml` runs the fast one
 The testable invariants keep their IDs `INV-01`…`INV-46` and live as requirements in their capability's `spec.md`
 (INV-03, INV-05, INV-09 and INV-18 in "Repo checks" above), each with what enforces it and whether that enforcement
 runs today. An invariant whose enforcement is not built yet is still binding: review applies it until the check
-exists. Invariants are never removed or renumbered; a superseded one keeps a requirement that says so. A change that
+exists. Invariants are never removed or renumbered; a superseded or retired one keeps a requirement that says so
+(INV-01, INV-02, INV-04, INV-19, INV-21 and INV-25 are retired, [evaluation](specs/evaluation/spec.md)). A change that
 adds one takes the next free ID (INV-47; check with `grep -rhoE "INV-[0-9]+" openspec/specs openspec/project.md |
 sort -u | tail -1`) in its spec delta.
 

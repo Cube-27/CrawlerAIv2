@@ -19,10 +19,11 @@ from pydantic import JsonValue
 
 from crawlerai.adapters.base import ALL, Adapter, AdapterMatch, Members, Shape
 from crawlerai.collect.base import CollectResult
-from crawlerai.collect.json_doc import ROOT, member, parse, select
+from crawlerai.collect.json_doc import ROOT, member, select
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import Typed, Value, Vocabulary, entity, field_candidates
 from crawlerai.content.page import ParsedPage
+from crawlerai.core.json_text import parse
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 

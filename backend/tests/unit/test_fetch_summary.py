@@ -44,13 +44,13 @@ def _summary(method: CaptureMethod, final_url: str, adapters: Registry | None) -
 
 
 def test_an_api_capture_names_the_adapter_that_reads_it() -> None:
-    registry = Registry([_Board()], active={"board"})
+    registry = Registry([_Board()])
 
     assert _summary("api", ENDPOINT, registry) == {"method": "api", "adapter": "board", "attempts": 2}
 
 
 def test_no_other_fetch_names_an_adapter() -> None:
-    registry = Registry([_Board()], active={"board"})
+    registry = Registry([_Board()])
 
     assert _summary("http", PAGE, registry)["adapter"] is None
     assert _summary("browser", PAGE, registry)["adapter"] is None
@@ -59,7 +59,7 @@ def test_no_other_fetch_names_an_adapter() -> None:
 
 
 def test_an_inactive_adapter_or_none_is_not_named() -> None:
-    assert _summary("api", ENDPOINT, Registry([_Board()], active=()))["adapter"] is None
+    assert _summary("api", ENDPOINT, Registry(()))["adapter"] is None
     assert _summary("api", ENDPOINT, None)["adapter"] is None
 
 

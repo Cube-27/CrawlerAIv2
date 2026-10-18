@@ -781,7 +781,7 @@ async def test_a_fetch_names_the_adapter_of_its_api_capture(
         capture = await store_capture(conn, store, api, world.site_id)
     await world.page(job_id, "extracted", [{"title": "Kettle"}], capture_id=capture)
     query = ResultsQuery(format="json_values", include=["fetch"])
-    adapters = Registry([_Board()], active={"board"})
+    adapters = Registry([_Board()])
 
     async with world.engine.connect() as conn:
         named = await jobs.job_results(conn, job_id, query, store=store, adapters=adapters)

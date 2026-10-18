@@ -9,7 +9,6 @@ provider's API documentation and pinned in the data manifest with that page; a s
 does.
 """
 
-import json
 from collections.abc import Iterator, Mapping
 from datetime import date
 from pathlib import Path
@@ -47,14 +46,6 @@ class SchemaSubset(BaseModel):
     max_optional: int | None
     min_items: frozenset[int] | None
     bare_ref: bool
-
-
-def read_subsets(directory: Path) -> dict[str, SchemaSubset]:
-    """Each provider's subset, from the data directory `directory`."""
-    return {
-        provider: SchemaSubset.model_validate(json.loads((directory / name).read_text(encoding="utf-8")))
-        for provider, name in SUBSET_FILES.items()
-    }
 
 
 def violations(schema: Mapping[str, JsonValue], subset: SchemaSubset) -> list[str]:

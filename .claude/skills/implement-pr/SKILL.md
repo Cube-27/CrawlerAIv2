@@ -72,9 +72,8 @@ code.
   time (`uv run pytest tests/unit/test_x.py`, `pnpm test --maxWorkers=1 <file>`), never `pytest -n`, never the full
   suite. CI runs everything on every push.
 - Database tests: `eval "$(tools/orchestrator/test_db.sh up)"` starts the shared `crawlerai-test-pg` if it is absent,
-  recreates this worktree's two databases in it, empty, and exports `CRAWLERAI_TEST_DATABASE_URL` and
-  `CRAWLERAI_TEST_PRIVATE_DATABASE_URL`. Run `tools/orchestrator/test_db.sh drop` before you hand back, and leave the
-  container running for the other worktrees.
+  recreates this worktree's database in it, empty, and exports `CRAWLERAI_TEST_DATABASE_URL`. Run
+  `tools/orchestrator/test_db.sh drop` before you hand back, and leave the container running for the other worktrees.
 - Docker builds (checking `infra/Dockerfile`): tag the image `crawlerai-<worktree>:check`, and remove it
   (`docker image rm`) when the check is done. Leave no images, volumes or containers behind.
 

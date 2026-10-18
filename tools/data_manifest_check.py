@@ -9,7 +9,7 @@ exits 1, or prints one summary line and exits 0.
 Three files are fitted on dev rather than fetched (SPEC-05 §4.7, §4.9, SPEC-08 §4.9; D-0444 and D-0576, owner
 answers 2026-10-14 and 2026-10-16): `source_precedence.yaml`, `calibration.json` and `drift_margins.json`. Fitting
 rewrites them, so no sha256 can be pinned; they are not listed in the manifest, and each must instead carry the
-stamp `source_split: dev` (INV-02).
+stamp `source_split: dev` (fitted on the golden set).
 """
 
 import argparse

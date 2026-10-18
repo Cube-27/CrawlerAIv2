@@ -1,4 +1,4 @@
-"""The labeling API (SPEC-03 §4.10): dev pages only (C1, INV-01), sanitized page HTML, labels validated before
+"""The labeling API (SPEC-03 §4.10): the golden set's pages only, sanitized page HTML, labels validated before
 anything is stored, every validation error returned with its field and reason (§4.11). A fake backend stands in for
 the dev store and `schema_def`; `tests/db/test_labeling_api.py` runs the same flow against Postgres."""
 
@@ -151,9 +151,6 @@ class FakeStore:
     async def get_run(self, run_id: EvalRunId) -> EvalRunRow:
         raise AssertionError("not used by the API")
 
-    async def latest_run(self, git_sha_on_main: str | None) -> EvalRunRow | None:
-        raise AssertionError("not used by the API")
-
     async def llm_cache_get(self, key: str) -> bytes | None:
         raise AssertionError("not used by the API")
 
@@ -267,7 +264,7 @@ def test_list_returns_dev_page_summaries_filtered_by_status() -> None:
 
 
 @pytest.mark.parametrize("split", ["hidden", "fresh"])
-def test_hidden_and_fresh_splits_are_refused_without_touching_a_store(split: str) -> None:
+def test_a_split_other_than_dev_is_refused_without_touching_a_store(split: str) -> None:
     backend = FakeBackend()
 
     listing = _request(backend, "GET", f"/v1/eval/pages?split={split}")
@@ -283,13 +280,11 @@ def test_hidden_and_fresh_splits_are_refused_without_touching_a_store(split: str
     assert backend.captures == []
 
 
-def test_backend_serves_the_dev_store_even_with_private_settings(tmp_path: Path) -> None:
+def test_backend_serves_the_eval_store(tmp_path: Path) -> None:
     settings = Settings.model_validate(
         {
             "database_url": "postgresql+asyncpg://app@127.0.0.1/main",
             "object_store": "fs:///" + (tmp_path / "main").as_posix().lstrip("/"),
-            "eval_private_database_url": "postgresql+asyncpg://custodian@127.0.0.1/private",
-            "eval_private_object_store": "fs:///" + (tmp_path / "private").as_posix().lstrip("/"),
             "impersonate": IMPERSONATE_DEFAULT,
         }
     )

@@ -3,7 +3,6 @@
 Each member is `None` (or empty) when the page does not state it; nothing is inferred from the URL or the host (C7).
 """
 
-import json
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -12,6 +11,7 @@ from pydantic import ConfigDict, JsonValue, with_config
 
 from crawlerai.content.dom import document_base_url, strip, tokens
 from crawlerai.content.page import ParsedPage
+from crawlerai.core import json_text
 from crawlerai.normalize.url import canonical_url
 
 # The Open Graph protocol: `og:` properties, and the `product:` namespace of its `product` object type.
@@ -97,8 +97,8 @@ def _json_ld_types(page: ParsedPage) -> Iterator[str]:
             continue
         try:
             # Raw control characters inside strings are accepted, as the JSON-LD collector reads blocks (RFC 8259 §9).
-            document: JsonValue = json.loads(block.text, strict=False)
-        except (ValueError, RecursionError):
+            document = json_text.parse(block.text, lenient=True)
+        except ValueError:
             continue
         yield from map(_type_name, _type_values(document))
 

@@ -8,7 +8,7 @@ back to cold-mode resolution, and the site re-learns.
 (`extraction_config.drift_window`), suspends the fields that drifted in both the IR and `field_status`, logs a
 `drift_suspended` job event per field and starts a forced learning run (`progressive.request_learning`).
 
-The margins are `backend/data/drift_margins.json`, stamped `source_split: dev` (INV-02) and with how they were
+The margins are `backend/data/drift_margins.json`, stamped `source_split: dev` and with how they were
 obtained: until labels exist, SPEC-08 §4.9's values, stamped "spec default, unfitted" (D-0576). Without the file
 nothing is suspended (C7: no default margin); windows are still recorded.
 """
@@ -53,7 +53,7 @@ class DriftMargins(BaseModel):
 
 
 def load_margins(path: Path) -> DriftMargins | None:
-    """The margins at `path`, stamped `source_split: dev` (INV-02); `None` when none were fitted."""
+    """The margins at `path`, stamped `source_split: dev`; `None` when none were fitted."""
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:

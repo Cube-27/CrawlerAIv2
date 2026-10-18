@@ -47,8 +47,7 @@ class RecordingUnreadable(ValueError):
 
 class RecordedLLM:
     """An `LLMClient` that answers from the store's recordings. On a miss it calls `live` and records the response,
-    or raises `RecordingMissing` when `live` is `None`, as in CI. Only custodian credentials open a hidden or fresh
-    store (C1), so recording on those splits happens in the protected job or on a custodian machine.
+    or raises `RecordingMissing` when `live` is `None`, as in CI.
 
     A recording is JSON parsed into an `LLMResponse`: data, never code."""
 
@@ -147,11 +146,9 @@ async def replay_split(
 
     A page with its site's config snapshot replays in `config` mode with that config, any other cold (`adhoc`, no
     config). A missing or corrupt bundle, an invalid snapshot, or a recording that is missing or unreadable drops the
-    page as a `ReplayFailed` case, which the `n_pages` gate catches (§4.11). A schema the engine doesn't know, or
+    page as a `ReplayFailed` case, reported in `n_pages` and the page's error. A schema the engine doesn't know, or
     labels that don't fit it, stop the run: those are setup errors, not pages to drop.
     """
-    if statuses != CHECKED and store.split != "dev":
-        raise ValueError(f"only dev pages replay with labels that are not checked, not {store.split} ones")
     llm = RecordedLLM(store, live)
     pages = [page for status in sorted(statuses) for page in await store.list_pages(schema_filter, status)]
     cases = []

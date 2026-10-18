@@ -1,7 +1,7 @@
 """Which adapter, if any, serves a URL or reads a capture (SPEC-02 §4.4, §4.9; SPEC-15 §4.2, §4.7).
 
-Every registered adapter is active unless the deployment disables it (`CRAWLERAI_DISABLED_ADAPTERS`, owner 2026-10-16);
-the registry answers only for the active ones.
+Every platform adapter runs unless the deployment disables it (`CRAWLERAI_DISABLED_ADAPTERS`, owner 2026-10-16); the
+caller builds the registry from the running ones (`acquire.rungs.adapter_registry`).
 
 A platform on tenants' own hosts (SPEC-15) can only tell a host is not its own from the host's answer. A host that
 answered an adapter without the platform's signal (`NOT_PLATFORM`) is declined for that adapter for a while, so a
@@ -11,7 +11,7 @@ page's site row (`site.adapter_declined`, D-1384) and store the ones it made bac
 across processes and restarts.
 """
 
-from collections.abc import Callable, Collection, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Final
 from urllib.parse import urlsplit
@@ -66,23 +66,19 @@ def _now() -> datetime:
 
 
 class Registry:
-    def __init__(
-        self, adapters: Iterable[Adapter], active: Collection[str], *, clock: Callable[[], datetime] = _now
-    ) -> None:
-        adapters = tuple(adapters)
-        names = [adapter.name for adapter in adapters]
+    def __init__(self, adapters: Iterable[Adapter], *, clock: Callable[[], datetime] = _now) -> None:
+        """A registry of `adapters`, each of which runs (the caller leaves out the disabled ones)."""
+        self._active = tuple(adapters)
+        names = [adapter.name for adapter in self._active]
         if len(set(names)) != len(names):
             raise ValueError(f"adapter names repeat: {sorted(names)}")
-        if unknown := sorted(set(active) - set(names)):
-            raise ValueError(f"no adapter named {unknown}")
-        self._active = tuple(adapter for adapter in adapters if adapter.name in active)
         self._clock = clock
         self._declined: dict[tuple[str, str], datetime] = {}  # (adapter, host) -> until
 
     def for_host(self, host: str, stored: Mapping[str, str]) -> "Registry":
         """A registry of the same active adapters knowing the declines `stored` for `host` (adapter name -> the ISO 8601
         time until which it is declined, as `site.adapter_declined` holds them), and none it made itself."""
-        registry = Registry(self._active, {adapter.name for adapter in self._active}, clock=self._clock)
+        registry = Registry(self._active, clock=self._clock)
         for name, until in stored.items():
             registry._declined[(name, host)] = datetime.fromisoformat(until)
         return registry

@@ -1,7 +1,6 @@
 """Process settings, read from `CRAWLERAI_*` environment variables (SPEC-00 §4.4).
 
-The variable names are the contract; later specs add settings here. The two `EVAL_PRIVATE_*` settings are set only
-in the custodian's environment (C1) and are empty everywhere else.
+The variable names are the contract; later specs add settings here.
 An empty value counts as unset, so unset CI secrets (which arrive as "") behave like absent variables.
 """
 
@@ -36,12 +35,6 @@ class DatabaseSettings(_Base):
     database_url: SecretStr
 
 
-class EvalPrivateDatabaseSettings(_Base):
-    """What migrating the private eval database needs (`alembic -n private`). Custodian machines only (C1)."""
-
-    eval_private_database_url: SecretStr
-
-
 def _comma_separated(value: object) -> object:
     """`a,b` as `("a", "b")`; duplicates are refused (for providers, the order is the failover order)."""
     if not isinstance(value, str):
@@ -67,7 +60,7 @@ class AcquireSettings(_Base):
 class ApiSettings(_Base):
     """What the app factory reads: which routers to mount, and how to admit requests (SPEC-07 §4.2)."""
 
-    # Mounts the labeling endpoints (SPEC-03 §4.10). They serve the dev split only (C1).
+    # Mounts the labeling endpoints (SPEC-03 §4.10). They serve the golden set (`dev`).
     eval_ui: bool = False
     # JSON list of the proxies whose `Forwarded`/`X-Forwarded-For` name the client (RFC 7239 §8.1, INV-32).
     trusted_proxies: tuple[IPvAnyNetwork, ...] = ()
@@ -120,8 +113,6 @@ class LLMSettings(_Base):
 
 
 class Settings(DatabaseSettings, AcquireSettings, ApiSettings, LLMSettings, SearchSettings):
-    eval_private_database_url: SecretStr | None = None
     object_store: ObjectStoreUrl
-    eval_private_object_store: ObjectStoreUrl | None = None
     log_redact_urls: bool = False
     role: Role | None = None

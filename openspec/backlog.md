@@ -7,25 +7,31 @@ commit and delete the lines their PR closes; a follow-up that grows into work be
 
 ## Current focus
 
-- Data accuracy: SPEC-13, SPEC-15, structural ownership of state array rows (#243) and identity merge across
-  collectors with standalone variants (#247) are complete.
-- Data sources, later (owner #53): discover the network/API calls a page makes for its data and read the data from
-  them, generically, as a learned layer (the way listing pagination was probed before #52). Not started; needs a probe
-  and the owner's admission like #52.
-- Open owner items: none (D-0783, D-0784 and D-0915 answered under owner delegation, #252).
+The master improvement plan (owner, 2026-10-18, `design/owner-decisions.md` #67), by phase:
+- **Phase 0, measure what is real:** golden set as the only measure (#271); row URL keys with per-page
+  session-parameter removal, label re-keying, list labels, presence ceiling and FN/FP split in the eval report
+  (`plan-phase-0-2`); decode once at acquire (phase-1 batch).
+- **Phase 1, acquisition robustness:** one polite fetch, structural render-need without role C, resource blocking,
+  bounded scroll/next by default for single-URL listing scrapes, `blocked` with the vendor label.
+- **Phase 2, the item layer:** segment, align (typed value spotting), bind; role C per block; delete the item-link,
+  item-text and call-row joins.
+- **Phase 3, detail precision and recall:** role C for every missing field with element and link claims; precedence
+  and calibration fitted on the golden set; label–value collector generalized.
+- **Phase 4, learning that adds coverage:** induction over block alignment; oracle = engine ∪ role-C-grounded values;
+  role A prompt caching.
+- **Phase 5, acquisition access:** deferred (decision 7); vendor-blocked pages stay `blocked`.
+- **Phase 6:** golden set grows in fresh batches; adapters measured on 3 tenants or deleted.
 
 ## Human-only tasks
 
-Agents can't do these. Tasks H1, H2, H3 and H6 (milestone M) belong to the change
-[wire-protected-eval-job](changes/wire-protected-eval-job/tasks.md). Labeling is deferred until the crawler works,
-so they block no other work: the protected eval job stays a `no_baseline` placeholder, and tests run against local
-throwaway databases.
+Agents can't do these.
 
 | # | Task | Needed by | Status |
 |---|---|---|---|
 | H4 | Provide LLM provider API keys (OPEN_QUESTIONS #5) as CI and runtime secrets. | Live LLM runs | deferred (owner, 2026-10-13: not needed yet) |
 | H5 | Answer the `needs-owner` entries in the open owner items in `project.md`. | As they come up | none open (#252) |
 | H7 | Optional: configure a proxy pool (OPEN_QUESTIONS #10). | Proxy use in production | todo |
+| H9 | Delete `.github/workflows/eval-protected.yml`, the private test databases and `CRAWLERAI_TEST_PRIVATE_DATABASE_URL` in `.github/workflows/ci.yml`, then `tools/site_literal_scan.py --hidden-hosts-from-env` and its test (`tools/tests/test_site_literal_scan_hidden.py`); the worker token cannot push workflow files (D-1522). | Clean-up of the retired hidden machinery (#67) | todo |
 | H8 | Create the GitHub release `data-geonames-2026-10-15` holding the three GeoNames files the manifest pins, with the CC BY 4.0 attribution in its notes (D-0311, D-0914; command in #204). Until then `crawlerai data fetch` gets a 404 for them. | `crawlerai data fetch`, SPEC-05's first real run | obsolete: GeoNames dropped (D-0953, #210) |
 
 ## Follow-ups
@@ -97,8 +103,8 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Anti-bot stack (#253): no real site in the live check cleared a challenge in the headless browser after HTTP was
   refused, so the site session handoff is proven on a local fixture only; measure on a dev run how often a browser
   `ok` opens a session and how many HTTP fetches each session serves before tuning 30 min / 200 fetches (D-1350).
-- Anti-bot stack (#249): challenge labels are counted only as log records; per-category counts in the eval report
-  need the hidden-cell suppression review (D-1326). The adaptive rate's 20-answer run and 10% recovery are unmeasured
+- Anti-bot stack (#249): challenge labels are counted only as log records; per-category counts could join the eval
+  report now that no cell is suppressed (D-1326). The adaptive rate's 20-answer run and 10% recovery are unmeasured
   (D-1327).
 - ATS adapters (#226): UKG Pro (UltiPro), ADP, Rippling and Paycom are not built yet; Workday and Oracle Recruiting serve each list's first page only (20 and 25 rows), and Workday sites on a tenant's own domain are not detected.
 - Playground (#257): at phone width a toolbar select's error line, in a `w-64` column, can sit over the tool wrapped under it (Format's over Schema); a reserved line would move the layout whenever none shows, so measure on a phone before changing it (D-1397).
@@ -120,7 +126,6 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   `not_owned`, and a row with no URL is too (D-1250, D-1253, D-1345). `dom` label-value pairs inside repeated page
   structures (a comparison table) stay page values (D-1255).
 - Workflow tooling: if parallel tracker commits keep conflicting on ACTIVE.md, move their writes elsewhere (D-0823) [#192].
-- For the owner: once labels exist, the gate compares precision only (§4.8), so a type the engine stops publishing shows only as lower coverage [#32].
 - Collect: a `dom` label value that contradicts structured data turns an agreement-ranked field (money, identifier, enum, count, number) into `conflict`; measure the `dom` bucket's effect on required-field `conflict` at milestone M (D-0956) [#208].
 - Precedence: `dom` ranks above `config` for text, long_text, url and image_url, so a config or operator field cannot override a DOM label value; re-check when `fit-precedence` first runs on dev (D-0956) [#208].
 - Schemas: role S's drafted schemas are stored without the vocabulary check (their paths come from the LLM, so a reply

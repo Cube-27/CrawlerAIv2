@@ -11,7 +11,6 @@ adapter records each requisition with that id as its `externalJobID` member, so 
 page with `jobId`. The API's own `lang` and `locale` follow the page's `lang`.
 """
 
-import json
 import re
 from dataclasses import replace
 from typing import Final
@@ -24,6 +23,7 @@ from crawlerai.acquire.outcome import as_error
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.answer import recorded, serving
 from crawlerai.adapters.base import ALL, NOT_SERVED, AdapterMatch, Shape
+from crawlerai.core import json_text
 
 HOST: Final = "workforcenow.adp.com"
 API: Final = f"https://{HOST}/mascsr/default/careercenter/public/events/staffing/v1/job-requisitions"
@@ -97,7 +97,7 @@ class ADP:
         listed = serving(result, _rows)
         if listed.block_class != "ok":
             return listed
-        answer = json.loads(listed.bundle.body)
+        answer = json_text.parse(listed.bundle.body)
         if match.item is None:
             return recorded(listed, _with_job_ids(answer))
         found = _item_id(answer, match.item)
@@ -125,7 +125,7 @@ def _described(detail: FetchResult, listed: FetchResult) -> FetchResult:
     """The requisition's answer, recorded with its `externalJobID`, and with the list's attempts and time too."""
     if detail.block_class != "ok":
         return detail
-    answer = json.loads(detail.bundle.body)
+    answer = json_text.parse(detail.bundle.body)
     if isinstance(answer, dict):
         answer["externalJobID"] = _first_text(_external_ids(answer))
     return recorded(detail, answer).model_copy(

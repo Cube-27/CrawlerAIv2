@@ -22,20 +22,12 @@ esac
 exit 0
 """
 PSQL = "exec -i -e PGOPTIONS=-cclient_min_messages=warning crawlerai-test-pg psql -v ON_ERROR_STOP=1 -q -U postgres"
-DROP = (
-    "-c DROP DATABASE IF EXISTS crawlerai_test_spec_03_pr_8 WITH (FORCE)"
-    " -c DROP DATABASE IF EXISTS crawlerai_test_spec_03_pr_8_private WITH (FORCE)"
-)
-CREATE = (
-    "-c CREATE DATABASE crawlerai_test_spec_03_pr_8 OWNER app"
-    " -c CREATE DATABASE crawlerai_test_spec_03_pr_8_private OWNER app"
-)
+DROP = "-c DROP DATABASE IF EXISTS crawlerai_test_spec_03_pr_8 WITH (FORCE)"
+CREATE = "-c CREATE DATABASE crawlerai_test_spec_03_pr_8 OWNER app"
 READY = "exec crawlerai-test-pg pg_isready -q -h 127.0.0.1 -U postgres"
 RUNNING = "inspect -f {{.State.Running}} crawlerai-test-pg"
 EXPORTS = [
     "export CRAWLERAI_TEST_DATABASE_URL=postgresql+asyncpg://app:app@127.0.0.1:55432/crawlerai_test_spec_03_pr_8",
-    "export CRAWLERAI_TEST_PRIVATE_DATABASE_URL="
-    "postgresql+asyncpg://app:app@127.0.0.1:55432/crawlerai_test_spec_03_pr_8_private",
 ]
 
 pytestmark = pytest.mark.skipif(BASH is None, reason="needs bash")
@@ -68,7 +60,7 @@ def test_up_without_a_container_creates_it_with_the_roles_then_the_databases(tmp
         "inspect crawlerai-test-pg",
         "run -d --name crawlerai-test-pg -e POSTGRES_PASSWORD=postgres -p 127.0.0.1:55432:5432 postgres:16",
         READY,
-        f"{PSQL} < -- Databases and roles for local development and CI (SPEC-00 §4.4, SPEC-03 §4.1).",
+        f"{PSQL} < -- Databases and roles for local development and CI (SPEC-00 §4.4).",
         f"{PSQL} {DROP} {CREATE}",
     ]
 

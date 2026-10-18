@@ -46,19 +46,18 @@ Every PR answers these (the template carries them):
 - I did not add a list entry for a single page (C4, C5).
 - No §22 candidate implemented (C13).
 - Aggregate report attached, required if `collect/`, `normalize/`, `resolve/`, `llm/`, `config_ir/` or `acquire/`
-  changed: dev delta shown, hidden gate passed, no improvement claimed from hidden (C10).
+  changed: golden-set delta per field type shown, no unexplained precision drop (C10).
 - Property or replay tests added, no site-named tests (C9).
 - Decisions recorded in the change's `design.md` or `openspec/decisions/log.md` (`openspec/decisions/README.md`).
 
 ### Where the evaluation report comes from
 
-- **Dev:** the full dev report from the `backend` CI job's replay of dev captures. Paste the delta per field type.
-- **Hidden:** the `eval-protected` job's comment: pass or fail per field type, never numbers. Numeric hidden
-  aggregates go only to the custodian.
-- **Improvement claims** come only from fresh results, never from hidden (C10).
+- **Golden set:** `crawlerai eval run --split dev --labels all` replays the golden set's captures; paste the aggregate
+  per field type before and after, never per-page or per-site numbers.
+- **Generalization claims** come only from a fresh batch's first score, taken before any change is made on it (C1,
+  C10).
 
-Until milestone M (ARCHITECTURE §21) there are no labels: the protected job reports `no_baseline`, and acceptance
-rests on tests, replays and review. The `evaluation` capability (`openspec/specs/evaluation/spec.md`) defines the
+The `evaluation` capability (`openspec/specs/evaluation/spec.md`) defines the
 replay and the reports.
 
 ## Decisions and escalation

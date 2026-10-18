@@ -34,7 +34,7 @@ that a deterministic crawler can run.
 
 Two earlier versions did well on the sites they were tuned against and produced garbage on new ones. v2 is built
 around a [generalization contract](openspec/project.md#generalization-contract-c1c13):
-- accuracy is measured on hidden and fresh sites that developers and agents never see;
+- accuracy is measured on a golden set that grows in fresh batches, each scored once before anyone fixes anything on it;
 - generic code may encode only standards, types and HTML structure;
 - site knowledge lives in data;
 - new mechanisms are admitted only when evaluation evidence calls for them.
@@ -95,7 +95,7 @@ frontend/               Vite + React + TypeScript + HeroUI v3; generated API cli
 infra/                  docker-compose.yml (Postgres), Dockerfile (the backend image), postgres/init.sql
 tools/                  repo checks: site-literal scan, data manifest, license scan, no-size-gates, file length
 openspec/               project context, capability specs, changes and archive, design, decisions, conventions
-.github/                CI workflows (ci.yml, eval-protected.yml) and the pull request template
+.github/                CI workflows and the pull request template
 .claude/skills/         agent procedures
 ```
 

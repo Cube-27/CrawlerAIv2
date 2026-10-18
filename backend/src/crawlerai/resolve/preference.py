@@ -5,9 +5,10 @@ from the request URL's query (INV-13); every other one is rejected with its reas
 exact-match type publishes only when all agree (INV-14); text, long_text, url and image_url take the first source kind
 of the type's order in `source_precedence.yaml`. A page's Offer fields come from one Offer (INV-15).
 
-On a detail page (SPEC-13 §4.6, INV-36), no variant is a default: every Offer of the target and of its variants joins
-the atomic-offer rule, so a value that varies across variants publishes only in the row-mapped `variants` field. An
-identifier field the target states nothing for takes the value every variant states alike (variant fill).
+On a detail page (SPEC-13 §4.6, INV-38; INV-36 is superseded), no variant is a default: every Offer of the target and of
+its variants joins the atomic-offer rule, so a value that varies across variants publishes only in the row-mapped
+`variants` field. An identifier field the target states nothing for takes the value every variant states alike (variant
+fill).
 
 Evidence buckets, confidence and τ are the next stage's (`resolve.evidence`); this module only chooses.
 """
@@ -36,7 +37,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 PRECEDENCE_FILE = "source_precedence.yaml"
 # ARCHITECTURE §10: the types whose candidates rank by source kind; every other type publishes only on agreement.
 PRECEDENCE_TYPES = frozenset({FieldType.TEXT, FieldType.LONG_TEXT, FieldType.URL, FieldType.IMAGE_URL})
-# What `crawlerai eval fit-precedence` stamps on the file (INV-02); every other key names a field type.
+# What `crawlerai eval fit-precedence` stamps on the file; every other key names a field type.
 STAMP = frozenset({"source_split", "eval_run_id", "git_sha"})
 _SOURCE_KINDS: frozenset[str] = frozenset(get_args(SourceKind))
 # The screening stages in the order a candidate meets them; a missing field states the furthest one reached.
@@ -387,7 +388,7 @@ def _scalars(raw: Raw) -> Iterator[str]:
 
 
 def load_precedence(path: Path) -> dict[FieldType, tuple[SourceKind, ...]]:
-    """The orders of a `source_precedence.yaml`: fitted on dev only (INV-02), with one order per precedence type."""
+    """The orders of a `source_precedence.yaml`: fitted on the golden set, with one order per precedence type."""
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(document, dict) or document.get("source_split") != "dev":
         raise ValueError(

@@ -1,4 +1,4 @@
-"""Evidence buckets, calibration and τ (SPEC-05 §4.9, ARCHITECTURE §10, INV-02, INV-22): a chosen value's bucket, its
+"""Evidence buckets, calibration and τ (SPEC-05 §4.9, ARCHITECTURE §10, INV-22): a chosen value's bucket, its
 dev-measured confidence, the `calibrated` flag, and abstention below τ."""
 
 import uuid
@@ -261,7 +261,7 @@ def test_the_configs_corroborated_fields_are_named() -> None:
     assert outcomes["sku"].evidence == "config_uncorroborated"
 
 
-# The calibration file (INV-02)
+# The calibration file
 
 
 def test_a_missing_calibration_file_means_no_calibration(tmp_path: Path) -> None:

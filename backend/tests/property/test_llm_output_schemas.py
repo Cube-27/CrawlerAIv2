@@ -14,10 +14,13 @@ from crawlerai.config_ir import synthesis
 from crawlerai.config_ir.api_recipe import role_d
 from crawlerai.llm.client import closed_object
 from crawlerai.llm.roles import c_extract, s_schema
-from crawlerai.llm.schema_subset import SchemaSubset, read_subsets, violations
+from crawlerai.llm.schema_subset import SUBSET_FILES, SchemaSubset, violations
 from crawlerai.schemas.types import NAME_PATTERN
 
-SUBSETS = read_subsets(Path(__file__).parents[2] / "data")
+_DATA = Path(__file__).parents[2] / "data"
+SUBSETS = {
+    provider: SchemaSubset.model_validate_json((_DATA / name).read_bytes()) for provider, name in SUBSET_FILES.items()
+}
 ANTHROPIC, GEMINI = SUBSETS["anthropic"], SUBSETS["gemini"]
 PROVIDERS = pytest.mark.parametrize("subset", SUBSETS.values(), ids=SUBSETS.keys())
 # Up to twice the most unions or optional properties a provider allows, so a per-field union or option would show.

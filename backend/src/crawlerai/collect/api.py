@@ -30,6 +30,7 @@ from crawlerai.collect.config import ROW_KIND, Executed
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate
 from crawlerai.content.page import ParsedPage
+from crawlerai.core import json_text
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 
@@ -88,7 +89,7 @@ class ApiCollector:
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:
         try:
-            document = json_doc.parse(page.html)
+            document = json_text.parse(page.html)
         except ValueError as e:
             return Executed(rows=(), candidates=(), diagnostics=(f"api:{self.recipe_id}: not JSON ({e})",))
         reading = _Reading("api", self.recipe_id, schema, ctx)

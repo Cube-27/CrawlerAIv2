@@ -8,6 +8,6 @@ language's words, so they stay in `range.py`.
 |---|---|---|---|
 | `en.json` | `en` | The separator SPEC-04 §4.4 names for written ranges ("10 to 20") | One word. Moved here from `range.py`. |
 
-Any other word or language is added only under the C10 acceptance rule: a dev improvement and hidden
-non-regression shown in the PR's evaluation report (ARCHITECTURE C4, C10). Record each addition here, with its
+Any other word or language is added only under the C10 acceptance rule: a golden-set improvement
+with no precision drop, shown in the PR's evaluation report (ARCHITECTURE C4, C10). Record each addition here, with its
 justification and the PR.

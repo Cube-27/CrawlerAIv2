@@ -1,12 +1,13 @@
 """Block classification from HTTP status and document structure only (SPEC-02 §4.3, ARCHITECTURE §7.1, INV-24).
 
-No body text is ever compared with a string: challenge pages served with 200 are not detected by content (that
-would need vendor strings, C3/C4). They mostly present as shells and get a browser retry. An error or challenge page
-served with 200 that has text enough not to be a shell is told by its shape instead: it links nowhere. A site's pages
-are connected by hyperlinks (HTML Standard §4.6), so a page without one, whatever scripts, images or forms it holds,
-is not one of them. Nor is a document that declares a refresh (it navigates itself on, HTML Standard §4.2.5.3) and whose
-hyperlinks all lead to no web page (`mailto:`, `tel:`, RFC 6068, RFC 3966): a stand-in for the page while the site is
-busy or checking the client.
+This module compares no body text with a string: vendor strings are site data (C3/C4), so a vendor's stand-in marker on
+a 200 page is read in `acquire.challenge` from the adapter package's signature data, the one exception to INV-24's
+structure-only rule. Other challenge pages served with 200 mostly present as shells and get a browser retry. An error or
+challenge page served with 200 that has text enough not to be a shell is told by its shape instead: it links nowhere. A
+site's pages are connected by hyperlinks (HTML Standard §4.6), so a page without one, whatever scripts, images or forms
+it holds, is not one of them. Nor is a document that declares a refresh (it navigates itself on, HTML Standard §4.2.5.3)
+and whose hyperlinks all lead to no web page (`mailto:`, `tel:`, RFC 6068, RFC 3966): a stand-in for the page while the
+site is busy or checking the client.
 
 A page fetched as a listing is a shell too when nothing on it lists items: no repeated items (`_lists_items`) and no
 structured data that lists them (`_structured_rows`). Its grid loads by script after the page (an XHR), so the
@@ -14,7 +15,6 @@ browser may render what HTTP did not. Only the HTTP rung passes the page kind: t
 browser is the last rung, and its page is extracted whatever its links.
 """
 
-import json
 from urllib.parse import urljoin, urlsplit
 
 from lxml import etree
@@ -23,6 +23,7 @@ from selectolax.lexbor import LexborHTMLParser
 
 from crawlerai.acquire.items import MIN_ITEMS, item_blocks
 from crawlerai.acquire.types import BlockClass
+from crawlerai.core import json_text
 from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import HeaderList
 
@@ -182,7 +183,7 @@ def _media_type(value: str | None) -> str:
 
 def _json(text: str) -> object:
     try:
-        return json.loads(text)
+        return json_text.parse(text)
     except ValueError:  # a block that is not JSON states nothing
         return None
 

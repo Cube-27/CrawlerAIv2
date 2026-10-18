@@ -17,7 +17,7 @@ from crawlerai.api.app import create_app
 from crawlerai.core.settings import Settings
 from crawlerai.db.keys import create_key
 from crawlerai.db.models import ApiKey, Capture, EvalPage, SchemaDef, Site
-from crawlerai.eval.store import EvalPageRow, get_store
+from crawlerai.eval.store import EvalPageRow, dev_store
 
 pytestmark = pytest.mark.anyio
 
@@ -49,7 +49,7 @@ async def client(
         ).scalar_one()
         key = await create_key(conn, "labeling-api-test")
     settings = Settings.model_validate({"database_url": database_url, "object_store": object_store})
-    async with aclosing(get_store("dev", settings)) as store:
+    async with aclosing(dev_store(settings)) as store:
         capture_id = await store.put_capture(fetch_result(URL, body=BODY).bundle, "custom_store")
         page_id = await store.put_page(
             EvalPageRow(

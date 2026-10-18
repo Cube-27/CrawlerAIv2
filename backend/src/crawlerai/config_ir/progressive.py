@@ -87,11 +87,6 @@ RUN_IN_FLIGHT: Final[Mapping[LearnEvent, bool | None]] = {
 }
 
 
-def next_mode(mode: ProgressiveMode, event: LearnEvent) -> ProgressiveMode | None:
-    """The mode `event` moves a state in `mode` to, or None when `event` is refused there."""
-    return TRANSITIONS[event].get(mode)
-
-
 class NotLearning(Exception):
     def __init__(self, key: "StateKey", event: LearnEvent) -> None:
         super().__init__(f"progressive_state {key}: {event} with no learning run in flight")

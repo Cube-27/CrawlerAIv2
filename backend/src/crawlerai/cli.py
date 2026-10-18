@@ -34,33 +34,24 @@ from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.keys import create_key, revoke_key
-from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, ScheduleId, Split
-from crawlerai.eval import calibrate, label_file, promote
+from crawlerai.db.models import EvalCategory, EvalRunId, PageKind, ScheduleId
+from crawlerai.eval import calibrate, label_file
 from crawlerai.eval.cli import (
     EvalCliError,
     PageRequest,
     active_schemas,
-    check_hosts,
     check_urls,
-    hosts_elsewhere,
     http_host,
     parse_site_list,
     report,
     run_capture,
 )
 from crawlerai.eval.engine import PipelineEngine
-from crawlerai.eval.gate import commits_on
+from crawlerai.eval.git_head import GitUnavailable, head_commit
 from crawlerai.eval.labels import LabelStatus
 from crawlerai.eval.metrics import CHECKED, build_report
 from crawlerai.eval.replay import CappedLLM, replay_split
-from crawlerai.eval.store import (
-    EvalNotFound,
-    EvalRunRow,
-    PrivateCredentialsMissing,
-    PrivateStoreNotSeparate,
-    dev_store,
-    private_store,
-)
+from crawlerai.eval.store import EvalNotFound, EvalRunRow, dev_store
 from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.recurring.listing_diff import close_run
@@ -246,17 +237,15 @@ async def _fetch(
     print(json.dumps(summary))
 
 
-async def _eval_capture(
-    split: Split, schema_name: str, page_kind: PageKind, category: EvalCategory, urls: Sequence[str]
-) -> None:
+async def _eval_capture(schema_name: str, page_kind: PageKind, category: EvalCategory, urls: Sequence[str]) -> None:
     check_urls(urls)
     requests = [PageRequest(n, url, schema_name, category) for n, url in enumerate(urls, start=1)]
-    sys.stdout.write(report(await run_capture(Settings(), split, requests, page_kind)))
+    sys.stdout.write(report(await run_capture(Settings(), requests, page_kind)))
 
 
-async def _eval_import_sites(split: Split, file: Path, pages_per_site: int) -> None:
+async def _eval_import_sites(file: Path, pages_per_site: int) -> None:
     sites = parse_site_list(file.read_text(encoding="utf-8"), pages_per_site)
-    sys.stdout.write(report([*await run_capture(Settings(), split, sites.requests), *sites.over_limit]))
+    sys.stdout.write(report([*await run_capture(Settings(), sites.requests), *sites.over_limit]))
 
 
 async def _eval_import_labels(file: Path) -> None:
@@ -267,8 +256,6 @@ async def _eval_import_labels(file: Path) -> None:
     database_url = settings.database_url.get_secret_value()
     schemas = await active_schemas(database_url, label_file.schema_names(pages))
     labeled = label_file.labeled_pages(pages, schemas)
-    # A host belongs to one split (ARCHITECTURE §16.1): refused, by counts only, before anything is fetched.
-    check_hosts([page.request for page in labeled], await hosts_elsewhere(settings, "dev"))
     engine = create_async_engine(database_url)
     try:
         async with aclosing(dev_store(settings)) as store, _fetching(settings, SafeConnector()) as fetching:
@@ -309,7 +296,7 @@ async def _eval_run(
         raise EvalCliError("the engine's data files are missing: run `crawlerai data fetch`")
     database_url = settings.database_url.get_secret_value()
     pipeline = PipelineEngine(data, await active_schemas(database_url))
-    git_sha = commits_on("HEAD", _data_dir().parent.parent)[0]
+    git_sha = head_commit(_data_dir().parent.parent)
     db = create_async_engine(database_url)
     try:
         async with aclosing(dev_store(settings)) as store:
@@ -319,8 +306,8 @@ async def _eval_run(
             # D-1480: the report scores the engine rows of the labeled page (`rows="labeled"`), and every row too.
             result = build_report(cases, "dev", pipeline.version, git_sha, statuses, rows="labeled")
             all_rows = build_report(cases, "dev", pipeline.version, git_sha, statuses)
-            # A run is a baseline and what calibration fits on: drafts never become one (§16.2, D-1461). It keeps every
-            # engine row (§4.6), as the gate's runs do.
+            # A stored run is what calibration fits on: drafts never become one (labels spec: two passes). It keeps
+            # every engine row.
             run = None
             if statuses == CHECKED:
                 metrics = all_rows.model_dump(mode="json")
@@ -357,26 +344,6 @@ def _replay_llm(mode: str, settings: Settings, db: AsyncEngine, max_calls: int |
             return live if max_calls is None else CappedLLM(live, max_calls)
         case _:
             return None
-
-
-async def _eval_promote(all_pages: bool) -> None:
-    settings = Settings()
-    async with (
-        aclosing(private_store("fresh", settings)) as fresh,
-        aclosing(private_store("hidden", settings)) as hidden,
-        aclosing(dev_store(settings)) as dev,
-    ):
-        sys.stdout.write(promote.report(await promote.promote(fresh, hidden, dev, all_pages)))
-
-
-async def _eval_rotate_hidden(fraction: float) -> None:
-    settings = Settings()
-    async with (
-        aclosing(private_store("hidden", settings)) as hidden,
-        aclosing(private_store("fresh", settings)) as fresh,
-        aclosing(dev_store(settings)) as dev,
-    ):
-        sys.stdout.write(promote.report(await promote.rotate_hidden(hidden, fresh, dev, fraction)))
 
 
 @asynccontextmanager
@@ -468,13 +435,12 @@ async def _eval_fit(command: str, run_id: EvalRunId) -> None:
 
 
 def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    eval_commands = commands.add_parser("eval", help="evaluation: capture pages, move them into dev").add_subparsers(
-        dest="eval_command", required=True
-    )
-    splits, categories, page_kinds = get_args(Split), get_args(EvalCategory), get_args(PageKind)
-    capture = eval_commands.add_parser(
-        "capture", help="fetch pages and store each as an unlabeled eval page of the split"
-    )
+    eval_commands = commands.add_parser(
+        "eval", help="evaluation on the golden set: capture, label, replay, fit"
+    ).add_subparsers(dest="eval_command", required=True)
+    # One split, the golden set (evaluation spec); `--split dev` names it on every command.
+    splits, categories, page_kinds = ["dev"], get_args(EvalCategory), get_args(PageKind)
+    capture = eval_commands.add_parser("capture", help="fetch pages and store each as an unlabeled eval page")
     capture.set_defaults(handler=_run_eval, eval_handler=_run_eval_capture)
     capture.add_argument("--split", choices=splits, required=True)
     capture.add_argument("--schema", required=True, help="the name of an active schema")
@@ -482,7 +448,7 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     capture.add_argument("--category", choices=categories, required=True)
     capture.add_argument("urls", nargs="+", metavar="URL")
     import_sites = eval_commands.add_parser(
-        "import-sites", help="capture the pages of a site list (`<category> <schema> <url>` per line) into the split"
+        "import-sites", help="capture the pages of a site list (`<category> <schema> <url>` per line)"
     )
     import_sites.set_defaults(handler=_run_eval, eval_handler=_run_eval_import_sites)
     import_sites.add_argument("--split", choices=splits, required=True)
@@ -520,27 +486,13 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
             " (D-1480); the report scoring every row goes beside it as <name>.all-rows.json"
         ),
     )
-    promote_command = eval_commands.add_parser(
-        "promote", help="move the fresh sites whose pages are all checked into dev, keeping their labels"
-    )
-    promote_command.set_defaults(handler=_run_eval, eval_handler=_run_eval_promote)
-    # The one move §16.1 defines for fresh; hidden moves only by `rotate-hidden`.
-    promote_command.add_argument("--from", dest="source", choices=["fresh"], required=True)
-    promote_command.add_argument("--to", dest="target", choices=["dev"], required=True)
-    promote_command.add_argument("--all", action="store_true", help="move every fresh site, checked or not")
-    rotate = eval_commands.add_parser(
-        "rotate-hidden", help="move a fraction of the hidden sites, chosen per category, into dev"
-    )
-    rotate.set_defaults(handler=_run_eval, eval_handler=_run_eval_rotate_hidden)
-    rotate.add_argument("--fraction", type=_fraction, required=True)
     for name, help_ in (
         ("calibrate", "write backend/data/calibration.json from a dev eval run"),
         ("fit-precedence", "write backend/data/source_precedence.yaml from a dev eval run"),
     ):
         fit = eval_commands.add_parser(name, help=help_)
         fit.set_defaults(handler=_run_eval, eval_handler=_run_eval_fit)
-        # Every split is accepted here so that the refusal is the command's own, stated and tested (INV-02).
-        fit.add_argument("--split", choices=splits, required=True, help="dev; any other split is refused")
+        fit.add_argument("--split", choices=splits, required=True)
         fit.add_argument("--run", type=uuid.UUID, required=True, help="the id of the dev eval run to fit on")
 
 
@@ -549,13 +501,6 @@ def _positive_int(value: str) -> int:
     if number < 1:
         raise argparse.ArgumentTypeError("must be at least 1")
     return number
-
-
-def _fraction(value: str) -> float:
-    try:
-        return promote.check_fraction(float(value))
-    except ValueError as e:
-        raise argparse.ArgumentTypeError(str(e)) from None
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -749,26 +694,18 @@ def _run_data(parser: argparse.ArgumentParser, _args: argparse.Namespace) -> Non
 def _run_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     try:
         args.eval_handler(parser, args)
-    except (EvalCliError, EvalNotFound, PrivateCredentialsMissing, PrivateStoreNotSeparate) as e:
+    except (EvalCliError, EvalNotFound, GitUnavailable) as e:
         parser.exit(2, f"crawlerai eval: {e}\n")
-    except Exception as e:
-        # Only a dev command shows its failure; `promote` and `rotate-hidden` read private splits and have none.
-        split = getattr(args, "split", "private")
-        if split == "dev":
-            raise
-        # A hidden or fresh failure is reported by its type only: a message or traceback could carry a URL or a
-        # row's values (a database error's DETAIL), and hidden cases must not reach a log (C1).
-        parser.exit(1, f"crawlerai eval: failed with {type(e).__name__}; details withheld for the {split} split\n")
 
 
 def _run_eval_capture(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    asyncio.run(_eval_capture(args.split, args.schema, args.page_kind, args.category, args.urls))
+    asyncio.run(_eval_capture(args.schema, args.page_kind, args.category, args.urls))
 
 
 def _run_eval_import_sites(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     # The site list is read only from under the working directory, as `fetch --out` is written there.
     sites = _under_cwd(parser, "--file", args.file)
-    asyncio.run(_eval_import_sites(args.split, sites, args.pages_per_site))
+    asyncio.run(_eval_import_sites(sites, args.pages_per_site))
 
 
 def _run_eval_import_labels(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -781,15 +718,5 @@ def _run_eval_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
     asyncio.run(_eval_run(statuses, args.llm, out, args.llm_max_calls))
 
 
-def _run_eval_promote(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    asyncio.run(_eval_promote(args.all))
-
-
-def _run_eval_rotate_hidden(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    asyncio.run(_eval_rotate_hidden(args.fraction))
-
-
 def _run_eval_fit(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    # Refused before any store is opened: a private split's run is never read here (C1).
-    calibrate.require_dev(args.split)
     asyncio.run(_eval_fit(args.eval_command, EvalRunId(args.run)))

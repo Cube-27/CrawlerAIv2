@@ -1,7 +1,6 @@
 """`crawlerai eval capture` and `crawlerai eval import-sites` without a database: the site list, the report, and how
 the commands hand their arguments on (SPEC-03 §4.4). Synthetic `.test` URLs only."""
 
-import asyncio
 import json
 from collections.abc import Sequence
 from pathlib import Path
@@ -12,8 +11,7 @@ import pytest
 from crawlerai import cli
 from crawlerai.cli import main
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import CaptureId, EvalPageId, PageKind, Split
-from crawlerai.eval import cli as eval_cli
+from crawlerai.db.models import CaptureId, EvalPageId, PageKind
 from crawlerai.eval.cli import (
     Captured,
     EvalCliError,
@@ -21,12 +19,9 @@ from crawlerai.eval.cli import (
     PageRequest,
     SiteList,
     Skipped,
-    check_hosts,
-    hosts_elsewhere,
     parse_site_list,
     report,
 )
-from crawlerai.eval.store import PrivateCredentialsMissing
 
 A = "https://a.example.test"
 B = "https://b.example.test"
@@ -89,37 +84,6 @@ def _request(n: int, url: str) -> PageRequest:
     return PageRequest(n, url, "commerce_detail", "mixed")
 
 
-def test_hosts_with_pages_in_another_split_are_refused_by_count_only() -> None:
-    requests = [
-        _request(1, f"{A}/p/1"),
-        _request(2, f"{A.upper()}/p/2"),
-        _request(3, f"{B}/p/1"),
-        _request(4, "https://c.example.test/p/1"),
-    ]
-    taken: dict[Split, set[str]] = {
-        "hidden": {"a.example.test", "d.example.test"},
-        "dev": {"a.example.test", "b.example.test"},
-    }
-
-    with pytest.raises(EvalCliError) as error:
-        check_hosts(requests, taken)
-
-    # A host listed twice counts once; one in two other splits counts in each.
-    assert str(error.value) == (
-        "2 host(s) of the input already have pages in another split (dev: 2, hidden: 1); a host belongs to one"
-        " split (ARCHITECTURE §16.1), so nothing was fetched"
-    )
-    assert "example.test" not in str(error.value)
-
-
-def test_only_hosts_in_another_split_are_refused() -> None:
-    taken: dict[Split, set[str]] = {"hidden": {"b.example.test"}, "fresh": set()}
-
-    check_hosts([_request(1, f"{A}/p/1"), _request(2, f"{A}/p/2")], taken)
-    with pytest.raises(EvalCliError, match=r"^1 host\(s\) of the input .* another split \(hidden: 1\)"):
-        check_hosts([_request(1, f"{A}/p/1"), _request(2, f"{B}/p/2")], taken)
-
-
 def test_the_report_has_one_json_line_per_page_in_input_order() -> None:
     capture_id, page_id = "01a132f6-a42f-76c9-92f2-fb6ad3b2c878", "01a132f6-a433-7200-bf3f-3c79942f04a6"
     outcomes: list[Outcome] = [
@@ -144,7 +108,7 @@ def test_the_report_has_one_json_line_per_page_in_input_order() -> None:
     ]
 
 
-Call = tuple[Split, list[PageRequest], PageKind | None]
+Call = tuple[list[PageRequest], PageKind | None]
 
 
 @pytest.fixture
@@ -159,9 +123,9 @@ def runs(monkeypatch: pytest.MonkeyPatch, settings_env: None) -> list[Call]:
     calls: list[Call] = []
 
     async def run(
-        settings: Settings, split: Split, requests: Sequence[PageRequest], page_kind: PageKind | None = None
+        settings: Settings, requests: Sequence[PageRequest], page_kind: PageKind | None = None
     ) -> list[Outcome]:
-        calls.append((split, list(requests), page_kind))
+        calls.append((list(requests), page_kind))
         return [Skipped(request.n, "robots") for request in requests]
 
     monkeypatch.setattr(cli, "run_capture", run)
@@ -173,14 +137,13 @@ def test_capture_asks_for_each_url_with_the_schema_kind_and_category(
 ) -> None:
     main(
         [
-            "eval", "capture", "--split", "fresh", "--schema", "commerce_detail", "--page-kind", "detail",
+            "eval", "capture", "--split", "dev", "--schema", "commerce_detail", "--page-kind", "detail",
             "--category", "platform_store", f"{A}/p/1", f"{B}/p/2",
         ]
     )  # fmt: skip
 
     assert runs == [
         (
-            "fresh",
             [
                 PageRequest(1, f"{A}/p/1", "commerce_detail", "platform_store"),
                 PageRequest(2, f"{B}/p/2", "commerce_detail", "platform_store"),
@@ -215,61 +178,19 @@ def test_import_sites_captures_the_kept_pages_and_reports_the_rest(
         f"mixed commerce_detail {A}/p/1\nmixed commerce_detail {A}/p/2\n", encoding="utf-8"
     )
 
-    main(["eval", "import-sites", "--split", "fresh", "--file", "sites.txt", "--pages-per-site", "1"])
+    main(["eval", "import-sites", "--split", "dev", "--file", "sites.txt", "--pages-per-site", "1"])
 
-    assert runs == [("fresh", [PageRequest(1, f"{A}/p/1", "commerce_detail", "mixed")], None)]
+    assert runs == [([PageRequest(1, f"{A}/p/1", "commerce_detail", "mixed")], None)]
     assert capsys.readouterr().out == '{"n": 1, "skipped": "robots"}\n{"n": 2, "skipped": "pages_per_site"}\n'
 
 
 @pytest.mark.parametrize("pages", ["0", "three"])
 def test_import_sites_needs_a_positive_page_count(runs: list[Call], tmp_path: Path, pages: str) -> None:
     with pytest.raises(SystemExit) as exit_info:
-        main(["eval", "import-sites", "--split", "fresh", "--file", str(tmp_path / "s.txt"), "--pages-per-site", pages])
+        main(["eval", "import-sites", "--split", "dev", "--file", str(tmp_path / "s.txt"), "--pages-per-site", pages])
 
     assert exit_info.value.code == 2
     assert runs == []
-
-
-def test_a_private_split_without_custodian_settings_exits_with_the_reason(
-    monkeypatch: pytest.MonkeyPatch, settings_env: None, capsys: pytest.CaptureFixture[str]
-) -> None:
-    async def run(*args: object) -> list[Outcome]:
-        raise PrivateCredentialsMissing("expected on any other machine")
-
-    monkeypatch.setattr(cli, "run_capture", run)
-
-    with pytest.raises(SystemExit) as exit_info:
-        main(
-            [
-                "eval", "capture", "--split", "hidden", "--schema", "commerce_detail", "--page-kind", "detail",
-                "--category", "mixed", f"{A}/p/1",
-            ]
-        )  # fmt: skip
-
-    assert exit_info.value.code == 2
-    assert capsys.readouterr().err == "crawlerai eval: expected on any other machine\n"
-
-
-def test_a_dev_capture_without_custodian_settings_reads_no_other_split(settings_env: None) -> None:
-    assert asyncio.run(hosts_elsewhere(Settings(), "dev")) == {}
-
-
-class _FailingStore:
-    async def hosts(self) -> set[str]:
-        raise RuntimeError(f"connection to {A} refused")
-
-    async def aclose(self) -> None:
-        pass
-
-
-def test_a_failed_host_lookup_is_reported_by_its_type_only(monkeypatch: pytest.MonkeyPatch, settings_env: None) -> None:
-    monkeypatch.setattr(eval_cli, "get_store", lambda split, settings: _FailingStore())
-    lookup = hosts_elsewhere(Settings(), "fresh")
-
-    with pytest.raises(EvalCliError) as error:
-        asyncio.run(lookup)
-
-    assert str(error.value) == "reading the hosts of the dev split failed with RuntimeError"
 
 
 @pytest.mark.parametrize("relative", [True, False])
@@ -287,7 +208,7 @@ def test_import_sites_reads_a_site_list_only_from_under_the_working_directory(
     outside = "../sites.txt" if relative else str(tmp_path / "sites.txt")
 
     with pytest.raises(SystemExit) as exit_info:
-        main(["eval", "import-sites", "--split", "fresh", "--pages-per-site", "1", "--file", outside])
+        main(["eval", "import-sites", "--split", "dev", "--pages-per-site", "1", "--file", outside])
 
     assert exit_info.value.code == 2
     assert runs == []
@@ -298,64 +219,42 @@ def test_import_sites_reads_a_site_list_only_from_under_the_working_directory(
 _LEAKY = f"duplicate key value violates unique constraint\nDETAIL: Key (url)=({A}/p/1) already exists."
 
 
-def _capture_raising(monkeypatch: pytest.MonkeyPatch, split: Split) -> None:
+def _capture_raising(monkeypatch: pytest.MonkeyPatch) -> None:
     async def run(*args: object) -> list[Outcome]:
         raise RuntimeError(_LEAKY)
 
     monkeypatch.setattr(cli, "run_capture", run)
     main(
         [
-            "eval", "capture", "--split", split, "--schema", "commerce_detail", "--page-kind", "detail",
+            "eval", "capture", "--split", "dev", "--schema", "commerce_detail", "--page-kind", "detail",
             "--category", "mixed", f"{A}/p/1",
         ]
     )  # fmt: skip
-
-
-def test_an_unexpected_failure_on_a_private_split_is_reported_by_its_type_only(
-    monkeypatch: pytest.MonkeyPatch, settings_env: None, capsys: pytest.CaptureFixture[str]
-) -> None:
-    with pytest.raises(SystemExit) as exit_info:
-        _capture_raising(monkeypatch, "hidden")
-
-    assert exit_info.value.code == 1
-    captured = capsys.readouterr()
-    assert captured.err == "crawlerai eval: failed with RuntimeError; details withheld for the hidden split\n"
-    assert "example.test" not in captured.out + captured.err
 
 
 def test_an_unexpected_failure_on_the_dev_split_keeps_its_details(
     monkeypatch: pytest.MonkeyPatch, settings_env: None
 ) -> None:
     with pytest.raises(RuntimeError, match="DETAIL: Key"):
-        _capture_raising(monkeypatch, "dev")
+        _capture_raising(monkeypatch)
 
 
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["eval", "promote", "--from", "hidden", "--to", "dev"],
-        ["eval", "promote", "--from", "fresh", "--to", "hidden"],
-        ["eval", "promote", "--to", "dev"],
-        ["eval", "rotate-hidden", "--fraction", "0"],
-        ["eval", "rotate-hidden", "--fraction", "1"],
-        ["eval", "rotate-hidden", "--fraction", "a third"],
-    ],
-)
-def test_promote_and_rotate_accept_only_the_moves_into_dev_the_spec_defines(argv: list[str]) -> None:
+@pytest.mark.parametrize("command", ["promote", "rotate-hidden"])
+def test_there_is_no_command_moving_pages_between_splits(command: str) -> None:
     with pytest.raises(SystemExit) as exit_info:
-        main(argv)
+        main(["eval", command])
 
     assert exit_info.value.code == 2
 
 
-@pytest.mark.parametrize(
-    "argv", [["eval", "promote", "--from", "fresh", "--to", "dev"], ["eval", "rotate-hidden", "--fraction", "0.33"]]
-)
-def test_promote_and_rotate_without_custodian_settings_exit_with_the_reason(
-    settings_env: None, capsys: pytest.CaptureFixture[str], argv: list[str]
-) -> None:
+def test_capture_takes_only_the_dev_split(runs: list[Call]) -> None:
     with pytest.raises(SystemExit) as exit_info:
-        main(argv)
+        main(
+            [
+                "eval", "capture", "--split", "hidden", "--schema", "commerce_detail", "--page-kind", "detail",
+                "--category", "mixed", f"{A}/p/1",
+            ]
+        )  # fmt: skip
 
     assert exit_info.value.code == 2
-    assert "expected on any other machine" in capsys.readouterr().err
+    assert runs == []

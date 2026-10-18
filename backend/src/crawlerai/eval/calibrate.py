@@ -1,10 +1,9 @@
-"""`crawlerai eval calibrate` and `crawlerai eval fit-precedence` (SPEC-03 §4.4): write `calibration.json` and
-`source_precedence.yaml` from a dev eval run.
+"""`crawlerai eval calibrate` and `crawlerai eval fit-precedence`: write `calibration.json` and
+`source_precedence.yaml` from a stored run on the golden set.
 
-Both are fitted on dev only (C1, INV-02): each refuses a run of any other split, and stamps what it writes with
-`source_split: dev`, the run's id and its commit; the engine reads them back with `resolve.evidence` and
-`resolve.preference`. Calibration is the run's bucket table (SPEC-05 §4.11); precedence is fitted from its per-kind
-table (`by_source`) by `resolve.calibrate`.
+Each stamps what it writes with `source_split: dev`, the run's id and its commit; the engine reads them back with
+`resolve.evidence` and `resolve.preference`. Calibration is the run's bucket table; precedence is fitted from its
+per-kind table (`by_source`) by `resolve.calibrate`.
 """
 
 import json
@@ -16,9 +15,9 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 
 from crawlerai.core.engine_version import CALIBRATION_FILE
-from crawlerai.db.models import EvalRunId, SourceKind, Split
+from crawlerai.db.models import EvalRunId, SourceKind
 from crawlerai.eval.cli import EvalCliError
-from crawlerai.eval.metrics import PrecisionMetrics, Report, SourceMetrics, Suppressed
+from crawlerai.eval.metrics import PrecisionMetrics, Report, SourceMetrics
 from crawlerai.eval.store import EvalRunRow
 from crawlerai.resolve.calibrate import Measured, fit_orders
 from crawlerai.resolve.evidence import Bucket, Calibration
@@ -26,10 +25,6 @@ from crawlerai.resolve.preference import PRECEDENCE_FILE, parse_orders
 from crawlerai.storage.fs import FsStore
 
 Orders = dict[str, tuple[SourceKind, ...]]  # field type -> source kinds, first wins (SPEC-05 §4.7)
-
-
-class NotDev(EvalCliError):
-    """A fit was asked of a split other than dev."""
 
 
 class PrecedenceMissing(EvalCliError):
@@ -47,38 +42,22 @@ class Precedence(_Model):
     orders: Orders
 
 
-def require_dev(split: Split) -> None:
-    if split != "dev":
-        raise NotDev(f"calibration and precedence are fitted on dev only (INV-02); refusing the {split} split")
-
-
 def calibrate(run: EvalRunRow) -> Calibration:
-    require_dev(run.split)
     report = Report.model_validate(run.metrics)
     return Calibration(eval_run_id=run.id, git_sha=run.git_sha, buckets=_buckets(report.by_bucket))
 
 
 def fit_precedence(run: EvalRunRow, current: Mapping[str, Sequence[SourceKind]]) -> Precedence:
-    require_dev(run.split)
     report = Report.model_validate(run.metrics)
     return Precedence(eval_run_id=run.id, git_sha=run.git_sha, orders=fit_orders(current, _measured(report.by_source)))
 
 
-def _buckets(cells: Mapping[str, PrecisionMetrics | Suppressed]) -> dict[str, Bucket]:
-    # A suppressed cell keeps its size and has no precision, so it is never calibrated (nor, below, ranked).
-    return {
-        key: Bucket(n=cell.n, precision=cell.precision if isinstance(cell, PrecisionMetrics) else None)
-        for key, cell in sorted(cells.items())
-    }
+def _buckets(cells: Mapping[str, PrecisionMetrics]) -> dict[str, Bucket]:
+    return {key: Bucket(n=cell.n, precision=cell.precision) for key, cell in sorted(cells.items())}
 
 
-def _measured(cells: Mapping[str, SourceMetrics | Suppressed]) -> dict[str, Measured]:
-    return {
-        key: Measured(n=cell.n, precision=cell.precision, coverage=cell.coverage)
-        if isinstance(cell, SourceMetrics)
-        else Measured(n=cell.n, precision=None)
-        for key, cell in cells.items()
-    }
+def _measured(cells: Mapping[str, SourceMetrics]) -> dict[str, Measured]:
+    return {key: Measured(n=cell.n, precision=cell.precision, coverage=cell.coverage) for key, cell in cells.items()}
 
 
 def write_calibration(calibration: Calibration, data_dir: Path) -> Path:

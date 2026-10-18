@@ -339,6 +339,14 @@ def test_a_json_body_that_does_not_parse_has_no_markdown() -> None:
     assert markdown(ParsedPage('{"url": "https://jobs.example.test/1"', json_body=True), FINAL_URL) == ""
 
 
+@pytest.mark.parametrize("depth", [100_000, 2_000])
+def test_a_json_body_nested_too_deeply_to_read_or_write_back_has_no_markdown(depth: int) -> None:
+    # 100,000 levels are past what the parser follows; 2,000 parse but nest too deeply to write back indented.
+    page = ParsedPage("[" * depth + "]" * depth, json_body=True)
+
+    assert markdown(page, FINAL_URL) == ""
+
+
 @given(st.recursive(st.none() | st.booleans() | st.integers() | st.text(), _json_containers, max_leaves=20))
 def test_no_string_of_a_json_body_closes_its_code_block(document: object) -> None:
     text = markdown(ParsedPage(json.dumps(document), json_body=True), FINAL_URL)

@@ -1,20 +1,15 @@
-"""`crawlerai eval capture` and `crawlerai eval import-sites` (SPEC-03 §4.4): fetch pages over HTTP and store each as
-an eval capture and an unlabeled eval page of one split.
+"""`crawlerai eval capture` and `crawlerai eval import-sites`: fetch pages over HTTP and store each as an eval capture
+and an unlabeled page of the golden set.
 
-Each page goes to the store of its split (`get_store`): hidden and fresh captures never touch the main database or
-object store (C1). Fetches are polite as the worker's are (SPEC-02 §4.6): robots.txt is read once per origin and
-obeyed, and requests to one host are spaced by the default interval or the robots `Crawl-delay`, whichever is longer.
-The CLI waits out that interval; it runs one page at a time. A host with pages in another split is refused before
-anything is fetched, so a site sits in one split only (ARCHITECTURE §16.1).
-
-Nothing printed or raised names a URL or host, so a hidden or fresh site does not reach a log (C1): outcomes are
-reported by their position in the input.
+Fetches are polite as the worker's are (acquisition spec, politeness): robots.txt is read once per origin and obeyed,
+and requests to one host are spaced by the default interval or the robots `Crawl-delay`, whichever is longer. The CLI
+waits out that interval; it runs one page at a time. Outcomes are reported by their position in the input.
 """
 
 import asyncio
 import json
 from collections import Counter
-from collections.abc import Awaitable, Callable, Mapping, Sequence, Set
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import aclosing
 from dataclasses import dataclass
 from functools import partial
@@ -33,9 +28,9 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, PageKind, SchemaId, Split
+from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, PageKind, SchemaId
 from crawlerai.db.models import SchemaDef as SchemaRow
-from crawlerai.eval.store import EvalPageRow, EvalStore, PrivateCredentialsMissing, get_store
+from crawlerai.eval.store import EvalPageRow, EvalStore, dev_store
 from crawlerai.schemas.registry import list_schemas
 from crawlerai.schemas.types import SchemaDef as Schema
 
@@ -143,47 +138,8 @@ def http_host(url: str) -> str | None:
     return host if parts.scheme in _SCHEMES and host else None
 
 
-def check_hosts(requests: Sequence[PageRequest], taken: Mapping[Split, Set[str]]) -> None:
-    """Refuse every request when a host of the input has pages in another split: a site sits in one split only, fresh
-    being sites nobody has seen and hidden sites absent from dev (ARCHITECTURE §16.1). The refusal gives counts, never
-    a host or a line, so it names no hidden or fresh site (C1)."""
-    hosts = {host for request in requests if (host := http_host(request.url)) is not None}
-    overlaps = {split: hosts & taken[split] for split in sorted(taken)}
-    refused = set[str]().union(*overlaps.values())
-    if refused:
-        counts = ", ".join(f"{split}: {len(overlap)}" for split, overlap in overlaps.items() if overlap)
-        raise EvalCliError(
-            f"{len(refused)} host(s) of the input already have pages in another split ({counts}); a host belongs to"
-            " one split (ARCHITECTURE §16.1), so nothing was fetched"
-        )
-
-
-async def hosts_elsewhere(settings: Settings, split: Split) -> dict[Split, set[str]]:
-    """The hosts with pages in each split other than `split`. A dev capture reads the private splits only on a
-    custodian's machine: elsewhere their hosts are unreadable by design (C1), and a dev capture is not checked
-    against them."""
-    taken: dict[Split, set[str]] = {}
-    for other in get_args(Split):
-        if other == split:
-            continue
-        try:
-            opened = get_store(other, settings)
-        except PrivateCredentialsMissing:
-            if split != "dev":
-                raise
-            continue
-        async with aclosing(opened) as store:
-            try:
-                taken[other] = await store.hosts()
-            except Exception as e:
-                # By type only: a dev command shows its failures, and this one comes from a private database (C1).
-                raise EvalCliError(f"reading the hosts of the {other} split failed with {type(e).__name__}") from None
-    return taken
-
-
 async def resolve_schemas(database_url: str, names: set[str]) -> dict[str, SchemaRef]:
-    """Each active schema named, from the main database's `schema_def`. Hidden and fresh pages name
-    their schema too; the private database records the id and name only (D-0172)."""
+    """Each active schema named, from the main database's `schema_def`."""
     engine = create_async_engine(database_url)
     try:
         async with engine.connect() as conn:
@@ -256,7 +212,7 @@ async def capture_pages(
 
 
 async def store_page(store: EvalStore, schema: SchemaRef, request: PageRequest, result: FetchResult) -> Captured:
-    """Store a fetched page as an eval capture and an unlabeled eval page of `store`'s split, whatever its outcome."""
+    """Store a fetched page as an eval capture and an unlabeled eval page, whatever its outcome."""
     capture_id = await store.put_capture(result.bundle, request.category)
     page_id = await store.put_page(
         EvalPageRow(
@@ -276,12 +232,11 @@ async def store_page(store: EvalStore, schema: SchemaRef, request: PageRequest, 
 
 async def run_capture(
     settings: Settings,
-    split: Split,
     requests: Sequence[PageRequest],
     page_kind: PageKind | None = None,
     connector: SafeConnector | None = None,
 ) -> list[Outcome]:
-    """Capture `requests` into `split`'s store. `page_kind`, when given, must be every schema's page kind."""
+    """Capture `requests` into the golden set. `page_kind`, when given, must be every schema's page kind."""
     schemas = await resolve_schemas(
         settings.database_url.get_secret_value(), {request.schema_name for request in requests}
     )
@@ -289,8 +244,7 @@ async def run_capture(
         for schema in schemas.values():
             if schema.page_kind != page_kind:
                 raise EvalCliError(f"schema {schema.name} is for {schema.page_kind} pages, not {page_kind}")
-    check_hosts(requests, await hosts_elsewhere(settings, split))
-    store = get_store(split, settings)
+    store = dev_store(settings)
     fetch = partial(
         fetch_http,
         policy=FetchPolicy(),

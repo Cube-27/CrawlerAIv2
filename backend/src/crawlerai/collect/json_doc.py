@@ -1,10 +1,9 @@
-"""JSON documents as collectors read them: parsed as RFC 8259 JSON (JSON-LD blocks leniently, see `parse`),
-addressed by RFC 9535 normalized paths (`$['offers'][0]`), the path part of the `jsonld`, `js_state`, `xhr` and
+"""JSON documents as collectors read them (parsed by `core.json_text`, JSON-LD blocks leniently), addressed by RFC 9535
+normalized paths (`$['offers'][0]`), the path part of the `jsonld`, `js_state`, `xhr` and
 `adapter` locators (SPEC-05 §4.3), and queried with the RFC 9535 subset adapter maps are written in."""
 
-import json
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from typing import TypeGuard
 
 from pydantic import JsonValue
@@ -18,25 +17,6 @@ _ESCAPES = {"'": "\\'", "\\": "\\\\", "\b": "\\b", "\f": "\\f", "\n": "\\n", "\r
 def member(path: str, name: str) -> str:
     escaped = "".join(_ESCAPES.get(c) or (f"\\u{ord(c):04x}" if c < " " else c) for c in name)
     return f"{path}['{escaped}']"
-
-
-def parse(text: str, *, lenient: bool = False) -> JsonValue:
-    """`text` as one JSON value; raises `ValueError` when it is not JSON. `lenient` also accepts raw control
-    characters (U+0000-U+001F) inside strings, which RFC 8259 §7 requires escaped and §9 lets a parser accept as an
-    extension: a raw newline in a string is unambiguous, so the value is the one an escaped newline would give."""
-    decoder = _LENIENT_DECODER if lenient else _DECODER
-    return _guarded(lambda: decoder.decode(text))
-
-
-def parse_prefix(text: str, start: int) -> tuple[JsonValue, int]:
-    """The JSON value that starts at `text[start]` after optional whitespace, ignoring what follows it, and the index
-    just past it; raises `ValueError` when none does."""
-    found = _NOT_WHITESPACE.search(text, start)
-    start = len(text) if found is None else found.start()
-    try:
-        return _DECODER.raw_decode(text, start)
-    except RecursionError:
-        raise ValueError("nested too deeply") from None
 
 
 def scalars(document: JsonValue) -> Iterator[tuple[str, str | int | float]]:
@@ -106,23 +86,6 @@ def _children(path: str, value: JsonValue, name: str, selector: str) -> Iterator
         yield f"{path}[{selector}]", value[int(selector)]
 
 
-def _not_json(constant: str) -> JsonValue:
-    # RFC 8259 §6: `NaN` and `Infinity` are not JSON numbers, though Python's parser reads them.
-    raise ValueError(f"{constant} is not JSON")
-
-
-def _guarded(decode: Callable[[], JsonValue]) -> JsonValue:
-    try:
-        return decode()
-    except RecursionError:
-        raise ValueError("nested too deeply") from None
-
-
-_DECODER = json.JSONDecoder(parse_constant=_not_json)
-# `strict=False` relaxes exactly the control characters inside strings (Python `json` docs); nothing else.
-_LENIENT_DECODER = json.JSONDecoder(parse_constant=_not_json, strict=False)
-# RFC 8259 §2: insignificant whitespace is space, horizontal tab, line feed and carriage return.
-_NOT_WHITESPACE = re.compile(r"[^ \t\n\r]")
 # A name segment captures its name in the first group; a wildcard or index segment, `*` or the index, in the second.
 _ALL = "*"
 _SEGMENT = re.compile(r"\['([^'\\]+)'\]|\[(\*|0|[1-9]\d*)\]", re.ASCII)

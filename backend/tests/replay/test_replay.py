@@ -64,10 +64,10 @@ DATA = EngineData(vocabulary=VOCABULARY, orders=dict.fromkeys(PRECEDENCE_TYPES, 
 
 
 class MemoryStore:
-    """An in-memory `EvalStore` of one split: pages, encoded bundles and LLM cache entries in dicts."""
+    """An in-memory `EvalStore`: pages, encoded bundles and LLM cache entries in dicts."""
 
-    def __init__(self, split: Split = "dev") -> None:
-        self._split: Split = split
+    def __init__(self) -> None:
+        self._split: Split = "dev"
         self.pages: dict[EvalPageId, EvalPageRow] = {}
         self.blobs: dict[CaptureId, bytes] = {}
         self.cache: dict[str, bytes] = {}
@@ -110,9 +110,6 @@ class MemoryStore:
         raise NotImplementedError
 
     async def get_run(self, run_id: EvalRunId) -> EvalRunRow:
-        raise NotImplementedError
-
-    async def latest_run(self, git_sha_on_main: str | None) -> EvalRunRow | None:
         raise NotImplementedError
 
     async def llm_cache_get(self, key: str) -> bytes | None:
@@ -383,13 +380,6 @@ def test_drafts_and_labeled_pages_replay_when_asked() -> None:
         replay_split(store, StubEngine(), SCHEMA.name, live=LiveLLM(), statuses=frozenset(get_args(LabelStatus)))
     )
     assert [case.page_id for case in cases] == sorted(str(page.id) for page in pages)
-
-
-@pytest.mark.parametrize("split", ["hidden", "fresh"])
-def test_a_private_split_never_replays_drafts(split: Split) -> None:
-    call = replay_split(MemoryStore(split), StubEngine(), live=LiveLLM(), statuses=frozenset({"draft", "checked"}))
-    with pytest.raises(ValueError, match="only dev pages"):
-        asyncio.run(call)
 
 
 class UnansweredEngine(StubEngine):

@@ -92,7 +92,7 @@ class PinnedData(BaseModel):
 @dataclass(frozen=True, slots=True)
 class EngineData:
     """What resolution reads besides the page: the schema.org vocabulary, the dev-fitted precedence orders and
-    calibration (INV-02), and the active adapters."""
+    calibration, and the active adapters."""
 
     vocabulary: Vocabulary
     orders: Orders

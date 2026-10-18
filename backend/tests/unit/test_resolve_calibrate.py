@@ -1,4 +1,4 @@
-"""Precedence fitting (SPEC-05 §4.11, ARCHITECTURE §10, INV-02): each precedence type's order by per-kind dev
+"""Precedence fitting (SPEC-05 §4.11, ARCHITECTURE §10): each precedence type's order by per-kind dev
 precision, ties by coverage, kinds measured on fewer than 30 fields kept in place. Synthetic measurements only (C9)."""
 
 from hypothesis import given

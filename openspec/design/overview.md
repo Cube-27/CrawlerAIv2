@@ -23,8 +23,8 @@ project is open source under AGPL-3.0 (Appendix A #26).
 
 | # | Goal | Measured by |
 |---|---|---|
-| G1 | **Works on sites nobody tuned against.** | Precision and coverage per field type on the **hidden** and **fresh** sets (§16). The gap between dev and fresh results. |
-| G2 | **Precision first.** A wrong published value is worse than a missing one. | Required-field precision ≥ 0.97 on hidden. False publishes on `absent` labels ≈ 0. Wrong-product values = 0. |
+| G1 | **Works on sites nobody tuned against.** | Precision and coverage per field type on each **fresh batch** of the golden set, scored once before any fix is made on it (Appendix A #67). The gap between the golden set and the fresh batch. |
+| G2 | **Precision first.** A wrong published value is worse than a missing one. | Required-field precision ≥ 0.97 on the golden set. False publishes on `absent` labels ≈ 0. Wrong-product values = 0. |
 | G3 | **Any schema.** Callers define a schema, or describe one in a prompt (§5). | Custom schemas use the same pipeline. Accuracy is claimed per schema only after it has labels. |
 | G4 | **Records and executable configs** from one pipeline. | Every exported config is re-executed on held-out pages before release (§12). |
 | G5 | **Progressive.** The first call on an unknown site works; repeat calls become deterministic and cheap. | Share of pages served by a config. Time from URL to accepted config. |
@@ -38,14 +38,33 @@ estimated LLM cost, from the providers' published prices kept as versioned data,
 ### Non-goals
 
 - Page-type detection. The caller chooses detail or listing (§23).
-- Web search and scripted browser actions (Appendix A #21), except a single-URL listing scrape's paging actions
-  (Appendix A #52).
+- Built-in scraping of a search engine (web search is an operator-configured provider, Appendix A #62); browser
+  actions beyond reading: logins, credential entry, CAPTCHA (Appendix A #52, #61).
 - Multi-tenant SaaS machinery: billing, signup, tenancy, user accounts, roles. One deployment serves one
   organization, with API keys.
 - Enrichment, product intelligence, knowledge graphs.
 - Web-scale crawling. The design point is 5k–10k pages/day, with 10× headroom by adding workers.
-- Authenticated or paywalled crawls.
+- Crawls behind a login the engine performs; only the caller's own session cookies or headers (Appendix A #61).
+- Evading vendor blocks: a vendor-blocked page is a `blocked` outcome with the vendor's label; managed access is
+  deferred (Appendix A #67, decision 7).
 - Anything listed in §22, until it is admitted.
+
+### Admitted by the master improvement plan (Appendix A #67, 2026-10-18)
+
+- **Item layer:** listing rows from repeated sibling structures of one shape (segment, align, bind structured, state
+  and call entities to blocks), and typed value spotting inside blocks and the main landmark.
+- **Role C as a field labeller:** asked for missing optional detail fields and missing row fields of listings with
+  rows, within the per-job budget; its claims are text spans, element claims and link claims, all grounded against
+  the DOM (INV-12 extended).
+- **Learning oracle:** the engine's published values plus role-C-grounded values.
+- **Row identity:** the item URL with per-page session-parameter removal, one function in engine and eval.
+- **Acquisition:** listing growth (scroll, next) on by default for single-URL scrapes in `auto`, never for batch or
+  crawl; resource blocking by resource type with a per-site opt-out; a vendor-blocked page is a `blocked` outcome,
+  managed access deferred.
+- **Measurement:** the golden set is the only measure, grown in fresh batches; precedence and calibration are fitted
+  on it for buckets with n ≥ 20.
+- **Docs policy:** code cites spec requirements, not decision IDs or frozen sections; an architecture change deletes
+  what it supersedes in the same PR.
 
 ## 2. Generalization contract
 
@@ -74,8 +93,9 @@ C1–C13: [../project.md](../project.md#generalization-contract-c1c13).
 ### 2.3 How v2 handles sites nobody has looked at
 
 The generic layer is small: structured-data standards (§8.1), type normalizers (§9), and grounded per-page LLM
-extraction for whatever those miss (§8.4). Site-specific knowledge is learned per site at run time, stored as data
-(§8.3), and measured on sites nobody tuned against (§16).
+extraction for whatever those miss (§8.4), and the item layer for repeated structures (Appendix A #67).
+Site-specific knowledge is learned per site at run time, stored as data (§8.3), and measured on fresh batches of the
+golden set that nobody tuned against (Appendix A #67).
 
 ## 20. Prior versions
 
@@ -106,28 +126,28 @@ needs labels, not code.
 
 | Layer | Builds | Done when |
 |---|---|---|
-| **L0 Foundations and measurement machinery** | Repo foundations (SPEC-00); persistence and storage including the private eval store; eval splits with custodian access; labeling tool; replay; metric report and protected job (a placeholder until M); CI checks; HTTP fetch | Replay is deterministic on stored captures; the labeling tool works; the private store is unreadable with app credentials |
+| **L0 Foundations and measurement machinery** | Repo foundations (SPEC-00); persistence and storage; the eval store; labeling tool; replay; metric report; CI checks; HTTP fetch | Replay is deterministic on stored captures; the labeling tool works |
 | **L1 Extraction** | Schema registry and presets; type normalizers for preset types; Patchright browser on evidence; Greenhouse + Lever adapters; structured collectors; resolver with evidence buckets; role C cold extraction; role S; `scrape` endpoint with records and markdown | Spec acceptance criteria pass on synthetic fixtures and unlabeled dev captures; every published field carries evidence and `calibrated=false` |
 | **L2 Configs and progressive mode** | Config IR and executors; induction; role A synthesis; validation and corroboration status; progressive state; drift suspension; API-backed pages with role D; `json` and `platform_draft` exporters | A dev-capture site reaches `active` with a validated config; release check passes |
 | **L3 API and MCP** | `map`, `crawl`, `extract`, batch, jobs, SSE, webhooks; MCP server | Every endpoint works through REST and MCP on dev captures; SSRF tests pass |
 | **L4 Recurring** | Conditional GET, content and record fingerprints, listing diff | Unchanged pages skip extraction; record versions carry `changed_fields` |
-| **M Measurement** (owner-led, once the crawler is usable) | Dev labels from the owner's review of crawler output; hidden and fresh drawn under the rule below; first calibration and `source_precedence` fit on dev; protected gate switched on | Precision and coverage per field type, evidence bucket and config status published for dev, hidden and the first fresh sample; wrong-product = 0 |
+| **M Measurement** (owner-led, once the crawler is usable) | The golden set's labels (draft labels imported, Appendix A #65); fresh batches scored once before any fix (Appendix A #67); calibration and `source_precedence` fit on the golden set | Precision and coverage per field type, evidence bucket and config status on the golden set and each fresh batch; wrong-product = 0 |
 
-**Keeping a hidden set possible (C1).** Every site that development touches (in the main DB `site` table, in dev
-captures, or in debugging) is dev. When M starts, hidden and fresh sites are drawn only from hosts in none of
-those places. Sites the owner reviews and corrects while building dev labels are dev too, never hidden. This is
-the one rule that stops the deferral from repeating §2.1.
+**Keeping fresh batches fresh.** A fresh batch's pages come from hosts in no earlier batch and untouched by
+development (the main DB `site` table, dev captures, debugging); its first score is taken before any change is made
+on it, and only that score supports a claim that a change generalizes (C10). After it is scored it joins the golden
+set (Appendix A #67).
 
 **Before M:**
 - confidence is `calibrated=false` everywhere (§10);
 - precedence uses the spec's initial order;
-- drift margins use their defaults;
-- the protected job passes as `no_baseline`.
+- drift margins use their defaults.
 
 The engine works, but accuracy is unknown. Nothing claims otherwise, in docs, PRs or UI.
 
-There are no pre-planned hardening layers. After M, work comes from §22 candidates admitted by evidence. The specs
-in `specs/` follow this order.
+The master improvement plan (Appendix A #67) sets the work after M: measure what is real, acquisition robustness, the
+item layer, detail precision and recall, learning that adds coverage; managed access is deferred. The specs in
+`specs/` follow this order.
 
 ## 22. Candidates register
 
@@ -136,14 +156,14 @@ is measured after it is added.
 
 | Candidate | Would address | Admitted when |
 |---|---|---|
-| **Learned, calibrated ranker** (gradient boosting, Platt/isotonic, conformal routing) | Wrong choices among valid, disagreeing candidates | Precedence or `conflict` decisions cause a material share of hidden errors or lost coverage. |
-| **LLM adjudication** among conflicting candidates | `conflict` abstentions on resolvable cases | The `conflict` rate on hidden required fields is material, and labels show one candidate was right. |
-| **Independent verifier** for configs | Wrong selectors that validate against themselves | Hidden precision of `uncorroborated` config fields is below τ, and they are a material share of fields. |
-| **Self-consistency sampling** for role C | LLM value errors | Hidden precision of the `llm_grounded` bucket is below τ. |
-| **Generic structural DOM collectors** (repeated structure, label–value pairs, typed value spotting) | Cold-mode cost or coverage on DOM-only sites | Role C cost or coverage on DOM-only fresh sites misses target, and dev shows the collector would help. **Label–value pairs and the main image admitted 2026-10-16** by the owner from the reference eval (Appendix A #42); repeated structure for listing row item URLs only (§8.6, Appendix A #47); other repeated structure and typed value spotting are not. |
+| **Learned, calibrated ranker** (gradient boosting, Platt/isotonic, conformal routing) | Wrong choices among valid, disagreeing candidates | Precedence or `conflict` decisions cause a material share of golden-set errors or lost coverage. |
+| **LLM adjudication** among conflicting candidates | `conflict` abstentions on resolvable cases | The `conflict` rate on golden-set required fields is material, and labels show one candidate was right. |
+| **Independent verifier** for configs | Wrong selectors that validate against themselves | Golden-set precision of `uncorroborated` config fields is below τ, and they are a material share of fields. |
+| **Self-consistency sampling** for role C | LLM value errors | Golden-set precision of the `llm_grounded` bucket is below τ. |
+| **Generic structural DOM collectors** (repeated structure, label–value pairs, typed value spotting) | Cold-mode cost or coverage on DOM-only sites | **Admitted.** Label–value pairs and the main image 2026-10-16 (Appendix A #42); repeated structure for row item URLs 2026-10-16 (Appendix A #47); **the item layer 2026-10-18** (Appendix A #67): rows from repeated sibling structures of one shape (segment, align, bind) and typed value spotting, with no hostname, class fragment, phrase list or card selector. |
 | **More platform adapters** (iCIMS, Paycom; Shopify admitted, Appendix A #46; Workday, Oracle Recruiting, Ashby, SmartRecruiters, Recruitee, Workable, Rippling, BambooHR, Teamtailor, UKG Pro, Personio and ADP admitted, #57) | Coverage or cost on those platforms | Results for the platform fall short through the generic path, or volume justifies it (OPEN_QUESTIONS #2). |
 | **Variant-matrix handling** | Per-variant price and availability; the multiple-Offer `conflict` | **Admitted 2026-10-15** by the owner ahead of labels (Appendix A #37); designed in SPEC-13. |
-| **Anti-bot measures**: allowlisting program, cookie handoff, vendor strategies, real Chrome with a behaviour layer (Appendix A #20 owner note: no Patchright on real Chrome), residential proxies, unblockers, CAPTCHA handling, detection bench | Blocked pages | The `blocked` or `shell` outcome rate for a category is material. The cheapest measure that fixes the blocked class is admitted first. **Admitted 2026-10-17** under owner delegation (Appendix A #58): Chrome TLS and HTTP/2 impersonation on every HTTP client, JSON calls sent as a page's `fetch()`, an adaptive per-host rate, proxy pools with rotation, stickiness and endpoint health, challenge labels from vendor signature data, and an in-memory cookie handoff from a browser solve. Still out: CAPTCHA solving or clicking, behaviour emulation, fingerprint spoofing, real Chrome or headed browsers, residential proxies, unblockers. |
+| **Anti-bot measures**: allowlisting program, cookie handoff, vendor strategies, real Chrome with a behaviour layer (Appendix A #20 owner note: no Patchright on real Chrome), residential proxies, unblockers, CAPTCHA handling, detection bench | Blocked pages | The `blocked` or `shell` outcome rate for a category is material. The cheapest measure that fixes the blocked class is admitted first. **Admitted 2026-10-17** under owner delegation (Appendix A #58): Chrome TLS and HTTP/2 impersonation on every HTTP client, JSON calls sent as a page's `fetch()`, an adaptive per-host rate, proxy pools with rotation, stickiness and endpoint health, challenge labels from vendor signature data, and an in-memory cookie handoff from a browser solve. Resource blocking by resource type admitted 2026-10-18 (Appendix A #67). Still out: CAPTCHA solving or clicking, behaviour emulation, fingerprint spoofing, real Chrome or headed browsers. **Deferred** (Appendix A #67, decision 7): residential proxies and managed-access unblockers; a vendor-blocked page stays `blocked` with its label. |
 | **Network data-source layer**: the page's own fetch/XMLHttpRequest calls read as data | Pages whose data loads through their own API calls | **Admitted 2026-10-17** under the owner's delegation (Appendix A #59, after #53): captured JSON calls, one shared reader, listing rows from call series, a `network` evidence bucket, then listing recipes with pagination. |
 | **Recurring schedule storage** | Callers having to re-submit | Recurring volume makes re-submission a burden. **Admitted 2026-10-17** under the owner's delegation (Appendix A #64): schedules of batch, crawl and extract requests on a cron expression or an interval, each due run submitted exactly once by the scheduler, and webhook events beyond the job's end from a durable outbox. |
 | **Review queue UI** beyond labeling and config correction | Operator throughput | Operators correct configs often enough that the API and config view slow them down. |
@@ -152,7 +172,7 @@ is measured after it is added.
 | **Site health dashboard, alerts** | Operations | Production use starts. |
 | **WARC capture format** | Interoperability with archive tools | Someone needs pywb or WARC output. |
 | **Output formats**: page screenshot and PDF, pruned and chunked markdown, JSONL, Excel and Parquet exports, `llms.txt` | Scope | **Admitted 2026-10-17** under owner delegation (Appendix A #63): screenshot and PDF from the browser rung, deterministic `markdown_fit` and `chunks`, `jsonl`, `xlsx` and `parquet` exports, `llms.txt` and `llms-full.txt`, on every surface. Still out: an LLM-made summary of a page, OCR of a screenshot. |
-| **Web search; browser actions; authenticated crawls** | Scope | The owner decides (Appendix A #21). **Web search admitted 2026-10-17** under the owner's delegation (Appendix A #62): an operator-configured provider, `POST /v1/search`, results optionally scraped through the batch job; no built-in scraping of a search engine. **Browser actions admitted 2026-10-17** for a single-URL listing scrape only, opt-in: scroll and structural paging controls, never typing, forms, logins or CAPTCHA (Appendix A #52). **Extended 2026-10-17** under owner delegation (Appendix A #61): the caller's own page steps (wait, click, scroll, press, type) on any page kind and every job kind, typing refused in password and credential fields; **authenticated crawls admitted** only on the caller's own session cookies or headers, never a login or credential entry by the engine. |
+| **Web search; browser actions; authenticated crawls** | Scope | The owner decides (Appendix A #21). **Web search admitted 2026-10-17** under the owner's delegation (Appendix A #62): an operator-configured provider, `POST /v1/search`, results optionally scraped through the batch job; no built-in scraping of a search engine. **Browser actions admitted 2026-10-17** for a single-URL listing scrape only, opt-in (on by default for a single-URL scrape in `auto` since 2026-10-18, Appendix A #67): scroll and structural paging controls, never typing, forms, logins or CAPTCHA (Appendix A #52). **Extended 2026-10-17** under owner delegation (Appendix A #61): the caller's own page steps (wait, click, scroll, press, type) on any page kind and every job kind, typing refused in password and credential fields; **authenticated crawls admitted** only on the caller's own session cookies or headers, never a login or credential entry by the engine. |
 
 ## 23. Deferred: page-type gate
 

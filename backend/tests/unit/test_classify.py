@@ -312,3 +312,10 @@ def test_an_interstitial_is_a_refusal_that_can_navigate_and_is_no_page_of_the_si
     status: int, headers: tuple[tuple[str, str], ...], body: bytes, expected: bool
 ) -> None:
     assert interstitial(status, headers, body, _AT) is expected
+
+
+def test_a_json_ld_block_nested_deeper_than_the_parser_follows_states_no_items() -> None:
+    deep = "[" * 100_000 + "]" * 100_000
+    page = _listing(_SCRIPT_GRID + f'<script type="application/ld+json">{deep}</script>')
+
+    assert classify(200, _HTML, page, page_kind="listing") == "shell"
