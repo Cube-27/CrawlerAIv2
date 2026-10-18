@@ -1,4 +1,4 @@
-"""Evidence, calibration and τ (SPEC-05 §4.9, ARCHITECTURE §10, INV-02, INV-22): what a field's choice becomes.
+"""Evidence, calibration and τ (SPEC-05 §4.9, ARCHITECTURE §10, INV-22): what a field's choice becomes.
 
 Preference chose a value, or declined (`resolve.preference`). Here a chosen value gets its evidence bucket, the
 bucket's precision measured on dev as its confidence, and the `calibrated` flag; a calibrated bucket below τ abstains.
@@ -51,7 +51,7 @@ class Bucket(_Model):
 
 
 class Calibration(_Model):
-    """`backend/data/calibration.json`: per `"field_type|evidence"` bucket, its dev measurement (INV-02)."""
+    """`backend/data/calibration.json`: per `"field_type|evidence"` bucket, its golden-set measurement."""
 
     calibration_version: Literal[1] = 1
     source_split: Literal["dev"] = "dev"
@@ -70,7 +70,7 @@ class Calibration(_Model):
 
 
 def load_calibration(path: Path) -> Calibration | None:
-    """The calibration at `path`, stamped `source_split: dev` (INV-02); `None` when none was fitted, so every bucket is
+    """The calibration at `path`, stamped `source_split: dev`; `None` when none was fitted, so every bucket is
     uncalibrated, as `core.engine_version` reports it (`cal.none`)."""
     try:
         text = path.read_text(encoding="utf-8")

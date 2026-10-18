@@ -1,8 +1,6 @@
-"""Metrics and the aggregate report (SPEC-03 §4.6, §4.7; ARCHITECTURE §16.3).
+"""Metrics and the golden-set report (evaluation spec, "Replay harness and metrics").
 
-Pure functions over labels and engine output: `build_report` scores replayed pages against their checked labels,
-and `export_aggregate` turns a report into the form that may leave the protected job (no pages, small cells
-suppressed).
+Pure functions over labels and engine output: `build_report` scores replayed pages against their labels.
 
 A row-mapped field (SPEC-13 §4.10) is scored per sub-field, as `<field>.<sub>` in `list.<type>` cells: engine rows
 match label rows by the field's key, and row precision and recall count the matches.
@@ -12,7 +10,7 @@ match label rows by the field's key, and row precision and recall count the matc
 """
 
 from collections import Counter, defaultdict
-from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, Self
 
@@ -38,8 +36,6 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 
 # §4.6: listing rows match by their canonicalized `url`.
 _URL = FieldSpec(type=FieldType.URL)
-# ARCHITECTURE §16.3: hidden and fresh aggregates suppress cells with fewer than 10 labeled fields.
-MIN_CELL = 10
 # The label statuses that count by default: checked pages only (§16.2). Drafts count only in a dev report that asks
 # for them (D-1461).
 CHECKED: frozenset[LabelStatus] = frozenset({"checked"})
@@ -84,7 +80,7 @@ class PageOutput(_Model):
 
 
 class ReplayFailed(_Model):
-    """A page whose replay failed (§4.11): it is dropped from the metrics, which the `n_pages` gate catches."""
+    """A page whose replay failed: it is dropped from the metrics and `n_pages`, and listed with its error."""
 
     error: str
 
@@ -183,38 +179,32 @@ class Usage(_Model):
     n: int  # pages run in this mode
 
 
-class Suppressed(_Model):
-    """A cell under `MIN_CELL`, reported by its size only."""
-
-    n: int
-
-
 class Report(_Model):
     report_version: Literal[1] = 1
     engine_version: str
     git_sha: str
     split: Split
     n_pages: int
-    by_field_type: dict[str, FieldMetrics | Suppressed]
-    by_field: dict[str, FieldMetrics | Suppressed]  # "schema|field"; empty in a hidden/fresh aggregate
-    by_bucket: dict[str, PrecisionMetrics | Suppressed]  # "field_type|evidence"
-    by_config_status: dict[str, PrecisionMetrics | Suppressed]  # "field_type|status"
-    by_category: dict[str, ZeroTouch | Suppressed]
-    acquisition: dict[str, dict[BlockClass, int] | Suppressed]  # per category
-    usage: dict[str, Usage | Suppressed]  # per mode
-    pages: tuple[PageDetail, ...] | None = None  # dev only, unsuppressed (§4.7)
-    # "rule_type|source_kind" (SPEC-05 §4.11): dev only, like `pages`.
-    by_source: dict[str, SourceMetrics | Suppressed] = {}
-    # Row-mapped fields (SPEC-13 §4.10): over all of them, and per "schema|field" (empty in a hidden/fresh aggregate).
-    # `None` when no checked page labels one.
-    row_matching: RowMetrics | Suppressed | None = None
-    row_matching_by_field: dict[str, RowMetrics | Suppressed] = {}
-    # The label statuses scored: checked only, except in a dev report that asks for drafts too (D-1461). A list, so a
-    # Python dump of the report is still JSON, as `eval_run.metrics` holds it.
+    by_field_type: dict[str, FieldMetrics]
+    by_field: dict[str, FieldMetrics]  # "schema|field"
+    by_bucket: dict[str, PrecisionMetrics]  # "field_type|evidence"
+    by_config_status: dict[str, PrecisionMetrics]  # "field_type|status"
+    by_category: dict[str, ZeroTouch]
+    acquisition: dict[str, dict[BlockClass, int]]  # per category
+    usage: dict[str, Usage]  # per mode
+    pages: tuple[PageDetail, ...] | None = None
+    # "rule_type|source_kind" (SPEC-05 §4.11).
+    by_source: dict[str, SourceMetrics] = {}
+    # Row-mapped fields (SPEC-13 §4.10): over all of them, and per "schema|field". `None` when no scored page labels
+    # one.
+    row_matching: RowMetrics | None = None
+    row_matching_by_field: dict[str, RowMetrics] = {}
+    # The label statuses scored: checked only, unless the report asks for drafts too. A list, so a Python dump of the
+    # report is still JSON, as `eval_run.metrics` holds it.
     label_statuses: list[LabelStatus] = ["checked"]
-    # Dev only, like `by_field`: per "page_kind|field_type", and the count of each kind of disagreement per
-    # "schema|field" (`disagreement`), for triage.
-    by_page_kind: dict[str, FieldMetrics | Suppressed] = {}
+    # Per "page_kind|field_type", and the count of each kind of disagreement per "schema|field" (`disagreement`), for
+    # triage.
+    by_page_kind: dict[str, FieldMetrics] = {}
     disagreements: dict[str, dict[str, int]] = {}
     # Which unmatched engine rows count as FP (`RowScope`, D-1480).
     rows_scored: RowScope = "all"
@@ -248,14 +238,9 @@ def build_report(
     statuses: frozenset[LabelStatus] = CHECKED,
     rows: RowScope = "all",
 ) -> Report:
-    """Score every case whose label status is in `statuses`: checked only (§4.3), unless a dev report asks for drafts
-    too (D-1461), whose unlabeled fields are not scored. Failed replays are dropped from `n_pages` and every metric.
-    Per-page detail is kept for dev only. `rows` says which unmatched engine rows count as FP (`RowScope`); only a dev
-    report bounds them (D-1480)."""
-    if statuses != CHECKED and split != "dev":
-        raise ValueError(f"only a dev report scores labels that are not checked, not a {split} one")
-    if rows != "all" and split != "dev":
-        raise ValueError(f"only a dev report bounds the engine rows it scores, not a {split} one")
+    """Score every case whose label status is in `statuses`: checked only, unless the report asks for drafts too,
+    whose unlabeled fields are not scored. Failed replays are dropped from `n_pages` and every metric. `rows` says
+    which unmatched engine rows count as FP (`RowScope`)."""
     scored, details, row_counts = _score(cases, statuses, rows)
     by_type: defaultdict[str, list[Judgment]] = defaultdict(list)
     by_field: defaultdict[str, list[Judgment]] = defaultdict(list)
@@ -277,7 +262,6 @@ def build_report(
             if (status := _config_status(case, j)) is not None:
                 by_config[f"{type_}|{status}"].append(j)
 
-    dev = split == "dev"
     return Report(
         engine_version=engine_version,
         git_sha=git_sha,
@@ -299,14 +283,13 @@ def build_report(
             k: Usage(llm_calls_per_1k_pages=1000 * sum(o.llm_calls for o in outs) / len(outs), n=len(outs))
             for k, outs in sorted(pages_by_mode.items())
         },
-        pages=tuple(details) if dev else None,
-        # Precedence is fitted on dev only (C1, INV-02), so no other split measures per kind.
-        by_source=_by_source((c.schema_def, js) for c, _, js, _ in scored) if dev else {},
+        pages=tuple(details),
+        by_source=_by_source((c.schema_def, js) for c, _, js, _ in scored),
         row_matching=sum(row_counts.values(), _RowCount()).metrics() if row_counts else None,
         row_matching_by_field={k: v.metrics() for k, v in sorted(row_counts.items())},
         label_statuses=sorted(statuses),
-        by_page_kind={k: _field_metrics(v) for k, v in sorted(by_kind.items())} if dev else {},
-        disagreements=_disagreements(by_field) if dev else {},
+        by_page_kind={k: _field_metrics(v) for k, v in sorted(by_kind.items())},
+        disagreements=_disagreements(by_field),
         rows_scored=rows,
     )
 
@@ -382,57 +365,7 @@ def _cell_type(schema: SchemaFields, field: str) -> str:
     return f"list.{sub_fields(spec)[sub].type.value}" if sub else spec.type
 
 
-def export_aggregate(report: Report) -> Report:
-    """The report as it may leave the protected job (§4.7): no per-page rows, and every cell under `MIN_CELL`
-    reduced to its `n`. Page-level cells (category, acquisition, usage) count pages, which is stricter than counting
-    the fields on them. Per-field cells stay in the job for hidden and fresh: their keys name schemas, and §4.7 and C10
-    expose aggregates per field type and evidence bucket only.
-
-    Hidden and fresh aggregates also suppress complementarily (§16.3, D-0234), in every group of cells that sums to
-    a reported total: the bucket cells and the config-status cells of one field type (published fields of that
-    type), and the category cells and the usage cells (pages, which sum to `n_pages`)."""
-    dev = report.split == "dev"
-    by_category = _complement(_suppress_all(report.by_category), _whole, dev)
-    return report.model_copy(
-        update={
-            "by_field_type": _suppress_all(report.by_field_type),
-            "by_field": _suppress_all(report.by_field) if dev else {},
-            "by_bucket": _complement(_suppress_all(report.by_bucket), _field_type, dev),
-            "by_config_status": _complement(_suppress_all(report.by_config_status), _field_type, dev),
-            "by_category": by_category,
-            # Acquisition counts the same pages as the category's zero-touch cell, so it shares that suppression.
-            "acquisition": {
-                k: cell if isinstance(cell, Suppressed) else report.acquisition[k] for k, cell in by_category.items()
-            },
-            "usage": _complement(_suppress_all(report.usage), _whole, dev),
-            "pages": None,
-            "by_source": _suppress_all(report.by_source) if dev else {},
-            "row_matching": _suppress(report.row_matching) if report.row_matching is not None else None,
-            # Its keys name schemas, as `by_field`'s do.
-            "row_matching_by_field": _suppress_all(report.row_matching_by_field) if dev else {},
-            # Its cells split a field type's into parts, which would give one suppressed part away (§16.3).
-            "by_page_kind": _suppress_all(report.by_page_kind) if dev else {},
-            "disagreements": report.disagreements if dev else {},
-        }
-    )
-
-
-def generalization_gap(dev: Report, fresh: Report) -> dict[str, float]:
-    """`precision_dev - precision_fresh` per field type (§4.6), where both have a reported precision."""
-    gap: dict[str, float] = {}
-    for type_, cell in sorted(dev.by_field_type.items()):
-        other = fresh.by_field_type.get(type_)
-        if (
-            isinstance(cell, FieldMetrics)
-            and isinstance(other, FieldMetrics)
-            and cell.precision is not None
-            and other.precision is not None
-        ):
-            gap[type_] = cell.precision - other.precision
-    return gap
-
-
-def _by_source(pages: Iterable[tuple[SchemaFields, Sequence[Judgment]]]) -> dict[str, SourceMetrics | Suppressed]:
+def _by_source(pages: Iterable[tuple[SchemaFields, Sequence[Judgment]]]) -> dict[str, SourceMetrics]:
     """Per rule type and source kind, the fields the kind offered a value for, scored against their labels. A list is
     measured as its item type, whose precedence order ranks it (SPEC-05 §4.7)."""
     cells: defaultdict[tuple[FieldType, SourceKind], list[SourceCell]] = defaultdict(list)
@@ -712,47 +645,3 @@ def _precision(judgments: Sequence[Judgment]) -> PrecisionMetrics:
     count = Counter(j.cell for j in judgments)
     tp, fp = count["TP"], count["FP"]
     return PrecisionMetrics(precision=_ratio(tp, tp + fp), n=tp + fp)
-
-
-def _suppress_all[C: FieldMetrics | PrecisionMetrics | ZeroTouch | Usage | RowMetrics | Suppressed](
-    table: Mapping[str, C],
-) -> dict[str, C | Suppressed]:
-    return {k: _suppress(v) for k, v in table.items()}
-
-
-def _suppress[C: FieldMetrics | PrecisionMetrics | ZeroTouch | Usage | RowMetrics | Suppressed](
-    cell: C,
-) -> C | Suppressed:
-    return Suppressed(n=cell.n) if cell.n < MIN_CELL else cell
-
-
-def _complement[C: PrecisionMetrics | ZeroTouch | Usage](
-    table: Mapping[str, C | Suppressed], group_of: Callable[[str], str], dev: bool
-) -> dict[str, C | Suppressed]:
-    """Complementary suppression (§16.3): a group whose cells sum to a reported total must not show all its cells
-    but one, or that one is the total minus the others. So when exactly one cell of a group is suppressed, the
-    next-smallest cell (ties by key) is suppressed too; with two hidden, only their sum is derivable. A group of one
-    cell equals its total, which is reported at its own size by design, so it is left as is. Dev is reported in full
-    (§4.7), so it gets none."""
-    out = dict(table)
-    if dev:
-        return out
-    groups: defaultdict[str, list[str]] = defaultdict(list)
-    for key in table:
-        groups[group_of(key)].append(key)
-    for keys in groups.values():
-        visible = [k for k in keys if not isinstance(out[k], Suppressed)]
-        if len(keys) - len(visible) == 1 and visible:
-            nearest = min(visible, key=lambda k: (out[k].n, k))
-            out[nearest] = Suppressed(n=out[nearest].n)
-    return out
-
-
-def _field_type(key: str) -> str:
-    # "field_type|evidence" and "field_type|status": the group is the field type.
-    return key.split("|", 1)[0]
-
-
-def _whole(_key: str) -> str:
-    # Category and usage cells count pages; together they count every page in `n_pages`.
-    return ""

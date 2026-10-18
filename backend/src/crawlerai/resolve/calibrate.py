@@ -1,4 +1,4 @@
-"""Precedence fitting (SPEC-05 §4.11, ARCHITECTURE §10, INV-02): the fit behind `crawlerai eval fit-precedence`
+"""Precedence fitting (SPEC-05 §4.11, ARCHITECTURE §10): the fit behind `crawlerai eval fit-precedence`
 (`eval.calibrate`), from a dev run's measurements. Calibration needs no fit: a bucket's calibration is its dev
 measurement, which `eval.calibrate` copies from the run's report.
 
@@ -17,7 +17,7 @@ from crawlerai.resolve.evidence import MIN_CALIBRATED_N
 @dataclass(frozen=True, slots=True)
 class Measured:
     """One dev cell of a source kind: `n` judged fields, the precision of their values, and the coverage of the
-    labeled values. `precision` is `None` when no field of the cell could be scored (or the cell is suppressed)."""
+    labeled values. `precision` is `None` when no field of the cell could be scored."""
 
     n: int
     precision: float | None

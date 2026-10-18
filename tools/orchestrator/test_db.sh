@@ -2,11 +2,11 @@
 # test_db.sh up|drop [NAME] — the one shared local Postgres for DB tests, so agents don't start a container each.
 # The container is `crawlerai-test-pg` (postgres:16) on 127.0.0.1 (never localhost: asyncpg can hang resolving it on
 # Windows), port $TEST_PG_PORT (default 55432, beside the dev database's 5432). NAME (default: the current worktree's
-# directory name) owns two databases in it, crawlerai_test_<name> and crawlerai_test_<name>_private.
+# directory name) owns one database in it, crawlerai_test_<name>.
 #   up    starts the container if it is absent or stopped (a new one gets the roles and databases of
-#         infra/postgres/init.sql), recreates NAME's two databases empty, owned by `app`, and prints the two variables
-#         that point tests/db at them: eval "$(tools/orchestrator/test_db.sh up)"
-#   drop  drops NAME's two databases; the container stays for other worktrees. A no-op when it is not running.
+#         infra/postgres/init.sql), recreates NAME's database empty, owned by `app`, and prints the variable that
+#         points tests/db at it: eval "$(tools/orchestrator/test_db.sh up)"
+#   drop  drops NAME's database; the container stays for other worktrees. A no-op when it is not running.
 #         cleanup_worktree.sh runs it.
 # Exits 2 on bad arguments, 1 with an ERROR on stderr when Docker or Postgres fails.
 set -u
@@ -22,14 +22,13 @@ slug=$(tr '[:upper:]' '[:lower:]' <<< "$name" | tr -c 'a-z0-9\n' '_')
 container=crawlerai-test-pg
 port=${TEST_PG_PORT:-55432}
 main_db=crawlerai_test_$slug
-private_db=${main_db}_private
 init_sql="$(dirname "${BASH_SOURCE[0]}")/../../infra/postgres/init.sql"
 
 running() { [[ $(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null) == true ]]; }
 psql_admin() {
   docker exec -i -e PGOPTIONS=-cclient_min_messages=warning "$container" psql -v ON_ERROR_STOP=1 -q -U postgres "$@"
 }
-drop_sql=(-c "DROP DATABASE IF EXISTS $main_db WITH (FORCE)" -c "DROP DATABASE IF EXISTS $private_db WITH (FORCE)")
+drop_sql=(-c "DROP DATABASE IF EXISTS $main_db WITH (FORCE)")
 
 # Ready on TCP: the image's first-start init runs a server on the Unix socket only, then restarts it.
 wait_ready() {
@@ -57,12 +56,10 @@ start() {
 
 if [[ $action == drop ]]; then
   running || exit 0
-  psql_admin "${drop_sql[@]}" || err "could not drop the databases of $name"
+  psql_admin "${drop_sql[@]}" || err "could not drop the database of $name"
   exit 0
 fi
 
 start
-psql_admin "${drop_sql[@]}" -c "CREATE DATABASE $main_db OWNER app" -c "CREATE DATABASE $private_db OWNER app" \
-  || err "could not create the databases of $name"
+psql_admin "${drop_sql[@]}" -c "CREATE DATABASE $main_db OWNER app" || err "could not create the database of $name"
 echo "export CRAWLERAI_TEST_DATABASE_URL=postgresql+asyncpg://app:app@127.0.0.1:$port/$main_db"
-echo "export CRAWLERAI_TEST_PRIVATE_DATABASE_URL=postgresql+asyncpg://app:app@127.0.0.1:$port/$private_db"

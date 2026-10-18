@@ -1,6 +1,5 @@
-"""`crawlerai eval calibrate` and `crawlerai eval fit-precedence` (SPEC-03 §4.4, SPEC-05 §4.11, INV-02): both fit on a
-dev run only, refuse every other split before opening a store, and stamp what they write with `source_split: dev`.
-Synthetic runs only (C9)."""
+"""`crawlerai eval calibrate` and `crawlerai eval fit-precedence` (SPEC-05 §4.11): both fit on a stored golden-set run
+and stamp what they write with `source_split: dev`. Synthetic runs only (C9)."""
 
 import json
 import uuid
@@ -10,11 +9,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from crawlerai import cli
-from crawlerai.cli import main
-from crawlerai.db.models import EvalRunId, SourceKind, Split
+from crawlerai.db.models import EvalRunId, SourceKind
 from crawlerai.eval.calibrate import (
-    NotDev,
     Orders,
     Precedence,
     PrecedenceMissing,
@@ -30,7 +26,6 @@ from crawlerai.eval.metrics import (
     Report,
     SchemaFields,
     SourceMetrics,
-    Suppressed,
     build_report,
 )
 from crawlerai.eval.store import EvalRunRow
@@ -44,14 +39,13 @@ CURRENT = "text: [adapter, api, jsonld, microdata, og, config, llm]\nurl: [adapt
 
 
 def _run(
-    split: Split = "dev",
-    by_bucket: Mapping[str, PrecisionMetrics | Suppressed] | None = None,
-    by_source: Mapping[str, SourceMetrics | Suppressed] | None = None,
+    by_bucket: Mapping[str, PrecisionMetrics] | None = None,
+    by_source: Mapping[str, SourceMetrics] | None = None,
 ) -> EvalRunRow:
     report = Report(
         engine_version=f"{SHA}+cal.none",
         git_sha=SHA,
-        split=split,
+        split="dev",
         n_pages=3,
         by_field_type={},
         by_field={},
@@ -64,7 +58,7 @@ def _run(
     )
     return EvalRunRow(
         id=RUN_ID,
-        split=split,
+        split="dev",
         engine_version=report.engine_version,
         git_sha=SHA,
         metrics=report.model_dump(mode="json"),
@@ -94,17 +88,14 @@ def test_calibration_is_the_dev_runs_bucket_table_stamped_with_its_source(tmp_pa
     }
 
 
-def test_a_suppressed_bucket_keeps_its_size_and_no_precision(tmp_path: Path) -> None:
-    run = _run(by_bucket={"url|agreed": Suppressed(n=4)})
-
-    buckets = json.loads(write_calibration(calibrate(run), tmp_path).read_bytes())["buckets"]
-
-    assert buckets == {"url|agreed": {"n": 4, "precision": None}}
-
-
 def test_calibrating_the_same_run_twice_writes_the_same_bytes(tmp_path: Path) -> None:
     # The engine version hashes this file (SPEC-01 §4.7), so a refit of the same run must not change it.
-    run = _run(by_bucket={"b|agreed": PrecisionMetrics(precision=1.0, n=40), "a|adapter": Suppressed(n=2)})
+    run = _run(
+        by_bucket={
+            "b|agreed": PrecisionMetrics(precision=1.0, n=40),
+            "a|adapter": PrecisionMetrics(precision=None, n=0),
+        }
+    )
     first = write_calibration(calibrate(run), tmp_path / "1").read_bytes()
 
     second = write_calibration(calibrate(run), tmp_path / "2").read_bytes()
@@ -112,13 +103,6 @@ def test_calibrating_the_same_run_twice_writes_the_same_bytes(tmp_path: Path) ->
     assert first == second
     assert first.endswith(b"}\n")
     assert b"\r" not in first
-
-
-def test_calibration_refuses_a_run_that_is_not_dev() -> None:
-    run = _run("hidden")
-
-    with pytest.raises(NotDev, match="refusing the hidden split"):
-        calibrate(run)
 
 
 def test_a_run_without_per_kind_cells_keeps_the_current_order(tmp_path: Path) -> None:
@@ -146,7 +130,7 @@ def test_precedence_orders_the_measured_kinds_by_dev_precision(tmp_path: Path) -
         by_source={
             "url|jsonld": SourceMetrics(precision=0.90, coverage=0.9, n=40),
             "url|og": SourceMetrics(precision=0.99, coverage=0.5, n=40),
-            "url|adapter": Suppressed(n=3),
+            "url|adapter": SourceMetrics(precision=None, coverage=None, n=3),
         }
     )
     current: Orders = {"url": ("adapter", "jsonld", "og")}
@@ -167,34 +151,6 @@ def test_a_malformed_precedence_file_is_refused(tmp_path: Path, text: str) -> No
 
     with pytest.raises(ValueError, match=r"source_precedence\.yaml"):
         read_precedence(tmp_path)
-
-
-def test_precedence_refuses_a_run_that_is_not_dev() -> None:
-    run = _run("hidden")
-    current: Orders = {"text": ("adapter",)}
-
-    with pytest.raises(NotDev, match="refusing the hidden split"):
-        fit_precedence(run, current)
-
-
-@pytest.mark.parametrize("command", ["calibrate", "fit-precedence"])
-def test_the_commands_exit_non_zero_on_a_private_split_without_opening_a_store(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], command: str
-) -> None:
-    split = "fresh"
-
-    def no_store(*args: object) -> None:
-        raise AssertionError("a store was opened")
-
-    monkeypatch.setattr(cli, "dev_store", no_store)
-    monkeypatch.setattr(cli, "private_store", no_store)
-    argv = ["eval", command, "--split", split, "--run", str(RUN_ID)]
-
-    with pytest.raises(SystemExit) as exit_:
-        main(argv)
-
-    assert exit_.value.code == 2
-    assert f"refusing the {split} split" in capsys.readouterr().err
 
 
 def test_the_precedence_reader_skips_exactly_the_stamp_the_writer_adds() -> None:

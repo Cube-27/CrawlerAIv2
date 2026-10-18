@@ -36,7 +36,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 PRECEDENCE_FILE = "source_precedence.yaml"
 # ARCHITECTURE §10: the types whose candidates rank by source kind; every other type publishes only on agreement.
 PRECEDENCE_TYPES = frozenset({FieldType.TEXT, FieldType.LONG_TEXT, FieldType.URL, FieldType.IMAGE_URL})
-# What `crawlerai eval fit-precedence` stamps on the file (INV-02); every other key names a field type.
+# What `crawlerai eval fit-precedence` stamps on the file; every other key names a field type.
 STAMP = frozenset({"source_split", "eval_run_id", "git_sha"})
 _SOURCE_KINDS: frozenset[str] = frozenset(get_args(SourceKind))
 # The screening stages in the order a candidate meets them; a missing field states the furthest one reached.
@@ -387,7 +387,7 @@ def _scalars(raw: Raw) -> Iterator[str]:
 
 
 def load_precedence(path: Path) -> dict[FieldType, tuple[SourceKind, ...]]:
-    """The orders of a `source_precedence.yaml`: fitted on dev only (INV-02), with one order per precedence type."""
+    """The orders of a `source_precedence.yaml`: fitted on the golden set, with one order per precedence type."""
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(document, dict) or document.get("source_split") != "dev":
         raise ValueError(

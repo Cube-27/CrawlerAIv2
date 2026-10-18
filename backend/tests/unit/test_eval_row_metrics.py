@@ -1,5 +1,5 @@
 """Row-mapped field metrics (SPEC-13 §4.10): engine rows matched to label rows by key, `list.<type>` cells, row
-precision and recall, wrong product from `distractor_keys`, and their suppression in an aggregate (INV-25)."""
+precision and recall and wrong product from `distractor_keys`."""
 
 from typing import Any
 
@@ -8,7 +8,6 @@ from pydantic import JsonValue
 
 from crawlerai.eval.labels import Labels
 from crawlerai.eval.metrics import (
-    MIN_CELL,
     EvalCase,
     FieldMetrics,
     FieldOutput,
@@ -17,10 +16,8 @@ from crawlerai.eval.metrics import (
     Report,
     RowMetrics,
     SchemaFields,
-    Suppressed,
     ZeroTouch,
     build_report,
-    export_aggregate,
 )
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -117,8 +114,8 @@ def case(
     )
 
 
-def report(*cases: EvalCase, split: Any = "dev") -> Report:
-    return build_report(cases, split, "0.0.0+cal.0", "a" * 40)
+def report(*cases: EvalCase) -> Report:
+    return build_report(cases, "dev", "0.0.0+cal.0", "a" * 40)
 
 
 def metrics(cell: object) -> FieldMetrics:
@@ -208,26 +205,12 @@ def test_row_fields_do_not_change_zero_touch() -> None:
     assert r.by_category["custom_store"] == ZeroTouch(zero_touch=1.0, n=1)
 
 
-def test_dev_reports_row_matching_per_field() -> None:
-    r = export_aggregate(report(case("p1", [label_row("W-11")], [engine_row("W-11")])))
+def test_the_report_has_row_matching_per_field() -> None:
+    r = report(case("p1", [label_row("W-11")], [engine_row("W-11"), engine_row("W-13")]))
 
-    assert r.row_matching_by_field == {"commerce_detail|variants": Suppressed(n=1)}
-
-
-def test_a_hidden_aggregate_suppresses_the_new_cells() -> None:
-    # INV-25: cells under MIN_CELL labeled fields are reduced to their n; per-field cells stay in the job.
-    small = [case(f"p{i}", [label_row("W-11")], [engine_row("W-11")]) for i in range(MIN_CELL - 1)]
-    large = [case(f"q{i}", [label_row("W-11")], [engine_row("W-11")]) for i in range(MIN_CELL)]
-
-    hidden = export_aggregate(report(*small, split="hidden"))
-    shown = export_aggregate(report(*large, split="hidden"))
-
-    assert hidden.by_field_type["list.identifier"] == Suppressed(n=MIN_CELL - 1)
-    assert hidden.row_matching == Suppressed(n=MIN_CELL - 1)
-    assert hidden.row_matching_by_field == {}
-    assert isinstance(shown.by_field_type["list.identifier"], FieldMetrics)
-    assert shown.row_matching == RowMetrics(row_precision=1.0, row_recall=1.0, engine_rows=MIN_CELL, n=MIN_CELL)
-    assert shown.row_matching_by_field == {}
+    assert r.row_matching_by_field == {
+        "commerce_detail|variants": RowMetrics(row_precision=0.5, row_recall=1.0, engine_rows=2, n=1)
+    }
 
 
 @pytest.mark.parametrize(

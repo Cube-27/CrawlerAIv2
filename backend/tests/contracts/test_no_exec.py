@@ -11,8 +11,8 @@ SRC = Path(__file__).resolve().parents[2] / "src"
 
 # Builtins that turn a string into running code.
 CODE_BUILTINS = frozenset({"exec", "eval", "compile"})
-# Modules allowed to start processes, each with its reason: `eval.gate` runs `git` with fixed arguments.
-SUBPROCESS_ALLOWED = frozenset({"crawlerai/eval/gate.py"})
+# Modules allowed to start processes, each with its reason: `eval.git_head` runs `git` with fixed arguments.
+SUBPROCESS_ALLOWED = frozenset({"crawlerai/eval/git_head.py"})
 
 
 def violations(path: Path, tree: ast.AST) -> list[str]:

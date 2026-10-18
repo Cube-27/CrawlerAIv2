@@ -1,5 +1,5 @@
-"""`crawlerai eval calibrate` and `crawlerai eval fit-precedence` end to end (SPEC-03 §4.4, INV-02): each reads a dev
-run from the dev store by id and writes its file stamped `source_split: dev`. A throwaway main database
+"""`crawlerai eval calibrate` and `crawlerai eval fit-precedence` end to end: each reads a stored
+run from the eval store by id and writes its file stamped `source_split: dev`. A throwaway main database
 (`CRAWLERAI_TEST_DATABASE_URL`), a temporary data directory, a synthetic run (C9)."""
 
 import json

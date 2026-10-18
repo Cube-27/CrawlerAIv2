@@ -74,11 +74,6 @@ def test_an_unmatched_row_inside_the_labeled_count_is_still_a_false_positive() -
     assert (bounded.precision, bounded.coverage) == (3 / 4, 1.0)
 
 
-def test_only_a_dev_report_bounds_its_rows() -> None:
-    with pytest.raises(ValueError, match="only a dev report bounds"):
-        build_report([], "hidden", "e1", "abc", rows="labeled")
-
-
 @pytest.mark.parametrize(
     ("output", "label"),
     [

@@ -10,8 +10,6 @@ _REQUIRED = {
     "CRAWLERAI_OBJECT_STORE": "fs:///srv/objects",
 }
 _OPTIONAL = [
-    "CRAWLERAI_EVAL_PRIVATE_DATABASE_URL",
-    "CRAWLERAI_EVAL_PRIVATE_OBJECT_STORE",
     "CRAWLERAI_LOG_REDACT_URLS",
     "CRAWLERAI_ROLE",
     "CRAWLERAI_IMPERSONATE",
@@ -68,7 +66,6 @@ def test_optional_settings_set_empty_take_their_unset_values(env: pytest.MonkeyP
         (),
         False,
     )
-    assert (empty.eval_private_database_url, empty.eval_private_object_store) == (None, None)
 
 
 def test_the_database_url_and_llm_api_keys_are_not_shown_in_repr(env: pytest.MonkeyPatch) -> None:

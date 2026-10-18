@@ -4,10 +4,6 @@
 The tests own that database: they delete every job and task in it, and the queue tests claim and run every due task
 in it, not only their own, which is why they never use `CRAWLERAI_DATABASE_URL`. Never point it at data you want.
 
-`CRAWLERAI_TEST_PRIVATE_DATABASE_URL` names a second throwaway database, migrated with the private eval revisions
-(`alembic -n private`), for the private eval store's tests. It is never the private eval database itself (C1), and
-without it those tests are skipped.
-
 Under pytest-xdist (CI: `pytest -n`) each worker gets databases of its own, the names suffixed with the worker id
 (`crawlerai_gw0`, ...): the tests above delete and claim every row, so two workers never share one. CI creates them;
 a serial run (`uv run pytest`) uses the databases as named.
@@ -82,7 +78,6 @@ TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
 VOCABULARY = Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld"
 # Every source kind ranked, so precedence types resolve (an unfitted order declines them, D-0486).
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
-TEST_PRIVATE_DATABASE_URL = "CRAWLERAI_TEST_PRIVATE_DATABASE_URL"
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 
@@ -110,15 +105,6 @@ def anyio_backend() -> str:
 def database_url() -> str:
     url = _test_database_url(TEST_DATABASE_URL)
     config = Config(ALEMBIC_INI)
-    config.attributes["database_url"] = url
-    command.upgrade(config, "head")
-    return url
-
-
-@pytest.fixture(scope="session")
-def private_database_url() -> str:
-    url = _test_database_url(TEST_PRIVATE_DATABASE_URL)
-    config = Config(ALEMBIC_INI, ini_section="private")
     config.attributes["database_url"] = url
     command.upgrade(config, "head")
     return url

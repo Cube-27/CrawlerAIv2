@@ -2,8 +2,7 @@
 `expire_webhooks`.
 
 Only production captures expire: a row is deleted only when its `object_key` is under `captures/`, so dev eval
-bundles under `eval/` are never touched, whatever their row says (C1). Hidden and fresh bundles live in another
-store this module never opens (INV-01).
+bundles under `eval/` are never touched, whatever their row says.
 """
 
 import asyncio

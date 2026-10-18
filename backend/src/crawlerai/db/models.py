@@ -82,10 +82,9 @@ ProgressiveMode = Literal["cold", "learning", "active"]
 UsageResource = Literal[
     "llm_calls", "llm_tokens_in", "llm_tokens_out", "browser_seconds", "proxy_bytes", "http_requests"
 ]
-# Evaluation splits and stratification categories (ARCHITECTURE §16.1). Dev cases live in this database; hidden and
-# fresh cases only in the private one (C1, `crawlerai.db.private_models`).
-Split = Literal["dev", "hidden", "fresh"]
-PrivateSplit = Literal["hidden", "fresh"]
+# The one evaluation split, the golden set (evaluation spec, "One split, grown in fresh batches"), and the
+# stratification categories.
+Split = Literal["dev"]
 EvalCategory = Literal["platform_store", "custom_store", "api_backed", "job_board", "mixed"]
 WebhookStatus = Literal["pending", "delivered", "failed"]
 # What a job's webhook can be sent (`crawlerai.db.webhook_outbox`): a page its task finished, a record a task stored
@@ -103,7 +102,6 @@ def one_of(column: str, values: Any) -> str:
     return f"{column} IN ({', '.join(repr(value) for value in get_args(values))})"
 
 
-# Shared with the private eval database's models, so both databases name and type things alike.
 TYPE_ANNOTATION_MAP: dict[Any, Any] = dict.fromkeys(
     (
         ProjectId,
@@ -251,8 +249,8 @@ class SchemaDef(Base):
 
 
 class Capture(Base):
-    """A fetched page, whose bytes are the bundle at `object_key` (ARCHITECTURE §15). Production and dev captures
-    only: hidden and fresh captures never enter the main database (C1)."""
+    """A fetched page, whose bytes are the bundle at `object_key` (ARCHITECTURE §15): a production or an eval
+    capture."""
 
     __tablename__ = "capture"
     __table_args__ = (
@@ -670,14 +668,19 @@ class TaskRecord(Base):
     created_at: Mapped[datetime] = created_at_column()
 
 
-class EvalPageColumns:
-    """The `eval_page` columns both eval databases share (ARCHITECTURE §6, SPEC-03 §4.3). Each database adds the
-    split it may hold and the capture its rows reference.
+class EvalPage(Base):
+    """A page of the golden set (ARCHITECTURE §6). `labels` is the label document (`crawlerai.eval.labels`); `labeler`
+    and `checker` are the two passes, which must be different people. `schema_name` names the schema `schema_id` is,
+    so pages are listed by schema name."""
 
-    `schema_name` is plumbing: the private database has no `schema_def` to join, and pages are listed by schema name.
-    `labels` is the label document of SPEC-03 §4.3; `labeler` and `checker` are the two passes (§16.2), which must
-    be different people.
-    """
+    __tablename__ = "eval_page"
+    __table_args__ = (
+        CheckConstraint("split = 'dev'", name="split"),
+        CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
+        CheckConstraint(one_of("category", EvalCategory), name="category"),
+        CheckConstraint("checker IS NULL OR (labeler IS NOT NULL AND checker <> labeler)", name="two_people"),
+        ForeignKeyConstraint(["schema_id", "schema_name"], [SchemaDef.id, SchemaDef.name]),
+    )
 
     id: Mapped[EvalPageId] = mapped_column(primary_key=True, default=uuid7)
     split: Mapped[Split] = mapped_column(Text)
@@ -688,22 +691,18 @@ class EvalPageColumns:
     labels: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
     labeler: Mapped[str | None] = mapped_column(Text)
     checker: Mapped[str | None] = mapped_column(Text)
-    # The active config of the page's site when it was captured, if any, to measure config fields (SPEC-03 §4.5).
+    # The active config of the page's site when it was captured, if any, to measure config fields.
     config_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = created_at_column()
+    # An eval capture never expires (SPEC-01 §4.4); the reference keeps it from being deleted.
+    capture_id: Mapped[CaptureId] = mapped_column(ForeignKey(Capture.id), index=True)
 
 
-def eval_page_checks() -> tuple[CheckConstraint, ...]:
-    return (
-        CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
-        CheckConstraint(one_of("category", EvalCategory), name="category"),
-        CheckConstraint("checker IS NULL OR (labeler IS NOT NULL AND checker <> labeler)", name="two_people"),
-    )
+class EvalRun(Base):
+    """A stored evaluation run (ARCHITECTURE §6): the report of checked pages that calibration fits on."""
 
-
-class EvalRunColumns:
-    """The `eval_run` columns both eval databases share (ARCHITECTURE §6). `git_sha` is plumbing for the baseline
-    lookup (SPEC-03 §4.8): the latest run of a split whose commit is on `main`."""
+    __tablename__ = "eval_run"
+    __table_args__ = (CheckConstraint("split = 'dev'", name="split"),)
 
     id: Mapped[EvalRunId] = mapped_column(primary_key=True, default=uuid7)
     split: Mapped[Split] = mapped_column(Text)
@@ -711,26 +710,3 @@ class EvalRunColumns:
     git_sha: Mapped[str] = mapped_column(Text)
     metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = created_at_column()
-
-
-class EvalPage(EvalPageColumns, Base):
-    """A labeled dev page (SPEC-03 §4.2). Hidden and fresh pages never enter this database (C1): the CHECK on
-    `split` makes that structural."""
-
-    __tablename__ = "eval_page"
-    __table_args__ = (
-        CheckConstraint("split = 'dev'", name="split"),
-        *eval_page_checks(),
-        # `schema_name` names the schema `schema_id` is.
-        ForeignKeyConstraint(["schema_id", "schema_name"], [SchemaDef.id, SchemaDef.name]),
-    )
-
-    # A dev eval capture never expires (SPEC-01 §4.4); the reference keeps it from being deleted.
-    capture_id: Mapped[CaptureId] = mapped_column(ForeignKey(Capture.id), index=True)
-
-
-class EvalRun(EvalRunColumns, Base):
-    """A dev evaluation run (SPEC-03 §4.2). Hidden and fresh runs are kept in the private database."""
-
-    __tablename__ = "eval_run"
-    __table_args__ = (CheckConstraint("split = 'dev'", name="split"),)

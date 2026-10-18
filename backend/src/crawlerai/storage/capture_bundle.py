@@ -188,13 +188,8 @@ def capture_key(capture_id: UUID, fetched_at: datetime) -> str:
 
 
 def dev_eval_capture_key(capture_id: UUID) -> str:
-    """Dev eval captures, which never expire (SPEC-01 §4.4). Hidden and fresh bundles use another store (INV-01)."""
+    """Eval captures, which never expire (SPEC-01 §4.4)."""
     return f"eval/dev/{capture_id}.bundle.zst"
-
-
-def private_eval_capture_key(split: Literal["hidden", "fresh"], capture_id: UUID) -> str:
-    """Hidden and fresh eval captures, under the private object store root (SPEC-03 §4.2, INV-01)."""
-    return f"{split}/{capture_id}.bundle.zst"
 
 
 # HTML Standard §13.2.3.2: the prescan reads at most the first 1024 bytes for a `meta` element's `charset` attribute,

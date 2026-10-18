@@ -16,7 +16,6 @@ from crawlerai.eval.metrics import (
     Report,
     SchemaFields,
     build_report,
-    export_aggregate,
 )
 from crawlerai.eval.scoring import LONG_TEXT_MIN_SIMILARITY
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -99,12 +98,6 @@ def test_drafts_are_scored_when_asked_and_the_report_says_so() -> None:
     assert r.pages[0].label_status == "draft"
 
 
-@pytest.mark.parametrize("split", ["hidden", "fresh"])
-def test_only_a_dev_report_scores_drafts(split: Any) -> None:
-    with pytest.raises(ValueError, match="only a dev report"):
-        build_report([], split, "e1", "abc", statuses=frozenset({"draft", "checked"}))
-
-
 def test_a_field_a_draft_does_not_label_is_not_scored() -> None:
     # The brand is published but unlabeled: a draft claims nothing about it, so it is neither FP nor TN.
     r = dev_report(case("p1", draft({"price": value(EUR_19)}), {"price": published(EUR_19), "brand": published("B")}))
@@ -182,7 +175,7 @@ def test_cells_per_page_kind_split_each_field_type() -> None:
     assert cell(r.by_page_kind, "listing|text").n == 1
 
 
-def test_a_hidden_aggregate_has_no_page_kind_cells_or_disagreements() -> None:
+def test_the_report_counts_page_kind_cells_and_disagreements() -> None:
     labels = Labels.model_validate(
         {
             "label_version": 1,
@@ -196,9 +189,6 @@ def test_a_hidden_aggregate_has_no_page_kind_cells_or_disagreements() -> None:
             },
         }
     )
-    hidden = build_report([case(f"p{n}", labels, {}) for n in range(12)], "hidden", "e1", "abc")
-    assert (hidden.by_page_kind, hidden.disagreements) == ({}, {})
     dev = build_report([case(f"p{n}", labels, {}) for n in range(12)], "dev", "e1", "abc")
-    exported = export_aggregate(dev)
-    assert exported.disagreements == dev.disagreements == {"synthetic_detail|price": {"FN|not_output": 12}}
-    assert sorted(exported.by_page_kind) == ["detail|long_text", "detail|money", "detail|text"]
+    assert dev.disagreements == {"synthetic_detail|price": {"FN|not_output": 12}}
+    assert sorted(dev.by_page_kind) == ["detail|long_text", "detail|money", "detail|text"]

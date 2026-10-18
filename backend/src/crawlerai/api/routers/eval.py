@@ -1,7 +1,7 @@
 """Labeling endpoints (SPEC-03 §4.10), mounted only with `CRAWLERAI_EVAL_UI=true`.
 
-They serve the dev split only. Hidden and fresh cases never reach the main API (C1, INV-01): the backend holds a
-`DevEvalStore` and nothing else, and a request naming another split is refused before any store is touched.
+They serve the golden set, the one eval split (`dev`); a request naming another split is refused before any store is
+touched.
 
 Labels are validated before anything is stored (`parse_labels`), and every error comes back with its field and
 reason as an RFC 9457 problem (§4.11). SPEC-07 PR 2 adds API-key auth.
@@ -65,8 +65,7 @@ class LabelingBackend(Protocol):
 
 
 class DevLabelingBackend:
-    """The dev store, `schema_def` in the main database, and `eval capture` into dev. Private settings, even when
-    present, are never read."""
+    """The eval store, `schema_def` in the main database, and `eval capture` into it."""
 
     def __init__(self, settings: Settings, engine: AsyncEngine, llm: LLMClient) -> None:
         self._settings = settings
@@ -90,7 +89,7 @@ class DevLabelingBackend:
         return field_specs(fields)
 
     async def capture(self, requests: Sequence[PageRequest], page_kind: PageKind) -> list[Outcome]:
-        return await run_capture(self._settings, "dev", requests, page_kind)
+        return await run_capture(self._settings, requests, page_kind)
 
 
 @asynccontextmanager
@@ -227,7 +226,7 @@ class CaptureResponse(Model):
 @router.get("/pages")
 async def list_pages(
     backend: Backend,
-    split: Literal["dev"] = "dev",  # §4.10's filter; the API serves no other split (C1)
+    split: Literal["dev"] = "dev",  # §4.10's filter; there is no other split
     status: LabelStatus | None = None,
     schema_name: Annotated[str | None, Query(alias="schema")] = None,
 ) -> list[PageSummary]:
