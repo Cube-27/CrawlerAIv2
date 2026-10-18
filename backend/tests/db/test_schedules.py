@@ -130,6 +130,7 @@ async def test_schedule_problems(submit_client: httpx.AsyncClient, engine: Async
             submit_client, kind="batch_scrape", request=BATCH, cron="* * * * *", interval_s=60
         ),
         "short interval": await _create(submit_client, kind="batch_scrape", request=BATCH, interval_s=30),
+        "huge interval": await _create(submit_client, kind="batch_scrape", request=BATCH, interval_s=2**31),
         "six fields": await _create(submit_client, kind="batch_scrape", request=BATCH, cron="0 0 * * * *"),
         "unknown zone": await _create(
             submit_client, kind="batch_scrape", request=BATCH, cron="0 0 * * *", timezone="X"
@@ -146,6 +147,7 @@ async def test_schedule_problems(submit_client: httpx.AsyncClient, engine: Async
         "no cadence": (422, "validation"),
         "two cadences": (422, "validation"),
         "short interval": (422, "validation"),
+        "huge interval": (422, "validation"),
         "six fields": (422, "validation"),
         "unknown zone": (422, "validation"),
         "browser actions": (422, "validation"),
@@ -198,12 +200,13 @@ async def test_an_update_changes_name_and_cadence_and_checks_the_request(
         path, json={"kind": "batch_scrape", "request": {**BATCH, "urls": [f"https://{PRIVATE_HOST}/"]}}
     )
     invalid = await submit_client.patch(path, json={"kind": "crawl", "request": {"url": URL}})
+    huge = await submit_client.patch(path, json={"interval_s": 2**31})
 
     assert renamed.status_code == 200, renamed.text
     body = renamed.json()
     assert (body["name"], body["cron"], body["interval_s"]) == ("daily kettles", "15 3 * * *", None)
     assert datetime.fromisoformat(body["next_run_at"]).astimezone().strftime("%M") == "15"
-    assert (kind_alone.status_code, private.status_code, invalid.status_code) == (422, 422, 422)
+    assert (kind_alone.status_code, private.status_code, invalid.status_code, huge.status_code) == (422, 422, 422, 422)
     assert private.json()["type"] == "ssrf_rejected"
     assert "request.formats" in [error["field"] for error in invalid.json()["errors"]]
 

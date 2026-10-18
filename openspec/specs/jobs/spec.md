@@ -186,7 +186,7 @@ and sections of links with descriptions, and `llms-full.txt` the pages' markdown
 ### Requirement: Recurring schedules (INV-46)
 A schedule SHALL hold the request of a batch scrape, crawl or extract (a scrape stored as the batch of its URL, a
 `records` schema by id), checked as its submission is when created, and run at each time of a 5-field cron expression
-in an IANA zone or every `interval_s` ≥ 60 s (`core/cadence.py`, `services/schedules.py`). A due run's job is stored in
+in an IANA zone or every `interval_s` of 60 s to 2³¹−1 s (`core/cadence.py`, `services/schedules.py`). A due run's job is stored in
 the transaction that holds its row (`FOR UPDATE SKIP LOCKED`) and moves it on, so it is submitted exactly once; a
 schedule that missed runs runs once; a refused run stores no job and sets `last_error`; resuming makes up no runs. A
 schedule keeps no secret value: a request with `fetch.headers` or `fetch.cookies` is refused. (Previously: such a

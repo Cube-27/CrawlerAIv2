@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.core.cadence import MIN_INTERVAL_S, Cadence, next_run
 from crawlerai.core.errors import Refusal
+from crawlerai.core.validation import PG_INTEGER_MAX
 from crawlerai.db.models import ApiKeyId, Job, JobId, Schedule, ScheduledKind, ScheduleId
 from crawlerai.db.paging import keyset_page
 from crawlerai.llm.client import LLMClient
@@ -70,7 +71,7 @@ class _Cadence(Input):
     """When it runs: a 5-field cron expression in `timezone` (IANA), or every `interval_s` seconds."""
 
     cron: str | None = None
-    interval_s: int | None = Field(default=None, ge=MIN_INTERVAL_S)
+    interval_s: int | None = Field(default=None, ge=MIN_INTERVAL_S, le=PG_INTEGER_MAX)
     timezone: str = "UTC"
 
     @model_validator(mode="after")
@@ -124,7 +125,7 @@ class ScheduleUpdate(Input):
     kind: Literal["scrape", "batch_scrape", "crawl", "extract"] | None = None
     request: dict[str, Any] | None = None
     cron: str | None = None
-    interval_s: int | None = Field(default=None, ge=MIN_INTERVAL_S)
+    interval_s: int | None = Field(default=None, ge=MIN_INTERVAL_S, le=PG_INTEGER_MAX)
     timezone: str | None = None
 
     @model_validator(mode="after")
