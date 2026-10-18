@@ -47,12 +47,13 @@ Scalar = str | int | float
 # A request value: where it sits (`query` name, or `body` normalized path) and its name there.
 _Slot = tuple[PageWhere, str]
 # RFC 8288 §3: `<target>` then `;`-separated parameters; a link-value list is `,`-separated (RFC 9110 §5.6.1).
-_LINK_VALUE: Final = re.compile(r'<([^>]*)>((?:\s*;\s*[^;,"]*(?:"(?:[^"\\]|\\.)*")?)*)')
+_QUOTED: Final = r'"(?:[^"\\]|\\.)*"'
+_LINK_VALUE: Final = re.compile(r"<([^>]*)>((?:\s*;\s*[^;,\"]*(?:" + _QUOTED + r")?)*)")
 _LINK_PARAM: Final = re.compile(r';\s*([^\s=;,]+)\s*(?:=\s*(?:"((?:[^"\\]|\\.)*)"|([^\s;,]*)))?')
 # RFC 8288 §3.3: `rel` holds one or more relation types separated by whitespace, compared case-insensitively (§2.1.1).
 _NEXT: Final = "next"
 # ASCII digits only: a page number or offset as a URL or a JSON string writes it.
-_INTEGER: Final = re.compile(r"0|[1-9][0-9]*", re.ASCII)
+_INTEGER: Final = re.compile(r"0|[1-9]\d*", re.ASCII)
 
 
 # --- inference --------------------------------------------------------------------------------------------------------

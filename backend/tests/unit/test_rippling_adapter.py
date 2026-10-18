@@ -82,8 +82,9 @@ async def _unused_send(_request: JsonRequest, _policy: FetchPolicy) -> FetchResu
 
 
 def test_a_url_it_does_not_detect_is_refused() -> None:
+    fetching = ADAPTER.fetch("https://jobs.example.com/board/jobs", FetchPolicy(), _unused_send)
     with pytest.raises(ValueError, match="not a job board URL"):
-        asyncio.run(ADAPTER.fetch("https://jobs.example.com/board/jobs", FetchPolicy(), _unused_send))
+        asyncio.run(fetching)
 
 
 def test_every_listed_job_is_a_posting_with_its_page_and_location() -> None:

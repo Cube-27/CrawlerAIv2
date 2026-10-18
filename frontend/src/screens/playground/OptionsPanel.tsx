@@ -383,6 +383,13 @@ export function TagListRow({
     onChange(values.includes(entry) ? [...values] : [...values, entry]);
     setDraft("");
   };
+  const removal = readOnly
+    ? {}
+    : {
+        onRemove: (keys: Set<Key>) => {
+          onChange(values.filter((value) => !keys.has(value)));
+        },
+      };
   return (
     <div className={WIDE_CELL}>
       <TextField
@@ -416,17 +423,7 @@ export function TagListRow({
         <FieldError>{refused ?? undefined}</FieldError>
       </TextField>
       {values.length === 0 ? null : (
-        <TagGroup
-          aria-label={label}
-          size="sm"
-          {...(readOnly
-            ? {}
-            : {
-                onRemove: (keys: Set<Key>) => {
-                  onChange(values.filter((value) => !keys.has(value)));
-                },
-              })}
-        >
+        <TagGroup aria-label={label} size="sm" {...removal}>
           <TagGroup.List>
             {values.map((value) => (
               <Tag key={value} id={value} textValue={value}>

@@ -36,6 +36,7 @@ drop_superseded() {
   awk '{ name = $0; sub(/ [^ ]+ [^ ]+$/, "", name); lines[NR] = $0; names[NR] = name
          if ($NF != "CANCELLED") kept[name] = 1 }
        END { for (i = 1; i <= NR; i++) if (!(lines[i] ~ / CANCELLED$/ && kept[names[i]])) print lines[i] }'
+  return $?
 }
 
 while (( $(date +%s) < deadline )); do

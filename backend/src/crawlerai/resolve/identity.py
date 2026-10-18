@@ -262,9 +262,9 @@ def _groups(entities: Sequence[Entity], vocabulary: Vocabulary) -> tuple[dict[st
     by_id = {e.id: e for e in entities}
     by_group_id: defaultdict[str, set[str]] = defaultdict(set)
     by_iri: defaultdict[str, set[str]] = defaultdict(set)
-    for e in entities:
-        if _is_a(e, _GROUP, vocabulary) and _standalone(e, by_id, vocabulary):
-            for prop, value in e.identity:
-                if prop in (_GROUP_ID, _IRI):
-                    (by_group_id if prop == _GROUP_ID else by_iri)[value].add(e.id)
+    standalone = (e for e in entities if _is_a(e, _GROUP, vocabulary) and _standalone(e, by_id, vocabulary))
+    for e in standalone:
+        for prop, value in e.identity:
+            if prop in (_GROUP_ID, _IRI):
+                (by_group_id if prop == _GROUP_ID else by_iri)[value].add(e.id)
     return by_group_id, by_iri

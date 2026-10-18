@@ -205,9 +205,10 @@ def test_wait_for_job_gives_up_at_the_deadline_not_an_interval_after_it() -> Non
         calls.append(request)
         return httpx.Response(200, json=summary("running"))
 
+    sdk = client(handler)
     started = time.monotonic()
     with pytest.raises(JobTimeout):
-        client(handler).wait_for_job(JOB_ID, poll_interval_s=5, timeout_s=0.05)
+        sdk.wait_for_job(JOB_ID, poll_interval_s=5, timeout_s=0.05)
 
     assert time.monotonic() - started < 1
     assert len(calls) == 2

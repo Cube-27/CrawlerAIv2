@@ -5,6 +5,7 @@
 
 main_checkout() {
   git worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p'   # e.g. C:/Projects/CrawlerAIv2
+  return $?
 }
 
 # worktrees_root [MAIN] — the directory that holds every worktree of MAIN (default: this repository's main checkout).

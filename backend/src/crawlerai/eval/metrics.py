@@ -355,7 +355,9 @@ def disagreement(judgment: Judgment) -> str | None:
 
 
 def _shown(present: bool | None, shown: str, not_shown: str, unknown: str) -> str:
-    return unknown if present is None else shown if present else not_shown
+    if present is None:
+        return unknown
+    return shown if present else not_shown
 
 
 def _presence(judgments: Sequence[Judgment]) -> PresenceMetrics:
@@ -758,14 +760,10 @@ def _judge(
 ) -> Judgment:
     published = out if out is not None and out.status == "published" else None
     value = published.value if published else None
-    if published:
-        cell: Cell = "FP" if label.absent or not same(value, label.value, spec) else "TP"
-    else:
-        cell = "TN" if label.absent else "FN"
     return Judgment(
         field=name,
         entity=entity,
-        cell=cell,
+        cell=_cell(published is not None, label, value, spec),
         on_absent=label.absent,
         wrong_product=published is not None and any(equal(value, d, spec) for d in label.distractors),
         evidence=published.evidence if published else None,
@@ -775,6 +773,12 @@ def _judge(
         sources={} if out is None else _source_cells(out, label, spec),
         present=None if capture is None or label.absent else capture.shows(label.value, spec),
     )
+
+
+def _cell(published: bool, label: FieldLabel, value: JsonValue, spec: FieldSpec) -> Cell:
+    if published:
+        return "FP" if label.absent or not same(value, label.value, spec) else "TP"
+    return "TN" if label.absent else "FN"
 
 
 def _source_cells(out: FieldOutput, label: FieldLabel, spec: FieldSpec) -> dict[SourceKind, SourceCell]:
