@@ -94,7 +94,7 @@ RECORDS_UNAVAILABLE: Final = "records_unavailable"
 _VENDOR_TRIES: Final = 2
 
 # The request's `min_confidence`, as the job row stores it.
-_MIN_CONFIDENCE: Final = TypeAdapter(Probability | None)
+_MIN_CONFIDENCE: Final[TypeAdapter[Probability | None]] = TypeAdapter(Probability | None)  # type: ignore[arg-type]
 _JobRow = Row[dict[str, object], SchemaId | None, dict[str, object] | None]
 
 
