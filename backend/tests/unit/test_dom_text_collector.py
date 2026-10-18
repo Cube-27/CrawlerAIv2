@@ -1,7 +1,7 @@
-"""The DOM description collector (SPEC-05 §4.5): the prose block of a detail page that states a long_text field in
-full, found as the block that extends what another collector stated or as the section a heading or an ARIA label names
-with the field's words, and, where only a summary is stated, the main text. Pages are synthetic (`example.test`, C3,
-C9)."""
+"""The DOM description collector (extraction spec, requirement "DOM description block"): the prose block of a detail
+page that states a long_text field in full, found as the block that extends what another collector stated or as the
+section a heading or an ARIA label names with the field's words, and, where only a summary is stated, the main text.
+Pages are synthetic (`example.test`, C3, C9)."""
 
 from datetime import UTC, datetime
 
@@ -189,3 +189,37 @@ def test_schema_without_long_text_reads_nothing() -> None:
         fields={"title": _field(FieldType.TEXT, "Product.name")},
     )
     assert _read(f"<main><p>{FIRST}</p></main>", schema=schema) == {}
+
+
+def test_a_title_is_not_the_main_text() -> None:
+    body = "<main><h1>Synthetic Kettle</h1><button>Buy</button></main>"
+    assert _read(body, _stated("og", "Shop kettles.")) == {}
+
+
+def test_a_section_whose_content_is_not_prose_does_not_climb_to_the_next_block() -> None:
+    body = (
+        f'<main><section><h2>Description</h2><div><p>{FIRST}</p><img src="/a.jpg" alt="a"></div></section>'
+        f"<p>{SECOND}</p></main>"
+    )
+    assert _read(body, _stated("jsonld", "x")) == {}
+
+
+def test_a_value_ending_inside_a_word_does_not_begin_a_block() -> None:
+    body = "<main><div><p>Newsletter signup and other notes for visitors.</p></div></main>"
+    assert _read(body, _stated("jsonld", "New")) == {}
+
+
+def test_a_heading_role_with_a_fallback_token_names_a_section() -> None:
+    body = f'<main><div role="heading presentation">Description</div><p>{FIRST}</p></main>'
+    assert _read(body, _stated("jsonld", "x")) == {"description": FIRST}
+
+
+def test_aria_labelledby_may_name_several_elements() -> None:
+    body = f'<main><section aria-labelledby="a missing"><span id="a">Description</span><p>{FIRST}</p></section></main>'
+    assert _read(body, _stated("jsonld", "x")) == {"description": FIRST}
+
+
+def test_review_marked_with_the_schema_iri_is_not_the_description() -> None:
+    review = f'<div itemprop="https://schema.org/review"><p>{FIRST} Loved it.</p></div>'
+    body = f"<main>{review}<div><p>{FIRST}</p></div></main>"
+    assert _read(body, _stated("jsonld", SUMMARY)) == {"description": FIRST}

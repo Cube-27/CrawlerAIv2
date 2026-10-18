@@ -79,9 +79,8 @@ def collect_page(
     entities = (*(entity for result in results for entity in result.entities), *(e for i in items for e in i.entities))
     others = (*(candidate for result in results for candidate in result.candidates), *best)
     # The description block extends what the other collectors state, so it reads after them.
-    described = _isolated(
-        DescriptionCollector, partial(DescriptionCollector().collect, page, schema, ctx, others), diagnostics
-    )
+    description = DescriptionCollector()
+    described = _isolated(description, partial(description.collect, page, schema, ctx, others), diagnostics)
     if described is not None:
         results.append(described)
         others = (*others, *described.candidates)

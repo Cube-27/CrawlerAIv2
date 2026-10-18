@@ -1,5 +1,6 @@
-"""The DOM description collector (SPEC-05 §4.5, ARCHITECTURE §8.1): the prose block of a detail page that states a
-long_text field in full, for pages whose structured data and Open Graph metadata hold only a summary or a cut of it.
+"""The DOM description collector (extraction spec, requirement "DOM description block"): the prose block of a detail
+page that states a long_text field in full, for pages whose structured data and Open Graph metadata hold only a
+summary or a cut of it.
 
 Two structures name such a block, both read from the page's main content (`collect.dom`: the `main` element, else the
 `role="main"` landmark, else the one `article`, else the body) outside its tangential content, dialogs, media fallback,
@@ -22,7 +23,6 @@ blocks that neither contain one another's text nor continue it are ambiguous: no
 Every candidate is the page's, independent, with a `dom:` locator naming the element it came from.
 """
 
-import re
 from collections.abc import Iterator, Sequence
 from typing import NamedTuple
 
@@ -63,13 +63,13 @@ _NOT_PROSE = (
 )
 # WAI-ARIA 1.2 §5.4: roles of content set apart from the main content.
 _APART_ROLES = ("dialog", "alertdialog", "form", "navigation", "complementary", "banner", "contentinfo")
-# schema.org properties whose values are other things' content: `Product.review`, `isRelatedTo`, `isSimilarTo`.
+# schema.org properties whose values are other things' content: the properties `review`, `isRelatedTo`, `isSimilarTo`.
 _OTHER_ITEMS = ("review", "isRelatedTo", "isSimilarTo")
-_REVIEW_TYPE = "/Review"  # the end of an `itemtype` URL naming schema.org's Review (HTML Standard §5.4)
-_HEADING = "h1,h2,h3,h4,h5,h6,[role=heading]"
+_REVIEW_TYPE = "/Review"  # the `itemtype` URL of schema.org's Review ends with it (HTML Standard §5.4)
+_HEADING = 'h1,h2,h3,h4,h5,h6,[role~="heading"]'
 _OPEN_GRAPH = "og"  # the protocol defines og:description as a one-to-two sentence summary
 _DESCRIPTION = "description"  # schema.org `Thing.description`
-_ELLIPSIS = re.compile(r"\s*(?:…|\.{3})$")
+_ELLIPSES = ("…", "...")  # Unicode U+2026, and its NFKC form: how a cut text ends
 
 
 class _Block(NamedTuple):
@@ -89,17 +89,19 @@ class _Blocks:
                 *_TANGENTIAL,
                 *_NOT_PROSE,
                 *(f'[role~="{role}"]' for role in _APART_ROLES),
-                *(f'[itemprop~="{prop}"]' for prop in _OTHER_ITEMS),
-                f'[itemtype$="{_REVIEW_TYPE}"]',
+                *(f'[itemprop*="{prop}"]' for prop in _OTHER_ITEMS),
+                f'[itemtype*="{_REVIEW_TYPE}"]',
             )
         )
         roots = region.css(selector)
         # Inside an element set apart, and around one (a block that holds a form is not prose).
         self.apart = frozenset(inside.mem_id for root in roots for inside in (root, *root.css("*")))
         self.mixed = frozenset(a.mem_id for root in roots for a in _ancestors(root, region))
+        # A heading names a block; it is no text of its own, nor is anything inside it.
+        titles = frozenset(inside.mem_id for h in region.css(_HEADING) for inside in (h, *h.css("*")))
         self.blocks: dict[int, _Block] = {}
         for node in region.css("*"):
-            if node == region or node.mem_id in self.apart or node.mem_id in self.mixed:
+            if node == region or {node.mem_id} & {*self.apart, *self.mixed, *titles}:
                 continue
             span = spans.get(node_xpath(node))
             raw = text[span[0] : span[1]].strip() if span else ""
@@ -166,11 +168,28 @@ def _extending(blocks: _Blocks, stated: Sequence[tuple[str, str]]) -> _Block | N
     A block that equals a value other than the Open Graph summary is that value in full, and nothing beyond it. White
     space is not compared: a meta description joins the paragraphs a page's blocks separate."""
     solids = [_solid(form) for kind, form in stated if kind != _OPEN_GRAPH]
-    cuts = [cut for _, form in stated if (cut := _solid(_ELLIPSIS.sub("", form)))]
-    matching = {b.node.mem_id: b for b in blocks.blocks.values() if any(_solid(b.form).startswith(cut) for cut in cuts)}
+    cuts = [cut for _, form in stated if (cut := _uncut(_solid(form)))]
+    matching = {b.node.mem_id: b for b in blocks.blocks.values() if any(_begins(b.form, cut) for cut in cuts)}
     equal = [b for b in matching.values() if _solid(b.form) in solids]
     outer = [b for b in matching.values() if not any(a.mem_id in matching for a in _ancestors(b.node, blocks.region))]
     return _only(equal) or _only(outer)
+
+
+def _uncut(solid: str) -> str:
+    """A text without the ellipsis that ends it."""
+    return solid.removesuffix(_ELLIPSES[0]) if solid.endswith(_ELLIPSES[0]) else solid.removesuffix(_ELLIPSES[1])
+
+
+def _begins(form: str, cut: str) -> bool:
+    """Whether the collapsed `form` begins with `cut`, white space aside, without splitting a word (UAX #29
+    approximated by letters and digits)."""
+    if not _solid(form).startswith(cut):
+        return False
+    left, end = len(cut), 0
+    while left:
+        left -= not form[end].isspace()
+        end += 1
+    return not (end < len(form) and cut[-1].isalnum() and form[end].isalnum())
 
 
 def _solid(text: str) -> str:
@@ -198,26 +217,35 @@ def _labelled(blocks: _Blocks, labels: dict[tuple[str, ...], list[str]], name: s
 
 
 def _section(blocks: _Blocks, heading: LexborNode) -> list[_Block]:
-    """The prose that follows a heading up to the next heading, as one block; climbs while the heading's own wrapper
-    has none after it."""
+    """The prose that follows a heading up to the next heading, as one block; climbs only out of a wrapper that holds
+    nothing after the heading."""
     node: LexborNode | None = None if heading.mem_id in blocks.apart else heading
     while node is not None and node != blocks.region:
         parts = _following(blocks, node)
         if parts:
             return [_Block(parts[0].node, "\n".join(p.raw for p in parts), " ".join(p.form for p in parts))]
+        if any(sibling.is_element_node for sibling in _after(node)):
+            return []
         node = node.parent
     return []
+
+
+def _after(node: LexborNode) -> Iterator[LexborNode]:
+    sibling = node.next
+    while sibling is not None:
+        yield sibling
+        sibling = sibling.next
 
 
 def _following(blocks: _Blocks, node: LexborNode) -> list[_Block]:
     """The prose elements after `node` among its siblings, up to the next heading."""
     parts: list[_Block] = []
-    sibling = node.next
-    while sibling is not None and not (sibling.is_element_node and _stops(sibling)):
+    for sibling in _after(node):
+        if sibling.is_element_node and _stops(sibling):
+            break
         block = blocks.prose(sibling) if sibling.is_element_node else None
         if block is not None:
             parts.append(block)
-        sibling = sibling.next
     return parts
 
 
@@ -226,17 +254,28 @@ def _stops(node: LexborNode) -> bool:
 
 
 def _labelled_by(blocks: _Blocks, element: LexborNode, named: list[tuple[str, ...]]) -> list[_Block]:
-    label = element.attributes.get("aria-label")
+    label = _label(blocks, element)
     block = blocks.prose(element)
-    if label is None:
-        ident = (element.attributes.get("aria-labelledby") or "").split()
-        target = blocks.region.css_first(f'[id="{ident[0]}"]') if len(ident) == 1 and '"' not in ident[0] else None
-        label = " ".join(target.text(deep=True, separator=" ").split()) if target is not None else None
     if block is None or label is None or words(label) not in named:
         return []
     lead = " ".join(label.split())
     form = block.form[len(lead) :].strip() if block.form.startswith(lead) else block.form
     return [_Block(block.node, block.raw if form == block.form else form, form)] if form else []
+
+
+def _label(blocks: _Blocks, element: LexborNode) -> str | None:
+    """The element's accessible name from `aria-label`, else the text of the elements `aria-labelledby` names (WAI-ARIA
+    1.2 §4.3)."""
+    label = element.attributes.get("aria-label")
+    if label is not None:
+        return label
+    targets = [
+        blocks.region.css_first(f'[id="{ident}"]')
+        for ident in (element.attributes.get("aria-labelledby") or "").split()
+        if '"' not in ident
+    ]
+    texts = [" ".join(t.text(deep=True, separator=" ").split()) for t in targets if t is not None]
+    return " ".join(texts) or None
 
 
 def _largest(blocks: _Blocks) -> _Block | None:
