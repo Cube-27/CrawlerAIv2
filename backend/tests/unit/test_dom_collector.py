@@ -177,7 +177,7 @@ def test_locators_parse_as_dom_xpaths() -> None:
     candidates = (
         DomCollector()
         .collect(
-            ParsedPage('<html><body><main><img src="/p.jpg"></main><dl><dt>SKU</dt><dd>W-1</dd></dl></body></html>'),
+            ParsedPage('<html><body><main><img src="/p.jpg"><dl><dt>SKU</dt><dd>W-1</dd></dl></main></body></html>'),
             SCHEMA,
             CTX,
         )
@@ -223,3 +223,93 @@ def test_an_image_linked_to_itself_this_page_or_several_documents_stays_the_main
     found = _collect(f"<main>{wrapper.format(chr(60) + 'img src=/p/1.jpg alt=Product>')}</main>")
 
     assert [value for value, _ in found["image_url"]] == ["https://shop.example.test/p/1.jpg"]
+
+
+def _values(body: str, schema: SchemaDef = SCHEMA) -> dict[str, list[object]]:
+    return {name: [value for value, _ in found] for name, found in _collect(body, schema).items()}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "<div>Brand: <span>Example Brand</span></div>",  # a label then an element holding the value
+        "<p><b>Brand:</b> Example Brand</p>",  # a label element then the text that follows it
+        "<div><span>Brand\uff1a</span><div>Example Brand</div></div>",  # a fullwidth colon
+        "<ul><li><div>Brand</div><div>Example Brand</div></li><li><div>Other</div><div>x</div></li></ul>",  # siblings
+        "<section><div>Brand</div><div>Example Brand</div></section>"
+        "<section><div>Gender</div><div>Unisex</div></section>",
+    ],
+)
+def test_two_column_structures_beyond_rows_and_description_lists_give_a_label_its_value(body: str) -> None:
+    assert _values(body)["brand"] == ["Example Brand"]
+
+
+def test_a_label_and_value_pair_that_is_not_repeated_is_no_structure() -> None:
+    assert _collect("<div><span>Brand</span><span>Example Brand</span></div>") == {}
+
+
+def test_a_colon_label_gives_its_value_the_element_that_holds_it() -> None:
+    found = _collect("<div>Brand: <span>Example Brand</span></div>")
+
+    assert found == {"brand": [("Example Brand", "dom:/html[1]/body[1]/div[1]/span[1]")]}
+
+
+def test_a_label_in_the_middle_of_a_line_is_no_label() -> None:
+    assert _collect("<p>Our brand: Example Brand</p><p>Shipping: free</p>") == {}
+
+
+def test_lines_giving_a_field_several_values_are_the_listed_items_not_the_pages() -> None:
+    body = "<p>SKU: A-1</p><p>SKU: A-2</p><dl><dt>Brand</dt><dd>Example Brand</dd></dl><p>Brand: B</p><p>Brand: C</p>"
+
+    assert _values(body) == {"brand": ["Example Brand"]}
+
+
+def test_a_colon_line_giving_a_field_one_value_twice_gives_it_once() -> None:
+    assert _values("<div><p>SKU: A-1</p></div><p>SKU: A-1</p>") == {"sku": ["A-1"]}
+
+
+def test_pairs_are_read_from_the_main_region_outside_its_tangential_content() -> None:
+    body = (
+        "<dl><dt>Brand</dt><dd>Outside</dd></dl>"
+        "<main><footer><p>Brand: Footer</p></footer><p>Brand: Example Brand</p></main>"
+    )
+
+    assert _values(body) == {"brand": ["Example Brand"]}
+
+
+MONEY_SCHEMA = _schema(
+    "detail",
+    price=_field(FieldType.MONEY, "Offer.price+priceCurrency"),
+    gtin=_field(FieldType.IDENTIFIER, "Product.gtin", scheme="gtin"),
+    sku=_field(FieldType.IDENTIFIER, "Product.sku", scheme="sku"),
+)
+
+
+def test_the_main_region_s_one_price_and_one_checked_identifier_are_spotted() -> None:
+    body = "<main><h1>Widget</h1><p>Now <span>€19.99</span></p><p>EAN <b>4006381333931</b></p></main>"
+
+    assert _values(body, MONEY_SCHEMA) == {
+        "price": [{"amount": "19.99", "currency": "EUR"}],
+        "gtin": ["4006381333931"],
+    }
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "<main><p>€19.99</p><ul><li>€24.99</li></ul></main>",  # several prices: ambiguous
+        "<main><s>€29.99</s></main>",  # a former price
+        "<main><nav>€19.99</nav><aside>€19.99</aside></main>",  # tangential content
+        "<p>€19.99</p>",  # no main region
+        "<main><p>EAN 4006381333932</p></main>",  # a wrong check digit
+        '<main><p style="display:none">€19.99</p></main>',  # not shown
+    ],
+)
+def test_a_typed_value_is_not_spotted_when_it_is_ambiguous_struck_apart_or_not_shown(body: str) -> None:
+    assert _collect(body, MONEY_SCHEMA) == {}
+
+
+def test_a_typed_value_one_element_holds_inside_another_is_read_once() -> None:
+    found = _collect("<main><div><span>€19.99</span></div></main>", MONEY_SCHEMA)
+
+    assert found["price"][0][1] == "dom:/html[1]/body[1]/main[1]/div[1]/span[1]"
