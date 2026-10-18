@@ -31,7 +31,8 @@ with CrawlerAI(os.environ["CRAWLERAI_API_KEY"], "http://localhost:8000") as clie
         raise
     for hit in found.results:
         print(hit.position, hit.title, hit.url)
-    summary = client.wait_for_job(found.job_id, timeout_s=120)   # polls until completed, failed or cancelled
+    if found.job_id is not None:  # None when no result could be scraped
+        summary = client.wait_for_job(found.job_id, timeout_s=120)   # polls until completed, failed or cancelled
 
     # A crawl that fetches the pages matching a query first, then follows its events and pages its results.
     job = client.crawl(
