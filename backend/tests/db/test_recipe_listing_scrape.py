@@ -25,7 +25,7 @@ from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.browser_tab import Drive
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SafeConnector
+from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import (
@@ -71,6 +71,7 @@ class Web:
     up: bool = True
     down: int = 500
     empty: bool = False
+    refused: str | None = None  # the cursor of the page whose request the SSRF guard refuses
     requested: list[JsonRequest] = field(default_factory=list)
     listed: list[str] = field(default_factory=list)
     pages: list[str] = field(default_factory=list)
@@ -88,6 +89,9 @@ class Web:
         if not self.up:
             return self.fetch_result(request.page_url, self.down, b"{}", block_class="error", method="api")
         after = parse_qs(urlsplit(request.url).query).get("after", ["0"])[0]
+        if after == self.refused:
+            error = f"{SSRF_REJECTED} a private address"
+            return self.fetch_result(request.page_url, 0, b"", block_class="error", error=error, method="api")
         start = int(after)
         rows = [
             {"label": name, "href": f"{self.origin}/kettles/{start + i}"}
@@ -443,3 +447,25 @@ async def test_a_batch_task_whose_recipe_answers_no_rows_counts_that_request_the
         counted = sorted(methods)
     assert len(web.requested) == 1
     assert counted.count("api") == 1
+
+
+async def test_a_batch_task_whose_further_recipe_page_the_guard_refuses_fails(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    web.refused = "3"  # INV-16: a refused request fails the task, never truncates its listing silently
+    url = f"{own_origin}/kettles"
+
+    job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+
+    async with engine.connect() as conn:
+        task = (await conn.execute(select(UrlTask.status, UrlTask.last_error).where(UrlTask.job_id == job_id))).one()
+    titles, _ = await _titles(engine, job_id)
+    assert task.status == "failed"
+    assert (task.last_error or "").startswith(SSRF_REJECTED)
+    assert titles == []

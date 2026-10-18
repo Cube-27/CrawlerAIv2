@@ -6,7 +6,6 @@ are (§4.6, §4.7), and the plain HTTP fetches of a site's sitemaps.
 """
 
 import asyncio
-from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from functools import partial
 from urllib.parse import urlsplit
@@ -227,11 +226,14 @@ def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
 @dataclass
 class RecipePages:
     """A listing's pages as its active config's listing recipe (one with pagination, Appendix A #59) serves them, up
-    to `limit` requests; the pages after the first are kept in `further` and their attempts added to `attempts`."""
+    to `limit` requests; the pages after the first are kept in `further` and their attempts added to `attempts`.
+    `refused` is the SSRF guard's refusal of a further page's request, which fails the fetch (INV-16): a refused page
+    is never stored, and the listing is not cut short silently."""
 
     limit: int = MAX_PAGES
     attempts: list[AttemptRecord] = field(default_factory=list)
     further: list[FetchResult] = field(default_factory=list)
+    refused: str | None = None
 
     async def rung(self, recipe: RecipeRung, url: str, policy: FetchPolicy) -> Rung | None:
         """The recipe rung `acquire` fetches the page through: one that answers with the first page the listing recipe
@@ -243,22 +245,13 @@ class RecipePages:
             return None
         first, further = pages[0], pages[1:]
         self.attempts.extend(attempt for page in further for attempt in page.attempts)
-        self.further[:] = _until_refused(further) if first.block_class == "ok" else []
+        self.further[:] = further if first.block_class == "ok" else []
+        self.refused = next((refused for page in self.further if (refused := refusal(page)) is not None), None)
 
         async def served(_url: str, _policy: FetchPolicy) -> FetchResult:
             return first
 
         return served
-
-
-def _until_refused(pages: Sequence[FetchResult]) -> list[FetchResult]:
-    """The pages before the first one the SSRF guard refused a request of (INV-16): a refused page is never stored."""
-    kept: list[FetchResult] = []
-    for page in pages:
-        if refusal(page) is not None:
-            break
-        kept.append(page)
-    return kept
 
 
 async def grown(

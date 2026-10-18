@@ -228,11 +228,12 @@ async def _kept(
     fetched: FetchResult | Unchanged | TaskResult,
     standing: tuple[RecordId, ...],
 ) -> FetchedPage | Ended:
-    """The fetched page with its capture stored, or how the task ends: a refused request fails it (INV-16), and a 304
-    that a record stands for ends it `unchanged`, linked to those records."""
+    """The fetched page with its capture stored, or how the task ends: a refused request, a listing recipe's further
+    page's too, fails it (INV-16), and a 304 that a record stands for ends it `unchanged`, linked to those records."""
     site, attempts, pool = plan.site, tuple(plan.attempts), plan.policy.proxy_pool
     if isinstance(fetched, FetchResult):
-        if (refused := refusal(fetched)) is None:
+        further_refused = None if plan.pages is None else plan.pages.refused
+        if (refused := refusal(fetched) or further_refused) is None:
             check = plan.needs_render if isinstance(plan.needs_render, RenderNeed) else None
             capture_id = await new_capture(conn, fetching.store, site.id, fetched, check)
             further = () if plan.pages is None else tuple(plan.pages.further)
