@@ -159,7 +159,7 @@ export function fetchMember(
   };
 }
 
-/** The page steps that make a fetch run in the browser: `wait_for` or any action (`FetchOptions.in_browser`). */
+/** The page steps that make a fetch run in the browser: `wait_for` or any action (the server's `in_browser` property of the fetch options). */
 function hasBrowserSteps(fetch: FetchMember): boolean {
   return fetch.wait_for !== undefined || (fetch.actions?.length ?? 0) > 0;
 }
