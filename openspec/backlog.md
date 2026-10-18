@@ -38,7 +38,11 @@ Agents can't do these.
 
 Open items left by merged PRs, one line each (source PR in brackets). Measure before redesigning where noted.
 
-- Bot review findings left for phase 2 (#277): item groups ranked by summed evidence (a large image-only gallery outranks a smaller grid: `content/segment.rank`, whose first group feeds markdown, role C's item text and render need; the align step orders groups by fields aligned); `resolve/pipeline` holders miss row-mapped `field.sub` candidates; `resolve/preference` keeps the winner's http image over a lower source's https twin; `resolve/identity` keeps only the first of two ProductGroups under one isVariantOf; `LearnedCalls.matches` ignores fixed query values and body shape; `resolve/pagination` `int()` on a digit run over 4300 digits; role C sees only item text for page fields on a listing with item blocks; the first role C listing chunk's budget omits page-field claims; listing rows uncapped at 200 across calls; `schema_org_map._selections` never counts a list or joined value as stated. Fix in the layer phase 2 rebuilds, or delete with it.
+- Bot review findings left for phase 2 (#277): item groups ranked by summed evidence (a large image-only gallery outranks a smaller grid: `content/segment.rank`, whose first group feeds markdown and render need; the align step orders groups by fields aligned); `resolve/pipeline` holders miss row-mapped `field.sub` candidates; `resolve/preference` keeps the winner's http image over a lower source's https twin; `resolve/identity` keeps only the first of two ProductGroups under one isVariantOf; `LearnedCalls.matches` ignores fixed query values and body shape; `resolve/pagination` `int()` on a digit run over 4300 digits; `schema_org_map._selections` never counts a list or joined value as stated. Fix in the layer phase 2 rebuilds, or delete with it.
+- Role C on listings (#279): on the golden set's listings role C adds about no TP with either prompt (D-1600): the
+  926 FN are mostly rows and fields the item layer does not find, which role C, filling bound rows only, cannot add.
+  Call rows bound to no block and listings with no aligned group get no role C values; measure which listings lose
+  rows to that before adding a path. `BLOCK_CLAIM_TOKENS` rests on one live run (41 output tokens per claim).
 - Extract with `fetch.cache: only` (#277): sample URLs read stored captures, but globs are still expanded by a live map.
 - Item layer (#278): block prices whose symbol is ambiguous without a stated currency (`$` on a page in `es` or `en`,
   `Rs.`) decline in the money normalizer; on the golden set four listings show prices only so. A currency the page
@@ -71,22 +75,20 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   of reduced HTML, sent again in each repair round), USD 0.15 to 2.70 of role A per learned host against about
   USD 0.002 per role C page: measure a smaller `CRAWLERAI_LLM_A_MAX_CHARS` or prompt caching across rounds. Synthesis
   still wants the row selector to select exactly the engine's rows on each sample page (D-1500), so a sample page whose
-  role C rows left items out pushes the repair toward a narrower selector. An XPath element value is its string-value,
+  rows left items out pushes the repair toward a narrower selector. An XPath element value is its string-value,
   so a long_text only the DOM states (blocks without whitespace between them) cannot be reproduced; rendering the
   element needs the parsed tree's render without a second parse (INV-26). A listing learns only the fields its cold
-  rows publish: role C rows without an item URL give no `url` step. The dev eval database's `job_listing` predates
+  rows publish. The dev eval database's `job_listing` predates
   `locations` (it holds `location`): re-import or sync it before measuring listing configs. The learning-configs spec
   is past 100 lines: split it (configs and learning).
 - Sweep fixes 2 (#266): a hosted career page whose API host's robots.txt disallows the adapter still gives 0 rows
-  (`no_rows: none_listed`). Listing role C requests changed (D-1478, D-1496), so recorded dev replays of listings need
+  (`no_rows: not_asked`). Listing role C requests changed (D-1600), so recorded dev replays of listings need
   re-recording.
-- Accuracy round 2 (#270): role C rows of a listing whose item blocks the item text does not find (fewer than
-  `MIN_ITEMS` in the cleaned text) are placed in no block and left out (one dev listing, 30 rows). One dev listing's
-  role C reply lists 1 row of the 56 items it reads. Some labels' row titles add a variant or the company the page
-  shows apart from the title, so matched rows score their title wrong; settle the label convention. Shops with several
-  presentment currencies keep listing rows unpriced (D-1481, D-1492): a page currency source needs a standard or the
-  platform's documentation, and new captures (the dev ones hold the API answer only). Role C rows whose block link
-  carries a query the labels drop stay as they are.
+- Accuracy round 2 (#270): some labels' row titles add a variant or the company the page shows apart from the title,
+  so matched rows score their title wrong; settle the label convention. Shops with several presentment currencies keep
+  listing rows unpriced (D-1481, D-1492): a page currency source needs a standard or the platform's documentation, and
+  new captures (the dev ones hold the API answer only). Block rows whose link carries a query the labels drop stay as
+  they are.
 - Request context and actions (#262, #268): steps are per request; per-URL steps in a batch are a later member if callers
   ask. A schedule keeps no secret value (D-1510), so a recurring crawl of a page behind the caller's own cookies or
   headers has no home: add it with a deployment key setting that encrypts the values on the schedule if callers need it.

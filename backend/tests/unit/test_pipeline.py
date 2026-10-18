@@ -17,7 +17,7 @@ from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import AdapterMatch, Shape
 from crawlerai.adapters.registry import Registry
-from crawlerai.collect.base import Candidate, Entity
+from crawlerai.collect.base import Candidate
 from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.capture import BlockClass, CaptureMethod
@@ -284,25 +284,35 @@ CALL = LLMCallRecord(
 
 class FakeRoleC:
     """On a detail page, answers each missing field with the money value the page text shows, grounded on the target,
-    or with `failure`; on a listing, gives `listing_reply`. `error` is raised instead of either."""
+    or with `failure`; on a listing, gives `listing_reply`, or with `fill_blocks` fills each asked field of each block
+    with the block's first line, grounded there. `error` is raised instead of either."""
 
     def __init__(
         self,
         *,
         failure: str | None = None,
         listing_reply: ListingGapReply | None = None,
+        fill_blocks: bool = False,
         error: Exception | None = None,
     ) -> None:
         self.requests: list[GapRequest] = []
         self.listing_requests: list[ListingGapRequest] = []
         self._failure = failure
         self._listing_reply = listing_reply or ListingGapReply(candidates=(), llm_calls=())
+        self._fill_blocks = fill_blocks
         self._error = error
 
     async def listing(self, request: ListingGapRequest) -> ListingGapReply:
         self.listing_requests.append(request)
         if self._error is not None:
             raise self._error
+        if self._fill_blocks:
+            filled = tuple(
+                _llm(name, block.row, block.text.split("\n")[0], block.start)
+                for block in request.blocks
+                for name in block.fields
+            )
+            return ListingGapReply(candidates=filled, llm_calls=(LISTING_CALL,))
         return self._listing_reply
 
     async def detail(self, request: GapRequest) -> GapReply:
@@ -678,13 +688,84 @@ def test_role_c_is_not_asked_when_the_rows_publish_every_row_field() -> None:
     assert (role_c.requests, role_c.listing_requests) == ([], [])
 
 
-def test_role_c_rows_fill_the_rows_they_name_when_a_row_field_publishes_on_no_row() -> None:
-    # Listings spec, "Role C rows": the stub row has no title; role C's row naming its item URL gives it one.
-    role_c = FakeRoleC(listing_reply=ROWS_REPLY)
-    result = _listing(_html(_item_list({"@type": "Product", "url": "https://shop.example.test/p/1"})), role_c=role_c)
+def _branded(n: int) -> str:
+    return f'<li class="card"><h3><a href="/p/{n}">Widget {n}</a></h3><span>{n}.50 EUR</span><p>Acme {n}</p></li>'
+
+
+BRANDED = _schema(
+    "listing",
+    title=LISTING.fields["title"],
+    url=LISTING.fields["url"],
+    brand=FieldSpec(type=FieldType.TEXT, description="d", schema_org="Product.brand.name"),
+)
+
+
+def test_role_c_fills_the_block_rows_when_a_row_field_publishes_on_no_row() -> None:
+    # Listings spec, "Role C rows": no block publishes `brand`, so each block's row is asked for it, and only for it.
+    role_c = FakeRoleC(fill_blocks=True)
+    page = _html(body=f"<ul>{''.join(_branded(n) for n in (1, 2, 3))}</ul>")
+
+    result = _listing(page, BRANDED, role_c=role_c, data=COMMITTED)
+
     (request,) = role_c.listing_requests
-    assert request.row_fields == ("title", "url", "price")
-    assert _row_values(result) == [{"url": "https://shop.example.test/p/1", "title": "Widget 1"}]
+    assert [(block.index, block.url, block.fields) for block in request.blocks] == [
+        (n - 1, f"https://shop.example.test/p/{n}", ("brand",)) for n in (1, 2, 3)
+    ]
+    assert [block.text for block in request.blocks] == [f"Widget {n}\n{n}.50 EUR\nAcme {n}" for n in (1, 2, 3)]
+    assert [block.row for block in request.blocks] == [f"item_block:0:{i}" for i in range(3)]
+    # The fake fills `brand` with the first line: the claim fills the block's row, the block's own values stand.
+    assert [(row["title"].value, row["brand"].value, row["brand"].evidence) for row in result.rows] == [
+        (f"Widget {n}", f"Widget {n}", "llm_grounded") for n in (1, 2, 3)
+    ]
+
+
+def test_only_block_rows_lacking_a_required_row_field_are_asked() -> None:
+    # One card's heading is an image without a name: its row lacks the required title; the others are not asked.
+    cards = [_branded(n) for n in range(1, 6)]
+    cards[1] = '<li class="card"><h3><a href="/p/2"><img src="/i/2.png" alt=""></a></h3><span>2.50 EUR</span></li>'
+    schema = _schema("listing", title=LISTING.fields["title"], url=LISTING.fields["url"], price=LISTING.fields["price"])
+    role_c = FakeRoleC()
+
+    _listing(_html(body=f"<ul>{''.join(cards)}</ul>"), schema, role_c=role_c, data=COMMITTED)
+
+    (request,) = role_c.listing_requests
+    assert [(block.index, block.fields) for block in request.blocks] == [(1, ("title",))]
+
+
+def test_an_object_row_field_no_row_publishes_is_never_asked() -> None:
+    # A claim is one verbatim span, which cannot hold an object's sub-fields: the blocks are not asked for it.
+    dims = FieldSpec.model_validate(
+        {"type": "object", "description": "d", "fields": {"w": {"type": "text", "description": "d"}}}
+    )
+    schema = _schema("listing", title=LISTING.fields["title"], url=LISTING.fields["url"], dims=dims)
+    role_c = FakeRoleC()
+
+    _listing(_html(body=f"<ul>{''.join(_branded(n) for n in (1, 2, 3))}</ul>"), schema, role_c=role_c, data=COMMITTED)
+
+    assert role_c.listing_requests == []
+
+
+def test_the_page_members_of_an_unmet_required_group_are_asked() -> None:
+    # As on a detail page: no member of a required group publishes, so its optional members are asked.
+    optional = LISTING.fields["page_title"]
+    schema = _schema(
+        "listing", title=LISTING.fields["title"], url=LISTING.fields["url"], heading=optional, subtitle=optional
+    ).model_copy(update={"required_groups": [["heading", "subtitle"]]})
+    role_c = FakeRoleC()
+
+    _listing(_html(body=f"<ul>{''.join(_branded(n) for n in (1, 2, 3))}</ul>"), schema, role_c=role_c, data=COMMITTED)
+
+    (request,) = role_c.listing_requests
+    assert (request.blocks, request.page_missing) == ((), ("heading", "subtitle"))
+
+
+def test_a_listing_without_rows_does_not_ask_role_c_for_rows() -> None:
+    # Role C fills the rows of blocks: with none, and no required page field missing, it is not asked.
+    role_c = FakeRoleC()
+
+    result = _listing(_html(body="<p>Widget 1</p>"), role_c=role_c)
+
+    assert (role_c.listing_requests, result.rows, result.reason) == ([], (), "no_rows: not_asked")
 
 
 LISTING_CALL = CALL.model_copy(update={"prompt_kind": "c_extract_listing"})
@@ -702,63 +783,40 @@ def _llm(field: str, owner: str, raw: str, start: int) -> Candidate:
     )
 
 
-def _llm_row(position: int) -> Entity:
-    return Entity(id=f"llm:rows[{position}]", types=("page",), urls=(), parent=None)
-
-
-ROWS_REPLY = ListingGapReply(
-    candidates=(
-        _llm("title", "llm:rows[0]", "Widget 1", 0),
-        _llm("url", "llm:rows[0]", "https://shop.example.test/p/1", 9),
-        _llm("title", "llm:rows[1]", "Widget 2", 40),
-        _llm("page_title", "page", "All widgets", 60),
-    ),
-    llm_calls=(LISTING_CALL,),
-    diagnostics=("role C: rows[1].url ungrounded",),
-    rows=(_llm_row(0), _llm_row(1)),
+# A listing schema whose page title is required: role C is asked for the page fields when it is missing.
+TITLED = _schema(
+    "listing",
+    **{**LISTING.fields, "page_title": LISTING.fields["page_title"].model_copy(update={"required": True})},
 )
 
 
-def test_a_listing_without_structured_rows_takes_its_rows_from_role_c() -> None:
-    role_c = FakeRoleC(listing_reply=ROWS_REPLY)
-    result = _listing(_html(body="<p>Widget 1</p>"), role_c=role_c)
+def test_the_page_fields_are_asked_when_a_required_one_is_missing() -> None:
+    role_c = FakeRoleC(listing_reply=ListingGapReply((_llm("page_title", "page", "All widgets", 0),), (LISTING_CALL,)))
+
+    result = _listing(_html(body="<h1>All widgets</h1>"), TITLED, role_c=role_c)
 
     (request,) = role_c.listing_requests
-    assert (request.row_fields, request.page_missing) == (("title", "url", "price"), ("page_title", "next_page_url"))
-    # D-1491: the second row has no item URL, which the schema requires, so it is left out.
-    assert _row_values(result) == [{"title": "Widget 1", "url": "https://shop.example.test/p/1"}]
-    assert [(row["title"].evidence, row["title"].locator) for row in result.rows] == [("llm_grounded", "text:0-8")]
-    # The page field is the page's, not a row's.
+    assert (request.blocks, request.page_missing) == ((), ("page_title", "next_page_url"))
     assert result.entity is not None
-    assert (result.entity["page_title"].value, result.entity["next_page_url"].status) == ("All widgets", "missing")
+    assert (result.entity["page_title"].value, result.entity["page_title"].evidence) == ("All widgets", "llm_grounded")
     assert result.llm_calls == (LISTING_CALL,)
-    assert result.diagnostics[-2:] == (
-        "role C: rows[1].url ungrounded",
-        "role C: rows without their item URL left out: 1",
-    )
-    assert result.candidates[-4:] == ROWS_REPLY.candidates
-    assert result.outcome == "extracted"
-
-
-def test_a_role_c_row_without_its_item_url_stays_when_the_schema_does_not_require_one() -> None:
-    url = LISTING.fields["url"].model_copy(update={"required": False})
-    schema = LISTING.model_copy(update={"fields": {**LISTING.fields, "url": url}})
-
-    result = _listing(_html(body="<p>Widget 1</p>"), schema, role_c=FakeRoleC(listing_reply=ROWS_REPLY))
-
-    assert _row_values(result) == [{"title": "Widget 1", "url": "https://shop.example.test/p/1"}, {"title": "Widget 2"}]
-    assert [(row["url"].status, row["url"].reason) for row in result.rows][1] == ("missing", "not_owned")
 
 
 def test_a_page_field_the_page_states_is_not_asked_again() -> None:
     role_c = FakeRoleC()
-    _listing(_html(head='<meta property="og:title" content="All widgets">'), role_c=role_c)
-    assert [r.page_missing for r in role_c.listing_requests] == [("next_page_url",)]
+    _listing(_html(head='<meta property="og:title" content="All widgets">'), TITLED, role_c=role_c)
+    assert role_c.listing_requests == []
+
+
+def test_optional_page_fields_alone_are_not_asked() -> None:
+    role_c = FakeRoleC()
+    _listing(_html(), role_c=role_c)
+    assert role_c.listing_requests == []
 
 
 def test_a_listing_role_c_failure_leaves_the_asked_page_fields_missing_with_its_reason() -> None:
     failed = ListingGapReply(candidates=(), llm_calls=(), failure="llm_unavailable", diagnostics=("role C: x",))
-    result = _listing(_html(), role_c=FakeRoleC(listing_reply=failed))
+    result = _listing(_html(), TITLED, role_c=FakeRoleC(listing_reply=failed))
     assert result.entity is not None
     assert {name: (o.status, o.reason) for name, o in result.entity.items()} == {
         "page_title": ("missing", "llm_unavailable"),
@@ -767,27 +825,18 @@ def test_a_listing_role_c_failure_leaves_the_asked_page_fields_missing_with_its_
     assert (result.rows, result.outcome, result.diagnostics) == ((), "partial", ("role C: x",))
 
 
-@pytest.mark.parametrize(
-    ("role_c", "reason"),
-    [
-        (None, "no_rows: not_asked"),
-        (FakeRoleC(), "no_rows: none_listed"),
-        (FakeRoleC(listing_reply=ListingGapReply((), (), failure="llm_unavailable")), "no_rows: llm_unavailable"),
-        (FakeRoleC(listing_reply=ListingGapReply((), (), failure="llm_budget")), "no_rows: llm_budget"),
-    ],
-)
-def test_a_listing_without_rows_says_why_and_keeps_its_page_fields(role_c: FakeRoleC | None, reason: str) -> None:
-    # D-1475: the next page the page states still resolves, and the reason names what role C did.
+@pytest.mark.parametrize("role_c", [None, FakeRoleC()])
+def test_a_listing_without_rows_says_why_and_keeps_its_page_fields(role_c: FakeRoleC | None) -> None:
+    # The next page the page states still resolves; role C, which fills the rows of blocks, was not asked.
     result = _listing(_html(head='<link rel="next" href="/c/widgets?page=3">'), role_c=role_c, data=COMMITTED)
 
-    assert (result.rows, result.reason) == ((), reason)
+    assert (result.rows, result.reason) == ((), "no_rows: not_asked")
     assert result.entity is not None
     assert result.entity["next_page_url"].value == "https://shop.example.test/c/widgets?page=3"
 
 
 def test_a_listing_with_rows_or_a_detail_page_has_no_reason() -> None:
     assert _listing(_html(_item_list(_row(1))), data=COMMITTED).reason is None
-    assert _listing(_html(body="<p>Widget 1</p>"), role_c=FakeRoleC(listing_reply=ROWS_REPLY)).reason is None
     assert _extract(_bundle(_html(_product()))).reason is None
 
 
@@ -805,7 +854,7 @@ def test_a_listing_schema_without_row_fields_does_not_call_role_c() -> None:
 def test_a_listing_role_c_error_propagates() -> None:
     html, role_c = _html(), FakeRoleC(error=LookupError("no recorded response"))
     with pytest.raises(LookupError, match="no recorded response"):
-        _listing(html, role_c=role_c)
+        _listing(html, TITLED, role_c=role_c)
 
 
 def test_a_listing_parses_the_capture_once_per_parser(parses: Parses) -> None:
@@ -834,7 +883,7 @@ def _card(n: int, *links: str) -> str:
 def test_a_grid_of_cards_gives_its_rows_before_role_c_is_asked() -> None:
     # Listings spec, "Rows from blocks": each card's heading link and price; its `#reviews` link is the same document.
     cards = "".join(_card(n, f"/p/{n}", f"/p/{n}#reviews") for n in (1, 2, 3))
-    role_c = FakeRoleC(listing_reply=ROWS_REPLY)
+    role_c = FakeRoleC()
 
     result = _listing(_html(body=f"<ul>{cards}</ul>"), role_c=role_c, data=COMMITTED)
 
@@ -895,15 +944,23 @@ def test_a_listing_without_structured_rows_takes_the_rows_of_its_captured_call()
     assert result.outcome == "partial"
 
 
-def test_rows_of_a_call_that_leave_a_record_incomplete_go_to_role_c_whose_rows_replace_them() -> None:
-    role_c = FakeRoleC(listing_reply=ROWS_REPLY)
+def test_rows_of_a_call_that_lack_a_required_field_are_filled_through_their_blocks() -> None:
+    # Listings spec, "Rows from captured calls" and "Role C rows": each call row bound to a card is asked for the title
+    # it lacks, and role C's claim fills that call row; the call's own values stand.
+    role_c = FakeRoleC(fill_blocks=True)
+
     result = _extract(_network_listing(*NETWORK_ITEMS), LISTING, role_c=role_c, data=COMMITTED)
 
-    assert [r.row_fields for r in role_c.listing_requests] == [("title", "url", "price")]
-    assert _row_values(result) == [{"title": "Widget 1", "url": "https://shop.example.test/p/1"}]
+    (request,) = role_c.listing_requests
+    assert [block.fields for block in request.blocks] == [("title",)] * 3
+    # The rows filled are the call's, the cards bound to them.
+    assert all(block.row.startswith("xhr:") for block in request.blocks)
+    assert [(row["title"].evidence, row["url"].value) for row in result.rows] == [
+        ("llm_grounded", f"https://shop.example.test/p/{n}") for n in (1, 2, 3)
+    ]
 
 
-def test_the_blocks_beside_rows_of_a_call_stand_when_role_c_reads_no_rows() -> None:
+def test_the_blocks_beside_rows_of_a_call_stand_when_role_c_fills_nothing() -> None:
     # Listings spec, "Stated rows and blocks": a fourth card no call row names is a row beside them.
     fourth = {"name": "Widget 4", "href": "https://shop.example.test/p/4", "price": "€4.50"}
     bundle = _network_listing(*NETWORK_ITEMS, shown=[*NETWORK_ITEMS, fourth])
@@ -913,22 +970,22 @@ def test_the_blocks_beside_rows_of_a_call_stand_when_role_c_reads_no_rows() -> N
     assert [row["url"].value for row in result.rows] == [f"https://shop.example.test/p/{n}" for n in (1, 2, 3, 4)]
 
 
-def test_rows_of_a_call_stand_when_role_c_reads_no_rows() -> None:
+def test_rows_of_a_call_stand_when_role_c_fills_nothing() -> None:
     result = _extract(_network_listing(*NETWORK_ITEMS), LISTING, role_c=FakeRoleC(), data=COMMITTED)
 
     assert [row["url"].value for row in result.rows] == [f"https://shop.example.test/p/{n}" for n in (1, 2, 3)]
 
 
-def test_role_c_asked_beside_complete_call_rows_fills_them_and_never_replaces_them() -> None:
-    # Listings spec, "Rows from captured calls" and "Role C rows": an optional row field the call lacks asks role C,
-    # whose rows fill the call rows they name; complete call rows stand.
+def test_role_c_asked_beside_complete_call_rows_asks_only_the_field_no_row_publishes() -> None:
+    # Listings spec, "Role C rows": an optional row field the call lacks asks role C for it; the call rows stand.
     brand = FieldSpec(type=FieldType.TEXT, description="d", schema_org="Product.brand.name")
     schema = _schema("listing", url=LISTING.fields["url"], price=LISTING.fields["price"], brand=brand)
-    role_c = FakeRoleC(listing_reply=ROWS_REPLY)
+    role_c = FakeRoleC()
 
     result = _extract(_network_listing(*NETWORK_ITEMS), schema, role_c=role_c, data=COMMITTED)
 
-    assert len(role_c.listing_requests) == 1
+    (request,) = role_c.listing_requests
+    assert [block.fields for block in request.blocks] == [("brand",)] * 3
     assert [row["url"].value for row in result.rows] == [f"https://shop.example.test/p/{n}" for n in (1, 2, 3)]
     assert result.outcome == "extracted"
 

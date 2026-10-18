@@ -8,7 +8,7 @@ missing after that go to role C once, and its candidates are resolved with the o
 rows (structured data's, `resolve.listing`, else the config's, else its captured calls') and the blocks of its repeated
 items, bound into one row per item by the item layer (`collect.items.bind`, listings spec); each row resolves its
 row-scoped fields, the page its page-scoped ones, and the next-page candidates are listed (§4.12). Role C is asked once
-for a listing's row fields when it has no rows or its rows publish a row field on no row (listings spec, "Role C
+for the row fields a listing's block rows lack and for its missing page fields (listings spec, "Role C
 rows"). Resolution never publishes part of a page: if it raises, the outcome is `error` and no field is set (§4.14).
 
 With the site's active config (ARCHITECTURE §8.4, SPEC-08 §4.8) a page is extracted in `config` mode: the config's
@@ -31,8 +31,8 @@ from pydantic import BaseModel, ConfigDict
 from crawlerai.collect.base import ARRAY_ROW, Candidate, Entity
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.currencies import with_stated_currencies
-from crawlerai.collect.item_links import row_links
-from crawlerai.collect.items.bind import Bound, Listing, bind
+from crawlerai.collect.items.bind import Listing, RowBlock, bind
+from crawlerai.collect.items.lines import BlockText, block_text
 from crawlerai.collect.run import Adapters, Collected, collect_page
 from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canonical_urls, item_url_fields
 from crawlerai.content.context import page_context
@@ -41,7 +41,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import CALIBRATION_FILE
 from crawlerai.db.models import ExtractionMode, SourceKind
-from crawlerai.normalize.base import Context, Ok
+from crawlerai.normalize.base import Context
 from crawlerai.resolve.derive import Derived, fill, is_page_url_field
 from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibration, required_fields
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
@@ -147,22 +147,20 @@ class GapReply:
 
 @dataclass(frozen=True, slots=True)
 class ListingGapRequest:
-    """ARCHITECTURE §8.6: a listing whose structured data gives no rows. Role C reads the rows, with `row_fields`
-    each, and the page entity's `page_missing` fields from the page text."""
+    """Listings spec, "Role C rows": the `blocks` whose rows lack row fields (each with the fields to fill), and the
+    page entity's `page_missing` fields, for role C to read from the page text."""
 
     page: ParsedPage
     schema: SchemaDef
     ctx: Context
-    row_fields: tuple[str, ...]
+    blocks: tuple[BlockText, ...]
     page_missing: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class ListingGapReply(GapReply):
-    """A listing's `GapReply`: `rows` are the entities of the rows role C read, in page order, and `candidates` are
-    owned by them or by the page entity. `failure` leaves the asked page fields `missing` with it."""
-
-    rows: tuple[Entity, ...] = ()
+    """A listing's `GapReply`: `candidates` are owned by the blocks' rows or by the page entity. `failure`, the page
+    fields' call's, leaves the asked page fields `missing` with it."""
 
 
 class RoleC(Protocol):
@@ -397,13 +395,11 @@ def _read_and_resolve(source: _Source) -> tuple[_Page, FieldSet]:
     return page, page.resolve(page.candidates)
 
 
-# D-1475: why a listing gave no rows, as `no_rows: <cause>`: structured data, the config and the captured calls gave
-# none and role C was not asked (`NOT_ASKED`: no hook, a schema without row fields, or a config that runs a row field),
-# gave no valid reply (its failure's reason: `llm_unavailable`, `llm_budget`, ...), or listed none it could ground
-# (`NONE_LISTED`).
+# Why a listing gave no rows, as `no_rows: <cause>` (rest-api spec, "Scrape outcomes, not errors, for page failures"):
+# structured data, the config, the captured calls and the item layer gave none, so role C, which fills the rows of
+# blocks, was not asked for rows.
 NO_ROWS: Final = "no_rows"
 NOT_ASKED: Final = "not_asked"
-NONE_LISTED: Final = "none_listed"
 
 
 def no_rows(cause: str) -> str:
@@ -419,10 +415,8 @@ class _Listing:
     candidates: tuple[Candidate, ...]
     diagnostics: tuple[str, ...]
     llm_calls: tuple[LLMCallRecord, ...] = ()
-    network: bool = False  # the rows are those of the page's captured calls (Appendix A #59)
-    role_c: str = NOT_ASKED  # what role C did when the listing has no rows (`no_rows`)
     entities: tuple[Entity, ...] = ()  # the rows' entities, in `rows` order
-    stated: bool = False  # whether stated rows (structured, the config's, the calls') are among the rows
+    blocks: tuple[RowBlock, ...] = ()  # the rows' blocks, in the bound group's order
 
     @classmethod
     def read(cls, source: _Source) -> "_Listing":
@@ -457,12 +451,6 @@ class _Listing:
             )
         )
         diagnostics.extend(bound.diagnostics)
-        network = (
-            not structured
-            and not page.config.rows
-            and bool(page.collected.rows)
-            and bound.rows[: len(stated)] == stated
-        )
         fields, resolved = page.resolve_listing(bound.candidates, bound.rows)
         next_pages = tuple(link.url for link in links)
         return cls(
@@ -472,107 +460,50 @@ class _Listing:
             next_pages,
             bound.candidates,
             tuple(diagnostics),
-            network=network,
             entities=bound.rows,
-            stated=bool(stated),
+            blocks=bound.blocks,
         )
 
     def gap(self) -> ListingGapRequest | None:
-        """The role C request (listings spec, "Role C rows"): every row field, and the page fields still `missing` that
-        the config does not run. Asked when the listing has no rows, when the rows of its captured calls leave a record
-        incomplete (role C's rows replace them), or when its rows publish some row field on no row (role C's rows then
-        fill the rows they bind to, `with_reply`); never for a schema without row fields, or when the config runs a row
-        field (role C's rows could not join the config's)."""
+        """The role C request (listings spec, "Role C rows"): the blocks whose rows lack row fields, each with the
+        fields its row lacks, and the missing page fields a detail page would ask (`_gaps`); none of them a field the
+        config runs, and no block beside a config that runs a row field (role C's values could not join its rows)."""
         schema = self.page.schema
         covered = self.page.config.covered
         row_fields = tuple(name for name, spec in schema.fields.items() if spec.scope == "row")
-        if not row_fields or covered.intersection(row_fields):
+        blocks = () if covered.intersection(row_fields) else self._blocks(row_fields)
+        page_missing = _gaps(schema, self.fields, covered)
+        if not blocks and not page_missing:
             return None
-        if not self._replaced() and all(any(_published(row, name) for row in self.rows) for name in row_fields):
-            return None
-        page_missing = tuple(
-            name for name, outcome in self.fields.items() if outcome.status == "missing" and name not in covered
-        )
-        return ListingGapRequest(self.page.page, schema, self.page.ctx, row_fields, page_missing)
+        return ListingGapRequest(self.page.page, schema, self.page.ctx, blocks, page_missing)
+
+    def _blocks(self, row_fields: Sequence[str]) -> tuple[BlockText, ...]:
+        """The blocks whose rows lack a row field role C can claim, asked when some row lacks a required one or one is
+        published on no row: never the item URL, the block's link, which its text does not show, nor an object."""
+        schema = self.page.schema
+        rows = dict(zip((entity.id for entity in self.entities), self.rows, strict=True))
+        askable = _askable(schema, row_fields)
+        lacking = {
+            block.row: [name for name in askable if not _published(rows[block.row], name)] for block in self.blocks
+        }
+        unpublished = any(not any(_published(row, name) for row in self.rows) for name in askable)
+        required = {name for name in askable if schema.fields[name].required}
+        if not unpublished and not any(required.intersection(names) for names in lacking.values()):
+            return ()
+        texts = (block_text(self.page.page, block, lacking[block.row]) for block in self.blocks if lacking[block.row])
+        return tuple(text for text in texts if text is not None)
 
     def with_reply(self, reply: ListingGapReply, asked: tuple[str, ...]) -> "_Listing":
-        """The listing with role C's rows: each row entity joins the graph and resolves its row fields from the
-        candidates, with the item URLs of their repeated item blocks (`row_links`, §8.6), and the page fields resolve
-        again with the reply's."""
-        page = self.page
-        graph = EntityGraph.of((*page.graph.entities.values(), *reply.rows), page.data.vocabulary, page.page_urls)
-        page = replace(page, graph=graph)
-        links = row_links(page.page, page.schema, page.ctx, reply.rows, reply.candidates)
-        candidates = (*self.candidates, *reply.candidates, *links)
-        diagnostics = (*self.diagnostics, *reply.diagnostics)
-        filled = None if self._replaced() else self._filled(page, graph, reply, candidates)
-        if filled is not None:
-            bound = filled
-            fields, rows = page.resolve_listing(bound.candidates, self.entities)
-            if reply.failure is not None:
-                fields = _unanswered(fields, asked, reply.failure)
-            return replace(
-                self,
-                page=page,
-                fields=fields,
-                rows=rows,
-                candidates=bound.candidates,
-                diagnostics=(*diagnostics, *bound.diagnostics),
-                llm_calls=reply.llm_calls,
-            )
-        # Rows of captured calls stand when role C reads none.
-        network = self.network and not reply.rows
-        # Without role C's rows, the listing's rows stand: its call rows and the blocks bound beside them.
-        fields, rows = page.resolve_listing(candidates, self.entities if network else reply.rows)
+        """The listing with role C's candidates, owned by the blocks' rows and the page entity: the rows and the page
+        fields resolve again with them."""
+        candidates = (*self.candidates, *reply.candidates)
+        fields, rows = self.page.resolve_listing(candidates, self.entities)
         if reply.failure is not None:
             fields = _unanswered(fields, asked, reply.failure)
-        if not network:
-            rows, unplaced = _placed(page.schema, rows)
-            if unplaced:
-                diagnostics = (*diagnostics, f"role C: rows without their item URL left out: {unplaced}")
+        diagnostics = (*self.diagnostics, *reply.diagnostics)
         return replace(
-            self,
-            page=page,
-            fields=fields,
-            rows=rows,
-            candidates=candidates,
-            diagnostics=diagnostics,
-            llm_calls=reply.llm_calls,
-            network=network,
-            role_c=reply.failure or NONE_LISTED,
-            entities=reply.rows if not network else self.entities,
+            self, fields=fields, rows=rows, candidates=candidates, diagnostics=diagnostics, llm_calls=reply.llm_calls
         )
-
-    def _replaced(self) -> bool:
-        """Whether role C's rows replace the listing's: it has none, or its rows are its captured calls' and leave a
-        record incomplete (listings spec, "Rows from captured calls"); otherwise role C's rows fill the rows."""
-        return not self.rows or (self.network and not self._complete())
-
-    def _filled(
-        self, page: _Page, graph: EntityGraph, reply: ListingGapReply, candidates: tuple[Candidate, ...]
-    ) -> Bound | None:
-        """The listing's rows filled by the role C rows that bind to them by item URL (the item layer's bind step);
-        None when the rows are blocks alone and role C's rows name items by URL, none of them a block's: role C read
-        the schema's items elsewhere, so the blocks are not the listing and role C's rows replace them, as when there
-        are no rows."""
-        listing = Listing(
-            page.page,
-            page.ctx,
-            page.schema,
-            page.page_urls,
-            (),
-            self.entities,
-            reply.rows,
-            candidates,
-            partial(_holder, graph),
-        )
-        bound = bind(listing)
-        replies = {row.id for row in reply.rows}
-        fields = frozenset(item_url_fields(page.schema))
-        named = {c.entity_id for c in candidates if c.entity_id in replies and c.field in fields and _ok(c)}
-        if not self.stated and named and bound.joined.isdisjoint(replies):
-            return None
-        return bound
 
     def _records(self) -> list[FieldSet]:
         # Each row's record holds the page's fields too (`resolve.records.assemble_listing`).
@@ -597,7 +528,7 @@ class _Listing:
             record_confidence=_least_confident(record_confidence(schema, record) for record in records),
             diagnostics=self.diagnostics,
             next_pages=self.next_pages,
-            reason=None if self.rows else no_rows(self.role_c),
+            reason=None if self.rows else no_rows(NOT_ASKED),
             session_params=session,
         )
 
@@ -608,7 +539,7 @@ async def _extract_listing(source: _Source, role_c: RoleC | None, mode: Extracti
     except Exception:  # §4.14, as for a detail page
         log.exception(_FAILED)
         return _result("error", mode)
-    if role_c is not None and (request := listing.gap()) is not None:
+    if role_c is not None and (request := await asyncio.to_thread(listing.gap)) is not None:
         reply = await role_c.listing(request)
         try:
             listing = await asyncio.to_thread(listing.with_reply, reply, request.page_missing)
@@ -625,19 +556,6 @@ def _holder(graph: EntityGraph, candidate: Candidate) -> str:
     `offers`; atomic offers, resolution spec)."""
     owner = graph.owner_of(candidate)
     return owner.parent if owner.parent is not None and graph.is_a(owner, OFFER) else owner.id
-
-
-def _placed(schema: SchemaDef, rows: tuple[FieldSet, ...]) -> tuple[tuple[FieldSet, ...], int]:
-    """Role C's rows that publish every required item URL field (`item_url_fields`), and how many were left out. A row
-    whose item block gives no URL is not told apart from the page's other text: its record would be keyed by its
-    position, not by the item it names (D-1491)."""
-    required = [name for name in item_url_fields(schema) if schema.fields[name].required]
-    kept = tuple(row for row in rows if all(_published(row, name) for name in required))
-    return kept, len(rows) - len(kept)
-
-
-def _ok(candidate: Candidate) -> bool:
-    return isinstance(candidate.normalized, Ok)
 
 
 def _published(fields: FieldSet, name: str) -> bool:
@@ -673,6 +591,13 @@ def _gaps(schema: SchemaDef, fields: FieldSet, covered: frozenset[str]) -> tuple
     if not any(schema.fields[name].required or name in unmet for name in missing):
         return ()
     return tuple(missing)
+
+
+def _askable(schema: SchemaDef, row_fields: Sequence[str]) -> list[str]:
+    """The row fields role C can claim in a block: not the item URL, the block's link, which its text does not show,
+    nor an object, whose sub-fields one verbatim span cannot hold."""
+    urls = frozenset(item_url_fields(schema))
+    return [name for name in row_fields if name not in urls and not _holds_objects(schema.fields[name])]
 
 
 def _holds_objects(spec: FieldSpec) -> bool:

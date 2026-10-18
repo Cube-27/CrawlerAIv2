@@ -14,7 +14,7 @@ from typing import Any
 
 from pydantic import JsonValue
 
-from crawlerai.collect.base import Candidate, Entity
+from crawlerai.collect.base import Candidate
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
@@ -347,30 +347,35 @@ def test_structured_rows_win_over_the_configs() -> None:
     assert [row["title"] for row in _rows(result)] == [(f"Item {n}", "structured") for n in (7, 8, 9)]
 
 
-def test_a_listing_config_without_rows_leaves_rows_to_role_c() -> None:
+def test_a_listing_config_without_rows_leaves_the_blocks_missing_row_fields_to_role_c() -> None:
+    brand = FieldSpec(type=FieldType.TEXT, description="d")
+    schema = LISTING.model_copy(update={"fields": {**LISTING.fields, "brand": brand}})
+    cards = "".join(
+        f'<li class="card"><h3><a href="/p/{n}">Widget {n}</a></h3><span>{n}.50 EUR</span><p>Acme {n}</p></li>'
+        for n in (1, 2, 3)
+    )
     reply = ListingGapReply(
         candidates=(
             Candidate(
-                field="title",
-                entity_id="llm:rows[0]",
+                field="brand",
+                entity_id="item_block:0:0",
                 source_kind="llm",
-                raw="Widget 1",
-                normalized=Ok("Widget 1"),
-                locator="text:0-8",
+                raw="Acme 1",
+                normalized=Ok("Acme 1"),
+                locator="text:29-35",  # the first block's "Acme 1", as checked below
                 independent=True,
             ),
         ),
         llm_calls=(CALL,),
-        rows=(Entity(id="llm:rows[0]", types=("page",), urls=(), parent=None),),
     )
     role_c = FakeRoleC(reply)
     config = _config({"page_title": _steps("normalize-space(//h1)")}, page_kind="listing")
-    # An optional url, so the row stays without the item URL its card would give (D-1491).
-    url = LISTING.fields["url"].model_copy(update={"required": False})
-    schema = LISTING.model_copy(update={"fields": {**LISTING.fields, "url": url}})
-    # A page without repeated items: role C reads the rows.
-    result = _extract(_html(body="<p>Widget 1</p>"), config, schema, role_c, LISTING_URL)
+    result = _extract(_html(body=f"<ul>{cards}</ul>"), config, schema, role_c, LISTING_URL)
     (request,) = role_c.listing_requests
-    # The page field the config runs is not asked again.
-    assert (request.row_fields, request.page_missing) == (("title", "url"), ())
-    assert _rows(result) == [{"title": ("Widget 1", "llm_grounded")}]
+    # This order ranks no block reading, so each block is asked for the row fields its row does not publish but the
+    # item URL; the page field the config runs is not asked again.
+    assert [block.fields for block in request.blocks] == [("title", "brand")] * 3
+    assert request.page_missing == ()
+    first = request.blocks[0]
+    assert first.start + first.text.index("Acme 1") == 29
+    assert [row.get("brand") for row in _rows(result)] == [("Acme 1", "llm_grounded"), None, None]

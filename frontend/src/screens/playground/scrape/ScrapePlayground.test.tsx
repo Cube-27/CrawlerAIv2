@@ -771,7 +771,7 @@ describe("scrape playground: formats and problems", () => {
     stubScrape({
       "POST /v1/scrape": () =>
         Response.json(
-          scrapeResponse({ outcome: "partial", reason: "no_rows: none_listed", records: [] }),
+          scrapeResponse({ outcome: "partial", reason: "no_rows: not_asked", records: [] }),
         ),
       [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
     });
@@ -781,25 +781,9 @@ describe("scrape playground: formats and problems", () => {
     await submit();
 
     const sentence = await screen.findByText(/No rows: structured data, the config/);
-    expect(sentence).toHaveTextContent("found none it could ground in the page");
-    expect(sentence).toHaveAttribute("title", "no_rows: none_listed");
-    expect(screen.queryByText("no_rows: none_listed")).not.toBeInTheDocument();
-  });
-
-  it("names a row reader's own failure as the reason a listing gave no rows", async () => {
-    stubScrape({
-      "POST /v1/scrape": () =>
-        Response.json(
-          scrapeResponse({ outcome: "partial", reason: "no_rows: llm_budget", records: [] }),
-        ),
-      [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),
-    });
-    await openScrape();
-    await fillRecordsByIdForm();
-
-    await submit();
-
-    expect(await screen.findByText("No rows: the row reader failed (llm_budget).")).toBeVisible();
+    expect(sentence).toHaveTextContent("so the row reader was not asked");
+    expect(sentence).toHaveAttribute("title", "no_rows: not_asked");
+    expect(screen.queryByText("no_rows: not_asked")).not.toBeInTheDocument();
   });
 
   it("shows the page's own fields of a listing that kept no record, in the table and the JSON", async () => {
@@ -809,7 +793,7 @@ describe("scrape playground: formats and problems", () => {
         Response.json(
           scrapeResponse({
             outcome: "partial",
-            reason: "no_rows: none_listed",
+            reason: "no_rows: not_asked",
             records: [],
             page: {
               next_page_url: field({ value: next, source_kind: "dom", locator: "link[rel=next]" }),

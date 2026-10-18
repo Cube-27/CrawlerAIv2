@@ -1,6 +1,6 @@
 """The pipeline's LLM hook bound to a client (SPEC-05 §4.13, SPEC-06 §4.4, D-0483): role C for `extract_page`, on a
-detail page's gaps and on a listing without structured rows, which it reads through its items' text when the page
-shows repeated item blocks (`content.item_text`, D-1478).
+detail page's gaps, and on a listing's blocks whose rows lack row fields and its missing page fields (llm spec, "Role C
+input, claims and candidates").
 
 `resolve` and `llm` don't import each other (C8 layering), so the hook is bound here, in the first layer above both;
 the worker and the replay harness (`eval.engine`) bind it the same way.
@@ -9,10 +9,9 @@ The client commits each call's usage on a connection of its own (D-0346). A call
 must not hold an uncommitted write to the job's row meanwhile: the client's usage update would wait on it.
 """
 
-import asyncio
 from dataclasses import dataclass
 
-from crawlerai.content.item_text import item_text
+from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import LLMClient, LLMFailure, PromptKind
 from crawlerai.llm.roles import c_extract
@@ -44,29 +43,47 @@ class _RoleC:
         return GapReply(filled.candidates, calls, failure=_reason(filled), diagnostics=filled.diagnostics)
 
     async def listing(self, request: ListingGapRequest) -> ListingGapReply:
+        """The blocks' calls (when blocks are asked), then the page fields' (when page fields are): the page fields are
+        read in the whole cleaned text, as a detail page's, since a block shows one item only. A failed call ends the
+        page's calls, and its reason is the asked page fields'."""
         fields = request.schema.fields
-        # D-1478: the items' text when the page shows repeated item blocks, so the model reads the items, not the
-        # menus around them; finding them parses HTML, so a thread keeps the event loop free.
-        items = await asyncio.to_thread(item_text, request.page)
-        filled = await c_extract.extract_listing(
-            self.client,
-            request.page.cleaned_text.text if items is None else items,
-            {name: fields[name] for name in request.row_fields},
-            {name: fields[name] for name in request.page_missing},
-            request.ctx,
-            job_id=self.job_id,
-        )
-        calls = _calls(c_extract.LISTING_PROMPT_KIND, filled)
-        return ListingGapReply(
-            filled.candidates, calls, failure=_reason(filled), diagnostics=filled.diagnostics, rows=filled.rows
-        )
+        candidates: list[Candidate] = []
+        diagnostics: list[str] = []
+        calls: list[LLMCallRecord] = []
+        failure = None
+        if request.blocks:
+            asked = sorted({name for block in request.blocks for name in block.fields})
+            rows = await c_extract.extract_listing(
+                self.client, request.blocks, {name: fields[name] for name in asked}, request.ctx, job_id=self.job_id
+            )
+            candidates.extend(rows.candidates)
+            diagnostics.extend(rows.diagnostics)
+            calls.extend(_calls(c_extract.LISTING_PROMPT_KIND, rows))
+            failure = _reason(rows)
+        if request.page_missing and failure is None:
+            page = await c_extract.extract_detail(
+                self.client,
+                request.page.cleaned_text.text,
+                {name: fields[name] for name in request.page_missing},
+                request.ctx,
+                owner=PAGE,
+                job_id=self.job_id,
+                kind=c_extract.LISTING_PROMPT_KIND,
+            )
+            candidates.extend(page.candidates)
+            diagnostics.extend(page.diagnostics)
+            calls.extend(_calls(c_extract.LISTING_PROMPT_KIND, page))
+            failure = _reason(page)
+        return ListingGapReply(tuple(candidates), tuple(calls), failure=failure, diagnostics=tuple(diagnostics))
 
 
 def _reason(filled: c_extract.Filled) -> str | None:
-    return filled.reply.field_reason if isinstance(filled.reply, LLMFailure) else None
+    """The reason of the first of the calls that gave no valid reply, if one did."""
+    return next((reply.field_reason for reply in filled.replies if isinstance(reply, LLMFailure)), None)
 
 
 def _calls(kind: PromptKind, filled: c_extract.Filled) -> tuple[LLMCallRecord, ...]:
     """Every answered call, a failed one's too, of every call the hook made: each was charged to the job (F30)."""
-    replies = filled.replies if isinstance(filled, c_extract.FilledListing) else (filled.reply,)
-    return tuple(LLMCallRecord(prompt_kind=kind, **call.model_dump()) for reply in replies for call in reply.answered)
+    return tuple(
+        LLMCallRecord(prompt_kind=kind, **call.model_dump()) for reply in filled.replies for call in reply.answered
+    )

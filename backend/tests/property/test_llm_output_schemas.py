@@ -51,14 +51,19 @@ def test_a_role_c_detail_reply_holds_one_claim_per_field_asked_in_every_subset(f
     assert {provider: violations(schema, subset) for provider, subset in SUBSETS.items()} == {p: [] for p in SUBSETS}
 
 
-@given(names, st.lists(st.from_regex(rf"^{NAME_PATTERN}$", fullmatch=True), max_size=10, unique=True))
-def test_a_role_c_listing_row_holds_one_claim_per_row_field_in_every_subset(rows: list[str], page: list[str]) -> None:
-    # The rows are the one array; their count is capped in the prompt and cut on reading (§4.4).
-    schema: Any = c_extract.listing_output_schema(rows, page)
-    row = schema["properties"]["rows"]["items"]
+@given(names)
+def test_a_role_c_listing_reply_is_one_array_of_block_claims_in_every_subset(fields: list[str]) -> None:
+    # One array of claims whose field is an enum of the fields asked: its length is bounded by the per-call output
+    # budget, not by the schema, and the claim's form does not grow with the fields.
+    schema: Any = c_extract.listing_output_schema(fields)
+    claim = schema["properties"]["claims"]["items"]
 
-    assert (_arrays(schema), sorted(row["properties"]), row["additionalProperties"]) == (1, sorted(rows), False)
-    assert json.dumps(schema).count('"start"') == 2
+    assert (_arrays(schema), sorted(claim["properties"]), claim["additionalProperties"]) == (
+        1,
+        ["block", "field", "value"],
+        False,
+    )
+    assert claim["properties"]["field"]["enum"] == sorted(fields)
     assert {provider: violations(schema, subset) for provider, subset in SUBSETS.items()} == {p: [] for p in SUBSETS}
 
 
