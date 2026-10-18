@@ -1197,7 +1197,7 @@ archived ARCHITECTURE.md.
 ### D-1776 — A listing's sections of one row shape and URL kind are read together
 - Date: 2026-10-18 · Change/PR: listing-state-sections (#293) · Status: decided (owner-delegated 2026-10-17)
 - Decision: Beside the chosen group, bind reads every aligned group of its field set (or holding its required fields
-  and one more) whose blocks lead, a quorum of them, to URLs of its blocks' kind (host, path depth, first segment),
+  and a field beyond the item URL) whose blocks lead, a quorum of them, to URLs of its blocks' kind (host, path depth, first segment),
   apart from blocks already read; blocks in document order, one per item (session parameters aside).
 - Why: on the dev set, without the URL kind check footer and category lists of the same shape became rows (FP);
   with it, listing rows TP 935 to 999, FN 926 to 862, FP 181 to 180 (`--llm unanswered`).

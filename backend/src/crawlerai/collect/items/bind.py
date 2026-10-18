@@ -9,8 +9,9 @@ listing, and a block no stated row names is an item the structured data left out
 written, a later batch a call loaded).
 
 **Sections.** A listing split into sections reads them all: beside the chosen group, each aligned group of its row
-shape (or holding every required field it aligns and one more), whose blocks lead to documents of the kind its blocks
-lead to and lie apart from the blocks already read (`_sections`); one item two sections show is one block.
+shape (or holding every required field it aligns and a field beyond the item URL), whose blocks lead to documents of
+the kind its blocks lead to and lie apart from the blocks already read (`_sections`); one item two sections show is
+one block.
 
 **Binding.** A row and a block are one item when the row names the block's item URL, and neither names another's (one
 to one, else neither binds: C7). URLs are compared as the page's links name items: without the page's session

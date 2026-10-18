@@ -41,7 +41,7 @@ excluded). Values are `dom` candidates with locators; the group aligning most fi
 ### Requirement: Stated rows and blocks (bind)
 The stated rows SHALL be structured data's (`resolve/listing.py`), else the active config's, else the captured calls'.
 The blocks are those of the group the stated rows name most and of every other section read with it: an aligned group
-of its row shape (or holding every required field it aligns and one more) whose blocks lead, a quorum of them, to
+of its row shape (or holding every required field it aligns and a field beyond the item URL) whose blocks lead, a quorum of them, to
 documents of the kind its blocks lead to (host, path depth, first segment), apart from blocks already read; an item two
 sections show is one block (D-1776). Stated rows and those blocks bind one to one by item URL (session parameters, a trailing
 slash and added query parameters aside) or by a name the block shows (`collect/items/bind.py`). With no stated rows or
