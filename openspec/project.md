@@ -133,3 +133,4 @@ Decisions with status `needs-owner` or `pending-owner` (`CLAUDE.md` §5). Keep t
 | D-1583 | long_text word overlap drops numbers (a scoring rule) | needs-owner (#277) |
 | D-1593 | Task leasing order across jobs: scored crawl tasks lease first | needs-owner (#277) |
 | D-1665 | Scoring follows the wider image resource key (sizes, conversions, options score as one image) | pending-owner (#284) |
+| D-1743 | First calibration table held back: τ would abstain most page-level fields | needs-owner (#288) |

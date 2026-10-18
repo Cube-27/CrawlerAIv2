@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from crawlerai.collect.base import Candidate
 from crawlerai.collect.locator import format_locator
-from crawlerai.db.models import EvalRunId, SourceKind
+from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.derive import Derived
 from crawlerai.resolve.preference import Chosen, Preference
@@ -24,8 +24,8 @@ from crawlerai.schemas.types import FieldType, SchemaDef
 # ARCHITECTURE §10, OPEN_QUESTIONS #3: a calibrated bucket below τ abstains.
 TAU_REQUIRED: Final = 0.97
 TAU_OPTIONAL: Final = 0.95
-# ARCHITECTURE §10: a bucket with fewer than 30 dev labels reports `calibrated=false`.
-MIN_CALIBRATED_N: Final = 30
+# A bucket with fewer than 20 dev labels reports `calibrated=false` (the `resolution` spec's floor).
+MIN_CALIBRATED_N: Final = 20
 # ARCHITECTURE §10 buckets by source kind: an adapter or an API recipe; one structured-data standard (schema.org
 # JSON-LD and microdata, the Open Graph protocol); a structural DOM value (§8.1), which follows no structured-data
 # standard; a value of the page's captured calls, the network data-source layer (Appendix A #59); role C's grounded
@@ -51,11 +51,11 @@ class Bucket(_Model):
 
 
 class Calibration(_Model):
-    """`backend/data/calibration.json`: per `"field_type|evidence"` bucket, its golden-set measurement."""
+    """`backend/data/calibration.json`: per `"field_type|evidence"` bucket, its fitted golden-set confidence
+    (`eval.calibrate`); a bucket the fit lacked is not in it, so uncalibrated."""
 
     calibration_version: Literal[1] = 1
     source_split: Literal["dev"] = "dev"
-    eval_run_id: EvalRunId
     git_sha: str
     buckets: dict[str, Bucket]
 

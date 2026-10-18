@@ -65,8 +65,13 @@ description's evaluation section, with no per-page or per-site numbers; precisio
 stated reason. Enforced by: the PR template; review.
 
 ### Requirement: Fitting on the golden set
-`eval calibrate` and `eval fit-precedence` SHALL fit on a stored dev run and stamp what they write `source_split: dev`.
-Refs: owner (2026-10-18, master plan decision 10).
+`eval fit-calibration` and `eval fit-precedence` SHALL fit on a dev report of an engine without a calibration, scored
+on the labeled rows, refuse any other, and stamp what they write `source_split: dev`; the files hold bucket and
+source-kind names and numbers only. (Previously: `eval calibrate` and `eval fit-precedence` fitted on a stored dev
+run.) Refs: owner (2026-10-18, master plan decision 10).
+#### Scenario: Report of a calibrated engine
+- **WHEN** a fit reads a report whose engine version names a calibration
+- **THEN** it exits non-zero and writes nothing
 
 ### Requirement: Claims before and after milestone M
 Until calibration is fitted confidence SHALL be `calibrated=false` and precedence and drift margins their defaults;

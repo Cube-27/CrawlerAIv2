@@ -579,7 +579,6 @@ def _write(tmp_path: Path, text: str) -> Path:
 
 _FILE = """\
 source_split: dev
-eval_run_id: 0192f3c4-0000-7000-8000-000000000000
 git_sha: 0123456789abcdef0123456789abcdef01234567
 text: [adapter, jsonld, og]
 long_text: [jsonld]

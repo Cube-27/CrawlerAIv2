@@ -13,7 +13,7 @@ from pydantic import JsonValue
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.learning import learnable
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import EvalRunId, SchemaId, SourceKind
+from crawlerai.db.models import SchemaId, SourceKind
 from crawlerai.eval.replay import page_output
 from crawlerai.resolve import pipeline
 from crawlerai.resolve.evidence import Bucket, Calibration
@@ -308,7 +308,7 @@ def test_rows_whose_key_sub_fields_are_all_below_tau_make_the_field_abstain() ->
     # §4.5: a key sub-field's row bucket (`list.<type>|<evidence>`) calibrated below τ drops each variant as
     # `key_unpublished`; when every variant went that way the field abstains, it is not missing.
     buckets = {"list.identifier|structured": Bucket(n=40, precision=0.5)}
-    calibration = Calibration(eval_run_id=EvalRunId(uuid7()), git_sha="a" * 40, buckets=buckets)
+    calibration = Calibration(git_sha="a" * 40, buckets=buckets)
     data = EngineData(VOCABULARY, DATA.orders, calibration)
 
     outcome = _variants(_group(_variant("W-11", "10.00"), _variant("W-12", "12.00")), data=data)

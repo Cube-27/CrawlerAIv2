@@ -22,10 +22,10 @@ from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import EvalRunId, PageKind, SchemaId, SourceKind
+from crawlerai.db.models import PageKind, SchemaId, SourceKind
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve import pipeline
-from crawlerai.resolve.evidence import Bucket, Calibration
+from crawlerai.resolve.evidence import MIN_CALIBRATED_N, Bucket, Calibration
 from crawlerai.resolve.pipeline import (
     UNRANKED,
     EngineData,
@@ -866,11 +866,11 @@ def test_a_listing_parses_the_capture_once_per_parser(parses: Parses) -> None:
     assert parses["lxml"].calls <= 1
 
 
-@pytest.mark.parametrize(("url_n", "expected"), [(40, 0.975), (29, None)])
+@pytest.mark.parametrize(("url_n", "expected"), [(40, 0.975), (MIN_CALIBRATED_N - 1, None)])
 def test_a_listings_confidence_is_its_least_confident_rows(url_n: int, expected: float | None) -> None:
     # §10 per record: a row's confidence is its least confident required field's; one uncalibrated row has none.
     buckets = {"text|structured": Bucket(n=40, precision=0.99), "url|structured": Bucket(n=url_n, precision=0.975)}
-    calibration = Calibration(eval_run_id=EvalRunId(uuid7()), git_sha="a" * 40, buckets=buckets)
+    calibration = Calibration(git_sha="a" * 40, buckets=buckets)
     data = EngineData(VOCABULARY, DATA.orders, calibration)
     result = _listing(_html(_item_list(_row(1), _row(2))), data=data)
     assert result.record_confidence == expected

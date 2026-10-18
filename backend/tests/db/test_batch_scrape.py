@@ -26,10 +26,8 @@ from crawlerai.acquire.session import CookieExport
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.content.page import ParsedPage
-from crawlerai.core.ids import uuid7
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import (
-    EvalRunId,
     Extraction,
     ExtractionConfig,
     Job,
@@ -468,7 +466,6 @@ async def test_a_listing_whose_rows_only_a_render_holds_keeps_the_renders_rows(
 def _calibration(precision: float) -> Calibration:
     bucket = Bucket(n=40, precision=precision)
     return Calibration(
-        eval_run_id=EvalRunId(uuid7()),
         git_sha="0" * 40,
         buckets={"money|structured": bucket, "text|structured": bucket},
     )

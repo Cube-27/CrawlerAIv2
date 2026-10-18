@@ -39,7 +39,7 @@ PRECEDENCE_FILE = "source_precedence.yaml"
 # ARCHITECTURE §10: the types whose candidates rank by source kind; every other type publishes only on agreement.
 PRECEDENCE_TYPES = frozenset({FieldType.TEXT, FieldType.LONG_TEXT, FieldType.URL, FieldType.IMAGE_URL})
 # What `crawlerai eval fit-precedence` stamps on the file; every other key names a field type.
-STAMP = frozenset({"source_split", "eval_run_id", "git_sha"})
+STAMP = frozenset({"source_split", "git_sha"})
 _SOURCE_KINDS: frozenset[str] = frozenset(get_args(SourceKind))
 # The screening stages in the order a candidate meets them; a missing field states the furthest one reached.
 _STAGES = ("invalid", "ambiguous", "not_owned", "url_param")
