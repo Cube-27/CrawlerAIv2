@@ -107,6 +107,7 @@ class _Renders:
     def __init__(self, render: Render | None) -> None:
         self.render = render
         self.left = MAX_RENDERS if render is not None else 0
+        self._listings: set[str] = set()  # the listing URLs rendered: a second render shows what the first did
 
     async def bundles(self, url: str, page_kind: PageKind) -> tuple[CaptureBundle, ...]:
         if self.render is None or self.left <= 0:
@@ -131,8 +132,9 @@ class _Renders:
         """`pages` with a render's states for at most `at_most` of those that `needs` one."""
         found: list[ListingPage] = []
         for page in pages:
-            if needs(page) and at_most > 0:
+            if needs(page) and at_most > 0 and page.url not in self._listings:
                 at_most -= 1
+                self._listings.add(page.url)
                 page = page.rendered(await self.bundles(page.url, "listing"))
             found.append(page)
         return found
@@ -174,6 +176,7 @@ async def _listing_endpoint(
     """The sample's listing endpoint, its pagination and the sample pages of distinct URLs as replay reads them; else
     why there is none. Only sample pages with calls are read: a capture without network bodies says nothing."""
     pages = [ListingPage.of(page) for page in sample]
+    before = renders.left
     pages = await renders.listing(pages, lambda page: not page.has_calls, SAMPLE_RENDERS)
     with_calls = [page for page in pages if page.has_calls]
     if not with_calls:
@@ -185,8 +188,11 @@ async def _listing_endpoint(
     pagination = await asyncio.to_thread(listing_pagination, with_calls, endpoint.key)
     if pagination is None:
         # The captures show one call each: the listing's browser actions show how it asks for the next page.
+        # The two passes share the sample's renders (D-1366): the rest are the held-out pages'.
         unpaged = await renders.listing(
-            with_calls, lambda page: len(page_series(page).get(endpoint.key, ())) < 2, SAMPLE_RENDERS
+            with_calls,
+            lambda page: len(page_series(page).get(endpoint.key, ())) < 2,
+            SAMPLE_RENDERS - (before - renders.left),
         )
         pagination = await asyncio.to_thread(listing_pagination, unpaged, endpoint.key)
         with_calls = unpaged
