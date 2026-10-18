@@ -41,9 +41,9 @@ block by block, so its input is the blocks' own text and its claims name a block
 
 ### D-1603 — Which blocks are asked, and for what
 - Date: 2026-10-18 · Change/PR: plan-phase-2b (#279) · Status: decided (owner-delegated 2026-10-17)
-- Decision: Role C is asked when some row field is published on no row, or some block's row lacks a required row
-  field; then every block whose row lacks a row field is sent with exactly those fields. The item URL is never asked
-  (it is the block's link, which its text does not show). Rows not bound to a block (call rows without a block) get no
+- Decision: Role C is asked when some row field it can claim is published on no row, or some block's row lacks a
+  required one; then every block whose row lacks such a field is sent with exactly those fields. The item URL (the
+  block's link, which its text does not show) and object fields (one span cannot hold sub-fields) are never asked. Rows not bound to a block (call rows without a block) get no
   role C values. Never beside a config that runs a row field.
 - Why: the phase-2 trigger, narrowed to the fields each row lacks; the smallest request that can fill them.
 - Reversible: yes
@@ -51,7 +51,8 @@ block by block, so its input is the blocks' own text and its claims name a block
 ### D-1604 — Page fields in their own call over the whole cleaned text
 - Date: 2026-10-18 · Change/PR: plan-phase-2b (#279) · Status: decided (owner-delegated 2026-10-17)
 - Decision: The missing page fields are asked in a detail-form call over the whole cleaned text (40,000 characters),
-  only when a required page field is missing, with every missing page field in that call; the reply's failure is that
+  by the detail page's rule (a required field or a member of an unmet required group missing, optional ones riding
+  along, never an object); the reply's failure is that
   call's failure.
 - Why: fixes the deferred findings that page fields were read from the item text only and were left out of the first
   chunk's budget; it mirrors the detail page's rule.
@@ -69,8 +70,9 @@ block by block, so its input is the blocks' own text and its claims name a block
 - Date: 2026-10-18 · Change/PR: plan-phase-2b (#279) · Status: decided (owner-delegated 2026-10-17)
 - Decision: At most 200 blocks are read across a page's calls (the rest recorded in a diagnostic); a call holds as
   many blocks as fit 80,000 characters and `16,384 / (fields × 80)` claims, 80 output tokens per claim being about
-  twice the 41 measured on the golden set's listings. A failed call ends the page's calls and keeps the values read
-  before it.
+  twice the 41 measured on the golden set's listings; a block longer than 80,000 characters is cut to it. A failed
+  call ends the page's calls, the page-fields call included (its fields take that call's reason), and keeps the
+  values read before it.
 - Why: fixes the deferred finding that the 200-row cap was per call; a reply cut at its token cap is invalid and fills
   nothing, so the budget keeps a margin.
 - Reversible: yes

@@ -18,5 +18,5 @@ D-0504, D-1451, D-1475, D-1476, D-1605.
 - **WHEN** the URL's robots.txt answers 5xx
 - **THEN** the answer is 200, outcome `blocked`, `reason` `robots_unreachable`, and the page is not fetched
 #### Scenario: Listing without rows
-- **WHEN** a listing with a `rel=next` link gives no rows
+- **WHEN** a listing whose schema has `next_page_url` and whose page has a `rel=next` link gives no rows
 - **THEN** `records` is empty, `reason` is `no_rows: not_asked` and `page.next_page_url` is published
