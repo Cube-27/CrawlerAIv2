@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.api import JsonRequest
@@ -28,7 +28,18 @@ from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import Capture, Extraction, ExtractionConfig, Job, JobId, JobKind, Record, SiteId, UrlTask
+from crawlerai.db.models import (
+    Capture,
+    Extraction,
+    ExtractionConfig,
+    Job,
+    JobId,
+    JobKind,
+    Record,
+    Site,
+    SiteId,
+    UrlTask,
+)
 from crawlerai.llm.client import NO_LLM
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
@@ -382,3 +393,26 @@ async def test_a_batch_task_whose_recipe_is_asked_to_slow_down_sends_nothing_mor
     await _batch(engine, fetching, url, schema, engine_data, first_attempt=True)
 
     assert (len(web.requested), web.pages) == (1, [])
+
+
+async def test_a_listing_the_recipe_does_not_serve_is_not_rendered_without_a_turn_at_the_sites_rate(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    site: SiteId,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    # The recipe's request takes the caller's turn; the next is two minutes off, past what a caller waits in place.
+    async with engine.begin() as conn:
+        await conn.execute(update(Site).where(Site.id == site).values(crawl_delay_ms=120_000))
+    web.up = False
+    url = f"{own_origin}/kettles"
+
+    result = await scrape(engine, fetching, _request(url, schema, records=5), data=engine_data)
+
+    assert (web.listed, len(web.requested)) == ([], 1)
+    assert result.fetch is not None
+    assert result.fetch.method == "api"
