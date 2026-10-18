@@ -88,6 +88,12 @@ def test_an_answer_without_results_gives_none(body: bytes) -> None:
     assert parse(body, None, HERE) == []
 
 
+def test_an_answer_in_a_charset_python_does_not_know_is_read_as_utf_8() -> None:
+    body = _json({"results": [{"url": "https://a.example.test/caf\u00e9", "title": "Caf\u00e9"}]})
+
+    assert parse(body, "x-unknown", HERE) == parse(body, "utf-8", HERE)
+
+
 async def test_searxng_is_asked_for_json_and_reads_further_pages_until_the_limit() -> None:
     asked: list[dict[str, list[str]]] = []
     pages = {

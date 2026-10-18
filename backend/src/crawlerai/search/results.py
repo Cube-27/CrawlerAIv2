@@ -105,12 +105,21 @@ def from_html(body: str, answered_from: str) -> list[Hit]:
 
 def parse(body: bytes, content_charset: str | None, answered_from: str, fields: Fields | None = None) -> list[Hit]:
     """The results of an answer: JSON when `body` decodes as JSON, else HTML; one per canonical URL, in order."""
-    text = body.decode(content_charset or "utf-8", errors="replace")
+    text = _decoded(body, content_charset)
     try:
         hits = from_json(json_text.parse(text), fields)
     except ValueError:
         hits = from_html(text, answered_from)
     return unique(hits)
+
+
+def _decoded(body: bytes, content_charset: str | None) -> str:
+    """`body` in its declared charset, or in UTF-8 (the default of RFC 8259 §8.1 and the WHATWG Encoding Standard) when
+    it declares none or one Python has no codec for."""
+    try:
+        return body.decode(content_charset or "utf-8", errors="replace")
+    except LookupError:
+        return body.decode("utf-8", errors="replace")
 
 
 def unique(hits: list[Hit]) -> list[Hit]:
