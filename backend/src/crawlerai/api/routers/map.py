@@ -1,4 +1,4 @@
-"""`POST /v1/map` (SPEC-10 §4.4): the map service over HTTP. A refused target is a problem; URLs that could not be
+"""`POST /v1/map` (jobs spec): the map service over HTTP. A refused target is a problem; URLs that could not be
 read are left out of a 200 answer, and the timeout cuts the answer (`truncated`) rather than failing it."""
 
 from fastapi import APIRouter, Depends, Request

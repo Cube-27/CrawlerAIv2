@@ -1,4 +1,4 @@
-"""The JSON-LD collector (SPEC-05 §4.5, ARCHITECTURE §8.1): schema.org nodes in `application/ld+json` blocks.
+"""The JSON-LD collector (extraction spec): schema.org nodes in `application/ld+json` blocks.
 
 Each block is parsed as JSON, accepting raw control characters inside strings (RFC 8259 §9; `core.json_text.parse`); a
 block that is still invalid is skipped with a diagnostic, never repaired. Every JSON object in it

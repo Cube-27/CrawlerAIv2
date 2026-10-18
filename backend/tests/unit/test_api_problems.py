@@ -1,4 +1,4 @@
-"""App-wide problem details (SPEC-07 §4.3): every error the app answers, its own or the framework's, is an RFC 9457
+"""App-wide problem details (rest-api spec): every error the app answers, its own or the framework's, is an RFC 9457
 `application/problem+json` body with `type`, `title`, `status`, `detail` and `instance`."""
 
 import asyncio

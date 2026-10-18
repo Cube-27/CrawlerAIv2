@@ -1,6 +1,6 @@
-"""The engine the replay harness runs (SPEC-03 §4.5, SPEC-05 §7, G7): `resolve.pipeline.extract_page`, the function
-the worker runs, with the engine's data and the schemas of the split's pages. A page with its site's config snapshot
-runs that config through the engine executor (`config` mode, SPEC-08 §4.8)."""
+"""The engine the replay harness runs (evaluation spec, extraction spec, G7): `resolve.pipeline.extract_page`, the
+function the worker runs, with the engine's data and the schemas of the split's pages. A page with its site's config
+snapshot runs that config through the engine executor (`config` mode, learning-configs spec)."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass

@@ -1,4 +1,4 @@
-"""Active mode in the pipeline (SPEC-08 §4.8, ARCHITECTURE §8.4): with a site's active config, `extract_page` runs the
+"""Active mode in the pipeline (learning-configs spec): with a site's active config, `extract_page` runs the
 engine executor on the page's one parse, the config's candidates resolve with the collectors' in the bucket of their
 field's status, and role C is asked only for fields the config does not run.
 

@@ -41,7 +41,7 @@ function problemErrors(error: unknown): FieldError[] {
   return Array.isArray(errors) ? (errors as FieldError[]) : [];
 }
 
-/** What `/normalize` answered, as text: the normalized value, or the type's reason to decline (SPEC-04). */
+/** What `/normalize` answered, as text: the normalized value, or the type's reason to decline (schemas spec). */
 function normalizeAnswer(body: unknown): { value: string | null; text: string } {
   if (typeof body === "object" && body !== null) {
     if ("value" in body) {
@@ -201,7 +201,7 @@ function refusalOf(
   };
 }
 
-/** Asking role C for a draft of the page's labels (`POST /v1/eval/pages/{id}/prefill`, SPEC-03 §4.10). The server
+/** Asking role C for a draft of the page's labels (`POST /v1/eval/pages/{id}/prefill`, evaluation spec). The server
  * replaces the stored draft and stores the new one, so the editor starts again from it; a refusal says why. */
 export function usePrefill(pageId: string, etag: string | null) {
   const client = useApiClient();

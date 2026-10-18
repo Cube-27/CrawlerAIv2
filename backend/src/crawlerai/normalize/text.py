@@ -1,4 +1,4 @@
-"""Text and long_text normalizer (SPEC-04 §4.4, ARCHITECTURE §9): a decoded, composed, whitespace-collapsed string.
+"""Text and long_text normalizer (normalization spec): a decoded, composed, whitespace-collapsed string.
 
 Accepts a string, from the DOM, an LLM or a structured source (schema.org Text values are JSON strings). Any other
 JSON value is `Invalid("not_a_string")`. A long_text value arrives already extracted as main content (trafilatura,
@@ -16,7 +16,7 @@ from pydantic import JsonValue
 from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
-# SPEC-04 §4.4 and D-0017: length bounds after normalization, in characters.
+# normalization spec and D-0017: length bounds after normalization, in characters.
 _MAX_LEN = {FieldType.TEXT: 512, FieldType.LONG_TEXT: 100_000}
 # Structural: an unrendered template placeholder means the page shows its template, not a value. Covered syntaxes:
 # `{{ … }}` (Mustache, Handlebars, Jinja, Angular), `${ … }` (JavaScript template literals, shell parameter
@@ -32,14 +32,15 @@ _CONTROLS = dict.fromkeys(c for c in [*range(0x20), *range(0x7F, 0xA0)] if not c
 
 
 def normalize(raw: Raw, spec: FieldSpec, _ctx: Context) -> NormalizeResult:
-    """Normalize a text or long_text field (SPEC-04 §4.4). Text needs no page evidence, so the context is unused."""
+    """Normalize a text or long_text field (normalization spec). Text needs no page evidence, so the context is
+    unused."""
     if spec.type not in _MAX_LEN:
         raise TypeError(f"the text normalizer does not handle type {spec.type}")
     return _text(raw, spec.type)
 
 
 def key(value: JsonValue, spec: FieldSpec) -> Hashable:
-    """Equality as a key (SPEC-04 §4.5): equal after the text normalization, case-sensitive."""
+    """Equality as a key (normalization spec): equal after the text normalization, case-sensitive."""
     text = _text(value, spec.type)
     return ("text", text.value, text.reasons) if isinstance(text, Ok) else raw_key(value)
 

@@ -1,4 +1,4 @@
-"""Binder round trips (SPEC-09 §6): a value placed in a page URL is read back by its binder, and endpoint requests
+"""Binder round trips (adapters spec): a value placed in a page URL is read back by its binder, and endpoint requests
 generated from a template bind back to binders that reproduce every request."""
 
 from dataclasses import dataclass

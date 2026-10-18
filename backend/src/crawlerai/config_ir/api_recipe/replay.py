@@ -1,4 +1,4 @@
-"""Recipe replay (SPEC-09 §4.6, §4.7): send a recipe's request for a captured page over `fetch_json` (so through the
+"""Recipe replay (adapters spec): send a recipe's request for a captured page over `fetch_json` (so through the
 SSRF guard, INV-16) and check that the response reproduces the page's published values through the recipe's map.
 
 Header minimization replays the sample pages; held-out validation replays the held-out ones the same way. A listing
@@ -30,7 +30,7 @@ from crawlerai.storage.capture_bundle import CaptureBundle, HeaderList
 # Sends one request: `fetch_json` with the job's policy and engine version.
 Replay = Callable[[JsonRequest], Awaitable[FetchResult]]
 Scalar = str | int | float
-# Renders a page in the browser with network capture (SPEC-02 §4.7), a listing with its browser actions (owner #52):
+# Renders a page in the browser with network capture (acquisition spec), a listing with its browser actions (owner #52):
 # the document states kept, none when the page was not reached or may not be fetched. Learning renders the pages whose
 # captures hold no calls to learn from.
 Render = Callable[[str, PageKind], Awaitable[Sequence[CaptureBundle]]]

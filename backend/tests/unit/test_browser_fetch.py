@@ -1,4 +1,4 @@
-"""Browser fetch (SPEC-02 §4.8, §4.5): a JS-only page is rendered, the JSON it loads is captured within the caps, every
+"""Browser fetch (acquisition spec): a JS-only page is rendered, the JSON it loads is captured within the caps, every
 connection passes the SSRF guard, and the page and its workers present Chromium's own identity.
 
 A local server on 127.0.0.1 serves synthetic pages under `.test` hosts; no live network. The connector admits only
@@ -44,7 +44,7 @@ fetch('/api/items').then(r => r.json()).then(items => {
   return Promise.all([fetch('/api/note'), fetch('/style.css')]);
 });
 </script></body></html>"""
-# Enough rendered text that the page is not a shell (SPEC-02 §4.3: 200 visible characters).
+# Enough rendered text that the page is not a shell (acquisition spec: 200 visible characters).
 _ITEMS = json.dumps([{"name": f"Catalogue item {i} with a short description"} for i in range(12)]).encode()
 _MANY = b"""<html><body><p id="done"></p><script>
 (async () => {

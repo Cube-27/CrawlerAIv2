@@ -1,5 +1,6 @@
-"""Type equality (SPEC-04 §4.5) through the dispatcher: each type's rule, lists as multisets of item equality,
-objects field by field. The resolver's agreement rule (SPEC-05) and eval (SPEC-03) compare values this way."""
+"""Type equality (normalization spec) through the dispatcher: each type's rule, lists as multisets of item equality,
+objects field by field. The resolver's agreement rule (extraction spec) and eval (evaluation spec) compare values this
+way."""
 
 from hypothesis import strategies as st
 from pydantic import JsonValue

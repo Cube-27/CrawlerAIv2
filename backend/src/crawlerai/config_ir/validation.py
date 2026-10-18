@@ -1,4 +1,4 @@
-"""Held-out validation and corroboration (SPEC-08 §4.7, ARCHITECTURE §8.3 steps 3, 4): which fields of a learned config
+"""Held-out validation and corroboration (learning-configs spec steps 3, 4): which fields of a learned config
 may activate, each field's status, and the `validation_report` that drift (§4.9) measures against.
 
 Both executors run the config on every held-out page. A field is kept only if, on every page where the engine
@@ -34,7 +34,7 @@ from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.schemas.types import FieldSpec, SchemaDef
 
-# ARCHITECTURE §8.3: at least three pages are held out, a listing has at least 3 rows, and a field needs at least 3
+# At least three pages are held out, a listing has at least 3 rows, and a field needs at least 3
 # comparable pages to be corroborated; its values must match on every comparable page while there are fewer than 10,
 # and on at least 90% from 10 on.
 MIN_HELD_OUT: Final = 3
@@ -100,7 +100,7 @@ class ListingReport(_Report):
 
 
 class RecipeFieldReport(_Report):
-    """One field of an API recipe's map (SPEC-09 §4.7). `published`: held-out pages where the engine published the
+    """One field of an API recipe's map (adapters spec). `published`: held-out pages where the engine published the
     field; `reproduced`: those where the replayed response gave that value."""
 
     published: int
@@ -108,7 +108,7 @@ class RecipeFieldReport(_Report):
 
 
 class RecipeReport(_Report):
-    """The API recipe's held-out validation (SPEC-09 §4.7). `refused` says why the recipe did not enter the config."""
+    """The API recipe's held-out validation (adapters spec). `refused` says why the recipe did not enter the config."""
 
     held_out: list[CaptureId]
     fields: dict[str, RecipeFieldReport]
@@ -116,8 +116,8 @@ class RecipeReport(_Report):
 
 
 class ValidationReport(_Report):
-    """The `extraction_config.validation_report` (SPEC-08 §4.7). `refused` says why nothing can activate; `api_recipe`
-    is the recipe's validation when the site has one (SPEC-09 §4.7)."""
+    """The `extraction_config.validation_report` (learning-configs spec). `refused` says why nothing can activate;
+    `api_recipe` is the recipe's validation when the site has one (adapters spec)."""
 
     held_out: list[CaptureId]
     fields: dict[str, FieldReport]
@@ -198,7 +198,7 @@ def corroboration(comparable: int, agreeing: int) -> FieldStatus:
 
 
 def small_n_rule(pages: int, agreeing: int, *, minimum: int, share: Fraction) -> bool:
-    """ARCHITECTURE §8.3 step 4, §12.3: at least `minimum` pages, all agreeing while there are fewer than
+    """At least `minimum` pages, all agreeing while there are fewer than
     `EVERY_PAGE_BELOW`, and at least `share` of them from then on."""
     if pages < EVERY_PAGE_BELOW:
         return pages >= minimum and agreeing == pages
@@ -437,7 +437,7 @@ def _check_listing(
 def _check_next(
     listing: ListingSpec, schema: SchemaDef, runs: Sequence[_PageRun]
 ) -> tuple[Step | None, FieldReport | None]:
-    """`next` is checked as the page-level field it fills (ARCHITECTURE §5.3), and dropped when it fails."""
+    """`next` is checked as the page-level field it fills, and dropped when it fails."""
     if listing.next is None or NEXT_PAGE_FIELD not in schema.fields:
         return None, None
     steps = {NEXT_PAGE_FIELD: FieldSteps(steps=[listing.next], status="uncorroborated")}

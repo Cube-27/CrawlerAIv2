@@ -1,4 +1,4 @@
-"""The health of a proxy pool's endpoints, in this process (ARCHITECTURE §7.1, D-1324): an endpoint that fails
+"""The health of a proxy pool's endpoints, in this process (D-1324): an endpoint that fails
 `QUARANTINE_AFTER` times in a row is left out of the pool's choices for a quarantine that doubles with each further
 failure, from `QUARANTINE_MIN` to `QUARANTINE_MAX`; one success ends its run of failures.
 

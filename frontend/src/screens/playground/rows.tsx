@@ -19,9 +19,9 @@ import {
 } from "./OptionsPanel";
 import type { WebhookSettings } from "./pageRequest";
 
-/** Options rows more than one mode has (SPEC-14 §4.2), each named after its request member. */
+/** Options rows more than one mode has (frontend spec), each named after its request member. */
 
-/** `page_kind`. With a schema, the page kind is the one its records can be for, `schemaPageKind`, or none (SPEC-07
+/** `page_kind`. With a schema, the page kind is the one its records can be for, `schemaPageKind`, or none (rest-api spec
  * §4.4), and the others are disabled. */
 export function PageKindRow({
   value,
@@ -100,7 +100,7 @@ export function MaxRowsRow({
   );
 }
 
-/** `budget.llm_calls` (SPEC-06 §4.8): the most LLM calls the request may make. Empty leaves `budget` out, and the
+/** `budget.llm_calls` (llm spec): the most LLM calls the request may make. Empty leaves `budget` out, and the
  * project's LLM call limit (Settings) applies, or none (D-1121). */
 export function LlmCallsRow({
   value,
@@ -148,7 +148,7 @@ export function MinConfidenceRow<O extends { minConfidence: number }>({
   );
 }
 
-/** `webhook_url`, `webhook_events` and `webhook_batch` (SPEC-10 §4.2, D-1419): where the job's events are posted,
+/** `webhook_url`, `webhook_events` and `webhook_batch` (jobs spec, D-1419): where the job's events are posted,
  * which, and how many at once. Without a URL the others are disabled and nothing is sent. */
 export function WebhookRows({
   value,
@@ -206,7 +206,7 @@ export function WebhookRows({
   );
 }
 
-/** `include` and `exclude`: the URL globs that scope a crawl's or a map's URLs (SPEC-10 §4.4). */
+/** `include` and `exclude`: the URL globs that scope a crawl's or a map's URLs (jobs spec). */
 export function ScopeRows({
   include,
   exclude,
@@ -242,11 +242,11 @@ export function ScopeRows({
   );
 }
 
-// SPEC-04 §4.2: a schema's field names are lowercase snake case, `[a-z][a-z0-9_]{0,63}` (`NAME_PATTERN`); the server
+// schemas spec: a schema's field names are lowercase snake case, `[a-z][a-z0-9_]{0,63}` (`NAME_PATTERN`); the server
 // refuses any other, so a name is checked as it is added.
 const FIELD_NAME = /^[a-z][a-z0-9_]{0,63}$/;
 
-/** `schema.fields`: the names the server drafts a schema from (SPEC-14 §4.10), as chips, held in a mode's options. */
+/** `schema.fields`: the names the server drafts a schema from (frontend spec), as chips, held in a mode's options. */
 export function FieldsRow<O extends { fields: readonly string[] }>({
   options,
   onChange,

@@ -1,4 +1,4 @@
-"""Which fields induction leaves to synthesis or to a mapping (SPEC-08 §4.5)."""
+"""Which fields induction leaves to synthesis or to a mapping (learning-configs spec)."""
 
 from datetime import UTC, datetime
 from pathlib import Path

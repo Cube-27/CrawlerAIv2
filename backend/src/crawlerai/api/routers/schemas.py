@@ -1,5 +1,5 @@
-"""`/v1/schemas` (SPEC-07 §4.6): create, read, list, edit (in place) and delete (retire), and a draft from field names
-(SPEC-14 §4.10). The rules are the schemas service's; this router translates HTTP to it and its errors to problems."""
+"""`/v1/schemas` (rest-api spec): create, read, list, edit (in place) and delete (retire), and a draft from field names
+(frontend spec). The rules are the schemas service's; this router translates HTTP to it and its errors to problems."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -68,7 +68,7 @@ async def draft_schema(
 ) -> SchemaDef:
     """The schema role S drafts from `fields` for `page_kind` pages, with exactly those top-level fields, as a run's
     `schema.fields` uses it: the stored draft when these names were drafted for this page kind before, else a new
-    one, stored. A client shows it for editing before the run (SPEC-14 §4.10). A draft the LLM could not give is a
+    one, stored. A client shows it for editing before the run (frontend spec). A draft the LLM could not give is a
     problem typed with the LLM failure (502, 503), or a 429 once the key has made the project's `draft_call_cap` of
     them; a retired draft is a 422."""
     llm = KeyCapped(request.app.state.llm, database(request), key)

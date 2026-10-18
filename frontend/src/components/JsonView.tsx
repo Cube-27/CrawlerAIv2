@@ -14,7 +14,7 @@ const TOKEN_CLASSES: Readonly<Record<JsonTokenKind, string | undefined>> = {
   plain: undefined,
 };
 
-/** `value` as JSON (SPEC-14 §4.3), laid out as a code editor shows it: pretty-printed with a two-space indent, a line
+/** `value` as JSON (frontend spec), laid out as a code editor shows it: pretty-printed with a two-space indent, a line
  * number per line and a guide per indent level (both drawn by theme.css, so copied text has neither), colored by
  * token, in a fixed-height box that scrolls, with Copy and Download (`filename`, a `.json` file) at its top right.
  * Memoized: the value can be large and the form above re-renders on every keystroke. */

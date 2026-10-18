@@ -1,4 +1,4 @@
-"""The extraction step of a page task (SPEC-05 §4.10, ARCHITECTURE §6, INV-27): the extraction, its candidates and
+"""The extraction step of a page task (extraction spec, INV-27): the extraction, its candidates and
 the page's record, as resolution decided them."""
 
 import json

@@ -43,7 +43,7 @@ from crawlerai.storage.capture_bundle import (
     encode,
 )
 
-# The label document of SPEC-03 §4.3, stored as given: callers validate it first (`crawlerai.eval.labels`).
+# The label document of evaluation spec, stored as given: callers validate it first (`crawlerai.eval.labels`).
 Labels = dict[str, JsonValue]
 LabelPass = Literal["labeler", "checker"]
 
@@ -124,7 +124,7 @@ def dev_store(settings: Settings) -> "DevEvalStore":
 
 
 def _check_llm_key(key: str) -> str:
-    # sha256(role, model, prompt, schema) in hex (SPEC-03 §4.5); the key becomes part of an object key.
+    # sha256(role, model, prompt, schema) in hex (evaluation spec); the key becomes part of an object key.
     if not re.fullmatch(SHA256_PATTERN, key):
         raise ValueError(f"invalid LLM cache key {key!r}: expected a lowercase hex sha256")
     return key
@@ -144,7 +144,7 @@ def _capture_columns(bundle: CaptureBundle, object_key: str, size_bytes: int) ->
         "object_key": object_key,
         "html_sha256": manifest.html_sha256,
         "size_bytes": size_bytes,
-        # The fetchers record the whole fetch as `total` (SPEC-02 §4.2).
+        # The fetchers record the whole fetch as `total` (acquisition spec).
         "duration_ms": manifest.timings_ms["total"],
         "fetch_policy": manifest.fetch_policy,
     }
@@ -212,7 +212,7 @@ class DevEvalStore:
 
     async def get_bundle(self, capture_id: CaptureId) -> CaptureBundle:
         """Raise `EvalNotFound` for an unknown capture, `ObjectNotFound` for a missing bundle and `CorruptBundle`
-        for unreadable bytes: replay counts each as a dropped page (SPEC-03 §4.11)."""
+        for unreadable bytes: replay counts each as a dropped page (evaluation spec)."""
         async with self._engine.connect() as conn:
             key = await self._capture_key(conn, capture_id)
         if key is None:
@@ -265,8 +265,8 @@ class DevEvalStore:
         return _row(EvalRunRow, row)
 
     async def _capture_key(self, conn: AsyncConnection, capture_id: CaptureId) -> str | None:
-        # A dev eval capture is stored under `eval/dev/` and never expires (SPEC-01 §4.4). A production capture,
-        # even one written without an expiry, is not an eval capture.
+        # A dev eval capture is stored under `eval/dev/` and never expires (persistence-storage spec). A production
+        # capture, even one written without an expiry, is not an eval capture.
         key = dev_eval_capture_key(capture_id)
         query = select(Capture.object_key).where(
             Capture.id == capture_id, Capture.object_key == key, Capture.expires_at.is_(None)

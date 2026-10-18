@@ -1,4 +1,4 @@
-"""Listing recipe learning (Appendix A #59, SPEC-09 §4.3 to §4.7 read for a listing): the endpoint whose calls gave a
+"""Listing recipe learning (Appendix A #59, adapters spec read for a listing): the endpoint whose calls gave a
 listing's rows, its field map relative to a row, its pagination, and each page as replay reads it.
 
 A listing page's calls are read as the `xhr` collector reads them (`network_match.state_calls`, `row_series`): series of

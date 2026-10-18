@@ -14,7 +14,7 @@ const DRAFT_SOURCES: Readonly<Record<Exclude<SchemaSource, "id">, string>> = {
 
 const isDraftSource = isOptionOf(DRAFT_SOURCES);
 
-/** Extract's toolbar Schema (SPEC-14 §4.2, D-1214): one choice of where the schema comes from, the other sources
+/** Extract's toolbar Schema (frontend spec, D-1214): one choice of where the schema comes from, the other sources
  * first, then each stored schema. Choosing a stored schema reports it with `onSchema`, another source with
  * `onSource`. It shows the request's `schema` errors, so a missing schema is said here, not in the options. */
 export function SchemaSourceSelect({

@@ -1,4 +1,4 @@
-"""The release check (SPEC-08 §4.12, ARCHITECTURE §12.3, INV-20): before a config is exported, the independent release
+"""The release check (learning-configs spec, INV-20): before a config is exported, the independent release
 executor runs it on the held-out pages, and each field is compared with what the engine published there.
 
 A field passes when it reproduces the engine's value on every held-out page with one while there are fewer than 10
@@ -26,7 +26,7 @@ from crawlerai.db.models import CaptureId
 from crawlerai.normalize.dispatch import equal
 from crawlerai.schemas.types import FieldSpec, SchemaDef
 
-# ARCHITECTURE §12.3: from 10 pages with an engine value on, a field passes on at least 95% of them.
+# From 10 pages with an engine value on, a field passes on at least 95% of them.
 RELEASE_SHARE: Final = Fraction(19, 20)
 
 

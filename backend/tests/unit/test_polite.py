@@ -1,5 +1,5 @@
-"""The one polite fetch (SPEC-02 §4.6, `services.polite`): robots.txt, a turn at the host's rate (waited for in place
-up to the caller's bound, or postponed by a worker), the observation, and the host paused by the one back-off rule
+"""The one polite fetch (acquisition spec, `services.polite`): robots.txt, a turn at the host's rate (waited for in
+place up to the caller's bound, or postponed by a worker), the observation, and the host paused by the one back-off rule
 after a slow-down. Hosts are synthetic (`.test`, RFC 2606); nothing goes to the network."""
 
 import asyncio

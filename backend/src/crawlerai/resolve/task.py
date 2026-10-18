@@ -1,9 +1,9 @@
-"""The extraction step of a page task (SPEC-05 §4.10, ARCHITECTURE §6, INV-27): a fetched capture is extracted with
+"""The extraction step of a page task (resolution spec, INV-27): a fetched capture is extracted with
 `extract_page`, and the result is stored as one `extraction` row, its `candidate` rows and the page's `record` (a
 listing's: one per row).
 
-A scrape task runs it after its fetch (SPEC-07 §4.4, inline or in a worker: one function), and so will batch, extract
-and crawl tasks (SPEC-10). Storing only serializes what resolution decided (INV-27): each candidate keeps whether it
+A scrape task runs it after its fetch (rest-api spec, inline or in a worker: one function), and so will batch, extract
+and crawl tasks (jobs spec). Storing only serializes what resolution decided (INV-27): each candidate keeps whether it
 was chosen or why it was rejected, and the record holds the published values.
 """
 
@@ -45,15 +45,16 @@ from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest
 
 @dataclass(frozen=True, slots=True)
 class ActiveConfig:
-    """A site's active config for one schema and page kind (ARCHITECTURE §8.4): its row, its version, which
+    """A site's active config for one schema and page kind: its row, its version, which
     the extraction records, and its executor (`collect.config`, bound by `config_ir.active`)."""
 
     id: ExtractionConfigId
     version: int
     executor: ConfigExecutor
-    # The executor of the `api` captures the config's API recipe fetched (SPEC-09 §4.8); None without a recipe.
+    # The executor of the `api` captures the config's API recipe fetched (adapters spec); None without a recipe.
     api: ConfigExecutor | None = None
-    # Whether a page `executor` ran on joins the config's drift window (SPEC-08 §4.9), which measures its page steps.
+    # Whether a page `executor` ran on joins the config's drift window (learning-configs spec), which measures its page
+    # steps.
     drifts: bool = True
 
     def for_capture(self, manifest: CaptureManifest, adapters: Adapters | None) -> "ActiveConfig | None":
@@ -90,7 +91,7 @@ class RecordSource:
 
 class RecordWriter(Protocol):
     """Stores a page's records and returns them in the drafts' order (`store_records` in `recurring.versions`, which
-    versions them, SPEC-11 §4.4). A record can be one stored before, so its id need not be new."""
+    versions them, jobs spec). A record can be one stored before, so its id need not be new."""
 
     async def __call__(
         self, conn: AsyncConnection, schema: SchemaDef, drafts: Sequence[RecordDraft], source: RecordSource
@@ -126,7 +127,7 @@ async def extract_task(
     `scrape`, `batch_scrape` and `extract` URLs: an incomplete page then keeps its record (`partial`), where a
     crawl-discovered one gets `no_match` and none (§4.10). The caller settles the task with the returned outcome.
 
-    `config` is the site's active config for the schema and page kind (`config` mode, ARCHITECTURE §8.4).
+    `config` is the site's active config for the schema and page kind (`config` mode).
     `role_c` calls the LLM client before this step writes anything, and the client commits usage on its own
     connection (D-0346): `conn`'s transaction must not hold an uncommitted write to the job's row. `write_records`
     stores the page's records."""
@@ -278,7 +279,7 @@ def _marks(result: ExtractionResult) -> tuple[set[_CandidateKey], dict[_Candidat
 
 
 def _with_sub_fields(outcomes: Iterable[FieldOutcome]) -> Iterator[FieldOutcome]:
-    """Each outcome, and the sub-field outcomes of a row-mapped field's published rows (SPEC-13 §4.8)."""
+    """Each outcome, and the sub-field outcomes of a row-mapped field's published rows (variants spec)."""
     for outcome in outcomes:
         yield outcome
         for item in outcome.items or ():

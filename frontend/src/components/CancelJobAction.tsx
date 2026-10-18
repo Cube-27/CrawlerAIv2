@@ -4,7 +4,7 @@ import { problemOf } from "../api/hooks/query";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ProblemAlert } from "./ProblemAlert";
 
-/** Cancels the job after a confirmation (SPEC-10 §4.2): its queued pages are not fetched. `isDisabled` keeps the
+/** Cancels the job after a confirmation (jobs spec): its queued pages are not fetched. `isDisabled` keeps the
  * button in place for a job that can't be cancelled, so the row around it does not move. */
 export function CancelJobAction({
   id,

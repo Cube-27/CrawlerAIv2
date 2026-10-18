@@ -1,6 +1,6 @@
 import { Pagination } from "@heroui/react";
 
-/** Previous and next under a table. The API pages with a cursor (SPEC-07 §4.6), so there are no page numbers: a
+/** Previous and next under a table. The API pages with a cursor (rest-api spec), so there are no page numbers: a
  * direction is enabled when the API returned a cursor for it. */
 export function TablePagination({
   summary,

@@ -29,7 +29,7 @@ interface NavGroup {
   entries: NavEntry[];
 }
 
-// SPEC-14 §4.8: one entry per playground mode, from the one list of modes, then the data screens; Settings come last,
+// frontend spec: one entry per playground mode, from the one list of modes, then the data screens; Settings come last,
 // at the foot of the sidebar.
 const PLAYGROUND: NavGroup = {
   title: "Playground",
@@ -47,7 +47,7 @@ const DATA: NavGroup = {
   ],
 };
 
-// With SPEC-03's screen, listed only when the backend serves the eval API (SPEC-12 §4.3).
+// With evaluation spec's screen, listed only when the backend serves the eval API (frontend spec).
 const EVALUATE: NavGroup = {
   title: "Evaluate",
   entries: [{ href: "/labeling", label: "Labeling", icon: Tag }],

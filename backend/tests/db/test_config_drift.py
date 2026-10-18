@@ -1,5 +1,5 @@
-"""Drift recorded against a real Postgres (SPEC-08 §4.9): each run of an active config extends its window, a field
-that falls below its validated yield is suspended in the IR and `field_status`, the suspension is a
+"""Drift recorded against a real Postgres (learning-configs spec): each run of an active config extends its window, a
+field that falls below its validated yield is suspended in the IR and `field_status`, the suspension is a
 `drift_suspended` job event, and the site re-learns while its config keeps serving."""
 
 import uuid

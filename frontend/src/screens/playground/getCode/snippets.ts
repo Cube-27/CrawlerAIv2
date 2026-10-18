@@ -1,10 +1,10 @@
 import type { Endpoint } from "./endpoints";
 
-/** Get code's snippets (SPEC-14 §4.7): the current request as cURL, Python (`httpx`) and an MCP tool call. Each is
+/** Get code's snippets (frontend spec): the current request as cURL, Python (`httpx`) and an MCP tool call. Each is
  * generated from the request object, never by pasting user input into code: values are JSON-encoded, and shell words
  * are quoted per POSIX sh. */
 
-/** The environment variable every snippet reads the API key from (SPEC-14 §4.7; the UI holds no key, §4.1). */
+/** The environment variable every snippet reads the API key from (frontend spec; the UI holds no key, §4.1). */
 export const KEY_VARIABLE = "CRAWLERAI_API_KEY";
 
 /** The request's body as the primary action sends it: JSON with a two-space indent. */
@@ -86,7 +86,7 @@ export function pythonSnippet(origin: string, endpoint: Endpoint, body: object):
 }
 
 /** The MCP `tools/call` request (MCP 2025-06-18, Tools; JSON-RPC 2.0) calling `tool` with the request as its `request`
- * argument, the shape every request tool of SPEC-10 §4.7 takes. */
+ * argument, the shape every request tool of jobs spec takes. */
 export function mcpSnippet(tool: string, body: object): string {
   return json({
     jsonrpc: "2.0",

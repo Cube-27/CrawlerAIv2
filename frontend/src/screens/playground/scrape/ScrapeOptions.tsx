@@ -13,7 +13,7 @@ import {
 } from "../rows";
 import { browserActionsApply, DEFAULT_OPTIONS, type ScrapeOptions as Options } from "./form";
 
-/** Scrape's options (SPEC-14 §4.2): page kind, fetch method, max age, timeout, the LLM call limit, Metadata in JSON,
+/** Scrape's options (frontend spec): page kind, fetch method, max age, timeout, the LLM call limit, Metadata in JSON,
  * fields (§4.10) and a listing's browser actions (owner #52). */
 export function ScrapeOptions({
   options,
@@ -64,7 +64,7 @@ export function ScrapeOptions({
           onChange({ ...options, maxAge });
         }}
       />
-      {/* SPEC-07 §4.4: the request is bounded by `timeout_s`, at most 120. */}
+      {/* rest-api spec: the request is bounded by `timeout_s`, at most 120. */}
       <NumberRow
         label="Timeout (s)"
         help="How long the scrape may take, in seconds, at most 120. Empty: the server default."

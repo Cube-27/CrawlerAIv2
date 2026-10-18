@@ -1,4 +1,4 @@
-"""The listing diff (SPEC-11 §4.5, ARCHITECTURE §14 row 4): which URLs of a site's catalog a recurring crawl no longer
+"""The listing diff (jobs spec): which URLs of a site's catalog a recurring crawl no longer
 finds.
 
 A run is a records crawl that completed. A recurring crawl is the caller re-submitting the same request (§14), so the
@@ -23,7 +23,7 @@ never missing.
 The diffs of a site's runs take the site's row lock first, so two runs ending together never lock its `url_state` rows
 in opposite orders.
 
-New URLs are queued by the frontier, which takes every URL a run finds (SPEC-10 §4.5); nothing here adds tasks.
+New URLs are queued by the frontier, which takes every URL a run finds (jobs spec); nothing here adds tasks.
 """
 
 from collections.abc import Sequence
@@ -57,13 +57,13 @@ from crawlerai.schemas.types import SchemaDef
 
 __all__ = ["GONE_AFTER_RUNS", "SITEMAPS_TIMED_OUT", "URL_GONE", "close_run"]
 
-# ARCHITECTURE §14 row 4: a URL missing from this many consecutive runs is gone.
+# A URL missing from this many consecutive runs is gone.
 GONE_AFTER_RUNS: Final = 2
 URL_GONE: Final = "url_gone"
 # The event of a crawl whose sitemap reading stopped at its time cap (`crawlerai.worker.handlers.crawl`).
 SITEMAPS_TIMED_OUT: Final = "sitemaps_timed_out"
 
-# The members of a crawl request that decide which URLs its runs can find (SPEC-10 §4.5). `formats`, `fetch`, `locale`
+# The members of a crawl request that decide which URLs its runs can find (jobs spec). `formats`, `fetch`, `locale`
 # and `webhook_url` change what is done with a page, not which pages are listed.
 _SCOPE: Final = ("url", "include", "exclude", "max_depth", "limit", "page_kind_rules")
 

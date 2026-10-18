@@ -1,6 +1,6 @@
-"""The locator format (SPEC-05 §4.3): where on the capture a candidate's raw value came from, as
-`<scheme>:<address>`. Collectors write it, the pipeline re-checks `text:` locators (INV-12) and induction (SPEC-08)
-reads it, so every locator a candidate carries parses here (INV-22).
+"""The locator format (extraction spec): where on the capture a candidate's raw value came from, as
+`<scheme>:<address>`. Collectors write it, the pipeline re-checks `text:` locators (INV-12) and induction
+(learning-configs spec) reads it, so every locator a candidate carries parses here (INV-22).
 
 The address parts are separated by `:`; the last part takes the rest of the string, since XPath, JSONPath, CSS
 selectors and meta property names (`og:title`) may hold `:` themselves. `js_state` has two open-ended parts and is
@@ -14,7 +14,7 @@ from pydantic import AfterValidator
 
 from crawlerai.schemas.types import NAME_PATTERN
 
-# The page-URL derivations (SPEC-05 §4.8, D-0355): the capture's `<link rel=canonical>` (RFC 6596) or its final URL
+# The page-URL derivations (extraction spec, D-0355): the capture's `<link rel=canonical>` (RFC 6596) or its final URL
 # (RFC 9110 §15.4). No candidate states them, so their locator names the derivation.
 PageUrlDerivation = Literal["canonical_link", "final_url"]
 Scheme = Literal["jsonld", "microdata", "dom", "meta", "js_state", "xhr", "adapter", "api", "config", "text", "derived"]
@@ -32,7 +32,7 @@ _INDEXED_JSONPATH = re.compile(rf"{_INDEX}:{_JSONPATH}", re.DOTALL)
 _NAMED_JSONPATH = re.compile(rf"{_ASSIGNED_NAME}:{_JSONPATH}", re.DOTALL)
 
 _ADDRESS: dict[str, re.Pattern[str]] = {
-    # The nth `application/ld+json` block, then a path in the block as written (SPEC-05 §4.3).
+    # The nth `application/ld+json` block, then a path in the block as written (extraction spec).
     "jsonld": _INDEXED_JSONPATH,
     # The element carrying the `itemprop`.
     "microdata": re.compile(_XPATH, re.DOTALL),

@@ -1,4 +1,4 @@
-"""The MCP server (SPEC-10 §4.7, ARCHITECTURE §13.3): twenty-one tools, each one call into `crawlerai.services`,
+"""The MCP server (jobs spec): twenty-one tools, each one call into `crawlerai.services`,
 answered as `output` shapes them. It holds no logic of its own (§3).
 
 One server runs over stdio (`python -m crawlerai.mcp_server`) and over streamable HTTP at `/mcp` in the API app

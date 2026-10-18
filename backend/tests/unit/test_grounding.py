@@ -1,4 +1,4 @@
-"""Grounding edge cases (SPEC-06 §4.3) that the properties don't pin to one literal outcome."""
+"""Grounding edge cases (llm spec) that the properties don't pin to one literal outcome."""
 
 from crawlerai.content.text import Mark
 from crawlerai.llm.grounding import GroundedElement, GroundedSpan, SpanClaim, align, ground_element

@@ -1,12 +1,12 @@
 """Which responses redirect, and where to, for the fetchers that follow redirects by hand so the SSRF guard checks
-every hop (SPEC-02 §4.5)."""
+every hop (acquisition spec)."""
 
 from crawlerai.storage.capture_bundle import HeaderList
 
 # RFC 9110 §15.4: the redirect status codes that carry a Location to follow (300 and 304 do not redirect by
 # themselves, 305 and 306 are deprecated).
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
-MAX_REDIRECTS = 5  # SPEC-02 §4.5
+MAX_REDIRECTS = 5  # acquisition spec
 
 
 def location(status: int, headers: HeaderList) -> str | None:

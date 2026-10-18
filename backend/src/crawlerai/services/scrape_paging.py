@@ -10,7 +10,7 @@ used then: the steps need the browser. The actions get at most half the scrape's
 
 A site whose active config has a listing recipe (one with pagination, Appendix A #59) is served by it instead, over
 HTTP with no browser: one response per page its pagination names, until the request's `records` target, each page
-a further kept state; when the recipe does not serve the first page, the browser actions run (SPEC-09 §4.10).
+a further kept state; when the recipe does not serve the first page, the browser actions run (adapters spec).
 """
 
 import time

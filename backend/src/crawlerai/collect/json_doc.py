@@ -1,6 +1,6 @@
 """JSON documents as collectors read them (parsed by `core.json_text`, JSON-LD blocks leniently), addressed by RFC 9535
 normalized paths (`$['offers'][0]`), the path part of the `jsonld`, `js_state`, `xhr` and
-`adapter` locators (SPEC-05 §4.3), and queried with the RFC 9535 subset adapter maps are written in."""
+`adapter` locators (extraction spec), and queried with the RFC 9535 subset adapter maps are written in."""
 
 import re
 from collections.abc import Iterator

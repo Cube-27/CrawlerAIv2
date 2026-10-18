@@ -1,7 +1,7 @@
-"""The schemas service (SPEC-07 §4.6, §4.7): what `/v1/schemas` and the MCP schema tools do, over a connection.
+"""The schemas service (rest-api spec): what `/v1/schemas` and the MCP schema tools do, over a connection.
 
 Callers write `user` schemas, whose schema.org paths and enumerations the pinned vocabulary must define. A schema is
-one row per name, edited in place (ARCHITECTURE §5.2); an edit sends its learned configs back to learning
+one row per name, edited in place; an edit sends its learned configs back to learning
 (`progressive.relearn_schema`), and a delete retires it. Presets change only through their files and
 `crawlerai schemas sync` (§5.3, D-0242), so callers can neither take a preset's name nor edit or
 retire a preset.
@@ -42,7 +42,7 @@ class SchemaConflict(Refusal):
 
 
 class InvalidSchema(Refusal):
-    """The document breaks a schema rule (SPEC-04 §4.2); `errors` are (field path, reason) pairs, `""` for the whole
+    """The document breaks a schema rule (schemas spec); `errors` are (field path, reason) pairs, `""` for the whole
     document."""
 
     def __init__(self, errors: Sequence[tuple[str, str]]) -> None:

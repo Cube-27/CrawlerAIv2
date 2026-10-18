@@ -16,7 +16,7 @@ function pageFormats(keys: Key | Key[] | null): PageFormat[] {
   return orderedFormats(chosen).filter((format): format is PageFormat => format !== "records");
 }
 
-/** The toolbar's Format (SPEC-14 §4.2): the page formats a scrape, batch or crawl asks for, several at once. Its name
+/** The toolbar's Format (frontend spec): the page formats a scrape, batch or crawl asks for, several at once. Its name
  * is the request member a server error names. Its error line hangs under it without taking room, like the Schema
  * select's (`OptionSelect`), so a refused send moves nothing (D-1214). */
 export function FormatSelect({

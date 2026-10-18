@@ -1,12 +1,12 @@
-"""The `links` content format (SPEC-07 §4.5, ARCHITECTURE §8.5): the page's links, absolute and canonical.
+"""The `links` content format (rest-api spec): the page's links, absolute and canonical.
 
 Every `a[href]` and every `link[href]` whose `rel` names canonical, next, prev or alternate, canonicalized by the url
-type's rules (SPEC-04 §4.4) against the document base URL, deduplicated, in document order. A reference that is not
+type's rules (schemas spec) against the document base URL, deduplicated, in document order. A reference that is not
 an http(s) URL (`mailto:`, `javascript:`, an unparsable one) is not a link of the format.
 
-A JSON body (an `api` capture's, SPEC-01 §4.5) is not HTML: markup inside its string values is text, and the body has
-no link elements. Its links are its string values that are absolute http(s) URLs (RFC 3986 §4.3), canonicalized by
-the same rules, deduplicated, in document order.
+A JSON body (an `api` capture's, persistence-storage spec) is not HTML: markup inside its string values is text, and the
+body has no link elements. Its links are its string values that are absolute http(s) URLs (RFC 3986 §4.3), canonicalized
+by the same rules, deduplicated, in document order.
 """
 
 from collections.abc import Iterator

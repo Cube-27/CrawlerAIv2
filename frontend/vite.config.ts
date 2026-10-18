@@ -2,7 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type ProxyOptions } from "vite-plus";
 
-// SPEC-14 §4.1: the dev server attaches the UI's API key to proxied requests, so the browser never holds one. Vite
+// frontend spec: the dev server attaches the UI's API key to proxied requests, so the browser never holds one. Vite
 // reads no repo-root `.env` by itself, so it is loaded from `..`: pnpm runs scripts in this package's directory. The
 // variable has no `VITE_` prefix, so it never reaches client code. An empty value counts as unset (.env.example).
 const uiApiKey = loadEnv("development", "..", "")["CRAWLERAI_UI_API_KEY"];
@@ -304,8 +304,8 @@ export default defineConfig({
   },
   plugins: [react(), tailwindcss()],
   // `pnpm dev` serves the screens and forwards API calls to `make dev`'s backend, so the app calls its own origin:
-  // `/v1`, and `/healthz` at the root, which tells the shell whether to list Labeling (SPEC-12 §4.3). Anyone who
-  // reaches the dev server acts with the key, so it listens on loopback only (ARCHITECTURE §18). The app calls its own
+  // `/v1`, and `/healthz` at the root, which tells the shell whether to list Labeling (frontend spec). Anyone who
+  // reaches the dev server acts with the key, so it listens on loopback only. The app calls its own
   // origin only, so no other origin may read a response the key was attached to: CORS is off.
   server: {
     host: "127.0.0.1",

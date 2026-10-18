@@ -1,4 +1,4 @@
-"""Identity (SPEC-05 §4.5, §4.6): the entities that state one item, from one collector or several, are one entity of
+"""Identity (extraction spec): the entities that state one item, from one collector or several, are one entity of
 the entity graph, and a standalone variant joins the group whose `productGroupID` it names."""
 
 import json

@@ -1,4 +1,4 @@
-"""`GET /healthz` (SPEC-07 §4.6): the API answers and its database does, and what the LLM setup check found.
+"""`GET /healthz` (rest-api spec): the API answers and its database does, and what the LLM setup check found.
 Unauthenticated (§18)."""
 
 import asyncio

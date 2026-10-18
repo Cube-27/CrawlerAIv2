@@ -1,4 +1,4 @@
-"""Role D: API-recipe binding (SPEC-09 §4.5, ARCHITECTURE §7.2 step 2, §11), when deterministic binding is ambiguous.
+"""Role D: API-recipe binding (adapters spec), when deterministic binding is ambiguous.
 
 The model reads, per sample page, the page URL, the endpoint request the browser made for it (method, URL, header names
 only, body) and the key paths of the page's JSON documents, never their values or the page text. It replies with the
@@ -35,7 +35,7 @@ from crawlerai.schemas.types import SchemaDef
 _PROMPTS = files("crawlerai.llm").joinpath("prompts")
 SYSTEM: Final = _PROMPTS.joinpath("d_bind.txt").read_text(encoding="utf-8")
 REPAIR_SYSTEM: Final = SYSTEM + _PROMPTS.joinpath("d_repair.txt").read_text(encoding="utf-8")
-# SPEC-06 §4.2 names one prompt kind for role D; the repair round is the same role and is told apart by its prompt.
+# llm spec names one prompt kind for role D; the repair round is the same role and is told apart by its prompt.
 KIND: Final[PromptKind] = "d_bind"
 
 # §4.5: one repair round after the first reply.

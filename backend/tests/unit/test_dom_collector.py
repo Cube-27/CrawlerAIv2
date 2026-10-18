@@ -1,4 +1,4 @@
-"""The structural DOM collector (SPEC-05 §4.5, ARCHITECTURE §8.1, §22 admitted 2026-10-16): label-value pairs whose
+"""The structural DOM collector (extraction spec admitted 2026-10-16): label-value pairs whose
 label is one of a field's labels (its name, schema.org property, description or drafted synonyms), the main region's
 one typed value outside other items, and the main content's first image. Every
 candidate is the page's, independent, with a `dom:` locator naming the element its value came from. Pages are

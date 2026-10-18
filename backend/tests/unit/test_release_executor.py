@@ -1,5 +1,5 @@
-"""The release executor (SPEC-08 §4.12): it parses the body itself, runs each field's steps in order, and gives the
-first value that passes the post ops and the field's rule; it needs nothing of the engine but the IR model."""
+"""The release executor (learning-configs spec): it parses the body itself, runs each field's steps in order, and gives
+the first value that passes the post ops and the field's rule; it needs nothing of the engine but the IR model."""
 
 from typing import Any
 

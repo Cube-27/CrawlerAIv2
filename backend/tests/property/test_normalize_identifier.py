@@ -1,4 +1,4 @@
-"""The identifier normalizer (SPEC-04 §4.4, ARCHITECTURE §9): GS1 check digits for GTIN-8/12/13/14, ISO 2108
+"""The identifier normalizer (normalization spec): GS1 check digits for GTIN-8/12/13/14, ISO 2108
 checksums for ISBN-10/13, opaque `mpn`/`sku`/`custom` values, and declines on failed checksums and empty input
 (INV-06)."""
 

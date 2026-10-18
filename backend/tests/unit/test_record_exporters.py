@@ -1,5 +1,5 @@
-"""Record exporters (SPEC-08 §4.11, PR 12): `json_records`, `csv_records` and `markdown` over a page of records, and
-the clean records of `json_values` (SPEC-14 §4.4)."""
+"""Record exporters (learning-configs spec, PR 12): `json_records`, `csv_records` and `markdown` over a page of records,
+and the clean records of `json_values` (frontend spec)."""
 
 import json
 

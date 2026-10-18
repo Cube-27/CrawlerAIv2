@@ -1,4 +1,4 @@
-"""The `markdown` content format (SPEC-07 §4.5, ARCHITECTURE §8.5): the page's main content, by trafilatura.
+"""The `markdown` content format (rest-api spec): the page's main content, by trafilatura.
 
 trafilatura reads the page's lxml tree, not the body, so the capture is parsed once (INV-26). This module resolves
 link targets on a copy of that tree, so the shared tree stays as parsed. No per-site rules (C2). A browser capture's

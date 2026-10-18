@@ -1,5 +1,5 @@
-"""The engine executor (SPEC-08 §4.3): an IR's steps run in order over the `ParsedPage`, the first valid value is the
-field's `config` candidate, multi-matches are invalid, and listings give one entity per row."""
+"""The engine executor (learning-configs spec): an IR's steps run in order over the `ParsedPage`, the first valid value
+is the field's `config` candidate, multi-matches are invalid, and listings give one entity per row."""
 
 import json
 from datetime import UTC, datetime

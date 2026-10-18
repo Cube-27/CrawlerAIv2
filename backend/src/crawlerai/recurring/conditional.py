@@ -1,4 +1,4 @@
-"""Conditional GET (SPEC-11 §4.2, ARCHITECTURE §14): a page fetched with the validators it last answered with is
+"""Conditional GET (jobs spec): a page fetched with the validators it last answered with is
 `unchanged` when it answers 304, and nothing of it is downloaded or stored."""
 
 from collections.abc import Awaitable, Callable

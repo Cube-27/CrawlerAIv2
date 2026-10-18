@@ -1,4 +1,4 @@
-"""The worker's shared browser (SPEC-02 §4.8, INV-31): launched once and shared, and restarted at most once per task
+"""The worker's shared browser (acquisition spec, INV-31): launched once and shared, and restarted at most once per task
 when it crashes. The browser is a stub whose fetches can kill the session they run in; no Chromium."""
 
 from collections.abc import AsyncIterator

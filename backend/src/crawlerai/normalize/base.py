@@ -1,4 +1,4 @@
-"""What every type normalizer shares (SPEC-04 §4.3, ARCHITECTURE §9): the result union, the context and the
+"""What every type normalizer shares (normalization spec): the result union, the context and the
 normalizer signature.
 
 The type modules import this module and nothing else from `crawlerai.normalize`; the dispatcher
@@ -20,7 +20,7 @@ from crawlerai.schemas.types import FieldSpec
 class Ok:
     """The normalized value, in the type's JSON form (the form labels and records store).
 
-    `reasons` reports the parts of a list or object that declined and were dropped (SPEC-04 §4.4), each as
+    `reasons` reports the parts of a list or object that declined and were dropped (normalization spec), each as
     `<path>: <reason>` (`[2]: empty`, `address.locality: no_match`); a scalar has none.
     """
 
@@ -89,14 +89,14 @@ class Normalizer(Protocol):
 
 
 class Equality(Protocol):
-    """One field type's equality of two normalized values (SPEC-04 §4.5), used by the resolver's agreement rule and
-    by eval. It is reflexive and symmetric for every JSON value, and never raises on values of another shape."""
+    """One field type's equality of two normalized values (normalization spec), used by the resolver's agreement rule
+    and by eval. It is reflexive and symmetric for every JSON value, and never raises on values of another shape."""
 
     def __call__(self, a: JsonValue, b: JsonValue, spec: FieldSpec, /) -> bool: ...
 
 
 class EqualityKey(Protocol):
-    """One field type's equality as a key (SPEC-04 §4.5): `equal(a, b)` exactly when the keys of `a` and `b` are
+    """One field type's equality as a key (normalization spec): `equal(a, b)` exactly when the keys of `a` and `b` are
     equal, so values group by hashing instead of comparing every pair. Only a type whose equality is an equivalence
     relation has one (location's is not transitive)."""
 

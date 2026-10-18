@@ -1,4 +1,4 @@
-"""The LLM client's budget and usage (SPEC-06 §4.2, INV-23): every call is checked against the job's `llm_calls`
+"""The LLM client's budget and usage (llm spec, INV-23): every call is checked against the job's `llm_calls`
 budget first and writes its usage afterwards, in a transaction of its own, so a task that then fails keeps it."""
 
 from typing import Any

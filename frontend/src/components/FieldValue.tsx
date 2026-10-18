@@ -4,7 +4,7 @@ import { isJsonObject, type JsonObject } from "../api/json";
 import { FieldStatusBadge } from "./FieldStatusBadge";
 import { keyedTexts } from "./keys";
 
-// The UI shows server values as they are (ARCHITECTURE §3): it joins the parts of a normalized value and never
+// The UI shows server values as they are: it joins the parts of a normalized value and never
 // rounds, converts or fills one in.
 function part(value: unknown): string | null {
   if (typeof value === "string") return value === "" ? null : value;
@@ -19,19 +19,19 @@ function joinParts(parts: readonly unknown[], separator: string): string {
     .join(separator);
 }
 
-// SPEC-04 §4.4: money is `{amount, currency}`, shown as "amount currency".
+// schemas spec: money is `{amount, currency}`, shown as "amount currency".
 function money(value: JsonObject): string {
   return joinParts([value.amount, value.currency], " ");
 }
 
-// SPEC-04 §4.4: location is `{text, locality, region, country, remote_flag}`. `text` is the place as the page writes
+// schemas spec: location is `{text, locality, region, country, remote_flag}`. `text` is the place as the page writes
 // it and is shown as is; the parts stand in only when it is null. The flag is shown as text, not inferred.
 function location(value: JsonObject): string {
   const place = part(value.text) ?? joinParts([value.locality, value.region, value.country], ", ");
   return joinParts([place, value.remote_flag === true ? "remote" : null], ", ");
 }
 
-// SPEC-04 §4.4: range is `{min, max, currency|unit, period}`.
+// schemas spec: range is `{min, max, currency|unit, period}`.
 function range(value: JsonObject): string {
   const bounds = joinParts([value.min, value.max], "–");
   const period = part(value.period);
@@ -81,7 +81,7 @@ function NoValue({ reason }: Readonly<{ reason: string | null }>) {
   );
 }
 
-/** A field's value, shown by its type (SPEC-12 §4.2); `spec` is null when the type is unknown. A field that did not
+/** A field's value, shown by its type (frontend spec); `spec` is null when the type is unknown. A field that did not
  * publish shows "—", its reason and, unless the caller shows it in a column of its own (`withStatus` false), its
  * status, and never a value. */
 export function FieldValue({

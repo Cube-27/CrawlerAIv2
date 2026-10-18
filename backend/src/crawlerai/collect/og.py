@@ -1,4 +1,4 @@
-"""The OpenGraph collector (SPEC-05 §4.5, ARCHITECTURE §8.1): `og:*` and `product:*` meta properties.
+"""The OpenGraph collector (extraction spec): `og:*` and `product:*` meta properties.
 
 OpenGraph names no entity types, so every value describes the page's one object: the entity is `page`, and its URL is
 `og:url`. A property maps to a field through the fixed table below, keyed by the OGP property and the field's role:
@@ -98,7 +98,7 @@ def price_currencies(page: ParsedPage) -> list[str]:
 
 def _metas(page: ParsedPage) -> list[_Meta]:
     """The OGP properties this collector reads, in document order. OGP writes properties in RDFa's `property`
-    attribute; the HTML Standard's `name` attribute is read the same way (the `meta:` locator, SPEC-05 §4.3)."""
+    attribute; the HTML Standard's `name` attribute is read the same way (the `meta:` locator, extraction spec)."""
     metas: list[_Meta] = []
     for node in page.tree.css("meta"):
         attributes = node.attributes
@@ -151,7 +151,7 @@ def _value(metas: Sequence[_Meta], spec: FieldSpec) -> _Value | None:
 def _role(spec: FieldSpec) -> str | None:
     """The one property a `schema_org` path names on its root type (`Offer.price+priceCurrency` gives `price`), the
     same in every alternative, or `None` when an alternative goes through another object or the alternatives name
-    different properties (SPEC-13 §4.1). A row-mapped field's path names rows, so it has no role."""
+    different properties (variants spec). A row-mapped field's path names rows, so it has no role."""
     if spec.schema_org is None or spec.row_mapped:
         return None
     roles = {path.steps[0] if len(path.steps) == 1 else None for path in parse_paths(spec.schema_org)}

@@ -1,4 +1,4 @@
-"""The `metadata` content format (SPEC-07 §4.5, ARCHITECTURE §8.5): what the page states about itself.
+"""The `metadata` content format (rest-api spec): what the page states about itself.
 
 Each member is `None` (or empty) when the page does not state it; nothing is inferred from the URL or the host (C7).
 """
@@ -70,7 +70,7 @@ def html_lang(page: ParsedPage) -> str | None:
 
 
 def open_graph(page: ParsedPage) -> dict[str, str]:
-    # The Open Graph protocol: properties are `<meta property=… content=…>`; `name` is read too, as SPEC-05 §4.2's
+    # The Open Graph protocol: properties are `<meta property=… content=…>`; `name` is read too, as extraction spec's
     # `meta:` locator does. "The first tag (from top to bottom) is given preference during conflicts."
     og: dict[str, str] = {}
     for node in page.tree.css("meta[content]"):

@@ -1,4 +1,4 @@
-"""Fail when a tracked file names a site outside the places allowed to (SPEC-00 §4.7, INV-03, C3).
+"""Fail when a tracked file names a site outside the places allowed to (INV-03, C3).
 
 A site literal is the host of an `http(s)://` URL, or a whole dotted token whose last label is in the IANA root-zone
 list (pinned in `backend/data/manifest.json`). Hosts in `tools/site_literal_allowlist.txt` and files under the exempt
@@ -7,14 +7,14 @@ paths pass. Tests are not exempt (C9).
 Dotted tokens are also file names (`cli.py`) and attribute accesses in code, so:
 - in source code (Python, including `*.py.*` templates, and JS/TS) only string literals and comments are scanned;
 - a two-label token whose last label is the extension of a tracked file, or of a data file
-  `backend/data/manifest.json` pins (a fetched one is not tracked; SPEC-04 §4.6), is a file name;
+  `backend/data/manifest.json` pins (a fetched one is not tracked; schemas spec), is a file name;
 - a token that is the dotted path of a tracked Python module is a module name;
 - a two-label token `table.column` naming a column of a table the repository's schema defines is a qualified column
   reference (SQL's `<column reference>`), as in `ForeignKey("table.column")`. The schema is read from the tracked
   Python files: Alembic `create_table` and `add_column`, SQLAlchemy `Table`, and declarative `__tablename__` classes;
 - a token that is, as written, a schema.org property path some tracked schema document maps a field to is that path.
   A schema document is a JSON object with a `name`, a `page_kind` and a `fields` object
-  (SPEC-04 §4.2); the paths are the `schema_org` values of its fields, of their `item` and of their nested `fields`,
+  (schemas spec); the paths are the `schema_org` values of its fields, of their `item` and of their nested `fields`,
   up to any `+`, that follow schema.org naming. The paths are read from the documents, as columns are read from the
   schema.
 Schemas (the tables and the schema documents) are read only from files outside the exempt paths: an exempt file
@@ -32,7 +32,7 @@ separated by whitespace or commas, and scans every tracked file, with no path ex
 matches itself and its subdomains, case-insensitively, anywhere in a file; any character other than a letter, digit,
 `.` or `-` bounds it. The job log is public, so it prints only `path:line` per finding (`path:0` when the path itself
 names a host), with every occurrence of a host in the path replaced by `[hidden]`, and never a host. An unset or
-empty VAR passes: the environment holding the list may not exist yet (SPEC-00 §4.6).
+empty VAR passes: the environment holding the list may not exist yet.
 """
 
 import argparse
@@ -75,8 +75,8 @@ DOTTED = re.compile(r"(?i)(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)+(?![a-z0-9-]|
 # that are neither identifier nor host characters, so `cache_shop.example.com` is not one.
 COLUMN_REF = re.compile(r"(?i)(?<![\w.-])([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)(?![\w-]|\.[\w-])")
 # schema.org naming conventions (https://schema.org/docs/styleguide.html): a path starts at an UpperCamelCase type and
-# follows lowerCamelCase properties; `+` joins a second property of the last type (SPEC-04 §4.2), and `|` separates
-# alternative paths (SPEC-13 §4.1). A path is matched only as written, so a host in its usual lowercase form is never
+# follows lowerCamelCase properties; `+` joins a second property of the last type (schemas spec), and `|` separates
+# alternative paths (variants spec). A path is matched only as written, so a host in its usual lowercase form is never
 # one.
 SCHEMA_ORG_PATH = re.compile(r"([A-Z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+)(?:\+[a-z][A-Za-z0-9]*)?")
 # Hidden mode reads every run of host characters as a token, so any other character, `_` included, separates hosts.

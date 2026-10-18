@@ -1,4 +1,4 @@
-"""The Shopify adapter (SPEC-15 §4.2 to §4.5): detect storefront collection URLs, locale-prefixed ones too, ask the
+"""The Shopify adapter (adapters spec): detect storefront collection URLs, locale-prefixed ones too, ask the
 Storefront API for their collection, page through its cursor, and tell the platform's answer from any other. Product
 pages take the page path (D-1118).
 

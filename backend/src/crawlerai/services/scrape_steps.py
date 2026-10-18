@@ -1,5 +1,5 @@
-"""What a page task does the same way whether it runs while its caller waits (`scrape`, SPEC-07 §4.4) or in a worker
-(`batch_scrape`, SPEC-10 §4.3): the request members both take, the task's site and fetch policy, its capture and the
+"""What a page task does the same way whether it runs while its caller waits (`scrape`, rest-api spec) or in a worker
+(`batch_scrape`, jobs spec): the request members both take, the task's site and fetch policy, its capture and the
 usage its fetches count, the content formats of its page, and the outcome its extraction settles it with.
 
 These steps write in the caller's transaction and never settle the task themselves: a scrape settles it through the
@@ -82,7 +82,7 @@ PageFormat = Literal[
 # The formats that are files the browser makes of the rendered page (`storage.artifacts`).
 
 
-# `url_task.outcome` as a page task reports it (SPEC-07 §4.4).
+# `url_task.outcome` as a page task reports it (rest-api spec).
 class FetchSummary(BaseModel):
     """The fetch of the page: the method, status and class of the kept attempt, the platform adapter that read an `api`
     capture (INV-39; null for any other), and every attempt made."""
@@ -137,9 +137,9 @@ def blocked_reason(result: FetchResult) -> str | None:
     return None if vendor is None else CHALLENGE_REASON.format(vendor=vendor)
 
 
-# The usage a fetch attempt counts (SPEC-02 §4.7, §4.8): a request per HTTP or API attempt, the seconds of a browser's.
+# The usage a fetch attempt counts (acquisition spec): a request per HTTP or API attempt, the seconds of a browser's.
 _REQUEST_METHODS: Final[frozenset[CaptureMethod]] = frozenset({"http", "api"})
-# Jobs and sites belong to the project migrations create (single tenant, ARCHITECTURE §1).
+# Jobs and sites belong to the project migrations create (single tenant).
 DEFAULT_PROJECT: Final = select(Project.id).where(Project.name == "default").scalar_subquery()
 
 
@@ -159,7 +159,8 @@ def load_engine_data(adapters: Adapters) -> EngineData | None:
 
 
 def load_drift_margins() -> DriftMargins | None:
-    """The dev-fitted drift margins (SPEC-08 §4.9); None when none are fitted, and then no field is suspended."""
+    """The dev-fitted drift margins (learning-configs spec); None when none are fitted, and then no field is
+    suspended."""
     data = engine_data_dir()
     return None if data is None else load_margins(data / MARGINS_FILE)
 
@@ -197,14 +198,14 @@ class SchemaPrompt(Input):
     @field_validator("prompt")
     @classmethod
     def _not_blank(cls, prompt: str) -> str:
-        # Role S reads the prompt whitespace-normalized (SPEC-06 §4.5), so one of only whitespace is empty.
+        # Role S reads the prompt whitespace-normalized (llm spec), so one of only whitespace is empty.
         if not normalize_prompt(prompt):
             raise ValueError("the prompt is empty")
         return prompt
 
 
 class SchemaFields(Input):
-    """Field names, drafted into a schema with exactly those top-level fields by role S (SPEC-14 §4.10, D-0810)."""
+    """Field names, drafted into a schema with exactly those top-level fields by role S (frontend spec, D-0810)."""
 
     fields: list[Name] = Field(min_length=1, max_length=MAX_FIELD_NAMES)
 
@@ -237,7 +238,7 @@ def check_formats(
 
 
 def check_records(formats: list[PageFormat], schema: SchemaRequest | None, page_kind: PageKind | None) -> None:
-    """`records` needs a schema and a `page_kind`, and the schema's page kind must be that one (SPEC-07 §4.4). Raises
+    """`records` needs a schema and a `page_kind`, and the schema's page kind must be that one (rest-api spec). Raises
     `ValueError`, for a request model's validator."""
     if "records" not in formats:
         return
@@ -254,7 +255,7 @@ class SchemaUnusable(Refusal):
 
 
 async def fields_schema(engine: AsyncEngine, llm: LLMClient, fields: list[Name], page_kind: PageKind) -> SchemaDef:
-    """Role S's draft of `fields` for `page_kind` pages, checked usable for them (SPEC-14 §4.10). Raises the LLM
+    """Role S's draft of `fields` for `page_kind` pages, checked usable for them (frontend spec). Raises the LLM
     client's `LLMFailure`, and `SchemaUnusable` for a retired draft."""
     drafted = await draft_fields(engine, llm, fields=fields, page_kind=page_kind)
     check_usable(drafted, page_kind)
@@ -318,7 +319,7 @@ class SiteRow:
 
 async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None = None) -> SiteRow:
     """The site of `host`, created in the default project the first time one of its pages is fetched, with the fetch
-    method remembered for its pages of `page_kind` (`rungs.remembered_as`; `http` when none is, SPEC-02 §4.4)."""
+    method remembered for its pages of `page_kind` (`rungs.remembered_as`; `http` when none is, acquisition spec)."""
     await conn.execute(
         pg_insert(Site).values(project_id=DEFAULT_PROJECT, host=host).on_conflict_do_nothing(index_elements=[Site.host])
     )
@@ -436,7 +437,7 @@ async def record_fetch_usage(
             )
 
 
-# The error of a reached caller-supplied page that has no record: resolution failed (SPEC-05 §4.14).
+# The error of a reached caller-supplied page that has no record: resolution failed (extraction spec).
 EXTRACTION_ERROR: Final = "extraction_error"
 
 
@@ -454,11 +455,11 @@ async def store_page_record(
     page_url: str | None = None,
 ) -> Stored:
     """Store the extraction of a page and what it keeps: a caller-supplied page keeps its records, complete or not
-    (`partial`, ARCHITECTURE §10), and a crawl-discovered one only complete records (else `no_match`, §23); none when
-    resolution failed (SPEC-05 §4.14). The outcome is `failed` then, and for a caller-supplied detail page without a
+    (`partial`), and a crawl-discovered one only complete records (else `no_match`, §23); none when
+    resolution failed (extraction spec). The outcome is `failed` then, and for a caller-supplied detail page without a
     record; a caller-supplied listing without rows is `partial` with none (its page was read, and listed nothing). A
     page with a record counts toward its progressive state. A page `config` ran on joins the config's drift window
-    (SPEC-08 §4.9). `page_url` is `store_extraction`'s."""
+    (learning-configs spec). `page_url` is `store_extraction`'s."""
     stored = await store_extraction(
         conn,
         task,
@@ -557,7 +558,7 @@ def records_outcome(records: tuple[StoredRecord, ...]) -> Literal["extracted", "
 
 async def _count_page(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> None:
     """An extracted or partial page counts toward the progressive state of its site, schema and page kind
-    (ARCHITECTURE §8.3; SPEC-08 reads it)."""
+    (learning-configs spec reads it)."""
     state = ProgressiveState
     await conn.execute(
         pg_insert(state)
@@ -638,7 +639,7 @@ def page_formats(
     options: FormatOptions | None = None,
     artifacts: Collection[str] = (),
 ) -> Formats:
-    """The requested content formats of a reached page (ARCHITECTURE §8.5), from its one parse (INV-26) and its
+    """The requested content formats of a reached page, from its one parse (INV-26) and its
     capture's manifest: a format is a function of the capture alone (§15), the page kind it was fetched as included.
     `artifacts` names the files stored for the capture; a screenshot or PDF is a member only when it was made."""
     formats = _markdown_formats(page, manifest, requested, options or FormatOptions())

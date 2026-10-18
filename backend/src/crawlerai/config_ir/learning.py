@@ -1,11 +1,11 @@
-"""The learning run (SPEC-08 §4.4 to §4.8, ARCHITECTURE §8.3): what a `learn` job does, from a state's stored pages to
+"""The learning run (learning-configs spec): what a `learn` job does, from a state's stored pages to
 an active config or a failed run.
 
 A run reads the state's `LEARN_AFTER_PAGES` most recent extracted pages (`held_out.load_pages`, §4.4). The
 `SAMPLE_PAGES` with the most published required values are the learning sample, and the rest are held out. Induction
 proposes selectors without an LLM (§4.5), role A synthesizes the fields it left (§4.6), and the config is validated on
 the held-out pages (§4.7) and activated (§4.8), with the API recipe its pages' browser captures show their values came
-from when one is learned and validated (SPEC-09 §2, `api_recipe.learn`); when the site's project requires approval
+from when one is learned and validated (adapters spec, `api_recipe.learn`); when the site's project requires approval
 (D-1342), the validated config waits as `pending_approval` instead (`store_pending`). Every other end is a
 failed run
 (`progressive.learning_failed`): validation refusing the config, an LLM failure (D-0588), a cancelled job, an error,
@@ -17,7 +17,7 @@ A run takes two transactions: one starts the job, one ends it; the pages are rea
 role A or role D is called or a recipe is replayed: the LLM client commits usage on a connection of its own and must
 not wait on a write to the job's row (D-0346). A worker that stops after the start, during the final transaction too,
 ends the run (`SHUTDOWN`), so its job never waits for `expire_learn_runs`. The job's start and end are recorded as
-`learning_started` and `learning_finished` events (SPEC-10 §4.2).
+`learning_started` and `learning_finished` events (jobs spec).
 """
 
 import asyncio
@@ -75,11 +75,11 @@ from crawlerai.storage.base import ObjectStore
 
 log = logging.getLogger(__name__)
 
-# ARCHITECTURE §8.3: of the 8 pages a run reads, five are the learning sample and the rest are held out.
+# Of the 8 pages a run reads, five are the learning sample and the rest are held out.
 SAMPLE_PAGES: Final = 5
 LEARNING_STARTED: Final = "learning_started"
 LEARNING_FINISHED: Final = "learning_finished"
-# The reason a run ends with when its schema was edited while it ran (SPEC-04 §4.1).
+# The reason a run ends with when its schema was edited while it ran (schemas spec).
 SCHEMA_EDITED: Final = "schema_edited"
 # A run makes a few role A calls, each at most `llm.client.TIMEOUT_S["strong"]` per provider, plus a retry; a run still
 # `running` an hour after it started has lost its process.
@@ -368,7 +368,7 @@ def _uncovered(schema: SchemaDef, covered: set[str]) -> bool:
 
 def learnable(schema: SchemaDef) -> tuple[SchemaDef, dict[str, str]]:
     """The schema learning learns steps for, and why each other field gets none. A row-mapped field gets none
-    (`row_field`, SPEC-13 §4.9): induction generalizes one locator per field per page, and a row field needs a row
+    (`row_field`, variants spec): induction generalizes one locator per field per page, and a row field needs a row
     selector, sub-field selectors relative to it and row matching. The structured collectors still fill it in `config`
     mode, and drift does not track it."""
     row_fields = {name: "row_field" for name, spec in schema.fields.items() if spec.row_mapped}
@@ -394,7 +394,7 @@ def _induced(
         listing = listing.model_copy(update={"next": next_steps.steps[0]})
     elif next_steps is not None:
         left[NEXT_PAGE_FIELD] = "no_listing"
-    # SPEC-08 §4.5: a config whose fields an adapter maps is the adapter's.
+    # learning-configs spec: a config whose fields an adapter maps is the adapter's.
     origin: ConfigOrigin = "adapter" if induction.mapped else "induced"
     ir = ExtractionConfigIR(
         ir_version="1",

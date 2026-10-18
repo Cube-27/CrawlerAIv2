@@ -1,10 +1,10 @@
-"""The capture bundle (SPEC-01 §4.5, ARCHITECTURE §15): everything replay needs, in one zstd-compressed tar.
+"""The capture bundle (persistence-storage spec): everything replay needs, in one zstd-compressed tar.
 
 ```
 manifest.json      # CaptureManifest
 body.html          # response body as received (transfer/content encoding removed); body.json for API captures;
                    # for browser captures, the rendered DOM
-body.raw.html      # browser captures only: the navigation response body as the server sent it (SPEC-02 §4.8)
+body.raw.html      # browser captures only: the navigation response body as the server sent it (acquisition spec)
 network/0001.json  # captured JSON bodies in response order, as received (browser captures only)
 ```
 
@@ -38,7 +38,7 @@ _RAW_BODY = "body.raw.html"
 
 
 class CorruptBundle(Exception):
-    """The bytes are not a valid bundle (SPEC-01 §4.8)."""
+    """The bytes are not a valid bundle (persistence-storage spec)."""
 
 
 class _Frozen(BaseModel):
@@ -54,9 +54,9 @@ class NetworkBody(_Frozen):
     """Manifest entry for one captured network body; the bytes sit at the same index of the bundle's `network`.
 
     `method`, `request_body` and `request_headers` describe the request the body answered, which API discovery groups
-    and binds by (SPEC-09 §4.3) and header minimization replays (§4.6); bundles written before they were kept decode
+    and binds by (adapters spec) and header minimization replays (§4.6); bundles written before they were kept decode
     with None. `request_body` is None also for a request without a body or with one that is not UTF-8 text.
-    `request_headers` are recorded as the page's are (SPEC-02 §4.7: no cookies), in the order sent.
+    `request_headers` are recorded as the page's are (acquisition spec: no cookies), in the order sent.
 
     `response_headers` are recorded the same way, in the order received; `resource_type` is the request's Fetch
     destination as the browser names it (`fetch`, `xhr`, `document`); `action` is how many browser actions the page
@@ -185,13 +185,14 @@ CAPTURES_PREFIX: Final = "captures/"
 
 
 def capture_key(capture_id: UUID, fetched_at: datetime) -> str:
-    """Production captures, which expire after 30 days (SPEC-01 §4.4). `fetched_at` must be timezone-aware."""
+    """Production captures, which expire after 30 days (persistence-storage spec). `fetched_at` must be
+    timezone-aware."""
     month = fetched_at.astimezone(UTC)
     return f"{CAPTURES_PREFIX}{month:%Y}/{month:%m}/{capture_id}.bundle.zst"
 
 
 def dev_eval_capture_key(capture_id: UUID) -> str:
-    """Eval captures, which never expire (SPEC-01 §4.4)."""
+    """Eval captures, which never expire (persistence-storage spec)."""
     return f"eval/dev/{capture_id}.bundle.zst"
 
 

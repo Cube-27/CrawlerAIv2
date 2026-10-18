@@ -1,4 +1,4 @@
-"""Deterministic binding (SPEC-09 §4.4): sample pages and the endpoint requests made for them bind to a request spec
+"""Deterministic binding (adapters spec): sample pages and the endpoint requests made for them bind to a request spec
 whose templates reproduce every request, or to `Ambiguous` with the reason."""
 
 from crawlerai.config_ir.api_recipe.binding import (

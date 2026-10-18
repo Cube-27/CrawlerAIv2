@@ -1,4 +1,4 @@
-"""Records (SPEC-05 §4.10, ARCHITECTURE §6 `record`, §10 "Incomplete pages", INV-22): published values only in `data`,
+"""Records (extraction spec, INV-22): published values only in `data`,
 `field_meta` for every field, `complete`, the entity key, `partial` for caller-supplied URLs and `no_match` with no
 record for crawl-discovered ones."""
 

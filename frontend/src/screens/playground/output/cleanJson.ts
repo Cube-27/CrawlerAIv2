@@ -27,7 +27,7 @@ function cleanValue(value: unknown, spec: FieldTypeSpec | undefined): unknown {
   return value;
 }
 
-/** `data` as a clean record (SPEC-14 §4.4), as the server writes one for `json_values`: its published fields in name
+/** `data` as a clean record (frontend spec), as the server writes one for `json_values`: its published fields in name
  * order, a null one left out, and a money value flat as its amount beside its currency. Names are ASCII
  * (`NAME_PATTERN`), so code-unit order is name order (D-0816). */
 function cleanObject(fields: FieldTypes, data: JsonObject): CleanRecord {
@@ -47,7 +47,7 @@ function cleanObject(fields: FieldTypes, data: JsonObject): CleanRecord {
   return clean;
 }
 
-/** Fields in clean form: each one's published value (SPEC-07 §4.4: `value` is null unless published). */
+/** Fields in clean form: each one's published value (rest-api spec: `value` is null unless published). */
 function cleanFields(fields: ScrapeRecord["fields"], fieldTypes: FieldTypes): CleanRecord {
   const data = Object.fromEntries(
     Object.entries(fields).map(([name, field]) => [name, field.value ?? null]),

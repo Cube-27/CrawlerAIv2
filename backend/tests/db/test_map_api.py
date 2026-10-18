@@ -1,4 +1,4 @@
-"""`POST /v1/map` over HTTP (SPEC-10 §4.4): what a client sends and gets back. What a map does is the service's
+"""`POST /v1/map` over HTTP (jobs spec): what a client sends and gets back. What a map does is the service's
 (`test_map_service.py`)."""
 
 import itertools

@@ -39,7 +39,7 @@ function zonedOf(instant: string): ZonedDateTime | null {
   }
 }
 
-/** The start of the change feed: records stored from this instant on (SPEC-11 §4.4), as ISO 8601; "" for none. */
+/** The start of the change feed: records stored from this instant on (jobs spec), as ISO 8601; "" for none. */
 function ChangedSinceField({
   value,
   onChange,
@@ -81,7 +81,7 @@ function ChangedSinceField({
   );
 }
 
-/** The `GET /v1/records` filters (SPEC-07 §4.6). The schema is required; the others narrow the list when given. */
+/** The `GET /v1/records` filters (rest-api spec). The schema is required; the others narrow the list when given. */
 export function RecordFiltersForm({
   filters,
   onSubmit,

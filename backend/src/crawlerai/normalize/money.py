@@ -1,4 +1,4 @@
-"""Money normalizer (SPEC-04 §4.4, ARCHITECTURE §9): `{"amount": "<decimal>", "currency": "<ISO 4217>"}`.
+"""Money normalizer (normalization spec): `{"amount": "<decimal>", "currency": "<ISO 4217>"}`.
 
 Accepts:
 - a string, from the DOM or an LLM: the one amount in it, and the currency sign written next to it (a CLDR symbol
@@ -30,7 +30,8 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org `price`: ASCII digits with `.` (U+002E) as the decimal point and no grouping symbols.
 _SCHEMA_ORG_PRICE = re.compile(r"\d+(?:\.\d+)?", re.ASCII)
-# SPEC-01 D-0005: money is stored as `numeric(18,6)`, so an amount has at most 12 integer and 6 fraction digits.
+# persistence-storage spec D-0005: money is stored as `numeric(18,6)`, so an amount has at most 12 integer and 6
+# fraction digits.
 _MAX_AMOUNT = Decimal(10) ** 12
 _MAX_EXPONENT = -6
 # `numbers.stated` declines a text without one number as `no_number` or `several_numbers`; money names them by what
@@ -39,7 +40,7 @@ _NUMBER_REASONS = {"no_number": "no_amount", "several_numbers": "range"}
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize a money field (SPEC-04 §4.4)."""
+    """Normalize a money field (normalization spec)."""
     if spec.type is not FieldType.MONEY:
         raise TypeError(f"the money normalizer does not handle type {spec.type}")
     if isinstance(raw, dict):
@@ -177,7 +178,7 @@ def _money(amount: Decimal, currency: str) -> NormalizeResult:
     # A JSON number is finite (RFC 8259 §6); a NaN or infinity reaching here is no amount.
     if not isinstance(exponent, int):
         return Invalid("unparsable_amount")
-    # ARCHITECTURE §9: a price that is not positive is not a price.
+    # A price that is not positive is not a price.
     if amount <= 0:
         return Invalid("not_positive")
     if amount >= _MAX_AMOUNT or exponent < _MAX_EXPONENT:
@@ -191,14 +192,14 @@ def _value(amount: Decimal, currency: str) -> JsonValue:
 
 
 def _currencies_for(sign: str, locales: frozenset[str], page_currencies: Iterable[str]) -> list[str]:
-    """The ISO 4217 codes `sign` can denote, given the evidence (SPEC-04 §4.4)."""
+    """The ISO 4217 codes `sign` can denote, given the evidence (normalization spec)."""
     if sign in _currencies():
         # ISO 4217 alphabetic codes are three uppercase letters; a code names itself.
         return [sign]
     sign = unicodedata.normalize("NFKC", sign)
     # CLDR currency symbols: the currencies the sign stands for anywhere, then in the page's own locales.
     anywhere = _symbol_currencies().get(sign, frozenset())
-    # SPEC-04 §4.4: a currency the page's structured data states settles the sign, when the sign can denote it.
+    # normalization spec: a currency the page's structured data states settles the sign, when the sign can denote it.
     stated = anywhere.intersection(page_currencies)
     if stated:
         return sorted(stated)
@@ -247,8 +248,8 @@ def _signs_by_length() -> tuple[tuple[int, frozenset[str]], ...]:
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (SPEC-04 §4.5): the amounts equal as Decimals, without rounding (`19.9` equals `19.90`), and
-    the same currency."""
+    """Equality as a key (normalization spec): the amounts equal as Decimals, without rounding (`19.9` equals `19.90`),
+    and the same currency."""
     money = _money_value(value)
     return raw_key(value) if money is None else ("money", money)
 

@@ -1,4 +1,4 @@
-"""Lever hosted job sites through the Lever Postings API (SPEC-02 §4.9).
+"""Lever hosted job sites through the Lever Postings API (acquisition spec).
 
 Endpoints, verified against the vendor's Postings API documentation (github.com/lever/postings-api, README,
 2026-10-13): `GET /v0/postings/{site}?mode=json` lists a site's published postings as a JSON array;

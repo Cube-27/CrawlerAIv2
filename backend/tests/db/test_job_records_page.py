@@ -1,4 +1,4 @@
-"""A job's records, a page at a time (SPEC-11 §4.2, §4.4): `list_records` with a `job_id` reads the job's tasks by id
+"""A job's records, a page at a time (jobs spec): `list_records` with a `job_id` reads the job's tasks by id
 and returns the records they stand for, each once, newest task first and newest record first within a task; its cursor
 is a record id that stays valid as tasks are added."""
 

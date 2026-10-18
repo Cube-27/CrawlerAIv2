@@ -1,4 +1,4 @@
-"""Retention (SPEC-01 §2, §4.3, §4.4; ARCHITECTURE §6): production captures go once past `expires_at`, bundle and row;
+"""Retention (persistence-storage spec): production captures go once past `expires_at`, bundle and row;
 candidates go after 30 days; dev eval captures under `eval/` stay."""
 
 import uuid

@@ -1,4 +1,4 @@
-"""The configs service (SPEC-08 §4.10, ARCHITECTURE §13.1, C5): a site's configs, operator corrections, forced
+"""The configs service (learning-configs spec): a site's configs, operator corrections, forced
 learning and exports, over a connection.
 
 A correction is applied to the latest version of its (site, schema, page kind), so an edit never silently

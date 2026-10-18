@@ -1,4 +1,4 @@
-"""Row-mapped field metrics (SPEC-13 §4.10): engine rows matched to label rows by key, `list.<type>` cells, row
+"""Row-mapped field metrics (variants spec): engine rows matched to label rows by key, `list.<type>` cells, row
 precision and recall and wrong product from `distractor_keys`."""
 
 from typing import Any
@@ -21,7 +21,7 @@ from crawlerai.eval.metrics import (
 )
 from crawlerai.schemas.types import FieldSpec, FieldType
 
-# A row sub-field's cell (SPEC-13 §4.10), built from its type: the literal would read as a hostname to the C3 scan.
+# A row sub-field's cell (variants spec), built from its type: the literal would read as a hostname to the C3 scan.
 LIST_MONEY = f"list.{FieldType.MONEY.value}"
 
 VARIANTS = FieldSpec.model_validate(
@@ -45,7 +45,7 @@ SCHEMA = SchemaFields(
     fields={"title": FieldSpec.model_validate({"type": "text"}), "variants": VARIANTS},
     required=frozenset({"title"}),
 )
-# The same schema with `variants` required: zero-touch then needs its rows right (SPEC-03 §4.6).
+# The same schema with `variants` required: zero-touch then needs its rows right (evaluation spec).
 REQUIRED_ROWS = SCHEMA.model_copy(
     update={
         "fields": {**SCHEMA.fields, "variants": VARIANTS.model_copy(update={"required": True})},

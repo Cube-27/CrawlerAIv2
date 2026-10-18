@@ -1,5 +1,5 @@
-"""A capture's artifacts (SPEC-02, SPEC-01 §4.4): files the browser made of the page it rendered, a screenshot and a
-PDF, stored beside the capture's bundle under keys derived from the bundle's.
+"""A capture's artifacts (acquisition spec, persistence-storage spec): files the browser made of the page it rendered, a
+screenshot and a PDF, stored beside the capture's bundle under keys derived from the bundle's.
 
 An artifact is not part of the bundle: the bundle holds what replay reads (INV-10), and an artifact is output only. It
 lives and dies with its capture: `scheduler.retention` deletes the names below with the bundle.

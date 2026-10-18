@@ -1,4 +1,4 @@
-"""Derived values (SPEC-05 §4.8, ARCHITECTURE §9, C7, INV-07): only a missing field is filled, only by a named
+"""Derived values (extraction spec, INV-07): only a missing field is filled, only by a named
 derivation, and the value says which."""
 
 from datetime import UTC, datetime

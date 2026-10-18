@@ -1,4 +1,5 @@
-"""Cleaned text, its offsets and the visibility index (SPEC-05 §4.4): rendered from the page's one selectolax tree."""
+"""Cleaned text, its offsets and the visibility index (extraction spec): rendered from the page's one selectolax
+tree."""
 
 import pytest
 

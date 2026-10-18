@@ -1,4 +1,4 @@
-"""Recurring schedules (§22 "Recurring schedule storage", admitted 2026-10-17; SPEC-10 §4.2): the request of a batch
+"""Recurring schedules (§22 "Recurring schedule storage", admitted 2026-10-17; jobs spec): the request of a batch
 scrape, crawl or extract, submitted as a job at each due time of a cron expression or an interval
 (`crawlerai.core.cadence`). `/v1/schedules` and the MCP schedule tools answer with these.
 
@@ -17,7 +17,7 @@ and its job commit together: two schedulers never submit one run twice, and a cr
 nothing, the run being due again. A run the service refuses (a target refused by then, globs matching nothing) stores
 no job: its reason is the schedule's `last_error`, and the schedule moves on. A schedule due more than once by then
 runs once (`next_run`). The jobs of a schedule are ordinary jobs of its request: re-runs of one request, so record
-versions, `changed_fields`, conditional fetches and `url_gone` (SPEC-11) follow them as they follow a re-submission.
+versions, `changed_fields`, conditional fetches and `url_gone` (jobs spec) follow them as they follow a re-submission.
 """
 
 from dataclasses import dataclass

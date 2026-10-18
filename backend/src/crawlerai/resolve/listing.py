@@ -1,4 +1,4 @@
-"""Cold listings (SPEC-05 §4.7 "Listings", ARCHITECTURE §8.6): which of a listing page's entities are its rows.
+"""Cold listings (resolution spec "Listings"): which of a listing page's entities are its rows.
 
 Rows come from structured data. The entities of the schema's primary types that an `ItemList` lists (directly or through
 a `ListItem`) are the rows; an entity inside another primary entity (a row's related item, an item it offers) is part of
@@ -28,7 +28,7 @@ from crawlerai.resolve.identity import LISTS
 from crawlerai.resolve.intent import AmbiguousTarget, is_primary
 from crawlerai.resolve.ownership import EntityGraph
 
-# SPEC-05 §4.7: without an ItemList, at least this many top-level primary entities make a listing's rows; the same
+# resolution spec: without an ItemList, at least this many top-level primary entities make a listing's rows; the same
 # count of repeated items makes a page show a listing's grid (`acquire.items`).
 MIN_TOP_LEVEL_ROWS: Final = MIN_ITEMS
 # schema.org BreadcrumbList: "an ItemList consisting of a chain of linked Web pages ... typically ending with the

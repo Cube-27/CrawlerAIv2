@@ -1,4 +1,4 @@
-"""Row matching properties (SPEC-13 §6, INV-33): rows are matched by key and never by position, so the order of rows
+"""Row matching properties (variants spec, INV-33): rows are matched by key and never by position, so the order of rows
 and of sources does not change the published rows; rows with different keys never merge; a sub-field that disagrees
 inside one variant is a conflict, never a value; and JSON-LD and microdata give equal `variants` values."""
 

@@ -1,6 +1,6 @@
-"""Held-out validation of an API recipe (SPEC-09 §4.7, ARCHITECTURE §7.2 step 3): replay the recipe for each held-out
+"""Held-out validation of an API recipe (adapters spec): replay the recipe for each held-out
 page and compare every mapped field with the value the engine published from the page's browser capture, the bar
-SPEC-08 §4.7 sets for a config.
+learning-configs spec sets for a config.
 
 A recipe is accepted only whole: every field of its map must reproduce on every held-out page where the engine
 published it, and be published on at least one. An accepted recipe carries its proof and enters the validated config

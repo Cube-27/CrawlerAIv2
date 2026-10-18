@@ -23,7 +23,7 @@ export interface FieldEditorProps {
   onNormalize: () => void;
 }
 
-/** One schema field's label (SPEC-03 §4.10): raw text, normalized value, `absent`, locator and distractors. */
+/** One schema field's label (evaluation spec): raw text, normalized value, `absent`, locator and distractors. */
 export function FieldEditor({
   name,
   group,

@@ -1,4 +1,4 @@
-"""Every role's output schema stays inside every provider's structured-output subset (SPEC-06 §4.1, §4.2), for any
+"""Every role's output schema stays inside every provider's structured-output subset (llm spec), for any
 fields a schema can ask for: a provider refuses a schema outside it with a 400, and the role then extracts nothing."""
 
 import json

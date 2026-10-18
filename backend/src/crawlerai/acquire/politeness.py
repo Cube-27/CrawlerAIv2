@@ -1,4 +1,4 @@
-"""Politeness per site (SPEC-02 §4.6): a request rate, adapted to how the host answers, and the pause a server asks
+"""Politeness per site (acquisition spec): a request rate, adapted to how the host answers, and the pause a server asks
 for.
 
 The rate adapts per host (D-1327), as TCP's congestion control does (RFC 5681 §3.1: back off multiplicatively on a
@@ -21,8 +21,8 @@ from crawlerai.acquire.types import AttemptRecord
 from crawlerai.core.retry import backoff_delay
 from crawlerai.storage.capture_bundle import HeaderList
 
-DEFAULT_INTERVAL: Final = timedelta(seconds=1)  # SPEC-02 §4.6: 1 request/s
-BACKOFF_MAX: Final = timedelta(minutes=15)  # SPEC-02 §4.6: the longest backoff
+DEFAULT_INTERVAL: Final = timedelta(seconds=1)  # acquisition spec: 1 request/s
+BACKOFF_MAX: Final = timedelta(minutes=15)  # acquisition spec: the longest backoff
 # RFC 6585 §4 (429 Too Many Requests) and RFC 9110 §15.6.4 (503 Service Unavailable): the statuses that ask a
 # client to slow down, optionally with a Retry-After.
 SLOW_DOWN: Final = frozenset({429, 503})
@@ -40,12 +40,12 @@ class Admit(Protocol):
 
 
 async def refuse(*, after: timedelta = timedelta(0)) -> bool:
-    """The `Admit` of a fetch that may send no further request: robots.txt disallows the page (SPEC-15 §4.6)."""
+    """The `Admit` of a fetch that may send no further request: robots.txt disallows the page (adapters spec)."""
     return False
 
 
 def backoff(attempt: AttemptRecord, tries: int = 1) -> timedelta | None:
-    """The one back-off of a host that answered `attempt` with a 429 or 503 on try `tries` of the work (SPEC-02
+    """The one back-off of a host that answered `attempt` with a 429 or 503 on try `tries` of the work (acquisition spec
     §4.6): the pause its `Retry-After` asks for, else the queue's backoff for that try (`backoff_delay`), at most
     `BACKOFF_MAX`. None when the server asks for more than `BACKOFF_MAX`: retrying before it allows breaks its
     request, and waiting longer holds the work open without bound, so the work ends instead."""

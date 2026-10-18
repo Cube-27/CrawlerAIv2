@@ -1,4 +1,4 @@
-"""Config exports (SPEC-08 §4.10, §4.11): a config in `json` (the IR as stored) or `platform_draft`, with the release
+"""Config exports (learning-configs spec): a config in `json` (the IR as stored) or `platform_draft`, with the release
 check (§12.3) run on the held-out pages."""
 
 from collections.abc import Sequence

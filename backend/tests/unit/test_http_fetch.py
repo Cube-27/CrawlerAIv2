@@ -1,4 +1,4 @@
-"""HTTP fetch (SPEC-02 §4.5, §4.7): manual redirects through the SSRF guard, caps, timeouts and the manifest.
+"""HTTP fetch (acquisition spec): manual redirects through the SSRF guard, caps, timeouts and the manifest.
 
 A local server on 127.0.0.1 serves synthetic pages under `.test` hosts; no live network. `LoopbackConnector`
 admits only those hosts, at the server's port, and sends every other URL through the real guard with a stub

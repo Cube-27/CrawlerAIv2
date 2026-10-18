@@ -1,4 +1,4 @@
-"""The Anthropic provider (SPEC-06 §4.1): the Messages API through the official SDK, with structured output.
+"""The Anthropic provider (llm spec): the Messages API through the official SDK, with structured output.
 
 The reply is constrained by `output_config.format` (`json_schema`); the client still validates it (§4.2). The SDK's own
 retries are off: a rate limit, a server error or a timeout raises `ProviderError` at once, and the client fails over

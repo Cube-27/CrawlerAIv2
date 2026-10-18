@@ -1,4 +1,4 @@
-"""A job's webhook deliveries (SPEC-10 §4.2): what a caller debugging a receiver reads, newest first, a page at a time.
+"""A job's webhook deliveries (jobs spec): what a caller debugging a receiver reads, newest first, a page at a time.
 
 A delivery is `pending` until the target accepts it (a 2xx) or its attempts run out (`failed`); it keeps how many
 attempts were made, when the next is due, the last attempt's error and the status the target answered with. Rows

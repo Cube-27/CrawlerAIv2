@@ -1,4 +1,4 @@
-"""Behaviour of `tools/site_literal_scan.py --hidden-hosts-from-env` (SPEC-00 §4.6, §4.7, INV-04), run as the
+"""Behaviour of `tools/site_literal_scan.py --hidden-hosts-from-env` (INV-04), run as the
 protected job runs it.
 
 The host lists here are synthetic names under the reserved `.test` TLD. The log of the protected job is public, so

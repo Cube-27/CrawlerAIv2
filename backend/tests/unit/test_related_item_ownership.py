@@ -1,4 +1,4 @@
-"""Related items never lend their values to a detail page's target (SPEC-05 §4.6, Appendix A #55): a checkable value
+"""Related items never lend their values to a detail page's target (extraction spec, Appendix A #55): a checkable value
 inside an array of other items belongs to the item it sits in, in structured data by its entity and in embedded state
 or API bodies by its array row, while a row naming the page is the target's.
 

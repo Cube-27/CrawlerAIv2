@@ -1,4 +1,4 @@
-"""Row-mapped field labels (SPEC-13 §4.10, SPEC-03 §4.3): `label_version` 2 labels a `list<object>` field with a key
+"""Row-mapped field labels (variants spec, evaluation spec): `label_version` 2 labels a `list<object>` field with a key
 as rows under `lists`; version 1 labels stay valid and leave it unlabeled."""
 
 import copy

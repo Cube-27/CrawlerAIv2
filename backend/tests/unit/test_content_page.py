@@ -1,4 +1,4 @@
-"""`ParsedPage` (SPEC-05 §4.1, ARCHITECTURE §8 "Parse once"): one decode and at most one parse per parser per
+"""`ParsedPage` (extraction spec): one decode and at most one parse per parser per
 capture (INV-26); the script blocks; the lazy lxml tree."""
 
 from datetime import UTC, datetime

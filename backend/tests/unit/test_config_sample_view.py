@@ -1,5 +1,5 @@
-"""What role A reads of a sample page (SPEC-08 §4.6): reduced HTML, a cut that keeps the published values, and JSON
-documents as key paths without values. Pages are synthetic."""
+"""What role A reads of a sample page (learning-configs spec): reduced HTML, a cut that keeps the published values, and
+JSON documents as key paths without values. Pages are synthetic."""
 
 from crawlerai.config_ir.sample_view import KEYS_MAX_CHARS, Cut, cut_around, json_keys, reduced_html
 from crawlerai.content.page import ParsedPage

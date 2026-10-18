@@ -1,4 +1,4 @@
-"""Metrics and the aggregate report (SPEC-03 §4.6, §4.7): each cell of the §4.6 table from hand-built label/output
+"""Metrics and the aggregate report (evaluation spec): each cell of the §4.6 table from hand-built label/output
 pairs, listing rows matched by url, zero-touch, acquisition, usage, and min-cell suppression."""
 
 from typing import Any
@@ -121,4 +121,4 @@ def test_zero_touch_required_groups(sku: FieldOutput, gtin: FieldOutput, zero_to
     assert report(case).by_category == {"mixed": ZeroTouch(zero_touch=float(zero_touch), n=1)}
 
 
-# Per source kind (SPEC-05 §4.11): every kind that offered a kept value is scored, whether or not it won.
+# Per source kind (extraction spec): every kind that offered a kept value is scored, whether or not it won.

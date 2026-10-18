@@ -2,7 +2,7 @@ import type { Problem } from "../../../api/problem";
 import type { NewSchema, SchemaDef } from "../../../api/schemas";
 import { formOf, newSchemaOf, type SchemaFormState } from "../../../components/schemaDocument";
 
-/** What a run sends for a reviewed draft (SPEC-14 §4.10): the field names while the draft is unchanged, so the request
+/** What a run sends for a reviewed draft (frontend spec): the field names while the draft is unchanged, so the request
  * is the one Get code shows and the server reads the same stored draft; else the edited schema, inline. */
 export type ReviewedSchema = { fields: string[] } | { inline: NewSchema };
 

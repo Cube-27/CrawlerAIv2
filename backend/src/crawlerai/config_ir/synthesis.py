@@ -1,4 +1,4 @@
-"""Role A: selector synthesis (SPEC-08 §4.6, ARCHITECTURE §8.3 step 2, §11), for the fields induction left.
+"""Role A: selector synthesis (learning-configs spec), for the fields induction left.
 
 The model reads the fields' descriptions, the cleaned sample pages (`sample_view`) and the values the engine published
 on them, and replies with steps, never values: the output schema has no place for one. Each round, the engine executor
@@ -53,7 +53,7 @@ FIRST_ROUND: Final = "Write the steps for the fields above."
 SYNTH_KIND: Final[PromptKind] = "a_synth"
 REPAIR_KIND: Final[PromptKind] = "a_repair"
 
-# ARCHITECTURE §8.3 step 2, §11: up to 3 repair rounds after the first reply.
+# Up to 3 repair rounds after the first reply.
 MAX_REPAIRS: Final = 3
 MAX_OUTPUT_TOKENS: Final = 8_192
 # A listing's published rows shown per page, and a target's diagnostics in a repair prompt: enough to show the

@@ -63,7 +63,7 @@ function JsonMember<T>({
   );
 }
 
-/** The inputs only `spec.type` takes (SPEC-04 §4.1): a vocabulary, a scheme, a list item or object fields. */
+/** The inputs only `spec.type` takes (schemas spec): a vocabulary, a scheme, a list item or object fields. */
 function TypeParameters({
   spec,
   onChange,

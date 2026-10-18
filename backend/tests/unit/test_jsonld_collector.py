@@ -1,4 +1,4 @@
-"""The JSON-LD collector (SPEC-05 §4.5): every `application/ld+json` block, `@graph` expanded, `@id` references
+"""The JSON-LD collector (extraction spec): every `application/ld+json` block, `@graph` expanded, `@id` references
 resolved within the page, schema.org nodes as entities, and a candidate for each `schema_org` path."""
 
 import json

@@ -1,4 +1,4 @@
-"""The config API (SPEC-08 §4.10, ARCHITECTURE §13.1, C5): a site's configs and one config over HTTP; an operator's
+"""The config API (learning-configs spec): a site's configs and one config over HTTP; an operator's
 correction becomes the next version, validated on the site's held-out pages, active when validation keeps it and a
 `draft` with its report when not; forced learning starts a `learn` job. Also the held-out loader the correction
 validates with (§4.4, §4.7)."""

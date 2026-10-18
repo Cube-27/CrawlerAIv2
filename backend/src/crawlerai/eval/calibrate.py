@@ -24,7 +24,7 @@ from crawlerai.resolve.evidence import Calibration
 from crawlerai.resolve.preference import PRECEDENCE_FILE, parse_orders
 from crawlerai.storage.fs import FsStore
 
-Orders = dict[str, tuple[SourceKind, ...]]  # field type -> source kinds, first wins (SPEC-05 §4.7)
+Orders = dict[str, tuple[SourceKind, ...]]  # field type -> source kinds, first wins (extraction spec)
 
 
 class PrecedenceMissing(EvalCliError):
@@ -75,7 +75,8 @@ def _measured(cells: Mapping[str, SourceMetrics]) -> dict[str, Measured]:
 
 
 def write_calibration(calibration: Calibration, data_dir: Path) -> Path:
-    # Sorted keys and LF bytes: the engine version hashes this file (SPEC-01 §4.7), so the same fit gives one version.
+    # Sorted keys and LF bytes: the engine version hashes this file (persistence-storage spec), so the same fit gives
+    # one version.
     text = json.dumps(calibration.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
     return _write(data_dir / CALIBRATION_FILE, text)
 
@@ -86,12 +87,12 @@ def read_precedence(data_dir: Path) -> Orders:
     try:
         document = yaml.safe_load(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        raise PrecedenceMissing(f"no {PRECEDENCE_FILE} to refit; SPEC-05 commits the initial order") from None
+        raise PrecedenceMissing(f"no {PRECEDENCE_FILE} to refit; extraction spec commits the initial order") from None
     return {type_: tuple(order) for type_, order in parse_orders(document).items()}
 
 
 def write_precedence(precedence: Precedence, data_dir: Path) -> Path:
-    # SPEC-05 §4.7's shape: the stamp, then one list of source kinds per field type, in the fit's order.
+    # extraction spec's shape: the stamp, then one list of source kinds per field type, in the fit's order.
     document = precedence.model_dump(mode="json", exclude={"orders"}) | {
         type_: list(order) for type_, order in precedence.orders.items()
     }

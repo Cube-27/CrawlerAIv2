@@ -1,6 +1,7 @@
-"""The money normalizer (SPEC-04 §4.4, ARCHITECTURE §9): CLDR currency symbols and number symbols (Babel) for the
+"""The money normalizer (normalization spec): CLDR currency symbols and number symbols (Babel) for the
 locales the context states, `price-parser` to locate the amount, and declines on ambiguous signs, ambiguous decimal
-separators, ranges and amounts that are not positive. The tests use ISO codes and CLDR symbols only (SPEC-04 §6)."""
+separators, ranges and amounts that are not positive. The tests use ISO codes and CLDR symbols only (normalization
+spec)."""
 
 from datetime import UTC, datetime
 from decimal import Decimal

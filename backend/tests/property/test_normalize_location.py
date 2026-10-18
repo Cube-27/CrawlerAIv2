@@ -1,4 +1,4 @@
-"""The location normalizer (SPEC-04 §4.4, ARCHITECTURE §9): a location publishes what the page states. Text stays
+"""The location normalizer (normalization spec): a location publishes what the page states. Text stays
 text, a `PostalAddress`'s parts stay as written, a country code only when the page states a valid ISO 3166-1 alpha-2
 code, and `remote_flag` only from `TELECOMMUTE` or a `type:remote` phrase.
 

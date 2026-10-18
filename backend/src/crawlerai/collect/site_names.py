@@ -1,4 +1,4 @@
-"""What names the site a page belongs to, as opposed to the thing the page is about (SPEC-05 §4.5): the Open Graph
+"""What names the site a page belongs to, as opposed to the thing the page is about (extraction spec): the Open Graph
 `og:site_name` ("the name of the overall site"), each separator run of it, and the label of the page host's
 registrable domain (Public Suffix List, "Formal Algorithm": the public suffix plus one label).
 

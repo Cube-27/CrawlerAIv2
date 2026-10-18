@@ -1,4 +1,4 @@
-"""Pagination (SPEC-05 §4.12, ARCHITECTURE §8.6): `rel=next` first, then the structural numbered-link rule.
+"""Pagination (extraction spec): `rel=next` first, then the structural numbered-link rule.
 
 Pages are synthetic (`example.test`); parameter and segment names are generated, since the rule reads none (C4, C9).
 """

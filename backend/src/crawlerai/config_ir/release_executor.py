@@ -1,4 +1,4 @@
-"""The release executor (SPEC-08 §4.12, ARCHITECTURE §12.3): a minimal second executor of the config IR, run only by
+"""The release executor (learning-configs spec): a minimal second executor of the config IR, run only by
 the release check on held-out pages.
 
 It shares no code with the engine executor beyond the IR model (`.importlinter`), so a field on which the two agree is
@@ -45,7 +45,7 @@ from crawlerai.config_ir.model import (
 type Value = str | int | float | bool | list[Value] | dict[str, Value] | None
 
 # The IR's regexes are the subset Python and PCRE read alike when Python matches ASCII-only, as PCRE does without its
-# UCP option (SPEC-08 §4.2).
+# UCP option (learning-configs spec).
 _REGEX_FLAGS = re.ASCII
 # IANA media types: JSON-LD (embedded in HTML by a script of this type, JSON-LD 1.1 §7.1) and JSON (RFC 8259).
 _JSONLD = "application/ld+json"
@@ -71,7 +71,7 @@ class FieldRule:
     exactly one. `accepts(value, type)`: whether `value` is valid for the field type a normalizer post op names, or,
     with `None`, for the field itself. `structured(value)`: what the field reads of a value a `jsonld` or `jsonpath`
     step selects, as the engine's structured collectors read it (a text field reads markup as its rendered text). The
-    caller runs the normalizers and that read, the one definition of each (SPEC-04, C8); what this module checks
+    caller runs the normalizers and that read, the one definition of each (schemas spec, C8); what this module checks
     independently is that the steps select and transform the values the engine did."""
 
     many: bool
@@ -194,8 +194,8 @@ class _Run:
 
 def _take(matches: list[Value], post: Sequence[PostOp], rule: FieldRule, base_url: str | None) -> Value | None:
     """The step's valid value: every match through the post ops for a list field, else the one match; `None` when there
-    is none, more than one, or a value is not valid. A JSON `null` is no value of any field type (SPEC-04: an absent
-    value is a field status), so `None` is never a valid value."""
+    is none, more than one, or a value is not valid. A JSON `null` is no value of any field type (schemas spec: an
+    absent value is a field status), so `None` is never a valid value."""
     if not matches or (len(matches) > 1 and not rule.many):
         return None
     processed: list[Value] = []
@@ -210,7 +210,7 @@ def _take(matches: list[Value], post: Sequence[PostOp], rule: FieldRule, base_ur
 
 def _post(value: Value, ops: Sequence[PostOp], rule: FieldRule, base_url: str | None) -> Value | None:
     """`value` through `ops` in order, or `None` when one declines it. A normalizer op is a check: the value passes on
-    unchanged, since the field's normalizer makes the value (SPEC-04)."""
+    unchanged, since the field's normalizer makes the value (schemas spec)."""
     if value is None:
         return None
     for op in ops:
@@ -289,7 +289,7 @@ def _documents(source: JsonSource, page: ReleasePage, root: etree._Element) -> I
             for body in page.network:
                 yield from _loads(body)
         case "api":
-            raise _Unreadable("an api source is read through SPEC-09's api recipe executor")
+            raise _Unreadable("an api source is read through adapters spec's api recipe executor")
 
 
 def _scripts(root: etree._Element) -> Iterator[tuple[str, str]]:
@@ -307,7 +307,7 @@ def _script_json(source: JsonSource, media_type: str, text: str) -> Iterator[Val
     before it."""
     if source == "jsonld":
         if media_type == _JSONLD:
-            # As the jsonld collector reads it (SPEC-05 §4.5): raw control characters inside strings, which RFC 8259
+            # As the jsonld collector reads it (extraction spec): raw control characters inside strings, which RFC 8259
             # §7 requires escaped and §9 lets a parser accept, read as their escaped form (`strict=False`).
             yield from _loads(text, strict=False)
         return

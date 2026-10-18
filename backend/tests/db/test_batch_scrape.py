@@ -1,4 +1,4 @@
-"""`batch_scrape` jobs (SPEC-10 §4.3): submitted through the batch service, run by worker loops through the real queue,
+"""`batch_scrape` jobs (jobs spec): submitted through the batch service, run by worker loops through the real queue,
 and read back through the jobs service; with the settings pinned at submit (INV-28) and each task isolated from the
 others (INV-31)."""
 

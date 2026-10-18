@@ -19,7 +19,7 @@ export function healthReply(evalUi = false): Response {
 
 const HEALTH = "GET /healthz";
 
-/** Every playground mode lists its recent runs (SPEC-14 §4.6). */
+/** Every playground mode lists its recent runs (frontend spec). */
 const JOBS = "GET /v1/jobs";
 
 /** Stubs `fetch` with one reply per `METHOD /path`, which may arrive later; records every request. The shell asks

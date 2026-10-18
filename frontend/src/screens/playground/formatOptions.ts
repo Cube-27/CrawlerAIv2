@@ -9,7 +9,7 @@ import type {
 import { optionalNumber } from "./pageRequest";
 import { count, member, text, type StoredRequest } from "./run/storedRequest";
 
-/** The options of the formats that take any (SPEC-14 §4.2), in every mode with a Format select (Scrape, Batch, Crawl):
+/** The options of the formats that take any (frontend spec), in every mode with a Format select (Scrape, Batch, Crawl):
  * the area of a `screenshot`, `markdown_fit`'s query and block limit, and `chunks`' strategy, size, overlap and source.
  * A setting is sent only with its format; an empty number (NaN) is left out, so the server's default applies. */
 export interface FormatSettings {

@@ -1,4 +1,4 @@
-"""The XPath 1.0 check for config steps (SPEC-08 §4.2, ARCHITECTURE §12.1, D-0034).
+"""The XPath 1.0 check for config steps (learning-configs spec, D-0034).
 
 Exported configs run in PHP `DOMXPath` and in lxml, which both implement W3C XPath 1.0 through libxml2. libxml2
 compiles calls to functions it does not have and fails only when they run, so an expression passes here when lxml

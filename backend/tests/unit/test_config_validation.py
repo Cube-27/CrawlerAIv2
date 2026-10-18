@@ -1,6 +1,6 @@
-"""Held-out validation and corroboration (SPEC-08 §4.7): a field is kept only if both executors reproduce the engine's
-published value on every held-out page and every match is valid; kept fields are `corroborated` by the §8.3 step 4
-thresholds; listings need 3 rows on every page."""
+"""Held-out validation and corroboration (learning-configs spec): a field is kept only if both executors reproduce the
+engine's published value on every held-out page and every match is valid; kept fields are `corroborated` by the §8.3
+step 4 thresholds; listings need 3 rows on every page."""
 
 from datetime import UTC, datetime
 from pathlib import Path

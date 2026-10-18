@@ -20,7 +20,7 @@ const FORMATS: readonly FileFormat[] = [
   { format: "markdown", label: "Export Markdown", extension: "md", type: "text/markdown" },
 ];
 
-/** The job's records exported by the server (SPEC-10 §4.2) and saved as files. A job without a schema has no records
+/** The job's records exported by the server (jobs spec) and saved as files. A job without a schema has no records
  * to export; the server's problem says so. */
 export function ExportActions({ jobId }: Readonly<{ jobId: string }>) {
   const exported = useExportJob(jobId);

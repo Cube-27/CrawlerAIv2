@@ -1,4 +1,4 @@
-"""The extraction config IR (SPEC-08 §4.2, ARCHITECTURE §12.1): everything learned about a site, as one versioned
+"""The extraction config IR (learning-configs spec): everything learned about a site, as one versioned
 document that the engine executes and the exporters translate.
 
 These models are the boundary every config crosses (induction, role A, operator corrections, the DB row), so a
@@ -60,14 +60,14 @@ class _NoParams(_Model):
 
 
 def _has_own_values(type_: FieldType) -> FieldType:
-    # SPEC-04 §4.1: `list` and `object` have no values of their own, so no normalizer runs on them.
+    # schemas spec: `list` and `object` have no values of their own, so no normalizer runs on them.
     if type_ in (FieldType.LIST, FieldType.OBJECT):
         raise ValueError(f"{type_} has no normalizer of its own")
     return type_
 
 
 class NormalizeOp(_Model):
-    """`{"<field type>": {}}`: the type's normalizer (SPEC-04) runs on the value."""
+    """`{"<field type>": {}}`: the type's normalizer (schemas spec) runs on the value."""
 
     type: Annotated[FieldType, AfterValidator(_has_own_values)]
 
@@ -228,7 +228,7 @@ Step = Annotated[
 
 class FieldSteps(_Model):
     """A field's steps in order (the first valid value wins, §12.1), its status, and its held-out yield and validity
-    (SPEC-08 §4.7) once validated."""
+    (learning-configs spec) once validated."""
 
     steps: list[Step] = Field(min_length=1)
     status: FieldStatus
@@ -279,7 +279,7 @@ class ExtractionConfigIR(_Model):
     fetch: Fetch
     fields: dict[Name, FieldSteps]
     listing: ListingSpec | None = None
-    # The recipe held-out validation accepted (SPEC-09 §4.7), served by the acquisition's API rung (§7.1).
+    # The recipe held-out validation accepted (adapters spec), served by the acquisition's API rung (§7.1).
     api_recipe: ApiRecipe | None = None
     provenance: Provenance
     # The required fields the learning pages never stated, which role C is not asked for (`config_ir.absent`, D-1341).

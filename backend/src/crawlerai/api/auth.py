@@ -1,4 +1,4 @@
-"""Bearer authentication with a rate limit in front of it (SPEC-07 §4.2, ARCHITECTURE §18). The limit is taken before
+"""Bearer authentication with a rate limit in front of it (rest-api spec). The limit is taken before
 any database lookup, keyed by the key's hash so that unknown keys are limited too, or by the client's address when
 the request carries no key."""
 
@@ -27,7 +27,7 @@ class _Bucket:
 
 
 class RateLimiter:
-    """In-process token buckets (one per API process, SPEC-07 §4.2): `burst` requests at once, refilled at `rate`
+    """In-process token buckets (one per API process, rest-api spec): `burst` requests at once, refilled at `rate`
     per second."""
 
     def __init__(self, rate: float, burst: int, clock: Callable[[], float] = time.monotonic) -> None:

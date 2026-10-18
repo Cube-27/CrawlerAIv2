@@ -1,4 +1,4 @@
-"""Captured network calls as a data source (Appendix A #59, ARCHITECTURE §7.2, §8.1): the one reader of a browser
+"""Captured network calls as a data source (Appendix A #59): the one reader of a browser
 capture's network bodies that the `xhr` collector and API discovery share (C8).
 
 A call is readable when its response was a success (RFC 9110 §15.3) and its body is JSON (`network_json`, RFC 8259).

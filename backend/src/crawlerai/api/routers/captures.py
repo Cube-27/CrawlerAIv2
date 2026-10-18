@@ -1,4 +1,4 @@
-"""`POST /v1/captures/{capture_id}/replay` (SPEC-07 §4.6): a stored capture through the current engine, for
+"""`POST /v1/captures/{capture_id}/replay` (rest-api spec): a stored capture through the current engine, for
 debugging; nothing is stored."""
 
 from fastapi import APIRouter, Depends, Request, Response

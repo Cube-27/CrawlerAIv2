@@ -1,4 +1,4 @@
-"""`extract` jobs (SPEC-10 §4.6): submitted through the extract service, with globs expanded by a map of their host
+"""`extract` jobs (jobs spec): submitted through the extract service, with globs expanded by a map of their host
 and a prompt drafted from the first pages while the caller waits, then run by a worker loop through the real queue.
 
 The web is a stub that answers synthetic pages and sitemaps on RFC 2606 hosts, the resolver a stub, and the LLM a
@@ -69,7 +69,7 @@ NO_LLM = Unconfigured("no provider")
 
 
 def _draft_reply(page_kind: str = "detail") -> ProviderReply:
-    """A role S reply: a draft schema document without a name (SPEC-06 §4.5)."""
+    """A role S reply: a draft schema document without a name (llm spec)."""
     document: dict[str, JsonValue] = {"page_kind": page_kind, "fields": {"title": TITLE, "price": PRICE}}
     return ProviderReply(model="fake-strong", text=json.dumps(to_wire(document)), tokens_in=900, tokens_out=80)
 
@@ -314,7 +314,7 @@ async def test_a_prompt_is_drafted_from_the_first_pages_reached_and_returned(
     )
 
     assert (submitted.schema_.name, submitted.schema_.origin) == (draft_name(prompt), "prompt_draft")
-    # The first three URLs are fetched for samples; the two reached are the samples (SPEC-06 §4.5: cleaned text).
+    # The first three URLs are fetched for samples; the two reached are the samples (llm spec: cleaned text).
     call, _ = provider.calls  # the draft, then its label synonyms (`s_labels`)
     assert "Blue kettle boils" in call.user
     assert "Red kettle boils" in call.user
@@ -516,7 +516,7 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     engine_data: EngineData,
     fetch_result: Callable[..., FetchResult],
 ) -> None:
-    # SPEC-10 §4.6, SPEC-05 §4.13: an extract page is extracted cold, and role C reads a missing required field from
+    # jobs spec, extraction spec: an extract page is extracted cold, and role C reads a missing required field from
     # the page text. The client commits its usage on its own connection while the task's transaction is open (D-0346).
     url = f"{own_origin}/p/1"
     body = _page("Blue kettle", offers=False).replace(b"</main>", b"<aside>19.90 EUR</aside></main>")
@@ -546,7 +546,7 @@ async def test_a_refused_role_c_call_leaves_the_field_missing_and_is_not_retried
     kettle_schema: SchemaDef,
     engine_data: EngineData,
 ) -> None:
-    # SPEC-06 §4.7: a call the provider refuses gives no reply, like an unavailable provider; the page keeps its
+    # llm spec: a call the provider refuses gives no reply, like an unavailable provider; the page keeps its
     # structured values, and its task ends instead of being retried with the same request.
     url = f"{own_origin}/p/1"
     web.serve(url, _page("Blue kettle", offers=False))

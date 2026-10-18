@@ -1,10 +1,10 @@
-"""Rows of a row-mapped `list<object>` field (SPEC-13 §4.3 to §4.5, INV-33 to INV-35): which entities are the
+"""Rows of a row-mapped `list<object>` field (variants spec, INV-33 to INV-35): which entities are the
 field's rows, which sub-field candidates belong to which row, which rows are one variant, and what each publishes.
 
 The rows are found in the entity graph, not by the collectors: the row path's alternatives that start at the target's
 type are followed through `Entity.via`. A row's scope is its entity and those below it, as far as the next row or a
-thing the page only relates to (SPEC-05 §4.6 exclusions). Rows are matched by key, never by position: rows that share a
-key value are one variant, and a variant whose key sub-fields disagree is dropped (C7: decline rather than guess).
+thing the page only relates to (resolution spec exclusions). Rows are matched by key, never by position: rows that share
+a key value are one variant, and a variant whose key sub-fields disagree is dropped (C7: decline rather than guess).
 Each variant resolves its sub-fields with the resolver's own rules, its scope standing in for ownership.
 """
 
@@ -379,7 +379,7 @@ def _published(
     rows: Sequence[tuple[str, RowOutcome]], dropped: tuple[DroppedRow, ...], rejected: tuple[tuple[Candidate, str], ...]
 ) -> FieldOutcome:
     """§4.5 "The field's outcome": the published rows' published sub-fields as the value; `agreed` when every published
-    sub-field is, `adapter` when every one is an adapter's (SPEC-15 §4.5), else `structured`; the least confidence,
+    sub-field is, `adapter` when every one is an adapter's (adapters spec), else `structured`; the least confidence,
     calibrated only when all are; the first row's source kind and its entity's locator."""
     published = [o for _, row in rows for o in row.fields.values() if o.status == "published"]
     confidences = [o.confidence for o in published]

@@ -1,4 +1,4 @@
-"""The crawl service (SPEC-10 §4.5, ARCHITECTURE §13.1, §13.2): a site's pages, found from a start URL and its
+"""The crawl service (jobs spec): a site's pages, found from a start URL and its
 sitemaps and followed through their links, as one job of kind `crawl`. Workers run its tasks
 (`crawlerai.worker.handlers.crawl`), which grow the frontier (`crawlerai.crawl.frontier`), and
 `GET /v1/jobs/{id}/results` returns what they made.

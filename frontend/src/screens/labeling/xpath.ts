@@ -1,4 +1,4 @@
-// XPath 1.0 (W3C REC-xpath-19991116) for an element of the labeled page, as SPEC-03 §4.10 asks: anchored at the
+// XPath 1.0 (W3C REC-xpath-19991116) for an element of the labeled page, as evaluation spec asks: anchored at the
 // nearest ancestor-or-self with a unique `id`, or else a unique `data-*` attribute (HTML §3.2.6.6), and positional
 // steps below it. HTML element names are lower case in the HTML namespace, which XPath on an HTML document matches.
 

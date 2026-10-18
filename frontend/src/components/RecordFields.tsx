@@ -27,7 +27,7 @@ export function RecordSummary({ record }: Readonly<{ record: ExtractedRecord }>)
   );
 }
 
-/** Fields by name, one row each, with every `field_meta` attribute the API returns (SPEC-07 §4.4): a record's, or a
+/** Fields by name, one row each, with every `field_meta` attribute the API returns (rest-api spec): a record's, or a
  * listing page's own (the answer's `page` member, D-1476). */
 export function FieldsTable({
   label,

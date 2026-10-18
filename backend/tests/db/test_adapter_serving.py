@@ -1,4 +1,4 @@
-"""A page an active adapter detects is served through the platform's API (SPEC-15 §4.6 to §4.8): in a scrape, and in the
+"""A page an active adapter detects is served through the platform's API (adapters spec): in a scrape, and in the
 worker's `batch_scrape` task. The API request goes through robots.txt and the site's rate like the page's would; a
 page the adapter does not serve (an answer without the platform's signal, an endpoint robots.txt disallows) is
 fetched as a page. The adapter's values are `adapter` candidates in the `adapter` bucket."""
@@ -147,7 +147,7 @@ async def test_a_scrape_of_a_storefront_collection_is_served_over_the_platform_a
 async def test_a_page_robots_txt_disallows_is_served_by_its_adapter_and_never_fetched(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, lamp_schema: SchemaDef, data: EngineData
 ) -> None:
-    # SPEC-15 §4.6: the adapter requests its endpoint, which robots.txt allows; the page itself is not requested, and
+    # adapters spec: the adapter requests its endpoint, which robots.txt allows; the page itself is not requested, and
     # when the endpoint does not serve it, the page rungs are not admitted either.
     url = f"{own_origin}/collections/lamps"
     web.pages[url] = PAGE

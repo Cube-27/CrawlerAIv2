@@ -1,6 +1,6 @@
 import { Table, Typography } from "@heroui/react";
 
-/** A job's usage (`job.usage`, ARCHITECTURE §6) by the names the server gives it. */
+/** A job's usage (`job.usage`) by the names the server gives it. */
 export function UsageSummary({ usage }: Readonly<{ usage: Readonly<Record<string, number>> }>) {
   const rows = Object.entries(usage).map(([kind, amount]) => ({ id: kind, amount }));
   return (

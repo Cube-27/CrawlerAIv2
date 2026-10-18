@@ -1,4 +1,4 @@
-"""The labeling API against Postgres (SPEC-03 §7: "the labeling tool can create, check and export labels for a dev
+"""The labeling API against Postgres (evaluation spec: "the labeling tool can create, check and export labels for a dev
 capture"): a synthetic dev page is labeled by one person, checked by another and read back, through the app with
 `CRAWLERAI_EVAL_UI` on. Throwaway main database (`CRAWLERAI_TEST_DATABASE_URL`) and a temporary object root."""
 
@@ -115,7 +115,7 @@ async def test_a_dev_page_is_labeled_checked_and_exported(client: tuple[httpx.As
 
 
 async def test_the_labeling_api_needs_an_api_key(client: tuple[httpx.AsyncClient, str]) -> None:
-    # SPEC-03 §4.10: the labeling API has the same API-key auth as everything else (a dependency of its router).
+    # evaluation spec: the labeling API has the same API-key auth as everything else (a dependency of its router).
     http, page_id = client
 
     response = await http.put(

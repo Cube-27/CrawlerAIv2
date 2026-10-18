@@ -1,10 +1,10 @@
-"""Grounding by alignment (SPEC-06 §4.3, INV-12, ARCHITECTURE §11): a role C value is kept only as a verbatim span of
+"""Grounding by alignment (llm spec, INV-12): a role C value is kept only as a verbatim span of
 the cleaned text, with offsets that hold it.
 
 The model's offsets are a hint, not a fact (D-0024). A claim whose offsets hold its value is accepted as stated;
 otherwise the value is searched for exactly, and the occurrence nearest the claimed `start` wins. A value the text
 does not contain is dropped. There is no fuzzy, case- or whitespace-insensitive matching: the cleaned text's own
-normalization (SPEC-05 §4.4) is the only one. Offsets count code points of the cleaned text, as Python `str` indices
+normalization (extraction spec) is the only one. Offsets count code points of the cleaned text, as Python `str` indices
 do.
 
 A claim of a link or an image names the id the text gave it (`llm.marked`): it is kept only when that id marks an

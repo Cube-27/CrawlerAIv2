@@ -1,6 +1,6 @@
-"""Record exporters (SPEC-08 §4.11): every published value and status comes back out of the CSV and JSON exports,
-and the CSV header depends on the schema alone ("CSV columns stable", PR plan row 12). A clean record (SPEC-14 §4.4)
-has the schema's published fields, in the columns' name order, and no status column."""
+"""Record exporters (learning-configs spec): every published value and status comes back out of the CSV and JSON
+exports, and the CSV header depends on the schema alone ("CSV columns stable", PR plan row 12). A clean record (frontend
+spec) has the schema's published fields, in the columns' name order, and no status column."""
 
 import csv
 import io

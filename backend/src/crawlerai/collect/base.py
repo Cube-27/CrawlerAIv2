@@ -1,4 +1,4 @@
-"""What every collector shares (SPEC-05 §4.1, §4.2, ARCHITECTURE §8.1): the entities it finds, the candidates it
+"""What every collector shares (extraction spec): the entities it finds, the candidates it
 proposes for schema fields, and the `Collector` protocol.
 
 A collector proposes; it never chooses. Ownership, intent and preference are `crawlerai.resolve`'s.
@@ -54,7 +54,7 @@ class Entity(_Model):
 
 
 class Candidate(_Model):
-    """One value a collector proposed for one field of one entity (the `candidate` row, ARCHITECTURE §6)."""
+    """One value a collector proposed for one field of one entity (the `candidate` row)."""
 
     field: str
     entity_id: str
@@ -98,7 +98,7 @@ def _check_tree(entities: Sequence[Entity]) -> None:
 
 class Collector(Protocol):
     """One source kind's collector. It reads the page's parsed trees and script blocks, never the raw body (INV-26),
-    and normalizes each raw value with `ctx` (SPEC-04)."""
+    and normalizes each raw value with `ctx` (schemas spec)."""
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult: ...
 

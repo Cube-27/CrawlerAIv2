@@ -1,4 +1,4 @@
-"""Drift (SPEC-08 §4.9, ARCHITECTURE §8.3): each page an active config runs on adds, per field, whether a step
+"""Drift (learning-configs spec): each page an active config runs on adds, per field, whether a step
 matched and whether the value was valid to a rolling window of the config's last `WINDOW_PAGES` pages. A field whose
 windowed yield or validity falls below its validated one (the IR's `yield`/`validity`, the held-out values of the
 validation report, §4.7) less the dev-fitted margin is `suspended`: the executor no longer runs it, so its pages fall
@@ -9,8 +9,8 @@ back to cold-mode resolution, and the site re-learns.
 `drift_suspended` job event per field and starts a forced learning run (`progressive.request_learning`).
 
 The margins are `backend/data/drift_margins.json`, stamped `source_split: dev` and with how they were
-obtained: until labels exist, SPEC-08 §4.9's values, stamped "spec default, unfitted" (D-0576). Without the file
-nothing is suspended (C7: no default margin); windows are still recorded.
+obtained: until labels exist, learning-configs spec's values, stamped "spec default, unfitted" (D-0576). Without the
+file nothing is suspended (C7: no default margin); windows are still recorded.
 """
 
 from collections.abc import Collection, Iterable, Mapping, Sequence
@@ -29,9 +29,9 @@ from crawlerai.db.jobs import record_event
 from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, JobId
 from crawlerai.normalize.base import Ok
 
-# SPEC-08 §4.9: the window is the config's last 50 pages.
+# learning-configs spec: the window is the config's last 50 pages.
 WINDOW_PAGES: Final = 50
-# ARCHITECTURE §8.3: the validated yield and validity are measured on at least 3 held-out pages; a window is compared
+# The validated yield and validity are measured on at least 3 held-out pages; a window is compared
 # with them once it is as large.
 MIN_WINDOW_PAGES: Final = 3
 MARGINS_FILE: Final = "drift_margins.json"

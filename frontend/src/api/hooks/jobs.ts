@@ -113,7 +113,7 @@ export function useJobValues(id: string, page: ValuesPage, enabled = true) {
   });
 }
 
-/** The job's JSON download (SPEC-14 §4.4): every `json_values` item, or with `outputs` (a job without a schema)
+/** The job's JSON download (frontend spec): every `json_values` item, or with `outputs` (a job without a schema)
  * every page output. */
 export function useExportJobJson(id: string, outputs: boolean) {
   const client = useApiClient();

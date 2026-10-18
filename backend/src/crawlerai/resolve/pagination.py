@@ -1,4 +1,4 @@
-"""Pagination (SPEC-05 §4.12, ARCHITECTURE §8.6): the URLs that may be the next page of a listing, in order.
+"""Pagination (resolution spec): the URLs that may be the next page of a listing, in order.
 
 First the page's `rel=next` links (HTML Living Standard §4.6.7: `next` names the next document of a series). Then the
 structural numbered links: a link to the same origin that differs from the page URL only in one path segment or one
@@ -6,7 +6,7 @@ query parameter value, whatever its name (C4), where the two differ only in one 
 segment or value is opaque text, so an integer inside it, `page-2.html`, numbers it as one standing alone does), and
 the link's integer is the page's plus one. When the page URL carries no such integer, which number its link would
 carry is not stated, so no structural link is taken (C7). A
-learned config's next-page step is SPEC-08's; infinite scroll is §7.2's.
+learned config's next-page step is learning-configs spec's; infinite scroll is §7.2's.
 """
 
 import re
@@ -39,7 +39,7 @@ class NextLink:
 
 
 def next_page_candidates(page: ParsedPage, final_url: str) -> tuple[str, ...]:
-    """The candidates (module docstring), canonical (SPEC-04 §4.4), each once; `final_url` is the capture's."""
+    """The candidates (module docstring), canonical (schemas spec), each once; `final_url` is the capture's."""
     return tuple(link.url for link in next_page_links(page, final_url))
 
 

@@ -1,4 +1,4 @@
-"""Cleaned page text with its offsets, and the visibility index (SPEC-05 §4.4), rendered in one walk of the page's
+"""Cleaned page text with its offsets, and the visibility index (extraction spec), rendered in one walk of the page's
 selectolax tree.
 
 The text is the page as a reader sees it, without a CSS engine: the HTML Standard's rendering rules (its user-agent
@@ -19,7 +19,7 @@ from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from crawlerai.normalize.text import compose, text_form
 
-# HTML Standard, Rendering, "Hidden elements": the user-agent style sheet gives these `display: none`. SPEC-05 §4.4
+# HTML Standard, Rendering, "Hidden elements": the user-agent style sheet gives these `display: none`. extraction spec
 # also drops `noscript` (its content is for user agents without scripting) and `svg` (graphics, not page text);
 # `iframe` content is parsed as raw text and never rendered (HTML Standard, parsing: the generic raw text algorithm).
 NOT_RENDERED = frozenset(
@@ -41,7 +41,7 @@ _LINE_BOXES = frozenset(
 )
 # `display: table-cell`: adjacent cells are separate boxes, so their texts are separated (by a tab in `innerText`).
 CELLS = frozenset({"td", "th"})
-# HTML attributes whose values the page shows or announces for a visible element (SPEC-05 §4.4).
+# HTML attributes whose values the page shows or announces for a visible element (extraction spec).
 _SHOWN_ATTRIBUTES = ("alt", "title", "value", "content")
 # Namespaces in XML 1.0, NCName: a name without a colon, starting with a letter or `_` (`[^\W\d]`), then letters,
 # digits, `.`, `-` or `_`. Only an NCName can be an XPath 1.0 name test.
@@ -90,7 +90,7 @@ class CleanedText:
 
 
 class VisibleIndex:
-    """The visible text lines and the shown attributes of visible elements, in the SPEC-04 text form."""
+    """The visible text lines and the shown attributes of visible elements, in the schemas spec text form."""
 
     def __init__(self, cleaned: CleanedText, shown: Iterable[str]) -> None:
         # One entry per line and per attribute: a match never spans two of them.
@@ -355,7 +355,7 @@ def _declarations(attributes: _Attributes) -> dict[str, str]:
 
 class _TextBuilder:
     """CSS Text 3 §4.1 white-space collapsing (`white-space: normal`) across text nodes, with Unicode White_Space as
-    the collapsible set, as the SPEC-04 text rules collapse it."""
+    the collapsible set, as the schemas spec text rules collapse it."""
 
     def __init__(self) -> None:
         self.parts: list[str] = []

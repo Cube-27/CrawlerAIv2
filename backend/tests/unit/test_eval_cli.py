@@ -1,5 +1,5 @@
 """`crawlerai eval capture` and `crawlerai eval import-sites` without a database: the site list, the report, and how
-the commands hand their arguments on (SPEC-03 §4.4). Synthetic `.test` URLs only."""
+the commands hand their arguments on (evaluation spec). Synthetic `.test` URLs only."""
 
 from collections.abc import Sequence
 from pathlib import Path

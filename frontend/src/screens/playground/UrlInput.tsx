@@ -10,7 +10,7 @@ export function requestUrl(text: string): string {
   return url === "" || HAS_SCHEME.test(url) ? url : `https://${url}`;
 }
 
-/** The command bar's URL (SPEC-14 §4.2), with an `https://` prefix. Its name is the request member a server error
+/** The command bar's URL (frontend spec), with an `https://` prefix. Its name is the request member a server error
  * names. */
 export function UrlInput({
   value,

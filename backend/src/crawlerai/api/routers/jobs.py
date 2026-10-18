@@ -1,4 +1,4 @@
-"""`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}` and `GET /v1/jobs/{id}/results` (SPEC-10 §4.2): the jobs a page at a
+"""`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}` and `GET /v1/jobs/{id}/results` (jobs spec): the jobs a page at a
 time, a job's summary, its cancel, and its records or page outputs a page at a time."""
 
 from typing import Annotated, Any

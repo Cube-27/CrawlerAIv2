@@ -1,7 +1,8 @@
-"""Recipe learning in a learning run (SPEC-09 §2 "integration into SPEC-08 learning", §4.3 to §4.7): from the sample
-pages' browser captures, find the endpoint that carries the published values, bind its request (deterministically, or
-by role D when that is ambiguous), prove its headers by replay and validate it on the held-out pages. Only a recipe
-that passed all of it comes back with its proof; one that failed comes back refused with the reason.
+"""Recipe learning in a learning run (adapters spec "integration into learning-configs spec learning", §4.3 to §4.7):
+from the sample pages' browser captures, find the endpoint that carries the published values, bind its request
+(deterministically, or by role D when that is ambiguous), prove its headers by replay and validate it on the held-out
+pages. Only a recipe that passed all of it comes back with its proof; one that failed comes back refused with the
+reason.
 
 Pages are synthetic browser captures on `.test` hosts whose network bodies hold the endpoint's JSON; a stand-in API
 (`tests.stand_in`) answers the replays through `fetch_json`, and role D is the fake provider's scripted client.
@@ -35,9 +36,9 @@ StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` 
 JOB = JobId(uuid7())
 SITE = "https://shop.example.test"
 ENDPOINT = "https://api.example.test/v1/products"
-# `+` joins the amount and currency paths of a money field (SPEC-09 §4.2).
+# `+` joins the amount and currency paths of a money field (adapters spec).
 MAP = {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"}
-# Eight products: the first five are the learning sample, the rest held out (ARCHITECTURE §8.3).
+# Eight products: the first five are the learning sample, the rest held out.
 PRODUCTS = [(f"{100 + n}", f"item-{chr(97 + n)}", f"Item {chr(65 + n)}", f"{n + 1}.50") for n in range(8)]
 
 

@@ -1,4 +1,4 @@
-"""Record fingerprints and changed fields (SPEC-11 §4.4): the fingerprint is a pure function of the required
+"""Record fingerprints and changed fields (jobs spec): the fingerprint is a pure function of the required
 fields' and required groups' published values, and `changed_fields` names exactly the fields whose published value
 differs, a field that became published or stopped publishing included."""
 
@@ -29,7 +29,7 @@ _values: st.SearchStrategy[JsonValue] = st.recursive(
     lambda inner: st.lists(inner, max_size=3) | st.dictionaries(st.text(max_size=4), inner, max_size=3),
     max_leaves=5,
 )
-# A record's `data`: the published fields only (ARCHITECTURE §6), each with its value.
+# A record's `data`: the published fields only, each with its value.
 _data = st.dictionaries(st.sampled_from(sorted(SCHEMA.fields)), _values)
 
 

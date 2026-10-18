@@ -1,4 +1,4 @@
-"""Enum normalizer (SPEC-04 §4.4, ARCHITECTURE §9): a member code of the field's vocabulary.
+"""Enum normalizer (normalization spec): a member code of the field's vocabulary.
 
 - `schema:<Enumeration>`: the input is a string or a JSON-LD node reference (`{"@id": …}`) naming a member by IRI
   (`https://schema.org/InStock`, `http://schema.org/InStock`), compact IRI (`schema:InStock`) or name (`InStock`).
@@ -30,8 +30,8 @@ _IRI = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:\S*")
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize an enum field against its vocabulary (SPEC-04 §4.4). An unknown vocabulary declines, as an unknown
-    type does (§4.7), so a schema that names one cannot crash a job."""
+    """Normalize an enum field against its vocabulary (normalization spec). An unknown vocabulary declines, as an
+    unknown type does (§4.7), so a schema that names one cannot crash a job."""
     if spec.type is not FieldType.ENUM or spec.vocab is None:
         raise TypeError(f"the enum normalizer does not handle type {spec.type} without a vocab")
     kind, name = spec.vocab.split(":", 1)
@@ -100,5 +100,5 @@ def _one_code(codes: frozenset[str], none: str) -> NormalizeResult:
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (SPEC-04 §4.5): exact. A normalized value has one form (one code per member)."""
+    """Equality as a key (normalization spec): exact. A normalized value has one form (one code per member)."""
     return raw_key(value)

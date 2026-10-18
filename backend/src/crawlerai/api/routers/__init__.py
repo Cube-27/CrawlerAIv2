@@ -1,1 +1,1 @@
-"""The API's routers, one module per resource (SPEC-07 §4.1)."""
+"""The API's routers, one module per resource (rest-api spec)."""

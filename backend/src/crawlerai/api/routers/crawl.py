@@ -1,4 +1,4 @@
-"""`POST /v1/crawl` (SPEC-10 §4.5): the crawl service over HTTP. The job runs in the workers; its status is
+"""`POST /v1/crawl` (jobs spec): the crawl service over HTTP. The job runs in the workers; its status is
 `GET /v1/jobs/{id}` and what it made `GET /v1/jobs/{id}/results`."""
 
 from typing import Annotated

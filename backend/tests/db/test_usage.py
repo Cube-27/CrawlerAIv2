@@ -1,4 +1,4 @@
-"""Usage events and per-job budgets (SPEC-01 §4.6)."""
+"""Usage events and per-job budgets (persistence-storage spec)."""
 
 import asyncio
 from typing import Any

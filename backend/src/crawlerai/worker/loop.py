@@ -1,4 +1,4 @@
-"""The worker process (SPEC-01 §4.3, §4.8): claim tasks, run each with the handler of its job's kind, record the
+"""The worker process (persistence-storage spec): claim tasks, run each with the handler of its job's kind, record the
 result. Handlers are registered by later specs.
 
 Each task runs in one transaction: the handler's writes and the task's result commit together, or not at all (a lost
@@ -56,8 +56,8 @@ class Finished:
 
 @dataclass(frozen=True)
 class Failed:
-    """A failure (`fail_task`). `after` is the delay the target asked for before a retry (a `Retry-After`, SPEC-02
-    §4.6); `exhausted` the outcome once no attempt is left; `capture_id` the page the attempt fetched, if any."""
+    """A failure (`fail_task`). `after` is the delay the target asked for before a retry (a `Retry-After`, acquisition
+    spec §4.6); `exhausted` the outcome once no attempt is left; `capture_id` the page the attempt fetched, if any."""
 
     error: str
     transient: bool
@@ -68,7 +68,7 @@ class Failed:
 
 @dataclass(frozen=True)
 class Postpone:
-    """The task did not run, because its site is not admitted yet (SPEC-02 §4.6): run it `after` from now, without
+    """The task did not run, because its site is not admitted yet (acquisition spec): run it `after` from now, without
     spending an attempt. The worker moves on instead of sleeping."""
 
     after: timedelta

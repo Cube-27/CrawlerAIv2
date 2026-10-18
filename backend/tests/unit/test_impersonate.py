@@ -1,4 +1,4 @@
-"""Which Chrome the HTTP and JSON rungs impersonate (SPEC-02 §4.7, D-1325): the browser rung's Chromium major, read
+"""Which Chrome the HTTP and JSON rungs impersonate (acquisition spec, D-1325): the browser rung's Chromium major, read
 from Patchright's `browsers.json`, or the nearest curl_cffi profile to it; an operator's explicit choice is kept."""
 
 import json

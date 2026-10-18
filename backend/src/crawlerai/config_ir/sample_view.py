@@ -1,4 +1,4 @@
-"""What role A reads of a sample page (SPEC-08 §4.6, ARCHITECTURE §11 "flat, cleaned inputs"): the page's HTML reduced
+"""What role A reads of a sample page (learning-configs spec): the page's HTML reduced
 to its elements, their text and a few attributes, cut around the published values, and its JSON documents as key
 paths without their values.
 
@@ -20,7 +20,7 @@ from crawlerai.collect import js_state, jsonld, xhr
 from crawlerai.collect.json_doc import is_scalar, nodes
 from crawlerai.content.page import ParsedPage
 
-# SPEC-08 §4.6: the attributes the model sees, besides every `data-*` one (HTML Standard §3.2.6.6, custom data
+# learning-configs spec: the attributes the model sees, besides every `data-*` one (HTML Standard §3.2.6.6, custom data
 # attributes). `id`, `class`, `itemprop` and `data-*` are the anchors induction also uses (§4.5); `href`, `src`,
 # `content`, `name` and `property` carry values (links, images, meta elements).
 KEPT_ATTRIBUTES: Final = frozenset({"id", "class", "itemprop", "href", "src", "content", "name", "property"})

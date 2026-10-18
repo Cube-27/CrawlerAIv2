@@ -47,7 +47,7 @@ import {
   minConfidencePercent,
 } from "../run/storedRequest";
 
-/** The settings in the options panel (SPEC-14 §4.2): each is a `ScrapeRequest` member, except `metadataInJson`, a view
+/** The settings in the options panel (frontend spec): each is a `ScrapeRequest` member, except `metadataInJson`, a view
  * option that asks for the `metadata` format. `fields` are the names `schema.fields` drafts a schema from (§4.10). */
 export interface ScrapeOptions extends FormatSettings {
   pageKind: PageKind | null;
@@ -75,7 +75,7 @@ export const DEFAULT_OPTIONS: ScrapeOptions = {
   pageKind: null,
   metadataInJson: false,
   fields: [],
-  // FetchPolicy's own default (SPEC-02 §4.2).
+  // FetchPolicy's own default (acquisition spec).
   methodHint: "auto",
   maxAge: Number.NaN,
   timeoutS: Number.NaN,

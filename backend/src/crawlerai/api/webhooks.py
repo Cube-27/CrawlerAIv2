@@ -1,4 +1,4 @@
-"""Webhook deliveries (SPEC-10 §4.2): the events a job's webhook is owed (`crawlerai.db.webhook_outbox`), POSTed in
+"""Webhook deliveries (jobs spec): the events a job's webhook is owed (`crawlerai.db.webhook_outbox`), POSTed in
 the deliveries the scheduler grouped them into, signed with the webhook secret of the API key that submitted the job,
 in at most 5 attempts with backoff.
 
@@ -66,7 +66,7 @@ class EventOut(BaseModel):
 
 
 class DeliveryBody(BaseModel):
-    """What a delivery POSTs (SPEC-10 §4.2)."""
+    """What a delivery POSTs (jobs spec)."""
 
     delivery_id: WebhookDeliveryId
     job_id: JobId

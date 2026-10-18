@@ -1,4 +1,4 @@
-"""API discovery (SPEC-09 §4.3, ARCHITECTURE §7.2 step 1): from the learning sample's browser captures, the endpoints
+"""API discovery (adapters spec): from the learning sample's browser captures, the endpoints
 whose JSON responses carry the page's published values on every sample page, each with a JSONPath per field.
 
 Captured calls are read through `collect/network_match.py` (Appendix A #59), the one reader the `xhr` collector
@@ -184,9 +184,9 @@ def member_pairs(document: JsonValue) -> Iterator[Reading]:
     """The ordered pairs of scalar members of one object that may join into one money value (`+`, §4.2), in
     document order: one member holds a digit and the other none.
 
-    SPEC-04 money text reading (`normalize/numbers.py`, `AMOUNT_RUN`): a money value holds exactly one run of amount
-    digits, so a joined pair is an amount member and a currency member without digits. Two digit-free members state
-    no amount, and two amounts are two runs (a range or a list). So an object gives amounts x digit-free members
+    schemas spec money text reading (`normalize/numbers.py`, `AMOUNT_RUN`): a money value holds exactly one run of
+    amount digits, so a joined pair is an amount member and a currency member without digits. Two digit-free members
+    state no amount, and two amounts are two runs (a range or a list). So an object gives amounts x digit-free members
     pairs, not the square of its size.
     """
     for path, value in json_doc.nodes(document):

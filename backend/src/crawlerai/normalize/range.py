@@ -1,4 +1,4 @@
-"""Range normalizer (SPEC-04 §4.4, ARCHITECTURE §9): `{min, max, currency, unit, period}`, which covers salary.
+"""Range normalizer (normalization spec): `{min, max, currency, unit, period}`, which covers salary.
 
 Accepts:
 - a schema.org `MonetaryAmount` (`currency`, and `minValue`/`maxValue`/`value` either on it or on a nested
@@ -40,14 +40,14 @@ from crawlerai.normalize.base import (
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 MoneyRules = Callable[[Raw, Context], NormalizeResult]
-"""The money normalizer for one value (SPEC-04 §4.4). Range passes it a structured `{"price", "priceCurrency"}` or a
-text amount, and reads each value it returns as `{"amount", "currency"}` (a decimal and an ISO 4217 code)."""
+"""The money normalizer for one value (normalization spec). Range passes it a structured `{"price", "priceCurrency"}` or
+a text amount, and reads each value it returns as `{"amount", "currency"}` (a decimal and an ISO 4217 code)."""
 
 # schema.org `unitText` for a salary period, per the `baseSalary` / `MonetaryAmount` guidance on JobPosting:
 # HOUR, DAY, WEEK, MONTH, YEAR.
 _PERIODS = ("HOUR", "DAY", "WEEK", "MONTH", "YEAR")
-# The `type:period` vocabulary (SPEC-04 §4.4) maps each phrase to one of these units; its JUSTIFICATION.md names the
-# source.
+# The `type:period` vocabulary (normalization spec) maps each phrase to one of these units; its JUSTIFICATION.md names
+# the source.
 _PERIOD_VOCABULARY = "period"
 # An interval written as a count of one and a unit word ("1 YEAR"): ISO 80000-1 writes a quantity as a number and a
 # unit, and one unit is the period itself.
@@ -59,8 +59,8 @@ _ISO_DURATION_UNITS = {"Y": "YEAR", "M": "MONTH", "W": "WEEK", "D": "DAY", "H": 
 # UN/CEFACT Recommendation 20 common codes of the schema.org `unitCode` for each period (annum, month, week, day,
 # hour).
 _UN_CEFACT_PERIODS = {"ANN": "YEAR", "MON": "MONTH", "WEE": "WEEK", "DAY": "DAY", "HUR": "HOUR"}
-# The range separators SPEC-04 §4.4 names: hyphen-minus and en dash (the range dash, Unicode U+2013), in any language;
-# the `type:range_to` vocabulary holds the words, such as `en` "to", for the page's languages.
+# The range separators normalization spec names: hyphen-minus and en dash (the range dash, Unicode U+2013), in any
+# language; the `type:range_to` vocabulary holds the words, such as `en` "to", for the page's languages.
 _DASHES = r"-|\u2013"
 _SEPARATOR_VOCABULARY = "range_to"
 # A written amount: ASCII digits (`re.ASCII`), with the grouping and decimal marks CLDR number patterns use between
@@ -73,7 +73,7 @@ _VALUE_KEYS = frozenset({"min", "max", "currency", "unit", "period"})
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context, *, money: MoneyRules) -> NormalizeResult:
-    """Normalize a range field (SPEC-04 §4.4), resolving every currency through `money`."""
+    """Normalize a range field (normalization spec), resolving every currency through `money`."""
     if spec.type is not FieldType.RANGE:
         raise TypeError(f"the range normalizer does not handle type {spec.type}")
     if isinstance(raw, str):
@@ -300,7 +300,7 @@ def _options(result: NormalizeResult) -> tuple[JsonValue, ...]:
 
 
 def _amount(money_value: JsonValue) -> tuple[Decimal, str]:
-    """A money value (`{amount, currency}`, SPEC-04 §4.4) as (amount, ISO 4217 code)."""
+    """A money value (`{amount, currency}`, normalization spec) as (amount, ISO 4217 code)."""
     fields = money_value if isinstance(money_value, dict) else {}
     amount, currency = _decimal(fields.get("amount")), fields.get("currency")
     if amount is None or not isinstance(currency, str):
@@ -314,7 +314,7 @@ def _value(lo: Decimal, hi: Decimal, *, currency: str | None, unit: str | None, 
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (SPEC-04 §4.5): every part equal, the bounds as Decimals without rounding (`50000` equals
+    """Equality as a key (normalization spec): every part equal, the bounds as Decimals without rounding (`50000` equals
     `50000.00`)."""
     parts = _range_value(value)
     return raw_key(value) if parts is None else ("range", *parts[:2], *(frozen(p) for p in parts[2:]))

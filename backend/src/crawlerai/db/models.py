@@ -1,4 +1,4 @@
-"""SQLAlchemy models of the main database (ARCHITECTURE §6, SPEC-01 §4.2). The models and the Alembic revisions own
+"""SQLAlchemy models of the main database (persistence-storage spec). The models and the Alembic revisions own
 the DB shape; `tests/db` checks that the migrated database matches these models.
 
 Enumerations are `text` with a CHECK constraint whose values come from the matching `Literal`.
@@ -68,17 +68,17 @@ FinishedOutcome = Literal[
 TaskOutcome = Literal[FinishedOutcome, "failed"]
 ExtractionMode = Literal["adhoc", "config"]
 NormalizeStatus = Literal["ok", "ambiguous", "invalid"]
-# `derived`: a page-URL derivation (SPEC-05 §4.8, D-0355), which no candidate states; no candidate row carries it.
+# `derived`: a page-URL derivation (extraction spec, D-0355), which no candidate states; no candidate row carries it.
 SourceKind = Literal[
     "adapter", "api", "jsonld", "microdata", "og", "js_state", "xhr", "config", "llm", "derived", "dom"
 ]
 # `pending_approval`: a learned config waiting for a person to approve it (`project.require_config_approval`, D-1342).
 ConfigStatus = Literal["draft", "active", "suspended", "pending_approval"]
 ConfigOrigin = Literal["adapter", "induced", "llm_synth", "operator"]
-# `extraction_config.field_status` values (ARCHITECTURE §6, §8.3 step 4).
+# `extraction_config.field_status` values.
 FieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended", "absent"]
 ProgressiveMode = Literal["cold", "learning", "active"]
-# What `usage_event` counts (SPEC-01 §4.6), each in whole units: calls, tokens, seconds, bytes, requests.
+# What `usage_event` counts (persistence-storage spec), each in whole units: calls, tokens, seconds, bytes, requests.
 UsageResource = Literal[
     "llm_calls", "llm_tokens_in", "llm_tokens_out", "browser_seconds", "proxy_bytes", "http_requests"
 ]
@@ -207,7 +207,7 @@ class Site(Base):
     robots_snapshot: Mapped[str | None] = mapped_column(Text)
     crawl_delay_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = created_at_column()
-    # The adapters that declined the host (`adapters.registry`, SPEC-15 §4.2), each with the time (ISO 8601, UTC) until
+    # The adapters that declined the host (`adapters.registry`, adapters spec), each with the time (ISO 8601, UTC) until
     # which it is not asked again (D-1384).
     adapter_declined: Mapped[dict[str, str]] = mapped_column(JSONB, server_default=empty_object_default())
     # Whether the browser rung loads the site's images, fonts and media (`FetchPolicy.block_resources`): set once a
@@ -216,8 +216,8 @@ class Site(Base):
 
 
 class SiteFetchMethod(Base):
-    """The fetch method a site's pages of one kind are remembered to need (SPEC-02 §4.4, D-1380): a row once a fetch of
-    that kind kept a browser `ok` over HTTP; no row is `http`. `checked_at` starts the re-check's clock."""
+    """The fetch method a site's pages of one kind are remembered to need (acquisition spec, D-1380): a row once a fetch
+    of that kind kept a browser `ok` over HTTP; no row is `http`. `checked_at` starts the re-check's clock."""
 
     __tablename__ = "site_fetch_method"
     __table_args__ = (
@@ -242,7 +242,7 @@ class SchemaDef(Base):
     )
 
     id: Mapped[SchemaId] = mapped_column(primary_key=True, default=uuid7)
-    # One row per schema, edited in place (ARCHITECTURE §5.2).
+    # One row per schema, edited in place.
     name: Mapped[str] = mapped_column(Text, unique=True)
     page_kind: Mapped[PageKind] = mapped_column(Text)
     fields: Mapped[dict[str, Any]] = mapped_column(JSONB)
@@ -254,7 +254,7 @@ class SchemaDef(Base):
 
 
 class Capture(Base):
-    """A fetched page, whose bytes are the bundle at `object_key` (ARCHITECTURE §15): a production or an eval
+    """A fetched page, whose bytes are the bundle at `object_key`: a production or an eval
     capture."""
 
     __tablename__ = "capture"
@@ -265,7 +265,7 @@ class Capture(Base):
         CheckConstraint("duration_ms >= 0", name="duration_ms_non_negative"),
         # `expire_captures` deletes rows past `expires_at`; dev captures never expire and stay out of the index.
         Index(None, "expires_at", postgresql_where=text("expires_at IS NOT NULL")),
-        # A site's recent captures: `scrape`'s `max_age` reuse (SPEC-07 §4.4).
+        # A site's recent captures: `scrape`'s `max_age` reuse (rest-api spec).
         Index(None, "site_id", "fetched_at"),
     )
 
@@ -293,7 +293,7 @@ class ExtractionConfig(Base):
         CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
         CheckConstraint(one_of("status", ConfigStatus), name="status"),
         CheckConstraint(one_of("origin", ConfigOrigin), name="origin"),
-        # ARCHITECTURE §6: one `active` config per (site, schema, page_kind).
+        # One `active` config per (site, schema, page_kind).
         Index(
             "uq_extraction_config_active",
             "site_id",
@@ -314,12 +314,12 @@ class ExtractionConfig(Base):
     origin: Mapped[ConfigOrigin] = mapped_column(Text)
     field_status: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
     validation_report: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    # SPEC-08 §4.9: per field, `[matched, valid]` for each of the last pages the config ran on.
+    # learning-configs spec: per field, `[matched, valid]` for each of the last pages the config ran on.
     drift_window: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
 
 
 class ProgressiveState(Base):
-    """How far a (site, schema, page kind) is on the way to an active config (ARCHITECTURE §8.4)."""
+    """How far a (site, schema, page kind) is on the way to an active config."""
 
     __tablename__ = "progressive_state"
     __table_args__ = (
@@ -336,7 +336,7 @@ class ProgressiveState(Base):
     page_kind: Mapped[PageKind] = mapped_column(Text, primary_key=True)
     mode: Mapped[ProgressiveMode] = mapped_column(Text, server_default=text("'cold'"))
     pages_extracted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
-    # Set while a `learn` job runs for this state, in any mode (SPEC-08 §4.4).
+    # Set while a `learn` job runs for this state, in any mode (learning-configs spec).
     learning_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # When a learning run last activated a config (§4.8).
     last_learned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -346,7 +346,7 @@ class ProgressiveState(Base):
 
 
 class UrlState(Base):
-    """What recurring runs last saw at a URL of a site (ARCHITECTURE §14)."""
+    """What recurring runs last saw at a URL of a site."""
 
     __tablename__ = "url_state"
     __table_args__ = (CheckConstraint("missing_runs >= 0", name="missing_runs_non_negative"),)
@@ -364,7 +364,7 @@ class UrlState(Base):
     last_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     missing_runs: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     gone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # The crawl whose listing last held the URL (SPEC-11 §4.5); NULL while no listing has.
+    # The crawl whose listing last held the URL (jobs spec); NULL while no listing has.
     last_seen_job_id: Mapped[JobId | None] = mapped_column(ForeignKey("job.id", ondelete=_SET_NULL))
     # The task whose records a listing page last stood for after extracting it (`recurring.state.standing_listing`):
     # the page's standing record, as that task's `task_record` rows. NULL for a detail page, found by its entity.
@@ -430,7 +430,7 @@ class Job(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_requested: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
-    # The key that submitted the job: its `webhook_secret` signs the job's webhook (SPEC-10 §4.2). NULL for a job no
+    # The key that submitted the job: its `webhook_secret` signs the job's webhook (jobs spec). NULL for a job no
     # key submitted (a learning run).
     api_key_id: Mapped[ApiKeyId | None] = mapped_column(ForeignKey(ApiKey.id))
     # A crawl: where its start page is, canonical, after the site's own redirects (`crawl.rules.located`). The start
@@ -453,7 +453,7 @@ class UrlTask(Base):
         CheckConstraint("attempts >= 0", name="attempts_non_negative"),
         CheckConstraint("depth >= 0", name="depth_non_negative"),
         Index(None, "status", "next_attempt_at", "priority"),
-        # A crawl enqueues each canonical URL once per job (SPEC-10 §4). Its index, led by `job_id`, also serves the
+        # A crawl enqueues each canonical URL once per job (jobs spec). Its index, led by `job_id`, also serves the
         # per-job task counts that settle a job (`crawlerai.db.queue`).
         UniqueConstraint("job_id", "canonical_url"),
         # Settling a job first asks whether any of its tasks is still open (`crawlerai.db.queue`).
@@ -473,7 +473,7 @@ class UrlTask(Base):
     page_kind: Mapped[PageKind | None] = mapped_column(Text)
     status: Mapped[TaskStatus] = mapped_column(Text, server_default=text("'queued'"))
     attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
-    # Captures expire after 30 days (ARCHITECTURE §15) and the task outlives its capture. Indexed for that delete.
+    # Captures expire after 30 days and the task outlives its capture. Indexed for that delete.
     capture_id: Mapped[CaptureId | None] = mapped_column(ForeignKey(Capture.id, ondelete=_SET_NULL), index=True)
     outcome: Mapped[TaskOutcome | None] = mapped_column(Text)
     last_error: Mapped[str | None] = mapped_column(Text)
@@ -490,10 +490,10 @@ class UrlTask(Base):
 
 
 class JobEvent(Base):
-    """A run event of a job (ARCHITECTURE §17), stored so that SSE clients can resume (SPEC-01 §4.2)."""
+    """A run event of a job, stored so that SSE clients can resume (persistence-storage spec)."""
 
     __tablename__ = "job_event"
-    # The event stream reads a job's events in id order, after the last one sent (SPEC-10 §4.2).
+    # The event stream reads a job's events in id order, after the last one sent (jobs spec).
     __table_args__ = (Index(None, "job_id", "id"),)
 
     id: Mapped[JobEventId] = mapped_column(primary_key=True, default=uuid7)
@@ -504,7 +504,7 @@ class JobEvent(Base):
 
 
 class WebhookDelivery(Base):
-    """One POST of a job's webhook (SPEC-10 §4.2): the events assigned to it, `pending` until the target accepts it or
+    """One POST of a job's webhook (jobs spec): the events assigned to it, `pending` until the target accepts it or
     its attempts run out (`crawlerai.api.webhooks`)."""
 
     __tablename__ = "webhook_delivery"
@@ -551,13 +551,13 @@ class WebhookEvent(Base):
 
 
 class UsageEvent(Base):
-    """One use of a counted resource by a job (ARCHITECTURE §6, §17): for visibility and budgets, not billing."""
+    """One use of a counted resource by a job: for visibility and budgets, not billing."""
 
     __tablename__ = "usage_event"
     __table_args__ = (
         CheckConstraint(one_of("resource", UsageResource), name="resource"),
         CheckConstraint("quantity >= 0", name="quantity_non_negative"),
-        # A job's events, for the LLM cost on its summary (SPEC-06 §4.8, SPEC-10 §4.2).
+        # A job's events, for the LLM cost on its summary (llm spec, jobs spec).
         Index(None, "job_id", "id"),
     )
 
@@ -572,7 +572,7 @@ class UsageEvent(Base):
 
 
 class Extraction(Base):
-    """One resolver run over a capture (ARCHITECTURE §6)."""
+    """One resolver run over a capture."""
 
     __tablename__ = "extraction"
     __table_args__ = (
@@ -581,21 +581,21 @@ class Extraction(Base):
     )
 
     id: Mapped[ExtractionId] = mapped_column(primary_key=True, default=uuid7)
-    # Indexed for a finished task's events, which report its extraction (SPEC-10 §4.2).
+    # Indexed for a finished task's events, which report its extraction (jobs spec).
     url_task_id: Mapped[UrlTaskId] = mapped_column(ForeignKey(UrlTask.id), index=True)
-    # Captures expire after 30 days (ARCHITECTURE §15) and the extraction, which records cite, stays. Indexed for
+    # Captures expire after 30 days and the extraction, which records cite, stays. Indexed for
     # that delete.
     capture_id: Mapped[CaptureId | None] = mapped_column(ForeignKey(Capture.id, ondelete=_SET_NULL), index=True)
     engine_version: Mapped[str] = mapped_column(Text)
     config_version: Mapped[int | None] = mapped_column(Integer)
     mode: Mapped[ExtractionMode] = mapped_column(Text)
     llm_calls: Mapped[int] = mapped_column(Integer, server_default=text("0"))
-    # What the collectors skipped and why (SPEC-05 §4.14): an invalid JSON block, a collector that raised.
+    # What the collectors skipped and why (extraction spec): an invalid JSON block, a collector that raised.
     diagnostics: Mapped[list[str]] = mapped_column(JSONB, server_default=empty_array_default())
 
 
 class Candidate(Base):
-    """One value a collector proposed for a field (ARCHITECTURE §6, §8.1). Kept 30 days."""
+    """One value a collector proposed for a field. Kept 30 days."""
 
     __tablename__ = "candidate"
     __table_args__ = (
@@ -621,19 +621,19 @@ class Candidate(Base):
 
 
 class Record(Base):
-    """A published entity: `data` holds published fields only (ARCHITECTURE §6). A new version points at the one it
+    """A published entity: `data` holds published fields only. A new version points at the one it
     replaces through `supersedes_record_id` (§14)."""
 
     __tablename__ = "record"
     __table_args__ = (
         CheckConstraint(one_of("mode", ExtractionMode), name="mode"),
         version_positive(),
-        # Recurring runs compare fingerprints per (site, entity, schema) (SPEC-11 §4.4), and find the newest record that
+        # Recurring runs compare fingerprints per (site, entity, schema) (jobs spec), and find the newest record that
         # stands for a page, by id (`recurring.state.standing_record`).
         Index(None, "site_id", "entity_key", "schema_id", "id"),
         # The change feed (`changed_since`), and the commit stamp of the baseline migration's trigger.
         Index(None, "created_at"),
-        # `GET /v1/records` by job or by schema, newest first by id (SPEC-07 §4.6), and a capture's records for replay.
+        # `GET /v1/records` by job or by schema, newest first by id (rest-api spec), and a capture's records for replay.
         Index(None, "job_id", "id"),
         Index(None, "schema_id", "id"),
         Index(None, "extraction_id"),
@@ -653,15 +653,15 @@ class Record(Base):
     mode: Mapped[ExtractionMode] = mapped_column(Text)
     fingerprint: Mapped[str | None] = mapped_column(Text)
     # The digest of the schema document the record was extracted with (`schemas.types.document_digest`): a
-    # schema is edited in place (ARCHITECTURE §5.2), so a record follows the current document only when it is equal.
+    # schema is edited in place, so a record follows the current document only when it is equal.
     schema_digest: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
     supersedes_record_id: Mapped[RecordId | None] = mapped_column(ForeignKey(f"{__tablename__}.id"))
 
 
 class TaskRecord(Base):
-    """A record a task's page stands for (SPEC-11 §4.2, §4.4): one it stored, or the entity's latest version when the
-    page's record was unchanged and stored nothing. A job's records are those of its tasks (SPEC-10 §4.2 results).
+    """A record a task's page stands for (jobs spec): one it stored, or the entity's latest version when the
+    page's record was unchanged and stored nothing. A job's records are those of its tasks (jobs spec results).
     Plumbing for §4.2's `url_task.record_id`, as a table because a listing page stands for one record per row."""
 
     __tablename__ = "task_record"
@@ -674,7 +674,7 @@ class TaskRecord(Base):
 
 
 class EvalPage(Base):
-    """A page of the golden set (ARCHITECTURE §6). `labels` is the label document (`crawlerai.eval.labels`); `labeler`
+    """A page of the golden set. `labels` is the label document (`crawlerai.eval.labels`); `labeler`
     and `checker` are the two passes, which must be different people. `schema_name` names the schema `schema_id` is,
     so pages are listed by schema name."""
 
@@ -699,12 +699,12 @@ class EvalPage(Base):
     # The active config of the page's site when it was captured, if any, to measure config fields.
     config_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = created_at_column()
-    # An eval capture never expires (SPEC-01 §4.4); the reference keeps it from being deleted.
+    # An eval capture never expires (persistence-storage spec); the reference keeps it from being deleted.
     capture_id: Mapped[CaptureId] = mapped_column(ForeignKey(Capture.id), index=True)
 
 
 class EvalRun(Base):
-    """A stored evaluation run (ARCHITECTURE §6): the report of checked pages that calibration fits on."""
+    """A stored evaluation run: the report of checked pages that calibration fits on."""
 
     __tablename__ = "eval_run"
     __table_args__ = (CheckConstraint("split = 'dev'", name="split"),)

@@ -1,4 +1,4 @@
-"""Block classification (SPEC-02 §4.3, INV-24): HTTP status and structural body properties only."""
+"""Block classification (acquisition spec, INV-24): HTTP status and structural body properties only."""
 
 import pytest
 

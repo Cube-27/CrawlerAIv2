@@ -1,4 +1,4 @@
-"""Which headers a capture records (SPEC-02 §4.7): every one except credentials."""
+"""Which headers a capture records (acquisition spec): every one except credentials."""
 
 from crawlerai.storage.capture_bundle import HeaderList
 

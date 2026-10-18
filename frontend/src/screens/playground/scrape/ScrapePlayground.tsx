@@ -37,7 +37,7 @@ function outputState(
   };
 }
 
-/** The Scrape playground at `/` (SPEC-14 §4.2): the mode switch, the command bar with `POST /v1/scrape`'s URL, format
+/** The Scrape playground at `/` (frontend spec): the mode switch, the command bar with `POST /v1/scrape`'s URL, format
  * and schema, the inline options panel, then what the scrape returned. Field names open their draft for review first
  * (§4.10). Before any scrape, the recent scrapes; one
  * opens as a run (`?job=`, a scrape keeps a job), its page in the results table. */

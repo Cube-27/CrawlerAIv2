@@ -15,7 +15,7 @@ import { BatchOptions } from "./BatchOptions";
 import { batchErrors, batchForm, buildBatch, DEFAULT_BATCH_OPTIONS, initialBatch } from "./form";
 import { UrlList } from "./UrlList";
 
-/** The Batch playground at `/batch` (SPEC-14 §4.2): a URL list, the same formats, schema and options for every URL
+/** The Batch playground at `/batch` (frontend spec): a URL list, the same formats, schema and options for every URL
  * (`POST /v1/batch/scrape`), and the run on the same page (`?job=`) as a running results table; before any run, the
  * recent batches. URLs selected in a Map or Crawl result arrive in the navigation's state as the list. */
 export function BatchPlayground() {

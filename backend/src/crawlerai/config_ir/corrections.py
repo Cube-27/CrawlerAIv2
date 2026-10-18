@@ -1,4 +1,4 @@
-"""Operator corrections (SPEC-08 §4.10, C5): a site is fixed with data, through `PUT /v1/configs/{id}`, not with
+"""Operator corrections (learning-configs spec, C5): a site is fixed with data, through `PUT /v1/configs/{id}`, not with
 code.
 
 A correction replaces a field's steps, removes a field (`null`), or confirms a field's steps as they are. Every field
@@ -72,7 +72,7 @@ def correct(
 
 
 def _is_row_field(schema: SchemaDef, name: str) -> bool:
-    """A row field of a listing schema (SPEC-04 §4.2 `scope`)."""
+    """A row field of a listing schema (schemas spec `scope`)."""
     return schema.page_kind == "listing" and schema.fields[name].scope == "row"
 
 

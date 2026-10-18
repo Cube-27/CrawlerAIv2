@@ -1,13 +1,13 @@
-"""Eval page labels (SPEC-03 §4.3): the `eval_page.labels` document, its validation and type equality.
+"""Eval page labels (evaluation spec): the `eval_page.labels` document, its validation and type equality.
 
-`parse_labels` is the boundary: it checks the document's structure, the two-pass rule (ARCHITECTURE §16.2) and
+`parse_labels` is the boundary: it checks the document's structure, the two-pass rule and
 the fields against the page's schema, and reports every error with its path and reason, so nothing partial is
-saved (§4.11). Whether each `value` is a valid normalized value is the type normalizer's call (SPEC-04), made by
-the labeling API (SPEC-03 PR 8).
+saved (§4.11). Whether each `value` is a valid normalized value is the type normalizer's call (schemas spec), made by
+the labeling API (evaluation spec PR 8).
 
-Values compare by type equality (SPEC-04 §4.5), `crawlerai.normalize.dispatch.equal`.
+Values compare by type equality (schemas spec), `crawlerai.normalize.dispatch.equal`.
 
-`label_version` 2 adds `lists` (SPEC-13 §4.10): a detail page's row-mapped `list<object>` fields, labeled as rows of
+`label_version` 2 adds `lists` (variants spec): a detail page's row-mapped `list<object>` fields, labeled as rows of
 sub-field labels. Version 1 labels stay valid; they leave those fields unlabeled, so metrics don't score them.
 """
 
@@ -45,12 +45,12 @@ _FIELD_SPECS: TypeAdapter[dict[str, FieldSpec]] = TypeAdapter(dict[str, FieldSpe
 
 
 def field_specs(fields: Mapping[str, JsonValue]) -> dict[str, FieldSpec]:
-    """A schema document's `fields` (SPEC-04 §4.2, `schema_def.fields`) as field specs."""
+    """A schema document's `fields` (schemas spec, `schema_def.fields`) as field specs."""
     return _FIELD_SPECS.validate_python(fields)
 
 
 def _check_locator(locator: str) -> str:
-    # The three locator forms of SPEC-03 §4.3; text offsets index the page's cleaned text.
+    # The three locator forms of evaluation spec; text offsets index the page's cleaned text.
     form = re.fullmatch(r"xpath:.+|jsonld:.+|text:(\d+)-(\d+)", locator, re.DOTALL)
     if form is None:
         raise ValueError("must be 'xpath:…', 'jsonld:…' or 'text:<start>-<end>'")
@@ -101,7 +101,7 @@ class LabelRow(_Model):
 
 
 class DistractorKey(_Model):
-    """A key value of another product's variant shown on the page (SPEC-13 §4.10): an engine row with it is a wrong
+    """A key value of another product's variant shown on the page (variants spec): an engine row with it is a wrong
     product."""
 
     field: Name
@@ -115,7 +115,7 @@ class DistractorKey(_Model):
 
 
 class ListLabel(_Model):
-    """A row-mapped field's label (SPEC-13 §4.10): one row per variant shown on the page, in page order. `absent`
+    """A row-mapped field's label (variants spec): one row per variant shown on the page, in page order. `absent`
     means the page offers no variant choice."""
 
     absent: bool
@@ -146,7 +146,7 @@ class Labels(_Model):
 
     @model_validator(mode="after")
     def _two_passes(self) -> Self:
-        # ARCHITECTURE §16.2: a labeler, then a checker who is a different person.
+        # A labeler, then a checker who is a different person.
         if self.status != "draft" and self.labeler is None:
             raise ValueError("a labeled or checked page names its labeler")
         if self.status == "checked" and (
@@ -189,8 +189,8 @@ def parse_labels(raw: JsonValue, page_kind: PageKind, specs: Mapping[str, FieldS
 
 
 def _check_detail(labels: Labels, specs: Mapping[str, FieldSpec], complete: bool) -> Iterator[LabelError]:
-    # On a detail page every field belongs to the one entity (SPEC-04 §4.2), whatever its scope; a row-mapped field is
-    # labeled as rows in `lists` (SPEC-13 §4.10).
+    # On a detail page every field belongs to the one entity (schemas spec), whatever its scope; a row-mapped field is
+    # labeled as rows in `lists` (variants spec).
     plain = {name: spec for name, spec in specs.items() if not spec.row_mapped}
 
     def misplaced(name: str) -> str:
@@ -204,7 +204,7 @@ def _check_detail(labels: Labels, specs: Mapping[str, FieldSpec], complete: bool
 
 def _check_lists(labels: Labels, specs: Mapping[str, FieldSpec], complete: bool) -> Iterator[LabelError]:
     if labels.label_version == 1:
-        # Version 1 labels predate row-mapped fields: those stay unlabeled and unscored (SPEC-13 §4.10).
+        # Version 1 labels predate row-mapped fields: those stay unlabeled and unscored (variants spec).
         if labels.lists:
             yield LabelError("lists", "row-mapped fields need label_version 2")
         return
@@ -245,7 +245,7 @@ def _check_distractor_key(
 
 
 def sub_fields(spec: FieldSpec) -> Mapping[str, FieldSpec]:
-    """A row-mapped field's sub-fields (SPEC-13 §4.1)."""
+    """A row-mapped field's sub-fields (variants spec)."""
     return (spec.item.fields or {}) if spec.item is not None else {}
 
 

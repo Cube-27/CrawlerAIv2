@@ -1,4 +1,4 @@
-"""Storefront API answers replayed through `extract_page` (SPEC-15 §4.5, §7): a collection page's answer publishes one
+"""Storefront API answers replayed through `extract_page` (adapters spec): a collection page's answer publishes one
 row per product, with a price only where its range is one price.
 
 The answers are synthetic, written to the documented shapes (`example.test` hosts, invented products, C3, C9).

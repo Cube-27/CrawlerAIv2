@@ -1,5 +1,5 @@
 """What the services run with in one process: the database, the fetching rungs, the LLM client and the engine's data
-files. The API app and the MCP server's stdio process open one each from the settings (SPEC-10 §4.7)."""
+files. The API app and the MCP server's stdio process open one each from the settings (jobs spec)."""
 
 import asyncio
 from collections.abc import AsyncIterator
@@ -50,7 +50,7 @@ def fetching_from_settings(settings: Settings) -> Fetching:
     pools = settings.proxy_pools
 
     async def browser(url: str, policy: FetchPolicy, *, export: CookieExport | None = None) -> FetchResult:
-        # The browser is a rung of last resort here (ARCHITECTURE §7.1), so it is launched per fetch rather than kept
+        # The browser is a rung of last resort here, so it is launched per fetch rather than kept
         # running beside every API process.
         async with open_browser() as session:
             return await fetch_browser(

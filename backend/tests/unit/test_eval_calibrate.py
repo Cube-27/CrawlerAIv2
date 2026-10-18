@@ -1,4 +1,4 @@
-"""`crawlerai eval fit-calibration` and `crawlerai eval fit-precedence` (SPEC-05 §4.11): both fit on a golden-set
+"""`crawlerai eval fit-calibration` and `crawlerai eval fit-precedence` (extraction spec): both fit on a golden-set
 report and stamp what they write with `source_split: dev`. Synthetic reports only (C9)."""
 
 import json
@@ -82,7 +82,7 @@ def test_precedence_moves_a_kind_ahead_only_when_the_data_separates_them(tmp_pat
     assert yaml.safe_load(path.read_text(encoding="utf-8"))["url"] == ["adapter", "og", "jsonld"]
 
 
-# From a dev report's pages to the files the engine reads (SPEC-05 §4.11).
+# From a dev report's pages to the files the engine reads (extraction spec).
 
 TITLED = SchemaFields(name="titled", page_kind="detail", fields={"title": FieldSpec(type=FieldType.TEXT)})
 

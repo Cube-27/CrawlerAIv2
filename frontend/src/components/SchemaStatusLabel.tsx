@@ -1,7 +1,7 @@
 import type { SchemaDef } from "../api/schemas";
 import { StatusLabel, type StatusTone } from "./StatusLabel";
 
-// One tone per `schema_def.status` (ARCHITECTURE §6): a retired schema stays readable but takes no new work.
+// One tone per `schema_def.status`: a retired schema stays readable but takes no new work.
 const SCHEMA_STATUS_TONES: Record<SchemaDef["status"], StatusTone> = {
   active: "success",
   retired: "neutral",

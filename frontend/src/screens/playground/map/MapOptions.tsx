@@ -2,7 +2,7 @@ import { NumberRow, OptionsPanel, SwitchRow } from "../OptionsPanel";
 import { ScopeRows } from "../rows";
 import { DEFAULT_MAP_OPTIONS, type MapOptions as Options } from "./form";
 
-/** Map's options (SPEC-14 §4.2): the scope globs, then the two sources and the URL limit. */
+/** Map's options (frontend spec): the scope globs, then the two sources and the URL limit. */
 export function MapOptions({
   options,
   onChange,

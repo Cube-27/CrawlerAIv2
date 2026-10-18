@@ -1,4 +1,4 @@
-"""The batch scrape service (SPEC-10 §4.3, ARCHITECTURE §13.1): many URLs scraped asynchronously, as one job of kind
+"""The batch scrape service (jobs spec): many URLs scraped asynchronously, as one job of kind
 `batch_scrape` with a `url_task` per URL. Workers run the tasks with the steps a scrape takes
 (`crawlerai.worker.handlers.scrape`), and `GET /v1/jobs/{id}/results` returns what they made.
 
@@ -7,7 +7,7 @@ in one transaction. The job pins what its pages run with (INV-28): for `records`
 at submit, the precedence orders and calibration of this process's engine data, and the active config each URL's site
 has for the schema and page kind (`job.pinned`, `JobPins`). A URL given twice
 (the same once canonicalized) is one task. URLs are caller-supplied: a page whose required fields don't all publish
-keeps its record, `complete=false`, with outcome `partial` (ARCHITECTURE §10).
+keeps its record, `complete=false`, with outcome `partial`.
 """
 
 from collections.abc import AsyncIterator, Collection, Iterable
@@ -59,14 +59,14 @@ from crawlerai.services.scrape_steps import (
 )
 from crawlerai.services.webhook_options import WebhookOptions
 
-MAX_URLS: Final = 1000  # SPEC-10 §4.3
+MAX_URLS: Final = 1000  # jobs spec
 
 
 class BatchScrapeRequest(WebhookOptions):
     """The body of `POST /v1/batch/scrape` (§4.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a
-    scrape's (SPEC-07 §4.4), for every URL. A batch's results are either records or page outputs, so `records` is
+    scrape's (rest-api spec), for every URL. A batch's results are either records or page outputs, so `records` is
     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),
-    and `schema.fields` is drafted while the caller waits (SPEC-14 §4.10). Role C fills a page's gaps as in a scrape;
+    and `schema.fields` is drafted while the caller waits (frontend spec). Role C fills a page's gaps as in a scrape;
     `budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job
     kind (D-1006, D-1121). The webhook options are `WebhookOptions` (§4.2)."""
 
@@ -151,7 +151,7 @@ async def submit_batch(
     placement: Placement = OWN_TRANSACTION,
 ) -> BatchSubmitted:
     """Store `request` as a queued job with its tasks, where `placement` says; `api_key_id`, the key that submitted
-    it, signs its webhook (SPEC-10 §4.2); `proxy_pools`, the configured pools, which `fetch.proxy_pool` must name one of
+    it, signs its webhook (jobs spec); `proxy_pools`, the configured pools, which `fetch.proxy_pool` must name one of
     (D-1434). Raises, storing nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target,
     `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use
     (or field names `llm` could not draft)."""
@@ -198,7 +198,7 @@ async def records_schema(
     llm: LLMClient,
 ) -> SchemaDef | None:
     """The schema a job's `records` are extracted with; None without `records`, the only format that reads a schema
-    (SPEC-07 §4.4). Raises `RecordsUnavailable` without `data`, and `named_schema`'s errors."""
+    (rest-api spec). Raises `RecordsUnavailable` without `data`, and `named_schema`'s errors."""
     if "records" not in formats:
         return None
     if data is None:

@@ -1,4 +1,4 @@
-"""Preference (SPEC-05 §4.7, §4.8, ARCHITECTURE §8.2 rule 4, §10): which of a field's valid, owned candidates
+"""Preference (extraction spec rule 4, §10): which of a field's valid, owned candidates
 publishes, and why every other one does not."""
 
 from pathlib import Path

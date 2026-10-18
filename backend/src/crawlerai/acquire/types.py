@@ -1,4 +1,4 @@
-"""What a fetch is asked to do and what it returns (SPEC-02 §4.2)."""
+"""What a fetch is asked to do and what it returns (acquisition spec)."""
 
 from datetime import timedelta
 from typing import Annotated, Literal
@@ -44,7 +44,7 @@ class _Frozen(BaseModel):
 
 
 def check_robots_override(respect_robots: bool, reason: str | None) -> None:
-    """Ignoring robots.txt is an operator's decision, recorded with its reason (ARCHITECTURE §7.1)."""
+    """Ignoring robots.txt is an operator's decision, recorded with its reason."""
     if not respect_robots and not (reason or "").strip():
         raise ValueError("respect_robots=false needs a robots_override_reason")
 
@@ -200,7 +200,7 @@ def policy_with_attempts(
     fetch_policy: dict[str, JsonValue], attempts: tuple[AttemptRecord, ...]
 ) -> dict[str, JsonValue]:
     """`fetch_policy` with every rung tried as `attempts`, as the bundle manifest and the `capture` row keep it
-    (SPEC-02 §4.4)."""
+    (acquisition spec)."""
     return {**fetch_policy, "attempts": [attempt.model_dump(mode="json") for attempt in attempts]}
 
 

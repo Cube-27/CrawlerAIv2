@@ -1,7 +1,7 @@
-"""URL canonicalization (SPEC-10 §4.1): the form `map` and the crawl frontier dedup URLs by, and the form every job
-kind keys its `url_task` by, so a page's entity key (SPEC-05 §4.10) does not depend on the job that fetched it.
+"""URL canonicalization (jobs spec): the form `map` and the crawl frontier dedup URLs by, and the form every job
+kind keys its `url_task` by, so a page's entity key (extraction spec) does not depend on the job that fetched it.
 
-The url type's canonical form (SPEC-04 §4.4: WHATWG parsing, the RFC 3986 §6.2 normalizations, the fragment
+The url type's canonical form (normalization spec: WHATWG parsing, the RFC 3986 §6.2 normalizations, the fragment
 removed), with the query's name-value pairs in the order WHATWG `URLSearchParams.sort()` gives them. No parameter is
 dropped or rewritten by name: there is no list of parameter names (C4).
 

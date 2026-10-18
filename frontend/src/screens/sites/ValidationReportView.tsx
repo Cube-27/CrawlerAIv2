@@ -11,7 +11,7 @@ function FieldOutcome({ report }: Readonly<{ report: FieldReport }>) {
   return <StatusLabel text={`dropped: ${report.dropped ?? "no reason given"}`} tone="danger" />;
 }
 
-/** Each field's result on the held-out pages (SPEC-08 §4.7). */
+/** Each field's result on the held-out pages (learning-configs spec). */
 function FieldReportTable({
   label,
   fields,
@@ -89,7 +89,7 @@ function RecipeSection({
   );
 }
 
-/** A config's validation on the site's held-out pages (SPEC-08 §4.7), as the server reported it: why nothing could
+/** A config's validation on the site's held-out pages (learning-configs spec), as the server reported it: why nothing could
  * activate, each field's outcome and counts, the listing's rows and the API recipe. */
 export function ValidationReportView({ report }: Readonly<{ report: ValidationReport | null }>) {
   if (report === null) {

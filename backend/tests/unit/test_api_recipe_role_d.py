@@ -1,4 +1,4 @@
-"""Role D (SPEC-09 §4.5): when deterministic binding is ambiguous, the model writes a request spec from the sample
+"""Role D (adapters spec): when deterministic binding is ambiguous, the model writes a request spec from the sample
 requests, and the spec is accepted only by replay: it must reproduce every captured request, then its replay must
 reproduce the published values. A spec that does not reproduce gets one repair round, and nothing is fetched for it.
 

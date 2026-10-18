@@ -48,7 +48,7 @@ const COLUMNS = {
 
 export type JobColumn = keyof typeof COLUMNS;
 
-/** Where a job's row goes: its run in its playground mode, or the job page for a kind no mode runs (SPEC-14 §4.8). */
+/** Where a job's row goes: its run in its playground mode, or the job page for a kind no mode runs (frontend spec). */
 function rowPath(job: JobSummary): string {
   return runPath(job.kind, job.id) ?? jobPath(job.id);
 }

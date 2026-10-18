@@ -4,7 +4,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { JobTable } from "./JobTable";
 import { jobPath } from "./paths";
 
-/** The run history (SPEC-14 §4.8, SPEC-12 §4.3): every job, newest first, a row opening its run in its playground
+/** The run history (frontend spec): every job, newest first, a row opening its run in its playground
  * mode; a job also opens by its id. Runs start in the playground. */
 export function JobsScreen() {
   const navigate = useNavigate();

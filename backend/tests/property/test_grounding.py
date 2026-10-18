@@ -1,4 +1,4 @@
-"""Grounding by alignment (SPEC-06 §4.3, INV-12): on generated texts and spans, `align` returns the exact span; a
+"""Grounding by alignment (llm spec, INV-12): on generated texts and spans, `align` returns the exact span; a
 value absent from the text is dropped; a repeated value takes the occurrence nearest the model's `start`; an accepted
 claim's locator names its offsets."""
 

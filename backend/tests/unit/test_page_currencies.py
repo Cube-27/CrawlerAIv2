@@ -1,4 +1,4 @@
-"""The currencies a page's structured data states (SPEC-04 §4.4): schema.org `priceCurrency` in JSON-LD, microdata
+"""The currencies a page's structured data states (schemas spec): schema.org `priceCurrency` in JSON-LD, microdata
 and RDFa Lite, and the OGP `product:price:currency`; ISO 4217 codes as written, each once."""
 
 import json
@@ -41,7 +41,7 @@ def test_values_that_are_not_iso_4217_codes_as_written_are_not_currencies() -> N
 
 
 def test_the_stated_currency_settles_a_symbol_the_page_writes_in_text() -> None:
-    # SPEC-04 §4.4: `$` alone stands for several currencies; the Offer's USD settles it.
+    # schemas spec: `$` alone stands for several currencies; the Offer's USD settles it.
     page = _page(_jsonld({"@context": "https://schema.org", "@type": "Offer", "priceCurrency": "USD"}))
     spec = FieldSpec(type=FieldType.MONEY, description="d")
 

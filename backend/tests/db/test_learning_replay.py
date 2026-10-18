@@ -1,4 +1,4 @@
-"""A learning run's recipe replays (SPEC-09 §4.6, §4.7) go out as politely as a served recipe's request (SPEC-02 §4.6,
+"""A learning run's recipe replays (adapters spec) go out as politely as a served recipe's request (acquisition spec,
 D-0731): only where the endpoint host's robots.txt allows, at that host's rate; through the site's proxy pool, counted
 as the learn job's usage (D-1381)."""
 

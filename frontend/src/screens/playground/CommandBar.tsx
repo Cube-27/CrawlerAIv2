@@ -2,7 +2,7 @@ import { Card } from "@heroui/react";
 import { use, type ReactNode } from "react";
 import { ReadOnlyContext } from "./readOnly";
 
-/** The command bar (SPEC-14 §4.2): one bordered surface with the mode's input on top and the toolbar under it: the
+/** The command bar (frontend spec): one bordered surface with the mode's input on top and the toolbar under it: the
  * Options button and the tools on the left, the primary action on the right. The input sits in a box of at least
  * `min-h-playground-input`, which holds a URL and its error, so switching between the single-URL modes or showing an
  * error moves neither the toolbar nor the action; Batch's ten-line list is taller (D-1213). At phone width the action

@@ -17,10 +17,10 @@ function notifyRefused(error: Error) {
   });
 }
 
-/** A run's downloads (SPEC-14 §4.3–4.4): JSON is every page's `json_values` item in task order, saved as one array, so
+/** A run's downloads (frontend spec–4.4): JSON is every page's `json_values` item in task order, saved as one array, so
  * it equals the drawers' items; CSV is the server's `csv_records` export (RFC 4180), one file per page of it. With
  * `outputs` (a job without a schema), JSON is every page's outputs, as its drawers show them, and CSV is disabled:
- * there are no records to put in columns (SPEC-10 §4.2). */
+ * there are no records to put in columns (jobs spec). */
 export function RunExports({
   jobId,
   withMetadata,

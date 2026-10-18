@@ -1,4 +1,4 @@
-"""A stored capture read again instead of fetching (SPEC-07 §4.4 `max_age`, `fetch.cache`, D-1435), for the scrape
+"""A stored capture read again instead of fetching (rest-api spec `max_age`, `fetch.cache`, D-1435), for the scrape
 service and the workers alike.
 
 A capture stands for a fetch only when it reached its page, has not expired, and was made the way the fetch would be:
@@ -95,8 +95,8 @@ def _jsonb(value: object) -> ColumnElement[Any]:
 
 
 async def reread(store: ObjectStore, row: CaptureRow, formats: Collection[str] = ()) -> Recent | None:
-    """The capture's bundle, with the attempts its row keeps (SPEC-02 §4.4) and the names of the files stored beside it;
-    None when its bundle is gone, or a screenshot or PDF among `formats` was not stored with it."""
+    """The capture's bundle, with the attempts its row keeps (acquisition spec) and the names of the files stored beside
+    it; None when its bundle is gone, or a screenshot or PDF among `formats` was not stored with it."""
     capture_id, object_key, duration_ms, fetch_policy = row
     try:
         blob = await asyncio.to_thread(store.get, object_key)

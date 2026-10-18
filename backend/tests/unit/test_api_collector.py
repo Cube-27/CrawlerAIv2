@@ -1,4 +1,4 @@
-"""The API recipe collector (SPEC-09 §4.8): an `api` capture's JSON read through the recipe's map, each value an `api`
+"""The API recipe collector (adapters spec): an `api` capture's JSON read through the recipe's map, each value an `api`
 candidate located as `api:<recipe id>:<normalized path>`, owned by the page on a detail page and by the rows the
 recipe's `rows` query selects on a listing.
 

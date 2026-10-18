@@ -1,4 +1,4 @@
-"""The webhook's signature and backoff (SPEC-10 §4.2), and the SSRF-guarded POST that sends it (`post` in
+"""The webhook's signature and backoff (jobs spec), and the SSRF-guarded POST that sends it (`post` in
 `crawlerai.acquire.http`).
 
 A local server on 127.0.0.1 takes the POSTs under a `.test` host, admitted by a connector that pins that host to it;

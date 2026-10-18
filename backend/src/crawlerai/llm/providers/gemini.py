@@ -1,4 +1,4 @@
-"""The Gemini provider (SPEC-06 §4.1): `generateContent` through the official `google-genai` SDK, with structured
+"""The Gemini provider (llm spec): `generateContent` through the official `google-genai` SDK, with structured
 output.
 
 The reply is constrained by `response_json_schema` with `response_mime_type="application/json"`; the client still

@@ -1,10 +1,10 @@
-"""The map service (SPEC-10 §4.4, ARCHITECTURE §13.1): the URLs of a site, found while the caller waits, from its
-sitemaps and the links of the start page. `POST /v1/map` calls it; the MCP `map` tool will (SPEC-10 PR 7).
+"""The map service (jobs spec): the URLs of a site, found while the caller waits, from its
+sitemaps and the links of the start page. `POST /v1/map` calls it; the MCP `map` tool will (jobs spec PR 7).
 
 The start page is fetched over HTTP only, and its links are read only when it was reached (`ok`). Its sitemaps are
-read through `crawl.sitemaps`. Every fetch goes through robots.txt and the site's rate (SPEC-02 §4.6), and robots.txt
-that cannot be reached allows nothing (RFC 9309 §2.3.1.4). URLs are canonical (`crawl.canonical`) and kept by the
-request's scope (`crawl.rules`): the start page's exact host, or the `include` globs, less the `exclude` globs. The
+read through `crawl.sitemaps`. Every fetch goes through robots.txt and the site's rate (acquisition spec), and
+robots.txt that cannot be reached allows nothing (RFC 9309 §2.3.1.4). URLs are canonical (`crawl.canonical`) and kept by
+the request's scope (`crawl.rules`): the start page's exact host, or the `include` globs, less the `exclude` globs. The
 start page's host is where the site's own redirects took it, on the same site (RFC 9110 §15.4; D-0991): a start URL
 whose host redirects to its `www.` subdomain, or back, is mapped on that host, under its robots.txt and rate; a
 redirect to an unrelated host leaves the start URL's (D-0672).
@@ -53,7 +53,7 @@ from crawlerai.services.scrape_steps import (
 )
 from crawlerai.storage.capture_bundle import CaptureBundle
 
-TIMEOUT_S: Final = 60.0  # SPEC-10 §4.4
+TIMEOUT_S: Final = 60.0  # jobs spec
 MAX_LIMIT: Final = 5000  # D-0038
 
 Source = Literal["sitemap", "links"]

@@ -21,7 +21,7 @@ import { ArrowRotateLeft, CircleQuestion, Sliders } from "@gravity-ui/icons";
 import { use, useId, useRef, useState, type Key, type ReactNode } from "react";
 import { ReadOnlyContext } from "./readOnly";
 
-/** The playground's options (SPEC-14 §4.2, DESIGN.md Playground options): a popover from the command bar's Options
+/** The playground's options (frontend spec, DESIGN.md Playground options): a popover from the command bar's Options
  * button with every setting at once, in a grid of cells (label and help icon over the control): four columns from
  * `sm`, one at phone width; a list or free text takes two columns or the whole width. It is an overlay, so opening it
  * moves nothing on the page. */

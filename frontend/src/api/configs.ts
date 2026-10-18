@@ -2,7 +2,7 @@ import type { ApiClient } from "./client";
 import { apiResult, type ApiResult } from "./result";
 import type { components } from "./schema";
 
-/** The site config endpoints (SPEC-08 §4.10), in the generated shapes. */
+/** The site config endpoints (learning-configs spec), in the generated shapes. */
 export type ConfigSummary = components["schemas"]["ConfigSummary"];
 export type ConfigDetail = components["schemas"]["ConfigDetail"];
 export type ConfigStatus = ConfigSummary["status"];

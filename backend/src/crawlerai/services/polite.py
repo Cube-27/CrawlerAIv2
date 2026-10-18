@@ -1,4 +1,4 @@
-"""One polite fetch (SPEC-02 §4.6): the way every caller sends a request to a site, whether its caller waits for the
+"""One polite fetch (acquisition spec): the way every caller sends a request to a site, whether its caller waits for the
 answer (`scrape`, `map`, `extract`, the eval import) or it runs in a worker (`batch_scrape`, `crawl`), for a page, an
 API endpoint an adapter or recipe asks, or a sitemap.
 
@@ -110,7 +110,7 @@ class Later(NamedTuple):
 
 
 # A page fetch through the polite step: given the URL, the `Admit` each request after its first waits for, and the
-# host's rules (D-1384: what it asks of the same host goes by them), the page or a 304 that stands for it (SPEC-11
+# host's rules (D-1384: what it asks of the same host goes by them), the page or a 304 that stands for it (jobs spec
 # §4.2).
 PageFetch = Callable[[str, Admit, HostRules], Awaitable[FetchResult | Unchanged]]
 
@@ -129,7 +129,7 @@ async def polite_fetch[R: (FetchResult, FetchResult | Unchanged)](
     tries: int = 1,
 ) -> R | Refused | Later:
     """`url` fetched with `fetch` politely (module docstring), or why nothing was sent. `by_adapter`: an active adapter
-    serves the URL first (SPEC-15 §4.6) from an API whose own robots.txt its requests go by, so a robots.txt disallow
+    serves the URL first (adapters spec) from an API whose own robots.txt its requests go by, so a robots.txt disallow
     of the page admits no fallback to the page rungs, and a fetch that does not keep `ok` is `ROBOTS`. `turn_taken`:
     the caller already holds the host's turn for this request. `endpoint`: every request of the fetch goes to the URL's
     host (an API request); a page fetch's `api` attempts went to other hosts, which their own polite fetch observed.

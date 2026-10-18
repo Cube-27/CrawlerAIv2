@@ -1,4 +1,4 @@
-"""The text and long_text normalizer (SPEC-04 §4.4, ARCHITECTURE §9): entity decoding, NFC, whitespace collapse,
+"""The text and long_text normalizer (normalization spec): entity decoding, NFC, whitespace collapse,
 and declines on empty, over-long and template-placeholder input (INV-06)."""
 
 from datetime import UTC, datetime

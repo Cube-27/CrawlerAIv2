@@ -1,10 +1,10 @@
-# Import contracts (ARCHITECTURE C8, SPEC-00 §5, INV-08). Run with `uv run lint-imports` from backend/.
+# Import contracts (INV-08). Run with `uv run lint-imports` from backend/.
 
 [importlinter]
 root_package = crawlerai
 include_external_packages = True
 
-# The nine field-type normalizers (SPEC-04 §4.1). A new type module is added here and to normalize-internals in
+# The nine field-type normalizers (schemas spec). A new type module is added here and to normalize-internals in
 # the PR that creates it.
 [importlinter:contract:normalize-independence]
 name = One module per field type
@@ -94,9 +94,9 @@ allow_indirect_imports = True
 
 # `|` siblings are independent of each other. acquire and adapters are `:` siblings because the adapters-isolated
 # contract lets acquire import adapters. normalize sits above schemas because each normalizer reads the field's
-# `FieldSpec` (SPEC-04 §4.3). collect sits above content because every collector reads the `ParsedPage` (INV-26).
-# services sits under the API and the MCP server, which both call it (SPEC-07 §4.7); the API sits over the MCP server,
-# which it mounts at `/mcp` (SPEC-10 §4.7).
+# `FieldSpec` (schemas spec). collect sits above content because every collector reads the `ParsedPage` (INV-26).
+# services sits under the API and the MCP server, which both call it (rest-api spec); the API sits over the MCP server,
+# which it mounts at `/mcp` (jobs spec).
 [importlinter:contract:layers]
 name = Layering
 type = layers
@@ -115,7 +115,7 @@ layers =
     crawlerai.db | crawlerai.storage
     crawlerai.core
 
-# SPEC-08 §4.12, INV-20: the release executor shares no code with the engine beyond the IR model, so that the two
+# learning-configs spec, INV-20: the release executor shares no code with the engine beyond the IR model, so that the two
 # executors agreeing is evidence that an export reproduces the engine. Its one import from crawlerai is the model; the
 # model's own imports are indirect, so they are allowed.
 [importlinter:contract:release-executor-isolated]

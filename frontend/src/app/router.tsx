@@ -33,11 +33,11 @@ export const routes: RouteObject[] = [
       </AccessProvider>
     ),
     children: [
-      // The server that serves the UI attaches the API key; a 401 shows the setup notice (SPEC-14 §4.1).
+      // The server that serves the UI attaches the API key; a 401 shows the setup notice (frontend spec).
       {
         element: <RequireAccess />,
         children: [
-          // The playground: `/` is its Scrape mode (SPEC-14 §4.8).
+          // The playground: `/` is its Scrape mode (frontend spec).
           { index: true, element: <ScrapePlayground /> },
           { path: "batch", element: <BatchPlayground /> },
           { path: "map", element: <MapPlayground /> },
@@ -53,11 +53,11 @@ export const routes: RouteObject[] = [
           { path: "sites/:host", element: <SiteScreen /> },
           { path: "configs/:id", element: <ConfigScreen /> },
           { path: "jobs", element: <JobsScreen /> },
-          // A job a mode runs redirects to its run there; a `learn` job keeps its page (SPEC-14 §4.8).
+          // A job a mode runs redirects to its run there; a `learn` job keeps its page (frontend spec).
           { path: "jobs/:id", element: <JobScreen /> },
           { path: "schedules", element: <SchedulesScreen /> },
           { path: "schedules/:id", element: <ScheduleScreen /> },
-          // SPEC-03 §4.10: the eval API takes the same API key as everything else. The shell lists these routes
+          // evaluation spec: the eval API takes the same API key as everything else. The shell lists these routes
           // when `/healthz` reports `eval_ui`.
           { path: "labeling", element: <LabelingList /> },
           { path: "labeling/:pageId", element: <LabelingPage /> },

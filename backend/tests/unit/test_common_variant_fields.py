@@ -1,4 +1,4 @@
-"""Common variant fields (SPEC-13 §4.6, INV-38): a multi-variant product's top-level Offer fields publish
+"""Common variant fields (variants spec, INV-38): a multi-variant product's top-level Offer fields publish
 only when every Offer agrees, whatever variant a page URL names; no variant is a default. An identifier the group
 states nothing for takes its variants' value only when every variant states it alike."""
 

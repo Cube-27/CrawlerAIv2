@@ -1,4 +1,4 @@
-"""The one curl_cffi client of the HTTP and JSON rungs (SPEC-02 §4.5, §4.7; D-1320): a session impersonating Chrome,
+"""The one curl_cffi client of the HTTP and JSON rungs (acquisition spec; D-1320): a session impersonating Chrome,
 every request pinned to the address the SSRF guard checked or sent through a proxy pool's CONNECT tunnel, bodies capped
 while they stream, redirects followed by hand through the guard with the fetch's own cookies (INV-29), and every
 failure a short reason that never contains the URL.
@@ -387,7 +387,7 @@ async def _request(
 
 
 def reason(error: RequestException) -> str:
-    """A curl failure's reason: its kind, never its message, which can hold the URL (SPEC-02 §4.11)."""
+    """A curl failure's reason: its kind, never its message, which can hold the URL (acquisition spec)."""
     return _CURL_ERRORS.get(error.code, f"network_error: curl {int(error.code)}")
 
 
@@ -403,7 +403,7 @@ def pinned(target: Target) -> dict[CurlOpt, object]:
 
 def _through(proxy: ProxyEndpoint) -> dict[CurlOpt, object]:
     # No CURLOPT_RESOLVE: its `*` would also redirect the connection to the proxy. The proxy resolves the page's host
-    # itself (ARCHITECTURE §7.1); the guard checked that host before this request.
+    # itself; the guard checked that host before this request.
     options: dict[CurlOpt, object] = {
         # The proxy's host alone, with its type and port set apart: curl's CURLPROXY_HTTP (0) speaks plain HTTP to
         # the proxy, the only kind a pool is (`crawlerai.core.proxy`); pages inside the tunnel keep their own TLS.

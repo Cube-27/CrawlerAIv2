@@ -2,7 +2,7 @@ import { SchemaSelect } from "../../components/SchemaSelect";
 import { FormatSelect } from "./FormatSelect";
 import { withSchema, type FormatForm } from "./pageRequest";
 
-/** The tools of a mode that takes formats and a schema (Scrape, Batch, Crawl; SPEC-14 §4.2): Format and Schema.
+/** The tools of a mode that takes formats and a schema (Scrape, Batch, Crawl; frontend spec): Format and Schema.
  * `formatsUnused` disables Format when the request sends no page format (a crawl with a schema asks for records
  * alone). */
 export function PageTools<F extends FormatForm>({

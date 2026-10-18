@@ -1,4 +1,4 @@
-"""Which discovered URLs a request keeps (SPEC-10 §4.4, §6, D-0037): the start URL's exact host unless `include`
+"""Which discovered URLs a request keeps (jobs spec, D-0037): the start URL's exact host unless `include`
 says otherwise, `include` globs over the canonical URL, and `exclude`, which wins."""
 
 import pytest
@@ -28,7 +28,7 @@ def test_exclude_wins_over_include() -> None:
     assert scope.admits("https://shop.example.test/public/1")
 
 
-# Page-kind rules (SPEC-10 §4.5, ARCHITECTURE §13.2).
+# Page-kind rules (jobs spec).
 
 
 def test_the_first_rule_whose_pattern_matches_gives_the_page_kind() -> None:
@@ -41,7 +41,7 @@ def test_the_first_rule_whose_pattern_matches_gives_the_page_kind() -> None:
     assert page_kind_for("https://shop.example.test/p/2", rules) == "detail"
 
 
-# The URL globs of `extract` (SPEC-10 §4.6).
+# The URL globs of `extract` (jobs spec).
 
 
 @pytest.mark.parametrize(

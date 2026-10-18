@@ -1,6 +1,6 @@
-"""The schema registry (SPEC-04 §4.1): `schema_def` rows read and written as validated documents.
+"""The schema registry (schemas spec): `schema_def` rows read and written as validated documents.
 
-One row per schema name, edited in place (ARCHITECTURE §5.2). An edit's callers send the site configs learned for the
+One row per schema name, edited in place. An edit's callers send the site configs learned for the
 old document back to learning (`config_ir.progressive.relearn_schema`).
 Every document is validated as a `SchemaDocument` before it is written, so a stored row always parses.
 """

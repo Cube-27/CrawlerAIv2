@@ -1,4 +1,4 @@
-"""The `ObjectStore` protocol (SPEC-01 §4.1, §4.4) and the key rules every backend shares.
+"""The `ObjectStore` protocol (persistence-storage spec) and the key rules every backend shares.
 
 Methods are synchronous because boto3 is; async callers run them in a thread (`to_thread` in asyncio).
 """
@@ -8,7 +8,7 @@ from typing import Protocol
 
 
 class ObjectNotFound(Exception):
-    """`get` of a key that holds no object (SPEC-01 §4.8). The caller decides what that means."""
+    """`get` of a key that holds no object (persistence-storage spec). The caller decides what that means."""
 
 
 class ObjectStore(Protocol):

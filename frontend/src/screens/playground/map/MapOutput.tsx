@@ -4,8 +4,8 @@ import type { MapResult } from "../../../api/jobs";
 import { ScrapeAsBatchBar } from "../run/scrapeAsBatch";
 import { LinksTable } from "./LinksTable";
 
-/** What a map found (SPEC-14 §4.3): how many URLs from each source, whether the list was cut short, then the links,
- * whose selected URLs open as a batch (SPEC-14 §2.8). */
+/** What a map found (frontend spec): how many URLs from each source, whether the list was cut short, then the links,
+ * whose selected URLs open as a batch (frontend spec). */
 export function MapOutput({ result }: Readonly<{ result: MapResult }>) {
   const { urls, sources, truncated } = result;
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());

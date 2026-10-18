@@ -1,4 +1,4 @@
-"""Records (SPEC-05 §4.10, ARCHITECTURE §6 `record`, §10 "Incomplete pages", INV-22, INV-27): what an entity's
+"""Records (resolution spec, INV-22, INV-27): what an entity's
 field outcomes become.
 
 `data` holds the published values and nothing else; `field_meta` says, for every schema field, how it resolved. A
@@ -33,7 +33,7 @@ def _absent(value: object) -> bool:
 
 
 class SubFieldMeta(_Model):
-    """A row sub-field's outcome without its candidates (SPEC-13 §4.8, INV-34)."""
+    """A row sub-field's outcome without its candidates (variants spec, INV-34)."""
 
     status: FieldStatus
     reason: str | None
@@ -49,13 +49,13 @@ class SubFieldMeta(_Model):
 
 
 class RowMeta(_Model):
-    """A published row's sub-field outcomes, aligned with the field's value by index (SPEC-13 §4.8)."""
+    """A published row's sub-field outcomes, aligned with the field's value by index (variants spec)."""
 
     fields: dict[str, SubFieldMeta]
 
 
 class DroppedRowMeta(_Model):
-    """A row that did not publish: its row entities' locators and the reason (SPEC-13 §4.8)."""
+    """A row that did not publish: its row entities' locators and the reason (variants spec)."""
 
     locators: list[LocatorText]
     reason: str
@@ -63,7 +63,7 @@ class DroppedRowMeta(_Model):
 
 class FieldMeta(SubFieldMeta):
     """`record.field_meta[field]` (§6): the field's outcome without its candidates. A row-mapped field adds `items` and
-    `dropped` (SPEC-13 §4.8); other fields have neither key, so the shape is additive."""
+    `dropped` (variants spec); other fields have neither key, so the shape is additive."""
 
     derived_by: Derivation | None
     items: list[RowMeta] | None = Field(default=None, exclude_if=_absent)

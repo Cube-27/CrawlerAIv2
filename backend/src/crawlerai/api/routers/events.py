@@ -1,4 +1,4 @@
-"""`GET /v1/jobs/{id}/events` (SPEC-10 §4.2): a job's run events over server-sent events (WHATWG HTML §9.2), resumed
+"""`GET /v1/jobs/{id}/events` (jobs spec): a job's run events over server-sent events (WHATWG HTML §9.2), resumed
 after the `Last-Event-ID` a reconnecting client sends. FastAPI's `EventSourceResponse` sends a keep-alive comment
 when the stream has been idle 15 s, the heartbeat §4.2 asks for."""
 

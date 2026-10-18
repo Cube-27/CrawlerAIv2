@@ -1,6 +1,6 @@
-"""Drift (SPEC-08 §4.9): a config field's windowed yield and validity, measured on the pages an active config runs on,
-against its validated yield and validity less the dev-fitted margins; a field that falls below is suspended and no
-longer runs."""
+"""Drift (learning-configs spec): a config field's windowed yield and validity, measured on the pages an active config
+runs on, against its validated yield and validity less the dev-fitted margins; a field that falls below is suspended and
+no longer runs."""
 
 from datetime import UTC, datetime
 from typing import Any

@@ -1,4 +1,4 @@
-"""`crawl` jobs (SPEC-10 §4.5, ARCHITECTURE §13.2): submitted through the crawl service, run by a worker loop through
+"""`crawl` jobs (jobs spec): submitted through the crawl service, run by a worker loop through
 the real queue, and read back through the jobs service. The frontier's enqueueing is also tested on its own, against the
 `url_task` table."""
 
@@ -221,7 +221,7 @@ async def test_only_urls_a_rule_matches_are_extracted_and_outcomes_match_the_tas
         f"{own_origin}/": "links_only",
         f"{own_origin}/c/kettles": "links_only",
         f"{own_origin}/p/blue": "extracted",
-        # Crawl-discovered: an incomplete page has no record (ARCHITECTURE §10).
+        # Crawl-discovered: an incomplete page has no record.
         f"{own_origin}/p/plain": "no_match",
     }
     of_job = UrlTask.job_id == submitted.job_id
@@ -277,7 +277,7 @@ async def test_a_product_absent_from_two_consecutive_crawls_is_gone(
     }
     request = records_crawl(f"{own_origin}/", kettle_schema, f"{own_origin}/p/*")
     runs = []
-    # SPEC-11 §7: the red kettle leaves the listing after the first run.
+    # jobs spec: the red kettle leaves the listing after the first run.
     for listed in (("/p/blue", "/p/red"), ("/p/blue",), ("/p/blue",)):
         web.pages[f"{own_origin}/"] = page(*listed)
         submitted = await submit_crawl(engine, fetching.connector, request, data=engine_data)
