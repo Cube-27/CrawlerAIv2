@@ -11,8 +11,9 @@ that holds no other text block) is scored on its own, by three structural proper
   one minus the link density, under 0.3: a block of controls and wrappers around a few words);
 - its text occurs again on the page (a repeated "Add to cart" or "Read more" is page furniture, not content).
 
-Code (`pre`) and table cells are data a reader wants as written: only the landmark step touches them. Headings are
-dropped only when their section ends up empty. A page whose pruning leaves nothing is returned as `markdown` would.
+Code (`pre`) and table cells, with the blocks inside them, are data a reader wants as written: only the landmark step
+touches them. Headings are dropped only when their section ends up empty. A page whose pruning leaves nothing is
+returned as `markdown` would.
 
 With a `query`, the pruned markdown is split into blocks (`content.md_blocks`) and each block that is not a heading is
 scored against it with BM25 (`content.bm25`); blocks with a score of zero are dropped, and with `max_blocks` only the
@@ -115,7 +116,7 @@ def _prune_blocks(tree: HtmlElement) -> None:
 
 def _drops(element: HtmlElement, text: str, occurrences: int) -> bool:
     tag = str(element.tag)
-    if tag in _AS_WRITTEN or tag in _HEADINGS:
+    if tag in _AS_WRITTEN or tag in _HEADINGS or _inside_as_written(element):
         return False
     if occurrences > 1:
         return True
@@ -124,6 +125,11 @@ def _drops(element: HtmlElement, text: str, occurrences: int) -> bool:
     markup = sum(2 * len(str(e.tag)) + _TAG_OVERHEAD for e in element.iter() if isinstance(e.tag, str))
     text_density = len(text) / (len(text) + markup)
     return link_density > _MAX_LINK_DENSITY or text_density * (1 - link_density) < _MIN_TEXT_DENSITY
+
+
+def _inside_as_written(element: HtmlElement) -> bool:
+    """Whether a block is part of a table cell or code (`_AS_WRITTEN`): a `p` in a `td` is the cell's data too."""
+    return any(ancestor.tag in _AS_WRITTEN for ancestor in element.iterancestors())
 
 
 def _without_empty_sections(blocks: list[Block]) -> list[Block]:

@@ -76,6 +76,17 @@ def test_code_and_table_cells_are_kept_as_written_even_when_they_repeat() -> Non
     assert fit.count("yes") == 3
 
 
+def test_blocks_inside_table_cells_and_code_are_kept_as_written_even_when_they_repeat() -> None:
+    html = (
+        "<html><body><div>"
+        f"<p>{PROSE}</p>"
+        "<table><tr><td><p>yes</p></td><td><p>yes</p></td></tr><tr><td><p>no</p></td><td><p>yes</p></td></tr></table>"
+        "</div></body></html>"
+    )
+    fit = _fit(html)
+    assert fit.count("yes") == 3
+
+
 def test_a_heading_whose_section_is_pruned_empty_is_dropped() -> None:
     html = (
         "<html><body><article>"
