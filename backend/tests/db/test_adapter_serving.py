@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.rungs import Rungs, adapter_registry
+from crawlerai.acquire.rungs import Rungs, acquire, adapter_registry
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
@@ -340,3 +340,20 @@ async def test_a_crawl_task_served_by_an_adapter_stores_its_page_as_where_it_was
     # The adapter's endpoint is not the page: the frontier must not take it for a fetched page (D-1382).
     assert len(web.requested) == 1
     assert final_url == canonicalize(url)
+
+
+async def test_a_page_whose_recipe_failed_is_still_served_by_the_adapter_its_canonical_url_names(
+    fetching: Fetching, web: Web, fetch_result: Callable[..., FetchResult], own_origin: str
+) -> None:
+    # SPEC-15 §4.2: a page no adapter detected is asked of the adapter its canonical URL names, recipe or not.
+    canonical = f"{own_origin}/collections/lamps"
+    url = f"{canonical}?ref=footer"
+    web.pages[url] = PAGE.replace(b"</title>", f'</title><link rel="canonical" href="{canonical}">'.encode())
+
+    async def failed_recipe(page_url: str, policy: FetchPolicy) -> FetchResult:
+        return fetch_result(page_url, 500, b"{}", block_class="error", method="api")
+
+    result = await acquire(url, FetchPolicy(), "http", fetching.rungs, recipe=failed_recipe, send=web.json)
+
+    assert (result.method, result.block_class) == ("api", "ok")
+    assert [(a.method, a.status) for a in result.attempts] == [("api", 500), ("http", 200), ("api", 200)]
