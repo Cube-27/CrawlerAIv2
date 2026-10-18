@@ -22,8 +22,8 @@ whole class; the classes the contract keeps declined are investigated and logged
 
 ## Impact
 
-- Capabilities: [evaluation](../../specs/evaluation/spec.md), [extraction](../../specs/extraction/spec.md),
-  [adapters](../../specs/adapters/spec.md).
+- Capabilities: [evaluation](../../../specs/evaluation/spec.md), [extraction](../../../specs/extraction/spec.md),
+  [adapters](../../../specs/adapters/spec.md).
 - Code: `backend/src/crawlerai/eval/` (`metrics.py`, new `scoring.py`), `backend/src/crawlerai/cli.py`,
   `backend/src/crawlerai/adapters/` (`base.py`, `greenhouse.py`), `backend/src/crawlerai/collect/` (`adapter.py`,
   `schema_org_map.py`).

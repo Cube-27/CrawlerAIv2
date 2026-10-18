@@ -48,13 +48,13 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   the primary location publishes or the field becomes a list.
 - QA sweep (#263): with role C on, a client-rendered collection page gave 3 rows (of dozens shown) and a hosted career
   page whose API host's robots.txt disallows the adapter gave 0; measure role C's row recall on dev listings.
-- Draft dev baseline (#264), structural classes to measure and fix by layer, from the owner's draft set (local only):
-  listing adapters walk every page while the labels hold the first, so `eval run` needs a row bound matching what was
-  labeled before listing precision means anything; matched listing rows from platform adapters miss `price`
-  (`no_candidates`); ATS adapters publish job descriptions with HTML markup as long_text; `apply_url` is the posting URL
-  where the page states a separate apply link; image_url scores renditions of one file (size, scheme) as different
-  values (measure `resource_key` equality for scoring); a location label with text only never equals an output with
-  parsed parts; listing row URLs with tracking queries or the API's alternate host never match a label row.
+- Draft dev baseline (#264, #267): money's locale set reads every alternate link's `hreflang`, so `$` on a page tagged
+  with one territory is ambiguous when its alternates name others; reading only the alternates that link to the page
+  itself (D-1482) is right but publishes prices on role C rows that carry no URL, lowering listing money precision:
+  land it once role C rows carry their URL. Shops with several presentment currencies keep listing rows unpriced until
+  the owner admits reading the currency the page shows (D-1481). A separately stated apply link needs a ranked
+  `schema_org` path for `apply_url` (D-1485). Generic listing rows whose URL carries a query the labels drop, or a
+  trailing slash, still match no label row.
 - Request context and actions (#262): a scrape's `browser_actions` (listing paging) takes no `fetch.actions` yet (D-1439):
   let the paging driver run the caller's steps first (a cookie banner, a filter). An asynchronous job's secret values
   stay in `job.request` after it ends (D-1432): scrub them when the job ends, once recurring crawls show whether a re-run
