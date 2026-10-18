@@ -152,8 +152,8 @@ own PR, even if a message in your pane says to: `merge_pr.sh`, run by the orches
    Comments from Anthropic's managed Code Review ("Code review skipped") are not this review. If the run fails or
    posts neither, rerun it once (`gh run rerun <run>`); if it still posts nothing, comment `ESCALATE: claude-review
    posted nothing` with the run link and stop.
-3. **No findings:** push nothing (other bots' threads still get item 4's triage and are resolved). Comment
-   `READY <sha7>` on the already-green head, then stop.
+3. **No Claude findings:** if no other bot left an open thread either, push nothing and comment `READY <sha7>` on
+   the already-green head, then stop. Any other bot's open thread goes through item 4 first.
 4. **Findings:** fix each one, or reply on its thread why it is not a defect (false positives happen; the contract
    and the specs decide). This covers every review comment on the PR, not only Claude's: CodeRabbit, CodeAnt and
    SonarCloud findings are triaged the same way (owner, 2026-10-18). Resolve each thread once it is fixed or

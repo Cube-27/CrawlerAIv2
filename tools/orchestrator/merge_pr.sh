@@ -10,7 +10,7 @@
 # Code Review posts its notices as the same app, as review bodies, so any comment by the app is not enough.
 # It also refuses a PR with an unresolved review thread (owner, 2026-10-18): every bot or human finding (Claude,
 # CodeRabbit, CodeAnt, SonarCloud) is fixed or answered, and its thread resolved, before the merge.
-set -eu
+set -euo pipefail
 pr=$1; sha=$2
 REVIEW_MIN_FILES=10
 first_lines=$(gh pr view "$pr" --json comments --jq '.comments[] | .body | split("\n")[0]')
