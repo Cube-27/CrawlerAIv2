@@ -94,7 +94,7 @@ RECORDS_UNAVAILABLE: Final = "records_unavailable"
 _VENDOR_TRIES: Final = 2
 
 # The request's `min_confidence`, as the job row stores it.
-_MIN_CONFIDENCE: Final[TypeAdapter[Probability | None]] = TypeAdapter(Probability | None)  # type: ignore[arg-type]
+_MIN_CONFIDENCE: Final = TypeAdapter(Probability)
 _JobRow = Row[dict[str, object], SchemaId | None, dict[str, object] | None]
 
 
@@ -123,8 +123,9 @@ async def load_job(
     if data is None:
         return Failed(RECORDS_UNAVAILABLE, transient=False)
     pins = JobPins.model_validate(job.pinned)
+    floor = job.request.get("min_confidence")
     pinned = data.pinned(pins.engine_data).with_min_confidence(
-        _MIN_CONFIDENCE.validate_python(job.request.get("min_confidence"))
+        None if floor is None else _MIN_CONFIDENCE.validate_python(floor)
     )
     config_id = pins.configs.get(urlsplit(task.url).hostname or "")
     config = None if config_id is None else await config_by_id(conn, config_id, pinned.vocabulary)
