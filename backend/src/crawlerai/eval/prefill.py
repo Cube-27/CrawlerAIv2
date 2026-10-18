@@ -52,11 +52,8 @@ async def prefill(
         blocks = await asyncio.to_thread(_blocks, page, ctx, fields)
         filled = await _listing(llm, page, ctx, fields, blocks)
         rows = tuple(block.row for block in blocks)
-    replies = [one.reply for one in filled]
-    if failure := next((reply for reply in replies if isinstance(reply, LLMFailure)), None):
-        raise failure
+    model = _model(filled)
     by_owner = _labels_by_owner(tuple(c for one in filled for c in one.candidates))
-    model = next((reply.model for reply in replies if isinstance(reply, LLMResponse)), None)
     return Labels(
         label_version=1,
         status="draft",
@@ -64,6 +61,14 @@ async def prefill(
         fields=by_owner.get(PAGE, {}),
         rows=tuple(LabelRow(fields=by_owner[row]) for row in rows if by_owner.get(row)),
     )
+
+
+def _model(filled: list[c_extract.Filled]) -> str | None:
+    """The model that answered the calls, None when none was made; raises the first call's failure."""
+    replies = [reply for one in filled for reply in one.replies]
+    if failure := next((reply for reply in replies if isinstance(reply, LLMFailure)), None):
+        raise failure
+    return next((reply.model for reply in replies if isinstance(reply, LLMResponse)), None)
 
 
 async def _listing(

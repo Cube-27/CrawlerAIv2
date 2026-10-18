@@ -577,6 +577,17 @@ def test_blocks_past_the_character_budget_go_to_the_next_call() -> None:
     assert ["[0] " in r.user and "[1] " not in r.user for r in client.requests] == [True, False]
 
 
+def test_a_block_longer_than_the_character_budget_is_cut_to_it_and_keeps_its_offsets() -> None:
+    long = block(0, "Widget One " + "x" * LISTING_MAX_CHARS, 7, fields=("title",))
+    client = ScriptedClient(claims_reply(claim(0, "title", "Widget One")))
+
+    filled = extract_blocks(client, (long,), {"title": ROW_SPECS["title"]})
+
+    (request,) = client.requests
+    assert f"[0] Widget One {'x' * (LISTING_MAX_CHARS - 11)}\n</items>" in request.user
+    assert [c.locator for c in filled.candidates] == ["text:7-17"]
+
+
 def test_a_later_call_without_a_valid_reply_keeps_the_values_read_before_it() -> None:
     failure = ProviderUnavailable("fake: 503")
     blocks = _cards(PER_CALL * 2)
@@ -638,6 +649,14 @@ def test_the_listing_hook_without_page_fields_makes_the_blocks_call_only() -> No
     answer = listing_fill(client, BLOCKS, ())
 
     assert (len(client.requests), len(answer.llm_calls), answer.failure) == (1, 1, None)
+
+
+def test_a_failed_blocks_call_ends_the_hooks_calls_and_is_the_page_fields_failure() -> None:
+    client = ScriptedClient(BudgetExhausted("none left"))
+
+    answer = listing_fill(client, BLOCKS, ("heading",))
+
+    assert (len(client.requests), answer.candidates, answer.failure) == (1, (), "llm_budget")
 
 
 def test_the_page_fields_call_failing_is_the_hooks_failure() -> None:

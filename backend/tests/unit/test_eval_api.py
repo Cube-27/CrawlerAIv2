@@ -793,3 +793,23 @@ def test_capture_input_errors_are_validation_problems(
 
     assert response.status_code == 422
     assert (response.json()["type"], response.json()["detail"]) == ("validation", detail)
+
+
+def test_prefill_of_a_listing_whose_later_blocks_call_fails_stores_nothing() -> None:
+    # Four row fields fit fewer than 60 blocks in one call, so 60 cards take two calls; the second's failure is the
+    # pre-fill's, though the first answered.
+    specs = {name: FieldSpec(type=FieldType.TEXT, scope="row") for name in ("brand", "maker", "model", "colour")}
+    specs["url"] = FieldSpec(type=FieldType.URL, scope="row", schema_org="Product.url")
+    cards = "".join(
+        f'<li class="card"><h3><a href="/p/{n}">Mug {n}</a></h3><span>{n}.50 EUR</span><p>Acme {n}</p></li>'
+        for n in range(60)
+    )
+    body = f"<html><body><ul>{cards}</ul></body></html>".encode()
+    client = ScriptedClient({"claims": []}, ProviderUnavailable("no provider answered"))
+    backend = FakeBackend(llm=client, specs=specs)
+    page = backend.store.add(page_kind="listing", body=body)
+
+    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
+
+    assert (response.status_code, response.json()["type"], len(client.requests)) == (503, "llm_unavailable", 2)
+    assert _writes(backend) == []

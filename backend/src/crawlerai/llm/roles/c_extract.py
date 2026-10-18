@@ -19,7 +19,7 @@ reason. Everything else the client raises, a replay's missing recording among th
 
 import asyncio
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib.resources import files
 from typing import Final, cast
 
@@ -84,6 +84,11 @@ class Filled:
     candidates: tuple[Candidate, ...]
     reply: LLMResponse | LLMFailure
     diagnostics: tuple[str, ...]
+
+    @property
+    def replies(self) -> tuple[LLMResponse | LLMFailure, ...]:
+        """Every call's response or failure, in order."""
+        return (self.reply,)
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,13 +265,16 @@ def _read_claims(
 
 def _calls(blocks: Sequence[BlockText], fields: int) -> tuple[tuple[tuple[BlockText, ...], ...], tuple[str, ...]]:
     """The first `LISTING_MAX_BLOCKS` blocks in runs whose claims fit the reply's token cap and whose lines fit
-    `LISTING_MAX_CHARS` (a longer block alone in its run), and the diagnostic that records blocks left unread."""
+    `LISTING_MAX_CHARS` (a longer block cut to it, alone in its run), and the diagnostic that records blocks left
+    unread."""
     per = max(1, LISTING_MAX_OUTPUT_TOKENS // (max(fields, 1) * BLOCK_CLAIM_TOKENS))
     read = blocks[:LISTING_MAX_BLOCKS]
     runs: list[tuple[BlockText, ...]] = []
     run: list[BlockText] = []
     chars = 0
-    for block in read:
+    for whole in read:
+        # A block longer than a call's budget is cut to it; its `start` stays, so its claims keep their offsets.
+        block = replace(whole, text=whole.text[:LISTING_MAX_CHARS])
         if run and (len(run) == per or chars + len(block.text) > LISTING_MAX_CHARS):
             runs.append(tuple(run))
             run, chars = [], 0

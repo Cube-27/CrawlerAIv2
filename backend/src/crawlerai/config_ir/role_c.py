@@ -43,12 +43,14 @@ class _RoleC:
         return GapReply(filled.candidates, calls, failure=_reason(filled), diagnostics=filled.diagnostics)
 
     async def listing(self, request: ListingGapRequest) -> ListingGapReply:
-        """The blocks' call (when blocks are asked), then the page fields' (when page fields are): the page fields are
-        read in the whole cleaned text, as a detail page's, since a block shows one item only."""
+        """The blocks' calls (when blocks are asked), then the page fields' (when page fields are): the page fields are
+        read in the whole cleaned text, as a detail page's, since a block shows one item only. A failed call ends the
+        page's calls, and its reason is the asked page fields'."""
         fields = request.schema.fields
         candidates: list[Candidate] = []
         diagnostics: list[str] = []
         calls: list[LLMCallRecord] = []
+        failure = None
         if request.blocks:
             asked = sorted({name for block in request.blocks for name in block.fields})
             rows = await c_extract.extract_listing(
@@ -57,8 +59,8 @@ class _RoleC:
             candidates.extend(rows.candidates)
             diagnostics.extend(rows.diagnostics)
             calls.extend(_calls(c_extract.LISTING_PROMPT_KIND, rows))
-        failure = None
-        if request.page_missing:
+            failure = _reason(rows)
+        if request.page_missing and failure is None:
             page = await c_extract.extract_detail(
                 self.client,
                 request.page.cleaned_text.text,
@@ -76,10 +78,12 @@ class _RoleC:
 
 
 def _reason(filled: c_extract.Filled) -> str | None:
-    return filled.reply.field_reason if isinstance(filled.reply, LLMFailure) else None
+    """The reason of the first of the calls that gave no valid reply, if one did."""
+    return next((reply.field_reason for reply in filled.replies if isinstance(reply, LLMFailure)), None)
 
 
 def _calls(kind: PromptKind, filled: c_extract.Filled) -> tuple[LLMCallRecord, ...]:
     """Every answered call, a failed one's too, of every call the hook made: each was charged to the job (F30)."""
-    replies = filled.replies if isinstance(filled, c_extract.FilledListing) else (filled.reply,)
-    return tuple(LLMCallRecord(prompt_kind=kind, **call.model_dump()) for reply in replies for call in reply.answered)
+    return tuple(
+        LLMCallRecord(prompt_kind=kind, **call.model_dump()) for reply in filled.replies for call in reply.answered
+    )
