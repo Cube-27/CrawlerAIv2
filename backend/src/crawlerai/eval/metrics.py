@@ -30,7 +30,8 @@ from crawlerai.eval.labels import (
     parse_labels,
     sub_fields,
 )
-from crawlerai.normalize.dispatch import equal, similarity
+from crawlerai.eval.scoring import same
+from crawlerai.normalize.dispatch import equal
 from crawlerai.resolve.preference import rule_type
 from crawlerai.resolve.types import Evidence
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -39,10 +40,6 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 _URL = FieldSpec(type=FieldType.URL)
 # ARCHITECTURE §16.3: hidden and fresh aggregates suppress cells with fewer than 10 labeled fields.
 MIN_CELL = 10
-# D-1462: a long_text output matches its label when their word multisets overlap by at least this Dice coefficient
-# (`normalize.dispatch.similarity`): a description is one value, but where it ends and how it is broken into lines
-# differ between a page's sources, so exact equality would score most correct descriptions wrong.
-LONG_TEXT_MIN_SIMILARITY = 0.9
 # The label statuses that count by default: checked pages only (§16.2). Drafts count only in a dev report that asks
 # for them (D-1461).
 CHECKED: frozenset[LabelStatus] = frozenset({"checked"})
@@ -51,6 +48,11 @@ CHECKED: frozenset[LabelStatus] = frozenset({"checked"})
 CONFIG_EVIDENCE: frozenset[Evidence] = frozenset({"config_corroborated", "config_uncorroborated"})
 Cell = Literal["TP", "FP", "FN", "TN"]
 SourceCell = Literal["TP", "FP"]
+# Which engine rows of a listing that match no label row count as FP (§4.6): every one (`all`), or only those among the
+# first as many engine rows as the page has label rows (`labeled`, D-1480). A label holds the rows of the page as it
+# was labeled, its first page; an adapter or a paging run reads the list's further pages too, whose rows no label
+# holds, so the dev report scores both.
+RowScope = Literal["all", "labeled"]
 
 
 class _Model(BaseModel):
@@ -214,6 +216,8 @@ class Report(_Model):
     # "schema|field" (`disagreement`), for triage.
     by_page_kind: dict[str, FieldMetrics | Suppressed] = {}
     disagreements: dict[str, dict[str, int]] = {}
+    # Which unmatched engine rows count as FP (`RowScope`, D-1480).
+    rows_scored: RowScope = "all"
 
 
 @dataclass(frozen=True)
@@ -242,13 +246,17 @@ def build_report(
     engine_version: str,
     git_sha: str,
     statuses: frozenset[LabelStatus] = CHECKED,
+    rows: RowScope = "all",
 ) -> Report:
     """Score every case whose label status is in `statuses`: checked only (§4.3), unless a dev report asks for drafts
     too (D-1461), whose unlabeled fields are not scored. Failed replays are dropped from `n_pages` and every metric.
-    Per-page detail is kept for dev only."""
+    Per-page detail is kept for dev only. `rows` says which unmatched engine rows count as FP (`RowScope`); only a dev
+    report bounds them (D-1480)."""
     if statuses != CHECKED and split != "dev":
         raise ValueError(f"only a dev report scores labels that are not checked, not a {split} one")
-    scored, details, row_counts = _score(cases, statuses)
+    if rows != "all" and split != "dev":
+        raise ValueError(f"only a dev report bounds the engine rows it scores, not a {split} one")
+    scored, details, row_counts = _score(cases, statuses, rows)
     by_type: defaultdict[str, list[Judgment]] = defaultdict(list)
     by_field: defaultdict[str, list[Judgment]] = defaultdict(list)
     by_bucket: defaultdict[str, list[Judgment]] = defaultdict(list)
@@ -299,6 +307,7 @@ def build_report(
         label_statuses=sorted(statuses),
         by_page_kind={k: _field_metrics(v) for k, v in sorted(by_kind.items())} if dev else {},
         disagreements=_disagreements(by_field) if dev else {},
+        rows_scored=rows,
     )
 
 
@@ -329,7 +338,7 @@ _Scored = tuple[EvalCase, PageOutput, list[Judgment], bool]
 
 
 def _score(
-    cases: Iterable[EvalCase], statuses: frozenset[LabelStatus]
+    cases: Iterable[EvalCase], statuses: frozenset[LabelStatus], rows: RowScope
 ) -> tuple[list[_Scored], list[PageDetail], defaultdict[str, _RowCount]]:
     """Each case in `statuses` judged, with its zero-touch; each page's detail; the row counts of row-mapped fields."""
     scored: list[_Scored] = []
@@ -342,7 +351,7 @@ def _score(
             case ReplayFailed(error=error):
                 details.append(_detail(case, error, None, ()))
             case PageOutput() as output:
-                judgments = _judge_case(case.schema_def, case.labels, output, row_counts)
+                judgments = _judge_case(case.schema_def, case.labels, output, row_counts, rows)
                 zero_touch = _zero_touch(case.schema_def, judgments, frozenset(case.labels.lists))
                 scored.append((case, output, judgments, zero_touch))
                 details.append(_detail(case, None, zero_touch, tuple(judgments), output.llm_unanswered))
@@ -350,10 +359,14 @@ def _score(
 
 
 def _judge_case(
-    schema: SchemaFields, labels: Labels, output: PageOutput, row_counts: defaultdict[str, _RowCount]
+    schema: SchemaFields,
+    labels: Labels,
+    output: PageOutput,
+    row_counts: defaultdict[str, _RowCount],
+    rows: RowScope = "all",
 ) -> list[Judgment]:
     """A page's judgments, its row-mapped fields' included; their row counts are added to `row_counts`."""
-    judgments = list(_judge_page(schema, labels, output))
+    judgments = list(_judge_page(schema, labels, output, rows))
     for name, (list_judgments, count) in _judge_lists(schema, labels, output).items():
         judgments += list_judgments
         row_counts[f"{schema.name}|{name}"] += count
@@ -475,7 +488,7 @@ def _detail(
     )
 
 
-def _judge_page(schema: SchemaFields, labels: Labels, output: PageOutput) -> Iterator[Judgment]:
+def _judge_page(schema: SchemaFields, labels: Labels, output: PageOutput, rows: RowScope = "all") -> Iterator[Judgment]:
     # Fields labeled at page level: on a detail page all of them, on a listing page the `scope: page` ones (D-0168
     # makes a checked page label every one).
     for name, label in sorted(labels.fields.items()):
@@ -488,7 +501,9 @@ def _judge_page(schema: SchemaFields, labels: Labels, output: PageOutput) -> Ite
         for name, label in sorted(row.fields.items()):
             yield _judge(name, f"row[{i}]", label, out_row.get(name), schema.fields[name])
     matched = set(matches.values())
-    for j, out_row in enumerate(output.rows):
+    # D-1480: with `labeled`, an unmatched engine row past the label's row count is a row of a page no label holds.
+    scored = len(output.rows) if rows == "all" else len(labels.rows)
+    for j, out_row in enumerate(output.rows[:scored]):
         if j not in matched:
             yield from _unmatched_row(j, out_row, schema.fields)
 
@@ -635,17 +650,6 @@ def _judge(name: str, entity: str, label: FieldLabel, out: FieldOutput | None, s
         reason=None if out is None or published else out.reason,
         sources={} if out is None else _source_cells(out, label, spec),
     )
-
-
-def same(output: JsonValue, label: JsonValue, spec: FieldSpec) -> bool:
-    """Whether an output value scores as its label's value: equal by the type's equality (SPEC-04 §4.5), or, for
-    long_text, similar enough (`LONG_TEXT_MIN_SIMILARITY`, D-1462)."""
-    if equal(output, label, spec):
-        return True
-    if spec.type is not FieldType.LONG_TEXT:
-        return False
-    score = similarity(output, label, spec)
-    return score is not None and score >= LONG_TEXT_MIN_SIMILARITY
 
 
 def _source_cells(out: FieldOutput, label: FieldLabel, spec: FieldSpec) -> dict[SourceKind, SourceCell]:

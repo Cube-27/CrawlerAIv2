@@ -9,7 +9,6 @@ from pydantic import JsonValue
 
 from crawlerai.eval.labels import Labels
 from crawlerai.eval.metrics import (
-    LONG_TEXT_MIN_SIMILARITY,
     EvalCase,
     FieldMetrics,
     FieldOutput,
@@ -19,6 +18,7 @@ from crawlerai.eval.metrics import (
     build_report,
     export_aggregate,
 )
+from crawlerai.eval.scoring import LONG_TEXT_MIN_SIMILARITY
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 EUR_19: JsonValue = {"amount": "19.90", "currency": "EUR"}
