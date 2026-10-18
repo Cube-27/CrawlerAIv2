@@ -47,7 +47,7 @@ Job events SHALL be read with `fetch` streaming, resumed with `Last-Event-ID`, r
 
 ### Requirement: Playground modes and command bar
 The playground SHALL serve Scrape `/`, Batch `/batch`, Crawl `/crawl`, Map `/map`, Extract `/extract` and Search
-`/search` behind a link-tab mode switch without visible group captions, with one centred command bar (input row, then Options, Format, Schema, Get code and the primary button) that does not move between the single-URL modes at desktop width, and at phone width puts Get code and the primary button on the row under the input; Batch's URL box shows ten lines and scrolls inside (`frontend/src/screens/playground/`). Search takes a query, shows Format and Schema only with Scrape results on, lists its results on the page and links to the batch run; Crawl's options include Strategy, Query, Include subdomains and Follow external links (the query is sent only for Best first). (Previously: five modes, no Search.) Refs: Appendix A #38, #45, #51, #61, D-0817, D-1043, D-1213, D-1216, D-1447.
+`/search` behind a link-tab mode switch without visible group captions, with one centred command bar (input row, then Options, Format, Schema, Get code and the primary button) that does not move between the single-URL modes at desktop width, and at phone width puts Get code and the primary button on the row under the input; Batch's URL box shows ten lines and scrolls inside (`frontend/src/screens/playground/`). Search takes a query, shows Format and Schema only with Scrape results on, lists its results on the page and links to the batch run; Crawl's options include Strategy, Query, Keywords, Include subdomains and Follow external links (the query and keywords are sent only for Best first, and a stored crawl's keywords are restored, D-1596). (Previously: five modes, no Search.) Refs: Appendix A #38, #45, #51, #61, D-0817, D-1043, D-1213, D-1216, D-1447.
 #### Scenario: Back and forward
 - **WHEN** a user switches from Scrape to Crawl and presses back
 - **THEN** the URL returns to `/` and Scrape mode shows
@@ -115,7 +115,9 @@ The Options of Scrape, Batch, Crawl and Extract SHALL hold an Advanced section a
 once like every setting (no nested panel to open): headers and
 cookies (one `Name: value` / `name=value` per line), proxy pool, wait for and cache, sent as the `fetch` members while
 filled; and an actions editor that adds, edits, reorders and removes steps (at most 20), sent as `fetch.actions`.
-Refs: owner delegation 2026-10-17, D-1430, D-1436.
+A combination the server always refuses (a screenshot, PDF, wait for or actions with the HTTP method; headers with
+the browser, wait for or actions) is named on its field and not sent.
+Refs: owner delegation 2026-10-17, D-1430, D-1436, D-1595.
 #### Scenario: A click step
 - **WHEN** the user adds a Click step with selector `.more`
 - **THEN** the request's `fetch.actions` is `[{"type": "click", "selector": ".more"}]`
