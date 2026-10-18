@@ -3,7 +3,8 @@
 capture it keeps.
 
 A listing is rendered when its document shows fewer than `MIN_ITEMS` repeated item blocks that show more than their
-link (`acquire.items.shown_items`: its grid is filled by script, and what repeats is chrome such as related links),
+link (the item layer's first group, `ParsedPage.item_groups`, counted by `content.segment.shown_blocks`: its grid is
+filled by script, and what repeats is chrome such as related links),
 when the text it keeps from rendering (the `hidden` attribute, an inline `display: none`; `content.text.concealed`)
 outweighs the text it renders (a streamed document whose script moves its segments into place), or when its
 structured data lists fewer items than its document shows (the structured list is a subset of a grid the render may
@@ -14,8 +15,9 @@ non-whitespace makes the count independent of how text nodes are joined.
 from selectolax.lexbor import LexborNode
 
 from crawlerai.acquire.classify import structured_entries
-from crawlerai.acquire.items import MIN_ITEMS, shown_items
+from crawlerai.acquire.items import MIN_ITEMS, item_groups
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.segment import shown_blocks
 from crawlerai.content.text import NOT_RENDERED, concealed
 
 
@@ -25,7 +27,7 @@ def listing_needs_render(page: ParsedPage, over: ParsedPage | None = None) -> bo
     with more rows is kept)."""
     if over is not None and listed(page) > listed(over):
         return False
-    blocks = shown_items(page.lxml_tree)
+    blocks = _shown(page)
     if blocks < MIN_ITEMS:
         return True
     shown, kept = _text_weights(page.tree.body)
@@ -41,9 +43,16 @@ def lost_items(render: ParsedPage, over: ParsedPage) -> bool:
 
 
 def listed(page: ParsedPage) -> int:
-    """How many items the page lists: the item blocks it shows (`shown_items`), or the items its structured data
-    lists (`structured_entries`), whichever is more."""
-    return max(shown_items(page.lxml_tree), structured_entries(page.tree))
+    """How many items the page lists: the blocks of its richest repeated item group that show more than their link,
+    a hidden segment's included (a streamed document's items wait there for its script, so they are the page's), or
+    the items its structured data lists (`structured_entries`), whichever is more."""
+    held = max((shown_blocks(group) for group in item_groups(page.lxml_tree)), default=0)
+    return max(held, structured_entries(page.tree))
+
+
+def _shown(page: ParsedPage) -> int:
+    """How many blocks of the page's first item group show more than their link."""
+    return shown_blocks(page.item_groups[0]) if page.item_groups else 0
 
 
 def _text_weights(body: LexborNode | None) -> tuple[int, int]:

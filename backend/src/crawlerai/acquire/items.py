@@ -1,12 +1,13 @@
-"""The repeated item structure of a page (ARCHITECTURE §8.6): the blocks a listing shows its items in, read from the
-document's structure only (C2, C4). `classify` reads it to tell a listing whose grid has not loaded (SPEC-02 §4.3),
-and the `markdown` format to keep a listing's items (SPEC-07 §4.5).
+"""The repeated item structure of a page, as the document's structure shows it (C2, C4; item layer, owner #67): the
+groups of sibling blocks a listing shows its items in. This is the structural walk only; which group is the page's
+items is the segment step's (`content.segment`). Acquisition reads the walk before any page is parsed: its shell rule
+(`acquire.classify`) and the browser rung's item geometry (`acquire.browser`).
 
 Items are at least `MIN_ITEMS` sibling elements of one shape that each are or hold a hyperlink (HTML Standard §4.6).
 One template renders them all, so siblings of one tag share the class tokens the template writes; a template may add a
 token of an item's own (its position, a state), so a shape is the tag and the tokens most of those siblings carry, not
-the whole class list. They are looked for in the page's content: its main landmark
-(§4.4.14), else its body, without the site's chrome.
+the whole class list. They are looked for in the page's content: its main landmark (§4.4.14), else its body, without
+the site's chrome.
 """
 
 from collections import Counter
@@ -16,16 +17,18 @@ from lxml import etree
 from lxml import html as lxml_html
 from lxml.html import HtmlElement
 
-# A listing shows at least this many items; resolution takes as many top-level entities for a listing's rows (SPEC-05
-# §4.7, `resolve.listing.MIN_TOP_LEVEL_ROWS`): fewer is what a detail page's related items look like.
+# A listing shows at least this many items; resolution takes as many top-level entities for a listing's rows
+# (`resolve.listing.MIN_TOP_LEVEL_ROWS`): fewer is what a detail page's related items look like.
 MIN_ITEMS: Final = 3
 # A site's chrome, not its content: the HTML Standard's navigation, header, footer and aside elements (§4.3, §4.4) and
 # the WAI-ARIA 1.2 landmark roles they map to (§5.3.4).
 _CHROME_TAGS: Final = frozenset({"nav", "header", "footer", "aside"})
 _CHROME_ROLES: Final = frozenset({"navigation", "banner", "contentinfo", "complementary"})
 # HTML Standard §4.6.1: `a` and `area` elements with an `href` are hyperlinks.
-_LINKS: Final = ("a", "area")
-_VISIBLE_TEXT: Final = "descendant-or-self::text()[not(ancestor::script or ancestor::style or ancestor::template)]"
+LINKS: Final = ("a", "area")
+
+# A group of repeated items, in document order.
+Group = tuple[HtmlElement, ...]
 
 
 def lxml_root(text: str) -> HtmlElement:
@@ -39,7 +42,7 @@ def lxml_root(text: str) -> HtmlElement:
 
 
 def is_hyperlink(element: HtmlElement) -> bool:
-    return element.tag in _LINKS and element.get("href") is not None
+    return element.tag in LINKS and element.get("href") is not None
 
 
 def _tokens(value: str | None) -> tuple[str, ...]:
@@ -47,45 +50,15 @@ def _tokens(value: str | None) -> tuple[str, ...]:
     return tuple((value or "").split())
 
 
-def item_blocks(root: HtmlElement) -> tuple[HtmlElement, ...]:
-    """The group of repeated items in the document `root` with the most structural evidence of being the page's items
-    (`_evidence`, then size), in document order; empty when it shows none."""
-    return max(item_groups(root), key=lambda items: (_evidence(items), len(items)), default=())
-
-
-def shown_items(root: HtmlElement) -> int:
-    """How many of the page's items (`item_blocks`) show more than their link: an image, or text in two or more runs
-    (`_evidence`). A list of bare links (a tag cloud, related posts, a pager) shows a link and its label only."""
-    return sum(1 for item in item_blocks(root) if _holds_image(item) or _holds_several_texts(item))
-
-
-def _evidence(items: tuple[HtmlElement, ...]) -> int:
-    """How much the items show beyond their link: each item scores one for holding an image and one for holding text
-    in two or more runs (a label and something besides it: a title and a price, a name and a description). A bare tag
-    cloud or pager, whose items are a link and its label, scores nothing however many they are, so it cannot outrank a
-    grid of items that show more (D-1277)."""
-    return sum(_holds_image(item) + _holds_several_texts(item) for item in items)
-
-
-def _holds_image(item: HtmlElement) -> bool:
-    return next(item.iter("img", "picture"), None) is not None
-
-
-def _holds_several_texts(item: HtmlElement) -> bool:
-    """Whether the item holds visible text in two or more runs: script data, style sheets and templates are never
-    rendered (HTML Standard §15.3.1), so their text is no run."""
-    return sum(1 for text in item.xpath(_VISIBLE_TEXT) if text.strip()) >= 2
-
-
-def item_groups(root: HtmlElement) -> tuple[tuple[HtmlElement, ...], ...]:
+def item_groups(root: HtmlElement) -> tuple[Group, ...]:
     """Every group of repeated items in the document `root` (at least `MIN_ITEMS` siblings of one shape, outside the
-    chrome), each in document order. The browser's paging driver ranks them by rendered area (`crawl.paging`)."""
+    chrome), each in document order."""
     content = _content(root)
     # One walk up from each hyperlink gathers the link-holding elements by parent and tag; an element already
     # gathered had its ancestors gathered with it, so each element is gathered once.
     siblings: dict[tuple[HtmlElement, object], list[HtmlElement]] = {}
     gathered: set[HtmlElement] = set()
-    for node in filter(is_hyperlink, content.iter(*_LINKS)):
+    for node in filter(is_hyperlink, content.iter(*LINKS)):
         while node is not content and node not in gathered and (parent := node.getparent()) is not None:
             gathered.add(node)
             siblings.setdefault((parent, node.tag), []).append(node)
@@ -125,3 +98,16 @@ def in_chrome(node: HtmlElement | None) -> bool:
             return True
         node = node.getparent()
     return False
+
+
+def element_path(element: HtmlElement) -> str:
+    """The element's element-index XPath 1.0 path from the document root (`/*[1]/*[2]`): one step per ancestor,
+    counting element siblings only (lxml also iterates comments and processing instructions). The browser reads the
+    same serialized document, so the path names the same element there (DOM Standard `document.evaluate`)."""
+    steps: list[str] = []
+    node: HtmlElement | None = element
+    while node is not None:
+        preceding = sum(1 for sibling in node.itersiblings(preceding=True) if isinstance(sibling.tag, str))
+        steps.append(f"*[{1 + preceding}]")
+        node = node.getparent()
+    return "/" + "/".join(reversed(steps))

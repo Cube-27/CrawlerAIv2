@@ -12,9 +12,10 @@ leading whitespace is dropped unless it nests a list item or continues one, and 
 code is kept as written.
 
 trafilatura reads a listing's item grid as boilerplate (link-dense repeated blocks), so for a page fetched as a listing
-the items (`acquire.items.item_blocks`) are taken out of its copy of the tree and written as a Markdown list after the
-rest of the content (`_items`): each item's links, images and text, in document order. A listing page with no
-repeated items is read in recall mode, as precision mode keeps little of a page that is not an article (D-1276).
+the items (the segment step's first group, `ParsedPage.item_groups`) are taken out of its copy of the tree and written
+as a Markdown list after the rest of the content (`_items`): each item's links, images and text, in document order. A
+listing page with no repeated items is read in recall mode, as precision mode keeps little of a page that is not an
+article (extraction spec, "Page content formats").
 
 trafilatura drops the space after an inline element that opens a `div`, `td` or `li`'s text ("**Warning!**This"), so
 each such run of inline content is wrapped in a `p` first (`_wrap_inline_runs`, D-1275).
@@ -33,7 +34,7 @@ from typing import NamedTuple
 import trafilatura
 from lxml.html import HtmlElement
 
-from crawlerai.acquire.items import is_hyperlink, item_blocks
+from crawlerai.acquire.items import element_path, is_hyperlink
 from crawlerai.content.dom import document_base_url
 from crawlerai.content.md_blocks import FENCE, LIST_ITEM
 from crawlerai.content.page import ParsedPage
@@ -64,7 +65,7 @@ def markdown(
     if page.json_body:
         return json_block(page.html)
     tree = _absolute(page, final_url)
-    items = item_blocks(tree) if page_kind == "listing" else ()
+    items = _copied(tree, page.item_groups[0]) if page_kind == "listing" and page.item_groups else ()
     for item in items:
         item.drop_tree()  # lxml keeps the item's tail text in the tree
     if prune is not None:
@@ -82,6 +83,12 @@ def markdown(
     )
     listed = "\n".join(f"- {line}" for line in map(_item, items) if line)
     return _tidy("\n\n".join(part for part in (extracted, listed) if part))
+
+
+def _copied(tree: HtmlElement, blocks: tuple[HtmlElement, ...]) -> list[HtmlElement]:
+    """The `blocks` of the page's tree in its copy `tree`, found by their element paths."""
+    found = (tree.xpath(element_path(block)) for block in blocks)
+    return [nodes[0] for nodes in found if isinstance(nodes, list) and nodes and isinstance(nodes[0], HtmlElement)]
 
 
 def json_block(text: str) -> str:

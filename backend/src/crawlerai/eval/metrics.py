@@ -16,7 +16,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
-from crawlerai.collect.item_links import is_item_url
+from crawlerai.collect.schema_org_map import is_item_url
 from crawlerai.core.capture import BlockClass
 from crawlerai.db.models import EvalCategory, ExtractionMode, FieldStatus, PageKind, SourceKind, Split
 from crawlerai.eval.labels import (
@@ -647,7 +647,7 @@ def _unmatched_row(
 
 def _keyed(label: FieldLabel, session: Collection[str]) -> FieldLabel:
     """A row item URL label rid of the session parameters the engine dropped from that field's values (`session`, empty
-    for every other field), as row matching reads it (extraction spec, "Row item URLs without session parameters")."""
+    for every other field), as row matching reads it (listings spec, "Row item URL")."""
     if not session or not isinstance(label.value, str):
         return label
     return label.model_copy(update={"value": without_parameters(label.value, session)})

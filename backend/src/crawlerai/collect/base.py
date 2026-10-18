@@ -20,6 +20,9 @@ PAGE = "page"
 # An object item of a JSON array holding two or more objects, in JSON without standard keys (`js_state`, `xhr`): one of
 # a set of items, not its document's subject (`collect.admission`). It is no schema.org type.
 ARRAY_ROW = "array_row"
+# A block of the page's repeated item group that holds one item's link: a listing row the item layer read from the DOM
+# (`collect.items.align`). It is no schema.org type.
+ITEM_BLOCK = "item_block"
 
 
 class _Model(BaseModel):

@@ -8,7 +8,7 @@ index in the bundle.
 On a listing, the calls of one rows endpoint (`network_match.row_series`) give rows: the first series, best first, in
 which some row field is proved. A row field takes the path, relative to a row, whose values the admission rule admits in
 the most rows, at least `MIN_ITEMS` of them; for a url field, a value that is the target of a hyperlink of one of the
-page's repeated item blocks (`group_links`; HTML Standard §4.6.1: a hyperlink states the document it leads
+page's repeated item groups (`ParsedPage.item_groups`; HTML Standard §4.6.1: a hyperlink states the document it leads
 to) counts as admitted too, so a call whose items the page links to proves its item URL path even when the field's other
 candidates name other items (a load-more's later batch); a path proved so on the page is read in every row of the series
 through the API recipe row reader (`collect.api`), as a recipe's map is. Those calls are then read as rows only, not
@@ -24,9 +24,10 @@ from crawlerai.collect import json_doc
 from crawlerai.collect.admission import Admitted, Document, FieldAnchors, admit, admits, field_anchors
 from crawlerai.collect.api import read_rows
 from crawlerai.collect.base import Candidate
-from crawlerai.collect.item_links import group_links
+from crawlerai.collect.induce import induced
 from crawlerai.collect.network_match import DataCall, LearnedCalls, data_calls, row_series
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.segment import group_links
 from crawlerai.normalize.base import Context
 from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -117,7 +118,7 @@ def _proved(
     if not series_found:
         return None
     reads_urls = any(spec.scope == "row" and spec.type is FieldType.URL for spec in schema.fields.values())
-    links = frozenset[str]().union(*group_links(page, ctx.base_url)) if reads_urls else frozenset[str]()
+    links = frozenset[str]().union(*group_links(page.item_groups, ctx.base_url)) if reads_urls else frozenset[str]()
     for series in series_found:
         if fields := _row_map(series, page, schema, ctx, anchors, links):
             return series, fields
@@ -135,39 +136,40 @@ def _row_map(
     """Each row field's path in the series' rows: the one whose values are admitted in the most rows, at least
     `MIN_ITEMS`; ties keep the first row's document order."""
     rows = list(_rows(series))
-    paths = list(dict.fromkeys(path for row in rows for path in row if json_doc.is_query(path)))
     found: dict[str, str] = {}
     for name, spec in schema.fields.items():
-        if spec.scope == "row" and paths:
-            counts = _admitted_rows(rows, paths, spec, page, ctx, (anchors.get(name), links))
-            best = max(paths, key=counts.__getitem__)
-            if counts[best] >= MIN_ITEMS:
-                found[name] = best
+        if spec.scope == "row":
+            proposals = _admitted_paths(rows, spec, page, ctx, (anchors.get(name), links))
+            if (path := induced(proposals, MIN_ITEMS)) is not None:
+                found[name] = path
     return found
 
 
-def _admitted_rows(
+def _admitted_paths(
     rows: Sequence[_Row],
-    paths: Sequence[str],
     spec: FieldSpec,
     page: ParsedPage,
     ctx: Context,
     proof: tuple[FieldAnchors | None, frozenset[str]],
-) -> dict[str, int]:
-    """For each path, how many rows hold a value there that the admission rule admits for a field of `spec` with the
-    anchors of `proof`, or, for a url field, that one of the item blocks' links of `proof` leads to."""
+) -> list[list[str]]:
+    """For each row, the paths holding a value the admission rule admits for a field of `spec` with the anchors of
+    `proof`, or, for a url field, that one of the item groups' links of `proof` leads to (`collect.induce`'s
+    proposals)."""
     anchors, links = proof
     memo: dict[tuple[type, Scalar], bool] = {}
-    counts = dict.fromkeys(paths, 0)
+    proposals: list[list[str]] = []
     for row in rows:
+        admitted: list[str] = []
         for path, raw in row.items():
-            if path not in counts:
+            if not json_doc.is_query(path):
                 continue
             key = (type(raw), raw)
             if key not in memo:
                 memo[key] = admits(raw, spec, page, ctx, anchors) or _linked(raw, spec, ctx, links)
-            counts[path] += memo[key]
-    return counts
+            if memo[key]:
+                admitted.append(path)
+        proposals.append(admitted)
+    return proposals
 
 
 def _linked(raw: Scalar, spec: FieldSpec, ctx: Context, links: frozenset[str]) -> bool:

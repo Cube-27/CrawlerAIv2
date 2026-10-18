@@ -368,7 +368,8 @@ def test_a_listing_config_without_rows_leaves_rows_to_role_c() -> None:
     # An optional url, so the row stays without the item URL its card would give (D-1491).
     url = LISTING.fields["url"].model_copy(update={"required": False})
     schema = LISTING.model_copy(update={"fields": {**LISTING.fields, "url": url}})
-    result = _extract(_html(body=CARDS), config, schema, role_c, LISTING_URL)
+    # A page without repeated items: role C reads the rows.
+    result = _extract(_html(body="<p>Widget 1</p>"), config, schema, role_c, LISTING_URL)
     (request,) = role_c.listing_requests
     # The page field the config runs is not asked again.
     assert (request.row_fields, request.page_missing) == (("title", "url"), ())

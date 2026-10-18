@@ -21,7 +21,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequenc
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import cast
+from typing import Final, cast
 from urllib.parse import urlsplit
 
 from patchright._impl._api_structures import SetCookieParam
@@ -32,6 +32,7 @@ from patchright.async_api import TimeoutError as PlaywrightTimeout
 from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
 from crawlerai.acquire.classify import INTERSTITIAL_STATUS, interstitial
 from crawlerai.acquire.headers import recorded
+from crawlerai.acquire.items import element_path, item_groups, lxml_root
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
 from crawlerai.acquire.page_steps import run_steps, steps_budget_s
 from crawlerai.acquire.session import CookieExport, SessionCookie, browser_cookies
@@ -137,6 +138,19 @@ _ARTIFACT_MAX_BYTES = 25_000_000
 # Seconds the files of a page may take beyond the fetch's own budget (Playwright's default per-operation timeout): a
 # slow file is left out, it never turns a page that loaded into a timeout.
 _ARTIFACT_TIMEOUT_S = 30
+# The rendered area of each named element in CSS pixels (CSSOM View `getBoundingClientRect`); 0 when the element is not
+# rendered visible (CSS 2.1 §11.2 `visibility`, `display: none` has no box), -1 when the path names no element of that
+# tag (the live document no longer is the one the path was read from).
+AREAS_JS: Final = """(elements) => Array.from(elements, ([path, tag]) => {
+  const node = document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+  if (node === null || node.nodeType !== Node.ELEMENT_NODE || node.localName !== tag) return -1;
+  if (getComputedStyle(node).visibility !== 'visible') return 0;
+  const box = node.getBoundingClientRect();
+  return box.width * box.height;
+})"""
+# The most item blocks a listing capture measures (`_item_areas`): a page's groups seldom hold more, and the walk
+# stays bounded on one that does.
+_MEASURED_BLOCKS_MAX = 2_000
 # Chromium's network error names (net/base/net_error_list.h) carry no URL.
 _NET_ERROR = re.compile(r"net::ERR_[A-Z0-9_]+")
 
@@ -508,7 +522,33 @@ async def read_state(
     )
     if max(len(body), len(raw_body or b"")) > policy.max_decompressed_bytes:
         raise Failed("body_cap", exchange)
-    return exchange, Content(body=body, raw_body=raw_body, network=network)
+    areas = await item_areas(rendered.page, body) if policy.page_kind == "listing" else None
+    return exchange, Content(body=body, raw_body=raw_body, network=network, item_areas=areas)
+
+
+async def item_areas(page: Page, body: bytes) -> dict[str, float] | None:
+    """The rendered area of each block of the document's repeated item groups (`acquire.items.item_groups`), by
+    element path: the segment step ranks a browser capture's groups by it (`content.segment`). The blocks are found in
+    the serialized document the capture keeps, so their paths name the same elements when it is parsed again; None
+    when the document has no group or the page can no longer be read."""
+    # Parsing is CPU work: a thread keeps the event loop serving other pages meanwhile.
+    refs = await asyncio.to_thread(_block_refs, body)
+    if not refs:
+        return None
+    try:
+        areas = cast(list[float], await page.evaluate(AREAS_JS, [list(ref) for ref in refs]))
+    except PlaywrightError:
+        return None
+    if any(area < 0 for area in areas):  # the live document changed since it was kept: rank by structure instead
+        return None
+    return {path: round(area, 1) for (path, _), area in zip(refs, areas, strict=True)}
+
+
+def _block_refs(body: bytes) -> list[tuple[str, str]]:
+    """The element path and tag of each block of the document's repeated item groups, at most `_MEASURED_BLOCKS_MAX`
+    (the browser serializes the DOM as UTF-8)."""
+    blocks = [block for group in item_groups(lxml_root(body.decode("utf-8", errors="replace"))) for block in group]
+    return [(element_path(block), str(block.tag)) for block in blocks[:_MEASURED_BLOCKS_MAX]]
 
 
 async def _settle(

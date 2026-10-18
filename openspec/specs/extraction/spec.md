@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Extraction turns one capture into owned, located candidates from standards-based collectors (`collect/`), finds
-listing rows and next pages, and renders page content formats; what publishes is [resolution](../resolution/spec.md).
+Extraction turns one capture into owned, located candidates from standards-based collectors (`collect/`) and renders
+page content formats; a listing's rows are in [listings](../listings/spec.md), and what publishes is in
+[resolution](../resolution/spec.md).
 Rationale: ARCHITECTURE §8 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-05, SPEC-07.
 
 ## Requirements
@@ -68,9 +69,10 @@ kind's candidate (`independent=false`, owned by that candidate's entity), or whe
 visible and its type is checkable (`collect/admission.py`); text-like types admit by equality only. A value admitted by
 visibility inside an array row (an object item of an array holding two or more objects, or an array's only object when
 its own scope writes a URL that names a document, not a media file) is owned by that row's `array_row` entity, whose
-`urls` are the URLs in its scope up to nested rows; elsewhere it is owned by `page`. Each field, normalized value and
-owner is one candidate, the one with the shortest locator. (Previously: a lone object was never a row, and every repeat
-was a candidate.) Refs: §8.1, Appendix A #34, #55, D-0418, D-0943, D-1250–D-1252, D-1254, D-1343, D-1345.
+`urls` are the URLs in its scope up to nested rows; elsewhere it is owned by `page`. An array row writing a URL is an
+`array_row` entity even when it owns no value, so a listing's rows bind to it ([listings](../listings/spec.md)). Each
+field, normalized value and owner is one candidate, the one with the shortest locator. (Previously: only a row owning a
+value was an entity.) Refs: §8.1, Appendix A #34, #55, D-0418, D-0943, D-1250–D-1252, D-1254, D-1343, D-1345.
 #### Scenario: Visible text in state
 - **WHEN** a visible state string is the only candidate for a `text` field
 - **THEN** it is not admitted
@@ -89,7 +91,9 @@ outside chrome, decorative images and link cards (`collect/dom.py`); values MUST
 
 ### Requirement: No generic DOM heuristics
 Collectors SHALL contain no hostname, class fragment, phrase list or card selector; per-site selectors live only in
-configs. Repeated-structure extraction and typed value spotting are not built (§22). Refs: C2, C3, C13.
+configs. Repeated-structure rows and typed value spotting are read only by the item layer
+([listings](../listings/spec.md)), from structure, field types and named standards. (Previously: repeated-structure
+extraction and typed value spotting were not built.) Refs: C2, C3, C13, owner #67.
 #### Scenario: Site literal in a collector
 - **WHEN** a change adds a hostname or class fragment under `collect/`
 - **THEN** the site-literal scan fails
@@ -113,48 +117,16 @@ Enforced by: resolver test; active.
 - **WHEN** the request URL has `?currency=EUR`, a state value is `EUR` and no `EUR` is shown
 - **THEN** that candidate is rejected with reason `url_param`
 
-### Requirement: Cold listing rows and pagination
-On a listing the system SHALL take rows from `ItemList`/`ListItem` entities, with the top-level primary entities no
-list holds beside them when the page singles none out (a grown list's later items stated as microdata), else from 3 or
-more top-level primary entities, else from the `ListItem` entries outside a `BreadcrumbList` that state no `item` (their
-own properties read as the row's on the schema's row fields), else from role C; a role C row whose grounded values lie,
-at their cleaned-text offsets, in one block of the repeated item group placing most rows, a block no other row has,
-takes as a `dom` item-URL candidate the one document the block's hyperlinks lead to (links that only add a query to
-one link refine it), else the one its hyperlinks holding a grounded value or whose text is a row value lead to
-(`collect/item_links.py`, Appendix A #47, D-1122, D-1241–D-1244, D-1490), and a role C row without the item URL its
-schema requires is left out (D-1491); a row's structured URL that is an item block's link but for a trailing slash or
-an added query takes that link as a `dom` candidate (D-1495); next pages come from `rel=next`, then the link differing
-from the page URL in one path segment or query value by one integer one higher (standing alone or inside the segment,
-`page-2.html`), then a config's `listing.next` (`resolve/listing.py`, `resolve/pagination.py`); the first `rel=next`
-link is a page-level `dom` candidate of the schema's `next_page_url`, and a numbered link fills no field (C7).
-(Previously: a role C row was placed by its values' text, kept without its URL, and structured URLs were kept as
-stated.) Refs: §8.6, D-0509, D-0514, D-1226, D-1294, D-1400, D-1403.
-#### Scenario: Title cut short
-- **WHEN** a card shows `Widget with a lo…` with `title="Widget with a long name"` and role C grounds the full title
-- **THEN** the row takes that card's link
-#### Scenario: Colour variants
-- **WHEN** three cards show one title and price and each row's values are grounded in its own card
-- **THEN** each row takes its own card's link
-#### Scenario: Next page of a listing preset
-- **WHEN** a listing page with the `commerce_listing` schema has `<link rel="next" href="?page=2">`
-- **THEN** `next_page_url` publishes the absolute `?page=2` URL with source kind `dom`
-#### Scenario: Entries without items
-- **WHEN** an `ItemList` holds `ListItem`s with only `name` and `url`, beside a `BreadcrumbList`
-- **THEN** each `ItemList` entry is a row with that title and url, and no breadcrumb is
-#### Scenario: Integer inside a segment
-- **WHEN** a listing at `/list/page-2.html` links to `page-3.html` and `sheet-3.html`
-- **THEN** `/list/page-3.html` is its next page and `sheet-3.html` is not
-
 ### Requirement: Page content formats
 The system SHALL produce `markdown`, `html`, `raw_html`, `links` and `metadata` from the `ParsedPage` with no per-site
 cleaning (`content/`); `markdown` is `""` when there is no main content, keeps the space after an inline element in a
-`div`, `td` or `li`, and a listing capture appends its repeated linked-item group with the most structural evidence
-(items with an image or several text runs, then size) as a list, a listing without one being read in recall mode. A
-JSON body (an `api` capture's) is never read as HTML: its `links` are its absolute http(s) URL string values in
-document order, never markup inside a value; its `markdown` (and `markdown_fit`) is the answer pretty-printed in one
-fenced `json` code block; its `html` is `""`. (Previously: a JSON body's markdown and html were read as HTML.)
-Refs: §8.5, SPEC-07 §4.5, D-0401, D-0993, D-1275, D-1276, D-1277, D-1450, D-1473, D-1474; endpoint in
-[rest-api](../rest-api/spec.md).
+`div`, `td` or `li`, and a listing capture appends the first of the page's ranked repeated item groups
+(`ParsedPage.item_groups`, [listings](../listings/spec.md)) as a list, a listing without one being read in recall
+mode. A JSON body (an `api` capture's) is never read as HTML: its `links` are its absolute http(s) URL string values
+in document order, never markup inside a value; its `markdown` (and `markdown_fit`) is the answer pretty-printed in
+one fenced `json` code block; its `html` is `""`. (Previously: the group with the most structural evidence was chosen
+by the format itself.) Refs: §8.5, SPEC-07 §4.5, D-0401, D-0993, D-1275, D-1276, D-1277, D-1450, D-1473, D-1474;
+endpoint in [rest-api](../rest-api/spec.md).
 #### Scenario: No main content
 - **WHEN** trafilatura finds no main content
 - **THEN** `markdown` is the empty string
@@ -166,37 +138,6 @@ Refs: §8.5, SPEC-07 §4.5, D-0401, D-0993, D-1275, D-1276, D-1277, D-1450, D-14
 - **THEN** `links` holds the posting URL and nothing read from the description's markup, `markdown` is the answer in a
   `json` code block and `html` is empty
 
-### Requirement: Listing rows from captured calls
-On a listing the `xhr` collector SHALL read rows from the calls of one method, origin and path, body shape and row query
-(`collect/network_match.py`: only query or body values vary; an array of `MIN_ITEMS` or more object items each holding a
-visible string of its own; a request sent again counts once), the first such series in which a row field's path,
-relative to a row, is admitted by the state admission rule (for a url field also: a link of one of the page's repeated
-item blocks) in `MIN_ITEMS` rows or more; that path is read in every row through the API recipe row reader
-(`collect/api.py`), each row an `array_row` entity; where the site's active config has a listing recipe, the calls of
-its endpoint and row query are read with the recipe's map instead, text fields included (`network_match.LearnedCalls`).
-Where structured data or the config give rows, a call row sharing an item URL or identifier with exactly one of them
-(and it with no other call row) fills that row's fields it holds no candidate of, and a call row naming no row's item
-whose item URL is a link of the block group holding most rows' item URLs is a row too (`resolve/call_rows.py`); else
-resolution takes the call rows, and when they leave a record incomplete role C is asked, and its rows, if any, replace
-them. (Previously: call rows served only where structured data and the config gave none.) Refs: §8.1, §8.6, Appendix A
-#59, D-1313, D-1314, D-1315, D-1367, D-1401, D-1402.
-#### Scenario: Rows a call proves
-- **WHEN** a listing with no structured rows loaded four items whose prices it shows for three
-- **THEN** the call gives four rows, each with its price, and no title (text admits by equality only)
-#### Scenario: Learned map
-- **WHEN** a browser capture of a listing whose recipe maps `title` holds a call of the recipe's endpoint
-- **THEN** its rows carry the titles, which equality alone would not admit
-#### Scenario: Complete rows of a call
-- **WHEN** the rows of a call publish every required field
-- **THEN** role C is not asked
-#### Scenario: A call fills a structured row
-- **WHEN** an `ItemList` states three products without prices and the page's call carries each one's URL and price
-- **THEN** each row publishes its call's price in the `network` bucket, its title staying the `jsonld` one
-#### Scenario: A grown list
-- **WHEN** the script lists items 1–3 and the list's blocks show items 1–6, a call having loaded 4–6
-- **THEN** the listing has six rows; a call of items shown in another block group adds none
-
-
 ### Requirement: Fit markdown and chunks
 `markdown_fit` SHALL be the page's markdown pruned by deterministic block scores (link density, text density, and
 repetition of a block across the page), keeping at most `fit.max_blocks`; with `fit.query` it keeps the blocks that
@@ -206,12 +147,3 @@ path. Neither uses an LLM. Refs: D-1422, D-1423.
 #### Scenario: Query keeps relevant blocks
 - **WHEN** `fit.query` names a topic of one block
 - **THEN** that block is kept and unrelated blocks are not
-
-### Requirement: Row item URLs without session parameters
-A listing's published row item URLs SHALL drop each query parameter that two or more row URLs all carry once with one
-same value and that none of the page's own URLs carries (`normalize.url_key.session_parameters`); a parameter with
-distinct values per row is kept. The extraction result names the parameters dropped. Refs: owner (2026-10-18, master
-plan decision 6).
-#### Scenario: Visit parameter on every row
-- **WHEN** every row URL carries `sid=abc` and its own `v=<n>`, and the page URL carries neither
-- **THEN** the rows publish their URLs with `v=<n>` and without `sid`

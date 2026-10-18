@@ -187,11 +187,11 @@ def _main_image(region: LexborNode, ctx: Context) -> tuple[LexborNode, str] | No
     here = canonical_url(ctx.page_url, None) if ctx.page_url is not None else None
     base = ctx.base_url or ctx.page_url
     for image in region.css("img"):
-        source = _source(image)
+        source = image_source(image.attributes)
         if (
             source is not None
             and shown(image)
-            and not _decorative(image)
+            and not decorative(image.attributes)
             and not _set_apart(image, region)
             and not _link_card(image, region, here, base)
         ):
@@ -199,10 +199,9 @@ def _main_image(region: LexborNode, ctx: Context) -> tuple[LexborNode, str] | No
     return None
 
 
-def _source(image: LexborNode) -> str | None:
-    """The image's `src`, else the URL of its first `srcset` candidate (HTML Standard §4.8.4.3: a URL, then optional
-    descriptors, candidates separated by commas); an inline `data:` URL is none."""
-    attributes = image.attributes
+def image_source(attributes: Mapping[str, str | None]) -> str | None:
+    """An `img` element's `src`, else the URL of its first `srcset` candidate (HTML Standard §4.8.4.3: a URL, then
+    optional descriptors, candidates separated by commas); an inline `data:` URL is none."""
     sources = [attributes.get("src") or "", *(attributes.get("srcset") or "").split()[:1]]
     for source in (s.strip().rstrip(",") for s in sources):
         if source and not source.lower().startswith(_INLINE):
@@ -210,9 +209,9 @@ def _source(image: LexborNode) -> str | None:
     return None
 
 
-def _decorative(image: LexborNode) -> bool:
-    attributes = image.attributes
-    return attributes.get("alt") == "" or not _PRESENTATIONAL.isdisjoint(_roles(image))
+def decorative(attributes: Mapping[str, str | None]) -> bool:
+    """Whether an `img` is decorative: an empty `alt` (HTML Standard §4.8.4.4), or roles `none`/`presentation`."""
+    return attributes.get("alt") == "" or not _PRESENTATIONAL.isdisjoint(tokens(attributes.get("role")))
 
 
 def _set_apart(image: LexborNode, region: LexborNode) -> bool:
@@ -255,10 +254,10 @@ def _link_targets(block: LexborNode, here: str | None, base: str | None) -> set[
     if block.tag == "a" and "href" in block.attributes:
         anchors.append(block)
     targets = {canonical_url(anchor.attributes.get("href") or "", base) for anchor in anchors}
-    return {t for t in targets if t is not None and t != here and not _is_image(t)}
+    return {t for t in targets if t is not None and t != here and not is_image_url(t)}
 
 
-def _is_image(url: str) -> bool:
-    # RFC 6838: the top-level type `image`.
+def is_image_url(url: str) -> bool:
+    """Whether the URL's path names an image file (RFC 6838: the top-level type `image`, by its extension)."""
     media_type, _ = _MEDIA_TYPES.guess_type(urlsplit(url).path)
     return media_type is not None and media_type.startswith("image/")

@@ -3,8 +3,9 @@ or clicking the control that loads more, until the caller's row target, the list
 
 Every rule reads the document's structure (C2), never its words (C4):
 
-- **The items.** The groups of repeated linked items (`acquire.items.item_groups`); the listing is the group with
-  the largest rendered area, not the most members, since a sidebar's link list may outnumber a product grid. An
+- **The items.** The groups of repeated linked items (`acquire.items.item_groups`), ranked by the segment step with
+  the rendered areas the tab measures (`content.segment.rank`): the listing is the group with the largest rendered
+  area, not the most members, since a sidebar's link list may outnumber a product grid. An
   item's identity is its first hyperlink (HTML Standard §4.6.1) that no other item of the group links to, else its
   first one: items may share a link (a company's, a posting's several locations). A page that shows no linked items
   counts the rows of its calls instead: the rows of the first series of the page's latest data calls (`Tab.calls`;
@@ -48,13 +49,13 @@ from typing import Final, Literal
 from lxml.html import HtmlElement
 
 from crawlerai.acquire.browser_tab import Click, Ref, Tab
-from crawlerai.acquire.items import in_chrome, is_hyperlink, item_groups
+from crawlerai.acquire.items import element_path, in_chrome, is_hyperlink, item_groups
 from crawlerai.acquire.types import ActionsReport, BrowserActions, PagingHint, StopReason
 from crawlerai.collect import json_doc
-from crawlerai.collect.item_links import block_links
 from crawlerai.collect.network_match import data_calls, row_series
 from crawlerai.content.dom import document_base_url, tokens
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.segment import block_links, rank
 from crawlerai.normalize.url import canonical_url
 from crawlerai.resolve.pagination import NextLink, next_page_links
 
@@ -397,23 +398,18 @@ class _Run:
         page = ParsedPage(html, tuple(body for _, body in calls), tuple(entry for entry, _ in calls))
         url = self.tab.url
         root = page.lxml_tree
-        groups = item_groups(root)
-        items = await self._largest(groups)
+        items = await self._largest(item_groups(root))
         ids = _identities(items, document_base_url(page, url)) if items else _call_rows(page)
         return _View(root, url, items, ids, page)
 
     async def _largest(self, groups: Sequence[tuple[HtmlElement, ...]]) -> tuple[HtmlElement, ...]:
-        """The rendered items of the group with the largest rendered area; none when no group is rendered at all.
-        An item not rendered (hidden until a control shows it) is not on the page yet."""
+        """The rendered items of the group the segment step ranks first by rendered area (`content.segment.rank`);
+        none when no group is rendered at all. An item not rendered (hidden until a control shows it) is not on the
+        page yet."""
         refs = [_ref(item) for group in groups for item in group]
-        areas = iter(await self.tab.areas(refs)) if refs else iter(())
-        best: tuple[HtmlElement, ...] = ()
-        best_area = 0.0
-        for group in groups:
-            shown = [(item, area) for item in group if (area := next(areas, 0.0)) > 0]
-            if (area := sum(a for _, a in shown)) > best_area:
-                best, best_area = tuple(item for item, _ in shown), area
-        return best
+        areas = await self.tab.areas(refs) if refs else []
+        ranked = rank(groups, {path: area for (path, _), area in zip(refs, areas, strict=True)})
+        return ranked[0] if ranked else ()
 
     async def _visible(self, element: HtmlElement) -> bool:
         return (await self.tab.areas([_ref(element)]))[0] > 0
@@ -524,15 +520,8 @@ def _links(view: _View) -> tuple[NextLink, ...]:
 
 
 def _ref(element: HtmlElement) -> Ref:
-    """The element's element-index XPath path from the document root (`/*[1]/*[2]`), and its tag."""
-    steps: list[str] = []
-    node: HtmlElement | None = element
-    while node is not None:
-        parent = node.getparent()
-        siblings = [node] if parent is None else _children(parent)
-        steps.append(f"*[{1 + next(i for i, sibling in enumerate(siblings) if sibling is node)}]")
-        node = parent
-    return "/" + "/".join(reversed(steps)), str(element.tag)
+    """The element's element-index XPath path from the document root (`acquire.items.element_path`), and its tag."""
+    return element_path(element), str(element.tag)
 
 
 def _is_control(element: HtmlElement) -> bool:

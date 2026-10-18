@@ -25,6 +25,7 @@ from patchright.async_api import Request
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
 from crawlerai.acquire.browser import (
+    AREAS_JS,
     DATA_REQUESTS,
     JSON_BODIES_MAX,
     JSON_PAGE_MAX_BYTES,
@@ -69,15 +70,6 @@ _ELEMENT_JS: Final = """([path, tag]) => {
   const node = document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
   return node !== null && node.nodeType === Node.ELEMENT_NODE && node.localName === tag ? node : null;
 }"""
-# The rendered area of each named element in CSS pixels (CSSOM View `getBoundingClientRect`); 0 when the path names no
-# element of that tag or the element is not rendered visible (CSS 2.1 §11.2 `visibility`, `display: none` has no box).
-_AREAS_JS: Final = """(elements) => Array.from(elements, ([path, tag]) => {
-  const node = document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-  if (node === null || node.nodeType !== Node.ELEMENT_NODE || node.localName !== tag) return 0;
-  if (getComputedStyle(node).visibility !== 'visible') return 0;
-  const box = node.getBoundingClientRect();
-  return box.width * box.height;
-})"""
 # How many changes to the document's structure and text there have been (DOM Standard §4.3, a MutationObserver on
 # `childList` and `characterData`), counted from the first call in each document.
 _MUTATIONS_JS: Final = """() => {
@@ -210,9 +202,10 @@ class _PatchrightTab:
 
     async def areas(self, elements: Sequence[Ref]) -> list[float]:
         try:
-            return cast(list[float], await self._page.page.evaluate(_AREAS_JS, [list(e) for e in elements]))
+            areas = cast(list[float], await self._page.page.evaluate(AREAS_JS, [list(e) for e in elements]))
         except PlaywrightError:
             return [0.0] * len(elements)
+        return [max(area, 0.0) for area in areas]  # an element no longer found has no area here
 
     def _act(self) -> None:
         """Count a browser action: the data responses that arrive from now on followed it (`NetworkBody.action`)."""

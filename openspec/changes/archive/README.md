@@ -90,6 +90,7 @@ candidates (Appendix A #37, #46).
 | — | [Plan phase 0: the golden set as the only measure, the master-plan decisions, dead code, guarded JSON, storable raw values](2026-10-18-plan-phase-0/proposal.md) ([tasks](2026-10-18-plan-phase-0/tasks.md), [decisions](2026-10-18-plan-phase-0/design.md)) | §1, §16, §21, §22 | 00, 01, 03 | — | tasks 1.1–4.2 (#271) |
 | — | [Plan phase 0, part 2: row keys without session parameters, label re-keying, list labels, presence ceiling, disagreement kinds, cost per correct field](2026-10-18-plan-phase-0-2/proposal.md) ([tasks](2026-10-18-plan-phase-0-2/tasks.md), [decisions](2026-10-18-plan-phase-0-2/design.md)) | §8.6, §16 | 03, 05 | — | tasks 1.1–3.2 (#272) |
 | — | [Master plan phase 1: decode once, one polite fetch, structural render need, resource blocking, default listing growth, vendor blocks as outcomes](2026-10-18-plan-phase-1/proposal.md) ([tasks](2026-10-18-plan-phase-1/tasks.md), [decisions](2026-10-18-plan-phase-1/design.md)) | §7.1, §7.2 | 02, 03, 07, 10 | — | tasks 1.1–6.2 (#273) |
+| — | [Plan phase 2: the item layer — segment, align, bind, row key](2026-10-18-plan-phase-2/proposal.md) ([tasks](2026-10-18-plan-phase-2/tasks.md), [decisions](2026-10-18-plan-phase-2/design.md)) | §8.6 | 05, 06 | — | tasks 1.1–5.1 (#278) |
 
 Where the labeling tool lives: SPEC-03 (L0), as the first screen of the frontend skeleton from SPEC-00, because
 it must exist before any extraction code and is inseparable from the eval store's custodian access model.

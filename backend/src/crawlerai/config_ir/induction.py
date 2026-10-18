@@ -23,6 +23,7 @@ from lxml import etree
 from lxml.html import HtmlElement
 from pydantic import JsonValue, ValidationError
 
+from crawlerai.collect.induce import induced
 from crawlerai.collect.json_doc import ROOT, segments
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.locator import InvalidLocator, Locator, parse_locator
@@ -124,12 +125,23 @@ def _induce_field(f: _Field, result: Induction) -> None:
     if not (scheme == "jsonld" or (scheme in ("microdata", "dom", "config") and f.spec.item is None)):
         result.to_synthesize[f.name] = f"not_induced:{scheme}"
         return
-    proposals = [_proposals(locator, sample, f) for locator, sample in zip(locators, f.sample, strict=True)]
-    step = next((c.step for c in _common(proposals) if _verified(c, f)), None)
+    step = _induced_step(
+        [_proposals(locator, sample, f) for locator, sample in zip(locators, f.sample, strict=True)], f
+    )
     if step is None:
         result.to_synthesize[f.name] = "no_verified_selector"
     else:
         result.fields[f.name] = FieldSteps(steps=[step], status=_STATUS)
+
+
+def _induced_step(proposals: Sequence[list[_Candidate]], f: _Field) -> Step | None:
+    """The first step every sample page proposes that selects the published value on each (`collect.induce`)."""
+    by_key: dict[str, _Candidate] = {}
+    for page in proposals:
+        for c in page:
+            by_key.setdefault(c.key, c)
+    key = induced([[c.key for c in page] for page in proposals], len(proposals), lambda k: _verified(by_key[k], f))
+    return None if key is None else by_key[key].step
 
 
 def _locators(f: _Field) -> list[Locator] | None:
@@ -160,12 +172,6 @@ def _proposals(locator: Locator, sample: SamplePage, f: _Field) -> list[_Candida
     if locator.scheme == "jsonld":
         return list(_jsonld_candidates(sample.page, f.vocabulary, locator))
     return list(_xpath_candidates(sample.page.lxml_tree, locator.parts[-1]))
-
-
-def _common(proposals: Sequence[list[_Candidate]]) -> list[_Candidate]:
-    """The candidates every page proposes, in the first page's order."""
-    keys = [{c.key for c in page} for page in proposals[1:]]
-    return [c for c in proposals[0] if all(c.key in page for page in keys)]
 
 
 def _verified(candidate: _Candidate, f: _Field) -> bool:

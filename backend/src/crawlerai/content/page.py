@@ -6,13 +6,15 @@ selectolax tree; the captured network bodies are kept as the bundle holds them. 
 formats, pagination, the engine executor) takes a `ParsedPage`, never the raw body.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
 
 from lxml import html as lxml_html
 from selectolax import lexbor
 
-from crawlerai.acquire.items import lxml_root
+from crawlerai.acquire.items import Group, item_groups, lxml_root
+from crawlerai.content.segment import rank
 from crawlerai.content.text import CleanedText, VisibleIndex, render, xpath_step
 from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, decode_body
 
@@ -35,8 +37,11 @@ class ParsedPage:
         network_entries: tuple[NetworkBody, ...] = (),
         *,
         json_body: bool = False,
+        item_areas: Mapping[str, float] | None = None,
     ) -> None:
         self.html = html
+        # The rendered area of the page's item blocks, when a browser capture measured them (`CaptureManifest`).
+        self.item_areas = item_areas
         # Whether the body is a JSON document, not HTML: an `api` capture's is (`body.json`, SPEC-01 §4.5). Its text is
         # still parsed as HTML for the readers of text, but it holds no HTML elements of its own (`content.links`).
         self.json_body = json_body
@@ -48,7 +53,13 @@ class ParsedPage:
     @classmethod
     def of(cls, bundle: CaptureBundle) -> "ParsedPage":
         manifest = bundle.manifest
-        return cls(decode_body(bundle), bundle.network, manifest.network_bodies, json_body=manifest.method == "api")
+        return cls(
+            decode_body(bundle),
+            bundle.network,
+            manifest.network_bodies,
+            json_body=manifest.method == "api",
+            item_areas=manifest.item_areas,
+        )
 
     @cached_property
     def tree(self) -> lexbor.LexborHTMLParser:
@@ -69,6 +80,24 @@ class ParsedPage:
                 media_type = (attributes.get("type") or "").split(";", 1)[0].strip().lower()
                 blocks.append(ScriptBlock(type=media_type, text=node.text(deep=True), xpath=node_xpath(node)))
         return tuple(blocks)
+
+    @cached_property
+    def item_groups(self) -> tuple[Group, ...]:
+        """The page's groups of repeated item blocks, best first (the item layer's segment step, `content.segment`)."""
+        return rank(item_groups(self.lxml_tree), self.item_areas)
+
+    @cached_property
+    def text_spans(self) -> dict[str, tuple[int, int]]:
+        """Each element's span of the cleaned text, from its first text run to its last, by its node path in the
+        selectolax tree (`content.text.TextRun`); an element that renders no text has none."""
+        spans: dict[str, tuple[int, int]] = {}
+        for run in self.cleaned_text.offsets:
+            path = run.node_path
+            while path:
+                start, end = spans.get(path, (run.start, run.end))
+                spans[path] = (min(start, run.start), max(end, run.end))
+                path = path.rpartition("/")[0]
+        return spans
 
     @property
     def cleaned_text(self) -> CleanedText:
