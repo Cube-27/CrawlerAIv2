@@ -32,7 +32,7 @@ from crawlerai.collect.base import ARRAY_ROW, Candidate, Entity
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.currencies import with_stated_currencies
 from crawlerai.collect.item_links import row_links
-from crawlerai.collect.items.bind import Listing, bind
+from crawlerai.collect.items.bind import Bound, Listing, bind
 from crawlerai.collect.run import Adapters, Collected, collect_page
 from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canonical_urls, item_url_fields
 from crawlerai.content.context import page_context
@@ -41,7 +41,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import CALIBRATION_FILE
 from crawlerai.db.models import ExtractionMode, SourceKind
-from crawlerai.normalize.base import Context
+from crawlerai.normalize.base import Context, Ok
 from crawlerai.resolve.derive import Derived, fill, is_page_url_field
 from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibration, required_fields
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
@@ -422,6 +422,7 @@ class _Listing:
     network: bool = False  # the rows are those of the page's captured calls (Appendix A #59)
     role_c: str = NOT_ASKED  # what role C did when the listing has no rows (`no_rows`)
     entities: tuple[Entity, ...] = ()  # the rows' entities, in `rows` order
+    stated: bool = False  # whether stated rows (structured, the config's, the calls') are among the rows
 
     @classmethod
     def read(cls, source: _Source) -> "_Listing":
@@ -473,6 +474,7 @@ class _Listing:
             tuple(diagnostics),
             network=network,
             entities=bound.rows,
+            stated=bool(stated),
         )
 
     def gap(self) -> ListingGapRequest | None:
@@ -504,20 +506,9 @@ class _Listing:
         links = row_links(page.page, page.schema, page.ctx, reply.rows, reply.candidates)
         candidates = (*self.candidates, *reply.candidates, *links)
         diagnostics = (*self.diagnostics, *reply.diagnostics)
-        if self.entities and not self.network:
-            # Role C's rows fill the listing's rows they bind to by item URL (the item layer's bind step).
-            listing = Listing(
-                page.page,
-                page.ctx,
-                page.schema,
-                page.page_urls,
-                (),
-                self.entities,
-                reply.rows,
-                candidates,
-                partial(_holder, graph),
-            )
-            bound = bind(listing)
+        filled = self._filled(page, graph, reply, candidates) if self.entities and not self.network else None
+        if filled is not None:
+            bound = filled
             fields, rows = page.resolve_listing(bound.candidates, self.entities)
             if reply.failure is not None:
                 fields = _unanswered(fields, asked, reply.failure)
@@ -551,6 +542,32 @@ class _Listing:
             role_c=reply.failure or NONE_LISTED,
             entities=reply.rows if not network else self.entities,
         )
+
+    def _filled(
+        self, page: _Page, graph: EntityGraph, reply: ListingGapReply, candidates: tuple[Candidate, ...]
+    ) -> Bound | None:
+        """The listing's rows filled by the role C rows that bind to them by item URL (the item layer's bind step);
+        None when the rows are blocks alone and role C's rows name items by URL, none of them a block's: role C read
+        the schema's items elsewhere, so the blocks are not the listing and role C's rows replace them, as when there
+        are no rows."""
+        listing = Listing(
+            page.page,
+            page.ctx,
+            page.schema,
+            page.page_urls,
+            (),
+            self.entities,
+            reply.rows,
+            candidates,
+            partial(_holder, graph),
+        )
+        bound = bind(listing)
+        replies = {row.id for row in reply.rows}
+        fields = frozenset(item_url_fields(page.schema))
+        named = {c.entity_id for c in candidates if c.entity_id in replies and c.field in fields and _ok(c)}
+        if not self.stated and named and bound.joined.isdisjoint(replies):
+            return None
+        return bound
 
     def _records(self) -> list[FieldSet]:
         # Each row's record holds the page's fields too (`resolve.records.assemble_listing`).
@@ -612,6 +629,10 @@ def _placed(schema: SchemaDef, rows: tuple[FieldSet, ...]) -> tuple[tuple[FieldS
     required = [name for name in item_url_fields(schema) if schema.fields[name].required]
     kept = tuple(row for row in rows if all(_published(row, name) for name in required))
     return kept, len(rows) - len(kept)
+
+
+def _ok(candidate: Candidate) -> bool:
+    return isinstance(candidate.normalized, Ok)
 
 
 def _published(fields: FieldSet, name: str) -> bool:

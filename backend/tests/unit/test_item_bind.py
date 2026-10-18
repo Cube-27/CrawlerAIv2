@@ -8,7 +8,19 @@ from typing import Any
 from pydantic import JsonValue
 
 from crawlerai.normalize.base import Ok
-from tests.unit.test_pipeline import COMMITTED, _html, _item_list, _listing, _row, _row_values
+from crawlerai.resolve.pipeline import ListingGapReply
+from tests.unit.test_pipeline import (
+    COMMITTED,
+    LISTING_CALL,
+    FakeRoleC,
+    _html,
+    _item_list,
+    _listing,
+    _llm,
+    _llm_row,
+    _row,
+    _row_values,
+)
 
 
 def _card(n: int, *, href: str | None = None, title: bool = True, price: str | None = None) -> str:
@@ -129,3 +141,17 @@ def test_a_products_main_entity_of_page_is_its_rows_item_url_after_its_own_url()
     result = _listing(_html(_item_list(*items)), data=COMMITTED)
 
     assert [row.get("url") for row in _row_values(result)] == [_url(1), _url(2), _url(3)]
+
+
+def test_role_c_rows_naming_none_of_the_blocks_replace_rows_read_from_blocks_alone() -> None:
+    # Listings spec, "Role C rows": role C read the schema's items elsewhere, so the blocks were not the listing.
+    cards = (f'<li class="cat"><a href="/c/{n}">Category {n}</a><span>{n}2 items</span></li>' for n in (1, 2, 3))
+    reply = ListingGapReply(
+        candidates=(_llm("url", "llm:rows[0]", _url(1), 0),), llm_calls=(LISTING_CALL,), rows=(_llm_row(0),)
+    )
+    role_c = FakeRoleC(listing_reply=reply)
+
+    result = _listing(_html(body=_cards(*cards)), role_c=role_c, data=COMMITTED)
+
+    assert len(role_c.listing_requests) == 1
+    assert _row_values(result) == [{"url": _url(1)}]

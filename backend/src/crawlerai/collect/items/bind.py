@@ -65,6 +65,7 @@ class Bound:
     rows: tuple[Entity, ...]
     candidates: tuple[Candidate, ...]
     diagnostics: tuple[str, ...] = ()
+    joined: frozenset[str] = frozenset()  # the entities bound to a row, whose values moved to it
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +95,7 @@ def bind(listing: Listing) -> Bound:
     rows = binder.rows()
     binder.bind_array_rows(rows)
     induced_values = binder.induced_values()
-    return Bound(rows, (*binder.result(), *induced_values), tuple(binder.notes))
+    return Bound(rows, (*binder.result(), *induced_values), tuple(binder.notes), frozenset(binder.moves))
 
 
 class _RowUrls:
