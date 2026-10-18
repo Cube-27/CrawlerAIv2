@@ -271,13 +271,15 @@ class _PatchrightTab:
 
     async def calls(self) -> tuple[tuple[NetworkBody, bytes], ...]:
         responses = self._page.calls.responses
-        first = max(0, len(responses) - JSON_BODIES_MAX)
+        # The page goes on answering calls while bodies are read: this read covers the responses there are now.
+        count = len(responses)
+        first = max(0, count - JSON_BODIES_MAX)
         for index in [index for index in self._bodies if index < first]:
             del self._bodies[index]
-        for index in range(first, len(responses)):
+        for index in range(first, count):
             if index not in self._bodies:
                 self._bodies[index] = next(iter(await json_bodies([responses[index]])), None)
-        found = (self._bodies[index] for index in range(first, len(responses)))
+        found = (self._bodies[index] for index in range(first, count))
         return tuple(body for body in found if body is not None)
 
     def _result(
