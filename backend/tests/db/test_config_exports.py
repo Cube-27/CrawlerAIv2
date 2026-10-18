@@ -189,8 +189,9 @@ async def test_a_config_is_exported_as_its_ir_with_the_release_check_on_its_held
     assert exported["export"]["fields"]["title"]["steps"] == [{"xpath": "normalize-space(//h1)", "post": []}]
     assert exported["release"] == {
         "held_out": [str(capture) for capture in captures],
-        "fields": {"title": {"published": 3, "reproduced": 3, "manual": False}},
+        "fields": {"title": {"published": 3, "reproduced": 3, "manual": False, "executability": "static-html"}},
         "listing": None,
+        "executability": {"static-html": 1, "needs-browser": 0, "api-call": 0, "unexecutable": 0},
     }
 
 
@@ -208,7 +209,12 @@ async def test_a_field_not_reproduced_on_a_held_out_page_is_manual_in_the_platfo
         "steps": [{"xpath": "normalize-space(//h1)", "post": []}],
         "manual": True,
     }
-    assert exported["release"]["fields"]["title"] == {"published": 3, "reproduced": 2, "manual": True}
+    assert exported["release"]["fields"]["title"] == {
+        "published": 3,
+        "reproduced": 2,
+        "manual": True,
+        "executability": "static-html",
+    }
 
 
 async def test_a_capture_whose_bundle_expired_is_left_out(client: httpx.AsyncClient, world: World) -> None:
@@ -221,4 +227,9 @@ async def test_a_capture_whose_bundle_expired_is_left_out(client: httpx.AsyncCli
     exported = await _export(client, config_id, "json")
 
     assert exported["release"]["held_out"] == [str(capture) for capture in captures[1:]]
-    assert exported["release"]["fields"]["title"] == {"published": 2, "reproduced": 2, "manual": False}
+    assert exported["release"]["fields"]["title"] == {
+        "published": 2,
+        "reproduced": 2,
+        "manual": False,
+        "executability": "static-html",
+    }

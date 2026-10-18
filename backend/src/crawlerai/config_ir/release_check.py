@@ -17,6 +17,7 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
+from crawlerai.config_ir.executability import Executability, class_counts, config_classes
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR
 from crawlerai.config_ir.release_executor import Released
 from crawlerai.config_ir.row_alignment import align
@@ -35,11 +36,13 @@ class _Report(BaseModel):
 
 class ReleaseField(_Report):
     """One field on the held-out pages: `published`, pages where the engine published it; `reproduced`, those where the
-    release executor gave that value; `manual`, the field failed the check."""
+    release executor gave that value; `manual`, the field failed the check; `executability`, what the field's steps
+    need to run (`config_ir.executability`)."""
 
     published: int
     reproduced: int
     manual: bool
+    executability: Executability
 
 
 class ReleaseListing(_Report):
@@ -48,11 +51,13 @@ class ReleaseListing(_Report):
 
 
 class ReleaseReport(_Report):
-    """The release check of one config: the held-out captures it ran on, and each field's result."""
+    """The release check of one config: the held-out captures it ran on, each field's result, and how many of the
+    config's fields are in each executability class."""
 
     held_out: list[CaptureId]
     fields: dict[str, ReleaseField]
     listing: ReleaseListing | None
+    executability: dict[Executability, int]
 
 
 def releasable(published: int, reproduced: int) -> bool:
@@ -63,13 +68,18 @@ def releasable(published: int, reproduced: int) -> bool:
 
 def release_check(ir: ExtractionConfigIR, schema: SchemaDef, held_out: Sequence[HeldOutPage]) -> ReleaseReport:
     runs = [_Run.of(ir, schema, page) for page in held_out]
-    fields = {name: _field(runs, name, schema, _page_seen) for name in ir.fields}
+    classes = config_classes(ir)
+    fields = {name: _field(runs, name, schema, _page_seen, classes[name]) for name in ir.fields}
     listing = None
     if ir.listing is not None:
-        rows = {name: _field(runs, name, schema, _row_seen) for name in ir.listing.fields}
-        next_ = _field(runs, NEXT_PAGE_FIELD, schema, _page_seen) if ir.listing.next is not None else None
+        rows = {name: _field(runs, name, schema, _row_seen, classes[f"listing.{name}"]) for name in ir.listing.fields}
+        next_ = None
+        if ir.listing.next is not None:
+            next_ = _field(runs, NEXT_PAGE_FIELD, schema, _page_seen, classes["listing.next"])
         listing = ReleaseListing(fields=rows, next=next_)
-    return ReleaseReport(held_out=[page.capture_id for page in held_out], fields=fields, listing=listing)
+    return ReleaseReport(
+        held_out=[page.capture_id for page in held_out], fields=fields, listing=listing, executability=class_counts(ir)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,12 +110,19 @@ class _Run:
 type _Seen = Callable[[_Run, str, FieldSpec], tuple[bool, bool]]
 
 
-def _field(runs: Sequence[_Run], name: str, schema: SchemaDef, seen: _Seen) -> ReleaseField:
+def _field(
+    runs: Sequence[_Run], name: str, schema: SchemaDef, seen: _Seen, executability: Executability
+) -> ReleaseField:
     spec = schema.fields.get(name)
     results = [] if spec is None else [seen(run, name, spec) for run in runs]
     published = sum(on for on, _ in results)
     reproduced = sum(on and same for on, same in results)
-    return ReleaseField(published=published, reproduced=reproduced, manual=not releasable(published, reproduced))
+    return ReleaseField(
+        published=published,
+        reproduced=reproduced,
+        manual=not releasable(published, reproduced),
+        executability=executability,
+    )
 
 
 def _page_seen(run: _Run, name: str, spec: FieldSpec) -> tuple[bool, bool]:
