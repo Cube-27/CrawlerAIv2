@@ -64,7 +64,14 @@ check), and 800 lines per file (a warning).
 - A new reader should be able to answer "where does X come from, and what can change it?" in 30 seconds.
 
 **Migrate callers, then delete.** Nothing external depends on internals yet. When an internal API changes, move
-every caller in the same PR and delete the old path. Leave no compatibility shims.
+every caller in the same PR and delete the old path. Leave no compatibility shims. An architecture change deletes
+what it supersedes in the same PR, and the specs and design documents it touches describe one architecture after it
+(owner, 2026-10-18).
+
+**Cite the requirement, not the history (owner, 2026-10-18).** New code, comments and docstrings cite the capability
+spec requirement (`extraction spec, "Listing rows"`) or the standard a rule rests on, never a decision ID (`D-NNNN`)
+or a frozen `ARCHITECTURE §N`/`SPEC-NN §x` section; existing citations are replaced when the code around them changes.
+Decision entries keep their IDs; only code stops pointing at them.
 
 ## Structure
 
