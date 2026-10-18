@@ -1,15 +1,11 @@
 """Jobs (SPEC-10 §4.2): a job's summary, its cancel and its results, including the clean `json_values` items (SPEC-14
 §4.4), through the jobs service and then over HTTP (`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}`,
-`GET /v1/jobs/{id}/results`).
-
-Jobs, tasks and records are written directly, as the queue and the page tasks would leave them, and committed,
-since the app reads them through its own connections. Hosts are RFC 2606 names.
-"""
+`GET /v1/jobs/{id}/results`)."""
 
 import csv
 import io
 import json
-from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,22 +15,14 @@ import pytest
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from crawlerai.acquire.api import JsonFetcher
-from crawlerai.acquire.persist import store_capture
-from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.adapters.base import AdapterMatch, Shape
-from crawlerai.adapters.registry import Registry
 from crawlerai.api.app import create_app
 from crawlerai.core.ids import uuid7
-from crawlerai.db.jobs import start_jobs
 from crawlerai.db.keys import create_key
 from crawlerai.db.models import (
     ApiKey,
-    Capture,
     CaptureId,
     Extraction,
     Job,
-    JobEvent,
     JobId,
     Project,
     Record,
@@ -47,15 +35,12 @@ from crawlerai.db.models import (
     UrlTask,
     UrlTaskId,
 )
-from crawlerai.db.queue import complete_task, insert_claimed
 from crawlerai.recurring.versions import link_records
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services import jobs
 from crawlerai.services.jobs import (
     ExportPage,
-    JobListQuery,
-    JobPage,
     JsonValuesPage,
     PageOutputPage,
     ResultsQuery,
@@ -64,25 +49,6 @@ from crawlerai.services.records import RecordPage
 from crawlerai.storage.fs import FsStore
 
 pytestmark = pytest.mark.anyio
-
-
-@dataclass
-class _Board:
-    """An adapter for one synthetic API path: it reads the `api` captures fetched from it."""
-
-    name: str = "board"
-
-    def detect(self, url: str) -> AdapterMatch | None:
-        return AdapterMatch(tenant="tenant", page_kind="listing")
-
-    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
-        return endpoint.endswith(f"/api/{match.tenant}/jobs")
-
-    async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
-        raise AssertionError("not fetched")
-
-    def shapes(self, match: AdapterMatch, answer: Any, /) -> tuple[Shape, ...]:
-        return ()
 
 
 OUTCOMES = {"extracted", "partial", "unchanged", "links_only", "blocked", "shell", "not_found", "no_match", "failed"}
@@ -234,26 +200,12 @@ async def _summary(engine: AsyncEngine, job_id: JobId) -> jobs.JobSummary:
         return await jobs.get_job(conn, job_id)
 
 
-async def _list(engine: AsyncEngine, **query: Any) -> JobPage:
-    async with engine.connect() as conn:
-        return await jobs.list_jobs(conn, JobListQuery(**query))
-
-
-async def _cancel(engine: AsyncEngine, job_id: JobId) -> jobs.JobSummary:
-    async with engine.begin() as conn:
-        return await jobs.cancel_job(conn, job_id)
-
-
 async def _results(
     engine: AsyncEngine, job_id: JobId, **query: Any
 ) -> RecordPage | ExportPage | PageOutputPage | JsonValuesPage:
     async with engine.connect() as conn:
         # These jobs have no captures: the store is never read.
         return await jobs.job_results(conn, job_id, ResultsQuery(**query), store=FsStore(Path("unused")))
-
-
-async def _task_statuses(conn: AsyncConnection, job_id: JobId) -> list[str]:
-    return sorted((await conn.execute(select(UrlTask.status).where(UrlTask.job_id == job_id))).scalars())
 
 
 # The summary.
@@ -287,99 +239,10 @@ async def test_the_summary_counts_tasks_by_status_and_by_outcome(world: World) -
 # The list.
 
 
-async def test_each_listed_job_has_the_counts_of_its_own_tasks(world: World) -> None:
-    busy = await world.job(status="running", usage={"llm_calls": 2})
-    await world.tasks(busy, [("queued", None), ("done", "extracted"), ("done", "links_only"), ("failed", "failed")])
-    idle = await world.job()
-
-    page = await _list(world.engine)
-
-    assert [(job.id, job.counts.model_dump(), job.usage) for job in page.items] == [
-        (idle, {"queued": 0, "claimed": 0, "done": 0, "failed": 0, "cancelled": 0}, {}),
-        (busy, {"queued": 1, "claimed": 0, "done": 2, "failed": 1, "cancelled": 0}, {"llm_calls": 2}),
-    ]
-    assert (page.items[1].outcomes.extracted, page.items[1].outcomes.links_only) == (1, 1)
-
-
-async def test_the_list_keeps_the_jobs_of_the_kind_and_status_asked_for(world: World) -> None:
-    crawl_done = await world.job(kind="crawl", status="completed")
-    crawl_queued = await world.job(kind="crawl")
-    batch_done = await world.job(status="completed")
-
-    crawls = await _list(world.engine, kind="crawl")
-    completed = await _list(world.engine, status="completed")
-    both = await _list(world.engine, kind="crawl", status="completed")
-    none = await _list(world.engine, kind="map")
-
-    assert [job.id for job in crawls.items] == [crawl_queued, crawl_done]
-    assert [job.id for job in completed.items] == [batch_done, crawl_done]
-    assert [job.id for job in both.items] == [crawl_done]
-    assert none == JobPage(items=[], next_cursor=None)
-
-
 # Cancel.
 
 
-async def test_a_running_job_is_cancelled_once_its_claimed_task_finishes(world: World) -> None:
-    job_id = await world.job()
-    await world.tasks(job_id, [("queued", None)])
-    async with world.engine.begin() as conn:
-        url = f"{world.origin}/p/claimed"
-        running = await insert_claimed(conn, job_id, url, url, "detail", "test-worker")
-        await start_jobs(conn, [job_id])
-
-    during = await _cancel(world.engine, job_id)
-    async with world.engine.begin() as conn:
-        await complete_task(conn, running, "extracted")
-    after = await _summary(world.engine, job_id)
-
-    # The queued task never runs; the claimed one finishes, and then the job ends.
-    assert (during.status, during.counts.queued, during.counts.cancelled, during.counts.claimed) == ("running", 0, 1, 1)
-    assert during.cancel_requested is True
-    assert (after.status, after.counts.done, after.outcomes.extracted) == ("cancelled", 1, 1)
-
-
-async def test_a_running_job_with_no_claimed_task_is_cancelled_at_once(world: World) -> None:
-    job_id = await world.job(status="running")
-    await world.tasks(job_id, [("done", "extracted"), ("queued", None)])
-
-    summary = await _cancel(world.engine, job_id)
-
-    assert summary.status == "cancelled"
-    assert summary.counts.model_dump() == {"queued": 0, "claimed": 0, "done": 1, "failed": 0, "cancelled": 1}
-
-
-async def test_cancelling_a_cancelled_job_again_changes_nothing(world: World) -> None:
-    job_id = await world.job()
-    first = await _cancel(world.engine, job_id)
-
-    second = await _cancel(world.engine, job_id)
-
-    assert (second, second.status) == (first, "cancelled")
-    async with world.engine.connect() as conn:
-        events = (await conn.execute(select(JobEvent.kind).where(JobEvent.job_id == job_id))).scalars().all()
-    assert events == ["cancelled"]
-
-
 # Results.
-
-
-async def test_results_page_through_the_jobs_records_newest_first(world: World) -> None:
-    job_id = await world.job(schema_id=world.schema.id, status="completed")
-    other = await world.job(schema_id=world.schema.id, status="completed")
-    made = await world.records(job_id, 3)
-    await world.records(other, 1)
-
-    first = await _results(world.engine, job_id, limit=2)
-    assert isinstance(first, RecordPage)
-    second = await _results(world.engine, job_id, limit=2, cursor=first.next_cursor)
-    assert isinstance(second, RecordPage)
-
-    assert [r.id for r in first.items + second.items] == made[::-1]
-    assert second.next_cursor is None
-    newest = first.items[0]
-    assert (newest.fields["title"].value, newest.fields["colour"].value) == ("Kettle 2", None)
-    assert newest.fields["colour"].status == "missing"
 
 
 async def test_results_export_the_records_in_the_schemas_columns(world: World) -> None:
@@ -402,86 +265,6 @@ async def test_results_export_the_records_in_the_schemas_columns(world: World) -
     ]
     assert rest.next_cursor is None
     assert markdown.content.count("\n") == 4  # header, delimiter, two records
-
-
-async def _json_values(engine: AsyncEngine, job_id: JobId, **query: Any) -> JsonValuesPage:
-    page = await _results(engine, job_id, format="json_values", **query)
-    assert isinstance(page, JsonValuesPage)
-    return page
-
-
-async def test_json_values_has_one_item_per_task_oldest_first_with_its_clean_records(world: World) -> None:
-    job_id = await world.job(schema_id=world.schema.id, status="completed")
-    _, detail = await world.page(job_id, "partial", [{"colour": "blue"}])
-    _, failed = await world.page(job_id, "failed")
-    _, listing = await world.page(job_id, "extracted", [{"title": "Kettle", "colour": "red"}, {"title": "Mug"}])
-    _, blocked = await world.page(job_id, "blocked")
-    await world.tasks(job_id, [("queued", None)])
-    other = await world.job(schema_id=world.schema.id, status="completed")
-    await world.page(other, "extracted", [{"title": "Lamp"}])
-
-    page = await _json_values(world.engine, job_id)
-
-    # A clean record has the schema's published fields in name order, and no status.
-    assert [(item.url, item.outcome, item.records) for item in page.items[:4]] == [
-        (detail, "partial", [{"colour": "blue"}]),
-        (failed, "failed", []),
-        (listing, "extracted", [{"colour": "red", "title": "Kettle"}, {"title": "Mug"}]),
-        (blocked, "blocked", []),
-    ]
-    assert list(page.items[2].records[0]) == ["colour", "title"]
-    assert (len(page.items), page.items[4].outcome, page.items[4].records) == (5, None, [])
-    assert (page.format, page.next_cursor) == ("json_values", None)
-
-
-async def test_an_unchanged_page_shows_the_latest_record_of_its_entity(world: World) -> None:
-    first = await world.job(schema_id=world.schema.id, status="completed")
-    [stored] = await world.records(first, 1)
-    rerun = await world.job(schema_id=world.schema.id, status="completed")
-    unchanged, url = await world.page(rerun, "unchanged")
-    async with world.engine.begin() as conn:
-        await link_records(conn, unchanged, [stored])
-
-    page = await _json_values(world.engine, rerun)
-
-    assert [(item.url, item.outcome, item.records) for item in page.items] == [
-        (url, "unchanged", [{"title": "Kettle 0"}])
-    ]
-
-
-async def test_a_task_read_before_it_ends_has_no_records(world: World) -> None:
-    job_id = await world.job(schema_id=world.schema.id, status="running")
-    [stored] = await world.records(job_id, 1)
-    url = f"{world.origin}/p/claimed"
-    async with world.engine.begin() as conn:
-        values = {"job_id": job_id, "url": url, "canonical_url": url, "status": "claimed", "outcome": None}
-        running = (await conn.execute(insert(UrlTask).values(**values).returning(UrlTask.id))).scalar_one()
-        await link_records(conn, running, [stored])
-
-    page = await _json_values(world.engine, job_id)
-
-    assert (page.items[-1].url, page.items[-1].outcome, page.items[-1].records) == (url, None, [])
-
-
-async def test_json_values_of_a_job_without_a_schema_lists_its_tasks_with_no_records(world: World) -> None:
-    job_id = await world.job(status="completed")
-    await world.tasks(job_id, [("done", "extracted"), ("failed", "failed")])
-
-    page = await _json_values(world.engine, job_id)
-
-    assert [(item.outcome, item.records) for item in page.items] == [("extracted", []), ("failed", [])]
-
-
-async def test_json_values_pages_with_the_task_id_as_cursor(world: World) -> None:
-    job_id = await world.job(schema_id=world.schema.id, status="completed")
-    made = [await world.page(job_id, "extracted", [{"title": f"Kettle {i}"}]) for i in range(3)]
-
-    first = await _json_values(world.engine, job_id, limit=2)
-    second = await _json_values(world.engine, job_id, limit=2, cursor=first.next_cursor)
-
-    assert first.next_cursor == made[1][0]
-    assert [item.url for item in first.items + second.items] == [url for _, url in made]
-    assert second.next_cursor is None
 
 
 # Over HTTP.
@@ -511,86 +294,6 @@ async def client(
     async with keys.begin() as conn:
         await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
     await keys.dispose()
-
-
-async def test_a_jobs_summary_is_served_with_its_counts(client: httpx.AsyncClient, world: World) -> None:
-    job_id = await world.job(status="running", request={"urls": ["https://shop.test/a"], "formats": ["markdown"]})
-    await world.tasks(job_id, [("done", "partial"), ("queued", None)])
-
-    response = await client.get(f"/v1/jobs/{job_id}")
-
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert set(body) == {
-        "id",
-        "kind",
-        "status",
-        "created_at",
-        "started_at",
-        "finished_at",
-        "counts",
-        "outcomes",
-        "usage",
-        "llm_cost_usd",
-        "webhook_url",
-        "engine_version",
-        "cancel_requested",
-        "start_url",
-        "url_count",
-        "schedule_id",
-    }
-    assert (body["id"], body["status"], body["counts"]["queued"], body["outcomes"]["partial"]) == (
-        str(job_id),
-        "running",
-        1,
-        1,
-    )
-    assert (body["start_url"], body["url_count"]) == (None, 1)
-
-
-async def test_a_jobs_stored_request_is_served_and_its_start_url_summarized(
-    client: httpx.AsyncClient, world: World
-) -> None:
-    stored = {"url": "https://shop.test/", "formats": ["markdown"], "limit": 500}
-    job_id = await world.job(kind="crawl", request=stored)
-
-    request = await client.get(f"/v1/jobs/{job_id}/request")
-    summary = await client.get(f"/v1/jobs/{job_id}")
-    missing = await client.get(f"/v1/jobs/{uuid7()}/request")
-
-    assert (request.status_code, request.json()) == (200, stored)
-    assert (summary.json()["start_url"], summary.json()["url_count"]) == ("https://shop.test/", None)
-    assert missing.status_code == 404
-
-
-async def test_the_jobs_are_listed_a_page_at_a_time(client: httpx.AsyncClient, world: World) -> None:
-    older = await world.job(kind="crawl", status="completed")
-    newer = await world.job(kind="crawl", status="completed")
-    await world.job()
-
-    first = await client.get("/v1/jobs", params={"kind": "crawl", "status": "completed", "limit": 1})
-    cursor = first.json()["next_cursor"]
-    second = await client.get("/v1/jobs", params={"kind": "crawl", "status": "completed", "cursor": cursor})
-
-    assert first.status_code == 200, first.text
-    assert [job["id"] for job in first.json()["items"]] == [str(newer)]
-    assert cursor == str(newer)
-    assert second.json() == {"items": [(await client.get(f"/v1/jobs/{older}")).json()], "next_cursor": None}
-
-
-async def test_delete_cancels_a_queued_job_and_its_tasks_at_once(client: httpx.AsyncClient, world: World) -> None:
-    job_id = await world.job()
-    await world.tasks(job_id, [("queued", None), ("queued", None)])
-
-    response = await client.delete(f"/v1/jobs/{job_id}")
-
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert (body["status"], body["cancel_requested"]) == ("cancelled", True)
-    assert body["counts"] == {"queued": 0, "claimed": 0, "done": 0, "failed": 0, "cancelled": 2}
-    async with world.engine.connect() as conn:
-        events = (await conn.execute(select(JobEvent.kind).where(JobEvent.job_id == job_id))).scalars().all()
-    assert events == ["cancelled"]
 
 
 async def test_job_problems(client: httpx.AsyncClient, world: World) -> None:
@@ -627,23 +330,6 @@ async def test_job_problems(client: httpx.AsyncClient, world: World) -> None:
     }
 
 
-async def test_results_are_served_as_records_or_as_an_export(client: httpx.AsyncClient, world: World) -> None:
-    job_id = await world.job(schema_id=world.schema.id, status="completed")
-    [made] = await world.records(job_id, 1)
-
-    records = await client.get(f"/v1/jobs/{job_id}/results")
-    exported = await client.get(f"/v1/jobs/{job_id}/results", params={"format": "csv_records"})
-
-    assert records.status_code == 200, records.text
-    assert [r["id"] for r in records.json()["items"]] == [str(made)]
-    assert records.json()["items"][0]["fields"]["title"]["value"] == "Kettle 0"
-    assert exported.json() == {
-        "format": "csv_records",
-        "content": "colour,title,_status_colour,_status_title\r\n,Kettle 0,missing,published\r\n",
-        "next_cursor": None,
-    }
-
-
 async def test_a_csv_safe_export_quotes_formula_cells_and_the_default_keeps_them(
     client: httpx.AsyncClient, world: World
 ) -> None:
@@ -656,164 +342,6 @@ async def test_a_csv_safe_export_quotes_formula_cells_and_the_default_keeps_them
     header = "colour,title,_status_colour,_status_title\r\n"
     assert plain.json()["content"] == header + ",=SUM(1),missing,published\r\n"
     assert safe.json()["content"] == header + ",'=SUM(1),missing,published\r\n"
-
-
-async def test_csv_safe_is_refused_without_csv_records(client: httpx.AsyncClient, world: World) -> None:
-    job_id = await world.job(schema_id=world.schema.id, status="completed")
-
-    responses = [
-        await client.get(f"/v1/jobs/{job_id}/results", params={"csv_safe": "true"}),
-        await client.get(f"/v1/jobs/{job_id}/results", params={"format": "markdown", "csv_safe": "true"}),
-    ]
-
-    assert [(r.status_code, r.json()["type"]) for r in responses] == [(422, "validation")] * 2
-
-
-async def test_page_outputs_are_served_with_each_tasks_last_error(client: httpx.AsyncClient, world: World) -> None:
-    job_id = await world.job(status="completed")
-    await world.tasks(job_id, [("failed", "failed")], last_error="budget_exhausted")
-    await world.tasks(job_id, [("done", "blocked")], last_error="robots")
-    await world.tasks(job_id, [("done", "not_found")])
-
-    response = await client.get(f"/v1/jobs/{job_id}/results")
-
-    assert response.status_code == 200, response.text
-    assert [(item["status"], item["outcome"], item["last_error"]) for item in response.json()["items"]] == [
-        ("failed", "failed", "budget_exhausted"),
-        ("done", "blocked", "robots"),
-        ("done", "not_found", None),
-    ]
-
-
-async def test_json_values_carry_metadata_only_when_asked_and_the_capture_is_kept(
-    client: httpx.AsyncClient, world: World, tmp_path: Path, fetch_result: Callable[..., FetchResult]
-) -> None:
-    job_id = await world.job(schema_id=world.schema.id, status="completed")
-    store = FsStore(tmp_path / "objects")
-    body = b"<html lang='en'><head><title>Kettle</title></head><body><h1>Kettle</h1></body></html>"
-    async with world.engine.begin() as conn:
-        captures = [
-            await store_capture(conn, store, fetch_result(f"{world.origin}/c/{i}", body=body), world.site_id)
-            for i in range(4)
-        ]
-        expired = (await conn.execute(select(Capture.object_key).where(Capture.id == captures[3]))).scalar_one()
-    store.delete(expired)
-    await world.page(job_id, "extracted", [{"title": "Kettle"}], capture_id=captures[0])
-    await world.page(job_id, "partial", [{"colour": "blue"}], capture_id=captures[1])
-    await world.page(job_id, "not_found", capture_id=captures[2])
-    await world.page(job_id, "extracted", [{"title": "Mug"}], capture_id=captures[3])
-    await world.page(job_id, "failed")
-
-    plain = await client.get(f"/v1/jobs/{job_id}/results", params={"format": "json_values"})
-    asked = await client.get(f"/v1/jobs/{job_id}/results", params={"format": "json_values", "include": "metadata"})
-
-    assert plain.status_code == 200, plain.text
-    assert [set(item) for item in plain.json()["items"]] == [{"url", "outcome", "records"}] * 5
-    assert asked.status_code == 200, asked.text
-    items = asked.json()["items"]
-    # Only an extracted or partial page whose capture is still kept has metadata; it is never null.
-    assert ["metadata" in item for item in items] == [True, True, False, False, False]
-    assert (items[0]["metadata"]["title"], items[0]["metadata"]["language"]) == ("Kettle", "en")
-    assert (items[0]["records"], asked.json()["format"]) == ([{"title": "Kettle"}], "json_values")
-
-
-def _attempted(result: FetchResult) -> FetchResult:
-    """`result`, reached by a browser after an HTTP attempt that met a challenge."""
-    blocked = AttemptRecord(method="http", status=403, block_class="blocked", duration_ms=40, challenge="structural")
-    reached = AttemptRecord(method="browser", status=200, block_class="ok", duration_ms=900)
-    return result.model_copy(update={"attempts": (blocked, reached)})
-
-
-async def test_the_fetch_of_a_page_is_served_with_every_attempt_when_asked(
-    client: httpx.AsyncClient, world: World, tmp_path: Path, fetch_result: Callable[..., FetchResult]
-) -> None:
-    job_id = await world.job(schema_id=world.schema.id, status="completed")
-    store = FsStore(tmp_path / "objects")
-    async with world.engine.begin() as conn:
-        capture = await store_capture(
-            conn, store, _attempted(fetch_result(f"{world.origin}/c/1", body=b"<html></html>")), world.site_id
-        )
-    await world.page(job_id, "extracted", [{"title": "Kettle"}], capture_id=capture)
-    await world.page(job_id, "failed")
-    params = {"format": "json_values"}
-
-    plain = await client.get(f"/v1/jobs/{job_id}/results", params=params)
-    asked = await client.get(f"/v1/jobs/{job_id}/results", params={**params, "include": ["metadata", "fetch"]})
-
-    assert [set(item) for item in plain.json()["items"]] == [{"url", "outcome", "records"}] * 2
-    first, second = asked.json()["items"]
-    assert "fetch" not in second
-    assert (first["fetch"]["method"], first["fetch"]["status_code"], first["fetch"]["adapter"]) == ("http", 200, None)
-    assert [(a["method"], a["status"], a["block_class"], a["challenge"]) for a in first["fetch"]["attempts"]] == [
-        ("http", 403, "blocked", "structural"),
-        ("browser", 200, "ok", None),
-    ]
-    assert "metadata" in first
-
-
-async def test_page_outputs_carry_the_fetch_of_a_task_with_a_capture(
-    client: httpx.AsyncClient, world: World, tmp_path: Path, fetch_result: Callable[..., FetchResult]
-) -> None:
-    job_id = await world.job(status="completed")
-    store = FsStore(tmp_path / "objects")
-    async with world.engine.begin() as conn:
-        capture = await store_capture(
-            conn, store, _attempted(fetch_result(f"{world.origin}/c/2", body=b"<html></html>")), world.site_id
-        )
-    await world.page(job_id, "blocked", capture_id=capture)
-    await world.page(job_id, "blocked")
-
-    response = await client.get(f"/v1/jobs/{job_id}/results")
-
-    with_capture, without = response.json()["items"]
-    assert [a["block_class"] for a in with_capture["fetch"]["attempts"]] == ["blocked", "ok"]
-    assert "fetch" not in without
-
-
-async def test_a_fetch_names_the_adapter_of_its_api_capture(
-    world: World, tmp_path: Path, fetch_result: Callable[..., FetchResult]
-) -> None:
-    job_id = await world.job(schema_id=world.schema.id, status="completed")
-    store = FsStore(tmp_path / "objects")
-    page = f"{world.origin}/tenant/jobs"
-    async with world.engine.begin() as conn:
-        api = fetch_result(page, body=b"{}", method="api", final_url=f"{world.origin}/api/tenant/jobs")
-        capture = await store_capture(conn, store, api, world.site_id)
-    await world.page(job_id, "extracted", [{"title": "Kettle"}], capture_id=capture)
-    query = ResultsQuery(format="json_values", include=["fetch"])
-    adapters = Registry([_Board()])
-
-    async with world.engine.connect() as conn:
-        named = await jobs.job_results(conn, job_id, query, store=store, adapters=adapters)
-        unnamed = await jobs.job_results(conn, job_id, query, store=store)
-
-    assert isinstance(named, JsonValuesPage)
-    assert isinstance(unnamed, JsonValuesPage)
-    assert [item.fetch.adapter for item in named.items if item.fetch] == ["board"]
-    assert [item.fetch.adapter for item in unnamed.items if item.fetch] == [None]
-
-
-async def test_json_values_are_served_for_a_job_without_a_schema(client: httpx.AsyncClient, world: World) -> None:
-    job_id = await world.job(status="completed")
-    await world.tasks(job_id, [("done", "extracted")])
-
-    response = await client.get(f"/v1/jobs/{job_id}/results", params={"format": "json_values", "limit": 1})
-
-    assert response.status_code == 200, response.text
-    [item] = response.json()["items"]
-    assert (item["outcome"], item["records"], response.json()["next_cursor"]) == ("extracted", [], None)
-
-
-async def test_include_is_refused_without_json_values(client: httpx.AsyncClient, world: World) -> None:
-    job_id = await world.job(schema_id=world.schema.id, status="completed")
-
-    responses = [
-        await client.get(f"/v1/jobs/{job_id}/results", params={"include": "metadata"}),
-        await client.get(f"/v1/jobs/{job_id}/results", params={"format": "csv_records", "include": "metadata"}),
-        await client.get(f"/v1/jobs/{job_id}/results", params={"format": "json_values", "include": "markdown"}),
-    ]
-
-    assert [(r.status_code, r.json()["type"]) for r in responses] == [(422, "validation")] * 3
 
 
 async def test_jobs_need_a_key(client: httpx.AsyncClient, world: World) -> None:

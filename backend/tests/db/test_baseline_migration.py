@@ -1,8 +1,5 @@
 """The baseline migration against Postgres: its CHECK constraint names are `ck_<table>_<name>`, prefixed once, and it
-downgrades to an empty schema and upgrades again (the CI step upgrade, downgrade, upgrade).
-
-Alembic's `compare_metadata` does not compare CHECK constraints, so these tests read the names from `pg_constraint`.
-"""
+downgrades to an empty schema and upgrades again (the CI step upgrade, downgrade, upgrade)."""
 
 import asyncio
 from pathlib import Path

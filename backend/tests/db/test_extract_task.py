@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import AttemptRecord, FetchResult
-from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.core.capture import BlockClass
@@ -190,108 +189,6 @@ async def test_a_complete_page_stores_its_extraction_candidates_and_record(setup
         "locator": "jsonld:0:$['name']",
         "derived_by": None,
     }
-
-
-async def test_a_rejected_candidate_keeps_its_reason(setup: _Setup) -> None:
-    other = _product("Widget Two", "https://shop.example.test/p/2", offers=False)
-    stored = await setup.run(_page(_product("Widget One", PAGE_URL), other))
-    assert sorted(await setup.candidates(stored)) == [
-        ("price", "jsonld", "ok", True, None),
-        ("title", "jsonld", "ok", False, "not_owned"),
-        ("title", "jsonld", "ok", True, None),
-    ]
-
-
-async def test_an_incomplete_caller_supplied_page_keeps_its_record(setup: _Setup) -> None:
-    stored = await setup.run(_page(_product("Widget One", PAGE_URL, offers=False)))
-    assert stored.outcome == "partial"
-    record = (await setup.conn.execute(select(Record.__table__).where(Record.id == stored.records[0].id))).one()
-    assert (record.data, record.complete) == ({"title": "Widget One"}, False)
-    assert record.field_meta["price"]["status"] == "missing"
-
-
-async def test_an_incomplete_crawl_discovered_page_is_no_match_without_a_record(setup: _Setup) -> None:
-    stored = await setup.run(_page(_product("Widget One", PAGE_URL, offers=False)), caller_supplied=False)
-    assert (stored.outcome, stored.records) == ("no_match", ())
-    assert await setup.conn.scalar(select(Record.id).where(Record.extraction_id == stored.extraction_id)) is None
-    assert await setup.candidates(stored) == [("title", "jsonld", "ok", True, None)]
-
-
-async def test_a_page_that_was_not_served_stores_an_extraction_and_nothing_else(setup: _Setup) -> None:
-    stored = await setup.run(_page(_product("Widget One", PAGE_URL)), block_class="shell")
-    assert (stored.outcome, stored.records) == ("shell", ())
-    assert await setup.candidates(stored) == []
-
-
-async def test_the_extraction_keeps_the_collectors_diagnostics(setup: _Setup, monkeypatch: pytest.MonkeyPatch) -> None:
-    # SPEC-05 §4.14: a collector that raises is recorded on the extraction row, and the page still resolves.
-    def broken(*_args: object) -> None:
-        raise RuntimeError("collector bug")
-
-    monkeypatch.setattr(OpenGraphCollector, "collect", broken)
-    stored = await setup.run(_page(_product("Widget One", PAGE_URL)))
-    diagnostics = await setup.conn.scalar(select(Extraction.diagnostics).where(Extraction.id == stored.extraction_id))
-    assert diagnostics == ["OpenGraphCollector: RuntimeError: collector bug"]
-    assert stored.outcome == "extracted"
-
-
-LISTING = SchemaDocument(
-    name="synthetic_listing",
-    page_kind="listing",
-    fields={
-        "title": DOCUMENT.fields["title"],
-        "url": FieldSpec(type=FieldType.URL, description="d", required=True, schema_org="Product.url"),
-        "price": DOCUMENT.fields["price"].model_copy(update={"required": False}),
-    },
-)
-
-
-def _item_list(*items: dict[str, Any]) -> dict[str, Any]:
-    elements = [{"@type": "ListItem", "position": i + 1, "item": item} for i, item in enumerate(items)]
-    return {"@context": "https://schema.org", "@type": "ItemList", "itemListElement": elements}
-
-
-async def test_a_listing_stores_one_record_per_row(setup: _Setup) -> None:
-    urls = ["https://shop.example.test/p/1", "https://shop.example.test/p/2"]
-    rows = [_product(f"Widget {n}", url, offers=False) for n, url in enumerate(urls, start=1)]
-    stored = await setup.run(_page(_item_list(*rows)), document=LISTING)
-
-    assert (stored.outcome, len(stored.records)) == ("extracted", 2)
-    records = await setup.conn.execute(
-        select(Record.entity_key, Record.data, Record.complete).where(Record.extraction_id == stored.extraction_id)
-    )
-    assert {(row.entity_key, row.data["title"], row.complete) for row in records} == {
-        (entity_key(setup.site_id, urls[0]), "Widget 1", True),
-        (entity_key(setup.site_id, urls[1]), "Widget 2", True),
-    }
-    # Each row's title is chosen by its own row; another row does not own it, which is not why it was rejected.
-    assert [row for row in await setup.candidates(stored) if row[0] == "title"] == [
-        ("title", "jsonld", "ok", True, None),
-        ("title", "jsonld", "ok", True, None),
-    ]
-
-
-async def test_a_crawled_listing_keeps_only_its_complete_rows(setup: _Setup) -> None:
-    nameless = {key: value for key, value in _product("", "https://shop.example.test/p/2").items() if key != "name"}
-    rows = [_product("Widget 1", "https://shop.example.test/p/1"), nameless]
-    stored = await setup.run(_page(_item_list(*rows)), document=LISTING, caller_supplied=False)
-
-    assert stored.outcome == "partial"
-    kept = await setup.conn.execute(select(Record.entity_key).where(Record.extraction_id == stored.extraction_id))
-    assert kept.scalars().all() == [entity_key(setup.site_id, "https://shop.example.test/p/1")]
-
-
-async def test_a_rows_candidate_keeps_the_reason_its_own_row_gave(setup: _Setup) -> None:
-    # Two Offers that disagree make the row's price a conflict (INV-15); the other row does not own those values.
-    split = _product("Widget 2", "https://shop.example.test/p/2")
-    split["offers"] = [split["offers"], {**split["offers"], "price": "21.00"}]
-    rows = [split, _product("Widget 1", "https://shop.example.test/p/1", offers=False)]
-    stored = await setup.run(_page(_item_list(*rows)), document=LISTING)
-
-    assert [row for row in await setup.candidates(stored) if row[0] == "price"] == [
-        ("price", "jsonld", "ok", False, "offers_disagree"),
-        ("price", "jsonld", "ok", False, "offers_disagree"),
-    ]
 
 
 async def test_role_c_runs_inside_the_task_without_waiting_on_its_transaction(

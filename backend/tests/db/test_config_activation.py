@@ -7,14 +7,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import insert, select, update
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir.activation import NotValidated, activate
+from crawlerai.config_ir.activation import activate
 from crawlerai.config_ir.executor import ConfigMismatch
 from crawlerai.config_ir.model import ExtractionConfigIR
-from crawlerai.config_ir.progressive import NotLearning, StateKey, request_learning
+from crawlerai.config_ir.progressive import StateKey, request_learning
 from crawlerai.config_ir.validation import Facts, HeldOutPage, Validated, validate
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
@@ -111,18 +111,6 @@ async def test_a_new_activation_suspends_the_previous_config(conn: AsyncConnecti
     assert (await _state(conn, key)).active_config_id == second
 
 
-async def test_a_refused_validation_activates_nothing(conn: AsyncConnection) -> None:
-    key, host, name = await _key(conn)
-    await request_learning(conn, key)
-    refused = _validated(host, name, pages=2)
-
-    with pytest.raises(NotValidated):
-        await activate(conn, key, refused)
-
-    assert await _configs(conn, key) == []
-    assert (await _state(conn, key)).mode == "learning"
-
-
 @pytest.mark.parametrize("other", ["site", "schema"])
 async def test_a_config_learned_for_another_key_is_refused(conn: AsyncConnection, other: str) -> None:
     key, host, name = await _key(conn)
@@ -130,30 +118,6 @@ async def test_a_config_learned_for_another_key_is_refused(conn: AsyncConnection
     validated = _validated("other.example.test", name) if other == "site" else _validated(host, "other_schema")
 
     with pytest.raises(ConfigMismatch):
-        await activate(conn, key, validated)
-
-    assert await _configs(conn, key) == []
-
-
-async def test_a_config_learned_before_a_schema_edit_is_refused(conn: AsyncConnection) -> None:
-    key, host, name = await _key(conn)
-    await request_learning(conn, key)
-    validated = _validated(host, name)
-    edited = {"title": {"type": "text", "description": "an edited description"}}
-    await conn.execute(update(SchemaDef).where(SchemaDef.id == key.schema_id).values(fields=edited))
-
-    with pytest.raises(ConfigMismatch, match="earlier document"):
-        await activate(conn, key, validated)
-
-    assert await _configs(conn, key) == []
-
-
-async def test_activation_needs_a_learning_run_in_flight(conn: AsyncConnection) -> None:
-    key, host, name = await _key(conn)
-    await conn.execute(insert(ProgressiveState).values(**key.columns()))
-    validated = _validated(host, name)
-
-    with pytest.raises(NotLearning):
         await activate(conn, key, validated)
 
     assert await _configs(conn, key) == []

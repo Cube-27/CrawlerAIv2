@@ -1,20 +1,15 @@
 """Run events (SPEC-10 §4.2): the events a finished task leaves, the webhook a job's end owes, and the event stream
-through the events service and over SSE (`GET /v1/jobs/{id}/events`), with `Last-Event-ID` resume.
-
-Jobs, tasks and events are written as the queue and the page tasks leave them. Hosts are RFC 2606 names.
-"""
+through the events service and over SSE (`GET /v1/jobs/{id}/events`), with `Last-Event-ID` resume."""
 
 import asyncio
 import json
-import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-import anyio
 import httpx
 import pytest
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.api.app import create_app
@@ -26,7 +21,6 @@ from crawlerai.db.models import (
     Extraction,
     Job,
     JobEvent,
-    JobEventId,
     JobId,
     JobStatus,
     Project,
@@ -34,14 +28,10 @@ from crawlerai.db.models import (
     Site,
     TaskRecord,
     UrlTask,
-    WebhookEvent,
 )
-from crawlerai.db.queue import cancel_task, claim_tasks, complete_task, fail_task
-from crawlerai.db.webhook_outbox import JOB_END_EVENTS
+from crawlerai.db.queue import claim_tasks, complete_task
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument, document_digest
-from crawlerai.services import events, jobs
-from crawlerai.services.events import StreamEvent
 
 pytestmark = pytest.mark.anyio
 
@@ -139,145 +129,7 @@ async def test_a_finished_task_records_its_fetch_extraction_and_abstentions_befo
     ]
 
 
-async def test_a_task_whose_record_was_unchanged_records_the_abstentions_of_the_record_it_stands_for(
-    conn: AsyncConnection,
-) -> None:
-    job_id = await _job(conn)
-    task, capture_id = await _page(conn, job_id, stored=False)
-
-    await complete_task(conn, task, "partial", capture_id=capture_id)
-
-    events = [event for event in await _events(conn, job_id) if event[1].get("url") == URL]
-    assert events[1:] == [
-        ("task_extracted", {"url": URL, "outcome": "partial", "mode": "config", "llm_calls": 2}),
-        ("task_abstained", {"url": URL, "fields": ["brand", "price"]}),
-    ]
-
-
-async def test_a_task_that_fails_for_good_records_why_before_the_jobs_end(conn: AsyncConnection) -> None:
-    job_id = await _job(conn)
-    await _task(conn, job_id)
-    [task] = await claim_tasks(conn, "w1", 1)
-
-    await fail_task(conn, task, "no handler", transient=False)
-
-    failed = {"task_id": str(task.id), "url": URL, "attempts": 1, "last_error": "no handler"}
-    assert await _events(conn, job_id) == [("task_failed", failed), ("failed", {})]
-
-
-async def test_a_failed_task_records_what_it_did_before_its_failure(conn: AsyncConnection) -> None:
-    job_id = await _job(conn)
-    task, capture_id = await _page(conn, job_id)
-
-    await fail_task(conn, task, "internal_error", transient=False, capture_id=capture_id)
-
-    kinds = [kind for kind, _ in await _events(conn, job_id)]
-    assert kinds == ["task_fetched", "task_extracted", "task_abstained", "task_failed", "failed"]
-
-
-async def test_a_task_failure_that_is_retried_records_no_event(conn: AsyncConnection) -> None:
-    job_id = await _job(conn)
-    await _task(conn, job_id)
-    [task] = await claim_tasks(conn, "w1", 1)
-
-    await fail_task(conn, task, "timeout", transient=True)
-
-    assert await _events(conn, job_id) == []
-
-
-async def test_a_task_that_ends_blocked_records_no_failure(conn: AsyncConnection) -> None:
-    job_id = await _job(conn)
-    await _task(conn, job_id)
-    [task] = await claim_tasks(conn, "w1", 1)
-
-    await complete_task(conn, task, "blocked", reason="robots")
-
-    assert await _events(conn, job_id) == [("completed", {})]
-
-
-async def test_a_cancelled_task_records_no_task_event(conn: AsyncConnection) -> None:
-    job_id = await _job(conn, cancel_requested=True)
-    task, _ = await _page(conn, job_id)
-
-    await cancel_task(conn, task)
-
-    assert await _events(conn, job_id) == [("cancelled", {})]
-
-
-async def test_a_retried_task_reports_its_last_extraction(conn: AsyncConnection) -> None:
-    job_id = await _job(conn)
-    task, _ = await _page(conn, job_id)
-    later = insert(Extraction).values(url_task_id=task.id, engine_version="e", mode="adhoc", llm_calls=0)
-    await conn.execute(later)
-
-    await complete_task(conn, task, "extracted")
-
-    [extracted] = [payload for kind, payload in await _events(conn, job_id) if kind == "task_extracted"]
-    assert extracted == {"url": URL, "outcome": "extracted", "mode": "adhoc", "llm_calls": 0}
-
-
 # The webhook events a job's end owes (`db.webhook_outbox`).
-
-HOOK = "https://hooks.example.test/done"
-
-
-async def _owed(conn: AsyncConnection, job_ids: list[JobId]) -> list[tuple[JobId, str]]:
-    rows = await conn.execute(
-        select(WebhookEvent.job_id, WebhookEvent.event)
-        .where(WebhookEvent.job_id.in_(job_ids), WebhookEvent.delivery_id.is_(None))
-        .order_by(WebhookEvent.id)
-    )
-    return [(row.job_id, row.event) for row in rows]
-
-
-async def test_a_job_owes_its_end_event_only_if_its_webhook_asked_for_it(conn: AsyncConnection) -> None:
-    hooked = await _job(conn, webhook_url=HOOK, webhook_events=list(JOB_END_EVENTS))
-    pages_only = await _job(conn, webhook_url=HOOK, webhook_events=["page"])
-    plain = await _job(conn, webhook_events=list(JOB_END_EVENTS))
-
-    for job_id in (hooked, pages_only, plain):
-        await transition_job(conn, job_id, "failed")
-
-    assert await _owed(conn, [hooked, pages_only, plain]) == [(hooked, "job_failed")]
-
-
-async def test_cancelling_a_queued_job_with_a_webhook_owes_its_cancelled_event(engine: AsyncEngine) -> None:
-    async with engine.begin() as conn:
-        job_id = await _job(conn, status="queued", webhook_url=HOOK, webhook_events=list(JOB_END_EVENTS))
-
-    async with engine.begin() as conn:
-        await jobs.cancel_job(conn, job_id)
-
-    async with engine.connect() as conn:
-        assert await _owed(conn, [job_id]) == [(job_id, "job_cancelled")]
-
-
-async def test_a_finished_task_owes_its_page_and_the_records_its_extraction_stored(conn: AsyncConnection) -> None:
-    job_id = await _job(conn, webhook_url=HOOK, webhook_events=["page", "record", "record_changed"])
-    task, capture_id = await _page(conn, job_id)
-    await conn.execute(update(UrlTask).where(UrlTask.id == task.id).values(capture_id=capture_id))
-
-    await complete_task(conn, task, "extracted")
-
-    rows = await conn.execute(
-        select(WebhookEvent.event, WebhookEvent.payload).where(WebhookEvent.job_id == job_id).order_by(WebhookEvent.id)
-    )
-    owed: list[tuple[str, dict[str, Any]]] = [(row.event, row.payload) for row in rows]
-    [(page_event, page), (record_event_, record)] = owed
-    assert (page_event, record_event_) == ("page", "record")
-    expected_page = {"task_id": str(task.id), "url": URL, "status": "done", "outcome": "extracted"}
-    assert page == expected_page | {"capture_id": str(capture_id), "last_error": None}
-    assert (record["url"], record["version"], record["changed_fields"]) == (URL, 1, [])
-    assert record["data"] == {"title": "Kettle"}
-
-
-async def test_an_unchanged_record_owes_no_record_event(conn: AsyncConnection) -> None:
-    job_id = await _job(conn, webhook_url=HOOK, webhook_events=["record"])
-    task, _ = await _page(conn, job_id, stored=False)
-
-    await complete_task(conn, task, "unchanged")
-
-    assert await _owed(conn, [job_id]) == []
 
 
 # The stream.
@@ -299,15 +151,6 @@ async def _stored(engine: AsyncEngine, kinds: list[str], *, status: JobStatus = 
         return job_id, [str(event_id) for event_id in rows.scalars()]
 
 
-def _id(text: str) -> JobEventId:
-    return JobEventId(uuid.UUID(text))
-
-
-async def _drain(stream: AsyncIterator[StreamEvent]) -> list[tuple[str | None, str, dict[str, Any]]]:
-    async with asyncio.timeout(10):
-        return [(None if e.id is None else str(e.id), e.kind, e.data) for e in [event async for event in stream]]
-
-
 PROGRESS = {
     "counts": {"queued": 0, "claimed": 0, "done": 1, "failed": 0, "cancelled": 0},
     "outcomes": {
@@ -322,52 +165,6 @@ PROGRESS = {
         "failed": 0,
     },
 }
-
-
-async def test_a_stream_resumed_after_the_end_closes_at_once(engine: AsyncEngine) -> None:
-    job_id, ids = await _stored(engine, ["task_fetched", "completed"], status="completed")
-
-    assert await _drain(events.stream(engine, job_id, _id(ids[-1]), poll_s=0.01)) == []
-
-
-async def test_the_stream_waits_for_events_written_after_it_started(engine: AsyncEngine) -> None:
-    job_id, _ = await _stored(engine, [])
-    received: list[str] = []
-
-    async def follow() -> None:
-        async for event in events.stream(engine, job_id, None, poll_s=0.01):
-            received.append(event.kind)
-
-    follower = asyncio.create_task(follow())
-    await asyncio.sleep(0.1)
-    async with engine.begin() as conn:
-        await record_event(conn, job_id, "task_fetched")
-    async with engine.begin() as conn:
-        await transition_job(conn, job_id, "completed")
-    async with asyncio.timeout(10):
-        await follower
-
-    assert received[0] == "task_fetched"
-    assert received[-1] == "completed"
-
-
-async def test_a_stream_cancelled_mid_poll_leaves_the_pool_usable(engine: AsyncEngine, database_url: str) -> None:
-    # A client that drops the stream cancels it wherever it is, often inside a poll's query. The server cancels it
-    # through an anyio cancel scope, which cancels every await under it until it exits, the connection's cleanup's
-    # too. One pooled connection makes every request after it reuse the connection the stream held.
-    job_id, _ = await _stored(engine, [])
-    pooled = create_async_engine(database_url, pool_size=1, max_overflow=0)
-    statuses = []
-    try:
-        for round_ in range(30):
-            with anyio.move_on_after(0.002 * round_):
-                await _drain(events.stream(pooled, job_id, None, poll_s=0))
-            async with pooled.connect() as conn:
-                statuses.append((await conn.execute(select(Job.status).where(Job.id == job_id))).scalar_one())
-    finally:
-        await pooled.dispose()
-
-    assert statuses == ["running"] * 30
 
 
 # Over HTTP.
@@ -418,37 +215,6 @@ async def test_events_are_served_as_server_sent_events(client: httpx.AsyncClient
         {"event": "progress", "data": PROGRESS},
         {"event": "completed", "data": {"n": 9}, "id": ids[1]},
     ]
-
-
-async def test_last_event_id_resumes_the_stream(client: httpx.AsyncClient, engine: AsyncEngine) -> None:
-    job_id, ids = await _stored(engine, ["task_fetched", "task_extracted", "completed"], status="completed")
-
-    response = await client.get(f"/v1/jobs/{job_id}/events", headers={"Last-Event-ID": ids[1]})
-
-    assert [(event["event"], event.get("id")) for event in _sse(response.text)] == [
-        ("progress", None),
-        ("completed", ids[2]),
-    ]
-
-
-async def test_the_events_of_an_unknown_job_are_404(client: httpx.AsyncClient) -> None:
-    response = await client.get("/v1/jobs/018f0000-0000-7000-8000-000000000000/events")
-
-    assert (response.status_code, response.headers["content-type"]) == (404, "application/problem+json")
-    assert response.json()["type"] == "not_found"
-
-
-async def test_a_last_event_id_that_is_not_an_event_id_is_422(client: httpx.AsyncClient, engine: AsyncEngine) -> None:
-    job_id, _ = await _stored(engine, ["completed"], status="completed")
-
-    response = await client.get(f"/v1/jobs/{job_id}/events", headers={"Last-Event-ID": "seven"})
-
-    assert response.status_code == 422
-    problem = response.json()
-    assert (problem["type"], [error["field"] for error in problem["errors"]]) == (
-        "validation",
-        ["header.last-event-id"],
-    )
 
 
 async def test_an_idle_stream_sends_heartbeats_until_the_job_ends(

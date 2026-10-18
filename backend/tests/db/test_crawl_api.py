@@ -1,8 +1,5 @@
 """`POST /v1/crawl` over HTTP (SPEC-10 §4.5): what a client sends and gets back. What a crawl does is the service's and
-the worker's (`test_crawl.py`).
-
-The app runs as `submit_client` (conftest) sets it up: nothing leaves the process. Hosts are RFC 2606 names.
-"""
+the worker's (`test_crawl.py`)."""
 
 from typing import Any
 

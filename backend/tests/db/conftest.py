@@ -1,16 +1,5 @@
 """Tests against a real Postgres, in a database of their own: `CRAWLERAI_TEST_DATABASE_URL`. CI provides one, and
-`make check` recreates one each run. Without it these tests are skipped.
-
-The tests own that database: they delete every job and task in it, and the queue tests claim and run every due task
-in it, not only their own, which is why they never use `CRAWLERAI_DATABASE_URL`. Never point it at data you want.
-
-Under pytest-xdist (CI: `pytest -n`) each worker gets databases of its own, the names suffixed with the worker id
-(`crawlerai_gw0`, ...): the tests above delete and claim every row, so two workers never share one. CI creates them;
-a serial run (`uv run pytest`) uses the databases as named.
-
-The database is migrated to head once per session. Each test runs in a transaction that is rolled back (`conn`),
-or, when several connections must see each other's work, commits through `engine`, which deletes every job afterwards.
-"""
+`make check` recreates one each run. Without it these tests are skipped."""
 
 import json
 import os
@@ -155,13 +144,6 @@ async def own_origin(database_url: str) -> AsyncIterator[str]:
 async def www_origin(database_url: str, own_origin: str) -> AsyncIterator[str]:
     """`own_origin` on its `www.` subdomain, cleaned up as `own_origin` is: a site that redirects one to the other."""
     async for origin in _origin(database_url, f"www.{own_origin.removeprefix('https://')}"):
-        yield origin
-
-
-@pytest.fixture
-async def other_origin(database_url: str) -> AsyncIterator[str]:
-    """A second origin as `own_origin`, on an unrelated host."""
-    async for origin in _origin(database_url, f"shop-{uuid7().hex[-12:]}.example.test"):
         yield origin
 
 

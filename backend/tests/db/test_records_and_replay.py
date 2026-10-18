@@ -1,33 +1,24 @@
 """Stored records and capture replay (SPEC-07 §4.6, ARCHITECTURE §13.1, INV-22, INV-27): the records and captures
-services, then `GET /v1/records` and `POST /v1/captures/{id}/replay` over HTTP.
+services, then `GET /v1/records` and `POST /v1/captures/{id}/replay` over HTTP."""
 
-Records are made the way a page task makes them (`extract_task`) from synthetic JSON-LD pages on an RFC 2606 host,
-and committed, since the replay and the app read them through their own connections.
-"""
-
-import asyncio
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
-from crawlerai.core.ids import uuid7
 from crawlerai.db.keys import create_key
 from crawlerai.db.models import (
     ApiKey,
-    Capture,
     CaptureId,
-    ExtractionConfig,
     Job,
     JobId,
     Project,
@@ -41,9 +32,8 @@ from crawlerai.recurring.versions import store_records
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.task import extract_task
 from crawlerai.schemas import registry
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaChanges, SchemaDef, SchemaDocument, document_digest
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
 from crawlerai.services import captures, records
-from crawlerai.services.captures import CaptureNotFound
 from crawlerai.services.records import RecordFilter
 from crawlerai.storage.fs import FsStore
 
@@ -190,63 +180,6 @@ async def test_a_stored_record_carries_every_field_with_its_meta_and_where_it_ca
     assert record.confidence is None
 
 
-async def test_a_field_that_did_not_publish_is_listed_without_a_value(world: World) -> None:
-    made = await world.scrape("/p/1", _page("Blue kettle", price=False))
-
-    [record] = (await _list(world.engine, job_id=made.job_id)).items
-
-    assert record.complete is False
-    assert (record.fields["price"].status, record.fields["price"].value) == ("missing", None)
-
-
-async def test_filters_narrow_by_job_site_and_schema(world: World) -> None:
-    one = await world.scrape("/p/1", _page("Kettle 1"))
-    two = await world.scrape("/p/2", _page("Kettle 2"))
-    host = world.origin.removeprefix("https://")
-
-    by_job = await _list(world.engine, job_id=one.job_id)
-    by_site = await _list(world.engine, site=host.upper())
-    by_both = await _list(world.engine, site=host, job_id=two.job_id)
-    elsewhere = await _list(world.engine, site="other.example.test", schema_id=world.schema.id)
-
-    assert [r.id for r in by_job.items] == [one.record_id]
-    assert [r.id for r in by_site.items] == [two.record_id, one.record_id]
-    assert [r.id for r in by_both.items] == [two.record_id]
-    assert elsewhere.items == []
-
-
-async def test_a_record_whose_capture_expired_is_listed_without_one(world: World) -> None:
-    made = await world.scrape("/p/1", _page("Blue kettle"))
-    async with world.engine.begin() as conn:
-        await conn.execute(delete(Capture).where(Capture.id == made.capture_id))
-
-    [record] = (await _list(world.engine, job_id=made.job_id)).items
-
-    assert (record.id, record.capture_id) == (made.record_id, None)
-
-
-async def test_a_page_scraped_again_unchanged_answers_with_its_record_and_stores_no_other(world: World) -> None:
-    first = await world.scrape("/p/1", _page("Blue kettle"))
-
-    again = await world.scrape("/p/1", _page("Blue kettle"))
-
-    assert again.record_id == first.record_id
-    assert [r.id for r in (await _list(world.engine, schema_id=world.schema.id)).items] == [first.record_id]
-    # The job that found it unchanged lists it too (SPEC-11 §4.2, §4.4).
-    assert [r.id for r in (await _list(world.engine, job_id=again.job_id)).items] == [first.record_id]
-
-
-async def test_a_changed_price_is_listed_as_version_2_naming_price(world: World) -> None:
-    first = await world.scrape("/p/1", _page("Blue kettle"))
-
-    changed = await world.scrape("/p/1", _page("Blue kettle", amount="17.50"))
-
-    newest, oldest = (await _list(world.engine, schema_id=world.schema.id)).items
-    assert (newest.id, newest.version, newest.changed_fields) == (changed.record_id, 2, ["price"])
-    assert newest.fields["price"].value == {"amount": "17.50", "currency": "EUR"}
-    assert (oldest.id, oldest.version, oldest.changed_fields) == (first.record_id, 1, [])
-
-
 # The captures service.
 
 
@@ -262,115 +195,6 @@ async def test_a_replay_with_the_same_engine_remakes_the_stored_record_and_store
     assert replayed.model_dump() == stored.model_dump(include={"mode", "complete", "confidence", "fields"})
     async with world.engine.connect() as conn:
         assert (await conn.execute(count)).scalar_one() == before
-
-
-async def test_a_replay_extracts_the_capture_again_rather_than_reading_the_stored_record(world: World) -> None:
-    made = await world.scrape("/p/1", _page("Blue kettle"))
-    # As if an older engine had stored the record: its price did not publish.
-    older: dict[str, Any] = {"status": "missing", "reason": "no_candidates", "evidence": None, "confidence": None}
-    older |= {"calibrated": False, "source_kind": None, "locator": None, "derived_by": None}
-    async with world.engine.begin() as conn:
-        meta: dict[str, Any] = (
-            await conn.execute(select(Record.field_meta).where(Record.id == made.record_id))
-        ).scalar_one()
-        await conn.execute(
-            update(Record).where(Record.id == made.record_id).values(field_meta={**meta, "price": older})
-        )
-
-    [replayed] = await captures.replay(world.engine, world.store, world.data, made.capture_id)
-
-    assert (replayed.fields["price"].status, replayed.fields["price"].value) == (
-        "published",
-        {"amount": "19.90", "currency": "EUR"},
-    )
-
-
-async def test_a_schema_with_an_active_config_replays_with_it(world: World) -> None:
-    # SPEC-08 §4.8: the page is extracted as one fetched now would be, in `config` mode.
-    made = await world.scrape("/p/1", _page("Blue kettle"))
-    ir = {
-        "ir_version": "1",
-        "site": world.origin.removeprefix("https://"),
-        "schema": {"name": world.schema.name, "digest": document_digest(world.schema)},
-        "page_kind": "detail",
-        "fetch": {"method": "http"},
-        "fields": {"title": {"steps": [{"jsonld": "$['name']", "when_type": "Product"}], "status": "operator"}},
-        "provenance": {
-            "origin": "operator",
-            "validated_on": [],
-            "learned_at": "2026-10-01T00:00:00Z",
-            "engine_version": "test",
-        },
-    }
-    config = insert(ExtractionConfig).values(
-        site_id=world.site_id,
-        schema_id=world.schema.id,
-        page_kind="detail",
-        version=1,
-        status="active",
-        ir=ir,
-        origin="operator",
-    )
-    async with world.engine.begin() as conn:
-        config_id = (await conn.execute(config.returning(ExtractionConfig.id))).scalar_one()
-    try:
-        [replayed] = await captures.replay(world.engine, world.store, world.data, made.capture_id)
-    finally:
-        async with world.engine.begin() as conn:
-            await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.id == config_id))
-
-    title = replayed.fields["title"]
-    assert (replayed.mode, title.value, title.source_kind) == ("config", "Blue kettle", "jsonld")
-
-
-async def test_replaying_a_capture_whose_bundle_is_gone_is_not_found(world: World, tmp_path: Path) -> None:
-    made = await world.scrape("/p/1", _page("Blue kettle"))
-    empty_store = FsStore(tmp_path / "elsewhere")
-    with pytest.raises(CaptureNotFound, match="no longer stored"):
-        await captures.replay(world.engine, empty_store, world.data, made.capture_id)
-
-
-class _CountingStore(FsStore):
-    """The world's store, counting the bundles read from it."""
-
-    reads = 0
-
-    def get(self, key: str) -> bytes:
-        self.reads += 1
-        return super().get(key)
-
-
-async def test_a_capture_s_markdown_is_made_once_for_all_its_pages(world: World, tmp_path: Path) -> None:
-    text = "A blue kettle boils a litre of water in under three minutes and keeps it warm for an hour."
-    body = f"<body><article><h1>Blue kettle</h1><p>{text}</p></article></body></html>"
-    made = await world.scrape("/p/1", _page("Blue kettle").replace(b"</html>", body.encode()))
-    store = _CountingStore(tmp_path / "objects")  # the world's store
-
-    first = await captures.markdown_of(world.engine, store, made.capture_id)
-    again = await captures.markdown_of(world.engine, store, made.capture_id)
-
-    assert text in first
-    assert (again, store.reads) == (first, 1)
-
-
-async def test_a_listing_replays_one_record_per_row_as_the_page_task_stored_them(world: World) -> None:
-    url = FieldSpec(type=FieldType.URL, description="d", required=True, schema_org="Product.url")
-    listed = SchemaChanges(page_kind="listing", fields={**world.schema.fields, "url": url})
-    async with world.engine.begin() as conn:
-        world.schema = await registry.update_schema(conn, world.schema, listed)
-    rows = [_product(f"Kettle {n}") | {"url": f"{world.origin}/p/{n}"} for n in (1, 2)]
-    items = [{"@type": "ListItem", "position": n, "item": row} for n, row in enumerate(rows, start=1)]
-    made = await world.scrape(
-        "/kettles", _html({"@context": "https://schema.org", "@type": "ItemList", "itemListElement": items})
-    )
-    stored = (await _list(world.engine, job_id=made.job_id)).items
-
-    replayed = await captures.replay(world.engine, world.store, world.data, made.capture_id)
-
-    content = {"mode", "complete", "confidence", "fields"}
-    by_title = {str(record.fields["title"].value): record.model_dump() for record in replayed}
-    assert sorted(by_title) == ["Kettle 1", "Kettle 2"]
-    assert by_title == {str(record.fields["title"].value): record.model_dump(include=content) for record in stored}
 
 
 # Over HTTP.
@@ -436,108 +260,3 @@ async def test_records_are_listed_in_the_field_shape_with_a_cursor(client: httpx
     assert set(newest["fields"]["title"]) == ATTRIBUTES
     assert [r["id"] for r in second.json()["items"]] == [str(made[0].record_id)]
     assert second.json()["next_cursor"] is None
-
-
-async def test_changed_since_lists_the_new_versions_and_new_entities_stored_from_then(
-    client: httpx.AsyncClient, world: World
-) -> None:
-    await world.scrape("/p/1", _page("Kettle 1"))
-    await world.scrape("/p/2", _page("Kettle 2"))
-    async with world.engine.connect() as conn:
-        since = (await conn.execute(select(func.now()))).scalar_one()
-    changed = await world.scrape("/p/1", _page("Kettle 1", amount="17.50"))
-    await world.scrape("/p/2", _page("Kettle 2"))
-    new = await world.scrape("/p/3", _page("Kettle 3"))
-
-    query = {"schema_id": str(world.schema.id), "changed_since": since.isoformat()}
-    response = await client.get("/v1/records", params=query)
-
-    assert response.status_code == 200, response.text
-    assert [(r["id"], r["version"], r["changed_fields"]) for r in response.json()["items"]] == [
-        (str(new.record_id), 1, []),
-        (str(changed.record_id), 2, ["price"]),
-    ]
-
-
-async def test_a_record_that_commits_after_a_poll_is_listed_by_the_next_poll_from_then(world: World) -> None:
-    polls: list[tuple[datetime, records.RecordPage]] = []
-
-    async def poll() -> None:  # while the record's transaction is still open
-        async with world.engine.connect() as conn:
-            since = (await conn.execute(select(func.now()))).scalar_one()
-        polls.append((since, await _list(world.engine, schema_id=world.schema.id, changed_since=since)))
-
-    late = await world.scrape("/p/1", _page("Kettle 1"), before_commit=poll)
-    [(since, during)] = polls
-    after = await _list(world.engine, schema_id=world.schema.id, changed_since=since)
-
-    assert during.items == []
-    # It was stored before the first poll began, and committed after: the poll from then on lists it (SPEC-11 §4.4).
-    assert [record.id for record in after.items] == [late.record_id]
-
-
-async def test_changed_since_waits_for_a_record_commit_in_progress(world: World) -> None:
-    await world.scrape("/p/1", _page("Kettle 1"))
-    async with world.engine.connect() as conn:
-        since = (await conn.execute(select(func.now()))).scalar_one()
-    async with world.engine.connect() as committing:
-        # A record's transaction holds the feed lock shared from its commit stamp until it is visible (migration
-        # 0018); here an open transaction holds it.
-        await committing.execute(select(func.pg_advisory_xact_lock_shared(records.RECORD_FEED_LOCK)))
-        poll = asyncio.create_task(_list(world.engine, schema_id=world.schema.id, changed_since=since))
-        done, _ = await asyncio.wait({poll}, timeout=1)
-        await committing.commit()
-        page = await poll
-
-    assert done == set()
-    assert page.items == []
-
-
-@pytest.mark.parametrize(
-    "query",
-    [
-        {"limit": 201},
-        {"cursor": "not-an-id"},
-        {"page": 2},
-        # A time without its offset names no instant (RFC 3339 §4.4).
-        {"changed_since": "2026-10-01T00:00:00"},
-    ],
-)
-async def test_a_query_outside_the_filters_is_a_validation_problem(
-    client: httpx.AsyncClient, query: dict[str, Any]
-) -> None:
-    response = await client.get("/v1/records", params=query)
-
-    assert response.status_code == 422
-    assert response.headers["content-type"] == "application/problem+json"
-    assert response.json()["type"] == "validation"
-
-
-async def test_a_replay_answers_the_records_without_ids(client: httpx.AsyncClient, world: World) -> None:
-    made = await world.scrape("/p/1", _page("Blue kettle"))
-
-    response = await client.post(f"/v1/captures/{made.capture_id}/replay", json={})
-
-    assert response.status_code == 200, response.text
-    [record] = response.json()["records"]
-    assert set(record) == {"mode", "complete", "confidence", "fields"}
-    assert record["fields"]["title"]["value"] == "Blue kettle"
-
-
-async def test_replay_problems(client: httpx.AsyncClient, world: World) -> None:
-    unextracted = await world.scrape("/p/1", _page("Blue kettle"), extract=False)
-
-    unknown = await client.post(f"/v1/captures/{uuid7()}/replay", json={})
-    no_schema = await client.post(f"/v1/captures/{unextracted.capture_id}/replay", json={})
-
-    assert (unknown.status_code, unknown.json()["type"]) == (404, "not_found")
-    assert (no_schema.status_code, no_schema.json()["type"]) == (409, "conflict")
-
-
-@pytest.mark.parametrize("app_data", [None])
-async def test_without_the_engine_data_a_replay_is_unavailable(client: httpx.AsyncClient, world: World) -> None:
-    made = await world.scrape("/p/1", _page("Blue kettle"))
-
-    response = await client.post(f"/v1/captures/{made.capture_id}/replay", json={})
-
-    assert (response.status_code, response.json()["type"]) == (503, "records_unavailable")

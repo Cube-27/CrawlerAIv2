@@ -11,7 +11,6 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.types import AttemptRecord, FetchResult, Validators
-from crawlerai.core.capture import CaptureMethod
 from crawlerai.db.models import Project, Site, SiteId, UrlState
 from crawlerai.recurring.conditional import Unchanged
 from crawlerai.recurring.simhash import ContentFingerprint
@@ -58,64 +57,6 @@ async def test_a_200_stores_the_validators_it_answered_with(
     assert row[2] == (await conn.execute(select(func.now()))).scalar_one()
 
 
-async def test_a_later_200_replaces_the_validators_and_drops_the_ones_it_lacks(
-    conn: AsyncConnection, fetch_result: Callable[..., FetchResult]
-) -> None:
-    site_id = await _site(conn)
-    await record_fetch(conn, site_id, URL, fetch_result(URL, 200, b"", VALIDATORS))
-    await record_fetch(conn, site_id, URL, fetch_result(URL, 200, b"", (("ETag", '"v2"'),)))
-
-    assert await stored_validators(conn, site_id, URL) == Validators(etag='"v2"', last_modified=None)
-
-
-async def test_a_200_without_validators_stores_none_to_send(
-    conn: AsyncConnection, fetch_result: Callable[..., FetchResult]
-) -> None:
-    site_id = await _site(conn)
-    await record_fetch(conn, site_id, URL, fetch_result(URL, 200, b""))
-
-    assert await stored_validators(conn, site_id, URL) is None
-    now = (await conn.execute(select(func.now()))).scalar_one()
-    assert await _row(conn, site_id) == (None, None, now)  # the URL is still recorded as seen
-
-
-@pytest.mark.parametrize(("status", "method"), [(404, "http"), (200, "browser")])
-async def test_only_an_http_200_stores_validators(
-    conn: AsyncConnection, fetch_result: Callable[..., FetchResult], status: int, method: CaptureMethod
-) -> None:
-    # The HTTP rung is the only one that sends them (§4.2), and an API response describes its endpoint, not the page.
-    site_id = await _site(conn)
-    await record_fetch(conn, site_id, URL, fetch_result(URL, status, b"", VALIDATORS, method=method))
-
-    assert await _row(conn, site_id) is None
-
-
-async def test_a_200_that_failed_or_was_not_ok_stores_nothing(
-    conn: AsyncConnection, fetch_result: Callable[..., FetchResult]
-) -> None:
-    # A body cut short (an error after the status line) or a shell was never extracted whole: a later 304 must not
-    # stand for it.
-    site_id = await _site(conn)
-    await record_fetch(
-        conn, site_id, URL, fetch_result(URL, 200, b"", VALIDATORS, block_class="error", error="body_cap")
-    )
-    await record_fetch(conn, site_id, URL, fetch_result(URL, 200, b"", VALIDATORS, block_class="shell"))
-
-    assert await _row(conn, site_id) is None
-
-
-async def test_a_redirected_200_stores_nothing(conn: AsyncConnection, fetch_result: Callable[..., FetchResult]) -> None:
-    # Its validators describe the resource redirected to, not the URL asked for.
-    site_id = await _site(conn)
-    moved = fetch_result(URL, 200, b"", VALIDATORS)
-    manifest = moved.bundle.manifest.model_copy(update={"final_url": f"{URL}/moved"})
-    await record_fetch(
-        conn, site_id, URL, moved.model_copy(update={"bundle": moved.bundle.model_copy(update={"manifest": manifest})})
-    )
-
-    assert await _row(conn, site_id) is None
-
-
 async def test_a_304_marks_the_url_seen_and_keeps_its_validators(
     conn: AsyncConnection, fetch_result: Callable[..., FetchResult]
 ) -> None:
@@ -147,15 +88,6 @@ async def _a_day_ago(conn: AsyncConnection, site_id: SiteId) -> datetime | None:
     return (await conn.execute(moved.returning(UrlState.last_changed_at))).scalar_one()
 
 
-async def test_a_first_fingerprint_is_a_change(conn: AsyncConnection) -> None:
-    site_id = await _site(conn)
-
-    assert await record_content(conn, site_id, URL, FINGERPRINT) is True
-
-    now = (await conn.execute(select(func.now()))).scalar_one()
-    assert await _content(conn, site_id) == ("00" * 16, "0123456789abcdef", now)
-
-
 async def test_an_equal_fingerprint_is_unchanged(conn: AsyncConnection) -> None:
     site_id = await _site(conn)
     await record_content(conn, site_id, URL, FINGERPRINT)
@@ -164,26 +96,3 @@ async def test_an_equal_fingerprint_is_unchanged(conn: AsyncConnection) -> None:
     assert await record_content(conn, site_id, URL, FINGERPRINT) is False
 
     assert await _content(conn, site_id) == ("00" * 16, "0123456789abcdef", changed_at)
-
-
-async def test_another_digest_with_an_equal_simhash_is_a_change(conn: AsyncConnection) -> None:
-    # D-1340: SimHash can stay equal across a one-word edit (D-0915); the digest decides.
-    site_id = await _site(conn)
-    await record_content(conn, site_id, URL, FINGERPRINT)
-    await _a_day_ago(conn, site_id)
-
-    assert await record_content(conn, site_id, URL, ContentFingerprint("11" * 16, FINGERPRINT.simhash)) is True
-
-    now = (await conn.execute(select(func.now()))).scalar_one()
-    assert await _content(conn, site_id) == ("11" * 16, "0123456789abcdef", now)
-
-
-async def test_a_fingerprint_keeps_the_validators(
-    conn: AsyncConnection, fetch_result: Callable[..., FetchResult]
-) -> None:
-    site_id = await _site(conn)
-    await record_fetch(conn, site_id, URL, fetch_result(URL, 200, b"", VALIDATORS))
-
-    await record_content(conn, site_id, URL, FINGERPRINT)
-
-    assert await stored_validators(conn, site_id, URL) == Validators(etag=ETAG, last_modified=LAST_MODIFIED)

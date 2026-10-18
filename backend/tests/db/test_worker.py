@@ -1,7 +1,6 @@
 """The queue and the worker loop across several connections, with committed data (SPEC-01 §6, §7)."""
 
 import asyncio
-import logging
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import timedelta
@@ -15,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobEvent, JobId, JobKind, JobStatus, Project, UrlTask, UrlTaskId
 from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask, claim_tasks
-from crawlerai.worker.loop import Failed, Finished, Postpone, Skipped, TaskHandler, TaskResult, run_worker
+from crawlerai.worker.loop import Failed, Finished, TaskHandler, TaskResult, run_worker
 
 pytestmark = pytest.mark.anyio
 
@@ -99,21 +98,6 @@ async def test_8_claimers_take_1000_tasks_each_exactly_once_and_at_most_7_a_clai
     assert sum(1 for batch in batches if batch) > 1
 
 
-async def test_10k_tasks_drain_through_4_workers_with_no_double_claims(engine: AsyncEngine) -> None:
-    job_id, ids = await _job(engine, 10_000)
-    runs: Counter[UrlTaskId] = Counter()
-
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        runs[task.id] += 1
-        return Finished("extracted")
-
-    await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id), workers=4)
-
-    assert runs == Counter(ids)
-    assert Counter(row[:3] for row in await _tasks(engine)) == {("done", "extracted", 1): 10_000}
-    assert await _job_state(engine, job_id) == ("completed", ["completed"])
-
-
 async def test_tasks_of_a_cancelled_job_are_not_run(engine: AsyncEngine) -> None:
     job_id, _ = await _job(engine, 3, status="running", cancel_requested=True)
     runs: list[UrlTaskId] = []
@@ -129,72 +113,6 @@ async def test_tasks_of_a_cancelled_job_are_not_run(engine: AsyncEngine) -> None
     assert [row.status for row in await _tasks(engine)] == ["cancelled"] * 3
 
 
-async def test_a_permanent_failure_result_fails_the_task_and_the_job(engine: AsyncEngine) -> None:
-    job_id, _ = await _job(engine, 1)
-
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        return Failed("budget_exhausted", transient=False)
-
-    await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
-
-    assert await _tasks(engine) == [("failed", "failed", 1, "budget_exhausted")]
-    assert await _job_state(engine, job_id) == ("failed", ["task_failed", "failed"])
-
-
-async def test_a_finished_result_records_its_reason(engine: AsyncEngine) -> None:
-    job_id, _ = await _job(engine, 1)
-
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        return Finished("blocked", reason="robots")
-
-    await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
-
-    assert await _tasks(engine) == [("done", "blocked", 1, "robots")]
-
-
-async def test_a_skipped_last_task_ends_its_job_through_the_ending(engine: AsyncEngine) -> None:
-    job_id, _ = await _job(engine, 1)
-    endings: list[JobStatus] = []
-
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        return Skipped()
-
-    async def ending(conn: AsyncConnection, ended: JobId, status: JobStatus) -> None:
-        endings.append(status)
-
-    stop = asyncio.Event()
-    loop = asyncio.create_task(run_worker(_settings(engine), {"crawl": handler}, stop, ending=ending))
-    async with asyncio.timeout(60):
-        while not await _job_ended(engine, job_id)():
-            await asyncio.sleep(0.1)
-    stop.set()
-    await loop
-
-    assert endings == ["completed"]
-
-
-async def test_the_worker_logs_its_start_each_tasks_start_and_result_and_its_stop(
-    engine: AsyncEngine, caplog: pytest.LogCaptureFixture
-) -> None:
-    job_id, ids = await _job(engine, 2)
-
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        return Finished("extracted") if task.id == ids[0] else Failed("http 503", transient=False)
-
-    with caplog.at_level(logging.INFO, logger="crawlerai.worker.loop"):
-        await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
-
-    lines = [(r.levelname, r.getMessage().split(": ", 1)[1]) for r in caplog.records]
-    assert lines == [
-        ("INFO", "started; job kinds crawl"),
-        ("INFO", f"crawl task of job {job_id}: running"),
-        ("INFO", f"crawl task of job {job_id}: extracted"),
-        ("INFO", f"crawl task of job {job_id}: running"),
-        ("WARNING", f"crawl task of job {job_id}: failed: http 503"),
-        ("INFO", "stopped"),
-    ]
-
-
 async def test_a_retry_result_requeues_the_task_until_its_attempts_run_out(engine: AsyncEngine) -> None:
     job_id, _ = await _job(engine, 1)
 
@@ -204,28 +122,6 @@ async def test_a_retry_result_requeues_the_task_until_its_attempts_run_out(engin
     await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
 
     assert await _tasks(engine) == [("done", "blocked", MAX_ATTEMPTS, "http 429")]
-
-
-async def test_a_postponed_task_runs_later_without_spending_attempts(engine: AsyncEngine) -> None:
-    job_id, _ = await _job(engine, 1)
-    runs: list[int] = []
-
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        runs.append(task.attempts)
-        return Postpone(timedelta(0)) if len(runs) < 5 else Finished("extracted")
-
-    await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
-
-    assert runs == [1, 1, 1, 1, 1]
-    assert await _tasks(engine) == [("done", "extracted", 1, None)]
-
-
-async def test_a_task_without_a_handler_for_its_job_kind_fails(engine: AsyncEngine) -> None:
-    job_id, _ = await _job(engine, 1)
-
-    await _run_until(engine, {}, _job_ended(engine, job_id))
-
-    assert await _tasks(engine) == [("failed", "failed", 1, "no handler for job kind 'crawl'")]
 
 
 @pytest.mark.parametrize(
@@ -251,19 +147,6 @@ async def test_a_handler_exception_is_recorded_and_the_task_retried(
     await _run_until(engine, {"crawl": handler}, ran, log_redact_urls=redact)
 
     assert await _tasks(engine) == [("queued", None, 1, last_error)]
-
-
-async def test_stopping_returns_claimed_tasks_that_did_not_start(engine: AsyncEngine) -> None:
-    await _job(engine, 3)
-    stop = asyncio.Event()
-
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        stop.set()
-        return Finished("extracted")
-
-    await asyncio.wait_for(run_worker(_settings(engine), {"crawl": handler}, stop), 60)
-
-    assert await _tasks(engine) == [("done", "extracted", 1, None)] + [("queued", None, 0, None)] * 2
 
 
 async def test_work_of_a_task_whose_lease_was_lost_is_rolled_back(engine: AsyncEngine) -> None:

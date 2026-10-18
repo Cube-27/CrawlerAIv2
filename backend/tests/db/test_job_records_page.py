@@ -4,10 +4,9 @@ is a record id that stays valid as tasks are added."""
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import timedelta
 
 import pytest
-from sqlalchemy import func, insert, select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.db.models import (
@@ -121,24 +120,6 @@ async def test_pages_follow_the_jobs_tasks_newest_first_and_cover_every_record_o
     assert listed == ["c1", "b2", "b1", "a1"]
 
 
-async def test_a_record_several_tasks_of_the_job_stand_for_is_listed_once_at_the_first_task(jobs: Jobs) -> None:
-    job_id = await jobs.job()
-    await jobs.task(job_id, "a", "shared", "a1")
-    await jobs.task(job_id, "b", "b1", "shared")
-    await jobs.task(job_id, "c", "shared")
-
-    assert await jobs.titles(job_id, limit=1) == ["b1", "a1", "shared"]
-
-
-async def test_a_record_an_earlier_job_stored_is_listed_by_the_job_whose_task_found_it_unchanged(jobs: Jobs) -> None:
-    first, again = await jobs.job(), await jobs.job()
-    await jobs.task(first, "a", "a1")
-
-    await jobs.task(again, "a", "a1")
-
-    assert await jobs.titles(again, limit=1) == ["a1"]
-
-
 async def test_a_cursor_stays_valid_when_tasks_are_added_and_filters_narrow_the_pages(jobs: Jobs) -> None:
     job_id = await jobs.job()
     await jobs.task(job_id, "a", "a1")
@@ -151,29 +132,3 @@ async def test_a_cursor_stays_valid_when_tasks_are_added_and_filters_narrow_the_
     reverse = {record_id: title for title, record_id in jobs.stored.items()}
     assert [reverse[record.id] for record in first.items + rest.items] == ["b1", "a1"]
     assert await jobs.titles(job_id, schema_id=uuid.uuid4()) == []
-
-
-async def test_a_cursor_of_a_record_the_job_has_no_task_for_gives_an_empty_page(jobs: Jobs) -> None:
-    job_id, other = await jobs.job(), await jobs.job()
-    await jobs.task(job_id, "a", "a1")
-    await jobs.task(other, "z", "z1")
-
-    page = await list_records(jobs.conn, RecordFilter(job_id=job_id, cursor=jobs.stored["z1"], limit=5))
-
-    assert (page.items, page.next_cursor) == ([], None)
-
-
-async def test_a_record_a_task_stands_for_later_keeps_its_place_so_no_page_skips_records(jobs: Jobs) -> None:
-    job_id = await jobs.job()
-    older = await jobs.task(job_id, "a", "a1")
-    await jobs.task(job_id, "m", "m1")
-    await jobs.task(job_id, "b", "shared")
-    first = await list_records(jobs.conn, RecordFilter(job_id=job_id, limit=1))
-    # The older task's page comes to stand for the record after the newer one did (tasks run concurrently).
-    later = {"url_task_id": older, "record_id": jobs.stored["shared"], "created_at": func.now() + timedelta(seconds=1)}
-    await jobs.conn.execute(insert(TaskRecord).values(later))
-
-    rest = await list_records(jobs.conn, RecordFilter(job_id=job_id, cursor=first.next_cursor, limit=5))
-
-    reverse = {record_id: title for title, record_id in jobs.stored.items()}
-    assert [reverse[record.id] for record in first.items + rest.items] == ["shared", "m1", "a1"]

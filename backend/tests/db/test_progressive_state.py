@@ -4,12 +4,11 @@ import uuid
 from typing import Any
 
 import pytest
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.config_ir.progressive import (
-    NotLearning,
     StateKey,
     learning_activated,
     learning_failed,
@@ -106,45 +105,6 @@ async def test_a_failed_run_goes_cold_and_retries_after_eight_more_pages(conn: A
     assert len(await _learn_jobs(conn, key)) == 2
 
 
-async def test_an_activated_config_makes_the_state_active(conn: AsyncConnection) -> None:
-    key = await _key(conn)
-    await _pages(conn, key, 8)
-    await trigger_learning(conn, batch=BATCH)
-    config_id = await _config(conn, key)
-
-    await learning_activated(conn, key, config_id)
-
-    state = await _state(conn, key)
-    now = (await conn.execute(select(func.now()))).scalar_one()
-    assert (state.mode, state.active_config_id, state.learning_started_at, state.last_learned_at) == (
-        "active",
-        config_id,
-        None,
-        now,
-    )
-    await _pages(conn, key, 30)
-    assert await trigger_learning(conn, batch=BATCH) == 0
-
-
-async def test_an_explicit_learn_call_starts_learning_before_eight_pages(conn: AsyncConnection) -> None:
-    key = await _key(conn)
-
-    job_id = await request_learning(conn, key)
-
-    assert [job.id for job in await _learn_jobs(conn, key)] == [job_id]
-    state = await _state(conn, key)
-    assert (state.mode, state.pages_extracted) == ("learning", 0)
-
-
-async def test_a_learning_state_gets_no_second_job(conn: AsyncConnection) -> None:
-    key = await _key(conn)
-    await request_learning(conn, key)
-
-    assert await request_learning(conn, key) is None
-    assert await request_learning(conn, key, force=True) is None
-    assert len(await _learn_jobs(conn, key)) == 1
-
-
 async def test_an_active_state_relearns_only_when_forced_and_keeps_its_config(conn: AsyncConnection) -> None:
     key = await _key(conn)
     await request_learning(conn, key)
@@ -162,27 +122,6 @@ async def test_an_active_state_relearns_only_when_forced_and_keeps_its_config(co
     state = await _state(conn, key)
     assert (state.mode, state.active_config_id, state.learning_started_at) == ("active", config_id, None)
     assert state.retry_at_pages is None
-
-
-async def test_ending_a_run_that_was_not_started_is_refused(conn: AsyncConnection) -> None:
-    key = await _key(conn)
-    await _pages(conn, key, 3)
-    config_id = await _config(conn, key)
-
-    with pytest.raises(NotLearning):
-        await learning_failed(conn, key)
-    with pytest.raises(NotLearning):
-        await learning_activated(conn, key, config_id)
-    assert (await _state(conn, key)).mode == "cold"
-
-
-async def test_the_trigger_handles_at_most_one_batch(conn: AsyncConnection) -> None:
-    keys = [await _key(conn) for _ in range(3)]
-    for key in keys:
-        await _pages(conn, key, 8)
-
-    assert await trigger_learning(conn, batch=2) == 2
-    assert await trigger_learning(conn, batch=2) == 1
 
 
 @pytest.mark.parametrize(

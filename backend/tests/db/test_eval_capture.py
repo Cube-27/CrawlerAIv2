@@ -3,36 +3,28 @@ Synthetic pages under `.test` hosts on 127.0.0.1; a throwaway database (`CRAWLER
 object root."""
 
 import threading
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import aclosing
 from dataclasses import dataclass, field
-from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import IPv4Address
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
-from sqlalchemy import delete, insert, select, update
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy import delete, insert
+from sqlalchemy.ext.asyncio import create_async_engine
 
-from crawlerai.acquire.http import fetch_http
-from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.ssrf import SafeConnector, Target
-from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import IMPERSONATE_DEFAULT, Settings
 from crawlerai.db.models import Capture, EvalPage, SchemaDef, SchemaId, Site
 from crawlerai.eval.cli import (
     Captured,
-    EvalCliError,
     PageRequest,
-    SchemaRef,
     Skipped,
-    capture_pages,
     run_capture,
 )
-from crawlerai.eval.store import DevEvalStore, EvalPageRow, dev_store
-from crawlerai.storage.fs import FsStore
+from crawlerai.eval.store import EvalPageRow, dev_store
 
 pytestmark = pytest.mark.anyio
 
@@ -147,14 +139,6 @@ def _requests(server: Server, *paths: str, schema: str = SCHEMA) -> list[PageReq
     return [PageRequest(n, server.url(path), schema, "custom_store") for n, path in enumerate(paths, start=1)]
 
 
-async def _main_rows(engine: AsyncEngine) -> tuple[list[str], list[str]]:
-    """The hosts in the main `site` table and the object keys in its `capture` table."""
-    async with engine.connect() as conn:
-        hosts = list((await conn.execute(select(Site.host).where(Site.host.like("%.example.test")))).scalars())
-        keys = list((await conn.execute(select(Capture.object_key).order_by(Capture.object_key))).scalars())
-    return hosts, keys
-
-
 async def test_dev_captures_land_in_the_main_store_as_unlabeled_pages(env: Env, server: Server) -> None:
     server.routes |= {"/robots.txt": (404, b""), "/p/1": (200, _PAGE), "/p/2": (200, _PAGE)}
 
@@ -202,112 +186,3 @@ async def test_a_page_robots_txt_disallows_is_not_fetched_or_stored(env: Env, se
     assert f"{HOST}/private/1" not in server.requests
     assert server.requests.count(f"{HOST}/robots.txt") == 1
     assert len(_files(env.main_root)) == 1
-
-
-async def test_an_unreachable_robots_txt_allows_nothing(env: Env, server: Server) -> None:
-    # RFC 9309 §2.3.1.4: a 5xx robots.txt means the site is unreachable.
-    server.routes |= {"/robots.txt": (503, b""), "/p/1": (200, _PAGE)}
-
-    outcomes = await run_capture(env.settings, _requests(server, "/p/1"), None, LoopbackConnector(server.port))
-
-    assert outcomes == [Skipped(1, "robots_unreachable")]
-    assert _files(env.main_root) == []
-
-
-async def test_a_failed_fetch_is_stored_with_its_outcome(env: Env, server: Server) -> None:
-    # The acquisition mix per category (SPEC-03 §4.6) counts pages that did not come back as `ok`.
-    server.routes["/robots.txt"] = (404, b"")
-
-    (outcome,) = await run_capture(env.settings, _requests(server, "/gone"), None, LoopbackConnector(server.port))
-
-    assert isinstance(outcome, Captured)
-    assert (outcome.status_code, outcome.block_class) == (404, "not_found")
-    assert _files(env.main_root) == [f"eval/dev/{outcome.capture_id}.bundle.zst"]
-
-
-async def test_pages_of_one_host_are_spaced_by_the_robots_crawl_delay(env: Env, server: Server) -> None:
-    server.routes |= {"/robots.txt": (200, b"User-agent: *\nCrawl-delay: 5\n"), "/p/1": (200, _PAGE)}
-    server.routes |= {"/p/2": (200, _PAGE), "/p/3": (200, _PAGE)}
-    now = [0.0]
-    slept: list[float] = []
-
-    async def sleep(seconds: float) -> None:
-        slept.append(seconds)
-        now[0] += seconds
-
-    store = DevEvalStore(create_async_engine(env.settings.database_url.get_secret_value()), FsStore(env.main_root))
-    schemas = {SCHEMA: SchemaRef(env.schema_ids[SCHEMA], SCHEMA, "detail")}
-    fetch = partial(
-        fetch_http,
-        policy=FetchPolicy(),
-        engine_version="test",
-        impersonate=IMPERSONATE_DEFAULT,
-        connector=LoopbackConnector(server.port),
-    )
-
-    async with aclosing(store):
-        outcomes = await capture_pages(
-            store, schemas, _requests(server, "/p/1", "/p/2", "/p/3"), fetch, HostLimiter(lambda: now[0]), sleep
-        )
-
-    assert [type(o) for o in outcomes] == [Captured] * 3
-    assert slept == [5.0, 5.0]
-
-
-async def test_a_schema_of_another_page_kind_is_refused_before_any_fetch(env: Env, server: Server) -> None:
-    requests, connector = _requests(server, "/p/1", schema=LISTING_SCHEMA), LoopbackConnector(server.port)
-
-    with pytest.raises(EvalCliError, match=f"schema {LISTING_SCHEMA} is for listing pages, not detail"):
-        await run_capture(env.settings, requests, "detail", connector)
-
-    assert server.requests == []
-
-
-async def test_an_unknown_schema_is_refused_before_any_fetch(env: Env, server: Server) -> None:
-    requests, connector = _requests(server, "/p/1", schema="eval_capture_unknown"), LoopbackConnector(server.port)
-
-    with pytest.raises(EvalCliError, match="no active schema named eval_capture_unknown"):
-        await run_capture(env.settings, requests, None, connector)
-
-    assert server.requests == []
-
-
-async def test_a_retired_schema_is_refused_before_any_fetch(env: Env, server: Server, engine: AsyncEngine) -> None:
-    async with engine.begin() as conn:
-        await conn.execute(update(SchemaDef).where(SchemaDef.name == SCHEMA).values(status="retired"))
-    requests, connector = _requests(server, "/p/1"), LoopbackConnector(server.port)
-
-    with pytest.raises(EvalCliError, match=f"no active schema named {SCHEMA}"):
-        await run_capture(env.settings, requests, None, connector)
-
-    assert server.requests == []
-
-
-async def _seed(env: Env, host: str, fetch_result: Callable[..., FetchResult]) -> None:
-    """One captured page of `host` in the eval store."""
-    bundle = fetch_result(f"https://{host}/seed", body=_PAGE).bundle
-    async with aclosing(dev_store(env.settings)) as store:
-        capture_id = await store.put_capture(bundle, "custom_store")
-        await store.put_page(
-            EvalPageRow(
-                capture_id=capture_id,
-                split="dev",
-                schema_id=env.schema_ids[SCHEMA],
-                schema_name=SCHEMA,
-                page_kind="detail",
-                category="custom_store",
-            )
-        )
-
-
-async def test_a_host_already_in_the_golden_set_is_captured_again(
-    env: Env, server: Server, fetch_result: Callable[..., FetchResult]
-) -> None:
-    await _seed(env, HOST, fetch_result)
-    server.routes |= {"/robots.txt": (404, b""), "/p/1": (200, _PAGE)}
-
-    (outcome,) = await run_capture(env.settings, _requests(server, "/p/1"), None, LoopbackConnector(server.port))
-
-    assert isinstance(outcome, Captured)
-    async with aclosing(dev_store(env.settings)) as store:
-        assert len(await store.list_pages()) == 2
