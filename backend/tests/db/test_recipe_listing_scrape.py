@@ -73,6 +73,7 @@ class Web:
     up: bool = True
     down: int = 500
     empty: bool = False
+    names: list[str] = field(default_factory=lambda: list(NAMES))
     refused: str | None = None  # the cursor of the page whose request the SSRF guard refuses
     requested: list[JsonRequest] = field(default_factory=list)
     listed: list[str] = field(default_factory=list)
@@ -97,10 +98,10 @@ class Web:
         start = int(after)
         rows = [
             {"label": name, "href": f"{self.origin}/kettles/{start + i}"}
-            for i, name in enumerate(NAMES[start : start + PAGE_SIZE])
+            for i, name in enumerate(self.names[start : start + PAGE_SIZE])
             if not self.empty
         ]
-        following = start + PAGE_SIZE if start + PAGE_SIZE < len(NAMES) else None
+        following = start + PAGE_SIZE if start + PAGE_SIZE < len(self.names) else None
         body = json.dumps({"result": {"rows": rows, "next": None if following is None else str(following)}})
         return self.fetch_result(request.page_url, 200, body.encode(), method="api")
 
@@ -494,3 +495,25 @@ async def test_a_batch_task_whose_further_recipe_page_fails_its_extraction_is_pa
     async with engine.connect() as conn:
         outcome = (await conn.execute(select(UrlTask.outcome).where(UrlTask.job_id == job_id))).scalar_one()
     assert outcome == "partial"
+
+
+async def test_a_recurring_listing_whose_later_recipe_page_changed_is_extracted_again(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/kettles"
+    await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+    web.names[PAGE_SIZE] = "Kettle Z"  # the first page reads the same; the second does not
+
+    job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+
+    async with engine.connect() as conn:
+        outcome = (await conn.execute(select(UrlTask.outcome).where(UrlTask.job_id == job_id))).scalar_one()
+    titles, _ = await _titles(engine, job_id)
+    assert outcome == "extracted"
+    assert "Kettle Z" in titles

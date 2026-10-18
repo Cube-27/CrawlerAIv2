@@ -118,7 +118,7 @@ Only records tasks of `batch_scrape` and `extract` SHALL use `url_state`, and on
 sends stored validators, and a 304 or an equal content digest (BLAKE2b of the visible words, nonce-like tokens left out,
 `recurring/simhash.py`; for a listing without words, of the URLs it links to, in order; the SimHash stored beside it
 only reports how far a change moved) ends the task `unchanged`, linking the standing records, with no extraction or LLM
-call. A detail page's standing record is the newest of its entity; a listing page's are the latest versions of the
+call; a listing its recipe served in further pages is extracted again, since only its first page is fingerprinted. A detail page's standing record is the newest of its entity; a listing page's are the latest versions of the
 entities the task named by `url_state.standing_task_id` stood for, valid while that task extracted the page the way it
 would be now. Replay never reads `url_state` (INV-10). (Previously: a listing without words was always extracted.)
 Refs: §14, D-0637, D-0662, D-0663, D-0952, D-1283, D-1340, D-1383.

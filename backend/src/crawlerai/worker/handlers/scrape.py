@@ -118,7 +118,9 @@ async def _settle(
     final_url = page.result.bundle.manifest.final_url
     kind = records.schema.page_kind
     changed = await _content_changed(conn, page.site.id, task.canonical_url, parsed, final_url, kind)
-    if not changed and page.standing:
+    # Only the first page is fingerprinted: a listing recipe's further pages may have changed under it, so they are
+    # extracted again.
+    if not changed and page.standing and not page.further:
         await record_fetch(conn, page.site.id, task.canonical_url, page.result)
         await link_records(conn, task.id, page.standing)
         return Finished("unchanged", capture_id=page.capture_id)
