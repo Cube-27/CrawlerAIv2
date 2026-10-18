@@ -169,6 +169,19 @@ def test_steps_it_cannot_run_are_diagnostics_and_the_next_step_runs() -> None:
     )
 
 
+def test_a_structured_value_is_read_by_the_rule_and_an_xpath_value_is_not() -> None:
+    # The caller defines how a field reads a structured-data value (`release_rules`: the engine's markup read).
+    block = {"@context": "https://schema.org", "@type": "Product", "description": "<p>a</p><p>b</p>"}
+    html = (
+        f'<html><head><script type="application/ld+json">{json.dumps(block)}</script></head>'
+        "<body><p>&lt;i&gt;c&lt;/i&gt;</p></body></html>"
+    )
+    rule = FieldRule(many=False, accepts=_text, structured=lambda value: f"read:{value}")
+    fields = {"description": [{"jsonld": "$['description']"}], "note": [{"xpath": "//body/p"}]}
+    result = _run(fields, html, {"description": rule, "note": rule})
+    assert result.fields == {"description": "read:<p>a</p><p>b</p>", "note": "<i>c</i>"}
+
+
 def test_suspended_fields_do_not_run() -> None:
     suspended = {"steps": [{"xpath": "//h1"}], "status": "suspended"}
     fields = {"title": suspended, "heading": [{"xpath": "//h1"}]}
