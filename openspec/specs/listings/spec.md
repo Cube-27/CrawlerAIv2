@@ -40,13 +40,19 @@ excluded). Values are `dom` candidates with locators; the group aligning most fi
 
 ### Requirement: Stated rows and blocks (bind)
 The stated rows SHALL be structured data's (`resolve/listing.py`), else the active config's, else the captured calls'.
-Stated rows and the blocks of the group they name most bind one to one by item URL (session parameters, a trailing
+The blocks are those of the group the stated rows name most and of every other section read with it: an aligned group
+of its row shape (or holding every required field it aligns and one more) whose blocks lead, a quorum of them, to
+documents of the kind its blocks lead to (host, path depth, first segment), apart from blocks already read; an item two
+sections show is one block (D-1776). Stated rows and those blocks bind one to one by item URL (session parameters, a trailing
 slash and added query parameters aside) or by a name the block shows (`collect/items/bind.py`). With no stated rows or
 only stubs, the blocks are the rows; otherwise stated rows stay and the group's blocks no stated row names extend them.
 A config's rows bind no blocks. A bound entity's values join its row where the row has none for the field or equals
 them; a block's link replaces a respelled stated item URL. State and call array rows bind by URL, and a JSON key whose
 values equal a block field on `MIN_ITEMS` bound rows is that field's key for every bound row (`collect/induce.py`).
-Refs: owner #67, Appendix A #59.
+(Previously: the blocks of one group only.) Refs: owner #67, Appendix A #59, D-1776.
+#### Scenario: Two sections of one shape
+- **WHEN** a listing shows items 1–3 in one section and items 3–6 in another of the same cards
+- **THEN** the listing has six rows
 #### Scenario: Stub rows
 - **WHEN** an `ItemList` names three items by URL only and the page's cards show their titles and prices
 - **THEN** the listing has three rows with the cards' titles, prices and links
@@ -64,6 +70,18 @@ role C's rows replaced them.) Refs: §8.1, §8.6, Appendix A #59, D-1603.
 #### Scenario: Complete rows of a call
 - **WHEN** the rows of a call publish every required field
 - **THEN** role C is not asked
+
+### Requirement: Rows from page state
+On a listing where no structured data, config, call or block gives rows, an array of `MIN_ITEMS` or more objects in the
+page's state JSON SHALL give rows (`collect/items/state_rows.py`): each row field read at the path induced across the
+rows whose own member names the field (its name or schema.org property) and whose value normalizes and is shown in the
+page text (an image: normalizes), the item URL also at a path whose values the page's rendered hyperlinks lead to; a row
+is kept only when its item URL is such a link or its name is shown, an array with fewer such rows gives none, and an item
+read once is not read again. Values are `js_state` candidates (bucket `state`). (Previously: no rows, D-1774.)
+Refs: D-1773, D-1775.
+#### Scenario: Items only in state
+- **WHEN** a script's JSON lists three items whose names and prices the page shows without item links
+- **THEN** the listing has three rows with state evidence, and none when the page shows none of them
 
 ### Requirement: Row item URL
 A row's item URL field SHALL read schema.org `url`, else the item's `offers.url`, else its `mainEntityOfPage` (a URL or

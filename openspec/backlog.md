@@ -62,8 +62,6 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   before admitting it. A WebPage `mainEntityOfPage` given only as an `@id` is not read as a row's item URL (D-1569).
 - Item layer (#278): a state value read at a key the page's blocks proved (`collect.induce`) ranks in no text
   precedence and has no evidence bucket, so it never fills a row alone; a bucket for it is a resolution-spec change.
-  A listing split into sections of one shape aligns its first section's group only (the other sections' items are
-  not rows); merging same-shape groups would read them, with label-subset pages then scoring extra rows.
 - Golden report (#272): `eval re-key` marks 206 of 748 golden label rows stale by a written-form search of the
   capture; a row whose title the capture writes only in a script-escaped or transformed form may be marked stale
   wrongly. Spot-check stale rows against the captures before the next fresh batch, and keep the stale count in each PR.
@@ -190,4 +188,4 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Collect: golden detail labels under labels the schema words do not name (a stock code, a model, a current-stock line; other languages) stay `no_candidates`; needs an owner-approved label vocabulary source (C4) [#282].
 - Calibration (#289): the first table ships and reports confidence (D-1770, D-1772); `min_confidence` gates on request. Row buckets (`list.*`) have no labelled values to fit. Refit with `fit-calibration` after each extraction change (delete `calibration.json` first); the fit and the measurement share the dev set, so after-numbers are optimistic.
 - Gated records (#289, D-1771): a job without `min_confidence` can stand on a record a gated job extracted (withheld fields); record the minimum on the record and match on it.
-- Rows only in state JSON (#289, D-1774): the state bucket and rank do not move the dev golden set; the clean instance has no block showing a field, so no key is proven. A per-host learned key map (config learned across pages) is the route; no name-guessing collector.
+- State rows (#293, D-1775): rows from page state run only where blocks give none, and a field whose key the schema's words do not name stays unread; the dev set moved no listing through them. Measure on fresh batches before widening (e.g. state rows beside blocks).
