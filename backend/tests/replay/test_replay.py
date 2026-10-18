@@ -838,12 +838,12 @@ def test_a_page_output_carries_the_session_parameters_and_the_calls_tokens_and_p
         llm_calls=(call, call),
         mode="adhoc",
         record_confidence=None,
-        session_params=("sid",),
+        session_params={"url": ("sid",)},
     )
 
     output = page_output(result, "ok", fetched_on=datetime(2026, 10, 18, tzinfo=UTC).date())
 
-    assert (output.session_params, output.tokens_in, output.tokens_out) == (("sid",), 60, 20)
+    assert (output.session_params, output.tokens_in, output.tokens_out) == ({"url": ("sid",)}, 60, 20)
     # No price list names the provider: the cost is unknown, never zero.
     assert output.llm_usd is None
     assert page_output(result.model_copy(update={"llm_calls": ()}), "ok").llm_usd == 0.0

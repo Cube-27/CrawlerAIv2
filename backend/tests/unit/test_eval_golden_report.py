@@ -63,11 +63,43 @@ def _cell(report: Report, type_: str) -> FieldMetrics:
 
 def test_a_label_url_matches_once_the_page_s_session_parameters_are_dropped() -> None:
     labels = _labels([{"title": "Item 1", "url": f"{SHOP}/p/1?sid=abc"}])
-    output = PageOutput(block_class="ok", mode="adhoc", rows=(_row("Item 1", f"{SHOP}/p/1"),), session_params=("sid",))
+    output = PageOutput(
+        block_class="ok", mode="adhoc", rows=(_row("Item 1", f"{SHOP}/p/1"),), session_params={"url": ("sid",)}
+    )
 
     report = _report(labels, output)
 
     assert (_cell(report, "url").precision, _cell(report, "url").coverage) == (1.0, 1.0)
+
+
+def test_each_source_kind_offering_the_url_with_the_session_parameter_is_scored_as_the_published_value() -> None:
+    labels = _labels([{"title": "Item 1", "url": f"{SHOP}/p/1?sid=abc"}])
+    url = FieldOutput(
+        status="published", value=f"{SHOP}/p/1", evidence="structured", offered={"jsonld": (f"{SHOP}/p/1?sid=abc",)}
+    )
+    row = {**_row("Item 1", None), "url": url}
+    output = PageOutput(block_class="ok", mode="adhoc", rows=(row,), session_params={"url": ("sid",)})
+
+    report = _report(labels, output)
+
+    assert report.by_source["url|jsonld"].precision == 1.0
+
+
+def test_only_the_fields_the_engine_keyed_drop_the_session_parameters() -> None:
+    schema = LISTING.model_copy(update={"fields": {**LISTING.fields, "seller": FieldSpec(type=FieldType.URL)}})
+    seller = f"{SHOP}/s/1?sid=abc"
+    labels = _labels([{"title": "Item 1", "url": f"{SHOP}/p/1?sid=abc", "seller": seller}])
+    row = {
+        **_row("Item 1", f"{SHOP}/p/1"),
+        "seller": FieldOutput(status="published", value=seller, evidence="structured"),
+    }
+    output = PageOutput(block_class="ok", mode="adhoc", rows=(row,), session_params={"url": ("sid",)})
+    case = EvalCase(page_id="p1", category="custom_store", schema_def=schema, labels=labels, output=output)
+
+    report = build_report([case], "dev", "e1", "abc", frozenset({"draft"}))
+
+    assert report.by_field["synthetic_listing|seller"].precision == 1.0
+    assert report.by_field["synthetic_listing|url"].precision == 1.0
 
 
 def test_a_row_left_unmatched_by_url_matches_by_path_and_text() -> None:

@@ -574,7 +574,7 @@ def test_row_urls_drop_the_session_parameters_every_row_shares_and_keep_identity
         "https://shop.example.test/p/1?page=2&v=1",
         "https://shop.example.test/p/2?page=2&v=2",
     ]
-    assert result.session_params == ("sid",)
+    assert result.session_params == {"url": ("sid",)}
 
 
 def test_an_item_list_holding_the_items_directly_and_in_microdata_gives_rows() -> None:

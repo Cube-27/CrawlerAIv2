@@ -79,8 +79,8 @@ class PageOutput(_Model):
     llm_unanswered: int = 0
     fields: dict[str, FieldOutput] = {}  # detail: the entity; listing: page-level fields
     rows: tuple[dict[str, FieldOutput], ...] = ()  # listing rows
-    # The query parameters the engine dropped from the rows' item URLs, dropped from label URLs alike to match rows.
-    session_params: tuple[str, ...] = ()
+    # Per row item URL field, the query parameters the engine dropped from its values, dropped from labels alike.
+    session_params: dict[str, tuple[str, ...]] = {}
     # The page's LLM tokens, and their price in USD (`None` when a call's model has no known price).
     tokens_in: int = 0
     tokens_out: int = 0
@@ -513,7 +513,7 @@ def _judge_page(
     ]
     if schema.page_kind == "detail":
         return judgments, 0
-    matches = _match_rows(labels.rows, output.rows, schema.fields, output.session_params)
+    matches = _match_rows(labels.rows, output.rows, schema.fields, output.session_params.get("url", ()))
     stale = 0
     for i, row in enumerate(labels.rows):
         if i not in matches and row.stale:
@@ -522,8 +522,9 @@ def _judge_page(
         out_row = output.rows[matches[i]] if i in matches else {}
         for name, label in sorted(row.fields.items()):
             spec = schema.fields[name]
-            keyed = _keyed(label, spec, output.session_params)
-            judgments.append(_judge(name, f"row[{i}]", keyed, out_row.get(name), spec, capture))
+            session = output.session_params.get(name, ())
+            label, out = _keyed(label, session), _keyed_output(out_row.get(name), session)
+            judgments.append(_judge(name, f"row[{i}]", label, out, spec, capture))
     matched = set(matches.values())
     # D-1480: with `labeled`, an unmatched engine row past the label's row count is a row of a page no label holds.
     scored = len(output.rows) if rows == "all" else len(labels.rows)
@@ -642,12 +643,24 @@ def _unmatched_row(
             )
 
 
-def _keyed(label: FieldLabel, spec: FieldSpec, session: Collection[str]) -> FieldLabel:
-    """A row's URL label rid of the session parameters the engine dropped from its rows' URLs, as row matching reads
-    it: the engine publishes item URLs without them (extraction spec, "Row item URLs without session parameters")."""
-    if spec.type is not FieldType.URL or not session or not isinstance(label.value, str):
+def _keyed(label: FieldLabel, session: Collection[str]) -> FieldLabel:
+    """A row item URL label rid of the session parameters the engine dropped from that field's values (`session`, empty
+    for every other field), as row matching reads it (extraction spec, "Row item URLs without session parameters")."""
+    if not session or not isinstance(label.value, str):
         return label
     return label.model_copy(update={"value": without_parameters(label.value, session)})
+
+
+def _keyed_output(out: FieldOutput | None, session: Collection[str]) -> FieldOutput | None:
+    """The engine's output for a row item URL field with the values each source kind offered rid of the same
+    parameters: the published value already is, and each kind is scored against the keyed label."""
+    if out is None or not session:
+        return out
+    offered = {
+        kind: tuple(without_parameters(v, session) if isinstance(v, str) else v for v in values)
+        for kind, values in out.offered.items()
+    }
+    return out.model_copy(update={"offered": offered})
 
 
 _RowMatch = Callable[[LabelRow, Mapping[str, FieldOutput]], bool]

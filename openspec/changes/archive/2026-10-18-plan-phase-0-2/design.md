@@ -6,8 +6,9 @@
 - Date: 2026-10-18 · Change/PR: plan-phase-0-2 (#272) · Status: decided (owner-delegated 2026-10-17)
 - Decision: A parameter is a session parameter when at least two published row item URLs (`item_url_fields`) all carry
   it exactly once with one same value and none of the page's request, final or canonical URLs carries it. It is
-  dropped from the published row URLs after resolution (`resolve/row_keys.py`); the extraction result lists the names,
-  and eval drops the same names from label URLs, both for matching and for judging the URL value.
+  dropped from the published row URLs after resolution (`resolve/row_keys.py`); the extraction result lists the names
+  per item URL field, and eval drops them from that field's labels and offered values only, both for matching and for
+  judging the URL value (review of #272).
 - Alternatives: a list of tracking parameter names (C4); dropping from every URL field (a page field shows no rows to
   compare); one row as evidence (nothing to compare against).
 - Why: owner #67 decision 6; the rule only drops, never invents (C7).

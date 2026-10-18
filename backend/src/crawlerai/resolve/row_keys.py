@@ -10,21 +10,21 @@ from crawlerai.resolve.types import FieldOutcome, FieldSet
 
 def keyed_rows(
     rows: Sequence[FieldSet], url_fields: Iterable[str], page_urls: Iterable[str]
-) -> tuple[tuple[FieldSet, ...], tuple[str, ...]]:
+) -> tuple[tuple[FieldSet, ...], dict[str, tuple[str, ...]]]:
     """`rows` with each published item URL field (`url_fields`) rid of the parameters its values share across the rows
-    and the page's own URLs lack, and the names of the parameters dropped, sorted."""
+    and the page's own URLs lack, and per field the names of the parameters dropped, sorted."""
     page = tuple(page_urls)
     keyed = [dict(row) for row in rows]
-    dropped: set[str] = set()
+    dropped: dict[str, tuple[str, ...]] = {}
     for name in url_fields:
         urls = [url for row in keyed if (url := _published_url(row.get(name))) is not None]
         names = session_parameters(urls, page)
         if names:
-            dropped |= names
+            dropped[name] = tuple(sorted(names))
             for row in keyed:
                 if name in row:
                     row[name] = _without(row[name], names)
-    return tuple(keyed), tuple(sorted(dropped))
+    return tuple(keyed), dropped
 
 
 def _published_url(outcome: FieldOutcome | None) -> str | None:
