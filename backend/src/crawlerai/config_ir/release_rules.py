@@ -1,9 +1,11 @@
 """What the release executor is told of a schema (SPEC-08 §4.12, D-0527): one `FieldRule` per field, built from the
-schema and SPEC-04's normalizers, so a valid value is defined in one place (C8) while the release executor itself
-imports nothing of the engine (INV-20)."""
+schema, SPEC-04's normalizers and the structured collectors' read of a value (`fragment_read`), so a valid value and
+what a field reads of structured data are defined in one place (C8) while the release executor itself imports nothing
+of the engine (INV-20)."""
 
 from pydantic import ValidationError
 
+from crawlerai.collect.schema_org_map import fragment_read
 from crawlerai.config_ir.release_executor import FieldRule, Value
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
@@ -31,4 +33,8 @@ def _rule(spec: FieldSpec, ctx: Context) -> FieldRule:
                 return False
         return isinstance(normalize(value, target, ctx), Ok)
 
-    return FieldRule(many=spec.item is not None, accepts=accepts)
+    def structured(value: Value) -> Value:
+        read = fragment_read(value, spec)
+        return value if read is None else read
+
+    return FieldRule(many=spec.item is not None, accepts=accepts, structured=structured)

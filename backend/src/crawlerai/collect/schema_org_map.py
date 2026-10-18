@@ -348,7 +348,7 @@ def field_candidates(
         for entity_id, selected in _selections(entities, paths, vocabulary, as_list=as_list, entries=entries):
             if selected.url and _holds_text(spec):
                 continue
-            read = _fragment_read(selected.raw, spec)
+            read = fragment_read(selected.raw, spec)
             found = candidate(
                 name, spec, entity_id, source_kind, selected.raw, selected.locator, ctx, diagnostics, read=read
             )
@@ -356,7 +356,7 @@ def field_candidates(
                 yield found
 
 
-def _fragment_read(raw: JsonValue, spec: FieldSpec) -> str | None:
+def fragment_read(raw: JsonValue, spec: FieldSpec) -> str | None:
     """What a text field reads of a structured-data value holding element markup: the fragment's rendered text
     (`fragment_text`), its references already decoded once, so they are escaped again for the text normalizer, which
     decodes them (a literal `&amp;` stays text). A value whose markup is written escaped (`&lt;p&gt;…&lt;/p&gt;`, a

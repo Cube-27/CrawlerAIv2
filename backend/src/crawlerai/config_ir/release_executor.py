@@ -61,15 +61,22 @@ _SCHEMA_ORG = re.compile(r"^https?://schema\.org/")
 _STRING_VALUE = etree.XPath("string()")
 
 
+def _as_written(value: Value) -> Value:
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class FieldRule:
     """What the release check tells the executor of one schema field. `many`: a list field takes every match, any other
     exactly one. `accepts(value, type)`: whether `value` is valid for the field type a normalizer post op names, or,
-    with `None`, for the field itself. The caller runs the normalizers, the one definition of a valid value (SPEC-04,
-    C8); what this module checks independently is that the steps select and transform the values the engine did."""
+    with `None`, for the field itself. `structured(value)`: what the field reads of a value a `jsonld` or `jsonpath`
+    step selects, as the engine's structured collectors read it (a text field reads markup as its rendered text). The
+    caller runs the normalizers and that read, the one definition of each (SPEC-04, C8); what this module checks
+    independently is that the steps select and transform the values the engine did."""
 
     many: bool
     accepts: Callable[[Value, str | None], bool]
+    structured: Callable[[Value], Value] = _as_written
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +145,8 @@ class _Run:
             except _Unreadable as unreadable:
                 self.diagnostics.append(f"{name}:{index}: {unreadable}")
                 continue
+            if isinstance(step, (JsonLdStep, JsonPathStep)):
+                matches = [rule.structured(match) for match in matches]
             value = _take(matches, step.post, rule, self.page.base_url)
             if value is not None:
                 return value

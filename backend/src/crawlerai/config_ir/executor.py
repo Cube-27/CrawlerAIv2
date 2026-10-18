@@ -26,7 +26,7 @@ from crawlerai.collect.config import ROW_KIND, Executed
 from crawlerai.collect.json_doc import select
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.network_match import LearnedCalls
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.schema_org_map import Vocabulary, fragment_read
 from crawlerai.config_ir.model import (
     NEXT_PAGE_FIELD,
     AbsolutizeUrlOp,
@@ -171,6 +171,8 @@ class _Run:
                 continue
             if not values:
                 continue
+            if isinstance(step, (JsonLdStep, JsonPathStep)):
+                values = [_structured(value, spec) for value in values]
             found = self.candidate(name, index, step, values, spec, owner)
             if isinstance(found.normalized, Ok):
                 return found
@@ -256,6 +258,14 @@ def _matches(step: Step, scope: _Scope, run: _Run) -> list[Raw]:
         case JsonPathStep():
             _page_only(scope)
             return _select_all(step.jsonpath, run.documents(step.source))
+
+
+def _structured(value: Raw, spec: FieldSpec) -> Raw:
+    """A structured-data value as the structured collectors read it for the field (`fragment_read`: a text field reads
+    a value holding element markup as its rendered text), so a step on a JSON document gives the value the engine
+    published from it."""
+    read = fragment_read(value, spec)
+    return value if read is None else read
 
 
 def _page_only(scope: _Scope) -> None:

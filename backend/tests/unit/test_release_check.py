@@ -174,13 +174,21 @@ def test_listing_rows_and_next_are_checked_against_the_engine() -> None:
     "third",
     [
         _listing(["A", "B", "C"], published=["B", "A", "C"]),  # rows are compared in document order
-        _listing(["A", "B", "C", "D"], published=["A", "B", "C"]),  # a row the engine did not publish
+        _listing(["A", "B", "C"], published=["A", "B", "C", "D"]),  # a row the release executor does not find
     ],
 )
 def test_a_row_field_not_reproduced_on_one_page_is_manual(third: HeldOutPage) -> None:
     report = release_check(_config({}, ROWS), LISTING, [_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), third])
     assert report.listing is not None
     assert _triple(report.listing.fields["name"]) == (3, 2, True)
+
+
+def test_engine_rows_that_leave_items_out_are_released_by_the_rows_they_are() -> None:
+    # D-1500, as validation aligns them: the engine's rows are a subsequence of the release executor's.
+    third = _listing(["A", "B", "C", "D"], published=["B", "D"])
+    report = release_check(_config({}, ROWS), LISTING, [_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), third])
+    assert report.listing is not None
+    assert _triple(report.listing.fields["name"]) == (3, 3, False)
 
 
 def test_a_next_step_not_reproduced_is_manual_and_the_rows_stay_released() -> None:

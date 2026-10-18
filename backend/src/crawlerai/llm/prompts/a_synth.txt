@@ -10,8 +10,9 @@ its kind and `expression` is the selector itself:
   gives one trimmed string; `.../@name` gives an attribute. In a listing row field it runs relative to the row node,
   so start it with `.` (an absolute `//` path searches the whole page).
 - `css`: a CSS selector, run like the XPath it translates to.
-- `jsonld`: a JSONPath (starting with `$`) run on each schema.org node of the page's JSON-LD (each object with an
-  `@type`); `when_type` keeps only nodes of that schema.org type.
+- `jsonld`: a JSONPath run on each schema.org node of the page's JSON-LD (each object with an `@type`); `when_type`
+  keeps only nodes of that schema.org type. A JSONPath is written as the key paths are shown: `$`, then only
+  `['name']`, `[*]` and `[0]` segments; dot notation, `..` and filters are not run.
 - `jsonpath`: a JSONPath run on the page's JSON documents named by `source`: `jsonld` (the JSON-LD blocks as
   written), `js_state` (JSON in other script elements) or `xhr` (captured JSON responses).
 - `regex`: a regular expression run on the raw HTML source; its first group (or the whole match) is the value. Use it

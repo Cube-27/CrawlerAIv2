@@ -6,7 +6,8 @@ such pages, and on at least 95% of them from 10 on; otherwise the export marks i
 published on no held-out page cannot be shown to match and is `manual` too, as is a suspended field (the release
 executor does not run it) and one the schema lacks. Values are compared as validation compares them (§4.7): the
 release executor's value normalized as the engine normalizes it, then `equal`. Row fields are compared row by row in
-document order, and only when the release executor finds as many rows as the engine published (D-0566).
+document order, the engine's rows aligned with the release executor's as validation aligns them (D-1500), and only
+when the release executor finds at least as many rows as the engine published.
 """
 
 from collections.abc import Callable, Sequence
@@ -18,7 +19,8 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR
 from crawlerai.config_ir.release_executor import Released
-from crawlerai.config_ir.validation import HeldOutPage, release_on, release_value, small_n_rule
+from crawlerai.config_ir.row_alignment import align
+from crawlerai.config_ir.validation import HeldOutPage, agreeing, release_on, release_value, small_n_rule
 from crawlerai.db.models import CaptureId
 from crawlerai.normalize.dispatch import equal
 from crawlerai.schemas.types import FieldSpec, SchemaDef
@@ -60,7 +62,7 @@ def releasable(published: int, reproduced: int) -> bool:
 
 
 def release_check(ir: ExtractionConfigIR, schema: SchemaDef, held_out: Sequence[HeldOutPage]) -> ReleaseReport:
-    runs = [_Run(page, release_on(ir, schema, page)) for page in held_out]
+    runs = [_Run.of(ir, schema, page) for page in held_out]
     fields = {name: _field(runs, name, schema, _page_seen) for name in ir.fields}
     listing = None
     if ir.listing is not None:
@@ -72,8 +74,26 @@ def release_check(ir: ExtractionConfigIR, schema: SchemaDef, held_out: Sequence[
 
 @dataclass(frozen=True, slots=True)
 class _Run:
+    """The release executor's output on a held-out page, and for each engine row the released row it aligns with."""
+
     page: HeldOutPage
     released: Released
+    aligned: Sequence[int | None]
+
+    @classmethod
+    def of(cls, ir: ExtractionConfigIR, schema: SchemaDef, page: HeldOutPage) -> "_Run":
+        released = release_on(ir, schema, page)
+        names = [name for name in (ir.listing.fields if ir.listing is not None else {}) if name in schema.fields]
+        released_rows = [
+            {
+                name: value
+                for name in names
+                if (value := release_value(row, name, schema.fields[name], page.ctx)) is not None
+            }
+            for row in released.rows
+        ]
+        engine_rows = [facts.published for facts in page.rows]
+        return cls(page, released, align(engine_rows, released_rows, agreeing(schema)))
 
 
 # Whether the engine published the field on the page, and whether the release executor reproduced it there.
@@ -96,13 +116,18 @@ def _page_seen(run: _Run, name: str, spec: FieldSpec) -> tuple[bool, bool]:
 
 
 def _row_seen(run: _Run, name: str, spec: FieldSpec) -> tuple[bool, bool]:
-    engine, released = run.page.rows, run.released.rows
-    published = [(n, value) for n, facts in enumerate(engine) if (value := facts.published.get(name)) is not None]
+    released = run.released.rows
+    published = [
+        (n, value)
+        for n, facts in zip(run.aligned, run.page.rows, strict=True)
+        if (value := facts.published.get(name)) is not None
+    ]
     if not published:
         return False, False
-    aligned = len(engine) == len(released)
     ctx = run.page.ctx
-    return True, aligned and all(_same(release_value(released[n], name, spec, ctx), v, spec) for n, v in published)
+    return True, all(
+        n is not None and _same(release_value(released[n], name, spec, ctx), v, spec) for n, v in published
+    )
 
 
 def _same(released: JsonValue | None, published: JsonValue, spec: FieldSpec) -> bool:

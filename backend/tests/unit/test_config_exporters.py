@@ -42,7 +42,7 @@ IR = ExtractionConfigIR.model_validate(
         "fetch": {"method": "browser"},
         "fields": {
             "heading": {
-                "steps": [{"jsonld": "$.name", "when_type": "WebPage"}, {"css": "h1", "post": TRIM}],
+                "steps": [{"jsonld": "$['name']", "when_type": "WebPage"}, {"css": "h1", "post": TRIM}],
                 "status": "corroborated",
             },
         },
@@ -100,7 +100,7 @@ def test_platform_draft_carries_every_step_in_order_as_xpath_regex_or_jsonpath()
         "fields": {
             "heading": {
                 "steps": [
-                    {"jsonld": "$.name", "when_type": "WebPage", "post": []},
+                    {"jsonld": "$['name']", "when_type": "WebPage", "post": []},
                     {"xpath": "descendant-or-self::h1", "post": [{"trim": {}}]},
                 ],
                 "manual": False,

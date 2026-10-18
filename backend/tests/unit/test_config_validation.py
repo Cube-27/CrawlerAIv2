@@ -208,6 +208,22 @@ def test_an_operator_field_keeps_its_status() -> None:
     assert result.ir.fields["title"].status == "operator"
 
 
+def test_both_executors_reproduce_a_structured_description_written_as_markup() -> None:
+    # The engine published the JSON-LD description as its rendered text (`schema_org_map.fragment_read`); a step on the
+    # same node reproduces it in both executors.
+    long_text = FieldSpec(type=FieldType.LONG_TEXT, description="d")
+    block = {
+        "@context": "https://schema.org",
+        "@type": "JobPosting",
+        "description": "<h2>Role</h2><p>Item &amp; more</p>",
+    }
+    script = f'<script type="application/ld+json">{json.dumps(block)}</script>'
+    pages = [_detail(script, {"description": "Role\nItem & more"}) for _ in range(3)]
+    ir = _ir({"description": {"jsonld": "$['description']", "when_type": "JobPosting"}})
+    result = _validate(ir, pages, _schema(description=long_text))
+    assert (_report(result, "description")["reproduced"], _report(result, "description")["dropped"]) == (3, None)
+
+
 def test_a_field_the_schema_lacks_is_dropped() -> None:
     result = _validate(_ir({"title": TITLE, "gone": TITLE}), [_titled(n) for n in range(3)])
     assert _report(result, "gone")["dropped"] == "not_in_schema"
@@ -267,11 +283,35 @@ def test_row_values_are_compared_with_the_engine_rows_in_order() -> None:
     assert (listing["fields"]["title"]["reproduced"], listing["fields"]["title"]["dropped"]) == (2, "not_reproduced")
 
 
-def test_rows_are_not_reproduced_when_the_config_finds_a_row_the_engine_did_not() -> None:
-    extra = _listing(["A", "B", "C", "D"], published=["A", "B", "C"])
-    result = _validate_listing([_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), extra])
+def test_engine_rows_that_leave_items_out_are_reproduced_by_the_config_rows_they_are() -> None:
+    # D-1500: role C may leave a listing's items out; its rows, in document order, are a subsequence of the config's.
+    fewer = _listing(["A", "B", "C", "D"], published=["B", "D"])
+    result = _validate_listing([_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), fewer])
+    assert result.ir is not None
+    listing = result.report.model_dump(mode="json")["listing"]
+    assert (listing["fields"]["title"]["reproduced"], listing["fields"]["title"]["dropped"]) == (3, None)
+
+
+def test_an_engine_row_the_config_does_not_find_is_not_reproduced() -> None:
+    missed = _listing(["A", "B", "C"], published=["A", "X", "C"])
+    result = _validate_listing([_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), missed])
     listing = result.report.model_dump(mode="json")["listing"]
     assert (listing["fields"]["title"]["reproduced"], listing["fields"]["title"]["dropped"]) == (2, "not_reproduced")
+
+
+def test_rows_are_not_reproduced_when_the_config_finds_fewer_rows_than_the_engine() -> None:
+    fewer = _listing(["A", "B", "C"], published=["A", "B", "C", "D"])
+    result = _validate_listing([_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), fewer])
+    listing = result.report.model_dump(mode="json")["listing"]
+    assert (listing["fields"]["title"]["reproduced"], listing["fields"]["title"]["dropped"]) == (2, "not_reproduced")
+
+
+def test_a_config_row_the_engine_did_not_publish_still_counts_toward_validity() -> None:
+    # An extra row's value is checked like any other match: one its normalizer declines drops the field.
+    extra = _listing(["A", "B", "C", "{{ name }}"], published=["A", "B", "C"])
+    result = _validate_listing([_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), extra])
+    listing = result.report.model_dump(mode="json")["listing"]
+    assert listing["fields"]["title"]["dropped"] == "invalid"
 
 
 def test_a_next_step_that_is_not_reproduced_is_dropped_and_the_rows_stay() -> None:
