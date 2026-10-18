@@ -59,6 +59,14 @@ def _job(job_id: JobId) -> str:
     return str(job_id)
 
 
+def _pause(poll_interval_s: float, deadline: float | None) -> float:
+    """How long to sleep before the next poll: the interval, cut short at the deadline so the last poll happens at
+    it rather than up to an interval after it."""
+    if deadline is None:
+        return poll_interval_s
+    return max(0.0, min(poll_interval_s, deadline - time.monotonic()))
+
+
 def _results_params(cursor: str | None, limit: int | None, format: str) -> dict[str, Any]:
     params: dict[str, Any] = {"format": format}
     if cursor is not None:
@@ -198,7 +206,7 @@ class CrawlerAI:
                 return summary
             if deadline is not None and time.monotonic() >= deadline:
                 raise JobTimeout(str(job_id), timeout_s or 0.0)
-            time.sleep(poll_interval_s)
+            time.sleep(_pause(poll_interval_s, deadline))
 
     def events(self, job_id: JobId, *, last_event_id: str | None = None) -> Iterator[sse.JobEvent]:
         """The job's run events live (`GET /v1/jobs/{id}/events`), until its end event; resume with the last id seen."""
@@ -296,7 +304,7 @@ class AsyncCrawlerAI:
                 return summary
             if deadline is not None and time.monotonic() >= deadline:
                 raise JobTimeout(str(job_id), timeout_s or 0.0)
-            await asyncio.sleep(poll_interval_s)
+            await asyncio.sleep(_pause(poll_interval_s, deadline))
 
     async def events(self, job_id: JobId, *, last_event_id: str | None = None) -> AsyncIterator[sse.JobEvent]:
         headers = {"Accept": "text/event-stream", **({} if last_event_id is None else {"Last-Event-ID": last_event_id})}
