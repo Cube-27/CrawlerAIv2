@@ -19,12 +19,12 @@ from pathlib import Path
 from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
-from sqlalchemy import select, update
+from sqlalchemy import Row, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.config_ir.model import ExtractionConfigIR, FieldSteps
-from crawlerai.config_ir.progressive import StateKey, request_learning
+from crawlerai.config_ir.progressive import StateKey, lock_state, request_learning
 from crawlerai.db.jobs import record_event
 from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, JobId
 from crawlerai.normalize.base import Ok
@@ -173,13 +173,7 @@ async def record_run(
     suspend the fields that drifted, and return them. A field the config lists as absent that the page `published`
     leaves the list (D-1341): the site states it after all. Either starts a forced learning run. A config that is no
     longer active records nothing."""
-    config = (
-        await conn.execute(
-            select(ExtractionConfig)
-            .where(ExtractionConfig.id == config_id, ExtractionConfig.status == "active")
-            .with_for_update()
-        )
-    ).one_or_none()
+    config = await _locked_active(conn, config_id)
     if config is None:
         return []
     ir = ExtractionConfigIR.model_validate(config.ir)
@@ -198,6 +192,28 @@ async def record_run(
     if found or stated:
         await request_learning(conn, StateKey(config.site_id, config.schema_id, config.page_kind), force=True)
     return found
+
+
+async def _locked_active(conn: AsyncConnection, config_id: ExtractionConfigId) -> Row[ExtractionConfig] | None:
+    """The active config `config_id`, its row locked, or None. Its state is locked first, as every activation path
+    does (`progressive.lock_state`, then the config rows): the opposite order could deadlock against an approval."""
+    scope = (
+        await conn.execute(
+            select(ExtractionConfig.site_id, ExtractionConfig.schema_id, ExtractionConfig.page_kind).where(
+                ExtractionConfig.id == config_id
+            )
+        )
+    ).one_or_none()
+    if scope is None:
+        return None
+    await lock_state(conn, StateKey(site_id=scope.site_id, schema_id=scope.schema_id, page_kind=scope.page_kind))
+    return (
+        await conn.execute(
+            select(ExtractionConfig)
+            .where(ExtractionConfig.id == config_id, ExtractionConfig.status == "active")
+            .with_for_update()
+        )
+    ).one_or_none()
 
 
 def _changed(
