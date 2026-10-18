@@ -25,7 +25,7 @@ from typing import cast
 from urllib.parse import urlsplit
 
 from patchright._impl._api_structures import SetCookieParam
-from patchright.async_api import Browser, BrowserContext, Frame, Page, Request, Response, async_playwright
+from patchright.async_api import Browser, BrowserContext, Frame, Page, Request, Response, Route, async_playwright
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
@@ -40,7 +40,14 @@ from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Ta
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, RequestContext, StepOutcome
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
 from crawlerai.storage.artifacts import PDF, SCREENSHOT
-from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_file, network_json, sha256_hex
+from crawlerai.storage.capture_bundle import (
+    HeaderList,
+    NetworkBody,
+    decode_html,
+    network_file,
+    network_json,
+    sha256_hex,
+)
 
 __all__ = [
     "DATA_REQUESTS",
@@ -55,6 +62,7 @@ __all__ = [
     "context_cookies",
     "fetch_browser",
     "json_bodies",
+    "markup",
     "open_browser",
     "read_state",
     "rendered",
@@ -115,9 +123,14 @@ _REDIRECTION = range(300, 400)
 # still replace itself, and is read once its content is quiet.
 _ERROR_STATUS = 400
 # D-1206, D-1262: for a document `interstitial` judges to stand in for the page, the wait for the main frame to navigate
-# on lasts up to this share of `browser_timeout_s`, not the 2 s DOM quiet, and ends as soon as a navigation commits.
-# Nothing is clicked or typed.
+# on lasts up to this share of `browser_timeout_s`, and at most `_INTERSTITIAL_MAX_S`, not the 2 s DOM quiet, and ends
+# as soon as a navigation commits. Nothing is clicked or typed. The bound is an unmeasured starting point (master plan
+# 2026-10-18 §6): a challenge that does not clear headless held each fetch for the whole share (backlog, #244).
 _INTERSTITIAL_SHARE = 0.4
+_INTERSTITIAL_MAX_S = 10.0
+# Fetch Standard §2.2.5 destinations Playwright names `image`, `font` and `media`: the page's pixels and sound, which
+# the rung never reads (master plan 2026-10-18 recommendation 12). By resource type, never by host.
+_MEDIA = frozenset({"image", "font", "media"})
 # A screenshot or PDF past this size is dropped rather than stored: the capture is kept without it.
 _ARTIFACT_MAX_BYTES = 25_000_000
 # Seconds the files of a page may take beyond the fetch's own budget (Playwright's default per-operation timeout): a
@@ -189,8 +202,9 @@ async def fetch_browser(
                 exchange, content = await read_state(page)
                 cookies = await context_cookies(page.page.context)
                 artifacts = await capture_artifacts(page.page, policy)
-        block_class = await classified(exchange, content)
-        challenge = await challenge_of(block_class, exchange, content, url, cookies)
+        text = markup(content)
+        block_class = await classified(exchange, text)
+        challenge = await challenge_of(block_class, exchange, text, url, cookies)
         if export is not None:
             export.cookies, export.proxy = cookies, proxy
     except Failed as failed:
@@ -269,24 +283,28 @@ async def context_cookies(context: BrowserContext) -> tuple[SessionCookie, ...]:
         return ()
 
 
+def markup(content: Content) -> str:
+    """The rendered document's text, decoded once (`decode_html`: the browser serializes the DOM as UTF-8)."""
+    return decode_html(content.body, (), "browser")
+
+
 async def challenge_of(
-    block_class: BlockClass, exchange: Exchange, content: Content, url: str, cookies: tuple[SessionCookie, ...]
+    block_class: BlockClass, exchange: Exchange, text: str, url: str, cookies: tuple[SessionCookie, ...]
 ) -> str | None:
     """The challenge label of a `CHALLENGED` document (`acquire.challenge`), from its response headers, the names of
-    the cookies the context holds (its capture records no `Set-Cookie`) and its markup."""
+    the cookies the context holds (its capture records no `Set-Cookie`) and its markup `text`."""
     if block_class not in CHALLENGED:
         return None
     names = tuple(cookie.name for cookie in cookies)
-    return await asyncio.to_thread(
-        challenge_label, exchange.status, exchange.response_headers, content.body, url, names
-    )
+    return await asyncio.to_thread(challenge_label, exchange.status, exchange.response_headers, text, url, names)
 
 
-async def classified(exchange: Exchange, content: Content) -> BlockClass:
-    """The block class of a rendered document. classify parses HTML synchronously; a thread keeps the event loop
-    free. Without the page kind: the listing rule calls a page a shell for the browser to render, and the browser is
-    the last rung, so its page is extracted whatever its links (rows from captured JSON are read then)."""
-    return await asyncio.to_thread(block_class_of, exchange.status, exchange.response_headers, content.body)
+async def classified(exchange: Exchange, text: str) -> BlockClass:
+    """The block class of a rendered document from its markup `text`. classify parses HTML synchronously; a thread
+    keeps the event loop free. Without the page kind: the listing rule calls a page a shell for the browser to render,
+    and the browser is the last rung, so its page is extracted whatever its links (rows from captured JSON are read
+    then)."""
+    return await asyncio.to_thread(block_class_of, exchange.status, exchange.response_headers, text)
 
 
 @dataclass
@@ -352,11 +370,22 @@ async def rendered(
         try:
             if policy.context is not None and policy.context.cookies:
                 await context.add_cookies(caller_cookies(url, policy.context))
+            if policy.block_resources and not policy.captures_page:
+                await context.route("**/*", _without_media)
             page = await context.new_page()
             yield await _navigate(page, url, first, policy, guard, started)
         finally:
             await context.close()
             timings["context"] = round((time.monotonic() - opened) * 1000)
+
+
+async def _without_media(route: Route) -> None:
+    """Abort a request for an image, a font or media (`_MEDIA`) and let every other one through: the page's documents,
+    scripts, styles and data calls load as they would, and what is read of the page is its DOM, not its pixels."""
+    if route.request.resource_type in _MEDIA:
+        await route.abort()
+    else:
+        await route.continue_()
 
 
 class _MainFrame:
@@ -428,7 +457,7 @@ async def _navigate(
         page,
         frame,
         started + _SETTLE_SHARE * policy.browser_timeout_s,
-        interstitial_deadline=started + _INTERSTITIAL_SHARE * policy.browser_timeout_s,
+        interstitial_deadline=started + min(_INTERSTITIAL_SHARE * policy.browser_timeout_s, _INTERSTITIAL_MAX_S),
         calls=calls,
     )
     return Rendered(page, frame, response, policy, calls)
@@ -496,11 +525,11 @@ async def _interstitial(page: Page, frame: _MainFrame) -> bool:
     if shown is None or shown.status not in INTERSTITIAL_STATUS:
         return False
     try:
-        body = (await page.content()).encode()
+        text = await page.content()
     except PlaywrightError:
         return False  # the document is being replaced: the waits that follow see the next one
     # classify's rules parse HTML synchronously; a thread keeps the event loop free.
-    return await asyncio.to_thread(interstitial, shown.status, tuple(shown.headers.items()), body, shown.url)
+    return await asyncio.to_thread(interstitial, shown.status, tuple(shown.headers.items()), text, shown.url)
 
 
 async def _next_document(page: Page, frame: _MainFrame, deadline: float) -> bool:

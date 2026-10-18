@@ -25,14 +25,13 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from contextlib import aclosing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Final
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.robots import site_robots
 from crawlerai.acquire.types import AttemptRecord
 from crawlerai.config_ir.api_recipe.execute import MAX_PAGES
 from crawlerai.config_ir.drift import DriftMargins
@@ -47,8 +46,9 @@ from crawlerai.normalize.url_key import canonicalize
 from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.crawl import CrawlRequest
-from crawlerai.services.fetching import Fetching, PoliteHttp, TargetRejected, recording
+from crawlerai.services.fetching import Fetching, SiteHttp, TargetRejected
 from crawlerai.services.map import TIMEOUT_S
+from crawlerai.services.polite import QUEUED, rules_in
 from crawlerai.services.scrape_steps import PageFormat, fetch_policy, record_fetch_usage, site_row
 from crawlerai.storage.base import ObjectStore
 from crawlerai.worker.handlers.steps import (
@@ -179,7 +179,7 @@ async def _visit(
     conn: AsyncConnection, store: ObjectStore, crawl: _Crawl, page: FetchedPage
 ) -> tuple[TaskResult, Links]:
     """The result of the fetched page and the links it contributes (none when it was not reached)."""
-    ended = unreached(page)
+    ended = unreached(page, crawl.task)
     if ended is not None:
         return ended, Links()
     bundle = page.result.bundle
@@ -211,17 +211,15 @@ async def _sitemap_seeds(
     site = await site_row(conn, frontier.scope.host)
     policy = fetch_policy(crawl.request.fetch, crawl.request.locale, site.proxy_pool)
     attempts: list[AttemptRecord] = []
-    robots = None
-    if policy.respect_robots:
-        # The page's fetch has just stored a fresh snapshot, so this reads it rather than fetching, unless the page
-        # redirected to another host.
-        fetch_robots = recording(fetching.rungs.http, policy, attempts)
-        robots = await site_robots(conn, site.id, site.robots_snapshot, site_url, fetch_robots)
-        if robots is None:
-            return [], {}
-    polite = PoliteHttp(fetching, frontier.scope.host, site.crawl_delay_ms, robots, policy, attempts)
+    # The page's fetch has just stored a fresh snapshot, so this reads it rather than fetching, unless the page
+    # redirected to another host.
+    rules = await rules_in(conn, fetching.rungs.http, attempts)(site_url, policy)
+    if rules is None:
+        return [], {}
+    # The reading waits in place for the host's turns, as a further request of a task does.
+    polite = SiteHttp(fetching, rules, policy, attempts, replace(QUEUED, postpone=False))
     reader = SitemapReader(polite.sitemap_body, frontier.scope.host)
-    start = roots(site_url, () if robots is None else robots.sitemaps)
+    start = roots(site_url, () if rules.robots is None else rules.robots.sitemaps)
     seeds: dict[str, None] = {}
     capped = False
     try:

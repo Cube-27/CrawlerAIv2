@@ -44,9 +44,9 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import MAX_URLS, OWN_TRANSACTION, Placement, insert_job, insert_tasks, job_pins
 from crawlerai.services.fetch_options import check_proxy_pool
-from crawlerai.services.fetching import Fetching, check_targets
+from crawlerai.services.fetching import Fetching, PagePlan, check_targets, fetch_now, site_rungs
 from crawlerai.services.map import MapRequest, map_urls
-from crawlerai.services.scrape import MAX_TIMEOUT_S, Budget, RecordsUnavailable, polite_fetch
+from crawlerai.services.scrape import MAX_TIMEOUT_S, Budget, RecordsUnavailable
 from crawlerai.services.scrape_steps import (
     FetchOptions,
     SchemaPrompt,
@@ -268,10 +268,18 @@ async def _samples(
         host = urlsplit(url).hostname or ""
         async with engine.begin() as conn:
             site = await site_row(conn, host, request.page_kind)
-        policy = fetch_policy(request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind)
+        policy = fetch_policy(
+            request.fetch,
+            request.locale,
+            site.proxy_pool,
+            page_kind=request.page_kind,
+            all_resources=site.load_all_resources,
+        )
         attempts: list[AttemptRecord] = []
         try:
-            page = await polite_fetch(engine, fetching, url, host, policy, site, attempts)
+            page = await fetch_now(
+                engine, fetching, url, PagePlan(site_rungs(fetching, host, site), site, policy, attempts)
+            )
         finally:
             async with engine.begin() as conn:
                 await record_fetch_usage(conn, job_id, attempts, policy.proxy_pool)

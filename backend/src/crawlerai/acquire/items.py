@@ -12,6 +12,8 @@ the whole class list. They are looked for in the page's content: its main landma
 from collections import Counter
 from typing import Final
 
+from lxml import etree
+from lxml import html as lxml_html
 from lxml.html import HtmlElement
 
 # A listing shows at least this many items; resolution takes as many top-level entities for a listing's rows (SPEC-05
@@ -23,6 +25,17 @@ _CHROME_TAGS: Final = frozenset({"nav", "header", "footer", "aside"})
 _CHROME_ROLES: Final = frozenset({"navigation", "banner", "contentinfo", "complementary"})
 # HTML Standard §4.6.1: `a` and `area` elements with an `href` are hyperlinks.
 _LINKS: Final = ("a", "area")
+_VISIBLE_TEXT: Final = "descendant-or-self::text()[not(ancestor::script or ancestor::style or ancestor::template)]"
+
+
+def lxml_root(text: str) -> HtmlElement:
+    """The lxml tree of a decoded document. lxml refuses a str that carries an XML encoding declaration, so it reads
+    the text again as UTF-8 with the encoding named, and the declaration is ignored: both parsers read the same
+    characters."""
+    try:
+        return lxml_html.document_fromstring(text.encode("utf-8"), parser=lxml_html.HTMLParser(encoding="utf-8"))
+    except etree.ParserError:  # an empty or all-whitespace document has no root element
+        return lxml_html.Element("html")
 
 
 def is_hyperlink(element: HtmlElement) -> bool:
@@ -40,6 +53,12 @@ def item_blocks(root: HtmlElement) -> tuple[HtmlElement, ...]:
     return max(item_groups(root), key=lambda items: (_evidence(items), len(items)), default=())
 
 
+def shown_items(root: HtmlElement) -> int:
+    """How many of the page's items (`item_blocks`) show more than their link: an image, or text in two or more runs
+    (`_evidence`). A list of bare links (a tag cloud, related posts, a pager) shows a link and its label only."""
+    return sum(1 for item in item_blocks(root) if _holds_image(item) or _holds_several_texts(item))
+
+
 def _evidence(items: tuple[HtmlElement, ...]) -> int:
     """How much the items show beyond their link: each item scores one for holding an image and one for holding text
     in two or more runs (a label and something besides it: a title and a price, a name and a description). A bare tag
@@ -53,7 +72,9 @@ def _holds_image(item: HtmlElement) -> bool:
 
 
 def _holds_several_texts(item: HtmlElement) -> bool:
-    return sum(1 for text in item.itertext() if text.strip()) >= 2
+    """Whether the item holds visible text in two or more runs: script data, style sheets and templates are never
+    rendered (HTML Standard §15.3.1), so their text is no run."""
+    return sum(1 for text in item.xpath(_VISIBLE_TEXT) if text.strip()) >= 2
 
 
 def item_groups(root: HtmlElement) -> tuple[tuple[HtmlElement, ...], ...]:

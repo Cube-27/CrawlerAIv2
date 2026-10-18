@@ -208,15 +208,21 @@ def sha256_hex(data: bytes) -> str:
 
 
 def decode_body(bundle: CaptureBundle) -> str:
-    """The body as text; undecodable bytes become U+FFFD. A browser body is the rendered DOM, which the browser fetcher
-    serializes as UTF-8, whatever the server declared for the bytes it sent. Any other body is decoded as HTML encoding
-    sniffing says (HTML Standard §13.2.3.2): a byte order mark, else the charset its Content-Type names (RFC 9110
-    §8.3.2), else a `meta` declaration in its first bytes, else UTF-8; a label names its encoding as the Encoding
-    Standard §4.2 says (`iso-8859-1` is windows-1252), and an unknown label is skipped."""
-    if bundle.manifest.method == "browser":
-        return bundle.body.decode(_UTF8.codec_info.name, errors="replace")
-    encoding = _transport_encoding(bundle.manifest.headers.response) or _meta_encoding(bundle.body) or _UTF8
-    text, _ = webencodings.decode(bundle.body, encoding, errors="replace")  # a byte order mark outranks `encoding`
+    """The bundle's body as text (`decode_html`)."""
+    return decode_html(bundle.body, bundle.manifest.headers.response, bundle.manifest.method)
+
+
+def decode_html(body: bytes, headers: HeaderList, method: CaptureMethod) -> str:
+    """A response body as text; undecodable bytes become U+FFFD. Acquisition decodes a body once with it, and every
+    reader of the body reads that text. A browser body is the rendered DOM, which the browser fetcher serializes as
+    UTF-8, whatever the server declared for the bytes it sent. Any other body is decoded as HTML encoding sniffing says
+    (HTML Standard §13.2.3.2): a byte order mark, else the charset its Content-Type names (RFC 9110 §8.3.2), else a
+    `meta` declaration in its first bytes, else UTF-8; a label names its encoding as the Encoding Standard §4.2 says
+    (`iso-8859-1` is windows-1252), and an unknown label is skipped."""
+    if method == "browser":
+        return body.decode(_UTF8.codec_info.name, errors="replace")
+    encoding = _transport_encoding(headers) or _meta_encoding(body) or _UTF8
+    text, _ = webencodings.decode(body, encoding, errors="replace")  # a byte order mark outranks `encoding`
     return text
 
 

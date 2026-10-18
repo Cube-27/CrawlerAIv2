@@ -14,7 +14,7 @@ from crawlerai.acquire.politeness import (
     RECOVERY_FACTOR,
     RECOVERY_RUN,
     HostLimiter,
-    asked_pause,
+    backoff,
     interval,
     refuse,
     retry_after,
@@ -140,12 +140,22 @@ def test_a_pause_longer_than_the_bound_is_refused_without_waiting() -> None:
     assert limiter.admit("a.example.test", timedelta(seconds=1)) == timedelta(0)  # left to the caller's backoff
 
 
-@pytest.mark.parametrize(("asked", "expected"), [(timedelta(seconds=9), timedelta(seconds=9)), (None, FIRST_BACKOFF)])
-def test_the_pause_a_slow_down_asks_for_is_its_retry_after_else_the_first_backoff(
-    asked: timedelta | None, expected: timedelta
+@pytest.mark.parametrize(
+    ("asked", "tries", "expected"),
+    [
+        (timedelta(seconds=9), 3, timedelta(seconds=9)),
+        (None, 1, FIRST_BACKOFF),
+        (None, 3, FIRST_BACKOFF * 4),
+        (None, 12, BACKOFF_MAX),
+        (BACKOFF_MAX, 1, BACKOFF_MAX),
+        (BACKOFF_MAX + timedelta(seconds=1), 1, None),
+    ],
+)
+def test_the_back_off_is_the_retry_after_else_the_doubled_first_backoff_and_none_past_the_longest(
+    asked: timedelta | None, tries: int, expected: timedelta | None
 ) -> None:
     attempt = AttemptRecord(method="http", status=503, block_class="blocked", duration_ms=1, retry_after=asked)
-    assert asked_pause(attempt) == expected
+    assert backoff(attempt, tries) == expected
 
 
 def test_a_refusing_admission_refuses_after_a_pause_too() -> None:

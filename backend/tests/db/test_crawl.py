@@ -21,6 +21,7 @@ from pydantic import SecretStr
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire import politeness
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import SafeConnector
@@ -501,7 +502,7 @@ async def test_a_retried_start_page_reads_the_sitemaps_once_on_its_last_attempt(
         f"{own_origin}/": (503, b"busy", "error"),  # a transient failure on every attempt, `blocked` at the last
         f"{own_origin}/p/1": page(),
     }
-    monkeypatch.setattr(queue, "retry_delay", lambda attempts: timedelta(0))
+    monkeypatch.setattr(politeness, "backoff_delay", lambda tries: timedelta(0))
     submitted = await submit_crawl(engine, fetching.connector, crawl(f"{own_origin}/", max_depth=0), data=None)
 
     await run(engine, fetching, None, submitted.job_id)

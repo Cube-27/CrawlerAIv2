@@ -5,7 +5,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from lxml import html
 
-from crawlerai.acquire.items import item_blocks
+from crawlerai.acquire.items import item_blocks, shown_items
 
 
 def _page(content: str) -> html.HtmlElement:
@@ -102,3 +102,16 @@ def test_a_group_of_bare_links_is_still_found_when_it_is_the_only_one() -> None:
     cloud = '<ul class="cloud">' + "".join(f'<li><a href="/t/{i}">tag{i}</a></li>' for i in range(5)) + "</ul>"
 
     assert _hrefs(_page(cloud)) == [f"/t/{i}" for i in range(5)]
+
+
+def test_script_style_and_template_text_is_not_a_run_of_visible_text() -> None:
+    # A link-only card that carries script data or a template holds one visible run: its label.
+    links = "".join(
+        f'<li><a href="/t/{i}">tag{i}</a><script>var n = {i};</script><style>.a {{}}</style>'
+        f"<template><b>x</b></template></li>"
+        for i in range(4)
+    )
+    cards = "".join(f'<li><a href="/p/{i}">Kettle {i}</a><span>{i}9.90 EUR</span></li>' for i in range(4))
+
+    assert shown_items(_page(f"<ul>{links}</ul>")) == 0
+    assert shown_items(_page(f"<ul>{cards}</ul>")) == 4

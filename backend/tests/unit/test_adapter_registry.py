@@ -500,7 +500,7 @@ def test_a_referred_answer_that_is_not_ok_leaves_the_page_with_both_attempts() -
     assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("api", "not_found")]
 
 
-async def _lacks_rows(result: FetchResult) -> bool:
+async def _lacks_rows(result: FetchResult, _over: FetchResult | None = None) -> bool:
     """A `needs_render` check: the HTTP page lacks what the caller reads, the render holds it (owner #54)."""
     return result.method == "http"
 

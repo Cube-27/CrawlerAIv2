@@ -9,6 +9,7 @@ import sys
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from contextlib import aclosing, asynccontextmanager, suppress
+from dataclasses import replace
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
@@ -62,13 +63,12 @@ from crawlerai.schemas.types import SchemaDef
 from crawlerai.services import schedules as schedules_service
 from crawlerai.services import schemas as schemas_service
 from crawlerai.services.fetch_options import FetchOptions, UnknownProxyPool, check_proxy_pool, fetch_policy
-from crawlerai.services.fetching import Fetching, TargetRejected, learning_replay
+from crawlerai.services.fetching import Fetching, PagePlan, TargetRejected, fetch_now, learning_replay, site_rungs
 from crawlerai.services.records import MAX_PAGE
 from crawlerai.services.runtime import fetching_from_settings
 from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
-from crawlerai.services.scrape import polite_fetch
 from crawlerai.services.scrape_paging import learning_render
-from crawlerai.services.scrape_steps import content_check, load_drift_margins, load_engine_data, site_row
+from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data, render_need, site_row
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
 from crawlerai.worker.browser import SharedBrowser
@@ -282,18 +282,20 @@ async def _eval_rekey(file: Path) -> None:
 async def _polite_page(
     engine: AsyncEngine, fetching: Fetching, data: EngineData | None, url: str, schema: SchemaDef
 ) -> FetchResult | str:
-    """The page as a worker fetches it for `schema` (`polite_fetch`): robots.txt, the site's rate, its adapters, and
+    """The page as a worker fetches it for `schema` (`fetch_now`): robots.txt, the site's rate, its adapters, and
     a render when the HTTP page lacks what the schema reads; or why it was not fetched."""
     host = http_host(url)
     if host is None:  # `labeled_pages` refuses such a URL
         raise EvalCliError("not an http or https URL with a host")
     async with engine.begin() as conn:
         site = await site_row(conn, host, schema.page_kind)
-    policy = FetchPolicy(page_kind=schema.page_kind, proxy_pool=site.proxy_pool)
+    policy = FetchPolicy(
+        page_kind=schema.page_kind, proxy_pool=site.proxy_pool, block_resources=not site.load_all_resources
+    )
+    page = PagePlan(site_rungs(fetching, host, site), site, policy, [], needs_render=render_need(schema, data, None))
     try:
-        return await polite_fetch(
-            engine, fetching, url, host, policy, site, [], needs_render=content_check(schema, data, None, None)
-        )
+        # A page not reached is fetched again after the back-off, and the closest capture kept (`best_fetch`).
+        return await label_file.best_fetch(lambda: fetch_now(engine, fetching, url, replace(page, attempts=[])))
     except TargetRejected:
         return "target_rejected"
 

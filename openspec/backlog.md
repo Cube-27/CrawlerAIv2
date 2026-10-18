@@ -45,6 +45,18 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   per-failure-class deltas (plan §8) are not built. The no-LLM `list` precision fell (0.36 → 0.20) only because the
   `locations` labels now import (n 12 → 287): the engine's listing locations are scored for the first time.
 
+- Master plan phase 1 (#273): on fresh captures of the golden set, the structural render need lost 41 values on 2
+  listings whose HTTP document shows a repeated group that is not their items (links in an unmarked footer, profile
+  cards) and whose rows came from the render's data calls; the item layer (phase 2) decides which group lists the
+  items. Renders the structural rules keep gained no value on 3 golden listings whose rows come from structured data
+  (their sites are then remembered as `browser`): measure again once role C asks for missing row fields.
+- Master plan phase 1 (#273): resource blocking cut browser bytes per listing page by 34% (median 21%, 32 golden
+  listings `ok` either way), short of the plan's 60%: scripts and data calls carry the rest. The 10 s interstitial
+  bound is unmeasured on challenges that clear. The blocked share per vendor (master plan §8.4) is not in the eval
+  report.
+- Master plan phase 1 (#273): default listing growth ran on 10 of 40 golden listings in a live scrape and is not in the
+  eval numbers (the import follows the worker path, D-1549); the items it adds become records only through structured
+  data or role C until the item layer reads blocks.
 - Learning live (#269): role A reads 180k to 285k input tokens per call (5 sample pages of up to 120,000 characters
   of reduced HTML, sent again in each repair round), USD 0.15 to 2.70 of role A per learned host against about
   USD 0.002 per role C page: measure a smaller `CRAWLERAI_LLM_A_MAX_CHARS` or prompt caching across rounds. Synthesis
@@ -103,10 +115,6 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 - Absent fields (#252): a config-mode page missing an absent required field is still `partial`; listings never get
   `absent` fields (D-1347); a field the previous config covered was not asked of role C on its pages, yet a run reading
   them may list it absent when another field made a call (D-1341). Measure on dev once LLM keys exist.
-- Acquisition hardening (#244): pages behind a challenge that does not clear headless stay `blocked` after the 40%
-  interstitial wait (5 real 403 challenge pages waited ~20 s each and stayed blocked in the live check); measure the
-  share that clears on a dev run before lowering `_INTERSTITIAL_SHARE` (D-1262). A 429 challenge page gets no browser
-  attempt by design (D-1263).
 - Anti-bot stack (#253): no real site in the live check cleared a challenge in the headless browser after HTTP was
   refused, so the site session handoff is proven on a local fixture only; measure on a dev run how often a browser
   `ok` opens a session and how many HTTP fetches each session serves before tuning 30 min / 200 fetches (D-1350).

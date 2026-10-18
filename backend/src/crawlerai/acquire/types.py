@@ -111,6 +111,10 @@ class FetchPolicy(_Frozen):
     max_body_bytes: PositiveInt = 10_000_000
     max_decompressed_bytes: PositiveInt = 50_000_000
     capture_network_json: bool = True  # browser only
+    # Browser only: abort image, font and media requests by resource type (never by host); the page's documents,
+    # scripts, styles and data calls still load. Off for a site that opted out (`site.load_all_resources`) and for a
+    # page captured as a file, whose pixels need them.
+    block_resources: bool = True
     locale_hint: str | None = None  # request locale, for the normalizers' context
     page_kind: PageKind | None = None  # the kind the task fetches the page as, which `classify` reads
     # A soft row target for a list an adapter's API serves in pages: its walk ends once it has at least this many rows

@@ -7,6 +7,7 @@ The listing rung is a stub that returns synthetic ItemList pages on RFC 2606 hos
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
@@ -18,8 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from crawlerai.acquire.browser_tab import Drive
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
+from crawlerai.acquire.session import CookieExport, SiteSessions
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import ActionsReport, BrowserActions, FetchPolicy, FetchResult, PagedFetch
+from crawlerai.core.capture import BlockClass
 from crawlerai.db.models import Capture, Extraction, UrlTask
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
@@ -39,9 +42,11 @@ class Listing:
     fetch_result: Callable[..., FetchResult]
     pages: list[tuple[str, bytes]] = field(default_factory=list)
     asked: list[tuple[str, FetchPolicy]] = field(default_factory=list)
+    drives: list[Drive] = field(default_factory=list)
 
     async def __call__(self, url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
         self.asked.append((url, policy))
+        self.drives.append(drive)
         results = tuple(
             self.fetch_result(url, 200, body, method="browser", policy=policy, final_url=final)
             for final, body in self.pages
@@ -165,3 +170,112 @@ def test_browser_actions_default_to_a_soft_target_of_100_rows_and_no_hint() -> N
     request = _request("https://shop.example.test/kettles", "0192f5a4-0000-7000-8000-000000000001", browser_actions={})
 
     assert request.browser_actions == BrowserActions(records=100, hint=None)
+
+
+def _growing(
+    fetching: Fetching,
+    own_origin: str,
+    page: bytes,
+    fetch_result: Callable[..., FetchResult],
+    block_class: BlockClass = "ok",
+) -> Fetching:
+    """`fetching` whose HTTP rung serves `page` at every URL but robots.txt, as `block_class`, with site sessions and
+    their exporting browser rung, as the API process has them."""
+    robots = f"{own_origin}/robots.txt"
+
+    async def http(url: str, policy: FetchPolicy) -> FetchResult:
+        if url == robots:
+            return fetch_result(url, 200, b"User-agent: *\nDisallow: /private\n")
+        return fetch_result(url, 200, page, policy=policy, block_class=block_class)
+
+    async def exporting(url: str, policy: FetchPolicy, *, export: CookieExport) -> FetchResult:
+        raise AssertionError("a growing scrape renders with the listing rung")
+
+    rungs = Rungs(http=http, browser=http, listing=fetching.rungs.listing, sessions=SiteSessions(), exporting=exporting)
+    return Fetching(rungs, fetching.connector, fetching.store, HostLimiter())
+
+
+@pytest.mark.parametrize("http_class", ["ok", "shell"])
+async def test_a_listing_scrape_that_renders_grows_its_list_by_default(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    listing: Listing,
+    own_origin: str,
+    schema_name: str,
+    engine_data: EngineData,
+    fetch_result: Callable[..., FetchResult],
+    http_class: BlockClass,
+) -> None:
+    # Master plan 2026-10-18 decision 11: a single-URL listing scrape in `auto`, rendered because its HTTP document
+    # shows no item blocks, takes the default browser actions (100 records) without asking for them.
+    url, second = f"{own_origin}/kettles", f"{own_origin}/kettles?page=2"
+    template = b"<!doctype html><html><head><title>Kettles</title></head><body><div id='grid'></div></body></html>"
+    listing.pages = [
+        (url, listing_page(own_origin, ["Blue kettle", "Red kettle"], next_page=second)),
+        (second, listing_page(own_origin, ["Green kettle", "Grey kettle"], first=3)),
+    ]
+    schema = await listing_schema(engine, schema_name)
+    growing = _growing(fetching, own_origin, template, fetch_result, http_class)
+
+    result = await scrape(engine, growing, _request(url, schema.id), data=engine_data)
+
+    assert result.records is not None
+    titles = [r.fields["title"].value for r in result.records]
+    assert titles == ["Blue kettle", "Red kettle", "Green kettle", "Grey kettle"]
+    assert (result.outcome, result.browser_actions) == ("extracted", REPORT)
+    assert result.fetch is not None
+    assert [a.method for a in result.fetch.attempts] == ["http", "browser"]
+    (drive,) = listing.drives
+    assert isinstance(drive, partial)
+    assert drive.keywords["request"] == BrowserActions()
+    # Each kept state's browser time is the job's usage, as it is for requested actions.
+    assert result.usage.browser_seconds == len(listing.pages)
+
+
+async def test_the_callers_page_steps_do_not_keep_a_rendered_listing_from_growing(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    listing: Listing,
+    own_origin: str,
+    schema_name: str,
+    engine_data: EngineData,
+    fetch_result: Callable[..., FetchResult],
+) -> None:
+    # `wait_for` and `actions` make the effective method the browser, but the request is still in `auto`: the render
+    # runs the steps first and then grows the list (acquisition spec, listing browser actions).
+    url = f"{own_origin}/kettles"
+    template = b"<!doctype html><html><head><title>Kettles</title></head><body><div id='grid'></div></body></html>"
+    listing.pages = [(url, listing_page(own_origin, ["Blue kettle", "Red kettle"]))]
+    schema = await listing_schema(engine, schema_name)
+    growing = _growing(fetching, own_origin, template, fetch_result)
+    request = _request(url, schema.id, fetch={"actions": [{"type": "click", "text": "Accept"}]})
+
+    result = await scrape(engine, growing, request, data=engine_data)
+
+    ((_, policy),) = listing.asked
+    assert [step.action for step in policy.steps] == ["click"]
+    assert (result.outcome, result.browser_actions) == ("extracted", REPORT)
+
+
+async def test_a_listing_scrape_whose_http_page_shows_its_items_is_not_rendered_nor_grown(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    listing: Listing,
+    own_origin: str,
+    schema_name: str,
+    engine_data: EngineData,
+    fetch_result: Callable[..., FetchResult],
+) -> None:
+    url = f"{own_origin}/kettles"
+    cards = "".join(
+        f'<li><a href="{own_origin}/kettles/{n}"><img src="/i/{n}.jpg" alt="">Kettle {n}</a></li>' for n in range(1, 6)
+    )
+    page = f"<!doctype html><html><body><main><ul>{cards}</ul></main></body></html>".encode()
+    schema = await listing_schema(engine, schema_name)
+
+    growing = _growing(fetching, own_origin, page, fetch_result)
+
+    result = await scrape(engine, growing, _request(url, schema.id), data=engine_data)
+
+    assert listing.asked == []
+    assert result.browser_actions is None

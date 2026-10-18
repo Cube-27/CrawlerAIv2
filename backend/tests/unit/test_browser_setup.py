@@ -33,6 +33,9 @@ class _Stop(Exception):
 
 
 class _Context:
+    async def route(self, _pattern: str, _handler: object) -> None:
+        return None  # the media filter: it aborts requests by resource type and sets no header (INV-44)
+
     async def new_page(self) -> object:
         raise _Stop
 

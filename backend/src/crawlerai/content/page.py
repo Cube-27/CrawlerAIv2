@@ -9,10 +9,10 @@ formats, pagination, the engine executor) takes a `ParsedPage`, never the raw bo
 from dataclasses import dataclass
 from functools import cached_property
 
-from lxml import etree
 from lxml import html as lxml_html
 from selectolax import lexbor
 
+from crawlerai.acquire.items import lxml_root
 from crawlerai.content.text import CleanedText, VisibleIndex, render, xpath_step
 from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, decode_body
 
@@ -56,13 +56,7 @@ class ParsedPage:
 
     @cached_property
     def lxml_tree(self) -> lxml_html.HtmlElement:
-        # lxml refuses a str that carries an XML encoding declaration, so it gets the decoded text back as UTF-8 with
-        # the encoding named; the declaration is then ignored, and both parsers read the same characters.
-        parser = lxml_html.HTMLParser(encoding="utf-8")
-        try:
-            return lxml_html.document_fromstring(self.html.encode("utf-8"), parser=parser)
-        except etree.ParserError:  # an empty or all-whitespace document has no root element to return
-            return lxml_html.Element("html")
+        return lxml_root(self.html)
 
     @cached_property
     def scripts(self) -> tuple[ScriptBlock, ...]:

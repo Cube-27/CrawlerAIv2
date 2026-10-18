@@ -34,6 +34,7 @@ from crawlerai.acquire.browser import (
     classified,
     context_cookies,
     json_bodies,
+    markup,
     read_state,
     rendered,
     stepped,
@@ -257,7 +258,7 @@ class _PatchrightTab:
             exchange, content = await read_state(self._page, url=self.url, calls=(self._calls_from, calls_to))
         except (Failed, PlaywrightError):
             return False
-        block_class = await classified(exchange, content)
+        block_class = await classified(exchange, markup(content))
         self.kept.append(self._result(fetched_at, exchange, content, block_class))
         self._starts.append((self._since, self._calls_from))
         self._since = time.monotonic()
@@ -353,10 +354,11 @@ async def _listing(
                 )
                 steps = await stepped(page)  # the caller's steps first (D-1513), then the paging driver reads the page
                 exchange, content = await read_state(page)
-                block_class = await classified(exchange, content)
+                text = markup(content)
+                block_class = await classified(exchange, text)
             if block_class != "ok":
                 cookies = await context_cookies(page.page.context)
-                challenge = await challenge_of(block_class, exchange, content, url, cookies)
+                challenge = await challenge_of(block_class, exchange, text, url, cookies)
                 count(challenge, "browser")
                 one = _Outcome(exchange, content, block_class, None, challenge, steps)
                 return _one(url, policy, engine_version, fetched_at, started, one)

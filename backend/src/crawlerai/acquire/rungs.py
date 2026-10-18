@@ -28,7 +28,7 @@ from crawlerai.acquire.browser_tab import ListingRung
 from crawlerai.acquire.challenge import portable
 from crawlerai.acquire.classify import classify, interstitial
 from crawlerai.acquire.page_refs import canonical_link, page_refs
-from crawlerai.acquire.politeness import SLOW_DOWN, Admit, asked_pause
+from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
 from crawlerai.acquire.session import CookieExport, SiteSessions, identity
 from crawlerai.acquire.types import (
     AttemptRecord,
@@ -41,12 +41,20 @@ from crawlerai.acquire.types import (
 )
 from crawlerai.adapters.registry import Registry, platform_adapters
 from crawlerai.db.models import FetchMethod, PageKind, SiteFetchMethod, SiteId
+from crawlerai.storage.capture_bundle import decode_body
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
-# Whether an HTTP `ok` page lacks what the caller reads from it and a render may hold (offer data, owner #49; a
-# listing's rows, owner #54): the caller's, since what a page should hold depends on the schema, which sits above
-# `acquire`.
-RenderCheck = Callable[[FetchResult], Awaitable[bool]]
+
+
+class RenderCheck(Protocol):
+    """Whether an `ok` page lacks what the caller reads from it and a render may hold (offer data, owner #49; a
+    listing's items, owner #54); asked of a render `over` the HTTP page it would replace, whether the render still
+    lacks it compared with that page. The caller's, since what a page should hold depends on the schema, which sits
+    above `acquire`."""
+
+    def __call__(self, result: FetchResult, over: FetchResult | None = None, /) -> Awaitable[bool]: ...
+
+
 # A fetch so far: the outcome kept, every attempt and their duration.
 Fetched = tuple[FetchResult, tuple[AttemptRecord, ...], int]
 # The adapter answer for the page a fetch has so far, when an adapter serves its canonical or referred URL; else that
@@ -289,15 +297,19 @@ async def _interstitial_unavailable(result: FetchResult) -> bool:
     manifest = result.bundle.manifest
     if manifest.status_code != _UNAVAILABLE or manifest.method != "http":
         return False
-    body = result.bundle.body
+    text = decode_body(result.bundle)
     return await asyncio.to_thread(
-        interstitial, manifest.status_code, manifest.headers.response, body, manifest.final_url
+        interstitial, manifest.status_code, manifest.headers.response, text, manifest.final_url
     )
 
 
 def _paused_by(result: FetchResult) -> timedelta:
-    """The pause a slow-down `result` asks for before the browser attempt (SPEC-02 §4.6); none for another result."""
-    return asked_pause(result.attempts[-1]) if slow_down(result) else timedelta(0)
+    """The pause a slow-down `result` asks for before the browser attempt (`politeness.backoff`); none for another
+    result. A pause past the longest backoff is longer than any caller waits in place, so the attempt is not sent."""
+    if not slow_down(result):
+        return timedelta(0)
+    pause = backoff(result.attempts[-1])
+    return BACKOFF_MAX if pause is None else pause
 
 
 async def _as_last_page(result: FetchResult) -> FetchResult:
@@ -308,7 +320,8 @@ async def _as_last_page(result: FetchResult) -> FetchResult:
     manifest = result.bundle.manifest
     if result.block_class != "shell" or manifest.method != "http" or fetched_as(manifest.fetch_policy) != "listing":
         return result
-    unlisted = await asyncio.to_thread(classify, manifest.status_code, manifest.headers.response, result.bundle.body)
+    text = decode_body(result.bundle)
+    unlisted = await asyncio.to_thread(classify, manifest.status_code, manifest.headers.response, text)
     if unlisted != "ok":
         return result
     bundle = result.bundle.model_copy(update={"manifest": manifest.model_copy(update={"block_class": "ok"})})
@@ -317,10 +330,10 @@ async def _as_last_page(result: FetchResult) -> FetchResult:
 
 async def _better(retry: FetchResult, result: FetchResult, needs_render: RenderCheck | None) -> bool:
     """Whether the browser's `retry` is kept over the HTTP `result`: it is `ok` and, when HTTP was `ok` too, it holds
-    what HTTP lacked."""
+    what HTTP lacked (`needs_render` asked of it over `result`)."""
     if retry.block_class != "ok":
         return False
-    return result.block_class != "ok" or needs_render is None or not await needs_render(retry)
+    return result.block_class != "ok" or needs_render is None or not await needs_render(retry, result)
 
 
 async def _admitted(admit_next: Admit | None, *, after: timedelta = timedelta(0)) -> bool:

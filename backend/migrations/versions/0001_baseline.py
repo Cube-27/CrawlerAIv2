@@ -163,6 +163,7 @@ def upgrade() -> None:
             server_default=sa.text("'{}'::jsonb"),
             nullable=False,
         ),
+        sa.Column("load_all_resources", sa.Boolean(), server_default=sa.text("false"), nullable=False),
         sa.CheckConstraint("crawl_delay_ms >= 0", name=op.f("ck_site_crawl_delay_ms_non_negative")),
         sa.CheckConstraint("host = lower(host)", name=op.f("ck_site_host_lowercase")),
         sa.ForeignKeyConstraint(["project_id"], ["project.id"], name=op.f("fk_site_project_id_project")),

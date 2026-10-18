@@ -363,7 +363,8 @@ async def test_a_batch_task_whose_recipe_fails_its_first_page_requests_it_once_t
 
     await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
 
-    assert (len(web.requested), web.pages) == (1, [url])
+    # The page over HTTP, and its one render: its document shows fewer item blocks than a listing does.
+    assert (len(web.requested), web.pages) == (1, [url, url])
 
 
 async def test_a_batch_task_whose_recipe_is_asked_to_slow_down_sends_nothing_more(

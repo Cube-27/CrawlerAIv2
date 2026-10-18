@@ -18,7 +18,7 @@ from email.utils import parsedate_to_datetime
 from typing import Final, Protocol
 
 from crawlerai.acquire.types import AttemptRecord
-from crawlerai.core.retry import FIRST_BACKOFF
+from crawlerai.core.retry import backoff_delay
 from crawlerai.storage.capture_bundle import HeaderList
 
 DEFAULT_INTERVAL: Final = timedelta(seconds=1)  # SPEC-02 §4.6: 1 request/s
@@ -34,7 +34,7 @@ RECOVERY_FACTOR: Final = 0.9
 class Admit(Protocol):
     """Waits until the site's rate admits one more request, records it and answers True; answers False, recording
     nothing, when that turn is too far off to wait for in place. `after` is a pause the site asked for (D-1263: a 503's
-    `Retry-After`, else the first backoff): the site is paused for it first, and the turn comes no sooner."""
+    `backoff`): the site is paused for it first, and the turn comes no sooner."""
 
     def __call__(self, *, after: timedelta = ...) -> Awaitable[bool]: ...
 
@@ -44,9 +44,14 @@ async def refuse(*, after: timedelta = timedelta(0)) -> bool:
     return False
 
 
-def asked_pause(attempt: AttemptRecord) -> timedelta:
-    """The pause a 429 or 503 `attempt` asks for (SPEC-02 §4.6): its `Retry-After`, else the first backoff."""
-    return FIRST_BACKOFF if attempt.retry_after is None else attempt.retry_after
+def backoff(attempt: AttemptRecord, tries: int = 1) -> timedelta | None:
+    """The one back-off of a host that answered `attempt` with a 429 or 503 on try `tries` of the work (SPEC-02
+    §4.6): the pause its `Retry-After` asks for, else the queue's backoff for that try (`backoff_delay`), at most
+    `BACKOFF_MAX`. None when the server asks for more than `BACKOFF_MAX`: retrying before it allows breaks its
+    request, and waiting longer holds the work open without bound, so the work ends instead."""
+    if attempt.retry_after is not None:
+        return None if attempt.retry_after > BACKOFF_MAX else attempt.retry_after
+    return min(backoff_delay(tries), BACKOFF_MAX)
 
 
 def slowed_down(attempts: Iterable[AttemptRecord]) -> AttemptRecord | None:

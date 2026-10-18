@@ -1,5 +1,9 @@
 """Block classification from HTTP status and document structure only (SPEC-02 §4.3, ARCHITECTURE §7.1, INV-24).
 
+Every rule reads the body as text, decoded once at acquisition by HTML encoding sniffing
+(`storage.capture_bundle.decode_html`): a parser handed the raw bytes of a page in a legacy encoding would read its
+attributes as UTF-8 and fail on them.
+
 This module compares no body text with a string: vendor strings are site data (C3/C4), so a vendor's stand-in marker on
 a 200 page is read in `acquire.challenge` from the adapter package's signature data, the one exception to INV-24's
 structure-only rule. Other challenge pages served with 200 mostly present as shells and get a browser retry. An error or
@@ -9,7 +13,7 @@ it holds, is not one of them. Nor is a document that declares a refresh (it navi
 and whose hyperlinks all lead to no web page (`mailto:`, `tel:`, RFC 6068, RFC 3966): a stand-in for the page while the
 site is busy or checking the client.
 
-A page fetched as a listing is a shell too when nothing on it lists items: no repeated items (`_lists_items`) and no
+A page fetched as a listing is a shell too when nothing on it lists items: no repeated items (`lists_items`) and no
 structured data that lists them (`_structured_rows`). Its grid loads by script after the page (an XHR), so the
 browser may render what HTTP did not. Only the HTTP rung passes the page kind: the
 browser is the last rung, and its page is extracted whatever its links.
@@ -17,11 +21,9 @@ browser is the last rung, and its page is extracted whatever its links.
 
 from urllib.parse import urljoin, urlsplit
 
-from lxml import etree
-from lxml import html as lxml_html
 from selectolax.lexbor import LexborHTMLParser
 
-from crawlerai.acquire.items import MIN_ITEMS, item_blocks
+from crawlerai.acquire.items import MIN_ITEMS, item_blocks, lxml_root
 from crawlerai.acquire.types import BlockClass
 from crawlerai.core import json_text
 from crawlerai.db.models import PageKind
@@ -50,6 +52,7 @@ _HYPERLINKS = "a[href], area[href]"
 _MICRODATA = "[itemscope]:not([itemprop])"
 _JSON_LD = "application/ld+json"
 _ITEM_LIST = "ItemList"
+_ENTRIES = "itemListElement"  # schema.org ItemList: the list's entries
 _TYPE = "@type"  # JSON-LD 1.1 §3.5: a node's type, a string or an array of them
 # D-1206: a refusal a page's own script may lift: 403 (RFC 9110 §15.5.4), 429 (RFC 6585 §4), 503 (RFC 9110 §15.6.4);
 # not 401/407, which ask for credentials (RFC 9110 §11.6), nor 451, a legal refusal (RFC 7725).
@@ -64,8 +67,9 @@ _WEB_SCHEMES = ("http", "https")
 _SCRIPT = "script"
 
 
-def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind | None = None) -> BlockClass:
-    """The response's block class; `page_kind` is the kind the page is fetched as, when its task names one."""
+def classify(status: int, headers: HeaderList, text: str, page_kind: PageKind | None = None) -> BlockClass:
+    """The response's block class from its decoded `text`; `page_kind` is the kind the page is fetched as, when its
+    task names one."""
     if status in _NOT_FOUND:
         return "not_found"
     if status in _BLOCKED:
@@ -74,7 +78,7 @@ def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind 
         return "error"
     if not 200 <= status < 300 or not is_html(headers):
         return "ok"
-    tree = LexborHTMLParser(body)
+    tree = LexborHTMLParser(text)
     # Read before the shell rule strips script data blocks from the tree.
     structured = page_kind == "listing" and _structured_rows(tree)
     unstructured = _no_site_page(tree)
@@ -82,18 +86,18 @@ def classify(status: int, headers: HeaderList, body: bytes, page_kind: PageKind 
         return unstructured
     if _refreshes(tree, headers) and not _links_to_web(tree):
         return "blocked"
-    if page_kind == "listing" and not structured and not _lists_items(body):
+    if page_kind == "listing" and not structured and not lists_items(text):
         return "shell"
     return "ok"
 
 
-def lacks_site_structure(body: bytes) -> bool:
-    """Whether an HTML body is no site page by its structure alone, whatever its status: a shell, or a document that
-    links nowhere (the rules `classify` applies to a 2xx page)."""
-    return _no_site_page(LexborHTMLParser(body)) is not None
+def lacks_site_structure(text: str) -> bool:
+    """Whether an HTML document is no site page by its structure alone, whatever its status: a shell, or a document
+    that links nowhere (the rules `classify` applies to a 2xx page)."""
+    return _no_site_page(LexborHTMLParser(text)) is not None
 
 
-def interstitial(status: int, headers: HeaderList, body: bytes, url: str) -> bool:
+def interstitial(status: int, headers: HeaderList, text: str, url: str) -> bool:
     """Whether a refusal at `url` is a document standing in for the page until it navigates on (D-1206, D-1262): its
     status is one a page's own script may lift (`INTERSTITIAL_STATUS`), it can navigate itself (a refresh, or a
     script) and it is no page of the site by structure: it declares a refresh, it lacks site structure
@@ -101,7 +105,7 @@ def interstitial(status: int, headers: HeaderList, body: bytes, url: str) -> boo
     nor a script can never replace itself, so waiting on it is time lost."""
     if status not in INTERSTITIAL_STATUS or not is_html(headers):
         return False
-    tree = LexborHTMLParser(body)
+    tree = LexborHTMLParser(text)
     refresh = _refreshes(tree, headers)
     if not refresh and tree.css_first(_SCRIPT) is None:
         return False
@@ -171,10 +175,21 @@ def _is_shell(tree: LexborHTMLParser) -> bool:
 
 
 def _structured_rows(tree: LexborHTMLParser) -> bool:
-    if len(tree.css(_MICRODATA)) >= MIN_ITEMS:
-        return True
+    return len(tree.css(_MICRODATA)) >= MIN_ITEMS or bool(_item_lists(tree))
+
+
+def structured_entries(tree: LexborHTMLParser) -> int:
+    """How many items the page's structured data lists: its top-level microdata items when they are as many as a
+    grid's (`MIN_ITEMS`; fewer are the page's own, such as its organization), or the entries of its longest JSON-LD
+    ItemList (schema.org `itemListElement`), whichever is more; 0 when it lists none."""
+    microdata = len(tree.css(_MICRODATA))
+    return max(microdata if microdata >= MIN_ITEMS else 0, *_item_lists(tree), 0)
+
+
+def _item_lists(tree: LexborHTMLParser) -> list[int]:
+    """The entry count of each schema.org ItemList node in the page's JSON-LD script data blocks, at any depth."""
     blocks = (s.text() for s in tree.css("script[type]") if _media_type(s.attributes.get("type")) == _JSON_LD)
-    return any(_lists(_json(block)) for block in blocks)
+    return [count for block in blocks for count in _lists(_json(block))]
 
 
 def _media_type(value: str | None) -> str:
@@ -188,25 +203,24 @@ def _json(text: str) -> object:
         return None
 
 
-def _lists(document: object) -> bool:
-    """Whether a JSON-LD document holds a node typed ItemList, at any depth (walked with a stack, not recursion)."""
+def _lists(document: object) -> list[int]:
+    """The entry count (`itemListElement`, one node or an array of them) of each node typed ItemList in a JSON-LD
+    document, at any depth (walked with a stack, not recursion)."""
+    counts: list[int] = []
     stack = [document]
     while stack:
         value = stack.pop()
         if isinstance(value, dict):
             types = value.get(_TYPE)
             if types == _ITEM_LIST or (isinstance(types, list) and _ITEM_LIST in types):
-                return True
+                entries = value.get(_ENTRIES)
+                counts.append(len(entries) if isinstance(entries, list) else int(entries is not None))
             stack.extend(value.values())
         elif isinstance(value, list):
             stack.extend(value)
-    return False
+    return counts
 
 
-def _lists_items(body: bytes) -> bool:
+def lists_items(text: str) -> bool:
     """Whether the page shows repeated items (`item_blocks`); lxml reads it, as the markdown format does."""
-    try:
-        root = lxml_html.document_fromstring(body)
-    except (etree.ParserError, ValueError):  # a document lxml finds no element in
-        return False
-    return bool(item_blocks(root))
+    return bool(item_blocks(lxml_root(text)))

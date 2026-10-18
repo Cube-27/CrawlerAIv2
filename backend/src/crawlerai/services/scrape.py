@@ -36,13 +36,9 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.politeness import refuse
-from crawlerai.acquire.robots import Robots
-from crawlerai.acquire.rungs import RenderCheck, acquire
 from crawlerai.acquire.types import ActionsReport, AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.collect.run import Adapters
 from crawlerai.config_ir.active import active_config, recipe_of
-from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.chunks import Chunk, ChunkOptions
@@ -63,27 +59,20 @@ from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetch_options import CacheMode, check_proxy_pool
 from crawlerai.services.fetching import (
     Fetching,
+    Growth,
+    PagePlan,
     TargetRejected,
-    adapter_send,
-    admitted,
     check_target,
-    engine_rules,
-    observed,
-    page_host_first,
-    recipe_rung,
-    refusal,
-    site_rules,
+    fetch_now,
     site_rungs,
-    store_declines,
 )
 from crawlerai.services.records import RecordField, ScrapedRecord, page_fields
-from crawlerai.services.scrape_paging import check_browser_actions, paged_fetch
+from crawlerai.services.scrape_paging import actions_deadline, check_browser_actions, paged_fetch, record_states
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     CAPTURE_FORMATS,
     DEFAULT_PROJECT,
     EXTRACTION_ERROR,
-    ContentCheck,
     FetchOptions,
     FetchSummary,
     FormatOptions,
@@ -92,16 +81,15 @@ from crawlerai.services.scrape_steps import (
     Input,
     PageFormat,
     PageOutcome,
+    RenderNeed,
     SchemaPrompt,
     SchemaRequest,
     SchemaUnusable,
-    SiteRow,
     StoredFurther,
+    blocked_reason,
     check_formats,
     check_records,
     check_usable,
-    checked_extraction,
-    content_check,
     extract_further,
     fetch_policy,
     fetch_summary,
@@ -112,6 +100,7 @@ from crawlerai.services.scrape_steps import (
     parsed_page,
     record_fetch_usage,
     records_outcome,
+    render_need,
     site_row,
     store_further,
     store_page_record,
@@ -139,7 +128,9 @@ class ScrapeRequest(Input):
     """The body of `POST /v1/scrape` (§4.4). `records` needs a schema and a `page_kind`, and the schema's page kind
     must be that one. A `schema.prompt` is drafted and returned, and `budget.llm_calls` (else the project's cap) bounds
     its draft; `schema.fields` is drafted before the job, which no budget counts. `max_age` reuses a capture fetched
-    within that many seconds. `browser_actions` collects more of a listing's rows in the browser (owner #52)."""
+    within that many seconds. `browser_actions` collects more of a listing's rows in the browser (owner #52); a listing
+    scrape for `records` in `auto` without it takes the default actions where its page is rendered (master plan
+    2026-10-18 decision 11)."""
 
     url: str
     formats: list[PageFormat] = Field(min_length=1)
@@ -189,9 +180,10 @@ class ScrapeResult(BaseModel):
     """The answer to a scrape (§4.4). A page that robots.txt kept from being fetched has no capture, so
     `capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`
     does (SPEC-02 §4.6): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
-    9309 §2.3.1.4); for a fetched listing whose extraction gave no rows, `no_rows: <cause>` (`no_rows` in
-    `resolve.pipeline`, D-1475); None for any other page that was fetched. `schema` is the draft of a
-    `schema.prompt`."""
+    9309 §2.3.1.4), `slow_down` for a host whose turn at its rate was more than a minute off; for a fetched page a
+    vendor's challenge kept out, `challenge: <vendor>`; for a fetched listing whose extraction gave no rows,
+    `no_rows: <cause>` (`no_rows` in `resolve.pipeline`, D-1475); None for any other page that was fetched. `schema`
+    is the draft of a `schema.prompt`."""
 
     model_config = ConfigDict(validate_by_name=True, serialize_by_alias=True)
 
@@ -362,12 +354,17 @@ async def _run(
         config = await _config(conn, site.id, work)
         recipe = recipe_of(config) if config is not None and records_only else None
         policy = fetch_policy(
-            request.fetch, request.locale, site.proxy_pool, page_kind=request.page_kind, formats=request.formats
+            request.fetch,
+            request.locale,
+            site.proxy_pool,
+            page_kind=request.page_kind,
+            formats=request.formats,
+            all_resources=site.load_all_resources,
         )
         row = await _stored(conn, request, policy, site.id, task.canonical_url, api=recipe is not None)
     recent = await _read_stored(fetching.store, row, request.fetch.cache, request.formats)
     attempts: list[AttemptRecord] = []
-    check = _content_check(work, request, config, task)
+    check = _render_need(work, request, config)
     further: tuple[FetchResult, ...] = ()
     report: ActionsReport | None = None
     page: FetchResult | str
@@ -375,22 +372,17 @@ async def _run(
         page = recent.result
     elif request.browser_actions is not None:
         paged = await paged_fetch(
-            engine,
-            fetching,
-            request.url,
-            host,
-            policy,
-            site,
-            attempts,
-            request.browser_actions,
-            request.timeout_s,
-            recipe=recipe,
+            engine, fetching, request.url, policy, attempts, request.browser_actions, request.timeout_s, recipe=recipe
         )
         page, further, report = _pages(paged)
     else:
-        page = await polite_fetch(
-            engine, fetching, request.url, host, policy, site, attempts, recipe=recipe, needs_render=check
-        )
+        growth = _growth(request, fetching)
+        rungs = site_rungs(fetching, host, site)
+        plan = PagePlan(rungs, site, policy, attempts, recipe=recipe, needs_render=check, growth=growth)
+        page = await fetch_now(engine, fetching, request.url, plan)
+        if growth is not None and isinstance(page, FetchResult) and (grew := growth.of(page)) is not None:
+            further, report = grew.pages[1:], grew.report
+            record_states(further, attempts)  # the first state's attempts came with the page
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
     derived = await _derive_reached(engine, work, request, task, page, recent, config, check)
@@ -398,7 +390,7 @@ async def _run(
     members, finished = _NOT_FETCHED, _Finished("blocked")
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
-            capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page)
+            capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page, check)
             more = partial(_store_more, conn, fetching.store, task, site.id, derived, extra, work.margins)
             finished = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, more)
             members = _fetch_members(page, capture_id, fetching.rungs.adapters)
@@ -455,7 +447,7 @@ async def _derive_reached(
     page: FetchResult | str,
     recent: Recent | None,
     config: ActiveConfig | None,
-    check: ContentCheck | None,
+    check: RenderNeed | None,
 ) -> _Derived:
     """What `_derive` makes of the page when it was reached, else nothing; `recent` is the capture reread instead of a
     fetch, whose stored files the answer names."""
@@ -463,8 +455,19 @@ async def _derive_reached(
         return _NOTHING
     files = frozenset(page.artifacts) if recent is None else recent.artifacts
     reached = (page, parsed_page(page.bundle, check))
-    known = checked_extraction(page.bundle, check)
-    return await _derive(engine, work, request, task, reached, config, known=known, files=files)
+    return await _derive(engine, work, request, task, reached, config, files=files)
+
+
+def _growth(request: ScrapeRequest, fetching: Fetching) -> Growth | None:
+    """The default browser actions of a listing scrape for `records` in `auto` that asks for none, used where its page
+    is rendered (master plan 2026-10-18 decision 11, amending owner #52): `records`' default, within the actions' share
+    of its `timeout_s`; none for a page captured as a file (its first render) or without the listing rung. Batch and
+    crawl tasks never grow (`worker.handlers`)."""
+    reads_rows = request.page_kind == "listing" and "records" in request.formats
+    first_render = bool(CAPTURE_FORMATS.intersection(request.formats))
+    if not reads_rows or first_render or request.fetch.method_hint != "auto" or fetching.rungs.listing is None:
+        return None
+    return Growth(BrowserActions(), actions_deadline(request.timeout_s))
 
 
 def _pages(paged: PagedFetch | str) -> tuple[FetchResult | str, tuple[FetchResult, ...], ActionsReport | None]:
@@ -499,14 +502,12 @@ async def _store_more(
     return await store_further(conn, store, task, site_id, derived.schema, extracted, margins)
 
 
-def _content_check(
-    work: _Work, request: ScrapeRequest, config: ActiveConfig | None, task: ClaimedTask
-) -> ContentCheck | None:
-    """The check that renders an HTTP page lacking the offer data or the rows `records` reads (owner #49, #54), with
-    role C charged to the task's job; None without `records`."""
+def _render_need(work: _Work, request: ScrapeRequest, config: ActiveConfig | None) -> RenderNeed | None:
+    """The check that renders an HTTP page lacking the offer data or the items `records` reads (owner #49, #54); None
+    without `records`."""
     if "records" not in request.formats:
         return None
-    return content_check(work.schema, work.data, config, role_c(work.llm, job_id=task.job_id))
+    return render_need(work.schema, work.data, config)
 
 
 async def _config(conn: AsyncConnection, site_id: SiteId, work: _Work) -> ActiveConfig | None:
@@ -524,13 +525,10 @@ async def _derive(
     reached: tuple[FetchResult, ParsedPage],
     config: ActiveConfig | None,
     *,
-    known: ExtractionResult | None = None,
     files: frozenset[str] = frozenset(),
 ) -> _Derived:
     """The requested formats, the draft of a prompt, and the extraction for `records`, from the page's one parse
-    (INV-26), with the site's active `config` when there is one; `known` is the page's extraction when its fetch's
-    check already made it with the request's schema (a listing's, owner #54); `files` names the artifacts stored for the
-    capture."""
+    (INV-26), with the site's active `config` when there is one; `files` names the artifacts stored for the capture."""
     result, page = reached
     prompt = request.schema_.prompt if isinstance(request.schema_, SchemaPrompt) else None
     manifest = result.bundle.manifest
@@ -548,10 +546,8 @@ async def _derive(
     # here: the job was committed before the fetch, and the task is written after (D-0346).
     config = None if config is None else config.for_capture(result.bundle.manifest, work.data.adapters)
     executor = None if config is None else config.executor
-    extraction = known
-    if extraction is None:
-        gap_fill = role_c(work.llm, job_id=task.job_id)
-        extraction = await extract_page(result.bundle, schema, executor, gap_fill, data=work.data, parsed=page)
+    gap_fill = role_c(work.llm, job_id=task.job_id)
+    extraction = await extract_page(result.bundle, schema, executor, gap_fill, data=work.data, parsed=page)
     return _Derived(formats, drafted, schema, extraction, config)
 
 
@@ -571,60 +567,6 @@ def _fetch_members(result: FetchResult, capture_id: CaptureId, adapters: Adapter
             final_url=manifest.final_url,
         ),
     )
-
-
-async def polite_fetch(
-    engine: AsyncEngine,
-    fetching: Fetching,
-    url: str,
-    host: str,
-    policy: FetchPolicy,
-    site: SiteRow,
-    attempts: list[AttemptRecord],
-    *,
-    recipe: ApiRecipe | None = None,
-    needs_render: RenderCheck | None = None,
-) -> FetchResult | str:
-    """The page at `url`, on `host`, as fetched while the caller waits, or why robots.txt kept it from being fetched
-    (SPEC-02 §4.6); served by `recipe`, the site's active API recipe, when one is given (`recipe_rung`), and rendered
-    once more when `needs_render` finds its HTTP page lacking (owner #49, #54). The attempts
-    of every fetch made, robots.txt's too, are added to `attempts`. Raises `TargetRejected` when the guard refused a
-    request of the fetch (INV-16)."""
-    robots: Robots | None = None
-    if policy.respect_robots:
-        robots = await site_rules(engine, fetching.rungs.http, site, url, policy, attempts)
-        # RFC 9309 §2.3.1.4: an unreachable robots.txt allows nothing.
-        if robots is None:
-            return "robots_unreachable"
-    # SPEC-15 §4.6: an adapter that serves the URL requests its API, whose own robots.txt `send` reads; the page's
-    # governs only the page rungs it would fall back to, which a disallow then admits none of.
-    disallowed = robots is not None and not robots.allows(url)
-    rungs = site_rungs(fetching, host, site)
-    if disallowed and not rungs.adapters.would_serve(url):
-        return "robots"
-    await admitted(fetching.limiter, host, site.crawl_delay_ms, robots)
-    # The page's host goes by the rules just read for the page (D-1384); another host's are read on first use.
-    rules = page_host_first(host, (site.crawl_delay_ms, robots), engine_rules(engine, fetching.rungs.http, attempts))
-    rung = None if recipe is None else recipe_rung(fetching, recipe, host, rules)
-    admit_next = refuse if disallowed else partial(admitted, fetching.limiter, host, site.crawl_delay_ms, robots)
-    send = adapter_send(fetching, host, rules)
-    result = await acquire(
-        url,
-        policy,
-        site.fetch_method,
-        rungs,
-        recipe=rung,
-        admit_next=admit_next,
-        send=send,
-        needs_render=needs_render,
-    )
-    observed(fetching.limiter, host, site.crawl_delay_ms, robots, result, page=True)
-    async with engine.begin() as conn:
-        await store_declines(conn, site, host, rungs)
-    attempts.extend(result.attempts)
-    if (refused := refusal(result)) is not None:
-        raise TargetRejected(refused)
-    return "robots" if disallowed and result.block_class != "ok" else result
 
 
 class _Finished(NamedTuple):
@@ -658,8 +600,10 @@ async def _finish(
         await fail_task(conn, task, error, transient=False, capture_id=capture_id)
         return _Finished(outcome)
     if derived.extraction is None or derived.schema is None:
-        await complete_task(conn, task, outcome, capture_id=capture_id)
-        return _Finished(outcome)
+        # A vendor's challenge says why the page was not reached; the caller waits, so it is not retried.
+        reason = blocked_reason(result)
+        await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id)
+        return _Finished(outcome, reason=reason)
     extraction = derived.extraction
     stored = await store_page_record(
         conn,

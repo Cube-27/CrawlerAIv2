@@ -233,19 +233,28 @@ def hidden(tag: str, attributes: _Attributes) -> bool:
     return _hidden(tag, attributes, _declarations(attributes))
 
 
+def concealed(attributes: _Attributes) -> bool:
+    """Whether an element's own attributes keep it and its subtree from rendering, as a document hides content it may
+    show later (a streamed segment before its script moves it into place): the `hidden` attribute (HTML Standard §6.1)
+    or an inline `display: none` (CSS Display 3 §2.5)."""
+    return _concealed(attributes, _declarations(attributes))
+
+
+def _concealed(attributes: _Attributes, style: dict[str, str]) -> bool:
+    return "hidden" in attributes or style.get("display") == "none"
+
+
 def _hidden(tag: str, attributes: _Attributes, style: dict[str, str]) -> bool:
     """Not rendered at all, with its whole subtree."""
     # HTML Standard, Rendering, "Hidden elements": `[hidden]`, `input[type=hidden i]`, `dialog:not([open])`.
-    if tag in NOT_RENDERED or "hidden" in attributes:
+    if tag in NOT_RENDERED or _concealed(attributes, style):
         return True
     if tag == "input" and (attributes.get("type") or "").strip().lower() == "hidden":
         return True
     if tag == "dialog" and "open" not in attributes:
         return True
     # WAI-ARIA 1.2, `aria-hidden="true"`: the element and its subtree are hidden from every user.
-    if (attributes.get("aria-hidden") or "").strip().lower() == "true":
-        return True
-    return style.get("display") == "none"
+    return (attributes.get("aria-hidden") or "").strip().lower() == "true"
 
 
 def _invisible(visibility: str | None, *, inherited: bool) -> bool:

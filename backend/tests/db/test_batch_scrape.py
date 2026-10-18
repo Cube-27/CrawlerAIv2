@@ -437,8 +437,9 @@ async def test_a_listing_page_keeps_a_record_per_row_and_one_without_rows_is_par
     assert (summary.outcomes.extracted, summary.outcomes.partial) == (1, 1)
     assert isinstance(results, RecordPage)
     assert sorted(str(r.fields["title"].value) for r in results.items) == ["Blue kettle", "Green kettle", "Red kettle"]
-    # Owner #54: the listing without rows at HTTP is rendered once, to no better effect; the one with rows is not.
-    assert [url for _, url in web.browser_fetches] == [empty]
+    # Master plan 2026-10-18 §3.1: both documents show fewer item blocks than a listing does, so each is rendered once;
+    # neither render lists more, so both HTTP captures are kept.
+    assert sorted(url for _, url in web.browser_fetches) == [listed, empty]
 
 
 async def test_a_listing_whose_rows_only_a_render_holds_keeps_the_renders_rows(

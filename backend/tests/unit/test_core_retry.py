@@ -4,17 +4,16 @@ from datetime import timedelta
 
 import pytest
 
-from crawlerai.acquire.politeness import asked_pause
+from crawlerai.acquire.politeness import backoff
 from crawlerai.acquire.types import AttemptRecord
-from crawlerai.core.retry import FIRST_BACKOFF, is_transient
-from crawlerai.db.queue import retry_delay
+from crawlerai.core.retry import FIRST_BACKOFF, backoff_delay, is_transient
 
 
-def test_the_queue_and_a_host_that_asked_for_fewer_requests_start_from_the_same_backoff() -> None:
+def test_the_queue_and_a_host_that_asked_for_fewer_requests_back_off_by_one_rule() -> None:
     attempt = AttemptRecord(method="http", status=429, block_class="blocked", duration_ms=1)
 
-    assert retry_delay(1) == FIRST_BACKOFF == asked_pause(attempt) == timedelta(seconds=30)
-    assert retry_delay(3) == FIRST_BACKOFF * 4
+    assert backoff_delay(1) == FIRST_BACKOFF == backoff(attempt) == timedelta(seconds=30)
+    assert backoff_delay(3) == backoff(attempt, 3) == FIRST_BACKOFF * 4
 
 
 @pytest.mark.parametrize(("status", "transient"), [(408, True), (429, True), (500, True), (503, True), (599, True)])
