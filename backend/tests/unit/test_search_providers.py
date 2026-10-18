@@ -124,6 +124,24 @@ async def test_searxng_is_asked_for_json_and_reads_further_pages_until_the_limit
     ]
 
 
+async def test_searxng_results_are_read_by_their_documented_members() -> None:
+    result = {
+        "engine": "general",
+        "template": "default.html",
+        "url": "https://a.example.test/x",
+        "title": "The title",
+        "content": "",
+        "publishedDate": "2026-01-01T00:00:00",
+    }
+
+    async def get(url: str) -> tuple[bytes, str | None]:
+        return _json({"results": [result]}), "utf-8"
+
+    hits = await SearxngProvider("https://searx.example.test/", get).search("q", 1)
+
+    assert hits == [Hit("https://a.example.test/x", "The title", "")]
+
+
 async def test_a_template_is_filled_with_the_encoded_query_and_the_limit() -> None:
     seen: list[str] = []
 

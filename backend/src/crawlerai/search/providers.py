@@ -18,6 +18,10 @@ MAX_BYTES: Final = 2_000_000  # an answer past this is not read
 # SearXNG's JSON API gives a page of results at a time (`pageno`, 1-based); a `limit` past one page reads further
 # pages, up to this many.
 SEARXNG_MAX_PAGES: Final = 5
+# SearXNG's documented JSON result members (Search API, `format=json`): a result's `url`, `title` and `content` (its
+# snippet). A result also carries `engine`, `template`, `category` and other strings, so it is read by these names,
+# not by its shape.
+SEARXNG_FIELDS: Final[Fields] = {"url": "url", "title": "title", "snippet": "content"}
 
 QUERY: Final = "{query}"  # the placeholder of a URL template, replaced by the percent-encoded query
 LIMIT: Final = "{limit}"
@@ -68,7 +72,7 @@ class SearxngProvider:
         for page in range(1, SEARXNG_MAX_PAGES + 1):
             params = urlencode({"q": query, "format": "json", "pageno": page})
             body, charset = await self.get(f"{self.base_url.rstrip('/')}/search?{params}")
-            found = unique(hits + parse(body, charset, self.base_url))
+            found = unique(hits + parse(body, charset, self.base_url, SEARXNG_FIELDS))
             if len(found) == len(hits):
                 break
             hits = found
