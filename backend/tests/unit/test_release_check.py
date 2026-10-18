@@ -3,6 +3,7 @@ held-out pages, and a field it does not reproduce on every page with an engine v
 and on at least 95% from 10 on, is marked `manual`."""
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -189,6 +190,16 @@ def test_engine_rows_that_leave_items_out_are_released_by_the_rows_they_are() ->
     report = release_check(_config({}, ROWS), LISTING, [_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), third])
     assert report.listing is not None
     assert _triple(report.listing.fields["name"]) == (3, 3, False)
+
+
+def test_a_row_field_is_manual_where_the_release_executor_finds_fewer_rows_than_the_engine_published() -> None:
+    # The module's rule: a row field passes only where the release executor finds at least as many rows; the engine's
+    # third row has no name, so the name alone would not show the missing row.
+    third = _listing(["A", "B"])
+    third = replace(third, rows=[*third.rows, Facts(published={})])
+    report = release_check(_config({}, ROWS), LISTING, [_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), third])
+    assert report.listing is not None
+    assert _triple(report.listing.fields["name"]) == (3, 2, True)
 
 
 def test_a_next_step_not_reproduced_is_manual_and_the_rows_stay_released() -> None:

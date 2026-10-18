@@ -124,6 +124,8 @@ def _row_seen(run: _Run, name: str, spec: FieldSpec) -> tuple[bool, bool]:
     ]
     if not published:
         return False, False
+    if len(released) < len(run.page.rows):
+        return True, False  # the module's rule: at least as many rows as the engine published, as validation counts
     ctx = run.page.ctx
     return True, all(
         n is not None and _same(release_value(released[n], name, spec, ctx), v, spec) for n, v in published
