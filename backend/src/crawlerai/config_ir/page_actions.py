@@ -161,7 +161,11 @@ def _step(action: WaitAction | ClickAction | ScrollAction | PressAction | TypeAc
         case ClickAction():
             return PageStep(action="click", timeout_ms=action.timeout_ms, xpath=action.element(), text=action.text)
         case ScrollAction():
-            mode: ScrollMode = "end" if action.to is not None else "by" if action.by is not None else "stable"
+            mode: ScrollMode = "stable"
+            if action.to is not None:
+                mode = "end"
+            elif action.by is not None:
+                mode = "by"
             return PageStep(action="scroll", timeout_ms=action.timeout_ms, scroll=mode, px=action.by)
         case PressAction():
             return PageStep(action="press", timeout_ms=action.timeout_ms, key=action.key)

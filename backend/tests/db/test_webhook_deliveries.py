@@ -101,8 +101,9 @@ async def test_deliveries_page_by_cursor_and_belong_to_their_job(engine: AsyncEn
 
 async def test_listing_the_deliveries_of_an_unknown_job_raises(engine: AsyncEngine) -> None:
     async with engine.connect() as conn:
+        unknown, query = JobId(uuid.uuid4()), DeliveryListQuery()
         with pytest.raises(JobNotFound):
-            await list_deliveries(conn, JobId(uuid.uuid4()), DeliveryListQuery())
+            await list_deliveries(conn, unknown, query)
 
 
 async def test_ended_deliveries_past_the_ttl_go_with_their_events_and_pending_and_young_ones_stay(

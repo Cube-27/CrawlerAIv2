@@ -99,8 +99,9 @@ async def _fetch_once() -> None:
 
 
 def test_inv42_inv43_full_chromium_headless_with_only_the_guard_launch_argument(recorder: _Recorder) -> None:
+    fetching = _fetch_once()
     with pytest.raises(_Stop):
-        asyncio.run(_fetch_once())
+        asyncio.run(fetching)
 
     # `chromium` is Patchright's full Chromium build (`patchright install --no-shell chromium`), not the headless
     # shell; the one argument is the WebRTC proxy policy the SSRF guard needs (INV-16).
@@ -112,8 +113,9 @@ def test_inv42_inv43_full_chromium_headless_with_only_the_guard_launch_argument(
 
 
 def test_inv44_a_context_sets_no_user_agent_client_hints_or_headers(recorder: _Recorder) -> None:
+    fetching = _fetch_once()
     with pytest.raises(_Stop):
-        asyncio.run(_fetch_once())
+        asyncio.run(fetching)
 
     # The guard's proxy and no downloads; nothing that changes what the page or its requests present.
     assert set(recorder.context) == {"proxy", "accept_downloads"}

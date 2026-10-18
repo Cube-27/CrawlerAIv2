@@ -15,7 +15,8 @@ function json(body: object): string {
 /** `text` as one POSIX sh word (POSIX.1-2017 XCU §2.2.3): inside single quotes nothing is special, and a single quote
  * ends the quoting, so each one is written as `'\''` (close, an escaped quote, reopen). */
 export function shellWord(text: string): string {
-  return `'${text.replaceAll("'", String.raw`'\''`)}'`;
+  const escaped = text.replaceAll("'", String.raw`'\''`);
+  return `'${escaped}'`;
 }
 
 /** `curl` sending the request to `origin`. The key stays a shell variable in double quotes, so the shell expands it. */

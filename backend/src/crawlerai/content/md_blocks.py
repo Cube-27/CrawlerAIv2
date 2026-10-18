@@ -17,8 +17,9 @@ FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 LIST_ITEM = re.compile(r"^([ \t]*(?:[-+*]|\d{1,9}[.)]))([ \t]+)")
 # CommonMark §4.2: an ATX heading is one to six `#`, then a space or the line's end, then its content.
 _HEADING = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$")
-# CommonMark §6.3, §6.4: an image or link, `[text](destination)`; its text stands for it in a heading's path.
-_LINK = re.compile(r"!?\[((?:[^\[\]\\]|\\.)*)\]\([^()]*\)")
+# CommonMark §6.3, §6.4: an image or link, `[text](destination)`; its text stands for it in a heading's path. The text
+# and destination are bounded, so a line of unclosed `[` cannot make the scan quadratic.
+_LINK = re.compile(r"!?\[((?:[^\[\]\\]|\\.){0,1000})\]\([^()]{0,2000}\)")
 
 Kind = Literal["heading", "code", "list", "text"]
 

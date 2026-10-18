@@ -65,10 +65,17 @@ def _text_weights(body: LexborNode | None) -> tuple[int, int]:
         node, hidden = stack.pop()
         child = node.child
         while child is not None:
-            if child.is_text_node:
-                weight = len("".join((child.text_content or "").split()))
-                kept, shown = (kept + weight, shown) if hidden else (kept, shown + weight)
-            elif child.is_element_node and (child.tag or "") not in NOT_RENDERED:
-                stack.append((child, hidden or concealed(child.attributes)))
+            text_shown, text_kept = _visit(child, hidden, stack)
+            shown, kept = shown + text_shown, kept + text_kept
             child = child.next
     return shown, kept
+
+
+def _visit(child: LexborNode, hidden: bool, stack: list[tuple[LexborNode, bool]]) -> tuple[int, int]:
+    """A child's text weights, shown and kept; an element that renders is pushed onto `stack` to be read next."""
+    if child.is_text_node:
+        weight = len("".join((child.text_content or "").split()))
+        return (0, weight) if hidden else (weight, 0)
+    if child.is_element_node and (child.tag or "") not in NOT_RENDERED:
+        stack.append((child, hidden or concealed(child.attributes)))
+    return 0, 0

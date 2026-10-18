@@ -54,7 +54,9 @@ class Capture:
         """Whether the capture shows `value`, a normalized value of `spec`'s type; `None` when unknown."""
         if spec.type is FieldType.LIST and spec.item is not None and isinstance(value, list):
             found = [self.shows(item, spec.item) for item in value]
-            return True if True in found else (False if False in found else None)
+            if True in found:
+                return True
+            return False if False in found else None
         if spec.type in _SEARCHED_AS_TEXT and isinstance(value, str):
             return self.shows_text(value)
         if spec.type in _SEARCHED_AS_URL and isinstance(value, str):

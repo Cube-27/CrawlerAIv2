@@ -24,9 +24,13 @@ port=${TEST_PG_PORT:-55432}
 main_db=crawlerai_test_$slug
 init_sql="$(dirname "${BASH_SOURCE[0]}")/../../infra/postgres/init.sql"
 
-running() { [[ $(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null) == true ]]; }
+running() {
+  [[ $(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null) == true ]]
+  return $?
+}
 psql_admin() {
   docker exec -i -e PGOPTIONS=-cclient_min_messages=warning "$container" psql -v ON_ERROR_STOP=1 -q -U postgres "$@"
+  return $?
 }
 drop_sql=(-c "DROP DATABASE IF EXISTS $main_db WITH (FORCE)")
 

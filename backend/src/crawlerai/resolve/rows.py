@@ -384,7 +384,11 @@ def _published(
     confidences = [o.confidence for o in published]
     first_row, first = rows[0][0], next(o for o in rows[0][1].fields.values() if o.status == "published")
     buckets = {o.evidence for o in published}
-    evidence: Evidence = "agreed" if buckets == {"agreed"} else "adapter" if buckets == {"adapter"} else "structured"
+    evidence: Evidence = "structured"
+    if buckets == {"agreed"}:
+        evidence = "agreed"
+    elif buckets == {"adapter"}:
+        evidence = "adapter"
     return FieldOutcome(
         status="published",
         reason=None,

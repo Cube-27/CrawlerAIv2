@@ -37,8 +37,9 @@ def git_sha(root: Path) -> str | None:
         sha = (root / "VERSION").read_text(encoding="ascii").strip()
     if not sha:
         try:
-            done = subprocess.run(  # noqa: S603 - fixed arguments, no shell
-                ["git", "-C", str(root), "rev-parse", "HEAD"],  # noqa: S607 - git from PATH, as any build uses it
+            # Fixed arguments and no shell; git is found on PATH, as any build finds it.
+            done = subprocess.run(  # noqa: S603
+                ["git", "-C", str(root), "rev-parse", "HEAD"],  # noqa: S607
                 capture_output=True,
                 text=True,
                 check=False,
