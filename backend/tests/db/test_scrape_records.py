@@ -277,7 +277,7 @@ async def test_a_listing_whose_rows_only_a_render_holds_is_read_from_the_browser
 async def test_a_listing_without_rows_says_why_and_answers_its_page_fields(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, schema_name: str, engine_data: EngineData
 ) -> None:
-    # D-1475, D-1476: no structured rows and no LLM provider; the page states its next page.
+    # No structured rows and no item blocks, so role C is not asked for rows; the page states its next page.
     url = f"{own_origin}/c/kettles"
     head = f'<title>Kettles</title><link rel="next" href="{own_origin}/c/kettles?page=2">'
     web.pages[url] = (200, f"<!doctype html><html><head>{head}</head><body><p>Kettles</p></body></html>".encode(), "ok")
@@ -295,12 +295,12 @@ async def test_a_listing_without_rows_says_why_and_answers_its_page_fields(
 
     result = await scrape(engine, fetching, scraped, data=data)
 
-    assert (result.records, result.reason) == ([], "no_rows: llm_unavailable")
+    assert (result.records, result.reason) == ([], "no_rows: not_asked")
     assert result.page is not None
     assert result.page["next_page_url"].value == f"{own_origin}/c/kettles?page=2"
     assert set(result.page) == {"next_page_url"}
     task = await _row(engine, select(UrlTask.last_error).where(UrlTask.url == url))
-    assert task.last_error == "no_rows: llm_unavailable"
+    assert task.last_error == "no_rows: not_asked"
     assert "page" in result.model_dump(by_alias=True)
 
 

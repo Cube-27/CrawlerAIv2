@@ -89,9 +89,13 @@ class FakeStore:
         return "dev"
 
     def add(
-        self, labels: Labels | None = None, labeler: str | None = None, page_kind: PageKind = "detail"
+        self,
+        labels: Labels | None = None,
+        labeler: str | None = None,
+        page_kind: PageKind = "detail",
+        body: bytes = HTML,
     ) -> EvalPageRow:
-        bundle = _bundle()
+        bundle = _bundle(body)
         capture_id = CaptureId(bundle.manifest.capture_id)
         page = EvalPageRow(
             capture_id=capture_id,
@@ -608,29 +612,45 @@ def test_prefill_never_asks_for_a_row_mapped_field() -> None:
     assert "title" in request.user
 
 
-def test_prefill_of_a_listing_labels_rows_in_page_order_and_page_fields() -> None:
+LISTING_HTML = (
+    "<html><body><h1>Mugs</h1><ul>"
+    + "".join(
+        f'<li class="card"><h3><a href="/p/{n}">Mug {n}</a></h3><span>{n}.50 EUR</span><p>Acme {n}</p></li>'
+        for n in (1, 2, 3)
+    )
+    + "</ul></body></html>"
+).encode()
+
+
+def test_prefill_of_a_listing_labels_its_blocks_rows_in_page_order_and_its_page_fields() -> None:
     specs = {
-        "title": FieldSpec(type=FieldType.TEXT, scope="row"),
+        "url": FieldSpec(type=FieldType.URL, scope="row", schema_org="Product.url"),
+        "brand": FieldSpec(type=FieldType.TEXT, scope="row"),
         "heading": FieldSpec(type=FieldType.TEXT, scope="page"),
     }
-    reply: dict[str, JsonValue] = {
-        "rows": [{"title": _span("Buy", 9)}, {"title": _ABSENT}, {"title": _span("Blue mug", 0)}],
-        "page": {"heading": _span("EUR 19.90", 13)},
+    blocks: dict[str, JsonValue] = {
+        "claims": [
+            {"block": 2, "field": "brand", "value": "Acme 3"},
+            {"block": 0, "field": "brand", "value": "Acme 1"},
+            {"block": 1, "field": "brand", "value": "Acme 9"},  # not in its block: ungrounded
+        ]
     }
-    client = ScriptedClient(reply)
+    client = ScriptedClient(blocks, {"fields": {"heading": _span("Mugs", 0)}})
     backend = FakeBackend(llm=client, specs=specs)
-    page = backend.store.add(page_kind="listing")
+    page = backend.store.add(page_kind="listing", body=LISTING_HTML)
 
     response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
 
     assert response.status_code == 200
     body = response.json()
-    assert [row["fields"]["title"]["value"] for row in body["rows"]] == ["Buy", "Blue mug"]
-    assert body["fields"] == {
-        "heading": {"value": "EUR 19.90", "absent": False, "locator": "text:13-22", "distractors": []}
-    }
+    # A block whose claims are all dropped labels no field, so it is no row; the item URL is never asked.
+    assert [row["fields"]["brand"]["value"] for row in body["rows"]] == ["Acme 1", "Acme 3"]
+    assert body["fields"] == {"heading": {"value": "Mugs", "absent": False, "locator": "text:0-4", "distractors": []}}
     parse_labels(body, "listing", specs)
-    assert client.requests[0].prompt_kind == "c_prefill"
+    listing, detail = client.requests
+    assert (listing.prompt_kind, detail.prompt_kind) == ("c_prefill", "c_prefill")
+    assert "[0] Mug 1 1.50 EUR Acme 1" in listing.user
+    assert "url" not in json.dumps(listing.output_schema)
 
 
 def test_prefill_of_a_listing_without_row_fields_asks_for_no_rows() -> None:
