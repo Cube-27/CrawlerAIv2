@@ -1,5 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { focusManager } from "@tanstack/react-query";
+import { act } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
 import { routes } from "../../app/router";
@@ -292,6 +294,45 @@ describe("schedules", () => {
       interval_s: 900,
     });
     expect(scheduleChange(current, draft, { text: "{", initial: text })).toBeNull();
+  });
+
+  it("compares a stored cron by its fields, so a name-only edit leaves the cadence alone", () => {
+    const current = schedule({ cron: "0  9 * * *", interval_s: null });
+    const draft = {
+      name: "Renamed",
+      every: "cron",
+      minutes: 60,
+      cron: "0  9 * * *",
+      timezone: "UTC",
+    } as const;
+    const text = JSON.stringify(current.request, null, 2);
+
+    expect(scheduleChange(current, draft, { text, initial: text })).toEqual({ name: "Renamed" });
+  });
+
+  it("keeps the Edit dialog open when the schedule is refetched with a newer updated_at", async () => {
+    let updatedAt = "2026-10-17T08:00:00Z";
+    stubApi({
+      [`GET /v1/schedules/${SCHEDULE_ID}`]: () =>
+        Response.json(schedule({ updated_at: updatedAt })),
+      "GET /v1/jobs": () => Response.json({ items: [], next_cursor: null }),
+    });
+    await openAt(`/schedules/${SCHEDULE_ID}`, "Shop crawl");
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await screen.findByRole("dialog", { name: "Edit Shop crawl" });
+
+    updatedAt = "2026-10-17T08:05:00Z";
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Edit Shop crawl" })).toBeInTheDocument();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByRole("dialog", { name: "Edit Shop crawl" })).toBeInTheDocument();
+    focusManager.setFocused(undefined);
   });
 
   it("says how often a schedule runs", () => {
