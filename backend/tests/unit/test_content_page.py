@@ -124,12 +124,12 @@ def test_a_json_body_decodes_as_utf8_whatever_charset_it_is_labelled_with(method
     # RFC 8259 §8.1, §11: JSON text is exchanged as UTF-8 and its media type has no charset parameter; an API
     # capture's body is a JSON document (SPEC-01 §4.5, `body.json`) unless it is labelled HTML.
     headers = (("content-type", content_type),) if content_type else ()
-    plain = _bundle('{"name": "café – b"}'.encode(), headers)
+    plain = _bundle('{"name": "café \u2013 b"}'.encode(), headers)
     manifest = plain.manifest.model_copy(update={"method": method})
 
     text = decode_body(CaptureBundle(manifest=manifest, body=plain.body, network=()))
 
-    assert text == '{"name": "café – b"}'
+    assert text == '{"name": "café \u2013 b"}'
 
 
 def test_an_api_answer_labelled_html_decodes_as_html() -> None:
