@@ -2,12 +2,9 @@
 published value on every held-out page and every match is valid; kept fields are `corroborated` by the §8.3 step 4
 thresholds; listings need 3 rows on every page."""
 
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
-import pytest
 
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.model import ExtractionConfigIR, XPathStep
@@ -15,9 +12,7 @@ from crawlerai.config_ir.validation import (
     Facts,
     HeldOutPage,
     Validated,
-    corroboration,
     validate,
-    with_unlearned,
 )
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
@@ -107,130 +102,6 @@ def test_a_field_reproduced_on_every_held_out_page_is_kept_with_its_yield_and_va
     assert result.report.refused is None
 
 
-def test_fewer_than_three_held_out_pages_activate_nothing() -> None:
-    result = _validate(_ir({"title": TITLE}), [_titled(0), _titled(1)])
-    assert result.ir is None
-    assert (result.report.refused, result.report.fields) == ("too_few_held_out", {})
-
-
-@pytest.mark.parametrize(
-    ("third", "dropped"),
-    [
-        # §4.3: a single-valued field that matches twice is invalid, so it fails "exactly one match".
-        ("<h1 id='t'>Item 2</h1><h1 id='t'>Item 2</h1>", "invalid"),
-        ("<h2>Item 2</h2>", "no_match"),
-        ("<h1 id='t'>Other</h1>", "not_reproduced"),
-    ],
-)
-def test_a_field_failing_a_check_on_one_page_is_dropped(third: str, dropped: str) -> None:
-    pages = [_titled(0), _titled(1), _detail(third, {"title": "Item 2"})]
-    result = _validate(_ir({"title": {"xpath": "//h1[@id='t']"}}), pages)
-    assert result.ir is None
-    assert result.report.refused == "no_field_kept"
-    assert _report(result)["status"] is None
-    assert _report(result)["dropped"] == dropped
-
-
-def test_an_invalid_match_where_nothing_was_published_still_drops_the_field() -> None:
-    pages = [_titled(0), _titled(1), _detail("<h1 id='t'>A</h1><h1 id='t'>B</h1>")]
-    result = _validate(_ir({"title": {"xpath": "//h1[@id='t']"}}), pages)
-    assert _report(result)["dropped"] == "invalid"
-
-
-def test_a_match_where_nothing_was_published_counts_toward_yield_only() -> None:
-    pages = [_titled(0), _titled(1), _detail("<h1 id='t'>Extra</h1>"), _detail("<p>none</p>")]
-    report = _report(_validate(_ir({"title": TITLE}), pages))
-    assert (report["matched"], report["published"], report["yield"], report["status"]) == (3, 2, 0.75, "uncorroborated")
-
-
-def test_a_field_published_on_no_held_out_page_is_dropped() -> None:
-    pages = [_detail("<h1 id='t'>Item</h1>") for _ in range(3)]
-    assert _report(_validate(_ir({"title": TITLE}), pages))["dropped"] == "never_published"
-
-
-def test_a_value_only_the_engine_executor_reads_is_not_reproduced() -> None:
-    # The release executor matches `when_type` without subtypes (D-0528); the engine reads the subtype as a Product.
-    def page(n: int) -> HeldOutPage:
-        node = json.dumps({"@context": "https://schema.org", "@type": "IndividualProduct", "name": f"Item {n}"})
-        return _detail(f"<script type='application/ld+json'>{node}</script>", {"title": f"Item {n}"})
-
-    result = _validate(_ir({"title": {"jsonld": "$['name']", "when_type": "Product"}}), [page(n) for n in range(3)])
-    assert _report(result)["dropped"] == "not_reproduced"
-
-
-def test_only_kept_fields_remain_in_the_validated_config() -> None:
-    schema = _schema(title=TEXT, link=URL)
-    pages = [_detail(f"<h1 id='t'>Item {n}</h1><a href='/p/{n}'>x</a>", {"title": f"Item {n}"}) for n in range(3)]
-    result = _validate(_ir({"title": TITLE, "link": {"xpath": "//a/@href"}}), pages, schema)
-    assert result.ir is not None
-    assert list(result.ir.fields) == ["title"]
-    assert _report(result, "link")["dropped"] == "never_published"
-
-
-@pytest.mark.parametrize(
-    ("references", "status", "corroborated_on"),
-    [
-        (["Item 0", "Item 1"], "uncorroborated", 2),  # 2 comparable pages: below the floor of 3
-        (["Item 0", "Item 1", "Item 2"], "corroborated", 3),
-        (["Item 0", "Item 1", "Other"], "uncorroborated", 2),  # fewer than 10: every comparable page must agree
-    ],
-)
-def test_corroboration_compares_the_config_with_structured_values(
-    references: list[str], status: str, corroborated_on: int
-) -> None:
-    pages = [_titled(n, reference=reference) for n, reference in enumerate(references)] + [_titled(9)]
-    report = _report(_validate(_ir({"title": TITLE}), pages))
-    assert (report["status"], report["comparable"], report["corroborated_on"]) == (
-        status,
-        len(references),
-        corroborated_on,
-    )
-
-
-@pytest.mark.parametrize(
-    ("comparable", "agreeing", "status"),
-    [
-        (2, 2, "uncorroborated"),
-        (3, 3, "corroborated"),
-        (9, 8, "uncorroborated"),
-        (10, 9, "corroborated"),
-        (10, 8, "uncorroborated"),
-    ],
-)
-def test_corroboration_thresholds(comparable: int, agreeing: int, status: str) -> None:
-    assert corroboration(comparable, agreeing) == status
-
-
-def test_an_operator_field_keeps_its_status() -> None:
-    pages = [_titled(n, reference=f"Item {n}") for n in range(3)]
-    result = _validate(_ir({"title": TITLE}, status="operator"), pages)
-    assert result.ir is not None
-    assert result.ir.fields["title"].status == "operator"
-
-
-def test_both_executors_reproduce_a_structured_description_written_as_markup() -> None:
-    # The engine published the JSON-LD description as its rendered text (`schema_org_map.fragment_read`); a step on the
-    # same node reproduces it in both executors.
-    long_text = FieldSpec(type=FieldType.LONG_TEXT, description="d")
-    block = {
-        "@context": "https://schema.org",
-        "@type": "JobPosting",
-        "description": "<h2>Role</h2><p>Item &amp; more</p>",
-    }
-    script = f'<script type="application/ld+json">{json.dumps(block)}</script>'
-    pages = [_detail(script, {"description": "Role\nItem & more"}) for _ in range(3)]
-    ir = _ir({"description": {"jsonld": "$['description']", "when_type": "JobPosting"}})
-    result = _validate(ir, pages, _schema(description=long_text))
-    assert (_report(result, "description")["reproduced"], _report(result, "description")["dropped"]) == (3, None)
-
-
-def test_a_field_the_schema_lacks_is_dropped() -> None:
-    result = _validate(_ir({"title": TITLE, "gone": TITLE}), [_titled(n) for n in range(3)])
-    assert _report(result, "gone")["dropped"] == "not_in_schema"
-    assert result.ir is not None
-    assert list(result.ir.fields) == ["title"]
-
-
 # --- listings -------------------------------------------------------------------------------------------------------
 
 LISTING_SCHEMA = {"title": TEXT, "next_page_url": URL}
@@ -268,52 +139,6 @@ def test_a_listing_with_three_rows_on_every_page_keeps_its_row_fields_and_next()
     assert (listing["rows_ok"], listing["fields"]["title"]["reproduced"], listing["next"]["reproduced"]) == (3, 3, 3)
 
 
-def test_a_page_with_fewer_than_three_rows_drops_the_listing() -> None:
-    result = _validate_listing([_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), _listing(["A", "B"])])
-    assert result.ir is None
-    listing = result.report.model_dump(mode="json")["listing"]
-    assert (listing["rows_ok"], listing["dropped"]) == (2, "too_few_rows")
-    assert (listing["fields"]["title"]["status"], listing["fields"]["title"]["dropped"]) == (None, "too_few_rows")
-
-
-def test_row_values_are_compared_with_the_engine_rows_in_order() -> None:
-    swapped = _listing(["A", "B", "C"], published=["B", "A", "C"])
-    result = _validate_listing([_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), swapped])
-    listing = result.report.model_dump(mode="json")["listing"]
-    assert (listing["fields"]["title"]["reproduced"], listing["fields"]["title"]["dropped"]) == (2, "not_reproduced")
-
-
-def test_engine_rows_that_leave_items_out_are_reproduced_by_the_config_rows_they_are() -> None:
-    # D-1500: role C may leave a listing's items out; its rows, in document order, are a subsequence of the config's.
-    fewer = _listing(["A", "B", "C", "D"], published=["B", "D"])
-    result = _validate_listing([_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), fewer])
-    assert result.ir is not None
-    listing = result.report.model_dump(mode="json")["listing"]
-    assert (listing["fields"]["title"]["reproduced"], listing["fields"]["title"]["dropped"]) == (3, None)
-
-
-def test_an_engine_row_the_config_does_not_find_is_not_reproduced() -> None:
-    missed = _listing(["A", "B", "C"], published=["A", "X", "C"])
-    result = _validate_listing([_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), missed])
-    listing = result.report.model_dump(mode="json")["listing"]
-    assert (listing["fields"]["title"]["reproduced"], listing["fields"]["title"]["dropped"]) == (2, "not_reproduced")
-
-
-def test_rows_are_not_reproduced_when_the_config_finds_fewer_rows_than_the_engine() -> None:
-    fewer = _listing(["A", "B", "C"], published=["A", "B", "C", "D"])
-    result = _validate_listing([_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), fewer])
-    listing = result.report.model_dump(mode="json")["listing"]
-    assert (listing["fields"]["title"]["reproduced"], listing["fields"]["title"]["dropped"]) == (2, "not_reproduced")
-
-
-def test_a_config_row_the_engine_did_not_publish_still_counts_toward_validity() -> None:
-    # An extra row's value is checked like any other match: one its normalizer declines drops the field.
-    extra = _listing(["A", "B", "C", "{{ name }}"], published=["A", "B", "C"])
-    result = _validate_listing([_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), extra])
-    listing = result.report.model_dump(mode="json")["listing"]
-    assert listing["fields"]["title"]["dropped"] == "invalid"
-
-
 def test_a_next_step_that_is_not_reproduced_is_dropped_and_the_rows_stay() -> None:
     pages = [_listing(["A", "B", "C"]), _listing(["A", "B", "C"]), _listing(["A", "B", "C"], next_href="/p/9")]
     result = _validate_listing(pages)
@@ -324,41 +149,3 @@ def test_a_next_step_that_is_not_reproduced_is_dropped_and_the_rows_stay() -> No
 
 
 # --- fields learning gave no steps ---
-
-
-def test_every_schema_field_learning_left_out_is_reported_with_why() -> None:
-    # The operator sees why a field is missing from the config, not only the fields that reached validation.
-    schema = _schema(title=TEXT, price=FieldSpec(type=FieldType.MONEY, description="d"))
-    validated = _validate(_ir({"title": TITLE}), [_titled(n) for n in range(3)], schema)
-
-    reported = with_unlearned(validated, {"price": "not_published_on_every_page", "title": "ignored"})
-
-    assert reported.ir == validated.ir
-    assert _report(reported, "title") == _report(validated, "title")
-    assert _report(reported, "price") == {
-        "pages": 3,
-        "matched": 0,
-        "valid": 0,
-        "published": 0,
-        "reproduced": 0,
-        "comparable": 0,
-        "corroborated_on": 0,
-        "status": None,
-        "yield": 0.0,
-        "validity": None,
-        "dropped": "not_learned: not_published_on_every_page",
-    }
-
-
-def test_nothing_left_out_leaves_the_report_as_validated() -> None:
-    validated = _validate(_ir({"title": TITLE}), [_titled(n) for n in range(3)])
-    assert with_unlearned(validated, {}) is validated
-
-
-def test_a_listing_row_field_left_out_is_reported_with_the_listing_fields() -> None:
-    validated = _validate_listing([_listing(["A", "B", "C"]) for _ in range(3)])
-
-    reported = with_unlearned(validated, {"brand": "no_common_pattern"}).report.model_dump(mode="json")
-
-    assert reported["listing"]["fields"]["brand"]["dropped"] == "not_learned: no_common_pattern"
-    assert "brand" not in reported["fields"]

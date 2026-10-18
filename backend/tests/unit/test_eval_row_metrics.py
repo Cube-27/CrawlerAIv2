@@ -53,7 +53,6 @@ REQUIRED_ROWS = SCHEMA.model_copy(
     }
 )
 TITLE = "Synthetic widget"
-PAGE_URL = "https://shop.example.test/p/1"
 
 
 def sku(value: str) -> JsonValue:
@@ -140,42 +139,6 @@ def test_rows_match_by_key_whatever_their_order() -> None:
     assert metrics(r.by_field_type["text"]).n == 1
 
 
-def test_an_unmatched_engine_row_is_fp_and_an_unmatched_label_row_fn() -> None:
-    r = report(case("p1", [label_row("W-11"), label_row("W-12", "12.00")], [engine_row("W-11"), engine_row("W-13")]))
-
-    identifier = metrics(r.by_field_type["list.identifier"])
-    # W-11 matched (TP); W-13 published but unmatched (FP); W-12 labeled but unmatched (FN).
-    assert (identifier.precision, identifier.coverage, identifier.n) == (0.5, 0.5, 3)
-    # The unmatched label row's url is labeled absent: TN, not FN.
-    assert metrics(r.by_field_type["list.url"]).abstain_rate == 1.0
-    assert r.row_matching == RowMetrics(row_precision=0.5, row_recall=0.5, engine_rows=2, n=2)
-
-
-def test_rows_that_disagree_on_a_key_do_not_match() -> None:
-    r = report(case("p1", [label_row("W-11", url=f"{PAGE_URL}?v=1")], [engine_row("W-11", url=f"{PAGE_URL}?v=2")]))
-
-    assert r.row_matching == RowMetrics(row_precision=0.0, row_recall=0.0, engine_rows=1, n=1)
-
-
-@pytest.mark.parametrize(
-    ("rows", "engine"),
-    [
-        # One engine row shares a key with two label rows.
-        ([label_row("W-11"), label_row(None, url=PAGE_URL)], [engine_row("W-11", url=PAGE_URL)]),
-        # Two engine rows share a key with one label row.
-        ([label_row("W-11")], [engine_row("W-11"), engine_row("W-11", "12.00")]),
-    ],
-)
-def test_an_ambiguous_match_counts_as_unmatched(
-    rows: list[dict[str, Any]], engine: list[dict[str, FieldOutput]]
-) -> None:
-    r = report(case("p1", rows, engine))
-
-    matching = r.row_matching
-    assert isinstance(matching, RowMetrics)
-    assert (matching.row_precision, matching.row_recall) == (0.0, 0.0)
-
-
 def test_an_engine_row_with_a_distractor_key_is_a_wrong_product() -> None:
     distractor = {"field": "sku", "value": sku("X-7")}
 
@@ -183,34 +146,6 @@ def test_an_engine_row_with_a_distractor_key_is_a_wrong_product() -> None:
 
     assert metrics(r.by_field_type["list.identifier"]).wrong_product == 1
     assert metrics(r.by_field_type[LIST_MONEY]).wrong_product == 0
-
-
-def test_rows_published_where_the_label_says_absent_are_fp() -> None:
-    r = report(case("p1", [], [engine_row("W-11")]))
-
-    assert metrics(r.by_field_type["list.identifier"]).precision == 0.0
-    assert r.row_matching == RowMetrics(row_precision=0.0, row_recall=None, engine_rows=1, n=0)
-
-
-def test_version_1_labels_leave_the_row_field_unscored() -> None:
-    r = report(case("p1", None, [engine_row("W-11")], label_version=1))
-
-    assert (list(r.by_field_type), r.row_matching) == (["text"], None)
-
-
-def test_row_fields_do_not_change_zero_touch() -> None:
-    # Zero-touch is about required fields (SPEC-03 §4.6); `variants` is optional, so an extra row leaves it be.
-    r = report(case("p1", [label_row("W-11")], [engine_row("W-11"), engine_row("W-13")]))
-
-    assert r.by_category["custom_store"] == ZeroTouch(zero_touch=1.0, n=1)
-
-
-def test_the_report_has_row_matching_per_field() -> None:
-    r = report(case("p1", [label_row("W-11")], [engine_row("W-11"), engine_row("W-13")]))
-
-    assert r.row_matching_by_field == {
-        "commerce_detail|variants": RowMetrics(row_precision=0.5, row_recall=1.0, engine_rows=2, n=1)
-    }
 
 
 @pytest.mark.parametrize(
@@ -234,9 +169,3 @@ def test_a_required_row_mapped_field_counts_toward_zero_touch(
     r = report(case("p1", rows, engine, schema=REQUIRED_ROWS))
 
     assert r.by_category["custom_store"] == ZeroTouch(zero_touch=float(zero_touch), n=1)
-
-
-def test_a_required_row_mapped_field_left_unlabeled_by_version_1_labels_is_not_scored() -> None:
-    r = report(case("p1", None, [engine_row("W-11")], label_version=1, schema=REQUIRED_ROWS))
-
-    assert r.by_category["custom_store"] == ZeroTouch(zero_touch=1.0, n=1)

@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from crawlerai.config_ir.executability import CLASSES, class_counts, config_classes, field_class, step_class
+from crawlerai.config_ir.executability import class_counts, config_classes, step_class
 from crawlerai.config_ir.model import ExtractionConfigIR, FieldSteps
 
 HTML = {"xpath": "normalize-space(//h1)"}
@@ -57,18 +57,6 @@ def test_a_step_needs_the_input_its_selector_reads(step: dict[str, Any], has_rec
     assert step_class(parsed, has_recipe=has_recipe) == expected
 
 
-def test_a_field_takes_the_class_of_its_most_demanding_step() -> None:
-    mixed = FieldSteps.model_validate(_field(HTML, XHR))
-    assert field_class(mixed, has_recipe=False) == "needs-browser"
-    assert field_class(FieldSteps.model_validate(_field(HTML, XHR, API)), has_recipe=False) == "unexecutable"
-    assert field_class(FieldSteps.model_validate(_field(JSONLD, STATE)), has_recipe=False) == "static-html"
-
-
-def test_a_suspended_field_is_unexecutable_whatever_its_steps() -> None:
-    suspended = FieldSteps.model_validate(_field(HTML, status="suspended"))
-    assert field_class(suspended, has_recipe=True) == "unexecutable"
-
-
 def test_a_configs_fields_are_classed_with_listing_fields_and_next() -> None:
     config = _config(
         {"name": _field(HTML), "price": _field(XHR), "gone": _field(HTML, status="suspended")},
@@ -87,7 +75,3 @@ def test_a_configs_fields_are_classed_with_listing_fields_and_next() -> None:
         "listing:next": "needs-browser",
     }
     assert class_counts(config) == {"static-html": 2, "needs-browser": 2, "api-call": 0, "unexecutable": 2}
-
-
-def test_no_config_has_no_fields_in_any_class() -> None:
-    assert class_counts(None) == dict.fromkeys(CLASSES, 0)

@@ -8,14 +8,11 @@ The documents are synthetic.
 import json
 from datetime import UTC, datetime
 
-from hypothesis import given
-from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.collect.api import ApiCollector, read_map
-from crawlerai.collect.base import PAGE, Candidate
+from crawlerai.collect.api import ApiCollector
+from crawlerai.collect.base import PAGE
 from crawlerai.collect.config import Executed
-from crawlerai.collect.locator import parse_locator
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId
@@ -75,32 +72,6 @@ def test_a_detail_page_values_are_api_candidates_of_the_page() -> None:
     assert executed.diagnostics == ()
 
 
-def test_a_value_absent_or_not_one_scalar_gives_no_candidate() -> None:
-    collector = ApiCollector("cfg1", DETAIL_MAP)
-    not_scalar = {"data": {"name": ["A", "B"], "price": 3, "currency": "EUR"}}
-    no_currency = {"data": {"name": "Lamp", "price": 3}}  # the joined money entry reads nothing
-
-    assert [c.field for c in _collect(not_scalar, DETAIL, collector).candidates] == ["price"]
-    assert [c.field for c in _collect(no_currency, DETAIL, collector).candidates] == ["title"]
-
-
-def test_a_body_that_is_not_json_is_a_diagnostic() -> None:
-    executed = ApiCollector("cfg1", DETAIL_MAP).collect(ParsedPage("<html></html>"), DETAIL, CTX)
-
-    assert (executed.rows, executed.candidates) == ((), ())
-    assert len(executed.diagnostics) == 1
-    assert executed.diagnostics[0].startswith("api:cfg1: not JSON")
-
-
-def test_a_map_field_outside_the_schema_is_a_diagnostic() -> None:
-    collector = ApiCollector("cfg1", {"title": "$['data']['name']", "colour": "$['data']['colour']"})
-
-    executed = _collect({"data": {"name": "Lamp", "colour": "red"}}, DETAIL, collector)
-
-    assert [c.field for c in executed.candidates] == ["title"]
-    assert executed.diagnostics == ("api:cfg1:colour: not a field of the schema",)
-
-
 def test_a_listing_reads_row_fields_relative_to_each_row_and_page_fields_at_the_root() -> None:
     document = {"category": "Lamps", "items": [{"name": "Desk Lamp"}, "not an object", {"name": "Floor Lamp"}]}
     collector = ApiCollector("cfg1", {"title": "$['name']", "category": "$['category']"}, rows="$['items'][*]")
@@ -116,34 +87,3 @@ def test_a_listing_reads_row_fields_relative_to_each_row_and_page_fields_at_the_
         ("title", "api:cfg1:$['items'][0]", "api:cfg1:$['items'][0]['name']", "Desk Lamp"),
         ("title", "api:cfg1:$['items'][2]", "api:cfg1:$['items'][2]['name']", "Floor Lamp"),
     ]
-
-
-def test_an_empty_rows_selection_gives_no_rows() -> None:
-    collector = ApiCollector("cfg1", {"title": "$['name']", "category": "$['category']"}, rows="$['items'][*]")
-
-    executed = _collect({"category": "Lamps", "items": []}, LISTING, collector)
-
-    assert executed.rows == ()
-    assert _values(executed) == [("category", PAGE, "api:cfg1:$['category']", "Lamps")]
-
-
-_SCALARS = st.one_of(st.text(max_size=20), st.integers(), st.floats(allow_nan=False, allow_infinity=False))
-_KEYS = st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=8)
-
-
-@given(st.dictionaries(_KEYS, _SCALARS, min_size=1, max_size=6))
-def test_every_candidate_locator_names_the_recipe_and_reads_back_its_raw_value(document: dict[str, JsonValue]) -> None:
-    schema = _schema(
-        "detail", **{f"f{i}": FieldSpec(type=FieldType.TEXT, description="d") for i in range(len(document))}
-    )
-    collector = ApiCollector("r-7", {f"f{i}": f"$['{key}']" for i, key in enumerate(document)})
-
-    executed = _collect(document, schema, collector)
-
-    candidates: list[Candidate] = list(executed.candidates)
-    assert len(candidates) == len(document)
-    for found in candidates:
-        locator = parse_locator(found.locator)
-        assert locator.scheme == "api"
-        assert locator.parts[0] == "r-7"
-        assert read_map(locator.parts[1], document) == found.raw

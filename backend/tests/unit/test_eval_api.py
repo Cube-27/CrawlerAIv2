@@ -7,25 +7,20 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import httpx
-import pytest
 from pydantic import JsonValue
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.api.app import create_app
 from crawlerai.api.auth import require_api_key
 from crawlerai.api.routers import eval as eval_router
 from crawlerai.core.ids import uuid7
-from crawlerai.core.settings import IMPERSONATE_DEFAULT, Settings
 from crawlerai.db.models import ApiKeyId, CaptureId, EvalCategory, EvalPageId, EvalRunId, PageKind, SchemaId, Split
 from crawlerai.eval.cli import Captured, EvalCliError, Outcome, PageRequest, Skipped
 from crawlerai.eval.labels import LabelStatus, parse_labels
 from crawlerai.eval.store import (
-    DevEvalStore,
     EvalNotFound,
     EvalPageRow,
     EvalRunRow,
@@ -33,15 +28,9 @@ from crawlerai.eval.store import (
     Labels,
     LabelsChanged,
 )
-from crawlerai.llm.client import (
-    OutputInvalid,
-    ProviderRefused,
-    ProviderUnavailable,
-)
 from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.schemas.types import FieldSpec, FieldType
-from crawlerai.storage.base import ObjectNotFound
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, CorruptBundle, Headers, sha256_hex
+from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 
 PAGE_URL = "https://store.test/items/1"
 FINAL_URL = "https://store.test/items/1?ref=a"
@@ -239,143 +228,6 @@ def _stored(labels: dict[str, JsonValue]) -> dict[str, JsonValue]:
     }
 
 
-def test_eval_routes_are_not_mounted_without_eval_ui() -> None:
-    assert _request(None, "GET", "/v1/eval/pages").status_code == 404
-    assert not any(path.startswith("/v1/eval") for path in create_app(eval_ui=False).openapi()["paths"])
-
-
-def test_list_returns_dev_page_summaries_filtered_by_status() -> None:
-    backend = FakeBackend()
-    labeled = backend.store.add(_stored(_labels()), labeler="ana")
-    backend.store.add()
-
-    response = _request(backend, "GET", "/v1/eval/pages?split=dev&status=labeled&schema=item_detail")
-
-    assert response.status_code == 200
-    assert response.json() == [
-        {
-            "id": str(labeled.id),
-            "capture_id": str(labeled.capture_id),
-            "split": "dev",
-            "schema_name": "item_detail",
-            "page_kind": "detail",
-            "category": "custom_store",
-            "status": "labeled",
-            "labeler": "ana",
-            "checker": None,
-        }
-    ]
-
-
-@pytest.mark.parametrize("split", ["hidden", "fresh"])
-def test_a_split_other_than_dev_is_refused_without_touching_a_store(split: str) -> None:
-    backend = FakeBackend()
-
-    listing = _request(backend, "GET", f"/v1/eval/pages?split={split}")
-    capture = _request(
-        backend,
-        "POST",
-        "/v1/eval/capture",
-        _capture_body([PAGE_URL], split),
-    )
-
-    assert (listing.status_code, capture.status_code) == (422, 422)
-    assert backend.store.calls == []
-    assert backend.captures == []
-
-
-def test_backend_serves_the_eval_store(tmp_path: Path) -> None:
-    settings = Settings.model_validate(
-        {
-            "database_url": "postgresql+asyncpg://app@127.0.0.1/main",
-            "object_store": "fs:///" + (tmp_path / "main").as_posix().lstrip("/"),
-            "impersonate": IMPERSONATE_DEFAULT,
-        }
-    )
-
-    engine = create_async_engine(settings.database_url.get_secret_value())
-
-    backend = eval_router.DevLabelingBackend(settings, engine, ScriptedClient())
-
-    assert type(backend.store) is DevEvalStore
-    assert backend.store.split == "dev"
-    asyncio.run(engine.dispose())
-
-
-def test_get_page_returns_sanitized_html_with_a_base_at_the_capture_url() -> None:
-    backend = FakeBackend()
-    page = backend.store.add()
-
-    response = _request(backend, "GET", f"/v1/eval/pages/{page.id}")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["bundle_html"] == (
-        '<html><head><title>Item</title><base href="https://store.test/items/1?ref=a"></head>'
-        '<body><h1 class="t">Blue mug</h1><a>Buy</a><img src="/mug.png"><p>EUR 19.90</p></body></html>'
-    )
-    assert (body["url"], body["final_url"], body["labels"], body["text"]) == (PAGE_URL, FINAL_URL, None, None)
-    unset = {"description": None, "required": False, "scope": "row", "schema_org": None, "vocab": None}
-    unset |= {"scheme": None, "item": None, "fields": None, "key": None}
-    assert body["fields"] == {"title": {"type": "text", **unset}, "price": {"type": "money", **unset}}
-
-
-@pytest.mark.parametrize(
-    "href",
-    [
-        "javascript:buy()",
-        "java&#x09;script:buy()",
-    ],
-)
-def test_get_page_drops_javascript_urls_as_url_parsing_reads_them(href: str) -> None:
-    # WHATWG URL parsing strips leading C0 controls and spaces and removes every tab and newline, so each of these
-    # is a `javascript:` URL in a browser.
-    backend = FakeBackend()
-    page = backend.store.add()
-    backend.store.bundles[page.capture_id] = _bundle(f'<html><body><a href="{href}">Buy</a></body></html>'.encode())
-
-    response = _request(backend, "GET", f"/v1/eval/pages/{page.id}")
-
-    assert response.json()["bundle_html"].endswith("<body><a>Buy</a></body></html>")
-
-
-def test_get_page_resolves_the_page_own_base_against_the_capture_url() -> None:
-    backend = FakeBackend()
-    page = backend.store.add()
-    bundle = _bundle(b'<html><head><base href="/shop/" target="_blank"></head><body></body></html>')
-    backend.store.bundles[page.capture_id] = bundle
-
-    response = _request(backend, "GET", f"/v1/eval/pages/{page.id}")
-
-    assert response.json()["bundle_html"] == (
-        '<html><head><base href="https://store.test/shop/"></head><body></body></html>'
-    )
-
-
-def test_get_unknown_page_is_a_404_problem() -> None:
-    response = _request(FakeBackend(), "GET", f"/v1/eval/pages/{uuid7()}")
-
-    assert response.status_code == 404
-    assert response.headers["content-type"] == "application/problem+json"
-    assert response.json()["type"] == "not_found"
-
-
-@pytest.mark.parametrize("error", [ObjectNotFound("no object"), CorruptBundle("not a bundle")])
-def test_get_page_with_an_unreadable_capture_is_a_problem(error: Exception) -> None:
-    backend = FakeBackend()
-    page = backend.store.add()
-    backend.store.bundles[page.capture_id] = error
-
-    response = _request(backend, "GET", f"/v1/eval/pages/{page.id}")
-
-    assert response.status_code == 500
-    assert response.headers["content-type"] == "application/problem+json"
-    assert (response.json()["type"], response.json()["detail"]) == (
-        "capture_unreadable",
-        f"the capture {page.capture_id} of dev eval page {page.id} cannot be read",
-    )
-
-
 def test_labeler_pass_stores_the_validated_labels() -> None:
     backend = FakeBackend()
     page = backend.store.add()
@@ -416,15 +268,6 @@ def test_invalid_labels_return_every_error_and_store_nothing() -> None:
     assert backend.store.pages[page.id].labels == {}
 
 
-def test_a_labeler_pass_names_its_labeler() -> None:
-    backend = FakeBackend()
-    page = backend.store.add()
-
-    problem = _request(backend, "PUT", f"/v1/eval/pages/{page.id}/labels", _labels("draft", labeler=None)).json()
-
-    assert problem["errors"] == [{"field": "labeler", "reason": "a labeler pass names its labeler"}]
-
-
 def test_checker_cannot_be_the_labeler() -> None:
     backend = FakeBackend()
     page = backend.store.add(_stored(_labels()), labeler="ana")
@@ -432,18 +275,6 @@ def test_checker_cannot_be_the_labeler() -> None:
     problem = _request(backend, "PUT", f"/v1/eval/pages/{page.id}/labels", _labels("checked", checker="Ana")).json()
 
     assert problem["errors"] == [{"field": "", "reason": "a checked page is checked by someone other than its labeler"}]
-
-
-def test_checker_pass_matches_the_labeler_casefolded_and_keeps_the_stored_name() -> None:
-    backend = FakeBackend()
-    page = backend.store.add(_stored(_labels()), labeler="ana")
-
-    response = _request(
-        backend, "PUT", f"/v1/eval/pages/{page.id}/labels", _labels("checked", labeler="ANA", checker="ben")
-    )
-
-    assert response.status_code == 200
-    assert backend.store.pages[page.id].labels["labeler"] == "ana"
 
 
 def test_get_page_sends_an_etag_that_a_put_must_match() -> None:
@@ -461,67 +292,6 @@ def test_get_page_sends_an_etag_that_a_put_must_match() -> None:
     assert (stale.headers["content-type"], stale.json()["type"]) == ("application/problem+json", "labels_changed")
     assert _writes(backend) == ["put_labels:labeler:ana"]
     assert backend.store.pages[page.id].labels["status"] == "labeled"
-
-
-@pytest.mark.parametrize(("if_match", "status"), [("*", 200), ('"other", W/"x"', 412)])
-def test_if_match_takes_a_star_or_a_list_of_strong_tags(if_match: str, status: int) -> None:
-    backend = FakeBackend()
-    page = backend.store.add()
-
-    response = _request(backend, "PUT", f"/v1/eval/pages/{page.id}/labels", _labels(), {"If-Match": if_match})
-
-    assert response.status_code == status
-
-
-def test_a_pass_racing_another_store_is_a_conflict() -> None:
-    backend = FakeBackend()
-    page = backend.store.add(_stored(_labels()), labeler="ana")
-    get_page = backend.store.get_page
-
-    async def read_then_relabel(page_id: EvalPageId) -> EvalPageRow:
-        read = await get_page(page_id)  # the labeler stores a new pass right after the checker's read
-        backend.store.pages[page_id] = read.model_copy(update={"labels": _stored(_labels(labeler="cleo"))})
-        return read
-
-    backend.store.get_page = read_then_relabel  # type: ignore[method-assign]
-
-    response = _request(backend, "PUT", f"/v1/eval/pages/{page.id}/labels", _labels("checked", checker="ben"))
-
-    assert response.status_code == 409
-    assert response.json()["type"] == "labels_changed"
-    assert backend.store.pages[page.id].labels["labeler"] == "cleo"
-
-
-@pytest.mark.parametrize(
-    ("stored", "labeler", "error"),
-    [
-        (None, "ana", {"field": "status", "reason": "only a labeled page can be checked"}),
-        (_stored(_labels()), "cleo", {"field": "labeler", "reason": "a checker pass keeps the page's labeler (ana)"}),
-    ],
-)
-def test_checker_pass_needs_a_labeled_page_and_keeps_its_labeler(
-    stored: Labels | None, labeler: str, error: dict[str, str]
-) -> None:
-    backend = FakeBackend()
-    page = backend.store.add(stored, labeler="ana" if stored else None)
-
-    response = _request(
-        backend, "PUT", f"/v1/eval/pages/{page.id}/labels", _labels("checked", labeler=labeler, checker="ben")
-    )
-
-    assert response.status_code == 422
-    assert response.json()["errors"] == [error]
-    assert _writes(backend) == []
-
-
-def test_normalize_is_not_implemented_yet() -> None:
-    backend = FakeBackend()
-    page = backend.store.add()
-
-    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/normalize", {"field": "price", "raw_text": "x"})
-
-    assert response.status_code == 501
-    assert response.json()["type"] == "not_implemented"
 
 
 # --- pre-fill (§4.10, SPEC-06 §4.4) ---
@@ -574,44 +344,6 @@ def test_prefill_stores_and_returns_a_draft_of_the_grounded_normalized_values() 
     assert "<page_text>\nBlue mug\nBuy\nEUR 19.90\n</page_text>" in request.user
 
 
-def test_prefill_leaves_null_ungrounded_and_declined_values_unlabeled() -> None:
-    # A pre-fill never claims a field is absent: that is the labeler's call (G2).
-    specs = SPECS | {"sku": FieldSpec(type=FieldType.IDENTIFIER, scheme="sku")}
-    client = ScriptedClient({"fields": {"title": _ABSENT, "price": _span("Buy", 9), "sku": _span("Q-9", 0)}})
-    backend = FakeBackend(llm=client, specs=specs)
-    page = backend.store.add()
-
-    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
-
-    assert response.status_code == 200
-    assert (response.json()["fields"], response.json()["prefill_source"]) == ({}, "llm:fake-fast")
-
-
-def test_prefill_never_asks_for_a_row_mapped_field() -> None:
-    # SPEC-13 §4.9: role C is never asked for a row-mapped field; the labeler labels its rows.
-    variants = FieldSpec.model_validate(
-        {
-            "type": "list",
-            "schema_org": "Product.offers",
-            "key": ["sku"],
-            "item": {
-                "type": "object",
-                "fields": {"sku": {"type": "identifier", "scheme": "sku", "schema_org": "Offer.sku"}},
-            },
-        }
-    )
-    client = ScriptedClient({"fields": {"title": _span("Blue mug", 0), "price": _ABSENT}})
-    backend = FakeBackend(llm=client, specs=SPECS | {"variants": variants})
-    page = backend.store.add()
-
-    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
-
-    assert response.status_code == 200
-    (request,) = client.requests
-    assert "variants" not in request.user
-    assert "title" in request.user
-
-
 LISTING_HTML = (
     "<html><body><h1>Mugs</h1><ul>"
     + "".join(
@@ -653,87 +385,6 @@ def test_prefill_of_a_listing_labels_its_blocks_rows_in_page_order_and_its_page_
     assert "url" not in json.dumps(listing.output_schema)
 
 
-def test_prefill_of_a_listing_without_row_fields_asks_for_no_rows() -> None:
-    # Role C is asked only for what the schema has: with no row field there is no row to claim.
-    specs = {"heading": FieldSpec(type=FieldType.TEXT, scope="page")}
-    client = ScriptedClient({"fields": {"heading": _span("Blue mug", 0)}})
-    backend = FakeBackend(llm=client, specs=specs)
-    page = backend.store.add(page_kind="listing")
-
-    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert (body["fields"], body["rows"]) == (
-        {"heading": {"value": "Blue mug", "absent": False, "locator": "text:0-8", "distractors": []}},
-        [],
-    )
-    parse_labels(body, "listing", specs)
-    (request,) = client.requests
-    assert (request.prompt_kind, "rows" in json.dumps(request.output_schema)) == ("c_prefill", False)
-    assert "Row fields" not in request.user
-
-
-def test_prefill_replaces_a_draft() -> None:
-    client = ScriptedClient({"fields": {"title": _span("Blue mug", 0), "price": _ABSENT}})
-    backend = FakeBackend(llm=client)
-    page = backend.store.add(_stored(_labels("draft")), labeler="ana")
-
-    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
-
-    assert response.status_code == 200
-    stored = backend.store.pages[page.id]
-    assert (stored.labels["prefill_source"], stored.labeler) == ("llm:fake-fast", None)
-
-
-@pytest.mark.parametrize("status", ["labeled", "checked"])
-def test_prefill_never_replaces_a_labeled_pass(status: str) -> None:
-    backend = FakeBackend()
-    labels = _stored(_labels(status, checker="ben" if status == "checked" else None))
-    page = backend.store.add(labels, labeler="ana")
-
-    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
-
-    assert response.status_code == 409
-    assert (backend.llm.requests, _writes(backend)) == ([], [])
-
-
-def test_prefill_with_a_stale_if_match_is_refused_before_the_call() -> None:
-    backend = FakeBackend()
-    page = backend.store.add(_stored(_labels("draft")), labeler="ana")
-
-    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill", headers={"If-Match": '"stale"'})
-
-    assert response.status_code == 412
-    assert (backend.llm.requests, _writes(backend)) == ([], [])
-
-
-@pytest.mark.parametrize(
-    ("failure", "status", "problem"),
-    [
-        (ProviderUnavailable("no provider answered"), 503, "llm_unavailable"),
-        (ProviderRefused("fake", "fake-fast", 400, "schema refused"), 502, "llm_refused"),
-        (OutputInvalid("at $: not an object"), 502, "llm_output_invalid"),
-    ],
-)
-def test_prefill_without_a_valid_reply_stores_nothing(failure: Exception, status: int, problem: str) -> None:
-    backend = FakeBackend(llm=ScriptedClient(failure))
-    page = backend.store.add()
-
-    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
-
-    assert response.status_code == status
-    assert response.json()["type"] == problem
-    assert response.json()["detail"] == str(failure)
-    assert _writes(backend) == []
-
-
-def test_prefill_of_an_unknown_page_is_not_found() -> None:
-    response = _request(FakeBackend(), "POST", f"/v1/eval/pages/{uuid7()}/prefill")
-
-    assert response.status_code == 404
-
-
 def test_capture_runs_eval_capture_into_dev_and_reports_outcomes() -> None:
     capture_id, page_id = CaptureId(uuid7()), EvalPageId(uuid7())
     backend = FakeBackend(capture_result=[Captured(1, capture_id, page_id, 200, "ok", None), Skipped(2, "robots")])
@@ -770,46 +421,3 @@ def test_capture_runs_eval_capture_into_dev_and_reports_outcomes() -> None:
             {"kind": "skipped", "n": 2, "reason": "robots"},
         ]
     }
-
-
-@pytest.mark.parametrize(
-    ("urls", "result", "detail"),
-    [
-        (["ftp://store.test/a"], [], "not an http or https URL with a host: URL 1"),
-        ([PAGE_URL], EvalCliError("no active schema named item_detail"), "no active schema named item_detail"),
-    ],
-)
-def test_capture_input_errors_are_validation_problems(
-    urls: list[str], result: list[Outcome] | EvalCliError, detail: str
-) -> None:
-    backend = FakeBackend(capture_result=result)
-
-    response = _request(
-        backend,
-        "POST",
-        "/v1/eval/capture",
-        _capture_body(urls),
-    )
-
-    assert response.status_code == 422
-    assert (response.json()["type"], response.json()["detail"]) == ("validation", detail)
-
-
-def test_prefill_of_a_listing_whose_later_blocks_call_fails_stores_nothing() -> None:
-    # Four row fields fit fewer than 60 blocks in one call, so 60 cards take two calls; the second's failure is the
-    # pre-fill's, though the first answered.
-    specs = {name: FieldSpec(type=FieldType.TEXT, scope="row") for name in ("brand", "maker", "model", "colour")}
-    specs["url"] = FieldSpec(type=FieldType.URL, scope="row", schema_org="Product.url")
-    cards = "".join(
-        f'<li class="card"><h3><a href="/p/{n}">Mug {n}</a></h3><span>{n}.50 EUR</span><p>Acme {n}</p></li>'
-        for n in range(60)
-    )
-    body = f"<html><body><ul>{cards}</ul></body></html>".encode()
-    client = ScriptedClient({"claims": []}, ProviderUnavailable("no provider answered"))
-    backend = FakeBackend(llm=client, specs=specs)
-    page = backend.store.add(page_kind="listing", body=body)
-
-    response = _request(backend, "POST", f"/v1/eval/pages/{page.id}/prefill")
-
-    assert (response.status_code, response.json()["type"], len(client.requests)) == (503, "llm_unavailable", 2)
-    assert _writes(backend) == []

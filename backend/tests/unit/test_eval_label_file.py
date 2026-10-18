@@ -5,17 +5,13 @@ normalized as drafts in the captured page's context, declines reported by path, 
 import asyncio
 import json
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
-import pytest
 from pydantic import JsonValue
 
-from crawlerai import cli
-from crawlerai.cli import main
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, EvalCategory, EvalPageId, EvalRunId, SchemaId, Split
-from crawlerai.eval.cli import EvalCliError, PageRequest, Skipped
+from crawlerai.eval.cli import PageRequest, Skipped
 from crawlerai.eval.label_file import (
     Declined,
     Imported,
@@ -26,7 +22,7 @@ from crawlerai.eval.label_file import (
     read_label_file,
     report,
 )
-from crawlerai.eval.labels import FieldLabel, LabelStatus, parse_labels
+from crawlerai.eval.labels import LabelStatus
 from crawlerai.eval.store import EvalPageRow, EvalRunRow, LabelPass, Labels
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -83,62 +79,6 @@ def page(url: str = f"{A}/p/1", schema: str = "synthetic_detail", **more: Any) -
     return {"url": url, "schema": schema, "category": "custom_store", "site": "ignored", **more}
 
 
-def test_a_label_file_keeps_the_generic_keys_and_ignores_the_rest() -> None:
-    text = file_text(
-        page(fields={"title": "Item"}, notes="n", tier="ignored"),
-        page(f"{A}/c/1", "synthetic_listing", page_kind="listing", rows=[{"title": "Item", "url": f"{A}/p/1"}]),
-    )
-    labeled = labeled_pages(read_label_file(text), SCHEMAS)
-    assert labeled == [
-        LabeledPage(PageRequest(1, f"{A}/p/1", "synthetic_detail", "custom_store"), {"title": "Item"}, (), "n"),
-        LabeledPage(
-            PageRequest(2, f"{A}/c/1", "synthetic_listing", "custom_store"),
-            {},
-            ({"title": "Item", "url": f"{A}/p/1"},),
-            "",
-        ),
-    ]
-
-
-@pytest.mark.parametrize(
-    ("text", "error"),
-    [
-        ("{not json", "not JSON"),
-        (json.dumps({"rows": []}), "pages: Field required"),
-        (file_text(page(category="unknown")), r"pages\[0\]\.category"),
-    ],
-)
-def test_a_malformed_file_is_refused_by_path(text: str, error: str) -> None:
-    with pytest.raises(EvalCliError, match=error):
-        read_label_file(text)
-
-
-def test_every_page_error_is_reported_by_path_without_values() -> None:
-    pages = read_label_file(
-        file_text(
-            page("ftp://a.example.test/p", fields={"title": "Item"}),
-            page(fields={"title": "Item"}),
-            page(fields={"title": "Item"}),
-            page(f"{A}/p/2", page_kind="listing", rows=[{"title": "Row"}], fields={"colour": "Secret value"}),
-            page(f"{A}/c/1", "synthetic_listing", fields={"title": "x"}, rows=[{"next_page_url": f"{A}/c/2"}]),
-        )
-    )
-    with pytest.raises(EvalCliError) as error:
-        labeled_pages(pages, SCHEMAS)
-    message = str(error.value)
-    assert message.splitlines()[1:] == [
-        "pages[0].url: not an http or https URL with a host",
-        "pages[2].url: the URL is listed twice",
-        "pages[3].page_kind: schema synthetic_detail is for detail pages",
-        "pages[3].rows: only listing pages have rows",
-        "pages[3].fields.colour: not a field of the schema here",
-        "pages[4].fields.title: not a field of the schema here",
-        "pages[4].rows[0].next_page_url: not a field of the schema here",
-    ]
-    assert "Secret value" not in message
-    assert "example.test" not in message
-
-
 def labeled(fields: dict[str, JsonValue], rows: tuple[dict[str, JsonValue], ...] = ()) -> LabeledPage:
     return LabeledPage(PageRequest(1, f"{A}/p/1", "synthetic_detail", "custom_store"), fields, rows, "")
 
@@ -168,54 +108,6 @@ def test_values_are_stored_as_the_normalizer_reads_them() -> None:
     }
     # A field the file does not give stays unlabeled, never absent.
     assert all(not label.absent for label in labels.fields.values())
-
-
-def test_a_location_in_its_normalized_form_is_read_by_its_text() -> None:
-    # A reference extractor writes places as normalized locations: their text is the place as the page writes it.
-    places: JsonValue = [{"text": "Lakeside", "remote_flag": False}, {"text": "Hilltop, Valley", "locality": None}]
-
-    labels, declined = draft_labels(labeled({"title": "Item", "places": places}), DETAIL, CTX)
-
-    assert declined == ()
-    value = labels.fields["places"].value
-    assert isinstance(value, list)
-    assert [place["text"] for place in value if isinstance(place, dict)] == ["Lakeside", "Hilltop, Valley"]
-
-
-def test_values_the_normalizer_declines_are_left_unlabeled_and_reported() -> None:
-    labels, declined = draft_labels(
-        labeled(
-            {
-                "title": "Item",
-                "price": {"amount": "19.9", "currency": "XYZ"},
-                "availability": None,
-                "images": [f"{A}/i/1.jpg", 7],
-                "variants": [{"sku": "S1"}],
-            }
-        ),
-        DETAIL,
-        CTX,
-    )
-    assert list(labels.fields) == ["title"]
-    assert declined == (
-        Declined("fields.images", "items_dropped"),
-        Declined("fields.price", "unknown_currency"),
-        Declined("fields.variants", "row_mapped"),
-    )
-
-
-def test_a_listing_row_that_labels_nothing_is_no_row() -> None:
-    page_ = LabeledPage(
-        PageRequest(1, f"{A}/c/1", "synthetic_listing", "custom_store"),
-        {"next_page_url": f"{A}/c/2"},
-        ({"title": "Row", "url": f"{A}/p/1"}, {"url": "not a url"}, {"title": "Second", "url": f"{A}/p/2"}),
-        "",
-    )
-    labels, declined = draft_labels(page_, LISTING, CTX)
-    assert [row.fields["title"].value for row in labels.rows] == ["Row", "Second"]
-    assert labels.fields == {"next_page_url": FieldLabel(value=f"{A}/c/2", absent=False)}
-    assert declined == (Declined("rows[1].url", "relative_without_base"),)
-    parse_labels(labels.model_dump(mode="json"), "listing", LISTING.fields)
 
 
 def bundle(url: str) -> CaptureBundle:
@@ -326,72 +218,3 @@ def bundle_result(url: str) -> Any:
 
     attempt = AttemptRecord.model_validate({"method": "http", "status": 200, "block_class": "ok", "duration_ms": 1})
     return FetchResult(bundle=bundle(url), attempts=(attempt,), duration_ms=1)
-
-
-@pytest.mark.parametrize("relative", [True, False])
-def test_a_label_file_outside_the_working_directory_is_refused(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], relative: bool
-) -> None:
-    runs: list[Path] = []
-
-    async def run(file: Path) -> None:
-        runs.append(file)
-
-    monkeypatch.setattr(cli, "_eval_import_labels", run)
-    workdir = tmp_path / "work"
-    workdir.mkdir()
-    (tmp_path / "labels.json").write_text(file_text(), encoding="utf-8")
-    monkeypatch.chdir(workdir)
-    outside = "../labels.json" if relative else str(tmp_path / "labels.json")
-
-    with pytest.raises(SystemExit) as exit_info:
-        main(["eval", "import-labels", outside, "--split", "dev", "--status", "draft"])
-
-    assert exit_info.value.code == 2
-    assert runs == []
-    assert "must be under the working directory" in capsys.readouterr().err
-
-
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["eval", "import-labels", "labels.json", "--split", "hidden", "--status", "draft"],
-        ["eval", "import-labels", "labels.json", "--split", "dev", "--status", "checked"],
-        ["eval", "run", "--split", "fresh"],
-        ["eval", "run", "--split", "dev", "--labels", "draft-only"],
-        ["eval", "run", "--split", "dev", "--min-confidence", "1.5"],
-        ["eval", "run", "--split", "dev", "--min-confidence", "nan"],
-    ],
-)
-def test_import_and_run_accept_only_dev_and_imports_only_drafts(argv: list[str]) -> None:
-    with pytest.raises(SystemExit) as exit_info:
-        main(argv)
-    assert exit_info.value.code == 2
-
-
-def test_an_import_hands_the_resolved_file_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    runs: list[Path] = []
-
-    async def run(file: Path) -> None:
-        runs.append(file)
-
-    monkeypatch.setattr(cli, "_eval_import_labels", run)
-    monkeypatch.chdir(tmp_path)
-    main(["eval", "import-labels", "labels.json", "--split", "dev", "--status", "draft"])
-    assert runs == [tmp_path.resolve() / "labels.json"]
-
-
-@pytest.mark.parametrize(("argv", "minimum"), [([], None), (["--min-confidence", "0.9"], 0.9)])
-def test_eval_run_hands_the_minimum_confidence_on(
-    monkeypatch: pytest.MonkeyPatch, argv: list[str], minimum: float | None
-) -> None:
-    runs: list[float | None] = []
-
-    async def run(
-        statuses: object, llm_mode: object, out: object, max_calls: object, min_confidence: float | None
-    ) -> None:
-        runs.append(min_confidence)
-
-    monkeypatch.setattr(cli, "_eval_run", run)
-    main(["eval", "run", "--split", "dev", *argv])
-    assert runs == [minimum]

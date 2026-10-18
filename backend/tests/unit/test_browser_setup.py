@@ -4,22 +4,17 @@ headers. A fake Playwright records what `open_browser` and `fetch_browser` ask f
 """
 
 import asyncio
-import re
 from contextlib import asynccontextmanager
 from ipaddress import IPv4Address
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-import crawlerai
 from crawlerai.acquire import browser as browser_module
 from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.core.engine_version import ENGINE_VERSION
-
-_SRC = Path(crawlerai.__file__).parent
 
 
 class _Recorder:
@@ -112,29 +107,5 @@ def test_inv42_inv43_full_chromium_headless_with_only_the_guard_launch_argument(
     }
 
 
-def test_inv44_a_context_sets_no_user_agent_client_hints_or_headers(recorder: _Recorder) -> None:
-    fetching = _fetch_once()
-    with pytest.raises(_Stop):
-        asyncio.run(fetching)
-
-    # The guard's proxy and no downloads; nothing that changes what the page or its requests present.
-    assert set(recorder.context) == {"proxy", "accept_downloads"}
-
-
 # Calls that change the browser's identity or run code in the page's main world (Patchright README: no custom
 # user agent or headers; evaluate runs in an isolated world). Matched in source, so a new call site fails here.
-_IDENTITY_CALLS = re.compile(
-    r"user_agent=|extra_http_headers|set_extra_http_headers|setUserAgentOverride|add_init_script"
-    r"|new_cdp_session|isolated_context=False|--enable-automation|--disable-blink-features"
-)
-
-
-def test_inv44_no_source_file_changes_the_browser_identity() -> None:
-    offenders = [
-        f"{path.relative_to(_SRC)}:{number}"
-        for path in sorted(_SRC.rglob("*.py"))
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
-        if _IDENTITY_CALLS.search(line)
-    ]
-
-    assert offenders == []

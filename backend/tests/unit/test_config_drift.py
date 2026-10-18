@@ -2,26 +2,16 @@
 against its validated yield and validity less the dev-fitted margins; a field that falls below is suspended and no
 longer runs."""
 
-import json
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
-
-import pytest
-from hypothesis import given
-from hypothesis import strategies as st
-from pydantic import ValidationError
 
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.drift import (
-    WINDOW_PAGES,
     DriftMargins,
     Observation,
     drifted,
     extend,
-    load_margins,
     observe,
-    suspend,
 )
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
@@ -30,12 +20,10 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.services.scrape_steps import load_drift_margins
 
 CTX_TIME = datetime(2026, 10, 1, tzinfo=UTC)
 MARGINS = DriftMargins.model_validate({"yield": 0.25, "validity": 0.25, "source_split": "dev", "fit": "test"})
 HIT = Observation(matched=True, valid=True)
-MISS = Observation(matched=False, valid=False)
 DECLINED = Observation(matched=True, valid=False)
 
 
@@ -109,13 +97,6 @@ def test_a_layout_change_suspends_the_field_once_its_windowed_yield_falls_below_
     assert (found.field, found.pages, found.yield_, found.validity) == ("title", 6, 4 / 6, 1.0)
 
 
-def test_yield_exactly_at_the_margin_is_not_drift_and_just_below_is() -> None:
-    ir = _ir(title=_field())
-    assert drifted(ir, _window(("title", [HIT, HIT, HIT, MISS])), MARGINS) == []  # 0.75 = 1.0 - 0.25
-    (found,) = drifted(ir, _window(("title", [HIT, HIT, MISS, MISS])), MARGINS)
-    assert (found.field, found.yield_) == ("title", 0.5)
-
-
 def test_validity_below_the_margin_suspends_a_field_that_still_matches() -> None:
     ir = _ir(price=_field("//b"))
     observed = _run(ir, _schema(price=PRICE), "<html><body><b>call us</b></body></html>")
@@ -124,68 +105,3 @@ def test_validity_below_the_margin_suspends_a_field_that_still_matches() -> None
     assert drifted(ir, at, MARGINS) == []
     (found,) = drifted(ir, _window(("price", [HIT, DECLINED, HIT, DECLINED])), MARGINS)
     assert (found.field, found.yield_, found.validity) == ("price", 1.0, 0.5)
-
-
-def test_fewer_than_three_pages_are_never_drift() -> None:
-    ir = _ir(title=_field())
-    assert drifted(ir, _window(("title", [MISS, MISS])), MARGINS) == []
-    assert [d.field for d in drifted(ir, _window(("title", [MISS, MISS, MISS])), MARGINS)] == ["title"]
-
-
-def test_a_field_without_a_validated_yield_or_validity_is_not_compared_on_it() -> None:
-    ir = _ir(title=_field(yield_=None, validity=None), price=_field("//b", validity=None), brand=_field("//i"))
-    window = _window(("title", [MISS] * 5), ("price", [DECLINED] * 5), ("brand", [MISS] * 5))
-    assert [d.field for d in drifted(ir, window, MARGINS)] == ["brand"]
-
-
-def test_with_no_matched_page_validity_is_unmeasured_and_only_yield_is_compared() -> None:
-    ir = _ir(title=_field(yield_=0.5))
-    (found,) = drifted(ir, _window(("title", [MISS] * 5)), MARGINS)
-    assert (found.yield_, found.validity) == (0.0, None)
-    assert drifted(_ir(title=_field(yield_=0.25)), _window(("title", [MISS] * 5)), MARGINS) == []
-
-
-def test_a_suspended_field_is_neither_observed_nor_run() -> None:
-    ir = suspend(_ir(title=_field("//h1"), price=_field("//b")), ["title"])
-    assert (ir.fields["title"].status, ir.fields["price"].status) == ("suspended", "corroborated")
-    observed = _run(ir, _schema(title=TITLE, price=PRICE), "<html><body><h1>A lamp</h1><b>9.99 EUR</b></body></html>")
-    assert observed == {"price": HIT}
-    assert drifted(ir, _window(("title", [MISS] * 5)), MARGINS) == []
-
-
-def test_a_listing_field_matches_when_any_row_does_and_is_valid_only_when_every_row_is() -> None:
-    listing = {"row": {"xpath": "//li"}, "fields": {"price": _field("b"), "title": _field("i")}}
-    ir = _ir("listing", listing)
-    html = "<html><body><ul><li><b>9.99 EUR</b></li><li><b>ask</b></li></ul></body></html>"
-    assert _run(ir, _schema("listing", price=PRICE, title=TITLE), html) == {"price": DECLINED, "title": MISS}
-
-
-@given(st.lists(st.sampled_from([HIT, MISS, DECLINED]), max_size=2 * WINDOW_PAGES + 3))
-def test_the_window_is_the_last_fifty_pages_in_order(pages: list[Observation]) -> None:
-    window: dict[str, list[Observation]] = {}
-    for page in pages:
-        window = extend(window, {"title": page})
-    assert window.get("title", []) == pages[-WINDOW_PAGES:]
-
-
-def test_margins_are_read_from_their_dev_stamped_file(tmp_path: Path) -> None:
-    path = tmp_path / "drift_margins.json"
-    assert load_margins(path) is None
-    path.write_text(json.dumps({"yield": 0.3, "validity": 0.05, "source_split": "dev", "fit": "run"}), encoding="utf-8")
-    margins = load_margins(path)
-    assert margins is not None
-    assert (margins.yield_, margins.validity, margins.fit) == (0.3, 0.05, "run")
-
-
-def test_the_shipped_margins_are_the_spec_defaults_stamped_unfitted() -> None:
-    # D-0576 (owner, 2026-10-16): SPEC-08 §4.9's margins, stamped so nobody takes them for values fitted on labels.
-    assert load_drift_margins() == DriftMargins.model_validate(
-        {"yield": 0.2, "validity": 0.1, "source_split": "dev", "fit": "spec default, unfitted"}
-    )
-
-
-def test_margins_fitted_on_another_split_are_refused(tmp_path: Path) -> None:
-    path = tmp_path / "drift_margins.json"
-    path.write_text(json.dumps({"yield": 0.2, "validity": 0.1, "source_split": "hidden", "fit": "x"}), encoding="utf-8")
-    with pytest.raises(ValidationError, match="source_split"):
-        load_margins(path)

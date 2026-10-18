@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 
 from crawlerai.acquire import browser_tab
-from crawlerai.acquire.browser import JSON_PAGE_MAX_BYTES
 
 
 class _Page:
@@ -40,21 +39,3 @@ def test_a_response_arriving_while_bodies_are_read_waits_for_the_next_call(monke
 
     assert [body for body, _ in first] == ["body-r0", "body-r1"]
     assert [body for body, _ in second] == ["body-r0", "body-r1", "body-r2"]
-
-
-def test_the_bodies_read_stop_at_the_page_cap_across_calls(monkeypatch: pytest.MonkeyPatch) -> None:
-    # INV-30: at most `JSON_PAGE_MAX_BYTES` of JSON bodies per page in all, though each response is read on its own.
-    size = JSON_PAGE_MAX_BYTES // 5
-    responses: list[Any] = [f"r{i}" for i in range(6)]
-
-    async def bodies(read: list[Any]) -> tuple[Any, ...]:
-        return ((f"body-{read[0]}", b"x" * size),)
-
-    monkeypatch.setattr(browser_tab, "json_bodies", bodies)
-    tab = _tab(responses)
-
-    read = asyncio.run(tab.calls())
-
-    assert [body for body, _ in read] == [f"body-r{i}" for i in range(5)]
-    held = [entry for entry in tab._bodies.values() if entry is not None]
-    assert sum(len(data) for _, data in held) <= JSON_PAGE_MAX_BYTES

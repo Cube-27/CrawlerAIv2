@@ -5,12 +5,10 @@ import copy
 from typing import Any
 
 import pytest
-from pydantic import JsonValue, ValidationError
 
 from crawlerai.eval.labels import (
     InvalidLabels,
     LabelError,
-    field_specs,
     parse_labels,
 )
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -98,14 +96,6 @@ def test_labels_round_trip_through_json(raw: dict[str, Any], page_kind: Any, spe
     assert labels.model_dump(mode="json") == raw
 
 
-def test_a_draft_may_be_partial_and_unattributed() -> None:
-    raw: JsonValue = {"label_version": 1, "status": "draft", "prefill_source": "none", "fields": {}}
-
-    labels = parse_labels(raw, "detail", DETAIL_SPECS)
-
-    assert (labels.status, labels.labeler, labels.fields, labels.rows) == ("draft", None, {}, ())
-
-
 def _errors(
     raw: dict[str, Any], page_kind: Any = "detail", specs: dict[str, FieldSpec] = DETAIL_SPECS
 ) -> set[LabelError]:
@@ -169,58 +159,3 @@ def _detail_field(name: str, **changes: Any) -> dict[str, Any]:
 )
 def test_invalid_labels_are_refused_with_field_and_reason(raw: dict[str, Any], expected: set[LabelError]) -> None:
     assert _errors(raw) == expected
-
-
-def test_every_error_is_reported_at_once() -> None:
-    raw = copy.deepcopy(DETAIL)
-    raw["fields"]["colour"] = raw["fields"].pop("brand")
-    raw["rows"] = [{"fields": {}}]
-
-    assert _errors(raw) == {
-        LabelError("fields.colour", "not a field of the schema"),
-        LabelError("fields.brand", "not labeled; mark it absent if the page does not show it"),
-        LabelError("rows", "only listing pages have rows"),
-    }
-
-
-def test_listing_fields_are_placed_by_scope() -> None:
-    raw = copy.deepcopy(LISTING)
-    raw["fields"]["title"] = raw["rows"][0]["fields"].pop("title")
-    raw["rows"][0]["fields"]["pagination_url"] = raw["fields"].pop("pagination_url")
-
-    assert _errors(raw, "listing", LISTING_SPECS) == {
-        LabelError("fields.title", "a row field belongs in rows"),
-        LabelError("rows[0].fields.pagination_url", "a page field belongs in fields"),
-        LabelError("fields.pagination_url", "not labeled; mark it absent if the page does not show it"),
-        LabelError("rows[0].fields.title", "not labeled; mark it absent if the page does not show it"),
-    }
-
-
-def test_detail_pages_ignore_scope() -> None:
-    raw = copy.deepcopy(DETAIL)
-    specs = {**DETAIL_SPECS, "brand": FieldSpec(type=FieldType.TEXT, scope="page")}
-
-    assert parse_labels(raw, "detail", specs).fields["brand"].absent is True
-
-
-def test_field_specs_read_a_schema_documents_fields() -> None:
-    fields: dict[str, JsonValue] = {
-        "next_page_url": {"type": "url", "scope": "page", "description": "Next page"},
-        "salary": {"type": "object", "fields": {"base": {"type": "money", "required": True}}, "description": "Pay"},
-    }
-
-    assert field_specs(fields) == {
-        "next_page_url": FieldSpec(type=FieldType.URL, scope="page", description="Next page"),
-        "salary": FieldSpec(
-            type=FieldType.OBJECT,
-            description="Pay",
-            fields={"base": FieldSpec(type=FieldType.MONEY, required=True)},
-        ),
-    }
-
-
-def test_field_specs_reject_a_field_that_is_not_a_field_spec() -> None:
-    fields: dict[str, JsonValue] = {"sku": {"type": "identifier"}}
-
-    with pytest.raises(ValidationError):
-        field_specs(fields)

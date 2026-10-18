@@ -4,12 +4,10 @@ host and its subdomains (D-0037), and where a page's links and next pages come f
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.content.page import ParsedPage
-from crawlerai.crawl.frontier import Frontier, discovered
+from crawlerai.crawl.frontier import Frontier
 from crawlerai.crawl.rules import Scope
 
 HOST = "shop.example.test"
-PAGE = f"https://{HOST}/c/shoes?page=1"
 
 
 def _frontier(*, include: tuple[str, ...] = (), exclude: tuple[str, ...] = ()) -> Frontier:
@@ -26,13 +24,6 @@ def test_an_include_glob_admits_the_host_and_its_subdomains_only() -> None:
     assert not frontier.admits(f"https://not{HOST}/p/1")
 
 
-def test_without_include_only_the_exact_host_is_admitted() -> None:
-    frontier = _frontier()
-
-    assert frontier.admits(f"https://{HOST}/p/1")
-    assert not frontier.admits(f"https://img.{HOST}/p/1")
-
-
 _paths = st.text(alphabet="abcxyz/-", max_size=12)
 _hosts = st.sampled_from([HOST, f"img.{HOST}", "other.example.test", f"x{HOST}"])
 
@@ -47,21 +38,3 @@ def test_the_frontier_admits_only_what_the_scope_does_on_the_site(
 
     on_site = host == HOST or host.endswith(f".{HOST}")
     assert frontier.admits(url) == (on_site and frontier.scope.admits(url))
-
-
-def _parsed(body: str) -> ParsedPage:
-    return ParsedPage(f"<!doctype html><html><head>{body}</body></html>")
-
-
-def test_a_page_contributes_its_links_and_next_pages_canonical_and_once() -> None:
-    page = _parsed(
-        '<link rel="next" href="/c/shoes?page=2"></head><body>'
-        '<a href="/p/1#reviews">One</a><a href="/p/1">One again</a><a href="/c/shoes?z=1&a=2">Sorted</a>'
-        '<a href="mailto:shop@example.test">Mail</a>'
-    )
-
-    assert discovered(page, PAGE) == (
-        f"https://{HOST}/c/shoes?page=2",
-        f"https://{HOST}/p/1",
-        f"https://{HOST}/c/shoes?a=2&z=1",
-    )

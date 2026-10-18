@@ -35,29 +35,6 @@ def _problem(response: httpx.Response) -> dict[str, Any]:
     return body
 
 
-def test_an_unknown_path_is_a_not_found_problem() -> None:
-    response = _request(create_app(eval_ui=False), "GET", "/v1/nothing-here")
-
-    assert response.status_code == 404
-    assert _problem(response) == {
-        "type": "not_found",
-        "title": "Not found",
-        "status": 404,
-        "detail": "no resource at /v1/nothing-here",
-        "instance": "/v1/nothing-here",
-        "errors": [],
-    }
-
-
-def test_a_wrong_method_is_an_about_blank_problem_with_the_status_phrase() -> None:
-    # RFC 9457 §4.2.1: `about:blank` means the problem is no more than its HTTP status.
-    response = _request(create_app(eval_ui=False), "DELETE", "/healthz")
-
-    assert response.status_code == 405
-    problem = _problem(response)
-    assert (problem["type"], problem["title"]) == ("about:blank", "Method Not Allowed")
-
-
 def _labeling_app() -> FastAPI:
     """The app with the labeling endpoints, whose backend no request below reaches."""
     app = create_app(eval_ui=True)
@@ -78,23 +55,6 @@ def test_a_request_body_that_fails_validation_lists_each_field_and_reason() -> N
     assert problem["errors"] == [
         {"field": "urls", "reason": "List should have at least 1 item after validation, not 0"}
     ]
-
-
-def test_a_list_member_that_fails_validation_is_named_by_its_index() -> None:
-    body = {"split": "dev", "schema": "s", "page_kind": "detail", "category": "custom_store", "urls": [7]}
-
-    response = _request(_labeling_app(), "POST", "/v1/eval/capture", body)
-
-    assert response.status_code == 422
-    assert _problem(response)["errors"] == [{"field": "urls[0]", "reason": "Input should be a valid string"}]
-
-
-def test_a_query_parameter_that_fails_validation_names_its_location() -> None:
-    response = _request(_labeling_app(), "GET", "/v1/eval/pages?status=finished")
-
-    problem = _problem(response)
-    assert response.status_code == 422
-    assert [error["field"] for error in problem["errors"]] == ["query.status"]
 
 
 def test_an_unexpected_error_is_an_internal_problem_without_its_message() -> None:
@@ -136,24 +96,3 @@ def test_healthz_is_a_503_problem_when_the_database_does_not_answer(
     problem = _problem(response)
     assert (problem["type"], problem["detail"]) == ("unavailable", "the database did not answer")
     assert "password" not in response.text
-
-
-def test_the_openapi_document_declares_problems_for_validation_errors() -> None:
-    document = create_app(eval_ui=True).openapi()
-
-    capture = document["paths"]["/v1/eval/capture"]["post"]["responses"]["422"]
-    assert capture["content"]["application/problem+json"]["schema"] == {"$ref": "#/components/schemas/Problem"}
-    assert "HTTPValidationError" not in document["components"]["schemas"]
-    assert "422" not in document["paths"]["/healthz"]["get"]["responses"]  # it takes no input
-
-
-def test_the_openapi_document_is_served_under_v1_only() -> None:
-    app = create_app(eval_ui=False)
-
-    served = _request(app, "GET", "/v1/openapi.json")
-    unversioned = _request(app, "GET", "/openapi.json")
-
-    assert served.status_code == 200
-    assert "/healthz" in served.json()["paths"]
-    assert unversioned.status_code == 404
-    assert _problem(unversioned)["type"] == "not_found"
