@@ -76,7 +76,8 @@ D-0024, D-0379, D-1623.
 ### Requirement: Role C input, claims and candidates
 Role C SHALL read cleaned text, never raw HTML. On a detail page it reads the flat text cut at 40,000 characters, with
 an id after each shown link to another resource and at each shown image when an asked field is a url or an image_url
-(`llm/marked.py`), and replies one `{shown, ref, value, start, end}` claim per asked field: a span, or in `ref` the id
+(`llm/marked.py`; the page is its final URL, so a link to it is unmarked whatever the base URL; the ids take at most
+10,000 characters together, the marks past that unshown), and replies one `{shown, ref, value, start, end}` claim per asked field: a span, or in `ref` the id
 of the link or image whose target is the value; a value under `shown: false` is not taken (C7). On a
 listing it reads one line per block of the bound item group (`collect/items/lines.py`, [listings](../listings/spec.md)),
 `[n]` its position in the group, the block's span of the cleaned text with each line break shown as a space, and
@@ -85,7 +86,7 @@ first per block and field wins, its value is grounded in that block's text only 
 the cleaned text. A listing reads at most 200 blocks across its calls, each call within 80,000 characters and as many
 blocks as their claims fit the reply. Grounded values are normalized into
 `Candidate(source_kind='llm', independent=True)`. (Previously: a detail page's text carried no ids, and its claims
-were spans only.) Refs: §8.4, D-0521, D-1097, D-1600, D-1601, D-1602, D-1606, D-1621, D-1622, D-1623.
+were spans only.) Refs: §8.4, D-0521, D-1097, D-1600, D-1601, D-1602, D-1606, D-1621, D-1622, D-1623, D-1627.
 #### Scenario: Field not shown
 - **WHEN** a claim is `{shown: false, value: "x"}`
 - **THEN** no candidate is made and the field stays `missing`

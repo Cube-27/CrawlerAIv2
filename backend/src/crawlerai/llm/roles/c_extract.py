@@ -45,6 +45,7 @@ LISTING_SYSTEM: Final = _PROMPTS.joinpath("c_extract_listing.txt").read_text(enc
 # The cleaned text is cut to its first 40,000 characters on a detail page; a listing's calls read at most 80,000
 # characters of block lines each, and at most 200 blocks in all, as a listing keeps at most 200 rows (llm spec).
 DETAIL_MAX_CHARS: Final = 40_000
+DETAIL_MAX_ID_CHARS: Final = 10_000  # the ids of a detail page's links and images, together (`llm.marked`)
 LISTING_MAX_CHARS: Final = 80_000
 LISTING_MAX_BLOCKS: Final = 200
 MAX_OUTPUT_TOKENS: Final = 4_096
@@ -193,7 +194,7 @@ async def extract_detail(
     images the fields can claim marked in it."""
     cut, notes = _cut(cleaned.text, DETAIL_MAX_CHARS)  # what the model reads, and so what its spans are aligned to
     kinds = frozenset(_ELEMENT_OF[spec.type] for spec in fields.values() if spec.type in _ELEMENT_OF)
-    read = marked(cleaned, cut, kinds, ctx.base_url)
+    read = marked(cleaned, cut, kinds, ctx.base_url, ctx.page_url, DETAIL_MAX_ID_CHARS)
     request = detail_request(read.text, fields, page_url=ctx.page_url, job_id=job_id, kind=kind)
     try:
         response = await client.complete_json(request)

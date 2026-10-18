@@ -177,6 +177,15 @@ def test_a_link_without_a_label_is_named_by_its_title_then_the_alt_of_its_image(
     ]
 
 
+def test_a_link_is_not_named_by_an_image_it_hides() -> None:
+    page = ParsedPage(
+        '<body><a href="/a"><span hidden><img src="/h.png" alt="Hidden"></span>'
+        '<img src="/v.png" alt="Shown" style="visibility: hidden"><img src="/s.png" alt="Seen">Go</a></body>'
+    )
+
+    assert [(mark.kind, mark.name) for mark in page.cleaned_text.marks] == [("image", "Seen"), ("link", "Seen")]
+
+
 def test_an_invisible_link_is_not_marked() -> None:
     page = ParsedPage('<body><div style="visibility: hidden"><a href="/x">X</a></div><p>Shown</p></body>')
 

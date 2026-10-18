@@ -198,16 +198,40 @@ def _enter(item: _Enter, shown: list[str], runs: int) -> list[_Item]:
 def _mark(node: LexborNode, tag: str, path: str, runs: int) -> _Mark | None:
     """The mark of a link (HTML Standard §4.6.1: an `a` element with an `href` is a hyperlink) or an image (§4.8.4: an
     `img` with a `src`), else None. A link's announced name is WAI-ARIA 1.2's `aria-label`, then the HTML `title`
-    (advisory information), then the `alt` of the first image it holds, its replacement text."""
+    (advisory information), then the `alt` of the first shown image it holds, its replacement text."""
     attributes = node.attributes
     if tag == "img" and (src := attributes.get("src")):
         return _Mark("image", path, src, _collapsed(attributes.get("alt")), runs)
     if tag != "a" or not (href := attributes.get("href")):
         return None
-    name = attributes.get("aria-label") or attributes.get("title")
-    if not name and (image := node.css_first("img[alt]")) is not None:
-        name = image.attributes.get("alt")
+    name = attributes.get("aria-label") or attributes.get("title") or _shown_alt(node)
     return _Mark("link", path, href, _collapsed(name), runs)
+
+
+def _shown_alt(link: LexborNode) -> str | None:
+    """The `alt` of the first image in `link` that is shown: neither it nor an element between it and the link is
+    hidden or invisible (the link itself is shown, as only a shown link is marked)."""
+    for image in link.css("img[alt]"):
+        chain: list[LexborNode] = []
+        node: LexborNode | None = image
+        while node is not None and node.mem_id != link.mem_id:
+            chain.append(node)
+            node = node.parent
+        if _shown_chain(reversed(chain)):
+            return image.attributes.get("alt")
+    return None
+
+
+def _shown_chain(chain: Iterable[LexborNode]) -> bool:
+    """Whether the last of `chain` (elements from the outermost down, below a shown element) is shown."""
+    invisible = False
+    for node in chain:
+        attributes = node.attributes
+        style = _declarations(attributes)
+        if _hidden(node.tag or "", attributes, style):
+            return False
+        invisible = _invisible(style.get("visibility"), inherited=invisible)
+    return not invisible
 
 
 def _collapsed(value: str | None) -> str:

@@ -5,7 +5,9 @@ A link reads `[L<n>]` after its text, or `[L<n>: <name>]` when it announces a na
 reads `[I<n>]`, or `[I<n>: <alt>]`. The ids are numbered in document order, so the same page gives the same text
 (INV-10). Only a link to another resource is marked: a same-document reference (RFC 3986 §4.4: resolved, the base URL
 up to its fragment) names the page itself, not a link it states. A target that is not an http(s) URL (a `data:` image,
-a `javascript:` link) is not marked either, as no url or image_url value comes of it (`normalize.url`).
+a `javascript:` link) is not marked either, as no url or image_url value comes of it (`normalize.url`). The page is
+its own URL when known: a `<base href>` elsewhere moves where relative targets resolve, not which page this is. The ids
+take at most `budget` characters together, so the text stays near its cut; the marks past it are not shown.
 
 The ids are not page text: a span the model claims is grounded in the cleaned text itself, its offsets moved back past
 the ids before it (`cleaned_offset`), and a claimed id is grounded in the element it marks (`llm.grounding`, INV-12).
@@ -47,13 +49,22 @@ class MarkedText:
         return offset - shift
 
 
-def marked(cleaned: CleanedText, read: str, kinds: frozenset[MarkKind], base_url: str | None) -> MarkedText:
-    """`read` (the cleaned text's first characters, as cut) with the ids of the shown marks of `kinds` inside it."""
+def marked(
+    cleaned: CleanedText,
+    read: str,
+    kinds: frozenset[MarkKind],
+    base_url: str | None,
+    page_url: str | None,
+    budget: int,
+) -> MarkedText:
+    """`read` (the cleaned text's first characters, as cut) with the ids of the shown marks of `kinds` inside it, the
+    ids within `budget` characters."""
     if not kinds:
         return MarkedText(read, read, MappingProxyType({}))
     elements: dict[str, Mark] = {}
     counts = dict.fromkeys(_PREFIX, 0)
-    page = None if base_url is None else urldefrag(canonical_url(base_url, None) or base_url).url
+    own = page_url or base_url
+    page = None if own is None else urldefrag(canonical_url(own, None) or own).url
     pieces: list[str] = []
     inserted: list[int] = []
     lengths: list[int] = []
@@ -61,10 +72,12 @@ def marked(cleaned: CleanedText, read: str, kinds: frozenset[MarkKind], base_url
     for mark in cleaned.marks:
         if mark.kind not in kinds or mark.end > len(read) or not _other_resource(mark.target, base_url, page):
             continue
-        counts[mark.kind] += 1
-        ref = f"{_PREFIX[mark.kind]}{counts[mark.kind]}"
-        elements[ref] = mark
+        ref = f"{_PREFIX[mark.kind]}{counts[mark.kind] + 1}"
         label = _label(ref, mark, read)
+        if sum(lengths) + len(label) > budget:
+            break
+        counts[mark.kind] += 1
+        elements[ref] = mark
         pieces.extend((read[position : mark.end], label))
         inserted.append(mark.end)
         lengths.append(len(label))

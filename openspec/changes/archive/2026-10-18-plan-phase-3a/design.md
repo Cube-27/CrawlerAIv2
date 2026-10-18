@@ -71,3 +71,13 @@
 - Why: the task's rule (an apply link the page states, else absent). On the golden set that rank published 3 wrong
   values and 1 right one, and two adapter postings' URLs; it also kept role C from being asked for the apply link.
 - Reversible: yes (the preset)
+
+### D-1627 — Ids name the page by its own URL, take at most 10,000 characters, and skip hidden images' alts
+- Date: 2026-10-18 · Change/PR: plan-phase-3a (#283) · Status: decided (owner-delegated 2026-10-17)
+- Decision: A link is unmarked when its target is the page's own URL (the final URL; the base URL only when the page
+  URL is unknown), so a `<base href>` elsewhere moves resolution but not page identity. The ids of a detail page
+  take at most 10,000 characters together, the marks past that unshown. A link's name falls back to the alt of the
+  first image in it that is shown, never a hidden one.
+- Why: review findings on #283: the base URL may differ from the page; labels past the 40,000-character cut were
+  unbounded; a hidden image's alt is not what the link announces.
+- Reversible: yes
