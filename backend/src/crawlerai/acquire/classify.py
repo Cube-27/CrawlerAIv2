@@ -13,7 +13,7 @@ it holds, is not one of them. Nor is a document that declares a refresh (it navi
 and whose hyperlinks all lead to no web page (`mailto:`, `tel:`, RFC 6068, RFC 3966): a stand-in for the page while the
 site is busy or checking the client.
 
-A page fetched as a listing is a shell too when nothing on it lists items: no repeated items (`_lists_items`) and no
+A page fetched as a listing is a shell too when nothing on it lists items: no repeated items (`lists_items`) and no
 structured data that lists them (`_structured_rows`). Its grid loads by script after the page (an XHR), so the
 browser may render what HTTP did not. Only the HTTP rung passes the page kind: the
 browser is the last rung, and its page is extracted whatever its links.
