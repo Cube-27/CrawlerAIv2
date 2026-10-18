@@ -3050,6 +3050,8 @@ export interface components {
         };
         /** RecordField */
         RecordField: {
+            /** Basis */
+            basis?: ("page" | "locale" | "unknown") | null;
             /** Calibrated */
             calibrated: boolean;
             /** Confidence */
@@ -3707,6 +3709,8 @@ export interface components {
          * @description A row sub-field's outcome without its candidates (variants spec, INV-34).
          */
         SubFieldMeta: {
+            /** Basis */
+            basis?: ("page" | "locale" | "unknown") | null;
             /** Calibrated */
             calibrated: boolean;
             /** Confidence */

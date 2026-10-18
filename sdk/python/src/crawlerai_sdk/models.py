@@ -887,6 +887,12 @@ class RecipeReport(BaseModel):
     refused: Annotated[str | None, Field(title="Refused")] = None
 
 
+class Basis(Enum):
+    page = "page"
+    locale = "locale"
+    unknown = "unknown"
+
+
 class DerivedBy(Enum):
     canonical_link = "canonical_link"
     final_url = "final_url"
@@ -1202,6 +1208,7 @@ class SubFieldMeta(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    basis: Annotated[Basis | None, Field(title="Basis")] = None
     calibrated: Annotated[bool, Field(title="Calibrated")]
     confidence: Annotated[Confidence | None, Field(title="Confidence")] = None
     evidence: Annotated[Evidence | None, Field(title="Evidence")] = None
@@ -2032,6 +2039,7 @@ class RecordField(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    basis: Annotated[Basis | None, Field(title="Basis")] = None
     calibrated: Annotated[bool, Field(title="Calibrated")]
     confidence: Annotated[Confidence | None, Field(title="Confidence")] = None
     derived_by: Annotated[DerivedBy | None, Field(title="Derived By")] = None

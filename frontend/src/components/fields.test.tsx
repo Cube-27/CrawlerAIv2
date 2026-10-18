@@ -28,6 +28,7 @@ describe("FieldValue", () => {
 
   it.each([
     ["money", { type: "money" }, { amount: "19.90", currency: "EUR" }, "19.90 EUR"],
+    ["money", { type: "money" }, { amount: "19.90", currency: null }, "19.90 (currency unknown)"],
     [
       "location",
       { type: "location" },

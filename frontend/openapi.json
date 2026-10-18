@@ -5466,6 +5466,22 @@
       "RecordField": {
         "additionalProperties": false,
         "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "page",
+                  "locale",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
           "calibrated": {
             "title": "Calibrated",
             "type": "boolean"
@@ -7252,6 +7268,22 @@
         "additionalProperties": false,
         "description": "A row sub-field's outcome without its candidates (variants spec, INV-34).",
         "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "page",
+                  "locale",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
           "calibrated": {
             "title": "Calibrated",
             "type": "boolean"
