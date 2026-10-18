@@ -283,7 +283,7 @@ def _typed_found(page: ParsedPage, schema: SchemaDef, ctx: Context) -> Iterator[
 def _short_texts(region: LexborNode) -> list[tuple[LexborNode, str]]:
     """The region's elements with the short text each holds itself, outside struck text and set-apart content."""
     excluded = _apart_ids(region, _STRUCK)
-    texts = ((element, _own_text(element)) for element in region.css("*") if element.mem_id not in excluded)
+    texts = ((element, _own_text(element)) for element in (region, *region.css("*")) if element.mem_id not in excluded)
     return [(element, text) for element, text in texts if text and len(text) <= _SPOT_LENGTH]
 
 

@@ -367,3 +367,9 @@ def test_a_row_value_that_lines_also_state_among_others_is_kept() -> None:
     body = "<main><table><tr><th>Brand</th><td>A</td></tr></table><p>Brand: A</p><p>Brand: B</p></main>"
 
     assert _values(body) == {"brand": ["A"]}
+
+
+def test_a_price_the_main_region_holds_itself_is_spotted() -> None:
+    found = _collect("<main>€19.99</main>", MONEY_SCHEMA)
+
+    assert found["price"][0][1] == "dom:/html[1]/body[1]/main[1]"
