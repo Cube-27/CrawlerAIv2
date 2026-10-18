@@ -34,6 +34,7 @@ from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.pagination import first_request, next_request
 from crawlerai.config_ir.api_recipe.replay import request_for
 from crawlerai.content.page import ParsedPage
+from crawlerai.core import json_text
 from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
@@ -204,7 +205,7 @@ def _page_data(page: FetchResult) -> PageData:
 def _rows(result: FetchResult, query: str) -> tuple[JsonValue, int]:
     """The response's JSON and how many rows `query` selects in it."""
     try:
-        document = json_doc.parse(result.bundle.body.decode("utf-8"))
+        document = json_text.parse(result.bundle.body)
     except ValueError:  # not UTF-8 JSON (RFC 8259 §8.1): the collector reads no rows from it either
         return None, 0
     return document, row_count(query, document)

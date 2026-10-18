@@ -38,6 +38,7 @@ from crawlerai.content.dom import document_base_url
 from crawlerai.content.md_blocks import FENCE, LIST_ITEM
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.text import NOT_RENDERED
+from crawlerai.core import json_text
 from crawlerai.db.models import PageKind
 
 # Elements whose content is not an item's text: those never rendered (`content.text`), and form controls (HTML
@@ -88,10 +89,10 @@ def json_block(text: str) -> str:
     block: the fence is a run of backticks longer than any inside the text, so none closes it (CommonMark §4.5). `""`
     for a text that is no JSON."""
     try:
-        value = json.loads(text)
-    except ValueError:
+        value = json_text.parse(text)
+        pretty = json.dumps(value, indent=2, ensure_ascii=False)
+    except (ValueError, RecursionError):  # writing a value back nests as deep as reading it
         return ""
-    pretty = json.dumps(value, indent=2, ensure_ascii=False)
     fence = "`" * max(3, 1 + max((len(run) for run in re.findall("`+", pretty)), default=0))
     return f"{fence}json\n{pretty}\n{fence}"
 

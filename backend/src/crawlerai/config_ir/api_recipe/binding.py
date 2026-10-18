@@ -35,6 +35,7 @@ from crawlerai.config_ir.api_recipe.model import (
 from crawlerai.config_ir.executor import documents
 from crawlerai.config_ir.portable_regex import PCRE_FLAGS
 from crawlerai.content.page import ParsedPage
+from crawlerai.core import json_text
 from crawlerai.storage.capture_bundle import HeaderList
 
 # The page's JSON documents a `jsonld:` or `js_state:` binder reads, by kind.
@@ -358,7 +359,7 @@ def _body_mismatch(spec: RequestSpec, params: Mapping[str, str], captured: str |
         return None if spec.body is None and captured is None else "body_mismatch(a body on one side only)"
     rendered = render_body(spec.body.template, params)
     try:
-        same = _canonical(json_doc.parse(rendered)) == _canonical(json_doc.parse(captured))
+        same = _canonical(json_text.parse(rendered)) == _canonical(json_text.parse(captured))
     except ValueError:  # a value that is not a JSON number filled a number's place
         return "body_mismatch(a body is not JSON)"
     return None if same else f"body_mismatch({rendered}, {captured})"
@@ -379,7 +380,7 @@ def _binder_or_none(text: str) -> Binder | None:
 
 def _parse_body(body: str) -> JsonValue:
     try:
-        return json_doc.parse(body)
+        return json_text.parse(body)
     except ValueError:
         raise _Unbound("a sample request body is not JSON") from None
 

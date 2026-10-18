@@ -14,7 +14,6 @@ browser may render what HTTP did not. Only the HTTP rung passes the page kind: t
 browser is the last rung, and its page is extracted whatever its links.
 """
 
-import json
 from urllib.parse import urljoin, urlsplit
 
 from lxml import etree
@@ -23,6 +22,7 @@ from selectolax.lexbor import LexborHTMLParser
 
 from crawlerai.acquire.items import MIN_ITEMS, item_blocks
 from crawlerai.acquire.types import BlockClass
+from crawlerai.core import json_text
 from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import HeaderList
 
@@ -182,7 +182,7 @@ def _media_type(value: str | None) -> str:
 
 def _json(text: str) -> object:
     try:
-        return json.loads(text)
+        return json_text.parse(text)
     except ValueError:  # a block that is not JSON states nothing
         return None
 

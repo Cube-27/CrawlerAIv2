@@ -13,7 +13,6 @@ site's registrable domain.
 """
 
 import asyncio
-import json
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
@@ -31,6 +30,7 @@ from crawlerai.acquire.public_suffix import default_suffixes
 from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
+from crawlerai.core import json_text
 from crawlerai.core.proxy import ProxyPool
 from crawlerai.storage.capture_bundle import HeaderList
 
@@ -155,9 +155,8 @@ def _outcome(status: int, body: bytes, raw: bool) -> tuple[BlockClass, str | Non
     if 200 <= status < 300:
         if raw:
             return "ok", None
-        # RFC 8259 §8.1: JSON text exchanged between systems is UTF-8; `json.loads` also detects UTF-16/32 from bytes.
         try:
-            json.loads(body)
+            json_text.parse(body)
         except ValueError:
             return "error", "decode_error"
         return "ok", None

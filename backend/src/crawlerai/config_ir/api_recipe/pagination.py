@@ -40,6 +40,7 @@ from crawlerai.config_ir.api_recipe.model import (
     Pagination,
     ParamPagination,
 )
+from crawlerai.core import json_text
 from crawlerai.storage.capture_bundle import HeaderList
 
 Scalar = str | int | float
@@ -171,7 +172,7 @@ def _values(call: Call) -> dict[_Slot, Scalar]:
     body = call.entry.request_body
     if body is not None:
         try:
-            document = json_doc.parse(body)
+            document = json_text.parse(body)
         except ValueError:
             return found
         found.update((("body", path), leaf) for path, leaf in json_doc.scalars(document))
@@ -275,7 +276,7 @@ def with_body_value(body: str, path: str, value: Scalar) -> str | None:
     where the old value was one and as the value's own JSON type otherwise; a missing last member is added. None when
     `body` is not JSON or `path` does not reach an object or array there."""
     try:
-        document = json_doc.parse(body)
+        document = json_text.parse(body)
     except ValueError:
         return None
     segments = json_doc.segments(path)

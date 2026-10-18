@@ -1,6 +1,6 @@
 """The JSON-LD collector (SPEC-05 §4.5, ARCHITECTURE §8.1): schema.org nodes in `application/ld+json` blocks.
 
-Each block is parsed as JSON, accepting raw control characters inside strings (RFC 8259 §9; `json_doc.parse`); a
+Each block is parsed as JSON, accepting raw control characters inside strings (RFC 8259 §9; `core.json_text.parse`); a
 block that is still invalid is skipped with a diagnostic, never repaired. Every JSON object in it
 is a node; `@graph` and nesting need no special case, since the walk visits every object in document order. A node
 whose `@type` is a schema.org type in the vocabulary is an entity. A node reference (an object holding only `@id`,
@@ -22,7 +22,7 @@ from urllib.parse import urljoin, urlsplit
 from pydantic import JsonValue
 
 from crawlerai.collect.base import CollectResult, descends
-from crawlerai.collect.json_doc import member, parse
+from crawlerai.collect.json_doc import member
 from crawlerai.collect.schema_org_map import (
     NAMESPACES,
     Typed,
@@ -33,6 +33,7 @@ from crawlerai.collect.schema_org_map import (
     schema_term,
 )
 from crawlerai.content.page import ParsedPage
+from crawlerai.core.json_text import parse
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 

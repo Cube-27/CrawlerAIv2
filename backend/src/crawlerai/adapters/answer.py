@@ -10,6 +10,7 @@ from pydantic import JsonValue
 from crawlerai.acquire.outcome import as_error
 from crawlerai.acquire.types import FetchResult
 from crawlerai.adapters.base import NOT_SERVED
+from crawlerai.core import json_text
 from crawlerai.storage.capture_bundle import CaptureBundle, sha256_hex
 
 
@@ -29,4 +30,4 @@ def serving(result: FetchResult, rows: Callable[[JsonValue], int]) -> FetchResul
     with an empty list for an unknown tenant)."""
     if result.block_class != "ok":
         return result
-    return result if rows(json.loads(result.bundle.body)) else as_error(result, NOT_SERVED)
+    return result if rows(json_text.parse(result.bundle.body)) else as_error(result, NOT_SERVED)

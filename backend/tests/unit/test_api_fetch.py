@@ -466,3 +466,9 @@ def test_a_refused_connection_is_a_network_error_naming_no_url() -> None:
     )
 
     assert outcome(result) == (0, "error", "network_error: curl 7")
+
+
+def test_a_json_body_nested_deeper_than_the_parser_follows_is_a_decode_error() -> None:
+    deep = b"[" * 100_000 + b"]" * 100_000
+
+    assert outcome(fetch(json_reply(deep))) == (200, "error", "decode_error")

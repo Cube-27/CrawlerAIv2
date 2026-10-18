@@ -287,10 +287,7 @@ def _documents(source: JsonSource, page: ReleasePage, root: etree._Element) -> I
                 yield from _script_json(source, media_type, text)
         case "xhr":
             for body in page.network:
-                try:
-                    yield json.loads(body.decode("utf-8"))
-                except ValueError:  # not UTF-8, or not JSON
-                    continue
+                yield from _loads(body)
         case "api":
             raise _Unreadable("an api source is read through SPEC-09's api recipe executor")
 
@@ -323,16 +320,19 @@ def _script_json(source: JsonSource, media_type: str, text: str) -> Iterator[Val
         start = found.end()
         try:
             value, start = _DECODER.raw_decode(text, start)
-        except ValueError:
+        except (ValueError, RecursionError):  # not JSON, or nested deeper than the parser follows
             continue
         if isinstance(value, (dict, list)):  # a scalar initializer is a script variable
             yield value
 
 
-def _loads(text: str, *, strict: bool = True) -> Iterator[Value]:
+def _loads(data: str | bytes, *, strict: bool = True) -> Iterator[Value]:
+    """The JSON value `data` holds, or none: a body that is not JSON (RFC 8259; bytes decoded as `json.loads` decodes
+    them, UTF-8 or the UTF-16/32 forms RFC 4627 §3 tells apart), or nests deeper than the parser follows. The engine's
+    reader is `core.json_text`; this is the executor's own copy (INV-20)."""
     try:
-        yield json.loads(text, strict=strict)
-    except ValueError:
+        yield json.loads(data, strict=strict)
+    except (ValueError, RecursionError):
         return
 
 

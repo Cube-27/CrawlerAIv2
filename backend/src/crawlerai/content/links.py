@@ -9,7 +9,6 @@ no link elements. Its links are its string values that are absolute http(s) URLs
 the same rules, deduplicated, in document order.
 """
 
-import json
 from collections.abc import Iterator
 
 from pydantic import JsonValue
@@ -17,6 +16,7 @@ from selectolax.lexbor import LexborNode
 
 from crawlerai.content.dom import document_base_url, tokens
 from crawlerai.content.page import ParsedPage
+from crawlerai.core import json_text
 from crawlerai.normalize.url import canonical_url
 
 # HTML Living Standard §4.6.7, link types: the types of `link` that name another URL of the same document or of its
@@ -64,7 +64,7 @@ def _link_nodes(page: ParsedPage, final_url: str) -> Iterator[tuple[LexborNode, 
 
 def _json_links(text: str) -> tuple[str, ...]:
     try:
-        document: JsonValue = json.loads(text)
+        document = json_text.parse(text)
     except ValueError:  # a body that is not JSON states no value to read a link from
         return ()
     # With no base, a relative reference declines: only absolute http(s) URLs are links (RFC 3986 §4.3).

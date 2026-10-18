@@ -10,13 +10,13 @@ http(s) URL on another host, that URL is the result; any other anchor on the ans
 navigation. Results come in the answer's order, one per canonical URL.
 """
 
-import json
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from urllib.parse import parse_qsl, urljoin, urlsplit
 
 from selectolax.lexbor import LexborHTMLParser
 
+from crawlerai.core import json_text
 from crawlerai.normalize.url_key import canonicalize
 
 _MAX_DEPTH = 6  # nesting a result array is looked for at; deeper is not a result list
@@ -107,7 +107,7 @@ def parse(body: bytes, content_charset: str | None, answered_from: str, fields: 
     """The results of an answer: JSON when `body` decodes as JSON, else HTML; one per canonical URL, in order."""
     text = body.decode(content_charset or "utf-8", errors="replace")
     try:
-        hits = from_json(json.loads(text), fields)
+        hits = from_json(json_text.parse(text), fields)
     except ValueError:
         hits = from_html(text, answered_from)
     return unique(hits)

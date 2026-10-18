@@ -146,7 +146,7 @@ def test_jsonpath_reads_the_documents_of_its_source() -> None:
         '<script>var n = 1; window.__S = {"q": "from-assignment"};</script>'
         '<script src="/x.js">window.__T = {"q": "external"};</script></head></html>'
     )
-    network = (b'{"r": "from-xhr"}', b"not json", b"\xff")
+    network = (b"[" * 100_000 + b"]" * 100_000, b'{"r": "from-xhr"}', b"not json", b"\xff")
 
     def value(path: str, source: str) -> Value:
         return _run({"title": [{"jsonpath": path, "source": source}]}, html, network=network).fields.get("title")

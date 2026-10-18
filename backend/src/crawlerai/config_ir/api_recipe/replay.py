@@ -20,6 +20,7 @@ from crawlerai.collect.api import read_map
 from crawlerai.config_ir.api_recipe.binding import PageData, Sample, render_body, render_url, resolve_params
 from crawlerai.config_ir.api_recipe.model import PAGE_URL, Pagination, RequestSpec
 from crawlerai.config_ir.api_recipe.pagination import first_request, next_request
+from crawlerai.core import json_text
 from crawlerai.db.models import JobId, PageKind
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
@@ -86,7 +87,7 @@ async def compare(
     if result.block_class != "ok":
         return dict.fromkeys(compared, False)
     try:
-        document = json_doc.parse(result.bundle.body.decode("utf-8"))
+        document = json_text.parse(result.bundle.body)
     except ValueError:  # UnicodeDecodeError is a ValueError
         return dict.fromkeys(compared, False)
     return {name: _equal(read_map(path, document), name, page, schema) for name, path in compared.items()}
@@ -119,7 +120,7 @@ async def _replayed(request: JsonRequest, replay: Replay) -> tuple[JsonValue, He
     if result.block_class != "ok":
         return None
     try:
-        return json_doc.parse(result.bundle.body.decode("utf-8")), result.bundle.manifest.headers.response
+        return json_text.parse(result.bundle.body), result.bundle.manifest.headers.response
     except ValueError:  # UnicodeDecodeError is a ValueError
         return None
 

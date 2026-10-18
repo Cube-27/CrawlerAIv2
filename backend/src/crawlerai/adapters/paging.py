@@ -18,6 +18,7 @@ from pydantic import JsonValue
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.answer import with_body
+from crawlerai.core import json_text
 
 # The most rows one adapter list collects, whatever the request asks.
 MAX_ROWS: Final = 1000
@@ -46,7 +47,7 @@ async def fetch_pages(
         return result
     deadline = clock() + BUDGET_S
     target = min(policy.max_rows or MAX_ROWS, MAX_ROWS)
-    answers: list[JsonValue] = [json.loads(result.bundle.body)]  # `fetch_json` checked that an `ok` body is JSON
+    answers: list[JsonValue] = [json_text.parse(result.bundle.body)]  # `fetch_json` checked that an `ok` body is JSON
     kept = result
     count = rows(answers[0])
     progress = count
@@ -59,7 +60,7 @@ async def fetch_pages(
         )
         if page.block_class != "ok":
             break
-        answers.append(json.loads(page.bundle.body))
+        answers.append(json_text.parse(page.bundle.body))
         progress = rows(answers[-1])  # an empty page ends the list, whatever the adapter asks next
         count += progress
     if len(answers) == 1:

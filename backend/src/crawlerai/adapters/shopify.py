@@ -39,6 +39,7 @@ from crawlerai.acquire.robots import at_origin
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import ALL, NOT_PLATFORM, NOT_SERVED, AdapterMatch, Members, Shape
 from crawlerai.adapters.paging import fetch_pages
+from crawlerai.core import json_text
 from crawlerai.core.retry import is_transient
 
 API_VERSION: Final = "2026-10"
@@ -235,7 +236,7 @@ def _verdict(result: FetchResult, language: str | None) -> FetchResult:
     if result.block_class != "ok":
         return result
     # `fetch_json` checked that an `ok` body is JSON (RFC 8259); GraphQL answers with an object.
-    answer = json.loads(result.bundle.body)
+    answer = json_text.parse(result.bundle.body)
     served = (
         isinstance(answer, dict)
         and not answer.get("errors")

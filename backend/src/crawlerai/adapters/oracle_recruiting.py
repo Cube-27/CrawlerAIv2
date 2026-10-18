@@ -32,6 +32,7 @@ from crawlerai.acquire.outcome import as_error
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import ALL, NOT_SERVED, AdapterMatch, Shape
 from crawlerai.adapters.paging import fetch_pages
+from crawlerai.core import json_text
 from crawlerai.storage.capture_bundle import HeaderList
 
 DOMAIN: Final = "oraclecloud.com"
@@ -217,6 +218,6 @@ def _verdict(result: FetchResult) -> FetchResult:
     if result.block_class != "ok":
         return result
     # `fetch_json` checked that an `ok` body is JSON (RFC 8259).
-    answer = json.loads(result.bundle.body)
+    answer = json_text.parse(result.bundle.body)
     items = answer.get("items") if isinstance(answer, dict) else None
     return result if isinstance(items, list) and items else as_error(result, NOT_SERVED)
