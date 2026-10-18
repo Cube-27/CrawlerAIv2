@@ -156,13 +156,14 @@ async def recipe_config(engine: AsyncEngine, own_origin: str, site: SiteId, sche
         await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site))
 
 
-def _request(url: str, schema: SchemaDef, records: int) -> ScrapeRequest:
+def _request(url: str, schema: SchemaDef, records: int, **fetch: Any) -> ScrapeRequest:
     body = {
         "url": url,
         "formats": ["records"],
         "schema": {"id": str(schema.id)},
         "page_kind": "listing",
         "browser_actions": {"records": records},
+        "fetch": fetch,
     }
     return ScrapeRequest.model_validate(body)
 
@@ -218,6 +219,26 @@ async def test_a_listing_the_recipe_does_not_serve_runs_its_browser_actions(
     assert result.fetch.method == "browser"
     assert result.records is not None
     assert [r.fields["title"].value for r in result.records] == NAMES[:2]
+
+
+async def test_a_listing_with_the_callers_page_steps_is_not_served_by_the_recipe(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/kettles"
+    steps = {"actions": [{"type": "click", "text": "Accept"}]}
+
+    result = await scrape(engine, fetching, _request(url, schema, records=5, **steps), data=engine_data)
+
+    # The steps change the page and need the browser: the recipe's HTTP pages would skip them.
+    assert (web.listed, web.requested) == ([url], [])
+    assert result.fetch is not None
+    assert result.fetch.method == "browser"
 
 
 # The worker's tasks.

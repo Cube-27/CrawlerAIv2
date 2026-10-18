@@ -4,8 +4,9 @@ gate its actions go through.
 A listing scrape that asks for browser actions is fetched by the listing rung (`acquire.browser_tab.fetch_listing`)
 with the paging driver (`crawl.paging.collect`), after robots.txt and the site's rate admit it, as `polite_fetch`
 admits a page. Each action waits for the site's rate too, and a next page is admitted only on the same host, when
-robots.txt allows it. The actions get at most half the scrape's `timeout_s`, and at most `MAX_ACTIONS_S`, so the kept
-states' extraction still fits in the scrape (D-0028: `timeout_s` ≤ 120).
+robots.txt allows it. The caller's `fetch.actions` and `wait_for` run first on the settled page (D-1513), and the
+site's API recipe is not used then: the steps need the browser. The actions get at most half the scrape's `timeout_s`,
+and at most `MAX_ACTIONS_S`, so the kept states' extraction still fits in the scrape (D-0028: `timeout_s` ≤ 120).
 
 A site whose active config has a listing recipe (one with pagination, Appendix A #59) is served by it instead, over
 HTTP with no browser: one response per page its pagination names, until the request's `records` target, each page
@@ -56,9 +57,6 @@ def check_browser_actions(
         raise ValueError("browser_actions fetches the page, so max_age must be 0")
     if fetch.method_hint == "http":
         raise ValueError("browser_actions runs in the browser, so method_hint cannot be http")
-    if fetch.actions or fetch.wait_for is not None:
-        # D-1439: a listing's paging driver acts on the settled page; the caller's steps do not run before it.
-        raise ValueError("browser_actions takes no fetch.actions or fetch.wait_for")
 
 
 async def paged_fetch(
@@ -126,7 +124,8 @@ async def _recipe_pages(
     target or the deadline of `until`, with their attempts added to `attempts`; None when it served no first page,
     after waiting for the turn of the request that follows. Each page request waits for its host's rate on its own
     (`recipe_rung`): the caller's admitted turn goes to the first."""
-    if recipe is None or recipe.pagination is None:
+    if recipe is None or recipe.pagination is None or policy.steps:
+        # The caller's page steps (a cookie banner, a filter) change the page and need the browser (D-1513).
         return None
     rung = recipe_rung(fetching, recipe, host, engine_rules(engine, fetching.rungs.http, attempts))
     if rung is None:

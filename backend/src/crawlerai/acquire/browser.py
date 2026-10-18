@@ -185,7 +185,7 @@ async def fetch_browser(
         async with asyncio.timeout(policy.browser_timeout_s + extra_s):
             guarded = rendered(url, policy, session, connector or SafeConnector(), proxy, started, timings, traffic)
             async with guarded as page:
-                steps = await _stepped(page)
+                steps = await stepped(page)
                 exchange, content = await read_state(page)
                 cookies = await context_cookies(page.page.context)
                 artifacts = await capture_artifacts(page.page, policy)
@@ -222,7 +222,7 @@ async def fetch_browser(
     return result
 
 
-async def _stepped(page: "Rendered") -> tuple[StepOutcome, ...]:
+async def stepped(page: "Rendered") -> tuple[StepOutcome, ...]:
     """Run the policy's page steps on the settled page, each change followed by a wait for its content to settle."""
     if not page.policy.steps:
         return ()
