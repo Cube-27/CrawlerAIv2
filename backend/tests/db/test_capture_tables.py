@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from typing import Any, get_args
 
 import pytest
+from pydantic import JsonValue
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -168,11 +169,11 @@ async def test_candidate_accepts_every_source_kind_and_normalize_status(conn: As
 
 async def test_a_raw_value_with_nul_or_a_lone_surrogate_is_stored_once_made_storable(conn: AsyncConnection) -> None:
     extraction_id = await _extraction(conn)
-    raw = {"name\x00": ["a\x00b", "c\ud800"], "n": 3}
+    raw: JsonValue = {"name\x00": ["a\x00b", "c\ud800"], "n": 3}
 
     await conn.execute(insert(Candidate), [_candidate_values(extraction_id, raw_value=storable(raw))])
 
-    stored = (await conn.execute(select(Candidate.raw_value))).scalar_one()
+    stored: JsonValue = (await conn.execute(select(Candidate.raw_value))).scalar_one()
     assert stored == {"name\ufffd": ["a\ufffdb", "c\ufffd"], "n": 3}
 
 
