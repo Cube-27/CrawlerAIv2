@@ -231,14 +231,39 @@ def _read_listing(
     page = _Reader(page_fields, read.text, ctx, read).read(_claims_of(response.data.get("page", {})), PAGE, "")
     rows_reader = _Reader(row_fields, read.text, ctx, read)
     candidates, dropped, rows = list(page.candidates), list(page.dropped), list[Entity]()
+    last = -1  # the item the previous row was placed in
     for position, reply in enumerate(replies[:LISTING_MAX_ROWS]):
         entity = row_entity(position)
-        row = rows_reader.read(_claims_of(reply), entity.id, f"rows[{position}].")
+        claims = _claims_of(reply)
+        item = _item_of(claims, read, last)
+        last = last if item is None else max(last, item)
+        row = rows_reader.read(claims, entity.id, f"rows[{position}].", item)
         candidates.extend(row.candidates)
         dropped.extend(row.dropped)
         if row.candidates:
             rows.append(entity)
     return FilledListing(tuple(candidates), response, (*notes, *dropped), tuple(rows))
+
+
+def _item_of(claims: Mapping[str, Mapping[str, JsonValue]], view: TextView, last: int) -> int | None:
+    """The piece of the view (one repeated item block's text, `content.item_text`) a row's values are grounded in: of
+    the pieces holding most of the row's shown values, the first after `last`, the previous row's, as rows come in the
+    page's order (§4.4); when none follows it, the one nearest the row's first claimed offset. None when no piece
+    holds any of them. One item block renders one item (ARCHITECTURE §8.6), so a row's values are read in one piece
+    only: model offsets are a hint (D-0024), and items that repeat a value (one product in several colours) would
+    otherwise lend a row another item's values."""
+    shown = [claim for claim in claims.values() if claim["shown"] is True and claim["value"] != _ABSENT]
+    values = [str(claim["value"]) for claim in shown]
+    counts = [sum(value in view.piece_text(i) for value in values) for i in range(len(view.pieces))]
+    most = max(counts, default=0)
+    if most == 0:
+        return None
+    found = [i for i, count in enumerate(counts) if count == most]
+    after = [i for i in found if i > last]
+    if after:
+        return after[0]
+    start = cast(int, shown[0]["start"])
+    return min(found, key=lambda i: (abs(view.pieces[i].at - start), i))
 
 
 def _claims(fields: Sequence[str]) -> dict[str, JsonValue]:
@@ -312,23 +337,29 @@ class _Reader:
     ctx: Context
     view: TextView | None = None  # the pieces of the cleaned text `text` is made of, when it is not the cleaned text
 
-    def read(self, claims: Mapping[str, Mapping[str, JsonValue]], owner: str, path: str) -> _Read:
+    def read(
+        self, claims: Mapping[str, Mapping[str, JsonValue]], owner: str, path: str, item: int | None = None
+    ) -> _Read:
+        """The claims' candidates, each grounded in the whole text or, with `item`, in that piece of the view only."""
         candidates: list[Candidate] = []
         dropped: list[str] = []
         for name in sorted(self.fields):
             claim = claims[name]
             if claim["shown"] is not True or claim["value"] == _ABSENT:
                 continue  # the page does not show it: the field stays missing
-            candidate = self._candidate(claim, name, owner)
-            if candidate is None:
-                dropped.append(f"role C: {path}{name} ungrounded")
-            else:
+            candidate = self._candidate(claim, name, owner, item)
+            if candidate is not None:
                 candidates.append(candidate)
+            elif item is not None and str(claim["value"]) in self.text:
+                dropped.append(f"role C: {path}{name} outside its item")
+            else:
+                dropped.append(f"role C: {path}{name} ungrounded")
         return _Read(tuple(candidates), tuple(dropped))
 
-    def _candidate(self, claim: Mapping[str, JsonValue], name: str, owner: str) -> Candidate | None:
-        """The claim's span as a candidate, or None when the text does not contain it (ungrounded, §4.3)."""
-        span = self._located(align(SpanClaim.model_validate({key: claim[key] for key in _SPAN}), self.text))
+    def _candidate(self, claim: Mapping[str, JsonValue], name: str, owner: str, item: int | None) -> Candidate | None:
+        """The claim's span as a candidate, or None when the text (or the item's piece) does not contain it
+        (ungrounded, §4.3)."""
+        span = self._located(self._aligned(SpanClaim.model_validate({key: claim[key] for key in _SPAN}), item))
         if span is None:
             return None
         return Candidate(
@@ -340,6 +371,15 @@ class _Reader:
             locator=span.locator,
             independent=True,
         )
+
+    def _aligned(self, claim: SpanClaim, item: int | None) -> GroundedSpan | None:
+        """The claim aligned to the text, or, with `item` (always on a view), to that piece of it."""
+        if item is None or self.view is None:
+            return align(claim, self.text)
+        at = self.view.pieces[item].at
+        shifted = claim.model_copy(update={"start": claim.start - at, "end": claim.end - at})
+        span = align(shifted, self.view.piece_text(item))
+        return None if span is None else GroundedSpan(span.value, span.start + at, span.end + at)
 
     def _located(self, span: GroundedSpan | None) -> GroundedSpan | None:
         """The span in the cleaned text: as aligned when `text` is the cleaned text, else mapped through the view;

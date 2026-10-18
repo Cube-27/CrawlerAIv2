@@ -9,6 +9,7 @@ starts with it; libxml2 and HTML tree construction can build different trees for
 path no run carries is left out, and a page with fewer than `MIN_ITEMS` items found has no item text.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from lxml.html import HtmlElement
@@ -48,6 +49,11 @@ class TextView:
         kept = self.pieces[:count]
         return TextView(self.text[: kept[-1].at + kept[-1].length], kept)
 
+    def piece_text(self, index: int) -> str:
+        """The text of the view's piece `index` (cut short when the view's text was cut)."""
+        piece = self.pieces[index]
+        return self.text[piece.at : piece.at + piece.length]
+
     def source_span(self, start: int, end: int) -> tuple[int, int] | None:
         """The source offsets of `text[start:end]`, or None when the span is not inside one piece (it would join two
         places of the source that are not adjacent)."""
@@ -61,8 +67,7 @@ class TextView:
 def item_text(page: ParsedPage) -> TextView | None:
     """The cleaned text's spans of the page's item blocks, in document order; None when fewer than `MIN_ITEMS` of them
     are found in the cleaned text."""
-    paths = {_path(item): index for index, item in enumerate(item_blocks(page.lxml_tree))}
-    spans = _spans(page.cleaned_text, paths)
+    spans = [span for span in block_spans(page, item_blocks(page.lxml_tree)) if span is not None]
     if len(spans) < MIN_ITEMS:
         return None
     parts: list[str] = []
@@ -75,8 +80,13 @@ def item_text(page: ParsedPage) -> TextView | None:
     return TextView(_SEPARATOR.join(parts), tuple(pieces))
 
 
-def _spans(cleaned: CleanedText, paths: dict[str, int]) -> list[tuple[int, int]]:
-    """Each found item's span of the cleaned text, from its first run's start to its last run's end, in item order."""
+def block_spans(page: ParsedPage, blocks: Sequence[HtmlElement]) -> tuple[tuple[int, int] | None, ...]:
+    """Each block's span of the cleaned text, from its first run's start to its last run's end, by block; None for a
+    block whose path no run carries (it renders no text, or the two trees differ there)."""
+    return _spans(page.cleaned_text, {_path(block): index for index, block in enumerate(blocks)}, len(blocks))
+
+
+def _spans(cleaned: CleanedText, paths: dict[str, int], count: int) -> tuple[tuple[int, int] | None, ...]:
     found: dict[int, tuple[int, int]] = {}
     for run in cleaned.offsets:
         item = _owner(run.node_path, paths)
@@ -84,7 +94,7 @@ def _spans(cleaned: CleanedText, paths: dict[str, int]) -> list[tuple[int, int]]
             continue
         start, end = found.get(item, (run.start, run.end))
         found[item] = (min(start, run.start), max(end, run.end))
-    return [found[item] for item in sorted(found)]
+    return tuple(found.get(item) for item in range(count))
 
 
 def _owner(node_path: str, paths: dict[str, int]) -> int | None:

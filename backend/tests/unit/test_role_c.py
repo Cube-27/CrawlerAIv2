@@ -588,6 +588,49 @@ def test_a_span_joining_two_items_of_the_view_is_ungrounded() -> None:
     assert (filled.candidates, filled.diagnostics) == ((), ("role C: rows[0].title ungrounded",))
 
 
+COLOURS = "".join(
+    f'<li class="card"><a href="/p/{c}">Widget</a><span>{c}</span><span>9.50</span></li>'
+    for c in ("Red", "Blue", "Teal")
+)
+COLOURS_PAGE = ParsedPage(f"<html><body>{MENU}<main><ul>{COLOURS}</ul></main></body></html>")
+
+
+def _starts(filled: FilledListing) -> dict[tuple[str, str], int]:
+    return {(c.entity_id, c.field): int(c.locator.removeprefix("text:").split("-")[0]) for c in filled.candidates}
+
+
+def test_rows_of_items_that_repeat_their_values_are_read_one_item_each_in_page_order() -> None:
+    # D-1490: every claim's offsets point at the first item; the rows still take one item each, in order.
+    view = item_text(COLOURS_PAGE)
+    assert view is not None
+    row = {"title": span("Widget", 0), "sku": span("9.50", 0)}
+    client = ScriptedClient(rows_reply(row, row, row, heading=None))
+
+    starts = _starts(asyncio.run(extract_listing(client, view, ROW_SPECS, PAGE_SPECS, CTX, job_id=JOB)))
+
+    text = COLOURS_PAGE.cleaned_text.text
+    for n, colour in enumerate(("Red", "Blue", "Teal")):
+        item = view.pieces[n]
+        assert (
+            item.start
+            <= starts[(f"llm:rows[{n}]", "title")]
+            < starts[(f"llm:rows[{n}]", "sku")]
+            < item.start + item.length
+        )
+        assert colour in text[item.start : item.start + item.length]
+
+
+def test_a_row_value_found_only_in_another_item_is_left_out() -> None:
+    view = _view()
+    title, price = view.text.index("Widget 2"), view.text.index("3.50")
+    client = ScriptedClient(rows_reply({"title": span("Widget 2", title), "sku": span("3.50", price)}, heading=None))
+
+    filled = asyncio.run(extract_listing(client, view, ROW_SPECS, PAGE_SPECS, CTX, job_id=JOB))
+
+    assert [(c.field, c.raw) for c in filled.candidates] == [("title", "Widget 2")]
+    assert filled.diagnostics == ("role C: rows[0].sku outside its item",)
+
+
 def test_a_view_holds_no_more_items_than_their_claims_fit_the_reply() -> None:
     cards = "".join(f'<li class="c"><a href="/p/{n}">Item {n}</a><span>{n}</span></li>' for n in range(1, 151))
     view = item_text(ParsedPage(f"<html><body><main><ul>{cards}</ul></main></body></html>"))
