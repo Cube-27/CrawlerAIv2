@@ -806,6 +806,21 @@ def test_a_file_the_browser_is_too_slow_to_make_is_left_out_and_the_others_stay(
     assert files == {"screenshot.png": b"png"}
 
 
+def test_a_file_the_browser_fails_to_make_is_left_out_and_the_next_is_still_made() -> None:
+    class FailingScreenshot:
+        async def screenshot(self, **_: object) -> bytes:
+            raise PlaywrightError("screenshot failed")
+
+        async def pdf(self, **_: object) -> bytes:
+            return b"pdf"
+
+    policy = FetchPolicy(screenshot="viewport", pdf=True)
+
+    files = asyncio.run(capture_artifacts(cast(Page, FailingScreenshot()), policy))
+
+    assert files == {"page.pdf": b"pdf"}
+
+
 def test_a_viewport_screenshot_is_a_png_of_the_visible_area_and_leaves_the_bundle_as_it_was(
     browser: Browser, server: Server
 ) -> None:

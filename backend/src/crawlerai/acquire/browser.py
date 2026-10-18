@@ -17,7 +17,7 @@ import asyncio
 import contextlib
 import re
 import time
-from collections.abc import AsyncIterator, Awaitable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -262,16 +262,27 @@ async def capture_artifacts(page: Page, policy: FetchPolicy) -> dict[str, bytes]
     PDF print (HTML Standard §6.6 print media). Reading changes nothing in the page (INV-42). A file the browser could
     not make in `_ARTIFACT_TIMEOUT_S`, or one past `_ARTIFACT_MAX_BYTES`, is left out: the fetch still reached its
     page."""
+    asked: list[tuple[str, Callable[[], Awaitable[bytes]]]] = []
+    if (screenshot := policy.screenshot) is not None:
+        asked.append((SCREENSHOT, lambda: page.screenshot(type="png", full_page=screenshot == "full_page")))
+    if policy.pdf:
+        asked.append((PDF, lambda: page.pdf(print_background=True)))
+    # One budget for all the files; each is made on its own, so one the browser fails to make leaves out only itself.
+    deadline = asyncio.get_running_loop().time() + _ARTIFACT_TIMEOUT_S
     files: dict[str, bytes] = {}
+    for name, make in asked:
+        data = await _made(make, deadline)
+        if data is not None and len(data) <= _ARTIFACT_MAX_BYTES:
+            files[name] = data
+    return files
+
+
+async def _made(make: Callable[[], Awaitable[bytes]], deadline: float) -> bytes | None:
     try:
-        async with asyncio.timeout(_ARTIFACT_TIMEOUT_S):
-            if policy.screenshot is not None:
-                files[SCREENSHOT] = await page.screenshot(type="png", full_page=policy.screenshot == "full_page")
-            if policy.pdf:
-                files[PDF] = await page.pdf(print_background=True)
+        async with asyncio.timeout_at(deadline):
+            return await make()
     except (PlaywrightError, TimeoutError):
-        pass  # the files made so far are kept
-    return {name: data for name, data in files.items() if len(data) <= _ARTIFACT_MAX_BYTES}
+        return None
 
 
 async def context_cookies(context: BrowserContext) -> tuple[SessionCookie, ...]:
