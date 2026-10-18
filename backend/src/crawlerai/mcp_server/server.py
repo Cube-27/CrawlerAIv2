@@ -294,7 +294,7 @@ the start URL's host or the `include` globs, less the `exclude` globs. {UNTRUSTE
 _CRAWL_START = """Queue a crawl from `url`, as `POST /v1/crawl` does, and return its `job_id`. A page a
 `page_kind_rules` pattern matches is extracted; with rules, other pages are fetched for their links only. With
 `strategy` "best_first" and a `query`, the pages whose links best match it are fetched first, within `limit`. Follow it
-with `crawl_status`. `min_confidence` is a scrape's."""
+with `crawl_status`. `min_confidence` works as it does for `scrape`."""
 _SEARCH = f"""Search the web for `query`, as `POST /v1/search` does: the results' `url`, `title` and `snippet`. With
 `scrape` (`formats`, `schema`), a batch job scrapes the results and the answer carries its `job_id`; follow it with
 `extract_status`. Fails when the operator has configured no search provider. {UNTRUSTED}"""
@@ -303,7 +303,7 @@ each field's `status` and `confidence` ("unknown" in the summary for a field wit
 outputs for a job without a schema. Pass the `next_cursor` of `results` as `cursor` for the next page. {UNTRUSTED}"""
 _EXTRACT = """Queue a job that extracts a record of `page_kind` from each of `urls`, as `POST /v1/extract` does; a
 URL with a `*` is a glob, expanded through a map of its host. Returns the `job_id` and the schema, a prompt's draft
-included. Follow it with `extract_status`. `min_confidence` is a scrape's."""
+included. Follow it with `extract_status`. `min_confidence` works as it does for `scrape`."""
 _LLMS_TXT = f"""The `llms.txt` (llmstxt.org) of the pages a crawl, batch or extract job reached: the site's name and
 summary, then links to its pages with their titles and descriptions. The full text of the pages is `GET
 /v1/jobs/{{id}}/llms-full.txt` over REST. {UNTRUSTED}"""
