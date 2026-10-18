@@ -34,8 +34,8 @@ BODY = (
 )
 
 
-def _fields(head: str = "") -> dict[str, FieldOutcome]:
-    raw = f"<html><head>{head}</head><body>{BODY}</body></html>".encode()
+def _fields(head: str = "", body: str = BODY) -> dict[str, FieldOutcome]:
+    raw = f"<html><head>{head}</head><body>{body}</body></html>".encode()
     manifest = CaptureManifest(
         capture_id=uuid7(),
         url=PAGE_URL,
@@ -89,3 +89,32 @@ def test_a_label_value_that_contradicts_the_structured_value_is_a_disagreement_n
     assert (fields["sku"].status, fields["sku"].reason) == ("conflict", "disagree")
     # Text ranks by source precedence: the JSON-LD value comes first, and the DOM value never overrides it.
     assert (fields["brand"].value, fields["brand"].source_kind) == ("Other Brand", "jsonld")
+
+
+SUMMARY = "A sturdy synthetic widget."
+FIRST = "A sturdy synthetic widget for everyday use. It ships flat and assembles in minutes."
+SECOND = "The base is weighted and the cover wipes clean."
+PROSE = f"<main><h1>Synthetic Widget</h1><button>Buy</button><div><p>{FIRST}</p><p>{SECOND}</p></div></main>"
+
+
+def _og(content: str) -> str:
+    return f'<meta property="og:description" content="{content}">'
+
+
+def test_the_description_block_replaces_an_open_graph_summary() -> None:
+    fields = _fields(_og(SUMMARY), PROSE)
+
+    assert (fields["description"].value, fields["description"].source_kind) == (f"{FIRST}\n{SECOND}", "dom")
+    assert fields["description"].evidence == "dom"
+
+
+def test_the_description_block_completes_a_truncated_structured_description() -> None:
+    fields = _fields(_jsonld(description=FIRST[:40] + "..."), PROSE)
+
+    assert (fields["description"].value, fields["description"].source_kind) == (f"{FIRST}\n{SECOND}", "dom")
+
+
+def test_a_description_block_equal_to_the_structured_description_agrees_with_it() -> None:
+    fields = _fields(_jsonld(description=FIRST), f"<main><button>Buy</button><p>{FIRST}</p></main>")
+
+    assert (fields["description"].value, fields["description"].evidence) == (FIRST, "agreed")

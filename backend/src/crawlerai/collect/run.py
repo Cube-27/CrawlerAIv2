@@ -17,6 +17,7 @@ from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.admission import AdmittingCollector
 from crawlerai.collect.base import Candidate, Collector, Entity
 from crawlerai.collect.dom import DomCollector
+from crawlerai.collect.dom_text import DescriptionCollector
 from crawlerai.collect.items.align import Items, align
 from crawlerai.collect.js_state import JsStateCollector
 from crawlerai.collect.jsonld import JsonLdCollector
@@ -77,6 +78,13 @@ def collect_page(
     best = items[0].candidates if items else ()
     entities = (*(entity for result in results for entity in result.entities), *(e for i in items for e in i.entities))
     others = (*(candidate for result in results for candidate in result.candidates), *best)
+    # The description block extends what the other collectors state, so it reads after them.
+    described = _isolated(
+        DescriptionCollector, partial(DescriptionCollector().collect, page, schema, ctx, others), diagnostics
+    )
+    if described is not None:
+        results.append(described)
+        others = (*others, *described.candidates)
     admitting: Sequence[AdmittingCollector] = (JsStateCollector(), XhrCollector(learned))
     admitted = [
         a

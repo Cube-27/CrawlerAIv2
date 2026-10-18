@@ -112,18 +112,18 @@ class DomCollector:
         return CollectResult(entities=(), candidates=tuple(candidates), diagnostics=tuple(diagnostics))
 
 
-def _labels(schema: SchemaDef) -> dict[Words, list[str]]:
+def field_labels(schema: SchemaDef) -> dict[Words, list[str]]:
     """The fields each label's words name. A list or an object holds several values, and a table cell is one."""
     labels: dict[Words, list[str]] = {}
     for name, spec in schema.fields.items():
         if spec.type in (FieldType.LIST, FieldType.OBJECT):
             continue
-        for form in dict.fromkeys([words(name), *map(words, _properties(spec))]):
+        for form in dict.fromkeys([words(name), *map(words, properties(spec))]):
             labels.setdefault(form, []).append(name)
     return labels
 
 
-def _properties(spec: FieldSpec) -> list[str]:
+def properties(spec: FieldSpec) -> list[str]:
     """The schema.org properties a field's paths name (`named_property`)."""
     return [named_property(p) for p in parse_paths(spec.schema_org)] if spec.schema_org is not None else []
 
@@ -139,8 +139,8 @@ Found = tuple[str, str, str]  # a field, the raw value, the XPath of the element
 
 
 def _pairs_found(page: ParsedPage, schema: SchemaDef) -> Iterator[Found]:
-    labels: Mapping[Words, Sequence[str]] = _labels(schema)
-    region = _content(page)
+    labels: Mapping[Words, Sequence[str]] = field_labels(schema)
+    region = content_region(page)
     if region is None:
         return
     # A value's wrappers read it too: of the elements giving a field the same value, the innermost (last in document
@@ -163,7 +163,7 @@ def _pairs_found(page: ParsedPage, schema: SchemaDef) -> Iterator[Found]:
             yield name, raw, node_xpath(value)
 
 
-def _content(page: ParsedPage) -> LexborNode | None:
+def content_region(page: ParsedPage) -> LexborNode | None:
     """The page's main content: its main region, else the document body."""
     return _main_region(page) or page.tree.body
 
@@ -297,9 +297,7 @@ def _apart_ids(region: LexborNode, extra: frozenset[str] = frozenset()) -> froze
 
 
 def _image_found(page: ParsedPage, schema: SchemaDef, ctx: Context) -> Iterator[Found]:
-    fields = [
-        n for n, spec in schema.fields.items() if spec.type is FieldType.IMAGE_URL and _IMAGE in _properties(spec)
-    ]
+    fields = [n for n, spec in schema.fields.items() if spec.type is FieldType.IMAGE_URL and _IMAGE in properties(spec)]
     region = _main_region(page) if fields else None
     found = _main_image(region, ctx) if region is not None else None
     if found is None:
