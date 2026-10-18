@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Dependency license deny-list and SBOMs (SPEC-00 §4.6 job 3, ARCHITECTURE §18).
+# Dependency license deny-list and SBOMs (CI job 3).
 #
 # Usage: tools/license_scan.sh [OUT_DIR]   (default: license-report/ at the repo root)
 #

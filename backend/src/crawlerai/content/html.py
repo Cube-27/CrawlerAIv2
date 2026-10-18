@@ -1,4 +1,4 @@
-"""The `html` content format (SPEC-07 §4.5, ARCHITECTURE §8.5): the page without what runs script, else intact.
+"""The `html` content format (rest-api spec): the page without what runs script, else intact.
 
 No readability cleaning (that is `markdown`) and no per-site rules (C2). The format works on a copy of the page's
 selectolax tree, so the shared `ParsedPage` stays as parsed (INV-26).

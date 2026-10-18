@@ -146,7 +146,7 @@ function ConfigView({ config }: Readonly<{ config: ConfigDetail }>) {
   );
 }
 
-/** One config version (SPEC-12 §4.3): its fields' steps, status, yield and validity, its validation report, the
+/** One config version (frontend spec): its fields' steps, status, yield and validity, its validation report, the
  * correction form, export with the release report, and the other versions; "Learn now" in the header, and "Reject" and "Approve"
  * on a learned config waiting for approval (D-1342, D-1391). */
 export function ConfigScreen() {

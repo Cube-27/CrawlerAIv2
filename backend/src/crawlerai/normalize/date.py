@@ -1,4 +1,4 @@
-"""Date and datetime normalizer (SPEC-04 §4.4, ARCHITECTURE §9): an ISO 8601 date (`YYYY-MM-DD`) or an RFC 3339
+"""Date and datetime normalizer (normalization spec): an ISO 8601 date (`YYYY-MM-DD`) or an RFC 3339
 datetime in UTC (`YYYY-MM-DDTHH:MM:SS[.ffffff]Z`).
 
 Accepts a string, from the DOM, an LLM or a structured source (JSON-LD `datePosted` and similar values are strings).
@@ -10,8 +10,8 @@ Any other JSON value is `Invalid("not_a_string")`. Three paths, tried in order:
 3. Anything else goes to `dateparser` in the page's languages, once per allowed order, with `ctx.captured_at` as the
    base of relative dates ("2 days ago").
 
-The locales are `ctx.html_lang` and `ctx.og_locale` (SPEC-04 §4.4); with neither, every order is allowed. A datetime
-needs a time and a numeric UTC offset; a date takes the calendar date the input states, in its own offset.
+The locales are `ctx.html_lang` and `ctx.og_locale` (normalization spec); with neither, every order is allowed. A
+datetime needs a time and a numeric UTC offset; a date takes the calendar date the input states, in its own offset.
 """
 
 import re
@@ -34,7 +34,7 @@ Order = Literal["DMY", "MDY", "YMD"]
 # The day/month/year orders of CLDR short date patterns, which are also the orders `dateparser` takes (`DATE_ORDER`).
 _ORDERS: tuple[Order, ...] = ("DMY", "MDY", "YMD")
 
-# SPEC-04 §4.4: years outside this range are not values of the type.
+# normalization spec: years outside this range are not values of the type.
 _MIN_YEAR, _MAX_YEAR = 1970, 2100
 
 # RFC 3339 §5.6 `full-date` and `date-time`, with the ISO 8601 space separator and lowercase `t`/`z` that RFC 3339
@@ -73,7 +73,7 @@ _DATEPARSER_LANGUAGES = frozenset(language_order)
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize a date or datetime field (SPEC-04 §4.4)."""
+    """Normalize a date or datetime field (normalization spec)."""
     if spec.type not in (FieldType.DATE, FieldType.DATETIME):
         raise TypeError(f"the date normalizer does not handle type {spec.type}")
     if not isinstance(raw, str):
@@ -271,7 +271,7 @@ def _decide(readings: set[date] | set[datetime], want_time: bool) -> NormalizeRe
 
 
 def _in_range(value: date | datetime, want_time: bool) -> bool:
-    # SPEC-04 §4.4's year range holds for the value as stored: the stated date, and for a datetime its UTC date as
+    # normalization spec's year range holds for the value as stored: the stated date, and for a datetime its UTC date as
     # well (`2100-12-31T23:00-05:00` is 2101 in UTC). The stated year is checked first, so the UTC conversion never
     # leaves the years `datetime` can hold.
     if not _MIN_YEAR <= _stated(value).year <= _MAX_YEAR:
@@ -293,7 +293,7 @@ def _render(value: date | datetime, want_time: bool) -> str:
 
 
 def _orders(ctx: Context) -> tuple[Order, ...]:
-    """The date orders of the page's locales (SPEC-04 §4.4); every order when no locale is known."""
+    """The date orders of the page's locales (normalization spec); every order when no locale is known."""
     found = {order for tag in (ctx.html_lang, ctx.og_locale) if tag for order in _tag_orders(tag)}
     return tuple(o for o in _ORDERS if o in found) or _ORDERS
 
@@ -341,5 +341,5 @@ def _languages(ctx: Context) -> tuple[str, ...]:
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (SPEC-04 §4.5): exact. A normalized value has one form (D-0296: a datetime is in UTC)."""
+    """Equality as a key (normalization spec): exact. A normalized value has one form (D-0296: a datetime is in UTC)."""
     return raw_key(value)

@@ -1,4 +1,4 @@
-"""The API recipe (SPEC-09 §4.2, ARCHITECTURE §7.2, §12.1): how to fetch the JSON document a page's values come
+"""The API recipe (adapters spec): how to fetch the JSON document a page's values come
 from, with its parameters bound from the page, and where each field sits in that document.
 
 A recipe is data that our interpreters run, never code (§18). A document that validates here names a binder for every

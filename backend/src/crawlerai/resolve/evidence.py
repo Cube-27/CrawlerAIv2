@@ -27,7 +27,7 @@ from crawlerai.schemas.types import FieldType, SchemaDef
 BELOW_MIN_CONFIDENCE: Final = "below_min_confidence"
 # A bucket with fewer than 20 dev labels reports `calibrated=false` (the `resolution` spec's floor).
 MIN_CALIBRATED_N: Final = 20
-# ARCHITECTURE §10 buckets by source kind: an adapter or an API recipe; one structured-data standard (schema.org
+# Buckets by source kind: an adapter or an API recipe; one structured-data standard (schema.org
 # JSON-LD and microdata, the Open Graph protocol); a structural DOM value (§8.1), which follows no structured-data
 # standard; a value of the page's captured calls, the network data-source layer (Appendix A #59); role C's grounded
 # values; a value read from the page's state JSON, which only a key the item layer proved on the page's blocks
@@ -64,7 +64,7 @@ class Calibration(_Model):
 
     def measure(self, type_: FieldType, evidence: Evidence, *, row: bool = False) -> tuple[float | None, bool]:
         """The bucket's confidence and whether it is calibrated: measured on at least `MIN_CALIBRATED_N` fields. A row
-        sub-field's bucket is `list.<type>|<evidence>` (SPEC-13 §4.5): a row value can be wrong in a way a page value
+        sub-field's bucket is `list.<type>|<evidence>` (variants spec): a row value can be wrong in a way a page value
         cannot (a wrong row match), so it is measured apart."""
         bucket = self.buckets.get(f"{'list.' if row else ''}{type_.value}|{evidence}")
         if bucket is None:
@@ -84,7 +84,7 @@ def load_calibration(path: Path) -> Calibration | None:
 
 def evidence_of(chosen: Candidate, agreeing: tuple[Candidate, ...], *, corroborated: bool) -> Evidence | None:
     """The §10 bucket of a published value, `adapter` > `agreed` > the chosen kind's bucket (D-0021). `corroborated`
-    is the config's field status (SPEC-08); `None` when no bucket holds the value."""
+    is the config's field status (learning-configs spec); `None` when no bucket holds the value."""
     if chosen.source_kind in _ADAPTER:
         return "adapter"
     # §8.1, §10: only independent candidates count, so a state value admitted by equality never agrees with itself.

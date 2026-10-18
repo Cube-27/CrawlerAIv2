@@ -1,4 +1,4 @@
-"""The range normalizer (SPEC-04 §4.4, ARCHITECTURE §9): schema.org `MonetaryAmount` / `QuantitativeValue` and
+"""The range normalizer (normalization spec): schema.org `MonetaryAmount` / `QuantitativeValue` and
 text, with currency resolved by the money rules. Declines when the period or the currency is unresolved, and when
 min > max.
 

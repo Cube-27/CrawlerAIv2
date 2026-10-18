@@ -1,4 +1,4 @@
-"""Number normalizer (SPEC-04 §4.4): a decimal number as the page states it, such as a rating value (schema.org
+"""Number normalizer (normalization spec): a decimal number as the page states it, such as a rating value (schema.org
 `Rating.ratingValue`, whose range is Number or Text).
 
 Accepts:
@@ -30,7 +30,7 @@ _RATING_VALUE, _REVIEW_COUNT = "ratingValue", "reviewCount"
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize a number field (SPEC-04 §4.4)."""
+    """Normalize a number field (normalization spec)."""
     if spec.type is not FieldType.NUMBER:
         raise TypeError(f"the number normalizer does not handle type {spec.type}")
     if isinstance(raw, dict):
@@ -83,7 +83,7 @@ def _written(value: Decimal) -> str:
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (SPEC-04 §4.5): equal as decimals, so `4.5` equals `4.50`."""
+    """Equality as a key (normalization spec): equal as decimals, so `4.5` equals `4.50`."""
     if isinstance(value, str):
         with suppress(InvalidOperation):
             return Decimal(value)

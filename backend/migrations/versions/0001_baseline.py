@@ -1,4 +1,4 @@
-"""Baseline: the whole main database, from the models in `crawlerai.db.models` (ARCHITECTURE §6).
+"""Baseline: the whole main database, from the models in `crawlerai.db.models`.
 
 The project is greenfield (CLAUDE.md): a schema change edits this revision, and databases are recreated, never
 migrated with data steps. Besides the tables it holds the `default` project and the trigger that stamps a record's

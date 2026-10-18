@@ -1,4 +1,4 @@
-"""Header minimization by replay (SPEC-09 §4.6, ARCHITECTURE §7.2 step 2: "headers proven necessary by replay").
+"""Header minimization by replay (adapters spec: "headers proven necessary by replay").
 
 A recipe starts with `Accept: application/json` alone. When its replay does not reproduce every sample page, the
 headers the browser sent with the endpoint request are added one at a time, in the order sent, and the first whose

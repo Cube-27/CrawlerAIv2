@@ -1,4 +1,4 @@
-"""The job and url_task state machines (SPEC-01 §4.2, §4.3), and job run events (ARCHITECTURE §17).
+"""The job and url_task state machines (persistence-storage spec), and job run events.
 
 The transition tables are the authority: `transition_job` and `transition_task` only move a row along an edge of
 its table, with a compare-and-set update, so two workers racing on one row cannot both win.
@@ -41,7 +41,7 @@ class InvalidTransition(Exception):
 
 def blocking_statuses(*, cancel_requested: bool) -> tuple[TaskStatus, ...]:
     """The task statuses that keep a running job from ending: a cancelled job waits only for its claimed tasks, and
-    its queued tasks are not run (SPEC-10 §4.2); any other job also waits for its queued tasks (§4.3)."""
+    its queued tasks are not run (jobs spec); any other job also waits for its queued tasks (§4.3)."""
     return ("claimed",) if cancel_requested else ("claimed", "queued")
 
 
@@ -96,7 +96,7 @@ async def _move[S: str](
 
 async def transition_job(conn: AsyncConnection, job_id: JobId, target: JobStatus) -> None:
     """Move a job to `target`. Starting stamps `started_at`; ending stamps `finished_at` and records an event of the
-    same kind, which SSE reports and which owes the job's end webhook event, if it asked for one (SPEC-10 §4.2). An
+    same kind, which SSE reports and which owes the job's end webhook event, if it asked for one (jobs spec). An
     ended job's request keeps no secret value (D-1510)."""
     values: dict[str, Any] = {}
     if target == "running":

@@ -1,4 +1,4 @@
-"""The MCP server over streamable HTTP at `/mcp` (SPEC-10 §4.7): behind the same rate limit and bearer API key as every
+"""The MCP server over streamable HTTP at `/mcp` (jobs spec): behind the same rate limit and bearer API key as every
 other route (`require_api_key`), and running with the app's runtime."""
 
 from collections.abc import AsyncIterator

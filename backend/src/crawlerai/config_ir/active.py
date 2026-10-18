@@ -1,9 +1,9 @@
-"""Active mode (SPEC-08 §4.8, §4.9; ARCHITECTURE §8.4): the config a page of a site is extracted with, and the drift
+"""Active mode (learning-configs spec): the config a page of a site is extracted with, and the drift
 record of each page it ran on.
 
 A (site, schema, page kind) with an active config extracts its pages in `config` mode with that config. The config
 row is the authority: `extraction_config` holds at most one active config per site, schema and page kind
-(ARCHITECTURE §6); a schema edit suspends the schema's active configs, so its pages start cold again (§5.2). Each
+; a schema edit suspends the schema's active configs, so its pages start cold again (§5.2). Each
 page the config ran on, served and resolved, is added to its drift window (`drift.record_run`).
 """
 
@@ -45,7 +45,7 @@ async def config_by_id(conn: AsyncConnection, config_id: ExtractionConfigId, voc
 
 
 def recipe_of(config: ActiveConfig) -> ApiRecipe | None:
-    """The API recipe of `config`, which serves its pages (SPEC-09 §4.8), as `_bound` parsed it; None without one."""
+    """The API recipe of `config`, which serves its pages (adapters spec), as `_bound` parsed it; None without one."""
     return config.api.recipe if isinstance(config.api, RecipeExecutor) else None
 
 

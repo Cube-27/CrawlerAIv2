@@ -1,4 +1,4 @@
-"""The project's settings (single tenant, ARCHITECTURE §1: the `default` project migrations create).
+"""The project's settings (single tenant: the `default` project migrations create).
 
 `llm_call_cap` bounds the LLM calls of every job whose request sets no `budget.llm_calls`; null bounds none (owner,
 2026-10-16). It is read when a job checks its budget (`db.usage.budget_remaining`), so a change applies to running

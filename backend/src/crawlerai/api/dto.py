@@ -1,4 +1,4 @@
-"""Request and response models shared by the routers: the API's OpenAPI contract (SPEC-07 §4.1)."""
+"""Request and response models shared by the routers: the API's OpenAPI contract (rest-api spec)."""
 
 from typing import Literal
 
@@ -21,7 +21,7 @@ class FieldErrorOut(Model):
 
 
 class Problem(Model):
-    """RFC 9457 problem details (SPEC-07 §4.3). `type` is one of the API's problem types, or `about:blank` when the
+    """RFC 9457 problem details (rest-api spec). `type` is one of the API's problem types, or `about:blank` when the
     HTTP status says all there is to say (RFC 9457 §4.2.1); `instance` is the request's path (§3.1.5)."""
 
     type: str
@@ -41,7 +41,7 @@ PROBLEM_RESPONSE: dict[str, object] = {
 
 class Health(Model):
     status: Literal["ok"] = "ok"
-    eval_ui: bool  # the labeling endpoints are mounted (SPEC-12 §4.3 reads it for its navigation)
+    eval_ui: bool  # the labeling endpoints are mounted (frontend spec reads it for its navigation)
     # The LLM setup check (`crawlerai.llm.setup`): `unavailable` when a listed provider has no key or refuses a
     # configured model; the log names the problem. The API serves either way: only LLM calls are affected.
     llm: LLMStatus
@@ -52,12 +52,12 @@ class SchemaList(Model):
 
 
 class ReplayRequest(Model):
-    # SPEC-07 §4.6: a replay calls an LLM only when asked. None does yet: role C is bound with SPEC-06 PR 4.
+    # rest-api spec: a replay calls an LLM only when asked. None does yet: role C is bound with llm spec PR 4.
     allow_llm: bool = False
 
 
 class ReplayResult(Model):
-    records: list[ExtractedRecord]  # not stored (ARCHITECTURE §13.1)
+    records: list[ExtractedRecord]  # not stored
 
 
 class ConfigList(Model):

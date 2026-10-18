@@ -1,4 +1,4 @@
-"""Scripted test doubles (SPEC-06 §6): no provider is called in CI.
+"""Scripted test doubles (llm spec): no provider is called in CI.
 
 `FakeProvider` answers each call with the next scripted reply, or raises the next scripted error (a `ProviderError`, or
 a `ProviderRefused`), and keeps
@@ -42,7 +42,7 @@ class FakeProvider:
 class ScriptedClient:
     """Answers each call with the next scripted reply, or raises the next scripted failure; keeps the requests. Like the
     real client, it validates every reply against the request's output schema, and a reply the role's check refuses
-    takes the one retry, with the next scripted reply, then raises `OutputInvalid` (SPEC-06 §4.7)."""
+    takes the one retry, with the next scripted reply, then raises `OutputInvalid` (llm spec)."""
 
     def __init__(self, *script: Mapping[str, JsonValue] | Exception, model: str = "fake-fast") -> None:
         self._script = list(script)

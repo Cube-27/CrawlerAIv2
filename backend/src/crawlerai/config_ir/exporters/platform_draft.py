@@ -1,4 +1,4 @@
-"""The `platform_draft` export (SPEC-08 §4.11, ARCHITECTURE §12.2): a config as XPath 1.0, regex and JSONPath steps for
+"""The `platform_draft` export (learning-configs spec): a config as XPath 1.0, regex and JSONPath steps for
 an external crawler platform whose own format is not known yet (OPEN_QUESTIONS #1), so every export says `draft: true`.
 
 Each field keeps its steps in order, since the first valid value wins (§12.1) and a field reduced to one selector would
@@ -7,7 +7,7 @@ executors run, and an `attr` step as the XPath attribute step `@name` (XPath 1.0
 of the context node: the row in a listing, the root element on a page. The release executor runs both steps the same
 way (a CSS step by its XPath, `attr` as the context node's attribute), so the release check of the IR is the check of
 the draft. A field the release check marks `manual` (§12.3) is exported with `manual: true`. An `api_recipe` is
-exported as stored, since held-out validation replayed it (SPEC-09 §4.7), and with its PHP code hint (`php_hint`).
+exported as stored, since held-out validation replayed it (adapters spec), and with its PHP code hint (`php_hint`).
 Regexes are in the portable subset (`portable_regex`) and run with PHP's `/u` modifier (`regex_flags`). Exports carry
 selectors only, never values (INV-27).
 """

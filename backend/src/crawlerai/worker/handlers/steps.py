@@ -181,11 +181,11 @@ async def fetch_page(
     fetch while the caller waits check theirs (`check_target`), since a crawl's URLs were never checked at submit.
 
     With `recurring`, the records the task extracts with, a page records already stand for (`_standing`) is
-    fetched with the validators it last answered with, and a 304 ends the task `unchanged` with no capture (SPEC-11
+    fetched with the validators it last answered with, and a 304 ends the task `unchanged` with no capture (jobs spec
     §4.2).
 
     With `served`, the records the task extracts with when they are all it reads of the page, the config they name
-    serves the page through its API recipe when it has one (SPEC-09 §4.8, `recipe_rung`), and an HTTP page that lacks
+    serves the page through its API recipe when it has one (adapters spec, `recipe_rung`), and an HTTP page that lacks
     the offer data or the items their schema reads is rendered once more (`RenderNeed`, owner #49, #54). A listing's
     recipe with pagination serves up to
     `listing_pages` pages of it (module docstring).
@@ -273,14 +273,14 @@ async def fetch_queued(
 ) -> FetchResult | Unchanged | TaskResult:
     """The task's page through the polite fetch (`polite_fetch`, `QUEUED`), or the result the task ends this run with:
     - a robots.txt disallow: `blocked`, reason `robots`, without fetching the page; or, `by_adapter` (an active adapter
-      serves the URL first, SPEC-15 §4.6, from an API whose own robots.txt its requests go by), its answer when it is
+      serves the URL first, adapters spec, from an API whose own robots.txt its requests go by), its answer when it is
       `ok`, else `blocked`, reason `robots`, with no fallback to the page rungs admitted;
     - robots.txt unreachable: a transient failure, `blocked` once attempts run out (RFC 9309 §2.3.1.4: unreachable
       allows nothing);
     - the site not admitted yet, or the host's turn for a further request further off than the worker waits:
       postponed until it is, or `blocked`;
     - a 429 or 503 to any request of the fetch, unless the outcome kept is `ok` (the page an adapter's endpoint fell
-      back to, SPEC-15 §4.9): a transient failure, retried after the back-off (`politeness.backoff`), `blocked` once
+      back to, adapters spec): a transient failure, retried after the back-off (`politeness.backoff`), `blocked` once
       attempts run out, and at once when the server asks for more than the longest backoff."""
     result = await polite_fetch(
         task.url, policy, rules, limiter, QUEUED, fetch, by_adapter=by_adapter, tries=task.attempts
@@ -410,7 +410,7 @@ async def extract_records(
     parsed: ParsedPage | None = None,
 ) -> TaskResult:
     """Extract the reached page with what the job pinned and store it (`store_page_record`): `config` mode with the
-    pinned config, else cold. Role C on `llm`, charged to the job, fills required fields left missing (SPEC-05 §4.13).
+    pinned config, else cold. Role C on `llm`, charged to the job, fills required fields left missing (extraction spec).
     `parsed` is the page's parse when the handler already has one (INV-26). A crawl-discovered page may end
     `no_match`. A listing without rows ends with the reason (`ExtractionResult.reason`)."""
     schema = records.schema

@@ -1,4 +1,4 @@
-"""Records as the API returns them (SPEC-07 §4.4, §4.6, ARCHITECTURE §13.1, INV-22, INV-27): `scrape`, `/v1/records`
+"""Records as the API returns them (rest-api spec, INV-22, INV-27): `scrape`, `/v1/records`
 and replay answer with them. And the records service: what `GET /v1/records` and the MCP record tools do, over a
 connection.
 
@@ -85,9 +85,9 @@ class ScrapedRecord(ExtractedRecord):
 
 
 class StoredRecord(ScrapedRecord):
-    """A `record` row, with the capture it was extracted from (`None` once the capture expired, ARCHITECTURE §15),
+    """A `record` row, with the capture it was extracted from (`None` once the capture expired),
     the schema its fields follow, its own version and the fields whose published value differs from the
-    version it supersedes, empty for an entity's first (§14, SPEC-11 §4.4)."""
+    version it supersedes, empty for an entity's first (§14, jobs spec)."""
 
     capture_id: CaptureId | None
     schema_id: SchemaId
@@ -106,7 +106,7 @@ class RecordPage(BaseModel):
 
 class RecordFilter(BaseModel):
     """The records to list: those of a job, of a site (its host), of a schema, stored at or after a time, or
-    any combination. A job's are those its pages stand for, stored by it or found unchanged (SPEC-11 §4.2, §4.4).
+    any combination. A job's are those its pages stand for, stored by it or found unchanged (jobs spec).
     Stored from `changed_since` on, a record is a new entity or a new version of one: the change feed of recurring
     runs (§4.4). An entity re-extracted unchanged stores no record, so `changed_since` does not list it again."""
 
@@ -148,7 +148,7 @@ async def list_records(conn: AsyncConnection, query: RecordFilter) -> RecordPage
 async def _job_page(
     conn: AsyncConnection, statement: Select[Any], job_id: JobId, query: RecordFilter
 ) -> tuple[Sequence[Row[Any]], RecordId | None]:
-    """The page of the job's records (SPEC-11 §4.2, §4.4): those its tasks stand for, stored or found unchanged, each at
+    """The page of the job's records (jobs spec): those its tasks stand for, stored or found unchanged, each at
     the first task of the job that stood for it, newest task first and, within a task, newest record first. The page
     is read from the job's tasks by id (keyset, `ix_url_task_job_id_id`), so it never builds the job's whole set of
     `task_record` rows; the cursor stays a record id, and stands where that record does in the job. A cursor of a
@@ -199,8 +199,8 @@ def _stored(row: RowMapping, schema: SchemaDef) -> StoredRecord:
 
 
 def page_fields(schema: SchemaDef, fields: FieldSet) -> dict[str, RecordField]:
-    """A listing's page-scope fields (SPEC-01 §4.3 `scope: page`) in the record field shape: what a listing that kept
-    no record still resolved, such as its next page."""
+    """A listing's page-scope fields (persistence-storage spec `scope: page`) in the record field shape: what a listing
+    that kept no record still resolved, such as its next page."""
     scoped = {name: outcome for name, outcome in fields.items() if schema.fields[name].scope == "page"}
     data = {name: outcome.value for name, outcome in scoped.items() if outcome.status == "published"}
     return _fields(data, {name: FieldMeta.of(outcome) for name, outcome in scoped.items()})

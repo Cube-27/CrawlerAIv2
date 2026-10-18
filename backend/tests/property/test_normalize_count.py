@@ -1,4 +1,4 @@
-"""The count normalizer (SPEC-04 §4.4, D-0782): a non-negative whole number, such as a stock quantity, from a JSON
+"""The count normalizer (normalization spec, D-0782): a non-negative whole number, such as a stock quantity, from a JSON
 number, a schema.org `QuantitativeValue` (`inventoryLevel`), or the one number a text holds, read by the CLDR number
 symbols of the page's locales. A fraction, a negative number, a range, a unit other than "one" and two numbers decline
 (C7)."""

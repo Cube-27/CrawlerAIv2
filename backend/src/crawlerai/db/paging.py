@@ -1,4 +1,4 @@
-"""Keyset paging (SPEC-07 §4.6): a page is the rows after a cursor, the key of the last row of the page before, in key
+"""Keyset paging (rest-api spec): a page is the rows after a cursor, the key of the last row of the page before, in key
 order. Unlike an offset, a cursor stays valid while rows are added, and each page reads only its own rows through the
 key's index.
 """

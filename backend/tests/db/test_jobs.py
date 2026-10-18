@@ -1,4 +1,4 @@
-"""Jobs (SPEC-10 §4.2): a job's summary, its cancel and its results, including the clean `json_values` items (SPEC-14
+"""Jobs (jobs spec): a job's summary, its cancel and its results, including the clean `json_values` items (frontend spec
 §4.4), through the jobs service and then over HTTP (`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}`,
 `GET /v1/jobs/{id}/results`)."""
 

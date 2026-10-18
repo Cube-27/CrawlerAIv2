@@ -1,4 +1,4 @@
-"""`POST /v1/extract` over HTTP (SPEC-10 §4.6): what a client sends and gets back. What an extract job does is the
+"""`POST /v1/extract` over HTTP (jobs spec): what a client sends and gets back. What an extract job does is the
 service's and the worker's (`test_extract.py`)."""
 
 import itertools

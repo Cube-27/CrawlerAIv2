@@ -1,5 +1,5 @@
-"""Which Chrome the HTTP and JSON rungs impersonate (SPEC-02 §4.7, D-1325): the browser rung's own Chromium major, so a
-site that sees both rungs sees one browser version.
+"""Which Chrome the HTTP and JSON rungs impersonate (acquisition spec, D-1325): the browser rung's own Chromium major,
+so a site that sees both rungs sees one browser version.
 
 At startup the configured target (`CRAWLERAI_IMPERSONATE`) is compared with the Chromium Patchright installs (its
 `browsers.json`, read without launching it). Left unset, the target becomes curl_cffi's Chrome profile nearest that

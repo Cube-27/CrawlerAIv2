@@ -1,4 +1,4 @@
-"""Rung selection (SPEC-02 §4.4): which rungs a fetch tries, which outcome it keeps, and what it records.
+"""Rung selection (acquisition spec): which rungs a fetch tries, which outcome it keeps, and what it records.
 
 The rungs are stubs answering synthetic outcomes; no network.
 """
@@ -135,7 +135,7 @@ def test_the_bundle_records_every_attempt_beside_its_policy() -> None:
     }
 
 
-# --- the API recipe rung (SPEC-09 §4.8, §4.10) ------------------------------------------------------------------------
+# --- the API recipe rung (adapters spec) ------------------------------------------------------------------------
 
 
 # --- owner #49: the browser for an HTTP `ok` page the caller finds lacking --------------------------------------------

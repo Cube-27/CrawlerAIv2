@@ -1,4 +1,4 @@
-"""The embedded JSON state collector (SPEC-05 §4.5, ARCHITECTURE §8.1): JSON a page carries in its inline scripts.
+"""The embedded JSON state collector (extraction spec): JSON a page carries in its inline scripts.
 
 A document is the text of a `<script type="application/json">` (an invalid one is skipped with a diagnostic), or, in
 any other script except JSON-LD's, the JSON value after the `=` of each `window.<ident> =` or `var|let|const <ident> =`

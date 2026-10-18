@@ -1,4 +1,4 @@
-"""A queued job's webhook options (`services.webhook_options`, SPEC-10 §4.2), as each queued request kind takes
+"""A queued job's webhook options (`services.webhook_options`, jobs spec), as each queued request kind takes
 them."""
 
 from typing import Any

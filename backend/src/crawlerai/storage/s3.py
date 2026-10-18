@@ -1,8 +1,8 @@
-"""S3 `ObjectStore` (SPEC-01 §4.4). Any S3-compatible service works: boto3 reads credentials, region and
+"""S3 `ObjectStore` (persistence-storage spec). Any S3-compatible service works: boto3 reads credentials, region and
 `AWS_ENDPOINT_URL` from its standard environment and config files, so the app adds no settings of its own.
 
 Lifecycle rules may be configured on the bucket, but the app does not manage them; `expire_captures` enforces
-expiry (SPEC-01 §4.4).
+expiry (persistence-storage spec).
 """
 
 import builtins

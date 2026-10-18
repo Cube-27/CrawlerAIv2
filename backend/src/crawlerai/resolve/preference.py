@@ -1,11 +1,11 @@
-"""Preference (SPEC-05 §4.7, §4.8, ARCHITECTURE §8.2 rule 4, §10): which of a field's candidates publishes.
+"""Preference (resolution spec rule 4, §10): which of a field's candidates publishes.
 
 A candidate is kept when it normalized (validity), belongs to the target (ownership, §4.6) and is not a value taken
 from the request URL's query (INV-13); every other one is rejected with its reason. Of the kept candidates, an
 exact-match type publishes only when all agree (INV-14); text, long_text, url and image_url take the first source kind
 of the type's order in `source_precedence.yaml`. A page's Offer fields come from one Offer (INV-15).
 
-On a detail page (SPEC-13 §4.6, INV-38), no variant is a default: every Offer of the target and of
+On a detail page (variants spec, INV-38), no variant is a default: every Offer of the target and of
 its variants joins the atomic-offer rule, so a value that varies across variants publishes only in the row-mapped
 `variants` field. An identifier field the target states nothing for takes the value every variant states alike (variant
 fill).
@@ -36,14 +36,14 @@ from crawlerai.resolve.supersede import superseded
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 PRECEDENCE_FILE = "source_precedence.yaml"
-# ARCHITECTURE §10: the types whose candidates rank by source kind; every other type publishes only on agreement.
+# The types whose candidates rank by source kind; every other type publishes only on agreement.
 PRECEDENCE_TYPES = frozenset({FieldType.TEXT, FieldType.LONG_TEXT, FieldType.URL, FieldType.IMAGE_URL})
 # What `crawlerai eval fit-precedence` stamps on the file; every other key names a field type.
 STAMP = frozenset({"source_split", "git_sha"})
 _SOURCE_KINDS: frozenset[str] = frozenset(get_args(SourceKind))
 # The screening stages in the order a candidate meets them; a missing field states the furthest one reached.
 _STAGES = ("invalid", "ambiguous", "not_owned", "url_param")
-# GS1 GTIN and a seller's SKU identify one product, so a variant's identifies the variant (SPEC-13 §4.6, variant fill).
+# GS1 GTIN and a seller's SKU identify one product, so a variant's identifies the variant (variants spec, variant fill).
 _FILLED_SCHEMES = frozenset({"gtin", "sku"})
 _HTTPS = "https"  # RFC 9110 §4.2.2
 
@@ -92,14 +92,14 @@ class Resolver:
     """Preference for one entity, `target`: a detail page's target (§4.6), a listing's page or one of its rows (§4.7).
     Its fields' candidates are screened, then chosen per type. `page_values`: whether page-level candidates are the
     target's (`EntityGraph.owned_by`). `owns` stands in for ownership where the owner is not one entity: a variant's
-    rows (SPEC-13 §4.5)."""
+    rows (variants spec)."""
 
     graph: EntityGraph
     target: Entity
     page: PageFacts
     orders: Orders
     page_values: bool = True
-    variant_fill: bool = False  # a detail page's target only (SPEC-13 §4.6)
+    variant_fill: bool = False  # a detail page's target only (variants spec)
     owns: Callable[[Candidate], bool] | None = None
 
     def prefer(self, schema: SchemaDef, candidates: Sequence[Candidate]) -> dict[str, Preference]:
@@ -109,7 +109,7 @@ class Resolver:
         self, fields: Mapping[str, FieldSpec], candidates: Sequence[Candidate], *, prefix: str = ""
     ) -> dict[str, Preference]:
         """Every field's preference; a candidate is a field's when its field is `prefix` and the name (a row-mapped
-        field's sub-fields are `<field>.<sub-field>`, SPEC-13 §4.2)."""
+        field's sub-fields are `<field>.<sub-field>`, variants spec)."""
         by_field = {name: [c for c in candidates if c.field == f"{prefix}{name}"] for name in fields}
         screened = {name: self.screen(by_field[name]) for name in fields}
         # In schema order: the anchor takes the first Offer seen on a tie.
@@ -155,7 +155,7 @@ class Resolver:
         return self.graph.owned_by(candidate, self.target, page_values=self.page_values)
 
     def _fill(self, spec: FieldSpec, candidates: Sequence[Candidate], preference: Preference) -> Preference:
-        """Variant fill (SPEC-13 §4.6): a gtin or sku field the target states nothing for (no candidate is the
+        """Variant fill (variants spec): a gtin or sku field the target states nothing for (no candidate is the
         target's) takes its variants' candidates when every variant has one and all agree: the value is common to
         the variants. A value the target states is never replaced, and no other field is filled."""
         if not self.variant_fill or spec.type is not FieldType.IDENTIFIER or spec.scheme not in _FILLED_SCHEMES:
@@ -260,7 +260,7 @@ def _without(candidates: Sequence[Candidate], excluded: Sequence[Candidate]) -> 
 
 
 def _by_agreement(spec: FieldSpec, kept: list[Candidate], chosen: Candidate, rejected: list[Rejection]) -> Preference:
-    # ARCHITECTURE §10, INV-14: exact-match values publish only when every kept candidate agrees.
+    # INV-14: exact-match values publish only when every kept candidate agrees.
     if not _all_agree(kept, spec):
         return _all_rejected("conflict", "disagree", kept, rejected)
     return Chosen(chosen, tuple(c for c in kept if c is not chosen), tuple(rejected), tuple(kept))
@@ -359,7 +359,7 @@ def _all_agree(candidates: Sequence[Candidate], spec: FieldSpec) -> bool:
     keys = _equality_keys(candidates, spec)
     if keys is not None:
         return len(set(keys)) <= 1
-    # Every pair: the location type's equality is not transitive (SPEC-04 §4.5).
+    # Every pair: the location type's equality is not transitive (schemas spec).
     return all(_equal(a, b, spec) for a, b in combinations(candidates, 2))
 
 

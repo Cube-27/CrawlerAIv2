@@ -11,7 +11,7 @@ function progressText(counts: TaskCounts): string {
   return counts.cancelled === 0 ? done : `${done}, ${String(counts.cancelled)} cancelled`;
 }
 
-/** A run's progress (SPEC-14 §4.3, D-0975): a bar of the pages done, "N of M pages done" and the elapsed time under
+/** A run's progress (frontend spec, D-0975): a bar of the pages done, "N of M pages done" and the elapsed time under
  * it, and the outcomes reached so far on the right. */
 export function RunProgress({ job }: Readonly<{ job: JobSummary }>) {
   const ended = endedTasks(job.counts);

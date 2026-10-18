@@ -1,4 +1,4 @@
-"""The url and image_url normalizer (SPEC-04 §4.4, ARCHITECTURE §9): WHATWG-style parsing, absolutization against
+"""The url and image_url normalizer (normalization spec): WHATWG-style parsing, absolutization against
 the document base, RFC 3986 canonicalization, and declines on empty, relative-without-base and non-http(s) input."""
 
 from datetime import UTC, datetime

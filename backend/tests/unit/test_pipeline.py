@@ -1,4 +1,4 @@
-"""The extraction pipeline (SPEC-05 §4.1, §4.8, §4.13, §4.14): a capture and a schema in, every field's outcome out.
+"""The extraction pipeline (extraction spec): a capture and a schema in, every field's outcome out.
 
 Pages are synthetic (`example.test`); the schema.org vocabulary is the synthetic fixture (C3, C9).
 """
@@ -48,7 +48,7 @@ VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic
 PAGE_URL = "https://shop.example.test/p/1"
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
 DATA = EngineData(vocabulary=VOCABULARY, orders=dict.fromkeys(PRECEDENCE_TYPES, ORDER), calibration=None)
-# The order committed under `backend/data/` (SPEC-05 §4.7), as the engine loads it when no fit has replaced it.
+# The order committed under `backend/data/` (extraction spec), as the engine loads it when no fit has replaced it.
 COMMITTED_ORDERS = load_precedence(Path(__file__).parents[2] / "data" / PRECEDENCE_FILE)
 COMMITTED = EngineData(vocabulary=VOCABULARY, orders=COMMITTED_ORDERS, calibration=None)
 

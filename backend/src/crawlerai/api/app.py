@@ -1,4 +1,4 @@
-"""The FastAPI application factory (SPEC-07 §4.1): routers, problem details for every error, and the database the
+"""The FastAPI application factory (rest-api spec): routers, problem details for every error, and the database the
 routers share."""
 
 import logging
@@ -48,9 +48,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(eval_ui: bool | None = None) -> FastAPI:
-    """`eval_ui` mounts the labeling endpoints (SPEC-03 §4.10); unset, `CRAWLERAI_EVAL_UI` decides. Settings are
+    """`eval_ui` mounts the labeling endpoints (evaluation spec); unset, `CRAWLERAI_EVAL_UI` decides. Settings are
     read at startup, not here, so `crawlerai openapi` builds the document without a database."""
-    app = FastAPI(title="CrawlerAI", lifespan=_lifespan, openapi_url="/v1/openapi.json")  # SPEC-07 §4.6
+    app = FastAPI(title="CrawlerAI", lifespan=_lifespan, openapi_url="/v1/openapi.json")  # rest-api spec
     settings = ApiSettings()
     app.state.eval_ui = settings.eval_ui if eval_ui is None else eval_ui
     app.state.trusted_proxies = settings.trusted_proxies

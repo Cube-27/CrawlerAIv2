@@ -25,22 +25,22 @@
   /* A paged table's box: a full page of rows, so a short page, a loading page or an empty one moves nothing below it
    * (no layout shift on paging). */
   --height-table-page: 72rem;
-  /* The playground's command bar column (SPEC-14 §4.2): narrower than the content, centred under the mode switch. */
+  /* The playground's command bar column (frontend spec): narrower than the content, centred under the mode switch. */
   --container-playground: 48rem;
   /* The command bar's input box: a URL and its error line, so switching between the single-URL modes moves neither the
    * toolbar nor the run button. Batch's ten-line list is taller (D-1213). */
   --height-playground-input: 5rem;
   /* The options popover: the command bar's width, less 1rem each side at phone width. */
   --width-options: min(var(--container-playground), 100vw - 2rem);
-  /* The playground's output area (SPEC-14 §4.2): a run's pending, failed and done states fill at least this box, so
+  /* The playground's output area (frontend spec): a run's pending, failed and done states fill at least this box, so
    * a run moves nothing around it. */
   --height-playground-output: 36rem;
-  /* A JSON view's box: long output scrolls inside it (SPEC-14 §4.3). */
+  /* A JSON view's box: long output scrolls inside it (frontend spec). */
   --height-json-view: 32rem;
-  /* Get code's code block (SPEC-14 §4.7): each language's code, or the note in its place, scrolls inside this box, so
+  /* Get code's code block (frontend spec): each language's code, or the note in its place, scrolls inside this box, so
    * switching tabs moves nothing. */
   --height-code-view: 28rem;
-  /* The live activity feed's box: new lines scroll inside it (SPEC-14 §4.5). */
+  /* The live activity feed's box: new lines scroll inside it (frontend spec). */
   --height-activity-feed: 24rem;
   /* A side drawer's width (DESIGN.md, Side drawer): wide enough for a code block or a page's JSON without clipping. */
   --width-drawer: 44rem;
@@ -85,7 +85,7 @@
   --accent-foreground: oklch(0.99 0 0);
   --link: var(--accent);
 
-  /* JSON view tokens (SPEC-14 §4.3): one color per RFC 8259 value kind, plus object member names, in the code editor
+  /* JSON view tokens (frontend spec): one color per RFC 8259 value kind, plus object member names, in the code editor
    * palette readers know (VS Code's Light+ and Dark+ themes), with its editor background, line numbers and guides. */
   --json-background: #ffffff;
   --json-foreground: #1f1f1f;
@@ -283,7 +283,7 @@
     }
   }
 
-  /* A JSON view (SPEC-14 §4.3) and Get code's code block (§4.7): monospaced text in an outlined box that scrolls. */
+  /* A JSON view (frontend spec) and Get code's code block (§4.7): monospaced text in an outlined box that scrolls. */
   .json-view,
   .code-view {
     @apply m-0 overflow-auto rounded-lg border border-border bg-surface-secondary p-4 font-mono text-[0.8125rem] leading-5;

@@ -1,4 +1,4 @@
-"""Process settings, read from `CRAWLERAI_*` environment variables (SPEC-00 §4.4).
+"""Process settings, read from `CRAWLERAI_*` environment variables.
 
 The variable names are the contract; later specs add settings here.
 An empty value counts as unset, so unset CI secrets (which arrive as "") behave like absent variables.
@@ -12,13 +12,13 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from crawlerai.core.proxy import ProxyPool
 
-# `fs:///<absolute path>` or `s3://<bucket>[/<prefix>]` (SPEC-00 §4.4).
+# `fs:///<absolute path>` or `s3://<bucket>[/<prefix>]`.
 OBJECT_STORE_URL_PATTERN = r"^(fs:///.+|s3://[^/]+(/.*)?)$"
 ObjectStoreUrl = Annotated[str, Field(pattern=OBJECT_STORE_URL_PATTERN)]
 
 Role = Literal["api", "worker", "scheduler"]
 
-# The newest Chrome profile curl_cffi supports at lock time (SPEC-02 §4.7).
+# The newest Chrome profile curl_cffi supports at lock time (acquisition spec).
 IMPERSONATE_DEFAULT: BrowserTypeLiteral = "chrome150"
 
 
@@ -49,18 +49,18 @@ class AcquireSettings(_Base):
     """The subset a fetch needs, so `crawlerai fetch` runs without a database or object store."""
 
     impersonate: BrowserTypeLiteral = IMPERSONATE_DEFAULT
-    # `CRAWLERAI_PROXY_POOLS`, JSON `{pool_name: proxy_url | {"endpoints": [proxy_url, ...], "mode": ...}}` (SPEC-02
-    # §3, OPEN_QUESTIONS #10, D-1323).
+    # `CRAWLERAI_PROXY_POOLS`, JSON `{pool_name: proxy_url | {"endpoints": [proxy_url, ...], "mode": ...}}` (acquisition
+    # spec §3, OPEN_QUESTIONS #10, D-1323).
     proxy_pools: dict[str, ProxyPool] = Field(default_factory=dict)
-    # `CRAWLERAI_DISABLED_ADAPTERS`, comma-separated: the platform adapters that do not run (SPEC-15 §4.8). Every
+    # `CRAWLERAI_DISABLED_ADAPTERS`, comma-separated: the platform adapters that do not run (adapters spec). Every
     # registered adapter runs unless named here (owner, 2026-10-16).
     disabled_adapters: Annotated[tuple[str, ...], NoDecode, BeforeValidator(_comma_separated)] = ()
 
 
 class ApiSettings(_Base):
-    """What the app factory reads: which routers to mount, and how to admit requests (SPEC-07 §4.2)."""
+    """What the app factory reads: which routers to mount, and how to admit requests (rest-api spec)."""
 
-    # Mounts the labeling endpoints (SPEC-03 §4.10). They serve the golden set (`dev`).
+    # Mounts the labeling endpoints (evaluation spec). They serve the golden set (`dev`).
     eval_ui: bool = False
     # JSON list of the proxies whose `Forwarded`/`X-Forwarded-For` name the client (RFC 7239 §8.1, INV-32).
     trusted_proxies: tuple[IPvAnyNetwork, ...] = ()
@@ -82,7 +82,7 @@ class SearchSettings(_Base):
 
 
 class McpSettings(_Base):
-    """What the MCP server's stdio process reads besides `Settings` (SPEC-10 §4.7): the API key it acts with."""
+    """What the MCP server's stdio process reads besides `Settings` (jobs spec): the API key it acts with."""
 
     api_key: SecretStr
 
@@ -91,10 +91,10 @@ LLMProviderName = Literal["anthropic", "gemini"]
 
 
 class LLMSettings(_Base):
-    """The LLM providers (SPEC-06 §4.2, OPEN_QUESTIONS #5): which, in failover order, and a model per model class.
+    """The LLM providers (llm spec, OPEN_QUESTIONS #5): which, in failover order, and a model per model class.
 
     The model ids are the current Haiku- and Flash-Lite-class models for `fast` (role C) and Sonnet- and Flash-class
-    models for `strong` (A, D, S) (ARCHITECTURE Appendix C); change them here, not in code.
+    models for `strong` (A, D, S); change them here, not in code.
     """
 
     llm_providers: Annotated[tuple[LLMProviderName, ...], NoDecode, BeforeValidator(_comma_separated)] = (
@@ -108,7 +108,7 @@ class LLMSettings(_Base):
     # learning-configs spec, "Induction, then role A synthesis": role A reads each sample page, its JSON key paths and
     # its reduced HTML cut to this many characters in all; a larger limit is refused, so a page's cost is bounded.
     llm_a_max_chars: int = Field(default=60_000, gt=0, le=60_000)
-    # From the secret store (ARCHITECTURE §18); required for each listed provider when a client is built.
+    # From the secret store; required for each listed provider when a client is built.
     llm_api_key_anthropic: SecretStr | None = None
     llm_api_key_gemini: SecretStr | None = None
 

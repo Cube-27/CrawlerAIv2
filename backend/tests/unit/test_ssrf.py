@@ -1,4 +1,4 @@
-"""SSRF guard (SPEC-02 §4.5, ARCHITECTURE §7.1 and §18, INV-16). A stub resolver stands in for DNS; no network."""
+"""SSRF guard (acquisition spec, INV-16). A stub resolver stands in for DNS; no network."""
 
 import asyncio
 import socket
@@ -153,7 +153,7 @@ def test_every_redirect_hop_is_rechecked(location: str, reason: RejectReason) ->
 
 
 def test_rejection_message_does_not_carry_the_url() -> None:
-    # Logs redact URLs when configured (SPEC-02 §4.11); the exception must not leak them.
+    # Logs redact URLs when configured (acquisition spec); the exception must not leak them.
     connector = SafeConnector(StubResolver({"secret.example.com": ["10.0.0.1"]}))
     check = connector.check("https://secret.example.com/token=abc")
     with pytest.raises(SsrfRejected) as e:

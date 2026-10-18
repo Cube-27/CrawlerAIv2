@@ -1,5 +1,5 @@
-"""The task queue (SPEC-01 §4.3): `url_task` rows claimed with `FOR UPDATE SKIP LOCKED`, leased, retried with
-backoff, and settled into their job's status.
+"""The task queue (persistence-storage spec): `url_task` rows claimed with `FOR UPDATE SKIP LOCKED`, leased, retried
+with backoff, and settled into their job's status.
 
 A claim is fenced by its `(claimed_by, lease_until)`. Each claim sets `lease_until` from `clock_timestamp()`, which,
 unlike `now()`, advances within a transaction, so no two claims of a task share it; `attempts` would not do, as
@@ -156,7 +156,7 @@ async def insert_claimed(
     conn: AsyncConnection, job_id: JobId, url: str, canonical_url: str, page_kind: PageKind | None, worker: str
 ) -> ClaimedTask:
     """Add a task already claimed by `worker`, for a caller that runs it at once instead of queueing it (the
-    synchronous `scrape`, SPEC-07 §4.4). It is leased like any claim, so it finishes through `complete_task` and
+    synchronous `scrape`, rest-api spec). It is leased like any claim, so it finishes through `complete_task` and
     `fail_task`, and no worker takes it while it runs."""
     claim = (
         insert(UrlTask)
@@ -186,7 +186,7 @@ async def complete_task(
     ending: JobEnding | None = None,
 ) -> None:
     """Finish a task with `outcome`; `reason`, kept in `last_error`, says why when the outcome alone does not (a
-    `blocked` task's `robots`, SPEC-02 §4.6). `capture_id` is the page the task fetched, if it fetched one. `ending`
+    `blocked` task's `robots`, acquisition spec). `capture_id` is the page the task fetched, if it fetched one. `ending`
     runs if this ends the job (`settle_job`)."""
     values: dict[str, Any] = {} if capture_id is None else {"capture_id": capture_id}
     await _finish(conn, task, "done", ending, outcome=outcome, last_error=reason, **values)
@@ -209,7 +209,7 @@ async def fail_task(
     ending: JobEnding | None = None,
 ) -> None:
     """Record a failure. A transient one is retried until `MAX_ATTEMPTS` (D-0006): after `after` when the target
-    asked for a delay (a `Retry-After`, SPEC-02 §4.6), else after `backoff_delay`. A permanent failure, or the last
+    asked for a delay (a `Retry-After`, acquisition spec), else after `backoff_delay`. A permanent failure, or the last
     attempt, ends the task with `exhausted`: `failed`, or the outcome the failure stands for (a 429 is `blocked`).
     `capture_id` is the page the failed attempt fetched, if it fetched one. `ending` runs if this ends the job."""
     values: dict[str, Any] = {"last_error": _cut(error)}

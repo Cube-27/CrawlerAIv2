@@ -1,4 +1,4 @@
-"""The scheduler's `recheck_fetch_method` (SPEC-02 §4.4, ARCHITECTURE §7.1): a site's page kind remembered as
+"""The scheduler's `recheck_fetch_method` (acquisition spec): a site's page kind remembered as
 `browser` (`site_fetch_method`, D-1380) is tried over HTTP again every 7 days, and set back to `http` when HTTP passes.
 
 The URL tried is the site's latest `ok` capture fetched as that kind (a fetch with no page kind counts as a detail
@@ -6,7 +6,7 @@ page's, `rungs.remembered_as`): a page known to exist, so a miss is evidence abo
 is honoured as for any fetch; a page it disallows, or a robots.txt that cannot be read, leaves the kind on `browser`
 until the next turn.
 
-A site with a proxy pool is re-checked through it, as its pages are fetched (ARCHITECTURE §7.1).
+A site with a proxy pool is re-checked through it, as its pages are fetched.
 
 The rest of politeness (§4.6) holds by cadence: one page request per site per 7 days is inside any rate limit or
 `Crawl-delay`, and a 429 or 503 is a failed re-check whose next try, a turn later, is longer than any backoff.
@@ -23,7 +23,7 @@ from crawlerai.acquire.rungs import Rung
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Capture, FetchMethod, PageKind, Site, SiteFetchMethod, SiteId
 
-RECHECK_AFTER: Final = timedelta(days=7)  # SPEC-02 §4.4 (D-0009)
+RECHECK_AFTER: Final = timedelta(days=7)  # acquisition spec (D-0009)
 # One site per run: the fetch runs inside the run's transaction, so this bounds how long a site row stays locked,
 # and the scheduler runs a full batch again at once, so a backlog still drains in one turn.
 RECHECK_BATCH: Final = 1
@@ -74,7 +74,7 @@ async def _method(
     url = (await conn.execute(latest_ok)).scalar_one_or_none()
     if url is None:
         return "browser"
-    # The page kind `classify` reads: a listing without repeated items is a shell (SPEC-02 §4.3).
+    # The page kind `classify` reads: a listing without repeated items is a shell (acquisition spec).
     policy = FetchPolicy(proxy_pool=proxy_pool, page_kind=kind)
 
     async def fetch(page: str) -> FetchResult:

@@ -17,7 +17,7 @@ interface Pending<R> {
   pageKind: PageKind;
 }
 
-/** The page kind field names are drafted for: the request's, or a crawl's rules' one page kind (SPEC-14 §4.10). */
+/** The page kind field names are drafted for: the request's, or a crawl's rules' one page kind (frontend spec). */
 function pageKindOf(request: Reviewed): PageKind | null {
   if (request.page_kind !== undefined) return request.page_kind;
   const kinds = new Set(request.page_kind_rules?.map((rule) => rule.page_kind));
@@ -25,7 +25,7 @@ function pageKindOf(request: Reviewed): PageKind | null {
   return kinds.size === 1 && kind !== undefined ? kind : null;
 }
 
-/** A mode's run with the review of field names (SPEC-14 §4.10): `start(request)` sends a request whose schema is not
+/** A mode's run with the review of field names (frontend spec): `start(request)` sends a request whose schema is not
  * field names at once; one whose schema is opens `drawer`, the draft for review, and sends the request with the
  * reviewed schema when the user runs it. The form's checks make sure field names come with a page kind. */
 export function useFieldsReview<R extends Reviewed>(

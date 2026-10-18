@@ -1,4 +1,4 @@
-"""Row-mapped fields on a detail page (SPEC-13 §4.3 to §4.5, INV-33 to INV-35): each structured-data shape of a
+"""Row-mapped fields on a detail page (variants spec, INV-33 to INV-35): each structured-data shape of a
 variant set publishes one row per variant, matched by key and never by position, with per-sub-field outcomes. Pages
 are synthetic (`example.test`) and the schema is preset `commerce_detail` (C3, C9)."""
 
@@ -121,7 +121,7 @@ def test_rows_whose_key_sub_fields_disagree_do_not_publish() -> None:
 
 
 def test_role_c_is_never_asked_for_a_row_mapped_field() -> None:
-    # SPEC-13 §4.9: a claim is one verbatim span, which cannot hold a row of typed sub-fields.
+    # variants spec: a claim is one verbatim span, which cannot hold a row of typed sub-fields.
     fields = {name: _missing() for name in SCHEMA.fields}
 
     assert "variants" not in pipeline._gaps(SCHEMA, fields, frozenset())

@@ -1,12 +1,12 @@
-"""Fail when `backend/data/` holds a file that the manifest does not pin (SPEC-00 §4.1, INV-05, C4).
+"""Fail when `backend/data/` holds a file that the manifest does not pin (INV-05, C4).
 
 Vocabularies come from versioned external data. Each file under `backend/data/` must be listed in
 `backend/data/manifest.json` with its source URL, version, sha256, license and justification, and its bytes must
 match the pinned hash. An entry marked `"fetched": true` is downloaded by `crawlerai data fetch` and not committed
-(SPEC-04 §4.6): its file may be absent, and when present it must match its hash. Prints one line per problem and
+(schemas spec): its file may be absent, and when present it must match its hash. Prints one line per problem and
 exits 1, or prints one summary line and exits 0.
 
-Three files are fitted on dev rather than fetched (SPEC-05 §4.7, §4.9, SPEC-08 §4.9; D-0444 and D-0576, owner
+Three files are fitted on dev rather than fetched (extraction spec, learning-configs spec; D-0444 and D-0576, owner
 answers 2026-10-14 and 2026-10-16): `source_precedence.yaml`, `calibration.json` and `drift_margins.json`. Fitting
 rewrites them, so no sha256 can be pinned; they are not listed in the manifest, and each must instead carry the
 stamp `source_split: dev` (fitted on the golden set).

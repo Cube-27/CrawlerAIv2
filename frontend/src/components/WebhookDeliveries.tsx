@@ -10,7 +10,7 @@ import { StatusLabel, type StatusTone } from "./StatusLabel";
 import { Timestamp } from "./Timestamp";
 import { TruncatedText } from "./TruncatedText";
 
-// One tone per `webhook_delivery.status` (SPEC-10 §4.2): still owed, accepted by the receiver, or given up on.
+// One tone per `webhook_delivery.status` (jobs spec): still owed, accepted by the receiver, or given up on.
 const DELIVERY_TONES: Record<WebhookDelivery["status"], StatusTone> = {
   pending: "warning",
   delivered: "success",

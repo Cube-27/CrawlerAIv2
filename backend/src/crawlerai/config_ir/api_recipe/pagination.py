@@ -1,4 +1,4 @@
-"""A listing recipe's pagination (SPEC-09 §4.8, Appendix A #59): which kind a series of captured calls follows, and
+"""A listing recipe's pagination (adapters spec, Appendix A #59): which kind a series of captured calls follows, and
 the next request of each kind.
 
 Inference reads two or more calls of one listing's series (`network_match.row_series`: one endpoint, origin, path and

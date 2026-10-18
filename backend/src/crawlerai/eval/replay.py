@@ -1,12 +1,12 @@
-"""The replay harness (SPEC-03 §4.5, ARCHITECTURE §15, G7, INV-10): the only path from eval captures to metrics.
+"""The replay harness (evaluation spec, INV-10): the only path from eval captures to metrics.
 
 `replay_split` replays every checked page of a store's split (and, for a dev report that asks, its drafts: D-1461)
 through an `Engine` and returns the cases that `build_report` (`crawlerai.eval.metrics`) scores. Every LLM call goes
 through `RecordedLLM`, which answers from the split's recorded responses, so a replay reads nothing but the bundle,
 the page's config snapshot and the recordings: two replays of one engine version give byte-identical results.
 
-`Engine` is the seam to SPEC-05: its `replay_page` runs `resolve.pipeline.extract_page`, the function the worker
-runs, with SPEC-03's signature (`eval.engine`); the engine holds its calibration, which `version` names
+`Engine` is the seam to extraction spec: its `replay_page` runs `resolve.pipeline.extract_page`, the function the worker
+runs, with evaluation spec's signature (`eval.engine`); the engine holds its calibration, which `version` names
 (`core.engine_version`). Its `ExtractionResult` is scored as the `PageOutput` that `metrics` reads.
 """
 
@@ -77,7 +77,7 @@ class RecordedLLM:
 
 class CappedLLM:
     """A live client that answers at most `max_calls` requests, then raises `BudgetExhausted` as a job without budget
-    does (SPEC-06 §4.7): the fields asked stay missing with `llm_budget`. It bounds what a local dev run spends; a
+    does (llm spec): the fields asked stay missing with `llm_budget`. It bounds what a local dev run spends; a
     recorded response costs nothing and is not counted, as `RecordedLLM` answers it before any live call."""
 
     def __init__(self, client: LLMClient, max_calls: int) -> None:
@@ -109,7 +109,7 @@ class _PageCalls:
 
 class ConfigSnapshot(BaseModel):
     """The site's active config as `eval_page.config_snapshot` holds it: the `extraction_config` row's `ir` and
-    `field_status` (ARCHITECTURE §6, §12). Other columns of the row pass through to the engine. An `ir` the IR model
+    `field_status`. Other columns of the row pass through to the engine. An `ir` the IR model
     refuses makes the snapshot invalid, and the page is dropped."""
 
     model_config = ConfigDict(frozen=True, extra="allow")
@@ -226,7 +226,7 @@ def _field_outputs(fields: FieldSet) -> dict[str, FieldOutput]:
             evidence=outcome.evidence,
             reason=outcome.reason,
             offered=_offered(outcome),
-            # A row-mapped field's rows, each scored per sub-field (SPEC-13 §4.10).
+            # A row-mapped field's rows, each scored per sub-field (variants spec).
             items=tuple(_field_outputs(row.fields) for row in outcome.items or ()),
         )
         for name, outcome in fields.items()
@@ -234,7 +234,7 @@ def _field_outputs(fields: FieldSet) -> dict[str, FieldOutput]:
 
 
 def _offered(outcome: FieldOutcome) -> dict[SourceKind, tuple[JsonValue, ...]]:
-    # Kept candidates normalized (validity, SPEC-05 §4.7); kinds sorted so two replays dump the same bytes (INV-10).
+    # Kept candidates normalized (validity, extraction spec); kinds sorted so two replays dump the same bytes (INV-10).
     offered: dict[SourceKind, list[JsonValue]] = {}
     for candidate in outcome.kept:
         if isinstance(candidate.normalized, Ok):

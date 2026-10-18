@@ -1,4 +1,4 @@
-"""Calibration and precedence fitting (SPEC-05 §4.11, ARCHITECTURE §10): buckets fitted from 20 labelled values, and a
+"""Calibration and precedence fitting (resolution spec): buckets fitted from 20 labelled values, and a
 kind moved ahead of another only when their precision intervals separate. Synthetic measurements only (C9)."""
 
 from hypothesis import given

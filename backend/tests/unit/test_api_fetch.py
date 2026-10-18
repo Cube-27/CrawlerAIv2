@@ -1,4 +1,4 @@
-"""JSON fetch (SPEC-02 §4.1, §4.5, §4.7; D-1320, D-1322): the HTTP rung's client, manual redirects through the SSRF
+"""JSON fetch (acquisition spec; D-1320, D-1322): the HTTP rung's client, manual redirects through the SSRF
 guard, the request a page's own `fetch()` would send, caps, the outcome and the manifest.
 
 The guard, redirect and cookie rules run against a stand-in network (`tests.stand_in`) with a stub resolver; no DNS.

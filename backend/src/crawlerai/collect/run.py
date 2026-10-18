@@ -1,4 +1,4 @@
-"""Every collector over one page (SPEC-05 §4.5, §4.14, ARCHITECTURE §8.1, §8.2 rule 1): their entities, candidates
+"""Every collector over one page (extraction spec rule 1): their entities, candidates
 and diagnostics as one result.
 
 The standard collectors run first, each on its own: one that raises gives no candidates and a diagnostic, and the

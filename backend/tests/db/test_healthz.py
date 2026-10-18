@@ -1,5 +1,5 @@
-"""`GET /healthz` pings the database (SPEC-07 §4.6) and reports whether the labeling endpoints are mounted, which
-the frontend's navigation reads (SPEC-12 §4.3). The unreachable case is in `tests/unit/test_api_problems.py`."""
+"""`GET /healthz` pings the database (rest-api spec) and reports whether the labeling endpoints are mounted, which
+the frontend's navigation reads (frontend spec). The unreachable case is in `tests/unit/test_api_problems.py`."""
 
 from pathlib import Path
 

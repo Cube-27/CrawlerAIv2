@@ -1,4 +1,4 @@
-"""The content fingerprint of a page (SPEC-11 §4.3, ARCHITECTURE §14): the exact digest of its visible words, so that a
+"""The content fingerprint of a page (jobs spec): the exact digest of its visible words, so that a
 page whose text did not change between runs is `unchanged` and is not extracted again, and a 64-bit SimHash of them,
 which says how far a changed page moved.
 
@@ -21,7 +21,7 @@ __all__ = ["BITS", "ContentFingerprint", "content_digest", "content_fingerprint"
 
 BITS = 64
 _SHINGLE = 3
-# A nonce, session id or cache-busting token, defined structurally (SPEC-11 §4.3): at least 16 characters, all from
+# A nonce, session id or cache-busting token, defined structurally (jobs spec): at least 16 characters, all from
 # the URL- and filename-safe base64 alphabet (RFC 4648 §5). It changes on every load without the page changing.
 _NONCE = re.compile(r"[A-Za-z0-9_-]{16,}")
 

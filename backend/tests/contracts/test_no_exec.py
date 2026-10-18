@@ -1,4 +1,4 @@
-"""INV-17 (ARCHITECTURE §11, §18): LLM output is never executed. ruff's S102 and S307 catch `exec` and `eval`
+"""INV-17: LLM output is never executed. ruff's S102 and S307 catch `exec` and `eval`
 calls; this scan also catches `compile` and imports of `subprocess`, which ruff's S rules only flag at the call."""
 
 import ast

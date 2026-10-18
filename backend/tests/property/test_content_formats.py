@@ -1,4 +1,4 @@
-"""Content-format properties (SPEC-07 §6): `links` are absolute canonical http(s) URLs, cleaned `html` runs no
+"""Content-format properties (rest-api spec): `links` are absolute canonical http(s) URLs, cleaned `html` runs no
 script, and `metadata.language` is `<html lang>`, else `og:locale`, else absent."""
 
 from html import escape

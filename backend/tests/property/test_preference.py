@@ -1,4 +1,4 @@
-"""Preference and derivation properties (SPEC-05 §4.7, §4.8): for any candidate set, exact-match values publish only
+"""Preference and derivation properties (extraction spec): for any candidate set, exact-match values publish only
 when all agree (INV-14), a query-parameter value publishes only when shown (INV-13), a page's offer fields come
 from one Offer (INV-15), and only a missing field is derived (INV-07)."""
 

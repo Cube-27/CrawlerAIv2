@@ -6,7 +6,7 @@ import { confidenceText } from "./ConfidenceCell";
 import { FieldValue } from "./FieldValue";
 
 /** The fields whose published value differs from the version the record supersedes, or null when none, as for a
- * first version (SPEC-11 §4.4). */
+ * first version (jobs spec). */
 export function changedFieldsText({ changed_fields: changed }: StoredRecord): string | null {
   return changed.length === 0 ? null : changed.join(", ");
 }
@@ -41,7 +41,7 @@ function fieldColumn(name: string, spec: FieldTypeSpec): Column {
 export const SHOWN_FIELDS = 6;
 
 /** The fields the table shows: scalar fields first, as one short value fits a cell and a list or an object does not
- * (SPEC-04 §4.1 field types), each group in the schema's order, at most `SHOWN_FIELDS`. */
+ * (schemas spec field types), each group in the schema's order, at most `SHOWN_FIELDS`. */
 export function shownFields(fieldTypes: FieldTypes): [string, FieldTypeSpec][] {
   const fields = Object.entries(fieldTypes);
   const scalar = fields.filter(([, spec]) => spec.type !== "list" && spec.type !== "object");

@@ -1,4 +1,4 @@
-"""The candidate, entity and outcome models (SPEC-05 §4.2) and INV-22: every candidate carries a locator; every
+"""The candidate, entity and outcome models (extraction spec) and INV-22: every candidate carries a locator; every
 published field carries `evidence`, `confidence`, `calibrated`, `source_kind` and `locator`."""
 
 from typing import Any

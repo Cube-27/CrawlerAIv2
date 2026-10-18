@@ -1,4 +1,4 @@
-"""Proxy pools (SPEC-02 §3, §4.5, ARCHITECTURE §7.1, D-1323, D-1324): a fetch whose policy names a configured pool goes
+"""Proxy pools (acquisition spec, D-1323, D-1324): a fetch whose policy names a configured pool goes
 through one of that pool's proxies, in every fetcher, picked in turn or kept per site, an endpoint that keeps failing
 left out for a while; and the SSRF guard still checks every host before it is requested, whichever endpoint carries it.
 

@@ -7,7 +7,7 @@
       "retrieved": "2026-10-12",
       "sha256": "45d9f126c1f5af44e41a40bbf84feafd38ca16806cb094618fa0ef6371cbdd16",
       "license": "No license stated by IANA; public registry data",
-      "justification": "Top-level domains for the C3 site-literal scan hostname pattern (SPEC-00 §4.7)."
+      "justification": "Top-level domains for the C3 site-literal scan hostname pattern."
     },
     {
       "path": "schemaorg/schemaorg-all-https.jsonld",
@@ -16,7 +16,7 @@
       "retrieved": "2026-10-13",
       "sha256": "07e7c663dbc12a0937581745e59a98ed12b8698f38e8e3b03650287d9df88ae5",
       "license": "CC BY-SA 3.0 (schema.org), used as a vocabulary file only; attribution in NOTICE",
-      "justification": "The schema.org vocabulary: types, properties and enumeration members that schema documents and enum vocabularies name (SPEC-04 §4.2, §4.6, D-0018), and the type hierarchy the structured-data collectors match `schema_org` paths by (SPEC-05 §4.5).",
+      "justification": "The schema.org vocabulary: types, properties and enumeration members that schema documents and enum vocabularies name (schemas spec, D-0018), and the type hierarchy the structured-data collectors match `schema_org` paths by (extraction spec).",
       "fetched": true
     },
     {
@@ -26,7 +26,7 @@
       "retrieved": "2026-10-14",
       "sha256": "d0279b503d909c2613005cf512c8a9d4bb5a0ecf269485aaa19dad061e240052",
       "license": "Prices transcribed from the provider's public pricing page (facts; no license stated)",
-      "justification": "USD prices per million input and output tokens of the anthropic models, for the estimated LLM cost shown for visibility, not billing (SPEC-06 §4.8, ARCHITECTURE §1)."
+      "justification": "USD prices per million input and output tokens of the anthropic models, for the estimated LLM cost shown for visibility, not billing (llm spec)."
     },
     {
       "path": "llm/gemini-pricing.json",
@@ -35,7 +35,7 @@
       "retrieved": "2026-10-14",
       "sha256": "1d524b11a7c5ab9e7727681be28c4e014062776bd0a363ef578c1cd14b97933c",
       "license": "Prices transcribed from the provider's public pricing page (facts; no license stated)",
-      "justification": "USD prices per million input and output tokens of the gemini models, for the estimated LLM cost shown for visibility, not billing (SPEC-06 §4.8, ARCHITECTURE §1)."
+      "justification": "USD prices per million input and output tokens of the gemini models, for the estimated LLM cost shown for visibility, not billing (llm spec)."
     },
     {
       "path": "llm/anthropic-structured-output.json",
@@ -44,7 +44,7 @@
       "retrieved": "2026-10-14",
       "sha256": "dae936046beb77e2b95c7d10c6b680a47d959a369876019069ee0674a1fa173c",
       "license": "Limits transcribed from the provider's public API documentation (facts; no license stated)",
-      "justification": "The JSON Schema subset Anthropic structured outputs (output_config.format) accepts: every role's output schema is checked against it (SPEC-06 §4.2)."
+      "justification": "The JSON Schema subset Anthropic structured outputs (output_config.format) accepts: every role's output schema is checked against it (llm spec)."
     },
     {
       "path": "llm/gemini-structured-output.json",
@@ -53,7 +53,7 @@
       "retrieved": "2026-10-14",
       "sha256": "5f5c4d872194a07e3fabadeff153965b36cdcc2f91f0c70c1e91dcad9d45125e",
       "license": "Limits transcribed from the provider's public API documentation (facts; no license stated)",
-      "justification": "The JSON Schema subset Gemini GenerationConfig.responseJsonSchema accepts: every role's output schema is checked against it (SPEC-06 §4.2)."
+      "justification": "The JSON Schema subset Gemini GenerationConfig.responseJsonSchema accepts: every role's output schema is checked against it (llm spec)."
     },
     {
       "path": "publicsuffix/public_suffix_list.dat",

@@ -82,7 +82,7 @@ _SCHEDULE_LINE: Final = {"id", "name", "kind", "cron", "interval_s", "timezone",
 
 def _print_openapi() -> None:
     # Sorted keys and LF bytes on every platform keep `frontend/openapi.json` byte-identical across regenerations,
-    # which the CI freshness check (SPEC-00 §4.5) relies on. The document includes the labeling endpoints whatever
+    # which the CI freshness check relies on. The document includes the labeling endpoints whatever
     # `CRAWLERAI_EVAL_UI` says, so the generated client has their types for the labeling screen.
     text = json.dumps(create_app(eval_ui=True).openapi(), indent=2, sort_keys=True) + "\n"
     sys.stdout.buffer.write(text.encode())
@@ -101,8 +101,8 @@ def _stop_on_signals() -> asyncio.Event:
 
 @asynccontextmanager
 async def _fetching(settings: Settings, connector: SafeConnector) -> AsyncIterator[Fetching]:
-    """What a process fetches pages with, as a worker does (SPEC-02 §4.4): HTTP, the shared browser, the adapters, and
-    this process's site sessions; the browser closes with it."""
+    """What a process fetches pages with, as a worker does (acquisition spec): HTTP, the shared browser, the adapters,
+    and this process's site sessions; the browser closes with it."""
     pools = settings.proxy_pools
 
     async def fetch_in(
@@ -165,7 +165,7 @@ async def _work() -> None:
             data, margins = load_engine_data(adapters), load_drift_margins()
             handlers = task_handlers(fetching, data, margins, llm=llm)
             stop = _stop_on_signals()
-            # A records crawl that completes is diffed against its earlier runs (SPEC-11 §4.5).
+            # A records crawl that completes is diffed against its earlier runs (jobs spec).
             work = [run_worker(settings, handlers, stop, ending=close_run), setup.verify()]
             if data is not None:  # learning reads the vocabulary from the data files
                 learner = run_learner(
@@ -415,8 +415,8 @@ async def _sync_presets() -> None:
 async def _apikey_create(label: str) -> None:
     async with _transaction() as conn:
         created = await create_key(conn, label)
-    # The key is printed this once; only its hash is stored (SPEC-07 §4.2). The webhook secret, which verifies the
-    # signature of the key's webhooks (SPEC-10 §4.2), is printed with it.
+    # The key is printed this once; only its hash is stored (rest-api spec). The webhook secret, which verifies the
+    # signature of the key's webhooks (jobs spec), is printed with it.
     print(
         json.dumps(
             {
@@ -460,7 +460,7 @@ async def _schedules_pause(parser: argparse.ArgumentParser, schedule_id: uuid.UU
 
 def _data_dir() -> Path:
     """`backend/data/` of the source tree this package runs from: the pinned data files, and the calibration and
-    precedence that SPEC-05 reads."""
+    precedence that extraction spec reads."""
     backend = backend_dir(Path(calibrate.__file__))  # any module one package below `crawlerai`
     if backend is None:
         raise EvalCliError("no backend source tree: data files are read from and written to backend/data/")

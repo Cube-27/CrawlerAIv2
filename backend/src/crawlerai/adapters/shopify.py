@@ -1,4 +1,4 @@
-"""Shopify storefront collections through the Storefront API (SPEC-15).
+"""Shopify storefront collections through the Storefront API (adapters spec).
 
 Endpoint, verified against the platform's Storefront API documentation (shopify.dev/docs/api/storefront, 2026-10-16):
 every shop answers `POST /api/{version}/graphql.json` on its own domain, and tokenless access serves products and
@@ -9,7 +9,7 @@ Shops live on their own domains, so a page URL alone does not say a page is a sh
 route for a collection (`/collections/{handle}`, also under a locale subfolder, `/{locale}/collections/{handle}`) is the
 candidate, and the answer's version header is the platform's signal. An answer without it is `NOT_PLATFORM`; one with
 it that holds no collection for the handle, or GraphQL `errors`, is `NOT_SERVED`. Either way the page falls back to the
-generic rungs (SPEC-15 §4.6).
+generic rungs (adapters spec).
 
 A collection's products come in pages of at most 250 (the Storefront API's `first` limit), joined by the connection's
 cursor (`pageInfo { hasNextPage endCursor }`, Relay cursor connections, the API's pagination documentation) up to the
@@ -107,7 +107,7 @@ class Shopify:
         return AdapterMatch(tenant=parts.hostname, page_kind="listing", item=handle)
 
     def serves(self, match: AdapterMatch, endpoint: str) -> bool:
-        # SPEC-15 §4.7: the API path on the page's own host (the tenant), where `fetch` asks it.
+        # adapters spec: the API path on the page's own host (the tenant), where `fetch` asks it.
         parts = urlsplit(endpoint)
         return parts.hostname == match.tenant and _ENDPOINT_PATH.fullmatch(parts.path) is not None
 

@@ -1,4 +1,4 @@
-"""`url_state` for conditional GET (SPEC-11 §4.2) and the content fingerprint (§4.3), against a real Postgres: a 200
+"""`url_state` for conditional GET (jobs spec) and the content fingerprint (§4.3), against a real Postgres: a 200
 stores the validators a URL answered with, a 304 only marks it seen, and the stored validators are what the next fetch
 sends; a fingerprint more than three bits from the stored one is a change, and replaces it."""
 

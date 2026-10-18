@@ -8,8 +8,8 @@ import type {
   SchemaPageKind,
 } from "../api/schemas";
 
-/** What `SchemaForm` edits: a schema document (SPEC-04 §4.1) with its fields as ordered rows. The UI checks only what
- * it needs to build the request; every schema rule is the server's (ARCHITECTURE §3), and its 422 is shown. */
+/** What `SchemaForm` edits: a schema document (schemas spec) with its fields as ordered rows. The UI checks only what
+ * it needs to build the request; every schema rule is the server's, and its 422 is shown. */
 
 type Scheme = NonNullable<FieldSpecInput["scheme"]>;
 type Scope = FieldSpecInput["scope"];

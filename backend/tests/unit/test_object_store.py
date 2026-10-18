@@ -1,5 +1,5 @@
-"""Contract suite for the `ObjectStore` backends (SPEC-01 §4.4, §6). Every backend runs the same tests; `s3` runs
-against moto's in-process stub, never real credentials."""
+"""Contract suite for the `ObjectStore` backends (persistence-storage spec). Every backend runs the same tests; `s3`
+runs against moto's in-process stub, never real credentials."""
 
 from collections.abc import Iterator
 from pathlib import Path

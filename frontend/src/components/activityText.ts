@@ -1,7 +1,7 @@
 import type { StreamEvent } from "../api/events";
 import { parseJsonObject, type JsonObject } from "../api/json";
 
-/** Each run event (SPEC-10 §4.2) as one plain-language line (SPEC-14 §4.5), the one place that wording lives. A line
+/** Each run event (jobs spec) as one plain-language line (frontend spec), the one place that wording lives. A line
  * says only what the event's data says: an event whose data lacks a member its line needs, or of a kind not listed
  * here, is shown as its kind name, never dropped. */
 
@@ -19,13 +19,13 @@ export function plural(n: number, word: string): string {
   return `${String(n)} ${word}${n === 1 ? "" : "s"}`;
 }
 
-// FetchSummary.method (SPEC-02): how the page was fetched.
+// FetchSummary.method (acquisition spec): how the page was fetched.
 const METHODS: Readonly<Record<string, string>> = {
   http: "Fetched over HTTP.",
   browser: "Fetched with a browser.",
 };
 
-// SPEC-02 §4.4: the block class of a page that came back as itself.
+// acquisition spec: the block class of a page that came back as itself.
 const NOT_BLOCKED = "ok";
 
 function fetched(data: JsonObject): string | null {
@@ -105,7 +105,7 @@ const LINES: Readonly<Record<string, Line>> = {
   cancelled: () => "Run cancelled.",
 };
 
-// SPEC-10 §4.2: the task counts after each batch of events. They update the counts, and are no line of their own.
+// jobs spec: the task counts after each batch of events. They update the counts, and are no line of their own.
 const PROGRESS = "progress";
 
 /** An event's line and the task URL it is about (null for the whole run); null for `progress`, which has no line. The

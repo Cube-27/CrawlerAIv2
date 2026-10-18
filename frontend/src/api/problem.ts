@@ -1,13 +1,13 @@
 import { isJsonObject } from "./json";
 
-/** The parts of an RFC 9457 problem the UI shows. SPEC-07 §4.3 defines the full body; this narrows it until the
+/** The parts of an RFC 9457 problem the UI shows. rest-api spec defines the full body; this narrows it until the
  * generated `schema.d.ts` carries the problem schema. */
 export interface ProblemSummary {
   title: string;
   detail: string | null;
 }
 
-/** One entry of a problem's `errors` (SPEC-07 §4.3): the request member and why it was refused. */
+/** One entry of a problem's `errors` (rest-api spec): the request member and why it was refused. */
 export interface FieldProblem {
   field: string;
   reason: string;
@@ -15,7 +15,7 @@ export interface FieldProblem {
 
 export interface Problem extends ProblemSummary {
   errors: FieldProblem[];
-  /** RFC 9110 §10.2.3, sent with 429 (SPEC-07 §4.2): delay-seconds or an HTTP date, as sent. */
+  /** RFC 9110 §10.2.3, sent with 429 (rest-api spec): delay-seconds or an HTTP date, as sent. */
   retryAfter: string | null;
 }
 

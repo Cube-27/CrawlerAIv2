@@ -12,7 +12,7 @@ interface AccessContextValue {
 
 const AccessContext = createContext<AccessContextValue | null>(null);
 
-/** The API client for the screens. The browser holds no key: the server that serves the UI attaches one (SPEC-14
+/** The API client for the screens. The browser holds no key: the server that serves the UI attaches one (frontend spec
  * §4.1), so a 401 can only be fixed there, and the content area shows how until the page is reloaded. */
 export function AccessProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [rejected, setRejected] = useState(false);
@@ -20,7 +20,7 @@ export function AccessProvider({ children }: Readonly<{ children: ReactNode }>) 
     const created = sameOriginClient();
     created.use({
       onResponse({ response }) {
-        // RFC 9110 §15.5.2: 401 means the request's credentials were not accepted (SPEC-07 §4.2: missing, unknown or
+        // RFC 9110 §15.5.2: 401 means the request's credentials were not accepted (rest-api spec: missing, unknown or
         // revoked).
         if (response.status === 401) setRejected(true);
       },

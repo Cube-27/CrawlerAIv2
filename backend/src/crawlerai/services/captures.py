@@ -1,9 +1,9 @@
-"""The captures service (SPEC-07 §4.6, §4.7, ARCHITECTURE §13.1): replay a stored capture with the current engine,
+"""The captures service (rest-api spec): replay a stored capture with the current engine,
 for debugging, and read a stored capture's markdown again. Nothing either makes is stored.
 
 A capture carries no schema of its own, so it replays against each schema its stored records follow, with the
 schema's current document (a schema is edited in place, §5.2). A schema the site has an active config for replays
-with that config (`config` mode, SPEC-08 §4.8), as a page fetched now would extract; nothing joins its drift
+with that config (`config` mode, learning-configs spec), as a page fetched now would extract; nothing joins its drift
 window. No replay calls an LLM: `extract_page` gets no role C.
 """
 
@@ -75,10 +75,10 @@ async def replay(
 
 
 async def markdown_of(engine: AsyncEngine, store: ObjectStore, capture_id: CaptureId) -> str:
-    """The capture's markdown, made again from its bundle: a format is a function of the capture alone (ARCHITECTURE
-    §15, INV-26), so it equals the markdown the capture's scrape answered with. The MCP `scrape` tool pages it, one
-    call per page, so the last few captures' markdown is kept and a later page is not made again; the capture row is
-    still read each time, so a capture that is gone is not found."""
+    """The capture's markdown, made again from its bundle: a format is a function of the capture alone (INV-26), so it
+    equals the markdown the capture's scrape answered with. The MCP `scrape` tool pages it, one call per page, so the
+    last few captures' markdown is kept and a later page is not made again; the capture row is still read each time, so
+    a capture that is gone is not found."""
     async with engine.connect() as conn:
         capture = await _capture(conn, capture_id)
     made = _MARKDOWN.get(capture_id)

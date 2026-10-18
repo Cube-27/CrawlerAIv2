@@ -1,4 +1,4 @@
-"""The engine's listing rows aligned with a config's rows (SPEC-08 §4.7, D-1500), for held-out validation.
+"""The engine's listing rows aligned with a config's rows (learning-configs spec, D-1500), for held-out validation.
 
 The engine's rows of a listing without structured rows come from role C, which may leave items out; a config's row
 selector selects every item. Both are in document order, so the engine's rows are matched to the config's as an

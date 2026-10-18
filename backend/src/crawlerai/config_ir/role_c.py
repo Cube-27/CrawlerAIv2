@@ -1,4 +1,4 @@
-"""The pipeline's LLM hook bound to a client (SPEC-05 §4.13, SPEC-06 §4.4, D-0483): role C for `extract_page`, on a
+"""The pipeline's LLM hook bound to a client (extraction spec, llm spec, D-0483): role C for `extract_page`, on a
 detail page's gaps, and on a listing's blocks whose rows lack row fields and its missing page fields (llm spec, "Role C
 input, claims and candidates").
 

@@ -1,4 +1,4 @@
-"""The `POST /v1/extract` body (SPEC-10 §4.6): what it accepts, what it refuses, and what the SSRF guard checks."""
+"""The `POST /v1/extract` body (jobs spec): what it accepts, what it refuses, and what the SSRF guard checks."""
 
 import uuid
 from typing import Any

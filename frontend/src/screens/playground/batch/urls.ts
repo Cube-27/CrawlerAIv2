@@ -1,6 +1,6 @@
 import { lines } from "../pageRequest";
 
-/** The URL list of the Batch command bar (SPEC-14 §4.2): one URL per line, filled by hand or from a CSV file. */
+/** The URL list of the Batch command bar (frontend spec): one URL per line, filled by hand or from a CSV file. */
 
 /** The first line of `list` that is not an absolute `http` or `https` URL (WHATWG URL Standard: it parses, with one
  * of the schemes the fetcher takes), with its line number from 1; null when every line is one. */

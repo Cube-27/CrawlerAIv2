@@ -1,4 +1,4 @@
-"""Conditional GET (SPEC-11 §4.2, §4.6): the HTTP rung sends the validators a URL last answered with, and a 304 is
+"""Conditional GET (jobs spec): the HTTP rung sends the validators a URL last answered with, and a 304 is
 `unchanged`, with no bundle.
 
 A local server on 127.0.0.1 serves one synthetic page under a `.test` host and answers conditional requests as RFC

@@ -1,4 +1,4 @@
-"""Induction (SPEC-08 §4.5, ARCHITECTURE §8.3 step 1): selectors generalized from the locators of the values the engine
+"""Induction (learning-configs spec): selectors generalized from the locators of the values the engine
 published on the learning sample, without an LLM. What the engine published is the learning oracle: its own values and
 role C's grounded ones (a verbatim span of the cleaned text, INV-12, or a link's or image's element).
 
@@ -54,8 +54,8 @@ from crawlerai.normalize.dispatch import equal
 from crawlerai.schemas.types import NEXT_PAGE_FIELD, FieldSpec, FieldType, SchemaDef
 
 # A class token that reads as a word or kebab-case words is a stable anchor; tokens that build tools hash carry
-# uppercase letters, underscores or long digit runs. A structural property of the token (SPEC-08 §4.5, D-0031), not a
-# list of names.
+# uppercase letters, underscores or long digit runs. A structural property of the token (learning-configs spec, D-0031),
+# not a list of names.
 _STABLE_CLASS = re.compile(r"[a-z][a-z0-9]*(-[a-z0-9]+)*")
 _DIGIT_RUN = re.compile(r"\d{3}", re.ASCII)
 # RFC 9535 §2.3.3: an index segment.
@@ -194,7 +194,7 @@ def _locators(f: _Field) -> list[Locator] | None:
 
 
 def _mapped(name: str, scheme: str, locators: Sequence[Locator], result: Induction) -> None:
-    # SPEC-08 §4.5: values an adapter or API recipe published come from its mapping, which the config reuses.
+    # learning-configs spec: values an adapter or API recipe published come from its mapping, which the config reuses.
     mappings = {locator.parts[0] for locator in locators}
     if len(mappings) == 1:
         result.mapped[name] = f"{scheme}:{mappings.pop()}"
@@ -359,7 +359,7 @@ def xpath_candidates(element: HtmlElement, spec: FieldSpec) -> Iterator[_Candida
 
 def anchored_paths(element: HtmlElement) -> Iterator[str]:
     """`//anchor-test[anchor]/child/.../element` for each anchor of `element` and its ancestors, nearest first, without
-    positional predicates (SPEC-08 §4.5)."""
+    positional predicates (learning-configs spec)."""
     below = ""
     node: HtmlElement | None = element
     while node is not None and isinstance(node.tag, str):
@@ -371,7 +371,7 @@ def anchored_paths(element: HtmlElement) -> Iterator[str]:
 
 
 def anchors(node: HtmlElement) -> Iterator[str]:
-    """The node's stable anchors: `@id`, `@itemprop`, `@data-*` and stable class tokens (SPEC-08 §4.5)."""
+    """The node's stable anchors: `@id`, `@itemprop`, `@data-*` and stable class tokens (learning-configs spec)."""
     for name in ("id", "itemprop"):
         if (value := node.get(name)) and (literal := _literal(value)) is not None:
             yield f"@{name}={literal}"

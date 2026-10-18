@@ -1,4 +1,4 @@
-"""Ownership (SPEC-05 §4.6, ARCHITECTURE §8.2 rule 3): a candidate belongs to the entity that holds it, and only
+"""Ownership (extraction spec rule 3): a candidate belongs to the entity that holds it, and only
 the target's own candidates, the page's, and those of an Offer of the target are the target's."""
 
 from pathlib import Path

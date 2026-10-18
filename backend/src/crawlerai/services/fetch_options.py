@@ -1,4 +1,4 @@
-"""The `fetch` member every page request shares (scrape, batch, crawl, extract; SPEC-07 §4.4): how its pages are
+"""The `fetch` member every page request shares (scrape, batch, crawl, extract; rest-api spec): how its pages are
 fetched, and the fetch policy it makes for a page (`fetch_policy`).
 
 Besides the method hint, robots.txt override, proxy pool and row target, it carries the caller's request context

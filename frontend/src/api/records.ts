@@ -1,19 +1,19 @@
-/** `GET /v1/records` and `POST /v1/captures/{id}/replay` (SPEC-07 §4.6), typed from the generated client. */
+/** `GET /v1/records` and `POST /v1/captures/{id}/replay` (rest-api spec), typed from the generated client. */
 import type { ApiClient } from "./client";
 import { apiResult, type ApiResult } from "./result";
 import type { components, operations } from "./schema";
 
 type Schemas = components["schemas"];
 
-/** A stored record: the field shape of SPEC-07 §4.4, with the capture it was extracted from (null once the capture
- * expired), the schema version its fields follow, and its own version (ARCHITECTURE §14). */
+/** A stored record: the field shape of rest-api spec, with the capture it was extracted from (null once the capture
+ * expired), the schema version its fields follow, and its own version. */
 export type StoredRecord = Schemas["StoredRecord"];
 
 /** One page of records, newest first; `next_cursor` is null on the last page. */
 export type RecordPage = Schemas["RecordPage"];
 
 /** The filters `GET /v1/records` takes; an empty one is left out. `changed_since` is an ISO 8601 instant: only the
- * new entities and new versions stored from then on, the change feed (SPEC-11 §4.4). */
+ * new entities and new versions stored from then on, the change feed (jobs spec). */
 export interface RecordFilters {
   schema_id: string;
   job_id: string;
@@ -49,7 +49,7 @@ export function listRecords(
   );
 }
 
-/** Replays the capture with the current engine, cold until SPEC-08 wires configs, calling no LLM (SPEC-07 §4.6). */
+/** Replays the capture with the current engine, cold until learning-configs spec wires configs, calling no LLM (rest-api spec). */
 export function replayCapture(
   client: ApiClient,
   captureId: string,

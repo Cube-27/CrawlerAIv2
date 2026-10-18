@@ -1,7 +1,7 @@
 """What the services that fetch while their caller waits (`scrape`, `map`, `extract`) and the worker's handlers fetch
 with: the rungs and guard of this process, the SSRF guard's refusals (INV-16), and the page fetch they send through
-the one polite fetch (`services.polite`, SPEC-02 §4.6): the page through `acquire`, its adapter's and active config's
-API recipe's requests sent as politely as a page's (SPEC-09 §4.8, SPEC-15 §4.6), as a learning run's recipe replays
+the one polite fetch (`services.polite`, acquisition spec): the page through `acquire`, its adapter's and active
+config's API recipe's requests sent as politely as a page's (adapters spec), as a learning run's recipe replays
 are (§4.6, §4.7), and the plain HTTP fetches of a site's sitemaps.
 """
 
@@ -56,7 +56,7 @@ from crawlerai.storage.base import ObjectStore
 @dataclass(frozen=True)
 class Fetching:
     """What a service fetches with: the rungs, the SSRF guard they connect through, the object store captures go to,
-    and the per-host limiter (SPEC-02 §4.6) of this process."""
+    and the per-host limiter (acquisition spec) of this process."""
 
     rungs: Rungs
     connector: SafeConnector
@@ -110,7 +110,7 @@ async def check_target(connector: SafeConnector, url: str) -> None:
 
 def refusal(result: FetchResult) -> str | None:
     """The guard's refusal of a request of the fetch, which a rung records as the attempt's error rather than raising
-    (SPEC-02 §4.11); `None` when it refused none."""
+    (acquisition spec); `None` when it refused none."""
     return next((a.error for a in result.attempts if a.error is not None and a.error.startswith(SSRF_REJECTED)), None)
 
 
@@ -151,7 +151,7 @@ class _Turn:
 def recipe_rung(
     fetching: Fetching, recipe: ApiRecipe, page_host: str, rules: ReadRules, waiting: Waiting = IN_PLACE
 ) -> RecipeRung | None:
-    """`recipe` bound to this process's rungs (SPEC-09 §4.8), for a page on `page_host` whose robots.txt the caller
+    """`recipe` bound to this process's rungs (adapters spec), for a page on `page_host` whose robots.txt the caller
     has checked and whose turn at the host's rate it has taken. That turn goes to the first request to the host: the
     HTML page the recipe fetches to bind, or else its endpoint. An endpoint is requested only where its host's
     robots.txt (`rules`) allows it, at that host's rate, waiting in place for a turn of its own when it needs one; a
@@ -173,7 +173,7 @@ def recipe_rung(
 def adapter_send(
     fetching: Fetching, page_host: str, rules: ReadRules, waiting: Waiting = IN_PLACE
 ) -> JsonFetcher | None:
-    """The JSON fetch an adapter requests its API with (SPEC-15 §4.6), for a page on `page_host` whose robots.txt the
+    """The JSON fetch an adapter requests its API with (adapters spec), for a page on `page_host` whose robots.txt the
     caller has checked and whose turn at the host's rate it has taken: an endpoint is requested only where its host's
     robots.txt (`rules`) allows it, at that host's rate; the first request to the page's host takes the caller's turn,
     as a recipe's does. A request robots.txt keeps from being sent leaves the page to the page rungs. None without the
@@ -216,7 +216,7 @@ def _polite_send(
 
 
 def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
-    """A learning run's recipe replays (SPEC-09 §4.6, §4.7) over this process's JSON rung, as politely as a served
+    """A learning run's recipe replays (adapters spec) over this process's JSON rung, as politely as a served
     recipe's request: only where the endpoint host's robots.txt allows it, at that host's rate (D-0731). A `learn` job
     names no fetch policy, so replays go with the default one, which respects robots.txt, through the site's proxy
     pool, as its pages are fetched; their requests, robots.txt's too, count as the job's usage (D-1381). None without
@@ -257,7 +257,7 @@ class RecipePages:
     async def rung(self, recipe: RecipeRung, url: str, policy: FetchPolicy) -> Rung | None:
         """The recipe rung `acquire` fetches the page through: one that answers with the first page the listing recipe
         served, its further pages kept, so `acquire` keeps or falls back from that one answer as from any recipe's
-        (SPEC-09 §4.8); None when it served no page. Each page request waits for its host's rate on its own
+        (adapters spec); None when it served no page. Each page request waits for its host's rate on its own
         (`recipe_rung`)."""
         pages = [
             page async for page in recipe.pages(url, policy, records=None, limit=self.limit, deadline=self.deadline)
@@ -346,7 +346,7 @@ class PagePlan:
     """How a page is fetched: the site's rungs (`site_rungs`), its row, the policy, the attempts every request of the
     fetch is added to, the site's active API `recipe` (with `pages` when it serves a listing in pages), the check that
     renders an HTTP page lacking what the caller reads (owner #49, #54), and the validators the page last answered with
-    when a record stands for it (SPEC-11 §4.2); `growth`, a single-URL listing scrape's browser actions in `auto`
+    when a record stands for it (jobs spec); `growth`, a single-URL listing scrape's browser actions in `auto`
     (`Growth`)."""
 
     rungs: Rungs

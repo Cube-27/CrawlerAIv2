@@ -1,4 +1,4 @@
-"""The page content formats (SPEC-07 §4.5, ARCHITECTURE §8.5): markdown, cleaned html, links and metadata, each
+"""The page content formats (rest-api spec): markdown, cleaned html, links and metadata, each
 read from the shared `ParsedPage`."""
 
 from crawlerai.content.markdown import markdown

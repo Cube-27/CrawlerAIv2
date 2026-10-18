@@ -1,7 +1,7 @@
 import type { StreamState } from "../api/events";
 import { StatusLabel, type StatusTone } from "./StatusLabel";
 
-// One tone per stream state: receiving, waiting to reconnect (SPEC-12 §4.5), closed after the job's end, or refused.
+// One tone per stream state: receiving, waiting to reconnect (frontend spec), closed after the job's end, or refused.
 const STATE_TONES: Record<StreamState, StatusTone> = {
   connecting: "neutral",
   live: "accent",

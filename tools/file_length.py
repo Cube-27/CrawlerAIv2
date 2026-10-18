@@ -1,4 +1,4 @@
-"""Warn about tracked source files longer than 800 lines (C11, INV-18, ARCHITECTURE Appendix A #33).
+"""Warn about tracked source files longer than 800 lines (C11, INV-18).
 
 800 lines is a soft limit: this check prints one warning per file past it and always exits 0. A file past the limit
 is split along logical boundaries (cohesive modules, field types per C8), never mechanically to meet the number.

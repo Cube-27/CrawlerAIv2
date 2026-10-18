@@ -1,7 +1,7 @@
-"""A crawl's frontier (SPEC-10 §4.5, ARCHITECTURE §13.2): the URLs a fetched page contributes, which of them the crawl
+"""A crawl's frontier (jobs spec): the URLs a fetched page contributes, which of them the crawl
 takes, and enqueueing them as the job's tasks.
 
-A page contributes its links (SPEC-07 §4.5) and its next-page candidates (SPEC-05 §4.12), in canonical form
+A page contributes its links (rest-api spec) and its next-page candidates (extraction spec), in canonical form
 (`crawl.canonical`). The crawl takes those its request's scope admits (`crawl.rules.Scope`), and never one off the start
 page's host and its subdomains, whatever an `include` glob matches (D-0037): every page fetched is on the site the
 caller named, on the host the site's own redirect of the start URL put it, when that host is on the same site (D-0991).

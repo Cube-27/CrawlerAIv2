@@ -8,12 +8,12 @@ A label file is JSON, `{"pages": [<page>, ...]}`; other top-level keys are ignor
 - `fields`: `{name: value}`, a detail page's fields or a listing's page fields;
 - `rows`: `[{name: value}, ...]`, a listing's rows in page order;
 - `notes`: free text, kept on the labels.
-Other keys of a page are ignored. A value is what the field type's normalizer reads (SPEC-04 §4.4): a string, or the
+Other keys of a page are ignored. A value is what the field type's normalizer reads (schemas spec): a string, or the
 structured forms it accepts (money `{amount, currency}`, an enum member's schema.org IRI, a schema.org `Place`), or a
 location in its normalized form (`{text, ...}`), read by its `text` as the page writes it. It is stored as the
 normalizer's value, normalized in the captured page's context, as the pipeline normalizes what it collects; `null`
 leaves the field unlabeled. A value the normalizer declines, a list of which it drops an item, and a row-mapped field
-(whose rows a labeler labels, SPEC-13 §4.10) are left unlabeled and reported by path and reason.
+(whose rows a labeler labels, variants spec) are left unlabeled and reported by path and reason.
 
 A field the file does not give is unlabeled, never `absent`: a draft claims nothing about it, and metrics don't score
 it. Drafts name no labeler and never count as ground truth (§16.2): only a dev report that asks for drafts scores

@@ -1,9 +1,9 @@
-"""Which adapter, if any, serves a URL or reads a capture (SPEC-02 §4.4, §4.9; SPEC-15 §4.2, §4.7).
+"""Which adapter, if any, serves a URL or reads a capture (acquisition spec; adapters spec).
 
 Every platform adapter runs unless the deployment disables it (`CRAWLERAI_DISABLED_ADAPTERS`, owner 2026-10-16); the
 caller builds the registry from the running ones (`acquire.rungs.adapter_registry`).
 
-A platform on tenants' own hosts (SPEC-15) can only tell a host is not its own from the host's answer. A host that
+A platform on tenants' own hosts (adapters spec) can only tell a host is not its own from the host's answer. A host that
 answered an adapter without the platform's signal (`NOT_PLATFORM`) is declined for that adapter for a while, so a
 site that is not the platform's gets at most one adapter request per window. A registry remembers the declines it
 made for as long as it lives; the processes that fetch take one per page (`for_host`) from the declines stored on the
@@ -103,7 +103,7 @@ class Registry:
 
     def referred(self, refs: Callable[[], PageRefs], kind: PageKind | None) -> str | None:
         """The platform page URL the page with `refs` (read only when an active adapter refers) stands for, by the
-        first active adapter whose `referred` names one it has not declined the host of (SPEC-15 §4.2)."""
+        first active adapter whose `referred` names one it has not declined the host of (adapters spec)."""
         referring = [adapter for adapter in self._active if isinstance(adapter, Referring)]
         if not referring:
             return None

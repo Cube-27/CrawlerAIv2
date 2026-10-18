@@ -1,4 +1,4 @@
-"""Recipe execution (SPEC-09 §4.8, ARCHITECTURE §7.1 "Adapter / API" rung, §8.6): serve a site's pages with its
+"""Recipe execution (adapters spec rung, §8.6): serve a site's pages with its
 active config's API recipe over `fetch_json`, with no browser.
 
 `RecipeRung` is the recipe bound to its fetchers, the rung `acquire` takes (`acquire.rungs`): it binds the
@@ -39,7 +39,7 @@ from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 
-# A listing served by its recipe sends at most this many page requests (SPEC-09 §4.8): the records target ends it
+# A listing served by its recipe sends at most this many page requests (adapters spec): the records target ends it
 # sooner, and a pagination that never ends (a cursor that comes back) is cut here.
 MAX_PAGES: Final = 50
 
@@ -53,7 +53,7 @@ def recipe_collector(recipe: ApiRecipe, recipe_id: str) -> ApiCollector:
 @dataclass(frozen=True, slots=True)
 class RecipeExecutor:
     """The `ConfigExecutor` of the captures a config's recipe fetched: the recipe's collector, with the status of the
-    config's fields the recipe maps, which role C is then not asked for (SPEC-08 §4.8)."""
+    config's fields the recipe maps, which role C is then not asked for (learning-configs spec)."""
 
     recipe: ApiRecipe
     collector: ApiCollector

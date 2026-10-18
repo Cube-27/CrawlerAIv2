@@ -1,4 +1,4 @@
-"""The `POST /v1/batch/scrape` body (SPEC-10 §4.3): what it accepts, and what it refuses."""
+"""The `POST /v1/batch/scrape` body (jobs spec): what it accepts, and what it refuses."""
 
 import uuid
 from typing import Any

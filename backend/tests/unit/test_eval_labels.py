@@ -1,4 +1,4 @@
-"""Eval page labels (SPEC-03 §4.3, §4.11): the jsonb document round-trips, and every invalid document is refused
+"""Eval page labels (evaluation spec): the jsonb document round-trips, and every invalid document is refused
 with the field and the reason, all errors at once."""
 
 import copy

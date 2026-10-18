@@ -39,7 +39,7 @@ export function NameValueTable({
   );
 }
 
-/** The page's links (SPEC-07 §4.5), as text: they lead to other sites and are not followed from here. */
+/** The page's links (rest-api spec), as text: they lead to other sites and are not followed from here. */
 export function LinksTable({ links }: Readonly<{ links: readonly string[] }>) {
   return (
     <Table>
@@ -114,7 +114,7 @@ export function UsageTable({ usage }: Readonly<{ usage: ScrapeResponse["usage"] 
   );
 }
 
-/** A page's screenshot, shown as the API serves it: the UI's server attaches the API key to `/v1` (SPEC-12 §4.1), so the
+/** A page's screenshot, shown as the API serves it: the UI's server attaches the API key to `/v1` (frontend spec), so the
  * image loads from the artifact's URL. */
 export function ScreenshotView({ artifact }: Readonly<{ artifact: Artifact }>) {
   return (

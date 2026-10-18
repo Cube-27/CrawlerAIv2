@@ -16,7 +16,7 @@ const RECORD_ID = "0192a000-0000-7000-8000-000000000301";
 const SECOND_JOB_ID = "0192a000-0000-7000-8000-000000000902";
 const JOB = `/v1/jobs/${JOB_ID}`;
 
-/** A `learn` job: no playground mode runs it, so it keeps its job page (SPEC-14 §4.8). */
+/** A `learn` job: no playground mode runs it, so it keeps its job page (frontend spec). */
 function job(overrides: Partial<JobSummary> = {}): JobSummary {
   return jobSummary({ id: JOB_ID, kind: "learn", ...overrides });
 }

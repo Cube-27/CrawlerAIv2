@@ -47,7 +47,7 @@ function ReviewForm({
 }
 
 /** The schema the server drafts from `fields` for `pageKind` pages, in a drawer from the right, for review before the
- * run (SPEC-14 §4.10): Run sends it as drafted, or as edited; closing the drawer sends nothing. */
+ * run (frontend spec): Run sends it as drafted, or as edited; closing the drawer sends nothing. */
 export function DraftReview({
   fields,
   pageKind,

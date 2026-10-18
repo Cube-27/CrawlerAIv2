@@ -1,4 +1,4 @@
-"""Role C on a detail page and a listing (SPEC-06 §4.4, §4.7, §6, INV-12): a deterministic request, grounded
+"""Role C on a detail page and a listing (llm spec, INV-12): a deterministic request, grounded
 candidates, dropped ungrounded values, claims per block grounded in their block, and failures that leave fields missing
 with their reason. The client is scripted; no provider is called. Pages are synthetic (`example.test`)."""
 

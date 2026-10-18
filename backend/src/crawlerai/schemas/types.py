@@ -1,4 +1,4 @@
-"""The schema document (SPEC-04 §4.2, ARCHITECTURE §5): field types, field specs and the schema itself.
+"""The schema document (schemas spec): field types, field specs and the schema itself.
 
 A schema is data, so these models are the boundary every schema crosses, whether it comes from a preset file, the
 API or a role S draft: a document that validates here is one the normalizers and the resolver can run.
@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from crawlerai.db.models import PageKind, SchemaId, SchemaOrigin, SchemaStatus
 
-# ARCHITECTURE §5.3: the listing presets' page-level next-page field, which pagination (SPEC-05 §4.12) and a
+# The listing presets' page-level next-page field, which pagination (extraction spec) and a
 # config's `next` step (§12.1) fill.
 NEXT_PAGE_FIELD = "next_page_url"
 
@@ -46,7 +46,7 @@ NAME_PATTERN = r"[a-z][a-z0-9_]{0,63}"
 Name = Annotated[str, StringConstraints(pattern=rf"^{NAME_PATTERN}$")]
 # schema.org naming conventions: types are UpperCamelCase, properties lowerCamelCase. A path starts at a type and
 # follows properties; `+` joins a second property of the last type into one atomic value (`Offer.price+priceCurrency`).
-# `|` separates up to four alternatives, whose candidates are pooled (SPEC-13 §4.1): `Product.sku|Offer.sku`; `>` ranks
+# `|` separates up to four alternatives, whose candidates are pooled (variants spec): `Product.sku|Offer.sku`; `>` ranks
 # them: the alternatives after it are read on an entity only when those before it reach no value there
 # (`Product.gtin13>Product.gtin`).
 _ALTERNATIVE = r"[A-Z][A-Za-z0-9]*(\.[a-z][A-Za-z0-9]*)+(\+[a-z][A-Za-z0-9]*)?"
@@ -76,7 +76,7 @@ class FieldSpec(_Model):
     """One field of a schema, or the item of a list.
 
     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
-    `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (SPEC-13
+    `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants spec
     §4.2): the path names the row entities, and `key` names the sub-fields that identify a row.
     """
 
@@ -93,7 +93,7 @@ class FieldSpec(_Model):
 
     @property
     def row_mapped(self) -> bool:
-        """A `list` of `object` whose rows a `schema_org` path finds (SPEC-13 §4.2)."""
+        """A `list` of `object` whose rows a `schema_org` path finds (variants spec)."""
         return self.schema_org is not None and self.item is not None and self.item.type is FieldType.OBJECT
 
     @model_validator(mode="after")
@@ -192,7 +192,7 @@ def _check_field(path: str, spec: FieldSpec, *, depth: int, described: bool) -> 
 
 
 class SchemaDef(SchemaDocument):
-    """A `schema_def` row (ARCHITECTURE §6): a document plus where it came from and whether it is in use. One row per
+    """A `schema_def` row: a document plus where it came from and whether it is in use. One row per
     name, edited in place.
 
     `labels` are the synonyms role S drafted for its fields' labels, by field (extraction spec, "Label vocabulary"),
@@ -208,8 +208,8 @@ class SchemaDef(SchemaDocument):
 
 def document_digest(schema: SchemaDocument) -> str:
     """sha256, hex, of the schema's document as canonical JSON (RFC 8259 text, sorted keys, no insignificant
-    whitespace): what a record was extracted, or a config learned, with. A schema is edited in place (ARCHITECTURE
-    §5.2), so equal digests are the same document."""
+    whitespace): what a record was extracted, or a config learned, with. A schema is edited in place, so equal digests
+    are the same document."""
     document = schema.model_dump(mode="json", include=set(SchemaDocument.model_fields), exclude_none=True)
     canonical = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode()).hexdigest()

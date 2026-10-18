@@ -1,4 +1,4 @@
-"""Identity (SPEC-05 §4.5, §4.6): the entities that state one item are one entity, whichever collector found them.
+"""Identity (resolution spec): the entities that state one item are one entity, whichever collector found them.
 
 The entities considered are the items that stand on their own (a root, or an item only lists hold) and the members of
 a product group (`hasVariant`). Two of them of one most specific type are one item when
@@ -10,9 +10,9 @@ a product group (`hasVariant`). Two of them of one most specific type are one it
   product: a page often states its items in two syntaxes (JSON-LD and microdata), and a URL naming the page itself
   names no item.
 Every pair that agrees joins, so two later entities that agree join even when an earlier one stays apart. Two members
-of product groups never join (two variants sharing a sku are two sizes of one sku, SPEC-13 INV-33), nor does an entity
-join its own ancestor. The merged entity is the group member when there is one, else the first in collector order; it
-takes every member's URLs, identity and children, and their candidates (`EntityGraph.adopt`).
+of product groups never join (two variants sharing a sku are two sizes of one sku, variants spec INV-33), nor does an
+entity join its own ancestor. The merged entity is the group member when there is one, else the first in collector
+order; it takes every member's URLs, identity and children, and their candidates (`EntityGraph.adopt`).
 
 A standalone Product whose `inProductGroupWithID` is the `productGroupID` of one standalone ProductGroup on the page is
 that group's variant, as `hasVariant` would state it (schema.org: "the productGroupID for a ProductGroup that this
@@ -129,7 +129,7 @@ def _url_joins(a: Entity, b: Entity) -> bool:
 
 
 def _collector(entity: Entity) -> str:
-    # An entity id starts with its collector's locator scheme (`jsonld:`, `microdata:`, SPEC-05 §4.3).
+    # An entity id starts with its collector's locator scheme (`jsonld:`, `microdata:`, resolution spec).
     return entity.id.partition(":")[0]
 
 

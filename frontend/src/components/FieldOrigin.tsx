@@ -3,7 +3,7 @@ import type { RecordField } from "../api/scrape";
 type Evidence = NonNullable<RecordField["evidence"]>;
 type SourceKind = NonNullable<RecordField["source_kind"]>;
 
-// Words for the server's codes (SPEC-05 §4.2, ARCHITECTURE §10). Each map covers every code the API can send, so a new
+// Words for the server's codes (extraction spec). Each map covers every code the API can send, so a new
 // code is a type error here rather than a raw code on screen.
 const EVIDENCE_LABELS: Readonly<Record<Evidence, string>> = {
   adapter: "Platform API",
@@ -38,12 +38,12 @@ function Coded({ code, label }: Readonly<{ code: string | null; label: Record<st
   return <span title={code}>{label[code] ?? code}</span>;
 }
 
-/** A field's evidence bucket (ARCHITECTURE §10) in words, its code on hover; "—" for none. */
+/** A field's evidence bucket in words, its code on hover; "—" for none. */
 export function EvidenceText({ evidence }: Readonly<{ evidence: Evidence | null }>) {
   return <Coded code={evidence} label={EVIDENCE_LABELS} />;
 }
 
-/** A field's source kind (SPEC-05 §4.3) in words, its code on hover; "—" for none. */
+/** A field's source kind (extraction spec) in words, its code on hover; "—" for none. */
 export function SourceKindText({ kind }: Readonly<{ kind: SourceKind | null }>) {
   return <Coded code={kind} label={SOURCE_LABELS} />;
 }

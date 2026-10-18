@@ -1,4 +1,4 @@
-"""Activation (SPEC-08 §4.8, ARCHITECTURE §8.3 step 5): a validated config is stored as the next version of its (site,
+"""Activation (learning-configs spec): a validated config is stored as the next version of its (site,
 schema, page kind) config, `active`, with its field statuses and `validation_report`; the config active before it is
 `suspended`, and the learning run in flight ends with the state `active` on the new config.
 
@@ -143,7 +143,7 @@ def _field_names(ir: ExtractionConfigIR) -> set[str]:
 
 
 async def _check_key(conn: AsyncConnection, key: StateKey, ir: ExtractionConfigIR) -> None:
-    """The config names the state's site, schema and page kind (ARCHITECTURE §6: configs are per schema)."""
+    """The config names the state's site, schema and page kind (configs are per schema)."""
     host = select(Site.host).where(Site.id == key.site_id).scalar_subquery()
     schema = select(SchemaDef.name).where(SchemaDef.id == key.schema_id)
     found = (await conn.execute(select(host, schema.scalar_subquery()))).one()
@@ -156,7 +156,7 @@ async def _check_key(conn: AsyncConnection, key: StateKey, ir: ExtractionConfigI
 
 
 async def _suspend_active(conn: AsyncConnection, key: StateKey) -> None:
-    # ARCHITECTURE §6: one active config per (site, schema, page kind); the one before is suspended.
+    # One active config per (site, schema, page kind); the one before is suspended.
     configs = ExtractionConfig
     active = (*key.config_scope(), configs.status == "active")
     await conn.execute(update(configs).where(*active).values(status="suspended"))

@@ -1,4 +1,4 @@
-"""The structural DOM collector (SPEC-05 §4.5, ARCHITECTURE §8.1; the §22 candidate "generic structural DOM
+"""The structural DOM collector (extraction spec; the §22 candidate "generic structural DOM
 collectors", label-value pairs, admitted by the owner on 2026-10-16): values a detail page shows in HTML structures
 whose meaning the HTML Standard defines, for pages whose structured data leaves fields without candidates.
 

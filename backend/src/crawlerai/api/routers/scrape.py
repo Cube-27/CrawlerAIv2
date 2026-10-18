@@ -1,4 +1,4 @@
-"""`POST /v1/scrape` (SPEC-07 §4.4): the scrape service over HTTP. A page that could not be fetched is an outcome in
+"""`POST /v1/scrape` (rest-api spec): the scrape service over HTTP. A page that could not be fetched is an outcome in
 a 200 answer; a refused target, a schema `records` cannot use, and a timeout are problems (§4.8)."""
 
 from typing import Annotated

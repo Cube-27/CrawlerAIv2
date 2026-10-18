@@ -1,4 +1,4 @@
-"""The MCP server over stdio (SPEC-10 §4.7), acting with one API key: `CRAWLERAI_API_KEY`. The key is looked up on
+"""The MCP server over stdio (jobs spec), acting with one API key: `CRAWLERAI_API_KEY`. The key is looked up on
 every call, as the API looks up each request's, so a revoked key stops working at once. A local process has one
 client, so no rate limit stands in front of the lookup."""
 

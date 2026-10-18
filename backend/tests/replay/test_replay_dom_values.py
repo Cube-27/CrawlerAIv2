@@ -1,4 +1,4 @@
-"""Structural DOM values replayed through `extract_page` on synthetic captures (SPEC-05 §4.5, ARCHITECTURE §8.1, §22
+"""Structural DOM values replayed through `extract_page` on synthetic captures (extraction spec,
 admitted 2026-10-16): a page without structured data publishes the brand, sku, availability and main image it shows
 in a labelled table and its main region, in the `dom` evidence bucket; where structured data states the same value
 the two agree, and where it states another the field resolves as any disagreement does. Pages are synthetic

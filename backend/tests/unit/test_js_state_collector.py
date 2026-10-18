@@ -1,4 +1,4 @@
-"""The embedded JSON state collector (SPEC-05 §4.5, ARCHITECTURE §8.1): JSON in inline scripts, admitted only by
+"""The embedded JSON state collector (extraction spec): JSON in inline scripts, admitted only by
 equality to another source kind's candidate (not independent, owned by that candidate's entity) or, for a field with no
 such candidate whose type has a checkable syntax, by visibility in the page text (independent, owned by the page, or by
 the array row holding it)."""
@@ -82,7 +82,7 @@ def _collect(page: ParsedPage, *others: Candidate) -> Admitted:
 
 
 def test_a_value_equal_to_another_kinds_candidate_is_owned_by_its_entity_and_not_independent() -> None:
-    # Not visible: equality alone admits it. Equality is the field type's (SPEC-04), not the raw string's.
+    # Not visible: equality alone admits it. Equality is the field type's (schemas spec), not the raw string's.
     result = _collect(_state({"p": {"cost": "€19.99"}}), JSONLD_PRICE)
 
     assert result == Admitted(

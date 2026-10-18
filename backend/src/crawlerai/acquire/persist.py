@@ -1,6 +1,6 @@
-"""Persist a fetched page (SPEC-02 §4.10): its bundle to the object store, and a `capture` row describing it.
+"""Persist a fetched page (acquisition spec): its bundle to the object store, and a `capture` row describing it.
 
-Eval captures never come here: they encode the bundle and write it under their own prefixes (SPEC-03, C1).
+Eval captures never come here: they encode the bundle and write it under their own prefixes (evaluation spec, C1).
 """
 
 import asyncio
@@ -15,7 +15,7 @@ from crawlerai.storage.artifacts import artifact_key
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.capture_bundle import capture_key, encode
 
-CAPTURE_TTL = timedelta(days=30)  # production captures (SPEC-01 §4.4)
+CAPTURE_TTL = timedelta(days=30)  # production captures (persistence-storage spec)
 
 
 async def store_capture(
@@ -51,7 +51,7 @@ async def store_capture(
             expires_at=None if expires_in is None else manifest.fetched_at + expires_in,
             size_bytes=len(blob),
             duration_ms=result.duration_ms,
-            # SPEC-02 §4.4: the row keeps every rung tried, beside the policy they ran under.
+            # acquisition spec: the row keeps every rung tried, beside the policy they ran under.
             fetch_policy=policy_with_attempts(manifest.fetch_policy, result.attempts),
         )
     )

@@ -1,4 +1,4 @@
-"""The normalization context of a captured page (SPEC-04 §4.3, ARCHITECTURE §9): what the page states about its
+"""The normalization context of a captured page (schemas spec): what the page states about its
 language and URLs, and when it was fetched.
 
 Only evidence the page or the request states is read (C7): `<html lang>`, `og:locale`, the `hreflang` of the alternate

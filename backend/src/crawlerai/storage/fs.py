@@ -1,4 +1,5 @@
-"""Filesystem `ObjectStore` for development and CI (SPEC-01 §4.4): one file per key under a root directory."""
+"""Filesystem `ObjectStore` for development and CI (persistence-storage spec): one file per key under a root
+directory."""
 
 import builtins
 import os

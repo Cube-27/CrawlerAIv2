@@ -1,18 +1,18 @@
-"""The extract service (SPEC-10 §4.6, ARCHITECTURE §13.1): records of one page kind from URLs and URL globs, as one
+"""The extract service (jobs spec): records of one page kind from URLs and URL globs, as one
 job of kind `extract` with a `url_task` per page. Workers run the tasks as they run a records batch's
 (`crawlerai.worker.handlers.scrape`), and `GET /v1/jobs/{id}/results` returns the records.
 
 A URL with a `*` is a glob (`is_glob`), expanded through `map` on its host (§4.4): the URLs the host's
 sitemaps and start page give that the glob matches. The tasks are the given URLs, then each glob's URLs, once each in
-canonical form, cut at `limit`. Every URL is caller-supplied, those a glob gave too (ARCHITECTURE §10): a page whose
+canonical form, cut at `limit`. Every URL is caller-supplied, those a glob gave too: a page whose
 required fields don't all publish keeps its record, `complete=false`, with outcome `partial`.
 
-The schema is named by id or given inline, or drafted from a `prompt` by role S (SPEC-06 §4.5) while the caller
+The schema is named by id or given inline, or drafted from a `prompt` by role S (llm spec) while the caller
 waits: from the cleaned text of the first pages, up to three, of those reached among the first three task URLs. The
-draft is returned with the job. Field names are drafted from the names alone, before anything is stored (SPEC-14
-§4.10). Each task is extracted in its site's progressive mode (ARCHITECTURE §8.3): the job
+draft is returned with the job. Field names are drafted from the names alone, before anything is stored (frontend spec
+§4.10). Each task is extracted in its site's progressive mode: the job
 pins the engine data and the configs active when it was submitted (INV-28), and its pages count toward the site's
-learning trigger (SPEC-08 §4.4).
+learning trigger (learning-configs spec).
 
 Submitting checks every URL, each glob's origin and `webhook_url` with the SSRF guard first (INV-16), and the fetches
 of a map or a draft go through it too. Nothing is stored for a refused target, an unusable schema, or no URL to
@@ -70,9 +70,9 @@ DRAFT_TIMEOUT_S: Final = float(MAX_TIMEOUT_S)
 
 class ExtractRequest(WebhookOptions):
     """The body of `POST /v1/extract` (§4.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it
-    inline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 §4.10), and its page kind must
+    inline, or asks for a draft from a `prompt` or from field names (`fields`, frontend spec), and its page kind must
     be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's
-    draft. The `fetch` and `locale` are a scrape's (SPEC-07 §4.4), for every URL. The webhook options are
+    draft. The `fetch` and `locale` are a scrape's (rest-api spec), for every URL. The webhook options are
     `WebhookOptions` (§4.2)."""
 
     urls: list[str] = Field(min_length=1, max_length=MAX_URLS)
@@ -131,7 +131,7 @@ class NothingToExtract(Refusal):
 
 
 class NoSamplePage(Refusal):
-    """None of the pages a prompt is drafted from was reached (SPEC-06 §4.5: role S drafts from fetched pages)."""
+    """None of the pages a prompt is drafted from was reached (llm spec: role S drafts from fetched pages)."""
 
 
 class DraftTimedOut(Refusal):
@@ -327,5 +327,5 @@ def _pairs(urls: dict[str, str]) -> list[tuple[str, str]]:
 
 
 def _cleaned_text(page: FetchResult) -> str:
-    # Role S's sample pages are their cleaned text (SPEC-06 §4.5).
+    # Role S's sample pages are their cleaned text (llm spec).
     return ParsedPage.of(page.bundle).cleaned_text.text

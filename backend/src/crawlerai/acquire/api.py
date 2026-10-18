@@ -1,4 +1,4 @@
-"""JSON over HTTP, for adapters and API recipes (SPEC-02 §4.1, ARCHITECTURE §7.1 "Adapter / API" rung), over the HTTP
+"""JSON over HTTP, for adapters and API recipes (acquisition spec rung), over the HTTP
 rung's client (`curl_client`, D-1320): the same Chrome impersonation, SSRF guard, caps, cookie jar, proxy pools and
 reasons. The capture is recorded under the page the JSON stands for.
 
@@ -163,7 +163,7 @@ def _outcome(status: int, body: bytes, raw: bool) -> tuple[BlockClass, str | Non
         except ValueError:
             return "error", "decode_error"
         return "ok", None
-    # The status rules of SPEC-02 §4.3; the body is not HTML, so it is never a shell.
+    # The status rules of acquisition spec; the body is not HTML, so it is never a shell.
     block_class = classify(status, (), "")
     return ("error", "unexpected_status") if block_class == "ok" else (block_class, None)
 

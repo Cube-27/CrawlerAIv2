@@ -1,5 +1,5 @@
-"""Operator corrections (SPEC-08 §4.10, C5): a correction replaces or removes fields' steps and confirms fields; every
-field it touches becomes `operator`, the result is an `operator` config, and a correction that names a field the
+"""Operator corrections (learning-configs spec, C5): a correction replaces or removes fields' steps and confirms fields;
+every field it touches becomes `operator`, the result is an `operator` config, and a correction that names a field the
 schema or the config does not have is refused."""
 
 from datetime import UTC, datetime

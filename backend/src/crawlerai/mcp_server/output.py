@@ -1,4 +1,4 @@
-"""How the MCP tools answer (SPEC-10 §4.7, ARCHITECTURE §13.3): markdown in pages with a cursor, and records with a
+"""How the MCP tools answer (jobs spec): markdown in pages with a cursor, and records with a
 human-readable summary in which a field without a published value reads "unknown", never as a value.
 
 Every answer carries its structured content and, for clients that read only text, the same content as JSON (MCP

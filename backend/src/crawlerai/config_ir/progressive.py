@@ -1,4 +1,4 @@
-"""Progressive mode (SPEC-08 §4.4, §4.8; ARCHITECTURE §8.3, §8.4): the state of a (site, schema, page kind)
+"""Progressive mode (learning-configs spec): the state of a (site, schema, page kind)
 on its way to an active config, the scheduler's `trigger_learning`, and the `learn` job a learning run is.
 
 A state is `cold`, `learning` or `active` (`mode`), and a learning run is in flight while `learning_started_at` is
@@ -40,7 +40,7 @@ from crawlerai.db.models import (
     SiteId,
 )
 
-# ARCHITECTURE §8.3: learning runs once 8 pages are extracted; a failed run is retried after 8 more (D-0030).
+# Learning runs once 8 pages are extracted; a failed run is retried after 8 more (D-0030).
 LEARN_AFTER_PAGES: Final = 8
 # States per run of `trigger_learning`; the scheduler runs a full batch again at once, so a backlog drains in one turn.
 TRIGGER_BATCH: Final = 100
@@ -50,9 +50,9 @@ LearnEvent = Literal[
 ]
 
 TRANSITIONS: Final[Mapping[LearnEvent, Mapping[ProgressiveMode, ProgressiveMode]]] = {
-    # Pages keep being served cold while a site learns (ARCHITECTURE §8.4).
+    # Pages keep being served cold while a site learns.
     "start": {"cold": "learning"},
-    # A forced or drift re-learn keeps the active config serving until a new one activates (SPEC-08 §4.9, §4.10).
+    # A forced or drift re-learn keeps the active config serving until a new one activates (learning-configs spec).
     "start_forced": {"cold": "learning", "active": "active"},
     "activate": {"learning": "active", "active": "active"},
     # A failed run leaves a cold site cold (§4.8) and an active one on its config.
@@ -67,7 +67,7 @@ TRANSITIONS: Final[Mapping[LearnEvent, Mapping[ProgressiveMode, ProgressiveMode]
     "approve": {"cold": "active", "learning": "active", "active": "active"},
     # A refused config leaves the state's mode as it is: the site serves what it served before (D-1391).
     "reject": {"cold": "cold", "learning": "learning", "active": "active"},
-    # An edited schema's states start over (ARCHITECTURE §8.4): what was learned is for its old document, and a run in
+    # An edited schema's states start over: what was learned is for its old document, and a run in
     # flight is dropped, so that it can neither activate nor fail the state.
     "schema_edit": {"cold": "cold", "learning": "cold", "active": "cold"},
 }
@@ -120,7 +120,7 @@ class StateKey:
         return [getattr(ProgressiveState, name) == value for name, value in self.columns().items()]
 
     def config_scope(self) -> list[ColumnElement[bool]]:
-        """The state's configs, one version sequence (ARCHITECTURE §6: versions per site, schema and page kind)."""
+        """The state's configs, one version sequence (versions per site, schema and page kind)."""
         configs = ExtractionConfig
         return [
             configs.site_id == self.site_id,
@@ -242,7 +242,7 @@ async def learning_failed(conn: AsyncConnection, key: StateKey) -> None:
 
 
 async def relearn_schema(conn: AsyncConnection, schema_id: SchemaId) -> None:
-    """Send what was learned for an edited schema back to learning (SPEC-04 §4.1): its active configs are `suspended`,
+    """Send what was learned for an edited schema back to learning (schemas spec): its active configs are `suspended`,
     so pages are served cold, and its states go `cold` (`schema_edit`) with no run in flight and their configs cleared.
     The next run starts once enough pages are extracted (`trigger_learning`); `pages_extracted` is kept."""
     configs = ExtractionConfig

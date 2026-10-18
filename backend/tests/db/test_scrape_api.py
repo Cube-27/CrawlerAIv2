@@ -1,4 +1,4 @@
-"""`POST /v1/scrape` over HTTP (SPEC-07 §4.4, §4.8): what a client sends and gets back. What a scrape does is the
+"""`POST /v1/scrape` over HTTP (rest-api spec): what a client sends and gets back. What a scrape does is the
 service's (`test_scrape_service.py`)."""
 
 import asyncio

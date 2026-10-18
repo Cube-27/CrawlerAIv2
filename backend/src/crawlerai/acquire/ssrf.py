@@ -1,4 +1,4 @@
-"""SSRF guard: every outbound target is a public IP, on every redirect hop (SPEC-02 §4.5, ARCHITECTURE §7.1, §18,
+"""SSRF guard: every outbound target is a public IP, on every redirect hop (acquisition spec,
 INV-16). It fails closed: anything it can't prove public is rejected.
 
 Fetchers call `SafeConnector.check` before the first request and `SafeConnector.redirect` before each hop they
@@ -30,12 +30,12 @@ _ENDS_IN_NUMBER = re.compile(r"(?:^|\.)(?:\d+|0x[0-9a-f]*)\.?$", re.ASCII | re.I
 _NAT64 = IPv6Network("64:ff9b::/96")
 
 
-# How a rejection reads, and so how a fetcher records it as an attempt's `error` (SPEC-02 §4.11): `ssrf_rejected: …`.
+# How a rejection reads, and so how a fetcher records it as an attempt's `error` (acquisition spec): `ssrf_rejected: …`.
 SSRF_REJECTED = "ssrf_rejected:"
 
 
 class SsrfRejected(Exception):
-    """The message never contains the URL, so logs stay redacted when configured (SPEC-02 §4.11)."""
+    """The message never contains the URL, so logs stay redacted when configured (acquisition spec)."""
 
     def __init__(self, reason: RejectReason) -> None:
         super().__init__(f"{SSRF_REJECTED} {reason}")

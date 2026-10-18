@@ -1,9 +1,9 @@
-"""HTTP fetch with curl_cffi and Chrome TLS impersonation (SPEC-02 §4.7), over the shared client (`curl_client`).
+"""HTTP fetch with curl_cffi and Chrome TLS impersonation (acquisition spec), over the shared client (`curl_client`).
 
 Redirects are followed by hand so the SSRF guard checks every hop (§4.5), and each request connects only to the
 address the guard checked. Through a proxy pool, which resolves names itself, the guard still checks each hop's host
-before it is requested (ARCHITECTURE §7.1). Every failure becomes an `error` outcome with a short reason that never
-contains the URL. Given the validators a page last answered with, its request is conditional (SPEC-11 §4.2): an
+before it is requested. Every failure becomes an `error` outcome with a short reason that never
+contains the URL. Given the validators a page last answered with, its request is conditional (jobs spec): an
 unchanged page answers 304 with no body. The request is a navigation, sent with the impersonation's own headers, or
 with a site session's cookies and identity where the site has one (`acquire.session`, INV-29's exception).
 """
@@ -106,7 +106,7 @@ def _unconditional(_hop: Hop, _status: int, _target: Target) -> Hop:
 
 
 class RequestFailed(Exception):
-    """A request got no response: the reason never contains the URL (SPEC-02 §4.11)."""
+    """A request got no response: the reason never contains the URL (acquisition spec)."""
 
 
 async def post(url: str, body: bytes, headers: Mapping[str, str], *, connector: SafeConnector, timeout_s: float) -> int:

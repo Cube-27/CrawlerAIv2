@@ -1,4 +1,4 @@
-"""The currencies a page's structured data states (SPEC-04 §4.4, ARCHITECTURE §9): the ISO 4217 codes written as
+"""The currencies a page's structured data states (schemas spec): the ISO 4217 codes written as
 schema.org `priceCurrency` (on an Offer, AggregateOffer, PriceSpecification or any other node, in JSON-LD, microdata
 or RDFa Lite) and as the OGP `product:price:currency`. They settle a currency symbol the page writes in text (`$` on a
 page whose Offer says USD) and nothing else: a page currency never supplies a missing sign (D-0301).

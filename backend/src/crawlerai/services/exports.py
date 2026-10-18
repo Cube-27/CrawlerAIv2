@@ -1,4 +1,4 @@
-"""What a job's results are exported as, beyond a page of text (SPEC-10 §4.2): its records as one file, `xlsx` or
+"""What a job's results are exported as, beyond a page of text (jobs spec): its records as one file, `xlsx` or
 `parquet`, and its pages as `llms.txt` and `llms-full.txt`. `GET /v1/jobs/{id}/results?format=xlsx|parquet` and
 `GET /v1/jobs/{id}/llms.txt` answer with these; so does the MCP `llms_txt` tool.
 

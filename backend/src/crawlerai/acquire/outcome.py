@@ -1,5 +1,5 @@
 """One fetch attempt as a `FetchResult`: the manifest, the attempt record and the bundle, built the same way by every
-fetcher (SPEC-02 §4.2, §4.4)."""
+fetcher (acquisition spec)."""
 
 import time
 from dataclasses import dataclass
@@ -127,7 +127,7 @@ def _redacted(headers: HeaderList, policy: FetchPolicy) -> HeaderList:
 
 def as_error(result: FetchResult, reason: str) -> FetchResult:
     """`result` as an `error` outcome for `reason`: an answer that arrived but is not the content the fetch asked for
-    (an adapter's answer that does not serve its page, SPEC-15 §4.2). As every error, it keeps no body."""
+    (an adapter's answer that does not serve its page, adapters spec). As every error, it keeps no body."""
     manifest = result.bundle.manifest.model_copy(update={"block_class": "error", "html_sha256": sha256_hex(b"")})
     last = result.attempts[-1].model_copy(update={"block_class": "error", "error": reason})
     return FetchResult(

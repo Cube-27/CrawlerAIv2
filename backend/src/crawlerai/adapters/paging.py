@@ -1,6 +1,6 @@
-"""A list an API serves in pages, fetched whole (SPEC-15 §4.10): the adapter says how to ask the next page and how the
+"""A list an API serves in pages, fetched whole (adapters spec): the adapter says how to ask the next page and how the
 pages merge, and this module walks them through the caller's `send`, which is polite per request (robots.txt, the
-host's rate; SPEC-15 §4.6).
+host's rate; adapters spec).
 
 The walk ends when the adapter has no next request, when the rows reach the request's target (`FetchPolicy.max_rows`,
 soft: whole pages are kept) or the hard cap, or when the time budget is spent. A later page that fails ends the walk

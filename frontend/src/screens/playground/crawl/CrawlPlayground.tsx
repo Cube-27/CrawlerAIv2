@@ -13,7 +13,7 @@ import { usePageForm } from "../usePageForm";
 import { CrawlOptions } from "./CrawlOptions";
 import { buildCrawl, crawlErrors, crawlForm, DEFAULT_CRAWL_OPTIONS, INITIAL_CRAWL } from "./form";
 
-/** The Crawl playground at `/crawl` (SPEC-14 §4.2): a start URL, the formats and schema of every page it extracts
+/** The Crawl playground at `/crawl` (frontend spec): a start URL, the formats and schema of every page it extracts
  * (`POST /v1/crawl`), its scope and rules in the options, and the run on the page (`?job=`) as Batch's results table;
  * before any run, the recent crawls. */
 export function CrawlPlayground() {

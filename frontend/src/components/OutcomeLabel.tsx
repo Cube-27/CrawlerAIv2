@@ -1,7 +1,7 @@
 import type { TaskOutcome } from "../api/jobs";
 import { StatusLabel, type StatusTone } from "./StatusLabel";
 
-// One tone per `url_task.outcome` (ARCHITECTURE §6). `partial` and `shell` returned a page without all it should have;
+// One tone per `url_task.outcome`. `partial` and `shell` returned a page without all it should have;
 // `blocked` and `failed` returned none. `not_found` is the page's own answer; `unchanged` (a record still current),
 // `links_only` (a page read for its links) and `no_match` (a discovered page without its required fields, §10) are
 // not failures.

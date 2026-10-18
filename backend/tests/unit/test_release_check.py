@@ -1,4 +1,4 @@
-"""The release check (SPEC-08 §4.12, ARCHITECTURE §12.3, INV-20): the release executor runs an exported config on the
+"""The release check (learning-configs spec, INV-20): the release executor runs an exported config on the
 held-out pages, and a field it does not reproduce on every page with an engine value while there are fewer than 10,
 and on at least 95% from 10 on, is marked `manual`."""
 

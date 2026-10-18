@@ -1,6 +1,6 @@
-"""The handler of `batch_scrape` and `extract` tasks (SPEC-10 §4.3, §4.6): a scrape's steps
+"""The handler of `batch_scrape` and `extract` tasks (jobs spec): a scrape's steps
 (`crawlerai.services.scrape_steps`), run by a worker instead of while a caller waits. An `extract` job is a records job
-whose URLs are all caller-supplied, as a batch's are (ARCHITECTURE §10), so its tasks run as a records batch's do.
+whose URLs are all caller-supplied, as a batch's are, so its tasks run as a records batch's do.
 
 The page is fetched politely (`crawlerai.services.polite`): robots.txt over HTTP, the site's rate, backoff through the
 queue. Its capture is stored, and for `records` it is extracted with what the job pinned when it was submitted
@@ -8,15 +8,15 @@ queue. Its capture is stored, and for `records` it is extracted with what the jo
 (`config` mode; the page joins the config's drift window, as a scrape's does). Its record is stored. Page outputs are
 not stored: `/v1/jobs/{id}/results` makes them from the capture.
 
-A records task is how a recurring run sees a page again (SPEC-11 §4.2, §4.3). When records already stand for the page
+A records task is how a recurring run sees a page again (jobs spec). When records already stand for the page
 (`standing_record`, or `standing_listing` for a listing, in `crawlerai.recurring.state`), the page is fetched with the
 validators it last answered with, and a 304 ends the task `unchanged` with no capture (`steps.fetch_page`). A page
 fetched whole whose visible words are the same as last time (an equal content digest), for a listing its words and
 links, ends `unchanged` with its capture, and is not extracted (jobs spec, "Conditional GET and content fingerprint").
 Having no extraction, an
-unchanged page joins no drift window (SPEC-08 §4.9) and does not count toward `pages_extracted` (ARCHITECTURE §8.3
-counts `extracted` and `partial` pages). Only records tasks read or write `url_state`: a fingerprint or validators
-stored without the record made from that content would let a stale record stand.
+unchanged page joins no drift window (learning-configs spec) and does not count toward `pages_extracted` (counts
+`extracted` and `partial` pages). Only records tasks read or write `url_state`: a fingerprint or validators stored
+without the record made from that content would let a stale record stand.
 
 Everything is written in the worker's transaction for the task, so a task that raises rolls back alone and fails no
 other (INV-31). A page that was not reached ends with its outcome (`blocked`, `shell`, `not_found`); a fetch error is a
@@ -72,8 +72,8 @@ def scrape_handler(
     fetching: Fetching, data: EngineData | None, margins: DriftMargins | None, *, llm: LLMClient
 ) -> TaskHandler:
     """The `batch_scrape` and `extract` handler of a worker that fetches with `fetching`; `data` is None in a worker
-    without the engine's data files, whose records tasks then fail. `margins` decide drift suspensions (SPEC-08 §4.9);
-    role C runs on `llm`."""
+    without the engine's data files, whose records tasks then fail. `margins` decide drift suspensions (learning-configs
+    spec); role C runs on `llm`."""
 
     async def handle(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
         job = await load_job(conn, task, data, margins)

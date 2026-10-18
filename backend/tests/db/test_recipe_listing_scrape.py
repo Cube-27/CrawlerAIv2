@@ -1,4 +1,4 @@
-"""A listing scrape of a site whose active config has a listing recipe (Appendix A #59, SPEC-09 §4.8): the recipe
+"""A listing scrape of a site whose active config has a listing recipe (Appendix A #59, adapters spec): the recipe
 serves the listing's pages over HTTP, one capture each, until the request's `records` target, with no browser; when it
 does not serve the first page, the browser actions run as before (§4.10). The worker's batch and crawl tasks serve
 every page of the listing the same way, up to the job's page bound."""

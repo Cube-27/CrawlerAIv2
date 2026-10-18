@@ -1,4 +1,4 @@
-"""Recipe learning (SPEC-09 §2 "integration into SPEC-08 learning", ARCHITECTURE §7.2): the API recipe a learning run
+"""Recipe learning (adapters spec "integration into learning-configs spec learning"): the API recipe a learning run
 gives its config, from the run's sample and held-out pages.
 
 Discovery (§4.3) reads the sample pages' browser captures; the best endpoint candidate is the one a recipe is bound
@@ -11,7 +11,7 @@ A listing's recipe (Appendix A #59) is learned the same way from the series of c
 (`listing.py`): the endpoint and row map, the pagination its calls follow, binding and header minimization, then
 validation on the held-out pages whose calls of the endpoint it reproduces for the first two pages.
 
-Network bodies come with browser captures only (SPEC-02 §4.7). With `render`, a page whose capture holds none (for a
+Network bodies come with browser captures only (acquisition spec). With `render`, a page whose capture holds none (for a
 listing: whose calls show no pagination) is rendered in the browser with network capture, a listing with its browser
 actions, at most `MAX_RENDERS` pages per run, sample pages first; its published values stay those of its capture.
 
@@ -218,7 +218,7 @@ def _discover(sample: Sequence[StoredPage], schema: SchemaDef) -> tuple[Endpoint
 
 def _no_endpoint(sample: Sequence[StoredPage]) -> str:
     if not any(page.bundle.network for page in sample):
-        # Network bodies come with browser captures only (SPEC-02 §4.7); an HTTP capture has none to discover from.
+        # Network bodies come with browser captures only (acquisition spec); an HTTP capture has none to discover from.
         return "no_network_bodies: no sample page has network responses to discover an endpoint from"
     return "no_endpoint: no JSON response carries a required field's published value on every sample page"
 

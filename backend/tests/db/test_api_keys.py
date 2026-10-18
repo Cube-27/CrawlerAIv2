@@ -1,4 +1,4 @@
-"""API keys against Postgres (SPEC-07 §4.2, INV-32): the CLI creates and revokes them, the API accepts a key only while
+"""API keys against Postgres (rest-api spec, INV-32): the CLI creates and revokes them, the API accepts a key only while
 it is stored and unrevoked, `last_used_at` moves at most once a minute, and starting the API or a worker never
 creates, reactivates or resets a key."""
 

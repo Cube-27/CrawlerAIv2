@@ -1,6 +1,7 @@
-"""Hypothesis profiles: CI runs every property test with a fixed `max_examples=200` (SPEC-04 §6); local runs keep
+"""Hypothesis profiles: CI runs every property test with a fixed `max_examples=200` (schemas spec); local runs keep
 the Hypothesis default. GitHub Actions sets `CI`. Every test runs without the process's `CRAWLERAI_*` variables. For
-INV-26, counters of HTML parser constructions. For API adapters and recipes (SPEC-02 §4.9, SPEC-09), a stand-in API."""
+INV-26, counters of HTML parser constructions. For API adapters and recipes (acquisition spec, adapters spec), a
+stand-in API."""
 
 import os
 from collections.abc import Callable, Mapping

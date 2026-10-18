@@ -1,4 +1,4 @@
-"""Vocabularies for the normalizers (SPEC-04 §4.1, §4.4, ARCHITECTURE §9, C4): the shipped data, its tokenizer and
+"""Vocabularies for the normalizers (normalization spec): the shipped data, its tokenizer and
 its matcher.
 
 Two kinds, each a directory with a `JUSTIFICATION.md` that names its source:
@@ -24,7 +24,8 @@ _JSON = ".json"
 
 
 def tokens(text: str) -> Tokens:
-    """`text` as a sequence of words (SPEC-04 §4.4): NFKC, casefold, split on every character that is not a letter.
+    """`text` as a sequence of words (normalization spec): NFKC, casefold, split on every character that is not a
+    letter.
 
     A word is a run of Unicode letters (general category L) and marks (M): marks continue a word in scripts that write
     vowels as combining characters (UAX #29 treats them as part of the preceding letter). NFKC (UAX #15) folds
@@ -63,7 +64,8 @@ class Entries:
         return cls(phrases)
 
     def find(self, words: Tokens) -> frozenset[str]:
-        """The codes whose phrase is a contiguous run of `words` (SPEC-04 §4.4: token sequences, never substrings).
+        """The codes whose phrase is a contiguous run of `words` (normalization spec: token sequences, never
+        substrings).
 
         Where one match lies inside a longer one, the longer wins ("longest match"); matches at separate places all
         count, so two members in one input both show.

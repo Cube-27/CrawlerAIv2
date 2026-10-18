@@ -1,4 +1,4 @@
-"""One parsed page per capture (ARCHITECTURE §8 "Parse once", Appendix A #31, INV-26; SPEC-05 §4.1).
+"""One parsed page per capture (INV-26; extraction spec).
 
 The body is decoded once and parsed at most once per parser: selectolax on first use, lxml only when an XPath step or
 trafilatura asks for it. The script blocks, the cleaned text and the visibility index are derived once from the
@@ -42,8 +42,9 @@ class ParsedPage:
         self.html = html
         # The rendered area of the page's item blocks, when a browser capture measured them (`CaptureManifest`).
         self.item_areas = item_areas
-        # Whether the body is a JSON document, not HTML: an `api` capture's is (`body.json`, SPEC-01 §4.5). Its text is
-        # still parsed as HTML for the readers of text, but it holds no HTML elements of its own (`content.links`).
+        # Whether the body is a JSON document, not HTML: an `api` capture's is (`body.json`, persistence-storage spec).
+        # Its text is still parsed as HTML for the readers of text, but it holds no HTML elements of its own
+        # (`content.links`).
         self.json_body = json_body
         # The bundle's captured network bodies, in capture order (the `xhr:<n>` locator indexes them), and their
         # manifest entries (the request each answered), when the caller has them.

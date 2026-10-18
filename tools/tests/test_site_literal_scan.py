@@ -1,4 +1,4 @@
-"""Behaviour of `tools/site_literal_scan.py --public` (SPEC-00 §4.7), run as CI runs it.
+"""Behaviour of `tools/site_literal_scan.py --public`, run as CI runs it.
 
 Every host here is reserved by RFC 2606 or RFC 6761. Detection tests pass an explicit allowlist so that those
 reserved names are not exempted.
@@ -141,7 +141,7 @@ THING_NAME = ".".join(["Thing", "name"])
 
 
 def schema_document(fields: dict[str, object], **extra: object) -> str:
-    """A JSON schema document (SPEC-04 §4.2) with the given fields, on one line."""
+    """A JSON schema document (schemas spec) with the given fields, on one line."""
     return json.dumps({"name": "p", "page_kind": "listing", "fields": fields, **extra}) + "\n"
 
 

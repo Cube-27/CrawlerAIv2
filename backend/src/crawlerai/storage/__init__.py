@@ -1,4 +1,5 @@
-"""Object storage for captures (SPEC-01 §4.4). `open_store` turns a `CRAWLERAI_*OBJECT_STORE` URL into a backend."""
+"""Object storage for captures (persistence-storage spec). `open_store` turns a `CRAWLERAI_*OBJECT_STORE` URL into a
+backend."""
 
 import re
 from pathlib import Path
@@ -11,7 +12,7 @@ from crawlerai.storage.fs import FsStore
 
 
 def open_store(url: str) -> ObjectStore:
-    """`fs:///<absolute path>` or `s3://<bucket>[/<prefix>]`, the settings grammar (SPEC-00 §4.4)."""
+    """`fs:///<absolute path>` or `s3://<bucket>[/<prefix>]`, the settings grammar."""
     if not re.fullmatch(OBJECT_STORE_URL_PATTERN, url):
         raise ValueError(
             f"invalid object store URL {url!r}: expected fs:///<absolute path> or s3://<bucket>[/<prefix>]"

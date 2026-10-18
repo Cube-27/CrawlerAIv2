@@ -1,4 +1,4 @@
-"""A queued job's webhook options (SPEC-10 §4.2), shared by the requests of `batch/scrape`, `crawl` and `extract`:
+"""A queued job's webhook options (jobs spec), shared by the requests of `batch/scrape`, `crawl` and `extract`:
 where to POST, which events, and how to group them (`crawlerai.db.webhook_outbox`)."""
 
 from typing import Self

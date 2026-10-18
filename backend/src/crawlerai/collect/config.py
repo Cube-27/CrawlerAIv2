@@ -1,8 +1,8 @@
-"""The config collector's interface (SPEC-05 §4.5, SPEC-08 §4.3): an active config proposes `source_kind='config'`
-candidates like any other collector, and they enter resolution with the rest (§8.4).
+"""The config collector's interface (extraction spec, learning-configs spec): an active config proposes
+`source_kind='config'` candidates like any other collector, and they enter resolution with the rest (§8.4).
 
 The engine executor lives in `crawlerai.config_ir`, which sits above `collect` and `resolve` (`.importlinter`), so the
-pipeline takes the executor already bound to its config and never names the IR type: SPEC-08 injects it.
+pipeline takes the executor already bound to its config and never names the IR type: learning-configs spec injects it.
 """
 
 from collections.abc import Mapping

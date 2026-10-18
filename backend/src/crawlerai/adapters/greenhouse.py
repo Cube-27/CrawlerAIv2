@@ -1,4 +1,4 @@
-"""Greenhouse hosted job boards through the Greenhouse Job Board API (SPEC-02 §4.9).
+"""Greenhouse hosted job boards through the Greenhouse Job Board API (acquisition spec).
 
 Endpoints, verified against the vendor's Job Board API documentation (docs.greenhouse.io/job-board.html,
 2026-10-13): `GET /v1/boards/{board_token}/jobs?content=true` lists a board's jobs with their descriptions;

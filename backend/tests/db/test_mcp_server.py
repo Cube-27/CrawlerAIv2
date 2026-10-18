@@ -1,4 +1,4 @@
-"""The MCP server (SPEC-10 §4.7): the SDK's client calls each of the twenty-one tools over streamable HTTP at `/mcp` in
+"""The MCP server (jobs spec): the SDK's client calls each of the twenty-one tools over streamable HTTP at `/mcp` in
 the API app, and over stdio from `python -m crawlerai.mcp_server`. What each tool does is its service's, tested with the
 service; here, that a tool reaches it with the caller's key, and answers by the output rules (§13.3).
 

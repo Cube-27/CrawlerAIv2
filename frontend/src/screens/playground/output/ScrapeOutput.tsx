@@ -26,7 +26,7 @@ interface OutputTab {
   content: ReactNode;
 }
 
-/** The page's clean JSON (SPEC-14 §4.4), with one "uncalibrated" badge above it when a published field is. */
+/** The page's clean JSON (frontend spec), with one "uncalibrated" badge above it when a published field is. */
 function JsonTab({
   response,
   fieldTypes,
@@ -138,7 +138,7 @@ function formatTabs(response: ScrapeResponse): OutputTab[] {
   return tabs.filter((tab) => tab !== null);
 }
 
-/** SPEC-14 §4.3: JSON first, then Table, the page formats, and Usage with how the page was fetched. */
+/** frontend spec: JSON first, then Table, the page formats, and Usage with how the page was fetched. */
 function outputTabs(
   response: ScrapeResponse,
   fieldTypes: FieldTypes,

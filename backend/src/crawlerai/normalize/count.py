@@ -1,4 +1,4 @@
-"""Count normalizer (SPEC-04 §4.4, D-0782): a non-negative whole number of items, such as a stock quantity.
+"""Count normalizer (normalization spec, D-0782): a non-negative whole number of items, such as a stock quantity.
 
 Accepts:
 - a JSON number with no fraction;
@@ -33,7 +33,7 @@ _CLDR_COUNT_UNIT = "concentr-item"
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize a count field (SPEC-04 §4.4)."""
+    """Normalize a count field (normalization spec)."""
     if spec.type is not FieldType.COUNT:
         raise TypeError(f"the count normalizer does not handle type {spec.type}")
     if isinstance(raw, dict):
@@ -120,5 +120,5 @@ def _count(value: Decimal) -> NormalizeResult:
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (SPEC-04 §4.5): exact. A normalized count is one JSON integer."""
+    """Equality as a key (normalization spec): exact. A normalized count is one JSON integer."""
     return raw_key(value)

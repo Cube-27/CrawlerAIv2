@@ -1,4 +1,4 @@
-"""Fail when a dependency's declared license is on the deny-list (SPEC-00 §4.6 job 3, ARCHITECTURE §18).
+"""Fail when a dependency's declared license is on the deny-list (CI job 3).
 
 Reads the reports that `tools/license_scan.sh` collects: `pip-licenses --from=all --format=json` for the Python
 environment and `pnpm licenses list --json` for the frontend. A declaration is matched as an SPDX license
@@ -17,7 +17,6 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-# SPEC-00 §4.6, verbatim.
 DENIED_SPDX = [
     "AGPL-3.0",
     "AGPL-3.0-only",

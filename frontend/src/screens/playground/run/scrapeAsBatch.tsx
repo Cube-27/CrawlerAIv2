@@ -8,7 +8,7 @@ export type Selection = Parameters<
   NonNullable<ComponentProps<typeof Table.Content>["onSelectionChange"]>
 >[0];
 
-/** Batch from results (SPEC-14 §2.8): URLs selected in a Map or Crawl result open Batch mode with those URLs. They go
+/** Batch from results (frontend spec): URLs selected in a Map or Crawl result open Batch mode with those URLs. They go
  * in the navigation's state, which Batch reads once, as its initial list. */
 interface BatchState {
   urls: readonly string[];

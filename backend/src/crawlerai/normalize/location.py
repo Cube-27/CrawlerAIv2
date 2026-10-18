@@ -1,4 +1,4 @@
-"""Location normalizer (SPEC-04 §4.4, ARCHITECTURE §9): `{text, locality, region, country, remote_flag}`.
+"""Location normalizer (normalization spec): `{text, locality, region, country, remote_flag}`.
 
 A location publishes what the page states and nothing it does not: no place is looked up, completed or inferred.
 - `text` is the place as the page writes it: a string, a `Place`'s `name`, or a `PostalAddress`'s stated parts
@@ -39,7 +39,7 @@ _PARTS = ("locality", "region", "country")
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize a location (SPEC-04 §4.4)."""
+    """Normalize a location (normalization spec)."""
     if spec.type is not FieldType.LOCATION:
         raise TypeError(f"the location normalizer does not handle type {spec.type}")
     if isinstance(raw, str):
@@ -50,7 +50,7 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
 
 
 def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
-    """SPEC-04 §4.5: `remote_flag` and `country` equal, `locality` equal after Unicode case folding; `region` and
+    """normalization spec: `remote_flag` and `country` equal, `locality` equal after Unicode case folding; `region` and
     `text` (by `vocab.tokens`, so case, accents of form and punctuation don't count) count only when both values have
     one. Not transitive: a value without a region equals two values in different regions."""
     if a == b:

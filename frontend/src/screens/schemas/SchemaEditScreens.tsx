@@ -67,7 +67,7 @@ function SchemaEditor({
   );
 }
 
-/** A new `user` schema (SPEC-12 §4.3), blank or, with `?from=<id>`, prefilled from that schema's document: adopting a
+/** A new `user` schema (frontend spec), blank or, with `?from=<id>`, prefilled from that schema's document: adopting a
  * prompt draft creates a user schema from it. The name starts empty, since a schema's name is taken by that
  * schema and the server refuses it with 409 (UAT F32). */
 export function NewSchemaScreen() {
@@ -98,7 +98,7 @@ export function NewSchemaScreen() {
   );
 }
 
-/** A schema's whole document, edited in place; the name stays (SPEC-07 §4.6). Saving suspends the schema's site
+/** A schema's whole document, edited in place; the name stays (rest-api spec). Saving suspends the schema's site
  * configs, so their sites learn again. */
 export function EditSchemaScreen() {
   const { id = "" } = useParams();

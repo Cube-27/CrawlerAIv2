@@ -1,4 +1,4 @@
-/** The job endpoints (SPEC-10 §4.2–4.5), in the generated shapes. */
+/** The job endpoints (jobs spec–4.5), in the generated shapes. */
 import type { ApiClient } from "./client";
 import type { RecordPage, StoredRecord } from "./records";
 import type { Opened } from "./events";
@@ -8,7 +8,7 @@ import type { FetchMember, SchemaRef } from "./scrape";
 
 type Schemas = components["schemas"];
 
-/** A job's schema: by id, inline (a SchemaDef the server validates), or field names to draft one from (SPEC-14
+/** A job's schema: by id, inline (a SchemaDef the server validates), or field names to draft one from (frontend spec
  * §4.10). `BatchScrapeRequest` and `CrawlRequest` take no prompt. */
 export type JobSchemaRef = Exclude<SchemaRef, { prompt: string }>;
 
@@ -18,7 +18,7 @@ export type JobKind = JobSummary["kind"];
 export type JobStatus = JobSummary["status"];
 export type TaskCounts = Schemas["TaskCounts"];
 export type OutcomeCounts = Schemas["OutcomeCounts"];
-/** A `url_task` outcome (ARCHITECTURE §6). */
+/** A `url_task` outcome. */
 export type TaskOutcome = keyof OutcomeCounts;
 export type PageOutput = Schemas["PageOutput"];
 export type TaskStatus = PageOutput["status"];
@@ -32,7 +32,7 @@ export type MapResult = Schemas["MapResult"];
 /** A webhook delivery of a job and a page of them (D-1511). */
 export type WebhookDelivery = Schemas["DeliveryOut"];
 export type WebhookDeliveryPage = Schemas["DeliveryPage"];
-/** A webhook event a queued request can ask for (SPEC-10 §4.2, D-1414). */
+/** A webhook event a queued request can ask for (jobs spec, D-1414). */
 export type WebhookEvent = NonNullable<Schemas["BatchScrapeRequest"]["webhook_events"]>[number];
 
 /** The requests as the forms build them. The generated types mark every member with a default as required
@@ -81,7 +81,7 @@ export type ResultsPage =
   | { kind: "records"; page: RecordPage }
   | { kind: "pages"; page: PageOutputPage };
 
-/** The page sizes `GET /v1/jobs/{id}/results` allows (SPEC-07 §4.6): an export reads the largest. */
+/** The page sizes `GET /v1/jobs/{id}/results` allows (rest-api spec): an export reads the largest. */
 const EXPORT_LIMIT = 200;
 
 // The server's 200 answer is a union; its items tell which: a record has `fields`, a page output does not.
@@ -113,7 +113,7 @@ function results(client: ApiClient, id: string, query: ResultsQuery) {
   return client.GET("/v1/jobs/{job_id}/results", { params: { path: { job_id: id }, query } });
 }
 
-// SPEC-10 §4.2: a completed or failed job can't be cancelled (409); a cancelled one is already.
+// jobs spec: a completed or failed job can't be cancelled (409); a cancelled one is already.
 const CANCELLABLE: ReadonlySet<JobStatus> = new Set<JobStatus>(["queued", "running"]);
 
 /** Where a job is with cancelling: it can be cancelled, a cancel was asked for (it ends once its claimed tasks end),
@@ -123,7 +123,7 @@ export function cancelState(job: JobSummary): "cancellable" | "requested" | "end
   return job.cancel_requested ? "requested" : "cancellable";
 }
 
-/** Which jobs a list shows: one kind and one status, or every one when null (SPEC-10 §4.2). */
+/** Which jobs a list shows: one kind and one status, or every one when null (jobs spec). */
 export interface JobFilters {
   kind: JobKind | null;
   status: JobStatus | null;
@@ -208,7 +208,7 @@ export interface ValuesPage {
   withFetch: boolean;
 }
 
-/** One page of the job's tasks as `json_values` items (SPEC-14 §4.4) at `cursor` (the first page when null), `limit`
+/** One page of the job's tasks as `json_values` items (frontend spec) at `cursor` (the first page when null), `limit`
  * at most. */
 export async function listJobValues(
   client: ApiClient,
@@ -240,7 +240,7 @@ async function allItems<T>(
   const items: T[] = [];
   let cursor: string | null = null;
   do {
-    // Sequential: each page's cursor comes from the page before it (SPEC-07 §4.6).
+    // Sequential: each page's cursor comes from the page before it (rest-api spec).
     const page = await read(cursor);
     if (page.kind === "failed") return page;
     items.push(...page.value.items);
@@ -260,7 +260,7 @@ export function exportJobValues(
   );
 }
 
-/** Every page output of a job without a schema (`format=json`, SPEC-10 §4.2): what its JSON export saves, as its
+/** Every page output of a job without a schema (`format=json`, jobs spec): what its JSON export saves, as its
  * drawers show them. */
 export function exportJobOutputs(client: ApiClient, id: string): Promise<ApiResult<PageOutput[]>> {
   return allItems(async (cursor) => {
@@ -355,7 +355,7 @@ export async function submitCrawl(
   return result.kind === "done" ? { kind: "done", value: result.value.job_id } : result;
 }
 
-/** Queues an extract; a prompt is drafted into a schema first (SPEC-10 §4.6). The answer is the new job's id. */
+/** Queues an extract; a prompt is drafted into a schema first (jobs spec). The answer is the new job's id. */
 export async function submitExtract(
   client: ApiClient,
   body: ExtractRequest,
@@ -377,7 +377,7 @@ export function mapUrls(client: ApiClient, body: MapRequest): Promise<ApiResult<
   );
 }
 
-/** Opens the job's event stream after `lastEventId` with the client's key (SPEC-12 §4.1: `EventSource` cannot send
+/** Opens the job's event stream after `lastEventId` with the client's key (frontend spec: `EventSource` cannot send
  * it). `followEvents` reads the response's body, or its status and parsed error body. */
 export async function openJobEvents(
   client: ApiClient,

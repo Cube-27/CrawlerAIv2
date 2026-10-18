@@ -1,4 +1,4 @@
-"""The OpenGraph collector (SPEC-05 §4.5): `og:*` and `product:*` meta properties mapped to schema fields through the
+"""The OpenGraph collector (extraction spec): `og:*` and `product:*` meta properties mapped to schema fields through the
 fixed OGP table, every candidate owned by the `page` entity."""
 
 from datetime import UTC, datetime

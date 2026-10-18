@@ -1,4 +1,4 @@
-"""The labeling API (SPEC-03 §4.10): the golden set's pages only, sanitized page HTML, labels validated before
+"""The labeling API (evaluation spec): the golden set's pages only, sanitized page HTML, labels validated before
 anything is stored, every validation error returned with its field and reason (§4.11). A fake backend stands in for
 the dev store and `schema_def`; `tests/db/test_labeling_api.py` runs the same flow against Postgres."""
 
@@ -294,7 +294,7 @@ def test_get_page_sends_an_etag_that_a_put_must_match() -> None:
     assert backend.store.pages[page.id].labels["status"] == "labeled"
 
 
-# --- pre-fill (§4.10, SPEC-06 §4.4) ---
+# --- pre-fill (§4.10, llm spec) ---
 
 # The cleaned text of `HTML` is "Blue mug\nBuy\nEUR 19.90".
 

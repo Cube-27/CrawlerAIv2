@@ -1,5 +1,5 @@
 """`/v1/sites/{host}/configs`, `/v1/configs/{id}`, `/v1/configs/{id}/approve`, `/v1/configs/{id}/reject`,
-`/v1/configs/{id}/export` and `/v1/sites/{host}/learn` (SPEC-08 §4.10, ARCHITECTURE §13.1): a site's configs,
+`/v1/configs/{id}/export` and `/v1/sites/{host}/learn` (learning-configs spec): a site's configs,
 operator corrections (C5), approval and refusal of learned configs (D-1342, D-1391), exports and forced learning. The
 rules are the configs service's; this router translates HTTP to it and its errors to problems."""
 

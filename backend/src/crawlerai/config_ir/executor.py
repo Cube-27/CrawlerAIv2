@@ -1,4 +1,4 @@
-"""The engine executor (SPEC-08 §4.3, ARCHITECTURE §12.1): runs an extraction config IR over a `ParsedPage` and
+"""The engine executor (learning-configs spec): runs an extraction config IR over a `ParsedPage` and
 proposes `source_kind='config'` candidates (`crawlerai.collect.config`).
 
 For each field the steps run in order, and the first value that passes its post ops and the field's normalizer is
@@ -110,7 +110,7 @@ class EngineExecutor:
         return Executed(rows=tuple(rows), candidates=tuple(candidates), diagnostics=tuple(run.diagnostics))
 
     def _check(self, schema: SchemaDef) -> None:
-        # Configs are per schema (ARCHITECTURE §6): a config never runs against another one.
+        # Configs are per schema: a config never runs against another one.
         ref = self.ir.schema_
         if (ref.name, self.ir.page_kind) != (schema.name, schema.page_kind):
             raise ConfigMismatch(
@@ -122,7 +122,7 @@ def field_candidate(
     page: ParsedPage, schema: SchemaDef, ctx: Context, vocabulary: Vocabulary, name: str, steps: Sequence[Step]
 ) -> Candidate | None:
     """The candidate `EngineExecutor` proposes for the page-level field `name` when it has `steps`: how induction
-    (SPEC-08 §4.5) checks a selector by the very rules it will run under."""
+    (learning-configs spec) checks a selector by the very rules it will run under."""
     run = _Run(page, schema, ctx, vocabulary)
     return run.first_value(name, steps, schema.fields[name], _Scope(page.lxml_tree, in_row=False), PAGE)
 
@@ -336,7 +336,7 @@ def documents(source: JsonSource, page: ParsedPage) -> list[JsonValue]:
         case "xhr":
             return [document.data for document in xhr.network_documents(page, [])]
         case "api":
-            raise _Refused("an api source is read through SPEC-09's api recipe executor")
+            raise _Refused("an api source is read through adapters spec's api recipe executor")
 
 
 def _select_all(query: str, documents: Sequence[JsonValue]) -> list[Raw]:
@@ -348,7 +348,7 @@ def _select_all(query: str, documents: Sequence[JsonValue]) -> list[Raw]:
 
 def _post(value: Raw, ops: Sequence[PostOp], spec: FieldSpec, ctx: Context) -> Raw | Invalid:
     """`value` through `ops` in order. A normalizer op checks that the value is valid for its type and passes it on
-    unchanged: the field's normalizer makes the candidate's value (SPEC-04, C8)."""
+    unchanged: the field's normalizer makes the candidate's value (schemas spec, C8)."""
     for op in ops:
         result = _apply(op, value, spec, ctx)
         if isinstance(result, Invalid):

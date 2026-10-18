@@ -1,4 +1,4 @@
-"""Which discovered URLs a crawl's frontier takes (SPEC-10 §4.5, §6): the request's scope, never past the start URL's
+"""Which discovered URLs a crawl's frontier takes (jobs spec): the request's scope, never past the start URL's
 host and its subdomains (D-0037), and where a page's links and next pages come from."""
 
 from hypothesis import given

@@ -1,4 +1,4 @@
-"""Behaviour of `tools/license_policy.py` (SPEC-00 §4.6 job 3, ARCHITECTURE §18), run as CI runs it."""
+"""Behaviour of `tools/license_policy.py` (CI job 3), run as CI runs it."""
 
 import json
 import subprocess

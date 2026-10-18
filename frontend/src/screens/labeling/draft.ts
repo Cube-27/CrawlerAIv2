@@ -22,7 +22,7 @@ export interface Draft {
   rows: FieldDrafts[]; // listing pages only, in page order
   // Each row's stored `stale` mark (`eval re-key`), in row order: the form does not edit it, and a save keeps it.
   stale: boolean[];
-  // Row-mapped fields' labels (SPEC-13 §4.10), as stored: the form does not edit them, and a save keeps them.
+  // Row-mapped fields' labels (variants spec), as stored: the form does not edit them, and a save keeps them.
   lists: Labels["lists"];
   notes: string;
 }
@@ -40,14 +40,14 @@ export const emptyField: FieldDraft = {
   distractors: "",
 };
 
-/** The fields a page's labels have at the top level, and those each listing row has (SPEC-03 §4.3). A row-mapped
- * field (one with a `key`) is labeled as rows under `lists` (SPEC-13 §4.10), which this form does not edit. */
+/** The fields a page's labels have at the top level, and those each listing row has (evaluation spec). A row-mapped
+ * field (one with a `key`) is labeled as rows under `lists` (variants spec), which this form does not edit. */
 export function fieldNames(
   pageKind: "detail" | "listing",
   shapes: Record<string, FieldShape>,
 ): { page: string[]; row: string[] } {
   const names = Object.keys(shapes).filter((name) => shapes[name]?.key == null);
-  // On a detail page every field belongs to the one entity, whatever its scope (SPEC-04 §4.2).
+  // On a detail page every field belongs to the one entity, whatever its scope (schemas spec).
   if (pageKind === "detail") return { page: names, row: [] };
   return {
     page: names.filter((name) => shapes[name]?.scope === "page"),
@@ -142,7 +142,7 @@ function fieldLabels(
 
 export type Built = { kind: "labels"; labels: Labels } | { kind: "invalid"; errors: FieldError[] };
 
-/** The labels document for one pass (SPEC-03 §4.3), or the fields whose JSON does not parse. Everything else is
+/** The labels document for one pass (evaluation spec), or the fields whose JSON does not parse. Everything else is
  * the API's to check (§4.10): the screen holds no normalization or schema rules of its own. */
 export function toLabels({
   draft,

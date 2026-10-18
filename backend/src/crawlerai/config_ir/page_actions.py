@@ -2,10 +2,10 @@
 the steps the browser rung runs (`acquire.types.PageStep`).
 
 A step is an object with a `type` (`wait`, `click`, `scroll`, `press`, `type`) and its parameters. An element is named
-as an IR step names one (SPEC-08 §4.2): a CSS `selector`, carried as its XPath 1.0 translation exactly as a `css` step
-is (`model.CssStep`), or an `xpath` checked as XPath 1.0; a click may name the element by its visible `text` instead.
-A request holds at most `MAX_ACTIONS` steps, each ending within its `timeout_ms`. `wait_for` is a wait step written
-short: milliseconds, `network_idle`, or a CSS selector.
+as an IR step names one (learning-configs spec): a CSS `selector`, carried as its XPath 1.0 translation exactly as a
+`css` step is (`model.CssStep`), or an `xpath` checked as XPath 1.0; a click may name the element by its visible `text`
+instead. A request holds at most `MAX_ACTIONS` steps, each ending within its `timeout_ms`. `wait_for` is a wait step
+written short: milliseconds, `network_idle`, or a CSS selector.
 """
 
 from typing import Annotated, Final, Literal, Self

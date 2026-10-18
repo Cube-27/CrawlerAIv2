@@ -10,13 +10,13 @@ import { OptionsPopover } from "./OptionsPanel";
 import { ReadOnlyContext } from "./readOnly";
 import { ScheduleThis } from "./ScheduleThis";
 
-/** Every mode's page (SPEC-14 §4.2), top to bottom: the mode switch, centred; the command bar (`input`, the Options
+/** Every mode's page (frontend spec), top to bottom: the mode switch, centred; the command bar (`input`, the Options
  * button, `tools`, `action`), centred in a narrower column, in a form whose errors are `validationErrors`; then the
  * output (`children`) across the content width. Options opens `options` in a popover while `optionsOpen`, and shows a
  * dot when `optionsChanged`. Get code, before the action, shows `request`: the body the action sends, built once for
  * both (null while the form can't be sent); Schedule this stores the same body as a recurring schedule (D-1418).
  * With `onEdit`, the page shows a run's request read-only, and the action is "Edit and re-run", which calls it
- * (SPEC-14 §4.8). */
+ * (frontend spec). */
 export function PlaygroundLayout({
   mode,
   validationErrors,

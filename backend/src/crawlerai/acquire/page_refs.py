@@ -1,4 +1,4 @@
-"""The URLs an HTML page states about itself and links to (SPEC-15 §4.2), read from its document: the references an
+"""The URLs an HTML page states about itself and links to (adapters spec), read from its document: the references an
 adapter weighs to tell which platform page a page on another host stands for (`adapters.base.Referring`)."""
 
 from urllib.parse import urljoin, urlsplit

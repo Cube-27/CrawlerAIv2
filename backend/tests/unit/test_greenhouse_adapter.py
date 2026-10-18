@@ -1,4 +1,4 @@
-"""The Greenhouse adapter (SPEC-02 §4.9): detect board URLs, fetch the Job Board API's JSON, name its endpoints.
+"""The Greenhouse adapter (acquisition spec): detect board URLs, fetch the Job Board API's JSON, name its endpoints.
 
 Greenhouse is a multi-tenant platform, not a site (C6, C9). Its hosts come from the adapter module, so no hostname is
 written here (C3). Tenants and the recorded API responses under `tests/fixtures/greenhouse/` are synthetic.

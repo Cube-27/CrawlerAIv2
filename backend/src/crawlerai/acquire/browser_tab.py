@@ -1,4 +1,4 @@
-"""A listing's browser actions on the browser rung (owner #52, ARCHITECTURE §7.1): the rendered page as a `Tab` that a
+"""A listing's browser actions on the browser rung (owner #52): the rendered page as a `Tab` that a
 paging driver reads and acts on, and the document states it keeps, each a fetch result of its own.
 
 The page is opened, navigated and settled exactly as `fetch_browser` does it (`browser.rendered`), so the launch, the

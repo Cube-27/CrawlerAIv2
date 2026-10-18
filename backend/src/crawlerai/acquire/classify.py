@@ -1,4 +1,4 @@
-"""Block classification from HTTP status and document structure only (SPEC-02 §4.3, ARCHITECTURE §7.1, INV-24).
+"""Block classification from HTTP status and document structure only (acquisition spec, INV-24).
 
 Every rule reads the body as text, decoded once at acquisition by HTML encoding sniffing
 (`storage.capture_bundle.decode_html`): a parser handed the raw bytes of a page in a legacy encoding would read its
@@ -39,12 +39,12 @@ _INVISIBLE = ["script", "style", "noscript", "template"]
 # HTML media types (HTML Standard §16.1 text/html; RFC 3236 application/xhtml+xml). A response without a declared
 # type is treated as HTML, as browsers sniff it (WHATWG MIME Sniffing §7).
 _HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
-# Shell thresholds: unmeasured starting points, to be confirmed on dev (SPEC-02 §4.3, D-0008).
+# Shell thresholds: unmeasured starting points, to be confirmed on dev (acquisition spec, D-0008).
 _SHELL_MAX_TEXT_CHARS = 200
 _SHELL_MAX_LINKS = 5
 # HTML Standard §4.6.1: `a` and `area` elements with an `href` are hyperlinks.
 _HYPERLINKS = "a[href], area[href]"
-# Structured data a listing's rows are read from without its grid (SPEC-05 §4.7): as many microdata items (HTML
+# Structured data a listing's rows are read from without its grid (extraction spec): as many microdata items (HTML
 # Standard §5.2) as a grid's items (`MIN_ITEMS`), or a schema.org ItemList in a JSON-LD script data block (W3C JSON-LD
 # 1.1 §7.3) whose media type, before parameters and in any case (RFC 9110 §8.3.1), is `_JSON_LD`.
 # Top-level microdata items (HTML Standard §5.2.2): an item that is no property of another (a breadcrumb's entries,

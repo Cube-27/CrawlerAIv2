@@ -45,7 +45,7 @@ import {
   minConfidencePercent,
 } from "../run/storedRequest";
 
-/** Batch's options panel (SPEC-14 §4.2): each is a `BatchScrapeRequest` member, except `metadataInJson`, a view
+/** Batch's options panel (frontend spec): each is a `BatchScrapeRequest` member, except `metadataInJson`, a view
  * option that asks for the `metadata` format and the results' `include=metadata`. `fields` are the names
  * `schema.fields` drafts a schema from (§4.10). */
 export interface BatchOptions extends FormatSettings {
@@ -70,7 +70,7 @@ export const DEFAULT_BATCH_OPTIONS: BatchOptions = {
   metadataInJson: false,
   fields: [],
   webhook: NO_WEBHOOK,
-  // FetchPolicy's own default (SPEC-02 §4.2).
+  // FetchPolicy's own default (acquisition spec).
   methodHint: "auto",
   maxRows: Number.NaN,
   minConfidence: Number.NaN,
@@ -125,7 +125,7 @@ function batchFetch(form: BatchFormState, formats: readonly ScrapeFormat[]): Fet
 }
 
 /** The batch request for `form`, or null when it can't be sent (`batchErrors`). A batch's results are records or page
- * outputs (SPEC-10 §4.5), so with a schema or field names it asks for `records` alone, as a crawl does (D-0980). */
+ * outputs (jobs spec), so with a schema or field names it asks for `records` alone, as a crawl does (D-0980). */
 export function buildBatch(form: BatchFormState): BatchRequest | null {
   if (batchErrors(form) !== NO_ERRORS) return null;
   const formats = jobFormats(form);

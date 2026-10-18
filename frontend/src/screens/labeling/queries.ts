@@ -11,7 +11,7 @@ export type PageDetail = components["schemas"]["PageDetail"];
 /** Every labeling query key starts with this, so a saved pass reads its page and the list again. */
 export const EVAL_PAGES = ["eval", "pages"] as const;
 
-// The eval routes are mounted only with `CRAWLERAI_EVAL_UI=true` (SPEC-03 §4.10). Unmounted, a route is FastAPI's
+// The eval routes are mounted only with `CRAWLERAI_EVAL_UI=true` (evaluation spec). Unmounted, a route is FastAPI's
 // plain 404; a missing page is an RFC 9457 problem.
 function isProblem(response: Response): boolean {
   return response.headers.get("content-type") === "application/problem+json";
@@ -42,7 +42,7 @@ async function getPage(client: ApiClient, pageId: string): Promise<PageData> {
   throw new ApiProblem(failed(response, error, "Loading the eval page").problem);
 }
 
-/** The dev eval pages, read with the connected API key (SPEC-03 §4.10: the same auth as everything else). */
+/** The dev eval pages, read with the connected API key (evaluation spec: the same auth as everything else). */
 export function useEvalPages() {
   const client = useApiClient();
   return useQuery({ queryKey: EVAL_PAGES, queryFn: () => listPages(client) });

@@ -1,4 +1,4 @@
-"""The browser's SSRF guard (SPEC-02 §4.5, ARCHITECTURE §7.1, §18, INV-16): a SOCKS5 proxy on loopback that the
+"""The browser's SSRF guard (acquisition spec, INV-16): a SOCKS5 proxy on loopback that the
 browser context sends every connection through.
 
 A request interceptor can't be the guard: the browser follows redirects itself, and interception sees only the
@@ -12,7 +12,7 @@ between the browser and the site.
 
 With an `upstream` proxy pool, the guard still checks each host, then opens the connection as a CONNECT tunnel
 through the pool's proxy (`acquire.tunnel`), naming the host: the proxy resolves it, so the address can't be pinned
-(ARCHITECTURE §7.1).
+.
 """
 
 import asyncio

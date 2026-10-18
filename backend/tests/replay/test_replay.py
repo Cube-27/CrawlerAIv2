@@ -1,4 +1,4 @@
-"""The replay harness (SPEC-03 §4.5, INV-10): `RecordedLLM` recording and replaying, `replay_split` over a synthetic
+"""The replay harness (evaluation spec, INV-10): `RecordedLLM` recording and replaying, `replay_split` over a synthetic
 dev split, and the determinism test: two runs give byte-identical JSON."""
 
 import asyncio

@@ -1,5 +1,5 @@
 """The problems a job submission answers with (`POST /v1/batch/scrape`, `/v1/crawl`): the errors the services raise
-before they store anything, as problem details (SPEC-07 §4.8)."""
+before they store anything, as problem details (rest-api spec)."""
 
 from collections.abc import Iterator
 from contextlib import contextmanager

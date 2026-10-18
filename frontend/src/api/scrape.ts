@@ -1,4 +1,4 @@
-/** `POST /v1/scrape` (SPEC-07 §4.4). The answer is the generated `ScrapeResult`. */
+/** `POST /v1/scrape` (rest-api spec). The answer is the generated `ScrapeResult`. */
 import type { components } from "./schema";
 
 type Schemas = components["schemas"];
@@ -56,7 +56,7 @@ export type Chunk = Schemas["Chunk"];
 export type Artifact = Schemas["Artifact"];
 
 /** A schema by id, inline (a SchemaDef the server validates), or drafted by role S from a prompt or from field names
- * (SPEC-14 §4.10). */
+ * (frontend spec). */
 export type SchemaRef =
   | { id: string }
   | { inline: Readonly<Record<string, unknown>> }
@@ -83,7 +83,7 @@ export interface ScrapeRequest {
   chunking?: Partial<ChunkOptions>;
 }
 
-/** Every field carries the §13.1 attributes plus `reason`, `source_kind` and `derived_by` (SPEC-07 §4.4). */
+/** Every field carries the §13.1 attributes plus `reason`, `source_kind` and `derived_by` (rest-api spec). */
 export type RecordField = Schemas["RecordField"];
 export type ScrapeRecord = Schemas["ScrapedRecord"];
 

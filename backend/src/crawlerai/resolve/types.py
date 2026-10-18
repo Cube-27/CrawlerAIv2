@@ -1,4 +1,4 @@
-"""What resolution returns (SPEC-05 §4.2): one outcome per schema field, and the result of one page.
+"""What resolution returns (resolution spec): one outcome per schema field, and the result of one page.
 
 The models hold INV-22: every published field carries `evidence`, `confidence`, `calibrated`, `source_kind` and
 `locator`. Its confidence is its bucket's dev precision, so it is `None` only while the bucket has no dev measurement,
@@ -14,7 +14,7 @@ from crawlerai.collect.base import Candidate
 from crawlerai.collect.locator import LocatorText, PageUrlDerivation
 from crawlerai.db.models import ExtractionMode, SourceKind
 
-# ARCHITECTURE §10 evidence buckets.
+# Evidence buckets.
 Evidence = Literal[
     "adapter",
     "structured",
@@ -28,7 +28,7 @@ Evidence = Literal[
     "derived",
 ]
 FieldStatus = Literal["published", "missing", "conflict", "abstained"]
-# SPEC-05 §4.8: the derivations core has, each a named function in `resolve/derive.py`.
+# resolution spec: the derivations core has, each a named function in `resolve/derive.py`.
 Derivation = Literal[PageUrlDerivation, "absolutize"]
 # `url_task.outcome` (§6), except that `error` is stored as `failed`.
 Outcome = Literal["extracted", "partial", "no_match", "blocked", "shell", "not_found", "error"]
@@ -47,7 +47,7 @@ class _Model(BaseModel):
 
 
 class FieldOutcome(_Model):
-    """One field's outcome. A row-mapped field (SPEC-13 §4.5) also holds `items`, one per published row in the order of
+    """One field's outcome. A row-mapped field (variants spec) also holds `items`, one per published row in the order of
     `value`, and `dropped`, the rows that did not publish; every other field holds neither."""
 
     status: FieldStatus
@@ -90,13 +90,13 @@ class FieldOutcome(_Model):
 
 
 class RowOutcome(_Model):
-    """A published row of a row-mapped field (SPEC-13 §4.5, INV-34): every sub-field's outcome, published or not."""
+    """A published row of a row-mapped field (variants spec, INV-34): every sub-field's outcome, published or not."""
 
     fields: dict[str, FieldOutcome]
 
 
 class DroppedRow(_Model):
-    """A row of a row-mapped field that did not publish: its row entities' locators, and why (SPEC-13 §4.4, §4.5)."""
+    """A row of a row-mapped field that did not publish: its row entities' locators, and why (variants spec)."""
 
     locators: tuple[LocatorText, ...]
     reason: str
@@ -110,7 +110,7 @@ FieldSet = dict[str, FieldOutcome]
 
 
 class LLMCallRecord(_Model):
-    """One LLM call of the page, as `extraction.llm_calls` records it (SPEC-06 §4.2)."""
+    """One LLM call of the page, as `extraction.llm_calls` records it (llm spec)."""
 
     prompt_kind: str
     provider: str
@@ -132,7 +132,7 @@ class ExtractionResult(_Model):
     record_confidence: Probability | None
     # What the collectors skipped and why (§4.14), for the page's log.
     diagnostics: tuple[str, ...] = ()
-    # A listing's next-page candidates (§4.12), for the crawl frontier (SPEC-10 §4.5).
+    # A listing's next-page candidates (§4.12), for the crawl frontier (jobs spec).
     next_pages: tuple[str, ...] = ()
     # Why a listing gave no rows (`no_rows` in `resolve.pipeline`); None for a listing with rows and for a detail page.
     reason: str | None = None

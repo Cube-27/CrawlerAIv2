@@ -56,7 +56,7 @@ export interface RuleRow {
   pageKind: PageKind;
 }
 
-/** Crawl's options panel (SPEC-14 §4.2): each is a `CrawlRequest` member, except `metadataInJson`, a view option.
+/** Crawl's options panel (frontend spec): each is a `CrawlRequest` member, except `metadataInJson`, a view option.
  * `fields` are the names `schema.fields` drafts a schema from (§4.10). An empty limit (NaN) is left out, so the
  * server's default applies. */
 export interface CrawlOptions extends FormatSettings {
@@ -101,7 +101,7 @@ export const DEFAULT_CRAWL_OPTIONS: CrawlOptions = {
   keywords: [],
   allowSubdomains: false,
   allowExternal: false,
-  // FetchPolicy's own default (SPEC-02 §4.2).
+  // FetchPolicy's own default (acquisition spec).
   methodHint: "auto",
   maxRows: Number.NaN,
   minConfidence: Number.NaN,
@@ -147,7 +147,7 @@ function fieldsErrors(rules: readonly RuleRow[]): Readonly<Record<string, string
   return kinds.size > 1 ? MIXED_RULES : (fieldsPageKindErrors(kind ?? null) ?? NO_ERRORS);
 }
 
-/** Why `form` can't be sent, by field. A crawl's results are records or page outputs (SPEC-10 §4.5): with a schema
+/** Why `form` can't be sent, by field. A crawl's results are records or page outputs (jobs spec): with a schema
  * or field names it asks for `records` alone, which needs a rule; every rule is for the schema's page kind, and field
  * names take rules of one page kind. Without either it asks for at least one format. */
 export function crawlErrors(form: CrawlFormState): Readonly<Record<string, string>> {

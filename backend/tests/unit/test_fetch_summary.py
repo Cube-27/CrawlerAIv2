@@ -1,4 +1,4 @@
-"""The summary of a page's fetch (SPEC-07 §4.4, D-1393): the kept attempt's method, status and class, every attempt,
+"""The summary of a page's fetch (rest-api spec, D-1393): the kept attempt's method, status and class, every attempt,
 and, for an `api` capture, the platform adapter that reads it (INV-39). The adapter is a stub on a synthetic host."""
 
 from dataclasses import dataclass

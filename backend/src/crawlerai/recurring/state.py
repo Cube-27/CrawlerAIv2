@@ -1,4 +1,4 @@
-"""`url_state` upkeep for recurring runs (SPEC-11 §4.1, ARCHITECTURE §6, §14): what a URL of a site last answered with,
+"""`url_state` upkeep for recurring runs (jobs spec): what a URL of a site last answered with,
 read before it is fetched again and written after."""
 
 import logging
@@ -77,7 +77,7 @@ async def standing_record(
     `schema` that a task extracting the way it would be now (by config `config_version`, or `adhoc` for None, and
     with `schema`'s document, `record.schema_digest`) stood for since the page's content last changed
     (`record_content`); None when the page must be extracted. A task that extracted the changed content and found its
-    record unchanged stands for that record too (SPEC-11 §4.4), so the next run does not extract the page again."""
+    record unchanged stands for that record too (jobs spec), so the next run does not extract the page again."""
     mode: ExtractionMode = "adhoc" if config_version is None else "config"
     changed = select(UrlState.last_changed_at).where(*_url(site_id, canonical_url)).scalar_subquery()
     extracted_since = (

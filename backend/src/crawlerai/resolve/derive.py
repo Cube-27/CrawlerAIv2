@@ -1,4 +1,4 @@
-"""Derived values (SPEC-05 §4.8, ARCHITECTURE §9, C7, INV-07): the only values core publishes without a candidate
+"""Derived values (resolution spec, INV-07): the only values core publishes without a candidate
 stating them, each from a named function with its standard.
 
 A derivation fills a field only when preference left it missing: a published field keeps its value, and a conflict

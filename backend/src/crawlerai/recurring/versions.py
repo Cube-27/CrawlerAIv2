@@ -1,4 +1,4 @@
-"""Record versions (SPEC-11 §4.4, ARCHITECTURE §14 row 3): how a page's records are stored when the same
+"""Record versions (jobs spec): how a page's records are stored when the same
 entities were extracted before.
 
 Each record is compared with the latest version of its entity, the record with the same (site, schema, entity key) and

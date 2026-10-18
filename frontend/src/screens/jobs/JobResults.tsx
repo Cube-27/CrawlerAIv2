@@ -21,7 +21,7 @@ import { RecordInspector } from "../records/RecordInspector";
 /** The job's records in the columns of their schema, each opening the record inspector. */
 function JobRecords({ records }: Readonly<{ records: readonly StoredRecord[] }>) {
   const [open, setOpen] = useState<StoredRecord | null>(null);
-  // A job extracts with one schema (ARCHITECTURE §6 `job.schema_id`).
+  // A job extracts with one schema.
   const schema = useSchema(records[0]?.schema_id ?? null);
   const fieldTypes = useMemo(() => parseFieldTypes(schema.data?.fields), [schema.data]);
   const problem = problemOf(schema.error);
@@ -46,7 +46,7 @@ function JobRecords({ records }: Readonly<{ records: readonly StoredRecord[] }>)
 }
 
 /** A job without a schema: each of its pages with its status, its outcome, and why it failed or ended as it did when
- * the outcome alone does not say (`last_error`, SPEC-10 §4.2). */
+ * the outcome alone does not say (`last_error`, jobs spec). */
 function PageOutputs({ pages }: Readonly<{ pages: readonly PageOutput[] }>) {
   return (
     <Table>

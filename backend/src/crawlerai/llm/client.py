@@ -1,4 +1,4 @@
-"""The LLM client (SPEC-06 §4.2, ARCHITECTURE §11): one request shape for every role, JSON-schema output, budgets
+"""The LLM client (llm spec): one request shape for every role, JSON-schema output, budgets
 and usage.
 
 `MeteredClient` asks its first `Provider` for JSON, fails over to the next one once if the first does not answer
@@ -33,7 +33,7 @@ from crawlerai.storage.capture_bundle import sha256_hex
 
 log = logging.getLogger(__name__)
 
-# The role of each call (SPEC-06 §4.2); `usage_event.metadata.prompt_kind` and the replay key carry it.
+# The role of each call (llm spec); `usage_event.metadata.prompt_kind` and the replay key carry it.
 PromptKind = Literal[
     "c_extract_detail", "c_extract_listing", "c_prefill", "a_synth", "a_repair", "d_bind", "s_draft", "s_labels"
 ]

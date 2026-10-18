@@ -17,7 +17,7 @@ import {
   toggleFormats,
 } from "../../../test/playground";
 
-// `fetch` answers the batch, job, results and events endpoints with the shapes SPEC-10 §4.2–4.3 and SPEC-14 §4.4
+// `fetch` answers the batch, job, results and events endpoints with the shapes jobs spec–4.3 and frontend spec
 // define.
 
 const JOB_ID = "0192a000-0000-7000-8000-0000000000b1";
@@ -99,7 +99,7 @@ describe("batch playground: the command bar", () => {
     expect(screen.getByText("2 URLs")).toBeInTheDocument();
   });
 
-  it("posts the batch request SPEC-10 defines, with a schema asking for records alone", async () => {
+  it("posts the batch request jobs spec defines, with a schema asking for records alone", async () => {
     const calls = batchApi();
     await openPlayground("/batch");
     await typeUrls("https://shop.test/a\n https://shop.test/b ");

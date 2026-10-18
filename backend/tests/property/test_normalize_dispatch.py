@@ -1,4 +1,4 @@
-"""The normalize dispatcher (SPEC-04 §4.3, §4.4): each field type goes to its one module, lists and objects recurse
+"""The normalize dispatcher (normalization spec): each field type goes to its one module, lists and objects recurse
 into their items and sub-fields, range resolves currencies by the registered money rules, and no type returns `Ok`
 for empty input (INV-06)."""
 

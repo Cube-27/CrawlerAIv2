@@ -1,4 +1,4 @@
-"""Progressive state, the learning trigger and the `learn` job (SPEC-08 §4.4, §4.8), against a real Postgres."""
+"""Progressive state, the learning trigger and the `learn` job (learning-configs spec), against a real Postgres."""
 
 import uuid
 from typing import Any

@@ -51,7 +51,7 @@ function SchemaTable({ schemas }: Readonly<{ schemas: readonly SchemaDef[] }>) {
   );
 }
 
-/** Every schema, one row per name (SPEC-12 §4.3), as the API lists them. */
+/** Every schema, one row per name (frontend spec), as the API lists them. */
 export function SchemasScreen() {
   const query = useSchemas();
   const problem = problemOf(query.error);

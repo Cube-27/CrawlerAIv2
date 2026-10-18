@@ -1,10 +1,10 @@
-"""The adapter protocol (SPEC-02 §4.9, SPEC-15 §4.4, ARCHITECTURE §7.1, C6): a multi-tenant platform's documented public
+"""The adapter protocol (acquisition spec, adapters spec): a multi-tenant platform's documented public
 API in place of its pages.
 
 An adapter recognizes the platform's page URLs, fetches the JSON its API serves for them, and states how that JSON
 holds schema.org nodes (`Shape`), from the platform's API documentation, the platform's standard (C2). Hostnames
 appear only in this package (C3). Nothing here interprets values: the adapter collector reads the nodes as
-`source_kind='adapter'` candidates with the schema.org path rules every structured collector uses (SPEC-05 §4.5).
+`source_kind='adapter'` candidates with the schema.org path rules every structured collector uses (extraction spec).
 """
 
 import re
@@ -25,7 +25,7 @@ PATH_SEGMENT: Final = re.compile(r"(?!\.+$)[A-Za-z0-9._~-]+")
 # A member name step that takes every item of an array (RFC 9535 §2.5.1.2, the wildcard selector).
 ALL: Final = "*"
 
-# The reasons an adapter's answer did not serve the page (the error of its `error` outcome; SPEC-15 §4.2): the answer
+# The reasons an adapter's answer did not serve the page (the error of its `error` outcome; adapters spec): the answer
 # lacks the platform's own signal, so the host is not the platform; or the platform answered, but not for this page.
 NOT_PLATFORM: Final = "not_platform"
 NOT_SERVED: Final = "not_served"
@@ -35,7 +35,7 @@ Members = tuple[str, ...]  # member names from a JSON object to a value; `ALL` t
 
 @dataclass(frozen=True)
 class Shape:
-    """A schema.org node the API's JSON holds (SPEC-15 §4.4): its type; `at`, the members from the enclosing node's
+    """A schema.org node the API's JSON holds (adapters spec): its type; `at`, the members from the enclosing node's
     object (the document, for a root) to this node's object; `properties`, the members from that object to each
     schema.org property's values; `also`, further members to values of a property in `properties`, read after its
     own in order (an API that keeps a primary value apart from the others: a primary location and the further ones);
@@ -107,7 +107,7 @@ class Adapter(Protocol):
 @runtime_checkable
 class Referring(Protocol):
     """An adapter whose platform serves sites on tenants' own hosts, which tell their platform page only by what the
-    site's own page states (SPEC-15 §4.2)."""
+    site's own page states (adapters spec)."""
 
     def referred(self, refs: PageRefs, kind: PageKind | None, /) -> str | None:
         """The platform page URL (one `detect` accepts) that the page with `refs` stands for, as the page kind `kind`

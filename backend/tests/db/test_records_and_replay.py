@@ -1,4 +1,4 @@
-"""Stored records and capture replay (SPEC-07 §4.6, ARCHITECTURE §13.1, INV-22, INV-27): the records and captures
+"""Stored records and capture replay (rest-api spec, INV-22, INV-27): the records and captures
 services, then `GET /v1/records` and `POST /v1/captures/{id}/replay` over HTTP."""
 
 import json

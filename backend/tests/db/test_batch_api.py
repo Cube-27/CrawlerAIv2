@@ -1,4 +1,4 @@
-"""`POST /v1/batch/scrape` over HTTP (SPEC-10 §4.3): what a client sends and gets back. What a batch does is the
+"""`POST /v1/batch/scrape` over HTTP (jobs spec): what a client sends and gets back. What a batch does is the
 service's and the worker's (`test_batch_scrape.py`)."""
 
 from typing import Any

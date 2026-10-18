@@ -1,5 +1,5 @@
-"""The engine's listing rows aligned with a config's rows (SPEC-08 §4.7, D-1500): an order-preserving subsequence, the
-one with the most agreeing values."""
+"""The engine's listing rows aligned with a config's rows (learning-configs spec, D-1500): an order-preserving
+subsequence, the one with the most agreeing values."""
 
 from hypothesis import given
 from hypothesis import strategies as st

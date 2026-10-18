@@ -1,4 +1,4 @@
-"""The `ApiRecipe` model (SPEC-09 §4.2): a recipe document survives a JSON round trip, and documents that leave a
+"""The `ApiRecipe` model (adapters spec): a recipe document survives a JSON round trip, and documents that leave a
 placeholder unbound, move the host, carry credentials or use paths the engine cannot read are refused."""
 
 import uuid

@@ -1,10 +1,10 @@
-"""The schema.org map (SPEC-05 §4.1, §4.5), shared by the structured-data collectors (JSON-LD, microdata): the type
+"""The schema.org map (extraction spec), shared by the structured-data collectors (JSON-LD, microdata): the type
 hierarchy from the pinned schema.org vocabulary file, and a schema field's `schema_org` path read against a node.
 
-A path `T.p[.q][+r]` (SPEC-04 §4.2) applies to every entity of type `T` or a subtype of it (`rdfs:subClassOf`). It
+A path `T.p[.q][+r]` (schemas spec) applies to every entity of type `T` or a subtype of it (`rdfs:subClassOf`). It
 follows `p`, then `q`, through the nodes the values name; `+r` joins the last node's `r` to the value as one object.
-A path of alternatives `A|B` (SPEC-13 §4.1) reaches what each alternative reaches. A row-mapped field's sub-fields are
-read as fields of their own, named `<field>.<sub-field>` (SPEC-13 §4.2).
+A path of alternatives `A|B` (variants spec) reaches what each alternative reaches. A row-mapped field's sub-fields are
+read as fields of their own, named `<field>.<sub-field>` (variants spec).
 """
 
 import html
@@ -26,7 +26,7 @@ from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
-# The pinned schema.org release in `backend/data/manifest.json` (SPEC-04 §4.6, D-0018).
+# The pinned schema.org release in `backend/data/manifest.json` (schemas spec, D-0018).
 VOCABULARY_FILE = Path("schemaorg") / "schemaorg-all-https.jsonld"
 
 # The vocabulary file's compact IRIs: `schema:` is https://schema.org/, `rdfs:Class` the RDF Schema class of classes.
@@ -134,7 +134,7 @@ _ENUMERATION = "Enumeration"
 
 def reference_errors(fields: Mapping[str, FieldSpec], vocabulary: Vocabulary) -> list[tuple[str, str]]:
     """The `schema_org` paths and `schema:` enum references of a schema document's `fields` that the pinned schema.org
-    vocabulary does not define, as (field path, reason) pairs (SPEC-04 §4.2). A path's root must be a type and each
+    vocabulary does not define, as (field path, reason) pairs (schemas spec). A path's root must be a type and each
     step and its `+` join a property; a `schema:` reference must be an enumeration. `type:` references name the
     shipped type vocabularies, which the normalizer declines on when unknown (`unknown_vocab`)."""
     errors: list[tuple[str, str]] = []
@@ -228,7 +228,7 @@ class MappedPath(NamedTuple):
 
 def parse_paths(path: str) -> tuple[MappedPath, ...]:
     """A `schema_org` path's alternatives, in order, each with its rank, already checked by the schema document's
-    pattern (SPEC-04 §4.2)."""
+    pattern (schemas spec)."""
     return tuple(
         _parse_alternative(alternative, rank)
         for rank, ranked in enumerate(path.split(">"))
@@ -330,7 +330,7 @@ class Typed:
     node: Node
 
 
-# A URL is not prose: the text types (SPEC-04 §5.1 `text`, `long_text`) take no value a source gives as a URL.
+# A URL is not prose: the text types (schemas spec `text`, `long_text`) take no value a source gives as a URL.
 _TEXT_TYPES = frozenset({FieldType.TEXT, FieldType.LONG_TEXT})
 
 
@@ -350,7 +350,7 @@ def field_candidates(
     diagnostics: list[str],
 ) -> Iterator[Candidate]:
     """A candidate per value each field's path reaches on each entity of its type. A row-mapped field's path names its
-    rows, which resolution finds (SPEC-13 §4.3); each of its sub-fields is read as a field of its own."""
+    rows, which resolution finds (variants spec); each of its sub-fields is read as a field of its own."""
     for name, spec, mapped in mapped_fields(schema):
         as_list = spec.type is FieldType.LIST
         entries = schema.page_kind == "listing" and spec.scope == "row"
@@ -394,7 +394,7 @@ def fragment_read(raw: JsonValue, spec: FieldSpec) -> str | None:
 def mapped_fields(schema: SchemaDef) -> Iterator[tuple[str, FieldSpec, tuple[MappedPath, ...]]]:
     """The fields whose values a `schema_org` path reaches, by candidate field name, with the path's alternatives: each
     field with a path, except a row-mapped one, whose path reaches rows, not values; in its place, its sub-fields with
-    a path, as `<field>.<sub-field>` (SPEC-13 §4.2; `Name` allows no `.`, so these never clash with a field's name)."""
+    a path, as `<field>.<sub-field>` (variants spec; `Name` allows no `.`, so these never clash with a field's name)."""
     for name, spec in schema.fields.items():
         if spec.row_mapped and spec.item is not None:
             for sub_name, sub in (spec.item.fields or {}).items():
@@ -482,7 +482,7 @@ def _selections(
 ) -> Iterator[tuple[str, Selected]]:
     """What each alternative reaches on each entity of its root type, by entity id, and with `entries` (a listing's
     row field) on each list entry without an item (`ENTRY`). The same value of one entity that two alternatives reach
-    is one selection (SPEC-13 §4.1): its locator names it. One alternative's selections are all kept, as a path's
+    is one selection (variants spec): its locator names it. One alternative's selections are all kept, as a path's
     are. An alternative of a higher rank (after a `>`) reads no entity on which a lower rank reached a stated value
     (a string or a number: a node reaching the end of a path states none the field can read)."""
     earlier: set[tuple[str, str]] = set()
@@ -531,7 +531,7 @@ def candidate(
 ) -> Candidate | None:
     """The independent candidate of one value a collector read from a source's own structure, normalized as `spec`
     (from `read` when given: what the field reads of `raw`). A value the candidate model refuses (nested deeper than
-    its validator recurses) is skipped with a diagnostic: a collector never raises on page content (SPEC-05 §4.5)."""
+    its validator recurses) is skipped with a diagnostic: a collector never raises on page content (extraction spec)."""
     try:
         return Candidate(
             field=field,
@@ -548,7 +548,7 @@ def candidate(
 
 
 def entity_urls(node: Node, ctx: Context) -> tuple[str, ...]:
-    """The canonical URLs that name the page an entity is on (SPEC-05 §4.2): its own (`item_urls`) and its offers'
+    """The canonical URLs that name the page an entity is on (extraction spec): its own (`item_urls`) and its offers'
     (`offer_urls`)."""
     return tuple(dict.fromkeys((*item_urls(node, ctx), *offer_urls(node, ctx))))
 

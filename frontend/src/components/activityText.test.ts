@@ -9,7 +9,7 @@ function event(kind: string, data: object, id: string | null = "1"): StreamEvent
   return { id, kind, data: JSON.stringify(data) };
 }
 
-// Every event kind SPEC-10 §4.2 lists, with the data the worker records for it.
+// Every event kind jobs spec lists, with the data the worker records for it.
 const LINES: readonly [string, object, string | null][] = [
   ["task_fetched", { url: URL_A, method: "http", block_class: "ok" }, "Fetched over HTTP."],
   ["task_fetched", { url: URL_A, method: "browser", block_class: "ok" }, "Fetched with a browser."],

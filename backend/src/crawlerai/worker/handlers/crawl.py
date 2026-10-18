@@ -1,4 +1,4 @@
-"""The handler of `crawl` tasks (SPEC-10 §4.5, ARCHITECTURE §13.2): fetch the task's page as a batch task does
+"""The handler of `crawl` tasks (jobs spec): fetch the task's page as a batch task does
 (`crawlerai.worker.handlers.steps`), settle it, and add the URLs it leads to to the frontier
 (`crawlerai.crawl.frontier`).
 
@@ -14,10 +14,10 @@ The start URL's task also reads the site's sitemaps (`crawlerai.crawl.sitemaps`:
 ends the task: an attempt that is postponed or retried leaves them to the next, so they are read once. Sitemaps are
 fetched over HTTP, politely: the worker waits for the site's rate in place, within `SITEMAP_TIMEOUT_S`, past which the
 seeds read so far are kept and the job records `sitemaps_timed_out`, so that the listing diff counts the run as partial
-(SPEC-11 §4.5); a sitemap the SSRF guard refused ends the reading the same way (INV-16: it is never fetched).
+(jobs spec); a sitemap the SSRF guard refused ends the reading the same way (INV-16: it is never fetched).
 
 A page whose URL matched a page-kind rule (`url_task.page_kind`) is extracted: its formats, or its record, as a
-crawl-discovered page (`no_match` when incomplete, ARCHITECTURE §10). A page no rule matched, in a crawl with rules,
+crawl-discovered page (`no_match` when incomplete). A page no rule matched, in a crawl with rules,
 ends `links_only` and is never extracted (§13.2, §23). URLs are added after the page is settled, so the job's row is
 locked (`Frontier.enqueue`) only for the rest of the task's transaction.
 """
@@ -85,7 +85,7 @@ def crawl_handler(
     fetching: Fetching, data: EngineData | None, margins: DriftMargins | None, *, llm: LLMClient
 ) -> TaskHandler:
     """The `crawl` handler of a worker that fetches with `fetching`; `data` is None in a worker without the engine's
-    data files, whose records tasks then fail. `margins` decide drift suspensions (SPEC-08 §4.9); role C
+    data files, whose records tasks then fail. `margins` decide drift suspensions (learning-configs spec); role C
     runs on `llm`."""
 
     async def handle(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
@@ -105,7 +105,7 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
         return Skipped()  # leased with the candidates before the pages that spent the limit settled
     if own.strategy == "best_first" and await own.outranked(conn, task):
         return Postpone(timedelta(0))  # a page fetched since it was leased found a better candidate
-    # A page whose links the crawl reads is fetched itself: an API recipe's JSON has none (SPEC-09 §4.8).
+    # A page whose links the crawl reads is fetched itself: an API recipe's JSON has none (adapters spec).
     reads_links = task.depth < crawl.request.max_depth or task.page_kind is None
     served = None if reads_links else crawl.records
     # A listing recipe's pages count toward the crawl's page bound as its tasks do.
@@ -240,7 +240,7 @@ async def _sitemap_seeds(
     except TargetRejected:
         pass  # a refused sitemap ends the reading: it is never fetched (INV-16)
     await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
-    if capped:  # the run saw part of its listing only (SPEC-11 §4.5)
+    if capped:  # the run saw part of its listing only (jobs spec)
         await record_event(conn, task.job_id, SITEMAPS_TIMED_OUT, {"url": task.url, "seeds": len(seeds)})
     # The task's id and job, never a URL, which `CRAWLERAI_LOG_REDACT_URLS` may keep out of the logs.
     stop = f"; stopped at the {SITEMAP_TIMEOUT_S:g} s time cap" if capped else ""

@@ -63,7 +63,7 @@ function RecordResults({ filters }: Readonly<{ filters: RecordFilters }>) {
   );
 }
 
-/** Stored records by schema, job, site and change time (SPEC-12 §4.3): a column per schema field, the fields each
+/** Stored records by schema, job, site and change time (frontend spec): a column per schema field, the fields each
  * record changed, and an inspector per record. */
 export function RecordsScreen() {
   const [params, setParams] = useSearchParams();

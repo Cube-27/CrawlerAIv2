@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-/** Paging back and forth over an API that pages forward by cursor (SPEC-07 §4.6): the cursors of the pages before
+/** Paging back and forth over an API that pages forward by cursor (rest-api spec): the cursors of the pages before
  * are kept here, and the first page has none. */
 export function useCursorPages() {
   const [cursors, setCursors] = useState<(string | null)[]>([null]);

@@ -1,4 +1,4 @@
-"""Parameter binding (SPEC-09 §4.4): read a recipe's parameters from a page, fill its templates with them, and find
+"""Parameter binding (adapters spec): read a recipe's parameters from a page, fill its templates with them, and find
 the templates of an endpoint request from sample pages deterministically.
 
 Values are compared and passed around percent-decoded (RFC 3986 §2.1) and encoded again where a placeholder stands,

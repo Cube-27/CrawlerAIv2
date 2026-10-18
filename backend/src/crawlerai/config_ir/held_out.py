@@ -1,4 +1,4 @@
-"""Held-out pages from storage (SPEC-08 §4.4, §4.7): the stored captures of a (site, schema) that a config is
+"""Held-out pages from storage (learning-configs spec): the stored captures of a (site, schema) that a config is
 validated on, each parsed with its context and with the facts the engine stored for it.
 
 The pages are a site's most recent captures with outcome `extracted` or `partial` that have records of the schema
@@ -51,7 +51,7 @@ from crawlerai.storage.capture_bundle import CaptureBundle, decode
 
 # §6: the pages learning reads are those whose outcome is `extracted` or `partial`.
 EXTRACTED: Final = ("extracted", "partial")
-# ARCHITECTURE §8.3 step 4: structured data or an adapter; a config's own values, the model's and a derived page URL
+# Structured data or an adapter; a config's own values, the model's and a derived page URL
 # are not references.
 REFERENCE_KINDS: Final = frozenset(get_args(SourceKind)) - {"config", "llm", "derived"}
 
@@ -127,10 +127,10 @@ def published_of(
 @dataclass(frozen=True, slots=True)
 class StoredPage:
     """A stored page as validation reads it (`held_out`) and as a learning sample (`sample`), and its capture, whose
-    network bodies API discovery reads (SPEC-09 §4.3). `stated`: the fields any source gave a valid value for, published
-    or not; `asked_llm`: whether its extraction called the LLM (role C, on a detail page's gaps) outside config mode,
-    where it is asked only for the fields the config does not cover. Learning reads both for the fields the site never
-    states (`config_ir.absent`)."""
+    network bodies API discovery reads (adapters spec). `stated`: the fields any source gave a valid value for,
+    published or not; `asked_llm`: whether its extraction called the LLM (role C, on a detail page's gaps) outside
+    config mode, where it is asked only for the fields the config does not cover. Learning reads both for the fields the
+    site never states (`config_ir.absent`)."""
 
     held_out: HeldOutPage
     sample: SamplePage

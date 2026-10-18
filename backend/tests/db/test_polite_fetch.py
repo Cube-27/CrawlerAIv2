@@ -1,4 +1,4 @@
-"""Fetching a task's page politely (SPEC-02 §4.6): robots.txt, the site's rate and backoff through the queue
+"""Fetching a task's page politely (acquisition spec): robots.txt, the site's rate and backoff through the queue
 (`worker.handlers.steps.fetch_queued`, the one polite fetch as a worker runs it)."""
 
 import json

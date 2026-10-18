@@ -1,14 +1,14 @@
-"""Rung selection (SPEC-02 §4.4, ARCHITECTURE §7.1): HTTP by default, the browser on evidence, and the method that
+"""Rung selection (acquisition spec): HTTP by default, the browser on evidence, and the method that
 worked remembered per site and page kind in `site_fetch_method` (D-1380).
 
 A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) first, and to the page rungs when the
-adapter does not serve it (SPEC-15 §4.6). A page whose own canonical link is its URL without the query, which an
+adapter does not serve it (adapters spec). A page whose own canonical link is its URL without the query, which an
 adapter detects, or which an adapter says stands for one of its platform's pages, is then served by that adapter
-(SPEC-15 §4.2). A site whose active config has an API recipe is
-served by the recipe's rung (SPEC-09 §4.8), which the caller binds to the recipe: the config IR sits above `acquire`
+(adapters spec). A site whose active config has an API recipe is
+served by the recipe's rung (adapters spec), which the caller binds to the recipe: the config IR sits above `acquire`
 (`.importlinter`). The browser rung is `crawlerai.acquire.browser.fetch_browser`. Every rung is a function of
 (url, policy), so `acquire` decides and records only. The one exception is the HTTP rung's conditional form, which
-also takes the validators a page last answered with (SPEC-11 §4.2), and the browser rung's exporting form, which also
+also takes the validators a page last answered with (jobs spec), and the browser rung's exporting form, which also
 hands the context's cookies to a site session (`acquire.session`, INV-29's exception).
 """
 
@@ -76,9 +76,9 @@ class ExportingRung(Protocol):
 
 _NOT_MODIFIED = 304
 _UNAVAILABLE = 503  # RFC 9110 §15.6.4
-# ARCHITECTURE §7.1: the HTTP outcomes that are evidence for the browser, which may pass where HTTP did not.
+# The HTTP outcomes that are evidence for the browser, which may pass where HTTP did not.
 _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
-# SPEC-02 §4.11: the reason of a request a transport failure left unanswered (`curl_client.reason`), such as a reset
+# acquisition spec: the reason of a request a transport failure left unanswered (`curl_client.reason`), such as a reset
 # HTTP/2 stream (curl 92) or connection. A filter may reset a client whose TLS or HTTP/2 fingerprint it does not trust;
 # the browser's own network stack may pass (D-1472). A timeout is not one: the site was slow, not refusing.
 _NETWORK_ERROR = "network_error"
@@ -92,7 +92,7 @@ class Rungs:
     # The HTTP rung in its conditional form, for fetches given validators; without it they are sent nowhere.
     conditional: ConditionalRung | None = None
     # JSON over HTTP (`acquire.api.fetch_json`), which an active config's API recipe sends its request with
-    # (SPEC-09 §4.8); without it no recipe serves a page.
+    # (adapters spec); without it no recipe serves a page.
     json: JsonFetcher | None = None
     # A listing with browser actions (`acquire.browser_tab.fetch_listing`, owner #52); the API process sets it.
     listing: ListingRung | None = None
@@ -103,7 +103,7 @@ class Rungs:
 
 
 def adapter_registry(disabled: Collection[str]) -> Registry:
-    """The registry of every platform adapter, all running but the `disabled` ones (SPEC-15 §4.8), for the processes
+    """The registry of every platform adapter, all running but the `disabled` ones (adapters spec), for the processes
     that fetch; it raises `ValueError` for a name no adapter has. One per process: it remembers the hosts its adapters
     declined."""
     adapters = platform_adapters()
@@ -126,25 +126,25 @@ async def acquire(
     needs_render: RenderCheck | None = None,
 ) -> FetchResult:
     """Fetch `url` through the active adapter that detects it, if any, requesting its API with `send` (no adapter runs
-    without it); a page an adapter does not serve skips the recipe (SPEC-15 §4.6). Otherwise through `recipe`, the
-    active config's API recipe bound to its fetch (SPEC-09 §4.8), when the site has one. The adapter's result is kept
+    without it); a page an adapter does not serve skips the recipe (adapters spec). Otherwise through `recipe`, the
+    active config's API recipe bound to its fetch (adapters spec), when the site has one. The adapter's result is kept
     when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if there
     were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the site's `remembered`
     method. In `auto`, an HTTP shell, block or network error is fetched again in the browser, and the browser's outcome
     is kept only if it is `ok`; so is an HTTP `ok` page `needs_render` holds true for, whose browser outcome is kept
     only if it is `ok` and `needs_render` no longer holds (owner #49, #54). Each request after the first (the page after
-    an adapter or a recipe, the browser retry) waits for `admit_next` to admit it at the site's rate (SPEC-02 §4.6), and
-    is not sent when `admit_next` refuses it: the fetch keeps the outcome it has. The result lists every attempt, in its
-    bundle's manifest too. `validators` go with the HTTP rung only (SPEC-11 §4.2): a 304 is `ok` and ends the fetch. A
+    an adapter or a recipe, the browser retry) waits for `admit_next` to admit it at the site's rate (acquisition spec),
+    and is not sent when `admit_next` refuses it: the fetch keeps the outcome it has. The result lists every attempt, in
+    its bundle's manifest too. `validators` go with the HTTP rung only (jobs spec): a 304 is `ok` and ends the fetch. A
     page no adapter detected whose canonical link is its URL without the query, which an adapter detects, is fetched
-    again by that adapter on its own turn (SPEC-15 §4.2); an HTTP `ok` page that would be rendered only for lacking what
-    the caller reads asks it before the render, which runs only when no adapter serves it (D-1388). A policy that
+    again by that adapter on its own turn (adapters spec); an HTTP `ok` page that would be rendered only for lacking
+    what the caller reads asks it before the render, which runs only when no adapter serves it (D-1388). A policy that
     captures the page (`screenshot`, `pdf`) uses neither an adapter nor a recipe."""
     if policy.captures_page:
         send = recipe = None  # a screenshot or PDF is of the page itself, which an adapter's or a recipe's JSON is not
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
     # An adapter's endpoint is not the page: its slow-down holds back the page only by the pause it put on the host's
-    # rate, which `admit_next` waits out (SPEC-15 §4.9). A recipe's may be the page's own (its HTML page request).
+    # rate, which `admit_next` waits out (adapters spec). A recipe's may be the page's own (its HTML page request).
     by_recipe = served is None and recipe is not None
     if served is None and recipe is not None:
         served = await recipe(url, policy)
@@ -211,7 +211,7 @@ def _query_dropped(url: str, page: FetchResult, adapters: Registry) -> str | Non
 
 def _referred(page: FetchResult, policy: FetchPolicy, adapters: Registry) -> str | None:
     """The platform page an active adapter says the fetched page stands for, from what the page states (its redirect,
-    canonical link, `og:url`, links; SPEC-15 §4.2): a site on a tenant's own host that the platform serves."""
+    canonical link, `og:url`, links; adapters spec): a site on a tenant's own host that the platform serves."""
     if page.block_class != "ok":
         return None
     return adapters.referred(lambda: page_refs(page), policy.page_kind)
@@ -376,7 +376,8 @@ def remembered_as(kind: PageKind | None) -> PageKind:
 
 
 async def remembered_method(conn: AsyncConnection, site_id: SiteId, kind: PageKind | None) -> FetchMethod:
-    """The method remembered for the site's pages of `kind` (`remembered_as`): `http` when none is (SPEC-02 §4.4)."""
+    """The method remembered for the site's pages of `kind` (`remembered_as`): `http` when none is (acquisition
+    spec)."""
     query = select(SiteFetchMethod.method).where(
         SiteFetchMethod.site_id == site_id, SiteFetchMethod.page_kind == remembered_as(kind)
     )

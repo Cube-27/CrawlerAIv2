@@ -1,5 +1,5 @@
-"""robots.txt (SPEC-02 §4.6, RFC 9309): fetched once per origin per 24 hours, kept in `site.robots_snapshot`, and read
-with Protego: RFC 9309 matching (§2.2.2: the longest match wins, `allow` on a tie; §2.2.3: `*` and `$`), plus the
+"""robots.txt (acquisition spec, RFC 9309): fetched once per origin per 24 hours, kept in `site.robots_snapshot`, and
+read with Protego: RFC 9309 matching (§2.2.2: the longest match wins, `allow` on a tie; §2.2.3: `*` and `$`), plus the
 `Crawl-delay` and `Sitemap:` extensions.
 
 Fetches impersonate a browser and announce no product token of their own, so the only group addressed to them is
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from crawlerai.acquire.types import FetchResult
 from crawlerai.db.models import Site, SiteId
 
-ROBOTS_TTL: Final = timedelta(hours=24)  # SPEC-02 §4.6; RFC 9309 §2.4 allows caching for up to 24 hours
+ROBOTS_TTL: Final = timedelta(hours=24)  # acquisition spec; RFC 9309 §2.4 allows caching for up to 24 hours
 PARSE_LIMIT_BYTES: Final = 500 * 1024  # RFC 9309 §2.5: parse at least the first 500 KiB
 _USER_AGENT: Final = "*"
 _TOO_MANY_REQUESTS: Final = 429  # RFC 6585 §4

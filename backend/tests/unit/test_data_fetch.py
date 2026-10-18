@@ -1,4 +1,4 @@
-"""`crawlerai data fetch` (SPEC-04 §4.6, INV-05): the manifest's fetched entries are downloaded, checked against their
+"""`crawlerai data fetch` (schemas spec, INV-05): the manifest's fetched entries are downloaded, checked against their
 pinned sha256 and written under the data directory; nothing else is written."""
 
 import hashlib

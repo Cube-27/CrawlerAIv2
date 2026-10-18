@@ -1,4 +1,4 @@
-"""Role S against Postgres (SPEC-06 §4.5, §7): a prompt's draft is stored once as `prompt_draft`, a repeat of the
+"""Role S against Postgres (llm spec): a prompt's draft is stored once as `prompt_draft`, a repeat of the
 prompt reuses it without a call, and an invalid document is retried once, then refused. A schema's label synonyms are
 drafted once and stored with it."""
 

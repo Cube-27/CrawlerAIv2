@@ -3,10 +3,10 @@ import { xpathOf } from "./xpath";
 
 export interface Pick {
   text: string;
-  locator: string; // `xpath:…`, a SPEC-03 §4.3 locator
+  locator: string; // `xpath:…`, a evaluation spec locator
 }
 
-/** The captured page, sanitized by the API, in a frame that runs no script (SPEC-03 §4.10). The frame shares this
+/** The captured page, sanitized by the API, in a frame that runs no script (evaluation spec). The frame shares this
  * page's origin only so that a click in it can be read here; without `allow-scripts` the page itself still runs
  * nothing, and a click never follows a link or submits a form. */
 export function PageView({

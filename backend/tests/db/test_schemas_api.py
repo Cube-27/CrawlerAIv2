@@ -1,4 +1,4 @@
-"""`/v1/schemas` over HTTP (SPEC-07 §4.6): bearer-authenticated CRUD whose errors are RFC 9457 problems. The rules
+"""`/v1/schemas` over HTTP (rest-api spec): bearer-authenticated CRUD whose errors are RFC 9457 problems. The rules
 themselves are the service's (`test_schema_service.py`); these tests check what a client sends and gets back."""
 
 import uuid

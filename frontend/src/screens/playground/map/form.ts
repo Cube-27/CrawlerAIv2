@@ -2,7 +2,7 @@ import type { MapRequest } from "../../../api/jobs";
 import { optionalNumber } from "../pageRequest";
 import { count, flag, text, texts, type StoredRequest } from "../run/storedRequest";
 
-/** Map's options panel (SPEC-14 §4.2): each is a `MapRequest` member. An empty limit (NaN) is left out. */
+/** Map's options panel (frontend spec): each is a `MapRequest` member. An empty limit (NaN) is left out. */
 export interface MapOptions {
   include: readonly string[];
   exclude: readonly string[];
@@ -11,7 +11,7 @@ export interface MapOptions {
   limit: number;
 }
 
-// MapRequest's own defaults (SPEC-10 §4.4): both sources are read.
+// MapRequest's own defaults (jobs spec): both sources are read.
 export const DEFAULT_MAP_OPTIONS: MapOptions = {
   include: [],
   exclude: [],

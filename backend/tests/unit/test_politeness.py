@@ -1,4 +1,4 @@
-"""Politeness (SPEC-02 §4.6): the request interval, Retry-After, per-host admission and its adaptive spacing
+"""Politeness (acquisition spec): the request interval, Retry-After, per-host admission and its adaptive spacing
 (D-1327)."""
 
 import asyncio

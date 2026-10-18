@@ -1,5 +1,5 @@
-"""The captured network JSON collector (SPEC-05 §4.5): each captured body is a JSON document, admitted by the same rule
-as embedded JSON state, and addressed by its index in the bundle."""
+"""The captured network JSON collector (extraction spec): each captured body is a JSON document, admitted by the same
+rule as embedded JSON state, and addressed by its index in the bundle."""
 
 import hashlib
 import json
@@ -42,7 +42,7 @@ def _collect(network: tuple[bytes, ...], *others: Candidate, body: str = "") -> 
 
 
 def test_a_body_value_equal_to_another_kinds_candidate_is_admitted_and_not_independent() -> None:
-    # The relative URL resolves against the page's base URL to the same URL (SPEC-04 url equality).
+    # The relative URL resolves against the page's base URL to the same URL (schemas spec url equality).
     result = _collect((b'{"x": 1}', b'{"data": {"href": "/p/1"}}'), OG_URL)
 
     assert result == Admitted(

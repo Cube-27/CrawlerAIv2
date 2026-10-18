@@ -1,5 +1,5 @@
-"""The extraction pipeline (SPEC-05 §4.1, §4.13, §4.14, ARCHITECTURE §8.2, §10, G7): one capture and one schema in,
-every field's outcome out. `extract_page` is the one function the worker and the replay harness run (SPEC-03 §4.5).
+"""The extraction pipeline (resolution spec): one capture and one schema in,
+every field's outcome out. `extract_page` is the one function the worker and the replay harness run (evaluation spec).
 
 A page that was not served (`blocked`, `shell`, `not_found`, `error`) yields its block class as the outcome and nothing
 else (INV-11). A served page is parsed once (INV-26); every collector reads that one parse, then resolution runs its
@@ -11,7 +11,7 @@ its row-scoped fields, the page its page-scoped ones, and the next-page candidat
 once for the row fields a listing's block rows lack and for its missing page fields (listings spec, "Role C rows").
 Resolution never publishes part of a page: if it raises, the outcome is `error` and no field is set (§4.14).
 
-With the site's active config (ARCHITECTURE §8.4, SPEC-08 §4.8) a page is extracted in `config` mode: the config's
+With the site's active config (learning-configs spec) a page is extracted in `config` mode: the config's
 executor reads the same parse, its candidates enter resolution with the collectors' (in the bucket of the config
 field's status, §10), and role C is asked only for fields the config does not run. A listing's rows are the structured
 data's when it gives any, else the config's; role C never adds rows beside a config that runs row fields.
@@ -71,7 +71,7 @@ _FAILED = "extraction failed"
 ABSENT: Final = "absent"
 
 # D-0486: without a `source_precedence.yaml` no source kind is ranked, so text, long_text, url and image_url fields
-# decline as `unranked` rather than follow an unmeasured order (C7). The repo commits SPEC-05 §4.7's order (D-0444).
+# decline as `unranked` rather than follow an unmeasured order (C7). The repo commits resolution spec's order (D-0444).
 UNRANKED: Orders = dict.fromkeys(PRECEDENCE_TYPES, ())
 # INV-11: a capture whose block class is not `ok` is the page's outcome, with no candidates.
 _NOT_SERVED: Mapping[BlockClass, Outcome] = {
@@ -143,7 +143,7 @@ class GapRequest:
 @dataclass(frozen=True, slots=True)
 class GapReply:
     """Role C's grounded candidates (`source_kind='llm'`, owned by the target) and the calls it made. `failure` is
-    set when its call gave no valid reply (SPEC-06 §4.7): the asked fields then stay `missing` with it as their
+    set when its call gave no valid reply (llm spec): the asked fields then stay `missing` with it as their
     reason. `diagnostics` join the page's (values dropped as ungrounded, truncation)."""
 
     candidates: tuple[Candidate, ...]
@@ -171,7 +171,7 @@ class ListingGapReply(GapReply):
 
 
 class RoleC(Protocol):
-    """The LLM hook (§4.13), filled by SPEC-06's role C; the caller binds the LLM client."""
+    """The LLM hook (§4.13), filled by llm spec's role C; the caller binds the LLM client."""
 
     async def detail(self, request: GapRequest) -> GapReply: ...
 
@@ -289,7 +289,7 @@ class _Page:
     primary: frozenset[str]
     target: Entity | AmbiguousTarget
     facts: PageFacts
-    page_urls: tuple[str, ...]  # the request, final and canonical URLs, canonicalized (SPEC-13 §4.4)
+    page_urls: tuple[str, ...]  # the request, final and canonical URLs, canonicalized (variants spec)
 
     @classmethod
     def read(cls, source: _Source) -> "_Page":
@@ -346,7 +346,7 @@ class _Page:
     ) -> FieldSet:
         """Preference (§4.7, §4.8) for `target`, derivations, then evidence and confidence. `page_values`: whether
         page-level candidates are the target's (`EntityGraph.owned_by`); `detail`: whether `target` is a detail page's,
-        with its variant fill and row-mapped fields (SPEC-13 §4.3 to §4.6)."""
+        with its variant fill and row-mapped fields (variants spec)."""
         schema = self.schema
         decisions: Mapping[str, Preference | Derived]
         if isinstance(target, AmbiguousTarget):
@@ -381,7 +381,7 @@ class _Page:
         return fields
 
     def _rows(self, target: Entity, candidates: Sequence[Candidate]) -> FieldSet:
-        """A detail target's row-mapped fields, resolved row by row (SPEC-13 §4.3 to §4.5)."""
+        """A detail target's row-mapped fields, resolved row by row (variants spec)."""
         return {
             name: resolve_rows(
                 RowField(
@@ -437,8 +437,8 @@ class _Listing:
         diagnostics = list(page.diagnostics)
         found = next_page_candidate(links, page.schema, page.ctx, diagnostics)
         candidates = (*page.candidates, *(() if found is None else (found,)))
-        # SPEC-08 §4.8: the config's rows serve only where structured data gives none. Its row candidates belong to its
-        # own row entities, so structured and config values never meet in one row.
+        # learning-configs spec: the config's rows serve only where structured data gives none. Its row candidates
+        # belong to its own row entities, so structured and config values never meet in one row.
         row_fields = {name for name, spec in page.schema.fields.items() if spec.scope == "row"}
         holders = frozenset(c.entity_id for c in page.collected.candidates if c.field in row_fields)
         structured = listing_rows(page.graph, page.primary, page.target, holders)
@@ -638,7 +638,7 @@ def _absent(fields: FieldSet, absent: frozenset[str]) -> FieldSet:
 
 
 def _unanswered(fields: FieldSet, asked: tuple[str, ...], failure: str) -> FieldSet:
-    """The fields after a role C call that gave no reply: each asked field still `missing` says why (SPEC-06 §4.7)."""
+    """The fields after a role C call that gave no reply: each asked field still `missing` says why (llm spec)."""
     return {
         name: outcome.model_copy(update={"reason": failure})
         if name in asked and outcome.status == "missing"

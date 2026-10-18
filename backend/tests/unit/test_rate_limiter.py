@@ -1,4 +1,4 @@
-"""The in-process token bucket in front of authentication (SPEC-07 §4.2): `burst` requests at once, then `rate` per
+"""The in-process token bucket in front of authentication (rest-api spec): `burst` requests at once, then `rate` per
 second, per bucket key."""
 
 import pytest

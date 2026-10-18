@@ -61,7 +61,7 @@ from crawlerai.resolve.pagination import NextLink, next_page_links
 
 __all__ = ["Caps", "Gate", "collect"]
 
-# Admits a browser action, waiting for the site's rate (SPEC-02 §4.6): for a navigation, its URL, which robots.txt
+# Admits a browser action, waiting for the site's rate (acquisition spec): for a navigation, its URL, which robots.txt
 # must allow; for a click or a scroll, None: it acts on the document the tab shows. False when the action may not be
 # taken.
 Gate = Callable[[str | None], Awaitable[bool]]

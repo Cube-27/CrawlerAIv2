@@ -1,4 +1,4 @@
-"""The schema.org map (SPEC-05 §4.1, §4.5): the type hierarchy from the pinned vocabulary file, and `schema_org` paths
+"""The schema.org map (extraction spec): the type hierarchy from the pinned vocabulary file, and `schema_org` paths
 read against a node's properties."""
 
 from collections.abc import Mapping, Sequence

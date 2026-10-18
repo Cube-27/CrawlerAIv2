@@ -1,6 +1,6 @@
-"""A site whose active config has an API recipe is served through it (SPEC-09 §4.8, SPEC-02 §4.4, ARCHITECTURE §7.1
+"""A site whose active config has an API recipe is served through it (adapters spec, acquisition spec,
 "Adapter / API" rung): in a scrape, and in the worker's `batch_scrape` and `crawl` tasks. The recipe's request goes
-through robots.txt and the site's rate like the page's would (SPEC-02 §4.6); its values are `api` candidates in the
+through robots.txt and the site's rate like the page's would (acquisition spec); its values are `api` candidates in the
 `adapter` bucket (§10); a page the recipe serves joins no drift window, which measures the config's page steps."""
 
 import json

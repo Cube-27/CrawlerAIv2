@@ -5,7 +5,7 @@ import type { MapResult } from "../../../api/jobs";
 import { stubApi, type Call } from "../../../test/api";
 import { closeOptions, fill, openOptions, openPlayground, posted } from "../../../test/playground";
 
-// `fetch` answers `POST /v1/map` with the shape SPEC-10 §4.4 defines.
+// `fetch` answers `POST /v1/map` with the shape jobs spec defines.
 
 /** 25 URLs: more than one page of the table. */
 const URLS = Array.from({ length: 25 }, (_, i) => `https://shop.test/items/${String(i + 1)}`);
@@ -28,7 +28,7 @@ function shownUrls(grid: HTMLElement): (string | null)[] {
 }
 
 describe("map playground", () => {
-  it("posts the map request SPEC-10 defines from the bar and options", async () => {
+  it("posts the map request jobs spec defines from the bar and options", async () => {
     const calls = mapApi({ urls: URLS, sources: { sitemap: 25, links: 0 }, truncated: false });
     await openPlayground("/map");
     const options = await openOptions();

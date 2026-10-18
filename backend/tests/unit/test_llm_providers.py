@@ -1,4 +1,4 @@
-"""The Anthropic and Gemini providers (SPEC-06 §4.1, §4.2) against a fake HTTP transport: no provider is called in CI
+"""The Anthropic and Gemini providers (llm spec) against a fake HTTP transport: no provider is called in CI
 (§6). Each test checks what a provider sends (the model for the class, the JSON-schema output mode, the token cap and
 the timeout) or how it reads a synthetic reply, and that a rate limit, a server error or a timeout becomes a
 `ProviderError` after one request, so the client can fail over."""

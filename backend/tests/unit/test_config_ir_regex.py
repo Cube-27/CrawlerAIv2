@@ -1,5 +1,5 @@
-"""The portable regex subset (SPEC-08 §4.2, D-0034): patterns and replacements that Python `re` and PCRE read the
-same way pass; constructs only one of them has, or that they read differently, are refused."""
+"""The portable regex subset (learning-configs spec, D-0034): patterns and replacements that Python `re` and PCRE read
+the same way pass; constructs only one of them has, or that they read differently, are refused."""
 
 import re
 

@@ -26,7 +26,7 @@ export function rangeStart(range: RangeKey): string {
     .toString();
 }
 
-/** Each `prompt_kind` (SPEC-06 §4.2) by the role that sends it (ARCHITECTURE §11). */
+/** Each `prompt_kind` (llm spec) by the role that sends it. */
 const ROLE_LABELS: Readonly<Record<string, string>> = {
   c_extract_detail: "Extraction, detail page",
   c_extract_listing: "Extraction, listing page",

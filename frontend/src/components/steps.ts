@@ -3,12 +3,12 @@ import { isJsonObject } from "../api/json";
 import type { FieldType } from "../api/schemas";
 import { isFieldType } from "./schemaDocument";
 
-/** A config IR step as the StepsEditor edits it (SPEC-08 §4.2 steps, ARCHITECTURE §12.1). The editor keeps the
+/** A config IR step as the StepsEditor edits it (learning-configs spec steps). The editor keeps the
  * members of every kind, so switching kinds loses nothing typed; `toCorrectedStep` sends only the chosen kind's. The
- * UI never checks a selector: the server validates the steps when they are submitted (SPEC-12 §4.2). */
+ * UI never checks a selector: the server validates the steps when they are submitted (frontend spec). */
 export type StepKind = "xpath" | "css" | "jsonld" | "jsonpath" | "regex" | "attr";
 
-/** Where a `jsonpath` step reads (SPEC-08 §4.2). */
+/** Where a `jsonpath` step reads (learning-configs spec). */
 export type JsonPathSource = Extract<CorrectedStep, { jsonpath: string }>["source"];
 
 /** An editor-only identity, the React key of a step or post operation: it keeps its row when another one moves or is

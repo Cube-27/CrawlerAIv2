@@ -1,4 +1,4 @@
-"""The normalize dispatcher (SPEC-04 §4.3, §4.5): the entry points that send each field type to its one module (C8).
+"""The normalize dispatcher (normalization spec): the entry points that send each field type to its one module (C8).
 
 Callers (the resolver, eval, the API) normalize and compare through `normalize`, `equal` and `equality_key` and never
 pick a type module themselves. `list` and `object` have no values of their own (§4.1), so all three recurse here into
@@ -31,7 +31,7 @@ _MONEY = FieldSpec(type=FieldType.MONEY)
 
 
 def _money(raw: Raw, ctx: Context) -> NormalizeResult:
-    # A range resolves its currency by the money rules (SPEC-04 §4.4) through this registry, so range does not
+    # A range resolves its currency by the money rules (normalization spec) through this registry, so range does not
     # import money (C8).
     return normalize(raw, _MONEY, ctx)
 
@@ -70,8 +70,8 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
 
 
 def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
-    """Whether two normalized values of `spec`'s type are the same value (SPEC-04 §4.5). Reflexive and symmetric for
-    every JSON value; values of another shape are equal only when identical."""
+    """Whether two normalized values of `spec`'s type are the same value (normalization spec). Reflexive and symmetric
+    for every JSON value; values of another shape are equal only when identical."""
     if a == b:
         return True
     if spec.type is FieldType.LIST:
@@ -120,7 +120,7 @@ def resource_key(value: JsonValue, spec: FieldSpec) -> Hashable | None:
     """The file an image_url value names, its scheme and query aside (`url.resource_key`: a query that varies how an
     image is served), and a list of images' files as the set of the files it names: a list is a set of values, in no
     significant order (JSON-LD 1.1 §4.3.1), and two renditions of one file in it name that file once. `None` for other
-    types. A page URL's query often names a variant (SPEC-13), so url has none."""
+    types. A page URL's query often names a variant (variants spec), so url has none."""
     if spec.type is FieldType.LIST and isinstance(value, list):
         keys = [resource_key(item, _item(spec)) for item in value]
         return None if not keys or None in keys else ("resources", frozenset(keys))
@@ -140,7 +140,7 @@ _CHECKABLE = frozenset({FieldType.MONEY, FieldType.ENUM, FieldType.DATE, FieldTy
 
 def checkable(raw: Raw, spec: FieldSpec) -> bool:
     """Whether `raw` normalizing as `spec`'s type would be evidence that it is a value of the type, because the type
-    has a syntax its normalizer checks (ARCHITECTURE §8.1, SPEC-05 §4.5). An identifier qualifies only under a scheme
+    has a syntax its normalizer checks (extraction spec). An identifier qualifies only under a scheme
     with a check digit, a url only when `raw` is absolute (a relative reference resolves from any word), and a list
     as its item does."""
     if spec.type is FieldType.LIST:
@@ -153,7 +153,7 @@ def checkable(raw: Raw, spec: FieldSpec) -> bool:
 
 
 def _list(raw: Raw, item: FieldSpec, ctx: Context) -> NormalizeResult:
-    """SPEC-04 §4.4: `Ok` with the items that normalize, the others dropped and reported; with none, the list
+    """normalization spec: `Ok` with the items that normalize, the others dropped and reported; with none, the list
     declines. A single value stands for a list of one (JSON-LD 1.1 §4.3.1: a value and an array of it are the same)."""
     items = raw if isinstance(raw, list) else [raw]
     if not items:
@@ -176,7 +176,7 @@ def _list(raw: Raw, item: FieldSpec, ctx: Context) -> NormalizeResult:
 
 
 def _object(raw: Raw, fields: dict[str, FieldSpec], ctx: Context) -> NormalizeResult:
-    """SPEC-04 §4.4: `Ok` when every required sub-field normalizes; an optional one that declines is dropped and
+    """normalization spec: `Ok` when every required sub-field normalizes; an optional one that declines is dropped and
     reported. Keys the schema does not name are ignored (a structured source carries `@type` and more), and a JSON
     `null` is no value (JSON-LD 1.1 §4.1.4)."""
     if not isinstance(raw, dict):

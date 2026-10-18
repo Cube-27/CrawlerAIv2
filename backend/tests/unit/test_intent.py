@@ -1,4 +1,4 @@
-"""Intent (SPEC-05 §4.6, ARCHITECTURE §8.2 rule 3, §10): which entity the page is about, or `intent_ambiguous`."""
+"""Intent (extraction spec rule 3, §10): which entity the page is about, or `intent_ambiguous`."""
 
 import json
 from datetime import UTC, datetime

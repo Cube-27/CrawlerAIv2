@@ -1,7 +1,7 @@
 import type { FieldStatus } from "../api/field";
 import { StatusLabel, type StatusTone } from "./StatusLabel";
 
-// One tone per field status (SPEC-05 §4.2). A conflict is sources that disagree, so it is the one that needs a look.
+// One tone per field status (extraction spec). A conflict is sources that disagree, so it is the one that needs a look.
 const FIELD_STATUS_TONES: Record<FieldStatus, StatusTone> = {
   published: "success",
   missing: "neutral",

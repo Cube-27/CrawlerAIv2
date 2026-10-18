@@ -1,4 +1,4 @@
-"""Sitemaps (SPEC-10 §4.4; the sitemaps.org protocol): where a site's are, how one reads, and reading them through
+"""Sitemaps (jobs spec; the sitemaps.org protocol): where a site's are, how one reads, and reading them through
 their indexes.
 
 The sitemaps are the ones robots.txt lists with `Sitemap:` on the start URL's host, else `/sitemap.xml` there. An
@@ -19,8 +19,8 @@ from lxml import etree
 
 from crawlerai.normalize.url_key import canonicalize
 
-MAX_DEPTH: Final = 3  # SPEC-10 §4.4: indexes are followed to depth 3 (a root is depth 0)
-MAX_URLS: Final = 50_000  # SPEC-10 §4.4: at most 50k URLs are read
+MAX_DEPTH: Final = 3  # jobs spec: indexes are followed to depth 3 (a root is depth 0)
+MAX_URLS: Final = 50_000  # jobs spec: at most 50k URLs are read
 # sitemaps.org: a sitemap holds at most 50,000 URLs and is at most 50 MB (52,428,800 bytes) uncompressed.
 MAX_SITEMAP_BYTES: Final = 52_428_800
 _GZIP_MAGIC: Final = b"\x1f\x8b"  # RFC 1952 §2.3.1: ID1 and ID2 of a gzip member

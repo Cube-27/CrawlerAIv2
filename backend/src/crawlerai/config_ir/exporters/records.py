@@ -1,5 +1,5 @@
-"""Record exporters (SPEC-08 §4.11, ARCHITECTURE §12.2): a page of records as `json_records`, `csv_records`, `markdown`
-or `jsonl` (JSON Lines: one row as a JSON object per line), for `GET /v1/jobs/{id}/results?format=` (SPEC-10 wires the
+"""Record exporters (learning-configs spec): a page of records as `json_records`, `csv_records`, `markdown`
+or `jsonl` (JSON Lines: one row as a JSON object per line), for `GET /v1/jobs/{id}/results?format=` (jobs spec wires the
 endpoint). The binary formats, `xlsx` and `parquet`, read the same table (`files`).
 
 The formats share one table (`table`): a column per schema field, holding the published value or nothing, then a
@@ -8,7 +8,7 @@ the order its fields were declared or stored in (JSONB does not keep key order).
 lowercase letter (`NAME_PATTERN`), so a status column never collides with a field. Values are serialized as
 published and never fixed (INV-27); a `csv_safe` CSV (D-0879) only marks formula-like cells for spreadsheets.
 
-A clean record (`json_values`, SPEC-14 §4.4) is a record's published values alone, with no status: the schema's
+A clean record (`json_values`, frontend spec) is a record's published values alone, with no status: the schema's
 published fields in name order, an unpublished one left out. A money value is written flat: the field holds its amount
 and a sibling `currency` (for a field named `price`) or `<field>_currency` its ISO 4217 code, the first key that names
 no schema field (when both do, the money value is written whole); objects nested in the

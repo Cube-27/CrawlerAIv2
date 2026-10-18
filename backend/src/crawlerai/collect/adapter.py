@@ -1,13 +1,13 @@
-"""The adapter collector (SPEC-05 §4.5, SPEC-15 §4.4, ARCHITECTURE §8.1): a platform API's JSON, read as the schema.org
+"""The adapter collector (extraction spec, adapters spec): a platform API's JSON, read as the schema.org
 nodes its adapter's shapes say it holds. Each entity carries its identity and item URLs as every structured collector's
 do (`schema_org_map.entity`), so resolution merges it with the page's own statement of the item (`resolve.identity`).
 
-An adapter capture's body is the JSON the platform's documented API serves for the page (SPEC-02 §4.9). Each object a
-shape reaches is an entity (`adapter:<name>:<normalized path>`, its kind the shape's type, its parent the enclosing
+An adapter capture's body is the JSON the platform's documented API serves for the page (acquisition spec). Each object
+a shape reaches is an entity (`adapter:<name>:<normalized path>`, its kind the shape's type, its parent the enclosing
 node's entity, `via` the property the shape is under) and a node `schema_org_map` reads. Candidates come from
 `field_candidates` with source kind `adapter`, so a field's path reads adapter JSON by the rules it reads JSON-LD and
 microdata with: alternatives, identifier sub-properties, `.name` stand-ins, lists, and the sub-fields of a row-mapped
-field (SPEC-13 §4.2). Each value is located at its own normalized path. Nothing here interprets a value: the field's
+field (variants spec). Each value is located at its own normalized path. Nothing here interprets a value: the field's
 normalizer is the only filter (C7).
 """
 
@@ -61,7 +61,7 @@ class AdapterCollector:
         return CollectResult(entities=entities, candidates=tuple(candidates), diagnostics=tuple(diagnostics))
 
     def _rows_schema(self, schema: SchemaDef) -> SchemaDef:
-        """A listing's page-scoped fields describe the page, not a row (SPEC-05 §4.7): the API's rows hold none."""
+        """A listing's page-scoped fields describe the page, not a row (extraction spec): the API's rows hold none."""
         if self._match.page_kind == "detail":
             return schema
         rows = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}

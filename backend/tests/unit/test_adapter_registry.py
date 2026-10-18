@@ -1,4 +1,4 @@
-"""The adapter registry and the adapter rung (SPEC-02 §4.4, §4.9; SPEC-15 §4.2, §4.6): only active adapters answer
+"""The adapter registry and the adapter rung (acquisition spec; adapters spec): only active adapters answer
 (C6), a URL an active adapter detects is fetched by it first, a page it does not serve falls back to the page rungs
 (INV-40), and a host whose answer lacks the platform's signal is declined for a while.
 

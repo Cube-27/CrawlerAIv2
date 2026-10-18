@@ -1,5 +1,5 @@
-"""The worker's browser (SPEC-02 §4.8, INV-31): one per worker process, launched when a task first needs it and shared
-by the tasks after it.
+"""The worker's browser (acquisition spec, INV-31): one per worker process, launched when a task first needs it and
+shared by the tasks after it.
 
 A fetch that leaves the browser disconnected (Chromium crashed, or was killed) restarts it once and fetches again. If
 the restarted browser dies too, that second fetch's result stands, so the crash ends only the task that was using the

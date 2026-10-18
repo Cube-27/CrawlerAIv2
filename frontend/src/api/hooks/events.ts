@@ -6,12 +6,12 @@ import { openJobEvents, type JobStatus } from "../jobs";
 import type { Problem } from "../problem";
 import { jobKey, jobResultsKey } from "./jobs";
 
-// SPEC-10 §4.2: after each batch of stored events the stream sends the task counts as `progress`, which is not stored
+// jobs spec: after each batch of stored events the stream sends the task counts as `progress`, which is not stored
 // and has no id of its own; the job's end event has the kind of the status it ended in.
 const PROGRESS = "progress";
 const ENDS: ReadonlySet<string> = new Set<JobStatus>(["completed", "failed", "cancelled"]);
-// The events that end a task with a result (SPEC-10 §4.2): the results shown are read again after them, at most once
-// per REFRESH_MS (SPEC-14 §4.3), so a fast run does not read the page once per task.
+// The events that end a task with a result (jobs spec): the results shown are read again after them, at most once
+// per REFRESH_MS (frontend spec), so a fast run does not read the page once per task.
 const TASK_ENDS: ReadonlySet<string> = new Set(["task_extracted", "task_failed"]);
 export const REFRESH_MS = 1000;
 

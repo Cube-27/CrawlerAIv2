@@ -294,7 +294,7 @@ export interface paths {
         /**
          * Normalize
          * @description The field type's normalized value for `raw_text`, or its reason to decline. The normalizers arrive with
-         *     SPEC-04 PRs 2 to 8.
+         *     schemas spec PRs 2 to 8.
          */
         post: operations["normalize_v1_eval_pages__page_id__normalize_post"];
         delete?: never;
@@ -753,7 +753,7 @@ export interface paths {
          * Draft Schema
          * @description The schema role S drafts from `fields` for `page_kind` pages, with exactly those top-level fields, as a run's
          *     `schema.fields` uses it: the stored draft when these names were drafted for this page kind before, else a new
-         *     one, stored. A client shows it for editing before the run (SPEC-14 §4.10). A draft the LLM could not give is a
+         *     one, stored. A client shows it for editing before the run (frontend spec). A draft the LLM could not give is a
          *     problem typed with the LLM failure (502, 503), or a 429 once the key has made the project's `draft_call_cap` of
          *     them; a retired draft is a 422.
          */
@@ -1080,9 +1080,9 @@ export interface components {
         /**
          * BatchScrapeRequest
          * @description The body of `POST /v1/batch/scrape` (§4.3). The formats, `schema`, `page_kind`, `fetch` and `locale` are a
-         *     scrape's (SPEC-07 §4.4), for every URL. A batch's results are either records or page outputs, so `records` is
+         *     scrape's (rest-api spec), for every URL. A batch's results are either records or page outputs, so `records` is
          *     asked alone; a `schema.prompt` is not taken (its draft needs a fetched page, which a batch does not wait for),
-         *     and `schema.fields` is drafted while the caller waits (SPEC-14 §4.10). Role C fills a page's gaps as in a scrape;
+         *     and `schema.fields` is drafted while the caller waits (frontend spec). Role C fills a page's gaps as in a scrape;
          *     `budget.llm_calls` bounds the job's calls, and without a `budget` the project's cap does, as for every job
          *     kind (D-1006, D-1121). The webhook options are `WebhookOptions` (§4.2).
          */
@@ -1631,7 +1631,7 @@ export interface components {
         };
         /**
          * DistractorKey
-         * @description A key value of another product's variant shown on the page (SPEC-13 §4.10): an engine row with it is a wrong
+         * @description A key value of another product's variant shown on the page (variants spec): an engine row with it is a wrong
          *     product.
          */
         DistractorKey: {
@@ -1661,7 +1661,7 @@ export interface components {
         };
         /**
          * DroppedRowMeta
-         * @description A row that did not publish: its row entities' locators and the reason (SPEC-13 §4.8).
+         * @description A row that did not publish: its row entities' locators and the reason (variants spec).
          */
         DroppedRowMeta: {
             /** Locators */
@@ -1671,7 +1671,7 @@ export interface components {
         };
         /**
          * ExportPage
-         * @description One page of a job's records in an export format (SPEC-08 §4.11); `next_cursor` as in `RecordPage`.
+         * @description One page of a job's records in an export format (learning-configs spec); `next_cursor` as in `RecordPage`.
          */
         ExportPage: {
             /** Content */
@@ -1695,9 +1695,9 @@ export interface components {
         /**
          * ExtractRequest
          * @description The body of `POST /v1/extract` (§4.6). `urls` are URLs and URL globs; `schema` names a schema by id, gives it
-         *     inline, or asks for a draft from a `prompt` or from field names (`fields`, SPEC-14 §4.10), and its page kind must
+         *     inline, or asks for a draft from a `prompt` or from field names (`fields`, frontend spec), and its page kind must
          *     be `page_kind`. `limit` bounds the job's tasks; `budget.llm_calls` (else the project's cap) bounds a prompt's
-         *     draft. The `fetch` and `locale` are a scrape's (SPEC-07 §4.4), for every URL. The webhook options are
+         *     draft. The `fetch` and `locale` are a scrape's (rest-api spec), for every URL. The webhook options are
          *     `WebhookOptions` (§4.2).
          */
         ExtractRequest: {
@@ -1949,7 +1949,7 @@ export interface components {
          * @description One field of a schema, or the item of a list.
          *
          *     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
-         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (SPEC-13
+         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants spec
          *     §4.2): the path names the row entities, and `key` names the sub-fields that identify a row.
          */
         "FieldSpec-Input": {
@@ -1986,7 +1986,7 @@ export interface components {
          * @description One field of a schema, or the item of a list.
          *
          *     The parameters a type needs are present exactly for that type: `vocab` for `enum`, `scheme` for `identifier`,
-         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (SPEC-13
+         *     `item` for `list`, `fields` for `object`. A `list` of `object` with a `schema_org` path is row-mapped (variants spec
          *     §4.2): the path names the row entities, and `key` names the sub-fields that identify a row.
          */
         "FieldSpec-Output": {
@@ -2021,7 +2021,7 @@ export interface components {
         /**
          * FieldSteps
          * @description A field's steps in order (the first valid value wins, §12.1), its status, and its held-out yield and validity
-         *     (SPEC-08 §4.7) once validated.
+         *     (learning-configs spec) once validated.
          */
         FieldSteps: {
             /**
@@ -2240,7 +2240,7 @@ export interface components {
         JsonValue: unknown;
         /**
          * JsonValuesItem
-         * @description A task of a job in `json_values` (SPEC-14 §4.4): its URL, its outcome (null until it ends), the clean records
+         * @description A task of a job in `json_values` (frontend spec): its URL, its outcome (null until it ends), the clean records
          *     its page stands for, and, when asked for, its page's metadata and fetch. `records` is empty for a task with no
          *     record (failed, blocked, `links_only`, or a job without a schema). `metadata` is a member only for an extracted or
          *     partial page whose capture is still kept; `fetch` only for a task with a capture that kept its attempts;
@@ -2388,7 +2388,7 @@ export interface components {
         };
         /**
          * ListLabel
-         * @description A row-mapped field's label (SPEC-13 §4.10): one row per variant shown on the page, in page order. `absent`
+         * @description A row-mapped field's label (variants spec): one row per variant shown on the page, in page order. `absent`
          *     means the page offers no variant choice.
          */
         ListLabel: {
@@ -2496,7 +2496,7 @@ export interface components {
         };
         /**
          * ModelRoleUsage
-         * @description The calls to one model for one role (`prompt_kind`, SPEC-06 §4.2).
+         * @description The calls to one model for one role (`prompt_kind`, llm spec).
          */
         ModelRoleUsage: {
             /** Calls */
@@ -2653,7 +2653,7 @@ export interface components {
         };
         /**
          * NormalizeOp
-         * @description `{"<field type>": {}}`: the type's normalizer (SPEC-04) runs on the value.
+         * @description `{"<field type>": {}}`: the type's normalizer (schemas spec) runs on the value.
          */
         "NormalizeOp-Input": {
             type: components["schemas"]["FieldType"];
@@ -2672,7 +2672,7 @@ export interface components {
         };
         /**
          * OutcomeCounts
-         * @description How many of the job's tasks ended with each outcome (`url_task.outcome`, ARCHITECTURE §6).
+         * @description How many of the job's tasks ended with each outcome (`url_task.outcome`).
          */
         OutcomeCounts: {
             /** Blocked */
@@ -2778,10 +2778,10 @@ export interface components {
         };
         /**
          * PageOutput
-         * @description A task of a job without a schema, with the content formats the job asked for (ARCHITECTURE §8.5). The formats
+         * @description A task of a job without a schema, with the content formats the job asked for. The formats
          *     are members only when the task reached its page and its capture is still kept. `last_error` is why the task
          *     failed, or why it ended with its outcome when the outcome alone does not say (a `blocked` task's `robots`), as the
-         *     worker recorded it: URLs redacted under `CRAWLERAI_LOG_REDACT_URLS` (SPEC-01 §4.8).
+         *     worker recorded it: URLs redacted under `CRAWLERAI_LOG_REDACT_URLS` (persistence-storage spec).
          */
         PageOutput: {
             /** Capture Id */
@@ -2949,7 +2949,7 @@ export interface components {
         };
         /**
          * Problem
-         * @description RFC 9457 problem details (SPEC-07 §4.3). `type` is one of the API's problem types, or `about:blank` when the
+         * @description RFC 9457 problem details (rest-api spec). `type` is one of the API's problem types, or `about:blank` when the
          *     HTTP status says all there is to say (RFC 9457 §4.2.1); `instance` is the request's path (§3.1.5).
          */
         Problem: {
@@ -3019,7 +3019,7 @@ export interface components {
         };
         /**
          * RecipeFieldReport
-         * @description One field of an API recipe's map (SPEC-09 §4.7). `published`: held-out pages where the engine published the
+         * @description One field of an API recipe's map (adapters spec). `published`: held-out pages where the engine published the
          *     field; `reproduced`: those where the replayed response gave that value.
          */
         RecipeFieldReport: {
@@ -3030,7 +3030,7 @@ export interface components {
         };
         /**
          * RecipeReport
-         * @description The API recipe's held-out validation (SPEC-09 §4.7). `refused` says why the recipe did not enter the config.
+         * @description The API recipe's held-out validation (adapters spec). `refused` says why the recipe did not enter the config.
          */
         RecipeReport: {
             /** Fields */
@@ -3178,7 +3178,7 @@ export interface components {
         };
         /**
          * RowMeta
-         * @description A published row's sub-field outcomes, aligned with the field's value by index (SPEC-13 §4.8).
+         * @description A published row's sub-field outcomes, aligned with the field's value by index (variants spec).
          */
         RowMeta: {
             /** Fields */
@@ -3307,7 +3307,7 @@ export interface components {
         };
         /**
          * SchemaDef
-         * @description A `schema_def` row (ARCHITECTURE §6): a document plus where it came from and whether it is in use. One row per
+         * @description A `schema_def` row: a document plus where it came from and whether it is in use. One row per
          *     name, edited in place.
          *
          *     `labels` are the synonyms role S drafted for its fields' labels, by field (extraction spec, "Label vocabulary"),
@@ -3353,7 +3353,7 @@ export interface components {
         };
         /**
          * SchemaFields
-         * @description Field names, drafted into a schema with exactly those top-level fields by role S (SPEC-14 §4.10, D-0810).
+         * @description Field names, drafted into a schema with exactly those top-level fields by role S (frontend spec, D-0810).
          */
         SchemaFields: {
             /** Fields */
@@ -3450,7 +3450,7 @@ export interface components {
          * ScrapeResult
          * @description The answer to a scrape (§4.4). A page that robots.txt kept from being fetched has no capture, so
          *     `capture_id`, `final_url`, `fetched_at` and `fetch` are None, and `reason` says why, as the task's `last_error`
-         *     does (SPEC-02 §4.6): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
+         *     does (acquisition spec): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
          *     9309 §2.3.1.4), `slow_down` for a host whose turn at its rate was more than a minute off; for a fetched page a
          *     vendor's challenge kept out, `challenge: <vendor>`; for a fetched listing whose extraction gave no rows,
          *     `no_rows: <cause>` (`no_rows` in `resolve.pipeline`, D-1475); None for any other page that was fetched. `schema`
@@ -3657,9 +3657,9 @@ export interface components {
         };
         /**
          * StoredRecord
-         * @description A `record` row, with the capture it was extracted from (`None` once the capture expired, ARCHITECTURE §15),
+         * @description A `record` row, with the capture it was extracted from (`None` once the capture expired),
          *     the schema its fields follow, its own version and the fields whose published value differs from the
-         *     version it supersedes, empty for an entity's first (§14, SPEC-11 §4.4).
+         *     version it supersedes, empty for an entity's first (§14, jobs spec).
          */
         StoredRecord: {
             /** Capture Id */
@@ -3694,7 +3694,7 @@ export interface components {
         };
         /**
          * SubFieldMeta
-         * @description A row sub-field's outcome without its candidates (SPEC-13 §4.8, INV-34).
+         * @description A row sub-field's outcome without its candidates (variants spec, INV-34).
          */
         SubFieldMeta: {
             /** Calibrated */
@@ -3717,7 +3717,7 @@ export interface components {
         };
         /**
          * TaskCounts
-         * @description How many of the job's tasks are in each status (SPEC-01 §4.3).
+         * @description How many of the job's tasks are in each status (persistence-storage spec).
          */
         TaskCounts: {
             /** Cancelled */
@@ -3759,7 +3759,7 @@ export interface components {
         };
         /**
          * Usage
-         * @description What the scrape's job used (ARCHITECTURE §17).
+         * @description What the scrape's job used.
          */
         Usage: {
             /**
@@ -3790,8 +3790,8 @@ export interface components {
         };
         /**
          * ValidationReport
-         * @description The `extraction_config.validation_report` (SPEC-08 §4.7). `refused` says why nothing can activate; `api_recipe`
-         *     is the recipe's validation when the site has one (SPEC-09 §4.7).
+         * @description The `extraction_config.validation_report` (learning-configs spec). `refused` says why nothing can activate;
+         *     `api_recipe` is the recipe's validation when the site has one (adapters spec).
          */
         ValidationReport: {
             api_recipe?: components["schemas"]["RecipeReport"] | null;

@@ -1,20 +1,20 @@
 import { isJsonObject } from "./json";
 
-/** The field shape the API returns for every extracted field (SPEC-07 §4.4, ARCHITECTURE §13.1), narrowed to what
+/** The field shape the API returns for every extracted field (rest-api spec), narrowed to what
  * the shared field components read until the generated `schema.d.ts` carries the record schema. */
 
-/** A field's resolution status (SPEC-05 §4.2 `FieldOutcome.status`). */
+/** A field's resolution status (extraction spec `FieldOutcome.status`). */
 export type FieldStatus = "published" | "missing" | "conflict" | "abstained";
 
 export interface FieldResult {
   status: FieldStatus;
   /** Why a field did not publish (`disagree`, `below_tau`, …); null when it published. */
   reason: string | null;
-  /** The normalized value, shaped by the field's type (SPEC-04 §4.4); the server sends it only when published. */
+  /** The normalized value, shaped by the field's type (schemas spec); the server sends it only when published. */
   value: unknown;
 }
 
-/** The §5.1 field types whose values are a single scalar or a fixed-shape object (SPEC-04 §4.4). */
+/** The §5.1 field types whose values are a single scalar or a fixed-shape object (schemas spec). */
 const SCALAR_FIELD_TYPES = [
   "text",
   "long_text",
@@ -33,7 +33,7 @@ const SCALAR_FIELD_TYPES = [
 
 export type ScalarFieldType = (typeof SCALAR_FIELD_TYPES)[number];
 
-/** A field's type as the schema declares it (SPEC-04 §4.1): what the UI needs to display its value. */
+/** A field's type as the schema declares it (schemas spec): what the UI needs to display its value. */
 export type FieldTypeSpec =
   | { type: ScalarFieldType }
   | { type: "list"; item: FieldTypeSpec }
@@ -52,7 +52,7 @@ function isFieldTypeSpec(value: unknown): value is FieldTypeSpec {
 /** Each field's type by its name, as a schema declares them. */
 export type FieldTypes = Readonly<Record<string, FieldTypeSpec>>;
 
-/** The field types in a schema's `fields` member (SPEC-04 §4.1); a field whose type is not one of these is left out,
+/** The field types in a schema's `fields` member (schemas spec); a field whose type is not one of these is left out,
  * and its value is then shown as the server sent it. */
 export function parseFieldTypes(fields: unknown): FieldTypes {
   if (!isJsonObject(fields)) return {};

@@ -3,7 +3,7 @@ import type { OutcomeCounts as Outcomes, TaskCounts, TaskOutcome, TaskStatus } f
 import { plural } from "./activityText";
 import { OutcomeLabel } from "./OutcomeLabel";
 
-// In the order a task goes through them (SPEC-01 §4.2), and the outcomes as ARCHITECTURE §6 lists them.
+// In the order a task goes through them, and the outcomes as the persistence-storage spec lists them.
 const STATUSES: readonly TaskStatus[] = ["queued", "claimed", "done", "failed", "cancelled"];
 const OUTCOMES: readonly TaskOutcome[] = [
   "extracted",
@@ -22,7 +22,7 @@ export function taskTotal(counts: TaskCounts): number {
   return STATUSES.reduce((sum, status) => sum + counts[status], 0);
 }
 
-/** How many of the job's tasks have ended: done, failed or cancelled (SPEC-01 §4.2). */
+/** How many of the job's tasks have ended: done, failed or cancelled (persistence-storage spec). */
 export function endedTasks(counts: TaskCounts): number {
   return counts.done + counts.failed + counts.cancelled;
 }

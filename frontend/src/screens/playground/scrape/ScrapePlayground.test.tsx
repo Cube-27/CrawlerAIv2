@@ -13,7 +13,7 @@ import {
   toggleFormats,
 } from "../../../test/playground";
 
-// `fetch` answers POST /v1/scrape and GET /v1/schemas/{id} with the shapes SPEC-07 §4.3–4.4 define.
+// `fetch` answers POST /v1/scrape and GET /v1/schemas/{id} with the shapes rest-api spec–4.4 define.
 
 const SCHEMA_ID = "0192a000-0000-7000-8000-0000000000s1";
 
@@ -150,7 +150,7 @@ async function openTab(name: string) {
 }
 
 describe("scrape playground: the request", () => {
-  it("posts the request SPEC-07 defines: a schema asks for records, with the schema's page kind", async () => {
+  it("posts the request rest-api spec defines: a schema asks for records, with the schema's page kind", async () => {
     const calls = stubScrape({
       "POST /v1/scrape": () => Response.json(withRecords),
       [`GET /v1/schemas/${SCHEMA_ID}`]: () => Response.json(itemSchema),

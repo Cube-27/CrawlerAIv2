@@ -1,4 +1,4 @@
-"""The learning run end to end (SPEC-08 §4.4 to §4.8, §7): a site that reaches 8 extracted pages is learned by its
+"""The learning run end to end (learning-configs spec): a site that reaches 8 extracted pages is learned by its
 `learn` job without human input and enters `active` with a validated config; its next pages are extracted in `config`
 mode, and role C is no longer asked for the fields the config covers. Every other end of a run leaves the state as a
 failed run does."""
@@ -204,7 +204,7 @@ class LearnSite:
             )
             assert stored.outcome != "failed"
             await complete_task(conn, task, stored.outcome, capture_id=capture_id)
-            # ARCHITECTURE §8.3: an extracted or partial page counts toward learning.
+            # An extracted or partial page counts toward learning.
             await conn.execute(
                 update(ProgressiveState)
                 .where(*self.key.where())

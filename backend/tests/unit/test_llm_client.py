@@ -1,4 +1,4 @@
-"""The LLM client without a database (SPEC-06 §4.2, §4.6, §4.7): request checks, the request hash (INV-10), the
+"""The LLM client without a database (llm spec): request checks, the request hash (INV-10), the
 JSON-schema check with its one retry, and provider errors. Calls without a job touch no budget or usage, so these
 tests run on an engine that never connects; budgets and usage (INV-23) are in `tests/db/test_llm_client.py`."""
 

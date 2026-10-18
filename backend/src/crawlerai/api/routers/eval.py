@@ -1,10 +1,10 @@
-"""Labeling endpoints (SPEC-03 §4.10), mounted only with `CRAWLERAI_EVAL_UI=true`.
+"""Labeling endpoints (evaluation spec), mounted only with `CRAWLERAI_EVAL_UI=true`.
 
 They serve the golden set, the one eval split (`dev`); a request naming another split is refused before any store is
 touched.
 
 Labels are validated before anything is stored (`parse_labels`), and every error comes back with its field and
-reason as an RFC 9457 problem (§4.11). SPEC-07 PR 2 adds API-key auth.
+reason as an RFC 9457 problem (§4.11). rest-api spec PR 2 adds API-key auth.
 """
 
 import asyncio
@@ -60,7 +60,7 @@ class LabelingBackend(Protocol):
 
     @property
     def llm(self) -> LLMClient:
-        """The client the pre-fill calls (role C, SPEC-06 §4.4)."""
+        """The client the pre-fill calls (role C, llm spec)."""
         ...
 
 
@@ -106,7 +106,7 @@ def labeling_backend(request: Request) -> LabelingBackend:
 
 Backend = Annotated[LabelingBackend, Depends(labeling_backend)]
 
-# SPEC-03 §4.10: the same API-key auth, and so the same rate limit, as everything else. Request validation answers
+# evaluation spec: the same API-key auth, and so the same rate limit, as everything else. Request validation answers
 # with a problem (`api.problems`), declared here in place of FastAPI's own 422 body.
 router = APIRouter(
     prefix="/v1/eval",
@@ -187,7 +187,7 @@ class PageDetail(PageSummary):
     url: str
     final_url: str
     bundle_html: str  # sanitized; see `sanitize_html`
-    text: str | None  # the cleaned text that `text:` locators index; arrives with SPEC-05 PR 1
+    text: str | None  # the cleaned text that `text:` locators index; arrives with extraction spec PR 1
 
 
 class NormalizeRequest(Model):
@@ -348,8 +348,8 @@ def _pass(labels: Labels, page: EvalPageRow) -> tuple[str, LabelPass] | LabelErr
 @router.post("/pages/{page_id}/normalize", status_code=200, responses={501: PROBLEM_RESPONSE})
 async def normalize(page_id: EvalPageId, body: NormalizeRequest) -> None:
     """The field type's normalized value for `raw_text`, or its reason to decline. The normalizers arrive with
-    SPEC-04 PRs 2 to 8."""
-    raise _not_implemented("the type normalizers are not built yet (SPEC-04)")
+    schemas spec PRs 2 to 8."""
+    raise _not_implemented("the type normalizers are not built yet (schemas spec)")
 
 
 @router.post(

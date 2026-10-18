@@ -1,4 +1,4 @@
-"""Held-out validation of an API recipe (SPEC-09 §4.7): replay the recipe for each held-out page and accept it only
+"""Held-out validation of an API recipe (adapters spec): replay the recipe for each held-out page and accept it only
 when every mapped field reproduces the published value on every held-out page that has one; an accepted recipe carries
 its proof and enters the validated config, and its report enters the config's validation report.
 
@@ -37,7 +37,7 @@ SCHEMA = SchemaDef.model_validate(
         "fields": {name: FieldSpec(type=type_, description="d", required=True) for name, type_ in TYPES.items()},
     }
 )
-# `+` joins the amount and currency paths of a money field (SPEC-09 §4.2).
+# `+` joins the amount and currency paths of a money field (adapters spec).
 MAP = {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"}
 PRODUCTS = {"desk-lamp": ("Desk Lamp", 19.5), "oak-chair": ("Oak Chair", 120), "tea-cup": ("Tea Cup", 4)}
 SITE = "https://shop.example.test"

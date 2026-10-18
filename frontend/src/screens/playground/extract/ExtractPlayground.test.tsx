@@ -12,7 +12,7 @@ import {
   posted,
 } from "../../../test/playground";
 
-// `fetch` answers the extract, job, results and events endpoints with the shapes SPEC-10 §4.2, §4.6 and SPEC-14 §4.4
+// `fetch` answers the extract, job, results and events endpoints with the shapes jobs spec and frontend spec
 // define.
 
 const JOB_ID = "0192a000-0000-7000-8000-0000000000e1";

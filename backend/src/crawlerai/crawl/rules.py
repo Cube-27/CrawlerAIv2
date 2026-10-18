@@ -1,4 +1,4 @@
-"""URL rules of discovery requests (SPEC-10 §4.1, §4.4, §4.5, §4.6): include and exclude globs, a crawl's page-kind
+"""URL rules of discovery requests (jobs spec): include and exclude globs, a crawl's page-kind
 rules, and the URL globs `extract` expands, `fnmatch`-style over the canonical URL. Patterns come from requests; this
 module names no host (INV-03).
 """
@@ -35,7 +35,7 @@ class PageKindRule(BaseModel):
 
 def page_kind_for(url: str, rules: Sequence[PageKindRule]) -> PageKind | None:
     """The page kind of the first of `rules` whose pattern matches `url`, in canonical form; `None` when none does:
-    the URL is then crawled for its links only (ARCHITECTURE §13.2)."""
+    the URL is then crawled for its links only."""
     return next((rule.page_kind for rule in rules if fnmatchcase(url, rule.pattern)), None)
 
 

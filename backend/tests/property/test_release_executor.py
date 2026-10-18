@@ -1,6 +1,6 @@
-"""The two executors agree (SPEC-08 §4.12, INV-20): on generated pages and IRs, every field value the engine executor
-proposes as valid is the value the release executor gives, and the release executor gives none where the engine has
-no valid value. Their code is independent (`.importlinter`), so agreement is the evidence the release check uses."""
+"""The two executors agree (learning-configs spec, INV-20): on generated pages and IRs, every field value the engine
+executor proposes as valid is the value the release executor gives, and the release executor gives none where the engine
+has no valid value. Their code is independent (`.importlinter`), so agreement is the evidence the release check uses."""
 
 import json
 from datetime import UTC, datetime

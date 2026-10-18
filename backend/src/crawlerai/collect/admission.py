@@ -1,9 +1,9 @@
-"""The admission rule for JSON without standard keys (SPEC-05 §4.5, ARCHITECTURE §8.1): embedded JSON state
+"""The admission rule for JSON without standard keys (extraction spec): embedded JSON state
 (`js_state`) and captured network bodies (`xhr`).
 
 Their keys follow no standard, so no key is mapped to a field. Every string and number in a document is tried against
 each field's normalizer, the only filter, and becomes a candidate only when:
-- the field has candidates from another source kind and the value is `equal` to one of them (SPEC-04 §4.5). It is
+- the field has candidates from another source kind and the value is `equal` to one of them (schemas spec). It is
   then owned by that candidate's entity and is not independent: it agrees with a value it was admitted for, so it
   never counts toward `agreed` (§10);
 - the field has no candidate from another source kind, its type has a syntax the normalizer checks
@@ -16,7 +16,7 @@ A visible value inside an array row is owned by that row, not by the page (owner
 #55): an object item of a JSON array holding two or more objects is one of a set of items (related products,
 recommendations, the variants of one), and which of them, if any, is the page's subject is resolution's question
 (`resolve.ownership`). The row's entity carries the URLs written in its scope, the row up to its nested rows, as
-SPEC-13 §4.3 scopes a row, so resolution can tell a row naming the page from another page's item. One object in an
+variants spec scopes a row, so resolution can tell a row naming the page from another page's item. One object in an
 array is its holder's only item, as an object member is, and stays in its holder, unless it names a document of its own
 (D-1345): a related item alone in its array is still another page's item.
 

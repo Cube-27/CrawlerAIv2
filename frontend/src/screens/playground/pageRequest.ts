@@ -60,7 +60,7 @@ export function withWebhookErrors(
   return own === NO_ERRORS ? errors : { ...errors, ...own };
 }
 
-/** The optional `webhook_url`, `webhook_events` and `webhook_batch` members (SPEC-10 §4.2): all left out without a
+/** The optional `webhook_url`, `webhook_events` and `webhook_batch` members (jobs spec): all left out without a
  * URL, the events when they are the job's end (the server's own choice), the batch while it is empty. */
 export function webhook(settings: WebhookSettings): {
   webhook_url?: string;
@@ -99,7 +99,7 @@ export function screenshotArea(
   return formats.includes("screenshot") ? settings.screenshot : undefined;
 }
 
-/** The optional `budget.llm_calls` member (SPEC-06 §4.8), left out while empty. */
+/** The optional `budget.llm_calls` member (llm spec), left out while empty. */
 export function llmBudget(llmCalls: number): { budget?: { llm_calls: number } } {
   return Number.isNaN(llmCalls) ? {} : { budget: { llm_calls: llmCalls } };
 }
@@ -111,7 +111,7 @@ export function minConfidence(percent: number): { min_confidence?: number } {
 }
 
 /** What the toolbar's Format and Schema hold, the Metadata in JSON view option and the field names, in every mode
- * that takes them (Scrape, Batch, Crawl; SPEC-14 §4.2, §4.10). `schemaId` is a stored schema's id, or "" for none;
+ * that takes them (Scrape, Batch, Crawl; frontend spec). `schemaId` is a stored schema's id, or "" for none;
  * `schemaPageKind` is that schema's page kind. */
 export interface FormatForm {
   formats: readonly PageFormat[];
@@ -125,7 +125,7 @@ export interface PageKindForm extends FormatForm {
   options: { metadataInJson: boolean; fields: readonly string[]; pageKind: PageKind | null };
 }
 
-/** The request's schema: the stored one, else the field names the server drafts one from (SPEC-14 §4.10), else
+/** The request's schema: the stored one, else the field names the server drafts one from (frontend spec), else
  * none. */
 export function requestSchema(
   form: FormatForm,
@@ -159,18 +159,18 @@ export function requestFormats(form: FormatForm): ScrapeFormat[] {
   ]);
 }
 
-/** A batch's or crawl's formats: `records` alone with a schema or field names (SPEC-10 §4.5: its results are records
+/** A batch's or crawl's formats: `records` alone with a schema or field names (jobs spec: its results are records
  * or page outputs), else `requestFormats`. */
 export function jobFormats(form: FormatForm): ScrapeFormat[] {
   return hasSchema(form) ? ["records"] : requestFormats(form);
 }
 
-/** Whether `form` asks for no format at all, which the server refuses (SPEC-07 §4.4). */
+/** Whether `form` asks for no format at all, which the server refuses (rest-api spec). */
 export function asksForNothing(form: FormatForm): boolean {
   return requestFormats(form).length === 0;
 }
 
-/** The page kind the request names. A stored schema's records are for its own page kind only (SPEC-07 §4.4,
+/** The page kind the request names. A stored schema's records are for its own page kind only (rest-api spec,
  * `check_records`), so with a schema it is that kind, or null when there is none. */
 export function requestPageKind(form: PageKindForm): PageKind | null {
   return form.schemaId === "" ? form.options.pageKind : form.schemaPageKind;

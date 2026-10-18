@@ -38,9 +38,9 @@ trap stop INT TERM EXIT
 
 backend="$root/backend"
 
-# The web UI's dev proxy acts with CRAWLERAI_UI_API_KEY (SPEC-14 §4.1). Keep the one in `.env` while the database
+# The web UI's dev proxy acts with CRAWLERAI_UI_API_KEY (frontend spec). Keep the one in `.env` while the database
 # holds it unrevoked; otherwise (unset, or the database was recreated) create one and write it to `.env`. Only the
-# key's SHA-256 is stored (SPEC-07 §4.2), so the check hashes it the same way.
+# key's SHA-256 is stored (rest-api spec), so the check hashes it the same way.
 ui_key_is_live() {
   local hashed
   hashed=$(printf '%s' "$1" | sha256sum | cut -d' ' -f1)

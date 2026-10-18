@@ -14,7 +14,7 @@ import {
   toggleFormats,
 } from "../../../test/playground";
 
-// `fetch` answers the crawl, job, results and events endpoints with the shapes SPEC-10 §4.2, §4.5 and SPEC-14 §4.4
+// `fetch` answers the crawl, job, results and events endpoints with the shapes jobs spec and frontend spec
 // define.
 
 const JOB_ID = "0192a000-0000-7000-8000-0000000000c1";
@@ -47,7 +47,7 @@ async function start() {
 }
 
 describe("crawl playground", () => {
-  it("posts the crawl request SPEC-10 defines from the bar, toolbar and options, and runs it on the page", async () => {
+  it("posts the crawl request jobs spec defines from the bar, toolbar and options, and runs it on the page", async () => {
     const calls = crawlApi();
     await openPlayground("/crawl");
     await typeUrl("shop.test/");

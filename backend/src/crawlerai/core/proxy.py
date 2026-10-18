@@ -1,4 +1,4 @@
-"""Proxy pools (ARCHITECTURE §7.1, SPEC-02 §3, OPEN_QUESTIONS #10): datacenter or ISP proxies configured by hand in
+"""Proxy pools (acquisition spec, OPEN_QUESTIONS #10): datacenter or ISP proxies configured by hand in
 `CRAWLERAI_PROXY_POOLS`, and used for a site whose `proxy_pool` names its pool. A pool is one proxy URL, or
 `{"endpoints": [url, ...], "mode": "rotate" | "sticky"}` (D-1323): `rotate` takes its endpoints in turn, `sticky` keeps
 each site on one endpoint (rendezvous hashing, Thaler and Ravishankar 1998: a site moves only when its endpoint leaves

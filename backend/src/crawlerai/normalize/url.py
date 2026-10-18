@@ -1,4 +1,4 @@
-"""URL and image_url normalizer (SPEC-04 §4.4, ARCHITECTURE §9): an absolute, canonical http(s) URL.
+"""URL and image_url normalizer (normalization spec): an absolute, canonical http(s) URL.
 
 Accepts a string, from the DOM, an LLM or a structured source (JSON-LD `url` and `image` values are strings). Any
 other JSON value is `Invalid("not_a_string")`. A relative reference resolves against `ctx.base_url`.
@@ -35,12 +35,12 @@ _QUERY_SAFE = _PATH_SAFE + "?"
 _FORBIDDEN_IN_DOMAIN = frozenset(" #/:<>?@[\\]^|%\x7f" + "".join(chr(c) for c in range(0x20)))
 # RFC 9110 §4.2.1 and §4.2.2: the default ports of http and https, the only schemes of the type.
 _DEFAULT_PORT = {"http": 80, "https": 443}
-# A relative reference with no base to resolve it against; `resolve.derive` absolutizes these (SPEC-05 §4.8).
+# A relative reference with no base to resolve it against; `resolve.derive` absolutizes these (extraction spec).
 RELATIVE_WITHOUT_BASE = Invalid("relative_without_base")
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
-    """Normalize a url or image_url field (SPEC-04 §4.4)."""
+    """Normalize a url or image_url field (normalization spec)."""
     if spec.type not in (FieldType.URL, FieldType.IMAGE_URL):
         raise TypeError(f"the url normalizer does not handle type {spec.type}")
     if not isinstance(raw, str):
@@ -52,15 +52,15 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
         and ctx.page_url is not None
         and canonical(ctx.page_url, None) == result
     ):
-        # SPEC-04 §4.4: without a fetch there is no content-type evidence, so the one structural check is that an
+        # normalization spec: without a fetch there is no content-type evidence, so the one structural check is that an
         # image is not the page it appears on.
         return Invalid("page_url")
     return result
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
-    """Equality as a key (SPEC-04 §4.5): equal after canonicalization. A relative URL has no canonical form without its
-    base."""
+    """Equality as a key (normalization spec): equal after canonicalization. A relative URL has no canonical form
+    without its base."""
     url = canonical(value, None) if isinstance(value, str) else None
     return ("url", url.value, url.reasons) if isinstance(url, Ok) else raw_key(value)
 
@@ -70,7 +70,7 @@ def resource_key(value: JsonValue) -> Hashable | None:
     identifies the resource within the authority), without the scheme, which only says how the authority is reached
     (http or https), and without the query (§3.4), which may vary only how it is served, such as an image's size or
     crop. Not an equality (two queries can name two resources): it only tells which of one entity's own values
-    another source names, and which values are renditions of one file (SPEC-05 §4.7). `None` for anything that is no
+    another source names, and which values are renditions of one file (extraction spec). `None` for anything that is no
     absolute URL."""
     url = canonical(value, None) if isinstance(value, str) else None
     if not isinstance(url, Ok) or not isinstance(url.value, str):
@@ -108,7 +108,7 @@ def canonical_url(raw: str, base: str | None) -> str | None:
 
 
 def canonical(raw: str, base: str | None) -> NormalizeResult:
-    """The url type's canonical form of `raw`, resolved against `base` when relative (SPEC-04 §4.4). Other modules
+    """The url type's canonical form of `raw`, resolved against `base` when relative (normalization spec). Other modules
     that canonicalize URLs outside a field (the `links` content format) call this, so there is one set of rules."""
     # A URL is percent-encoded as UTF-8 (WHATWG URL Standard), and a lone surrogate has no UTF-8 encoding.
     if has_surrogate(raw):
@@ -130,7 +130,7 @@ def canonical(raw: str, base: str | None) -> NormalizeResult:
         port = parts.port
     except ValueError:
         return Invalid("unparsable")
-    # SPEC-04 §4.4 and ARCHITECTURE §9: only http(s) URLs are values of the type. `urlsplit` lowercases the scheme
+    # normalization spec: only http(s) URLs are values of the type. `urlsplit` lowercases the scheme
     # (RFC 3986 §3.1: schemes are case-insensitive).
     if parts.scheme not in _DEFAULT_PORT:
         return Invalid("not_http")

@@ -1,4 +1,4 @@
-"""Behaviour of `tools/no_size_gates.py` (SPEC-00 §4.6 job 6, INV-18, C11), run as CI runs it."""
+"""Behaviour of `tools/no_size_gates.py` (CI job 6, INV-18, C11), run as CI runs it."""
 
 import subprocess
 import sys

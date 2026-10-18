@@ -1,5 +1,5 @@
-"""The adapter collector (SPEC-05 §4.5, SPEC-15 §4.4): a platform API's JSON read as the schema.org nodes the adapter's
-shapes describe, each node an entity, each value a field's path reaches an `adapter` candidate located by its
+"""The adapter collector (extraction spec, adapters spec): a platform API's JSON read as the schema.org nodes the
+adapter's shapes describe, each node an entity, each value a field's path reaches an `adapter` candidate located by its
 normalized path.
 
 The platforms come from the adapter modules and the recorded API responses under `tests/fixtures/` are synthetic, so

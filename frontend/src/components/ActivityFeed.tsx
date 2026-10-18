@@ -66,7 +66,7 @@ function ActivityLines({ events }: Readonly<{ events: JobEvents["events"] }>) {
   );
 }
 
-/** A run's live activity (SPEC-14 §4.5, D-0975): its events as plain-language lines grouped by task URL, collapsed
+/** A run's live activity (frontend spec, D-0975): its events as plain-language lines grouped by task URL, collapsed
  * under the results with the stream's state beside it. The run's progress is in its header, so the lines are detail a
  * reader opens when they want it. */
 export function ActivityFeed({ activity }: Readonly<{ activity: JobEvents }>) {

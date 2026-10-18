@@ -1,4 +1,4 @@
-"""Intent (SPEC-05 §4.6, ARCHITECTURE §8.2 rule 3, §10): the one entity a detail page is about, or `intent_ambiguous`.
+"""Intent (resolution spec rule 3, §10): the one entity a detail page is about, or `intent_ambiguous`.
 
 The candidates are the entities of the schema's primary types, without those inside a list, inside another
 primary entity's relation properties, a primary entity's variants, or the group it is a variant of. One candidate is
@@ -30,7 +30,7 @@ RELATIONS = frozenset({"isRelatedTo", "isSimilarTo"})
 _NOT_THE_SUBJECT = RELATIONS | {VARIANT, "isVariantOf"}
 # Microdata entities are addressed by their element's XPath (`collect.microdata`): items whose paths differ only in
 # their positions (XPath 1.0 §2.4 `[n]` predicates) are sibling elements of one shape, rendered by one template as one
-# list's items (ARCHITECTURE §8.6), as an ItemList's are. At least this many make a list, as `acquire.items.MIN_ITEMS`.
+# list's items, as an ItemList's are. At least this many make a list, as `acquire.items.MIN_ITEMS`.
 _MICRODATA = "microdata:"
 _POSITION = re.compile(r"\[\d+\]")
 _MIN_REPEATED = 3

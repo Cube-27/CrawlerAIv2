@@ -1,4 +1,4 @@
-"""Numbers as pages write them (SPEC-04 §4.4): the locales a page and its request state, and the values a written
+"""Numbers as pages write them (normalization spec): the locales a page and its request state, and the values a written
 number has under their Unicode CLDR number symbols (Babel). Shared by the normalizers that read numbers from text
 (money, count, number), so each reads them one way."""
 
@@ -93,8 +93,8 @@ def readings(written: str, locales: frozenset[str]) -> list[Decimal]:
 
 
 def locale_set(ctx: Context) -> frozenset[str]:
-    """The CLDR locales the page and the request state (SPEC-04 §4.4). A tag that names no territory stands for every
-    territory its language is used in, unless the ccTLD names one; the ccTLD alone stands for its territory's
+    """The CLDR locales the page and the request state (normalization spec). A tag that names no territory stands for
+    every territory its language is used in, unless the ccTLD names one; the ccTLD alone stands for its territory's
     locales."""
     tags = [t for t in (ctx.html_lang, ctx.og_locale, ctx.request_locale, *ctx.hreflang) if t]
     out: set[str] = set()

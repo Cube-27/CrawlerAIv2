@@ -1,4 +1,4 @@
-"""The date and datetime normalizer (SPEC-04 §4.4, ARCHITECTURE §9): ISO 8601 output, RFC 3339 input parsed directly,
+"""The date and datetime normalizer (normalization spec): ISO 8601 output, RFC 3339 input parsed directly,
 other input through CLDR date orders and `dateparser`, and declines on order ambiguity, two-digit years, relative
 datetimes, missing offsets and years outside 1970 to 2100."""
 

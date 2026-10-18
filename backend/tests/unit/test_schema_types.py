@@ -1,4 +1,4 @@
-"""The schema document rules (SPEC-04 §4.2) and the preset files (§5.3)."""
+"""The schema document rules (schemas spec) and the preset files (§5.3)."""
 
 from typing import Any
 
