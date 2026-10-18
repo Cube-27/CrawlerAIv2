@@ -17,6 +17,7 @@ from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.admission import AdmittingCollector
 from crawlerai.collect.base import Candidate, Collector, Entity
 from crawlerai.collect.dom import DomCollector
+from crawlerai.collect.items.align import Items, align
 from crawlerai.collect.js_state import JsStateCollector
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.microdata import MicrodataCollector
@@ -41,6 +42,9 @@ class Collected:
     candidates: tuple[Candidate, ...]
     diagnostics: tuple[str, ...]
     rows: tuple[Entity, ...] = ()  # a listing's rows from captured calls, also among `entities`
+    # A listing's aligned groups of item blocks (the item layer), best first; their entities and candidates are among
+    # the others.
+    items: tuple[Items, ...] = ()
 
 
 def collect_page(
@@ -67,8 +71,12 @@ def collect_page(
     results = [
         r for c in collectors if (r := _isolated(c, partial(c.collect, page, schema, ctx), diagnostics)) is not None
     ]
-    entities = tuple(entity for result in results for entity in result.entities)
-    others = tuple(candidate for result in results for candidate in result.candidates)
+    # The item layer's blocks are read before the admitting collectors, whose values then agree with the best aligned
+    # group's too.
+    items = _isolated(align, partial(align, page, schema, ctx), diagnostics) or ()
+    best = items[0].candidates if items else ()
+    entities = (*(entity for result in results for entity in result.entities), *(e for i in items for e in i.entities))
+    others = (*(candidate for result in results for candidate in result.candidates), *best)
     admitting: Sequence[AdmittingCollector] = (JsStateCollector(), XhrCollector(learned))
     admitted = [
         a
@@ -77,13 +85,19 @@ def collect_page(
     ]
     return Collected(
         entities=entities + tuple(entity for result in admitted for entity in result.entities),
-        candidates=others + tuple(candidate for result in admitted for candidate in result.candidates),
+        candidates=(
+            *others,
+            *(candidate for group in items[1:] for candidate in group.candidates),
+            *(candidate for result in admitted for candidate in result.candidates),
+        ),
         diagnostics=(
             *(d for result in results for d in result.diagnostics),
+            *(d for group in items for d in group.diagnostics),
             *(d for result in admitted for d in result.diagnostics),
             *diagnostics,
         ),
         rows=tuple(row for result in admitted for row in result.rows),
+        items=items,
     )
 
 

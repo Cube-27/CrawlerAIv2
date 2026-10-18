@@ -351,11 +351,10 @@ def field_candidates(
 ) -> Iterator[Candidate]:
     """A candidate per value each field's path reaches on each entity of its type. A row-mapped field's path names its
     rows, which resolution finds (SPEC-13 §4.3); each of its sub-fields is read as a field of its own."""
-    for name, spec, paths in mapped_fields(schema):
+    for name, spec, mapped in mapped_fields(schema):
         as_list = spec.type is FieldType.LIST
-        if spec.type is FieldType.IDENTIFIER:
-            paths = _with_sub_properties(paths, vocabulary, spec.scheme)
         entries = schema.page_kind == "listing" and spec.scope == "row"
+        paths = _read_paths(spec, mapped, vocabulary, entries=entries)
         for entity_id, selected in _selections(entities, paths, vocabulary, as_list=as_list, entries=entries):
             if selected.url and _holds_text(spec):
                 continue
@@ -365,6 +364,15 @@ def field_candidates(
             )
             if found is not None:
                 yield found
+
+
+def _read_paths(
+    spec: FieldSpec, paths: tuple[MappedPath, ...], vocabulary: Vocabulary, *, entries: bool
+) -> tuple[MappedPath, ...]:
+    """The paths a field is read through: its own, an identifier's sub-properties, a listing row's item pages."""
+    if spec.type is FieldType.IDENTIFIER:
+        paths = _with_sub_properties(paths, vocabulary, spec.scheme)
+    return _with_item_pages(paths) if entries and is_item_url(spec) else paths
 
 
 def fragment_read(raw: JsonValue, spec: FieldSpec) -> str | None:
@@ -413,6 +421,47 @@ def _with_sub_properties(
             *(_ending_in(path, sub) for sub in sorted(_widening(path.steps[-1], vocabulary, scheme))),
         )
     )
+
+
+def is_item_url(spec: FieldSpec) -> bool:
+    """Whether a field holds a listing row's item URL: a row url field whose path names the item's own schema.org
+    `url` ("URL of the item"), straight from the row's type."""
+    return (
+        spec.scope == "row"
+        and spec.type is FieldType.URL
+        and spec.schema_org is not None
+        and any(path.steps == _ITEM_URL and path.joined is None for path in parse_paths(spec.schema_org))
+    )
+
+
+def item_url_fields(schema: SchemaDef) -> tuple[str, ...]:
+    """The schema's row fields holding the item's own URL (`is_item_url`)."""
+    return tuple(name for name, spec in schema.fields.items() if is_item_url(spec))
+
+
+# schema.org Thing.url, "URL of the item"; then, a rank later each, Offer.url (the offer's page, the one a listing's row
+# links to) and Thing.mainEntityOfPage ("the Web page for which this thing is the main entity": a URL, or a
+# CreativeWork stating its `url`).
+_ITEM_URL = ("url",)
+_ITEM_PAGES: tuple[tuple[tuple[str, ...], ...], ...] = (
+    (("offers", "url"),),
+    (("mainEntityOfPage",), ("mainEntityOfPage", "url")),
+)
+
+
+def _with_item_pages(paths: Sequence[MappedPath]) -> tuple[MappedPath, ...]:
+    """An item URL field's alternatives, then the pages of `_ITEM_PAGES`, each a rank later, from the same type: a row
+    whose structured data names its item's page only through its offer or as its main entity still has that page (the
+    master plan's row key: block link, else `Offer.url`, else `mainEntityOfPage`)."""
+    later = max(path.rank for path in paths) + 1
+    widened = [
+        path._replace(steps=steps, rank=later + offset)
+        for path in paths
+        if path.steps == _ITEM_URL and path.joined is None
+        for offset, alternatives in enumerate(_ITEM_PAGES)
+        for steps in alternatives
+    ]
+    return (*paths, *widened)
 
 
 def _widening(prop: str, vocabulary: Vocabulary, scheme: str | None) -> frozenset[str]:
