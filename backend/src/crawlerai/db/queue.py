@@ -27,6 +27,7 @@ from typing import Any, Final
 
 from sqlalchemy import Executable, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.orm import aliased
 
 from crawlerai.core.retry import backoff_delay
 from crawlerai.db.jobs import (
@@ -96,12 +97,20 @@ class LeaseLost(Exception):
 
 async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[ClaimedTask]:
     """Lease up to `n` due tasks to `worker`: highest priority first, then round robin between jobs (each job's
-    best task, then each job's second best, and so on), then job and id; within a job, best crawl score
-    (`UrlTask.score`, a task with none after one with), then oldest (D-1593). Their queued jobs start."""
-    # The CTE runs exactly once (MATERIALIZED, PostgreSQL docs, "WITH Queries"). As a plain `IN (subquery)`, the
-    # planner may rescan the subquery once per row of a semi-join; each rescan skips the rows already claimed and
-    # yields `n` more, so a single claim could take every due task.
+    best task, then each job's second best, and so on; jobs with fewer leased tasks first), then job and id; within
+    a job, best crawl score (`UrlTask.score`, a task with none after one with), then oldest (D-1593). Their queued
+    jobs start. The tasks come back in that order."""
     # The rank is a window function, which FOR UPDATE refuses, so the rows are ranked in a subquery and locked after.
+    # The ids are read first, in order, and leased by a second statement of the same transaction, which holds the
+    # locks: the UPDATE ... RETURNING does not keep the order, and a plain `IN (subquery)` could be planned as a
+    # semi-join rescanned per row, claiming every due task.
+    leased = aliased(UrlTask)
+    in_flight = (
+        select(func.count())
+        .where(leased.job_id == UrlTask.job_id, leased.status == "claimed")
+        .correlate(UrlTask)
+        .scalar_subquery()
+    )
     rank = (
         func.row_number()
         .over(
@@ -111,7 +120,7 @@ async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[Claime
         .label("rank")
     )
     ranked = (
-        select(UrlTask.id, UrlTask.priority, UrlTask.job_id, rank)
+        select(UrlTask.id, UrlTask.priority, UrlTask.job_id, rank, in_flight.label("in_flight"))
         .where(UrlTask.status == "queued", UrlTask.next_attempt_at <= func.now())
         .subquery("ranked")
     )
@@ -119,15 +128,16 @@ async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[Claime
         select(UrlTask.id)
         .join(ranked, ranked.c.id == UrlTask.id)
         .where(UrlTask.status == "queued")
-        .order_by(ranked.c.priority.desc(), ranked.c.rank, ranked.c.job_id, UrlTask.id)
+        .order_by(ranked.c.priority.desc(), ranked.c.rank, ranked.c.in_flight, ranked.c.job_id, UrlTask.id)
         .limit(n)
         .with_for_update(of=UrlTask, skip_locked=True)
-        .cte("due")
-        .prefix_with("MATERIALIZED")
     )
+    ids = list((await conn.execute(due)).scalars())
+    if not ids:
+        return []
     claim = (
         update(UrlTask)
-        .where(UrlTask.id.in_(select(due.c.id)))
+        .where(UrlTask.id.in_(ids))
         .values(
             status="claimed",
             claimed_by=worker,
@@ -136,24 +146,10 @@ async def claim_tasks(conn: AsyncConnection, worker: str, n: int) -> list[Claime
         )
         .returning(*_CLAIMED_COLUMNS)
     )
-    tasks = await _claimed(conn, claim)
-    if tasks:
-        await start_jobs(conn, {task.job_id for task in tasks})
-    # UPDATE ... RETURNING does not keep the subquery's order.
-    return _in_claim_order(tasks)
-
-
-def _in_claim_order(tasks: list[ClaimedTask]) -> list[ClaimedTask]:
-    """`tasks` in the order `claim_tasks` ranks them: priority, rank within the job, job, id."""
-    by_job: dict[tuple[int, JobId], list[ClaimedTask]] = {}
-    for task in sorted(tasks, key=lambda task: (task.score is None, -(task.score or 0.0), task.id)):
-        by_job.setdefault((task.priority, task.job_id), []).append(task)
-    keyed = [
-        ((-task.priority, rank, task.job_id, task.id), task)
-        for group in by_job.values()
-        for rank, task in enumerate(group)
-    ]
-    return [task for _, task in sorted(keyed, key=lambda pair: pair[0])]
+    position = {task_id: i for i, task_id in enumerate(ids)}
+    tasks = sorted(await _claimed(conn, claim), key=lambda task: position[task.id])
+    await start_jobs(conn, {task.job_id for task in tasks})
+    return tasks
 
 
 async def insert_claimed(

@@ -10,7 +10,7 @@ detection for re-submitted runs; shared API rules in [rest-api](../rest-api/spec
 ### Requirement: Queue, leases and retries
 Job and task kinds, statuses and outcomes SHALL be those in `db/models.py`; task errors are outcomes, and a job ends
 `failed` only when every task failed or the budget ran out before any completed. Workers SHALL claim tasks with `FOR
-UPDATE SKIP LOCKED` by priority then id under a 10-minute lease; a fetch `error` is retried to 3 attempts with backoff
+UPDATE SKIP LOCKED` by priority, then fairness between jobs, then id ("Crawl strategy and best-first scoring") under a 10-minute lease; a fetch `error` is retried to 3 attempts with backoff
 30 s × 2^(n−1) (`core/retry.backoff_delay`, the rule the polite fetch also pauses a host by), a page `blocked` by a
 vendor's challenge once, every other outcome is terminal, and an SSRF or redirect refusal fails the task at once.
 Politeness is per site in the worker. (Previously: a vendor block was terminal.) Refs: §6, D-0006, D-0632, D-0705,
@@ -165,7 +165,7 @@ and context names, or fails the task `not_cached`; `bypass` sends no validators.
 ### Requirement: Crawl strategy and best-first scoring
 A crawl SHALL take `strategy` `bfs` (default), `dfs` or `best_first`; `query` and `keywords` are accepted only with
 `best_first`. A scored crawl stores each task's score (`url_task.score`, 0 to 1) and `claim_tasks` SHALL lease by
-`priority`, then round robin between jobs (each job's best task first), then id; score (descending, none last) orders only
+`priority`, then round robin between jobs (each job's best task first, jobs with fewer leased tasks first), then id; score (descending, none last) orders only
 within a job, so a scored crawl does not lease ahead of other jobs' tasks. (Previously: by priority, then score across all
 jobs.) Best first scores a link by BM25 of its anchor text and URL path
 against the query, the holding page's relevance, the sitemap `priority` and depth (`crawl/scoring.py`), with no

@@ -505,3 +505,29 @@ async def test_claim_fairness_does_not_outrank_priority(conn: AsyncConnection) -
     claimed = await claim_tasks(conn, "w1", 3)
 
     assert [task.id for task in claimed] == [a1, a2, b1]
+
+
+async def test_claim_returns_tasks_in_the_ranked_order(conn: AsyncConnection) -> None:
+    # The returned order is the ranked one: round robin between jobs, score within a job.
+    first, second = await _job(conn), await _job(conn)
+    [a1, a2] = await _tasks(conn, first, 2)
+    [b1] = await _tasks(conn, second, 1, url="b", canonical_url="b")
+    await conn.execute(update(UrlTask).where(UrlTask.id == a1).values(score=0.9))
+    await conn.execute(update(UrlTask).where(UrlTask.id == a2).values(score=0.1))
+
+    claimed = await claim_tasks(conn, "w1", 3)
+
+    assert [task.id for task in claimed if task.job_id == first] == [a1, a2]
+    assert {task.id for task in claimed[:2]} == {a1, b1}
+
+
+async def test_claim_serves_the_job_with_fewer_leased_tasks_first(conn: AsyncConnection) -> None:
+    busy, idle = await _job(conn), await _job(conn)
+    await _tasks(conn, busy, 3)
+    [held] = await claim_tasks(conn, "w1", 1)
+    [idle_task] = await _tasks(conn, idle, 1, url="i", canonical_url="i")
+
+    [next_task] = await claim_tasks(conn, "w2", 1)
+
+    assert held.job_id == busy
+    assert next_task.id == idle_task

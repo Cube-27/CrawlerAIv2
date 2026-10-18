@@ -1120,7 +1120,7 @@ archived ARCHITECTURE.md.
 
 ### D-1593 — Task leasing order across jobs: a scored crawl's tasks lease before other jobs' tasks
 - Date: 2026-10-18 · Change/PR: bot-review-fixes (#277), owner-items · Status: decided (owner 2026-10-18)
-- Decision: option (a): `claim_tasks` leases by priority, then round robin between jobs (rank within the job by score, then id), then job id, then task id. Score orders only within a job. The jobs spec's requirement says so.
+- Decision: option (a): `claim_tasks` leases by priority, then round robin between jobs (rank within the job by score, then id), then the job with fewer leased tasks, then job id, then task id. Score orders only within a job. The jobs spec's requirement says so.
 - Question: `db/queue.claim_tasks` leases by priority, then score, then id across all jobs, as the jobs spec
   ("Crawl strategy and best-first scoring") requires. A best-first crawl's scored tasks therefore lease before every
   other job's unscored tasks at the same priority (review finding on #261).
