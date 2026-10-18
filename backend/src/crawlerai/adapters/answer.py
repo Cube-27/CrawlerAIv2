@@ -13,6 +13,9 @@ from crawlerai.adapters.base import NOT_SERVED
 from crawlerai.core import json_text
 from crawlerai.storage.capture_bundle import CaptureBundle, sha256_hex
 
+# RFC 8259 §11: JSON's media type, which defines no charset parameter.
+_JSON_TYPE = ("Content-Type", "application/json")
+
 
 def recorded(result: FetchResult, answer: JsonValue) -> FetchResult:
     """`result`, its capture's body the JSON text of `answer`; the request's attempts and timing are kept."""
@@ -20,8 +23,14 @@ def recorded(result: FetchResult, answer: JsonValue) -> FetchResult:
 
 
 def with_body(kept: FetchResult, first: FetchResult, body: bytes) -> FetchResult:
-    """`kept` (the attempts of every request), its capture that of `first` with `body`: the one answer of a list."""
-    manifest = first.bundle.manifest.model_copy(update={"html_sha256": sha256_hex(body)})
+    """`kept` (the attempts of every request), its capture that of `first` with `body`: the one answer of a list.
+    The body is JSON text in UTF-8 (RFC 8259 §8.1), so its Content-Type says so in place of the answer's own, whose
+    charset would decode it wrongly (`decode_body`)."""
+    original = first.bundle.manifest
+    response = (*((n, v) for n, v in original.headers.response if n.lower() != "content-type"), _JSON_TYPE)
+    manifest = original.model_copy(
+        update={"html_sha256": sha256_hex(body), "headers": original.headers.model_copy(update={"response": response})}
+    )
     return kept.model_copy(update={"bundle": CaptureBundle(manifest=manifest, body=body, network=())})
 
 
