@@ -7,7 +7,7 @@ row's block is the one block whose span of the cleaned text (`content.item_text.
 value of the row at its offsets (INV-12): where the values sit in the page, not what they say, so items that repeat a
 title and price (one product in several colours) each keep their own block. A block no other row has as its block
 gives the row's fields that are the item's own schema.org `url` the one document its hyperlinks lead to
-(`collect.items.align.link_targets`, `without_queries`), or else the one document its hyperlinks labelled with a row
+(the align step's `link_targets` and `without_queries`), or else the one document its hyperlinks labelled with a row
 value (their whole text is one) lead to (HTML Standard §4.5.1: an `a` element's content labels its link). The rows
 are looked for in every group of repeated items, and the group that places most rows is theirs. Block text, for the
 labels, is read as the cleaned text shows it (`content.text`: hidden and non-rendered elements left out, NFC, an

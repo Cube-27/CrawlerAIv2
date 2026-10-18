@@ -15,7 +15,7 @@ trafilatura reads a listing's item grid as boilerplate (link-dense repeated bloc
 the items (the segment step's first group, `ParsedPage.item_groups`) are taken out of its copy of the tree and written
 as a Markdown list after the rest of the content (`_items`): each item's links, images and text, in document order. A
 listing page with no repeated items is read in recall mode, as precision mode keeps little of a page that is not an
-article (D-1276).
+article (extraction spec, "Page content formats").
 
 trafilatura drops the space after an inline element that opens a `div`, `td` or `li`'s text ("**Warning!**This"), so
 each such run of inline content is wrapped in a `p` first (`_wrap_inline_runs`, D-1275).

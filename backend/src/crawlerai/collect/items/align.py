@@ -1,16 +1,19 @@
-"""The item layer's align step (extraction spec, "Item layer"; owner #67): a listing's rows from the blocks of one group
-of repeated items (`ParsedPage.item_groups`, the segment step), each field read at a place the blocks share, declining
-rather than guessing (DEPTA's partial alignment, Zhai and Liu 2005: only what aligns with certainty is committed).
+"""The item layer's align step (listings spec, "Rows from blocks"; owner #67): a listing's rows from the blocks of one
+group of repeated items (`ParsedPage.item_groups`, the segment step), each field read at a place the blocks share,
+declining rather than guessing (DEPTA's partial alignment, Zhai and Liu 2005: only what aligns with certainty is
+committed).
 
 A value's place in its block is the tag path from the block down to its element (the blocks' trees aligned, positions
 aside), or for a name, an image and the item URL, the rule that reads it. A place is a source of a field only when the
 field's normalizer accepts a value there in at least `quorum` of the group's blocks (`MIN_ITEMS`, and 60% of them).
 What each field reads follows from its type and schema.org property, never from a class name, a word or a site (C2,
 C4):
-- **item URL** (`schema_org_map.is_item_url`): the one document the block's hyperlinks lead to other than the page
-  itself (HTML Standard §4.6.1); when they lead to several, the one without a query that every other refines with one
-  (RFC 3986 §3.4); a link to an image file (RFC 6838 `image/*`) is a larger copy of the block's image, not a document.
-  A block without one such document is no row.
+- **item URL** (`is_item_url` of `collect.schema_org_map`): the one document the block's hyperlinks lead to (HTML
+  Standard §4.6.1), leaving out the page itself in any state of its query (a pager, a sort; RFC 3986 §3.3), image files
+  (RFC 6838 `image/*`: a larger copy of the block's image) and the links of the item's own lists (`_sublist_links`).
+  When they lead to several: the one without a query that every other refines with one (RFC 3986 §3.4), else the one
+  the block's headings link to, else the one whose links hold most of the block's text (`one_link`). A block without
+  one such document is no row.
 - **name** (a row text field whose path names schema.org `name`, or JobPosting `title`): the accessible name of the
   block's first hyperlink to its item that has one (WAI-ARIA Accessible Name and Description Computation 1.2:
   `aria-labelledby`, `aria-label`, its content when that is one line of text, the `alt` of an image it holds when it
@@ -66,7 +69,7 @@ QUORUM_SHARE: Final = 0.6
 _GROUPS_TRIED: Final = 8
 # The reason of a block's typed field whose places give several values.
 AMBIGUOUS_IN_BLOCK: Final = "ambiguous_in_block"
-# schema.org `Thing.name` ("The name of the item"), JobPosting `title` ("The title of the job"), `Thing.image`.
+# schema.org Thing's `name` ("The name of the item"), JobPosting's `title` ("The title of the job"), Thing's `image`.
 _NAMES: Final = frozenset({"name", "title"})
 _IMAGE: Final = "image"
 # HTML Standard §4.3.6: heading content; WAI-ARIA 1.2 role `heading`.
@@ -277,7 +280,7 @@ def _aligned(
 
 def _distinct_values(spots: Sequence[tuple[Spot, ...]], needed: int, spec: FieldSpec) -> dict[str, int]:
     """How many distinct values each place gives that gives one in at least `needed` blocks, in the order the rules
-    read (`_View.read`), so that on a tie the first rule's place is first."""
+    read (the order of `_View`'s rules), so that on a tie the first rule's place is first."""
     counts = Counter(place for found in spots for place in dict.fromkeys(spot.place for spot in found))
     values: dict[str, set[object]] = {place: set() for place, count in counts.items() if count >= needed}
     for found in spots:

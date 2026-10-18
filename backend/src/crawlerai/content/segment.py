@@ -1,7 +1,7 @@
-"""The item layer's segment step (owner #67, plan §3.2): which groups of repeated item blocks (`acquire.items`) a page
-shows its items in, best first. `ParsedPage.item_groups` holds the answer once per page; every reader of a listing's
-items (the item layer's alignment, the `markdown` format, role C's item text, the browser's paging driver) takes it
-from there or from `rank`, so one ranker decides.
+"""The item layer's segment step (listings spec, "Item groups"; owner #67): which groups of repeated item blocks
+(`acquire.items`) a page shows its items in, best first. `ParsedPage.item_groups` holds the answer once per page;
+every reader of a listing's items (the item layer's alignment, the `markdown` format, role C's item text, the
+render-need check, `xhr`, the browser's paging driver) takes it from there or from `rank`, so one ranker decides.
 
 A block the page does not render is not one of its items: with the browser's geometry, a block with no rendered area
 (CSSOM View `getBoundingClientRect`), else a block the HTML Standard's rendering rules or the page's inline styles

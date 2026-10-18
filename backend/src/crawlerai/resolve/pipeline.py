@@ -4,11 +4,12 @@ every field's outcome out. `extract_page` is the one function the worker and the
 A page that was not served (`blocked`, `shell`, `not_found`, `error`) yields its block class as the outcome and nothing
 else (INV-11). A served page is parsed once (INV-26); every collector reads that one parse, then resolution runs its
 stages in order: ownership and intent, preference, derivations, evidence and τ. A detail page's required fields still
-missing after that go to role C once, and its candidates are resolved with the others. A listing resolves each of its
-rows (`resolve.listing`) and its page-scoped fields, and lists its next-page candidates (§4.12). A listing whose
-structured data gives no rows asks role C for them (ARCHITECTURE §8.6), with its missing page fields; its rows are then
-the reply's. Resolution never publishes part of a page: if it raises, the outcome is `error` and no field is set
-(§4.14).
+missing after that go to role C once, and its candidates are resolved with the others. A listing's rows are its stated
+rows (structured data's, `resolve.listing`, else the config's, else its captured calls') and the blocks of its repeated
+items, bound into one row per item by the item layer (`collect.items.bind`, listings spec); each row resolves its
+row-scoped fields, the page its page-scoped ones, and the next-page candidates are listed (§4.12). Role C is asked once
+for a listing's row fields when it has no rows or its rows publish a row field on no row (listings spec, "Role C
+rows"). Resolution never publishes part of a page: if it raises, the outcome is `error` and no field is set (§4.14).
 
 With the site's active config (ARCHITECTURE §8.4, SPEC-08 §4.8) a page is extracted in `config` mode: the config's
 executor reads the same parse, its candidates enter resolution with the collectors' (in the bucket of the config
@@ -439,8 +440,8 @@ class _Listing:
         stated = structured or page.config.rows or page.collected.rows
         # A config's row selector was validated against every item (learning-configs spec), so its rows stand alone.
         items = () if not structured and page.config.rows else page.collected.items
-        # The item layer (extraction spec, "Item layer"): the blocks of the page's repeated items are the rows where
-        # the stated rows are none or stubs, and extend them; state and call array rows bind to the rows by URL.
+        # The item layer (listings spec, "Stated rows and blocks"): the blocks of the page's repeated items are the rows
+        # where the stated rows are none or stubs, and extend them; state and call array rows bind to the rows by URL.
         bound = bind(
             Listing(
                 page.page,
@@ -475,11 +476,11 @@ class _Listing:
         )
 
     def gap(self) -> ListingGapRequest | None:
-        """The role C request (ARCHITECTURE §8.6): every row field, and the page fields still `missing` that the config
-        does not run. Asked when the listing has no rows, when the rows of its captured calls leave a record incomplete
-        (role C's rows replace them), or when its rows publish some row field on no row (role C's rows then fill the
-        rows they bind to, `with_reply`); never for a schema without row fields, or when the config runs a row field
-        (§8.4; role C's rows could not join the config's)."""
+        """The role C request (listings spec, "Role C rows"): every row field, and the page fields still `missing` that
+        the config does not run. Asked when the listing has no rows, when the rows of its captured calls leave a record
+        incomplete (role C's rows replace them), or when its rows publish some row field on no row (role C's rows then
+        fill the rows they bind to, `with_reply`); never for a schema without row fields, or when the config runs a row
+        field (role C's rows could not join the config's)."""
         schema = self.page.schema
         covered = self.page.config.covered
         row_fields = tuple(name for name, spec in schema.fields.items() if spec.scope == "row")

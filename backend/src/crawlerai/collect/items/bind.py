@@ -1,6 +1,6 @@
-"""The item layer's bind step (extraction spec, "Item layer"; owner #67): a listing's stated rows (structured data's,
-the active config's, or else its captured calls'), its state and call array rows, and the blocks the align step read
-(`collect.items.align`) meet, so that each item is one row.
+"""The item layer's bind step (listings spec, "Stated rows and blocks"; owner #67): a listing's stated rows (structured
+data's, the active config's, or else its captured calls'), its state and call array rows, and the blocks the align
+step read (`collect.items.align`) meet, so that each item is one row.
 
 **Which rows.** The stated rows are the listing's rows unless there are none or all are stubs: rows holding no
 candidate of a row field but the item URL (an `ItemList` of URLs, empty `ListItem`s). Then the blocks are the rows.
@@ -347,7 +347,7 @@ class _ArrayRow:
 
 class _RowReader:
     """The JSON objects of state and call array rows, by entity id (`<kind>:<document index>:<row path>`, the ids
-    `collect.admission` and `collect.api.read_rows` give them)."""
+    `collect.admission` and the API recipe row reader, `read_rows`, give them)."""
 
     def __init__(self, page: ParsedPage) -> None:
         self._page = page
