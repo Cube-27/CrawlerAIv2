@@ -119,13 +119,13 @@ def _kept(result: ExtractionResult) -> list[JsonValue]:
 
 
 def test_related_items_in_state_do_not_make_the_targets_own_price_conflict() -> None:
-    # Before rows, the three page-owned prices disagreed (`conflict`, never sent to role C). A lone state value has no
-    # evidence bucket (§10), so the target's price is kept and abstains rather than publishes.
+    # Before rows, the three page-owned prices disagreed (`conflict`, never sent to role C). A lone state value has the
+    # evidence bucket `state` (§10), so the target's own price publishes.
     state: JsonValue = {"product": {"cost": "€19.90"}, "related": RELATED_ROWS}
 
     result = _extract(_page(TARGET, state=state, body="€19.90 · Related: €5.00 €7.00"))
 
-    assert _price(result) == ("abstained", "no_bucket", None)
+    assert _price(result) == ("published", None, {"amount": "19.90", "currency": "EUR"})
     assert _kept(result) == [TARGET_PRICE]
     assert "not_owned" in _rejections(result)
 
