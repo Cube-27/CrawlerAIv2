@@ -97,12 +97,13 @@ class Block:
 @dataclass(frozen=True, slots=True)
 class Items:
     """The listing's blocks, the candidates their values give (owned by their `item_block` entities), the group they
-    are of and what the step reports."""
+    are of, the fields it aligns and what the step reports."""
 
     blocks: tuple[Block, ...] = ()
     candidates: tuple[Candidate, ...] = ()
     group: Group = ()
     diagnostics: tuple[str, ...] = ()
+    fields: frozenset[str] = frozenset()
 
     @property
     def entities(self) -> tuple[Entity, ...]:
@@ -247,7 +248,7 @@ class _Aligned:
         diagnostics.extend(
             f"item layer: {name}: {AMBIGUOUS_IN_BLOCK} in {n} rows" for name, n in ambiguous.items() if n
         )
-        return Items(tuple(blocks), tuple(candidates), self.group, tuple(diagnostics))
+        return Items(tuple(blocks), tuple(candidates), self.group, tuple(diagnostics), frozenset(self.fields))
 
 
 def _aligned(

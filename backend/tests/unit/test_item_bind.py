@@ -148,3 +148,25 @@ def test_a_products_main_entity_of_page_is_its_rows_item_url_after_its_own_url()
     result = _listing(_html(_item_list(*items)), data=COMMITTED)
 
     assert [row.get("url") for row in _row_values(result)] == [_url(1), _url(2), _url(3)]
+
+
+def _section(*cards: str) -> str:
+    return f"<section>{_cards(*cards)}</section>"
+
+
+def test_every_section_of_one_row_shape_gives_rows_each_item_once() -> None:
+    # Two lists of the same cards: the second repeats item 3, which stays one row.
+    body = _section(*(_card(n) for n in (1, 2, 3))) + _section(*(_card(n) for n in (3, 4, 5, 6)))
+
+    result = _listing(_html(body=body), data=COMMITTED)
+
+    assert [row["url"] for row in _row_values(result)] == [_url(n) for n in (1, 2, 3, 4, 5, 6)]
+    assert all(row["price"] == _price(n) for n, row in zip(range(1, 7), _row_values(result), strict=True))
+
+
+def test_a_section_leading_to_another_kind_of_document_gives_no_rows() -> None:
+    other = _section(*(_card(n, href=f"/c/{n}/all") for n in (7, 8, 9)))
+
+    result = _listing(_html(body=_section(*(_card(n) for n in (1, 2, 3))) + other), data=COMMITTED)
+
+    assert [row["url"] for row in _row_values(result)] == [_url(n) for n in (1, 2, 3)]
