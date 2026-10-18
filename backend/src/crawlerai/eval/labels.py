@@ -95,6 +95,9 @@ class FieldLabel(_Model):
 
 class LabelRow(_Model):
     fields: dict[str, FieldLabel]
+    # The capture shows neither the row's text nor its URL (`crawlerai eval re-key`): a row of the list as it was
+    # labeled, not as it was captured. Unmatched, it is counted apart, never as a miss.
+    stale: bool = False
 
 
 class DistractorKey(_Model):

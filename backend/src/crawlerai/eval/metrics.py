@@ -10,7 +10,7 @@ match label rows by the field's key, and row precision and recall count the matc
 """
 
 from collections import Counter, defaultdict
-from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, Self
 
@@ -28,8 +28,10 @@ from crawlerai.eval.labels import (
     parse_labels,
     sub_fields,
 )
+from crawlerai.eval.presence import Capture
 from crawlerai.eval.scoring import same
 from crawlerai.normalize.dispatch import equal
+from crawlerai.normalize.url_key import without_parameters
 from crawlerai.resolve.preference import rule_type
 from crawlerai.resolve.types import Evidence
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -77,6 +79,12 @@ class PageOutput(_Model):
     llm_unanswered: int = 0
     fields: dict[str, FieldOutput] = {}  # detail: the entity; listing: page-level fields
     rows: tuple[dict[str, FieldOutput], ...] = ()  # listing rows
+    # The query parameters the engine dropped from the rows' item URLs, dropped from label URLs alike to match rows.
+    session_params: tuple[str, ...] = ()
+    # The page's LLM tokens, and their price in USD (`None` when a call's model has no known price).
+    tokens_in: int = 0
+    tokens_out: int = 0
+    llm_usd: float | None = 0.0
 
 
 class ReplayFailed(_Model):
@@ -102,6 +110,8 @@ class EvalCase(_Model):
     labels: Labels
     output: PageOutput | ReplayFailed
     config_status: dict[str, FieldStatus] = {}
+    # The capture's document, to tell whether it shows a value (`eval.presence`); `None` leaves presence unknown.
+    document: str | None = None
 
     @model_validator(mode="after")
     def _labels_fit_schema(self) -> Self:
@@ -127,6 +137,8 @@ class Judgment(_Model):
     reason: str | None = None
     # Each kind that offered a value: TP when every value it offered equals the label's value.
     sources: dict[SourceKind, SourceCell] = {}
+    # Whether the capture shows the label's value (an engine row's own value for an unmatched row); `None` unknown.
+    present: bool | None = None
 
 
 class PageDetail(_Model):
@@ -169,6 +181,26 @@ class RowMetrics(_Model):
     n: int  # label rows
 
 
+class PresenceMetrics(_Model):
+    """How many of a field type's labeled values the capture shows: `ceiling` is the coverage no reading of the
+    capture can pass, over the values whose presence is known."""
+
+    present: int
+    absent: int
+    unknown: int
+    ceiling: float | None
+
+
+class CostMetrics(_Model):
+    llm_calls: int
+    tokens_in: int
+    tokens_out: int
+    usd: float | None  # `None` when a call's model has no known price
+    tp: int  # correct fields over every page
+    tokens_per_tp: float | None
+    usd_per_tp: float | None
+
+
 class ZeroTouch(_Model):
     zero_touch: float
     n: int  # pages
@@ -208,6 +240,11 @@ class Report(_Model):
     disagreements: dict[str, dict[str, int]] = {}
     # Which unmatched engine rows count as FP (`RowScope`, D-1480).
     rows_scored: RowScope = "all"
+    # Per schema, the stale label rows (`LabelRow.stale`) no engine row matched: counted here, never as misses.
+    label_stale: dict[str, int] = {}
+    # Per field type, the labeled values the capture shows (the coverage ceiling).
+    presence: dict[str, PresenceMetrics] = {}
+    cost: CostMetrics | None = None
 
 
 @dataclass(frozen=True)
@@ -241,7 +278,7 @@ def build_report(
     """Score every case whose label status is in `statuses`: checked only, unless the report asks for drafts too,
     whose unlabeled fields are not scored. Failed replays are dropped from `n_pages` and every metric. `rows` says
     which unmatched engine rows count as FP (`RowScope`)."""
-    scored, details, row_counts = _score(cases, statuses, rows)
+    scored, details, row_counts, stale = _score(cases, statuses, rows)
     by_type: defaultdict[str, list[Judgment]] = defaultdict(list)
     by_field: defaultdict[str, list[Judgment]] = defaultdict(list)
     by_bucket: defaultdict[str, list[Judgment]] = defaultdict(list)
@@ -291,22 +328,57 @@ def build_report(
         by_page_kind={k: _field_metrics(v) for k, v in sorted(by_kind.items())},
         disagreements=_disagreements(by_field),
         rows_scored=rows,
+        label_stale=dict(sorted(stale.items())),
+        presence={k: _presence(v) for k, v in sorted(by_type.items())},
+        cost=_cost([output for _, output, _, _ in scored], [j for _, _, js, _ in scored for j in js]),
     )
 
 
 def disagreement(judgment: Judgment) -> str | None:
     """What kind of disagreement a judgment is, for triage; `None` for an agreement (TP, TN). FP: `wrong_value`, a
-    value where the label says `absent` (`on_absent`), or a row the labels don't have (`extra_row`). FN: the engine's
-    reason, or `not_output` when it output nothing for the field (a listing row it did not find, among others)."""
+    value where the label says `absent` (`on_absent`), or a row the labels don't have (`extra_row`, with `:on_page` or
+    `:not_on_page` when the capture's showing its value is known). FN: `declined:<reason>` when the engine output the
+    field and gave a reason, else `absent` when the capture does not show the value, `unread` when it does, or
+    `not_output` when that is unknown."""
     match judgment.cell:
         case "TP" | "TN":
             return None
         case "FP" if judgment.entity.startswith("extra["):
-            return "FP|extra_row"
+            return f"FP|extra_row{_shown(judgment.present, ':on_page', ':not_on_page', '')}"
         case "FP":
             return "FP|on_absent" if judgment.on_absent else "FP|wrong_value"
+        case "FN" if judgment.reason is not None:
+            return f"FN|declined:{judgment.reason}"
         case "FN":
-            return f"FN|{judgment.reason or 'not_output'}"
+            return f"FN|{_shown(judgment.present, 'unread', 'absent', 'not_output')}"
+
+
+def _shown(present: bool | None, shown: str, not_shown: str, unknown: str) -> str:
+    return unknown if present is None else shown if present else not_shown
+
+
+def _presence(judgments: Sequence[Judgment]) -> PresenceMetrics:
+    labeled = Counter(j.present for j in judgments if _labeled(j))
+    present, absent = labeled[True], labeled[False]
+    return PresenceMetrics(
+        present=present, absent=absent, unknown=labeled[None], ceiling=_ratio(present, present + absent)
+    )
+
+
+def _cost(outputs: Sequence[PageOutput], judgments: Sequence[Judgment]) -> CostMetrics:
+    tp = sum(j.cell == "TP" for j in judgments)
+    tokens_in, tokens_out = sum(o.tokens_in for o in outputs), sum(o.tokens_out for o in outputs)
+    prices = [o.llm_usd for o in outputs]
+    usd = None if None in prices else sum(p for p in prices if p is not None)
+    return CostMetrics(
+        llm_calls=sum(o.llm_calls for o in outputs),
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        usd=usd,
+        tp=tp,
+        tokens_per_tp=_ratio(tokens_in + tokens_out, tp),
+        usd_per_tp=None if usd is None else _ratio_float(usd, tp),
+    )
 
 
 def _disagreements(by_field: Mapping[str, Sequence[Judgment]]) -> dict[str, dict[str, int]]:
@@ -322,11 +394,13 @@ _Scored = tuple[EvalCase, PageOutput, list[Judgment], bool]
 
 def _score(
     cases: Iterable[EvalCase], statuses: frozenset[LabelStatus], rows: RowScope
-) -> tuple[list[_Scored], list[PageDetail], defaultdict[str, _RowCount]]:
-    """Each case in `statuses` judged, with its zero-touch; each page's detail; the row counts of row-mapped fields."""
+) -> tuple[list[_Scored], list[PageDetail], defaultdict[str, _RowCount], Counter[str]]:
+    """Each case in `statuses` judged, with its zero-touch; each page's detail; the row counts of row-mapped fields;
+    the unmatched stale label rows per schema."""
     scored: list[_Scored] = []
     details: list[PageDetail] = []
     row_counts: defaultdict[str, _RowCount] = defaultdict(_RowCount)
+    stale: Counter[str] = Counter()
     for case in sorted(cases, key=lambda c: c.page_id):
         if case.labels.status not in statuses:
             continue
@@ -334,11 +408,15 @@ def _score(
             case ReplayFailed(error=error):
                 details.append(_detail(case, error, None, ()))
             case PageOutput() as output:
-                judgments = _judge_case(case.schema_def, case.labels, output, row_counts, rows)
+                capture = None if case.document is None else Capture(case.document)
+                judgments, unmatched_stale = _judge_case(
+                    case.schema_def, case.labels, output, row_counts, rows, capture
+                )
+                stale[case.schema_def.name] += unmatched_stale
                 zero_touch = _zero_touch(case.schema_def, judgments, frozenset(case.labels.lists))
                 scored.append((case, output, judgments, zero_touch))
                 details.append(_detail(case, None, zero_touch, tuple(judgments), output.llm_unanswered))
-    return scored, details, row_counts
+    return scored, details, row_counts, +stale
 
 
 def _judge_case(
@@ -347,13 +425,15 @@ def _judge_case(
     output: PageOutput,
     row_counts: defaultdict[str, _RowCount],
     rows: RowScope = "all",
-) -> list[Judgment]:
-    """A page's judgments, its row-mapped fields' included; their row counts are added to `row_counts`."""
-    judgments = list(_judge_page(schema, labels, output, rows))
+    capture: Capture | None = None,
+) -> tuple[list[Judgment], int]:
+    """A page's judgments, its row-mapped fields' included, and how many stale label rows no engine row matched;
+    the row-mapped fields' row counts are added to `row_counts`."""
+    judgments, stale = _judge_page(schema, labels, output, rows, capture)
     for name, (list_judgments, count) in _judge_lists(schema, labels, output).items():
         judgments += list_judgments
         row_counts[f"{schema.name}|{name}"] += count
-    return judgments
+    return judgments, stale
 
 
 def _cell_type(schema: SchemaFields, field: str) -> str:
@@ -421,24 +501,36 @@ def _detail(
     )
 
 
-def _judge_page(schema: SchemaFields, labels: Labels, output: PageOutput, rows: RowScope = "all") -> Iterator[Judgment]:
+def _judge_page(
+    schema: SchemaFields, labels: Labels, output: PageOutput, rows: RowScope = "all", capture: Capture | None = None
+) -> tuple[list[Judgment], int]:
+    """The page's judgments, and how many stale label rows no engine row matched (those are not judged)."""
     # Fields labeled at page level: on a detail page all of them, on a listing page the `scope: page` ones (D-0168
     # makes a checked page label every one).
-    for name, label in sorted(labels.fields.items()):
-        yield _judge(name, "page", label, output.fields.get(name), schema.fields[name])
+    judgments = [
+        _judge(name, "page", label, output.fields.get(name), schema.fields[name], capture)
+        for name, label in sorted(labels.fields.items())
+    ]
     if schema.page_kind == "detail":
-        return
-    matches = _match_rows(labels.rows, output.rows)
+        return judgments, 0
+    matches = _match_rows(labels.rows, output.rows, schema.fields, output.session_params)
+    stale = 0
     for i, row in enumerate(labels.rows):
+        if i not in matches and row.stale:
+            stale += 1
+            continue
         out_row = output.rows[matches[i]] if i in matches else {}
         for name, label in sorted(row.fields.items()):
-            yield _judge(name, f"row[{i}]", label, out_row.get(name), schema.fields[name])
+            spec = schema.fields[name]
+            keyed = _keyed(label, spec, output.session_params)
+            judgments.append(_judge(name, f"row[{i}]", keyed, out_row.get(name), spec, capture))
     matched = set(matches.values())
     # D-1480: with `labeled`, an unmatched engine row past the label's row count is a row of a page no label holds.
     scored = len(output.rows) if rows == "all" else len(labels.rows)
     for j, out_row in enumerate(output.rows[:scored]):
         if j not in matched:
-            yield from _unmatched_row(j, out_row, schema.fields)
+            judgments += _unmatched_row(j, out_row, schema.fields, capture)
+    return judgments, stale
 
 
 def _judge_lists(
@@ -530,10 +622,12 @@ def _published_equal(out: FieldOutput | None, value: JsonValue, spec: FieldSpec)
     return out is not None and out.status == "published" and equal(out.value, value, spec)
 
 
-def _unmatched_row(j: int, row: Mapping[str, FieldOutput], names: Collection[str]) -> Iterator[Judgment]:
+def _unmatched_row(
+    j: int, row: Mapping[str, FieldOutput], specs: Mapping[str, FieldSpec], capture: Capture | None = None
+) -> Iterator[Judgment]:
     # §4.6: an engine row that matches no label row is FP for every published field.
     for name, out in sorted(row.items()):
-        if out.status == "published" and name in names:
+        if out.status == "published" and name in specs:
             yield Judgment(
                 field=name,
                 entity=f"extra[{j}]",
@@ -544,27 +638,103 @@ def _unmatched_row(j: int, row: Mapping[str, FieldOutput], names: Collection[str
                 label_value=None,
                 output_value=out.value,
                 sources=dict.fromkeys(out.offered, "FP"),
+                present=None if capture is None else capture.shows(out.value, specs[name]),
             )
 
 
-def _match_rows(label_rows: Sequence[LabelRow], rows: Sequence[Mapping[str, FieldOutput]]) -> dict[int, int]:
-    """Label row index → engine row index, matched by canonicalized `url` (§4.6), in page order, one to one."""
+def _keyed(label: FieldLabel, spec: FieldSpec, session: Collection[str]) -> FieldLabel:
+    """A row's URL label rid of the session parameters the engine dropped from its rows' URLs, as row matching reads
+    it: the engine publishes item URLs without them (extraction spec, "Row item URLs without session parameters")."""
+    if spec.type is not FieldType.URL or not session or not isinstance(label.value, str):
+        return label
+    return label.model_copy(update={"value": without_parameters(label.value, session)})
+
+
+_RowMatch = Callable[[LabelRow, Mapping[str, FieldOutput]], bool]
+
+
+def _match_rows(
+    label_rows: Sequence[LabelRow],
+    rows: Sequence[Mapping[str, FieldOutput]],
+    specs: Mapping[str, FieldSpec],
+    session: Collection[str] = (),
+) -> dict[int, int]:
+    """Label row index → engine row index, one to one, in page order: by canonical `url` with the page's session
+    parameters dropped from the label's as the engine dropped them from its rows (evaluation spec, "Row matching");
+    then, for the rows left, by URL path with equal text fields; then, for a label row without a URL, by equal text
+    fields alone."""
+    passes: tuple[_RowMatch, ...] = (
+        lambda label, row: _same_url(label, row, session),
+        lambda label, row: _same_path(label, row) and _same_texts(label, row, specs),
+        lambda label, row: _url_of(label) is None and _same_texts(label, row, specs),
+    )
     matches: dict[int, int] = {}
-    taken: set[int] = set()
-    for i, label_row in enumerate(label_rows):
-        label = label_row.fields.get("url")
-        if label is None or label.absent:
-            continue
-        for j, row in enumerate(rows):
-            out = row.get("url")
-            if j not in taken and out is not None and out.status == "published" and equal(label.value, out.value, _URL):
-                matches[i] = j
-                taken.add(j)
-                break
+    for matching in passes:
+        _match_pass(label_rows, rows, matching, matches)
     return matches
 
 
-def _judge(name: str, entity: str, label: FieldLabel, out: FieldOutput | None, spec: FieldSpec) -> Judgment:
+def _match_pass(
+    label_rows: Sequence[LabelRow],
+    rows: Sequence[Mapping[str, FieldOutput]],
+    matching: _RowMatch,
+    matches: dict[int, int],
+) -> None:
+    """Add to `matches` each label row left that `matching` pairs with the first engine row left."""
+    taken = set(matches.values())
+    for i, label_row in enumerate(label_rows):
+        if i in matches:
+            continue
+        j = next((j for j, row in enumerate(rows) if j not in taken and matching(label_row, row)), None)
+        if j is not None:
+            matches[i] = j
+            taken.add(j)
+
+
+def _url_of(label_row: LabelRow) -> str | None:
+    label = label_row.fields.get("url")
+    return label.value if label is not None and not label.absent and isinstance(label.value, str) else None
+
+
+def _engine_url(row: Mapping[str, FieldOutput]) -> str | None:
+    out = row.get("url")
+    return out.value if out is not None and out.status == "published" and isinstance(out.value, str) else None
+
+
+def _same_url(label_row: LabelRow, row: Mapping[str, FieldOutput], session: Collection[str]) -> bool:
+    label, engine = _url_of(label_row), _engine_url(row)
+    return label is not None and engine is not None and equal(without_parameters(label, session), engine, _URL)
+
+
+def _same_path(label_row: LabelRow, row: Mapping[str, FieldOutput]) -> bool:
+    label, engine = _url_of(label_row), _engine_url(row)
+    return label is not None and engine is not None and _host_path(label) == _host_path(engine)
+
+
+def _host_path(url: str) -> tuple[str, str]:
+    # RFC 3986 §6.2.2.1: the host is case-insensitive; the path is not.
+    head = url.partition("?")[0].partition("#")[0]
+    rest = head.partition("://")[2]
+    host, slash, path = rest.partition("/")
+    return host.lower(), slash + path
+
+
+def _same_texts(label_row: LabelRow, row: Mapping[str, FieldOutput], specs: Mapping[str, FieldSpec]) -> bool:
+    """Every text field the label row gives a value is published equal, and there is at least one."""
+    texts = [
+        (name, label)
+        for name, label in label_row.fields.items()
+        if not label.absent and label.value is not None and specs[name].type is FieldType.TEXT
+    ]
+    return bool(texts) and all(
+        (out := row.get(name)) is not None and out.status == "published" and same(out.value, label.value, specs[name])
+        for name, label in texts
+    )
+
+
+def _judge(
+    name: str, entity: str, label: FieldLabel, out: FieldOutput | None, spec: FieldSpec, capture: Capture | None = None
+) -> Judgment:
     published = out if out is not None and out.status == "published" else None
     value = published.value if published else None
     if published:
@@ -582,6 +752,7 @@ def _judge(name: str, entity: str, label: FieldLabel, out: FieldOutput | None, s
         output_value=value,
         reason=None if out is None or published else out.reason,
         sources={} if out is None else _source_cells(out, label, spec),
+        present=None if capture is None or label.absent else capture.shows(label.value, spec),
     )
 
 
@@ -624,6 +795,10 @@ def _group_met(group: frozenset[str], judgments: Sequence[Judgment]) -> bool:
 
 
 def _ratio(num: int, den: int) -> float | None:
+    return num / den if den else None
+
+
+def _ratio_float(num: float, den: int) -> float | None:
     return num / den if den else None
 
 
