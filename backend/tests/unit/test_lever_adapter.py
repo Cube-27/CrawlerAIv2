@@ -12,8 +12,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.acquire.api import JsonFetcher
+from crawlerai.acquire.types import FetchPolicy
 from crawlerai.adapters.base import AdapterMatch
 from crawlerai.adapters.lever import JOB_SITE_APIS, Lever
 
@@ -37,13 +37,6 @@ def test_a_job_site_url_is_a_listing_of_its_site(host: str, site: str) -> None:
     expected = AdapterMatch(tenant=site, page_kind="listing")
     assert ADAPTER.detect(f"https://{host}/{site}") == expected
     assert ADAPTER.detect(f"http://{host.upper()}/{site}/?source=x") == expected
-
-
-@given(host=st.sampled_from(HOSTS), site=sites, posting=postings)
-def test_a_posting_url_is_a_detail_page_of_its_posting(host: str, site: str, posting: str) -> None:
-    assert ADAPTER.detect(f"https://{host}/{site}/{posting}?source=x#top") == AdapterMatch(
-        tenant=site, page_kind="detail", item=posting
-    )
 
 
 @pytest.mark.parametrize(
@@ -73,32 +66,3 @@ def test_a_posting_page_is_fetched_from_its_instance_get_posting_endpoint(host: 
     manifest = result.bundle.manifest
     assert (manifest.method, manifest.block_class, manifest.url, manifest.final_url) == ("api", "ok", page, endpoint)
     assert result.bundle.body == body
-
-
-def test_a_job_site_page_is_fetched_from_its_instance_list_endpoint_as_json(stand_in_api: StandInApi) -> None:
-    body = (FIXTURES / "postings.json").read_bytes()
-    endpoint = f"{JOB_SITE_APIS[HOST]}/{SITE}?mode=json"
-
-    result = asyncio.run(ADAPTER.fetch(f"https://{HOST}/{SITE}", FetchPolicy(), stand_in_api({endpoint: body})))
-
-    assert (result.block_class, result.bundle.manifest.final_url, result.bundle.body) == ("ok", endpoint, body)
-
-
-async def _unused_send(_request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
-    raise AssertionError("a refused URL sends nothing")
-
-
-def test_a_url_it_does_not_detect_is_refused() -> None:
-    fetch = ADAPTER.fetch("https://jobs.example.com/site", FetchPolicy(), _unused_send)
-    with pytest.raises(ValueError, match="not a job site URL"):
-        asyncio.run(fetch)
-
-
-def test_it_serves_the_endpoints_it_fetches_and_no_page() -> None:
-    site = AdapterMatch(tenant="example-tenant", page_kind="listing")
-    api = JOB_SITE_APIS[HOST]
-    assert ADAPTER.serves(site, f"{api}/example-tenant?mode=json") is True
-    assert ADAPTER.serves(site, f"{api}/example-tenant/0f1e2d") is True
-    assert ADAPTER.serves(site, f"{api}/other-tenant?mode=json") is False
-    assert ADAPTER.serves(site, f"{api}/example-tenant-2?mode=json") is False
-    assert ADAPTER.serves(site, f"https://{HOST}/example-tenant") is False

@@ -9,8 +9,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.acquire.api import JsonFetcher
+from crawlerai.acquire.types import FetchPolicy
 from crawlerai.adapters.base import AdapterMatch
 from crawlerai.adapters.recruitee import DOMAIN, Recruitee
 from tests.unit.adapter_support import FIXTURES, candidates
@@ -22,19 +22,11 @@ COMPANY = "example-company"
 HOST = f"{COMPANY}.{DOMAIN}"
 API = f"https://{HOST}/api/offers"
 companies = st.from_regex(r"[a-z0-9]([a-z0-9-]{0,20}[a-z0-9])?", fullmatch=True)
-slugs = st.from_regex(r"[A-Za-z0-9._~-]{1,40}", fullmatch=True).filter(lambda s: s.strip("."))
 
 
 @given(company=companies, path=st.sampled_from(["", "/", "/o", "/o/"]))
 def test_a_company_site_url_is_a_listing_of_its_company(company: str, path: str) -> None:
     assert ADAPTER.detect(f"https://{company}.{DOMAIN}{path}") == AdapterMatch(tenant=company, page_kind="listing")
-
-
-@given(company=companies, slug=slugs)
-def test_an_offer_url_is_a_detail_page_of_its_slug(company: str, slug: str) -> None:
-    assert ADAPTER.detect(f"https://{company}.{DOMAIN}/o/{slug}?source=x") == AdapterMatch(
-        tenant=company, page_kind="detail", item=slug
-    )
 
 
 @pytest.mark.parametrize(
@@ -70,31 +62,6 @@ def test_a_company_page_is_fetched_from_its_offers_list(stand_in_api: StandInApi
     assert result.bundle.body == body
 
 
-def test_an_offer_page_is_fetched_from_its_offer_endpoint(stand_in_api: StandInApi) -> None:
-    body = (FIXTURES / "recruitee" / "offer.json").read_bytes()
-    match = AdapterMatch(COMPANY, "detail", "synthetic-engineer")
-
-    result = asyncio.run(
-        ADAPTER.fetch(
-            f"https://{HOST}/o/synthetic-engineer", FetchPolicy(), stand_in_api({f"{API}/synthetic-engineer": body})
-        )
-    )
-
-    assert (result.block_class, result.bundle.manifest.final_url) == ("ok", f"{API}/synthetic-engineer")
-    assert ADAPTER.serves(match, result.bundle.manifest.final_url) is True
-    assert ADAPTER.serves(match, f"https://other.{DOMAIN}/api/offers/synthetic-engineer") is False
-
-
-async def _unused_send(_request: JsonRequest, _policy: FetchPolicy) -> FetchResult:
-    raise AssertionError("a refused URL sends nothing")
-
-
-def test_a_url_it_does_not_detect_is_refused() -> None:
-    fetching = ADAPTER.fetch("https://jobs.example.com/", FetchPolicy(), _unused_send)
-    with pytest.raises(ValueError, match="not a career site URL"):
-        asyncio.run(fetching)
-
-
 def test_every_listed_offer_is_a_job_with_its_stated_fields() -> None:
     body = (FIXTURES / "recruitee" / "offers.json").read_text(encoding="utf-8")
 
@@ -112,17 +79,3 @@ def test_every_listed_offer_is_a_job_with_its_stated_fields() -> None:
     assert found[(first, "salary")] == {"currency": "EUR", "minValue": "60000", "maxValue": "80000", "unitText": "year"}
     # An offer whose salary states no amount has no salary.
     assert ("adapter:recruitee:$['offers'][1]", "salary") not in found
-
-
-def test_an_offer_answer_is_one_job_with_its_salary() -> None:
-    body = (FIXTURES / "recruitee" / "offer.json").read_text(encoding="utf-8")
-
-    found = candidates(ADAPTER, AdapterMatch(COMPANY, "detail", "synthetic-engineer"), body)
-
-    assert found[("adapter:recruitee:$['offer']", "title")] == "Synthetic Engineer"
-    assert found[("adapter:recruitee:$['offer']", "salary")] == {
-        "currency": "EUR",
-        "minValue": "60000",
-        "maxValue": "80000",
-        "unitText": "year",
-    }

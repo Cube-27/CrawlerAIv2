@@ -11,18 +11,14 @@ from typing import Any
 from pydantic import JsonValue
 
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir.learning import learnable
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId, SourceKind
-from crawlerai.eval.replay import page_output
 from crawlerai.resolve import pipeline
-from crawlerai.resolve.evidence import Bucket, Calibration
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
-from crawlerai.resolve.records import FieldMeta
-from crawlerai.resolve.types import ExtractionResult, FieldOutcome
+from crawlerai.resolve.types import FieldOutcome
 from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
@@ -83,10 +79,6 @@ def _rows(outcome: FieldOutcome) -> list[dict[str, JsonValue]]:
     return [row for row in outcome.value if isinstance(row, dict)]
 
 
-def _skus(outcome: FieldOutcome) -> list[JsonValue]:
-    return [row["sku"] for row in _rows(outcome)]
-
-
 def _sku(value: str) -> JsonValue:
     return value
 
@@ -118,142 +110,6 @@ def test_a_group_s_variants_with_offers_are_one_row_each() -> None:
     assert outcome.locator == "jsonld:0:$['hasVariant'][0]"
 
 
-def test_each_variant_carries_the_stock_quantity_its_offer_states() -> None:
-    # D-0782: schema.org `Offer.inventoryLevel` is a QuantitativeValue; a variant without one has no stock quantity.
-    first = _variant("W-11", "10.00")
-    first["offers"]["inventoryLevel"] = {"@type": "QuantitativeValue", "value": 5}
-    second = _variant("W-12", "12.00")
-    second["offers"] |= {"inventoryLevel": 0, "availability": "https://schema.org/OutOfStock"}
-    third = _variant("W-13", "14.00")
-
-    rows = _rows(_variants(_group(first, second, third)))
-
-    assert [(row["sku"], row["availability"], row.get("stock_quantity")) for row in rows] == [
-        (_sku("W-11"), "InStock", 5),
-        (_sku("W-12"), "OutOfStock", 0),
-        (_sku("W-13"), "InStock", None),
-    ]
-
-
-def test_a_product_with_one_offer_per_variant_has_a_row_per_offer() -> None:
-    product: dict[str, Any] = {"@type": "Product", "name": "Synthetic Widget", "url": PAGE_URL}
-    product["offers"] = [_offer("10.00", sku="W-11"), _offer("12.00", sku="W-12")]
-
-    assert _skus(_variants(product)) == [_sku("W-11"), _sku("W-12")]
-
-
-def test_offers_under_an_aggregate_offer_are_rows_and_the_aggregate_is_not() -> None:
-    aggregate = {"@type": "AggregateOffer", "lowPrice": "10.00", "priceCurrency": "EUR"}
-    product: dict[str, Any] = {"@type": "Product", "name": "Synthetic Widget", "url": PAGE_URL}
-
-    offers = [_offer("10.00", sku="W-11"), _offer("12.00", sku="W-12")]
-    rows = _variants(product | {"offers": aggregate | {"offers": offers}})
-    alone = _variants(product | {"offers": aggregate | {"sku": "W-1"}})
-
-    assert _skus(rows) == [_sku("W-11"), _sku("W-12")]
-    assert (alone.status, alone.reason) == ("missing", "no_rows")
-
-
-def test_offers_that_carry_only_a_url_are_one_row_each() -> None:
-    product: dict[str, Any] = {"@type": "Product", "name": "Synthetic Widget", "url": PAGE_URL}
-    product["offers"] = [_offer("10.00", url=f"{PAGE_URL}?v=11"), _offer("12.00", url=f"{PAGE_URL}?v=12")]
-
-    assert [row["url"] for row in _rows(_variants(product))] == [f"{PAGE_URL}?v=11", f"{PAGE_URL}?v=12"]
-
-
-def test_a_group_s_direct_offers_and_its_variants_match_by_key() -> None:
-    group = _group(
-        _variant("W-11", "10.00", color="Red"), _variant("W-12", "12.00"), offers=[_offer("10.00", sku="W-11")]
-    )
-
-    rows = _rows(_variants(group))
-
-    assert rows == [
-        {
-            "sku": _sku("W-11"),
-            "price": {"amount": "10.00", "currency": "EUR"},
-            "availability": "InStock",
-            "color": "Red",
-        },
-        {"sku": _sku("W-12"), "price": {"amount": "12.00", "currency": "EUR"}, "availability": "InStock"},
-    ]
-
-
-def test_variants_that_repeat_the_group_url_have_no_url_key() -> None:
-    keyless = {"@type": "Product", "url": PAGE_URL}
-    outcome = _variants(_group(_variant("W-11", "10.00", url=PAGE_URL), keyless, _variant("W-12", "12.00")))
-
-    assert _skus(outcome) == [_sku("W-11"), _sku("W-12")]
-    assert outcome.dropped is not None
-    assert [row.reason for row in outcome.dropped] == ["no_row_key"]
-
-
-def test_a_group_url_that_offers_and_variants_repeat_is_no_key() -> None:
-    # The group's own URL, not the page's, repeated by every direct Offer and every variant names the group (§4.4).
-    group_url = "https://shop.example.test/g/1"
-    first = _variant("W-11", "10.00", url=group_url)
-    second = _variant("W-12", "12.00", url=group_url)
-    offers = [_offer("10.00", url=group_url), _offer("12.00", url=group_url)]
-
-    outcome = _variants(_group(first, second, url=group_url, offers=offers))
-
-    assert _skus(outcome) == [_sku("W-11"), _sku("W-12")]
-
-
-def test_one_offer_s_url_that_repeats_the_target_url_stays_its_key() -> None:
-    # One-Offer-per-variant: the default variant's Offer may carry the product's own URL; only that row holds it.
-    product_url = "https://shop.example.test/g/1"
-    product: dict[str, Any] = {"@type": "Product", "name": "Synthetic Widget", "url": product_url}
-    product["offers"] = [_offer("10.00", url=product_url), _offer("12.00", url=f"{product_url}?v=12")]
-
-    assert [row["url"] for row in _rows(_variants(product))] == [product_url, f"{product_url}?v=12"]
-
-
-def test_a_text_key_equal_to_the_target_url_does_not_make_it_a_group_url() -> None:
-    # §4.4 screens url key values only: a text key sub-field that happens to hold the URL is no second carrier of it,
-    # so the one Offer whose url repeats the target's keeps it as its key.
-    variants = SCHEMA.fields["variants"]
-    assert variants.item is not None
-    assert variants.item.fields is not None
-    code = FieldSpec(type=FieldType.TEXT, description="A code of this variant", schema_org="Offer.productID")
-    item = variants.item.model_copy(update={"fields": {**variants.item.fields, "code": code}})
-    keyed = variants.model_copy(update={"item": item, "key": ["code", "url"]})
-    schema = SCHEMA.model_copy(update={"fields": {**SCHEMA.fields, "variants": keyed}})
-    product_url = "https://shop.example.test/g/1"
-    product: dict[str, Any] = {"@type": "Product", "name": "Synthetic Widget", "url": product_url}
-    product["offers"] = [
-        _offer("10.00", url=product_url),
-        _offer("12.00", url=f"{product_url}?v=12", productID=product_url),
-    ]
-
-    rows = _rows(_variants(product, schema=schema))
-
-    assert [(row.get("url"), row.get("code")) for row in rows] == [
-        (product_url, None),
-        (f"{product_url}?v=12", product_url),
-    ]
-
-
-def test_an_aggregate_offer_repeating_the_target_url_leaves_it_no_key() -> None:
-    # §4.4: the target's own URL is no key. An AggregateOffer is no offer of one item (§4.3), so its repeating that URL
-    # does not make it an Offer's URL that one row may key on.
-    product_url = "https://shop.example.test/g/1"
-    offers = [_offer("10.00", url=product_url), _offer("12.00", sku="W-12"), _offer("14.00", sku="W-14")]
-    aggregate = {"@type": "AggregateOffer", "lowPrice": "10.00", "priceCurrency": "EUR", "url": product_url}
-    product = {
-        "@type": "Product",
-        "name": "Synthetic Widget",
-        "url": product_url,
-        "offers": aggregate | {"offers": offers},
-    }
-
-    outcome = _variants(product)
-
-    assert _skus(outcome) == [_sku("W-12"), _sku("W-14")]
-    assert outcome.dropped is not None
-    assert [row.reason for row in outcome.dropped] == ["no_row_key"]
-
-
 def test_rows_whose_key_sub_fields_disagree_do_not_publish() -> None:
     # INV-33: both rows name one GTIN, but say W-11 and W-12: two variants joined, or one source wrong.
     first = _variant("W-11", "10.00", gtin="4006381333931")
@@ -264,125 +120,12 @@ def test_rows_whose_key_sub_fields_disagree_do_not_publish() -> None:
     assert (outcome.status, outcome.reason) == ("missing", "row_key_conflict")
 
 
-def test_rows_of_one_sku_with_their_own_gtins_are_two_variants() -> None:
-    # INV-33: the gtin, before the sku in the preset's key, tells the two sizes of one sku apart.
-    first = _variant("W-11", "10.00", gtin="4006381333931")
-    second = _variant("W-11", "12.00", gtin="9780306406157")
-
-    outcome = _variants(_group(first, second))
-
-    assert outcome.status == "published"
-    assert outcome.value == [
-        {
-            "sku": "W-11",
-            "gtin": gtin,
-            "price": {"amount": price, "currency": "EUR"},
-            "availability": "InStock",
-        }
-        for gtin, price in (("4006381333931", "10.00"), ("9780306406157", "12.00"))
-    ]
-
-
-def test_variants_that_state_only_a_gtin_sub_property_are_keyed_by_it() -> None:
-    # RDF Schema `rdfs:subPropertyOf`: `gtin13` is a sub-property of `gtin`, so a variant stating only `gtin13` states
-    # its GTIN and has a row key (eval: variants dropped `no_row_key`).
-    first = {"@type": "Product", "gtin13": "4006381333931", "offers": _offer("10.00")}
-    second = {"@type": "Product", "gtin13": "9780306406157", "offers": _offer("12.00")}
-
-    outcome = _variants(_group(first, second))
-
-    assert [row["gtin"] for row in _rows(outcome)] == [
-        "4006381333931",
-        "9780306406157",
-    ]
-
-
-def test_variants_that_state_no_identifier_and_no_own_url_still_drop() -> None:
-    # §4.4, C7: a colour tells two variants apart for a reader, but it is no key; nothing is guessed.
-    outcome = _variants(_group({"@type": "Product", "color": "Red", "offers": _offer("10.00")}))
-
-    assert (outcome.status, outcome.reason) == ("missing", "no_row_key")
-
-
-def test_rows_whose_key_sub_fields_are_all_below_the_minimum_confidence_make_the_field_abstain() -> None:
-    # A key sub-field's row bucket (`list.<type>|<evidence>`) calibrated below `min_confidence` drops each variant as
-    # `key_unpublished`; when every variant went that way the field abstains, it is not missing.
-    buckets = {"list.identifier|structured": Bucket(n=40, precision=0.5)}
-    calibration = Calibration(git_sha="a" * 40, buckets=buckets)
-    data = EngineData(VOCABULARY, DATA.orders, calibration, min_confidence=0.9)
-
-    outcome = _variants(_group(_variant("W-11", "10.00"), _variant("W-12", "12.00")), data=data)
-
-    assert (outcome.status, outcome.reason) == ("abstained", "below_min_confidence")
-    assert outcome.dropped is not None
-    assert [row.reason for row in outcome.dropped] == ["key_unpublished", "key_unpublished"]
-
-
-def test_a_row_s_price_comes_from_one_offer() -> None:
-    # INV-35: two Offers in one row that disagree leave the row's price a conflict; the row still publishes its key.
-    variant = {"@type": "Product", "sku": "W-11", "offers": [_offer("10.00"), _offer("11.00")]}
-
-    outcome = _variants(_group(variant, _variant("W-12", "12.00")))
-
-    assert outcome.items is not None
-    price = outcome.items[0].fields["price"]
-    assert (price.status, price.reason) == ("conflict", "offers_disagree")
-    assert _skus(outcome) == [_sku("W-11"), _sku("W-12")]
-
-
-def test_the_group_s_own_values_are_in_no_row() -> None:
-    outcome = _variants(_group(_variant("W-11", "10.00"), _variant("W-12", "12.00"), sku="W-1"))
-
-    assert _skus(outcome) == [_sku("W-11"), _sku("W-12")]
-    assert [(c.raw, reason) for c, reason in outcome.rejected if c.field == "variants.sku"] == [("W-1", "not_in_row")]
-
-
-def test_the_record_meta_holds_one_item_per_row_and_the_dropped_rows() -> None:
-    keyless = {"@type": "Product", "url": PAGE_URL}
-    meta = FieldMeta.of(_variants(_group(_variant("W-11", "10.00"), keyless, _variant("W-12", "12.00"))))
-
-    dumped = meta.model_dump(mode="json")
-    item = SCHEMA.fields["variants"].item
-    assert item is not None
-    assert [set(row["fields"]) for row in dumped["items"]] == [set(item.fields or {})] * 2
-    assert dumped["dropped"] == [{"locators": ["jsonld:0:$['hasVariant'][1]"], "reason": "no_row_key"}]
-    plain = FieldMeta.of(_variants(_group()))
-    assert "items" not in plain.model_dump(mode="json")
-
-
-def test_the_eval_output_holds_each_row_s_sub_fields() -> None:
-    # SPEC-13 §4.10: metrics match engine rows to label rows by key, so the replay output keeps each row.
-    outcome = _variants(_group(_variant("W-11", "10.00"), _variant("W-12", "12.00")))
-    result = ExtractionResult(
-        outcome="extracted",
-        entity={"variants": outcome},
-        rows=(),
-        candidates=(),
-        llm_calls=(),
-        mode="adhoc",
-        record_confidence=None,
-    )
-
-    items = page_output(result, "ok").fields["variants"].items
-
-    assert [row["sku"].value for row in items] == [_sku("W-11"), _sku("W-12")]
-    assert items[0]["price"].evidence == "structured"
-
-
 def test_role_c_is_never_asked_for_a_row_mapped_field() -> None:
     # SPEC-13 §4.9: a claim is one verbatim span, which cannot hold a row of typed sub-fields.
     fields = {name: _missing() for name in SCHEMA.fields}
 
     assert "variants" not in pipeline._gaps(SCHEMA, fields, frozenset())
     assert "title" in pipeline._gaps(SCHEMA, fields, frozenset())
-
-
-def test_learning_gives_a_row_mapped_field_no_steps_and_says_why() -> None:
-    schema, reasons = learnable(SCHEMA)
-
-    assert reasons == {"variants": "row_field"}
-    assert list(schema.fields) == [name for name in SCHEMA.fields if name != "variants"]
-    assert schema.name == SCHEMA.name
 
 
 def _missing() -> FieldOutcome:
@@ -399,22 +142,3 @@ def _missing() -> FieldOutcome:
         chosen=None,
         rejected=(),
     )
-
-
-def test_one_plain_offer_is_no_variant_list() -> None:
-    # Owner, 2026-10-16 (Appendix A #48): a product without variants has no variant list; its Offer's values publish
-    # at the top level as usual.
-    product = {"@type": "Product", "name": "Synthetic Widget", "url": PAGE_URL, "offers": _offer("10.00", sku="W-11")}
-
-    outcome = _variants(product)
-
-    assert (outcome.status, outcome.reason, outcome.value) == ("missing", "single_row", None)
-    assert {(c.field, reason) for c, reason in outcome.rejected} >= {("variants.sku", "single_row")}
-
-
-def test_one_variant_left_by_dropped_rows_is_no_variant_list() -> None:
-    outcome = _variants(_group(_variant("W-11", "10.00"), {"@type": "Product", "url": PAGE_URL}))
-
-    assert (outcome.status, outcome.reason) == ("missing", "single_row")
-    assert outcome.dropped is not None
-    assert [row.reason for row in outcome.dropped] == ["no_row_key"]

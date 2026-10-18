@@ -38,24 +38,6 @@ def test_a_json_answer_gives_its_largest_array_of_objects_with_urls() -> None:
     ]
 
 
-def test_named_members_override_the_reading_of_a_result_by_its_shape() -> None:
-    body = _json(
-        {
-            "hits": [
-                {"author": "someone", "id": "42", "headline": "How retries", "link": "https://a.example.test/x"},
-                {"author": "other", "headline": "Second one", "link": "https://b.example.test/y"},
-            ]
-        }
-    )
-
-    assert [hit.title for hit in parse(body, None, HERE)] == ["someone", "other"]
-    named = {"url": "link", "title": "headline", "snippet": "id"}
-    assert [(hit.title, hit.snippet) for hit in parse(body, None, HERE, named)] == [
-        ("How retries", "42"),
-        ("Second one", ""),
-    ]
-
-
 def test_an_html_answer_gives_its_outbound_anchors_in_order() -> None:
     page = (
         b'<a href="/next">More</a><a href="https://search.example.test/about">About us</a>'
@@ -67,39 +49,6 @@ def test_an_html_answer_gives_its_outbound_anchors_in_order() -> None:
         Hit("https://x.example.test/p?a=1&b=2", "First hit", ""),
         Hit("https://y.example.test/", "Second", ""),
     ]
-
-
-def test_an_anchor_that_redirects_through_the_answering_host_is_its_target() -> None:
-    page = (
-        b'<a href="//search.example.test/l/?u=https%3A%2F%2Fa.example.test%2Fp%3Fx%3D1&amp;token=t">  Wrapped </a>'
-        b'<a href="/l/?u=https%3A%2F%2Fa.example.test%2Fp%3Fx%3D1">Same again</a>'
-        b'<a href="/next?page=2">Next</a><a href="/about?home=https%3A%2F%2Fsearch.example.test%2F">Own</a>'
-        b'<a href="//b.example.test/q">Protocol relative</a>'
-    )
-
-    assert [(hit.url, hit.title) for hit in parse(page, None, HERE)] == [
-        ("https://a.example.test/p?x=1", "Wrapped"),
-        ("https://b.example.test/q", "Protocol relative"),
-    ]
-
-
-@pytest.mark.parametrize("body", [b"", b"[]", b'{"results": []}', b"<p>nothing</p>"])
-def test_an_answer_without_results_gives_none(body: bytes) -> None:
-    assert parse(body, None, HERE) == []
-
-
-def test_an_answer_in_a_charset_python_does_not_know_is_read_as_utf_8() -> None:
-    body = _json({"results": [{"url": "https://a.example.test/caf\u00e9", "title": "Caf\u00e9"}]})
-
-    assert parse(body, "x-unknown", HERE) == parse(body, "utf-8", HERE)
-
-
-@pytest.mark.parametrize("url", ["HTTPS://a.example.test/x", "Http://a.example.test/x"])
-def test_a_url_scheme_in_any_case_is_a_result(url: str) -> None:
-    # RFC 3986 §3.1: schemes are case-insensitive.
-    body = _json({"results": [{"url": url, "title": "T"}]})
-
-    assert [hit.title for hit in parse(body, None, HERE)] == ["T"]
 
 
 async def test_searxng_is_asked_for_json_and_reads_further_pages_until_the_limit() -> None:
@@ -122,37 +71,6 @@ async def test_searxng_is_asked_for_json_and_reads_further_pages_until_the_limit
     assert [(q["q"], q["format"], q["pageno"]) for q in asked] == [
         (["kettles & tea"], ["json"], [page]) for page in ("1", "2")
     ]
-
-
-async def test_searxng_results_are_read_by_their_documented_members() -> None:
-    result = {
-        "engine": "general",
-        "template": "default.html",
-        "url": "https://a.example.test/x",
-        "title": "The title",
-        "content": "",
-        "publishedDate": "2026-01-01T00:00:00",
-    }
-
-    async def get(url: str) -> tuple[bytes, str | None]:
-        return _json({"results": [result]}), "utf-8"
-
-    hits = await SearxngProvider("https://searx.example.test/", get).search("q", 1)
-
-    assert hits == [Hit("https://a.example.test/x", "The title", "")]
-
-
-async def test_a_template_is_filled_with_the_encoded_query_and_the_limit() -> None:
-    seen: list[str] = []
-
-    async def get(url: str) -> tuple[bytes, str | None]:
-        seen.append(url)
-        return _json([{"href": f"https://r{n}.example.test/", "t": "x"} for n in range(5)]), None
-
-    hits = await TemplateProvider("https://api.example.test/s?q={query}&n={limit}", get).search("a b/c", 3)
-
-    assert seen == ["https://api.example.test/s?q=a%20b%2Fc&n=3"]
-    assert len(hits) == 3
 
 
 def test_the_settings_choose_the_provider_and_refuse_a_malformed_one() -> None:

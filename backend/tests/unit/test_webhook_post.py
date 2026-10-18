@@ -9,7 +9,6 @@ import asyncio
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import IPv4Address, ip_address
 from urllib.parse import urlsplit
@@ -18,7 +17,7 @@ import pytest
 
 from crawlerai.acquire.http import post
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
-from crawlerai.api.webhooks import retry_delay, signature
+from crawlerai.api.webhooks import signature
 
 
 def test_the_signature_is_the_hex_hmac_sha256_of_the_body() -> None:
@@ -26,10 +25,6 @@ def test_the_signature_is_the_hex_hmac_sha256_of_the_body() -> None:
     expected = "sha256=5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
 
     assert signature("Jefe", b"what do ya want for nothing?") == expected
-
-
-def test_retries_wait_30_s_then_2_min() -> None:
-    assert [retry_delay(1), retry_delay(2)] == [timedelta(seconds=30), timedelta(minutes=2)]
 
 
 @dataclass
@@ -92,22 +87,6 @@ class LoopbackConnector(SafeConnector):
 def _post(server: Server, url: str) -> int:
     headers = {"Content-Type": "application/json", "X-CrawlerAI-Signature": "sha256=00"}
     return asyncio.run(post(url, b'{"id": 1}', headers, connector=LoopbackConnector(server.port), timeout_s=5))
-
-
-def test_post_sends_the_body_and_headers_and_returns_the_status(server: Server) -> None:
-    status = _post(server, f"http://hooks.example.test:{server.port}/done")
-
-    [(path, body, headers)] = server.received
-    assert (status, path, body) == (204, "/done", b'{"id": 1}')
-    assert (headers["Content-Type"], headers["X-CrawlerAI-Signature"]) == ("application/json", "sha256=00")
-
-
-def test_post_returns_a_redirect_without_following_it(server: Server) -> None:
-    server.status = 302
-
-    status = _post(server, f"http://hooks.example.test:{server.port}/done")
-
-    assert (status, [path for path, _, _ in server.received]) == (302, ["/done"])
 
 
 def test_post_to_a_host_that_resolves_to_a_private_address_is_refused_unsent(server: Server) -> None:

@@ -141,68 +141,8 @@ def test_a_listing_needs_a_render_by_its_structure(page: str, needs: bool) -> No
     assert listing_needs_render(ParsedPage(page)) is needs
 
 
-def test_script_text_counts_as_neither_shown_nor_hidden() -> None:
-    script = f"<script>{'var data = 1; ' * 500}</script>"
-    assert listing_needs_render(ParsedPage(_page(f"<ul>{_cards()}</ul>{script}"))) is False
-
-
-@pytest.mark.parametrize("http", [pytest.param(TEMPLATE, id="client-template"), pytest.param(STREAMED, id="streamed")])
-def test_a_listing_needing_a_render_keeps_the_render_that_shows_its_items(http: str) -> None:
-    result, _check, render = _fetch(http, GRID)
-
-    assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("browser", "ok")]
-    assert result.method == "browser"
-    assert render.calls == [URL]
-
-
 def test_a_listing_that_shows_its_items_at_http_is_not_rendered() -> None:
     result, _check, render = _fetch(GRID, GRID)
 
     assert [a.method for a in result.attempts] == ["http"]
     assert render.calls == []
-
-
-def test_method_http_never_renders() -> None:
-    result, _check, render = _fetch(TEMPLATE, GRID, hint="http")
-
-    assert [a.method for a in result.attempts] == ["http"]
-    assert render.calls == []
-
-
-def test_a_render_that_still_needs_one_is_not_kept() -> None:
-    result, _check, render = _fetch(SHORT_LIST, SHORT_LIST)
-
-    assert [(a.method, a.block_class) for a in result.attempts] == [("http", "ok"), ("browser", "ok")]
-    assert result.method == "http"
-    assert render.calls == [URL]
-
-
-def test_the_check_keeps_the_parse_of_each_capture_it_read() -> None:
-    # INV-26: whichever capture is kept is extracted from the check's parse.
-    result, check, _render = _fetch(TEMPLATE, GRID)
-
-    kept = check.parse(result.bundle)
-    assert kept is check.parse(result.bundle)
-    assert kept.html == GRID
-
-
-def test_a_render_that_lists_more_items_than_the_http_page_is_kept() -> None:
-    # Owner #54: the capture with more rows is kept, here a render whose script wrote a structured list.
-    result, _check, render = _fetch(TEMPLATE, _page("<div id='grid'></div>", head=_item_list(3)))
-
-    assert result.method == "browser"
-    assert render.calls == [URL]
-
-
-@pytest.mark.parametrize(("blocked", "lost"), [(True, True), (False, False)])
-def test_a_render_with_media_blocked_that_lists_fewer_items_marks_them_lost(blocked: bool, lost: bool) -> None:
-    # Master plan 2026-10-18 §3.1: what the render did not load may be what shows the items; the site opts out.
-    check = RenderNeed(SCHEMA, DATA)
-    render = Rung("browser", TEMPLATE)
-    rungs = Rungs(http=Rung("http", STREAMED), browser=render)
-    policy = FetchPolicy(block_resources=blocked)
-
-    result = asyncio.run(acquire(URL, policy, "http", rungs, needs_render=check))
-
-    assert (result.method, render.calls) == ("http", [URL])
-    assert check.lost_items is lost

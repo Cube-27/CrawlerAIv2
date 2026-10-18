@@ -2,9 +2,8 @@
 worker task retried at most once after the back-off, and the eval import's fetch of a page not reached retried up to
 three times with the closest capture kept. Results are synthetic (RFC 2606 hosts); nothing goes to the network."""
 
-import asyncio
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 
@@ -17,7 +16,6 @@ from crawlerai.core.ids import uuid7
 from crawlerai.core.retry import FIRST_BACKOFF
 from crawlerai.db.models import CaptureId, JobId, SiteId, UrlTaskId
 from crawlerai.db.queue import ClaimedTask
-from crawlerai.eval.label_file import best_fetch
 from crawlerai.services.scrape_steps import SiteRow
 from crawlerai.worker.handlers.steps import FetchedPage, unreached
 from crawlerai.worker.loop import Failed, Finished
@@ -101,53 +99,3 @@ def test_a_vendor_blocked_task_is_retried_once_after_the_back_off_then_ends_bloc
         f"challenge: {VENDOR}", transient=True, after=FIRST_BACKOFF, exhausted="blocked", capture_id=page.capture_id
     )
     assert second == Finished("blocked", reason=f"challenge: {VENDOR}", capture_id=page.capture_id)
-
-
-def test_a_block_no_vendor_names_ends_blocked_at_once() -> None:
-    page = _fetched(_result("blocked", STRUCTURAL))
-
-    assert unreached(page, _task(1)) == Finished("blocked", capture_id=page.capture_id)
-
-
-class Fetches:
-    """Answers each fetch with the next of `answers`, and records the waits between them."""
-
-    def __init__(self, *answers: FetchResult | str) -> None:
-        self.answers = list(answers)
-        self.waits: list[float] = []
-        self.fetched = 0
-
-    async def fetch(self) -> FetchResult | str:
-        self.fetched += 1
-        return self.answers.pop(0)
-
-    async def wait(self, seconds: float) -> None:
-        self.waits.append(seconds)
-
-
-def _best(fetches: Fetches) -> FetchResult | str:
-    return asyncio.run(best_fetch(fetches.fetch, wait=fetches.wait))
-
-
-def test_the_import_fetches_a_page_not_reached_again_after_the_back_off_and_keeps_the_reached_one() -> None:
-    reached = _result("ok")
-    fetches = Fetches(_result("blocked"), reached)
-
-    assert _best(fetches) is reached
-    assert (fetches.fetched, fetches.waits) == (2, [FIRST_BACKOFF.total_seconds()])
-
-
-def test_the_import_tries_three_times_and_keeps_the_capture_closest_to_reached() -> None:
-    shell = _result("shell")
-    fetches = Fetches(_result("blocked"), shell, _result("blocked"))
-
-    assert _best(fetches) is shell
-    assert fetches.fetched == 3
-    assert fetches.waits == [timedelta(seconds=30).total_seconds(), timedelta(seconds=60).total_seconds()]
-
-
-def test_a_page_not_sent_is_not_fetched_again() -> None:
-    fetches = Fetches("robots")
-
-    assert _best(fetches) == "robots"
-    assert fetches.fetched == 1

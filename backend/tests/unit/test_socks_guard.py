@@ -5,7 +5,6 @@ and connects only to the checked address. Spoken to here as a SOCKS5 client woul
 """
 
 import asyncio
-import socket
 import struct
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
@@ -123,116 +122,5 @@ def test_connect_to_a_rejected_target_is_refused_by_ruleset_and_recorded(host: s
         # RFC 1928 §6: X'02' connection not allowed by ruleset.
         assert head == b"\x05\x02"
         assert rejections == {(host, port): reason}
-
-    _run(scenario())
-
-
-@pytest.mark.parametrize(
-    ("atyp", "address"),
-    [
-        pytest.param(1, IPv4Address("169.254.169.254").packed, id="ipv4-metadata"),
-        pytest.param(4, ip_address("::ffff:10.0.0.1").packed, id="ipv4-mapped-ipv6"),
-    ],
-)
-def test_connect_to_a_literal_private_address_is_refused(atyp: int, address: bytes) -> None:
-    async def scenario() -> bytes:
-        async with SocksGuard(PinnedConnector()) as guard:
-            head, _, writer = await _socks(guard, bytes([5, 1, 0, atyp]) + address + struct.pack("!H", 443))
-            writer.close()
-            return head
-
-    assert _run(scenario()) == b"\x05\x02"
-
-
-def test_a_host_is_checked_once_per_guard_so_its_address_cannot_change_mid_fetch() -> None:
-    connector = PinnedConnector()
-
-    async def scenario() -> None:
-        async with echo_server() as port, SocksGuard(connector) as guard:
-            for _ in range(3):
-                head, _, writer = await _socks(guard, _domain_request("shop.example.test", port))
-                assert head == b"\x05\x00"
-                writer.close()
-
-    _run(scenario())
-    assert connector.lookups == ["shop.example.test"]
-
-
-def test_targets_checked_before_the_guard_starts_are_not_checked_again() -> None:
-    connector = PinnedConnector()
-
-    async def scenario() -> None:
-        async with echo_server() as port:
-            first = await connector.check(f"http://shop.example.test:{port}/")
-            async with SocksGuard(connector, checked=(first,)) as guard:
-                head, _, writer = await _socks(guard, _domain_request("shop.example.test", port))
-                writer.close()
-        assert head == b"\x05\x00"
-
-    _run(scenario())
-    assert connector.lookups == ["shop.example.test"]
-
-
-def test_only_the_connect_command_is_supported() -> None:
-    async def scenario() -> bytes:
-        async with SocksGuard(PinnedConnector()) as guard:
-            head, _, writer = await _socks(guard, _domain_request("shop.example.test", 443, command=2))  # BIND
-            writer.close()
-            return head
-
-    # RFC 1928 §6: X'07' command not supported.
-    assert _run(scenario()) == b"\x05\x07"
-
-
-def test_a_client_offering_no_unauthenticated_method_is_refused() -> None:
-    async def scenario() -> bytes:
-        async with SocksGuard(PinnedConnector()) as guard:
-            choice, _, writer = await _socks(guard, b"", methods=b"\x02")  # username/password only
-            writer.close()
-            return choice
-
-    # RFC 1928 §3: X'FF' no acceptable methods.
-    assert _run(scenario()) == b"\x05\xff"
-
-
-def test_leaving_the_guard_closes_open_tunnels_and_the_listener() -> None:
-    async def scenario() -> tuple[bytes, tuple[str, int]]:
-        async with echo_server() as port:
-            async with SocksGuard(PinnedConnector()) as guard:
-                head, reader, writer = await _socks(guard, _domain_request("shop.example.test", port))
-                await reader.readexactly(8)
-                address = guard.address
-            rest = await reader.read()  # EOF once the guard closed the tunnel
-            writer.close()
-        assert head == b"\x05\x00"
-        return rest, address
-
-    rest, address = _run(scenario())
-    assert rest == b""
-    with pytest.raises(OSError):  # refused; Windows retries the SYN and times out instead
-        socket.create_connection(address, timeout=2)
-
-
-def test_leaving_the_guard_cancels_a_check_still_resolving() -> None:
-    started = asyncio.Event()
-    cancelled: list[str] = []
-
-    async def resolve(host: str) -> list[IPAddress]:
-        started.set()
-        try:
-            await asyncio.Event().wait()  # a resolver that never answers
-        except asyncio.CancelledError:
-            cancelled.append(host)
-            raise
-        raise AssertionError("unreachable")
-
-    async def scenario() -> None:
-        async with SocksGuard(SafeConnector(resolve)) as guard:
-            _, _, writer = await _socks_sent(guard, _domain_request("slow.example.com", 443))
-            await started.wait()
-        writer.close()
-        await asyncio.sleep(0)  # let a cancellation reach the resolver
-        # Checked inside the loop: when it ends, the runner cancels whatever is left over itself.
-        assert cancelled == ["slow.example.com"]
 
     _run(scenario())

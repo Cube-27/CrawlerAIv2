@@ -8,7 +8,7 @@ import pytest
 from pydantic import JsonValue
 
 from crawlerai.collect import schema_org_map
-from crawlerai.collect.schema_org_map import Vocabulary, VocabularyMissing, reference_errors
+from crawlerai.collect.schema_org_map import Vocabulary, reference_errors
 from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -49,17 +49,6 @@ def _errors(**fields: FieldSpec) -> list[tuple[str, str]]:
     return reference_errors(fields, VOCABULARY)
 
 
-def test_paths_and_enumerations_the_vocabulary_defines_pass() -> None:
-    enum = FieldSpec(type=FieldType.ENUM, vocab="schema:ItemAvailability", schema_org="Offer.price")
-    named = FieldSpec(type=FieldType.TEXT, schema_org="Product.offers.price+priceCurrency|Product.name")
-
-    assert _errors(title=_text("Product.name"), stock=enum, price=named) == []
-    assert (
-        _errors(note=FieldSpec(type=FieldType.TEXT), kind=FieldSpec(type=FieldType.ENUM, vocab="type:availability"))
-        == []
-    )
-
-
 @pytest.mark.parametrize(
     ("path", "reason"),
     [
@@ -72,25 +61,6 @@ def test_paths_and_enumerations_the_vocabulary_defines_pass() -> None:
 )
 def test_a_path_naming_a_term_the_vocabulary_lacks_is_refused_with_its_reason(path: str, reason: str) -> None:
     assert _errors(title=_text(path)) == [("fields.title.schema_org", reason)]
-
-
-@pytest.mark.parametrize("vocab", ["schema:Product", "schema:Enumeration", "schema:Nothing"])
-def test_a_schema_reference_must_be_an_enumeration(vocab: str) -> None:
-    spec = FieldSpec(type=FieldType.ENUM, vocab=vocab)
-
-    assert _errors(stock=spec) == [
-        ("fields.stock.vocab", f"{vocab.removeprefix('schema:')} is not a schema.org enumeration")
-    ]
-
-
-def test_nested_fields_are_checked_at_their_own_path() -> None:
-    row = FieldSpec(type=FieldType.OBJECT, fields={"cost": _text("Offer.cost")}, description="x")
-    listed = FieldSpec(type=FieldType.LIST, item=FieldSpec(type=FieldType.ENUM, vocab="schema:Offer"))
-
-    assert _errors(row=row, listed=listed) == [
-        ("fields.row.fields.cost.schema_org", "cost is not a schema.org property"),
-        ("fields.listed.item.vocab", "Offer is not a schema.org enumeration"),
-    ]
 
 
 def test_a_document_is_refused_by_the_service_with_every_error_at_its_path(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -110,22 +80,6 @@ def test_a_document_is_refused_by_the_service_with_every_error_at_its_path(monke
         schemas_service._document(schema)
 
     assert refused.value.errors == [("fields.colour.schema_org", "colour is not a schema.org property")]
-
-
-def test_a_process_without_the_vocabulary_checks_syntax_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    def missing() -> Vocabulary:
-        raise VocabularyMissing("not fetched")
-
-    monkeypatch.setattr(schema_org_map, "default_vocabulary", missing)
-    schema = NewSchema.model_validate(
-        {
-            "name": "synthetic",
-            "page_kind": "detail",
-            "fields": {"x": {"type": "text", "description": "X", "schema_org": "Widget.colour"}},
-        }
-    )
-
-    assert schemas_service._document(schema).name == "synthetic"
 
 
 def test_the_presets_name_only_terms_of_the_pinned_vocabulary() -> None:

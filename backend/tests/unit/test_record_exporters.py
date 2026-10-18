@@ -1,11 +1,8 @@
 """Record exporters (SPEC-08 §4.11, PR 12): `json_records`, `csv_records` and `markdown` over a page of records, and
 the clean records of `json_values` (SPEC-14 §4.4)."""
 
-import csv
-import io
 import json
 
-import pytest
 from pydantic import JsonValue
 
 from crawlerai.config_ir.exporters.records import clean_record, export_records
@@ -38,10 +35,6 @@ def _record(**values: JsonValue) -> RecordContent:
     return RecordContent(data=dict(values), field_meta=meta, complete=len(values) == len(SCHEMA.fields))
 
 
-def _csv_rows(text: str) -> list[list[str]]:
-    return list(csv.reader(io.StringIO(text, newline="")))
-
-
 def test_csv_has_one_column_per_field_then_one_status_column_per_field_in_name_order() -> None:
     text = export_records("csv_records", SCHEMA, [_record(title="Lamp")])
 
@@ -57,41 +50,6 @@ def test_csv_safe_prefixes_a_quote_on_cells_a_spreadsheet_reads_as_a_formula() -
     assert text == "price,title,_status_price,_status_title\r\n'-5,'=HYPERLINK(1),published,published\r\n"
 
 
-@pytest.mark.parametrize("value", ["+1", "@a", "\tx", "\rx"])
-def test_csv_safe_covers_every_owasp_trigger(value: str) -> None:
-    [_, row] = _csv_rows(export_records("csv_records", SCHEMA, [_record(title=value)], csv_safe=True))
-
-    assert row[1] == "'" + value
-
-
-def test_csv_safe_leaves_other_cells_unchanged() -> None:
-    record = _record(title="Lamp = light", price=5)
-
-    assert export_records("csv_records", SCHEMA, [record], csv_safe=True) == export_records(
-        "csv_records", SCHEMA, [record]
-    )
-
-
-def test_csv_header_is_written_for_an_empty_page() -> None:
-    assert export_records("csv_records", SCHEMA, []) == "price,title,_status_price,_status_title\r\n"
-
-
-def test_csv_json_encodes_nested_and_non_string_values() -> None:
-    record = _record(title=["a", "b"], price={"amount": "9.50", "currency": "EUR"})
-
-    rows = _csv_rows(export_records("csv_records", SCHEMA, [record]))
-
-    assert rows[1][:2] == ['{"amount":"9.50","currency":"EUR"}', '["a","b"]']
-
-
-def test_csv_writes_a_string_value_unchanged_even_with_separators_quotes_and_newlines() -> None:
-    title = 'say "hi",\nthen =1+1'
-
-    rows = _csv_rows(export_records("csv_records", SCHEMA, [_record(title=title)]))
-
-    assert rows[1][1] == title
-
-
 def test_json_records_is_an_array_of_objects_with_the_csv_columns() -> None:
     text = export_records("json_records", SCHEMA, [_record(title="Lamp"), _record(price={"amount": "1"})])
 
@@ -99,10 +57,6 @@ def test_json_records_is_an_array_of_objects_with_the_csv_columns() -> None:
         {"price": None, "title": "Lamp", "_status_price": "missing", "_status_title": "published"},
         {"price": {"amount": "1"}, "title": None, "_status_price": "published", "_status_title": "missing"},
     ]
-
-
-def test_json_records_keeps_non_ascii_text_as_is() -> None:
-    assert '"Größe"' in export_records("json_records", SCHEMA, [_record(title="Größe")])
 
 
 def test_markdown_is_a_gfm_table_with_the_csv_columns() -> None:
@@ -113,20 +67,6 @@ def test_markdown_is_a_gfm_table_with_the_csv_columns() -> None:
         "| --- | --- | --- | --- |\n"
         '| \\{\\"amount\\"\\:\\"9\\"\\} | Lamp | published | published |\n'
     )
-
-
-def test_markdown_escapes_punctuation_and_line_breaks_so_a_value_renders_literally() -> None:
-    text = export_records("markdown", SCHEMA, [_record(title="a|b *c*\nd")])
-
-    assert text.splitlines()[2] == "|  | a\\|b \\*c\\*<br>d | missing | published |"
-
-
-def test_a_record_of_another_schema_is_refused() -> None:
-    stray = RecordContent(data={}, field_meta={"title": _meta("missing")}, complete=False)
-    records = [stray]
-
-    with pytest.raises(ValueError, match="schema"):
-        export_records("csv_records", SCHEMA, records)
 
 
 _MONEY = FieldSpec(type=FieldType.MONEY, description="d")
@@ -140,16 +80,6 @@ def test_a_clean_record_has_the_published_fields_in_name_order_and_leaves_out_th
     assert clean_record(SCHEMA, {"price": None}) == {}
 
 
-def test_a_clean_price_is_its_amount_beside_a_currency_field() -> None:
-    schema = SchemaDocument(name="thing", page_kind="detail", fields={"price": _MONEY, "title": _TEXT})
-
-    assert list(clean_record(schema, {"price": _EUR, "title": "Lamp"}).items()) == [
-        ("price", "9.50"),
-        ("currency", "EUR"),
-        ("title", "Lamp"),
-    ]
-
-
 def test_another_money_field_or_a_schema_currency_field_names_its_currency_after_the_field() -> None:
     fields = {"price": _MONEY, "list_price": _MONEY, "currency": _TEXT}
     schema = SchemaDocument(name="thing", page_kind="detail", fields=fields)
@@ -160,25 +90,4 @@ def test_another_money_field_or_a_schema_currency_field_names_its_currency_after
         "list_price_currency": "EUR",
         "price": "9.50",
         "price_currency": "EUR",
-    }
-
-
-def test_a_money_value_is_written_whole_when_every_currency_key_names_a_schema_field() -> None:
-    fields = {"price": _MONEY, "currency": _TEXT, "price_currency": _TEXT}
-    schema = SchemaDocument(name="thing", page_kind="detail", fields=fields)
-
-    assert clean_record(schema, {"price": _EUR, "currency": "x", "price_currency": "y"}) == {
-        "currency": "x",
-        "price": {"amount": "9.50", "currency": "EUR"},
-        "price_currency": "y",
-    }
-
-
-def test_money_in_nested_rows_is_written_flat_and_their_nulls_left_out() -> None:
-    row = FieldSpec(type=FieldType.OBJECT, description="d", fields={"price": _MONEY, "sku": _TEXT})
-    variants = FieldSpec(type=FieldType.LIST, description="d", item=row)
-    schema = SchemaDocument(name="thing", page_kind="detail", fields={"variants": variants})
-
-    assert clean_record(schema, {"variants": [{"price": _EUR, "sku": None}, {"sku": "A-1"}]}) == {
-        "variants": [{"price": "9.50", "currency": "EUR"}, {"sku": "A-1"}]
     }

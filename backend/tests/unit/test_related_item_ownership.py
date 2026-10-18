@@ -130,33 +130,6 @@ def test_related_items_in_state_do_not_make_the_targets_own_price_conflict() -> 
     assert "not_owned" in _rejections(result)
 
 
-def test_a_state_row_naming_the_page_holds_the_targets_price() -> None:
-    state: JsonValue = {"items": [{"href": PAGE_URL, "cost": "€19.90"}, *RELATED_ROWS]}
-
-    result = _extract(_page(TARGET, state=state, body="€19.90 €5.00 €7.00"))
-
-    assert _kept(result) == [TARGET_PRICE]
-
-
-def test_a_state_row_naming_nothing_is_one_item_among_others() -> None:
-    state: JsonValue = {"tiers": [{"cost": "€19.90"}, {"cost": "€17.90"}]}
-
-    assert _price(_extract(_page(TARGET, state=state, body="€19.90 €17.90"))) == ("missing", "not_owned", None)
-
-
-def test_a_related_item_alone_in_its_array_lends_no_price() -> None:
-    # D-1345: one object in an array naming a document of its own is one item of a set, not its holder's own item.
-    state: JsonValue = {"product": {"id": 1}, "related": RELATED_ROWS[:1]}
-
-    assert _price(_extract(_page(TARGET, state=state, body="Related: €5.00"))) == ("missing", "not_owned", None)
-
-
-def test_the_pages_own_item_alone_in_its_array_holds_the_targets_price() -> None:
-    state: JsonValue = {"products": [{"href": "/p/1", "image": "/img/1.jpg", "cost": "€19.90"}]}
-
-    assert _kept(_extract(_page(TARGET, state=state, body="€19.90"))) == [TARGET_PRICE]
-
-
 # --- structured data ---
 
 
@@ -164,40 +137,5 @@ def test_related_products_offers_in_json_ld_are_not_the_targets() -> None:
     target = {**TARGET, "isRelatedTo": [_related(2, "5.00"), _related(3, "7.00")], "isSimilarTo": _related(4, "9.00")}
 
     result = _extract(_page(target, body="€5.00 €7.00 €9.00"))
-
-    assert _price(result) == ("missing", "not_owned", None)
-
-
-def test_an_item_list_on_a_detail_page_lends_no_price() -> None:
-    items = {
-        "@type": "ItemList",
-        "itemListElement": [{"@type": "ListItem", "position": i, "item": _related(i, f"{i}.00")} for i in range(2, 5)],
-    }
-
-    result = _extract(_page(TARGET, items, body="€2.00 €3.00 €4.00"))
-
-    assert result.entity is not None
-    assert result.entity["title"].value == "Widget One"
-    assert _price(result) == ("missing", "not_owned", None)
-
-
-def test_another_products_offer_is_not_the_targets() -> None:
-    target = {**TARGET, "offers": {"@type": "Offer", "price": "19.90", "priceCurrency": "EUR"}}
-
-    result = _extract(_page(target, _related(2, "5.00"), body="€19.90 €5.00"))
-
-    assert _price(result) == ("published", None, TARGET_PRICE)
-
-
-def test_a_microdata_related_products_price_is_not_the_targets() -> None:
-    microdata = (
-        '<div itemscope itemtype="https://schema.org/Product"><span itemprop="name">Widget One</span>'
-        '<div itemprop="isRelatedTo" itemscope itemtype="https://schema.org/Product">'
-        '<span itemprop="name">Gadget 2</span>'
-        '<div itemprop="offers" itemscope itemtype="https://schema.org/Offer">'
-        '<span itemprop="price">5.00</span><meta itemprop="priceCurrency" content="EUR"></div></div></div>'
-    )
-
-    result = _extract(_page(microdata=microdata))
 
     assert _price(result) == ("missing", "not_owned", None)

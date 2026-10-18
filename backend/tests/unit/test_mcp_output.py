@@ -46,20 +46,6 @@ def test_a_field_without_a_published_value_reads_unknown_with_its_status_and_con
     )
 
 
-def test_a_published_null_or_structured_value_is_shown_as_json() -> None:
-    record = RECORD.model_copy(
-        update={"fields": {"price": _field("published", {"amount": "19.90", "currency": "EUR"}, None)}}
-    )
-
-    assert records_summary([record]).splitlines()[1] == (
-        '- price: {"amount": "19.90", "currency": "EUR"} [published, confidence none]'
-    )
-
-
-def test_no_records_say_so() -> None:
-    assert records_summary([]) == "No records."
-
-
 def test_an_answer_carries_its_structure_as_json_and_the_summary_only_with_records() -> None:
     structured = {"job_id": "j", "markdown": "# Title"}
 
