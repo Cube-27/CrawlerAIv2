@@ -175,6 +175,17 @@ def test_a_session_refused_before_it_carried_the_site_opens_no_other_for_a_while
     assert sessions.open(f"https://{SITE}/", None, export, IDENTITY) is not None
 
 
+def test_a_session_that_serves_an_ok_after_a_concurrent_refusal_lifts_the_refusal() -> None:
+    sessions = sessions_with(f"https://{SITE}/", (cookie("c", "example.test"),))
+    first = sessions.take(f"https://{SITE}/", f"https://{SITE}/", None)
+    second = sessions.take(f"https://{SITE}/", f"https://{SITE}/", None)  # two fetches in flight on one session
+
+    sessions.settle(first, outcome("shell"))
+    sessions.settle(second, outcome("ok"))
+
+    assert sessions.open(f"https://{SITE}/", None, CookieExport((cookie("c", "example.test"),)), IDENTITY) is not None
+
+
 def test_inv29_no_repr_shows_a_cookie_value() -> None:
     sessions = sessions_with(f"https://{SITE}/", (cookie("c", "example.test"),))
     session = sessions.take(f"https://{SITE}/", f"https://{SITE}/", None)
