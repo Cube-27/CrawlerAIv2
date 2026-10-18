@@ -59,7 +59,9 @@ def test_the_currency_comes_from_the_best_evidence_with_weaker_evidence_noted() 
     cctld = "ca"  # RFC 1591: a two-letter ISO 3166-1 code; the host is synthetic, under RFC 2606's `example` label
     assert money.normalize("$5", MONEY, _ctx(page_url=f"https://shop.example.{cctld}/p")) == _ok("5", "CAD", "locale")
     assert money.normalize("$5", MONEY, _ctx(content_language=("en-NZ",))) == _ok("5", "NZD", "locale")
-    # Two territories that read `$` differently settle nothing.
+    # The locale a request asked for is the caller's, not the page's; two territories that read `$` differently settle
+    # nothing.
+    assert money.normalize("$5", MONEY, _ctx(request_locale="en-AU")) == _ok("5", None, "unknown")
     assert money.normalize("$5", MONEY, _ctx(html_lang="en-US", og_locale="en-CA")) == _ok("5", None, "unknown")
 
 

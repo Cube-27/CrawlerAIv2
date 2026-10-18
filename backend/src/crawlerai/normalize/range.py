@@ -126,6 +126,11 @@ def _period(written: str | None, ctx: Context) -> str | None:
     return found[1][phrase.lastgroup or ""]
 
 
+# Far past the money rules' 18 digits (persistence-storage spec D-0005); they decline what lies between as out of
+# range.
+_MAX_ADJUSTED = 100
+
+
 def _bounds(quantity: dict[str, JsonValue]) -> tuple[Decimal, Decimal] | Invalid:
     # QuantitativeValue: `minValue` and `maxValue` bound a range; a lone `value` is both bounds.
     lo, hi = quantity.get("minValue"), quantity.get("maxValue")
@@ -147,7 +152,8 @@ def _decimal(value: JsonValue) -> Decimal | None:
         number = Decimal(str(value).strip())
     except InvalidOperation:
         return None
-    return number if number.is_finite() else None
+    # An exponent past any amount (`1e1000000000`) is no bound either: its fixed-point form would not fit in memory.
+    return number if number.is_finite() and abs(number.adjusted()) <= _MAX_ADJUSTED else None
 
 
 def _string(value: JsonValue) -> str | None:

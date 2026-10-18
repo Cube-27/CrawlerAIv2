@@ -88,3 +88,21 @@ def test_a_dollar_sign_is_ambiguous_without_evidence_and_settled_by_a_page_curre
     assert normalize(raw, _spec(FieldType.RANGE), CTX) == Ambiguous("currency_unknown", ())
     settled = Context(captured_at=AT, page_currencies=("CAD",))
     assert normalize(raw, _spec(FieldType.RANGE), settled) == Ok(_range(lo, hi, "CAD", "YEAR"))
+
+
+def test_a_list_is_as_checked_as_its_least_checked_item_and_as_settled_as_its_weakest() -> None:
+    prices = FieldSpec(type=FieldType.LIST, item=FieldSpec(type=FieldType.MONEY))
+    page = CTX.model_copy(update={"page_currencies": ("EUR",)})
+    assert normalize(["EUR 5", "$7"], prices, page) == Ok(
+        [{"amount": "5", "currency": "EUR"}, {"amount": "7", "currency": None}],
+        basis="unknown",
+        checked=True,
+    )
+    signless = normalize(["EUR 5", "7"], prices, page)
+    assert isinstance(signless, Ok)
+    assert (signless.checked, signless.basis) == (False, "page")
+
+
+def test_a_range_bound_past_any_amount_is_not_a_number() -> None:
+    raw: JsonValue = {"currency": "EUR", "value": {"minValue": "1e1000000000", "maxValue": 5}}
+    assert normalize(raw, _spec(FieldType.RANGE), CTX) == Invalid("bound_not_a_number")

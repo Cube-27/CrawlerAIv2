@@ -160,7 +160,9 @@ def _regional(signs: Sequence[str], ctx: Context) -> frozenset[str]:
     """The currencies the signs stand for in the CLDR locales of the page's language and region: its language tags
     (`numbers.locale_set`), its Content-Language (RFC 9110 §8.5), and the territory its ccTLD names."""
     territory = ctx.cctld_territory or cctld_territory(ctx.page_url)
-    tags = ctx.model_copy(update={"cctld_territory": territory, "hreflang": (*ctx.hreflang, *ctx.content_language)})
+    # The page's own signals only: the locale a request asked for (`request_locale`) is the caller's, not the page's.
+    update = {"cctld_territory": territory, "hreflang": (*ctx.hreflang, *ctx.content_language), "request_locale": None}
+    tags = ctx.model_copy(update=update)
     locales = numbers.locale_set(tags)
     symbols = [unicodedata.normalize("NFKC", sign) for sign in signs]
     return frozenset(code for loc in locales for sign in symbols for code in _locale_symbols(loc).get(sign, ()))
