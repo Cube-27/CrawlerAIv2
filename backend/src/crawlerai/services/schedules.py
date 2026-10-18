@@ -225,8 +225,12 @@ def _out(row: Row[Any]) -> ScheduleOut:
     return ScheduleOut.model_validate(row._mapping)
 
 
-async def get_schedule(conn: AsyncConnection, schedule_id: ScheduleId) -> ScheduleOut:
-    row = (await conn.execute(select(*_COLUMNS, _last_job()).where(Schedule.id == schedule_id))).one_or_none()
+async def get_schedule(conn: AsyncConnection, schedule_id: ScheduleId, *, for_update: bool = False) -> ScheduleOut:
+    """The schedule; `for_update` locks its row until `conn`'s transaction ends, for a change read from it."""
+    query = select(*_COLUMNS, _last_job()).where(Schedule.id == schedule_id)
+    if for_update:
+        query = query.with_for_update(of=Schedule)
+    row = (await conn.execute(query)).one_or_none()
     if row is None:
         raise ScheduleNotFound(f"no schedule {schedule_id}")
     return _out(row)
@@ -267,24 +271,31 @@ async def update_schedule(
     engine: AsyncEngine, submitting: Submitting, schedule_id: ScheduleId, change: ScheduleUpdate
 ) -> ScheduleOut:
     """Apply `change`: the result is checked as a new schedule is (a 422 `ValidationError` names what is wrong), and
-    a changed cadence is due at its first time after now."""
+    a changed cadence is due at its first time after now. A new request is checked (slow: the SSRF guard, a schema)
+    before the write; the write merges `change` again over the row as it is then, locked, so a concurrent update of
+    other members is kept, never written back stale."""
     async with engine.connect() as conn:
-        current = await get_schedule(conn, schedule_id)
-    merged = _merged(current, change)
-    try:
-        new = _AnySchedule.model_validate(merged).root
-    except ValidationError as e:
-        raise InvalidUpdate(e) from e
-    kind, request = await _checked(engine, submitting, new) if change.request is not None else (None, None)
-    values: dict[str, Any] = {"name": new.name, "cron": new.cron, "interval_s": new.interval_s}
-    values |= {"timezone": new.timezone, "updated_at": func.now()}
-    if kind is not None and request is not None:
-        values |= {"kind": kind, "request": request.model_dump(mode="json", by_alias=True)}
+        new = _validated(_merged(await get_schedule(conn, schedule_id), change))
+    checked = None if change.request is None else await _checked(engine, submitting, new)
     async with engine.begin() as conn:
+        current = await get_schedule(conn, schedule_id, for_update=True)
+        new = _validated(_merged(current, change))
+        values: dict[str, Any] = {"name": new.name, "cron": new.cron, "interval_s": new.interval_s}
+        values |= {"timezone": new.timezone, "updated_at": func.now()}
+        if checked is not None:
+            kind, request = checked
+            values |= {"kind": kind, "request": request.model_dump(mode="json", by_alias=True)}
         if _cadence_changed(current, new):
             values["next_run_at"] = next_run(new.cadence(), await _now(conn))
         await _update(conn, schedule_id, values)
         return await get_schedule(conn, schedule_id)
+
+
+def _validated(merged: dict[str, Any]) -> NewSchedule:
+    try:
+        return _AnySchedule.model_validate(merged).root
+    except ValidationError as e:
+        raise InvalidUpdate(e) from e
 
 
 class InvalidUpdate(Refusal):
@@ -317,8 +328,8 @@ def _cadence_changed(current: ScheduleOut, new: NewSchedule) -> bool:
 
 async def set_paused(conn: AsyncConnection, schedule_id: ScheduleId, *, paused: bool) -> ScheduleOut:
     """Pause or resume the schedule. A resumed schedule is due at its first time after now: the runs it missed while
-    paused are not made up."""
-    current = await get_schedule(conn, schedule_id)
+    paused are not made up. The row is locked before it is read, so a pause and a resume at once see each other."""
+    current = await get_schedule(conn, schedule_id, for_update=True)
     values: dict[str, Any] = {"paused": paused, "updated_at": func.now()}
     if current.paused and not paused:
         cadence = Cadence(current.cron, current.interval_s, current.timezone)
