@@ -1,4 +1,13 @@
-## ADDED Requirements
+# Listings Specification
+
+## Purpose
+
+A listing page's rows: the item layer (segment the page's repeated item groups, align each block's fields, bind
+stated rows, call and state rows and blocks into one row per item), rows from captured calls, role C's rows, the row
+item URL and next pages. Candidates come from [extraction](../extraction/spec.md); what publishes is
+[resolution](../resolution/spec.md). Rationale: master plan §3.2 (owner decision #67).
+
+## Requirements
 
 ### Requirement: Item groups (segment)
 A listing page's repeated item groups SHALL be `MIN_ITEMS` or more sibling blocks of one shape that each are or hold a
@@ -71,7 +80,11 @@ result. Refs: owner #67 decisions 1 and 6.
 Role C SHALL be asked for a listing's row fields when it has no rows, when call rows leave a record incomplete, or when
 its rows publish a row field on no row, never beside a config that runs a row field. A role C row takes the item URL of
 the one block holding its grounded values (`collect/item_links.py`); with no rows its rows are the listing's (a row
-without a required item URL left out), else each fills the row it binds to by item URL. Refs: §8.6, owner #67.
+without a required item URL left out), else each fills the row it binds to by item URL, but rows read from blocks
+alone, to which none of role C's URL-naming rows binds, are replaced by role C's rows. Refs: §8.6, owner #67.
+#### Scenario: Role C reads the items elsewhere
+- **WHEN** a listing's only aligned group is category links and role C's row names an item URL no block links to
+- **THEN** role C's row is the listing's row and the category blocks are not
 
 ### Requirement: Next pages
 Next pages SHALL come from `rel=next`, then the link differing from the page URL in one path segment or query value by

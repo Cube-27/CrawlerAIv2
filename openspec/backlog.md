@@ -40,6 +40,14 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
 
 - Bot review findings left for phase 2 (#277): item blocks ranked by summed evidence (a large image-only gallery outranks a smaller grid, `acquire/items.item_blocks`); `resolve/pipeline` holders miss row-mapped `field.sub` candidates; `resolve/preference` keeps the winner's http image over a lower source's https twin; `resolve/identity` keeps only the first of two ProductGroups under one isVariantOf; `LearnedCalls.matches` ignores fixed query values and body shape; `resolve/pagination` `int()` on a digit run over 4300 digits; role C sees only item text for page fields on a listing with item blocks; the first role C listing chunk's budget omits page-field claims; listing rows uncapped at 200 across calls; `item_links._respelled` strips every trailing slash and compares query items as a set; `schema_org_map._selections` never counts a list or joined value as stated. Fix in the layer phase 2 rebuilds, or delete with it.
 - Extract with `fetch.cache: only` (#277): sample URLs read stored captures, but globs are still expanded by a live map.
+- Item layer (#278): block prices whose symbol is ambiguous without a stated currency (`$` on a page in `es` or `en`,
+  `Rs.`) decline in the money normalizer; on the golden set four listings show prices only so. A currency the page
+  states in its state or call JSON as an ISO 4217 code could settle the symbol, as structured data's does; measure
+  before admitting it. A WebPage `mainEntityOfPage` given only as an `@id` is not read as a row's item URL (D-1569).
+- Item layer (#278): a state value read at a key the page's blocks proved (`collect.induce`) ranks in no text
+  precedence and has no evidence bucket, so it never fills a row alone; a bucket for it is a resolution-spec change.
+  A listing split into sections of one shape aligns its first section's group only (the other sections' items are
+  not rows); merging same-shape groups would read them, with label-subset pages then scoring extra rows.
 - Golden report (#272): `eval re-key` marks 206 of 748 golden label rows stale by a written-form search of the
   capture; a row whose title the capture writes only in a script-escaped or transformed form may be marked stale
   wrongly. Spot-check stale rows against the captures before the next fresh batch, and keep the stale count in each PR.

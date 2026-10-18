@@ -41,7 +41,8 @@ Full table and rejected alternatives: ARCHITECTURE §19 ([archived](changes/arch
 | [adapters](specs/adapters/spec.md) | Platform adapters (Greenhouse, Lever, Shopify; C6) and API-backed pages: discovery, recipes, validation |
 | [schemas](specs/schemas/spec.md) | Field types, schema documents, presets, custom schemas, prompt and field-name drafts, page kind |
 | [normalization](specs/normalization/spec.md) | One normalizer per field type; decline rather than guess |
-| [extraction](specs/extraction/spec.md) | Parse once, collectors, locators, ownership, listings and pagination, content formats |
+| [extraction](specs/extraction/spec.md) | Parse once, collectors, locators, ownership, content formats |
+| [listings](specs/listings/spec.md) | Listing rows: the item layer (segment, align, bind), call rows, role C rows, row item URLs, next pages |
 | [identity-and-intent](specs/identity-and-intent/spec.md) | Entity identity, target selection (intent), ownership of candidates, the entity key |
 | [resolution](specs/resolution/spec.md) | Candidate validity, preference, atomic offers, evidence buckets, confidence, incomplete pages |
 | [variants](specs/variants/spec.md) | The variant matrix: row-mapped lists, per-variant rows, common variant fields |
