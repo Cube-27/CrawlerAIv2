@@ -2101,6 +2101,8 @@ export interface components {
             items: components["schemas"]["JobSummary"][];
             /** Next Cursor */
             next_cursor: string | null;
+            /** Total */
+            total: number;
         };
         /** JobSummary */
         JobSummary: {
@@ -2275,6 +2277,8 @@ export interface components {
             items: components["schemas"]["JsonValuesItem"][];
             /** Next Cursor */
             next_cursor: string | null;
+            /** Total */
+            total: number;
         };
         /**
          * LLMUsage
@@ -2833,6 +2837,8 @@ export interface components {
             items: components["schemas"]["PageOutput"][];
             /** Next Cursor */
             next_cursor: string | null;
+            /** Total */
+            total: number;
         };
         /** PageSummary */
         PageSummary: {
@@ -3078,6 +3084,8 @@ export interface components {
             items: components["schemas"]["StoredRecord"][];
             /** Next Cursor */
             next_cursor: string | null;
+            /** Total */
+            total: number;
         };
         /** RegexReplaceOp */
         RegexReplaceOp: {

@@ -132,3 +132,18 @@ async def test_a_cursor_stays_valid_when_tasks_are_added_and_filters_narrow_the_
     reverse = {record_id: title for title, record_id in jobs.stored.items()}
     assert [reverse[record.id] for record in first.items + rest.items] == ["b1", "a1"]
     assert await jobs.titles(job_id, schema_id=uuid.uuid4()) == []
+
+
+async def test_every_page_carries_the_jobs_total_whatever_its_cursor_and_size(jobs: Jobs) -> None:
+    job_id = await jobs.job()
+    await jobs.task(job_id, "a", "a1", "a2")
+    await jobs.task(job_id, "b", "a2", "b1")
+    other = await jobs.job()
+    await jobs.task(other, "z", "z1")
+
+    first = await list_records(jobs.conn, RecordFilter(job_id=job_id, limit=1))
+    last = await list_records(jobs.conn, RecordFilter(job_id=job_id, cursor=first.next_cursor, limit=5))
+    streamed = await list_records(jobs.conn, RecordFilter(job_id=job_id), counted=False)
+
+    assert (first.total, last.total, len(last.items)) == (3, 3, 2)
+    assert streamed.total == 0

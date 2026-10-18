@@ -47,7 +47,7 @@ from crawlerai.db.models import (
     UrlTask,
     UrlTaskId,
 )
-from crawlerai.db.paging import keyset_page
+from crawlerai.db.paging import keyset_page, total_rows
 from crawlerai.db.queue import settle_job
 from crawlerai.llm.pricing import default_pricing
 from crawlerai.resolve.records import FieldMeta, RecordContent
@@ -148,6 +148,7 @@ class JobPage(BaseModel):
 
     items: list[JobSummary]
     next_cursor: JobId | None
+    total: int  # the jobs that match in all, not the page's
 
 
 class JobListQuery(BaseModel):
@@ -206,6 +207,7 @@ class PageOutputPage(BaseModel):
 
     items: list[PageOutput]
     next_cursor: UrlTaskId | None
+    total: int  # the job's tasks in all, not the page's
 
 
 class JsonValuesItem(BaseModel):
@@ -233,6 +235,7 @@ class JsonValuesPage(BaseModel):
     format: Literal["json_values"]
     items: list[JsonValuesItem]
     next_cursor: UrlTaskId | None
+    total: int  # the job's tasks in all, not the page's
 
 
 _DEFAULT_LIMIT: Final = 50
@@ -306,7 +309,7 @@ async def list_jobs(conn: AsyncConnection, query: JobListQuery) -> JobPage:
         conn, statement, Job.id, after=query.cursor, limit=query.limit, descending=True
     )
     items = await _summaries(conn, [row._mapping for row in rows])
-    return JobPage(items=items, next_cursor=next_cursor)
+    return JobPage(items=items, next_cursor=next_cursor, total=await total_rows(conn, statement))
 
 
 async def _summaries(conn: AsyncConnection, jobs: Sequence[RowMapping]) -> list[JobSummary]:
@@ -392,7 +395,9 @@ async def job_results(
             raise NotExportable(f"job {job_id} has no schema, so it has no records to export")
         return await _page_outputs(conn, store, job_id, job.request, query, adapters)
     cursor = None if query.cursor is None else RecordId(query.cursor)
-    page = await list_records(conn, RecordFilter(job_id=job_id, cursor=cursor, limit=query.limit))
+    page = await list_records(
+        conn, RecordFilter(job_id=job_id, cursor=cursor, limit=query.limit), counted=query.format == "json"
+    )
     if query.format == "json":
         return page
     schema = await registry.get_by_id(conn, job.schema_id)
@@ -423,8 +428,9 @@ class _TaskRow(NamedTuple):
 
 async def _task_rows(
     conn: AsyncConnection, job_id: JobId, query: ResultsQuery
-) -> tuple[list[_TaskRow], UrlTaskId | None]:
-    """The page of the job's tasks after `query.cursor`, oldest first, and the cursor of the page after it."""
+) -> tuple[list[_TaskRow], UrlTaskId | None, int]:
+    """The page of the job's tasks after `query.cursor`, oldest first, the cursor of the page after it, and how many
+    tasks the job has."""
     columns = (
         UrlTask.id,
         UrlTask.url,
@@ -444,7 +450,8 @@ async def _task_rows(
     statement = select(*columns).outerjoin(Capture, Capture.id == UrlTask.capture_id).where(UrlTask.job_id == job_id)
     after = None if query.cursor is None else UrlTaskId(query.cursor)
     rows, next_cursor = await keyset_page(conn, statement, UrlTask.id, after=after, limit=query.limit, descending=False)
-    return [_TaskRow(**row._mapping) for row in rows], next_cursor
+    total = await total_rows(conn, statement)
+    return [_TaskRow(**row._mapping) for row in rows], next_cursor, total
 
 
 async def _page_outputs(
@@ -458,9 +465,9 @@ async def _page_outputs(
     """The page of the job's tasks with the formats and options its stored `request` asked for."""
     formats: list[PageFormat] = request.get("formats", [])
     options = FormatOptions.model_validate({name: request.get(name) for name in ("fit", "chunking")})
-    rows, next_cursor = await _task_rows(conn, job_id, query)
+    rows, next_cursor, total = await _task_rows(conn, job_id, query)
     items = [await _page_output(store, row, formats, options, adapters) for row in rows]
-    return PageOutputPage(items=items, next_cursor=next_cursor)
+    return PageOutputPage(items=items, next_cursor=next_cursor, total=total)
 
 
 def _fetch_of(row: _TaskRow, adapters: Adapters | None) -> FetchSummary | None:
@@ -510,11 +517,11 @@ async def _json_values(
     query: ResultsQuery,
     adapters: Adapters | None,
 ) -> JsonValuesPage:
-    page, next_cursor = await _task_rows(conn, job_id, query)
+    page, next_cursor, total = await _task_rows(conn, job_id, query)
     # A task's records are linked when it ends, so one read before its outcome shows none.
     records = await _clean_records(conn, schema_id, [row.id for row in page if row.outcome is not None])
     items = [await _json_values_item(store, row, records.get(row.id, []), query, adapters) for row in page]
-    return JsonValuesPage(format="json_values", items=items, next_cursor=next_cursor)
+    return JsonValuesPage(format="json_values", items=items, next_cursor=next_cursor, total=total)
 
 
 async def _clean_records(

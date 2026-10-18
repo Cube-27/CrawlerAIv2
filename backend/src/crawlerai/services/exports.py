@@ -54,7 +54,7 @@ async def export_job_file(conn: AsyncConnection, job_id: JobId, fmt: FileFormat)
     contents: list[RecordContent] = []
     cursor: RecordId | None = None
     while len(contents) < MAX_RECORDS:
-        page = await list_records(conn, RecordFilter(job_id=job_id, cursor=cursor, limit=MAX_PAGE))
+        page = await list_records(conn, RecordFilter(job_id=job_id, cursor=cursor, limit=MAX_PAGE), counted=False)
         contents += [record_content(record) for record in page.items]
         if page.next_cursor is None:
             break

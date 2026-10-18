@@ -6,7 +6,7 @@ key's index.
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Row, Select
+from sqlalchemy import Row, Select, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import QueryableAttribute
 from sqlalchemy.sql.elements import KeyedColumnElement
@@ -31,3 +31,9 @@ async def keyset_page[K](
     page = rows[:limit]
     next_cursor: K | None = page[-1]._mapping[key.key] if len(rows) > limit else None
     return page, next_cursor
+
+
+async def total_rows(conn: AsyncConnection, statement: Select[*tuple[Any, ...]]) -> int:
+    """How many rows `statement` selects in all, whatever the cursor: the total a paged answer shows beside its page
+    (rest-api spec). `statement` is the filtered, unordered select, before any cursor or limit."""
+    return (await conn.execute(select(func.count()).select_from(statement.order_by(None).subquery()))).scalar_one()

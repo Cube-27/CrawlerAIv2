@@ -3083,11 +3083,16 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
           }
         },
         "required": [
           "items",
-          "next_cursor"
+          "next_cursor",
+          "total"
         ],
         "title": "JobPage",
         "type": "object"
@@ -3594,12 +3599,17 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
           }
         },
         "required": [
           "format",
           "items",
-          "next_cursor"
+          "next_cursor",
+          "total"
         ],
         "title": "JsonValuesPage",
         "type": "object"
@@ -4958,11 +4968,16 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
           }
         },
         "required": [
           "items",
-          "next_cursor"
+          "next_cursor",
+          "total"
         ],
         "title": "PageOutputPage",
         "type": "object"
@@ -5630,11 +5645,16 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
           }
         },
         "required": [
           "items",
-          "next_cursor"
+          "next_cursor",
+          "total"
         ],
         "title": "RecordPage",
         "type": "object"
