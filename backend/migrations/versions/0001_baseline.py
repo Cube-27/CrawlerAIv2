@@ -87,6 +87,9 @@ def upgrade() -> None:
         sa.Column("page_kind", sa.Text(), nullable=False),
         sa.Column("fields", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column(
+            "field_order", postgresql.JSONB(astext_type=sa.Text()), server_default=sa.text("'[]'::jsonb"), nullable=False
+        ),
+        sa.Column(
             "required_groups",
             postgresql.JSONB(astext_type=sa.Text()),
             server_default=sa.text("'[]'::jsonb"),

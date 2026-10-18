@@ -23,7 +23,10 @@ function JobRecords({ records }: Readonly<{ records: readonly StoredRecord[] }>)
   const [open, setOpen] = useState<StoredRecord | null>(null);
   // A job extracts with one schema.
   const schema = useSchema(records[0]?.schema_id ?? null);
-  const fieldTypes = useMemo(() => parseFieldTypes(schema.data?.fields), [schema.data]);
+  const fieldTypes = useMemo(
+    () => parseFieldTypes(schema.data?.fields, schema.data?.field_order),
+    [schema.data],
+  );
   const problem = problemOf(schema.error);
   if (records.length === 0) return <EmptyView title="No records yet" />;
   if (problem !== null) return <ProblemAlert problem={problem} />;

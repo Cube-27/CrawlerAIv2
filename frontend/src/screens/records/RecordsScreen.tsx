@@ -30,7 +30,10 @@ function RecordResults({ filters }: Readonly<{ filters: RecordFilters }>) {
   const records = useRecords({ filters, cursor, limit: pageSize });
   const schema = useSchema(filters.schema_id);
   // Stable while the schema is, so opening a record leaves the table's columns and cells as they are.
-  const fieldTypes = useMemo(() => parseFieldTypes(schema.data?.fields), [schema.data]);
+  const fieldTypes = useMemo(
+    () => parseFieldTypes(schema.data?.fields, schema.data?.field_order),
+    [schema.data],
+  );
   const ready = records.isSuccess && schema.isSuccess;
   const items = records.data?.items ?? [];
 

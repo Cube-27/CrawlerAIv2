@@ -3323,6 +3323,8 @@ export interface components {
          *     they change neither its digest nor what was learned for it.
          */
         SchemaDef: {
+            /** Field Order */
+            field_order?: string[];
             /** Fields */
             fields: {
                 [key: string]: components["schemas"]["FieldSpec-Output"];

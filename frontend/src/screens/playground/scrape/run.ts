@@ -23,7 +23,9 @@ async function fieldTypes(
     return {};
   }
   const schema = await getSchema(client, request.schema.id);
-  return schema.kind === "done" ? parseFieldTypes(schema.value.fields) : {};
+  return schema.kind === "done"
+    ? parseFieldTypes(schema.value.fields, schema.value.field_order)
+    : {};
 }
 
 /** Runs one `POST /v1/scrape`. */

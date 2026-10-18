@@ -6258,6 +6258,13 @@
         "additionalProperties": false,
         "description": "A `schema_def` row: a document plus where it came from and whether it is in use. One row per\nname, edited in place.\n\n`labels` are the synonyms role S drafted for its fields' labels, by field (extraction spec, \"Label vocabulary\"),\neditable; None until drafted, and again after an edit of the document. They are no part of the document, so\nthey change neither its digest nor what was learned for it.",
         "properties": {
+          "field_order": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Field Order",
+            "type": "array"
+          },
           "fields": {
             "minProperties": 1,
             "patternProperties": {

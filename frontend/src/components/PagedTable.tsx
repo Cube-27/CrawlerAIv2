@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import type { Problem } from "../api/problem";
 import { LoadingView } from "./LoadingView";
 import { ProblemAlert } from "./ProblemAlert";
+import { PAGE_SIZES } from "./cursors";
 import { TablePagination, type PageSizing } from "./TablePagination";
 
 /** Rows per page of a table that is not a results table (`useCursorPages` sizes the others): the box (`h-table-page` in theme.css) holds this many rows and the header. */
@@ -50,20 +51,32 @@ export function PagedTable({
   useEffect(() => {
     if (box.current !== null) box.current.scrollTop = 0;
   }, [page]);
+  // A list that fits one page needs no fixed box (it would be a screen of empty space under a few rows), and a short
+  // one needs no pager either: the smallest page size is already more than it has.
+  const total = rows?.total ?? null;
+  const fits = total !== null && onPrevious === null && onNext === null;
+  const short = fits && total <= Math.min(...PAGE_SIZES);
   let content = children;
   if (problem !== null) content = <ProblemAlert problem={problem} />;
   else if (loading !== null) content = <LoadingView label={loading} />;
   return (
     <div className="flex flex-col gap-3">
-      <div ref={box} className="h-table-page overflow-auto">
+      <div
+        ref={box}
+        className={
+          fits ? "max-h-(--height-table-page) overflow-auto" : "h-table-page overflow-auto"
+        }
+      >
         {content}
       </div>
-      <TablePagination
-        summary={summaryOf(page, rows)}
-        sizing={rows}
-        onPrevious={onPrevious}
-        onNext={onNext}
-      />
+      {short ? null : (
+        <TablePagination
+          summary={summaryOf(page, rows)}
+          sizing={rows}
+          onPrevious={onPrevious}
+          onNext={onNext}
+        />
+      )}
     </div>
   );
 }

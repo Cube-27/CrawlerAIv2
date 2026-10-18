@@ -52,13 +52,17 @@ function isFieldTypeSpec(value: unknown): value is FieldTypeSpec {
 /** Each field's type by its name, as a schema declares them. */
 export type FieldTypes = Readonly<Record<string, FieldTypeSpec>>;
 
-/** The field types in a schema's `fields` member (schemas spec); a field whose type is not one of these is left out,
+/** The field types in a schema's `fields` member (schemas spec), in the order of `order`, a field it lacks last; a field whose type is not one of these is left out,
  * and its value is then shown as the server sent it. */
-export function parseFieldTypes(fields: unknown): FieldTypes {
+export function parseFieldTypes(fields: unknown, order?: readonly string[]): FieldTypes {
   if (!isJsonObject(fields)) return {};
-  return Object.fromEntries(
-    Object.entries(fields).filter((entry): entry is [string, FieldTypeSpec] =>
-      isFieldTypeSpec(entry[1]),
-    ),
+  const known = Object.entries(fields).filter((entry): entry is [string, FieldTypeSpec] =>
+    isFieldTypeSpec(entry[1]),
   );
+  // `order` is the schema's `field_order`: the document's order, which a JSON object does not promise to carry.
+  const place = (name: string) => {
+    const index = order?.indexOf(name) ?? -1;
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  return Object.fromEntries([...known].sort(([a], [b]) => place(a) - place(b)));
 }

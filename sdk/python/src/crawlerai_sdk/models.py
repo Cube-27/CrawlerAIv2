@@ -1579,6 +1579,7 @@ class SchemaDef(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    field_order: Annotated[list[str] | None, Field(title="Field Order")] = None
     fields: Annotated[dict[str, FieldSpecOutput], Field(title="Fields")]
     id: Annotated[UUID, Field(title="Id")]
     labels: Annotated[dict[str, list[Label]] | None, Field(title="Labels")] = None
