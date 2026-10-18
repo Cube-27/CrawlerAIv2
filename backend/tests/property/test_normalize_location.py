@@ -56,11 +56,33 @@ def test_a_postal_address_keeps_its_parts_and_a_stated_code() -> None:
         "addressRegion": "Upper Fen",
         "addressCountry": "de",
     }
-    expected = Ok(value("Alderton, Upper Fen, de", "Alderton", "Upper Fen", "DE"))
+    expected = Ok(value("Alderton, Upper Fen", "Alderton", "Upper Fen", "DE"))
 
     assert norm(address) == expected
     assert norm({"@type": "Place", "address": address}) == expected
     assert norm({**address, "addressCountry": {"@type": "Country", "identifier": "de"}}) == expected
+    # A stated code alone is a location with no text.
+    assert norm({"addressCountry": "de"}) == Ok(value(None, None, None, "DE"))
+
+
+def test_the_text_is_the_place_as_written_its_name_and_address_lines_each_part_once() -> None:
+    address: dict[str, JsonValue] = {
+        "streetAddress": "1 Mill Lane, Alderton, UF 12345",
+        "addressLocality": "Alderton",
+        "addressRegion": "UF",
+        "postalCode": "12345",
+        "addressCountry": "US",
+    }
+    assert norm({"@type": "Place", "name": "Old Hall", "address": address}) == Ok(
+        value("Old Hall, 1 Mill Lane, Alderton, UF 12345", "Alderton", "UF", "US")
+    )
+    # A name that is the address's first line is written once; a country stated by name stays in the text.
+    lines: dict[str, JsonValue] = {
+        "streetAddress": "OLD HALL, Mill Lane",
+        "postalCode": "AB1 2CD",
+        "addressCountry": "Freedonia",
+    }
+    assert norm({"name": "Old Hall", "address": lines}) == Ok(value("Old Hall, Mill Lane, Freedonia, AB1 2CD"))
 
 
 @pytest.mark.parametrize("code", ["ZZ", "XK", "AA", "EU", "UK", "AC"])

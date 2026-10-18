@@ -97,3 +97,25 @@ def test_schema_without_long_text_reads_nothing() -> None:
         fields={"title": _field(FieldType.TEXT, "Product.name")},
     )
     assert _read(f"<main><p>{FIRST}</p></main>", schema=schema) == {}
+
+
+def test_a_heading_naming_a_list_field_gives_the_items_of_its_section_lists() -> None:
+    schema = _schema().model_copy(
+        update={"fields": {"requirements": FieldSpec.model_validate({"type": "list", "item": {"type": "text"}})}}
+    )
+    body = "<main><h2>Requirements</h2><ul><li>Kettles</li><li>Tea <b>leaves</b></li></ul><h2>Other</h2><p>x</p></main>"
+    page = ParsedPage(f"<html><body>{body}</body></html>")
+
+    found = DescriptionCollector().collect(page, schema, CTX, ()).candidates
+
+    assert [(c.field, c.normalized) for c in found] == [("requirements", Ok(["Kettles", "Tea leaves"]))]
+    # Two sections that list different items under the field's heading leave it unread.
+    twice = body.replace("</main>", "<h3>Requirements</h3><ol><li>Cups</li></ol></main>")
+    assert DescriptionCollector().collect(ParsedPage(twice), schema, CTX, ()).candidates == ()
+    # A hidden item is no item, and a hidden heading names nothing.
+    hidden = body.replace("<li>Kettles</li>", '<li>Kettles</li><li style="display:none">Spoons</li>')
+    assert [c.normalized for c in DescriptionCollector().collect(ParsedPage(hidden), schema, CTX, ()).candidates] == [
+        Ok(["Kettles", "Tea leaves"])
+    ]
+    unshown = body.replace("<h2>Requirements</h2>", "<h2 hidden>Requirements</h2>")
+    assert DescriptionCollector().collect(ParsedPage(unshown), schema, CTX, ()).candidates == ()

@@ -12,7 +12,9 @@ reviews and related items:
 - **Labelled section.** The content that follows a heading (HTML Standard §4.3.6, WAI-ARIA `heading`) up to the next
   heading, or that a section names with `aria-label` or `aria-labelledby` (WAI-ARIA 1.2), when the label's words are
   one of the field's labels (`collect.labels`: its name, schema.org property, description and drafted synonyms), as
-  label-value pairs are read (C4: the schema's words, never a list).
+  label-value pairs are read (C4: the schema's words, never a list). For a list field of values (a job's
+  requirements, a recipe's ingredients), what such a section states is the items of its lists (HTML Standard §4.4.5-
+  §4.4.8: `ul`, `ol` and `menu` items, `collect.dom.list_items`): one value per item.
 
 Prose is a block that holds no table, form control, button, image, media, frame or other element that is not running
 text (HTML Standard §3.2.5: flow and phrasing content). A block's text is the cleaned text of its element
@@ -26,11 +28,12 @@ Every candidate is the page's, independent, with a `dom:` locator naming the ele
 from collections.abc import Iterator, Sequence
 from typing import NamedTuple
 
+from pydantic import JsonValue
 from selectolax.lexbor import LexborNode
 
 from crawlerai.collect.base import PAGE, Candidate, CollectResult
-from crawlerai.collect.dom import OTHER_ITEMS, content_region
-from crawlerai.collect.labels import field_labels, properties, words
+from crawlerai.collect.dom import OTHER_ITEMS, content_region, list_items
+from crawlerai.collect.labels import field_labels, labelled, properties, words
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate
 from crawlerai.content.dom import tokens
@@ -80,7 +83,7 @@ class _Blocks:
     """The prose elements of a region with their cleaned text, in document order."""
 
     def __init__(self, page: ParsedPage, region: LexborNode) -> None:
-        self.region = region
+        self.page, self.region = page, region
         spans, text = page.text_spans, page.cleaned_text.text
         selector = ",".join(
             (
@@ -130,27 +133,63 @@ def _stated(candidate_: Candidate) -> str | None:
 class DescriptionCollector:
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate]) -> CollectResult:
         fields = [name for name, spec in schema.fields.items() if spec.type is FieldType.LONG_TEXT]
-        region = content_region(page) if schema.page_kind == "detail" and not page.json_body and fields else None
+        lists = [name for name, spec in schema.fields.items() if spec.type is FieldType.LIST and labelled(spec)]
+        wanted = fields or lists
+        region = content_region(page) if schema.page_kind == "detail" and not page.json_body and wanted else None
         if region is None:
             return CollectResult(entities=(), candidates=())
         blocks = _Blocks(page, region)
         labels = field_labels(schema)
+        found: list[tuple[str, _Block, JsonValue]] = [
+            (name, block, None) for name in fields if (block := _described(blocks, labels, schema, name, others))
+        ]
+        found.extend((name, *listed) for name in lists if (listed := _listed(blocks, labels, name)) is not None)
         diagnostics: list[str] = []
-        candidates = []
-        for name in fields:
-            stated = [(c.source_kind, form) for c in others if c.field == name and (form := _stated(c))]
-            found = (
-                _extending(blocks, stated)
-                or _labelled(blocks, labels, name)
-                or _main_text(blocks, schema, name, stated)
-            )
-            if found is None:
-                continue
-            locator = format_locator("dom", node_xpath(found.node))
-            made = candidate(name, schema.fields[name], PAGE, "dom", found.raw, locator, ctx, diagnostics)
-            if made is not None:
-                candidates.append(made)
+        candidates = [
+            made
+            for name, block, read in found
+            if (made := _candidate(name, block, read, schema, ctx, diagnostics)) is not None
+        ]
         return CollectResult(entities=(), candidates=tuple(candidates), diagnostics=tuple(diagnostics))
+
+
+def _described(
+    blocks: _Blocks, labels: dict[tuple[str, ...], list[str]], schema: SchemaDef, name: str, others: Sequence[Candidate]
+) -> _Block | None:
+    """A long_text field's block: the one extending a stated value, else its labelled section, else the main text."""
+    stated = [(c.source_kind, form) for c in others if c.field == name and (form := _stated(c))]
+    return _extending(blocks, stated) or _labelled(blocks, labels, name) or _main_text(blocks, schema, name, stated)
+
+
+def _candidate(
+    name: str, block: _Block, read: JsonValue, schema: SchemaDef, ctx: Context, diagnostics: list[str]
+) -> Candidate | None:
+    locator = format_locator("dom", node_xpath(block.node))
+    return candidate(name, schema.fields[name], PAGE, "dom", block.raw, locator, ctx, diagnostics, read=read)
+
+
+def _listed(blocks: _Blocks, labels: dict[tuple[str, ...], list[str]], name: str) -> tuple[_Block, JsonValue] | None:
+    """The list items of the sections a heading naming the field opens (`_section_parts`), with the first block
+    holding them; none when no such section holds a list, or when sections give different items."""
+    named = [form for form, fields in labels.items() if name in fields]
+    found = [
+        listed
+        for heading in blocks.region.css(_HEADING)
+        if node_xpath(heading) in blocks.page.text_spans
+        and words(" ".join(heading.text(deep=True, separator=" ").split())) in named
+        and (listed := _section_items(blocks, heading)) is not None
+    ]
+    return found[0] if found and all(items == found[0][1] for _, items in found) else None
+
+
+def _section_items(blocks: _Blocks, heading: LexborNode) -> tuple[_Block, JsonValue] | None:
+    """The items of the lists in a heading's section, with the first block holding one."""
+    listed = [
+        (part, items) for part in _section_parts(blocks, heading) if (items := list_items(part.node, blocks.page))
+    ]
+    if not listed:
+        return None
+    return listed[0][0], [*(item for _, items in listed for item in items)]
 
 
 def _main_text(blocks: _Blocks, schema: SchemaDef, name: str, stated: Sequence[tuple[str, str]]) -> _Block | None:
@@ -214,13 +253,19 @@ def _labelled(blocks: _Blocks, labels: dict[tuple[str, ...], list[str]], name: s
 
 
 def _section(blocks: _Blocks, heading: LexborNode) -> list[_Block]:
-    """The prose that follows a heading up to the next heading, as one block; climbs only out of a wrapper that holds
-    nothing after the heading."""
+    """The prose that follows a heading up to the next heading, as one block."""
+    parts = _section_parts(blocks, heading)
+    return [_Block(parts[0].node, "\n".join(p.raw for p in parts), " ".join(p.form for p in parts))] if parts else []
+
+
+def _section_parts(blocks: _Blocks, heading: LexborNode) -> list[_Block]:
+    """The prose blocks that follow a heading up to the next heading; climbs only out of a wrapper that holds nothing
+    after the heading."""
     node: LexborNode | None = None if heading.mem_id in blocks.apart else heading
     while node is not None and node != blocks.region:
         parts = _following(blocks, node)
         if parts:
-            return [_Block(parts[0].node, "\n".join(p.raw for p in parts), " ".join(p.form for p in parts))]
+            return parts
         if any(sibling.is_element_node for sibling in _after(node)):
             return []
         node = node.parent

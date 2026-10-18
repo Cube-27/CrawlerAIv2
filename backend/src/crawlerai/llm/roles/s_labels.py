@@ -78,7 +78,8 @@ def _labelled_fields(schema: SchemaDef) -> dict[str, FieldSpec]:
 
 
 def _line(name: str, spec: FieldSpec) -> str:
-    parts = [f"- {name}: {spec.type.value}"]
+    of = f" of {spec.item.type.value}" if spec.item is not None else ""
+    parts = [f"- {name}: {spec.type.value}{of}"]
     if spec.scheme is not None:
         parts.append(f"scheme {spec.scheme}")
     if spec.schema_org is not None:

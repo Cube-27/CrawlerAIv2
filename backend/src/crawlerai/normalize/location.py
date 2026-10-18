@@ -1,9 +1,13 @@
 """Location normalizer (normalization spec): `{text, locality, region, country, remote_flag}`.
 
 A location publishes what the page states and nothing it does not: no place is looked up, completed or inferred.
-- `text` is the place as the page writes it: a string, a `Place`'s `name`, or a `PostalAddress`'s stated parts
-  joined in the order locality, region, country. Nothing in it is parsed: several places, regions or alternatives
-  ("A or B") stay one text as written (owner, 2026-10-16).
+- `text` is the place as the page writes it: a string, or a `Place`'s `name` followed by its `PostalAddress`'s stated
+  parts in the order the HTML Standard lists the address autofill fields (§4.10.18.7.1: street address, locality,
+  region, country name, postal code). A part the text already writes is not repeated: `streetAddress` may hold the
+  whole address on its lines (schema.org: "the street address", which pages often write in full), and a `Place`'s
+  name may be its first line. A country stated as an ISO 3166-1 alpha-2 code is a code, not how the page writes the
+  place: it is `country`, never text. Nothing in the text is parsed: several places, regions or alternatives ("A or
+  B") stay one text as written (owner, 2026-10-16).
 - `locality`, `region` are a `PostalAddress`'s `addressLocality` and `addressRegion` as written.
 - `country` is an ISO 3166-1 alpha-2 code, and only when `addressCountry` states one (schema.org recommends the
   alpha-2 code). A country stated by name stays in `text`; no code is derived from it.
@@ -16,8 +20,9 @@ them. Declines: input stating nothing is `Invalid("no_match")`; an `addressCount
 no ISO 3166-1 code is `Invalid("unknown_country")`.
 """
 
+import re
 import unicodedata
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from functools import cache
 
 from babel import Locale
@@ -36,6 +41,8 @@ _TELECOMMUTE = frozenset(
 # The keys of a normalized location (the module docstring).
 _VALUE_KEYS = frozenset({"text", "locality", "region", "country", "remote_flag"})
 _PARTS = ("locality", "region", "country")
+# A word of a part: a run of letters and digits (Unicode categories L and N, as `str.isalnum` reads them).
+_ALNUM = re.compile(r"[^\W_]+")
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
@@ -124,18 +131,49 @@ def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
         "region": _part(address.get("addressRegion")),
         "country": None,
     }
+    country_name = country_written
     if country_written is not None and _looks_like_a_code(country_written):
         if country_written.upper() not in iso_3166_alpha2():
             return Invalid("unknown_country")
-        parts["country"] = country_written.upper()
-    stated = [p for p in (parts["locality"], parts["region"], country_written) if p]
-    if stated:
-        # The joined parts are the location's text, so a `type:remote` clause in it reads as it does in a string.
-        text = ", ".join(stated)
+        parts["country"], country_name = country_written.upper(), None
+    name = _part(raw.get("name")) or _part(address.get("name"))
+    lines = [name, _part(address.get("streetAddress"))]
+    stated = [parts["locality"], parts["region"], country_name, _part(address.get("postalCode"))]
+    if text := _written(lines, stated):
+        # The written parts are the location's text, so a `type:remote` clause in it reads as it does in a string.
         return Ok(_value(text, parts, remote or _says_remote(text, ctx)))
-    if name := _part(raw.get("name")) or _part(address.get("name")):
-        return _text(name, ctx, remote=remote)
-    return Ok(_value(None, parts, remote)) if remote else Invalid("no_match")
+    return Ok(_value(None, parts, remote)) if remote or parts.get("country") else Invalid("no_match")
+
+
+def _written(lines: Sequence[str | None], parts: Sequence[str | None]) -> str | None:
+    """The place's text: its lines (a name, a street address), each comma-separated segment once, then each stated
+    part that no segment before it already writes, joined by commas; None when nothing is stated."""
+    segments: list[str] = []
+    written: list[tuple[str, ...]] = []
+    for segment in (s for line in filter(None, lines) for s in line.split(",")):
+        _add(segment, segments, written, lambda words: words in written)
+    for part in filter(None, parts):
+        _add(part, segments, written, lambda words: any(_holds(line, words) for line in written))
+    return ", ".join(segments) or None
+
+
+def _add(
+    given: str, segments: list[str], written: list[tuple[str, ...]], known: Callable[[tuple[str, ...]], bool]
+) -> None:
+    if (segment := _part(given)) and (words := _words(segment)) and not known(words):
+        segments.append(segment)
+        written.append(words)
+
+
+def _words(text: str) -> tuple[str, ...]:
+    """A part's words for telling whether the text already writes it: its runs of letters and digits (`str.isalnum`),
+    case-folded after NFKC (UAX #15), so case, punctuation and compatibility forms do not make a part new."""
+    return tuple(_ALNUM.findall(unicodedata.normalize("NFKC", text).casefold()))
+
+
+def _holds(words: tuple[str, ...], part: tuple[str, ...]) -> bool:
+    """Whether `part`'s words are a contiguous run of `words`."""
+    return any(words[i : i + len(part)] == part for i in range(len(words) - len(part) + 1))
 
 
 def _country_written(given: JsonValue) -> str | None:
