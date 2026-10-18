@@ -41,6 +41,7 @@ from crawlerai.llm.client import LLMClient
 from crawlerai.llm.roles.s_schema import MAX_SAMPLES, draft_schema
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData
+from crawlerai.resolve.types import Probability
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import MAX_URLS, OWN_TRANSACTION, Placement, insert_job, insert_tasks, job_pins
 from crawlerai.services.fetch_options import check_proxy_pool
@@ -48,6 +49,7 @@ from crawlerai.services.fetching import Fetching, PagePlan, check_targets, fetch
 from crawlerai.services.map import MapRequest, map_urls
 from crawlerai.services.scrape import MAX_TIMEOUT_S, Budget, RecordsUnavailable
 from crawlerai.services.scrape_steps import (
+    MIN_CONFIDENCE_DESCRIPTION,
     FetchOptions,
     SchemaPrompt,
     SchemaRequest,
@@ -79,6 +81,7 @@ class ExtractRequest(WebhookOptions):
     fetch: FetchOptions = FetchOptions()
     locale: str | None = None
     budget: Budget | None = None
+    min_confidence: Probability | None = Field(default=None, description=MIN_CONFIDENCE_DESCRIPTION)
 
     @field_validator("urls")
     @classmethod

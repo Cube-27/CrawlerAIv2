@@ -79,6 +79,18 @@ class Format(Enum):
     records = "records"
 
 
+class MinConfidence(RootModel[float]):
+    root: Annotated[
+        float,
+        Field(
+            description="Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            ge=0.0,
+            le=1.0,
+            title="Min Confidence",
+        ),
+    ]
+
+
 class PageKind(Enum):
     detail = "detail"
     listing = "listing"
@@ -887,6 +899,7 @@ class Evidence(Enum):
     agreed = "agreed"
     dom = "dom"
     network = "network"
+    state = "state"
     config_corroborated = "config_corroborated"
     config_uncorroborated = "config_uncorroborated"
     llm_grounded = "llm_grounded"
@@ -1598,6 +1611,13 @@ class ScrapeRequest(BaseModel):
     formats: Annotated[list[Format5], Field(min_length=1, title="Formats")]
     locale: Annotated[str | None, Field(title="Locale")] = None
     max_age: Annotated[int | None, Field(ge=0, title="Max Age")] = 0
+    min_confidence: Annotated[
+        MinConfidence | None,
+        Field(
+            description="Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            title="Min Confidence",
+        ),
+    ] = None
     page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
     schema_: Annotated[
         SchemaById | SchemaInline | SchemaPrompt | SchemaFields | None,
@@ -1702,6 +1722,13 @@ class BatchScrapeRequest(BaseModel):
     fit: FitOptions | None = None
     formats: Annotated[list[Format], Field(min_length=1, title="Formats")]
     locale: Annotated[str | None, Field(title="Locale")] = None
+    min_confidence: Annotated[
+        MinConfidence | None,
+        Field(
+            description="Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            title="Min Confidence",
+        ),
+    ] = None
     page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
     schema_: Annotated[
         SchemaById | SchemaInline | SchemaFields | None,
@@ -1755,6 +1782,13 @@ class CrawlRequest(BaseModel):
     ] = 500
     locale: Annotated[str | None, Field(title="Locale")] = None
     max_depth: Annotated[int | None, Field(ge=0, title="Max Depth")] = 3
+    min_confidence: Annotated[
+        MinConfidence | None,
+        Field(
+            description="Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            title="Min Confidence",
+        ),
+    ] = None
     page_kind_rules: Annotated[
         list[PageKindRule] | None, Field(title="Page Kind Rules")
     ] = None
@@ -1812,6 +1846,13 @@ class ExtractRequest(BaseModel):
     }
     limit: Annotated[int | None, Field(ge=1, le=1000, title="Limit")] = 1000
     locale: Annotated[str | None, Field(title="Locale")] = None
+    min_confidence: Annotated[
+        MinConfidence | None,
+        Field(
+            description="Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            title="Min Confidence",
+        ),
+    ] = None
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
     schema_: Annotated[
         SchemaById | SchemaInline | SchemaPrompt | SchemaFields,

@@ -10,6 +10,7 @@ text:
 - config
 - llm
 - xhr
+- js_state
 long_text:
 - adapter
 - api
@@ -20,6 +21,7 @@ long_text:
 - config
 - llm
 - xhr
+- js_state
 url:
 - adapter
 - api
@@ -30,6 +32,7 @@ url:
 - config
 - llm
 - xhr
+- js_state
 image_url:
 - adapter
 - api
@@ -40,3 +43,4 @@ image_url:
 - config
 - llm
 - xhr
+- js_state

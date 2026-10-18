@@ -21,6 +21,7 @@ Evidence = Literal[
     "agreed",
     "dom",
     "network",
+    "state",
     "config_corroborated",
     "config_uncorroborated",
     "llm_grounded",

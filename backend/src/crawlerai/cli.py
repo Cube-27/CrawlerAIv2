@@ -301,15 +301,21 @@ async def _polite_page(
 
 
 async def _eval_run(
-    statuses: frozenset[LabelStatus], llm_mode: str, out: Path | None, max_calls: int | None = None
+    statuses: frozenset[LabelStatus],
+    llm_mode: str,
+    out: Path | None,
+    max_calls: int | None = None,
+    min_confidence: float | None = None,
 ) -> None:
-    """Replay the dev split through the pipeline and score it; store the run when it scores checked pages only."""
+    """Replay the dev split through the pipeline and score it; store the run when it scores checked pages only and
+    asked no minimum confidence (a gated run measures only what the gate let through, so a fit on it would be of its
+    own selection)."""
     settings = Settings()
     data = load_engine_data(adapter_registry(settings.disabled_adapters))
     if data is None:
         raise EvalCliError("the engine's data files are missing: run `crawlerai data fetch`")
     database_url = settings.database_url.get_secret_value()
-    pipeline = PipelineEngine(data, await active_schemas(database_url))
+    pipeline = PipelineEngine(data.with_min_confidence(min_confidence), await active_schemas(database_url))
     git_sha = head_commit(_data_dir().parent.parent)
     db = create_async_engine(database_url)
     try:
@@ -323,7 +329,7 @@ async def _eval_run(
             # A stored run is what calibration fits on: drafts never become one (labels spec: two passes). It keeps
             # every engine row.
             run = None
-            if statuses == CHECKED:
+            if statuses == CHECKED and min_confidence is None:
                 metrics = all_rows.model_dump(mode="json")
                 run = await store.put_run(
                     EvalRunRow(split="dev", engine_version=pipeline.version, git_sha=git_sha, metrics=metrics)
@@ -524,6 +530,11 @@ def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentPa
     )
     run.add_argument("--llm-max-calls", type=_positive_int, help="with --llm live: the most provider calls to make")
     run.add_argument(
+        "--min-confidence",
+        type=_probability,
+        help="leave unpublished a field whose calibrated confidence is below this (0 to 1; the run is not stored)",
+    )
+    run.add_argument(
         "--out",
         type=Path,
         help=(
@@ -563,6 +574,13 @@ def _positive_int(value: str) -> int:
     number = int(value)
     if number < 1:
         raise argparse.ArgumentTypeError("must be at least 1")
+    return number
+
+
+def _probability(value: str) -> float:
+    number = float(value)
+    if not 0.0 <= number <= 1.0:
+        raise argparse.ArgumentTypeError("must be between 0 and 1")
     return number
 
 
@@ -782,7 +800,7 @@ def _run_eval_rekey(parser: argparse.ArgumentParser, args: argparse.Namespace) -
 def _run_eval_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     out = None if args.out is None else _under_cwd(parser, "--out", args.out)
     statuses: frozenset[LabelStatus] = CHECKED if args.labels == "checked" else frozenset(get_args(LabelStatus))
-    asyncio.run(_eval_run(statuses, args.llm, out, args.llm_max_calls))
+    asyncio.run(_eval_run(statuses, args.llm, out, args.llm_max_calls, args.min_confidence))
 
 
 def _run_eval_learn_sim(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:

@@ -11,6 +11,7 @@ const EVIDENCE_LABELS: Readonly<Record<Evidence, string>> = {
   agreed: "Sources agree",
   dom: "Page text",
   network: "Page network call",
+  state: "Page script state",
   config_corroborated: "Config, corroborated",
   config_uncorroborated: "Config, uncorroborated",
   llm_grounded: "LLM, grounded in the page",

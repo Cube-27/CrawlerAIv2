@@ -3,13 +3,13 @@ every field's outcome out. `extract_page` is the one function the worker and the
 
 A page that was not served (`blocked`, `shell`, `not_found`, `error`) yields its block class as the outcome and nothing
 else (INV-11). A served page is parsed once (INV-26); every collector reads that one parse, then resolution runs its
-stages in order: ownership and intent, preference, derivations, evidence and τ. A detail page's required fields still
-missing after that go to role C once, and its candidates are resolved with the others. A listing's rows are its stated
-rows (structured data's, `resolve.listing`, else the config's, else its captured calls') and the blocks of its repeated
-items, bound into one row per item by the item layer (`collect.items.bind`, listings spec); each row resolves its
-row-scoped fields, the page its page-scoped ones, and the next-page candidates are listed (§4.12). Role C is asked once
-for the row fields a listing's block rows lack and for its missing page fields (listings spec, "Role C
-rows"). Resolution never publishes part of a page: if it raises, the outcome is `error` and no field is set (§4.14).
+stages in order: ownership and intent, preference, derivations, evidence and confidence. A detail page's required fields
+still missing after that go to role C once, and its candidates are resolved with the others. A listing's rows are its
+stated rows (structured data's, `resolve.listing`, else the config's, else its captured calls') and the blocks of its
+repeated items, bound into one row per item by the item layer (`collect.items.bind`, listings spec); each row resolves
+its row-scoped fields, the page its page-scoped ones, and the next-page candidates are listed (§4.12). Role C is asked
+once for the row fields a listing's block rows lack and for its missing page fields (listings spec, "Role C rows").
+Resolution never publishes part of a page: if it raises, the outcome is `error` and no field is set (§4.14).
 
 With the site's active config (ARCHITECTURE §8.4, SPEC-08 §4.8) a page is extracted in `config` mode: the config's
 executor reads the same parse, its candidates enter resolution with the collectors' (in the bucket of the config
@@ -43,7 +43,7 @@ from crawlerai.core.engine_version import CALIBRATION_FILE
 from crawlerai.db.models import ExtractionMode, SourceKind
 from crawlerai.normalize.base import Context
 from crawlerai.resolve.derive import Derived, fill, is_page_url_field
-from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibration, required_fields
+from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibration
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
 from crawlerai.resolve.listing import listing_rows
 from crawlerai.resolve.ownership import OFFER, EntityGraph
@@ -61,7 +61,7 @@ from crawlerai.resolve.preference import (
 from crawlerai.resolve.records import is_complete, record_confidence
 from crawlerai.resolve.row_keys import keyed_rows
 from crawlerai.resolve.rows import RowField, resolve_rows
-from crawlerai.resolve.types import ExtractionResult, FieldSet, LLMCallRecord, Outcome
+from crawlerai.resolve.types import ExtractionResult, FieldSet, LLMCallRecord, Outcome, Probability
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, Scope
 from crawlerai.storage.capture_bundle import CaptureBundle
 
@@ -95,12 +95,14 @@ class PinnedData(BaseModel):
 @dataclass(frozen=True, slots=True)
 class EngineData:
     """What resolution reads besides the page: the schema.org vocabulary, the dev-fitted precedence orders and
-    calibration, and the active adapters."""
+    calibration, the active adapters, and the request's `min_confidence`: a calibrated bucket below it abstains
+    (None: every chosen value publishes with its confidence)."""
 
     vocabulary: Vocabulary
     orders: Orders
     calibration: Calibration | None
     adapters: Adapters | None = None
+    min_confidence: Probability | None = None
 
     @classmethod
     def load(cls, data_dir: Path, adapters: Adapters | None = None) -> "EngineData":
@@ -113,6 +115,10 @@ class EngineData:
             calibration=load_calibration(data_dir / CALIBRATION_FILE),
             adapters=adapters,
         )
+
+    def with_min_confidence(self, min_confidence: Probability | None) -> "EngineData":
+        """This data for a request that asks values of at least `min_confidence` (None: no minimum)."""
+        return replace(self, min_confidence=min_confidence)
 
     def pin(self) -> PinnedData:
         return PinnedData(orders=dict(self.orders), calibration=self.calibration)
@@ -338,7 +344,7 @@ class _Page:
         page_values: bool,
         detail: bool = False,
     ) -> FieldSet:
-        """Preference (§4.7, §4.8) for `target`, derivations, then evidence and τ (§4.9). `page_values`: whether
+        """Preference (§4.7, §4.8) for `target`, derivations, then evidence and confidence. `page_values`: whether
         page-level candidates are the target's (`EntityGraph.owned_by`); `detail`: whether `target` is a detail page's,
         with its variant fill and row-mapped fields (SPEC-13 §4.3 to §4.6)."""
         schema = self.schema
@@ -363,25 +369,30 @@ class _Page:
                 )
                 for name, spec in schema.fields.items()
             }
-        fields = assess_fields(schema, decisions, self.data.calibration, corroborated=self.config.corroborated)
+        fields = assess_fields(
+            schema,
+            decisions,
+            self.data.calibration,
+            corroborated=self.config.corroborated,
+            min_confidence=self.data.min_confidence,
+        )
         if detail and isinstance(target, Entity):
             fields |= self._rows(target, candidates)
         return fields
 
     def _rows(self, target: Entity, candidates: Sequence[Candidate]) -> FieldSet:
         """A detail target's row-mapped fields, resolved row by row (SPEC-13 §4.3 to §4.5)."""
-        required = required_fields(self.schema)
         return {
             name: resolve_rows(
                 RowField(
                     name=name,
                     spec=spec,
-                    required=name in required,
                     graph=self.graph,
                     target=target,
                     page=self.facts,
                     orders=self.data.orders,
                     calibration=self.data.calibration,
+                    min_confidence=self.data.min_confidence,
                     page_urls=self.page_urls,
                 ),
                 candidates,

@@ -19,6 +19,7 @@ from dataclasses import dataclass, replace
 from typing import Final
 from urllib.parse import urlsplit
 
+from pydantic import TypeAdapter
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -39,6 +40,7 @@ from crawlerai.recurring.state import record_fetch, standing_listing, standing_r
 from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.task import ActiveConfig
+from crawlerai.resolve.types import Probability
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import JobPins
 from crawlerai.services.fetching import (
@@ -91,6 +93,8 @@ RECORDS_UNAVAILABLE: Final = "records_unavailable"
 # A page a vendor's challenge kept out is fetched at most this many times (master plan 2026-10-18 §3.1).
 _VENDOR_TRIES: Final = 2
 
+# The request's `min_confidence`, as the job row stores it.
+_MIN_CONFIDENCE: Final = TypeAdapter(Probability | None)
 _JobRow = Row[dict[str, object], SchemaId | None, dict[str, object] | None]
 
 
@@ -119,7 +123,9 @@ async def load_job(
     if data is None:
         return Failed(RECORDS_UNAVAILABLE, transient=False)
     pins = JobPins.model_validate(job.pinned)
-    pinned = data.pinned(pins.engine_data)
+    pinned = data.pinned(pins.engine_data).with_min_confidence(
+        _MIN_CONFIDENCE.validate_python(job.request.get("min_confidence"))
+    )
     config_id = pins.configs.get(urlsplit(task.url).hostname or "")
     config = None if config_id is None else await config_by_id(conn, config_id, pinned.vocabulary)
     return job.request, Records(pins.schema_, pinned, config, margins)

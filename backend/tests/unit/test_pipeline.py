@@ -155,6 +155,23 @@ def test_a_product_page_publishes_its_structured_values() -> None:
     assert result.record_confidence is None
 
 
+def test_a_calibrated_page_publishes_with_its_confidence_unless_the_request_sets_a_minimum() -> None:
+    buckets = {f"{t}|structured": Bucket(n=MIN_CALIBRATED_N, precision=0.6) for t in ("text", "money", "identifier")}
+    calibrated = EngineData(VOCABULARY, DATA.orders, Calibration(git_sha="a" * 40, buckets=buckets))
+    bundle = _bundle(_html(_product()))
+
+    open_ = _extract(bundle, data=calibrated)
+    gated = _extract(bundle, data=calibrated.with_min_confidence(0.9))
+
+    assert open_.outcome == "extracted"
+    assert open_.entity is not None
+    assert {(o.status, o.confidence, o.calibrated) for o in open_.entity.values()} == {("published", 0.6, True)}
+    assert open_.record_confidence == 0.6
+    assert gated.outcome == "partial"
+    assert gated.entity is not None
+    assert {(o.status, o.reason) for o in gated.entity.values()} == {("abstained", "below_min_confidence")}
+
+
 def test_a_page_missing_a_required_field_is_partial() -> None:
     result = _extract(_bundle(_html(_product(price=None))))
     assert result.outcome == "partial"

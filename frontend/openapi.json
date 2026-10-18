@@ -430,6 +430,20 @@
             ],
             "title": "Locale"
           },
+          "min_confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            "title": "Min Confidence"
+          },
           "page_kind": {
             "anyOf": [
               {
@@ -1332,6 +1346,20 @@
             "title": "Max Depth",
             "type": "integer"
           },
+          "min_confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            "title": "Min Confidence"
+          },
           "page_kind_rules": {
             "items": {
               "$ref": "#/components/schemas/PageKindRule"
@@ -1943,6 +1971,20 @@
               }
             ],
             "title": "Locale"
+          },
+          "min_confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            "title": "Min Confidence"
           },
           "page_kind": {
             "enum": [
@@ -5465,6 +5507,7 @@
                   "agreed",
                   "dom",
                   "network",
+                  "state",
                   "config_corroborated",
                   "config_uncorroborated",
                   "llm_grounded",
@@ -6444,6 +6487,20 @@
             "title": "Max Age",
             "type": "integer"
           },
+          "min_confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.",
+            "title": "Min Confidence"
+          },
           "page_kind": {
             "anyOf": [
               {
@@ -7146,6 +7203,7 @@
                   "agreed",
                   "dom",
                   "network",
+                  "state",
                   "config_corroborated",
                   "config_uncorroborated",
                   "llm_grounded",

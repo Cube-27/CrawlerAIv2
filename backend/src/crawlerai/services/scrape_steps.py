@@ -167,6 +167,14 @@ class Input(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+# The description of the `min_confidence` member of the requests that extract `records` (resolution spec, "Evidence and
+# confidence"): a field whose calibrated bucket is below it is left unpublished, else every value publishes.
+MIN_CONFIDENCE_DESCRIPTION: Final = (
+    "Leave unpublished (abstained) a records field whose calibrated confidence is below this. "
+    "Unset: every value publishes with its confidence."
+)
+
+
 def absolute_http_url(url: str) -> str:
     """`url`, for a request model's validator: `ValueError` unless it is an absolute http(s) URL."""
     if canonical_url(url, None) is None:

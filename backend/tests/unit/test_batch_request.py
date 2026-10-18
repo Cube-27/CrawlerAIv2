@@ -26,6 +26,13 @@ def test_a_stored_request_reads_back_as_itself() -> None:
     assert BatchScrapeRequest.model_validate(request.model_dump(mode="json", by_alias=True)) == request
 
 
+@pytest.mark.parametrize("min_confidence", [-0.1, 1.1])
+def test_refuses_a_minimum_confidence_outside_0_to_1(min_confidence: float) -> None:
+    [(location, _)] = _errors({"urls": [URL], "formats": ["markdown"], "min_confidence": min_confidence})
+
+    assert location == ("min_confidence",)
+
+
 @pytest.mark.parametrize("count", [0, MAX_URLS + 1])
 def test_takes_1_to_1000_urls(count: int) -> None:
     [(location, _)] = _errors({"urls": [URL] * count, "formats": ["markdown"]})
