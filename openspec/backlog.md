@@ -38,7 +38,7 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   `16384 // (row fields x 96)` items per call (56 for three row fields; one page shows 146): measure whether a second
   call over the rest is worth it. A hosted career page whose API host's robots.txt disallows the adapter still gives
   0 rows (`no_rows: none_listed`). Listing role C requests changed (D-1478), so recorded dev replays of listings need
-  re-recording. The playground does not show the scrape's `page` member (D-1476).
+  re-recording.
 - Draft dev baseline (#264, #267): money's locale set reads every alternate link's `hreflang`, so `$` on a page tagged
   with one territory is ambiguous when its alternates name others; reading only the alternates that link to the page
   itself (D-1482) is right but publishes prices on role C rows that carry no URL, lowering listing money precision:
@@ -46,10 +46,9 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   the owner admits reading the currency the page shows (D-1481). A separately stated apply link needs a ranked
   `schema_org` path for `apply_url` (D-1485). Generic listing rows whose URL carries a query the labels drop, or a
   trailing slash, still match no label row.
-- Request context and actions (#262): a scrape's `browser_actions` (listing paging) takes no `fetch.actions` yet (D-1439):
-  let the paging driver run the caller's steps first (a cookie banner, a filter). An asynchronous job's secret values
-  stay in `job.request` after it ends (D-1432): scrub them when the job ends, once recurring crawls show whether a re-run
-  reads them. Steps are per request; per-URL steps in a batch are a later member if callers ask.
+- Request context and actions (#262, #268): steps are per request; per-URL steps in a batch are a later member if callers
+  ask. A schedule keeps no secret value (D-1510), so a recurring crawl of a page behind the caller's own cookies or
+  headers has no home: add it with a deployment key setting that encrypts the values on the schedule if callers need it.
 - Crawl strategies (#261): the best-first weights (0.5 match, 0.3 inherited, 0.2 prior, 0.8 per depth) and the candidate
   factor 5 are untuned; they were checked live on one public documentation site only (a query-matching page before its
   siblings, an eventloop page found one level down). Measure on dev once a crawl evaluation exists. A best-first crawl's
@@ -61,9 +60,6 @@ Open items left by merged PRs, one line each (source PR in brackets). Measure be
   worker's token cannot push workflow files. Add it to `ci.yml`; until then only the digest test runs in CI. The SDKs
   are not published to PyPI or npm and carry the repository's AGPL-3.0 license, which the owner may want to relax for
   libraries. Add an `AsyncCrawlerAI` webhook receiver example if callers ask.
-- Schedules and webhooks (#259): delivered `webhook_event` and `webhook_delivery` rows are never expired (add them to
-  retention); a job's deliveries have no read endpoint (status, attempts, last error) for a caller debugging a receiver;
-  the UI cannot edit a schedule (`PATCH /v1/schedules/{id}` exists) or create one from a stored run's request.
 - ATS adapters (#248): the SmartRecruiters API host's robots.txt disallows every agent but one, so by default its adapter
   is refused and the page rungs serve (D-1306); it was verified on recorded answers. A branded list page with no rows at
   HTTP is rendered once (owner #54) before the own-host referral serves its Workday site; referring first would save the
