@@ -74,15 +74,17 @@ It SHALL detect collection paths only, also under a locale subfolder (`/{languag
 product pages take the page path, D-1118), `POST` the tokenless Storefront GraphQL endpoint on the page's host with the
 handle as a variable, page through the products' cursor up to the adapter row cap, ask a locale-prefixed page in its
 language (`@inContext(language:)`), and class answers `not_platform` (no `X-Shopify-API-Version`), `not_served` (no
-item, GraphQL errors, or another language than the page's) or `ok`, as in `adapters/shopify.py`. A fetched `ok` page
+item, GraphQL errors, another language than the page's, or a shop presenting other than exactly one currency, whose
+page the page path reads) or `ok`, as in `adapters/shopify.py`. A fetched `ok` page
 whose URL has a query is served by the adapter that detects it without the query when the page's canonical link is
 that URL (RFC 6596, D-1120). Refs: Appendix A #46, #47, D-1077, D-1078, D-1114, D-1118, D-1120, D-1385, D-1386.
-(Previously: the first 250 products, and no locale-prefixed URL.)
+(Previously: the first 250 products, and no locale-prefixed URL; a shop of several currencies was served without
+prices.)
 
 ### Requirement: Shopify values
 Collection items SHALL read as schema.org products (variants under `hasVariant`, no default variant; see
 [variants](../variants/spec.md)), with prices only when the shop presents exactly one currency, never inferred from
-the URL (C7). Refs: D-1080, D-1081, D-1085, D-1114, D-1118.
+the URL (C7); a stored answer of a shop of several currencies reads without prices. Refs: D-1080, D-1081, D-1085, D-1114, D-1118.
 
 ### Requirement: Workday adapter
 It SHALL detect career sites on `{tenant}.{dc}.myworkdayjobs.com/[{locale}/]{site}` and

@@ -18,7 +18,9 @@ class _Page:
 
 
 def _tab(responses: list[Any]) -> Any:
-    rendered = SimpleNamespace(page=_Page(), calls=SimpleNamespace(responses=responses, actions=0))
+    rendered = SimpleNamespace(
+        page=_Page(), calls=SimpleNamespace(responses=responses, actions=0, finished=lambda _response: True)
+    )
     return browser_tab._PatchrightTab(rendered, url=_Page.url, engine_version="test", started=0.0, steps=())  # type: ignore[arg-type]
 
 

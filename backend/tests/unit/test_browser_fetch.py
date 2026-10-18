@@ -93,6 +93,13 @@ setInterval(() => fetch('/api/n/0'), 100);
 _LATE_CALL = b"""<html><body><p>Static page whose data arrives late</p><script>
 fetch('/api/late').then(r => r.json());
 </script></body></html>"""
+# A data call whose body never ends (its server sends the headers and part of the body, then holds the rest past the
+# fetch), beside one that answers in full.
+_UNENDING_CALL = (
+    b'<html><body><nav><a href="/">Home</a></nav><p>'
+    + b"A page whose content is static while one of its data calls never ends. " * 4
+    + b"</p><script>fetch('/api/unending'); fetch('/api/items');</script></body></html>"
+)
 # A page that starts a dedicated worker (HTML Standard §10.2.6), which makes a request of its own.
 _WITH_WORKER = b"""<html><body><p>Worker page</p><script>new Worker('/worker.js');</script></body></html>"""
 
@@ -123,6 +130,7 @@ class Reply:
     body: bytes = b""
     headers: tuple[tuple[str, str], ...] = ()
     delay_s: float = 0.0  # before the status line
+    hold_s: float = 0.0  # after the first half of the body, before the rest
 
 
 @dataclass
@@ -163,7 +171,12 @@ def server() -> Iterator[Server]:
                 self.send_header(name, value)
             self.send_header("Content-Length", str(len(reply.body)))
             self.end_headers()
-            self.wfile.write(reply.body)
+            half = len(reply.body) // 2
+            self.wfile.write(reply.body[:half])
+            if reply.hold_s:
+                self.wfile.flush()
+                time.sleep(reply.hold_s)
+            self.wfile.write(reply.body[half:])
 
         def do_POST(self) -> None:
             self.rfile.read(int(self.headers.get("Content-Length", "0")))
@@ -200,6 +213,8 @@ def server() -> Iterator[Server]:
             "/still": Reply(body=_STILL),
             "/late-call": Reply(body=_LATE_CALL),
             "/api/late": Reply(content_type=_JSON, body=b'{"late": true}', delay_s=3.5),
+            "/unending-call": Reply(body=_UNENDING_CALL),
+            "/api/unending": Reply(content_type=_JSON, body=b'{"never": "complete"}', hold_s=30),
             "/with-worker": Reply(body=_WITH_WORKER),
             "/worker.js": Reply(content_type="text/javascript", body=b"fetch('/api/n/7');"),
             "/refusal": Reply(403, body=_REFUSAL_PAGE),
@@ -306,6 +321,13 @@ def test_js_only_page_is_rendered_and_its_json_captured(browser: Browser, server
     ]
     assert result.bundle.network == (_ITEMS,)
     assert decode(encode(result.bundle)) == result.bundle
+
+
+def test_a_data_call_whose_body_never_ends_is_left_out_and_the_page_kept(browser: Browser, server: Server) -> None:
+    result = browser.fetch(server.url("/unending-call"))
+
+    assert (result.block_class, result.attempts[-1].error) == ("ok", None)
+    assert [e.url for e in result.bundle.manifest.network_bodies] == [server.url("/api/items")]
 
 
 @pytest.fixture(scope="module")

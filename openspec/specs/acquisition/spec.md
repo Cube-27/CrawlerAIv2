@@ -139,8 +139,10 @@ never containing the URL; it stores no body but keeps the last status and header
 ### Requirement: Bounded bodies (INV-30)
 The system SHALL bound untrusted bodies by `max_body_bytes` (compressed) and `max_decompressed_bytes` while streaming,
 on every rung, before anything is kept; an oversize body MUST be `error`/`body_cap` with no capture body. A browser
-capture keeps at most 10 MB of network bodies in all (`acquire/browser.py`).
-Enforced by: oversize and over-decompressing body tests and the per-page network cap test; active.
+capture keeps at most 10 MB of network bodies in all (`acquire/browser.py`), each read only once its request is done:
+a body that never ends (a stream, a beacon held open) is left out, never waited for past the fetch's budget.
+Enforced by: oversize and over-decompressing body tests, the per-page network cap test and the unending-body test;
+active.
 Refs: §7.1, §18, Appendix A #59, D-0320, D-1311.
 #### Scenario: Compression bomb
 - **WHEN** a gzip body decompresses past `max_decompressed_bytes`
@@ -148,6 +150,9 @@ Refs: §7.1, §18, Appendix A #59, D-0320, D-1311.
 #### Scenario: Network bodies of one page
 - **WHEN** a page loads six JSON bodies of 1.9 MB each
 - **THEN** the capture keeps the first five
+#### Scenario: A data call whose body never ends
+- **WHEN** a page's data call sends its headers and part of its body, then holds the rest past the fetch
+- **THEN** the page is captured `ok` with its other JSON bodies, without that one
 
 ### Requirement: Public targets only (INV-16)
 Every outbound connection target SHALL be a public IP: the guard in `acquire/ssrf.py` resolves once, rejects

@@ -344,6 +344,10 @@ class DataCalls:
     responses: list[tuple[Response, int]] = field(default_factory=list)
     actions: int = 0
     in_flight: set[Request] = field(default_factory=set)  # the fetch and XMLHttpRequest calls not answered yet
+    # The data requests whose body arrived in full or failed (`requestfinished`, `requestfailed`). A body is read only
+    # once its request is done: reading one still arriving waits for its end, which a body that never ends (a stream,
+    # a keepalive beacon held open) never reaches, and the read would outlast the fetch's budget.
+    done: set[Request] = field(default_factory=set)
 
     def on_request(self, request: Request) -> None:
         if request.resource_type in _CALLS:
@@ -351,6 +355,12 @@ class DataCalls:
 
     def on_done(self, request: Request) -> None:
         self.in_flight.discard(request)
+        if request.resource_type in DATA_REQUESTS:
+            self.done.add(request)
+
+    def finished(self, response: Response) -> bool:
+        """Whether `response`'s body can be read without waiting: its request is done."""
+        return response.request in self.done
 
     def on_response(self, response: Response, main_frame: Frame) -> None:
         request = response.request
@@ -496,8 +506,8 @@ async def read_state(
 ) -> tuple[Exchange, Content]:
     """The document the page shows now, as an exchange and its content: the first document, or where a navigation
     ended (one it started itself, or a browser action's), under `url` when given (the response's URL otherwise), with
-    the JSON bodies of the data responses in the `calls` slice (all of them by default). Raises `Failed` for a body
-    past the policy's caps, or a response the browser no longer holds."""
+    the JSON bodies of the data responses in the `calls` slice (all of them by default) whose requests are done.
+    Raises `Failed` for a body past the policy's caps, or a response the browser no longer holds."""
     policy = rendered.policy
     response = rendered.frame.latest or rendered.response
     try:
@@ -518,7 +528,7 @@ async def read_state(
     body, raw_body, network = await asyncio.gather(
         _rendered(rendered.page, exchange),
         _raw_body(response),
-        json_bodies(rendered.calls.responses[slice(*calls)]),
+        json_bodies([entry for entry in rendered.calls.responses[slice(*calls)] if rendered.calls.finished(entry[0])]),
     )
     if max(len(body), len(raw_body or b"")) > policy.max_decompressed_bytes:
         raise Failed("body_cap", exchange)
