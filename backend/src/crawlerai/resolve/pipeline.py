@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.currencies import with_stated_currencies
-from crawlerai.collect.item_links import row_links
+from crawlerai.collect.item_links import item_url_fields, row_links
 from crawlerai.collect.run import Adapters, Collected, collect_page
 from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canonical_urls
 from crawlerai.content.context import page_context
@@ -474,6 +474,10 @@ class _Listing:
         if reply.failure is not None:
             fields = _unanswered(fields, asked, reply.failure)
         diagnostics = (*self.diagnostics, *reply.diagnostics)
+        if not network:
+            rows, unplaced = _placed(page.schema, rows)
+            if unplaced:
+                diagnostics = (*diagnostics, f"role C: rows without their item URL left out: {unplaced}")
         return replace(
             self,
             page=page,
@@ -527,6 +531,20 @@ async def _extract_listing(source: _Source, role_c: RoleC | None, mode: Extracti
             diagnostics = (*listing.diagnostics, *reply.diagnostics)
             return _result("error", mode, candidates=candidates, llm_calls=reply.llm_calls, diagnostics=diagnostics)
     return listing.result(mode)
+
+
+def _placed(schema: SchemaDef, rows: tuple[FieldSet, ...]) -> tuple[tuple[FieldSet, ...], int]:
+    """Role C's rows that publish every required item URL field (`item_url_fields`), and how many were left out. A row
+    whose item block gives no URL is not told apart from the page's other text: its record would be keyed by its
+    position, not by the item it names (D-1491)."""
+    required = [name for name in item_url_fields(schema) if schema.fields[name].required]
+    kept = tuple(row for row in rows if all(_published(row, name) for name in required))
+    return kept, len(rows) - len(kept)
+
+
+def _published(fields: FieldSet, name: str) -> bool:
+    outcome = fields.get(name)
+    return outcome is not None and outcome.status == "published"
 
 
 def _least_confident(confidences: Iterable[float | None]) -> float | None:

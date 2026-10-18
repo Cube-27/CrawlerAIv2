@@ -21,6 +21,7 @@ from crawlerai.adapters.registry import Registry
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import EvalRunId, PageKind, SchemaId, SourceKind
@@ -703,19 +704,29 @@ def test_a_listing_without_structured_rows_takes_its_rows_from_role_c() -> None:
 
     (request,) = role_c.listing_requests
     assert (request.row_fields, request.page_missing) == (("title", "url", "price"), ("page_title", "next_page_url"))
-    assert _row_values(result) == [{"title": "Widget 1", "url": "https://shop.example.test/p/1"}, {"title": "Widget 2"}]
-    assert [(row["title"].evidence, row["title"].locator) for row in result.rows] == [
-        ("llm_grounded", "text:0-8"),
-        ("llm_grounded", "text:40-48"),
-    ]
-    # A row owns only its own values, and the page field is the page's, not a row's.
-    assert [(row["url"].status, row["url"].reason) for row in result.rows][1] == ("missing", "not_owned")
+    # D-1491: the second row has no item URL, which the schema requires, so it is left out.
+    assert _row_values(result) == [{"title": "Widget 1", "url": "https://shop.example.test/p/1"}]
+    assert [(row["title"].evidence, row["title"].locator) for row in result.rows] == [("llm_grounded", "text:0-8")]
+    # The page field is the page's, not a row's.
     assert result.entity is not None
     assert (result.entity["page_title"].value, result.entity["next_page_url"].status) == ("All widgets", "missing")
-    assert (result.llm_calls, result.diagnostics[-1]) == ((LISTING_CALL,), "role C: rows[1].url ungrounded")
+    assert result.llm_calls == (LISTING_CALL,)
+    assert result.diagnostics[-2:] == (
+        "role C: rows[1].url ungrounded",
+        "role C: rows without their item URL left out: 1",
+    )
     assert result.candidates[-4:] == ROWS_REPLY.candidates
-    # The second row lacks its required url, so the page is partial (§10 "Incomplete pages").
-    assert result.outcome == "partial"
+    assert result.outcome == "extracted"
+
+
+def test_a_role_c_row_without_its_item_url_stays_when_the_schema_does_not_require_one() -> None:
+    url = LISTING.fields["url"].model_copy(update={"required": False})
+    schema = LISTING.model_copy(update={"fields": {**LISTING.fields, "url": url}})
+
+    result = _listing(_html(body="<p>Widget 1</p>"), schema, role_c=FakeRoleC(listing_reply=ROWS_REPLY))
+
+    assert _row_values(result) == [{"title": "Widget 1", "url": "https://shop.example.test/p/1"}, {"title": "Widget 2"}]
+    assert [(row["url"].status, row["url"].reason) for row in result.rows][1] == ("missing", "not_owned")
 
 
 def test_a_page_field_the_page_states_is_not_asked_again() -> None:
@@ -802,9 +813,12 @@ def _card(n: int, *links: str) -> str:
 def test_a_role_c_row_takes_the_item_url_of_the_one_repeated_item_block_holding_its_title() -> None:
     # ARCHITECTURE §8.6, D-1024 (a): the block's own link, as a `dom` candidate; role C's ungrounded url stays out.
     cards = "".join(_card(n, f"/p/{n}", f"/p/{n}#reviews") for n in (1, 2, 3))
-    reply = replace(ROWS_REPLY, candidates=ROWS_REPLY.candidates[:1] + ROWS_REPLY.candidates[2:])
+    html = _html(body=f"<ul>{cards}</ul>")
+    text = ParsedPage(html).cleaned_text.text
+    titles = [_llm("title", f"llm:rows[{n - 1}]", f"Widget {n}", text.index(f"Widget {n}")) for n in (1, 2)]
+    reply = replace(ROWS_REPLY, candidates=(*titles, ROWS_REPLY.candidates[-1]))
 
-    result = _listing(_html(body=f"<ul>{cards}</ul>"), role_c=FakeRoleC(listing_reply=reply), data=COMMITTED)
+    result = _listing(html, role_c=FakeRoleC(listing_reply=reply), data=COMMITTED)
 
     assert _row_values(result) == [
         {"title": "Widget 1", "url": "https://shop.example.test/p/1"},
@@ -861,7 +875,7 @@ def test_rows_of_a_call_that_leave_a_record_incomplete_go_to_role_c_whose_rows_r
     result = _extract(_network_listing(*NETWORK_ITEMS), LISTING, role_c=role_c, data=COMMITTED)
 
     assert [r.row_fields for r in role_c.listing_requests] == [("title", "url", "price")]
-    assert _row_values(result) == [{"title": "Widget 1", "url": "https://shop.example.test/p/1"}, {"title": "Widget 2"}]
+    assert _row_values(result) == [{"title": "Widget 1", "url": "https://shop.example.test/p/1"}]
 
 
 def test_rows_of_a_call_stand_when_role_c_reads_no_rows() -> None:
