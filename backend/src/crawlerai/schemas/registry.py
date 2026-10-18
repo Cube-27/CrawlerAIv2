@@ -117,11 +117,18 @@ async def retire(conn: AsyncConnection, schema_id: SchemaId) -> SchemaDef:
 
 
 async def store_labels(
-    conn: AsyncConnection, schema_id: SchemaId, labels: FieldLabels, *, drafted: bool = False
+    conn: AsyncConnection, schema: SchemaDef, labels: FieldLabels, *, drafted: bool = False
 ) -> SchemaDef | None:
-    """Store the schema's label synonyms (`SchemaDef.labels`) and return the schema; with `drafted`, only while it has
-    none, so of two drafts the first stays: None when another draft was stored first (or no schema has the id)."""
-    query = update(SchemaRow).where(SchemaRow.id == schema_id)
+    """Store the label synonyms (`SchemaDef.labels`) of `schema`'s document and return the stored schema: only while
+    the row still holds that document (labels of other fields are no labels of these), and with `drafted` only while
+    it has none, so of two drafts the first stays. None when nothing was stored."""
+    document = schema.model_dump(mode="json", include={"fields", "required_groups"}, exclude_none=True)
+    query = update(SchemaRow).where(
+        SchemaRow.id == schema.id,
+        SchemaRow.page_kind == schema.page_kind,
+        SchemaRow.fields == document["fields"],
+        SchemaRow.required_groups == document["required_groups"],
+    )
     if drafted:
         query = query.where(SchemaRow.labels.is_(None))
     row = (await conn.execute(query.values(labels=labels).returning(*_COLUMNS))).one_or_none()

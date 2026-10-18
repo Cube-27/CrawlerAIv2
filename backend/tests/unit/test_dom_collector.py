@@ -395,6 +395,7 @@ def test_a_checked_identifier_is_read_from_an_unlabelled_pair_but_not_from_other
     }
     assert _values(f"<main>{related}</main>", MONEY_SCHEMA) == {}
     assert _values('<main><a href="/p/2">4006381333931</a></main>', MONEY_SCHEMA) == {}
+    assert _values('<main><dl><dt>EAN</dt><dd><a href="/p/2">4006381333931</a></dd></dl></main>', MONEY_SCHEMA) == {}
 
 
 def test_an_identifier_two_pairs_give_different_values_is_read_from_neither() -> None:

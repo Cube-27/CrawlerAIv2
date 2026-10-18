@@ -128,6 +128,9 @@ class DomCollector:
         return CollectResult(entities=(), candidates=tuple(candidates), diagnostics=tuple(diagnostics))
 
 
+# A hyperlink (HTML Standard §4.6.1: an `a` element with an `href` attribute).
+A_HREF = "a[href]"
+
 Found = tuple[str, str, str]  # a field, the raw value, the XPath of the element it came from
 Pair = tuple[str, LexborNode, str, str]  # a label's text, the element holding its value, its text and the kind
 
@@ -149,7 +152,11 @@ class _Content:
             return None
         links = _Links.of(region, ctx)
         apart = _apart_ids(region) | _inside(_other_items(region, links))
-        return cls(region, apart, _inside(a for a in region.css("a[href]") if links.of_block(a)))
+        return cls(region, apart, _inside(a for a in region.css(A_HREF) if links.of_block(a)))
+
+    def links_out(self, element: LexborNode) -> bool:
+        """Whether the element is or holds content of a hyperlink to another document."""
+        return element.mem_id in self.linked or any(a.mem_id in self.linked for a in element.css(A_HREF))
 
     def pairs(self, page: ParsedPage) -> list[Pair]:
         """The region's label-value pairs whose value is shown and is not set apart."""
@@ -167,10 +174,9 @@ def _pairs_found(
     # order) is its place.
     found: dict[tuple[str, str], LexborNode] = {}
     kinds: dict[tuple[str, str], set[str]] = {}
-    linked = content.linked if content is not None else frozenset()
     for label, value, raw, kind in pairs:
         for name in labels.get(words(label), ()):
-            if schema.fields[name].type is FieldType.IDENTIFIER and value.mem_id in linked:
+            if schema.fields[name].type is FieldType.IDENTIFIER and content is not None and content.links_out(value):
                 continue
             found[(name, raw)] = value
             kinds.setdefault((name, kind), set()).add(raw)
@@ -319,9 +325,10 @@ def _one_value(texts: Sequence[tuple[LexborNode, str]], spec: FieldSpec, ctx: Co
 def _identifier_texts(
     shorts: Sequence[tuple[LexborNode, str]], unlabelled: Sequence[Pair], content: _Content
 ) -> list[tuple[LexborNode, str]]:
-    """The short texts and the short values of pairs no field's label names, outside hyperlinks to other documents."""
+    """The short texts and the short values of pairs no field's label names, neither in nor holding hyperlinks to
+    other documents."""
     values = ((value, raw) for _, value, raw, _ in unlabelled if len(raw) <= _SPOT_LENGTH)
-    return [(element, text) for element, text in (*shorts, *values) if element.mem_id not in content.linked]
+    return [(element, text) for element, text in (*shorts, *values) if not content.links_out(element)]
 
 
 def _short_texts(region: LexborNode, excluded: frozenset[int]) -> list[tuple[LexborNode, str]]:
@@ -442,12 +449,12 @@ class _Links:
     def of(cls, region: LexborNode, ctx: Context) -> "_Links":
         here = canonical_url(ctx.page_url, None) if ctx.page_url is not None else None
         base = ctx.base_url or ctx.page_url
-        found = {a.mem_id: canonical_url(a.attributes.get("href") or "", base) for a in region.css("a[href]")}
+        found = {a.mem_id: canonical_url(a.attributes.get("href") or "", base) for a in region.css(A_HREF)}
         return cls({key: t for key, t in found.items() if t is not None and t != here and not is_image_url(t)})
 
     def of_block(self, block: LexborNode) -> set[str]:
         """The other documents the block's hyperlinks lead to, the block's own included when it is one."""
-        return {self.targets[a.mem_id] for a in (block, *block.css("a[href]")) if a.mem_id in self.targets}
+        return {self.targets[a.mem_id] for a in (block, *block.css(A_HREF)) if a.mem_id in self.targets}
 
 
 def is_image_url(url: str) -> bool:

@@ -74,8 +74,13 @@ def _draft_reply(page_kind: str = "detail") -> ProviderReply:
     return ProviderReply(model="fake-strong", text=json.dumps(to_wire(document)), tokens_in=900, tokens_out=80)
 
 
-# A role S reply of label synonyms (`s_labels`): none for any field.
-LABELS_REPLY = ProviderReply(model="fake-strong", text=json.dumps({"fields": []}), tokens_in=90, tokens_out=8)
+# A role S reply of label synonyms (`s_labels`): none for either field.
+LABELS_REPLY = ProviderReply(
+    model="fake-strong",
+    text=json.dumps({"fields": [{"name": "title", "labels": []}, {"name": "price", "labels": []}]}),
+    tokens_in=90,
+    tokens_out=8,
+)
 
 
 def _page(name: str, *, offers: bool = True) -> bytes:

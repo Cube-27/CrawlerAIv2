@@ -68,9 +68,9 @@ async def with_labels(engine: AsyncEngine, client: LLMClient, schema: SchemaDef)
         log.info("label synonyms of schema %s not drafted: %s", schema.name, type(error).__name__)
         return schema
     async with engine.begin() as conn:
-        stored = await registry.store_labels(conn, schema.id, _labels(response.data, schema), drafted=True)
-        # Another request drafted them meanwhile: its labels are the schema's.
-        return stored if stored is not None else await registry.get_by_id(conn, schema.id)
+        stored = await registry.store_labels(conn, schema, _labels(response.data, schema), drafted=True)
+    # Another request drafted them meanwhile, or the schema was edited: `schema` stays as the caller validated it.
+    return schema if stored is None else schema.model_copy(update={"labels": stored.labels})
 
 
 def _labelled_fields(schema: SchemaDef) -> dict[str, FieldSpec]:
@@ -100,10 +100,13 @@ class _Reply(BaseModel):
 
 
 def _invalid(data: dict[str, JsonValue], names: frozenset[str]) -> str | None:
-    """The client's reply check: a field the request did not name, or one named twice."""
+    """The client's reply check: a field the request did not name, one it named and the reply lacks, or one named
+    twice."""
     given = [entry.name for entry in _Reply.model_validate(data).fields]
     if unknown := sorted(set(given) - names):
         return f"fields not in the schema: {', '.join(unknown)}"
+    if missing := sorted(names - set(given)):
+        return f"fields missing: {', '.join(missing)}"
     if len(given) != len(set(given)):
         return "a field is given more than once"
     return None

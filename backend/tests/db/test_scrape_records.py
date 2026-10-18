@@ -142,7 +142,7 @@ async def kettle_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
     async with engine.begin() as conn:
         created = await registry.create(conn, document, "user")
         # Its label synonyms are drafted (none), so role C's scripted replies answer the only model calls.
-        labelled = await registry.store_labels(conn, created.id, {})
+        labelled = await registry.store_labels(conn, created, {})
     assert labelled is not None
     return labelled
 

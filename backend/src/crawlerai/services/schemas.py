@@ -20,7 +20,7 @@ from crawlerai.core.errors import Refusal
 from crawlerai.core.validation import field_error
 from crawlerai.db.models import SchemaId, SchemaStatus
 from crawlerai.schemas import registry
-from crawlerai.schemas.registry import SchemaExists, SchemaNotFound
+from crawlerai.schemas.registry import SchemaExists
 from crawlerai.schemas.types import (
     FieldLabels,
     FieldSpec,
@@ -143,9 +143,9 @@ async def set_labels(conn: AsyncConnection, schema_id: SchemaId, labels: FieldLa
         raise SchemaConflict(f"schema {current.name} is retired")
     if unknown := sorted(n for n in labels if n not in current.fields or not labelled(current.fields[n])):
         raise InvalidSchema([(f"labels.{name}", "no labelled field of the schema has this name") for name in unknown])
-    stored = await registry.store_labels(conn, schema_id, labels)
+    stored = await registry.store_labels(conn, current, labels)
     if stored is None:
-        raise SchemaNotFound(f"no schema with id {schema_id}")
+        raise SchemaConflict(f"schema {current.name} changed meanwhile")
     return stored
 
 
