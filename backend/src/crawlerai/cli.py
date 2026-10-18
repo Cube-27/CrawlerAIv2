@@ -67,7 +67,7 @@ from crawlerai.services.records import MAX_PAGE
 from crawlerai.services.runtime import fetching_from_settings
 from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
 from crawlerai.services.scrape_paging import learning_render
-from crawlerai.services.scrape_steps import content_check, load_drift_margins, load_engine_data, site_row
+from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data, render_need, site_row
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
 from crawlerai.worker.browser import SharedBrowser
@@ -289,9 +289,7 @@ async def _polite_page(
     async with engine.begin() as conn:
         site = await site_row(conn, host, schema.page_kind)
     policy = FetchPolicy(page_kind=schema.page_kind, proxy_pool=site.proxy_pool)
-    page = PagePlan(
-        site_rungs(fetching, host, site), site, policy, [], needs_render=content_check(schema, data, None, None)
-    )
+    page = PagePlan(site_rungs(fetching, host, site), site, policy, [], needs_render=render_need(schema, data, None))
     try:
         return await fetch_now(engine, fetching, url, page)
     except TargetRejected:

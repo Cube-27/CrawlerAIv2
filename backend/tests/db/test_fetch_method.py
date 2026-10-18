@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.rungs import Rungs, acquire, remember_fetch_method, with_attempts
+from crawlerai.acquire.rungs import RenderCheck, Rungs, acquire, remember_fetch_method, with_attempts
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.db.models import Capture, FetchMethod, PageKind, Project, Site, SiteFetchMethod, SiteId
@@ -135,7 +135,7 @@ async def _acquire_and_remember(
     policy: FetchPolicy | None = None,
     *,
     url: str = PAGE,
-    needs_render: Callable[[FetchResult], Any] | None = None,
+    needs_render: RenderCheck | None = None,
 ) -> FetchResult:
     policy = policy or FetchPolicy()
     remembered = (await _memory(conn, site_id, policy.page_kind or "detail"))[0]
@@ -179,7 +179,7 @@ async def test_a_render_kept_over_a_lacking_http_page_sets_the_site_to_browser_a
     site_id = await _site(conn)
     http.pages[PAGE], browser.pages[PAGE] = "ok", "ok"
 
-    async def lacking(result: FetchResult) -> bool:
+    async def lacking(result: FetchResult, _over: FetchResult | None = None) -> bool:
         return result.method == "http"
 
     remembered = (await _memory(conn, site_id))[0]
@@ -213,7 +213,7 @@ async def test_a_render_that_holds_no_more_than_http_leaves_the_site_on_http(
     site_id = await _site(conn)
     http.pages[PAGE], browser.pages[PAGE] = "ok", "ok"
 
-    async def lacking(result: FetchResult) -> bool:
+    async def lacking(_result: FetchResult, _over: FetchResult | None = None) -> bool:
         return True  # the render lacks it too: HTTP's page is kept
 
     result = await acquire(PAGE, FetchPolicy(), "http", Rungs(http=http, browser=browser), needs_render=lacking)
@@ -367,7 +367,7 @@ async def test_a_listing_render_sends_only_the_sites_listings_to_the_browser(
     http.pages[listing] = browser.pages[listing] = "ok"
     http.pages[detail] = "ok"
 
-    async def no_rows(result: FetchResult) -> bool:
+    async def no_rows(result: FetchResult, _over: FetchResult | None = None) -> bool:
         return result.method == "http"
 
     await _acquire_and_remember(

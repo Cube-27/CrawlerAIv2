@@ -65,7 +65,6 @@ from crawlerai.services.scrape_steps import (
     CAPTURE_FORMATS,
     DEFAULT_PROJECT,
     EXTRACTION_ERROR,
-    ContentCheck,
     FetchOptions,
     FetchSummary,
     FormatOptions,
@@ -74,6 +73,7 @@ from crawlerai.services.scrape_steps import (
     Input,
     PageFormat,
     PageOutcome,
+    RenderNeed,
     SchemaPrompt,
     SchemaRequest,
     SchemaUnusable,
@@ -81,8 +81,6 @@ from crawlerai.services.scrape_steps import (
     check_formats,
     check_records,
     check_usable,
-    checked_extraction,
-    content_check,
     extract_further,
     fetch_policy,
     fetch_summary,
@@ -93,6 +91,7 @@ from crawlerai.services.scrape_steps import (
     parsed_page,
     record_fetch_usage,
     records_outcome,
+    render_need,
     site_row,
     store_further,
     store_page_record,
@@ -348,7 +347,7 @@ async def _run(
         row = await _stored(conn, request, policy, site.id, task.canonical_url, api=recipe is not None)
     recent = await _read_stored(fetching.store, row, request.fetch.cache, request.formats)
     attempts: list[AttemptRecord] = []
-    check = _content_check(work, request, config, task)
+    check = _render_need(work, request, config)
     further: tuple[FetchResult, ...] = ()
     report: ActionsReport | None = None
     page: FetchResult | str
@@ -427,7 +426,7 @@ async def _derive_reached(
     page: FetchResult | str,
     recent: Recent | None,
     config: ActiveConfig | None,
-    check: ContentCheck | None,
+    check: RenderNeed | None,
 ) -> _Derived:
     """What `_derive` makes of the page when it was reached, else nothing; `recent` is the capture reread instead of a
     fetch, whose stored files the answer names."""
@@ -435,8 +434,7 @@ async def _derive_reached(
         return _NOTHING
     files = frozenset(page.artifacts) if recent is None else recent.artifacts
     reached = (page, parsed_page(page.bundle, check))
-    known = checked_extraction(page.bundle, check)
-    return await _derive(engine, work, request, task, reached, config, known=known, files=files)
+    return await _derive(engine, work, request, task, reached, config, files=files)
 
 
 def _pages(paged: PagedFetch | str) -> tuple[FetchResult | str, tuple[FetchResult, ...], ActionsReport | None]:
@@ -471,14 +469,12 @@ async def _store_more(
     return await store_further(conn, store, task, site_id, derived.schema, extracted, margins)
 
 
-def _content_check(
-    work: _Work, request: ScrapeRequest, config: ActiveConfig | None, task: ClaimedTask
-) -> ContentCheck | None:
-    """The check that renders an HTTP page lacking the offer data or the rows `records` reads (owner #49, #54), with
-    role C charged to the task's job; None without `records`."""
+def _render_need(work: _Work, request: ScrapeRequest, config: ActiveConfig | None) -> RenderNeed | None:
+    """The check that renders an HTTP page lacking the offer data or the items `records` reads (owner #49, #54); None
+    without `records`."""
     if "records" not in request.formats:
         return None
-    return content_check(work.schema, work.data, config, role_c(work.llm, job_id=task.job_id))
+    return render_need(work.schema, work.data, config)
 
 
 async def _config(conn: AsyncConnection, site_id: SiteId, work: _Work) -> ActiveConfig | None:
@@ -496,13 +492,10 @@ async def _derive(
     reached: tuple[FetchResult, ParsedPage],
     config: ActiveConfig | None,
     *,
-    known: ExtractionResult | None = None,
     files: frozenset[str] = frozenset(),
 ) -> _Derived:
     """The requested formats, the draft of a prompt, and the extraction for `records`, from the page's one parse
-    (INV-26), with the site's active `config` when there is one; `known` is the page's extraction when its fetch's
-    check already made it with the request's schema (a listing's, owner #54); `files` names the artifacts stored for the
-    capture."""
+    (INV-26), with the site's active `config` when there is one; `files` names the artifacts stored for the capture."""
     result, page = reached
     prompt = request.schema_.prompt if isinstance(request.schema_, SchemaPrompt) else None
     manifest = result.bundle.manifest
@@ -520,10 +513,8 @@ async def _derive(
     # here: the job was committed before the fetch, and the task is written after (D-0346).
     config = None if config is None else config.for_capture(result.bundle.manifest, work.data.adapters)
     executor = None if config is None else config.executor
-    extraction = known
-    if extraction is None:
-        gap_fill = role_c(work.llm, job_id=task.job_id)
-        extraction = await extract_page(result.bundle, schema, executor, gap_fill, data=work.data, parsed=page)
+    gap_fill = role_c(work.llm, job_id=task.job_id)
+    extraction = await extract_page(result.bundle, schema, executor, gap_fill, data=work.data, parsed=page)
     return _Derived(formats, drafted, schema, extraction, config)
 
 

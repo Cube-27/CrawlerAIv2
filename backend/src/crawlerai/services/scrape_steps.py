@@ -34,6 +34,7 @@ from crawlerai.content.links import links
 from crawlerai.content.markdown import markdown
 from crawlerai.content.metadata import PageMetadata, metadata
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.render_need import listing_needs_render
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.core.errors import Refusal
@@ -57,7 +58,7 @@ from crawlerai.llm.roles.s_schema import MAX_FIELD_NAMES, draft_fields, normaliz
 from crawlerai.normalize.url import canonical_url
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.recurring.versions import store_records
-from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page, lacks_offer_data, lacks_rows
+from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page, lacks_offer_data
 from crawlerai.resolve.task import ActiveConfig, Stored, StoredRecord, store_extraction
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.registry import SchemaNotFound, get_by_id
@@ -307,60 +308,49 @@ async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None 
 
 
 @dataclass
-class ContentCheck:
-    """The `needs_render` check of a fetch that extracts with `schema`, with the site's active `config` and role C on
-    `role_c`: an HTTP detail page that lacks offer data (`lacks_offer_data`, owner #49), or a listing whose extraction
-    gives no rows (`lacks_rows`, owner #54), is rendered once. It keeps the parse of each page it read, and the
-    extraction of each listing, so the one kept is parsed (INV-26) and extracted, role C included, no second time."""
+class RenderNeed:
+    """The `needs_render` check of a fetch that extracts with `schema`, from the page's structure, with no extraction
+    and no LLM call (master plan 2026-10-18 §3.1): a listing that may show more items once rendered
+    (`content.render_need`, owner #54), or a detail page that lacks offer data (`lacks_offer_data`, with the site's
+    active `config`, owner #49), is rendered once, and the render is kept when it no longer lacks it (a listing's when
+    it lists more items than the HTTP page). It keeps the parse of each page it read, so the one kept is parsed once
+    (INV-26); role C runs once, on the capture the fetch keeps."""
 
     schema: SchemaDef
     data: EngineData
     config: ConfigExecutor | None = None
-    role_c: RoleC | None = None
     _parsed: dict[UUID, ParsedPage] = field(default_factory=dict)
-    _extracted: dict[UUID, ExtractionResult] = field(default_factory=dict)
 
-    async def __call__(self, result: FetchResult) -> bool:
+    async def __call__(self, result: FetchResult, over: FetchResult | None = None) -> bool:
         bundle = result.bundle
-        page = self._parsed.setdefault(bundle.manifest.capture_id, ParsedPage.of(bundle))
+        page = self._read(bundle)
+        # Parsing and reading the structure are CPU work: a thread keeps the event loop free.
         if self.schema.page_kind == "listing":
-            # D-1246: rows are judged after role C, as the repeated blocks of a client template's page cannot be told
-            # from its items before it; the extraction is the one the kept capture is stored with.
-            extraction = await extract_page(bundle, self.schema, self.config, self.role_c, data=self.data, parsed=page)
-            self._extracted[bundle.manifest.capture_id] = extraction
-            return lacks_rows(extraction)
-        # Parsing and collecting are CPU work: a thread keeps the event loop free.
+            replaced = None if over is None else self._read(over.bundle)
+            return await asyncio.to_thread(listing_needs_render, page, replaced)
         return await asyncio.to_thread(
             lacks_offer_data, bundle, self.schema, self.data, config=self.config, parsed=page
         )
+
+    def _read(self, bundle: CaptureBundle) -> ParsedPage:
+        return self._parsed.setdefault(bundle.manifest.capture_id, ParsedPage.of(bundle))
 
     def parse(self, bundle: CaptureBundle) -> ParsedPage:
         """The bundle's parse: the one this check read, when it read this bundle."""
         return self._parsed.get(bundle.manifest.capture_id) or ParsedPage.of(bundle)
 
-    def extraction(self, bundle: CaptureBundle) -> ExtractionResult | None:
-        """The bundle's extraction, when this check extracted this bundle (a listing's)."""
-        return self._extracted.get(bundle.manifest.capture_id)
 
-
-def content_check(
-    schema: SchemaDef | None, data: EngineData | None, config: ActiveConfig | None, role_c: RoleC | None
-) -> ContentCheck | None:
-    """The `ContentCheck` of a fetch that extracts with `schema`, the site's active `config` and `role_c`; None without
-    a schema or the engine's data."""
+def render_need(schema: SchemaDef | None, data: EngineData | None, config: ActiveConfig | None) -> RenderNeed | None:
+    """The `RenderNeed` of a fetch that extracts with `schema` and the site's active `config`; None without a schema or
+    the engine's data."""
     if schema is None or data is None:
         return None
-    return ContentCheck(schema, data, None if config is None else config.executor, role_c)
+    return RenderNeed(schema, data, None if config is None else config.executor)
 
 
-def parsed_page(bundle: CaptureBundle, check: ContentCheck | None) -> ParsedPage:
+def parsed_page(bundle: CaptureBundle, check: RenderNeed | None) -> ParsedPage:
     """The page's one parse (INV-26): the check's when it read it, else a new one."""
     return ParsedPage.of(bundle) if check is None else check.parse(bundle)
-
-
-def checked_extraction(bundle: CaptureBundle, check: ContentCheck | None) -> ExtractionResult | None:
-    """The page's extraction when its fetch's check already made it (a listing's), else None."""
-    return None if check is None else check.extraction(bundle)
 
 
 async def new_capture(conn: AsyncConnection, store: ObjectStore, site_id: SiteId, page: FetchResult) -> CaptureId:

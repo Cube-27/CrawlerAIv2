@@ -44,10 +44,17 @@ from crawlerai.db.models import FetchMethod, PageKind, SiteFetchMethod, SiteId
 from crawlerai.storage.capture_bundle import decode_body
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
-# Whether an HTTP `ok` page lacks what the caller reads from it and a render may hold (offer data, owner #49; a
-# listing's rows, owner #54): the caller's, since what a page should hold depends on the schema, which sits above
-# `acquire`.
-RenderCheck = Callable[[FetchResult], Awaitable[bool]]
+
+
+class RenderCheck(Protocol):
+    """Whether an `ok` page lacks what the caller reads from it and a render may hold (offer data, owner #49; a
+    listing's items, owner #54); asked of a render `over` the HTTP page it would replace, whether the render still
+    lacks it compared with that page. The caller's, since what a page should hold depends on the schema, which sits
+    above `acquire`."""
+
+    def __call__(self, result: FetchResult, over: FetchResult | None = None, /) -> Awaitable[bool]: ...
+
+
 # A fetch so far: the outcome kept, every attempt and their duration.
 Fetched = tuple[FetchResult, tuple[AttemptRecord, ...], int]
 # The adapter answer for the page a fetch has so far, when an adapter serves its canonical or referred URL; else that
@@ -322,10 +329,10 @@ async def _as_last_page(result: FetchResult) -> FetchResult:
 
 async def _better(retry: FetchResult, result: FetchResult, needs_render: RenderCheck | None) -> bool:
     """Whether the browser's `retry` is kept over the HTTP `result`: it is `ok` and, when HTTP was `ok` too, it holds
-    what HTTP lacked."""
+    what HTTP lacked (`needs_render` asked of it over `result`)."""
     if retry.block_class != "ok":
         return False
-    return result.block_class != "ok" or needs_render is None or not await needs_render(retry)
+    return result.block_class != "ok" or needs_render is None or not await needs_render(retry, result)
 
 
 async def _admitted(admit_next: Admit | None, *, after: timedelta = timedelta(0)) -> bool:

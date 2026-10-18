@@ -3,7 +3,7 @@ and are not extracted, whether they answer 304 or their visible text is within t
 An unchanged page joins no drift window (SPEC-08 §4.9) and does not count toward `pages_extracted` (ARCHITECTURE §8.3).
 
 Jobs run in a worker loop through the real queue. The web is a stub origin on an RFC 2606 host that can answer with
-an ETag and honour If-None-Match (RFC 9110 §13.1.2); no network, no browser.
+an ETag and honour If-None-Match (RFC 9110 §13.1.2); no network, and a browser that renders what HTTP served.
 """
 
 import asyncio
@@ -98,7 +98,9 @@ class Origin:
         return self.fetch_result(url, 200, body, (("ETag", etag),) if self.etags else ())
 
     async def browser(self, url: str, policy: FetchPolicy) -> FetchResult:
-        raise AssertionError("the pages are fetched over HTTP")
+        # A render that shows what HTTP did: a listing whose document shows fewer item blocks than a listing does is
+        # rendered once (`content.render_need`), and its HTTP capture is kept.
+        return self.fetch_result(url, 200, self.pages[url], method="browser")
 
 
 @pytest.fixture

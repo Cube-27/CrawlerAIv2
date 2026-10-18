@@ -25,7 +25,7 @@ from crawlerai.normalize.base import Context, Ok
 from crawlerai.resolve.pipeline import EngineData, lacks_offer_data
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.services.scrape_steps import ContentCheck
+from crawlerai.services.scrape_steps import RenderNeed
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
@@ -148,10 +148,10 @@ def _fetched(bundle: CaptureBundle) -> FetchResult:
     return FetchResult(bundle=bundle, duration_ms=1, attempts=(attempt,))
 
 
-def test_the_content_check_keeps_the_parse_of_each_page_it_read_for_its_extraction() -> None:
+def test_the_render_check_keeps_the_parse_of_each_page_it_read_for_its_extraction() -> None:
     # INV-26: the HTTP page and its render are both checked; whichever is kept is extracted from the check's parse.
     http, render = _bundle(PRODUCT), _bundle(PRODUCT, body="<p>Rendered</p>")
-    check = ContentCheck(_schema(), DATA)
+    check = RenderNeed(_schema(), DATA)
 
     lacking = [asyncio.run(check(_fetched(bundle))) for bundle in (http, render)]
 

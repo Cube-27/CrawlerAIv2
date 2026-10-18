@@ -52,6 +52,12 @@ def item_blocks(root: HtmlElement) -> tuple[HtmlElement, ...]:
     return max(item_groups(root), key=lambda items: (_evidence(items), len(items)), default=())
 
 
+def shown_items(root: HtmlElement) -> int:
+    """How many of the page's items (`item_blocks`) show more than their link: an image, or text in two or more runs
+    (`_evidence`). A list of bare links (a tag cloud, related posts, a pager) shows a link and its label only."""
+    return sum(1 for item in item_blocks(root) if _holds_image(item) or _holds_several_texts(item))
+
+
 def _evidence(items: tuple[HtmlElement, ...]) -> int:
     """How much the items show beyond their link: each item scores one for holding an image and one for holding text
     in two or more runs (a label and something besides it: a title and a price, a name and a description). A bare tag

@@ -653,10 +653,3 @@ def lacks_offer_data(
     if any(page.graph.is_a(entity, OFFER) for entity in page.graph.entities.values()):
         return False
     return not any(candidate.field in money for candidate in page.candidates)
-
-
-def lacks_rows(extraction: ExtractionResult) -> bool:
-    """Whether a reached listing's extraction (structured rows, the site's config's rows, role C's) gave no rows: a
-    render may hold the rows the page's scripts fill in (owner #54, D-1246). A failed extraction gave none (D-1248), so
-    a render whose extraction fails is never kept over the HTTP page."""
-    return not extraction.rows

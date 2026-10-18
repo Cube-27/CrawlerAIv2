@@ -61,17 +61,16 @@ from crawlerai.services.polite import (
 from crawlerai.services.scrape_steps import (
     BLOCK_OUTCOMES,
     EXTRACTION_ERROR,
-    ContentCheck,
     FetchOptions,
     PageFormat,
+    RenderNeed,
     SiteRow,
-    checked_extraction,
-    content_check,
     extract_further,
     fetch_policy,
     new_capture,
     parsed_page,
     record_fetch_usage,
+    render_need,
     site_row,
     store_further,
     store_page_record,
@@ -128,7 +127,7 @@ class FetchedPage:
     standing: tuple[RecordId, ...]
     attempts: tuple[AttemptRecord, ...]
     proxy_pool: str | None
-    check: ContentCheck | None = None
+    check: RenderNeed | None = None
     further: tuple[FetchResult, ...] = ()  # a listing recipe's further pages, in order
 
     @property
@@ -171,8 +170,8 @@ async def fetch_page(
 
     With `served`, the records the task extracts with when they are all it reads of the page, the config they name
     serves the page through its API recipe when it has one (SPEC-09 §4.8, `recipe_rung`), and an HTTP page that lacks
-    the offer data or the rows their schema reads is rendered once more (`ContentCheck`, owner #49, #54), with role C
-    on `llm`, charged to the task's job. A listing's recipe with pagination serves up to
+    the offer data or the items their schema reads is rendered once more (`RenderNeed`, owner #49, #54). A listing's
+    recipe with pagination serves up to
     `listing_pages` pages of it (module docstring).
 
     `formats` are those the task's page is read for: a screenshot or PDF among them is made in the browser
@@ -209,7 +208,7 @@ def _plan(task: ClaimedTask, served: Records | None, llm: LLMClient, listing_pag
         return plan
     recipe = None if served.config is None else recipe_of(served.config)
     lists = served.schema.page_kind == "listing" and recipe is not None and recipe.pagination is not None
-    check = content_check(served.schema, served.data, served.config, _role_c(task, llm))
+    check = render_need(served.schema, served.data, served.config)
     pages = RecipePages(listing_pages, plan.attempts) if lists else None
     return replace(plan, recipe=recipe, pages=pages, needs_render=check)
 
@@ -229,7 +228,7 @@ async def _kept(
         if (refused := refusal(fetched)) is None:
             capture_id = await new_capture(conn, fetching.store, site.id, fetched)
             further = () if plan.pages is None else tuple(plan.pages.further)
-            check = plan.needs_render if isinstance(plan.needs_render, ContentCheck) else None
+            check = plan.needs_render if isinstance(plan.needs_render, RenderNeed) else None
             return FetchedPage(site, fetched, capture_id, standing, attempts, pool, check, further)
         fetched = Failed(refused, transient=False)
     if isinstance(fetched, Unchanged):
@@ -372,18 +371,15 @@ async def extract_records(
 ) -> TaskResult:
     """Extract the reached page with what the job pinned and store it (`store_page_record`): `config` mode with the
     pinned config, else cold. Role C on `llm`, charged to the job, fills required fields left missing (SPEC-05 §4.13).
-    `parsed` is the page's parse when the handler already has one (INV-26); a listing its fetch's
-    check extracted is not extracted again (owner #54). A crawl-discovered page may end `no_match`. A listing without
-    rows ends with the reason (`ExtractionResult.reason`)."""
+    `parsed` is the page's parse when the handler already has one (INV-26). A crawl-discovered page may end
+    `no_match`. A listing without rows ends with the reason (`ExtractionResult.reason`)."""
     schema = records.schema
     config = None
     if records.config is not None:
         config = records.config.for_capture(page.result.bundle.manifest, records.data.adapters)
     executor = None if config is None else config.executor
-    extraction = checked_extraction(page.result.bundle, page.check)
-    if extraction is None:
-        bundle, gap_fill = page.result.bundle, _role_c(task, llm)
-        extraction = await extract_page(bundle, schema, executor, gap_fill, data=records.data, parsed=parsed)
+    bundle, gap_fill = page.result.bundle, _role_c(task, llm)
+    extraction = await extract_page(bundle, schema, executor, gap_fill, data=records.data, parsed=parsed)
     stored = await store_page_record(
         conn,
         task,

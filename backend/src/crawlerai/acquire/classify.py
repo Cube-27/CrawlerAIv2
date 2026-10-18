@@ -52,6 +52,7 @@ _HYPERLINKS = "a[href], area[href]"
 _MICRODATA = "[itemscope]:not([itemprop])"
 _JSON_LD = "application/ld+json"
 _ITEM_LIST = "ItemList"
+_ENTRIES = "itemListElement"  # schema.org ItemList: the list's entries
 _TYPE = "@type"  # JSON-LD 1.1 §3.5: a node's type, a string or an array of them
 # D-1206: a refusal a page's own script may lift: 403 (RFC 9110 §15.5.4), 429 (RFC 6585 §4), 503 (RFC 9110 §15.6.4);
 # not 401/407, which ask for credentials (RFC 9110 §11.6), nor 451, a legal refusal (RFC 7725).
@@ -174,10 +175,19 @@ def _is_shell(tree: LexborHTMLParser) -> bool:
 
 
 def _structured_rows(tree: LexborHTMLParser) -> bool:
-    if len(tree.css(_MICRODATA)) >= MIN_ITEMS:
-        return True
+    return len(tree.css(_MICRODATA)) >= MIN_ITEMS or bool(_item_lists(tree))
+
+
+def structured_entries(tree: LexborHTMLParser) -> int:
+    """How many items the page's structured data lists: its top-level microdata items, or the entries of its longest
+    JSON-LD ItemList (schema.org `itemListElement`), whichever is more; 0 when it lists none."""
+    return max(len(tree.css(_MICRODATA)), *_item_lists(tree), 0)
+
+
+def _item_lists(tree: LexborHTMLParser) -> list[int]:
+    """The entry count of each schema.org ItemList node in the page's JSON-LD script data blocks, at any depth."""
     blocks = (s.text() for s in tree.css("script[type]") if _media_type(s.attributes.get("type")) == _JSON_LD)
-    return any(_lists(_json(block)) for block in blocks)
+    return [count for block in blocks for count in _lists(_json(block))]
 
 
 def _media_type(value: str | None) -> str:
@@ -191,19 +201,22 @@ def _json(text: str) -> object:
         return None
 
 
-def _lists(document: object) -> bool:
-    """Whether a JSON-LD document holds a node typed ItemList, at any depth (walked with a stack, not recursion)."""
+def _lists(document: object) -> list[int]:
+    """The entry count (`itemListElement`, one node or an array of them) of each node typed ItemList in a JSON-LD
+    document, at any depth (walked with a stack, not recursion)."""
+    counts: list[int] = []
     stack = [document]
     while stack:
         value = stack.pop()
         if isinstance(value, dict):
             types = value.get(_TYPE)
             if types == _ITEM_LIST or (isinstance(types, list) and _ITEM_LIST in types):
-                return True
+                entries = value.get(_ENTRIES)
+                counts.append(len(entries) if isinstance(entries, list) else int(entries is not None))
             stack.extend(value.values())
         elif isinstance(value, list):
             stack.extend(value)
-    return False
+    return counts
 
 
 def lists_items(text: str) -> bool:

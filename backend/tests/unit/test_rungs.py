@@ -355,7 +355,7 @@ class Lacking:
     methods: tuple[CaptureMethod, ...] = ()
     asked: list[CaptureMethod] = field(default_factory=list)
 
-    async def __call__(self, result: FetchResult) -> bool:
+    async def __call__(self, result: FetchResult, _over: FetchResult | None = None) -> bool:
         self.asked.append(result.method)
         return result.method in self.methods
 
