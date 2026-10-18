@@ -46,6 +46,7 @@ const records: RecordPage = {
     },
   ],
   next_cursor: null,
+  total: 1,
 };
 
 const ENDED = () =>
@@ -56,8 +57,8 @@ const ENDED = () =>
   );
 
 /** A `GET /v1/jobs` answer. */
-function jobPage(items: JobSummary[], next_cursor: string | null = null) {
-  return () => Response.json({ items, next_cursor } satisfies JobPage);
+function jobPage(items: JobSummary[], next_cursor: string | null = null, total = items.length) {
+  return () => Response.json({ items, next_cursor, total } satisfies JobPage);
 }
 
 /** The jobs table, once it shows rows. */
@@ -155,8 +156,8 @@ describe("Jobs table", () => {
     const calls = jobApi({
       "GET /v1/jobs": (call) =>
         call.query.includes("cursor=c2")
-          ? jobPage([job({ id: SECOND_JOB_ID, kind: "map" })])()
-          : jobPage([job()], "c2")(),
+          ? jobPage([job({ id: SECOND_JOB_ID, kind: "map" })], null, 51)()
+          : jobPage([job()], "c2", 51)(),
     });
     await open("/jobs", "Jobs");
     await screen.findByRole("grid", { name: "Jobs" });
@@ -164,11 +165,11 @@ describe("Jobs table", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(await within(await findJobsGrid()).findByText("Map")).toBeInTheDocument();
-    expect(screen.getByText("Page 2")).toBeInTheDocument();
+    expect(screen.getByText("Rows 51–51 of 51")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
 
     await userEvent.click(screen.getByRole("button", { name: "Previous" }));
-    expect(await screen.findByText("Page 1")).toBeInTheDocument();
-    expect(listQueries(calls)).toEqual(["limit=20", "cursor=c2&limit=20", "limit=20"]);
+    expect(await screen.findByText("Rows 1–1 of 51")).toBeInTheDocument();
+    expect(listQueries(calls)).toEqual(["limit=50", "cursor=c2&limit=50", "limit=50"]);
   });
 });

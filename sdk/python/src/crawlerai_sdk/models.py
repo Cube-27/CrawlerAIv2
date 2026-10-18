@@ -1482,6 +1482,7 @@ class JsonValuesPage(BaseModel):
     format: Annotated[Literal["json_values"], Field(title="Format")]
     items: Annotated[list[JsonValuesItem], Field(title="Items")]
     next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
+    total: Annotated[int, Field(title="Total")]
 
 
 class LabelRow(BaseModel):
@@ -1546,6 +1547,7 @@ class PageOutput(BaseModel):
 class PageOutputPage(BaseModel):
     items: Annotated[list[PageOutput], Field(title="Items")]
     next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
+    total: Annotated[int, Field(title="Total")]
 
 
 class RegexReplaceOp(BaseModel):
@@ -1577,6 +1579,7 @@ class SchemaDef(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    field_order: Annotated[list[str] | None, Field(title="Field Order")] = None
     fields: Annotated[dict[str, FieldSpecOutput], Field(title="Fields")]
     id: Annotated[UUID, Field(title="Id")]
     labels: Annotated[dict[str, list[Label]] | None, Field(title="Labels")] = None
@@ -1886,6 +1889,7 @@ class ExtractSubmitted(BaseModel):
 class JobPage(BaseModel):
     items: Annotated[list[JobSummary], Field(title="Items")]
     next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
+    total: Annotated[int, Field(title="Total")]
 
 
 class JsonLdStepInput(BaseModel):
@@ -2219,6 +2223,7 @@ class PlatformDraft(BaseModel):
 class RecordPage(BaseModel):
     items: Annotated[list[StoredRecord], Field(title="Items")]
     next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
+    total: Annotated[int, Field(title="Total")]
 
 
 class ReplayResult(BaseModel):

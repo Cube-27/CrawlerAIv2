@@ -14,7 +14,7 @@ import { OutcomeLabel } from "../../components/OutcomeLabel";
 import { ProblemAlert } from "../../components/ProblemAlert";
 import { RecordTable } from "../../components/RecordTable";
 import { Timestamp } from "../../components/Timestamp";
-import { PAGE_SIZE, PagedTable } from "../../components/PagedTable";
+import { PagedTable } from "../../components/PagedTable";
 import { TruncatedText } from "../../components/TruncatedText";
 import { RecordInspector } from "../records/RecordInspector";
 
@@ -23,7 +23,10 @@ function JobRecords({ records }: Readonly<{ records: readonly StoredRecord[] }>)
   const [open, setOpen] = useState<StoredRecord | null>(null);
   // A job extracts with one schema.
   const schema = useSchema(records[0]?.schema_id ?? null);
-  const fieldTypes = useMemo(() => parseFieldTypes(schema.data?.fields), [schema.data]);
+  const fieldTypes = useMemo(
+    () => parseFieldTypes(schema.data?.fields, schema.data?.field_order),
+    [schema.data],
+  );
   const problem = problemOf(schema.error);
   if (records.length === 0) return <EmptyView title="No records yet" />;
   if (problem !== null) return <ProblemAlert problem={problem} />;
@@ -90,8 +93,8 @@ function PageOutputs({ pages }: Readonly<{ pages: readonly PageOutput[] }>) {
 /** One page of the job's results (`GET /v1/jobs/{id}/results`) with previous and next: its records, or the pages of a
  * job without a schema. */
 export function JobResults({ jobId }: Readonly<{ jobId: string }>) {
-  const { cursor, page, previous, nextTo } = useCursorPages();
-  const results = useJobResults(jobId, { cursor, limit: PAGE_SIZE });
+  const { cursor, page, pageSize, setPageSize, previous, nextTo } = useCursorPages();
+  const results = useJobResults(jobId, { cursor, limit: pageSize });
   const data = results.data;
   return (
     <PagedTable
@@ -100,6 +103,12 @@ export function JobResults({ jobId }: Readonly<{ jobId: string }>) {
       page={page}
       onPrevious={previous}
       onNext={data === undefined ? null : nextTo(data.page.next_cursor)}
+      rows={{
+        total: data?.page.total ?? null,
+        count: data?.page.items.length ?? 0,
+        pageSize,
+        onPageSize: setPageSize,
+      }}
     >
       {data?.kind === "records" ? <JobRecords records={data.page.items} /> : null}
       {data?.kind === "pages" ? <PageOutputs pages={data.page.items} /> : null}

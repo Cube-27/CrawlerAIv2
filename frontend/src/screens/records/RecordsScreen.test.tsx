@@ -59,7 +59,7 @@ function storedRecord(overrides: Partial<StoredRecord> = {}): StoredRecord {
 const page =
   (items: StoredRecord[], next_cursor: string | null = null) =>
   () =>
-    Response.json({ items, next_cursor } satisfies RecordPage);
+    Response.json({ items, next_cursor, total: items.length } satisfies RecordPage);
 const schemaReply = () => Response.json(schema);
 const schemaList = () => Response.json({ items: [schema, otherSchema] });
 const replayReply = (result: ReplayResult) => () => Response.json(result);

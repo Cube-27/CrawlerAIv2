@@ -37,6 +37,7 @@ _COLUMNS = (
     SchemaRow.name,
     SchemaRow.page_kind,
     SchemaRow.fields,
+    SchemaRow.field_order,
     SchemaRow.required_groups,
     SchemaRow.origin,
     SchemaRow.status,
@@ -45,7 +46,12 @@ _COLUMNS = (
 
 
 def _from_row(row: Row[Any]) -> SchemaDef:
-    return SchemaDef.model_validate(row._asdict())
+    """The schema of a row, its `fields` in `field_order` (JSONB sorts keys) and any field the order lacks last."""
+    values = row._asdict()
+    fields, order = values["fields"], values["field_order"]
+    values["fields"] = {name: fields[name] for name in order if name in fields} | fields
+    values["field_order"] = list(values["fields"])
+    return SchemaDef.model_validate(values)
 
 
 async def find(conn: AsyncConnection, name: str) -> SchemaDef | None:
@@ -83,6 +89,7 @@ async def create(conn: AsyncConnection, document: SchemaDocument, origin: Schema
     """Insert a new, active schema. A name that already has a schema raises `SchemaExists`: changing a schema is
     `update`."""
     values = document.model_dump(mode="json", exclude_none=True)
+    values["field_order"] = list(document.fields)
     try:
         # A savepoint, so a lost race leaves the caller's transaction usable.
         async with conn.begin_nested():
@@ -138,9 +145,12 @@ async def store_labels(
 async def _write_if_changed(conn: AsyncConnection, current: SchemaDef, document: SchemaDocument) -> SchemaDef:
     """Write `document` over the stored one when it differs. Label synonyms were drafted for the old document's fields,
     so they go with it, to be drafted again (`SchemaDef.labels`)."""
-    if document.model_dump(exclude_none=True) == _document(current):
+    if document.model_dump(exclude_none=True) == _document(current) and list(document.fields) == current.field_order:
         return current
-    values = document.model_dump(mode="json", exclude_none=True, exclude={"name"}) | {"labels": null()}
+    values = document.model_dump(mode="json", exclude_none=True, exclude={"name"}) | {
+        "labels": null(),
+        "field_order": list(document.fields),
+    }
     query = update(SchemaRow).where(SchemaRow.id == current.id).values(**values).returning(*_COLUMNS)
     return _from_row((await conn.execute(query)).one())
 

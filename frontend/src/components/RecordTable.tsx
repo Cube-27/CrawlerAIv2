@@ -1,9 +1,10 @@
-import { Table, Typography } from "@heroui/react";
-import { useMemo, type ReactNode } from "react";
+import { Button, Drawer, Table } from "@heroui/react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { FieldTypes, FieldTypeSpec } from "../api/field";
-import type { StoredRecord } from "../api/records";
+import type { ExtractedRecord, StoredRecord } from "../api/records";
 import { confidenceText } from "./ConfidenceCell";
 import { FieldValue } from "./FieldValue";
+import { JsonView } from "./JsonView";
 
 /** The fields whose published value differs from the version the record supersedes, or null when none, as for a
  * first version (jobs spec). */
@@ -11,97 +12,197 @@ export function changedFieldsText({ changed_fields: changed }: StoredRecord): st
   return changed.length === 0 ? null : changed.join(", ");
 }
 
+/** A row of the table: a stored record, or one a page just yielded (no id, version or changed fields). */
+export type TableRecord = ExtractedRecord &
+  Partial<Pick<StoredRecord, "id" | "version" | "changed_fields">>;
+
+/** A nested value (a list or an object) opened from its cell: which field of which row. */
+interface Nested {
+  title: string;
+  value: unknown;
+}
+
 interface Column {
   id: string;
   name: string;
-  render: (record: StoredRecord) => ReactNode;
+  render: (record: TableRecord, row: number, view: (nested: Nested) => void) => ReactNode;
 }
 
-const RECORD_COLUMNS: Column[] = [
-  { id: "mode", name: "Mode", render: (record) => record.mode },
-  { id: "version", name: "Version", render: (record) => record.version },
-  { id: "changed", name: "Changed", render: (record) => changedFieldsText(record) ?? "—" },
-  { id: "confidence", name: "Confidence", render: (record) => confidenceText(record.confidence) },
-];
+const NO_VALUE = "—";
+
+function isNested(spec: FieldTypeSpec | null, value: unknown): boolean {
+  return (
+    (spec?.type === "list" || spec?.type === "object") && value !== null && value !== undefined
+  );
+}
+
+/** The compact form of a list or an object (schemas spec field types): how many members it has, and a button to see
+ * them in a drawer, so a row stays one line however long a variants or images list is. */
+function nestedSummary(value: unknown): string {
+  if (Array.isArray(value)) return value.length === 1 ? "1 item" : `${String(value.length)} items`;
+  if (typeof value === "object" && value !== null) {
+    const count = Object.keys(value).length;
+    return count === 1 ? "1 field" : `${String(count)} fields`;
+  }
+  return NO_VALUE;
+}
+
+function NestedCell({
+  name,
+  value,
+  onView,
+}: Readonly<{ name: string; value: unknown; onView: () => void }>) {
+  if (Array.isArray(value) && value.length === 0) return NO_VALUE;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span>{nestedSummary(value)}</span>
+      <Button size="sm" variant="secondary" aria-label={`View ${name}`} onPress={onView}>
+        View
+      </Button>
+    </span>
+  );
+}
 
 // Field names are user data and may equal a member's name, so a field column's id carries a prefix.
-function fieldColumn(name: string, spec: FieldTypeSpec): Column {
+function fieldColumn(name: string, spec: FieldTypeSpec | null): Column {
   return {
     id: `field:${name}`,
     name,
-    render: (record) => {
+    render: (record, row, view) => {
       const field = record.fields[name];
-      return field === undefined ? "—" : <FieldValue field={field} spec={spec} />;
+      if (field === undefined) return NO_VALUE;
+      if (field.status === "published" && isNested(spec, field.value)) {
+        return (
+          <NestedCell
+            name={name}
+            value={field.value}
+            onView={() => {
+              view({ title: `${name} of row ${String(row + 1)}`, value: field.value });
+            }}
+          />
+        );
+      }
+      return <FieldValue field={field} spec={spec} />;
     },
   };
 }
 
-/** How many field columns a records table shows (D-0978): a wide schema (25 fields) gave each column a few pixels.
- * The record inspector shows every field. */
-export const SHOWN_FIELDS = 6;
+const RECORD_COLUMNS: Column[] = [
+  { id: "mode", name: "Mode", render: (record) => record.mode },
+  { id: "confidence", name: "Confidence", render: (record) => confidenceText(record.confidence) },
+];
 
-/** The fields the table shows: scalar fields first, as one short value fits a cell and a list or an object does not
- * (schemas spec field types), each group in the schema's order, at most `SHOWN_FIELDS`. */
-export function shownFields(fieldTypes: FieldTypes): [string, FieldTypeSpec][] {
-  const fields = Object.entries(fieldTypes);
-  const scalar = fields.filter(([, spec]) => spec.type !== "list" && spec.type !== "object");
-  const nested = fields.filter(([, spec]) => spec.type === "list" || spec.type === "object");
-  return [...scalar, ...nested].slice(0, SHOWN_FIELDS);
+const STORED_COLUMNS: Column[] = [
+  { id: "version", name: "Version", render: (record) => record.version ?? NO_VALUE },
+  {
+    id: "changed",
+    name: "Changed",
+    render: (record) => (record.changed_fields?.join(", ") ?? "") || NO_VALUE,
+  },
+];
+
+/** The field names, in the schema's order; for a schema the UI does not know the types of, the names the first record
+ * carries. */
+function fieldNames(fieldTypes: FieldTypes, records: readonly TableRecord[]): string[] {
+  const named = Object.keys(fieldTypes);
+  return named.length > 0 ? named : Object.keys(records[0]?.fields ?? {});
 }
 
-function columnsOf(fieldTypes: FieldTypes): Column[] {
+function columnsOf(
+  fieldTypes: FieldTypes,
+  records: readonly TableRecord[],
+  stored: boolean,
+): Column[] {
   return [
-    ...shownFields(fieldTypes).map(([name, spec]) => fieldColumn(name, spec)),
+    ...fieldNames(fieldTypes, records).map((name) => fieldColumn(name, fieldTypes[name] ?? null)),
+    ...(stored ? STORED_COLUMNS : []),
     ...RECORD_COLUMNS,
   ];
 }
 
-/** Records of one schema: a column for each of its first fields (`shownFields`), then mode, version, the fields
- * changed from the previous version, and confidence, with a line saying how many fields are left to the inspector. A
- * row opens by click or by Enter (`onOpen`). */
-export function RecordTable({
+function NestedDrawer({ nested, onClose }: Readonly<{ nested: Nested; onClose: () => void }>) {
+  return (
+    <Drawer
+      isOpen
+      onOpenChange={(isOpen) => {
+        if (!isOpen) onClose();
+      }}
+    >
+      <Drawer.Backdrop>
+        <Drawer.Content placement="right">
+          <Drawer.Dialog>
+            <Drawer.CloseTrigger />
+            <Drawer.Header>
+              <Drawer.Heading>{nested.title}</Drawer.Heading>
+            </Drawer.Header>
+            <Drawer.Body>
+              <JsonView label={nested.title} value={nested.value} filename="field.json" />
+            </Drawer.Body>
+          </Drawer.Dialog>
+        </Drawer.Content>
+      </Drawer.Backdrop>
+    </Drawer>
+  );
+}
+
+/** Records of one schema as a table (frontend spec): the header row is the schema's field names in its order, and
+ * each row is one record. A list or object value shows its count and a button that opens it in a drawer. Stored
+ * records (with an id) add their version and changed fields, and a row opens by click or by Enter (`onOpen`). Rows are
+ * the page shown, at most one API page (100 rows), so there is no more to hold or to virtualize. */
+export function RecordTable<R extends TableRecord>({
   label,
   records,
   fieldTypes,
   onOpen,
 }: Readonly<{
   label: string;
-  records: readonly StoredRecord[];
+  records: readonly R[];
   fieldTypes: FieldTypes;
-  onOpen: (record: StoredRecord) => void;
+  onOpen?: (record: R) => void;
 }>) {
-  const columns = useMemo(() => columnsOf(fieldTypes), [fieldTypes]);
-  const total = Object.keys(fieldTypes).length;
+  const stored = records.some((record) => record.id !== undefined);
+  const columns = useMemo(
+    () => columnsOf(fieldTypes, records, stored),
+    [fieldTypes, records, stored],
+  );
+  const [nested, setNested] = useState<Nested | null>(null);
+  const rows = useMemo(
+    () => records.map((record, row) => ({ key: record.id ?? `row-${String(row)}`, record, row })),
+    [records],
+  );
   return (
-    <div className="flex flex-col gap-2">
-      {total > SHOWN_FIELDS ? (
-        <Typography.Paragraph size="sm" color="muted">
-          Showing {SHOWN_FIELDS} of {total} fields. Open a record to see all of them.
-        </Typography.Paragraph>
-      ) : null}
+    <>
       <Table>
         <Table.ScrollContainer>
-          {/* Fixed column widths: a page of long values truncates rather than moving the columns. */}
           <Table.Content
             aria-label={label}
-            className="table-fixed"
-            onRowAction={(key) => {
-              const record = records.find(({ id }) => id === key);
-              if (record !== undefined) onOpen(record);
-            }}
+            {...(onOpen === undefined
+              ? {}
+              : {
+                  onRowAction: (key) => {
+                    const row = rows.find((candidate) => candidate.key === key);
+                    if (row !== undefined) onOpen(row.record);
+                  },
+                })}
           >
             <Table.Header columns={columns}>
               {(column) => (
-                <Table.Column id={column.id} isRowHeader={column === columns[0]}>
+                <Table.Column
+                  id={column.id}
+                  isRowHeader={column === columns[0]}
+                  className="min-w-40"
+                >
                   {column.name}
                 </Table.Column>
               )}
             </Table.Header>
-            <Table.Body items={records}>
-              {(record) => (
-                <Table.Row id={record.id} columns={columns}>
+            <Table.Body items={rows}>
+              {({ key, record, row }) => (
+                <Table.Row id={key} columns={columns}>
                   {(column) => (
-                    <Table.Cell className="truncate">{column.render(record)}</Table.Cell>
+                    <Table.Cell className="max-w-72 truncate">
+                      {column.render(record, row, setNested)}
+                    </Table.Cell>
                   )}
                 </Table.Row>
               )}
@@ -109,6 +210,14 @@ export function RecordTable({
           </Table.Content>
         </Table.ScrollContainer>
       </Table>
-    </div>
+      {nested === null ? null : (
+        <NestedDrawer
+          nested={nested}
+          onClose={() => {
+            setNested(null);
+          }}
+        />
+      )}
+    </>
   );
 }

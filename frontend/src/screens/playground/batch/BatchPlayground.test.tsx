@@ -212,7 +212,7 @@ describe("batch playground: the run", () => {
       SECOND,
       THIRD,
     ]);
-    expect(resultQueries(calls).slice(1)).toEqual([
+    expect(resultQueries(calls).filter((query) => query.includes("limit=200"))).toEqual([
       "format=json_values&limit=200",
       `format=json_values&limit=200&cursor=${CURSOR}`,
     ]);

@@ -273,14 +273,9 @@
     @apply p-panel;
   }
 
-  /* An input group's prefix reads as part of the field: HeroUI draws a divider between it and the input,
-   * which showed as a stray bar after `https://`. A text prefix runs straight into the typed text (`https://` then the
-   * host); an icon keeps HeroUI's gap. */
+  /* An input group's icon prefix reads as part of the field: HeroUI draws a divider between it and the input. */
   .input-group__prefix {
     border-inline-end-width: 0;
-    &:not(:has(svg)) {
-      @apply pe-0;
-    }
   }
 
   /* A JSON view (frontend spec) and Get code's code block (§4.7): monospaced text in an outlined box that scrolls. */

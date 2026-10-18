@@ -204,6 +204,9 @@ class SchemaDef(SchemaDocument):
     origin: SchemaOrigin
     status: SchemaStatus
     labels: FieldLabels | None = None
+    # The names of `fields` in the order the document gave them, which a stored schema's JSONB `fields` loses: the
+    # order a table's columns follow (frontend spec). Empty for a schema stored without one.
+    field_order: list[str] = Field(default_factory=list)
 
 
 def document_digest(schema: SchemaDocument) -> str:

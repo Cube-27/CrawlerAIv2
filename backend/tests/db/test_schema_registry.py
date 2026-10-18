@@ -11,7 +11,7 @@ from crawlerai.config_ir.progressive import StateKey
 from crawlerai.db.models import ExtractionConfig, ProgressiveState
 from crawlerai.schemas import registry
 from crawlerai.schemas.registry import PresetConflict, load_presets
-from crawlerai.schemas.types import SchemaContent, SchemaDef, SchemaDocument
+from crawlerai.schemas.types import SchemaChanges, SchemaContent, SchemaDef, SchemaDocument
 from crawlerai.services import schemas
 from tests.db.conftest import learned_site
 
@@ -99,3 +99,20 @@ async def test_an_edit_that_changes_nothing_keeps_what_was_learned(conn: AsyncCo
 
     assert await _statuses(conn, key) == ["active"]
     assert await _state(conn, key) == before
+
+
+async def test_the_fields_keep_the_order_the_document_gave_them_when_stored_and_edited(conn: AsyncConnection) -> None:
+    # JSONB orders keys by length, then bytes: this document's order is not the one it would come back in.
+    names = ["starts", "title", "sku", "an_extra_long_name"]
+    spec = {"type": "text", "description": "A field"}
+    document = SchemaDocument.model_validate(
+        {"name": "ordered_detail", "page_kind": "detail", "fields": dict.fromkeys(names, spec)}
+    )
+
+    created = await registry.create(conn, document, "user")
+    read_back = await registry.get(conn, "ordered_detail")
+    reordered = SchemaDocument.model_validate({**document.model_dump(), "fields": dict.fromkeys(reversed(names), spec)})
+    edited = await registry.update_schema(conn, read_back, SchemaChanges(fields=reordered.fields))
+
+    assert list(created.fields) == list(read_back.fields) == read_back.field_order == names
+    assert list(edited.fields) == edited.field_order == list(reversed(names))

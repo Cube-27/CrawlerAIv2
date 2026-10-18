@@ -5,7 +5,8 @@ import type { ScrapeResponse } from "../../../api/scrape";
 import { EmptyView } from "../../../components/EmptyView";
 import { JsonView } from "../../../components/JsonView";
 import { OutcomeLabel } from "../../../components/OutcomeLabel";
-import { FieldsTable, RecordList } from "../../../components/RecordFields";
+import { FieldsTable } from "../../../components/RecordFields";
+import { ExtractedRecords } from "../../../components/ExtractedRecords";
 import { Timestamp } from "../../../components/Timestamp";
 import { hasUncalibrated, UncalibratedBadge } from "../../../components/UncalibratedBadge";
 import { scrapeJson } from "./cleanJson";
@@ -61,7 +62,7 @@ function TableTab({
   }
   return (
     <div className="flex flex-col gap-6">
-      <RecordList records={response.records} fieldTypes={fieldTypes} />
+      <ExtractedRecords records={response.records} fieldTypes={fieldTypes} />
       {response.page === undefined ? null : (
         <section className="flex flex-col gap-2">
           <Typography.Heading level={3}>Page fields</Typography.Heading>

@@ -246,6 +246,8 @@ class SchemaDef(Base):
     name: Mapped[str] = mapped_column(Text, unique=True)
     page_kind: Mapped[PageKind] = mapped_column(Text)
     fields: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    # The field names in the order the document gave them: JSONB keeps no key order (`schemas.types.SchemaDef`).
+    field_order: Mapped[list[str]] = mapped_column(JSONB, server_default=empty_array_default())
     required_groups: Mapped[list[list[str]]] = mapped_column(JSONB, server_default=empty_array_default())
     origin: Mapped[SchemaOrigin] = mapped_column(Text)
     status: Mapped[SchemaStatus] = mapped_column(Text)
