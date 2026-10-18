@@ -28,6 +28,7 @@ from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.json_doc import scalars
 from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.db.models import SourceKind
+from crawlerai.normalize import url
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
 from crawlerai.normalize.dispatch import equal, equality_key, resource_key
 from crawlerai.normalize.text import text_form
@@ -325,12 +326,17 @@ def _one_file(candidates: Sequence[Candidate], spec: FieldSpec) -> bool:
 
 
 def _secure_first(candidates: Sequence[Candidate], spec: FieldSpec) -> Candidate:
-    """The first of candidates that agree or are renditions of one file whose URLs all use `https`, else the first: a
+    """Of candidates that agree or are renditions of one file, those whose URLs all use `https` if any, else all: a
     rendition over `http` beside its `https` twin names the same file (`resource_key`), and `https` reaches it over
-    TLS (RFC 9110 §4.2.2), so the page's secure statement of it publishes."""
+    TLS (RFC 9110 §4.2.2), so the page's secure statement of it publishes. Of a single image's renditions the largest
+    publishes (`url.largest_rendition`), else the first."""
     if rule_type(spec) is not FieldType.IMAGE_URL:
         return candidates[0]
-    return next((c for c in candidates if _secure(_value(c))), candidates[0])
+    secure = [c for c in candidates if _secure(_value(c))] or list(candidates)
+    values = [_value(c) for c in secure]
+    if spec.type is FieldType.IMAGE_URL and all(isinstance(v, str) for v in values):
+        return secure[url.largest_rendition([v for v in values if isinstance(v, str)])]
+    return secure[0]
 
 
 def _secure(value: JsonValue) -> bool:

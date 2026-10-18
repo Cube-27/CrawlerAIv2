@@ -31,8 +31,8 @@ within the winning kind is `conflict` unless independent candidates of the first
 one of its values settle it. A candidate that is a fragment of another of the field's candidates ranks nowhere
 (`resolve/supersede.py`): a `long_text` that is a prefix or ellipsis-cut prefix of a longer one, or an Open Graph
 description beside a longer one of another kind; a `text` that is another kind's value plus ` - ` or ` | ` and more
-text. Image values naming the same files (`resource_key`: authority and path without the size, conversion and options the path states, any scheme or query; a list's as the set of its files) are renditions: they agree, and of renditions the first whose URLs are all
-`https` publishes. A value of the page's state JSON (`js_state`) ranks after every other kind. (Previously: no `js_state` rank; no fragment rule; the key kept a stated size.) Refs: §10, D-0439, D-0944, D-1182,
+text. Image values naming the same files (`resource_key`: authority and path without the size, conversion and options the path states, any scheme or query; a list's as the set of its files) are renditions: they agree, and of renditions those whose URLs are all
+`https` (else all) are kept and of a single image's the largest publishes (`url.largest_rendition`, as a list ranks them), else the first. A value of the page's state JSON (`js_state`) ranks after every other kind. (Previously: no `js_state` rank; no fragment rule; the key kept a stated size; the first `https` rendition published, whatever its size.) Refs: §10, D-0439, D-0944, D-1182,
 D-1292, D-1660, D-1773. Enforced by: resolver tests; active.
 #### Scenario: Gallery array
 - **WHEN** JSON-LD `Product.image` lists three URLs and `og:image` equals the second
