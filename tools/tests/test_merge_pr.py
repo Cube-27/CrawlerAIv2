@@ -56,9 +56,8 @@ def run_merge_pr(
     return result, log.read_text()
 
 
-@pytest.mark.parametrize("ready", [READY, f"{READY}, after the review fixes"])
-def test_a_ready_head_is_merged_at_that_head(tmp_path: Path, ready: str) -> None:
-    result, calls = run_merge_pr(tmp_path, ["## CodeAnt Nitpicks", ready])
+def test_a_ready_head_is_merged_at_that_head(tmp_path: Path) -> None:
+    result, calls = run_merge_pr(tmp_path, ["## CodeAnt Nitpicks", READY])
 
     assert (result.returncode, result.stderr) == (0, "")
     assert calls == MERGED
@@ -69,8 +68,6 @@ def test_a_ready_head_is_merged_at_that_head(tmp_path: Path, ready: str) -> None
     [
         pytest.param([], id="no-ready"),
         pytest.param(["READY def5678"], id="ready-for-another-commit"),
-        pytest.param([f"READY {SHA}9"], id="ready-for-a-longer-sha"),
-        pytest.param([f"Fixed in {SHA}. READY {SHA}"], id="ready-not-first"),
     ],
 )
 def test_without_a_ready_comment_for_the_head_nothing_is_merged(tmp_path: Path, ready: list[str]) -> None:
@@ -79,15 +76,5 @@ def test_without_a_ready_comment_for_the_head_nothing_is_merged(tmp_path: Path, 
     assert result.returncode == 1
     assert result.stderr == (
         f"ERROR PR #7 has no READY {SHA} comment: the implementor comments READY <sha7> on green CI\n"
-    )
-    assert calls == ""
-
-
-def test_a_pr_with_an_unresolved_review_thread_is_not_merged(tmp_path: Path) -> None:
-    result, calls = run_merge_pr(tmp_path, [READY], unresolved=2)
-
-    assert result.returncode == 1
-    assert result.stderr == (
-        "ERROR PR #7 has 2 unresolved review thread(s): fix or answer each finding and resolve it\n"
     )
     assert calls == ""

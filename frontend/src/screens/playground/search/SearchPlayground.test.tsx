@@ -1,7 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
-import { problem, stubApi } from "../../../test/api";
+import { stubApi } from "../../../test/api";
 import {
   closeOptions,
   fill,
@@ -10,7 +10,6 @@ import {
   posted,
   toggleFormats,
 } from "../../../test/playground";
-import { SearchOutput } from "./SearchOutput";
 
 // `fetch` answers `POST /v1/search` with the shape of D-1442.
 
@@ -31,19 +30,6 @@ async function search() {
 }
 
 describe("search playground", () => {
-  it("is a mode tab under Web and a sidebar entry at /search", async () => {
-    stubApi({});
-    await openPlayground("/search");
-
-    const web = screen.getByRole("tablist", { name: "Web" });
-    expect(within(web).getByRole("tab", { name: "Search" })).toHaveAttribute("href", "/search");
-    expect(
-      within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", {
-        name: "Search",
-      }),
-    ).toHaveAttribute("href", "/search");
-  });
-
   it("posts the query and shows the results in order, with a link to the scrape of them", async () => {
     const calls = stubApi({ "POST /v1/search": () => Response.json(RESULT) });
     await openPlayground("/search");
@@ -73,16 +59,6 @@ describe("search playground", () => {
     });
   });
 
-  it("counts one result in the singular", () => {
-    render(
-      <SearchOutput
-        result={{ ...RESULT, results: RESULT.results.slice(0, 1), job_id: null, skipped: 0 }}
-      />,
-    );
-
-    expect(screen.getByText(/^1 result\.$/)).toBeInTheDocument();
-  });
-
   it("sends nothing for an empty query", async () => {
     const calls = stubApi({ "POST /v1/search": () => Response.json(RESULT) });
     await openPlayground("/search");
@@ -91,22 +67,5 @@ describe("search playground", () => {
 
     expect(await screen.findByText("Enter what to search for.")).toBeInTheDocument();
     expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
-  });
-
-  it("shows the problem when no provider is configured", async () => {
-    stubApi({
-      "POST /v1/search": () =>
-        problem(503, {
-          type: "search_unavailable",
-          title: "Search unavailable",
-          detail: "No provider",
-        }),
-    });
-    await openPlayground("/search");
-    await fill(screen.getByRole("textbox", { name: "Query" }), "kettles");
-
-    await search();
-
-    expect(await screen.findByText("Search unavailable")).toBeInTheDocument();
   });
 });

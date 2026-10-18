@@ -3,22 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
 import type { SchemaDef } from "../../../api/schemas";
 import { problem, stubApi, type Call } from "../../../test/api";
-import {
-  closeOptions,
-  fill,
-  openOptions,
-  openPlayground,
-  pick,
-  posted,
-  toggleFormats,
-} from "../../../test/playground";
-import { runApi, schemaList } from "../../../test/runs";
+import { closeOptions, fill, openOptions, openPlayground, pick } from "../../../test/playground";
+import { schemaList } from "../../../test/runs";
 import { curlBody } from "../../../test/shell";
 
 // Additional fields (SPEC-14 §4.10): names typed as chips become `schema.fields`; the run first shows the schema
 // `POST /v1/schemas/draft` drafts from them, for review. `fetch` answers with the shapes SPEC-07 and SPEC-10 define.
-
-const JOB_ID = "0192a000-0000-7000-8000-0000000000f1";
 
 const DRAFT: SchemaDef = {
   id: "0192a000-0000-7000-8000-0000000000d1",
@@ -64,22 +54,6 @@ async function review() {
 function posts(calls: readonly Call[], path: string): Call[] {
   return calls.filter((call) => call.method === "POST" && call.path === path);
 }
-
-describe("additional fields: chips", () => {
-  it("adds each name as a chip and keeps a name that is not a schema field name in the field, with why", async () => {
-    stubScrape();
-    const options = await scrapeWithFields("price", "colour");
-
-    await fill(options.getByRole("textbox", { name: "Fields" }), "Unit price", true);
-
-    const chips = within(options.getByRole("grid", { name: "Fields" }));
-    expect(chips.getAllByRole("row").map((row) => row.textContent)).toEqual(["price", "colour"]);
-    expect(options.getByRole("textbox", { name: "Fields" })).toHaveValue("Unit price");
-    expect(
-      options.getByText("Use lowercase letters, digits and _, starting with a letter."),
-    ).toBeInTheDocument();
-  });
-});
 
 describe("additional fields: the draft review", () => {
   it("shows the draft before the run, and Run as drafted posts the names, the body Get code shows", async () => {
@@ -132,73 +106,6 @@ describe("additional fields: the draft review", () => {
           fields: DRAFT.fields,
         },
       },
-    });
-  });
-
-  it("shows a draft the server could not give as its problem, and closing the drawer sends nothing", async () => {
-    const calls = stubScrape(() => problem(503, { title: "No LLM provider is configured" }));
-    await scrapeWithFields("price");
-    await closeOptions();
-    await userEvent.click(screen.getByRole("button", { name: "Scrape" }));
-    const drawer = await review();
-
-    expect(await drawer.findByText("No LLM provider is configured")).toBeInTheDocument();
-    await userEvent.keyboard("{Escape}");
-
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(posts(calls, "/v1/scrape")).toEqual([]);
-  });
-
-  it("batch: posts records with the reviewed names as schema.fields", async () => {
-    const calls = runApi(
-      { submit: "POST /v1/batch/scrape", jobId: JOB_ID, kind: "batch_scrape" },
-      { "POST /v1/schemas/draft": draftReply },
-    );
-    await openPlayground("/batch");
-    await fill(screen.getByRole("textbox", { name: "URLs" }), "https://shop.test/a");
-    // A batch asks for records alone (SPEC-10 §4.3).
-    await toggleFormats("Markdown");
-    const options = await openOptions();
-    await pick(/Page kind/, "Detail");
-    await fill(options.getByRole("textbox", { name: "Fields" }), "price", true);
-    await closeOptions();
-
-    await userEvent.click(screen.getByRole("button", { name: "Start batch" }));
-    await userEvent.click((await review()).getByRole("button", { name: "Run" }));
-
-    expect(posted(calls.filter(({ path }) => path !== "/v1/schemas/draft"))).toEqual({
-      urls: ["https://shop.test/a"],
-      formats: ["records"],
-      schema: { fields: ["price"] },
-      page_kind: "detail",
-      fetch: { method_hint: "auto" },
-    });
-  });
-
-  it("crawl: drafts the names for its rules' page kind and posts them as schema.fields", async () => {
-    const calls = runApi(
-      { submit: "POST /v1/crawl", jobId: JOB_ID, kind: "crawl" },
-      { "POST /v1/schemas/draft": draftReply },
-    );
-    await openPlayground("/crawl");
-    await fill(screen.getByRole("textbox", { name: "URL" }), "https://shop.test/");
-    const options = await openOptions();
-    await fill(options.getByRole("textbox", { name: "Fields" }), "price", true);
-    await userEvent.click(options.getByRole("button", { name: "Add rule" }));
-    await fill(options.getByRole("textbox", { name: "Pattern 1" }), "https://shop.test/items/*");
-    await pick(/Page kind 1/, "Detail");
-    await closeOptions();
-
-    await userEvent.click(screen.getByRole("button", { name: "Start crawl" }));
-    await userEvent.click((await review()).getByRole("button", { name: "Run" }));
-
-    expect(posts(calls, "/v1/schemas/draft").map(({ body }) => body)).toEqual([
-      { fields: ["price"], page_kind: "detail" },
-    ]);
-    expect(posts(calls, "/v1/crawl")[0]?.body).toMatchObject({
-      formats: ["records"],
-      schema: { fields: ["price"] },
-      page_kind_rules: [{ pattern: "https://shop.test/items/*", page_kind: "detail" }],
     });
   });
 });

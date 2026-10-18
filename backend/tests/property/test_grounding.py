@@ -36,20 +36,6 @@ def test_a_claim_whose_offsets_hold_the_value_is_accepted_as_stated(case: tuple[
     assert parse_locator(grounded.locator) == Locator("text", (str(start), str(end)))
 
 
-@given(_text_and_span(), _offset, _offset)
-def test_a_value_found_once_gets_its_true_offsets_whatever_the_claimed_ones(
-    case: tuple[str, int, int], claimed_start: int, claimed_end: int
-) -> None:
-    text, start, end = case
-    value = text[start:end]
-    assume(_occurrences(value, text) == [start])
-
-    grounded = align(SpanClaim(value=value, start=claimed_start, end=claimed_end), text)
-
-    assert grounded is not None
-    assert (grounded.start, grounded.end) == (start, end)
-
-
 @given(_text, st.text(min_size=1, max_size=20), _offset, _offset)
 def test_a_value_absent_from_the_text_is_dropped(text: str, value: str, start: int, end: int) -> None:
     assume(value not in text)

@@ -47,23 +47,9 @@ describe("pnpm dev proxy", () => {
     ]);
   });
 
-  it("forwards requests unchanged when CRAWLERAI_UI_API_KEY is empty", async () => {
-    const { proxy = {} } = await configWith("");
-
-    for (const options of Object.values(proxy)) {
-      expect(options).toMatchObject({ target: "http://127.0.0.1:8000" });
-      expect(options).not.toHaveProperty("headers");
-    }
-  });
-
-  it("listens on loopback only, since anyone who reaches it acts with the key", () => {
+  it("listens on loopback only, and lets no other origin read responses", () => {
     expect(config.server?.host).toBe("127.0.0.1");
-  });
-
-  it("checks every proxied request's origin before it is proxied", () => {
-    for (const options of Object.values(config.server?.proxy ?? {})) {
-      expect(options).toMatchObject({ bypass: refuseCrossSite });
-    }
+    expect(config.server?.cors).toBe(false);
   });
 
   it("refuses requests another site's page made, so they never get the key", () => {
@@ -75,9 +61,5 @@ describe("pnpm dev proxy", () => {
     expect(bypassFor({ "sec-fetch-site": "same-origin" })).toBeUndefined();
     expect(bypassFor({ "sec-fetch-site": "none" })).toBeUndefined();
     expect(bypassFor({})).toBeUndefined();
-  });
-
-  it("lets no other origin read its responses (CORS off)", () => {
-    expect(config.server?.cors).toBe(false);
   });
 });

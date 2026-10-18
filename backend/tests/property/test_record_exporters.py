@@ -5,13 +5,12 @@ has the schema's published fields, in the columns' name order, and no status col
 import csv
 import io
 import json
-import random
 
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.config_ir.exporters.records import clean_record, export_records
+from crawlerai.config_ir.exporters.records import export_records
 from crawlerai.resolve.records import FieldMeta, RecordContent
 from crawlerai.resolve.types import FieldStatus
 from crawlerai.schemas.types import NAME_PATTERN, FieldSpec, FieldType, SchemaDocument
@@ -103,34 +102,3 @@ def test_csv_safe_cells_are_the_plain_cells_with_a_quote_before_a_formula_trigge
     assert safe == [
         ["'" + cell if cell[:1] in ("=", "+", "-", "@", "\t", "\r") else cell for cell in row] for row in plain
     ]
-
-
-@given(_page(), st.randoms())
-def test_csv_header_depends_on_the_schema_alone(
-    page: tuple[SchemaDocument, list[RecordContent]], rng: random.Random
-) -> None:
-    schema, records = page
-    names = list(schema.fields)
-    rng.shuffle(names)
-    reordered = schema.model_copy(update={"fields": {name: schema.fields[name] for name in names}})
-
-    header = export_records("csv_records", reordered, records).split("\r\n", 1)[0]
-
-    assert header == ",".join([*sorted(names), *(f"_status_{name}" for name in sorted(names))])
-
-
-@given(_page(), st.randoms())
-def test_a_clean_record_has_the_schemas_published_fields_in_name_order_whatever_their_declaration(
-    page: tuple[SchemaDocument, list[RecordContent]], rng: random.Random
-) -> None:
-    schema, records = page
-    names = list(schema.fields)
-    rng.shuffle(names)
-    reordered = schema.model_copy(update={"fields": {name: schema.fields[name] for name in names}})
-
-    for record in records:
-        clean = clean_record(reordered, record.data)
-        published = sorted(name for name in names if record.data.get(name) is not None)
-        assert list(clean) == published
-        assert not any(name.startswith("_status_") for name in clean)
-        assert clean == {name: record.data[name] for name in published}

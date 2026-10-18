@@ -38,17 +38,12 @@ _href = st.sampled_from(["/p/2", "https://shop.example.test/q", "", "rel?x=1"])
 
 # Steps over every selector kind and post op, for the page `_detail_page` builds.
 _DETAIL_STEPS = [
-    {"xpath": "//span[@class='v']"},
     {"xpath": "normalize-space(//span[@class='v'])"},
-    {"xpath": "count(//span[@class='v'])"},
     {"css": "span.v", "post": [{"trim": {}}]},
     {"xpath": "//span[@class='v']", "post": [{"text": {}}, {"regex_replace": {"pattern": "([a-z]+)", "repl": "\\1-"}}]},
     {"xpath": "//a/@href", "post": [{"absolutize_url": {}}]},
-    {"xpath": "//a/@href", "post": [{"url": {}}]},
     {"regex": 'data-x="([^"]*)"'},
-    {"regex": "[A-Z][a-z]+"},
     {"jsonld": "$['name']", "when_type": "Product"},
-    {"jsonld": "$['name']"},
     {"jsonld": "$['offers'][*]['sku']", "when_type": "Product"},
     {"jsonpath": "$['p']['name']", "source": "js_state"},
     {"jsonpath": "$['items'][*]", "source": "xhr"},

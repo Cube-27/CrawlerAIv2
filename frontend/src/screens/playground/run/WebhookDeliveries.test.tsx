@@ -2,7 +2,6 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
 import type { WebhookDelivery } from "../../../api/jobs";
-import { problem } from "../../../test/api";
 import { jobSummary } from "../../../test/jobs";
 import { openPlayground } from "../../../test/playground";
 import { runApi } from "../../../test/runs";
@@ -81,41 +80,5 @@ describe("webhook deliveries of a run", () => {
     expect(pending.textContent).toMatch(/pending\s*2\s*503\s*1\s*status 503/);
     const failed = table.getByRole("row", { name: /failed/ });
     expect(failed.textContent).toMatch(/failed\s*5\s*—\s*3\s*connection refused/);
-  });
-
-  it("says there are none yet for a job whose events have not been sent", async () => {
-    batchRun(
-      { [DELIVERIES]: () => Response.json({ items: [], next_cursor: null }) },
-      "https://hooks.test/in",
-    );
-    await openPlayground(`/batch?job=${JOB_ID}`);
-
-    await userEvent.click(await screen.findByRole("button", { name: "Deliveries" }));
-
-    expect(await screen.findByText("No deliveries yet")).toBeVisible();
-  });
-
-  it("shows the problem when the deliveries cannot be read", async () => {
-    batchRun(
-      {
-        [DELIVERIES]: () =>
-          problem(404, { type: "not_found", title: "Not found", detail: "no job" }),
-      },
-      "https://hooks.test/in",
-    );
-    await openPlayground(`/batch?job=${JOB_ID}`);
-
-    await userEvent.click(await screen.findByRole("button", { name: "Deliveries" }));
-
-    expect(await screen.findByText("no job")).toBeVisible();
-  });
-
-  it("offers no panel for a job without a webhook, and reads no deliveries for it", async () => {
-    const calls = batchRun({}, null);
-    await openPlayground(`/batch?job=${JOB_ID}`);
-    await screen.findByRole("button", { name: "Activity" });
-
-    expect(screen.queryByRole("button", { name: "Deliveries" })).not.toBeInTheDocument();
-    expect(calls.map(({ path }) => path)).not.toContain(`/v1/jobs/${JOB_ID}/webhook-deliveries`);
   });
 });

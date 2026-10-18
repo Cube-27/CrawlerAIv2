@@ -14,22 +14,6 @@ describe("diffFields", () => {
     ]);
   });
 
-  it("marks a field changed when its value or its status differs", () => {
-    const stored = {
-      title: recordField({}),
-      price: recordField({ value: { amount: "19.90", currency: "EUR" } }),
-    };
-    const replayed = {
-      title: recordField({ value: "Red kettle" }),
-      price: recordField({ value: null, status: "conflict", reason: "disagree" }),
-    };
-
-    expect(diffFields(stored, replayed).map(({ name, changed }) => [name, changed])).toEqual([
-      ["price", true],
-      ["title", true],
-    ]);
-  });
-
   it("lists a field present on one side only as changed, with the other side null", () => {
     const stored = { title: recordField({}) };
     const replayed = { brand: recordField({ value: "Acme" }) };

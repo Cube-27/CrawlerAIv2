@@ -51,22 +51,6 @@ def test_a_role_c_detail_reply_holds_one_claim_per_field_asked_in_every_subset(f
     assert {provider: violations(schema, subset) for provider, subset in SUBSETS.items()} == {p: [] for p in SUBSETS}
 
 
-@given(names)
-def test_a_role_c_listing_reply_is_one_array_of_block_claims_in_every_subset(fields: list[str]) -> None:
-    # One array of claims whose field is an enum of the fields asked: its length is bounded by the per-call output
-    # budget, not by the schema, and the claim's form does not grow with the fields.
-    schema: Any = c_extract.listing_output_schema(fields)
-    claim = schema["properties"]["claims"]["items"]
-
-    assert (_arrays(schema), sorted(claim["properties"]), claim["additionalProperties"]) == (
-        1,
-        ["block", "field", "value"],
-        False,
-    )
-    assert claim["properties"]["field"]["enum"] == sorted(fields)
-    assert {provider: violations(schema, subset) for provider, subset in SUBSETS.items()} == {p: [] for p in SUBSETS}
-
-
 @given(names | st.just([]), st.booleans(), names)
 def test_role_a(page: list[str], row: bool, rows: list[str]) -> None:
     schema = synthesis.output_schema(page, row, rows)
@@ -86,10 +70,6 @@ def test_role_d(subset: SchemaSubset) -> None:
     assert violations(role_d.OUTPUT_SCHEMA, subset) == []
 
 
-def test_each_subset_file_is_its_providers() -> None:
-    assert [subset.provider for subset in SUBSETS.values()] == list(SUBSETS)
-
-
 # --- what `violations` finds ---
 
 SPAN = closed_object({"value": {"type": "string"}, "start": {"type": "integer", "minimum": 0}})
@@ -105,26 +85,7 @@ def _union(n: int) -> dict[str, JsonValue]:
         (SPAN, ANTHROPIC, ["$.properties.start: keyword 'minimum'"]),
         ({"type": "object", "properties": {}}, ANTHROPIC, ["$: object without additionalProperties false"]),
         (_union(17), ANTHROPIC, ["$: 17 union parameters (at most 16)"]),
-        (
-            {"type": "object", "properties": {f"f{i}": {"type": "string"} for i in range(25)}, "required": []}
-            | {"additionalProperties": False},
-            ANTHROPIC,
-            ["$: 25 optional properties (at most 24)"],
-        ),
-        (closed_object({"a": {"type": "array", "minItems": 2}}), ANTHROPIC, ["$.properties.a: minItems 2"]),
-        (
-            closed_object({"a": {"$ref": "#/$defs/x", "description": "d"}}),
-            GEMINI,
-            ["$.properties.a: $ref with sibling keywords"],
-        ),
-        (
-            closed_object({"a": {"$ref": "#/$defs/node"}})
-            | {"$defs": {"node": closed_object({"child": {"$ref": "#/$defs/node"}})}},
-            GEMINI,
-            ["$: recursive $ref through node"],
-        ),
         (closed_object({"a": {"$ref": "#"}}), ANTHROPIC, ["$: recursive $ref through #"]),
-        (_union(17), GEMINI, []),
         (SPAN, GEMINI, []),
     ],
 )

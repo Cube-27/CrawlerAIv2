@@ -6,7 +6,6 @@ The answers are synthetic, written to the documented shapes (`example.test` host
 
 import asyncio
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -24,7 +23,7 @@ from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.types import ExtractionResult, FieldSet
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from tests.replay.captures import capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
@@ -48,22 +47,7 @@ LISTING = _preset("commerce_listing")
 
 def _extract(page_url: str, answer: JsonValue, schema: SchemaDef) -> ExtractionResult:
     raw = json.dumps(answer).encode()
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=page_url,
-        final_url=ENDPOINT,
-        fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
-        method="api",
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=(("X-Shopify-API-Version", API_VERSION),)),
-        timings_ms={},
-        html_sha256=sha256_hex(raw),
-        network_bodies=(),
-        fetch_policy={},
-        engine_version="0+cal.0",
-    )
-    bundle = CaptureBundle(manifest=manifest, body=raw, network=())
+    bundle = capture(raw, url=page_url, final_url=ENDPOINT, api=True, headers=(("X-Shopify-API-Version", API_VERSION),))
     return asyncio.run(extract_page(bundle, schema, None, None, data=DATA))
 
 
@@ -113,8 +97,8 @@ def test_every_listed_product_is_a_row_with_a_price_only_when_its_range_is_one_p
 
 @pytest.mark.parametrize("currencies", [("EUR", "SEK"), ()])
 def test_a_shop_that_may_show_another_currency_lists_its_products_without_prices(currencies: tuple[str, ...]) -> None:
-    # SPEC-15 §4.5: the API prices in the shop's primary market; a shop presenting several currencies may show the
-    # page in another one, so no listed price is the page's for certain (C7).
+    # The API prices in the shop's primary market; a shop presenting several currencies may show the page in another
+    # one, so no listed price is the page's for certain (C7).
     answer = _collection([("1.00", "1.00"), ("2.00", "2.00")], currencies)
 
     result = _extract(f"{SHOP}/collections/widgets", answer, LISTING)

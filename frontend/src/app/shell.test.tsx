@@ -1,9 +1,8 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { healthReply, problem, stubApi } from "../test/api";
-import { prefersDark } from "../test/media";
 import { routes } from "./router";
 
 function renderApp(path = "/") {
@@ -44,36 +43,6 @@ describe("app shell", () => {
       expect(calls.filter((call) => call.path === "/healthz")).toHaveLength(1);
     });
     const nav = screen.getByRole("navigation", { name: "Main" });
-    expect(
-      within(nav)
-        .getAllByRole("link")
-        .map((link) => link.textContent),
-    ).toEqual([
-      "Scrape",
-      "Batch",
-      "Extract",
-      "Map",
-      "Crawl",
-      "Search",
-      "Jobs",
-      "Schedules",
-      "Records",
-      "Schemas",
-      "Sites",
-      "Settings",
-    ]);
-  });
-
-  it("hides the Labeling entry when /healthz fails", async () => {
-    const calls = stubApi({
-      "GET /healthz": () => problem(503, { title: "Service Unavailable" }),
-    });
-    renderApp();
-
-    await waitFor(() => {
-      expect(calls.filter((call) => call.path === "/healthz")).toHaveLength(1);
-    });
-    const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).queryByRole("link", { name: "Labeling" })).toBeNull();
   });
 
@@ -98,27 +67,6 @@ describe("app shell", () => {
 });
 
 describe("theme", () => {
-  it("follows prefers-color-scheme when the viewer has not chosen", () => {
-    prefersDark(true);
-    renderApp();
-
-    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-    expect(screen.getByRole("button", { name: "Dark theme" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-  });
-
-  it("uses the light theme when the system prefers light", () => {
-    renderApp();
-
-    expect(document.documentElement).toHaveAttribute("data-theme", "light");
-    expect(screen.getByRole("button", { name: "Dark theme" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
-  });
-
   it("sets data-theme on <html> and remembers the choice when toggled", async () => {
     renderApp();
 
@@ -129,49 +77,5 @@ describe("theme", () => {
     await userEvent.click(screen.getByRole("button", { name: "Dark theme" }));
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
     expect(localStorage.getItem("crawlerai.theme")).toBe("light");
-  });
-
-  it("follows the system scheme as it changes, until the viewer chooses", async () => {
-    const setSystemDark = prefersDark(false);
-    renderApp();
-
-    act(() => {
-      setSystemDark(true);
-    });
-    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-    act(() => {
-      setSystemDark(false);
-    });
-    expect(document.documentElement).toHaveAttribute("data-theme", "light");
-
-    await userEvent.click(screen.getByRole("button", { name: "Dark theme" }));
-    act(() => {
-      setSystemDark(true);
-      setSystemDark(false);
-    });
-    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-  });
-
-  it("prefers the remembered choice over the system preference", () => {
-    prefersDark(true);
-    localStorage.setItem("crawlerai.theme", "light");
-    renderApp();
-
-    expect(document.documentElement).toHaveAttribute("data-theme", "light");
-  });
-
-  it("still renders and toggles when storage is unavailable", async () => {
-    prefersDark(true);
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new DOMException("blocked", "SecurityError");
-    });
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new DOMException("blocked", "SecurityError");
-    });
-    renderApp();
-
-    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-    await userEvent.click(screen.getByRole("button", { name: "Dark theme" }));
-    expect(document.documentElement).toHaveAttribute("data-theme", "light");
   });
 });

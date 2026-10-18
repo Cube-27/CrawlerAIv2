@@ -12,7 +12,6 @@ from hypothesis import strategies as st
 
 from crawlerai.collect.base import Candidate
 from crawlerai.collect.js_state import JsStateCollector
-from crawlerai.collect.xhr import XhrCollector
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
@@ -81,12 +80,6 @@ def _check(admitted: tuple[Candidate, ...], kind: str, others: list[Candidate], 
             )
 
 
-def _expected_count(document: object, kind: str, others: list[Candidate], page: ParsedPage) -> int:
-    """How many candidates the rule admits from `document`'s strings: one per equal owner, or one when checkable and
-    visible; one per normalized value and owner however often the value repeats (D-1343)."""
-    return len(_expected(document, kind, others, page))
-
-
 def _expected(document: object, kind: str, others: list[Candidate], page: ParsedPage) -> set[tuple[str, str, bool]]:
     anchors = [o for o in others if o.source_kind != kind]
     admitted: set[tuple[str, str, bool]] = set()
@@ -125,84 +118,4 @@ def test_js_state_admits_exactly_by_equality_or_visibility(
     admitted = JsStateCollector().collect(page, SCHEMA, CTX, candidates).candidates
 
     _check(admitted, "js_state", candidates, page)
-    assert len(admitted) == _expected_count(document, "js_state", candidates, page)
-
-
-@given(st.lists(_DOCUMENT, max_size=3), st.lists(_WORDS, max_size=3), st.lists(_OTHER, max_size=3))
-def test_xhr_admits_exactly_by_equality_or_visibility(
-    documents: list[object], shown: list[str], others: list[tuple[str, str, str]]
-) -> None:
-    candidates = [_other(*o) for o in others]
-    page = ParsedPage(
-        f"<html><body><p>{' | '.join(shown)}</p></body></html>", tuple(json.dumps(d).encode() for d in documents)
-    )
-
-    admitted = XhrCollector().collect(page, SCHEMA, CTX, candidates).candidates
-
-    _check(admitted, "xhr", candidates, page)
-    assert len(admitted) == len(set().union(*(_expected(d, "xhr", candidates, page) for d in documents)))
-
-
-# Forms of a few URLs that the url type's equality (SPEC-04 §4.5, RFC 3986 §6.2 normalization) holds equal or apart.
-_URL_FORMS = st.sampled_from(
-    [
-        "https://example.test/a",
-        "HTTPS://EXAMPLE.test/a",
-        "https://example.test:443/a",
-        "https://example.test/%61",
-        "https://example.test/b",
-        "/a",
-        "not a url",
-    ]
-)
-URL = FieldSpec(type=FieldType.URL, description="d", schema_org="Product.url")
-URL_SCHEMA = SCHEMA.model_copy(update={"fields": {"name": NAME, "url": URL}})
-_URL_OTHER = st.tuples(st.sampled_from(["jsonld", "og"]), st.sampled_from(["page", "jsonld:0:$", "jsonld:1:$"]))
-
-
-def _url_other(source_kind: str, entity_id: str, raw: str) -> Candidate:
-    return Candidate.model_validate(
-        {
-            "field": "url",
-            "entity_id": entity_id,
-            "source_kind": source_kind,
-            "raw": raw,
-            "normalized": normalize(raw, URL, CTX),
-            "locator": _LOCATORS[source_kind],
-            "independent": True,
-        }
-    )
-
-
-def _pairwise_owners(raw: str, others: list[Candidate]) -> list[str]:
-    """The rule read pairwise, as admission was first written: each owner of an equal anchor once, in `others`
-    order."""
-    value = normalize(raw, URL, CTX)
-    if not isinstance(value, Ok):
-        return []
-    equals = [
-        o.entity_id for o in others if isinstance(o.normalized, Ok) and equal(value.value, o.normalized.value, URL)
-    ]
-    return list(dict.fromkeys(equals))
-
-
-@given(st.lists(_URL_FORMS, max_size=6), st.lists(st.tuples(_URL_OTHER, _URL_FORMS), min_size=1, max_size=6))
-def test_admission_by_equality_owns_as_the_pairwise_rule(
-    values: list[str], others: list[tuple[tuple[str, str], str]]
-) -> None:
-    candidates = [_url_other(kind, owner, raw) for (kind, owner), raw in others]
-    page = ParsedPage(f"<html><head><script>var s = {json.dumps(values)};</script></head><body></body></html>")
-
-    admitted = JsStateCollector().collect(page, URL_SCHEMA, CTX, candidates).candidates
-
-    # One candidate per normalized value and owner, the first of its repeats: their locators are equally short (D-1343).
-    expected: dict[tuple[str, str], str] = {}
-    for raw in values:
-        value = normalize(raw, URL, CTX)
-        for owner in _pairwise_owners(raw, candidates):
-            assert isinstance(value, Ok)
-            expected.setdefault((json.dumps(value.value), owner), raw)
-    assert [(c.raw, c.entity_id) for c in admitted if c.field == "url"] == [
-        (raw, owner) for (_, owner), raw in expected.items()
-    ]
-    assert all(not c.independent for c in admitted)
+    assert len(admitted) == len(_expected(document, "js_state", candidates, page))

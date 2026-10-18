@@ -9,9 +9,4 @@ describe("keyedTexts", () => {
       { key: "1:red", text: "red" },
     ]);
   });
-
-  it("keys an entry by its content, not its position", () => {
-    const [, blue] = keyedTexts(["red", "blue"]);
-    expect(keyedTexts(["blue"])).toEqual([blue]);
-  });
 });

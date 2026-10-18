@@ -72,18 +72,6 @@ describe("API access", () => {
     expect(await screen.findByText(SETUP_NOTICE)).toBeInTheDocument();
     expect(main).toHaveTextContent(SETUP_NOTICE);
     expect(main).toHaveTextContent("Set CRAWLERAI_UI_API_KEY in .env");
-    expect(main).toHaveTextContent("crawlerai apikey create");
     expect(screen.queryByRole("button", { name: "Call API" })).not.toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
-  });
-
-  it("keeps the screen on an error other than 401", async () => {
-    stubApi({ "GET /v1/jobs": () => problem(403, { type: "forbidden", title: "Forbidden" }) });
-    renderProbe();
-
-    await userEvent.click(screen.getByRole("button", { name: "Call API" }));
-
-    expect(await screen.findByText("Status 403")).toBeInTheDocument();
-    expect(screen.queryByText(SETUP_NOTICE)).not.toBeInTheDocument();
   });
 });

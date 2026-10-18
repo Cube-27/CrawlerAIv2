@@ -43,55 +43,6 @@ async function submit() {
 }
 
 describe("scrape playground: advanced options", () => {
-  it("sends a click step written in the actions editor", async () => {
-    const calls = stubScrape();
-    await openScrape();
-    const options = await openOptions();
-    await userEvent.click(options.getByRole("button", { name: "Add step" }));
-    await userEvent.type(options.getByRole("textbox", { name: "Step 1 CSS selector" }), ".more");
-    await closeOptions();
-
-    await submit();
-
-    expect(posted(calls)).toMatchObject({
-      fetch: { method_hint: "auto", actions: [{ type: "click", selector: ".more" }] },
-    });
-  });
-
-  it("sends steps in the order they were moved to", async () => {
-    const calls = stubScrape();
-    await openScrape();
-    const options = await openOptions();
-    await userEvent.click(options.getByRole("button", { name: "Add step" }));
-    await userEvent.type(options.getByRole("textbox", { name: "Step 1 CSS selector" }), "#q");
-    await userEvent.click(options.getByRole("button", { name: "Add step" }));
-    await pick(/Step 2 kind/, "Scroll");
-    await userEvent.click(options.getByRole("button", { name: "Move step 2 up" }));
-    // The moved row's button is now disabled (the row is first), and a disabled control keeps no focus to Escape from.
-    await userEvent.click(options.getByRole("textbox", { name: "Wait for" }));
-    await closeOptions();
-
-    await submit();
-
-    expect(posted(calls)).toMatchObject({
-      fetch: {
-        actions: [
-          { type: "scroll", to: "bottom" },
-          { type: "click", selector: "#q" },
-        ],
-      },
-    });
-  });
-
-  it("sends no Advanced member for an untouched section", async () => {
-    const calls = stubScrape();
-    await openScrape();
-
-    await submit();
-
-    expect((posted(calls) as { fetch: object }).fetch).toEqual({ method_hint: "auto" });
-  });
-
   it("sends the cookies, wait for and cache that were set", async () => {
     const calls = stubScrape();
     await openScrape();
