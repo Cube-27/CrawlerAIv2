@@ -124,7 +124,7 @@ class EngineData:
 
 @dataclass(frozen=True, slots=True)
 class GapRequest:
-    """§4.13: the required fields of `target` that resolution left missing, for role C to read from the page text."""
+    """§4.13: the fields of `target` that resolution left missing, for role C to read from the page text."""
 
     page: ParsedPage
     schema: SchemaDef
@@ -200,7 +200,7 @@ async def extract_page(
         return _result("error", mode)
     candidates, diagnostics = page.candidates, page.diagnostics
     llm_calls: tuple[LLMCallRecord, ...] = ()
-    missing = _gaps(schema, fields, page.config.covered)
+    missing = _missing(schema, fields, page.config.covered)
     if role_c is not None and missing and isinstance(page.target, Entity):
         reply = await role_c.detail(GapRequest(page.page, schema, page.ctx, page.target, missing))
         candidates, llm_calls = (*candidates, *reply.candidates), reply.llm_calls
@@ -466,8 +466,9 @@ class _Listing:
 
     def gap(self) -> ListingGapRequest | None:
         """The role C request (listings spec, "Role C rows"): the blocks whose rows lack row fields, each with the
-        fields its row lacks, and the missing page fields a detail page would ask (`_gaps`); none of them a field the
-        config runs, and no block beside a config that runs a row field (role C's values could not join its rows)."""
+        fields its row lacks, and the missing page fields when a required one is among them (`_gaps`); none of them a
+        field the config runs, and no block beside a config that runs a row field (role C's values could not join its
+        rows)."""
         schema = self.page.schema
         covered = self.page.config.covered
         row_fields = tuple(name for name, spec in schema.fields.items() if spec.scope == "row")
@@ -575,22 +576,27 @@ def _scoped(schema: SchemaDef, fields: FieldSet, scope: Scope) -> FieldSet:
     return {name: outcome for name, outcome in fields.items() if schema.fields[name].scope == scope}
 
 
-def _gaps(schema: SchemaDef, fields: FieldSet, covered: frozenset[str]) -> tuple[str, ...]:
-    """§4.13: the fields role C is asked for, in schema order. Only `missing` fields the active config does not run
-    are asked (ARCHITECTURE §8.4), never a conflict or an abstention, and only when a required one is among them: a
-    required field, or a member of a required group that no member fills yet. Missing optional fields then ride along
-    in the same call (SPEC-06 §4.4, D-0025). An `object` field, and a list of objects (a row-mapped field included), is
-    never asked: a claim is one verbatim span, which cannot hold typed sub-fields (SPEC-13 §4.9)."""
-    published = {name for name, outcome in fields.items() if outcome.status == "published"}
-    unmet = {name for group in schema.required_groups if not published.intersection(group) for name in group}
-    missing = [
+def _missing(schema: SchemaDef, fields: FieldSet, covered: frozenset[str]) -> tuple[str, ...]:
+    """The fields role C is asked for on a detail page (llm spec, "When role C is asked"), in schema order: every
+    `missing` field, optional ones included, that the active config does not run (ARCHITECTURE §8.4), never a
+    conflict or an abstention. An `object` field, and a list of objects (a row-mapped field included), is never asked:
+    a claim is one verbatim span or element, which cannot hold typed sub-fields (SPEC-13 §4.9)."""
+    return tuple(
         name
         for name, outcome in fields.items()
         if outcome.status == "missing" and name not in covered and not _holds_objects(schema.fields[name])
-    ]
+    )
+
+
+def _gaps(schema: SchemaDef, fields: FieldSet, covered: frozenset[str]) -> tuple[str, ...]:
+    """A listing's page fields role C is asked for (listings spec, "Role C rows"): the `_missing` ones, only when a
+    required one is among them: a required field, or a member of a required group that no member fills yet."""
+    published = {name for name, outcome in fields.items() if outcome.status == "published"}
+    unmet = {name for group in schema.required_groups if not published.intersection(group) for name in group}
+    missing = _missing(schema, fields, covered)
     if not any(schema.fields[name].required or name in unmet for name in missing):
         return ()
-    return tuple(missing)
+    return missing
 
 
 def _askable(schema: SchemaDef, row_fields: Sequence[str]) -> list[str]:
