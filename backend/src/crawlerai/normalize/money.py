@@ -1,9 +1,10 @@
 """Money normalizer (normalization spec): `{"amount": "<decimal>", "currency": "<ISO 4217>" | null}`.
 
 Accepts:
-- a string, from the DOM or an LLM: the one amount in it, and the currency sign written next to it (a CLDR symbol
-  or ISO 4217 code) or, failing that, the sign `price-parser` locates. Unicode CLDR data (Babel) resolves both for
-  the locales the page and the request state;
+- a string, from the DOM or an LLM: the one amount in it (a percentage beside it is a discount, not an amount; a
+  CLDR compact unit after it multiplies it, `3.5万` = 35000), and the currency sign written next to it (a CLDR symbol,
+  one-word CLDR currency count name such as `円`, or ISO 4217 code) or, failing that, the sign `price-parser`
+  locates. Unicode CLDR data (Babel) resolves both for the locales the page and the request state;
 - a JSON object from a structured source: schema.org `price` + `priceCurrency` (Offer, PriceSpecification), or the
   normalized form `amount` + `currency`. The amount is a JSON number or a string of digits with `.` as the decimal
   point (schema.org `price`: no grouping, no currency sign); a `price` written as display text instead (`$1,295.99`)
@@ -91,21 +92,32 @@ def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
 def _text(raw: str, ctx: Context, stated: str | None = None) -> NormalizeResult:
     """Money written as text; `stated` is the currency structured data states beside it, which any sign the text
     writes must denote, and which a text without a sign is in."""
-    found = numbers.stated(raw)
+    # A percentage beside the amount (`-20%`) is a discount, never a second amount (`numbers.stated`).
+    found = numbers.stated(raw, percentages=False)
     if isinstance(found, str):
         return Invalid(_NUMBER_REASONS.get(found, found))
     text, before, after = found.text, found.before, found.after
     if numbers.negated(before):
         return Invalid("not_positive")
+    locales = numbers.locale_set(ctx)
+    # A CLDR compact unit written after the digits multiplies them (`3.5万円` is 35000 yen); the sign follows it.
+    power, length = numbers.compact_unit(after, locales) or (0, 0)
+    after = after[length:]
     currency = _currency_of(text, before, after, ctx, stated)
     if isinstance(currency, Invalid):
         return currency
-    amounts = numbers.readings(found.written, numbers.locale_set(ctx))
+    amounts = [_shifted(amount, power) for amount in numbers.readings(found.written, locales)]
     if not amounts:
         return Invalid("unparsable_amount")
     if len(amounts) == 1:
         return _money(amounts[0], currency)
     return Ambiguous("decimal_separator", tuple(_value(a, currency.code) for a in amounts))
+
+
+def _shifted(amount: Decimal, power: int) -> Decimal:
+    """`amount` times `10^power`, exactly (`Decimal.scaleb` rounds to the context's 28 digits)."""
+    sign, digits, exponent = amount.as_tuple()
+    return Decimal((sign, digits, exponent + power)) if isinstance(exponent, int) else amount
 
 
 def _currency_of(text: str, before: str, after: str, ctx: Context, stated: str | None) -> _Currency | Invalid:
@@ -288,11 +300,20 @@ def _territories() -> frozenset[str]:
 
 @cache
 def _locale_symbols(identifier: str) -> dict[str, frozenset[str]]:
-    """The currencies each CLDR symbol (NFKC) stands for in one locale."""
+    """The currencies each CLDR symbol (NFKC) stands for in one locale, and each one-word name CLDR gives a count of
+    it (`currencyNames` by plural form: `円` for yen in Japanese), which pages write after an amount as a sign."""
+    locale = Locale.parse(identifier)
+    named = locale._data.get("currency_names_plural", {})  # Babel exposes the count forms only through its data
+    pairs = [*((code, symbol) for code, symbol in locale.currency_symbols.items())]
+    pairs += [(code, name) for code in named for name in dict(named[code]).values() if name and not _spaced(name)]
     by_symbol: dict[str, set[str]] = {}
-    for code, symbol in Locale.parse(identifier).currency_symbols.items():
+    for code, symbol in pairs:
         by_symbol.setdefault(unicodedata.normalize("NFKC", symbol), set()).add(code)
     return {symbol: frozenset(codes) for symbol, codes in by_symbol.items()}
+
+
+def _spaced(name: str) -> bool:
+    return any(c.isspace() for c in name)
 
 
 @cache

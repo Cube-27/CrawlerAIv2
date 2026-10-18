@@ -90,7 +90,24 @@ def test_a_struck_former_price_is_not_the_price_and_two_shown_prices_decline() -
     assert [row["price"] for row in _rows(_repeat(struck))] == [
         {"amount": f"1{i}.50", "currency": "EUR"} for i in range(4)
     ]
+    only_struck = '<li class="c"><a href="/p/{i}">Kettle {i}</a><div><s>{i}9.99 EUR</s></div></li>'
+    assert all("price" not in row for row in _rows(_repeat(only_struck)))
     (group,) = _groups(_repeat(two))
+    prices = [c.normalized for c in group.candidates if c.field == "price"]
+    assert len(prices) == 4
+    assert all(isinstance(p, Ambiguous) and p.reason == AMBIGUOUS_IN_BLOCK for p in prices)
+
+
+def test_adjacent_elements_digits_are_two_numbers_and_own_text_beside_a_child_price_is_read() -> None:
+    # `<span>EUR 10.99</span><span>20</span>` renders `EUR 10.9920` with no space: two text nodes are a token boundary.
+    joined = '<li class="c"><a href="/p/{i}">Kettle {i}</a><div><span>EUR 1{i}.99</span><span>20</span></div></li>'
+    # A former price in a child element and the current one as the parent's own text: two prices, so none.
+    nested = '<li class="c"><a href="/p/{i}">Kettle {i}</a><span><span>{i}9.99 EUR</span> now 1{i}.50 EUR</span></li>'
+
+    assert [row["price"] for row in _rows(_repeat(joined))] == [
+        {"amount": f"1{i}.99", "currency": "EUR"} for i in range(4)
+    ]
+    (group,) = _groups(_repeat(nested))
     prices = [c.normalized for c in group.candidates if c.field == "price"]
     assert len(prices) == 4
     assert all(isinstance(p, Ambiguous) and p.reason == AMBIGUOUS_IN_BLOCK for p in prices)

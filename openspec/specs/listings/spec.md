@@ -30,13 +30,18 @@ a place shared by a quorum of the blocks whose value its normalizer accepts: the
 links lead to, not the page in another state, an image file or an item's own nested list), the name (the accessible
 name of the item link, WCAG label in name, or the block's heading; never a URL; text every block repeats is the
 template's), the image, and typed value spotting for money, dates and check-digit identifiers (text in `s`/`del`
-excluded). Values are `dom` candidates with locators; the group aligning most fields is first. Refs: owner #67.
+excluded, also from the lines of the elements holding it; an element's line is not read where two text nodes run digits
+together, a token boundary the text does not show; an element holding others is also read in each of its own text
+nodes). Values are `dom` candidates with locators; the group aligning most fields is first. Refs: owner #67.
 #### Scenario: Cards with title, link and price
 - **WHEN** a listing shows cards of varying tags and class tokens, each with a heading link and one price
 - **THEN** each card is a row with its title, URL and price
 #### Scenario: Was and now prices
 - **WHEN** a card shows a current price and a second price not struck through
 - **THEN** its price is `ambiguous_in_block` and publishes nothing unless a stated row bound to it agrees with one
+#### Scenario: A badge next to the price
+- **WHEN** a card renders `<span>EUR 10.99</span><span>20</span>` with no space between them
+- **THEN** its price is `10.99` EUR from the first span, never `10.9920`
 
 ### Requirement: Stated rows and blocks (bind)
 The stated rows SHALL be structured data's (`resolve/listing.py`), else the active config's, else the captured calls'.

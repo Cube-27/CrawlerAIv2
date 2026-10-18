@@ -24,9 +24,11 @@ C4):
   decorative (`collect.dom.image_source`, `collect.dom.decorative`).
 - **typed values** (a row money, date or datetime field, or an identifier under a scheme with a check digit): typed
   value spotting. The block's shown elements whose text, on one line, the field's normalizer parses (a syntax it
-  checks: an ISO 4217 or CLDR amount, an ISO 8601 or CLDR date, a check digit); of an element and one inside it reading
-  the same value, the inner one. Text the HTML Standard marks as no longer accurate (`s`, §4.5.4) or removed (`del`,
-  §4.7.2) is no current value: a struck-through former price. A place every block gives the same value at is the
+  checks: an ISO 4217 or CLDR amount, an ISO 8601 or CLDR date, a check digit), and, for an element holding others,
+  each of its own text nodes; a line where two text nodes run digits together (`ParsedPage.digit_joins`) is two
+  numbers, not one. Of an element and one inside it reading the same value, the inner one. Text the HTML Standard
+  marks as no longer accurate (`s`, §4.5.4) or removed (`del`, §4.7.2) is no current value: a struck-through former
+  price. A place every block gives the same value at is the
   template's (a shipping threshold) when another place gives the field differing values. A block whose places give one
   value publishes it; one whose places give several (a price and an instalment) gives an `ambiguous_in_block`
   candidate, which publishes nothing unless a structured row bound to the block agrees with one of them
@@ -38,6 +40,7 @@ a name and a link but no price, a product grid all three. Each block with an ite
 each of its values a `dom` candidate with the XPath of its element.
 """
 
+import bisect
 import math
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
@@ -329,6 +332,7 @@ class _View:
     paths: dict[HtmlElement, str] = field(default_factory=dict)
     places: dict[HtmlElement, str] = field(default_factory=dict)
     struck: set[HtmlElement] = field(default_factory=set)
+    holding_struck: set[HtmlElement] = field(default_factory=set)
 
     @classmethod
     def of(
@@ -359,7 +363,15 @@ class _View:
             self.places[element] = place
             if struck:
                 self.struck.add(element)
+                self._hold_struck(element)
             stack.extend(reversed(_children(element, path, place, struck)))
+
+    def _hold_struck(self, element: HtmlElement) -> None:
+        """Note the ancestors of a struck element up to the block: their lines show its former value."""
+        node = element.getparent()
+        while node is not None and node not in self.holding_struck and node is not self.block.getparent():
+            self.holding_struck.add(node)
+            node = node.getparent()
 
     def line(self, element: HtmlElement) -> str | None:
         """The element's shown text when it is on one line (`ParsedPage.text_spans`), white space collapsed."""
@@ -457,10 +469,36 @@ class _View:
     def _typed(self, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
         hits: list[tuple[HtmlElement, Spot]] = []
         for element in self.elements:
-            if element in self.struck or (text := self.line(element)) is None:
+            if element in self.struck:
                 continue
-            hits.extend((element, spot) for spot in spots(text, spec, ctx, self.paths[element], self.places[element]))
+            for text, place in self._typed_texts(element):
+                hits.extend((element, spot) for spot in spots(text, spec, ctx, self.paths[element], place))
         return tuple(spot for element, spot in hits if not _inner_hit(element, spot, hits, spec))
+
+    def _typed_texts(self, element: HtmlElement) -> list[tuple[str, str]]:
+        """The texts of an element a typed value is read from, with their places: its line, unless it shows a struck
+        element's text or runs two elements' digits together (`ParsedPage.digit_joins`: `$12` and a `20` badge are not
+        `$1220`); and, for an element holding other elements, each of its own text nodes (`ab 12 €` after a child's
+        former price)."""
+        path = self.paths[element]
+        texts: list[tuple[str, str]] = []
+        span = None if element in self.holding_struck else self.page.text_spans.get(path)
+        if span is not None and not _joins_digits(self.page.digit_joins, span) and (line := self.line(element)):
+            texts.append((line, self.places[element]))
+        if len(element):
+            text = self.page.cleaned_text.text
+            own = (" ".join(text[start:end].split()) for start, end in self.page.own_runs.get(path, ()))
+            # The runs are keyed by the selectolax tree's paths; a run is this element's only if its lxml text holds it
+            # (the two parsers repair malformed markup differently).
+            written = " ".join(" ".join(t for t in (element.text, *(c.tail for c in element)) if t).split())
+            texts.extend((run, f"{self.places[element]}/text()") for run in own if run and run in written)
+        return texts
+
+
+def _joins_digits(joins: Sequence[int], span: tuple[int, int]) -> bool:
+    """Whether a digit join (`ParsedPage.digit_joins`, sorted) lies inside the span."""
+    at = bisect.bisect_right(joins, span[0])
+    return at < len(joins) and joins[at] < span[1]
 
 
 def _children(element: HtmlElement, path: str, place: str, struck: bool) -> list[tuple[HtmlElement, str, str, bool]]:
