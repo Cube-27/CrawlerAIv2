@@ -199,9 +199,10 @@ async def fail_task(
         await _finish(conn, task, "done", ending, outcome=exhausted, **values)
 
 
-async def cancel_task(conn: AsyncConnection, task: ClaimedTask) -> None:
-    """End a claimed task of a job whose cancel was requested, without running it (§4.3)."""
-    await _finish(conn, task, "cancelled", None)
+async def cancel_task(conn: AsyncConnection, task: ClaimedTask, *, ending: JobEnding | None = None) -> None:
+    """End a claimed task without running it: one of a job whose cancel was requested (§4.3), or one its handler
+    skipped. `ending` runs if this ends the job (`settle_job`)."""
+    await _finish(conn, task, "cancelled", ending)
 
 
 async def release_task(conn: AsyncConnection, task: ClaimedTask, *, after: timedelta = timedelta(0)) -> None:
