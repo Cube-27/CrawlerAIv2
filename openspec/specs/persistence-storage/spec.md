@@ -2,20 +2,17 @@
 
 ## Purpose
 
-Where CrawlerAI v2 keeps its state: two PostgreSQL databases, the data model in one baseline migration, capture
-bundles in two object stores, retention, deterministic replay and the engine version stamp. Rationale: ARCHITECTURE
+Where CrawlerAI v2 keeps its state: one PostgreSQL database, the data model in one baseline migration, capture
+bundles in an object store, retention, deterministic replay and the engine version stamp. Rationale: ARCHITECTURE
 §6, §15, Appendix A #43 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history:
-SPEC-01. Queue and job state are in [jobs](../jobs/spec.md); split access rules in
+SPEC-01. Queue and job state are in [jobs](../jobs/spec.md); the golden set in
 [evaluation](../evaluation/spec.md).
 
 ## Requirements
 
-### Requirement: Two databases with separate roles
-The system SHALL use the main database `crawlerai` (role `app`) and `crawlerai_eval_private` (role `custodian`), both
-created by `infra/postgres/init.sql`; the `app` role MUST NOT connect to the private database. Refs: §6, D-0067.
-#### Scenario: App role refused
-- **WHEN** a connection to `crawlerai_eval_private` uses `app` credentials
-- **THEN** it fails (`tests/db/test_eval_private_database.py`)
+### Requirement: One database
+The system SHALL use one database, `crawlerai` (role `app`), created by `infra/postgres/init.sql`; eval pages,
+captures and runs live in it. Refs: owner (2026-10-18, master plan decision 2).
 
 ### Requirement: Main data model tables
 The main database SHALL hold the §6 tables as defined in the baseline migration, with `site.host` exact, lowercased
@@ -31,9 +28,9 @@ Every §6 enumeration SHALL be a `text` column with a CHECK constraint. IDs SHAL
 `numeric`, never a float. Refs: §6, D-0088, D-0102, D-0103, D-0140.
 
 ### Requirement: One baseline migration (greenfield)
-Each database SHALL have exactly one Alembic baseline revision (`0001_baseline`, private `p0001`); a model change
-edits it and databases are recreated, never migrated with data steps or compatibility shims. Refs: Appendix A #43,
-D-0954.
+The database SHALL have exactly one Alembic baseline revision (`0001_baseline`); a model change edits it and
+databases are recreated, never migrated with data steps or compatibility shims. (Previously: a private `p0001` too.)
+Refs: Appendix A #43, D-0954.
 #### Scenario: Migration round trip
 - **WHEN** CI runs upgrade head, downgrade base, upgrade head on an empty database
 - **THEN** all three succeed and constraint names match `test_baseline_migration.py`
@@ -49,8 +46,8 @@ Replay reads only the bundle, never the `capture` row. Refs: §15, Appendix A #5
 
 ### Requirement: Object stores and key layout
 Bundles SHALL go through the `ObjectStore` protocol (`fs` and `s3` backends, S3 via boto3's environment chain, no
-MinIO); escaping or malformed keys raise `ValueError`. Hidden and fresh bundles go only under the private root,
-which the main `capture` table never references. Refs: §15, D-0094, D-0095, D-0096.
+MinIO); escaping or malformed keys raise `ValueError`. (Previously: hidden and fresh bundles under a private root.)
+Refs: §15, D-0094, D-0095, D-0096.
 #### Scenario: Escaping key refused
 - **WHEN** `put("../x", data)` is called on either backend
 - **THEN** it raises `ValueError` and writes nothing

@@ -28,8 +28,8 @@ plan's section 7 except decision 7, which is deferred: vendor-blocked pages stay
 
 ## Impact
 
-- Capabilities: [evaluation](../../specs/evaluation/spec.md), [persistence-storage](../../specs/persistence-storage/spec.md),
-  [learning-configs](../../specs/learning-configs/spec.md) (deltas in `specs/`); contract and design documents by owner
+- Capabilities: [evaluation](../../../specs/evaluation/spec.md), [persistence-storage](../../../specs/persistence-storage/spec.md),
+  [learning-configs](../../../specs/learning-configs/spec.md) (deltas in `specs/`); contract and design documents by owner
   approval (master plan, 2026-10-18).
 - Files: `backend/src/crawlerai/eval/`, `db/`, `core/settings.py`, `core/json_text.py` (new), `cli.py`,
   `backend/migrations/`, `infra/postgres/init.sql`, the JSON call sites in `acquire/`, `adapters/`, `content/`,
