@@ -341,7 +341,7 @@ async def test_an_extract_job_is_the_callers_and_its_status_has_no_records_yet(
     async with engine.connect() as conn:
         assert (await conn.execute(select(Job.api_key_id).where(Job.id == job_id))).scalar_one() == key.id
     assert (status.structuredContent or {})["job"]["kind"] == "extract"
-    assert (status.structuredContent or {})["results"] == {"items": [], "next_cursor": None}
+    assert (status.structuredContent or {})["results"] == {"items": [], "next_cursor": None, "total": 0}
     assert _texts(status)[1] == "No records."
 
 
