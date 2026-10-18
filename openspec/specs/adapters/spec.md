@@ -208,8 +208,9 @@ Refs: §7.2, D-0559, D-0560.
 A recipe SHALL be accepted only for a schema whose HTML config validated, when every map field reproduces on every
 held-out page (at least 3) where it was published (for a listing: replaying its first two pages gives the rows of the
 page's captured calls, in order, each mapped raw value equal); `validation_report.api_recipe` records the result or
-the refusal reason either way, and an error of the recipe learner that is not an LLM failure refuses the recipe
-(`recipe_error: <type>`) without failing the run. Refs: §7.2, Appendix A #59, D-0581, D-0583, D-0735, D-1365, D-1389.
+the refusal reason either way, and an error of the recipe learner that is neither an LLM failure nor a database
+error (a replay's usage not stored fails the run) refuses the recipe (`recipe_error: <type>`) without failing the run.
+Refs: §7.2, Appendix A #59, D-0581, D-0583, D-0735, D-1365, D-1389, D-1584.
 (Previously: such an error failed the learning run.)
 #### Scenario: Second page changed
 - **WHEN** a held-out listing's replayed second page answers other rows than its captured second call

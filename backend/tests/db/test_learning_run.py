@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
@@ -514,6 +515,20 @@ async def test_a_recipe_learning_error_refuses_the_recipe_and_the_config_still_a
     assert await site.recipe(learned.config_id) is None
     status, payload = await site.finished(job_id)
     assert (status, payload["report"]["api_recipe"]["refused"]) == ("completed", "recipe_error: RuntimeError")
+
+
+async def test_a_replays_usage_that_cannot_be_stored_fails_the_run_and_nothing_activates(site: LearnSite) -> None:
+    # A database error is the run's, not the recipe learner's: the replay's request would go unaccounted (D-1381).
+    await site.pages(8, api=True)
+    await _forced(site)
+
+    async def unaccounted(_request: JsonRequest) -> FetchResult:
+        raise OperationalError("INSERT INTO usage_event", {}, ConnectionError("synthetic"))
+
+    job_id, learned = await site.learn(RoleA(PRICE_REPLY), lambda _job_id, _pool: unaccounted)
+
+    assert learned == Learned(None, "error")
+    assert ((await site.state()).mode, (await site.finished(job_id))[0]) == ("cold", "failed")
 
 
 async def _forced(site: LearnSite) -> None:
