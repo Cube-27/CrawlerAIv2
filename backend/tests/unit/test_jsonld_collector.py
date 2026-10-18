@@ -411,6 +411,14 @@ DESCRIBED = _schema(
         pytest.param("<b>Fish</b> &amp;amp; chips", "Fish &amp; chips", "Fish &amp; chips", id="fragment-reference"),
         pytest.param("Fish &amp;amp; chips", "Fish &amp; chips", "Fish &amp; chips", id="text-reference"),
         pytest.param("Sizes 1 < 2 & more", "Sizes 1 < 2 & more", "Sizes 1 < 2 & more", id="no-element"),
+        # D-1486: markup written escaped is the fragment; an escaped `<` that makes no element stays text.
+        pytest.param(
+            "&lt;p&gt;Soft &lt;b&gt;cotton&lt;/b&gt;.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Machine wash&lt;/li&gt;&lt;/ul&gt;",
+            "Soft cotton. Machine wash",
+            "Soft cotton.\nMachine wash",
+            id="escaped-markup",
+        ),
+        pytest.param("Sizes 1 &lt; 2", "Sizes 1 < 2", "Sizes 1 < 2", id="escaped-no-element"),
     ],
 )
 def test_a_text_value_holding_element_markup_is_read_as_its_rendered_text(
