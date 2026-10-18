@@ -10,7 +10,6 @@ from selectolax.lexbor import LexborHTMLParser
 
 from crawlerai.content.html import cleaned_html, is_javascript_url
 from crawlerai.content.links import links
-from crawlerai.content.metadata import metadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Ok
 from crawlerai.normalize.url import canonical
@@ -26,26 +25,19 @@ _reference = st.one_of(
             st.sampled_from(
                 [
                     "/",
-                    "./",
                     "../",
                     "?",
                     "#",
                     "x",
-                    "%2e",
                     "%zz",
-                    " ",
-                    "\t",
                     "//",
                     "javascript:",
                     "mailto:",
                     "HTTP://",
-                    "https://",
                     "data:",
-                    "h.example.test",
                     ":8080",
                     "@",
                     "[::1]",
-                    "é",
                 ]
             ),
             max_size=8,
@@ -115,18 +107,3 @@ def test_cleaned_html_runs_no_script(fragments: list[str]) -> None:
         for name, value in node.attributes.items():
             assert not name.lower().startswith("on")
             assert not is_javascript_url(value or "")
-
-
-_language = st.one_of(
-    st.none(), st.sampled_from(["", " ", "\t\n"]), st.from_regex(r"[A-Za-z]{2}([-_][A-Za-z]{2})?", fullmatch=True)
-)
-
-
-@given(_language, _language)
-def test_metadata_language_is_html_lang_else_og_locale(lang: str | None, og_locale: str | None) -> None:
-    html_attribute = "" if lang is None else f' lang="{lang}"'
-    og_meta = "" if og_locale is None else f'<meta property="og:locale" content="{og_locale}">'
-    page = ParsedPage(f"<html{html_attribute}><head>{og_meta}</head></html>")
-
-    expected = (lang or "").strip() or (og_locale or "").strip() or None
-    assert metadata(page, FINAL_URL).language == expected

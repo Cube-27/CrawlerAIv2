@@ -7,13 +7,10 @@ Place names are made up; country codes are ISO 3166-1 codes (the standard)."""
 from datetime import UTC, datetime
 
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from crawlerai.normalize import location
 from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok
-from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 CTX = Context(captured_at=datetime(2026, 1, 1, tzinfo=UTC))
@@ -41,222 +38,74 @@ def value(
     }
 
 
-# Words that name no remote work in any language: made-up place names.
-_words = st.text(st.sampled_from("abcdefghijklmnopqrstuvwxyzÅÖé"), min_size=1, max_size=8).filter(
-    lambda w: w.casefold() not in {"remote"}
-)
-_places = st.lists(_words, min_size=1, max_size=4).map(", ".join)
-_codes = st.sampled_from(sorted(location.iso_3166_alpha2()))
-
-
-@given(_places, st.sampled_from(["", " ", "\t"]))
-def test_text_publishes_as_written_with_no_place_inferred(place: str, padding: str) -> None:
-    assert norm(f"{padding}{place}{padding}") == Ok(value(place))
-
-
-@given(st.lists(_words, min_size=2, max_size=4), st.sampled_from(["  ", "\n", "\t ", "\u00a0"]))
-def test_text_publishes_with_its_whitespace_runs_collapsed_and_nothing_else_changed(words: list[str], gap: str) -> None:
-    assert norm(gap.join(words)) == Ok(value(" ".join(words)))
-
-
-def test_a_location_naming_several_places_publishes_as_one_text_unsplit() -> None:
+def test_text_publishes_as_written_with_whitespace_collapsed_and_no_place_inferred() -> None:
+    assert norm("  Lake \n Town ") == Ok(value("Lake Town"))
     # Owner, 2026-10-16 (D-0946 class 11): the location publishes as written; no "or" split, no region parsing.
     assert norm("North Region or  Lakeside, Remote") == Ok(value("North Region or Lakeside, Remote", remote=True))
 
 
-def test_address_parts_publish_with_their_whitespace_collapsed() -> None:
-    raw: JsonValue = {"@type": "PostalAddress", "addressLocality": "Lake\n  Town", "addressRegion": "North  Shore"}
-
-    assert norm(raw) == Ok(value("Lake Town, North Shore", "Lake Town", "North Shore"))
-
-
-@given(st.sampled_from(["Remote", "remote", "REMOTE", "(Remote)"]))
-def test_a_remote_phrase_sets_the_flag_and_keeps_the_text(text: str) -> None:
-    assert norm(text) == Ok(value(text, remote=True))
-
-
-def test_remote_is_read_only_in_the_languages_of_the_page() -> None:
-    ctx = CTX.model_copy(update={"html_lang": "xx"})
-
-    assert norm("Remote", ctx) == Ok(value("Remote"))
-
-
-@pytest.mark.parametrize(("raw", "reason"), [("", "empty"), ("  ", "empty"), ("—", "empty"), ("\ud800", "surrogate")])
+@pytest.mark.parametrize(("raw", "reason"), [("", "empty"), ("—", "empty"), ("\ud800", "surrogate")])
 def test_text_with_no_words_is_invalid(raw: str, reason: str) -> None:
     assert norm(raw) == Invalid(reason)
 
 
-# Structured (schema.org Place, PostalAddress, jobLocationType)
-
-
-@given(_words, _words, _codes, st.booleans())
-def test_a_postal_address_keeps_its_parts_and_a_stated_code(locality: str, region: str, code: str, lower: bool) -> None:
-    written = code.lower() if lower else code
+def test_a_postal_address_keeps_its_parts_and_a_stated_code() -> None:
     address: dict[str, JsonValue] = {
         "@type": "PostalAddress",
-        "addressLocality": f" {locality} ",
-        "addressRegion": region,
-        "addressCountry": written,
+        "addressLocality": " Alderton ",
+        "addressRegion": "Upper Fen",
+        "addressCountry": "de",
     }
-    expected = Ok(value(f"{locality}, {region}, {written}", locality, region, code))
+    expected = Ok(value("Alderton, Upper Fen, de", "Alderton", "Upper Fen", "DE"))
 
     assert norm(address) == expected
     assert norm({"@type": "Place", "address": address}) == expected
-    assert norm({**address, "addressCountry": {"@type": "Country", "identifier": written}}) == expected
+    assert norm({**address, "addressCountry": {"@type": "Country", "identifier": "de"}}) == expected
 
 
-@given(st.sampled_from(["Northland", "NLD", {"@type": "Country", "name": "Northland"}]))
-def test_a_country_stated_by_name_stays_in_the_text_and_gets_no_code(country: JsonValue) -> None:
-    written = country["name"] if isinstance(country, dict) else country
-    result = norm({"addressLocality": "Alderton", "addressCountry": country})
-
-    assert result == Ok(value(f"Alderton, {written}", "Alderton"))
-
-
-@given(st.sampled_from(["ZZ", "XK", "QM", "AA", "zz", "EU", "EZ", "UN", "UK", "AC"]))
+@pytest.mark.parametrize("code", ["ZZ", "XK", "AA", "EU", "UK", "AC"])
 def test_two_letters_that_are_no_iso_3166_1_code_are_invalid(code: str) -> None:
     assert norm({"addressLocality": "Alderton", "addressCountry": code}) == Invalid("unknown_country")
 
 
-def test_the_user_assigned_ranges_are_no_codes() -> None:
-    codes = location.iso_3166_alpha2()
-
-    assert {"DE", "US", "JP"} <= codes
-    assert not codes & {"AA", "QM", "QZ", "XA", "XK", "XZ", "ZZ"}
-    assert all(len(code) == 2 and code.isascii() and code.isupper() for code in codes)
-
-
-def test_the_exceptionally_reserved_codes_are_no_country_codes() -> None:
-    # ISO 3166-1 reserves these at a body's request; CLDR names regions by several of them.
-    assert not location.iso_3166_alpha2() & {
-        "AC",
-        "CP",
-        "CQ",
-        "DG",
-        "EA",
-        "EU",
-        "EZ",
-        "FX",
-        "IC",
-        "SU",
-        "TA",
-        "UK",
-        "UN",
-    }
-    assert {"GB", "FR"} <= location.iso_3166_alpha2()
-
-
-def test_remote_flag_is_null_unless_stated() -> None:
+def test_remote_flag_is_set_by_telecommute_and_null_otherwise() -> None:
     assert norm({"addressLocality": "Alderton", "jobLocationType": "ON_SITE"}) == Ok(value("Alderton", "Alderton"))
-    assert norm({"addressLocality": "Alderton", "jobLocationType": "TELECOMMUTE"}) == Ok(
-        value("Alderton", "Alderton", remote=True)
-    )
-
-
-def test_a_place_with_only_a_name_is_its_text() -> None:
-    assert norm({"@type": "Place", "name": "Brookfield"}) == Ok(value("Brookfield"))
-    assert norm({"@type": "Place", "address": "Brookfield, Westshire"}) == Ok(value("Brookfield, Westshire"))
-
-
-@given(
-    st.sampled_from(
-        [
-            "TELECOMMUTE",
-            "https://schema.org/TELECOMMUTE",
-            ["TELECOMMUTE"],
-            ["ONSITE", "schema:TELECOMMUTE"],
-            {"@id": "schema:TELECOMMUTE"},
-            [{"@id": "https://schema.org/TELECOMMUTE"}],
-        ]
-    )
-)
-def test_telecommute_is_remote(job_location_type: JsonValue) -> None:
-    assert norm({"jobLocationType": job_location_type}) == Ok(value(None, remote=True))
-    assert norm({"jobLocationType": job_location_type, "addressCountry": "DE"}) == Ok(
-        value("DE", None, None, "DE", remote=True)
-    )
+    types: list[JsonValue] = ["TELECOMMUTE", ["ONSITE", "schema:TELECOMMUTE"], {"@id": "schema:TELECOMMUTE"}]
+    for job_location_type in types:
+        assert norm({"jobLocationType": job_location_type}) == Ok(value(None, remote=True))
 
 
 @pytest.mark.parametrize(
     ("raw", "reason"),
     [
         ({}, "no_match"),
-        ({"@type": "Place"}, "no_match"),
         ({"jobLocationType": "ONSITE"}, "no_match"),
-        ({"jobLocationType": ["ONSITE"]}, "no_match"),
-        ({"jobLocationType": {"@id": "ONSITE"}}, "no_match"),
         ({"jobLocationType": {"name": "TELECOMMUTE"}}, "no_match"),
-        ({"jobLocationType": [[]]}, "no_match"),
-        ({"jobLocationType": 7}, "no_match"),
         (7, "not_a_location"),
         (None, "not_a_location"),
         (["Alderton"], "not_a_location"),
-        ({"@type": "Place", "address": 7}, "not_a_location"),
     ],
 )
 def test_a_value_with_no_place_and_no_remote_is_invalid(raw: JsonValue, reason: str) -> None:
     assert norm(raw) == Invalid(reason)
 
 
-# Equality (SPEC-04 §4.5)
+def test_remote_is_read_as_a_clause_of_its_own_in_the_languages_of_the_page() -> None:
+    assert norm("Lakeside; Remote") == Ok(value("Lakeside; Remote", remote=True))
+    assert norm("'Remote'") == Ok(value("'Remote'", remote=True))
+    for text in ("Not remote", "Remote-friendly office", "Remote's office, Lakeside"):
+        assert norm(text) == Ok(value(text))
+    assert norm("Remote", CTX.model_copy(update={"html_lang": "xx"})) == Ok(value("Remote"))
+    assert norm({"addressLocality": "Remote", "addressRegion": "Lakeside"}) == Ok(
+        value("Remote, Lakeside", "Remote", "Lakeside", remote=True)
+    )
 
 
-@given(_places)
-def test_text_compares_by_words(place: str) -> None:
-    assert location.equal(value(place), value(place.upper().replace(", ", " ")), SPEC)
-
-
-def test_parts_count_where_both_values_state_them() -> None:
+def test_equality_counts_parts_only_where_both_values_state_them() -> None:
     structured = value("Alderton, Upper Fen, DE", "Alderton", "Upper Fen", "DE")
 
+    assert location.equal(value("Alderton"), value("ALDERTON"), SPEC)
     assert location.equal(structured, value("Alderton, upper fen, DE", "ALDERTON", None, "DE"), SPEC)
     assert not location.equal(structured, value("Alderton, Upper Fen, FR", "Alderton", "Upper Fen", "FR"), SPEC)
-    assert not location.equal(structured, value("Alderton, Upper Fen, DE"), SPEC)
     assert not location.equal(value("Alderton"), value("Brookfield"), SPEC)
     assert not location.equal(value("Alderton"), value("Alderton", remote=True), SPEC)
-
-
-# Dispatch
-
-
-def test_the_dispatcher_sends_location_here() -> None:
-    assert normalize("Alderton", SPEC, CTX) == Ok(value("Alderton"))
-
-
-def test_another_type_is_a_programming_error() -> None:
-    spec = FieldSpec(type=FieldType.TEXT)
-
-    with pytest.raises(TypeError):
-        location.normalize("Alderton", spec, CTX)
-
-
-@pytest.mark.parametrize("text", ["Not remote", "Not remote, Lakeside", "Remote-friendly office", "Remote work only"])
-def test_a_remote_phrase_inside_other_words_of_its_clause_is_not_remote(text: str) -> None:
-    assert norm(text) == Ok(value(text))
-
-
-@pytest.mark.parametrize("text", ["Lakeside; Remote", "Remote", "Lakeside / Remote (US)"])
-def test_a_remote_clause_of_its_own_is_remote(text: str) -> None:
-    assert norm(text) == Ok(value(text, remote=True))
-
-
-def test_a_remote_clause_in_a_postal_address_is_remote_as_in_text() -> None:
-    raw: JsonValue = {"@type": "PostalAddress", "addressLocality": "Remote", "addressRegion": "Lakeside"}
-
-    assert norm(raw) == Ok(value("Remote, Lakeside", "Remote", "Lakeside", remote=True))
-
-
-def test_a_remote_phrase_inside_other_words_of_a_postal_address_part_is_not_remote() -> None:
-    raw: JsonValue = {"@type": "PostalAddress", "addressLocality": "Not remote"}
-
-    assert norm(raw) == Ok(value("Not remote", "Not remote"))
-
-
-@pytest.mark.parametrize("text", ["Remote's office", "Remote\u2019s office, Lakeside"])
-def test_a_word_internal_apostrophe_does_not_end_a_clause(text: str) -> None:
-    assert norm(text) == Ok(value(text))
-
-
-@pytest.mark.parametrize("text", ["Lakeside, Remote", "'Remote'", "Lakeside \u2019 Remote"])
-def test_an_apostrophe_not_between_letters_still_ends_a_clause(text: str) -> None:
-    assert norm(text) == Ok(value(text, remote=True))

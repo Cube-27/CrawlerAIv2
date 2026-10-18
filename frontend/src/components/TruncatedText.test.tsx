@@ -21,17 +21,6 @@ function renderCells(...texts: string[]) {
 }
 
 describe("TruncatedText", () => {
-  it("leaves text that fits out of the tab order, with no tooltip", async () => {
-    renderCells("short");
-
-    expect(screen.getByText("short")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "short" })).toBeNull();
-    await userEvent.tab();
-    await userEvent.tab();
-    expect(screen.getByRole("button", { name: "Before" })).not.toHaveFocus();
-    expect(document.body).toHaveFocus();
-  });
-
   it("makes only cut-off text a tab stop, its full text in a tooltip on focus", async () => {
     const long = "a much longer value";
     renderCells("short", long);

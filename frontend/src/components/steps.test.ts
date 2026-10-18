@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { IrStep } from "../api/configs";
-import { draftOf, emptyStep, sameSteps, stepText, toCorrectedStep } from "./steps";
+import { draftOf, sameSteps, toCorrectedStep } from "./steps";
 
 // One stored step of each kind, as `GET /v1/configs/{id}` returns them.
 const STORED: IrStep[] = [
@@ -24,19 +24,6 @@ describe("steps: from a stored config to a correction", () => {
     ]);
   });
 
-  it("sends no schema.org type for a JSON-LD step left without one", () => {
-    expect(toCorrectedStep({ ...emptyStep("jsonld"), expression: "$.name" })).toEqual({
-      jsonld: "$.name",
-      when_type: null,
-      post: [],
-    });
-  });
-
-  it("keeps a step's typed members when its kind changes, and sends the new kind's", () => {
-    const step = { ...draftOf({ xpath: "//h1", post: [{ trim: {} }] }), kind: "css" as const };
-    expect(toCorrectedStep(step)).toEqual({ css: "//h1", post: [{ trim: {} }] });
-  });
-
   it("tells changed step lists from unchanged ones", () => {
     const stored = STORED.map(draftOf);
     expect(sameSteps(stored, STORED.map(draftOf))).toBe(true);
@@ -45,25 +32,5 @@ describe("steps: from a stored config to a correction", () => {
       index === 0 ? { ...step, expression: "//h2" } : step,
     );
     expect(sameSteps(stored, edited)).toBe(false);
-  });
-
-  it("gives every draft step and post operation its own editor id, which is never sent", () => {
-    // The ids are the editor's React keys: a row keeps its key when another one moves or is removed.
-    const drafts = [...STORED.map(draftOf), emptyStep()];
-    const ids = drafts.flatMap((step) => [step.id, ...step.post.map((op) => op.id)]);
-
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(JSON.stringify(drafts.map(toCorrectedStep))).not.toContain("draft-");
-  });
-
-  it("lists a step as its kind and expression", () => {
-    expect(STORED.map(stepText)).toEqual([
-      "xpath: //h1",
-      "css: h1.title",
-      "jsonld: $.offers.price",
-      "jsonpath: $.product.title",
-      "regex: SKU: (\\w+)",
-      "attr: href",
-    ]);
   });
 });

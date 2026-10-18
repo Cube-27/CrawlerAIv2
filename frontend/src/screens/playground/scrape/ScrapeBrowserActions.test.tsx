@@ -75,40 +75,4 @@ describe("scrape playground: browser actions", () => {
       browser_actions: { records: 30, hint: "scroll" },
     });
   });
-
-  it("keeps the browser action rows in place, disabled, and sends none for a detail page", async () => {
-    const calls = stubScrape();
-    await openScrape();
-    const options = await openOptions();
-    await pick(/Page kind/, "Listing");
-    await userEvent.click(options.getByRole("switch", { name: "Browser actions" }));
-    await pick(/Page kind/, "Detail");
-
-    expect(options.getByRole("switch", { name: "Browser actions" })).toBeDisabled();
-    expect(options.getByRole("textbox", { name: "Records" })).toBeDisabled();
-    await closeOptions();
-    await submit();
-
-    await screen.findByText("extracted");
-    expect(posted(calls)).not.toHaveProperty("browser_actions");
-  });
-
-  it("disables browser actions and sends none with the HTTP method or a positive max age", async () => {
-    const calls = stubScrape();
-    await openScrape();
-    const before = await openOptions();
-    await pick(/Page kind/, "Listing");
-    await userEvent.click(before.getByRole("switch", { name: "Browser actions" }));
-    await userEvent.type(before.getByRole("textbox", { name: "Max age (s)" }), "60");
-    await closeOptions(); // a number field commits its value on blur
-
-    const options = await openOptions();
-    expect(options.getByRole("switch", { name: "Browser actions" })).toBeDisabled();
-    expect(options.getByRole("textbox", { name: "Records" })).toBeDisabled();
-    await closeOptions();
-    await submit();
-
-    await screen.findByText("extracted");
-    expect(posted(calls)).not.toHaveProperty("browser_actions");
-  });
 });

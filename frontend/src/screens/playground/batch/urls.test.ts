@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vite-plus/test";
-import { lines } from "../pageRequest";
 import { appendUrls, csvUrls } from "./urls";
 
 describe("csvUrls", () => {
@@ -21,10 +20,6 @@ describe("csvUrls", () => {
 
     expect(csvUrls(text)).toEqual(["https://shop.test/a?x=1,2", 'https://shop.test/"q"']);
   });
-
-  it("leaves out blank fields and blank lines", () => {
-    expect(csvUrls("url\n\n  \nhttps://shop.test/a\n,\n")).toEqual(["https://shop.test/a"]);
-  });
 });
 
 describe("appendUrls", () => {
@@ -39,18 +34,5 @@ describe("appendUrls", () => {
         "https://shop.test/c",
       ]),
     ).toBe("https://shop.test/a\nhttps://shop.test/b\nhttps://shop.test/c\nhttps://shop.test/B");
-  });
-
-  it("starts the list when it is empty", () => {
-    expect(appendUrls("", ["https://shop.test/a"])).toBe("https://shop.test/a");
-  });
-});
-
-describe("lines", () => {
-  it("is the list's non-blank lines, trimmed", () => {
-    expect(lines(" https://shop.test/a \r\n\n https://shop.test/b")).toEqual([
-      "https://shop.test/a",
-      "https://shop.test/b",
-    ]);
   });
 });

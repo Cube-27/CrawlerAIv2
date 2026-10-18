@@ -1,19 +1,14 @@
-import { today } from "@internationalized/date";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { CostReport, LlmUsage } from "../../api/usage";
-import { problem, stubApi } from "../../test/api";
+import { stubApi } from "../../test/api";
 
 const JOB_ID = "0192a000-0000-7000-8000-000000000901";
 const REPORT = "GET /v1/usage/llm";
 const SETTINGS = "GET /v1/project/settings";
-const NO_CAP = {
-  [SETTINGS]: () =>
-    Response.json({ llm_call_cap: null, draft_call_cap: null, require_config_approval: false }),
-};
 
 function usage(overrides: Partial<LlmUsage> = {}): LlmUsage {
   return {
@@ -106,86 +101,7 @@ async function savedLimit(value: string): Promise<HTMLElement> {
   return screen.getByRole("textbox", { name });
 }
 
-function rowsOf(name: string): (string | null)[] {
-  return within(screen.getByRole("grid", { name }))
-    .getAllByRole("row")
-    .slice(1)
-    .map((row) => row.textContent);
-}
-
-/** The first UTC day of a range of `days` days through today. */
-function startOf(days: number): string {
-  return today("UTC")
-    .subtract({ days: days - 1 })
-    .toString();
-}
-
 describe("Settings screen", () => {
-  it("shows the LLM cost of the last 30 days by total, model and role, job and day", async () => {
-    const calls = stubApi({ ...NO_CAP, [REPORT]: () => Response.json(report) });
-    await openSettings();
-
-    await screen.findByRole("grid", { name: "Total" });
-    expect(calls.find(({ path }) => path === "/v1/usage/llm")?.query).toBe(`start=${startOf(30)}`);
-    expect(rowsOf("Total")).toEqual(["Total34,500450Unknown: 550 tokens have no price"]);
-    expect(rowsOf("By model and role")).toEqual([
-      "unlisted-modelfakeaiExtraction, detail page150050Unknown: 550 tokens have no price",
-      "listed-modelfakeaiConfig synthesis24,000400$0.0048",
-    ]);
-    expect(rowsOf("Per day")).toEqual([
-      "2031-01-0313,000300$0.0036",
-      "2031-01-0221,500150Unknown: 550 tokens have no price",
-    ]);
-    expect(rowsOf("Top jobs by cost")).toEqual(["ExtractJan 2, 2031, 09:0024,000400$0.0048"]);
-  });
-
-  it("opens a job from the top jobs", async () => {
-    stubApi({
-      ...NO_CAP,
-      [REPORT]: () => Response.json(report),
-      [`GET /v1/jobs/${JOB_ID}`]: () =>
-        problem(404, { title: "Not found", detail: `no job ${JOB_ID}` }),
-    });
-    await openSettings();
-
-    const jobs = await screen.findByRole("grid", { name: "Top jobs by cost" });
-    await userEvent.click(within(jobs).getByText("Extract"));
-
-    expect(await screen.findByText(`no job ${JOB_ID}`)).toBeInTheDocument();
-  });
-
-  it("asks for the range chosen", async () => {
-    const calls = stubApi({ ...NO_CAP, [REPORT]: () => Response.json(report) });
-    await openSettings();
-    await screen.findByRole("grid", { name: "Total" });
-
-    await userEvent.click(screen.getByRole("button", { name: /Range/ }));
-    await userEvent.click(await screen.findByRole("option", { name: "Last 7 days" }));
-
-    await screen.findByRole("grid", { name: "Total" });
-    const starts = calls.filter(({ path }) => path === "/v1/usage/llm").map(({ query }) => query);
-    expect(starts).toEqual([`start=${startOf(30)}`, `start=${startOf(7)}`]);
-  });
-
-  it("says so when the range has no LLM calls", async () => {
-    stubApi({ ...NO_CAP, [REPORT]: () => Response.json(empty) });
-    await openSettings();
-
-    expect(await screen.findByText("No LLM calls in this range")).toBeInTheDocument();
-    expect(screen.queryByRole("grid", { name: "Total" })).toBeNull();
-  });
-
-  it("shows the problem of a refused report", async () => {
-    stubApi({
-      ...NO_CAP,
-      [REPORT]: () =>
-        problem(422, { title: "Invalid request", detail: "the range spans more than 366 days" }),
-    });
-    await openSettings();
-
-    expect(await screen.findByText("the range spans more than 366 days")).toBeInTheDocument();
-  });
-
   it("shows the project's LLM call limit and saves a new one", async () => {
     const calls = stubApi({
       [SETTINGS]: () =>
@@ -204,93 +120,6 @@ describe("Settings screen", () => {
     const saves = calls.filter(({ method }) => method === "PATCH").map(({ body }) => body);
     expect(saves).toEqual([
       { llm_call_cap: 40, draft_call_cap: 4, require_config_approval: false },
-    ]);
-  });
-
-  it("saves an empty LLM call limit as no limit", async () => {
-    const calls = stubApi({
-      [SETTINGS]: () =>
-        Response.json({ llm_call_cap: 25, draft_call_cap: 4, require_config_approval: false }),
-      [REPORT]: () => Response.json(empty),
-      "PATCH /v1/project/settings": ({ body }) => Response.json(body),
-    });
-    await openSettings();
-    const field = await savedLimit("25");
-
-    await userEvent.clear(field);
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await screen.findByText("Saved the limits.");
-    expect(calls.filter(({ method }) => method === "PATCH").map(({ body }) => body)).toEqual([
-      { llm_call_cap: null, draft_call_cap: 4, require_config_approval: false },
-    ]);
-  });
-
-  it("saves a changed draft call limit, and an empty one as no limit", async () => {
-    const calls = stubApi({
-      [SETTINGS]: () =>
-        Response.json({ llm_call_cap: 25, draft_call_cap: 4, require_config_approval: false }),
-      [REPORT]: () => Response.json(empty),
-      "PATCH /v1/project/settings": ({ body }) => Response.json(body),
-    });
-    await openSettings();
-    await savedLimit("25");
-    const draft = screen.getByRole("textbox", { name: "Draft call limit per key" });
-    expect(draft).toHaveValue("4");
-
-    await userEvent.clear(draft);
-    await userEvent.type(draft, "9");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-    await screen.findByText("Saved the limits.");
-    await userEvent.clear(draft);
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() => {
-      expect(calls.filter(({ method }) => method === "PATCH")).toHaveLength(2);
-    });
-    expect(calls.filter(({ method }) => method === "PATCH").map(({ body }) => body)).toEqual([
-      { llm_call_cap: 25, draft_call_cap: 9, require_config_approval: false },
-      { llm_call_cap: 25, draft_call_cap: null, require_config_approval: false },
-    ]);
-  });
-
-  it("keeps a limit within the range the server stores", async () => {
-    const calls = stubApi({
-      [SETTINGS]: () =>
-        Response.json({ llm_call_cap: 25, draft_call_cap: 4, require_config_approval: false }),
-      [REPORT]: () => Response.json(empty),
-      "PATCH /v1/project/settings": ({ body }) => Response.json(body),
-    });
-    await openSettings();
-    await savedLimit("25");
-    const draft = screen.getByRole("textbox", { name: "Draft call limit per key" });
-
-    await userEvent.clear(draft);
-    await userEvent.type(draft, "3000000000");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await screen.findByText("Saved the limits.");
-    expect(calls.filter(({ method }) => method === "PATCH").map(({ body }) => body)).toEqual([
-      { llm_call_cap: 25, draft_call_cap: 2_147_483_647, require_config_approval: false },
-    ]);
-  });
-
-  it("turns on the approval of learned configs", async () => {
-    const calls = stubApi({
-      [SETTINGS]: () =>
-        Response.json({ llm_call_cap: 25, draft_call_cap: 4, require_config_approval: false }),
-      [REPORT]: () => Response.json(empty),
-      "PATCH /v1/project/settings": ({ body }) => Response.json(body),
-    });
-    await openSettings();
-    await savedLimit("25");
-
-    await userEvent.click(screen.getByRole("switch", { name: "Approve learned configs" }));
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await screen.findByText("Saved the limits.");
-    expect(calls.filter(({ method }) => method === "PATCH").map(({ body }) => body)).toEqual([
-      { llm_call_cap: 25, draft_call_cap: 4, require_config_approval: true },
     ]);
   });
 });

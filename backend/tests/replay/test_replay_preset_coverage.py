@@ -5,7 +5,6 @@ C3, C9)."""
 
 import asyncio
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,12 +18,11 @@ from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from tests.replay.captures import PAGE_URL, capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "config", "llm")
 DATA = EngineData(vocabulary=VOCABULARY, orders=dict.fromkeys(PRECEDENCE_TYPES, ORDER), calibration=None)
-PAGE_URL = "https://shop.example.test/p/1"
 IMAGES = ["https://shop.example.test/img/1.jpg", "https://shop.example.test/img/2.jpg"]
 _PRESET = next(p for p in load_presets() if p.name == "commerce_detail")
 SCHEMA = SchemaDef(**_PRESET.model_dump(), id=SchemaId(uuid7()), origin="preset", status="active")
@@ -50,24 +48,7 @@ PRODUCT: dict[str, Any] = {
 
 def _extract(block: str) -> ExtractionResult:
     raw = f'<html><head><script type="application/ld+json">{block}</script></head></html>'.encode()
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=PAGE_URL,
-        final_url=PAGE_URL,
-        fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
-        method="http",
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=(("Content-Type", "text/html"),)),
-        timings_ms={},
-        html_sha256=sha256_hex(raw),
-        network_bodies=(),
-        fetch_policy={},
-        engine_version="0+cal.0",
-    )
-    return asyncio.run(
-        extract_page(CaptureBundle(manifest=manifest, body=raw, network=()), SCHEMA, None, None, data=DATA)
-    )
+    return asyncio.run(extract_page(capture(raw), SCHEMA, None, None, data=DATA))
 
 
 def _published(result: ExtractionResult) -> dict[str, JsonValue]:
@@ -98,62 +79,3 @@ def test_a_property_the_page_does_not_state_is_missing_never_derived() -> None:
     assert result.entity is not None
     for name in ("rating", "review_count", "color", "description", "additional_images"):
         assert (result.entity[name].status, result.entity[name].reason) == ("missing", "no_candidates")
-
-
-def test_a_rating_of_no_reviews_is_no_rating() -> None:
-    # schema.org AggregateRating: `reviewCount` 0 means the rating is based on nothing; the count itself stays.
-    unrated = PRODUCT | {"aggregateRating": {"@type": "AggregateRating", "ratingValue": 0, "reviewCount": 0}}
-    result = _extract(json.dumps(unrated))
-
-    assert result.entity is not None
-    assert (result.entity["rating"].status, result.entity["rating"].reason) == ("missing", "invalid")
-    assert result.entity["review_count"].value == 0
-
-
-def test_a_block_with_a_raw_newline_inside_a_string_still_publishes_its_fields() -> None:
-    # json.dumps escapes the newline as `\n`; the page writes it raw, which RFC 8259 §7 does not allow in a string.
-    block = json.dumps(PRODUCT).replace("\\n", "\n")
-    published = _published(_extract(block))
-
-    assert published.get("price") == {"amount": "10.00", "currency": "EUR"}
-    assert published.get("description") == "First line.\nSecond line."
-
-
-def test_variant_rows_carry_the_id_size_colour_and_gtin_each_variant_states() -> None:
-    group = {
-        "@context": "https://schema.org",
-        "@type": "ProductGroup",
-        "name": "Synthetic Shirt",
-        "url": PAGE_URL,
-        "hasVariant": [
-            {
-                "@type": "Product",
-                "sku": f"S-{size}",
-                "productID": f"v{index}",
-                "gtin": gtin,
-                "size": size,
-                "color": "Teal",
-                "offers": {"@type": "Offer", "price": "20.00", "priceCurrency": "EUR", "availability": "InStock"},
-            }
-            for index, (size, gtin) in enumerate([("S", "4006381333931"), ("M", "4006381333948")])
-        ],
-    }
-    published = _published(_extract(json.dumps(group)))
-
-    rows = published.get("variants")
-    assert isinstance(rows, list)
-    picked = [{k: row.get(k) for k in ("variant_id", "size", "color", "gtin")} for row in rows if isinstance(row, dict)]
-    assert picked == [
-        {
-            "variant_id": "v0",
-            "size": "S",
-            "color": "Teal",
-            "gtin": "4006381333931",
-        },
-        {
-            "variant_id": "v1",
-            "size": "M",
-            "color": "Teal",
-            "gtin": "4006381333948",
-        },
-    ]

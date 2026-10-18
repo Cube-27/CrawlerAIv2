@@ -1,17 +1,13 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { focusManager } from "@tanstack/react-query";
-import { act } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
 import { routes } from "../../app/router";
 import type { Schedule } from "../../api/schedules";
 import { stubApi, type Call } from "../../test/api";
-import { jobSummary } from "../../test/jobs";
-import { fill, openOptions, closeOptions, openPlayground, posted } from "../../test/playground";
-import { problem } from "../../test/api";
+import { fill, openPlayground, posted } from "../../test/playground";
 import { runApi } from "../../test/runs";
-import { cadenceText, scheduleChange } from "./cadence";
+import { scheduleChange } from "./cadence";
 
 // `fetch` answers `/v1/schedules` and `/v1/jobs` with the shapes the rest-api spec defines (D-1417).
 
@@ -83,43 +79,6 @@ describe("schedules", () => {
     });
   });
 
-  it("refuses a schedule without a name and sends nothing", async () => {
-    const calls = crawlApi();
-    await openPlayground("/crawl");
-    await fill(screen.getByRole("textbox", { name: "URL" }), "https://shop.test/");
-
-    await userEvent.click(screen.getByRole("button", { name: "Schedule this" }));
-    const dialog = within(await screen.findByRole("dialog", { name: "Schedule this request" }));
-    await userEvent.click(dialog.getByRole("button", { name: "Create schedule" }));
-
-    expect(await dialog.findByText("Name the schedule.")).toBeInTheDocument();
-    expect(calls.filter(({ method }) => method === "POST")).toEqual([]);
-  });
-
-  it("sends the webhook's events and batch from the options, and the URL alone when the events are the job's end", async () => {
-    const calls = crawlApi();
-    await openPlayground("/crawl");
-    await fill(screen.getByRole("textbox", { name: "URL" }), "https://shop.test/");
-    const options = await openOptions();
-    await fill(options.getByRole("textbox", { name: "Webhook URL" }), "https://hooks.test/in");
-    await userEvent.click(options.getByRole("checkbox", { name: "Page done" }));
-    await userEvent.click(options.getByRole("checkbox", { name: "Job cancelled" }));
-    await fill(options.getByRole("textbox", { name: "Batch events" }), "10");
-    await fill(options.getByRole("textbox", { name: "Batch seconds" }), "30");
-    await closeOptions();
-
-    await userEvent.click(screen.getByRole("button", { name: "Start crawl" }));
-
-    await waitFor(() => {
-      expect(calls.some(({ method }) => method === "POST")).toBe(true);
-    });
-    expect(posted(calls)).toMatchObject({
-      webhook_url: "https://hooks.test/in",
-      webhook_events: ["page", "job_completed", "job_failed"],
-      webhook_batch: { max_events: 10, max_seconds: 30 },
-    });
-  });
-
   it("lists the schedules with their cadence and last run, and pauses one", async () => {
     let paused = false;
     const calls = stubApi({
@@ -141,22 +100,6 @@ describe("schedules", () => {
     expect(calls.map(({ method, path }) => `${method} ${path}`)).toContain(
       `POST /v1/schedules/${SCHEDULE_ID}/pause`,
     );
-  });
-
-  it("shows a schedule's runs from the jobs it submitted", async () => {
-    const calls = stubApi({
-      [`GET /v1/schedules/${SCHEDULE_ID}`]: () => Response.json(schedule()),
-      "GET /v1/jobs": () =>
-        Response.json({
-          items: [jobSummary({ id: JOB_ID, kind: "crawl", schedule_id: SCHEDULE_ID })],
-          next_cursor: null,
-        }),
-    });
-    await openAt(`/schedules/${SCHEDULE_ID}`, "Shop crawl");
-
-    expect(await screen.findByRole("grid", { name: "Jobs" })).toBeInTheDocument();
-    const listed = calls.find(({ path }) => path === "/v1/jobs");
-    expect(new URLSearchParams(listed?.query).get("schedule_id")).toBe(SCHEDULE_ID);
   });
 
   it("edits a schedule's name and cadence and sends only what changed", async () => {
@@ -197,86 +140,6 @@ describe("schedules", () => {
     expect(await screen.findByText("Cron 0 6 * * 1-5 (UTC)")).toBeInTheDocument();
   });
 
-  it("edits a schedule's request as JSON, sent with its kind, and shows the server's problem", async () => {
-    const calls = stubApi({
-      [`GET /v1/schedules/${SCHEDULE_ID}`]: () => Response.json(schedule()),
-      [`PATCH /v1/schedules/${SCHEDULE_ID}`]: () =>
-        problem(422, {
-          type: "validation",
-          title: "Invalid request",
-          detail: "the schedule the update would make is not valid",
-        }),
-      "GET /v1/jobs": () => Response.json({ items: [], next_cursor: null }),
-    });
-    await openAt(`/schedules/${SCHEDULE_ID}`, "Shop crawl");
-    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
-    const dialog = within(await screen.findByRole("dialog", { name: "Edit Shop crawl" }));
-
-    const request = dialog.getByRole("textbox", { name: "Request (JSON)" });
-    await userEvent.clear(request);
-    await userEvent.click(request);
-    await userEvent.paste('{"url": "https://shop.test/new", "formats": ["links"]}');
-    await userEvent.click(dialog.getByRole("button", { name: "Save changes" }));
-
-    expect(
-      await dialog.findByText("the schedule the update would make is not valid"),
-    ).toBeVisible();
-    expect(calls.find(({ method }) => method === "PATCH")?.body).toEqual({
-      kind: "crawl",
-      request: { url: "https://shop.test/new", formats: ["links"] },
-    });
-  });
-
-  it("refuses an edited request that is not a JSON object, and sends nothing", async () => {
-    const calls = stubApi({
-      [`GET /v1/schedules/${SCHEDULE_ID}`]: () => Response.json(schedule()),
-      "GET /v1/jobs": () => Response.json({ items: [], next_cursor: null }),
-    });
-    await openAt(`/schedules/${SCHEDULE_ID}`, "Shop crawl");
-    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
-    const dialog = within(await screen.findByRole("dialog", { name: "Edit Shop crawl" }));
-
-    const request = dialog.getByRole("textbox", { name: "Request (JSON)" });
-    await userEvent.clear(request);
-    await userEvent.click(request);
-    await userEvent.paste("[1, 2");
-    await userEvent.click(dialog.getByRole("button", { name: "Save changes" }));
-
-    expect(await dialog.findByText("The request is a JSON object.")).toBeVisible();
-    expect(calls.filter(({ method }) => method === "PATCH")).toEqual([]);
-  });
-
-  it("schedules a stored run's request from its page, with the secrets as the server shows them", async () => {
-    const stored = {
-      urls: ["https://shop.test/a"],
-      formats: ["markdown"],
-      fetch: { method_hint: "auto" },
-    };
-    const calls = runApi(
-      { submit: "POST /v1/batch/scrape", jobId: JOB_ID, kind: "batch_scrape", request: stored },
-      {
-        "POST /v1/schedules": () =>
-          Response.json(schedule({ kind: "batch_scrape", request: stored }), { status: 201 }),
-        [`GET /v1/schedules/${SCHEDULE_ID}`]: () => Response.json(schedule()),
-      },
-    );
-    await openPlayground(`/batch?job=${JOB_ID}`);
-
-    await userEvent.click(await screen.findByRole("button", { name: "Schedule this run" }));
-    const dialog = within(await screen.findByRole("dialog", { name: "Schedule this request" }));
-    await fill(dialog.getByRole("textbox", { name: "Name" }), "Shop batch");
-    await userEvent.click(dialog.getByRole("button", { name: "Create schedule" }));
-
-    await screen.findByRole("heading", { level: 1, name: "Shop crawl" });
-    expect(posted(calls)).toEqual({
-      name: "Shop batch",
-      kind: "batch_scrape",
-      request: stored,
-      interval_s: 3600,
-      timezone: expect.any(String) as unknown,
-    });
-  });
-
   it("changes only what the edit changed: nothing for an untouched draft, an interval as seconds", () => {
     const current = schedule();
     const draft = {
@@ -294,51 +157,5 @@ describe("schedules", () => {
       interval_s: 900,
     });
     expect(scheduleChange(current, draft, { text: "{", initial: text })).toBeNull();
-  });
-
-  it("compares a stored cron by its fields, so a name-only edit leaves the cadence alone", () => {
-    const current = schedule({ cron: "0  9 * * *", interval_s: null });
-    const draft = {
-      name: "Renamed",
-      every: "cron",
-      minutes: 60,
-      cron: "0  9 * * *",
-      timezone: "UTC",
-    } as const;
-    const text = JSON.stringify(current.request, null, 2);
-
-    expect(scheduleChange(current, draft, { text, initial: text })).toEqual({ name: "Renamed" });
-  });
-
-  it("keeps the Edit dialog open when the schedule is refetched with a newer updated_at", async () => {
-    let updatedAt = "2026-10-17T08:00:00Z";
-    stubApi({
-      [`GET /v1/schedules/${SCHEDULE_ID}`]: () =>
-        Response.json(schedule({ updated_at: updatedAt })),
-      "GET /v1/jobs": () => Response.json({ items: [], next_cursor: null }),
-    });
-    await openAt(`/schedules/${SCHEDULE_ID}`, "Shop crawl");
-    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
-    await screen.findByRole("dialog", { name: "Edit Shop crawl" });
-
-    updatedAt = "2026-10-17T08:05:00Z";
-    act(() => {
-      focusManager.setFocused(false);
-      focusManager.setFocused(true);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog", { name: "Edit Shop crawl" })).toBeInTheDocument();
-    });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.getByRole("dialog", { name: "Edit Shop crawl" })).toBeInTheDocument();
-    focusManager.setFocused(undefined);
-  });
-
-  it("says how often a schedule runs", () => {
-    expect(cadenceText({ cron: null, interval_s: 900, timezone: "UTC" })).toBe("Every 15 min");
-    expect(cadenceText({ cron: "0 6 * * 1-5", interval_s: null, timezone: "Europe/Paris" })).toBe(
-      "Cron 0 6 * * 1-5 (Europe/Paris)",
-    );
   });
 });

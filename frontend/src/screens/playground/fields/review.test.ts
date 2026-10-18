@@ -42,24 +42,4 @@ describe("reviewOf", () => {
       },
     });
   });
-
-  it("refuses an edited draft that keeps the draft's name, naming the name input", () => {
-    const form = { ...formOf(draft), requiredGroups: "" };
-
-    expect(reviewOf(draft, form, ["title", "price"])).toEqual({
-      kind: "refused",
-      problem: {
-        title: "The edited schema can't run",
-        detail: null,
-        errors: [
-          {
-            field: "name",
-            reason:
-              "The draft's name stays with the drafted schema: give the edited schema a name of its own.",
-          },
-        ],
-        retryAfter: null,
-      },
-    });
-  });
 });

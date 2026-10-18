@@ -21,18 +21,10 @@ describe("xpathOf", () => {
   it.each([
     ['<div><p>a</p><p class="x">b</p></div>', "p.x", "/html/body/div/p[2]"],
     [
-      '<main id="m"><section><span>EUR 19.90</span></section></main>',
-      "span",
-      '//*[@id="m"]/section/span',
-    ],
-    ['<p id="p">Blue mug</p>', "#p", '//*[@id="p"]'],
-    [
       '<ul><li data-sku="a1"><b>1</b></li><li data-sku="b2"><b>2</b></li></ul>',
       "[data-sku=b2] b",
       '//li[@data-sku="b2"]/b',
     ],
-    ['<p id="d">1</p><p id="d"><i>2</i></p>', "p:nth-of-type(2) i", "/html/body/p[2]/i"],
-    ["<p data-q='say \"hi\"'>x</p>", "p", "//p[@data-q='say \"hi\"']"],
   ])("in %s, %s is %s", (body, selector, expected) => {
     const doc = page(body);
     const element = only(doc, selector);

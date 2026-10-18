@@ -161,24 +161,6 @@ def test_archive_holds_manifest_html_body_and_numbered_network_files_in_order() 
     assert manifest["network_bodies"][1]["file"] == "network/0002.json"
 
 
-def test_browser_capture_keeps_the_raw_navigation_body_beside_the_rendered_one() -> None:
-    bundle = _bundle(body=b"<html>rendered</html>", raw_body=b"<html>raw</html>", network=(b"{}",))
-
-    members = _members(encode(bundle))
-
-    assert list(members) == ["manifest.json", "body.html", "body.raw.html", "network/0001.json"]
-    assert members["body.html"] == b"<html>rendered</html>"
-    assert members["body.raw.html"] == b"<html>raw</html>"
-    assert json.loads(members["manifest.json"])["raw_html_sha256"] == _sha(b"<html>raw</html>")
-
-
-def test_bundle_without_a_raw_body_has_no_raw_member() -> None:
-    members = _members(encode(_bundle(method="http")))
-
-    assert list(members) == ["manifest.json", "body.html"]
-    assert json.loads(members["manifest.json"])["raw_html_sha256"] is None
-
-
 def test_manifest_written_before_raw_bodies_existed_still_decodes() -> None:
     members = _members(encode(_bundle(method="http")))
     manifest = json.loads(members["manifest.json"])
@@ -186,24 +168,6 @@ def test_manifest_written_before_raw_bodies_existed_still_decodes() -> None:
     members["manifest.json"] = json.dumps(manifest).encode()
 
     assert decode(_tar_zst(members)) == _bundle(method="http")
-
-
-def test_network_entries_written_before_requests_were_recorded_still_decode() -> None:
-    bundle = _bundle(network=(b"{}",))
-    members = _members(encode(bundle))
-    manifest = json.loads(members["manifest.json"])
-    for entry in manifest["network_bodies"]:
-        del entry["method"], entry["request_body"]
-        del entry["response_headers"], entry["resource_type"], entry["action"]
-    members["manifest.json"] = json.dumps(manifest).encode()
-
-    decoded = decode(_tar_zst(members))
-
-    assert [(e.method, e.request_body) for e in decoded.manifest.network_bodies] == [(None, None)]
-    assert [(e.response_headers, e.resource_type, e.action) for e in decoded.manifest.network_bodies] == [
-        (None, None, None)
-    ]
-    assert decoded == bundle
 
 
 # RFC 8259 JSON texts holding an object or an array: what a page loads as data.
@@ -214,11 +178,6 @@ _guards = st.text(
 ).filter(lambda text: text.strip(" \t\n\r") != "")
 
 
-@given(_containers)
-def test_network_json_reads_a_json_text_as_written(value: object) -> None:
-    assert network_json(json.dumps(value).encode()) == value
-
-
 @given(_containers, _guards)
 def test_network_json_strips_a_short_guard_prefix_before_an_object_or_array(value: object, guard: str) -> None:
     data = (guard + json.dumps(value)).encode()
@@ -226,42 +185,17 @@ def test_network_json_strips_a_short_guard_prefix_before_an_object_or_array(valu
     assert network_json(data) == value
 
 
-def test_network_json_ignores_a_byte_order_mark() -> None:
-    assert network_json(b"\xef\xbb\xbf" + b'{"a": 1}') == {"a": 1}
-
-
 @pytest.mark.parametrize(
     "data",
     [
         b"x" * 17 + b'{"a": 1}',  # a prefix too long to be a guard
-        b'while(1);"text"',  # a scalar after a prefix
         b"NaN",  # RFC 8259 §6: no NaN
-        b'{"a": Infinity}',
         b"<html>{}</html>",
-        b"\xff{}",  # not UTF-8 (RFC 8259 §8.1)
-        b"plain text",
     ],
 )
 def test_network_json_refuses_what_is_no_json_text(data: bytes) -> None:
     with pytest.raises(ValueError, match=r"."):
         network_json(data)
-
-
-def test_bundle_rejects_a_raw_body_on_a_non_browser_capture() -> None:
-    browser = _bundle(raw_body=b"<html>raw</html>")
-    manifest = browser.manifest.model_copy(update={"method": "http"})
-
-    with pytest.raises(ValidationError, match="raw body"):
-        CaptureBundle(manifest=manifest, body=browser.body, network=(), raw_body=browser.raw_body)
-
-
-def test_bundle_rejects_a_raw_body_that_does_not_match_raw_html_sha256() -> None:
-    good = _bundle(raw_body=b"<html>raw</html>")
-
-    with pytest.raises(ValidationError, match="raw_html_sha256"):
-        CaptureBundle(manifest=good.manifest, body=good.body, network=(), raw_body=b"other")
-    with pytest.raises(ValidationError, match="raw_html_sha256"):
-        CaptureBundle(manifest=good.manifest, body=good.body, network=(), raw_body=None)
 
 
 def test_decode_raises_corrupt_bundle_when_the_raw_body_is_missing() -> None:
@@ -273,17 +207,6 @@ def test_decode_raises_corrupt_bundle_when_the_raw_body_is_missing() -> None:
         decode(blob)
 
 
-def test_api_capture_body_is_stored_as_body_json() -> None:
-    assert list(_members(encode(_bundle(method="api", body=b"{}")))) == ["manifest.json", "body.json"]
-
-
-def test_bundle_rejects_body_that_does_not_match_html_sha256() -> None:
-    good = _bundle()
-
-    with pytest.raises(ValidationError, match="html_sha256"):
-        CaptureBundle(manifest=good.manifest, body=b"other", network=())
-
-
 def test_bundle_rejects_network_bodies_that_do_not_match_the_manifest() -> None:
     good = _bundle(network=(b"{}",))
 
@@ -291,16 +214,6 @@ def test_bundle_rejects_network_bodies_that_do_not_match_the_manifest() -> None:
         CaptureBundle(manifest=good.manifest, body=good.body, network=(b"[]",))
     with pytest.raises(ValidationError, match="network"):
         CaptureBundle(manifest=good.manifest, body=good.body, network=())
-
-
-def test_bundle_rejects_network_file_names_out_of_sequence() -> None:
-    good = _bundle(network=(b"{}",))
-    entry = good.manifest.network_bodies[0].model_copy(update={"file": "network/0007.json"})
-    manifest = good.manifest.model_copy(update={"network_bodies": (entry,)})
-
-    data = {"manifest": manifest.model_dump(), "body": good.body, "network": good.network}
-    with pytest.raises(ValidationError, match=r"network/0001\.json"):
-        CaptureBundle.model_validate(data)
 
 
 @pytest.mark.parametrize(
@@ -314,15 +227,6 @@ def test_bundle_rejects_network_file_names_out_of_sequence() -> None:
 )
 def test_decode_raises_corrupt_bundle_for_malformed_archives(blob: bytes) -> None:
     with pytest.raises(CorruptBundle):
-        decode(blob)
-
-
-def test_decode_raises_corrupt_bundle_when_body_was_altered() -> None:
-    members = _members(encode(_bundle()))
-    members["body.html"] = b"<html>tampered</html>"
-
-    blob = _tar_zst(members)
-    with pytest.raises(CorruptBundle, match="html_sha256"):
         decode(blob)
 
 

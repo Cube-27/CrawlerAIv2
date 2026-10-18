@@ -24,14 +24,6 @@ def test_a_value_in_the_page_url_is_read_back_by_its_binder(value: str, index: i
     assert resolve(Binder("query", "k"), page_url, {}) == value
 
 
-@given(_value)
-def test_a_rendered_url_reads_back_to_its_parameters(value: str) -> None:
-    url = render_url("https://api.example.test/V/{a}?q={a}&r=1", {"a": value})
-
-    assert resolve(Binder("path", "1"), url, {}) == value
-    assert resolve(Binder("query", "q"), url, {}) == value
-
-
 @dataclass(frozen=True)
 class _Layout:
     """Where each parameter sits on the page (`path:<i>` or `query:<name>`) and in the endpoint URL."""

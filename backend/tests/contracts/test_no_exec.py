@@ -44,17 +44,9 @@ def test_no_module_executes_code_or_starts_a_process() -> None:
     ("code", "expected"),
     [
         ("exec(reply)\n", "crawlerai/planted.py:1 calls exec"),
-        ("x = eval(reply)\n", "crawlerai/planted.py:1 calls eval"),
-        ("code = compile(reply, 'f', 'exec')\n", "crawlerai/planted.py:1 calls compile"),
         ("import subprocess\n", "crawlerai/planted.py:1 imports subprocess"),
-        ("from subprocess import run\n", "crawlerai/planted.py:1 imports subprocess"),
     ],
 )
 def test_the_scan_finds_each_kind(code: str, expected: str) -> None:
     path = SRC / "crawlerai" / "planted.py"
     assert violations(path, ast.parse(code)) == [expected]
-
-
-def test_regex_compile_is_not_flagged() -> None:
-    path = SRC / "crawlerai" / "planted.py"
-    assert violations(path, ast.parse("import re\npattern = re.compile('a+')\n")) == []

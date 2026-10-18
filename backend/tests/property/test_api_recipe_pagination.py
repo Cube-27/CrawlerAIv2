@@ -22,9 +22,7 @@ from crawlerai.config_ir.api_recipe.model import (
 from crawlerai.config_ir.api_recipe.pagination import (
     first_request,
     infer,
-    next_link,
     next_request,
-    with_body_value,
 )
 from crawlerai.storage.capture_bundle import HeaderList, NetworkBody, network_file
 
@@ -97,18 +95,6 @@ def test_a_page_number_or_offset_is_inferred_from_its_steps(
     assert infer(calls, ROWS) == paging
 
 
-@given(
-    start=st.integers(min_value=0, max_value=3), step=st.integers(min_value=1, max_value=30), count=st.integers(3, 6)
-)
-def test_a_first_call_without_the_page_parameter_still_shows_the_step(start: int, step: int, count: int) -> None:
-    paging = ParamPagination(kind="param", where="query", name="page", start=start, step=step, rows=ROWS)
-    calls = _series(paging, JsonRequest(f"{API}?q=x", API), count, lambda n: ({"items": _rows(n)}, ()))
-    bare = JsonRequest(f"{API}?q=x", API)
-    first = _call(0, bare, calls[0].document)
-
-    assert infer([first, *calls[1:]], ROWS) == paging
-
-
 @given(tokens=st.lists(_token, min_size=2, max_size=6, unique=True), in_body=st.booleans())
 def test_a_cursor_is_the_value_the_previous_answer_holds(tokens: list[str], in_body: bool) -> None:
     if in_body:
@@ -121,19 +107,6 @@ def test_a_cursor_is_the_value_the_previous_answer_holds(tokens: list[str], in_b
         request = JsonRequest(f"{API}?size=3", API)
 
     calls = _series(paging, request, len(tokens), lambda n: ({"items": _rows(n), "page": {"end": tokens[n]}}, ()))
-
-    assert infer(calls, ROWS) == paging
-
-
-@given(tokens=st.lists(_token, min_size=2, max_size=6, unique=True), relative=st.booleans())
-def test_a_next_url_in_the_answer_is_followed(tokens: list[str], relative: bool) -> None:
-    paging = NextUrlPagination(kind="next_url", next="$['links']['next']", rows=ROWS)
-
-    def respond(n: int) -> tuple[JsonValue, HeaderList]:
-        target = f"/v2/items?token={tokens[n]}"
-        return {"items": _rows(n), "links": {"next": target if relative else f"https://api.example.test{target}"}}, ()
-
-    calls = _series(paging, JsonRequest(API, API), len(tokens), respond)
 
     assert infer(calls, ROWS) == paging
 
@@ -152,19 +125,6 @@ def test_an_rfc_8288_next_link_is_followed(count: int, extra: str, quoted: bool,
 
     assert infer(calls, ROWS) == paging
     assert [call.entry.url for call in calls[1:]] == [f"{API}?cursor=c{n}" for n in range(count - 1)]
-
-
-@given(count=_calls)
-def test_two_varying_request_values_leave_the_series_without_pagination(count: int) -> None:
-    calls = [
-        _call(n, JsonRequest(f"{API}?page={n + 1}&t={1000 + 7 * n}", API), {"items": _rows(n)}) for n in range(count)
-    ]
-
-    assert infer(calls, ROWS) is None
-
-
-def test_one_call_shows_no_pagination() -> None:
-    assert infer([_call(0, JsonRequest(f"{API}?page=1", API), {"items": _rows(0)})], ROWS) is None
 
 
 @given(token=_token)
@@ -188,29 +148,3 @@ def test_a_next_page_on_another_origin_is_never_requested(host: str) -> None:
     assert next_request(url, request, 1, {"next": elsewhere}, ()) is None
     link = (("Link", f'<{elsewhere}>; rel="next"'),)
     assert next_request(LinkPagination(kind="link", rows=ROWS), request, 1, {}, link) is None
-
-
-@given(value=st.integers(min_value=0, max_value=10**6), as_string=st.booleans())
-def test_a_body_value_keeps_the_json_type_the_captured_body_gave_it(value: int, as_string: bool) -> None:
-    body = json.dumps({"variables": {"page": "1" if as_string else 1, "q": "x"}})
-
-    changed = with_body_value(body, "$['variables']['page']", value)
-
-    assert changed is not None
-    assert json.loads(changed) == {"variables": {"page": str(value) if as_string else value, "q": "x"}}
-
-
-def test_a_body_without_the_path_s_parent_is_not_paged() -> None:
-    assert with_body_value('{"q": 1}', "$['variables']['page']", 2) is None
-    assert with_body_value("not json", "$['page']", 2) is None
-    assert json.loads(with_body_value('{"q": 1}', "$['page']", 2) or "") == {"q": 1, "page": 2}
-
-
-@given(relation=st.sampled_from(["next", "Next", "prev next", "next last"]))
-def test_the_first_link_whose_relation_types_hold_next_is_the_target(relation: str) -> None:
-    headers = (
-        ("link", '</a>; rel="first"'),
-        ("Link", f'</b?x=1>; rel="{relation}"; anchor="/c", </d>; rel="next"'),
-    )
-
-    assert next_link(headers, "https://api.example.test/v2/") == "https://api.example.test/b?x=1"

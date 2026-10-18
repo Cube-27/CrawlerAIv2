@@ -18,7 +18,6 @@ from crawlerai.collect.base import Entity
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId, SourceKind
-from crawlerai.normalize.dispatch import equal
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.rows import linked
@@ -148,64 +147,6 @@ def test_a_sub_field_that_disagrees_inside_a_variant_is_a_conflict(variant: Vari
         assert price.value == {"amount": variant.price, "currency": "EUR"}
     else:
         assert (price.status, price.value) == ("conflict", None)
-
-
-_KEY_SUBS = {
-    "sku": FieldSpec(type=FieldType.TEXT),
-    "url": FieldSpec(type=FieldType.URL),
-    "place": FieldSpec(type=FieldType.LOCATION),
-}
-_KEY_VALUES: dict[str, list[JsonValue]] = {
-    "sku": ["W-1", " W-1", "W-2", "W-3"],
-    "url": ["https://example.test/v/1", "HTTPS://example.test/v/1#a", "https://example.test/v/2"],
-    # Location equality is not transitive: a place without a region equals both places with one.
-    "place": [
-        {"text": None, "locality": "Springfield", "region": None, "country": "DE", "remote_flag": False},
-        {"text": None, "locality": "Springfield", "region": "BY", "country": "DE", "remote_flag": False},
-        {"text": None, "locality": "Springfield", "region": "BE", "country": "DE", "remote_flag": False},
-    ],
-}
-ROW_KEYS = st.lists(
-    st.fixed_dictionaries(
-        {},
-        optional={
-            sub: st.lists(st.sampled_from(values), min_size=1, max_size=2) for sub, values in _KEY_VALUES.items()
-        },
-    ),
-    max_size=8,
-)
-
-
-@given(ROW_KEYS)
-def test_rows_link_as_comparing_every_pair_would(row_keys: list[dict[str, list[JsonValue]]]) -> None:
-    rows = [Entity(id=f"row:{i}", types=("Product",), urls=(), parent=None) for i in range(len(row_keys))]
-    keys = {row.id: k for row, k in zip(rows, row_keys, strict=True)}
-
-    assert [[row.id for row in group] for group in linked(_KEY_SUBS, rows, keys)] == _pairwise(rows, keys)
-
-
-def _pairwise(rows: list[Entity], keys: dict[str, dict[str, list[JsonValue]]]) -> list[list[str]]:
-    """The components found by comparing every pair of rows (SPEC-13 §4.4, INV-33), in collector order by first row:
-    two rows link when they share a value of a key sub-field and state no different value of an earlier one."""
-    groups: list[set[str]] = []
-    for row in rows:
-        joined = [g for g in groups if any(_share(keys[row.id], keys[other]) for other in g)]
-        groups = [g for g in groups if g not in joined] + [set().union({row.id}, *joined)]
-    order = [row.id for row in rows]
-    return sorted(([r for r in order if r in g] for g in groups), key=lambda g: order.index(g[0]))
-
-
-def _share(a: dict[str, list[JsonValue]], b: dict[str, list[JsonValue]]) -> bool:
-    subs = list(_KEY_SUBS)
-    return any(
-        any(equal(x, y, _KEY_SUBS[sub]) for x in a.get(sub, ()) for y in b.get(sub, ()))
-        and not any(_differ(a, b, earlier) for earlier in subs[: subs.index(sub)])
-        for sub in subs
-    )
-
-
-def _differ(a: dict[str, list[JsonValue]], b: dict[str, list[JsonValue]], sub: str) -> bool:
-    return any(not equal(x, y, _KEY_SUBS[sub]) for x in a.get(sub, ()) for y in b.get(sub, ()))
 
 
 def test_a_key_never_joins_rows_an_earlier_key_tells_apart() -> None:

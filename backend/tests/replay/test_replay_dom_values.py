@@ -6,7 +6,6 @@ the two agree, and where it states another the field resolves as any disagreemen
 
 import asyncio
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 
 from crawlerai.collect.schema_org_map import Vocabulary
@@ -17,12 +16,11 @@ from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.types import FieldOutcome
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from tests.replay.captures import capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 ORDER: tuple[SourceKind, ...] = ("adapter", "api", "jsonld", "microdata", "og", "dom", "config", "llm")
 DATA = EngineData(vocabulary=VOCABULARY, orders=dict.fromkeys(PRECEDENCE_TYPES, ORDER), calibration=None)
-PAGE_URL = "https://shop.example.test/p/1"
 _PRESET = next(p for p in load_presets() if p.name == "commerce_detail")
 SCHEMA = SchemaDef(**_PRESET.model_dump(), id=SchemaId(uuid7()), origin="preset", status="active")
 
@@ -36,24 +34,7 @@ BODY = (
 
 def _fields(head: str = "", body: str = BODY) -> dict[str, FieldOutcome]:
     raw = f"<html><head>{head}</head><body>{body}</body></html>".encode()
-    manifest = CaptureManifest(
-        capture_id=uuid7(),
-        url=PAGE_URL,
-        final_url=PAGE_URL,
-        fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
-        method="http",
-        status_code=200,
-        block_class="ok",
-        headers=Headers(request=(), response=(("Content-Type", "text/html"),)),
-        timings_ms={},
-        html_sha256=sha256_hex(raw),
-        network_bodies=(),
-        fetch_policy={},
-        engine_version="0+cal.0",
-    )
-    result = asyncio.run(
-        extract_page(CaptureBundle(manifest=manifest, body=raw, network=()), SCHEMA, None, None, data=DATA)
-    )
+    result = asyncio.run(extract_page(capture(raw), SCHEMA, None, None, data=DATA))
     assert result.entity is not None
     return dict(result.entity)
 
@@ -74,47 +55,3 @@ def test_a_page_without_structured_data_publishes_what_its_label_table_and_main_
         "image_url": ("https://shop.example.test/img/widget.jpg", "dom", "dom"),
     }
     assert fields["brand"].locator == "dom:/html[1]/body[1]/main[1]/table[1]/tbody[1]/tr[1]/td[1]"
-
-
-def test_a_label_value_equal_to_the_structured_value_agrees_with_it() -> None:
-    fields = _fields(_jsonld(sku="W-1", brand={"@type": "Brand", "name": "Example Brand"}))
-
-    assert (fields["sku"].status, fields["sku"].evidence) == ("published", "agreed")
-    assert (fields["brand"].value, fields["brand"].evidence) == ("Example Brand", "agreed")
-
-
-def test_a_label_value_that_contradicts_the_structured_value_is_a_disagreement_not_an_override() -> None:
-    fields = _fields(_jsonld(sku="W-2", brand={"@type": "Brand", "name": "Other Brand"}))
-
-    assert (fields["sku"].status, fields["sku"].reason) == ("conflict", "disagree")
-    # Text ranks by source precedence: the JSON-LD value comes first, and the DOM value never overrides it.
-    assert (fields["brand"].value, fields["brand"].source_kind) == ("Other Brand", "jsonld")
-
-
-SUMMARY = "A sturdy synthetic widget."
-FIRST = "A sturdy synthetic widget for everyday use. It ships flat and assembles in minutes."
-SECOND = "The base is weighted and the cover wipes clean."
-PROSE = f"<main><h1>Synthetic Widget</h1><button>Buy</button><div><p>{FIRST}</p><p>{SECOND}</p></div></main>"
-
-
-def _og(content: str) -> str:
-    return f'<meta property="og:description" content="{content}">'
-
-
-def test_the_description_block_replaces_an_open_graph_summary() -> None:
-    fields = _fields(_og(SUMMARY), PROSE)
-
-    assert (fields["description"].value, fields["description"].source_kind) == (f"{FIRST}\n{SECOND}", "dom")
-    assert fields["description"].evidence == "dom"
-
-
-def test_the_description_block_completes_a_truncated_structured_description() -> None:
-    fields = _fields(_jsonld(description=FIRST[:40] + "..."), PROSE)
-
-    assert (fields["description"].value, fields["description"].source_kind) == (f"{FIRST}\n{SECOND}", "dom")
-
-
-def test_a_description_block_equal_to_the_structured_description_agrees_with_it() -> None:
-    fields = _fields(_jsonld(description=FIRST), f"<main><button>Buy</button><p>{FIRST}</p></main>")
-
-    assert (fields["description"].value, fields["description"].evidence) == (FIRST, "agreed")

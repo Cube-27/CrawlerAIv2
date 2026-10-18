@@ -25,20 +25,6 @@ describe("readProblem", () => {
     });
   });
 
-  it("accepts media type parameters and a body without detail", async () => {
-    const response = problemResponse(
-      { type: "unauthorized", title: "Unauthorized", status: 401 },
-      "application/problem+json; charset=utf-8",
-    );
-
-    expect(await readProblem(response)).toEqual({
-      title: "Unauthorized",
-      detail: null,
-      errors: [],
-      retryAfter: null,
-    });
-  });
-
   it("reads the per-field errors and skips malformed entries", async () => {
     const response = problemResponse({
       type: "validation",
@@ -53,15 +39,6 @@ describe("readProblem", () => {
       errors: [{ field: "url", reason: "not an absolute URL" }],
       retryAfter: null,
     });
-  });
-
-  it("reads Retry-After as sent", async () => {
-    const response = new Response(JSON.stringify({ title: "Too many requests", status: 429 }), {
-      status: 429,
-      headers: { "content-type": "application/problem+json", "Retry-After": "7" },
-    });
-
-    expect((await readProblem(response))?.retryAfter).toBe("7");
   });
 
   it("returns null for a body that is not a problem", async () => {

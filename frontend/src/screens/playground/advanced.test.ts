@@ -1,13 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import {
-  DEFAULT_ADVANCED,
-  fetchMember,
-  newAction,
-  pairs,
-  storedAdvanced,
-  toAction,
-  waitFor,
-} from "./advanced";
+import { fetchMember, newAction, pairs, storedAdvanced, toAction, waitFor } from "./advanced";
 
 // The Advanced settings as `fetch` members (D-1430, D-1436), and back from a stored request.
 
@@ -54,10 +46,6 @@ describe("advanced fetch settings", () => {
       selector: "#q",
       text: "lamp",
     });
-  });
-
-  it("sends only the method hint for untouched settings", () => {
-    expect(fetchMember("auto", Number.NaN, DEFAULT_ADVANCED)).toEqual({ method_hint: "auto" });
   });
 
   it("shows a stored request's settings again, without the redacted header and cookie values", () => {

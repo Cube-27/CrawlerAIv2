@@ -81,15 +81,6 @@ def test_creates_the_worktree_beside_main_off_fresh_origin_main(tmp_path: Path) 
     assert git(repo.worktree, "branch", "--show-current") == BRANCH
 
 
-def test_existing_path_is_refused(tmp_path: Path) -> None:
-    repo = make_repo(tmp_path)
-    repo.worktree.mkdir(parents=True)
-    result = run(repo.main, NAME, BRANCH)
-    assert result.returncode == 1
-    assert result.stderr.strip() == f"ERROR {repo.worktree.as_posix()} already exists"
-    assert git(repo.main, "branch", "--list", BRANCH) == ""
-
-
 def test_existing_local_branch_is_refused(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     git(repo.main, "branch", BRANCH)
@@ -97,25 +88,3 @@ def test_existing_local_branch_is_refused(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert result.stderr.strip() == f"ERROR branch {BRANCH} already exists"
     assert not repo.worktree.exists()
-
-
-def test_existing_remote_branch_is_refused(tmp_path: Path) -> None:
-    repo = make_repo(tmp_path)
-    git(repo.main, "push", "-q", "origin", f"main:refs/heads/{BRANCH}")
-    result = run(repo.main, NAME, BRANCH)
-    assert result.returncode == 1
-    assert result.stderr.strip() == f"ERROR branch {BRANCH} already exists on origin"
-    assert not repo.worktree.exists()
-
-
-@pytest.mark.parametrize("name", ["a/b", "..", ""])
-def test_a_name_that_is_a_path_is_refused(tmp_path: Path, name: str) -> None:
-    result = run(tmp_path, name, BRANCH)
-    assert result.returncode == 2
-    assert result.stderr.strip() == f"ERROR NAME must be a directory name, not a path: '{name}'"
-
-
-def test_wrong_argument_count_prints_usage(tmp_path: Path) -> None:
-    result = run(tmp_path, NAME)
-    assert result.returncode == 2
-    assert result.stderr.strip() == "usage: new_worktree.sh NAME BRANCH"

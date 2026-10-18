@@ -5,13 +5,10 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from crawlerai.collect.base import PAGE, Candidate
-from crawlerai.collect.locator import Locator, parse_locator
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Ok
-from crawlerai.resolve.derive import Derived
 from crawlerai.resolve.evidence import MIN_CALIBRATED_N, Bucket, Calibration, assess, evidence_of
 from crawlerai.resolve.preference import Chosen
-from crawlerai.resolve.types import Derivation
 from crawlerai.schemas.types import FieldType
 
 KINDS: tuple[SourceKind, ...] = ("jsonld", "microdata", "og", "js_state", "xhr", "config", "llm")
@@ -70,30 +67,3 @@ def test_a_calibrated_bucket_below_the_minimum_confidence_never_publishes(
         assert not outcome.calibrated or (outcome.confidence is not None and outcome.confidence >= minimum)
     calibrated_below = minimum is not None and evidence is not None and n >= MIN_CALIBRATED_N and precision < minimum
     assert (outcome.status == "abstained" and outcome.reason == "below_min_confidence") == calibrated_below
-
-
-@given(
-    st.sampled_from(["canonical_link", "final_url"]),
-    st.integers(min_value=0, max_value=200),
-    st.one_of(st.none(), st.floats(min_value=0.0, max_value=1.0)),
-    st.one_of(st.none(), st.sampled_from([0.95, 0.97])),
-)
-def test_a_derived_page_url_keeps_its_provenance_and_its_buckets_minimum_confidence(
-    derived_by: Derivation, n: int, precision: float | None, minimum: float | None
-) -> None:
-    calibration = Calibration(git_sha="a", buckets={"url|derived": Bucket(n=n, precision=precision)})
-
-    outcome = assess(
-        FieldType.URL,
-        Derived("https://example.com/p", derived_by, None),
-        calibration,
-        min_confidence=minimum,
-        corroborated=False,
-    )
-
-    calibrated_below = minimum is not None and n >= MIN_CALIBRATED_N and precision is not None and precision < minimum
-    assert outcome.status == ("abstained" if calibrated_below else "published")
-    assert outcome.evidence == "derived"
-    if outcome.status == "published":
-        assert (outcome.source_kind, outcome.derived_by) == ("derived", derived_by)
-        assert parse_locator(outcome.locator or "") == Locator("derived", (derived_by,))

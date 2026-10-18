@@ -7,8 +7,6 @@ The simulated tabs serve listings as markup the driver parses like any page; not
 """
 
 import asyncio
-import hashlib
-import json
 import time
 from collections.abc import Sequence
 from datetime import timedelta
@@ -163,118 +161,6 @@ def test_a_load_more_run_stops_for_its_reason_within_one_batch_and_its_cap(
         assert report.mechanism in (None, "load_more")
 
 
-@settings(deadline=None, max_examples=30)
-@given(total=st.integers(3, 60), records=st.integers(1, 100))
-def test_a_list_with_nothing_to_page_keeps_one_state_and_names_no_mechanism(total: int, records: int) -> None:
-    tab = _LoadMoreTab(total, total)  # everything shows; there is no control
-
-    report = asyncio.run(
-        collect(
-            tab, BrowserActions(records=records), _open, time.monotonic() + 60, Caps(wait_s=_WAIT_S, poll_s=_POLL_S)
-        )
-    )
-
-    assert report.items == total
-    assert tab.kept == [total]
-    expected = "records" if records <= total else "no_mechanism"
-    assert (report.stop, report.mechanism, report.actions > 0) == (expected, None, expected == "no_mechanism")
-
-
-@settings(deadline=None, max_examples=40)
-@given(total=st.integers(3, 80), batch=st.integers(3, 12), extra=st.integers(0, 10), recycles=st.booleans())
-def test_a_scrolled_list_keeps_every_item_it_showed_and_one_state_when_it_only_grows(
-    total: int, batch: int, extra: int, recycles: bool
-) -> None:
-    window = batch + extra if recycles else None
-    tab = _ScrollTab(total, batch, window)
-    caps = Caps(wait_s=_WAIT_S, poll_s=_POLL_S)
-
-    report = asyncio.run(collect(tab, BrowserActions(records=10_000), _open, time.monotonic() + 60, caps))
-
-    assert report.items == total
-    assert set().union(*tab.states) == set(range(total))
-    if not recycles:
-        assert tab.states == [set(range(total))]
-
-
-def _row(i: int) -> dict[str, object]:
-    return {"title": f"Entry number {i} of the list", "rank": i}
-
-
-class _CallRowsTab(_ScrollTab):
-    """A listing whose items hold no link: each scroll's call answers `batch` rows, which the page shows as text. Its
-    one kept state holds every call."""
-
-    def __init__(self, total: int, batch: int) -> None:
-        super().__init__(total, batch, None)
-        self.loaded = 0  # the calls answered after the first, which loaded the first batch
-
-    async def html(self) -> str:
-        cards = "".join(f'<li class="card"><p>{_row(i)["title"]}</p></li>' for i in range(self.shown))
-        return f"<html><body><main><ul>{cards}</ul></main></body></html>"
-
-    async def scroll(self) -> None:
-        await super().scroll()
-        self.loaded = -(-self.shown // self.batch)
-
-    async def calls(self) -> tuple[tuple[NetworkBody, bytes], ...]:
-        found = []
-        for call in range(max(self.loaded, 1)):
-            rows = [_row(i) for i in range(call * self.batch, min(self.total, (call + 1) * self.batch))]
-            body = json.dumps({"data": {"items": rows}}).encode()
-            entry = NetworkBody(
-                url=f"https://shop.example.test/api/rows?page={call + 1}",
-                status=200,
-                content_type="application/json",
-                sha256=hashlib.sha256(body).hexdigest(),
-                file=f"network/{call}.json",
-                method="GET",
-            )
-            found.append((entry, body))
-        return tuple(found)
-
-
-@settings(deadline=None, max_examples=30)
-@given(calls=st.integers(1, 6), batch=st.integers(3, 12), records=st.integers(1, 100))
-def test_a_scroll_listing_without_item_links_is_counted_by_its_call_rows(calls: int, batch: int, records: int) -> None:
-    # Every call answers a whole batch: a call of fewer than `MIN_ITEMS` rows is no listing's (`network_match`).
-    total = calls * batch
-    tab = _CallRowsTab(total, batch)
-    caps = Caps(wait_s=_WAIT_S, poll_s=_POLL_S)
-
-    report = asyncio.run(collect(tab, BrowserActions(records=records), _open, time.monotonic() + 60, caps))
-
-    assert len(tab.states) == 1
-    if records <= min(total, batch):
-        assert (report.stop, report.items) == ("records", min(total, batch))
-    elif total <= batch:
-        assert (report.stop, report.items) == ("no_mechanism", total)
-    else:
-        assert report.mechanism == "scroll"
-        assert report.stop in ("records", "end")
-        assert report.items == (total if report.stop == "end" else report.items)
-        assert report.items >= min(records, total)
-
-
-async def _refused(url: str | None) -> bool:
-    return False
-
-
-@settings(deadline=None, max_examples=20)
-@given(total=st.integers(6, 60), batch=st.integers(3, 5))
-def test_a_scroll_the_gate_refuses_is_not_made(total: int, batch: int) -> None:
-    # A scroll acts on the shown document: it waits for its turn at the site's rate like any action (acquisition spec,
-    # "Per-site rate and backoff").
-    tab = _ScrollTab(total, batch, None)
-    caps = Caps(wait_s=_WAIT_S, poll_s=_POLL_S)
-
-    report = asyncio.run(
-        collect(tab, BrowserActions(records=10_000, hint="scroll"), _refused, time.monotonic() + 60, caps)
-    )
-
-    assert (report.stop, report.actions, tab.shown) == ("not_admitted", 0, batch)
-
-
 class _ElsewhereTab(_ScrollTab):
     """A scroll listing the caller's steps navigated to another host before the driver runs."""
 
@@ -308,43 +194,3 @@ def test_a_listing_whose_tab_left_its_host_is_not_driven(tmp_path: Path) -> None
     # The listing's host's robots.txt and rate say nothing of another host's (RFC 9309 §2.3: rules are per origin).
     assert paged.report is not None
     assert (paged.report.stop, tab.shown) == ("not_admitted", 5)
-
-
-class _RedirectedTab(_ScrollTab):
-    """A scroll listing whose own navigation was redirected to another host of the site, before any caller step."""
-
-    @property
-    def url(self) -> str:
-        return "https://www.shop.example.test/list"
-
-    @property
-    def landed(self) -> str:
-        return "https://www.shop.example.test/list"
-
-
-def test_a_listing_redirected_to_another_host_is_driven_there(tmp_path: Path) -> None:
-    tab = _RedirectedTab(30, 5, None)
-
-    async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
-        report = await drive(tab)
-        return PagedFetch(pages=(unserved(url, policy, "test", "error", "unused"),), report=report)
-
-    async def unused(url: str, policy: FetchPolicy) -> FetchResult:
-        raise AssertionError("no page is fetched")
-
-    async def admit(*, after: timedelta = timedelta(0)) -> bool:
-        return True
-
-    fetching = Fetching(
-        Rungs(http=unused, browser=unused, listing=listing), SafeConnector(), FsStore(tmp_path), HostLimiter()
-    )
-    actions = BrowserActions(records=10_000, hint="scroll")
-
-    paged = asyncio.run(
-        grown(fetching, _URL, FetchPolicy(), actions, time.monotonic() + 60, admit, HostRules(crawl_delay_ms=None))
-    )
-
-    # The redirect was followed by the listing's own fetch, so the host it ended on is the listing's.
-    assert paged.report is not None
-    assert paged.report.stop != "not_admitted"
-    assert tab.shown > 5

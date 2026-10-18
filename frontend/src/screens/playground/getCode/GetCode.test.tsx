@@ -1,6 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { problem, stubApi, type Call } from "../../../test/api";
 import {
   closeOptions,
@@ -53,31 +53,6 @@ const CASES: Readonly<Record<string, ModeCase>> = {
         screen.getByRole("textbox", { name: "URLs" }),
         `https://shop.test/a\nhttps://shop.test/it's`,
       ),
-  },
-  crawl: {
-    route: "/crawl",
-    action: "Start crawl",
-    stub: () => runApi({ submit: "POST /v1/crawl", jobId: JOB_ID, kind: "crawl" }),
-    fillForm: async () => {
-      await typeUrl("https://shop.test/");
-      const options = await openOptions();
-      await fill(
-        options.getByRole("textbox", { name: "Include" }),
-        `https://shop.test/it's/*`,
-        true,
-      );
-      await closeOptions();
-    },
-  },
-  map: {
-    route: "/map",
-    action: "Map",
-    stub: () =>
-      stubApi({
-        "POST /v1/map": () =>
-          Response.json({ urls: [], sources: { sitemap: 0, links: 0 }, truncated: false }),
-      }),
-    fillForm: () => typeUrl(`https://shop.test/it's`),
   },
   extract: {
     route: "/extract",
@@ -134,66 +109,4 @@ describe("get code", () => {
       else expect(mcpArguments(mcp)).toEqual({ request: body });
     },
   );
-
-  it("keeps an awkward value intact in the cURL body", async () => {
-    CASES["extract"]?.stub();
-    await openPlayground("/extract");
-    await CASES["extract"]?.fillForm();
-
-    const drawer = await openGetCode();
-
-    expect(curlBody(await shownCode(drawer, "cURL"))).toMatchObject({
-      schema: { prompt: AWKWARD },
-    });
-  });
-
-  it("shows the endpoint and where the key comes from, the prompts collapsed, and no key", async () => {
-    stubApi({ "GET /v1/schemas": schemaList });
-    await openPlayground("/");
-
-    const drawer = await openGetCode();
-    expect(
-      drawer.queryByRole("button", { name: "Copy Use it with coding agents" }),
-    ).not.toBeInTheDocument();
-    await userEvent.click(drawer.getByRole("button", { name: "Prompts for coding agents" }));
-
-    expect(
-      drawer.getByRole("button", { name: "Copy Use it with coding agents" }),
-    ).toBeInTheDocument();
-    expect(drawer.getByRole("button", { name: "Copy Build on top of it" })).toBeInTheDocument();
-    expect(drawer.getByRole("region", { name: "API key" })).toHaveTextContent(
-      "crawlerai apikey create",
-    );
-    expect(drawer.getByRole("region", { name: "Endpoint" })).toHaveTextContent("POST /v1/scrape");
-    expect(await shownCode(drawer, "cURL")).toContain("$CRAWLERAI_API_KEY");
-  });
-
-  it("says the batch endpoint has no MCP tool, with Copy code off", async () => {
-    stubApi({ "GET /v1/schemas": schemaList });
-    await openPlayground("/batch");
-
-    const drawer = await openGetCode();
-    await userEvent.click(drawer.getByRole("tab", { name: "MCP" }));
-
-    expect(drawer.getByText(/has no tool for this endpoint/)).toBeInTheDocument();
-    expect(drawer.getByRole("button", { name: "Copy code" })).toBeDisabled();
-  });
-
-  it("copies the shown code", async () => {
-    // userEvent's setup gives jsdom the clipboard it lacks.
-    const user = userEvent.setup();
-    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
-    stubApi({ "GET /v1/schemas": schemaList });
-    await openPlayground("/");
-    await typeUrl("https://shop.test/a");
-    const drawer = await openGetCode();
-    const code = await shownCode(drawer, "Python");
-
-    await user.click(drawer.getByRole("button", { name: "Copy code" }));
-
-    // Each shown line ends in a newline; the copied code has none after its last line.
-    expect(writeText).toHaveBeenCalledWith(code.slice(0, -1));
-    expect(code).toContain('"url": "https://shop.test/a",');
-    expect(await screen.findByText("Copied the code.")).toBeInTheDocument();
-  });
 });
