@@ -110,7 +110,8 @@ class RecipeRung:
         response's `rows` select no object, the pagination names no next page (or one already requested), `records`
         rows were yielded (None: no row target), `limit` requests were sent, or `deadline` (`time.monotonic()`) has
         passed. Each request waits for its host's rate in `fetch_json` (`services.fetching.recipe_rung`). A response
-        with no rows is not yielded; one that is not `ok` is yielded last."""
+        that is not `ok` is yielded last; so is one with no rows, as an unserved `error` result that carries its
+        attempts: every request sent counts as usage, and a first page without rows is one the recipe did not serve."""
         pagination = self.recipe.pagination
         if pagination is None:
             raise ValueError("a recipe without pagination serves one response per page")
@@ -135,6 +136,7 @@ class RecipeRung:
             # Parsing is CPU work: a thread keeps the event loop serving other tasks meanwhile.
             document, count = await asyncio.to_thread(_rows, result, pagination.rows)
             if not count:
+                yield with_attempts(self._unserved(url, policy, "no_rows"), result.attempts, result.duration_ms)
                 return
             yield result
             rows += count

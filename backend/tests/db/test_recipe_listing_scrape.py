@@ -39,6 +39,7 @@ from crawlerai.db.models import (
     Site,
     SiteId,
     UrlTask,
+    UsageEvent,
 )
 from crawlerai.llm.client import NO_LLM
 from crawlerai.recurring.listing_diff import close_run
@@ -69,6 +70,7 @@ class Web:
     origin: str
     up: bool = True
     down: int = 500
+    empty: bool = False
     requested: list[JsonRequest] = field(default_factory=list)
     listed: list[str] = field(default_factory=list)
     pages: list[str] = field(default_factory=list)
@@ -90,6 +92,7 @@ class Web:
         rows = [
             {"label": name, "href": f"{self.origin}/kettles/{start + i}"}
             for i, name in enumerate(NAMES[start : start + PAGE_SIZE])
+            if not self.empty
         ]
         following = start + PAGE_SIZE if start + PAGE_SIZE < len(NAMES) else None
         body = json.dumps({"result": {"rows": rows, "next": None if following is None else str(following)}})
@@ -353,11 +356,12 @@ async def test_a_crawl_task_of_a_listing_recipe_serves_its_pages_up_to_the_crawl
 
 async def _batch(
     engine: AsyncEngine, fetching: Fetching, url: str, schema: SchemaDef, data: EngineData, *, first_attempt: bool
-) -> None:
+) -> JobId:
     body = {"urls": [url], "formats": ["records"], "schema": {"id": str(schema.id)}, "page_kind": "listing"}
     submitted = await submit_batch(engine, fetching.connector, BatchScrapeRequest.model_validate(body), data=data)
     handlers: dict[JobKind, TaskHandler] = {"batch_scrape": scrape_handler(fetching, data, None, llm=NO_LLM)}
     await _run(engine, handlers, submitted.job_id, first_attempt=first_attempt)
+    return submitted.job_id
 
 
 async def test_a_batch_task_whose_recipe_fails_its_first_page_requests_it_once_then_fetches_the_page(
@@ -416,3 +420,26 @@ async def test_a_listing_the_recipe_does_not_serve_is_not_rendered_without_a_tur
     assert (web.listed, len(web.requested)) == ([], 1)
     assert result.fetch is not None
     assert result.fetch.method == "api"
+
+
+async def test_a_batch_task_whose_recipe_answers_no_rows_counts_that_request_then_fetches_the_page(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    schema: SchemaDef,
+    recipe_config: None,
+    engine_data: EngineData,
+) -> None:
+    web.empty = True
+    url = f"{own_origin}/kettles"
+
+    job_id = await _batch(engine, fetching, url, schema, engine_data, first_attempt=False)
+
+    async with engine.connect() as conn:
+        methods = (
+            await conn.execute(select(UsageEvent.metadata_["method"].astext).where(UsageEvent.job_id == job_id))
+        ).scalars()
+        counted = sorted(methods)
+    assert len(web.requested) == 1
+    assert counted.count("api") == 1
