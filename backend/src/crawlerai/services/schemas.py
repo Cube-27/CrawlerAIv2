@@ -13,7 +13,7 @@ from functools import cache
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.collect.schema_org_map import VocabularyMissing, default_vocabulary, reference_errors
+from crawlerai.collect.schema_org_map import pinned_reference_errors
 from crawlerai.config_ir.progressive import relearn_schema
 from crawlerai.core.errors import Refusal
 from crawlerai.core.validation import field_error
@@ -47,13 +47,8 @@ class InvalidSchema(Refusal):
 
 def _check_references(fields: Mapping[str, FieldSpec]) -> None:
     """Refuse `fields` naming a schema.org type, property or enumeration the pinned vocabulary lacks (SPEC-04 §4.2,
-    D-0240). A process without the vocabulary file checks syntax only, as it extracts no records
-    (`load_engine_data`)."""
-    try:
-        vocabulary = default_vocabulary()
-    except VocabularyMissing:
-        return
-    if errors := reference_errors(fields, vocabulary):
+    D-0240; `pinned_reference_errors`)."""
+    if errors := pinned_reference_errors(fields):
         raise InvalidSchema(errors)
 
 
