@@ -287,13 +287,14 @@ to draft one) and a `page_kind`. Markdown comes in pages of at most 20,000 chara
 only the blocks relevant to a query) and `chunks` (`chunking`: strategy, size, overlap) come whole. `screenshot`
 and `pdf` are made in the browser and named by a URL; a screenshot also comes back as an image. Each record field has a
 `status` and `confidence`; a field whose status is not `published` has no value and reads "unknown" in the summary.
+`min_confidence` leaves a field unpublished when its calibrated confidence is below it; unset, every value publishes.
 {UNTRUSTED}"""
 _MAP = f"""Discover a site's URLs from its sitemaps and the start page's links, as `POST /v1/map` does: canonical, on
 the start URL's host or the `include` globs, less the `exclude` globs. {UNTRUSTED}"""
 _CRAWL_START = """Queue a crawl from `url`, as `POST /v1/crawl` does, and return its `job_id`. A page a
 `page_kind_rules` pattern matches is extracted; with rules, other pages are fetched for their links only. With
 `strategy` "best_first" and a `query`, the pages whose links best match it are fetched first, within `limit`. Follow it
-with `crawl_status`."""
+with `crawl_status`. `min_confidence` works as it does for `scrape`."""
 _SEARCH = f"""Search the web for `query`, as `POST /v1/search` does: the results' `url`, `title` and `snippet`. With
 `scrape` (`formats`, `schema`), a batch job scrapes the results and the answer carries its `job_id`; follow it with
 `extract_status`. Fails when the operator has configured no search provider. {UNTRUSTED}"""
@@ -302,7 +303,7 @@ each field's `status` and `confidence` ("unknown" in the summary for a field wit
 outputs for a job without a schema. Pass the `next_cursor` of `results` as `cursor` for the next page. {UNTRUSTED}"""
 _EXTRACT = """Queue a job that extracts a record of `page_kind` from each of `urls`, as `POST /v1/extract` does; a
 URL with a `*` is a glob, expanded through a map of its host. Returns the `job_id` and the schema, a prompt's draft
-included. Follow it with `extract_status`."""
+included. Follow it with `extract_status`. `min_confidence` works as it does for `scrape`."""
 _LLMS_TXT = f"""The `llms.txt` (llmstxt.org) of the pages a crawl, batch or extract job reached: the site's name and
 summary, then links to its pages with their titles and descriptions. The full text of the pages is `GET
 /v1/jobs/{{id}}/llms-full.txt` over REST. {UNTRUSTED}"""

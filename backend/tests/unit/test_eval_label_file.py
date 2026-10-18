@@ -359,6 +359,8 @@ def test_a_label_file_outside_the_working_directory_is_refused(
         ["eval", "import-labels", "labels.json", "--split", "dev", "--status", "checked"],
         ["eval", "run", "--split", "fresh"],
         ["eval", "run", "--split", "dev", "--labels", "draft-only"],
+        ["eval", "run", "--split", "dev", "--min-confidence", "1.5"],
+        ["eval", "run", "--split", "dev", "--min-confidence", "nan"],
     ],
 )
 def test_import_and_run_accept_only_dev_and_imports_only_drafts(argv: list[str]) -> None:
@@ -377,3 +379,19 @@ def test_an_import_hands_the_resolved_file_on(monkeypatch: pytest.MonkeyPatch, t
     monkeypatch.chdir(tmp_path)
     main(["eval", "import-labels", "labels.json", "--split", "dev", "--status", "draft"])
     assert runs == [tmp_path.resolve() / "labels.json"]
+
+
+@pytest.mark.parametrize(("argv", "minimum"), [([], None), (["--min-confidence", "0.9"], 0.9)])
+def test_eval_run_hands_the_minimum_confidence_on(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str], minimum: float | None
+) -> None:
+    runs: list[float | None] = []
+
+    async def run(
+        statuses: object, llm_mode: object, out: object, max_calls: object, min_confidence: float | None
+    ) -> None:
+        runs.append(min_confidence)
+
+    monkeypatch.setattr(cli, "_eval_run", run)
+    main(["eval", "run", "--split", "dev", *argv])
+    assert runs == [minimum]

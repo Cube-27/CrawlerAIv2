@@ -30,6 +30,7 @@ import {
   requestPageKind,
   requestSchema,
   screenshotArea,
+  minConfidence,
 } from "../pageRequest";
 import {
   count,
@@ -43,6 +44,7 @@ import {
   schemaId,
   text,
   type StoredRequest,
+  minConfidencePercent,
 } from "../run/storedRequest";
 
 /** The settings in the options panel (SPEC-14 §4.2): each is a `ScrapeRequest` member, except `metadataInJson`, a view
@@ -58,6 +60,8 @@ export interface ScrapeOptions extends FormatSettings {
   llmCalls: number;
   /** `fetch.max_rows`: NaN while empty (every page, up to the server's cap). */
   maxRows: number;
+  /** `min_confidence` as a percent; NaN (empty) leaves it out: every value publishes with its confidence. */
+  minConfidence: number;
   /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
   advanced: AdvancedFetch;
   /** Browser actions (owner #52): sent only for listing pages. `records` is NaN while empty (the server's 100), and a
@@ -77,6 +81,7 @@ export const DEFAULT_OPTIONS: ScrapeOptions = {
   timeoutS: Number.NaN,
   llmCalls: Number.NaN,
   maxRows: Number.NaN,
+  minConfidence: Number.NaN,
   advanced: DEFAULT_ADVANCED,
   browserActions: false,
   records: Number.NaN,
@@ -133,6 +138,7 @@ export function buildRequest(form: ScrapeFormState): ScrapeRequest | null {
     ...optionalNumber("max_age", options.maxAge),
     ...optionalNumber("timeout_s", options.timeoutS),
     ...llmBudget(options.llmCalls),
+    ...minConfidence(options.minConfidence),
     ...browserActions(options, requestPageKind(form)),
   };
 }
@@ -198,6 +204,7 @@ export function scrapeForm(request: StoredRequest): ScrapeFormState {
       timeoutS: count(request, "timeout_s"),
       llmCalls: llmCalls(request),
       maxRows: maxRows(request),
+      minConfidence: minConfidencePercent(request),
       advanced: storedAdvanced(request),
       ...storedBrowserActions(request),
       ...storedFormatSettings(request),

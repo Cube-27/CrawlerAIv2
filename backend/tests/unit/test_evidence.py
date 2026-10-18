@@ -1,5 +1,5 @@
-"""Evidence buckets, calibration and τ (SPEC-05 §4.9, ARCHITECTURE §10, INV-22): a chosen value's bucket, its
-dev-measured confidence, the `calibrated` flag, and abstention below τ."""
+"""Evidence buckets, calibration and the minimum confidence (resolution spec, INV-22): a chosen value's bucket, its
+dev-measured confidence, the `calibrated` flag, and abstention below a request's minimum confidence."""
 
 import uuid
 from pathlib import Path
@@ -67,11 +67,11 @@ def _assess(
     decision: Chosen | Unpublished | Derived,
     calibration: Calibration | None = None,
     *,
-    tau: float = 0.97,
+    min_confidence: float | None = None,
     corroborated: bool = False,
     type_: FieldType = FieldType.IDENTIFIER,
 ) -> FieldOutcome:
-    return assess(type_, decision, calibration, tau=tau, corroborated=corroborated)
+    return assess(type_, decision, calibration, min_confidence=min_confidence, corroborated=corroborated)
 
 
 # Buckets
@@ -81,6 +81,7 @@ def _assess(
     ("kind", "bucket"),
     [
         ("dom", "dom"),
+        ("js_state", "state"),
         ("api", "adapter"),
         ("og", "structured"),
         ("llm", "llm_grounded"),
@@ -100,11 +101,11 @@ def test_an_adapter_value_stays_adapter_when_others_agree() -> None:
     assert evidence_of(_candidate("adapter"), (_candidate("jsonld"),), corroborated=False) == "adapter"
 
 
-def test_a_lone_state_value_has_no_bucket_and_abstains() -> None:
-    state = _candidate("js_state")
+def test_a_lone_state_value_takes_the_state_bucket_and_publishes() -> None:
+    state = _candidate("js_state", independent=False)
     outcome = _assess(_chosen(state))
-    assert (outcome.status, outcome.reason, outcome.value) == ("abstained", "no_bucket", None)
-    assert outcome.rejected == ((state, "no_bucket"),)
+    assert (outcome.status, outcome.value, outcome.evidence) == ("published", "A-1", "state")
+    assert (outcome.source_kind, outcome.chosen) == ("js_state", state)
 
 
 def test_a_lone_value_of_a_captured_call_takes_the_network_bucket() -> None:
@@ -113,7 +114,7 @@ def test_a_lone_value_of_a_captured_call_takes_the_network_bucket() -> None:
     assert (outcome.status, outcome.evidence) == ("published", "network")
 
 
-# Calibration and τ
+# Calibration and the minimum confidence
 
 
 def test_without_a_calibration_a_value_publishes_uncalibrated() -> None:
@@ -136,24 +137,31 @@ def test_a_bucket_of_another_type_does_not_apply() -> None:
 
 @pytest.mark.parametrize(("n", "calibrated"), [(MIN_CALIBRATED_N - 1, False), (MIN_CALIBRATED_N, True)])
 def test_a_bucket_is_calibrated_from_the_floor_of_dev_labels(n: int, calibrated: bool) -> None:
-    outcome = _assess(_chosen(_candidate()), _calibration(identifier__structured=(n, 0.5)))
+    outcome = _assess(_chosen(_candidate()), _calibration(identifier__structured=(n, 0.5)), min_confidence=0.9)
     assert (outcome.calibrated, outcome.status) == (calibrated, "abstained" if calibrated else "published")
     assert outcome.confidence == 0.5
 
 
+def test_a_calibrated_bucket_below_every_threshold_publishes_without_a_minimum_confidence() -> None:
+    outcome = _assess(_chosen(_candidate()), _calibration(identifier__structured=(MIN_CALIBRATED_N, 0.57)))
+    assert (outcome.status, outcome.value, outcome.reason) == ("published", "A-1", None)
+    assert (outcome.confidence, outcome.calibrated) == (0.57, True)
+
+
 @pytest.mark.parametrize(("precision", "status"), [(0.969, "abstained"), (0.97, "published")])
-def test_a_required_field_abstains_below_tau(precision: float, status: str) -> None:
+def test_a_field_abstains_below_the_requests_minimum_confidence(precision: float, status: str) -> None:
     chosen = _candidate()
-    outcome = _assess(_chosen(chosen), _calibration(identifier__structured=(MIN_CALIBRATED_N, precision)))
+    calibration = _calibration(identifier__structured=(MIN_CALIBRATED_N, precision))
+    outcome = _assess(_chosen(chosen), calibration, min_confidence=0.97)
     assert outcome.status == status
     if status == "abstained":
         assert (outcome.reason, outcome.value, outcome.evidence, outcome.confidence) == (
-            "below_tau",
+            "below_min_confidence",
             None,
             "structured",
             precision,
         )
-        assert outcome.rejected == ((chosen, "below_tau"),)
+        assert outcome.rejected == ((chosen, "below_min_confidence"),)
 
 
 def test_the_bucket_of_the_agreeing_kinds_is_measured() -> None:
@@ -213,10 +221,11 @@ def test_a_page_url_derivation_is_measured_in_its_own_bucket() -> None:
     )
 
 
-def test_a_page_url_derivation_in_a_bucket_below_tau_abstains() -> None:
+def test_a_page_url_derivation_in_a_bucket_below_the_minimum_confidence_abstains() -> None:
     calibration = _calibration(url__derived=(40, 0.9))
-    outcome = _assess(Derived("https://shop.example.test/p/1", "final_url", None), calibration, type_=FieldType.URL)
-    assert (outcome.status, outcome.reason, outcome.value) == ("abstained", "below_tau", None)
+    derived = Derived("https://shop.example.test/p/1", "final_url", None)
+    outcome = _assess(derived, calibration, type_=FieldType.URL, min_confidence=0.95)
+    assert (outcome.status, outcome.reason, outcome.value) == ("abstained", "below_min_confidence", None)
     assert (outcome.evidence, outcome.confidence, outcome.calibrated) == ("derived", 0.9, True)
 
 
@@ -242,16 +251,13 @@ def test_required_fields_are_the_required_ones_and_the_group_members() -> None:
     assert required_fields(_schema()) == {"sku", "gtin", "mpn"}
 
 
-def test_optional_fields_abstain_below_the_optional_tau_only() -> None:
+def test_every_field_is_held_to_the_one_minimum_confidence() -> None:
     calibration = _calibration(identifier__structured=(MIN_CALIBRATED_N, 0.96))
     decisions = {name: _chosen(_candidate()) for name in ("sku", "gtin", "mpn", "note")}
-    outcomes = assess_fields(_schema(), decisions, calibration, frozenset())
-    assert {name: o.status for name, o in outcomes.items()} == {
-        "sku": "abstained",
-        "gtin": "abstained",
-        "mpn": "abstained",
-        "note": "published",
-    }
+    held = assess_fields(_schema(), decisions, calibration, frozenset(), min_confidence=0.97)
+    assert {o.status for o in held.values()} == {"abstained"}
+    free = assess_fields(_schema(), decisions, calibration, frozenset())
+    assert {o.status for o in free.values()} == {"published"}
 
 
 def test_the_configs_corroborated_fields_are_named() -> None:
@@ -284,17 +290,17 @@ def test_the_outcome_keeps_the_candidates_that_passed_screening(precision: float
     chosen, og = _candidate(), _candidate("og")
     calibration = _calibration(identifier__agreed=(50, precision))
 
-    outcome = _assess(_chosen(chosen, og), calibration)
+    outcome = _assess(_chosen(chosen, og), calibration, min_confidence=0.9)
 
     assert (outcome.status, outcome.kept) == (status, (chosen, og))
 
 
-def test_a_lone_state_value_abstains_with_its_kept_candidates() -> None:
+def test_a_state_value_publishes_with_its_kept_candidates() -> None:
     chosen, xhr = _candidate("js_state"), _candidate("xhr", independent=False, n=1)
 
     outcome = _assess(_chosen(chosen, xhr))
 
-    assert (outcome.status, outcome.reason, outcome.kept) == ("abstained", "no_bucket", (chosen, xhr))
+    assert (outcome.status, outcome.evidence, outcome.kept) == ("published", "state", (chosen, xhr))
 
 
 def test_a_declined_field_keeps_its_competing_candidates() -> None:

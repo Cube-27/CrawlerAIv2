@@ -19,6 +19,7 @@ from dataclasses import dataclass, replace
 from typing import Final
 from urllib.parse import urlsplit
 
+from pydantic import TypeAdapter
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -39,6 +40,7 @@ from crawlerai.recurring.state import record_fetch, standing_listing, standing_r
 from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.task import ActiveConfig
+from crawlerai.resolve.types import Probability
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import JobPins
 from crawlerai.services.fetching import (
@@ -91,6 +93,8 @@ RECORDS_UNAVAILABLE: Final = "records_unavailable"
 # A page a vendor's challenge kept out is fetched at most this many times (master plan 2026-10-18 §3.1).
 _VENDOR_TRIES: Final = 2
 
+# The request's `min_confidence`, as the job row stores it.
+_MIN_CONFIDENCE: Final = TypeAdapter(Probability)
 _JobRow = Row[dict[str, object], SchemaId | None, dict[str, object] | None]
 
 
@@ -119,7 +123,10 @@ async def load_job(
     if data is None:
         return Failed(RECORDS_UNAVAILABLE, transient=False)
     pins = JobPins.model_validate(job.pinned)
-    pinned = data.pinned(pins.engine_data)
+    floor = job.request.get("min_confidence")
+    pinned = data.pinned(pins.engine_data).with_min_confidence(
+        None if floor is None else _MIN_CONFIDENCE.validate_python(floor)
+    )
     config_id = pins.configs.get(urlsplit(task.url).hostname or "")
     config = None if config_id is None else await config_by_id(conn, config_id, pinned.vocabulary)
     return job.request, Records(pins.schema_, pinned, config, margins)
@@ -363,7 +370,10 @@ async def _standing(
     conn: AsyncConnection, task: ClaimedTask, site_id: SiteId, records: Records
 ) -> tuple[RecordId, ...]:
     """The records that stand for the page while it is unchanged, for the config the job pinned (None: `adhoc`): a
-    listing's (`standing_listing`), or its detail page's one (`standing_record`)."""
+    listing's (`standing_listing`), or its detail page's one (`standing_record`). None stand for a job with a
+    `min_confidence`: the minimum changes which values a record holds, so another job's record is not its answer."""
+    if records.data.min_confidence is not None:
+        return ()
     version = None if records.config is None else records.config.version
     if records.schema.page_kind == "listing":
         return await standing_listing(conn, site_id, task.canonical_url, records.schema, version)

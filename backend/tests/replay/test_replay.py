@@ -393,7 +393,7 @@ class UnansweredEngine(StubEngine):
         llm: LLMClient,
         mode: ExtractionMode,
     ) -> ExtractionResult:
-        reason = "below_tau"  # answered, but not enough to publish
+        reason = "below_min_confidence"  # answered, but not enough to publish
         try:
             await llm.complete_json(REQUEST.model_copy(update={"user": bundle.body.decode()}))
         except LLMFailure as failure:

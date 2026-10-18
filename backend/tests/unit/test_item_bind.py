@@ -108,7 +108,7 @@ def test_a_blocks_ambiguous_price_publishes_the_option_its_stated_row_agrees_wit
 
 def test_a_state_key_the_blocks_titles_prove_reads_the_title_of_the_row_whose_block_shows_none() -> None:
     # `collect.induce`: the key whose values equal the blocks' titles on three rows is the title's key for all four. A
-    # lone state value ranks in no text precedence (resolution spec): the fourth row's title is a candidate only.
+    # state value has the evidence bucket `state` and ranks last (resolution spec): the fourth row publishes it.
     state: dict[str, Any] = {"items": [{"label": f"Widget {n}", "path": f"/p/{n}"} for n in (1, 2, 3, 4)]}
     script = f'<script type="application/json">{json.dumps(state)}</script>'
     cards = _cards(*(_card(n, title=n != 4) for n in (1, 2, 3, 4)))
@@ -118,8 +118,8 @@ def test_a_state_key_the_blocks_titles_prove_reads_the_title_of_the_row_whose_bl
     (induced,) = [c for c in result.candidates if c.field == "title" and c.raw == "Widget 4"]
     assert (induced.source_kind, induced.independent) == ("js_state", False)
     assert induced.locator.endswith("$['items'][3]['label']")
-    assert [row.get("title") for row in _row_values(result)] == ["Widget 1", "Widget 2", "Widget 3", None]
-    assert result.rows[3]["title"].reason == "unranked"
+    assert [row.get("title") for row in _row_values(result)] == ["Widget 1", "Widget 2", "Widget 3", "Widget 4"]
+    assert result.rows[3]["title"].evidence == "state"
 
 
 def test_a_products_offer_url_is_its_rows_item_url() -> None:

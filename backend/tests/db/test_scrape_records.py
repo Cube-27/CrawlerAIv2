@@ -40,6 +40,7 @@ from crawlerai.llm.client import MeteredClient, ProviderRefused, ProviderReply
 from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve import pipeline
+from crawlerai.resolve.evidence import Bucket, Calibration
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.preference import PRECEDENCE_FILE, load_precedence
 from crawlerai.schemas import registry
@@ -302,6 +303,31 @@ async def test_a_listing_without_rows_says_why_and_answers_its_page_fields(
     task = await _row(engine, select(UrlTask.last_error).where(UrlTask.url == url))
     assert task.last_error == "no_rows: not_asked"
     assert "page" in result.model_dump(by_alias=True)
+
+
+async def test_a_scrapes_minimum_confidence_leaves_a_calibrated_bucket_below_it_unpublished(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    calibration = Calibration(git_sha="0" * 40, buckets={"money|structured": Bucket(n=40, precision=0.6)})
+    data = replace(engine_data, calibration=calibration)
+    url = f"{own_origin}/kettles/1"
+    web.pages[url] = (200, _product_page(url), "ok")
+    schema = {"id": str(kettle_schema.id)}
+
+    free = await scrape(engine, fetching, _records(url, schema), data=data)
+    gated = await scrape(engine, fetching, _records(url, schema, min_confidence=0.9), data=data)
+
+    assert free.records is not None
+    assert gated.records is not None
+    price = free.records[0].fields["price"]
+    assert (price.status, price.confidence, price.calibrated) == ("published", 0.6, True)
+    held = gated.records[0].fields["price"]
+    assert (held.status, held.reason, held.value) == ("abstained", "below_min_confidence", None)
 
 
 async def test_a_detail_page_answers_no_page_member(

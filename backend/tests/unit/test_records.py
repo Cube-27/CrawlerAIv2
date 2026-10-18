@@ -166,7 +166,7 @@ def test_a_required_group_needs_one_published_member(gtin: bool, mpn: bool, comp
 
 
 def test_an_abstained_required_field_makes_the_page_incomplete() -> None:
-    fields = {"sku": _unpublished("abstained", "below_tau"), "gtin": _published(), "mpn": _published()}
+    fields = {"sku": _unpublished("abstained", "below_min_confidence"), "gtin": _published(), "mpn": _published()}
     assert is_complete(_schema(), fields) is False
 
 

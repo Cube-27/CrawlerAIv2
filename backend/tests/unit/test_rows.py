@@ -304,16 +304,16 @@ def test_variants_that_state_no_identifier_and_no_own_url_still_drop() -> None:
     assert (outcome.status, outcome.reason) == ("missing", "no_row_key")
 
 
-def test_rows_whose_key_sub_fields_are_all_below_tau_make_the_field_abstain() -> None:
-    # §4.5: a key sub-field's row bucket (`list.<type>|<evidence>`) calibrated below τ drops each variant as
+def test_rows_whose_key_sub_fields_are_all_below_the_minimum_confidence_make_the_field_abstain() -> None:
+    # A key sub-field's row bucket (`list.<type>|<evidence>`) calibrated below `min_confidence` drops each variant as
     # `key_unpublished`; when every variant went that way the field abstains, it is not missing.
     buckets = {"list.identifier|structured": Bucket(n=40, precision=0.5)}
     calibration = Calibration(git_sha="a" * 40, buckets=buckets)
-    data = EngineData(VOCABULARY, DATA.orders, calibration)
+    data = EngineData(VOCABULARY, DATA.orders, calibration, min_confidence=0.9)
 
     outcome = _variants(_group(_variant("W-11", "10.00"), _variant("W-12", "12.00")), data=data)
 
-    assert (outcome.status, outcome.reason) == ("abstained", "below_tau")
+    assert (outcome.status, outcome.reason) == ("abstained", "below_min_confidence")
     assert outcome.dropped is not None
     assert [row.reason for row in outcome.dropped] == ["key_unpublished", "key_unpublished"]
 

@@ -1084,6 +1084,11 @@ export interface components {
             formats: ("markdown" | "markdown_fit" | "chunks" | "html" | "raw_html" | "links" | "metadata" | "screenshot" | "pdf" | "records")[];
             /** Locale */
             locale?: string | null;
+            /**
+             * Min Confidence
+             * @description Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.
+             */
+            min_confidence?: number | null;
             /** Page Kind */
             page_kind?: ("detail" | "listing") | null;
             /** Schema */
@@ -1455,6 +1460,11 @@ export interface components {
              * @default 3
              */
             max_depth: number;
+            /**
+             * Min Confidence
+             * @description Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.
+             */
+            min_confidence?: number | null;
             /** Page Kind Rules */
             page_kind_rules?: components["schemas"]["PageKindRule"][];
             /** Query */
@@ -1689,6 +1699,11 @@ export interface components {
             limit: number;
             /** Locale */
             locale?: string | null;
+            /**
+             * Min Confidence
+             * @description Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.
+             */
+            min_confidence?: number | null;
             /**
              * Page Kind
              * @enum {string}
@@ -3016,7 +3031,7 @@ export interface components {
             /** Dropped */
             dropped?: components["schemas"]["DroppedRowMeta"][] | null;
             /** Evidence */
-            evidence: ("adapter" | "structured" | "agreed" | "dom" | "network" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
+            evidence: ("adapter" | "structured" | "agreed" | "dom" | "network" | "state" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
             /** Items */
             items?: components["schemas"]["RowMeta"][] | null;
             /** Locator */
@@ -3374,6 +3389,11 @@ export interface components {
              * @default 0
              */
             max_age: number;
+            /**
+             * Min Confidence
+             * @description Leave unpublished (abstained) a records field whose calibrated confidence is below this. Unset: every value publishes with its confidence.
+             */
+            min_confidence?: number | null;
             /** Page Kind */
             page_kind?: ("detail" | "listing") | null;
             /** Schema */
@@ -3642,7 +3662,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Evidence */
-            evidence: ("adapter" | "structured" | "agreed" | "dom" | "network" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
+            evidence: ("adapter" | "structured" | "agreed" | "dom" | "network" | "state" | "config_corroborated" | "config_uncorroborated" | "llm_grounded" | "derived") | null;
             /** Locator */
             locator: string | null;
             /** Reason */

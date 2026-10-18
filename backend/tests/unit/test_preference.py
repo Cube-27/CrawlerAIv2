@@ -18,6 +18,7 @@ from crawlerai.db.models import SchemaId, SourceKind
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok
 from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.resolve.preference import (
+    PRECEDENCE_FILE,
     PRECEDENCE_TYPES,
     Chosen,
     Orders,
@@ -186,6 +187,18 @@ def test_exact_values_agree_by_the_types_equality() -> None:
 
 
 # Text, url and image_url: source precedence
+
+
+def test_a_state_value_ranks_after_every_other_kind_in_the_committed_orders() -> None:
+    committed = load_precedence(Path(__file__).parents[2] / "data" / PRECEDENCE_FILE)
+    state = _candidate("title", "Lamp", PAGE, "js_state").model_copy(update={"independent": False})
+    dom = _candidate("title", "Lamp, the shop", PAGE, "dom")
+
+    alone = _prefer(_schema(title=TITLE), state, orders=committed)
+    beside = _prefer(_schema(title=TITLE), state, dom, orders=committed)
+
+    assert alone["title"] == Chosen(state, (), (), (state,))
+    assert beside["title"] == Chosen(dom, (), ((state, "precedence"),), (state, dom))
 
 
 def test_the_first_ranked_source_kind_wins_and_lower_ones_that_disagree_are_rejected() -> None:

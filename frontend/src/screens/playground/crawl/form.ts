@@ -31,6 +31,7 @@ import {
   NO_WEBHOOK,
   withWebhookErrors,
   type WebhookSettings,
+  minConfidence,
 } from "../pageRequest";
 import {
   count,
@@ -45,6 +46,7 @@ import {
   texts,
   webhookSettings,
   type StoredRequest,
+  minConfidencePercent,
 } from "../run/storedRequest";
 
 /** One page-kind rule as edited: `key` keeps a row's inputs when another row is removed. */
@@ -77,6 +79,8 @@ export interface CrawlOptions extends FormatSettings {
   methodHint: MethodHint;
   /** `fetch.max_rows`: NaN while empty. */
   maxRows: number;
+  /** `min_confidence` as a percent; NaN (empty) leaves it out: every value publishes with its confidence. */
+  minConfidence: number;
   /** The Advanced settings: request context, page actions and cache (D-1430, D-1436). */
   advanced: AdvancedFetch;
   /** An empty URL: no webhook. */
@@ -100,6 +104,7 @@ export const DEFAULT_CRAWL_OPTIONS: CrawlOptions = {
   // FetchPolicy's own default (SPEC-02 §4.2).
   methodHint: "auto",
   maxRows: Number.NaN,
+  minConfidence: Number.NaN,
   advanced: DEFAULT_ADVANCED,
   webhook: NO_WEBHOOK,
   ...DEFAULT_FORMAT_SETTINGS,
@@ -196,6 +201,7 @@ export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
     ...formatMembers(formats, options),
     ...optionalNumber("max_depth", options.maxDepth),
     ...optionalNumber("limit", options.limit),
+    ...minConfidence(options.minConfidence),
     ...crawlStrategy(options),
     ...(options.allowSubdomains ? { allow_subdomains: true } : {}),
     ...(options.allowExternal ? { allow_external: true } : {}),
@@ -264,6 +270,7 @@ export function crawlForm(request: StoredRequest): CrawlFormState {
       allowExternal: flag(request, "allow_external", false),
       methodHint: methodHint(request),
       maxRows: maxRows(request),
+      minConfidence: minConfidencePercent(request),
       advanced: storedAdvanced(request),
       webhook: webhookSettings(request),
       ...storedFormatSettings(request),

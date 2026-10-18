@@ -25,7 +25,7 @@ dropped.
 relative to the row) whose value equals the block's on `MIN_ITEMS` rows or more is that field's key on this page
 (`collect.induce`, the rule learning applies across pages): its value is the field's candidate in each bound array row
 whose block does not show the field, so that row still gets the value its data states. The value keeps its source kind
-and the resolution spec's evidence rules (a call's value is `network` evidence; a lone state value has none).
+and the resolution spec's evidence rules (a call's value is `network` evidence; a state value is `state` evidence).
 """
 
 from collections import Counter, defaultdict

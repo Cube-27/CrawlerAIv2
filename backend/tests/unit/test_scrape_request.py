@@ -47,7 +47,19 @@ def test_takes_the_documented_defaults() -> None:
         "browser_actions": None,
         "fit": None,
         "chunking": None,
+        "min_confidence": None,
     }
+
+
+@pytest.mark.parametrize("min_confidence", [-0.01, 1.01])
+def test_refuses_a_minimum_confidence_outside_0_to_1(min_confidence: float) -> None:
+    assert _errors({"url": URL, "formats": ["markdown"], "min_confidence": min_confidence}) == [("min_confidence",)]
+
+
+def test_takes_a_minimum_confidence() -> None:
+    request = ScrapeRequest.model_validate({"url": URL, "formats": ["markdown"], "min_confidence": 0.9})
+
+    assert request.min_confidence == 0.9
 
 
 @pytest.mark.parametrize("url", ["/kettles/blue", "ftp://shop.example.test/a"])

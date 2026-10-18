@@ -6,6 +6,7 @@ import {
   MaxRowsRow,
   FieldsRow,
   LlmCallsRow,
+  MinConfidenceRow,
   PageKindRow,
   WebhookRows,
 } from "../rows";
@@ -118,6 +119,7 @@ export function ExtractOptions({
           onChange({ ...options, llmCalls });
         }}
       />
+      <MinConfidenceRow options={options} onChange={onChange} />
       <WebhookRows
         value={options.webhook}
         onChange={(webhook) => {

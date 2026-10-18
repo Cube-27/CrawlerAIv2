@@ -18,7 +18,7 @@ from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.schema_org_map import MappedPath, parse_paths
 from crawlerai.normalize.base import Ok
 from crawlerai.normalize.dispatch import equal, equality_key
-from crawlerai.resolve.evidence import TAU_OPTIONAL, TAU_REQUIRED, Calibration, assess
+from crawlerai.resolve.evidence import BELOW_MIN_CONFIDENCE, Calibration, assess
 from crawlerai.resolve.identity import LISTS
 from crawlerai.resolve.intent import RELATIONS
 from crawlerai.resolve.ownership import AGGREGATE_OFFER, EntityGraph
@@ -45,12 +45,12 @@ class RowField:
 
     name: str
     spec: FieldSpec
-    required: bool  # the list field is required (τ, §4.5)
     graph: EntityGraph
     target: Entity
     page: PageFacts
     orders: Orders
     calibration: Calibration | None
+    min_confidence: float | None
     page_urls: tuple[str, ...]  # request, final and canonical URLs, canonicalized
 
     @property
@@ -90,7 +90,7 @@ def resolve_rows(row_field: RowField, candidates: Sequence[Candidate]) -> FieldO
     status: FieldStatus = "abstained" if abstained else "missing"
     return FieldOutcome(
         status=status,
-        reason="below_tau" if abstained else max(reasons, key=_NO_ROWS.index),
+        reason=BELOW_MIN_CONFIDENCE if abstained else max(reasons, key=_NO_ROWS.index),
         value=None,
         evidence=None,
         confidence=None,
@@ -356,14 +356,15 @@ def _resolve_variant(row_field: RowField, candidates: Sequence[Candidate], ids: 
     preferences = resolver.prefer_fields(row_field.sub_fields, candidates, prefix=f"{row_field.name}.")
     outcomes: dict[str, FieldOutcome] = {}
     for sub, spec in row_field.sub_fields.items():
-        calibration, tau = row_field.calibration, _tau(row_field, spec)
-        outcomes[sub] = assess(spec.type, preferences[sub], calibration, tau=tau, corroborated=False, row=True)
+        outcomes[sub] = assess(
+            spec.type,
+            preferences[sub],
+            row_field.calibration,
+            min_confidence=row_field.min_confidence,
+            corroborated=False,
+            row=True,
+        )
     return RowOutcome(fields=outcomes)
-
-
-def _tau(row_field: RowField, sub: FieldSpec) -> float:
-    # §4.5: τ is the required one when the list field and the sub-field are both required.
-    return TAU_REQUIRED if row_field.required and sub.required else TAU_OPTIONAL
 
 
 def _dropped_candidates(

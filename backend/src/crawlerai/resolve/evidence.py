@@ -1,8 +1,10 @@
-"""Evidence, calibration and τ (SPEC-05 §4.9, ARCHITECTURE §10, INV-22): what a field's choice becomes.
+"""Evidence, calibration and the request's minimum confidence (resolution spec, "Evidence and confidence"): what a
+field's choice becomes.
 
 Preference chose a value, or declined (`resolve.preference`). Here a chosen value gets its evidence bucket, the
-bucket's precision measured on dev as its confidence, and the `calibrated` flag; a calibrated bucket below τ abstains.
-An uncalibrated bucket publishes with `calibrated=false` (§10: a deliberate trade-off for progressive cold mode).
+bucket's precision measured on dev as its confidence, and the `calibrated` flag. Without a minimum confidence every
+chosen value publishes with its confidence; with one, a calibrated bucket below it abstains. An uncalibrated bucket
+always publishes, with `calibrated=false`.
 """
 
 from collections.abc import Mapping
@@ -21,15 +23,15 @@ from crawlerai.resolve.preference import Chosen, Preference
 from crawlerai.resolve.types import Derivation, Evidence, FieldOutcome, FieldSet, Probability
 from crawlerai.schemas.types import FieldType, SchemaDef
 
-# ARCHITECTURE §10, OPEN_QUESTIONS #3: a calibrated bucket below τ abstains.
-TAU_REQUIRED: Final = 0.97
-TAU_OPTIONAL: Final = 0.95
+# The reason of a field a calibrated bucket kept from publishing under the request's `min_confidence`.
+BELOW_MIN_CONFIDENCE: Final = "below_min_confidence"
 # A bucket with fewer than 20 dev labels reports `calibrated=false` (the `resolution` spec's floor).
 MIN_CALIBRATED_N: Final = 20
 # ARCHITECTURE §10 buckets by source kind: an adapter or an API recipe; one structured-data standard (schema.org
 # JSON-LD and microdata, the Open Graph protocol); a structural DOM value (§8.1), which follows no structured-data
 # standard; a value of the page's captured calls, the network data-source layer (Appendix A #59); role C's grounded
-# values. A config value's bucket is its field status; js_state has none.
+# values; a value read from the page's state JSON, which only a key the item layer proved on the page's blocks
+# yields alone (`collect.items.bind`). A config value's bucket is its field status.
 _ADAPTER: frozenset[SourceKind] = frozenset({"adapter", "api"})
 _BUCKET: Mapping[SourceKind, Evidence] = {
     "jsonld": "structured",
@@ -37,6 +39,7 @@ _BUCKET: Mapping[SourceKind, Evidence] = {
     "og": "structured",
     "dom": "dom",
     "xhr": "network",
+    "js_state": "state",
     "llm": "llm_grounded",
 }
 
@@ -81,7 +84,7 @@ def load_calibration(path: Path) -> Calibration | None:
 
 def evidence_of(chosen: Candidate, agreeing: tuple[Candidate, ...], *, corroborated: bool) -> Evidence | None:
     """The §10 bucket of a published value, `adapter` > `agreed` > the chosen kind's bucket (D-0021). `corroborated`
-    is the config's field status (SPEC-08); `None` when no bucket holds the value (a lone js_state value)."""
+    is the config's field status (SPEC-08); `None` when no bucket holds the value."""
     if chosen.source_kind in _ADAPTER:
         return "adapter"
     # §8.1, §10: only independent candidates count, so a state value admitted by equality never agrees with itself.
@@ -103,15 +106,15 @@ def assess_fields(
     decisions: Mapping[str, Preference | Derived],
     calibration: Calibration | None,
     corroborated: frozenset[str],
+    min_confidence: float | None = None,
 ) -> FieldSet:
     """Every schema field's outcome, from its preference (or derivation) and the calibration."""
-    required = required_fields(schema)
     return {
         name: assess(
             spec.type,
             decisions[name],
             calibration,
-            tau=TAU_REQUIRED if name in required else TAU_OPTIONAL,
+            min_confidence=min_confidence,
             corroborated=name in corroborated,
         )
         for name, spec in schema.fields.items()
@@ -123,12 +126,13 @@ def assess(
     decision: Preference | Derived,
     calibration: Calibration | None,
     *,
-    tau: float,
+    min_confidence: float | None,
     corroborated: bool,
     row: bool = False,
 ) -> FieldOutcome:
-    """One field's outcome: a chosen or derived value publishes with its bucket's measurement unless that bucket is
-    calibrated below `tau`; a declined field keeps its status and reason. `row`: a row sub-field (SPEC-13 §4.5)."""
+    """One field's outcome: a chosen or derived value publishes with its bucket's measurement, unless the request
+    gave a `min_confidence` and the bucket is calibrated below it; a declined field keeps its status and reason.
+    `row`: a row sub-field (variants spec)."""
     if isinstance(decision, Derived) and decision.source is None:
         published = _page_url(decision)
     else:
@@ -137,11 +141,11 @@ def assess(
             return candidate
         published = candidate
     confidence, calibrated = calibration.measure(type_, published.evidence, row=row) if calibration else (None, False)
-    if calibrated and confidence is not None and confidence < tau:
-        below = () if published.chosen is None else ((published.chosen, "below_tau"),)
+    if min_confidence is not None and calibrated and confidence is not None and confidence < min_confidence:
+        below = () if published.chosen is None else ((published.chosen, BELOW_MIN_CONFIDENCE),)
         return _unpublished(
             "abstained",
-            "below_tau",
+            BELOW_MIN_CONFIDENCE,
             (*published.rejected, *below),
             kept=published.kept,
             evidence=published.evidence,
@@ -166,7 +170,7 @@ def assess(
 
 @dataclass(frozen=True, slots=True)
 class _Published:
-    """A value about to publish, with its provenance (INV-22); its bucket is measured and held to τ next."""
+    """A value about to publish, with its provenance (INV-22); its bucket is measured, then held to `min_confidence`."""
 
     value: JsonValue
     evidence: Evidence

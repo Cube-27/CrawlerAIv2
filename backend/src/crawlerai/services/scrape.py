@@ -54,7 +54,7 @@ from crawlerai.llm.roles.s_schema import draft_schema
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig, StoredRecord
-from crawlerai.resolve.types import ExtractionResult
+from crawlerai.resolve.types import ExtractionResult, Probability
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetch_options import CacheMode, check_proxy_pool
 from crawlerai.services.fetching import (
@@ -73,6 +73,7 @@ from crawlerai.services.scrape_steps import (
     CAPTURE_FORMATS,
     DEFAULT_PROJECT,
     EXTRACTION_ERROR,
+    MIN_CONFIDENCE_DESCRIPTION,
     FetchOptions,
     FetchSummary,
     FormatOptions,
@@ -144,6 +145,7 @@ class ScrapeRequest(Input):
     browser_actions: BrowserActions | None = None
     fit: FitOptions | None = None  # `markdown_fit`'s query and block limit
     chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
+    min_confidence: Probability | None = Field(default=None, description=MIN_CONFIDENCE_DESCRIPTION)
 
     @field_validator("url")
     @classmethod
@@ -276,7 +278,8 @@ async def scrape(
     propagates."""
     await check_target(fetching.connector, request.url)
     check_proxy_pool(request.fetch, fetching.proxy_pools)
-    work = _Work(llm, data, margins, await _named_schema(engine, request, data, llm))
+    pinned = None if data is None else data.with_min_confidence(request.min_confidence)
+    work = _Work(llm, pinned, margins, await _named_schema(engine, request, data, llm))
     task = await _start(engine, request, work.schema)
     try:
         async with asyncio.timeout(request.timeout_s):

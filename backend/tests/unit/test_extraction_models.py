@@ -151,7 +151,9 @@ def test_an_unpublished_field_says_why() -> None:
 
 def test_an_abstained_field_keeps_its_bucket_and_confidence() -> None:
     outcome = FieldOutcome(
-        **_missing(status="abstained", reason="below_tau", evidence="structured", confidence=0.9, calibrated=True)
+        **_missing(
+            status="abstained", reason="below_min_confidence", evidence="structured", confidence=0.9, calibrated=True
+        )
     )
     assert (outcome.evidence, outcome.confidence, outcome.value) == ("structured", 0.9, None)
 

@@ -517,6 +517,38 @@ async def test_a_job_runs_with_the_schema_and_engine_data_pinned_at_submit(
     )
 
 
+async def test_a_jobs_minimum_confidence_leaves_a_calibrated_bucket_below_it_unpublished(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    # Only the price's bucket is measured, so the title publishes either way and the record is kept.
+    calibration = Calibration(git_sha="0" * 40, buckets={"money|structured": Bucket(n=40, precision=0.6)})
+    calibrated = replace(engine_data, calibration=calibration)
+    # One page, so the gated job meets a record that stands for it: it is extracted again, not linked to it.
+    blue = f"{own_origin}/kettles/blue"
+    web.pages[blue] = (200, _page("Blue kettle"))
+    free = await submit_batch(engine, fetching.connector, _records([blue], kettle_schema), data=calibrated)
+    gated_request = _records([blue], kettle_schema).model_copy(update={"min_confidence": 0.9})
+    await _run(engine, fetching, calibrated, free.job_id)
+    gated = await submit_batch(engine, fetching.connector, gated_request, data=calibrated)
+    await _run(engine, fetching, calibrated, gated.job_id)
+
+    async with engine.connect() as conn:
+        rows = await conn.execute(
+            select(Record.job_id, Record.field_meta).where(Record.job_id.in_((free.job_id, gated.job_id)))
+        )
+        meta = {row.job_id: row.field_meta for row in rows}
+    assert (meta[free.job_id]["price"]["status"], meta[free.job_id]["price"]["confidence"]) == ("published", 0.6)
+    assert (meta[gated.job_id]["price"]["status"], meta[gated.job_id]["price"]["reason"]) == (
+        "abstained",
+        "below_min_confidence",
+    )
+
+
 async def test_a_job_runs_with_the_site_config_active_when_it_was_submitted(
     engine: AsyncEngine,
     fetching: Fetching,

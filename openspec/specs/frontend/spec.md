@@ -162,3 +162,7 @@ Refs: D-1475, D-1476, D-1515, D-1605.
 - **WHEN** a scrape answers `records: []`, `page.next_page_url` and reason `no_rows: not_asked`
 - **THEN** Table shows `next_page_url` under Page fields, JSON holds `"page"`, and the header says the row reader was
   not asked
+
+### Requirement: Minimum confidence option
+Scrape, Batch, Crawl and Extract Options SHALL hold a Minimum confidence (%) that sends `min_confidence` as a fraction
+and nothing while empty, and a stored job's request SHALL fill it back (`screens/playground/rows.tsx`). Refs: D-1771.
