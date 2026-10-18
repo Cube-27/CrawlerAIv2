@@ -24,6 +24,14 @@ Enforced by: property test; active.
 - **WHEN** JSON-LD says 19.90 EUR and microdata says 21.00 EUR for the target
 - **THEN** `price` is `conflict` and has no value
 
+### Requirement: Currency evidence ranks money candidates
+Among a money field's kept candidates, those whose currency rests on the strongest evidence (no `Ok.basis`, then
+`page`, `locale`, `unknown`; [normalization](../normalization/spec.md)) SHALL decide by agreement; a candidate on weaker
+evidence stays only when it equals one of them (it agrees), else it is rejected `weaker_currency`. Refs: owner #68.
+#### Scenario: Unknown currency beside a stated one
+- **WHEN** JSON-LD says 19.90 USD and a DOM text says `$21.00` that no evidence settles
+- **THEN** `price` publishes 19.90 USD and the DOM candidate is rejected `weaker_currency`
+
 ### Requirement: Source precedence for text, url and image
 For `text`, `long_text`, `url` and `image_url` the system SHALL publish from the first source kind in the type's order
 in `backend/data/source_precedence.yaml` that has a valid owned candidate; unranked kinds never win, and disagreement
@@ -79,7 +87,10 @@ tests; active.
 Each published field SHALL carry one evidence bucket (`resolve/evidence.py`; `agreed` needs two independent kinds;
 `network` for a value of the page's captured calls, Appendix A #59; `state` for a value of the page's state JSON) and
 the fitted dev confidence of its `(type, evidence)` bucket from `calibration.json`, which holds only buckets measured on
-at least 20 labelled values (the others are uncalibrated, `calibrated=false`). Every chosen value publishes with that
+at least 20 labelled values (the others are uncalibrated, `calibrated=false`). A money value whose currency only the
+locale settles or nothing settles (`basis` `locale`, `unknown`) is measured apart, in bucket `money|<evidence>|<basis>`,
+for its lower confidence (owner #68); every published field notes its `basis` in `field_meta` when it has one. Every
+chosen value publishes with that
 confidence unless the request sets `min_confidence` and the bucket is calibrated below it: the field is then
 `abstained` with reason `below_min_confidence`. An uncalibrated bucket never abstains. (Previously: a calibrated bucket
 below τ, 0.97 required and 0.95 otherwise, abstained `below_tau`; a lone `js_state` value had no bucket.)

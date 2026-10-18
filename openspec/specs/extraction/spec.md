@@ -66,7 +66,8 @@ D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486.
 ### Requirement: Embedded JSON state and XHR admission
 The system SHALL admit a scalar from `<script>` JSON, JS assignments or captured XHR bodies only when it equals another
 kind's candidate (`independent=false`, owned by that candidate's entity), or when the field has none, the value is
-visible and its type is checkable (`collect/admission.py`); text-like types admit by equality only. A value admitted by
+visible and its type is checkable (`collect/admission.py`) and the value shows the type's checked syntax (`Ok.checked`:
+money with a currency sign or code); text-like types admit by equality only. A value admitted by
 visibility inside an array row (an object item of an array holding two or more objects, or an array's only object when
 its own scope writes a URL that names a document, not a media file) is owned by that row's `array_row` entity, whose
 `urls` are the URLs in its scope up to nested rows; elsewhere it is owned by `page`. An array row writing a URL is an
@@ -113,7 +114,8 @@ On a detail page the system SHALL take label–value pairs from the page's main 
 two-cell `tr` rows, `dl` groups, elements starting with `Label:` and sibling containers of one shape (two or more)
 holding a label element and a value element, whose label is one of the field's labels; lines and sibling pairs that
 give a field several values are dropped, and an identifier field given two values by any pairs reads none. It SHALL
-also take a money or check-digit identifier field's one shown value in the main region (`collect/items/spot.py`; for
+also take a money or check-digit identifier field's one shown value in the main region (`collect/items/spot.py`, which
+spots only text showing the type's checked syntax, `Ok.checked`: a number without a currency sign is not money; for
 an identifier also an unlabelled pair's value, never inside a hyperlink to another document; none when several
 differ); an identifier without a check digit is read only next to one of its labels. It SHALL take the main image of
 the one `main`/`role=main`/`article` outside chrome, decorative images and link cards (`collect/dom.py`); values MUST
