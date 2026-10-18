@@ -164,3 +164,11 @@ def test_blocks_render_back_to_the_markdown_they_were_read_from() -> None:
     blocks = parse(markdown)
     assert [b.kind for b in blocks] == ["heading", "text", "list", "list", "code", "text"]
     assert render(blocks) == markdown
+
+
+def test_a_fence_line_with_trailing_text_does_not_close_a_code_block() -> None:
+    # CommonMark §4.5: only spaces or tabs may follow a closing fence.
+    blocks = parse("```\na\n```js\nb\n```  \n\nafter")
+
+    assert [block.kind for block in blocks] == ["code", "text"]
+    assert blocks[0].text == "```\na\n```js\nb\n```  "

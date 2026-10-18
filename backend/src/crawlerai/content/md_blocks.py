@@ -78,15 +78,21 @@ class _Reader:
 
     def _read_code(self, line: str, closing: re.Match[str] | None) -> None:
         self._lines.append(line)
-        if (
-            closing
-            and self._fence
-            and closing.group(1)[0] == self._fence[0]
-            and len(closing.group(1)) >= len(self._fence)
-        ):
+        if closing and self._closes(closing, line):
             self._fence = None
             self._flush()
             self._blank = False
+
+    def _closes(self, closing: re.Match[str], line: str) -> bool:
+        """CommonMark §4.5: a closing fence is a run of the opening fence's character, at least as long, followed only
+        by spaces or tabs."""
+        run = closing.group(1)
+        return (
+            self._fence is not None
+            and run[0] == self._fence[0]
+            and len(run) >= len(self._fence)
+            and not line[closing.end() :].strip(" \t")
+        )
 
     def _start(self, kind: Kind, line: str) -> None:
         self._flush()
