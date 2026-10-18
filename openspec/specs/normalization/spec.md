@@ -79,10 +79,15 @@ D-1371. (Previously: only a numeric offset or `Z`.)
 
 ### Requirement: location as stated
 `normalize/location.py` SHALL publish only what the page states: text as written (never split), structured parts as
-written, a country only from an ISO 3166-1 alpha-2 code that the standard assigns (not its user-assigned ranges or
+written, a structured place's text being its `name` and `streetAddress` lines then its locality, region, country name
+and postal code (the HTML Standard's autofill order), each part once and a country code never in it, a country only from an ISO 3166-1 alpha-2 code that the standard assigns (not its user-assigned ranges or
 exceptional reservations such as `EU`), `remote_flag` `true` only when stated (`TELECOMMUTE`, or a `type:remote` phrase
 that is a whole clause of the text) and `null` otherwise; no gazetteer. Refs: §9, D-0920, D-0953, D-1058, D-1272,
 D-1372, D-1373. (Previously: `remote_flag` was `false` when unstated; CLDR's `EU`, `EZ` and `UN` were codes.)
+#### Scenario: Structured place text
+- **WHEN** a `Place` named "Old Hall" has `streetAddress` "1 Mill Lane, Alderton, UF 12345", `addressLocality`
+  "Alderton", `addressRegion` "UF" and `addressCountry` "US"
+- **THEN** its text is "Old Hall, 1 Mill Lane, Alderton, UF 12345" and its country `US`
 #### Scenario: Unknown country code
 - **WHEN** `addressCountry` is `"QZ"` or `"EU"`
 - **THEN** the result is `Invalid("unknown_country")`
