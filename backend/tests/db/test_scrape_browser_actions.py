@@ -232,6 +232,31 @@ async def test_a_listing_scrape_that_renders_grows_its_list_by_default(
     assert result.usage.browser_seconds == len(listing.pages)
 
 
+async def test_the_callers_page_steps_do_not_keep_a_rendered_listing_from_growing(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    listing: Listing,
+    own_origin: str,
+    schema_name: str,
+    engine_data: EngineData,
+    fetch_result: Callable[..., FetchResult],
+) -> None:
+    # `wait_for` and `actions` make the effective method the browser, but the request is still in `auto`: the render
+    # runs the steps first and then grows the list (acquisition spec, listing browser actions).
+    url = f"{own_origin}/kettles"
+    template = b"<!doctype html><html><head><title>Kettles</title></head><body><div id='grid'></div></body></html>"
+    listing.pages = [(url, listing_page(own_origin, ["Blue kettle", "Red kettle"]))]
+    schema = await listing_schema(engine, schema_name)
+    growing = _growing(fetching, own_origin, template, fetch_result)
+    request = _request(url, schema.id, fetch={"actions": [{"type": "click", "text": "Accept"}]})
+
+    result = await scrape(engine, growing, request, data=engine_data)
+
+    ((_, policy),) = listing.asked
+    assert [step.action for step in policy.steps] == ["click"]
+    assert (result.outcome, result.browser_actions) == ("extracted", REPORT)
+
+
 async def test_a_listing_scrape_whose_http_page_shows_its_items_is_not_rendered_nor_grown(
     engine: AsyncEngine,
     fetching: Fetching,

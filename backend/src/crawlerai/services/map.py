@@ -197,7 +197,8 @@ async def _discover(
         found.scope = replace(found.scope, host=host)
         async with engine.begin() as conn:
             site = await site_row(conn, host)
-        polite = await _polite(engine, fetching, site, site_url, attempts)
+        # Only the sitemaps are read under the redirect target's robots.txt: without them it is not looked up.
+        polite = await _polite(engine, fetching, site, site_url, attempts) if request.use_sitemaps else None
     if page is not None and page.block_class == "ok" and request.llms_txt:
         found.start_page = await asyncio.to_thread(_start_page, page.bundle)
     if request.use_links and page is not None and page.block_class == "ok":

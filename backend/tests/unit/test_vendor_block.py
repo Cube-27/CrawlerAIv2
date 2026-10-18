@@ -56,6 +56,9 @@ def _result(block_class: BlockClass, *labels: str | None) -> FetchResult:
     [
         pytest.param(_result("blocked", VENDOR, VENDOR), VENDOR, id="vendor"),
         pytest.param(_result("blocked", OTHER, STRUCTURAL), OTHER, id="latest-vendor-label"),
+        # Attempts alternate http, browser; the kept capture is the HTTP one: a browser attempt's label is not its.
+        pytest.param(_result("blocked", STRUCTURAL, OTHER), None, id="rejected-attempt-of-another-method"),
+        pytest.param(_result("blocked", VENDOR, OTHER), VENDOR, id="label-of-the-kept-method"),
         pytest.param(_result("blocked", STRUCTURAL), None, id="structural"),
         pytest.param(_result("blocked", None), None, id="unlabelled"),
         pytest.param(_result("ok", VENDOR), None, id="reached"),

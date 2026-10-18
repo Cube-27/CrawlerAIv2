@@ -331,6 +331,12 @@ class PagePlan:
     growth: Growth | None = None
 
 
+def _uses_recipe(page: PagePlan, url: str) -> bool:
+    """Whether `acquire` fetches `url` through the recipe: not a page the policy captures as a file, nor one an adapter
+    detects, so a listing recipe's pages are requested for no other."""
+    return not page.policy.captures_page and not page.rungs.adapters.would_serve(url)
+
+
 def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Waiting) -> PageFetch:
     """The page through `acquire`, as the polite fetch calls it: the adapter that detects the URL and the active
     config's API recipe ask their endpoints politely (`adapter_send`, `recipe_rung`; endpoints on the page's host by the
@@ -343,10 +349,14 @@ def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Wa
         rung: Rung | None = None
         recipe = None if page.recipe is None else recipe_rung(fetching, page.recipe, host, here, waiting)
         if recipe is not None:
-            rung = recipe if page.pages is None else await page.pages.rung(recipe, url, page.policy)
+            rung = (
+                recipe
+                if page.pages is None or not _uses_recipe(page, url)
+                else await page.pages.rung(recipe, url, page.policy)
+            )
 
         rungs = page.rungs
-        if page.growth is not None and page.policy.method_hint == "auto":
+        if page.growth is not None:
             # The growing render serves every browser attempt, the one after a refusal too: that one opens no site
             # session (INV-29's exception), whose cookies serve later HTTP fetches only.
             rungs = replace(rungs, browser=page.growth.rung(fetching, admit_next, known), exporting=None)

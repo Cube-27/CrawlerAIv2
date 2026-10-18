@@ -70,12 +70,14 @@ def challenge_label(
 
 
 def vendor_block(result: FetchResult) -> str | None:
-    """The vendor whose challenge kept a `blocked` fetch from its page: the label of its latest attempt that names one
-    (not `STRUCTURAL`); None for any other fetch. Such a page is a `blocked` outcome naming the vendor, never an engine
+    """The vendor whose challenge kept a `blocked` fetch from its page: the label of the latest attempt of the kept
+    outcome's method that names one (not `STRUCTURAL`; a rejected attempt of another rung is not what the kept capture
+    shows); None for any other fetch. Such a page is a `blocked` outcome naming the vendor, never an engine
     failure to retry as one (master plan 2026-10-18 §3.1; owner #50: nothing is evaded)."""
     if result.block_class != "blocked":
         return None
-    return next((a.challenge for a in reversed(result.attempts) if a.challenge not in (None, STRUCTURAL)), None)
+    kept = (a for a in reversed(result.attempts) if a.method == result.method)
+    return next((a.challenge for a in kept if a.challenge not in (None, STRUCTURAL)), None)
 
 
 def portable(label: str | None) -> bool:

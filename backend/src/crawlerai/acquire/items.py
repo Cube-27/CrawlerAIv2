@@ -25,6 +25,7 @@ _CHROME_TAGS: Final = frozenset({"nav", "header", "footer", "aside"})
 _CHROME_ROLES: Final = frozenset({"navigation", "banner", "contentinfo", "complementary"})
 # HTML Standard §4.6.1: `a` and `area` elements with an `href` are hyperlinks.
 _LINKS: Final = ("a", "area")
+_VISIBLE_TEXT: Final = "descendant-or-self::text()[not(ancestor::script or ancestor::style or ancestor::template)]"
 
 
 def lxml_root(text: str) -> HtmlElement:
@@ -71,7 +72,9 @@ def _holds_image(item: HtmlElement) -> bool:
 
 
 def _holds_several_texts(item: HtmlElement) -> bool:
-    return sum(1 for text in item.itertext() if text.strip()) >= 2
+    """Whether the item holds visible text in two or more runs: script data, style sheets and templates are never
+    rendered (HTML Standard §15.3.1), so their text is no run."""
+    return sum(1 for text in item.xpath(_VISIBLE_TEXT) if text.strip()) >= 2
 
 
 def item_groups(root: HtmlElement) -> tuple[tuple[HtmlElement, ...], ...]:

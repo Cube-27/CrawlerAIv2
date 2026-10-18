@@ -266,6 +266,21 @@ async def test_the_redirect_target_s_robots_txt_decides_what_is_fetched_there(
     assert f"{own_origin}/sitemap.xml" not in web.urls()
 
 
+async def test_without_sitemaps_the_redirect_target_s_robots_txt_is_not_read(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, www_origin: str
+) -> None:
+    web.redirects[f"{own_origin}/"] = f"{www_origin}/"
+    web.pages |= {
+        f"{own_origin}/robots.txt": robots(),
+        f"{www_origin}/": (200, page("/c/1"), "ok", None),
+    }
+
+    result = await map_urls(engine, fetching, request(f"{own_origin}/", use_sitemaps=False))
+
+    assert result.urls == [f"{www_origin}/c/1"]
+    assert f"{www_origin}/robots.txt" not in web.urls()
+
+
 async def test_a_redirect_to_an_unrelated_host_leaves_the_scope_on_the_start_host(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, other_origin: str
 ) -> None:
