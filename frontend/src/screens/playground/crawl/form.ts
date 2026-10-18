@@ -65,9 +65,10 @@ export interface CrawlOptions extends FormatSettings {
   fields: readonly string[];
   maxDepth: number;
   limit: number;
-  /** How the frontier is ordered (D-1440); `query` orders a best-first crawl only. */
+  /** How the frontier is ordered (D-1440); `query` and `keywords` order a best-first crawl only. */
   strategy: CrawlStrategy;
   query: string;
+  keywords: readonly string[];
   allowSubdomains: boolean;
   allowExternal: boolean;
   methodHint: MethodHint;
@@ -90,6 +91,7 @@ export const DEFAULT_CRAWL_OPTIONS: CrawlOptions = {
   // CrawlRequest's own defaults (D-1440).
   strategy: "bfs",
   query: "",
+  keywords: [],
   allowSubdomains: false,
   allowExternal: false,
   // FetchPolicy's own default (SPEC-02 §4.2).
@@ -198,14 +200,21 @@ export function buildCrawl(form: CrawlFormState): CrawlRequest | null {
   };
 }
 
-/** The request's `strategy` when it is not the default, and the `query` that orders a best-first crawl: a query on
- * another strategy is not sent, which the server refuses. */
-function crawlStrategy(options: CrawlOptions): { strategy?: CrawlStrategy; query?: string } {
+/** The request's `strategy` when it is not the default, and the `query` and `keywords` that order a best-first
+ * crawl: on another strategy they are not sent, which the server refuses. */
+function crawlStrategy(options: CrawlOptions): {
+  strategy?: CrawlStrategy;
+  query?: string;
+  keywords?: string[];
+} {
   if (options.strategy === "bfs") return {};
+  if (options.strategy !== "best_first") return { strategy: options.strategy };
   const query = options.query.trim();
-  return options.strategy === "best_first" && query !== ""
-    ? { strategy: options.strategy, query }
-    : { strategy: options.strategy };
+  return {
+    strategy: options.strategy,
+    ...(query === "" ? {} : { query }),
+    ...(options.keywords.length === 0 ? {} : { keywords: [...options.keywords] }),
+  };
 }
 
 /** The stored rules, as rows; a rule without a pattern or a page kind is not one the server took. */
@@ -247,6 +256,7 @@ export function crawlForm(request: StoredRequest): CrawlFormState {
       limit: count(request, "limit"),
       strategy: strategyOf(request),
       query: text(request, "query"),
+      keywords: texts(request, "keywords"),
       allowSubdomains: flag(request, "allow_subdomains", false),
       allowExternal: flag(request, "allow_external", false),
       methodHint: methodHint(request),

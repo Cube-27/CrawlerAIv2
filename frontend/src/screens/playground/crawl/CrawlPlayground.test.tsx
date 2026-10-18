@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
+import { buildCrawl, crawlForm } from "./form";
 import type { JsonValuesItem } from "../../../api/jobs";
 import { stubApi, type Call } from "../../../test/api";
 import { runApi, SCHEMA_ID } from "../../../test/runs";
@@ -228,5 +229,31 @@ describe("crawl playground", () => {
     const body = posted(calls);
     expect(body).toMatchObject({ strategy: "dfs" });
     expect(body).not.toHaveProperty("query");
+  });
+
+  it("sends best-first keywords, and an edited stored crawl keeps them", async () => {
+    const calls = crawlApi();
+    await openPlayground("/crawl");
+    await typeUrl("shop.test/");
+    const options = await openOptions();
+    await pick(/Strategy/, "Best first");
+    await fill(options.getByRole("textbox", { name: "Keywords" }), "retry");
+    await userEvent.click(options.getByRole("button", { name: "Add to Keywords" }));
+    await closeOptions();
+
+    await start();
+
+    expect(await screen.findByRole("grid", { name: "Pages" })).toBeInTheDocument();
+    expect(posted(calls)).toMatchObject({ strategy: "best_first", keywords: ["retry"] });
+    const stored = {
+      url: "https://shop.test/",
+      formats: ["markdown"],
+      strategy: "best_first",
+      keywords: ["a", "b"],
+    };
+    expect(buildCrawl(crawlForm(stored))).toMatchObject({
+      strategy: "best_first",
+      keywords: ["a", "b"],
+    });
   });
 });
