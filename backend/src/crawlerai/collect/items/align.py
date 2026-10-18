@@ -332,6 +332,7 @@ class _View:
     paths: dict[HtmlElement, str] = field(default_factory=dict)
     places: dict[HtmlElement, str] = field(default_factory=dict)
     struck: set[HtmlElement] = field(default_factory=set)
+    holding_struck: set[HtmlElement] = field(default_factory=set)
 
     @classmethod
     def of(
@@ -362,7 +363,15 @@ class _View:
             self.places[element] = place
             if struck:
                 self.struck.add(element)
+                self._hold_struck(element)
             stack.extend(reversed(_children(element, path, place, struck)))
+
+    def _hold_struck(self, element: HtmlElement) -> None:
+        """Note the ancestors of a struck element up to the block: their lines show its former value."""
+        node = element.getparent()
+        while node is not None and node not in self.holding_struck and node is not self.block.getparent():
+            self.holding_struck.add(node)
+            node = node.getparent()
 
     def line(self, element: HtmlElement) -> str | None:
         """The element's shown text when it is on one line (`ParsedPage.text_spans`), white space collapsed."""
@@ -467,12 +476,13 @@ class _View:
         return tuple(spot for element, spot in hits if not _inner_hit(element, spot, hits, spec))
 
     def _typed_texts(self, element: HtmlElement) -> list[tuple[str, str]]:
-        """The texts of an element a typed value is read from, with their places: its line, unless it runs two
-        elements' digits together (`ParsedPage.digit_joins`: `$12` and a `20` badge are not `$1220`); and, for an
-        element holding other elements, each of its own text nodes (`ab 12 €` after a child's former price)."""
+        """The texts of an element a typed value is read from, with their places: its line, unless it shows a struck
+        element's text or runs two elements' digits together (`ParsedPage.digit_joins`: `$12` and a `20` badge are not
+        `$1220`); and, for an element holding other elements, each of its own text nodes (`ab 12 €` after a child's
+        former price)."""
         path = self.paths[element]
         texts: list[tuple[str, str]] = []
-        span = self.page.text_spans.get(path)
+        span = None if element in self.holding_struck else self.page.text_spans.get(path)
         if span is not None and not _joins_digits(self.page.digit_joins, span) and (line := self.line(element)):
             texts.append((line, self.places[element]))
         if len(element):

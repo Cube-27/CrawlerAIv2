@@ -90,6 +90,8 @@ def test_a_struck_former_price_is_not_the_price_and_two_shown_prices_decline() -
     assert [row["price"] for row in _rows(_repeat(struck))] == [
         {"amount": f"1{i}.50", "currency": "EUR"} for i in range(4)
     ]
+    only_struck = '<li class="c"><a href="/p/{i}">Kettle {i}</a><div><s>{i}9.99 EUR</s></div></li>'
+    assert all("price" not in row for row in _rows(_repeat(only_struck)))
     (group,) = _groups(_repeat(two))
     prices = [c.normalized for c in group.candidates if c.field == "price"]
     assert len(prices) == 4

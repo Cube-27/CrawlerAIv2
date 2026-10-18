@@ -64,9 +64,13 @@ def stated(raw: str, *, percentages: bool = True) -> Stated | str:
 
 def _percentage(text: str, start: int, end: int) -> bool:
     """Whether a CLDR percent sign is written right after the number (white space between allowed, as `20 %` writes
-    it) or right before it (`%20`)."""
-    after, before = text[end:].lstrip(), text[:start]
+    it) or right before it (`%20`), bidi marks (Unicode Cf, as some locales write around the sign) aside."""
+    after, before = _unmarked(text[end:]).lstrip(), _unmarked(text[:start])
     return after.startswith(_percent_signs()) or before.endswith(_percent_signs())
+
+
+def _unmarked(text: str) -> str:
+    return "".join(c for c in text if unicodedata.category(c) != "Cf")
 
 
 @cache

@@ -121,6 +121,6 @@ def test_cldr_compact_units_multiply_and_percentages_are_never_the_amount() -> N
     assert money.normalize("3.5万円", MONEY, ja) == _ok("35000", "JPY")
     assert money.normalize("8000円", MONEY, ja) == _ok("8000", "JPY")
     assert money.normalize("$12.99 -20%", MONEY, _ctx(html_lang="en-US")) == _ok("12.99", "USD", "locale")
-    assert money.normalize("-20 %", MONEY, _ctx(html_lang="fr-FR")) == Invalid("no_amount")
+    assert money.normalize("-20\u200e%", MONEY, _ctx(html_lang="fr-FR")) == Invalid("no_amount")
     # A unit is read only where it ends a word.
     assert money.normalize("12 € T-shirt", MONEY, _ctx(html_lang="en-US")) == _ok("12", "EUR")
