@@ -50,7 +50,7 @@ Refs: §10, Appendix A #37, #39. Enforced by: resolver test; active.
 ### Requirement: Own variants
 A published row SHALL be the target's own variant: a row whose only published sub-fields are URLs is dropped `url_only`
 (a link to a thing described elsewhere), and a row whose published URL names another resource than the page and the
-target (RFC 3986 authority and path; its query may select the variant) is dropped `other_page` (another product's
+target (RFC 3986 authority and path, a trailing `/` aside; its query may select the variant) is dropped `other_page` (another product's
 page, such as a sibling colourway). Rows of one variant are already one by their shared key (INV-33). (Previously:
 every row with a published key sub-field published.) Refs: owner 2026-10-18.
 #### Scenario: Sibling products listed as members

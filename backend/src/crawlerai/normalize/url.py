@@ -95,7 +95,8 @@ def _without_dimensions(path: str) -> str:
     return _CONVERSION.sub(r"\1", _SIZE_SUFFIX.sub("", stripped))
 
 
-_NUMBER = re.compile(r"\d+")
+# A size has a few digits; a longer run (an id or a stamp) is no size, and stays clear of `int`'s digit limit.
+_NUMBER = re.compile(r"(?<!\d)\d{1,9}(?!\d)")
 
 
 def largest_rendition(values: Sequence[str]) -> int:
@@ -125,7 +126,7 @@ def _stated_size(value: str, renditions: Sequence[str]) -> int | None:
 
 
 def _numeric_query(query: str) -> dict[str, int]:
-    return {name: int(v) for name, v in parse_qsl(query) if v.isdecimal()}
+    return {name: int(v) for name, v in parse_qsl(query) if _NUMBER.fullmatch(v)}
 
 
 def distinct_files(values: Sequence[JsonValue]) -> list[JsonValue]:
