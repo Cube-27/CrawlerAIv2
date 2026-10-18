@@ -151,3 +151,14 @@ def test_a_unit_text_naming_no_measurement_unit_does_not_contradict_c62(unit_tex
     raw: JsonValue = {"value": 5, "unitCode": "C62", "unitText": unit_text}
 
     assert count.normalize(raw, COUNT, EN) == Ok(5)
+
+
+def test_unknown_language_subtags_beside_a_known_one_share_one_unit_label_set() -> None:
+    raw: JsonValue = {"value": 5, "unitCode": "C62", "unitText": "kg"}
+    tags = [f"x{i}" for i in range(20)]  # private-use-like subtags no CLDR locale has (RFC 5646 §2.2.1)
+    count._measure_labels.cache_clear()
+
+    results = [count.normalize(raw, COUNT, EN.model_copy(update={"og_locale": tag})) for tag in tags]
+
+    assert set(results) == {Invalid("unit")}
+    assert count._measure_labels.cache_info().currsize == 1

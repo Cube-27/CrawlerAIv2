@@ -65,7 +65,16 @@ def _names_a_measure(unit_text: str, ctx: Context) -> bool:
     """Whether `unitText` is the name or symbol of a CLDR measurement unit other than a count (D-1271): "one" and
     "kg" cannot both be right. Text that names no CLDR unit ("items", "pieces") does not contradict "one"."""
     label = unicodedata.normalize("NFKC", unit_text).strip().casefold()
-    return label in _measure_labels(vocab.context_languages(ctx))
+    languages = vocab.context_languages(ctx) & _cldr_languages()
+    return label in _measure_labels(languages)
+
+
+@cache
+def _cldr_languages() -> frozenset[str]:
+    """The primary language subtags (RFC 5646 §2.2.1) CLDR has locale data for. A page-stated subtag outside it selects
+    no unit labels, so it is dropped before the cached lookup: the cache keys only on languages CLDR knows, and a page
+    whose subtags CLDR does not know reads like a page that states no language."""
+    return frozenset(i.split("_")[0] for i in locale_identifiers())
 
 
 @cache
