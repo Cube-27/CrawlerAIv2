@@ -3,9 +3,9 @@
 Why the system is shaped as it is: goals, the evidence behind the generalization contract (the rules C1–C13 are in
 [../project.md](../project.md#generalization-contract-c1c13)), what must not reappear, the milestone-M rules and the
 candidates register. Sections are verbatim from ARCHITECTURE rev 26 with their numbers; the full rev-26 text, which
-code comments cite as `ARCHITECTURE §N`, is frozen in the [archive](../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md).
+code comments cite as `ARCHITECTURE §N`, was deleted from the tree (git history holds it).
 Since rev 27 (2026-10-16, D-1136) the current behaviour lives in [../specs/](../specs/), owner decisions in
-[owner-decisions.md](owner-decisions.md), and this file changes only with owner approval (`CLAUDE.md` §6).
+[owner-decisions.md](owner-decisions.md), and this file changes only with owner approval (`CLAUDE.md`).
 
 ## 1. Goals and non-goals
 

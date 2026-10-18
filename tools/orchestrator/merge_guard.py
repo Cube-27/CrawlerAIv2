@@ -19,7 +19,7 @@ from itertools import pairwise
 
 REASON = (
     "merge guard: agents don't merge PRs directly. Comment READY <sha7> on the PR and stop; the orchestrator merges"
-    " with tools/orchestrator/merge_pr.sh on READY (CLAUDE.md section 3, /implement-pr section 6)."
+    " with tools/orchestrator/merge_pr.sh on READY (CLAUDE.md)."
 )
 
 # GitHub REST "Merge a pull request": PUT /repos/{owner}/{repo}/pulls/{pull_number}/merge.

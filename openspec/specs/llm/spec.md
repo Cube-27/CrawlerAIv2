@@ -4,8 +4,7 @@
 
 One provider-agnostic LLM client with constrained JSON output, per-job budgets, usage and estimated cost, plus roles C
 (grounded values) and S (schema drafts); roles A and D use the client but live in
-[learning-configs](../learning-configs/spec.md) and [adapters](../adapters/spec.md). Rationale: ARCHITECTURE §11, §17
-([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-06.
+[learning-configs](../learning-configs/spec.md) and [adapters](../adapters/spec.md).
 
 ## Requirements
 

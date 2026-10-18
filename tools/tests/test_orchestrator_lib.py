@@ -6,7 +6,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from fake_herdr import herdr_list
 from scan_repo import git
 
 LIB = Path(__file__).resolve().parents[1] / "orchestrator" / "lib.sh"
@@ -49,28 +48,3 @@ def test_main_checkout_and_worktree_root_are_the_same_from_every_worktree(tmp_pa
 
 def test_outside_a_repository_both_print_nothing(tmp_path: Path) -> None:
     assert (lib(tmp_path, "main_checkout"), lib(tmp_path, "worktrees_root")) == ("", "")
-
-
-def test_project_agents_keeps_only_agents_in_the_main_checkout_or_its_worktrees(tmp_path: Path) -> None:
-    listing = herdr_list(
-        [
-            (None, r"C:\p\Repo", "idle"),
-            ("orchestrator", r"C:\p\Repo", "working"),
-            ("impl-a", r"C:\P\repo-worktrees\fix-1", "idle"),
-            ("impl-b", r"C:\p\CrawlerAIv2-worktrees\spec-01-pr-1", "working"),
-            ("impl-c", r"C:\p\Repo\backend", "idle"),
-            ("impl-d", r"C:\p\Repo2", "idle"),
-            ("impl-e", r"C:\p\Other-worktrees\fix-2", "working"),
-        ]
-    )
-    assert lib(tmp_path, "project_agents C:/p/repo", listing).splitlines() == [
-        "orchestrator working",
-        "impl-b working",
-        "impl-c idle",
-    ]
-
-
-def test_project_agents_fails_on_a_listing_it_cannot_read(tmp_path: Path) -> None:
-    result = run_lib(tmp_path, "project_agents C:/p/repo", "not json")
-    assert result.returncode != 0
-    assert result.stdout == ""

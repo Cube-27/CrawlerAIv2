@@ -17,7 +17,7 @@ Goals G1–G7 and non-goals: [design/overview.md](design/overview.md) (§1).
 Python 3.12 (FastAPI, pydantic v2, SQLAlchemy async + asyncpg, Alembic, curl_cffi, httpx, Patchright headless,
 selectolax, lxml, Babel/CLDR, trafilatura), PostgreSQL 16 (also the queue), S3-compatible object storage;
 TypeScript (Vite+, React, HeroUI v3). One Docker image with three roles: `api`, `worker`, `scheduler`.
-Full table and rejected alternatives: ARCHITECTURE §19 ([archived](changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)). Commands: `CLAUDE.md` §7.
+Full table and rejected alternatives: ARCHITECTURE §19. Commands: `CLAUDE.md`.
 
 ## Layout of `openspec/`
 
@@ -26,9 +26,8 @@ Full table and rejected alternatives: ARCHITECTURE §19 ([archived](changes/arch
 | `project.md` | This file: purpose, layout, the contract C1–C13, repo checks, invariant rules, open owner items | Always |
 | `specs/<capability>/spec.md` | The **current behaviour**, as requirements with scenarios; one folder per capability (list below). The source of truth for what the system does. | The capabilities your change touches |
 | `changes/<change-id>/` | In-flight work: `proposal.md` (why, what), `tasks.md` (the checklist; one PR implements a batch of tasks), `design.md` (only when needed; holds the change's decisions), `specs/<capability>/spec.md` deltas (`## ADDED`, `## MODIFIED`, `## REMOVED Requirements`) | Your change |
-| `changes/archive/<date>-<name>/` | Done changes, frozen: the 16 original SPEC-NN specs with their decision logs. Index: [changes/archive/README.md](changes/archive/README.md) | When a ref (`SPEC-NN §x`, `D-NNNN`) points there |
 | `backlog.md` | Follow-ups left by merged PRs, current focus, human-only tasks not tied to a change | When choosing work |
-| `design/` | [overview.md](design/overview.md): goals, the evidence behind the contract, milestone M, the candidates register (§22); [owner-decisions.md](design/owner-decisions.md): ARCHITECTURE Appendix A, appended as the owner decides. The full ARCHITECTURE rev 26 (cited in code as `ARCHITECTURE §N`) and the old INVARIANTS table are frozen in [the archive](changes/archive/2026-10-16-architecture-rev26/) | When a spec or a ref points there |
+| `design/` | [overview.md](design/overview.md): goals, the evidence behind the contract, milestone M, the candidates register (§22); [owner-decisions.md](design/owner-decisions.md): ARCHITECTURE Appendix A, appended as the owner decides. ARCHITECTURE rev 26 (cited in code as `ARCHITECTURE §N`) is deleted; git history holds it | When a spec or a ref points there |
 | `decisions/` | How decisions are logged ([README](decisions/README.md)) and the cross-cutting log ([log.md](decisions/log.md)) | When logging a decision |
 | `OPEN_QUESTIONS.md` | Questions only the owner or a user can answer, with recommended defaults | When escalating |
 | `conventions/` | `ENGINEERING.md` (how to write code here), `DESIGN.md` (frontend conventions), `RECURRING.md` (repeated agent mistakes and their checks) | Implementors, once per session |
@@ -112,17 +111,15 @@ Every job in `.github/workflows/ci.yml` must pass before merge; `make check` run
 
 ## Invariants
 
-The testable invariants keep their IDs `INV-01`…`INV-46` and live as requirements in their capability's `spec.md`
-(INV-03, INV-05, INV-09 and INV-18 in "Repo checks" above), each with what enforces it and whether that enforcement
-runs today. An invariant whose enforcement is not built yet is still binding: review applies it until the check
-exists. Invariants are never removed or renumbered; a superseded or retired one keeps a requirement that says so
-(INV-01, INV-02, INV-04, INV-19, INV-21 and INV-25 are retired, [evaluation](specs/evaluation/spec.md)). A change that
-adds one takes the next free ID (INV-47; check with `grep -rhoE "INV-[0-9]+" openspec/specs openspec/project.md |
-sort -u | tail -1`) in its spec delta.
+The testable invariants keep their `INV-NN` IDs and live as requirements in their capability's `spec.md` (INV-03,
+INV-05, INV-09 and INV-18 in "Repo checks" above), each with what enforces it. An invariant whose enforcement is not
+built yet is still binding: review applies it until the check exists. A retired invariant is deleted from the specs,
+and its ID is not reused. A change that adds one takes the next free ID (check with
+`grep -rhoE "INV-[0-9]+" openspec/specs openspec/project.md | sort -u | tail -1`) in its spec delta.
 
 ## Open owner items
 
-Decisions with status `needs-owner` or `pending-owner` (`CLAUDE.md` §5). Keep this list current; the entries are in
+Decisions with status `needs-owner` or `pending-owner` (`CLAUDE.md`). Keep this list current; the entries are in
 [decisions/log.md](decisions/log.md).
 
 | ID | Title | Status |

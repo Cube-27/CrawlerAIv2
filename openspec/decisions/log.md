@@ -5,7 +5,7 @@ and every `needs-owner` or `pending-owner` entry. Statuses, template and where a
 [README.md](README.md). Open owner items are indexed in [../project.md](../project.md#open-owner-items).
 Entries written before the OpenSpec conversion (#223), when this file was `docs/DECISIONS.md`, keep their paths
 (`docs/...`) and `ARCHITECTURE §N` refs as history; §N resolves in the
-[archived ARCHITECTURE.md](../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md).
+archived ARCHITECTURE.md.
 
 ## Entries
 

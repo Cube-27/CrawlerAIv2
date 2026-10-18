@@ -4,7 +4,6 @@
 
 Resolution decides, per schema field of a page, what publishes from [extraction](../extraction/spec.md)'s candidates
 and how far it is trusted, and builds the record with per-field metadata and the page outcome (`resolve/`).
-Rationale: ARCHITECTURE §10 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-05.
 
 ## Requirements
 

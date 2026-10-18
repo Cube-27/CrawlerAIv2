@@ -3,8 +3,7 @@
 ## Purpose
 
 Platform adapters (Greenhouse, Lever, Shopify, Workday, Oracle Recruiting Cloud, Ashby, SmartRecruiters, Recruitee, Workable, Rippling, BambooHR, Teamtailor, UKG Pro, Personio, ADP Workforce Now) and learned API recipes fetch a page's values as JSON instead of HTML.
-Rationale: ARCHITECTURE §7.1, §7.2, C6 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md));
-history: SPEC-02 §4.9, SPEC-09, SPEC-15, [ats-adapters](../../changes/archive/2026-10-16-ats-adapters/proposal.md), [ats-adapters-1](../../changes/archive/2026-10-17-ats-adapters-1/proposal.md), [ats-adapters-2](../../changes/archive/2026-10-17-ats-adapters-2/proposal.md). The JSON rung and politeness are [acquisition](../acquisition/spec.md).
+ The JSON rung and politeness are [acquisition](../acquisition/spec.md).
 
 ## Requirements
 

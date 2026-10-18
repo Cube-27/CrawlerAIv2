@@ -1,6 +1,6 @@
 # Engineering principles
 
-How agents write code in this repo. `CLAUDE.md` §2 (the generalization contract) outranks this file: where they
+How agents write code in this repo. `CLAUDE.md` (the generalization contract) outranks this file: where they
 seem to conflict, the contract wins. Agents read this once per session.
 
 Adapted from [pstack](https://github.com/cursor/plugins/tree/main/pstack) by Lauren Tan (MIT; see `NOTICE`).
@@ -108,7 +108,7 @@ structure (`SKIP LOCKED`, unique constraints, a single writer), not by conventio
 ## Working autonomously
 
 **Never block on the human for reversible work.** Decide, proceed, and log the decision (`openspec/decisions/README.md`); the
-owner corrects after the fact. The exceptions are in `CLAUDE.md` §4. Architecture changes, §22 candidates,
+owner corrects after the fact. The exceptions are in `CLAUDE.md`. Architecture changes, §22 candidates,
 evaluation access, secrets and irreversible actions are escalated, never decided.
 
 **Own the exit condition.** Before starting, state "done" as a checkable predicate, for example "acceptance

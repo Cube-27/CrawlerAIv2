@@ -1,6 +1,6 @@
 """Behaviour of `tools/orchestrator/merge_pr.sh`, run under bash with a fake `gh` on PATH. The fake answers each
-`gh pr view` and `gh api --jq` as the real `gh` prints it for the script's jq programs (comment first lines, changed
-files, Claude's summary comment and inline comment ids, checks, head) and logs a merge instead of making one."""
+`gh pr view` and `gh api --jq` as the real `gh` prints it for the script's jq programs (comment first lines,
+unresolved threads, checks, head) and logs a merge instead of making one."""
 
 import shutil
 import subprocess
@@ -15,11 +15,8 @@ SHA = "abc1234"
 FULL_SHA = SHA + "0" * 33
 FAKE_GH = f"""#!/bin/bash
 case "$*" in
-  *changedFiles*) echo "$FAKE_FILES" ;;
   *nameWithOwner*) echo "owner/repo" ;;
   *graphql*) for ((i = 0; i < ${{FAKE_UNRESOLVED:-0}}; i++)); do echo x; done ;;
-  *"Code review"*) printf '%s' "$FAKE_SUMMARY" ;;
-  *"pulls/7/comments"*) printf '%s' "$FAKE_INLINE" ;;
   *"--json comments"*) cat "$FAKE_COMMENTS" ;;
   *statusCheckRollup*) printf '%s\\n' "{SHA} MERGEABLE CLEAN" "backend COMPLETED SUCCESS" \\
                          "SonarCloud Code Analysis COMPLETED SUCCESS" ;;
@@ -34,7 +31,7 @@ pytestmark = pytest.mark.skipif(BASH is None, reason="needs bash")
 
 
 def run_merge_pr(
-    tmp_path: Path, comments: list[str], files: int = 3, summary: str = "", inline: str = "", unresolved: int = 0
+    tmp_path: Path, comments: list[str], unresolved: int = 0
 ) -> tuple[subprocess.CompletedProcess[str], str]:
     listed = tmp_path / "comments.txt"
     listed.write_text("".join(f"{line}\n" for line in comments), newline="\n")
@@ -44,9 +41,6 @@ def run_merge_pr(
         tmp_path,
         {"gh": FAKE_GH},
         FAKE_COMMENTS=listed.as_posix(),
-        FAKE_FILES=str(files),
-        FAKE_SUMMARY=summary,
-        FAKE_INLINE=inline,
         FAKE_UNRESOLVED=str(unresolved),
         FAKE_LOG=log.as_posix(),
         WAIT_CI_POLL_S="1",
@@ -85,32 +79,6 @@ def test_without_a_ready_comment_for_the_head_nothing_is_merged(tmp_path: Path, 
     assert result.returncode == 1
     assert result.stderr == (
         f"ERROR PR #7 has no READY {SHA} comment: the implementor comments READY <sha7> on green CI\n"
-    )
-    assert calls == ""
-
-
-@pytest.mark.parametrize(
-    ("files", "summary", "inline"),
-    [
-        pytest.param(10, "", "", id="ten-files-unreviewed"),
-        pytest.param(11, "4001\n", "", id="no-issues-comment"),
-        pytest.param(54, "", "5001\n5002\n", id="inline-comments"),
-    ],
-)
-def test_a_small_or_claude_reviewed_pr_is_merged(tmp_path: Path, files: int, summary: str, inline: str) -> None:
-    result, calls = run_merge_pr(tmp_path, [READY], files, summary, inline)
-
-    assert (result.returncode, result.stderr) == (0, "")
-    assert calls == MERGED
-
-
-def test_a_pr_over_ten_files_without_claude_review_is_not_merged(tmp_path: Path) -> None:
-    result, calls = run_merge_pr(tmp_path, [READY], files=11)
-
-    assert result.returncode == 1
-    assert result.stderr == (
-        "ERROR PR #7 changes 11 files (over 10) and has no Claude review:"
-        " comment /claude-review and act on its findings first\n"
     )
     assert calls == ""
 

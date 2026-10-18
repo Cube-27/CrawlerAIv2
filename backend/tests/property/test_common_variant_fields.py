@@ -1,4 +1,4 @@
-"""INV-36 as amended over generated URL sets (SPEC-13 §4.6): a detail page's price publishes only when every
+"""INV-38 over generated URL sets (SPEC-13 §4.6): a detail page's price publishes only when every
 variant's Offer agrees, whatever variant the request URL names; a URL never selects a default variant."""
 
 import json

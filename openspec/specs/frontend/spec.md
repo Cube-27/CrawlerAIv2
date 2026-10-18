@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The web UI is a thin client over the REST API: an app shell, the playground (Scrape, Batch, Crawl, Map, Extract) and the data screens (Jobs, Records, Schemas, Sites and configs, Labeling, Settings); visual conventions are in [DESIGN.md](../../conventions/DESIGN.md). Rationale: ARCHITECTURE §1, §3, §13.1, §18, Appendix A #27, #38, #41, #45 ([archived](../../changes/archive/2026-10-16-architecture-rev26/ARCHITECTURE.md)); history: SPEC-12, SPEC-14.
+The web UI is a thin client over the REST API: an app shell, the playground (Scrape, Batch, Crawl, Map, Extract) and the data screens (Jobs, Records, Schemas, Sites and configs, Labeling, Settings); visual conventions are in [DESIGN.md](../../conventions/DESIGN.md).
 
 ## Requirements
 
