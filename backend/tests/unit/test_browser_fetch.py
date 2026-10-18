@@ -582,7 +582,9 @@ def test_an_interstitial_that_stays_is_read_after_its_bounded_share_of_the_budge
 _MEDIA_PAGE = b"""<html><head><link rel="stylesheet" href="/m/look.css"></head><body><img src="/m/photo.png" alt="">
 <video src="/m/clip.mp4"></video><p class="lettered">Catalogue</p><div id="root"></div><script>
 fetch('/api/items').then(r => r.json()).then(items => {
-  document.getElementById('root').innerHTML = items.map(item => '<p>' + item['name'] + '</p>').join('');
+  let html = '';
+  for (const item of items) html += '<p>' + item['name'] + '</p>';
+  document.getElementById('root').innerHTML = html;
 });
 </script></body></html>"""
 _LOOK = b"@font-face { font-family: lettered; src: url(/m/face.woff2); } .lettered { font-family: lettered; }"
