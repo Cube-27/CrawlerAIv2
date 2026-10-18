@@ -16,18 +16,20 @@ reads at most the first 56 items of a long listing. Each is a class of pages, fi
   values; a block whose links add a query to one link, or whose link holds a row value, still names one item. A role C
   row without its required item URL is left out.
 - Money's locale set reads the `hreflang` of the alternate links to the page itself only (D-1482).
-- Shopify listing rows take the price the API states when the page states the same currency for its prices.
+- Shopify listing rows with several presentment currencies: the page's own currency statement is measured; no
+  standard or documented source is stated on the dev shops, so none is admitted (D-1492).
 - `apply_url` maps a stated apply link ranked above the posting URL.
 - Generic listing rows whose URL differs from the item block's own link by a trailing slash or an added query take
   the block's link.
-- Role C reads the rest of a long listing's items in a second call when the dev listings show it pays off.
+- Role C reads a long listing's items in further calls, up to the 200-row cap.
 
 ## Impact
 
-- Capabilities: [llm](../../specs/llm/spec.md), [extraction](../../specs/extraction/spec.md),
-  [normalization](../../specs/normalization/spec.md), [adapters](../../specs/adapters/spec.md),
-  [schemas](../../specs/schemas/spec.md).
+- Capabilities: [llm](../../../specs/llm/spec.md), [extraction](../../../specs/extraction/spec.md),
+  [normalization](../../../specs/normalization/spec.md), [adapters](../../../specs/adapters/spec.md),
+  [schemas](../../../specs/schemas/spec.md).
 - Code: `backend/src/crawlerai/llm/roles/c_extract.py`, `backend/src/crawlerai/collect/item_links.py`,
   `backend/src/crawlerai/content/` (`item_text.py`, `context.py`), `backend/src/crawlerai/resolve/pipeline.py`,
-  `backend/src/crawlerai/adapters/shopify.py`, presets.
+  `backend/src/crawlerai/collect/schema_org_map.py`, `backend/src/crawlerai/schemas/types.py`, the Lever and
+  SmartRecruiters adapters, the `job_detail` preset, the API document and SDKs (the `schema_org` pattern).
 - No labels or captures change; the dev set stays outside the repo.
