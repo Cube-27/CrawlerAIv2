@@ -163,8 +163,10 @@ export function toLabels({
     checker: checker === null ? null : checker.trim(),
     prefill_source: prefillSource,
     fields: fieldLabels("fields", draft.fields, errors),
+    // A row a person labels from the capture is one the capture shows: no labeled row is stale (`eval re-key`).
     rows: draft.rows.map((row, i) => ({
       fields: fieldLabels(`rows[${String(i)}].fields`, row, errors),
+      stale: false,
     })),
     lists: draft.lists,
     notes: draft.notes,

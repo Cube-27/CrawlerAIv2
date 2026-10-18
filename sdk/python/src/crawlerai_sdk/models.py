@@ -1456,6 +1456,7 @@ class LabelRow(BaseModel):
         extra="forbid",
     )
     fields: Annotated[dict[str, FieldLabel], Field(title="Fields")]
+    stale: Annotated[bool | None, Field(title="Stale")] = False
 
 
 class ListLabel(BaseModel):
