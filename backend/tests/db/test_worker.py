@@ -203,26 +203,32 @@ async def test_a_task_past_its_deadline_fails_and_its_job_moves_on(
     engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(loop, "TASK_DEADLINE", timedelta(seconds=1))
-    job_id, [stuck_on_loop, stuck_in_thread, *rest] = await _job(engine, TASK_SLOTS + 2)
+    monkeypatch.setattr(loop, "CANCEL_GRACE", timedelta(seconds=1))
+    job_id, [stuck_on_loop, left_behind, *rest] = await _job(engine, TASK_SLOTS + 2)
     released = threading.Event()
 
     async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
         if task.id == stuck_on_loop:
             await asyncio.Event().wait()  # a wait that never ends
-        if task.id == stuck_in_thread:
-            await asyncio.to_thread(released.wait)  # CPU work in a thread, which cancelling does not stop
+        if task.id == left_behind:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await asyncio.to_thread(released.wait)  # ignores its cancellation: the worker leaves it behind
         return Finished("extracted")
 
     try:
         await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
+        assert loop._LEFT_BEHIND
     finally:
         released.set()
+        await asyncio.gather(*loop._LEFT_BEHIND)  # its late result finds the lease gone and changes nothing
 
     async with engine.connect() as conn:
         found = await conn.execute(select(UrlTask.id, UrlTask.status, UrlTask.outcome))
         rows = {task_id: (status, outcome) for task_id, status, outcome in found}
         errors = (await conn.execute(select(UrlTask.last_error).where(UrlTask.status == "failed"))).scalars().all()
-    assert {rows[stuck_on_loop], rows[stuck_in_thread]} == {("failed", "failed")}
+    assert {rows[stuck_on_loop], rows[left_behind]} == {("failed", "failed")}
     assert {rows[task_id] for task_id in rest} == {("done", "extracted")}
     assert errors == [DEADLINE, DEADLINE]
     assert (await _job_state(engine, job_id))[0] == "completed"

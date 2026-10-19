@@ -29,7 +29,8 @@ from datetime import timedelta
 from functools import partial
 from typing import Final, assert_never
 
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.core.settings import Settings
@@ -56,6 +57,8 @@ IDLE_POLL: Final = timedelta(seconds=1)
 # How long a task cancelled at its deadline may take to wind down (a browser context closing) before it is left.
 CANCEL_GRACE: Final = timedelta(seconds=15)
 DEADLINE: Final = "timeout: the task ran past its deadline"
+# How long recording a task's deadline failure waits for a row lock that work left behind may hold.
+_LOCK_WAIT: Final = timedelta(seconds=10)
 # An absolute URI: an RFC 3986 §3.1 scheme followed by "://" and everything up to the next whitespace.
 URL: Final = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
 
@@ -181,9 +184,18 @@ async def _run_within_deadline(
         work.add_done_callback(_LEFT_BEHIND.discard)
         log.error("url_task %s: did not stop when cancelled at its deadline; left behind", task.id)
     log.warning("url_task %s: %s", task.id, DEADLINE)
-    with suppress(LeaseLost):
+    try:
         async with engine.begin() as conn:
+            # Work left behind may still hold the task's row in its open transaction: the failure waits for it only
+            # so long (PostgreSQL `lock_timeout`), and the task is then left to its lease's expiry.
+            await conn.execute(text(f"SET LOCAL lock_timeout = {int(_LOCK_WAIT.total_seconds() * 1000)}"))
             await fail_task(conn, task, DEADLINE, transient=False, ending=ending)
+    except LeaseLost:
+        pass
+    except DBAPIError as error:
+        log.error(
+            "url_task %s: its failure was not recorded (%s); its lease will expire", task.id, type(error).__name__
+        )
 
 
 # The tasks left running past their deadline and cancellation (`_run_within_deadline`): referenced until they end,
