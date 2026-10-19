@@ -61,6 +61,7 @@ from crawlerai.resolve.preference import (
 from crawlerai.resolve.records import is_complete, record_confidence
 from crawlerai.resolve.row_keys import keyed_rows
 from crawlerai.resolve.rows import RowField, resolve_rows
+from crawlerai.resolve.shown_variant import shown_variant_availability
 from crawlerai.resolve.types import ExtractionResult, FieldSet, LLMCallRecord, Outcome, Probability
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, Scope
 from crawlerai.storage.capture_bundle import CaptureBundle
@@ -350,9 +351,10 @@ class _Page:
         page-level candidates are the target's (`EntityGraph.owned_by`); `detail`: whether `target` is a detail page's,
         with its variant fill and row-mapped fields (variants spec)."""
         schema = self.schema
-        decisions: Mapping[str, Preference | Derived]
+        decisions: dict[str, Preference | Derived]
+        rows: FieldSet = {}
         if isinstance(target, AmbiguousTarget):
-            decisions = intent_ambiguous(schema, candidates)
+            decisions = dict(intent_ambiguous(schema, candidates))
         else:
             resolver = Resolver(self.graph, target, self.facts, self.data.orders, page_values, variant_fill=detail)
             preferences = resolver.prefer(schema, candidates)
@@ -371,16 +373,22 @@ class _Page:
                 )
                 for name, spec in schema.fields.items()
             }
-        fields = assess_fields(
-            schema,
+            if detail:
+                rows = self._rows(target, candidates)
+        fields = self._assess(decisions)
+        # The shown variant is read from the assessed values, so one below the threshold never selects a row.
+        if shown := shown_variant_availability(schema, decisions, fields, rows):
+            fields = self._assess({**decisions, **shown})
+        return fields | rows
+
+    def _assess(self, decisions: Mapping[str, Preference | Derived]) -> FieldSet:
+        return assess_fields(
+            self.schema,
             decisions,
             self.data.calibration,
             corroborated=self.config.corroborated,
             min_confidence=self.data.min_confidence,
         )
-        if detail and isinstance(target, Entity):
-            fields |= self._rows(target, candidates)
-        return fields
 
     def _rows(self, target: Entity, candidates: Sequence[Candidate]) -> FieldSet:
         """A detail target's row-mapped fields, resolved row by row (variants spec)."""

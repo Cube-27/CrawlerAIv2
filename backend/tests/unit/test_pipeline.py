@@ -546,3 +546,62 @@ def test_complete_rows_of_a_call_do_not_call_role_c() -> None:
     result = _extract(_network_listing(*NETWORK_ITEMS), schema, role_c=role_c, data=COMMITTED)
 
     assert (role_c.listing_requests, result.outcome, len(result.rows)) == ([], "extracted", 3)
+
+
+# --- the shown variant's availability (variants spec) ---
+
+VARIANT_FIELDS: dict[str, Any] = {
+    "type": "object",
+    "fields": {
+        "sku": {"type": "identifier", "scheme": "sku", "description": "d", "schema_org": "Offer.sku"},
+        "price": {"type": "money", "description": "d", "schema_org": "Offer.price+priceCurrency"},
+        "availability": {
+            "type": "enum",
+            "vocab": "schema:ItemAvailability",
+            "description": "d",
+            "schema_org": "Offer.availability",
+        },
+        "url": {"type": "url", "description": "d", "schema_org": "Offer.url"},
+    },
+}
+WITH_VARIANTS = _schema(
+    title=FieldSpec(type=FieldType.TEXT, description="d", required=True, schema_org="Product.name"),
+    price=FieldSpec(type=FieldType.MONEY, description="d", schema_org="Offer.price+priceCurrency"),
+    availability=FieldSpec(
+        type=FieldType.ENUM, vocab="schema:ItemAvailability", description="d", schema_org="Offer.availability"
+    ),
+    sku=FieldSpec(type=FieldType.IDENTIFIER, scheme="sku", description="d", schema_org="Product.sku"),
+    variants=FieldSpec.model_validate(
+        {
+            "type": "list",
+            "description": "d",
+            "schema_org": "Product.offers",
+            "key": ["sku", "url"],
+            "item": VARIANT_FIELDS,
+        }
+    ),
+)
+
+
+def _offered(**product: Any) -> dict[str, Any]:
+    offers = [
+        {
+            "@type": "Offer",
+            "sku": sku,
+            "price": "19.90",
+            "priceCurrency": "EUR",
+            "availability": f"https://schema.org/{availability}",
+            "url": f"{PAGE_URL}?variant={sku}",
+        }
+        for sku, availability in (("W-1", "OutOfStock"), ("W-2", "InStock"))
+    ]
+    return {"@type": "Product", "name": "Widget One", "url": PAGE_URL, "offers": offers} | product
+
+
+def test_availability_is_the_shown_variant_s_and_no_default_otherwise() -> None:
+    shown = _extract(_bundle(_html(_offered(sku="W-2"))), WITH_VARIANTS)
+    unshown = _extract(_bundle(_html(_offered())), WITH_VARIANTS)
+
+    assert shown.entity is not None
+    assert shown.entity["availability"].value == "InStock"
+    assert _statuses(unshown)["availability"] == ("conflict", "offers_disagree")

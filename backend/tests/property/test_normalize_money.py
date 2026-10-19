@@ -65,6 +65,11 @@ def test_the_currency_comes_from_the_best_evidence_with_weaker_evidence_noted() 
     assert money.normalize("$5", MONEY, _ctx(html_lang="en-US", og_locale="en-CA")) == _ok("5", None, "unknown")
 
 
+def test_a_sign_written_with_an_abbreviation_full_stop_is_also_the_symbol_without_it() -> None:
+    # CLDR writes the abbreviation `kr` both with and without its full stop, for different sets of currencies.
+    assert money.normalize("kr. 12", MONEY, _ctx(page_currencies=("NOK",))) == _ok("12", "NOK")
+
+
 def test_a_lone_separator_is_ambiguous_until_the_page_locale_settles_it() -> None:
     readings: tuple[JsonValue, ...] = ({"amount": "1.234", "currency": "EUR"}, {"amount": "1234", "currency": "EUR"})
 

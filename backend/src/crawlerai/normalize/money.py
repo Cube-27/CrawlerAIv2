@@ -176,7 +176,7 @@ def _regional(signs: Sequence[str], ctx: Context) -> frozenset[str]:
     update = {"cctld_territory": territory, "hreflang": (*ctx.hreflang, *ctx.content_language), "request_locale": None}
     tags = ctx.model_copy(update=update)
     locales = numbers.locale_set(tags)
-    symbols = [unicodedata.normalize("NFKC", sign) for sign in signs]
+    symbols = [form for sign in signs for form in _sign_forms(unicodedata.normalize("NFKC", sign))]
     return frozenset(code for loc in locales for sign in symbols for code in _locale_symbols(loc).get(sign, ()))
 
 
@@ -278,7 +278,18 @@ def _currencies_for(sign: str) -> frozenset[str]:
         # ISO 4217 alphabetic codes are three uppercase letters; a code names itself.
         return frozenset({sign})
     # CLDR currency symbols: the currencies the sign stands for in any locale.
-    return _symbol_currencies().get(unicodedata.normalize("NFKC", sign), frozenset())
+    symbols = _symbol_currencies()
+    return frozenset(
+        code for form in _sign_forms(unicodedata.normalize("NFKC", sign)) for code in symbols.get(form, ())
+    )
+
+
+def _sign_forms(sign: str) -> tuple[str, ...]:
+    """The CLDR symbols a written sign is: itself, and, for a sign ending in a full stop, the abbreviation without
+    it. A full stop marks an abbreviation (CLDR writes one symbol both ways, `kr` and `kr.`), so `Rs.` is also the
+    symbol `Rs` and denotes its currencies too, for the evidence to narrow."""
+    bare = sign.removesuffix(".")
+    return (sign, bare) if bare and bare != sign else (sign,)
 
 
 def is_currency_code(code: str) -> bool:
@@ -341,6 +352,21 @@ def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
     and the same currency."""
     money = _money_value(value)
     return raw_key(value) if money is None else ("money", money)
+
+
+def same_amount(values: Sequence[JsonValue]) -> bool:
+    """Whether the values are normalized money values of one amount (as Decimals: `19.9` equals `19.90`), whatever
+    currencies they state."""
+    moneys = [_money_value(value) for value in values]
+    return all(m is not None for m in moneys) and len({m[0] for m in moneys if m is not None}) == 1
+
+
+def without_currency(value: JsonValue) -> JsonValue:
+    """A normalized money value's amount with its currency unknown (`null`)."""
+    money = _money_value(value)
+    if money is None:
+        raise ValueError("not a normalized money value")
+    return _value(money[0], None)
 
 
 def _money_value(value: JsonValue) -> tuple[Decimal, str | None] | None:

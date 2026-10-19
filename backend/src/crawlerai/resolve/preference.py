@@ -28,7 +28,7 @@ from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.json_doc import scalars
 from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.db.models import SourceKind
-from crawlerai.normalize import url
+from crawlerai.normalize import money, url
 from crawlerai.normalize.base import BASES, Ambiguous, Invalid, Ok, Raw
 from crawlerai.normalize.dispatch import equal, equality_key, resource_key
 from crawlerai.normalize.text import text_form
@@ -286,9 +286,28 @@ def _without(candidates: Sequence[Candidate], excluded: Sequence[Candidate]) -> 
 
 def _by_agreement(spec: FieldSpec, kept: list[Candidate], chosen: Candidate, rejected: list[Rejection]) -> Preference:
     # INV-14: exact-match values publish only when every kept candidate agrees.
+    agreeing = tuple(c for c in kept if c is not chosen)
     if not _all_agree(kept, spec):
-        return _all_rejected("conflict", "disagree", kept, rejected)
-    return Chosen(chosen, tuple(c for c in kept if c is not chosen), tuple(rejected), tuple(kept))
+        if not _currency_only(spec, kept):
+            return _all_rejected("conflict", "disagree", kept, rejected)
+        unknown = _currency_unknown(chosen)
+        kept = [unknown if c is chosen else c for c in kept]
+        chosen = unknown
+    return Chosen(chosen, agreeing, tuple(rejected), tuple(kept))
+
+
+def _currency_only(spec: FieldSpec, kept: Sequence[Candidate]) -> bool:
+    """Normalization spec, money (owner #68): candidates on equally strong currency evidence that state one amount in
+    different currencies agree on the amount, which publishes; only the currency is unsettled."""
+    return spec.type is FieldType.MONEY and money.same_amount([_value(c) for c in kept])
+
+
+def _currency_unknown(candidate: Candidate) -> Candidate:
+    """The candidate's amount with its currency unknown (basis `unknown`): its evidence is contradicted (C7)."""
+    normalized = candidate.normalized
+    checked = normalized.checked if isinstance(normalized, Ok) else False
+    value = money.without_currency(_value(candidate))
+    return candidate.model_copy(update={"normalized": Ok(value, basis="unknown", checked=checked)})
 
 
 def _winner(

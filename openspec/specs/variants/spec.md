@@ -74,11 +74,20 @@ Refs: §13.1, D-0798, D-0799, D-1185. Enforced by: Pydantic models (`FieldOutcom
 ### Requirement: No default variant; common values only (INV-38)
 A detail page's top-level price, currency, availability and stock quantity SHALL publish only a value every Offer of the
 target and its variants states alike, else `conflict`/`offers_disagree`, whatever variant a URL names; varying values
-publish only in the row-mapped field. Refs: Appendix A #37, #44, D-1057, D-1059.
+publish only in the row-mapped field. One exception: availability is a variant's, and where the Offers disagree on it
+the target takes the availability of the variant it shows, its default or selected one: the one published row whose
+sku or gtin is the target's own and whose price, sku and gtin agree with the target's published ones (values that
+pass the confidence threshold; a row's sub-field is matched by its type and schema.org property, not its name)
+(`resolve/shown_variant.py`). With no such row it stays `offers_disagree`; no default is taken. (Previously: no
+exception.) Refs: Appendix A #37, #44, D-1057, D-1059, owner 2026-10-19.
 Enforced by: `tests/unit/test_common_variant_fields.py` and `tests/property/test_common_variant_fields.py`; active.
 #### Scenario: URL names one variant
 - **WHEN** the request URL is a variant's own URL and the variants' prices differ
 - **THEN** top-level `price` is `conflict` (`offers_disagree`) and each price is in its `variants` row
+#### Scenario: The shown variant's availability
+- **WHEN** a Product states sku W-2 and two Offers, W-1 out of stock and W-2 in stock
+- **THEN** top-level `availability` is `InStock`; with neither a sku nor a gtin of the Product's that is one row's, it
+  is `conflict` (`offers_disagree`)
 
 ### Requirement: Variant fill for sku and gtin
 A top-level `sku` or `gtin` field with no candidate owned by the target SHALL take its variants' value only when every

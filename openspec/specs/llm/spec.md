@@ -63,6 +63,9 @@ UTC day. Refs: §17, D-0719, D-0724, D-1721.
 ### Requirement: Grounded values (INV-12)
 Every `llm` candidate value SHALL be a verbatim substring of the cleaned text at its stated offsets (INV-12): exact
 match at the claim, else the single or nearest exact occurrence, else dropped; no fuzzy matching (`llm/grounding.py`).
+A money claim the text does not hold verbatim is found with any spacing between its currency sign and its one amount
+(CLDR `currencySpacing`: that space is the locale's presentation), never inside a longer number, and its value is the
+text's span, never the model's spelling. (Previously: a money claim spaced otherwise than the text was dropped.)
 A claimed link or image SHALL be an element the page has, of the kind its field takes, and its value that element's
 `href` or `src` as the DOM states it, never text of the model's. Enforced by: `tests/property/test_grounding.py`,
 `tests/unit/test_grounding.py`, `tests/unit/test_role_c.py`; active. (Previously: only text spans.) Refs: §11,
@@ -70,6 +73,9 @@ D-0024, D-0379, D-1623.
 #### Scenario: Wrong offsets or not in text
 - **WHEN** a claimed value occurs once at other offsets, or not at all
 - **THEN** it is accepted with corrected offsets, or dropped as `role C: <field> ungrounded` without the value
+#### Scenario: Money spaced otherwise
+- **WHEN** a price claim is `$19.98` and the text writes `$ 19.98`
+- **THEN** it is grounded at `$ 19.98`, which is its value
 #### Scenario: Claimed id of no such element
 - **WHEN** a url field's claim names an id no link on the page has, or an image's
 - **THEN** it is dropped as `role C: <field> ungrounded`

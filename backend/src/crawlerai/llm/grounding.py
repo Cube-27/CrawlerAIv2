@@ -7,11 +7,16 @@ does not contain is dropped. There is no fuzzy, case- or whitespace-insensitive 
 normalization (extraction spec) is the only one. Offsets count code points of the cleaned text, as Python `str` indices
 do.
 
+A money claim may differ from the text only in the spacing between its currency sign and its digits: CLDR's
+`currencySpacing` makes that space the locale's presentation, so `$19.98` is grounded at the text's `$ 19.98`, and the
+value is the text's span, never the model's spelling.
+
 A claim of a link or an image names the id the text gave it (`llm.marked`): it is kept only when that id marks an
 element of the kind the field takes on the page, and its value is the element's `href` or `src` as the DOM states it,
 never text of the model's.
 """
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -64,20 +69,50 @@ def ground_element(ref: str, kind: MarkKind, elements: Mapping[str, Mark]) -> Gr
     return GroundedElement(mark.target, mark.path)
 
 
-def align(claim: SpanClaim, cleaned_text: str) -> GroundedSpan | None:
-    """The claim as a span of `cleaned_text`, or None when the text does not contain its value (ungrounded)."""
+def align(claim: SpanClaim, cleaned_text: str, *, money: bool = False) -> GroundedSpan | None:
+    """The claim as a span of `cleaned_text`, or None when the text does not contain its value (ungrounded). A `money`
+    claim the text does not contain verbatim is found with any spacing between its currency sign and its digits."""
     value = claim.value
     if not value:
         return None  # an empty span holds no value
     # Both ends must be offsets into the text: a negative end would slice counting from the end.
     if 0 <= claim.start < claim.end <= len(cleaned_text) and cleaned_text[claim.start : claim.end] == value:
         return GroundedSpan(value, claim.start, claim.end)
-    occurrences = _occurrences(value, cleaned_text)
-    if not occurrences:
+    spans = [(i, i + len(value)) for i in _occurrences(value, cleaned_text)]
+    if not spans and money:
+        spans = _sign_spaced(value, cleaned_text)
+    if not spans:
         return None
     # Nearest to the claimed start; of two equally near, the earlier, so the choice is deterministic (INV-10).
-    start = min(occurrences, key=lambda i: (abs(i - claim.start), i))
-    return GroundedSpan(value, start, start + len(value))
+    start, end = min(spans, key=lambda span: (abs(span[0] - claim.start), span[0]))
+    return GroundedSpan(cleaned_text[start:end], start, end)
+
+
+# A spaced match is not one end of a displayed range (`$ 19.98 - $ 24.99`): no range dash right before or after it.
+_DASHES = "\\-\u2013\u2014~"
+_NOT_AFTER_DASH = rf"(?<![{_DASHES}])(?<![{_DASHES}]\s)"
+_NOT_BEFORE_DASH = rf"(?!\s*[{_DASHES}])"
+# One amount: digits, with the grouping and decimal marks between them.
+_AMOUNT = re.compile(r"\d(?:[\d.,'\u00a0\u202f ]*\d)?")
+
+
+def _sign_spaced(value: str, text: str) -> list[tuple[int, int]]:
+    """The spans of `text` that write `value`'s one amount with its sign before or after it, with any whitespace (or
+    none) between sign and digits (CLDR `currencySpacing`); not inside a longer or grouped number, nor one end of a
+    range."""
+    amounts = list(_AMOUNT.finditer(value))
+    if len(amounts) != 1:
+        return []
+    amount = amounts[0]
+    before, after = value[: amount.start()].rstrip(), value[amount.end() :].lstrip()
+    if not (before or after):
+        return []
+    # With no sign before it, the amount must not be the tail of a grouped number (`1 219.98`).
+    prefix = rf"{re.escape(before)}\s*" if before else r"(?<!\d[\s'])"
+    suffix = rf"\s*{re.escape(after)}" if after else ""
+    amount_text = re.escape(amount.group())
+    pattern = rf"{_NOT_AFTER_DASH}(?<![\d.,]){prefix}{amount_text}(?![\d]){suffix}{_NOT_BEFORE_DASH}"
+    return [match.span() for match in re.finditer(pattern, text)]
 
 
 def _occurrences(value: str, text: str) -> list[int]:

@@ -1226,3 +1226,22 @@ archived ARCHITECTURE.md.
   shows (its currency or unknown); a stored answer's rows stay unpriced, since its amounts are the primary market's.
 - Why: publishing another market's amount with an unknown currency would be a wrong price, not a missing currency.
 - Reversible: yes
+
+### D-1780 — A parent's availability is the shown variant's
+- Date: 2026-10-19 · Change/PR: detail-price-gaps · Status: confirmed (owner 2026-10-19)
+- Decision: Availability is variant-level. Where a detail page's Offers disagree, the target publishes the
+  availability of the one row whose sku or gtin is its own and whose price/sku/gtin match its published ones (the
+  default or selected variant it shows); otherwise none and no default (INV-15, INV-38). Offers that all agree still
+  publish their common value.
+- Alternatives: the first Offer's value (a default); the parent always unpublished.
+- Why: the parent record displays that variant's values, so its availability is the one shown.
+- Reversible: yes — drop `resolve/shown_variant.py`.
+
+### D-1781 — One amount in two currencies publishes, currency unknown
+- Date: 2026-10-19 · Change/PR: detail-price-gaps · Status: confirmed (owner 2026-10-19)
+- Decision: Money candidates that agree on the amount and differ only on currency publish the amount with the
+  best-evidence currency or null (`basis: unknown`), not a conflict (C1/C7). The preset field descriptions are
+  unchanged, so role C's cached readings stay valid.
+- Alternatives: `disagree` (the price lost although every source shows it).
+- Why: the amount is grounded; only the currency is in doubt, and C7 never abstains on currency.
+- Reversible: yes

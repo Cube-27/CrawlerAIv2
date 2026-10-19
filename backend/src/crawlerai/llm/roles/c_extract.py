@@ -269,7 +269,7 @@ def _read_claims(
         block = by_index.get(index)
         if block is None or name not in block.fields or (index, name) in taken or value == _ABSENT:
             continue
-        at = _grounded(value, block)
+        at = _grounded(value, block, money=_money(fields[name]))
         if at is None:
             dropped.append(f"role C: block {index} {name} ungrounded")
             continue
@@ -278,11 +278,11 @@ def _read_claims(
     return _Read(tuple(candidates), tuple(dropped))
 
 
-def _grounded(value: str, block: BlockText) -> GroundedSpan | None:
+def _grounded(value: str, block: BlockText, *, money: bool) -> GroundedSpan | None:
     """The claimed value as a span of the cleaned text: in the block's own text, else in its enclosing item's context
     (`collect.items.lines`); None when neither holds it."""
     for start, text in block.segments:
-        if (span := align(SpanClaim(value=value, start=0, end=len(value)), text)) is not None:
+        if (span := align(SpanClaim(value=value, start=0, end=len(value)), text, money=money)) is not None:
             return GroundedSpan(span.value, start + span.start, start + span.end)
     return None
 
@@ -397,8 +397,13 @@ class _Reader:
         span = SpanClaim.model_validate({key: claim[key] for key in _SPAN})
         at = self.text.cleaned_offset
         span = span.model_copy(update={"start": at(span.start), "end": at(span.end)})
-        grounded = align(span, self.text.cleaned)
+        grounded = align(span, self.text.cleaned, money=_money(spec))
         return None if grounded is None else (grounded.value, grounded.locator)
+
+
+def _money(spec: FieldSpec) -> bool:
+    """Whether a claim of the field is grounded as money (`grounding.align`): a money field, or a list of money."""
+    return FieldType.MONEY in (spec.type, None if spec.item is None else spec.item.type)
 
 
 def _candidate(name: str, spec: FieldSpec, owner: str, raw: str, locator: str, ctx: Context) -> Candidate:
