@@ -69,10 +69,16 @@ class AdmittingCollector(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class Document:
-    """One parsed JSON document and the locator part that addresses it (a script's XPath, a body's index)."""
+    """One parsed JSON document and the locator part that addresses it (a script's XPath, a body's index, an
+    attribute's `<xpath>@<name>`), under `scheme` when it is not its collector's kind (an attribute's `attr`)."""
 
     data: JsonValue
     address: str
+    scheme: Literal["attr"] | None = None
+
+    def locator(self, kind: StateKind, path: str) -> str:
+        """The locator of the value at `path` in the document, read by a `kind` collector."""
+        return format_locator(self.scheme or kind, self.address, path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,7 +140,7 @@ def admit(
             key = (type(leaf.value), leaf.value)
             if key not in readings:
                 readings[key] = tuple(_readings(leaf.value, page, schema, ctx, anchors))
-            locator = format_locator(kind, document.address, leaf.path)
+            locator = document.locator(kind, leaf.path)
             for reading in readings[key]:
                 candidates.add(
                     reading.normalized.value,

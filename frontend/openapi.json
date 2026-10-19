@@ -3578,6 +3578,7 @@
             "enum": [
               "jsonld",
               "js_state",
+              "attr",
               "xhr",
               "api"
             ],
@@ -3625,6 +3626,7 @@
             "enum": [
               "jsonld",
               "js_state",
+              "attr",
               "xhr",
               "api"
             ],

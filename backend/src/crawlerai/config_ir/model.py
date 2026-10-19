@@ -31,8 +31,9 @@ from crawlerai.db.models import CaptureId, ConfigOrigin, FetchMethod, FieldStatu
 from crawlerai.schemas.types import NEXT_PAGE_FIELD as NEXT_PAGE_FIELD  # the executors read it from here (§12.1)
 from crawlerai.schemas.types import FieldType, Name
 
-# Where a `jsonpath` step reads JSON: the page's JSON-LD, its script state, a captured network body, an API response.
-JsonSource = Literal["jsonld", "js_state", "xhr", "api"]
+# Where a `jsonpath` step reads JSON: the page's JSON-LD, its script state, its documented JSON attributes
+# (`attr`, extraction spec "Source documents"), a captured network body, an API response.
+JsonSource = Literal["jsonld", "js_state", "attr", "xhr", "api"]
 
 XPath1 = Annotated[str, AfterValidator(check_xpath1)]
 PortableRegex = Annotated[str, AfterValidator(check_pattern)]

@@ -49,7 +49,6 @@ from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import AMBIGUOUS_IN_BLOCK, Block, Items, field_roles, quorum
 from crawlerai.collect.items.spot import Spot
 from crawlerai.collect.js_state import state_documents
-from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate, item_url_fields
 from crawlerai.collect.xhr import network_documents
 from crawlerai.content.page import ParsedPage
@@ -368,7 +367,7 @@ class _Binder:
             # A row whose block shows the field has its value already (its state agrees with it by equality).
             if found is None or key not in found.scalars or self._spots(row, name):
                 continue
-            locator = format_locator(found.kind, found.address, found.path + key[len(json_doc.ROOT) :])
+            locator = found.document.locator(found.kind, found.path + key[len(json_doc.ROOT) :])
             notes: list[str] = []
             made = candidate(name, spec, row, found.kind, found.scalars[key], locator, self.listing.ctx, notes)
             if made is not None:
@@ -426,11 +425,11 @@ class _Binder:
 
 @dataclass(frozen=True, slots=True)
 class _ArrayRow:
-    """An array row's JSON object: its source kind, its document's address, its path and its scalars by path relative
+    """An array row's JSON object: its source kind, its document, its path and its scalars by path relative
     to it."""
 
     kind: StateKind
-    address: str
+    document: Document
     path: str
     scalars: Mapping[str, str | int | float]
 
@@ -456,7 +455,7 @@ class _RowReader:
         selected = json_doc.select(path, document.data) if json_doc.is_query(path) else []
         if len(selected) != 1 or not isinstance(selected[0][1], dict):
             return None
-        return _ArrayRow(kind, document.address, path, dict(json_doc.scalars(selected[0][1])))
+        return _ArrayRow(kind, document, path, dict(json_doc.scalars(selected[0][1])))
 
     def _of(self, kind: StateKind) -> list[Document]:
         if kind not in self._documents:

@@ -339,7 +339,9 @@ def documents(source: JsonSource, page: ParsedPage) -> list[JsonValue]:
         case "jsonld":
             return [document for _, document in jsonld.blocks(page, [])]
         case "js_state":
-            return [document.data for document in js_state.state_documents(page, [])]
+            return [document.data for document in js_state.script_documents(page, [])]
+        case "attr":
+            return [document.data for document in js_state.attribute_documents(page)]
         case "xhr":
             return [document.data for document in xhr.network_documents(page, [])]
         case "api":

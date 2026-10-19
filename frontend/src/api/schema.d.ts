@@ -2300,7 +2300,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "jsonld" | "js_state" | "xhr" | "api";
+            source: "jsonld" | "js_state" | "attr" | "xhr" | "api";
         };
         /** JsonPathStep */
         "JsonPathStep-Output": {
@@ -2315,7 +2315,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "jsonld" | "js_state" | "xhr" | "api";
+            source: "jsonld" | "js_state" | "attr" | "xhr" | "api";
         };
         JsonValue: unknown;
         /**

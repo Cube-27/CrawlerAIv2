@@ -110,3 +110,17 @@ def test_a_listing_gives_one_mapping_per_row_and_the_next_page_url() -> None:
     assert result.rows == ({"title": "One", "key": "k1"}, {}, {"key": "k3"})
     assert result.fields == {"next_page_url": "https://shop.example.test/p/1?page=2"}
     assert result.diagnostics[0] == "key:0: regex, jsonld and jsonpath steps read the whole page, not a row"
+
+
+def test_attribute_and_magento_init_json_are_read_as_written() -> None:
+    html = (
+        '<html><head><script type="text/x-magento-init">{"#form": {"name": "Init"}}</script></head><body>'
+        '<div data-page="{&quot;props&quot;: {&quot;name&quot;: &quot;Page&quot;}}"></div>'
+        '<div data-config="{&quot;props&quot;: {&quot;name&quot;: &quot;Other&quot;}}"></div></body></html>'
+    )
+    attr = [{"jsonpath": "$['props']['name']", "source": "attr"}]
+    init = [{"jsonpath": "$['#form']['name']", "source": "js_state"}]
+    assert _run({"title": attr, "init": init}, html, {"title": TEXT, "init": TEXT}).fields == {
+        "title": "Page",
+        "init": "Init",
+    }

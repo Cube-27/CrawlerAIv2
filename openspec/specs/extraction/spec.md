@@ -110,6 +110,12 @@ Nuxt 3 `__NUXT_DATA__`) becomes the tree its indices reference, with the `Reacti
 read as JSON; a **normalized cache** (an object of objects holding `{"__ref": key}` members; Apollo `InMemoryCache`) is
 read with every `__ref` replaced by the entry it names, `ROOT_QUERY` first. References on their own path are not
 followed, and a decoded tree past the same bounds leaves the document as written.
+A `<script type="text/x-magento-init">` (Adobe Commerce) is read as a JSON script. After the scripts, in document
+order, the value of each attribute a framework documents as JSON is a document when, as the parser unescapes it, it
+starts with `{` or `[` and is RFC 8259 JSON (`content/attr_json.py`): Inertia `data-page`, Livewire `wire:snapshot`,
+WooCommerce `data-product_variations`, Adobe Commerce `data-mage-init`, and Astro's `props` on `astro-island`, revived
+from its `[type, value]` tuples (`content/state_decoders.py`). No other attribute is read, whatever its value. Its
+locator is `attr:<element xpath>@<name>:<path>`, and a config's `jsonpath` step reads these documents as source `attr`.
 #### Scenario: Nuxt 2 devalue state
 - **WHEN** a script writes `window.__NUXT__=(function(a,b){return {data:[{price:a,currency:b}]}}(19.99,"EUR"))`
 - **THEN** its document is `{"data": [{"price": 19.99, "currency": "EUR"}]}`
@@ -117,6 +123,11 @@ followed, and a decoded tree past the same bounds leaves the document as written
 - **WHEN** a script calls `dataLayer.push({event: "view_item", ecommerce: {currency: "USD", value: 30.03}})`
 - **THEN** that object is a state document, admitted by the rule of "Embedded JSON state and XHR admission" and its
   `currency` a declared page currency
+#### Scenario: Documented JSON attribute
+- **WHEN** a form carries `data-product_variations="[{&quot;display_price&quot;: 18, ...}]"`, and another element
+  `data-config="{&quot;price&quot;: 1}"` or `data-mage-init="{&quot;configurable&quot;: {"`
+- **THEN** the variations are a document, with locator `attr:<form xpath>@data-product_variations:$[0]['display_price']`
+  for the first price, and the other two attributes give none and no error
 #### Scenario: Code in a value
 - **WHEN** an assigned object holds `f: function () { return 1; }` or `at: stamp()`
 - **THEN** it gives no document and no error

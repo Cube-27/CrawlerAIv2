@@ -50,6 +50,18 @@ _REGEX_FLAGS = re.ASCII
 # IANA media types: JSON-LD (embedded in HTML by a script of this type, JSON-LD 1.1 §7.1) and JSON (RFC 8259).
 _JSONLD = "application/ld+json"
 _JSON = "application/json"
+# Adobe Commerce, JavaScript initialization: a `text/x-magento-init` script holds JSON.
+_MAGENTO_INIT = "text/x-magento-init"
+# The attributes documented to hold JSON, on their elements (extraction spec, "Source documents"): Inertia `data-page`,
+# Livewire `wire:snapshot`, WooCommerce `data-product_variations`, Adobe Commerce `data-mage-init`, Astro island
+# `props` (read as written: this executor revives no Astro tuples, as it decodes no script state).
+_JSON_ATTRIBUTES = (
+    ("*", "data-page"),
+    ("*", "wire:snapshot"),
+    ("*", "data-product_variations"),
+    ("*", "data-mage-init"),
+    ("astro-island", "props"),
+)
 # ECMAScript: an assignment to a property of `window` (the global object, HTML Standard) or a variable declaration
 # with an initializer; `=` not followed by `=` or `>` is assignment, not comparison or an arrow. The match ends where
 # the value starts.
@@ -285,11 +297,24 @@ def _documents(source: JsonSource, page: ReleasePage, root: etree._Element) -> I
         case "jsonld" | "js_state":
             for media_type, text in _scripts(root):
                 yield from _script_json(source, media_type, text)
+        case "attr":
+            for value in _json_attributes(root):
+                yield from _loads(value)
         case "xhr":
             for body in page.network:
                 yield from _loads(body)
         case "api":
             raise _Unreadable("an api source is read through adapters spec's api recipe executor")
+
+
+def _json_attributes(root: etree._Element) -> Iterator[str]:
+    """The values of the documented JSON attributes that start with `{` or `[` (RFC 8259 whitespace before), in
+    document order."""
+    for element in root.iter(etree.Element):
+        for tag, name in _JSON_ATTRIBUTES:
+            value = element.get(name)
+            if value is not None and tag in ("*", element.tag) and value.lstrip(" \t\n\r")[:1] in ("{", "["):
+                yield value
 
 
 def _scripts(root: etree._Element) -> Iterator[tuple[str, str]]:
@@ -311,9 +336,9 @@ def _script_json(source: JsonSource, media_type: str, text: str) -> Iterator[Val
             # §7 requires escaped and §9 lets a parser accept, read as their escaped form (`strict=False`).
             yield from _loads(text, strict=False)
         return
-    if media_type == _JSON:
+    if media_type in (_JSON, _MAGENTO_INIT):
         yield from _loads(text)
-    if media_type in (_JSONLD, _JSON):
+    if media_type in (_JSONLD, _JSON, _MAGENTO_INIT):
         return
     start = 0
     while (found := _ASSIGNMENT.search(text, start)) is not None:
