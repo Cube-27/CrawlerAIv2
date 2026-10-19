@@ -1,22 +1,28 @@
 """A job's outcomes (jobs spec, "Job outcome summary"): how many of its pages ended with each outcome, and how many
-of the fields of its records have each status, with the reasons the unpublished ones give. Both are counted from what
-the job stored (`url_task.outcome`, `record.field_meta`): no table of its own. `GET /v1/jobs/{id}/outcomes` and
+of the fields of its records have each status, with the reasons the unpublished ones give, and per field how many pages
+fetched over HTTP alone left it `missing/no_candidates`, with the next step when the job did not ask for rendering
+(`render.mode: locate`). All are counted from what the job stored (`url_task.outcome`, `record.field_meta`,
+`capture`): no table of its own. `GET /v1/jobs/{id}/outcomes` and
 `crawlerai jobs summary` answer with it; `crawlerai jobs reextract` counts the same fields of the records the current
 engine makes again from the job's stored captures (`services.reextract`).
 """
 
 from collections import Counter
 from collections.abc import Iterable, Mapping
-from typing import Any, cast, get_args
+from typing import Any, Final, cast, get_args
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Text, column, func, select, true
+from sqlalchemy import Text, column, false, func, select, true
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import JobId, Record, TaskRecord, UrlTask
+from crawlerai.db.models import Capture, Job, JobId, Record, TaskRecord, UrlTask
+from crawlerai.resolve.page_state import NO_CANDIDATES
 from crawlerai.resolve.types import FieldStatus
 from crawlerai.services.jobs import OutcomeCounts, get_job
+
+# The next step for fields HTTP pages do not carry (rest-api spec, "Render mode"): fields and outcomes, no internals.
+LOCATE_HINT: Final = "render.mode: locate"
 
 
 class FieldCounts(BaseModel):
@@ -37,7 +43,7 @@ class FieldTally(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     statuses: FieldCounts
-    # Per reason, the fields that are not published and give it (`no_candidates`, `out_of_stock`, `script_rendered`...).
+    # Per reason, the fields that are not published and give it (`no_candidates`, `out_of_stock`, `render_bound`...).
     reasons: dict[str, int]
 
     @classmethod
@@ -69,13 +75,52 @@ class JobOutcomes(BaseModel):
     pages: OutcomeCounts
     fields: FieldCounts
     reasons: dict[str, int]
+    # Per field, the records of pages no render ran for that left it `missing` with reason `no_candidates`.
+    missing_unrendered: dict[str, int]
+    # The next step for those fields when the job's `render.mode` is `off`; None without any or when it asked for one.
+    hint: str | None
 
 
 async def job_outcomes(conn: AsyncConnection, job_id: JobId) -> JobOutcomes:
     """The job's outcome counts; `JobNotFound` for no such job."""
     job = await get_job(conn, job_id)
     tally = await stored_field_tally(conn, job_id)
-    return JobOutcomes(id=job_id, pages=job.outcomes, fields=tally.statuses, reasons=tally.reasons)
+    missing = await _missing_unrendered(conn, job_id)
+    request: dict[str, Any] = (await conn.execute(select(Job.request).where(Job.id == job_id))).scalar_one()
+    mode = (request.get("render") or {}).get("mode", "off")
+    return JobOutcomes(
+        id=job_id,
+        pages=job.outcomes,
+        fields=tally.statuses,
+        reasons=tally.reasons,
+        missing_unrendered=missing,
+        hint=LOCATE_HINT if missing and mode == "off" else None,
+    )
+
+
+async def _missing_unrendered(conn: AsyncConnection, job_id: JobId) -> dict[str, int]:
+    """Per field, the records the job's tasks stand for whose page was fetched over HTTP with no browser attempt
+    (`capture.method`, `fetch_policy.attempts`) and left it `missing/no_candidates`: a render may show it."""
+    field = func.jsonb_each(Record.field_meta).table_valued(column("key", Text), column("value", JSONB)).lateral()
+    browser_tried = Capture.fetch_policy["attempts"].contains([{"method": "browser"}])
+    standing = (
+        select(TaskRecord.record_id)
+        .join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
+        .join(Capture, Capture.id == UrlTask.capture_id)
+        .where(UrlTask.job_id == job_id, Capture.method == "http", ~func.coalesce(browser_tried, false()))
+        .distinct()
+        .subquery()
+    )
+    rows = await conn.execute(
+        select(field.c.key, func.count())
+        .select_from(standing)
+        .join(Record, Record.id == standing.c.record_id)
+        .join(field, true())
+        .where(field.c.value["status"].astext == "missing", field.c.value["reason"].astext == NO_CANDIDATES)
+        .group_by(field.c.key)
+        .order_by(field.c.key)
+    )
+    return {cast(str, key): cast(int, n) for key, n in rows.all()}
 
 
 async def stored_field_tally(conn: AsyncConnection, job_id: JobId) -> FieldTally:

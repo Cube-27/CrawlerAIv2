@@ -95,6 +95,13 @@ class EngineExecutor:
         return {**running, **dict.fromkeys(self.ir.absent, "absent")}
 
     @property
+    def browser_fields(self) -> frozenset[str]:
+        # A config learned from browser captures (`fetch.method`) reads every field it runs from a rendered page.
+        if self.ir.fetch.method != "browser":
+            return frozenset()
+        return frozenset(name for name, status in self.field_status.items() if status != "absent")
+
+    @property
     def learned_calls(self) -> LearnedCalls | None:
         return None if self.ir.api_recipe is None else self.ir.api_recipe.learned_calls
 

@@ -180,21 +180,23 @@ stores the record as `partial` and a crawl-discovered URL is `no_match` with no 
 - **WHEN** a crawl-discovered detail page leaves the required `price` missing
 - **THEN** the outcome is `no_match` and no record is stored
 
-### Requirement: Fields a render would show
-A detail field still `missing` for want of a candidate (reason `no_candidates`: not rejected, not listed as `absent` by
-the config, not explained by the page's outcome) on a page no render ran for (the capture is not the browser's and no
-browser attempt is among its `fetch_policy.attempts`), whose document carries a state document of at least
-`STATE_MIN_VALUES` scalar values (`content/state.holds_state`: its script renders the page's data), SHALL be
-`interaction_required` with reason `script_rendered`, after role C. Any other unpublished field stays `missing` with
-its reason. An HTTP `ok` page is not rendered for such fields ([acquisition](../acquisition/spec.md), "Browser on
-block or by field source"). (Previously: a request named such fields in `render_fields` to have the page rendered; any `missing` field of an HTTP page with a
-state document, whether or not a render had been tried.) Refs: owner plan 2026-10-19 P3, P9.
-#### Scenario: Script-rendered size
-- **WHEN** an HTTP detail page carries a hydration blob and no candidate for `size`
-- **THEN** `size` is `interaction_required`, and the same page captured in the browser leaves it `missing`
-#### Scenario: Render tried
-- **WHEN** the fetch tried the browser and kept the HTTP page, which carries a hydration blob and no candidate for `size`
-- **THEN** `size` is `missing`
+### Requirement: Render-bound fields
+A detail field still `missing` (for any reason but `out_of_stock`) whose source in the site's active config is the
+browser (`ConfigExecutor.browser_fields`: until per-field sources land with architecture v3 PR 5, every field a config
+learned from browser captures runs, `fetch.method` `browser`), on a page no render ran for (the capture is not the
+browser's and no browser attempt is among its `fetch_policy.attempts`: the fetch did not render, for budget or
+`method_hint http`), SHALL be `interaction_required` with reason `render_bound`. Every other unpublished field stays
+`missing` with its furthest-stage reason; a page without a config leaves a field it does not carry `missing` with
+`no_candidates`. (Previously: a field `missing/no_candidates` on an unrendered page whose document carried a state
+document of at least `STATE_MIN_VALUES` scalar values, `content/state.holds_state`, was `interaction_required` with
+reason `script_rendered`.) Refs: owner plan 2026-10-19 P3, P9; architecture v3 a.5.
+#### Scenario: Browser field on an HTTP page
+- **WHEN** the site's config reads `size` from rendered pages and an HTTP page with no browser attempt carries no `size`
+- **THEN** `size` is `interaction_required` with reason `render_bound`, and the same page captured in the browser leaves
+  it `missing`
+#### Scenario: No config
+- **WHEN** an HTTP detail page of a site without a config carries no candidate for `size`
+- **THEN** `size` is `missing` with reason `no_candidates`
 
 ### Requirement: Out of stock without a price
 A money field whose `schema_org` names `price`, left `missing` for want of a candidate on a page whose published

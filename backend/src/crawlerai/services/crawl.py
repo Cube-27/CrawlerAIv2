@@ -31,7 +31,6 @@ from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.types import Probability
-from crawlerai.schemas.types import Name
 from crawlerai.services.batch import OWN_TRANSACTION, Placement, insert_job, records_schema
 from crawlerai.services.fetch_options import check_proxy_pool
 from crawlerai.services.fetching import check_targets
@@ -39,11 +38,11 @@ from crawlerai.services.location import pin_location
 from crawlerai.services.map import MAX_LIMIT  # a crawl enqueues at most what a map of the site returns
 from crawlerai.services.scrape import Budget
 from crawlerai.services.scrape_steps import (
-    MAX_RENDER_FIELDS,
     MIN_CONFIDENCE_DESCRIPTION,
-    RENDER_FIELDS_DESCRIPTION,
+    RENDER_DESCRIPTION,
     FetchOptions,
     PageFormat,
+    RenderOptions,
     SchemaById,
     SchemaFields,
     SchemaInline,
@@ -84,9 +83,7 @@ class CrawlRequest(WebhookOptions):
     fit: FitOptions | None = None  # `markdown_fit`'s query and block limit
     chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
     min_confidence: Probability | None = Field(default=None, description=MIN_CONFIDENCE_DESCRIPTION)
-    render_fields: list[Name] = Field(
-        default_factory=list, max_length=MAX_RENDER_FIELDS, description=RENDER_FIELDS_DESCRIPTION
-    )
+    render: RenderOptions = Field(default=RenderOptions(), description=RENDER_DESCRIPTION)
 
     @model_validator(mode="before")
     @classmethod
@@ -173,7 +170,7 @@ async def submit_crawl(
     await check_targets(connector, [("url", request.url)], webhook_url=request.webhook_url)
     # A records crawl's rules have one page kind, its schema's (the request's validator).
     page_kind = request.page_kind_rules[0].page_kind if request.page_kind_rules else None
-    schema = await records_schema(engine, request.formats, request.schema_, page_kind, data, llm)
+    schema = await records_schema(engine, request.formats, request.schema_, page_kind, data, llm, request.render)
     frontier = request.frontier()
     request, egress = await pin_location(engine, egresses, request, request.fetch, request.start)
     async with placement.transaction(engine) as conn:

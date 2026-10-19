@@ -59,7 +59,7 @@ from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig, StoredRecord
 from crawlerai.resolve.types import ExtractionResult, Probability
-from crawlerai.schemas.types import Name, SchemaDef
+from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetch_options import CacheMode, check_proxy_pool
 from crawlerai.services.fetching import (
     Fetching,
@@ -78,9 +78,8 @@ from crawlerai.services.scrape_steps import (
     CAPTURE_FORMATS,
     DEFAULT_PROJECT,
     EXTRACTION_ERROR,
-    MAX_RENDER_FIELDS,
     MIN_CONFIDENCE_DESCRIPTION,
-    RENDER_FIELDS_DESCRIPTION,
+    RENDER_DESCRIPTION,
     FetchFailure,
     FetchOptions,
     FetchSummary,
@@ -90,6 +89,7 @@ from crawlerai.services.scrape_steps import (
     Input,
     PageFormat,
     PageOutcome,
+    RenderOptions,
     SchemaPrompt,
     SchemaRequest,
     SchemaUnusable,
@@ -97,6 +97,7 @@ from crawlerai.services.scrape_steps import (
     blocked_reason,
     check_formats,
     check_records,
+    check_render,
     check_usable,
     extract_further,
     fetch_failure,
@@ -152,9 +153,7 @@ class ScrapeRequest(Input):
     fit: FitOptions | None = None  # `markdown_fit`'s query and block limit
     chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
     min_confidence: Probability | None = Field(default=None, description=MIN_CONFIDENCE_DESCRIPTION)
-    render_fields: list[Name] = Field(
-        default_factory=list, max_length=MAX_RENDER_FIELDS, description=RENDER_FIELDS_DESCRIPTION
-    )
+    render: RenderOptions = Field(default=RenderOptions(), description=RENDER_DESCRIPTION)
 
     @field_validator("url")
     @classmethod
@@ -327,7 +326,9 @@ async def _named_schema(
         return None
     if data is None:
         raise RecordsUnavailable("this process has not loaded the engine's data files")
-    return await named_schema(engine, request.schema_, request.page_kind, llm)
+    named = await named_schema(engine, request.schema_, request.page_kind, llm)
+    check_render(request.render, named)
+    return named
 
 
 async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef | None, egress: Egress) -> ClaimedTask:

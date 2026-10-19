@@ -4,17 +4,15 @@ A document is the text of a `<script type="application/json">`, or, in any other
 after the `=` of each `window.<ident> =` or `var|let|const <ident> =` assignment (ECMAScript assignment and variable
 declaration syntax), in script order; the search for the next one starts after the value just read, so an assignment
 written inside a string of that value is not one. Script code that is not such an assignment is not state. No variable
-name or key is looked up. The JSON state collector (`collect.js_state`) admits values from these documents; resolution
-weighs them as a sign the page's data came with its HTML (`holds_state`).
+name or key is looked up. The JSON state collector (`collect.js_state`) admits values from these documents.
 """
 
 import re
 from collections.abc import Iterator
-from typing import Final
 
 from pydantic import JsonValue
 
-from crawlerai.content.page import ParsedPage, ScriptBlock
+from crawlerai.content.page import ScriptBlock
 from crawlerai.core.json_text import parse, parse_prefix
 
 # RFC 8259 §1.2 / IANA media types: `application/json` holds JSON text.
@@ -25,9 +23,6 @@ _JSON_LD = "application/ld+json"
 _IDENT = r"(?:[^\W\d]|\$)[\w$]*"
 # ECMAScript: an assignment to a property of `window` (the global object in a browser, HTML Standard), or a variable
 # declaration with an initializer. `=` not followed by `=` or `>` is assignment, not comparison or an arrow.
-# The fewest scalar values (RFC 8259 strings, numbers, literals) a state document holds to be the page's data, not a
-# script's settings: an unmeasured starting point, to be confirmed on dev.
-STATE_MIN_VALUES: Final = 50
 _ASSIGNMENT = re.compile(rf"(?:\bwindow\s*\.\s*|\b(?:var|let|const)\s+){_IDENT}\s*=(?![=>])")
 
 
@@ -51,23 +46,3 @@ def script_state(script: ScriptBlock, diagnostics: list[str]) -> Iterator[JsonVa
         # State is an object or an array; a scalar initializer (`var n = 1`) is a script variable.
         if isinstance(data, (dict, list)):
             yield data
-
-
-def holds_state(page: ParsedPage) -> bool:
-    """Whether the page carries a state document of at least `STATE_MIN_VALUES` scalar values: its data came with the
-    HTML, for its script to render."""
-    return any(_values(document) >= STATE_MIN_VALUES for s in page.scripts for document in script_state(s, []))
-
-
-def _values(document: JsonValue) -> int:
-    """The scalar values of a JSON document, counted up to `STATE_MIN_VALUES` (walked with a stack, not recursion)."""
-    count, stack = 0, [document]
-    while stack and count < STATE_MIN_VALUES:
-        value = stack.pop()
-        if isinstance(value, dict):
-            stack.extend(value.values())
-        elif isinstance(value, list):
-            stack.extend(value)
-        else:
-            count += 1
-    return count

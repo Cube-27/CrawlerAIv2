@@ -474,15 +474,13 @@
             ],
             "title": "Page Kind"
           },
-          "render_fields": {
-            "description": "Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.",
-            "items": {
-              "pattern": "^[a-z][a-z0-9_]{0,63}$",
-              "type": "string"
+          "render": {
+            "$ref": "#/components/schemas/RenderOptions",
+            "default": {
+              "fields": [],
+              "mode": "off"
             },
-            "maxItems": 50,
-            "title": "Render Fields",
-            "type": "array"
+            "description": "How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
           },
           "schema": {
             "anyOf": [
@@ -1408,15 +1406,13 @@
             ],
             "title": "Query"
           },
-          "render_fields": {
-            "description": "Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.",
-            "items": {
-              "pattern": "^[a-z][a-z0-9_]{0,63}$",
-              "type": "string"
+          "render": {
+            "$ref": "#/components/schemas/RenderOptions",
+            "default": {
+              "fields": [],
+              "mode": "off"
             },
-            "maxItems": 50,
-            "title": "Render Fields",
-            "type": "array"
+            "description": "How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
           },
           "schema": {
             "anyOf": [
@@ -3145,10 +3141,28 @@
           "fields": {
             "$ref": "#/components/schemas/FieldCounts"
           },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "missing_unrendered": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Missing Unrendered",
+            "type": "object"
           },
           "pages": {
             "$ref": "#/components/schemas/OutcomeCounts"
@@ -3165,7 +3179,9 @@
           "id",
           "pages",
           "fields",
-          "reasons"
+          "reasons",
+          "missing_unrendered",
+          "hint"
         ],
         "title": "JobOutcomes",
         "type": "object"
@@ -6040,6 +6056,33 @@
         "title": "ReleaseReport",
         "type": "object"
       },
+      "RenderOptions": {
+        "additionalProperties": false,
+        "description": "The `render` member (rest-api spec, \"Render mode\"): its mode, and the schema fields `locate` looks for (else the\nfields the HTTP extraction left missing). Pinned with the request (INV-28).",
+        "properties": {
+          "fields": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Fields",
+            "type": "array"
+          },
+          "mode": {
+            "default": "off",
+            "enum": [
+              "off",
+              "locate",
+              "always"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "RenderOptions",
+        "type": "object"
+      },
       "ReplayRequest": {
         "additionalProperties": false,
         "properties": {
@@ -6752,15 +6795,13 @@
             ],
             "title": "Page Kind"
           },
-          "render_fields": {
-            "description": "Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.",
-            "items": {
-              "pattern": "^[a-z][a-z0-9_]{0,63}$",
-              "type": "string"
+          "render": {
+            "$ref": "#/components/schemas/RenderOptions",
+            "default": {
+              "fields": [],
+              "mode": "off"
             },
-            "maxItems": 50,
-            "title": "Render Fields",
-            "type": "array"
+            "description": "How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
           },
           "schema": {
             "anyOf": [

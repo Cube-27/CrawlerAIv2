@@ -54,7 +54,7 @@ MAX_NAME: Final = 200
 # Due schedules one scheduler run submits; a full batch runs again at once (`scheduler.loop`). One at a time: a run's
 # submission fetches (the SSRF guard, an extract's maps) inside the transaction that holds its row.
 SCHEDULE_BATCH: Final = 1
-_BATCH_MEMBERS: Final = {"formats", "schema_", "page_kind", "fetch", "locale", "budget", "render_fields"}
+_BATCH_MEMBERS: Final = {"formats", "schema_", "page_kind", "fetch", "locale", "budget", "render"}
 
 ScheduledRequest = BatchScrapeRequest | CrawlRequest | ExtractRequest
 
@@ -459,7 +459,7 @@ async def _checked(
             await check_targets(submitting.fetching.connector, [("url", crawl.url)], webhook_url=crawl.webhook_url)
             page_kind = crawl.page_kind_rules[0].page_kind if crawl.page_kind_rules else None
             schema = await records_schema(
-                engine, crawl.formats, crawl.schema_, page_kind, submitting.data, submitting.llm
+                engine, crawl.formats, crawl.schema_, page_kind, submitting.data, submitting.llm, crawl.render
             )
             return "crawl", _by_id(crawl, schema)
         case NewExtractSchedule(request=extract):
@@ -479,7 +479,7 @@ async def _batch_checked(engine: AsyncEngine, submitting: Submitting, batch: Bat
     targets = [(f"urls[{index}]", url) for index, url in enumerate(batch.urls)]
     await check_targets(submitting.fetching.connector, targets, webhook_url=batch.webhook_url)
     schema = await records_schema(
-        engine, batch.formats, batch.schema_, batch.page_kind, submitting.data, submitting.llm
+        engine, batch.formats, batch.schema_, batch.page_kind, submitting.data, submitting.llm, batch.render
     )
     return _by_id(batch, schema)
 
@@ -492,7 +492,7 @@ def _by_id(request: ScheduledRequest, schema: SchemaDef | None) -> ScheduledRequ
 
 
 def _as_batch(scrape: ScrapeRequest) -> BatchScrapeRequest:
-    """The batch of a scrape's one URL, with its formats, schema, page kind, fetch, locale, budget and render fields."""
+    """The batch of a scrape's one URL, with its formats, schema, page kind, fetch, locale, budget and `render`."""
     if scrape.browser_actions is not None:
         raise Unschedulable("browser actions run in a scrape answered while the caller waits, not on a schedule")
     members = scrape.model_dump(by_alias=True, include=_BATCH_MEMBERS, exclude_none=True)

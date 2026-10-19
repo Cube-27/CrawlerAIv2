@@ -38,10 +38,14 @@ export type WebhookEvent = NonNullable<Schemas["BatchScrapeRequest"]["webhook_ev
 /** The requests as the forms build them. The generated types mark every member with a default as required
  * (openapi-typescript), so a request that leaves a default to the server is sent as that type; the server validates
  * it. */
-export type BatchRequest = Omit<Schemas["BatchScrapeRequest"], "fetch" | "schema" | "chunking"> & {
+export type BatchRequest = Omit<
+  Schemas["BatchScrapeRequest"],
+  "fetch" | "schema" | "chunking" | "render"
+> & {
   fetch: FetchMember;
   schema: JobSchemaRef | null;
   chunking?: Partial<Schemas["ChunkOptions"]>;
+  render?: Partial<Schemas["RenderOptions"]>;
 };
 export type CrawlRequest = Omit<
   Schemas["CrawlRequest"],
@@ -53,10 +57,12 @@ export type CrawlRequest = Omit<
   | "strategy"
   | "allow_subdomains"
   | "allow_external"
+  | "render"
 > & {
   fetch: FetchMember;
   schema: JobSchemaRef | null;
   chunking?: Partial<Schemas["ChunkOptions"]>;
+  render?: Partial<Schemas["RenderOptions"]>;
   limit?: number;
   max_depth?: number;
   strategy?: CrawlStrategy;

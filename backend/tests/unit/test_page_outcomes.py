@@ -1,22 +1,27 @@
-"""One outcome model for a page (resolution spec, "Fields a render would show" and "Out of stock without a price";
-acquisition spec, "Error outcomes and reasons"): a fetch that got no answer in time is `timeout`, a price missing from
-a page that states its item is not for sale is `out_of_stock`, and `interaction_required` is left to a field a render
-could supply on a page none ran for. Pages are synthetic (`example.test`, C3, C9).
+"""One outcome model for a page (resolution spec, "Render-bound fields" and "Out of stock without a price"; acquisition
+spec, "Error outcomes and reasons"): a fetch that got no answer in time is `timeout`, a price missing from a page that
+states its item is not for sale is `out_of_stock`, and `interaction_required` is left to a field whose source in the
+site's config is the browser, on a page no render ran for. Pages are synthetic (`example.test`, C3, C9).
 """
 
 import asyncio
 import json
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.collect.config import Executed
+from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.content.state import STATE_MIN_VALUES
+from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
+from crawlerai.db.models import FieldStatus, SchemaId
+from crawlerai.normalize.base import Context
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -91,23 +96,36 @@ def test_a_fetch_failure_is_a_timeout_only_when_no_answer_came_in_time(
     assert fetch_failure(_fetched("http", block_class=block_class, attempts=(attempt,))) == failure
 
 
-def _product(availability: str | None, *, price: str | None = None, state: bool = False) -> str:
+def _product(availability: str | None, *, price: str | None = None) -> str:
     offer: dict[str, object] = {"@type": "Offer"}
     if availability is not None:
         offer["availability"] = f"https://schema.org/{availability}"
     if price is not None:
         offer |= {"price": price, "priceCurrency": "EUR"}
     node = {"@context": "https://schema.org", "@type": "Product", "name": "Widget", "offers": offer}
-    blob = {"page": {"items": [{"id": n, "label": f"v{n}"} for n in range(STATE_MIN_VALUES)]}}
-    script = f"<script>window.__STATE__ = {json.dumps(blob)};</script>" if state else ""
     return (
-        f'<html lang="en"><head><script type="application/ld+json">{json.dumps(node)}</script>{script}</head>'
+        f'<html lang="en"><head><script type="application/ld+json">{json.dumps(node)}</script></head>'
         "<body><h1>Widget</h1></body></html>"
     )
 
 
-def _statuses(result: FetchResult) -> dict[str, tuple[str, str | None]]:
-    extracted = asyncio.run(extract_page(result.bundle, SCHEMA, None, None, data=DATA))
+@dataclass(frozen=True)
+class BrowserConfig:
+    """A site's config that reads `browser_fields` from rendered pages and proposes nothing on this one."""
+
+    browser_fields: frozenset[str]
+    learned_calls: LearnedCalls | None = None
+
+    @property
+    def field_status(self) -> Mapping[str, FieldStatus]:
+        return dict.fromkeys(self.browser_fields, "corroborated")
+
+    def execute(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> Executed:
+        return Executed(rows=(), candidates=())
+
+
+def _statuses(result: FetchResult, config: BrowserConfig | None = None) -> dict[str, tuple[str, str | None]]:
+    extracted = asyncio.run(extract_page(result.bundle, SCHEMA, config, None, data=DATA))
     assert extracted.entity is not None
     return {name: (field.status, field.reason) for name, field in extracted.entity.items()}
 
@@ -130,31 +148,41 @@ def test_a_price_missing_from_a_page_whose_item_is_not_for_sale_says_so(
     assert statuses["size"] == ("missing", "no_candidates")
 
 
+SIZE_IN_BROWSER = BrowserConfig(frozenset({"size"}))
+
+
 @pytest.mark.parametrize(
-    ("method", "attempts", "size"),
+    ("method", "attempts", "config", "size"),
     [
-        pytest.param("http", None, ("interaction_required", "script_rendered"), id="not-rendered"),
-        pytest.param("browser", None, ("missing", "no_candidates"), id="rendered"),
+        pytest.param("http", None, SIZE_IN_BROWSER, ("interaction_required", "render_bound"), id="not-rendered"),
+        pytest.param("http", None, None, ("missing", "no_candidates"), id="no-config"),
+        pytest.param("http", None, BrowserConfig(frozenset()), ("missing", "no_candidates"), id="http-sources"),
+        pytest.param("browser", None, SIZE_IN_BROWSER, ("missing", "no_candidates"), id="rendered"),
         pytest.param(
             "http",
             (
                 AttemptRecord(method="browser", status=200, block_class="shell", duration_ms=1),
                 AttemptRecord(method="http", status=200, block_class="ok", duration_ms=1),
             ),
+            SIZE_IN_BROWSER,
             ("missing", "no_candidates"),
             id="rendered-and-the-http-page-kept",
         ),
     ],
 )
-def test_interaction_is_required_only_where_no_render_ran(
-    method: CaptureMethod, attempts: tuple[AttemptRecord, ...] | None, size: tuple[str, str]
+def test_interaction_is_required_only_for_a_browser_field_where_no_render_ran(
+    method: CaptureMethod,
+    attempts: tuple[AttemptRecord, ...] | None,
+    config: BrowserConfig | None,
+    size: tuple[str, str],
 ) -> None:
-    statuses = _statuses(_fetched(method, _product("InStock", price="19.90", state=True), attempts=attempts))
+    statuses = _statuses(_fetched(method, _product("InStock", price="19.90"), attempts=attempts), config)
     assert statuses["size"] == size
     assert statuses["price"] == ("published", None)
 
 
 def test_a_field_the_outcome_explains_is_not_left_to_a_render() -> None:
-    statuses = _statuses(_fetched("http", _product("OutOfStock", state=True)))
+    config = BrowserConfig(frozenset({"price", "size"}))
+    statuses = _statuses(_fetched("http", _product("OutOfStock")), config)
     assert statuses["price"] == ("missing", "out_of_stock")
-    assert statuses["size"] == ("interaction_required", "script_rendered")
+    assert statuses["size"] == ("interaction_required", "render_bound")

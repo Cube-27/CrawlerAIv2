@@ -1,9 +1,9 @@
 """Why a detail page's field is unpublished, from evidence the fetch and the resolution already hold (resolution spec,
-"Fields a render would show" and "Out of stock without a price"): no per-site rule, only schema.org semantics and the
-attempts the capture records.
+"Render-bound fields" and "Out of stock without a price"): no per-site rule, only schema.org semantics, the field
+sources of the site's config and the attempts the capture records.
 """
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Final
 
 from crawlerai.resolve.types import FieldOutcome, FieldSet
@@ -13,8 +13,8 @@ from crawlerai.storage.capture_bundle import CaptureManifest
 
 # The reason of a field missing for want of any candidate (`resolve.preference`).
 NO_CANDIDATES: Final = "no_candidates"
-# The reason of a `missing` field a render could show (`interaction_required`).
-SCRIPT_RENDERED: Final = "script_rendered"
+# The reason of an `interaction_required` field whose source in the site's config is the browser, on an unrendered page.
+RENDER_BOUND: Final = "render_bound"
 # The reason of a `missing` price on a page that states its item is not for sale.
 OUT_OF_STOCK: Final = "out_of_stock"
 # schema.org ItemAvailability: the members that state no unit can be bought.
@@ -66,16 +66,16 @@ def _is_price(schema: SchemaDef, name: str, outcome: FieldOutcome) -> bool:
     )
 
 
-def render_could_show(fields: FieldSet, *, rendered: bool, holds_state: bool) -> FieldSet:
-    """The fields with each one a render could plausibly supply `interaction_required`: still `missing` for want of
-    a candidate (`NO_CANDIDATES`: not rejected, not absent by config, not explained by the page's outcome), on a page
-    whose script renders its data (`holds_state`) that no render has been run for. A rendered page leaves them
-    `missing`."""
-    if rendered or not holds_state:
+def render_bound(fields: FieldSet, config: Collection[str], rendered: bool) -> FieldSet:
+    """The fields with each `missing` one whose source in the site's config is the browser (`config`: those fields) and
+    that no render was run for (`rendered`: `was_rendered`) `interaction_required` with reason `RENDER_BOUND`: the
+    fetch did not render (budget, `method_hint http`), so the page could not carry it. A price the page states it
+    cannot have (`OUT_OF_STOCK`) stays `missing`, as does every field on a rendered page or without a browser source."""
+    if rendered or not config:
         return fields
     return {
-        name: outcome.model_copy(update={"status": "interaction_required", "reason": SCRIPT_RENDERED})
-        if outcome.status == "missing" and outcome.reason == NO_CANDIDATES
+        name: outcome.model_copy(update={"status": "interaction_required", "reason": RENDER_BOUND})
+        if name in config and outcome.status == "missing" and outcome.reason != OUT_OF_STOCK
         else outcome
         for name, outcome in fields.items()
     }

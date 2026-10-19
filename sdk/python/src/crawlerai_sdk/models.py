@@ -100,10 +100,6 @@ class PageKind(Enum):
     listing = "listing"
 
 
-class RenderField(RootModel[str]):
-    root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,63}$")]
-
-
 class WebhookEvent(Enum):
     page = "page"
     record = "record"
@@ -1004,6 +1000,22 @@ class ReleaseReport(BaseModel):
     listing: ReleaseListing | None = None
 
 
+class Mode1(Enum):
+    off = "off"
+    locate = "locate"
+    always = "always"
+
+
+class RenderOptions(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    fields: Annotated[list[FieldModel] | None, Field(max_length=50, title="Fields")] = (
+        None
+    )
+    mode: Annotated[Mode1 | None, Field(title="Mode")] = "off"
+
+
 class ReplayRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1151,6 +1163,11 @@ class Outcome2(Enum):
     redirected_to_listing = "redirected_to_listing"
     timeout = "timeout"
     failed = "failed"
+
+
+class Mode2(Enum):
+    adhoc = "adhoc"
+    config = "config"
 
 
 class By(RootModel[int]):
@@ -1499,7 +1516,9 @@ class JobCostPage(BaseModel):
 
 class JobOutcomes(BaseModel):
     fields: FieldCounts
+    hint: Annotated[str | None, Field(title="Hint")] = None
     id: Annotated[UUID, Field(title="Id")]
+    missing_unrendered: Annotated[dict[str, int], Field(title="Missing Unrendered")]
     pages: OutcomeCounts
     reasons: Annotated[dict[str, int], Field(title="Reasons")]
 
@@ -1689,14 +1708,12 @@ class ScrapeRequest(BaseModel):
         ),
     ] = None
     page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
-    render_fields: Annotated[
-        list[RenderField] | None,
+    render: Annotated[
+        RenderOptions | None,
         Field(
-            description="Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.",
-            max_length=50,
-            title="Render Fields",
+            description="How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
         ),
-    ] = None
+    ] = {"fields": [], "mode": "off"}
     schema_: Annotated[
         SchemaById | SchemaInline | SchemaPrompt | SchemaFields | None,
         Field(alias="schema", title="Schema"),
@@ -1808,14 +1825,12 @@ class BatchScrapeRequest(BaseModel):
         ),
     ] = None
     page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
-    render_fields: Annotated[
-        list[RenderField] | None,
+    render: Annotated[
+        RenderOptions | None,
         Field(
-            description="Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.",
-            max_length=50,
-            title="Render Fields",
+            description="How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
         ),
-    ] = None
+    ] = {"fields": [], "mode": "off"}
     schema_: Annotated[
         SchemaById | SchemaInline | SchemaFields | None,
         Field(alias="schema", title="Schema"),
@@ -1879,14 +1894,12 @@ class CrawlRequest(BaseModel):
         list[PageKindRule] | None, Field(title="Page Kind Rules")
     ] = None
     query: Annotated[Query | None, Field(title="Query")] = None
-    render_fields: Annotated[
-        list[RenderField] | None,
+    render: Annotated[
+        RenderOptions | None,
         Field(
-            description="Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.",
-            max_length=50,
-            title="Render Fields",
+            description="How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page."
         ),
-    ] = None
+    ] = {"fields": [], "mode": "off"}
     schema_: Annotated[
         SchemaById | SchemaInline | SchemaFields | None,
         Field(alias="schema", title="Schema"),
@@ -2152,7 +2165,7 @@ class ScrapedRecord(BaseModel):
     confidence: Annotated[Confidence | None, Field(title="Confidence")] = None
     fields: Annotated[dict[str, RecordField], Field(title="Fields")]
     id: Annotated[UUID, Field(title="Id")]
-    mode: Annotated[Mode, Field(title="Mode")]
+    mode: Annotated[Mode2, Field(title="Mode")]
 
 
 class SearchRequest(BaseModel):
@@ -2173,7 +2186,7 @@ class StoredRecord(BaseModel):
     egress_country: Annotated[str | None, Field(title="Egress Country")] = None
     fields: Annotated[dict[str, RecordField], Field(title="Fields")]
     id: Annotated[UUID, Field(title="Id")]
-    mode: Annotated[Mode, Field(title="Mode")]
+    mode: Annotated[Mode2, Field(title="Mode")]
     schema_id: Annotated[UUID, Field(title="Schema Id")]
     version: Annotated[int, Field(title="Version")]
 

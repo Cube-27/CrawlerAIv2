@@ -1137,10 +1137,13 @@ export interface components {
             /** Page Kind */
             page_kind?: ("detail" | "listing") | null;
             /**
-             * Render Fields
-             * @description Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.
+             * @description How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page.
+             * @default {
+             *       "fields": [],
+             *       "mode": "off"
+             *     }
              */
-            render_fields?: string[];
+            render: components["schemas"]["RenderOptions"];
             /** Schema */
             schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
             /** Urls */
@@ -1520,10 +1523,13 @@ export interface components {
             /** Query */
             query?: string | null;
             /**
-             * Render Fields
-             * @description Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.
+             * @description How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page.
+             * @default {
+             *       "fields": [],
+             *       "mode": "off"
+             *     }
              */
-            render_fields?: string[];
+            render: components["schemas"]["RenderOptions"];
             /** Schema */
             schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
             /**
@@ -2147,11 +2153,17 @@ export interface components {
          */
         JobOutcomes: {
             fields: components["schemas"]["FieldCounts"];
+            /** Hint */
+            hint: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Missing Unrendered */
+            missing_unrendered: {
+                [key: string]: number;
+            };
             pages: components["schemas"]["OutcomeCounts"];
             /** Reasons */
             reasons: {
@@ -3241,6 +3253,21 @@ export interface components {
             held_out: string[];
             listing: components["schemas"]["ReleaseListing"] | null;
         };
+        /**
+         * RenderOptions
+         * @description The `render` member (rest-api spec, "Render mode"): its mode, and the schema fields `locate` looks for (else the
+         *     fields the HTTP extraction left missing). Pinned with the request (INV-28).
+         */
+        RenderOptions: {
+            /** Fields */
+            fields?: string[];
+            /**
+             * Mode
+             * @default off
+             * @enum {string}
+             */
+            mode: "off" | "locate" | "always";
+        };
         /** ReplayRequest */
         ReplayRequest: {
             /**
@@ -3525,10 +3552,13 @@ export interface components {
             /** Page Kind */
             page_kind?: ("detail" | "listing") | null;
             /**
-             * Render Fields
-             * @description Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.
+             * @description How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are shown, then fetch each page as they need. `always`: render every page.
+             * @default {
+             *       "fields": [],
+             *       "mode": "off"
+             *     }
              */
-            render_fields?: string[];
+            render: components["schemas"]["RenderOptions"];
             /** Schema */
             schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"] | null;
             /**

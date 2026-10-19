@@ -69,6 +69,10 @@ class RecipeExecutor:
         return cls(recipe, recipe_collector(recipe, recipe_id), status)
 
     @property
+    def browser_fields(self) -> frozenset[str]:
+        return frozenset()  # a recipe's endpoint answers over HTTP
+
+    @property
     def learned_calls(self) -> LearnedCalls | None:
         return None  # it reads the recipe's own `api` captures, which hold no calls
 

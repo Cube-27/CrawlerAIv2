@@ -203,14 +203,23 @@ MIN_CONFIDENCE_DESCRIPTION: Final = (
     "Leave unpublished (abstained) a records field whose calibrated confidence is below this. "
     "Unset: every value publishes with its confidence."
 )
-# The description of the `render_fields` member of the requests that extract `records` (acquisition spec, "Browser on
-# evidence"): the browser is the exception, so a field only a render shows is the caller's to name.
-RENDER_FIELDS_DESCRIPTION: Final = (
-    "Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. "
-    "Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field "
-    "missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`."
+# The description of the `render` member of the requests that extract `records` (rest-api spec, "Render mode"): HTTP by
+# default; the caller asks the system to find where fields live (`locate`) or to render every page (`always`).
+RENDER_DESCRIPTION: Final = (
+    "How pages are rendered for fields. `off` (default): HTTP, the browser only when HTTP is refused; a field the HTTP "
+    "page does not carry is `missing`. `locate`: find where the fields the HTTP pages leave missing (or `fields`) are "
+    "shown, then fetch each page as they need. `always`: render every page."
 )
 MAX_RENDER_FIELDS: Final = 50
+RenderMode = Literal["off", "locate", "always"]
+
+
+class RenderOptions(Input):
+    """The `render` member (rest-api spec, "Render mode"): its mode, and the schema fields `locate` looks for (else the
+    fields the HTTP extraction left missing). Pinned with the request (INV-28)."""
+
+    mode: RenderMode = "off"
+    fields: list[Name] = Field(default_factory=list, max_length=MAX_RENDER_FIELDS)
 
 
 def absolute_http_url(url: str) -> str:
@@ -329,6 +338,16 @@ async def _stated_schema(
             async with engine.begin() as conn:
                 return await schemas.inline(conn, inline)
     return None
+
+
+def check_render(render: RenderOptions, schema: SchemaDef | None) -> None:
+    """`SchemaUnusable` when `render.fields` names a field the request's schema does not have (rest-api spec, "Render
+    mode"): no locate run fills it. Without a resolved schema (a prompt, drafted on the page), none is checked."""
+    if schema is None:
+        return
+    unknown = [name for name in render.fields if name not in schema.fields]
+    if unknown:
+        raise SchemaUnusable(f"render.fields names fields schema {schema.name} lacks: {', '.join(unknown)}")
 
 
 def check_usable(schema: SchemaDef, page_kind: PageKind | None) -> None:
