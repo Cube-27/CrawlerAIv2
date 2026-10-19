@@ -271,7 +271,13 @@ async def _page(
         if page[0] is not result:
             return page
     _, attempts, duration_ms = page
-    if not retried or not retry.in_budget() or not await _admitted(retry.admit_next, after=_paused_by(result)):
+    # The budget is checked again once admitted: the wait for the site's turn may have spent it.
+    if (
+        not retried
+        or not retry.in_budget()
+        or not await _admitted(retry.admit_next, after=_paused_by(result))
+        or not retry.in_budget()
+    ):
         return await _as_last_page(result), attempts, duration_ms
     rendered = await _browser_retry(url, policy, rungs, result)
     kept = rendered if await _better(rendered, result, needs_render) else await _as_last_page(result)

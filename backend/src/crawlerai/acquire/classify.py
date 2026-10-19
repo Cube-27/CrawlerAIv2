@@ -77,12 +77,14 @@ _ENTRIES = "itemListElement"  # schema.org ItemList: the list's entries
 # property that states what it is sold for (an Offer or AggregateOffer).
 _PRODUCTS = frozenset({"Product", "ProductGroup", "ProductModel", "IndividualProduct", "SomeProducts"})
 _OFFERS = "offers"
+_SCHEMA_ORG = re.compile(r"^(?:https?://schema\.org/|schema:)")
 # The Open Graph protocol's product object price (`product:price:amount`), in RDFa's `property` or HTML's `name`.
 OGP_PRICE_AMOUNT = "product:price:amount"
 # HTML Standard §5.2 microdata: an item typed as a schema.org Product, under any URL scheme or path form of it.
 _MICRODATA_PRODUCT = "[itemscope][itemtype$='schema.org/Product'], [itemscope][itemtype$='schema.org/ProductGroup']"
 # BCP 47 (RFC 5646 §2.1): a language subtag of 2 or 3 letters, with a region subtag of 2 letters (ISO 3166-1) or none,
 # as a path segment names a site's edition (`en`, `en-us`, `de_DE`).
+_BREAKS = r"/\-_."
 _LOCALE_SEGMENT = re.compile(r"[a-z]{2,3}(?:[-_]([a-z]{2}))?", re.ASCII | re.IGNORECASE)
 
 
@@ -122,13 +124,19 @@ def classify(
     if status == _AUTH_WALL:
         return "auth_wall"
     if status in _BLOCKED:
-        usable = status == _FORBIDDEN and is_html(headers) and usable_content(text, page_kind)
+        usable = status == _FORBIDDEN and is_html(headers) and usable_content(text, fetched_as(page_kind, redirect))
         return "ok" if usable else "blocked"
     if status >= 400:
         return "error"
     if not 200 <= status < 300 or not is_html(headers):
         return "ok"
     return _document_class(text, headers, page_kind, redirect)
+
+
+def fetched_as(page_kind: PageKind | None, redirect: Redirect | None) -> PageKind | None:
+    """The kind the page is fetched as: `page_kind`, else the redirect's (the browser rung passes no `page_kind`, so
+    the listing shell rule spares its page, but its listing's structured data is still usable content)."""
+    return page_kind if page_kind is not None or redirect is None else redirect.kind
 
 
 def _document_class(
@@ -194,7 +202,7 @@ def _moved(redirect: Redirect, *, product: bool, lists: Callable[[], bool]) -> B
         return "soft_404"
     # RFC 3986 §3.3: the last segment names the resource within its hierarchy; a path that keeps it is the same page
     # under another name (a slug added), not a listing in its place.
-    if redirect.kind == "detail" and _last_segment(a) not in b.path and not product and lists():
+    if redirect.kind == "detail" and not _keeps_name(a, b) and not product and lists():
         return "redirected_to_listing"
     return None
 
@@ -214,8 +222,12 @@ def _returns_to(asked: SplitResult, answered: SplitResult) -> bool:
     return False
 
 
-def _last_segment(url: SplitResult) -> str:
-    return next((segment for segment in reversed(url.path.split("/")) if segment), "/")
+def _keeps_name(asked: SplitResult, answered: SplitResult) -> bool:
+    """Whether the answered path holds the asked path's last segment as a whole word of one of its segments (between
+    `/`, `-`, `_` or `.`): an id kept with a slug added, not a digit that only appears in another number."""
+    name = next((segment for segment in reversed(asked.path.split("/")) if segment), None)
+    word = rf"(?<![^{_BREAKS}]){re.escape(name or '')}(?![^{_BREAKS}])"
+    return name is not None and re.search(word, answered.path) is not None
 
 
 def _region(url: SplitResult) -> str | None:
@@ -327,7 +339,9 @@ def _is_shell(tree: LexborHTMLParser) -> bool:
 
 
 def _structured_rows(tree: LexborHTMLParser, documents: list[object]) -> bool:
-    return len(tree.css(_MICRODATA)) >= MIN_ITEMS or any(True for _ in _typed(documents, frozenset({_ITEM_LIST})))
+    return len(tree.css(_MICRODATA)) >= MIN_ITEMS or any(
+        True for _ in _typed(documents, frozenset({_ITEM_LIST}), _ENTRIES)
+    )
 
 
 def structured_entries(tree: LexborHTMLParser) -> int:
@@ -372,17 +386,21 @@ def _typed(documents: list[object], types: frozenset[str], member: str | None = 
     while stack:
         value = stack.pop()
         if isinstance(value, dict):
-            found = value.get(_TYPE)
-            named = (
-                found in types
-                if isinstance(found, str)
-                else isinstance(found, list) and not types.isdisjoint(t for t in found if isinstance(t, str))
-            )
-            if named and (member is None or value.get(member) not in (None, [], {})):
+            if not types.isdisjoint(_type_names(value.get(_TYPE))) and (
+                member is None or value.get(member) not in (None, [], {})
+            ):
                 yield value
             stack.extend(value.values())
         elif isinstance(value, list):
             stack.extend(value)
+
+
+def _type_names(found: object) -> Iterator[str]:
+    """The names of a JSON-LD `@type` (a string or an array of them), each also as a full schema.org IRI or compact
+    `schema:` name (JSON-LD 1.1 §3.2: a type is an IRI; schema.org's are its terms under its namespace)."""
+    for name in [found] if isinstance(found, str) else found if isinstance(found, list) else []:
+        if isinstance(name, str):
+            yield _SCHEMA_ORG.sub("", name)
 
 
 def lists_items(text: str) -> bool:

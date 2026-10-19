@@ -228,9 +228,7 @@ async def extract_page(
                 return _result("error", mode, candidates=candidates, llm_calls=llm_calls, diagnostics=diagnostics)
         if reply.failure is not None:
             fields = _unanswered(fields, missing, reply.failure)
-    fields = _absent(fields, page.config.absent)
-    if source.bundle.manifest.method == "http" and await asyncio.to_thread(holds_state, page.page):
-        fields = _interaction_required(fields)
+    fields = await _interaction_required(source, page.page, _absent(fields, page.config.absent))
     return ExtractionResult(
         outcome="extracted" if is_complete(schema, fields) else "partial",
         entity=fields,
@@ -668,11 +666,13 @@ def _absent(fields: FieldSet, absent: frozenset[str]) -> FieldSet:
     }
 
 
-def _interaction_required(fields: FieldSet) -> FieldSet:
+async def _interaction_required(source: "_Source", page: ParsedPage, fields: FieldSet) -> FieldSet:
     """The fields of a page read over HTTP whose document carries its data for its script to render
     (`content.render_need.holds_state`): each still `missing` for want of a candidate, not because the config lists
     it as absent, is `interaction_required` (resolution spec): the page may show it once rendered, which a request
     asks for with `render_fields` (acquisition spec, "Browser on evidence")."""
+    if source.bundle.manifest.method != "http" or not await asyncio.to_thread(holds_state, page):
+        return fields
     return {
         name: outcome.model_copy(update={"status": "interaction_required", "reason": SCRIPT_RENDERED})
         if outcome.status == "missing" and outcome.reason != ABSENT

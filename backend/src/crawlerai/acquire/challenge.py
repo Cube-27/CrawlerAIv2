@@ -13,7 +13,7 @@ import logging
 from collections.abc import Iterable
 from typing import Final
 
-from crawlerai.acquire.classify import Redirect, classify, interstitial, is_html, usable_content
+from crawlerai.acquire.classify import Redirect, classify, fetched_as, interstitial, is_html, usable_content
 from crawlerai.acquire.types import BlockClass, FetchResult
 from crawlerai.adapters.challenges import stand_in_vendor, vendor_of
 from crawlerai.core.capture import CaptureMethod
@@ -53,7 +53,7 @@ def block_class_of(
     (`classify.usable_content`) is the page, whatever vendor markup it also holds."""
     block_class = classify(status, headers, text, page_kind, redirect)
     if block_class == "ok" and 200 <= status < 300 and is_html(headers) and stand_in_vendor(text) is not None:
-        return "ok" if usable_content(text, page_kind) else "blocked"
+        return "ok" if usable_content(text, fetched_as(page_kind, redirect)) else "blocked"
     return block_class
 
 

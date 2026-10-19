@@ -27,7 +27,7 @@ import os
 import socket
 import time
 from collections.abc import Awaitable, Callable, Collection
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import partial
 from typing import Final, NamedTuple, Self, TypedDict
@@ -285,12 +285,13 @@ async def scrape(
     `ScrapeTimedOut` past `request.timeout_s`, the LLM client's `LLMFailure` when a prompt could not be drafted, and
     `SchemaUnusable` for a draft of another page kind. Any other exception fails the job with `internal_error` and
     propagates."""
-    deadline = time.monotonic() + request.timeout_s
     await check_target(fetching.connector, request.url)
     check_proxy_pool(request.fetch, fetching.proxy_pools)
     pinned = None if data is None else data.with_min_confidence(request.min_confidence)
-    work = _Work(llm, pinned, margins, await _named_schema(engine, request, data, llm), deadline)
+    work = _Work(llm, pinned, margins, await _named_schema(engine, request, data, llm))
     task = await _start(engine, request, work.schema)
+    # The browser's budget is the timeout's, which starts here (`acquire.rungs.BROWSER_MIN_S`).
+    work = replace(work, deadline=time.monotonic() + request.timeout_s)
     try:
         async with asyncio.timeout(request.timeout_s):
             return await _run(engine, fetching, work, request, task)

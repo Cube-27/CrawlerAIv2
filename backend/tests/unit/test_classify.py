@@ -96,6 +96,7 @@ _PRODUCT = (
     [
         pytest.param(_PRODUCT, "ok", id="product-with-offers"),
         pytest.param('<meta property="product:price:amount" content="9.50">', "ok", id="ogp-price"),
+        pytest.param(_PRODUCT.replace('"Product"', '"https://schema.org/Product"'), "ok", id="product-type-iri"),
         pytest.param("", "blocked", id="no-structured-data"),
     ],
 )
@@ -146,6 +147,14 @@ _LISTING = "<ul>" + "".join(f'<li><a href="/p/{i}">Widget {i}</a><p>{"y" * 40}</
             "ok",
             id="slug-added",
         ),
+        pytest.param(
+            _AT,
+            "https://shop.example.test/c/123",
+            "detail",
+            _page(400, 0, _LISTING),
+            "redirected_to_listing",
+            id="digit",
+        ),
         pytest.param(_AT, "https://shop.example.test/check?next=%2Fitem%2F1", "detail", _FULL, "blocked", id="returns"),
         pytest.param(
             _AT, "https://shop.example.test/check?u=L2l0ZW0vMQ", "detail", _page(400, 0, _LISTING), "blocked", id="b64"
@@ -156,3 +165,9 @@ def test_a_redirect_is_classed_by_where_it_led(
     asked: str, answered: str, kind: PageKind | None, body: str, expected: BlockClass
 ) -> None:
     assert classify(200, _HTML, body, redirect=Redirect(asked, answered, kind)) == expected
+
+
+@pytest.mark.parametrize(("entries", "expected"), [("[]", "shell"), ('[{"@type": "ListItem", "position": 1}]', "ok")])
+def test_an_empty_item_list_lists_nothing(entries: str, expected: BlockClass) -> None:
+    item_list = f'<script type="application/ld+json">{{"@type": "ItemList", "itemListElement": {entries}}}</script>'
+    assert classify(200, _HTML, _page(400, 2, item_list), page_kind="listing") == expected

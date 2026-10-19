@@ -389,19 +389,20 @@ class RenderNeed:
     _parsed: dict[UUID, ParsedPage] = field(default_factory=dict)
 
     async def __call__(self, result: FetchResult, over: FetchResult | None = None) -> bool:
-        if self.render_fields:
-            return over is None
+        # With `render_fields` the HTTP page is rendered, and the render kept, whatever either shows.
+        if self.render_fields and over is None:
+            return True
         bundle = result.bundle
-        page = self._read(bundle)
-        # Parsing and reading the structure are CPU work: a thread keeps the event loop free.
         if self.schema.page_kind == "listing":
+            page = self._read(bundle)
             replaced = None if over is None else self._read(over.bundle)
+            # Parsing and reading the structure are CPU work: a thread keeps the event loop free.
             if replaced is not None and bundle.manifest.fetch_policy.get("block_resources"):
                 self.lost_items = self.lost_items or await asyncio.to_thread(lost_items, page, replaced)
-            return await asyncio.to_thread(listing_needs_render, page, replaced)
-        if not _requires_money(self.schema):
+            return not self.render_fields and await asyncio.to_thread(listing_needs_render, page, replaced)
+        if self.render_fields or not _requires_money(self.schema):
             return False
-        return not await asyncio.to_thread(offer_shown, page)
+        return not await asyncio.to_thread(offer_shown, self._read(bundle))
 
     def _read(self, bundle: CaptureBundle) -> ParsedPage:
         return self._parsed.setdefault(bundle.manifest.capture_id, ParsedPage.of(bundle))

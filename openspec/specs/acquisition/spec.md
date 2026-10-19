@@ -145,8 +145,10 @@ Product with offers, an OGP product price, a microdata Product with offers; on a
 lists) is `ok`. A 2xx page fetched as a detail or listing page that a redirect (`classify.Redirect`) led away from the
 page asked for (another host or path past a BCP 47 locale segment) is `geo_redirect` when the answering URL names
 another region (a BCP 47 region subtag in its first path segment, else a two-letter ccTLD, RFC 1591) and another path,
-`soft_404` when it is a site's or an edition's root, and, for a detail page, `redirected_to_listing` when it lists items
-and states no product; a fetch of no page kind (a crawl's page) is never classed by its redirect. These classes are the
+`soft_404` when it is a site's or an edition's root, and, for a detail page, `redirected_to_listing` when it lists items,
+states no product and its path does not keep the asked path's last segment as a word (a slug added); a fetch of no page
+kind (a crawl's page) is never classed by its redirect. A redirect to a page whose query carries the asked path, as
+given or base64-encoded (RFC 4648), is an interstitial that sends the client back once passed: `blocked`. These classes are the
 transport outcome (the capture's `block_class`); a page in any of them yields zero records and ends its task with the
 same-named outcome, never as a page without a price.
 Generic code and the remembered fetch method MUST NOT use vendor or challenge-page strings, and blocked and shell pages
