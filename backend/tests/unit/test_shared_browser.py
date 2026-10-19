@@ -90,14 +90,13 @@ async def test_a_crashed_browser_is_restarted_once_and_the_page_fetched_again() 
     assert [(s.closed, s.connected) for s in chromium.sessions] == [(True, False), (False, True)]
 
 
-async def test_a_fetch_that_raises_with_the_browser_gone_leaves_no_dead_session() -> None:
+async def test_a_fetch_that_raises_with_the_browser_gone_is_fetched_again_in_a_new_one() -> None:
     chromium = Chromium(kills={URL: 1}, raises=True)
     browser = chromium.browser()
 
-    with pytest.raises(RuntimeError):
-        await browser.fetch(URL, FetchPolicy())
-    await browser.fetch(OTHER, FetchPolicy())
+    result = await browser.fetch(URL, FetchPolicy())
 
-    assert chromium.fetched == [(1, URL), (2, OTHER)]
+    assert chromium.origin(result) == (2, URL)
+    assert chromium.fetched == [(1, URL), (2, URL)]
     assert chromium.sessions[0].closed
     await browser.aclose()

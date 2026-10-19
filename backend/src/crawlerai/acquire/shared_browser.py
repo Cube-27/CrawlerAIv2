@@ -1,9 +1,10 @@
 """A process's browser (acquisition spec, INV-31): one per process, launched when a fetch first needs it and shared by
 the fetches after it, at most `BROWSER_CONTEXTS` of them at once (each renders in a context of its own).
 
-A fetch that leaves the browser disconnected (Chromium crashed, or was killed) restarts it once and fetches again. If
-the restarted browser dies too, that second fetch's result stands, so the crash ends only the fetch that was using the
-browser, and the next fetch that needs one launches a new one: at most one restart per fetch. Fetches running at once
+A fetch that leaves the browser disconnected (Chromium crashed, or was killed), whether it returns or raises, restarts
+it once and fetches again. If the restarted browser dies too, that second fetch's result (or error) stands, so the
+crash ends only the fetch that was using the browser, and the next fetch that needs one launches a new one: at most one
+restart per fetch. Fetches running at once
 share one restart: a fetch restarts the browser only while the dead session it used is still the current one.
 """
 
@@ -47,24 +48,21 @@ class SharedBrowser[S]:
         (`Rungs.exporting`)."""
         async with self._contexts:
             session = await self._session()
-            result = await self._attempt(session, url, policy, export)
-            if self._alive(session):
-                return result
+            try:
+                result = await self._fetch(session, url, policy, export)
+            except Exception:
+                if self._alive(session):
+                    raise
+            else:
+                if self._alive(session):
+                    return result
             await self._close(session)
             session = await self._session()
-            result = await self._attempt(session, url, policy, export)
-            if not self._alive(session):
-                await self._close(session)
-            return result
-
-    async def _attempt(self, session: S, url: str, policy: FetchPolicy, export: CookieExport | None) -> FetchResult:
-        """One fetch in `session`; a fetch that raises with the browser gone ends it, so no later fetch reuses it."""
-        try:
-            return await self._fetch(session, url, policy, export)
-        except Exception:
-            if not self._alive(session):
-                await self._close(session)
-            raise
+            try:
+                return await self._fetch(session, url, policy, export)
+            finally:
+                if not self._alive(session):
+                    await self._close(session)
 
     async def aclose(self) -> None:
         """End the browser, if one is running."""
