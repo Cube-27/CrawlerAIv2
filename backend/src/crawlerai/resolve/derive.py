@@ -11,12 +11,12 @@ from dataclasses import dataclass
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate
-from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.normalize.url import RELATIVE_WITHOUT_BASE
 from crawlerai.resolve.preference import Chosen, Preference, Resolver, Unpublished
 from crawlerai.resolve.types import Derivation
+from crawlerai.schemas.paths import parse_paths
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 
@@ -38,7 +38,7 @@ def is_page_url_field(schema: SchemaDef, spec: FieldSpec, primary: frozenset[str
     if schema.page_kind != "detail" or spec.type is not FieldType.URL or spec.schema_org is None:
         return False
     paths = parse_paths(spec.schema_org)
-    return all(path.root in primary and path.steps == ("url",) and path.joined is None for path in paths)
+    return all(path.root in primary and path.steps == ("url",) and not path.joined for path in paths)
 
 
 def fill(

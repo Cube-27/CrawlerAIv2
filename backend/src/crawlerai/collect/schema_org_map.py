@@ -1,8 +1,9 @@
 """The schema.org map (extraction spec), shared by the structured-data collectors (JSON-LD, microdata): the type
 hierarchy from the pinned schema.org vocabulary file, and a schema field's `schema_org` path read against a node.
 
-A path `T.p[.q][+r]` (schemas spec) applies to every entity of type `T` or a subtype of it (`rdfs:subClassOf`). It
-follows `p`, then `q`, through the nodes the values name; `+r` joins the last node's `r` to the value as one object.
+A path `T.p[.q][+r]` (schemas spec, grammar in `schemas.paths`) applies to every entity of type `T` or a subtype of it
+(`rdfs:subClassOf`). It follows `p`, then `q`, through the nodes the values name, keeping at each step only the nodes
+its filter predicates match; each `+r` joins the last node's `r` to the value as one object.
 A path of alternatives `A|B` (variants spec) reaches what each alternative reaches. A row-mapped field's sub-fields are
 read as fields of their own, named `<field>.<sub-field>` (variants spec).
 """
@@ -13,7 +14,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
-from typing import NamedTuple, Protocol
+from typing import Protocol
 from urllib.parse import urlsplit
 
 from pydantic import JsonValue, ValidationError
@@ -24,6 +25,7 @@ from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
+from crawlerai.schemas.paths import NAME, Filters, MappedPath, Predicate, parse_paths
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # The pinned schema.org release in `backend/data/manifest.json` (schemas spec, D-0018).
@@ -70,11 +72,13 @@ class VocabularyMissing(RuntimeError):
 class Vocabulary:
     """The schema.org types, each with itself and every type it is a subclass of, transitively; each property's
     sub-properties, transitively (`narrower`), among them the properties that identify a thing (`identifier` and
-    its sub-properties: `sku`, `gtin13`); and the names of all properties."""
+    its sub-properties: `sku`, `gtin13`); the names of all properties; and the named instances of its types, an
+    enumeration's members (`SalePrice`)."""
 
     supertypes: Mapping[str, frozenset[str]]
     narrower: Mapping[str, frozenset[str]] = field(default_factory=dict)
     properties: frozenset[str] = frozenset()
+    members: frozenset[str] = frozenset()
 
     @classmethod
     def read(cls, path: Path) -> "Vocabulary":
@@ -91,6 +95,7 @@ class Vocabulary:
             raise ValueError("a schema.org vocabulary file is a JSON-LD document with a @graph")
         parents: dict[str, frozenset[str]] = {}
         broader: dict[str, frozenset[str]] = {}
+        members: set[str] = set()
         for node in graph:
             if not isinstance(node, dict):
                 continue
@@ -98,6 +103,8 @@ class Vocabulary:
                 parents[name] = frozenset(_schema_names(node.get(_SUB_CLASS_OF)))
             elif (name := _term_name(node, _RDF_PROPERTY)) is not None:
                 broader[name] = frozenset(_schema_names(node.get(_SUB_PROPERTY_OF)))
+            elif (name := _member_name(node)) is not None:
+                members.add(name)
         narrower: dict[str, set[str]] = {}
         for name in broader:
             for ancestor in _ancestors(name, broader) - {name}:
@@ -106,6 +113,7 @@ class Vocabulary:
             {name: _ancestors(name, parents) for name in parents},
             {name: frozenset(names) for name, names in narrower.items()},
             frozenset(broader),
+            frozenset(members),
         )
 
     @property
@@ -134,9 +142,10 @@ _ENUMERATION = "Enumeration"
 
 def reference_errors(fields: Mapping[str, FieldSpec], vocabulary: Vocabulary) -> list[tuple[str, str]]:
     """The `schema_org` paths and `schema:` enum references of a schema document's `fields` that the pinned schema.org
-    vocabulary does not define, as (field path, reason) pairs (schemas spec). A path's root must be a type and each
-    step and its `+` join a property; a `schema:` reference must be an enumeration. `type:` references name the
-    shipped type vocabularies, which the normalizer declines on when unknown (`unknown_vocab`)."""
+    vocabulary does not define, as (field path, reason) pairs (schemas spec). A path's root must be a type, each step,
+    predicate and `+` join a property and a predicate's value a member or type; a `schema:` reference must be an
+    enumeration. `type:` references name the shipped type vocabularies, which the normalizer declines on when unknown
+    (`unknown_vocab`)."""
     errors: list[tuple[str, str]] = []
     for name, spec in fields.items():
         _reference_errors(f"fields.{name}", spec, vocabulary, errors)
@@ -157,16 +166,21 @@ def _reference_errors(path: str, spec: FieldSpec, vocabulary: Vocabulary, errors
 
 
 def _path_problems(schema_org: str, vocabulary: Vocabulary) -> list[str]:
-    problems = []
-    for alternative in parse_paths(schema_org):
-        if alternative.root not in vocabulary:
-            problems.append(f"{alternative.root} is not a schema.org type")
-        problems.extend(
-            f"{prop} is not a schema.org property"
-            for prop in (*alternative.steps, *([alternative.joined] if alternative.joined else []))
-            if prop not in vocabulary.properties
-        )
-    return problems
+    return [
+        problem for alternative in parse_paths(schema_org) for problem in _alternative_problems(alternative, vocabulary)
+    ]
+
+
+def _alternative_problems(path: MappedPath, vocabulary: Vocabulary) -> Iterator[str]:
+    if path.root not in vocabulary:
+        yield f"{path.root} is not a schema.org type"
+    predicates = [p for filters in path.filters for p in filters]
+    for prop in dict.fromkeys((*path.steps, *(p.name for p in predicates), *path.joined)):
+        if prop not in vocabulary.properties:
+            yield f"{prop} is not a schema.org property"
+    for value in dict.fromkeys(p.value for p in predicates if p.value is not None):
+        if value not in vocabulary.members and value not in vocabulary:
+            yield f"{value} is not a schema.org enumeration member or type"
 
 
 def pinned_reference_errors(fields: Mapping[str, FieldSpec]) -> list[tuple[str, str]]:
@@ -199,6 +213,18 @@ def _term_name(node: Mapping[str, JsonValue], kind: str) -> str | None:
     return None
 
 
+def _member_name(node: Mapping[str, JsonValue]) -> str | None:
+    """The schema.org term a vocabulary node names as an instance of a schema.org type (`schema:SalePrice`, typed
+    `schema:PriceTypeEnumeration`)."""
+    types = node.get("@type")
+    node_id = node.get("@id")
+    listed = types if isinstance(types, list) else [types]
+    typed = any(isinstance(t, str) and t.startswith(_SCHEMA_PREFIX) for t in listed)
+    if typed and isinstance(node_id, str) and node_id.startswith(_SCHEMA_PREFIX):
+        return node_id.removeprefix(_SCHEMA_PREFIX)
+    return None
+
+
 def _schema_names(references: JsonValue) -> list[str]:
     names = []
     for ref in references if isinstance(references, list) else [references]:
@@ -217,37 +243,6 @@ def _ancestors(name: str, parents: Mapping[str, frozenset[str]]) -> frozenset[st
                 seen.add(parent)
                 pending.append(parent)
     return frozenset(seen)
-
-
-class MappedPath(NamedTuple):
-    root: str  # the type the path starts at
-    steps: tuple[str, ...]  # the properties followed, the last one holding the value
-    joined: str | None  # `+r`: a property of the last node joined to the value
-    rank: int = 0  # how many `>` come before it: read on an entity only when no lower rank reaches a value there
-
-
-def parse_paths(path: str) -> tuple[MappedPath, ...]:
-    """A `schema_org` path's alternatives, in order, each with its rank, already checked by the schema document's
-    pattern (schemas spec)."""
-    return tuple(
-        _parse_alternative(alternative, rank)
-        for rank, ranked in enumerate(path.split(">"))
-        for alternative in ranked.split("|")
-    )
-
-
-def _parse_alternative(path: str, rank: int) -> MappedPath:
-    path, _, joined = path.partition("+")
-    root, *steps = path.split(".")
-    return MappedPath(root, tuple(steps), joined or None, rank)
-
-
-def named_property(path: MappedPath) -> str:
-    """The schema.org property whose value a path reaches: its last step, or the step before a final `.name`, since
-    the text standing in for a thing names it (`_NAME`): `Product.brand.name` names `brand`."""
-    if len(path.steps) > 1 and path.steps[-1:] == _NAME and path.joined is None:
-        return path.steps[-2]
-    return path.steps[-1]
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,29 +276,54 @@ class Selected:
     url: bool = False  # `Value.url` of every value selected
 
 
-# schema.org data model ("Conformance"): where a property expects a Thing, a text value is accepted; the text names
-# that thing. So a path ending in `.name` takes the text that stands in for the thing.
-_NAME = ("name",)
-
-
 def select(node: Node, path: MappedPath, *, as_list: bool) -> list[Selected]:
     """The values `path` (after its root type) reaches from `node`: those on nodes first, then text standing in for a
     named thing, each in document order. Each value is its own selection; for a list field (`as_list`), a node's values
-    of the last property are one selection, located at the first value."""
+    of the last property are one selection, located at the first value. A step's predicates keep the nodes its values
+    are (`matches`); text standing in for a thing states nothing else, so it is kept only by a step without them."""
     holders: list[Node] = [node]
     named: list[Selected] = []
-    for i, step in enumerate(path.steps[:-1]):
-        names_thing = path.steps[i + 1 :] == _NAME and path.joined is None
-        reached: list[Node] = []
-        for holder in holders:
-            for value in holder.values(step):
-                if value.node is not None:
-                    reached.append(value.node)
-                elif names_thing and isinstance(value.raw, str):
-                    named.append(Selected(value.raw, value.locator, value.url))
-        holders = reached
-    selected = [s for holder in holders for s in _last(holder, path, as_list=as_list)]
+    for i in range(len(path.steps) - 1):
+        holders = list(_step(holders, path, i, named))
+    # The last step's value is a scalar: its predicates read the node holding it (`Offer.price{!priceType}`).
+    last = path.where(len(path.steps) - 1)
+    selected = [s for holder in holders if matches(holder, last) for s in _last(holder, path, as_list=as_list)]
     return selected + named
+
+
+def _step(holders: Iterable[Node], path: MappedPath, i: int, named: list[Selected]) -> Iterator[Node]:
+    """The nodes step `i` reaches from `holders` that its predicates keep; text standing in for a thing named by the
+    step before a final `.name` is added to `named`."""
+    names_thing = path.steps[i + 1 :] == NAME and not path.joined and not path.where(i) and not path.where(i + 1)
+    for holder in holders:
+        for value in holder.values(path.steps[i]):
+            if value.node is not None and matches(value.node, path.where(i)):
+                yield value.node
+            elif names_thing and value.node is None and isinstance(value.raw, str):
+                named.append(Selected(value.raw, value.locator, value.url))
+
+
+def matches(node: Node, filters: Filters) -> bool:
+    """Whether the node meets every predicate (schemas spec, "schema.org paths"): `{name}` it states `name`, `{!name}`
+    it does not, `{name=Value}` one of its `name` values is `Value`, as a term or as an IRI in either schema.org
+    namespace, written as text or as a node's `@id` (JSON-LD 1.1 §4.1.1: an IRI value may be a node reference)."""
+    return all(_meets(node.values(p.name), p) for p in filters)
+
+
+def _meets(values: Sequence[Value], predicate: Predicate) -> bool:
+    if predicate.absent:
+        return not values
+    if predicate.value is None:
+        return bool(values)
+    return any(predicate.value in _terms(value) for value in values)
+
+
+def _terms(value: Value) -> tuple[str, ...]:
+    written = value.node.node_id if value.node is not None else value.raw
+    if not isinstance(written, str):
+        return ()
+    term = schema_term(written)
+    return (written,) if term is None else (written, term)
 
 
 def _last(holder: Node, path: MappedPath, *, as_list: bool) -> list[Selected]:
@@ -312,13 +332,19 @@ def _last(holder: Node, path: MappedPath, *, as_list: bool) -> list[Selected]:
         return []
     if as_list:
         return [Selected([v.raw for v in values], values[0].locator, all(v.url for v in values))]
-    if path.joined is None:
+    if not path.joined:
         return [Selected(v.raw, v.locator, v.url) for v in values]
-    companions = [c.raw for c in holder.values(path.joined)]
-    extra: dict[str, JsonValue] = {}
-    if companions:
-        extra[path.joined] = companions[0] if len(companions) == 1 else companions
+    extra = _joined(holder, path.joined)
     return [Selected({path.steps[-1]: v.raw} | extra, v.locator) for v in values]
+
+
+def _joined(holder: Node, joined: Sequence[str]) -> dict[str, JsonValue]:
+    """The values of the joined properties the holder states: one value as itself, several as a list."""
+    extra: dict[str, JsonValue] = {}
+    for prop in joined:
+        if companions := [c.raw for c in holder.values(prop)]:
+            extra[prop] = companions[0] if len(companions) == 1 else companions
+    return extra
 
 
 @dataclass(frozen=True, slots=True)
@@ -430,7 +456,7 @@ def is_item_url(spec: FieldSpec) -> bool:
         spec.scope == "row"
         and spec.type is FieldType.URL
         and spec.schema_org is not None
-        and any(path.steps == _ITEM_URL and path.joined is None for path in parse_paths(spec.schema_org))
+        and any(path.steps == _ITEM_URL and not path.joined for path in parse_paths(spec.schema_org))
     )
 
 
@@ -455,9 +481,9 @@ def _with_item_pages(paths: Sequence[MappedPath]) -> tuple[MappedPath, ...]:
     master plan's row key: block link, else `Offer.url`, else `mainEntityOfPage`)."""
     later = max(path.rank for path in paths) + 1
     widened = [
-        path._replace(steps=steps, rank=later + offset)
+        path._replace(steps=steps, rank=later + offset, filters=())
         for path in paths
-        if path.steps == _ITEM_URL and path.joined is None
+        if path.steps == _ITEM_URL and not path.joined
         for offset, alternatives in enumerate(_ITEM_PAGES)
         for steps in alternatives
     ]

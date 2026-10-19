@@ -6,8 +6,8 @@ sources of the site's config and the attempts the capture records.
 from collections.abc import Collection, Mapping
 from typing import Final
 
-from crawlerai.collect.schema_org_map import named_property, parse_paths
 from crawlerai.resolve.types import FieldOutcome, FieldSet
+from crawlerai.schemas.paths import named_property, parse_paths
 from crawlerai.schemas.types import FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import CaptureManifest
 

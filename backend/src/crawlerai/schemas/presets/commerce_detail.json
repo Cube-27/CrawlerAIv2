@@ -13,7 +13,7 @@
       "type": "money",
       "required": true,
       "description": "Current price of the product, with its currency, when every variant has the same price; prices that differ by variant are in variants",
-      "schema_org": "Offer.price+priceCurrency"
+      "schema_org": "Offer.price{!priceType}{!validForMemberTier}+priceCurrency|Offer.priceSpecification{!priceType}{!validForMemberTier}{!referenceQuantity}{!priceComponentType}.price+priceCurrency|Offer.priceSpecification{priceType=SalePrice}{!validForMemberTier}{!referenceQuantity}{!priceComponentType}.price+priceCurrency"
     },
     "availability": {
       "type": "enum",
@@ -139,7 +139,7 @@
         "price": {
           "type": "money",
           "description": "Current price of this variant, with its currency",
-          "schema_org": "Offer.price+priceCurrency"
+          "schema_org": "Offer.price{!priceType}{!validForMemberTier}+priceCurrency|Offer.priceSpecification{!priceType}{!validForMemberTier}{!referenceQuantity}{!priceComponentType}.price+priceCurrency|Offer.priceSpecification{priceType=SalePrice}{!validForMemberTier}{!referenceQuantity}{!priceComponentType}.price+priceCurrency"
         },
         "availability": {
           "type": "enum",

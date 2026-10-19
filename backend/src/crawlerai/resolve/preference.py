@@ -22,6 +22,7 @@ Evidence buckets, confidence and min_confidence are the next stage's (`resolve.e
 import json
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from fractions import Fraction
 from itertools import combinations
 from pathlib import Path
@@ -33,7 +34,6 @@ from pydantic import JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate, Entity
 from crawlerai.collect.json_doc import scalars
-from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize import money, url
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
@@ -51,6 +51,7 @@ from crawlerai.resolve.score import (
     same_value,
     value_of,
 )
+from crawlerai.schemas.paths import parse_paths, price_role
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 __all__ = ["PRECEDENCE_TYPES", "Chosen", "PageFacts", "Preference", "Resolver", "Unpublished", "rule_type"]
@@ -60,7 +61,7 @@ PRECEDENCE_FILE = "source_precedence.yaml"
 STAMP = frozenset({"source_split", "git_sha"})
 _SOURCE_KINDS: frozenset[str] = frozenset(get_args(SourceKind))
 # The screening stages in the order a candidate meets them; a missing field states the furthest one reached.
-_STAGES = ("invalid", "ambiguous", "not_owned", "url_param")
+_STAGES = ("invalid", "ambiguous", "not_owned", "url_param", "range_bound")
 # GS1 GTIN and a seller's SKU identify one product, so a variant's identifies the variant (variants spec).
 _VARIANT_IDS = frozenset({"gtin", "sku"})
 _HTTPS = "https"  # RFC 9110 §4.2.2
@@ -149,6 +150,11 @@ class Resolver:
         field's sub-fields are `<field>.<sub-field>`, variants spec)."""
         by_field = {name: [c for c in candidates if c.field == f"{prefix}{name}"] for name in fields}
         screened = {name: self.screen(by_field[name]) for name in fields}
+        bounds = _range_bounds(fields, screened)
+        screened = {
+            name: _without_bounds(*found, bounds) if price_role(fields[name]) == "price" else found
+            for name, found in screened.items()
+        }
         # In schema order: the anchor takes the first Offer seen on a tie.
         offer_fields = [name for name, spec in fields.items() if self._is_offer_field(spec)]
         offers = self._page_offers(fields, candidates, screened, offer_fields)
@@ -222,7 +228,9 @@ class Resolver:
           amounts (stale markup is the common cause; HTML Standard: struck `s`/`del` text is already no value);
         - the shown variant (INV-38): its Offer's amount beats the amounts of other Offers (other variants or sellers);
         - a list or was price, a unit, member, installment or bundle price are not candidates of this field: the
-          collectors read an Offer's own `price` only, and the DOM collector skips struck text.
+          price path's predicates leave out struck, list, member and unit price specifications (`schemas.paths`), the
+          DOM collectors skip struck text and amounts written per unit or per period (`normalize.units`), and a
+          visible amount bounding a stated price range is rejected `range_bound` (`_range_bounds`).
         An amount two candidates of one source role state for the same variant, with nothing explaining it, is the
         product's price by no evidence: `conflict` (owner: accuracy before coverage). Amounts that differ only in
         currency are not rivals (C7: the currency is unknown, not the price)."""
@@ -418,6 +426,53 @@ def intent_ambiguous(schema: SchemaDef, candidates: Sequence[Candidate]) -> dict
         )
         for name in schema.fields
     }
+
+
+# schema.org AggregateOffer: `lowPrice` and `highPrice` state the range of its offers' prices.
+_LOW_PRICE, _HIGH_PRICE = "lowPrice", "highPrice"
+RANGE_BOUND = "range_bound"
+
+
+_Bound = tuple[Decimal, str | None]  # a range bound's amount and the range's currency (`None`: unknown)
+
+
+def _bounds_it(shown: _Bound | None, bounds: frozenset[_Bound]) -> bool:
+    if shown is None:
+        return False
+    amount, currency = shown
+    return any(bound == amount and (None in (currency, ours) or currency == ours) for bound, ours in bounds)
+
+
+def _range_bounds(
+    fields: Mapping[str, FieldSpec], screened: Mapping[str, tuple[list[Candidate], list[Rejection]]]
+) -> frozenset[_Bound]:
+    """The amounts that bound a price range structured data states (an AggregateOffer's `lowPrice` and `highPrice`,
+    kept for a range field) whose bounds differ, each with the range's currency: the page's prices span them, so
+    neither one is the item's price."""
+    ranges = (c for name, (kept, _) in screened.items() if fields[name].type is FieldType.RANGE for c in kept)
+    return frozenset(bound for candidate in ranges for bound in _stated_bounds(candidate))
+
+
+def _stated_bounds(candidate: Candidate) -> tuple[_Bound, ...]:
+    """A price range candidate's bounds, when it is an AggregateOffer's and they differ."""
+    value, raw = value_of(candidate), candidate.raw
+    if not (isinstance(raw, dict) and _LOW_PRICE in raw and _HIGH_PRICE in raw and isinstance(value, dict)):
+        return ()
+    low, high = Decimal(str(value["min"])), Decimal(str(value["max"]))
+    currency = value.get("currency")
+    known = currency if isinstance(currency, str) else None
+    bounds = {(low, known), (high, known)}
+    return tuple(bounds) if len(bounds) > 1 else ()  # equal bounds state one price, no range
+
+
+def _without_bounds(
+    kept: list[Candidate], rejected: list[Rejection], bounds: frozenset[_Bound]
+) -> tuple[list[Candidate], list[Rejection]]:
+    """The price's candidates with the visible amounts that are a stated range's bound (`_range_bounds`) rejected
+    `range_bound` (resolution spec, "Candidate score"): "From $80" beside `lowPrice` 80 states the range, not the
+    price. An amount in another currency than the range's is no bound; a currency either leaves unknown may be."""
+    bound = [c for c in kept if c.source_kind == "dom" and _bounds_it(money.amount_and_currency(value_of(c)), bounds)]
+    return [c for c in kept if c not in bound], [*rejected, *((c, RANGE_BOUND) for c in bound)]
 
 
 def _same_amount(a: Group, b: Group) -> bool:

@@ -181,7 +181,7 @@ def _enter(item: _Enter, shown: list[str], runs: int) -> list[_Item]:
     it is visible."""
     attributes = item.node.attributes
     tag = item.node.tag or ""
-    style = _declarations(attributes)
+    style = declarations(attributes)
     if _hidden(tag, attributes, style):
         return []
     invisible = _invisible(style.get("visibility"), inherited=item.invisible)
@@ -227,7 +227,7 @@ def _shown_chain(chain: Iterable[LexborNode]) -> bool:
     invisible = False
     for node in chain:
         attributes = node.attributes
-        style = _declarations(attributes)
+        style = declarations(attributes)
         if _hidden(node.tag or "", attributes, style):
             return False
         invisible = _invisible(style.get("visibility"), inherited=invisible)
@@ -297,7 +297,7 @@ def shown(node: LexborNode) -> bool:
     current: LexborNode | None = node
     while current is not None and current.is_element_node:
         attributes = current.attributes
-        style = _declarations(attributes)
+        style = declarations(attributes)
         if _hidden(current.tag or "", attributes, style):
             return False
         visibility = visibility or style.get("visibility")
@@ -307,14 +307,14 @@ def shown(node: LexborNode) -> bool:
 
 def hidden(tag: str, attributes: _Attributes) -> bool:
     """Whether an element with `tag` and `attributes` is not rendered, with its whole subtree (`_hidden`)."""
-    return _hidden(tag, attributes, _declarations(attributes))
+    return _hidden(tag, attributes, declarations(attributes))
 
 
 def concealed(attributes: _Attributes) -> bool:
     """Whether an element's own attributes keep it and its subtree from rendering, as a document hides content it may
     show later (a streamed segment before its script moves it into place): the `hidden` attribute (HTML Standard §6.1)
     or an inline `display: none` (CSS Display 3 §2.5)."""
-    return _concealed(attributes, _declarations(attributes))
+    return _concealed(attributes, declarations(attributes))
 
 
 def _concealed(attributes: _Attributes, style: dict[str, str]) -> bool:
@@ -341,16 +341,16 @@ def _invisible(visibility: str | None, *, inherited: bool) -> bool:
     return inherited and visibility != "visible"
 
 
-def _declarations(attributes: _Attributes) -> dict[str, str]:
+def declarations(attributes: _Attributes) -> dict[str, str]:
     """The inline `style` declarations, by lower-cased property name; a later declaration wins (CSS Cascade)."""
     # CSS Syntax: declarations are separated by `;`, name from value by `:`. Property names and keyword values are
     # ASCII case-insensitive, and `!important` is a priority, not part of the value.
-    declarations: dict[str, str] = {}
+    found: dict[str, str] = {}
     for declaration in (attributes.get("style") or "").split(";"):
         name, colon, value = declaration.partition(":")
         if colon:
-            declarations[name.strip().lower()] = value.lower().replace("!important", "").strip()
-    return declarations
+            found[name.strip().lower()] = value.lower().replace("!important", "").strip()
+    return found
 
 
 class _TextBuilder:

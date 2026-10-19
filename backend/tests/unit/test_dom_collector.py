@@ -15,6 +15,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId
 from crawlerai.normalize.base import Context, Invalid, Ok
+from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 PAGE_URL = "https://shop.example.test/p/1"
@@ -455,3 +456,32 @@ def test_a_pair_naming_a_list_field_gives_its_value_list_items_or_its_one_value(
         "tags": [["Kettles", "Tea"]],
         "places": [[{"text": "Lakeside", "locality": None, "region": None, "country": None, "remote_flag": None}]],
     }
+
+
+PRICE_ROLES = _schema(
+    "detail",
+    price=next(p for p in load_presets() if p.name == "commerce_detail").fields["price"],
+    list_price=_field(FieldType.MONEY, "Offer.priceSpecification{priceType=StrikethroughPrice}.price+priceCurrency"),
+    unit_price=_field(FieldType.MONEY, "Offer.priceSpecification{referenceQuantity}.price+priceCurrency"),
+)
+_EUR = "EUR"
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("<main><p><s>€40</s> €25</p></main>", {"price": ["25"], "list_price": ["40"]}),
+        ("<main><p><strike>€40</strike> €25</p></main>", {"price": ["25"], "list_price": ["40"]}),
+        (
+            '<main><p><span style="color: red; text-decoration: line-through">€40</span> <b>€25</b></p></main>',
+            {"price": ["25"], "list_price": ["40"]},
+        ),
+        ("<main><p>€25/kg</p></main>", {"unit_price": ["25"]}),  # a unit's price, not the item's
+        ("<main><p>$25/mo</p></main>", {}),  # an instalment or a subscription
+    ],
+)
+def test_money_fields_read_the_main_region_by_their_price_role(body: str, expected: dict[str, list[str]]) -> None:
+    # Extraction spec, "Structural DOM values": struck text is the list price; an amount per unit or period is no price.
+    found = _values(body, PRICE_ROLES)
+
+    assert found == {name: [{"amount": a, "currency": _EUR} for a in amounts] for name, amounts in expected.items()}

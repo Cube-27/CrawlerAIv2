@@ -4,6 +4,9 @@ fixed OGP table, every candidate owned by the `page` entity."""
 from datetime import UTC, datetime
 from html import escape
 
+import pytest
+from pydantic import JsonValue
+
 from crawlerai.collect.base import Candidate, CollectResult, Entity
 from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.content.page import ParsedPage
@@ -153,3 +156,53 @@ def test_an_og_title_naming_the_site_is_no_entity_value() -> None:
         assert result.diagnostics == (
             "og: og:title names the site, so og:title, og:image and og:description are not read",
         )
+
+
+def test_a_sale_price_is_the_price_and_the_price_beside_it_the_list_price() -> None:
+    # The `product:` namespace: the sale price is the price paid, `product:price` the price it was reduced from.
+    list_price = "Offer.priceSpecification{priceType=StrikethroughPrice}.price+priceCurrency"
+    schema = _schema(price=SCHEMA.fields["price"], list_price=_field(FieldType.MONEY, list_price))
+    sale: JsonValue = {"amount": "15.00", "currency": "EUR"}
+    before: JsonValue = {"amount": "19.99", "currency": "EUR"}
+
+    result = _collect(
+        ("product:price:amount", "19.99"),
+        ("product:price:currency", "EUR"),
+        ("product:sale_price:amount", "15.00"),
+        ("product:sale_price:currency", "EUR"),
+        schema=schema,
+    )
+
+    assert result.candidates == (
+        _og("price", sale, Ok(sale), "meta:product:sale_price:amount"),
+        _og("list_price", before, Ok(before), "meta:product:price:amount"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("end", "on_sale"),
+    [("2026-09-29", False), ("2026-09-30T23:00Z", False), ("2026-09-30", True), ("2026-10-02T00:00Z", True)],
+)
+def test_a_sale_that_ended_before_the_capture_is_no_price(end: str, on_sale: bool) -> None:
+    # `product:sale_price_dates:end`: after it the sale price is gone and `product:price` is the price again.
+    schema = _schema(price=SCHEMA.fields["price"])
+
+    result = _collect(
+        ("product:price:amount", "19.99"),
+        ("product:sale_price:amount", "15.00"),
+        ("product:sale_price_dates:end", end),
+        schema=schema,
+    )
+
+    assert [c.raw for c in result.candidates] == [{"amount": "15.00" if on_sale else "19.99"}]
+
+
+@pytest.mark.parametrize("path", ["Product.offers.seller.url", "Product.brand.image"])
+def test_a_path_through_another_thing_reads_none_of_the_pages_basic_metadata(path: str) -> None:
+    # og:url and og:image describe the page's object, not its seller or its brand.
+    field_type = FieldType.URL if path.endswith("url") else FieldType.IMAGE_URL
+    schema = _schema(other=_field(field_type, path))
+
+    result = _collect(("og:url", PAGE_URL), ("og:image", "https://shop.example.test/a.jpg"), schema=schema)
+
+    assert result.candidates == ()

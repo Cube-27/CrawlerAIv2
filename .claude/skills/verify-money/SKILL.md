@@ -17,11 +17,13 @@ The diff touches any of these (the CI job `verify-money` is filtered on the same
   `_narrowed`, `url_currency`, `_money`;
 - `backend/src/crawlerai/normalize/numbers.py`: `stated`, `_percentage`, `compact_unit`, `readings`, `locale_set`;
 - `backend/src/crawlerai/llm/grounding.py`: `align`, `_sign_spaced` (money claims);
+- `backend/src/crawlerai/normalize/units.py`: `per_suffix` (an amount per a CLDR unit or period);
 - `backend/src/crawlerai/normalize/base.py` (`Context`), `backend/tests/property/test_money_properties.py`,
   `backend/tests/conftest.py` (the `verify` profile), `backend/pyproject.toml` / `backend/uv.lock` (Babel, CLDR data,
   price-parser, Hypothesis).
 
-Last confirmed in sync with the code at `eeb57101` plus the P8 locale change (`numbers.readings`, `locale_set`).
+Last confirmed in sync with the code at `eeb57101` plus the P8 locale change (`numbers.readings`, `locale_set`) and the
+PR 6 per-unit reading (`units.per_suffix`).
 
 ## The one command
 

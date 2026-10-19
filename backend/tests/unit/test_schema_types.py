@@ -39,3 +39,17 @@ def _rejection(document: dict[str, Any]) -> str:
 )
 def test_type_parameters_are_present_exactly_for_their_type(spec: dict[str, Any], message: str) -> None:
     assert message in _rejection(_document({"f": spec}))
+
+
+def test_a_row_path_takes_no_predicates() -> None:
+    # Schemas spec, "Row-mapped lists and key": row discovery follows the row path's steps alone.
+    sku = {"type": "identifier", "scheme": "sku", "description": "d", "schema_org": "Product.sku"}
+    rows = {
+        "type": "list",
+        "description": "d",
+        "schema_org": "ProductGroup.hasVariant{sku}",
+        "item": {"type": "object", "fields": {"sku": sku}},
+        "key": ["sku"],
+    }
+
+    assert "no `{…}` predicates" in _rejection(_document({"variants": rows}))

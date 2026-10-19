@@ -105,5 +105,16 @@
       "justification": "The tracking servers of the EasyList project's tracking (EasyPrivacy) category: the browser rung aborts requests to them (acquisition spec, request blocking; acquire/blocklist.py).",
       "fetched": true
     }
+  ],
+  "packaged": [
+    {
+      "name": "CLDR units",
+      "package": "babel",
+      "package_version": "2.18.0",
+      "url": "https://cldr.unicode.org/downloads/cldr-47",
+      "version": "47",
+      "license": "Unicode License v3 (Unicode-3.0), as shipped in Babel (BSD-3-Clause)",
+      "justification": "The CLDR unit patterns, per patterns and unit display names that read an amount written per unit or per period (`€25/kg`, `$25/mo`) out of the active price (normalization spec, money; normalize/units.py). Babel bundles the data, so the pin is the CLDR release of the locked Babel version."
+    }
   ]
 }
