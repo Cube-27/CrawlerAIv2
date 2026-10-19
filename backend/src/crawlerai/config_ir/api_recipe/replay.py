@@ -16,7 +16,7 @@ from typing import Final
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.data_call import identifies
+from crawlerai.acquire.identity import identifies
 from crawlerai.acquire.types import FetchResult
 from crawlerai.collect import json_doc
 from crawlerai.collect.api import read_map
@@ -79,7 +79,7 @@ async def compare(
 ) -> dict[str, bool]:
     """For each `fields` entry the page has a published value for, whether replaying `spec` for `page` answers JSON
     whose value at its path is `equal` to that value; every entry is false when the request cannot be made, or its
-    answer is not JSON or does not state the page's product (`acquire.data_call.identifies`: a parameter value, or a
+    answer is not JSON or does not state the page's product (`acquire.identity.identifies`: a parameter value, or a
     URL with the page's path; serving refuses such an answer, `execute`), and nothing is sent when no field is
     compared."""
     if spec.pagination is not None:

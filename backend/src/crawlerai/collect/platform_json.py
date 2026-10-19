@@ -1,11 +1,11 @@
 """The documented platform JSON collector (extraction spec, acquisition spec "Data calls"): the product JSON a platform
 documents, fetched beside a detail page's HTTP fetch and kept only when it stated the requested product
-(`acquire.data_call`), read as the schema.org nodes the platform's documentation says it holds
+(`acquire.identity`), read as the schema.org nodes the platform's documentation says it holds
 (`adapters.platforms.answer_shapes`).
 
 Such a body is structured evidence of the requested product, as an adapter's answer is: its values are `adapter`
-candidates read by the schema.org path rules (`collect.adapter.read_shapes`), located under `<platform>_json`, not
-admitted by the equality-or-visibility rule the captured network JSON of unknown keys takes (`collect.admission`),
+candidates read by the schema.org path rules (`read_shapes` of `collect/adapter.py`), located under `<platform>_json`,
+not admitted by the equality-or-visibility rule the captured network JSON of unknown keys takes (`collect.admission`),
 which never reads these bodies. Every other network body keeps that rule.
 """
 

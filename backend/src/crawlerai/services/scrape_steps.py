@@ -370,7 +370,7 @@ class RenderNeed:
     LLM call (master plan 2026-10-18 §3.1; owner plan 2026-10-19 P3): a listing that may show more items once rendered
     (`content.render_need`, owner #54), or a detail page whose schema requires a `money` field, whose document shows
     no sign of its offer (`content.render_need.offer_shown`, owner #49) and whose identity-checked platform data call
-    (`acquire.data_call`) states no value of such a field, is rendered once, and the render is kept when it no longer
+    (`acquire.identity`) states no value of such a field, is rendered once, and the render is kept when it no longer
     lacks it (a listing's when it lists more items than the HTTP page). A request's `render_fields`, the fields the
     caller says only a render shows, have every page rendered, and the render kept when it is `ok`: only those fields
     send a page with its signals to the browser (owner rule: the browser is the exception), unless the page's

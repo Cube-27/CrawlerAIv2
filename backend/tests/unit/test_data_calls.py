@@ -11,7 +11,7 @@ from pathlib import Path
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.data_call import NOT_THE_PRODUCT, joined
+from crawlerai.acquire.identity import NOT_THE_PRODUCT, joined
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.collect.platform_json import PlatformJsonCollector
 from crawlerai.collect.schema_org_map import Vocabulary
@@ -65,7 +65,7 @@ def _capture(url: str, method: CaptureMethod, body: bytes, calls: tuple[tuple[st
 
 
 def _product(key: str, cents: int = 2900) -> bytes:
-    # Shopify Ajax API product (shopify.dev, "Product"): prices in cents, one price for every variant.
+    # Shopify Ajax API product (its documentation, "Product"): prices in cents, one price for every variant.
     return json.dumps(
         {"handle": key, "title": "Item", "url": f"/products/{key}", "price": cents, "price_varies": False}
     ).encode()

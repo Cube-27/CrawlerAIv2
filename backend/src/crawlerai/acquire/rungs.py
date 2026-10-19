@@ -24,7 +24,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.browser_tab import ListingRung
 from crawlerai.acquire.challenge import block_class_of
 from crawlerai.acquire.classify import interstitial
-from crawlerai.acquire.data_call import joined
+from crawlerai.acquire.identity import joined
 from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
@@ -310,7 +310,7 @@ async def _instead_of_render(
 
 async def _data_called(policy: FetchPolicy, page: Fetched, retry: _Retry) -> Fetched:
     """The HTTP `ok` detail page about to be rendered for lacking what the caller reads, joined with the product JSON
-    its platform documents (`adapters.platforms`) when the answer states the page's product (`acquire.data_call`). The
+    its platform documents (`adapters.platforms`) when the answer states the page's product (`acquire.identity`). The
     call waits for the site's rate (`admit_next`) and its attempt is added; without a call, or one not admitted, the
     page as it is."""
     result, attempts, duration_ms = page

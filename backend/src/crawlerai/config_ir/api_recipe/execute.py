@@ -5,7 +5,7 @@ active config's API recipe over `fetch_json`, with no browser.
 parameters from the page URL (fetching the HTML page first only when a binder reads the page's JSON documents,
 `requires_page_fetch`), sends the recipe's request through the SSRF guard (INV-16) and answers a
 `FetchResult(method='api')` whose body is the JSON. A detail page's answer serves it only when it states the requested
-product (`acquire.data_call.identifies`, acquisition spec "Data calls"): an endpoint that answers one product for every
+product (`acquire.identity.identifies`, acquisition spec "Data calls"): an endpoint that answers one product for every
 page is an `error`, `not_the_product`. A page the recipe cannot serve is an `error` result, and `acquire`
 fetches it the configured way (§4.10); when the rung fetched the HTML page to bind and reached it, that page is the
 result instead, so it is not fetched twice. A listing's pages come from `pages`, which follows the recipe's pagination
@@ -24,7 +24,7 @@ from typing import Final
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.data_call import NOT_THE_PRODUCT, identifies
+from crawlerai.acquire.identity import NOT_THE_PRODUCT, identifies
 from crawlerai.acquire.outcome import Content, as_error, fetch_result
 from crawlerai.acquire.rungs import Rung, slow_down, with_attempts
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
@@ -176,7 +176,7 @@ class RecipeRung:
 
 def _identified(result: FetchResult, url: str, keys: tuple[str, ...]) -> FetchResult:
     """A detail recipe's `ok` answer when it states the product of the page at `url` it was requested with `keys` for
-    (`acquire.data_call.identifies`: a parameter value, or a URL with the page's path); else an `error`,
+    (`acquire.identity.identifies`: a parameter value, or a URL with the page's path); else an `error`,
     `NOT_THE_PRODUCT`, which the page's configured fetch then serves (§4.10). An answer that is not JSON is the
     collector's to report."""
     if result.block_class != "ok":

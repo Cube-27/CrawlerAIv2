@@ -39,7 +39,7 @@ ENDPOINT = "https://api.example.test/v1/products"
 # `+` joins the amount and currency paths of a money field (adapters spec).
 MAP = {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"}
 # Eight products: the first five are the learning sample, the rest held out.
-PRODUCTS = [(f"{100 + n}", f"item-{chr(97 + n)}", f"Item {chr(65 + n)}", f"{n + 1}.50") for n in range(8)]
+PRODUCTS = [(f"{1000 + n}", f"item-{chr(97 + n)}", f"Item {chr(65 + n)}", f"{n + 1}.50") for n in range(8)]
 
 
 def _schema(page_kind: str = "detail") -> SchemaDef:
@@ -62,8 +62,11 @@ def _capture(n: int) -> CaptureId:
     return CaptureId(uuid.UUID(int=n + 1))
 
 
-def _answer(name: str, amount: str) -> bytes:
-    return json.dumps({"data": {"name": name, "price": amount, "currency": "EUR"}}).encode()
+def _answer(n: int) -> bytes:
+    """Product `n`'s API answer, which states its id and slug (the identity check)."""
+    product_id, slug, name, amount = PRODUCTS[n]
+    answer = {"data": {"id": product_id, "slug": slug, "name": name, "price": amount, "currency": "EUR"}}
+    return json.dumps(answer).encode()
 
 
 def _bundle(page_url: str, html: str, bodies: Sequence[tuple[str, bytes]]) -> CaptureBundle:
@@ -100,7 +103,7 @@ def _bundle(page_url: str, html: str, bodies: Sequence[tuple[str, bytes]]) -> Ca
 def _page(n: int, page_url: str, endpoint: str | None) -> StoredPage:
     """Product `n`'s stored page at `page_url`: the browser rendered its values, and fetched them from `endpoint`."""
     _, _, name, amount = PRODUCTS[n]
-    bodies = [] if endpoint is None else [(endpoint, _answer(name, amount))]
+    bodies = [] if endpoint is None else [(endpoint, _answer(n))]
     bundle = _bundle(page_url, f"<html><body><h1>{name}</h1><p>{amount} EUR</p></body></html>", bodies)
     parsed = ParsedPage.of(bundle)
     ctx = Context(captured_at=datetime(2026, 10, 14, tzinfo=UTC), base_url=page_url, page_url=page_url)
@@ -122,7 +125,7 @@ def _by_id(n: int) -> StoredPage:
 
 
 def _routes(key: Callable[[int], str]) -> dict[str, bytes]:
-    return {f"{ENDPOINT}/{key(n)}": _answer(name, amount) for n, (_, _, name, amount) in enumerate(PRODUCTS)}
+    return {f"{ENDPOINT}/{key(n)}": _answer(n) for n in range(len(PRODUCTS))}
 
 
 BY_SLUG = _routes(lambda n: PRODUCTS[n][1])

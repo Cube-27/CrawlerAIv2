@@ -9,8 +9,8 @@ page's path. An answer that does not is dropped and recorded on its attempt as `
 ignores its key answers one product for every page.
 
 A documented platform answer that passes joins the page's HTTP capture as one more network body, marked with its
-platform (`NetworkBody.data_call`), which the extraction reads as that platform documents it (`collect.platform_json`)
-and the render check counts (`services.scrape_steps.RenderNeed`).
+platform (the network body's `data_call`), which the extraction reads as that platform documents it
+(`collect.platform_json`) and the render check counts (`services.scrape_steps.RenderNeed`).
 """
 
 from collections.abc import Iterable, Iterator

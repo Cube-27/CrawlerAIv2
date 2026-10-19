@@ -87,7 +87,7 @@ def platform_of(markup: str, headers: HeaderList) -> str | None:
 @dataclass(frozen=True)
 class ProductJson:
     """A platform's public JSON of the product a page shows: the platform, the endpoint, and the product's key the page
-    URL names (a handle or slug), which the answer must state (`acquire.data_call.identifies`)."""
+    URL names (a handle or slug), which the answer must state (`acquire.identity.identifies`)."""
 
     platform: str
     url: str

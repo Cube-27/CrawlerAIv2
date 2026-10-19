@@ -6,7 +6,7 @@ body.html          # response body as received (transfer/content encoding remove
                    # for browser captures, the rendered DOM
 body.raw.html      # browser captures only: the navigation response body as the server sent it (acquisition spec)
 network/0001.json  # JSON bodies in response order, as received: a render's captured calls, or an HTTP page's data
-                   # calls (`acquire.data_call`)
+                   # calls (`acquire.identity`)
 ```
 
 `encode` and `decode` are pure and `decode(encode(b)) == b` (INV-10). Replay reads nothing but the bundle.
@@ -76,7 +76,7 @@ class NetworkBody(_Frozen):
     resource_type: str | None = None
     action: int | None = Field(default=None, ge=0)
     # The platform whose documented product JSON this body is, for a data call an HTTP fetch made whose answer passed
-    # the identity check (`acquire.data_call`); None for a render's captured call. Left out of the manifest when None,
+    # the identity check (`acquire.identity`); None for a render's captured call. Left out of the manifest when None,
     # so a bundle written before it was kept encodes as it did.
     data_call: str | None = Field(default=None, exclude_if=lambda value: value is None)
 

@@ -133,7 +133,7 @@ only. Refs: owner plan 2026-10-19 P4 (platform fingerprints).
 A data call is a request for one product's JSON made beside its page: a platform's documented product JSON
 ("Platform fingerprints"), or a detail API recipe's request ([adapters](../adapters/spec.md), "Recipe execution and
 fallback"), the one replay of a site's API. Its answer SHALL be used only when it states the requested product (the
-identity check, `acquire/data_call.py`: a string or number equal to a key the request was made with, at least 4
+identity check, `acquire/identity.py`: a string or number equal to a key the request was made with, at least 4
 characters, or a URL whose path is the page's path); otherwise it is dropped and its attempt is an `error`,
 `not_the_product`, as an endpoint that ignores its key answers one product for every page. An HTTP `ok` detail page that
 an `auto` fetch would render for lacking what the caller reads is first joined with its platform's documented product
