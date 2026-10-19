@@ -31,6 +31,7 @@ from crawlerai.llm.client import LLMClient
 from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.llm.setup import LLMSetup
 from crawlerai.normalize.dispatch import warm
+from crawlerai.normalize.money import is_country
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.search.providers import SearchProvider, configured
 from crawlerai.services.fetching import Fetching
@@ -115,9 +116,12 @@ async def open_fetching(
             listing=listing,
         )
         limiter = HostLimiter(shared=None if database is None else HostTurns(database))
-        yield Fetching(
-            rungs, connector, open_store(settings.object_store), limiter, Egresses(pools, settings.egress_country)
-        )
+        egresses = Egresses(pools, settings.egress_country)
+        # A declared country must be a real one: a typo would be recorded as a known egress.
+        declared = [pool.country for pool in pools.values()] + [settings.egress_country]
+        if not all(country is None or is_country(country) for country in declared):
+            raise ValueError("an egress country is an ISO 3166-1 alpha-2 country code")
+        yield Fetching(rungs, connector, open_store(settings.object_store), limiter, egresses)
 
 
 def _search(settings: Settings) -> SearchProvider | None:

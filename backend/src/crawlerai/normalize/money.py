@@ -395,6 +395,11 @@ def _currencies() -> frozenset[str]:
     return frozenset(list_currencies())
 
 
+def is_country(code: str) -> bool:
+    """Whether `code` is an ISO 3166-1 alpha-2 country CLDR has currency data for (`ZZ`, its unknown region, is not)."""
+    return code != "ZZ" and code in _territories()
+
+
 @cache
 def _territories() -> frozenset[str]:
     """The CLDR territories with currency data: the ISO 3166-1 regions a ccTLD can name."""
