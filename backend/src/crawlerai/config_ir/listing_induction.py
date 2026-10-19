@@ -2,7 +2,7 @@
 listing's row selector and row-field steps generalized from the item layer's aligned blocks across the learning
 sample, without an LLM.
 
-On each sample page the item layer's align step (`collect.items.align`) finds the group of repeated item blocks; the
+On each sample page the item layer's align step (`collect.items.align`) locates the group of repeated item blocks; the
 group whose item URLs the published rows name most is the page's. Then:
 - **row selector**: for each block, each anchored path to it (`induction`: stable attributes only, no positions),
   then its tag path from the document with the ancestors' positions; one is kept when, on every page, it

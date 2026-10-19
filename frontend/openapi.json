@@ -4033,7 +4033,7 @@
       },
       "ListingSpec": {
         "additionalProperties": false,
-        "description": "Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` finds the next\npage's URL.",
+        "description": "Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` locates the next\npage's URL.",
         "properties": {
           "fields": {
             "patternProperties": {

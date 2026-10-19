@@ -9,9 +9,11 @@ The client commits each call's usage on a connection of its own (D-0346). A call
 must not hold an uncommitted write to the job's row meanwhile: the client's usage update would wait on it.
 """
 
+import asyncio
 from dataclasses import dataclass
 
 from crawlerai.collect.base import PAGE, Candidate
+from crawlerai.collect.dom import other_item_paths
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import LLMClient, LLMFailure, PromptKind
 from crawlerai.llm.roles import c_extract
@@ -30,7 +32,10 @@ class _RoleC:
     job_id: JobId | None
 
     async def detail(self, request: GapRequest) -> GapReply:
+        """One call for every missing field, reading the product's own text: other items' content
+        (`collect.dom.other_item_paths`) is left out."""
         fields = {name: request.schema.fields[name] for name in request.missing}
+        elsewhere = await asyncio.to_thread(other_item_paths, request.page, request.ctx, request.outside)
         filled = await c_extract.extract_detail(
             self.client,
             request.page.cleaned_text,
@@ -38,9 +43,16 @@ class _RoleC:
             request.ctx,
             owner=request.target.id,
             job_id=self.job_id,
+            elsewhere=elsewhere,
         )
         calls = _calls(c_extract.PROMPT_KIND, filled)
-        return GapReply(filled.candidates, calls, failure=_reason(filled), diagnostics=filled.diagnostics)
+        return GapReply(
+            filled.candidates,
+            calls,
+            failure=_reason(filled),
+            diagnostics=filled.diagnostics,
+            unverified=filled.unverified,
+        )
 
     async def listing(self, request: ListingGapRequest) -> ListingGapReply:
         """The blocks' calls (when blocks are asked), then the page fields' (when page fields are): the page fields are
@@ -51,6 +63,7 @@ class _RoleC:
         diagnostics: list[str] = []
         calls: list[LLMCallRecord] = []
         failure = None
+        unverified: tuple[str, ...] = ()
         if request.blocks:
             asked = sorted({name for block in request.blocks for name in block.fields})
             rows = await c_extract.extract_listing(
@@ -74,7 +87,10 @@ class _RoleC:
             diagnostics.extend(page.diagnostics)
             calls.extend(_calls(c_extract.LISTING_PROMPT_KIND, page))
             failure = _reason(page)
-        return ListingGapReply(tuple(candidates), tuple(calls), failure=failure, diagnostics=tuple(diagnostics))
+            unverified = page.unverified
+        return ListingGapReply(
+            tuple(candidates), tuple(calls), failure=failure, diagnostics=tuple(diagnostics), unverified=unverified
+        )
 
 
 def _reason(filled: c_extract.Filled) -> str | None:

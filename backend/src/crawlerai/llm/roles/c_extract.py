@@ -30,11 +30,12 @@ from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate
 from crawlerai.collect.items.lines import BlockText
+from crawlerai.collect.locator import format_locator
 from crawlerai.content.text import CleanedText, MarkKind
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import LLMClient, LLMFailure, LLMRequest, LLMResponse, PromptKind, closed_object
 from crawlerai.llm.grounding import GroundedSpan, SpanClaim, align, ground_element
-from crawlerai.llm.marked import MarkedText, marked
+from crawlerai.llm.marked import MarkedText, Scoped, marked, scoped
 from crawlerai.normalize.base import Context
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -91,12 +92,14 @@ _ELEMENT_OF: Final[Mapping[FieldType, MarkKind]] = {FieldType.URL: "link", Field
 
 @dataclass(frozen=True, slots=True)
 class Filled:
-    """What one role C call gave: its candidates, its response or the failure that took its place, and the page
-    diagnostics (dropped values, truncation)."""
+    """What one role C call gave: its candidates, its response or the failure that took its place, the page
+    diagnostics (dropped values, truncation), and on a detail page the fields whose claimed value the evidence does not
+    hold (`unverified`)."""
 
     candidates: tuple[Candidate, ...]
     reply: LLMResponse | LLMFailure
     diagnostics: tuple[str, ...]
+    unverified: tuple[str, ...] = ()
 
     @property
     def replies(self) -> tuple[LLMResponse | LLMFailure, ...]:
@@ -190,21 +193,24 @@ async def extract_detail(
     owner: str,
     job_id: JobId | None,
     kind: PromptKind = PROMPT_KIND,
+    elsewhere: frozenset[str] = frozenset(),
 ) -> Filled:
-    """Role C's candidates for `fields` of the entity `owner`, read from the page's `cleaned` text with the links and
-    images the fields can claim marked in it."""
-    cut, notes = _cut(cleaned.text, DETAIL_MAX_CHARS)  # what the model reads, and so what its spans are aligned to
+    """Role C's candidates for `fields` of the entity `owner`, read from the page's `cleaned` text without the
+    elements at the node paths `elsewhere` (other items' content, `llm.marked.scoped`), with the links and images the
+    fields can claim marked in it."""
+    scope = scoped(cleaned, elsewhere)
+    cut, notes = _cut(scope.text.text, DETAIL_MAX_CHARS)  # what the model reads, and so what its spans are aligned to
     kinds = frozenset(_ELEMENT_OF[spec.type] for spec in fields.values() if spec.type in _ELEMENT_OF)
-    read = marked(cleaned, cut, kinds, ctx.base_url, ctx.page_url, DETAIL_MAX_ID_CHARS)
+    read = marked(scope.text, cut, kinds, ctx.base_url, ctx.page_url, DETAIL_MAX_ID_CHARS)
     request = detail_request(read.text, fields, page_url=ctx.page_url, job_id=job_id, kind=kind)
     try:
         response = await client.complete_json(request)
     except LLMFailure as failure:
         return Filled((), failure, (*notes, _failed(failure)))
     # Aligning and normalizing are CPU work: a thread keeps the event loop serving other tasks meanwhile.
-    reader = _Reader(fields, read, ctx)
+    reader = _Reader(fields, read, scope, ctx)
     read_fields = await asyncio.to_thread(reader.read, _claims_of(response.data["fields"]), owner)
-    return Filled(read_fields.candidates, response, (*notes, *read_fields.dropped))
+    return Filled(read_fields.candidates, response, (*notes, *read_fields.dropped), read_fields.unverified)
 
 
 async def extract_listing(
@@ -230,7 +236,7 @@ async def extract_listing(
         replies.append(filled.reply)
         if not isinstance(filled.reply, LLMResponse):
             break
-    return FilledListing(tuple(candidates), replies[0], tuple(diagnostics), tuple(replies[1:]))
+    return FilledListing(tuple(candidates), replies[0], tuple(diagnostics), more=tuple(replies[1:]))
 
 
 async def _listing_call(
@@ -361,6 +367,7 @@ def _claims_of(value: JsonValue) -> dict[str, dict[str, JsonValue]]:
 class _Read:
     candidates: tuple[Candidate, ...]
     dropped: tuple[str, ...]  # diagnostics of the values the text does not contain
+    unverified: tuple[str, ...] = ()  # their fields
 
 
 @dataclass(frozen=True, slots=True)
@@ -369,12 +376,14 @@ class _Reader:
 
     fields: Mapping[str, FieldSpec]
     text: MarkedText
+    scope: Scoped
     ctx: Context
 
     def read(self, claims: Mapping[str, Mapping[str, JsonValue]], owner: str) -> _Read:
         """The claims' candidates, each grounded in the text or in the element it names."""
         candidates: list[Candidate] = []
         dropped: list[str] = []
+        unverified: list[str] = []
         for name in sorted(self.fields):
             claim = claims[name]
             if claim["shown"] is not True or claim["value"] == claim["ref"] == _ABSENT:
@@ -382,9 +391,10 @@ class _Reader:
             grounded = self._ground(self.fields[name], claim)
             if grounded is None:
                 dropped.append(f"role C: {name} ungrounded")
+                unverified.append(name)
             else:
                 candidates.append(_candidate(name, self.fields[name], owner, *grounded, self.ctx))
-        return _Read(tuple(candidates), tuple(dropped))
+        return _Read(tuple(candidates), tuple(dropped), tuple(unverified))
 
     def _ground(self, spec: FieldSpec, claim: Mapping[str, JsonValue]) -> tuple[str, str] | None:
         """The claim's raw value and locator: the element its `ref` names, else its span of the cleaned text, its
@@ -398,7 +408,12 @@ class _Reader:
         at = self.text.cleaned_offset
         span = span.model_copy(update={"start": at(span.start), "end": at(span.end)})
         grounded = align(span, self.text.cleaned, money=_money(spec))
-        return None if grounded is None else (grounded.value, grounded.locator)
+        if grounded is None:
+            return None
+        whole = self.scope.whole_span(grounded.start, grounded.end)
+        if whole is None:
+            return None
+        return grounded.value, format_locator("text", str(whole[0]), str(whole[1]))
 
 
 def _money(spec: FieldSpec) -> bool:

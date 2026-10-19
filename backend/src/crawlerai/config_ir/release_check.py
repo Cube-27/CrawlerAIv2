@@ -7,7 +7,7 @@ published on no held-out page cannot be shown to match and is `manual` too, as i
 executor does not run it) and one the schema lacks. Values are compared as validation compares them (§4.7): the
 release executor's value normalized as the engine normalizes it, then `equal`. Row fields are compared row by row in
 document order, the engine's rows aligned with the release executor's as validation aligns them (D-1500), and only
-when the release executor finds at least as many rows as the engine published.
+when the release executor reads at least as many rows as the engine published.
 """
 
 from collections.abc import Callable, Sequence

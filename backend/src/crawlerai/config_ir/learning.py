@@ -172,7 +172,7 @@ async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
         await conn.execute(
             select(Job.status, Job.request, Job.cancel_requested)
             .where(Job.id == job_id, Job.kind == "learn")
-            # One process starts the job: a second waits here, then finds it no longer queued.
+            # One process starts the job: a second waits here, then sees it no longer queued.
             .with_for_update()
         )
     ).one_or_none()
