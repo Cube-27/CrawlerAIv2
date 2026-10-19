@@ -115,5 +115,8 @@ class LLMSettings(_Base):
 
 class Settings(DatabaseSettings, AcquireSettings, ApiSettings, LLMSettings, SearchSettings):
     object_store: ObjectStoreUrl
+    # `CRAWLERAI_COOKIE_KEY`, from the secret store: the Fernet key (urlsafe base64 of 32 bytes) the stored cookie
+    # state is encrypted with (`acquire.cookie_store`). Without it no cookie state is stored.
+    cookie_key: SecretStr | None = None
     log_redact_urls: bool = False
     role: Role | None = None

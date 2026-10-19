@@ -15,7 +15,7 @@ from typing import Final
 
 from crawlerai.acquire.classify import classify, interstitial, is_html
 from crawlerai.acquire.types import BlockClass, FetchResult
-from crawlerai.adapters.challenges import SIGNATURES, stand_in_vendor, vendor_of
+from crawlerai.adapters.challenges import stand_in_vendor, vendor_of
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import HeaderList
@@ -27,7 +27,6 @@ __all__ = [
     "challenge_label",
     "challenge_signal",
     "count",
-    "portable",
     "vendor_block",
 ]
 
@@ -78,12 +77,6 @@ def vendor_block(result: FetchResult) -> str | None:
         return None
     kept = (a for a in reversed(result.attempts) if a.method == result.method)
     return next((a.challenge for a in kept if a.challenge not in (None, STRUCTURAL)), None)
-
-
-def portable(label: str | None) -> bool:
-    """Whether the cookies a browser earns past a challenge with `label` may serve later plain HTTP fetches (a site
-    session, D-1352): an unlabelled or structural challenge, or a vendor whose signature says so."""
-    return not any(signature.vendor == label and not signature.portable for signature in SIGNATURES)
 
 
 def _cookie_names(headers: HeaderList) -> tuple[str, ...]:

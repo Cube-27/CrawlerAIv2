@@ -187,20 +187,43 @@ D-1355, D-1381.
 ### Requirement: Cookies stay inside one fetch (INV-29)
 Each fetch SHALL have its own HTTP session or browser context; cookies live in a per-fetch jar matched per RFC 6265
 (public-suffix `Domain` ignored), are sent only on matching hops and are discarded at the end; the caller's cookies
-(`RequestContext`) seed only that fetch's jar or context, for the fetched URL's host; the one exception is a
-site session (`acquire/session.py`): the cookies of the site's registrable domain that a browser `ok` held after a
-`blocked` or `shell` HTTP attempt with a portable or no challenge label, read without change with the user agent it
-sent, seed later HTTP and JSON fetches of that site (`site.host`) in that domain through the same pool endpoint, in
-process memory, for at most 30 min and 200 fetches; `blocked` drops it, and one refused before any `ok` leaves the site
-without a session for 30 min. None are stored, logged or captured. (Previously: caller cookies were not taken.)
-Enforced by: cross-fetch, cross-site, cross-domain, cross-proxy, expiry, no-persistence and caller-cookie tests; active.
-Refs: §7.1, D-0321, D-0884, D-0902, owner #58, D-1350–D-1354, D-1433.
+(`RequestContext`) seed only that fetch's jar or context, for the fetched URL's host; the exceptions are the site
+session and the stored cookie state (`acquire/session.py`, next requirement). A site session is the cookies of the
+site's registrable domain that a browser `ok` held after a `blocked` or `shell` HTTP attempt, challenge and clearance
+cookies left out, read without change with the user agent it sent; it seeds later HTTP and JSON fetches and browser
+contexts of that site (`site.host`) in that domain through the same pool endpoint, in process memory, for at most
+30 min and 200 fetches; `blocked` drops it, and one refused before any `ok` leaves the site without a session for
+30 min. No cookie is logged or captured. (Previously: a vendor's clearance cookies were replayed when its signature
+called them portable.) Enforced by: cross-fetch, cross-site, cross-domain, cross-proxy, expiry, no-persistence and
+caller-cookie tests; active. Refs: §7.1, D-0321, D-0884, D-0902, owner #58, D-1350–D-1354, D-1433.
 #### Scenario: Next fetch to the same host
 - **WHEN** fetch A receives `Set-Cookie` from `example.com` and fetch B then requests `example.com`, with no site session
+  and no stored cookie state
 - **THEN** fetch B sends no cookie
 #### Scenario: Site session on another site
 - **WHEN** `shop.example.com` has a site session and a fetch requests `www.example.com`
 - **THEN** the fetch sends none of the session's cookies
+
+### Requirement: Stored cookie state
+With `CRAWLERAI_COOKIE_KEY` set, the system SHALL keep per site (`site.host`) and browser engine (`patchright`) the
+cookies of the site's registrable domain that a browser context held after an `ok` page with no challenge label, in
+`site_cookie_state`, encrypted (Fernet) and rewritten only when the HMAC fingerprint of the plain state changes. Only
+cookies are kept: no other storage. Before a write and after a load, challenge and clearance cookies (every vendor
+signature's cookie names and cookie value markers, `adapters/challenges.py`) are dropped, as are cookies with an empty value or past their expiry;
+cookies are de-duplicated by name, domain and path; session cookies stay; a state with nothing left is not written.
+A `shell`, `blocked` or `error` outcome writes nothing, and any `blocked` fetch of the site on a direct route clears
+its state. A browser context of the site starts with its live site session's cookies, else the stored state; HTTP and
+JSON fetches of the site take the live session, else the stored state's cookies (with their own identity). The flow is
+browser to HTTP only: no cookie an HTTP response sets is kept or handed to the browser. The stored state serves and is
+written by direct fetches only (no proxy pool); a fetch with the caller's context neither reads nor writes it. Refs:
+owner 2026-10-19 (acquisition plan P2).
+#### Scenario: Next job loads the state
+- **WHEN** a browser fetch of `shop.example.com` ends `ok` holding `session=1` and `cf_clearance=x`, and a later job
+  fetches `shop.example.com` over HTTP
+- **THEN** the HTTP request carries `session=1` and not `cf_clearance`
+#### Scenario: Block clears the state
+- **WHEN** a fetch of a site with stored state ends `blocked`
+- **THEN** the site has no stored state, and nothing is written
 
 ### Requirement: robots.txt
 The system SHALL honour robots.txt by default per RFC 9309 for user agent `*`, cached per origin for 24 h in

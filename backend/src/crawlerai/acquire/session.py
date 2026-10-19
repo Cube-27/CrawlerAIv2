@@ -1,28 +1,38 @@
-"""Site sessions (INV-29's one exception, owner #58, D-1350): the cookies a browser fetch earned past a refusal that
-plain HTTP met, handed to the later HTTP and JSON fetches of the same site through the same proxy endpoint, with the
-user agent they were earned under.
+"""Site sessions (INV-29's one exception, owner #58, D-1350): the cookies a browser fetch of a site held, handed to
+the later fetches of the same site (browser to HTTP only: nothing an HTTP response sets is ever handed on).
 
-A session lives in this process's memory only: it is never stored, logged or captured (`headers.recorded` keeps
-cookies out of every capture, and no repr shows a cookie value). It holds the cookies of the site's registrable
-domain (RFC 6265 §5.1.3 domain matching, the Public Suffix List's registrable domain), serves fetches whose page is on
-the site and whose request is in that domain, for at most `SESSION_TTL` and `SESSION_FETCHES` fetches, and is dropped
-when a fetch it served is `blocked`. Sessions are keyed by the site (`site.host`, the page URL's host) and the fetch's
-proxy pool; a session keeps the endpoint its cookies were earned through, and serves only requests sent through it.
+A live session is the cookies a browser fetch earned past a refusal that plain HTTP met, with the user agent they were
+earned under, in this process's memory only, for the same proxy endpoint. Behind it is the site's stored cookie state
+(`acquire.cookie_store`), kept across jobs and processes, which serves direct fetches only (no proxy pool): a fetch
+takes the live session first, then the stored state. Challenge and clearance cookies
+(`adapters.challenges.challenge_cookie`) are in neither: they are never kept nor replayed. No cookie is logged or
+captured (`headers.recorded` keeps cookies out of every capture, and no repr shows a cookie value).
+
+Both hold the cookies of the site's registrable domain (RFC 6265 §5.1.3 domain matching, the Public Suffix List's
+registrable domain) and serve fetches whose page is on the site and whose request is in that domain. A live session
+lasts at most `SESSION_TTL` and `SESSION_FETCHES` fetches, and is dropped when a fetch it served is `blocked`; a
+`blocked` fetch on a direct route drops the stored state too. Sessions are keyed by the site (`site.host`, the page
+URL's host) and the fetch's proxy pool; a live session keeps the endpoint its cookies were earned through, and serves
+only requests sent through it. The stored state is written after a browser `ok` with no challenge
+(`after_browser`), and a browser context starts with the session's cookies, else the stored state (`for_browser`).
 """
 
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Final
+from typing import Final, Protocol
 from urllib.parse import urlsplit
 
 from crawlerai.acquire.public_suffix import PublicSuffixes, default_suffixes
 from crawlerai.acquire.types import FetchResult
+from crawlerai.adapters.challenges import challenge_cookie
 from crawlerai.core.proxy import ProxyEndpoint
+from crawlerai.db.models import BrowserEngine
 from crawlerai.storage.capture_bundle import HeaderList
 
 __all__ = [
+    "ENGINE",
     "IDENTITY_HEADERS",
     "SESSION_FETCHES",
     "SESSION_TTL",
@@ -30,6 +40,7 @@ __all__ = [
     "SessionCookie",
     "SiteSession",
     "SiteSessions",
+    "StoredState",
     "browser_cookies",
     "identity",
 ]
@@ -40,6 +51,8 @@ SESSION_FETCHES: Final = 200
 # and the low-entropy client hints a browser sends with every request (W3C User-Agent Client Hints §3.1).
 IDENTITY_HEADERS: Final = ("user-agent", "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform")
 _USER_AGENT = "user-agent"
+# The engine of the browser rung (`acquire.browser`), whose state the stored cookie state keeps.
+ENGINE: Final[BrowserEngine] = "patchright"
 
 
 @dataclass(frozen=True)
@@ -95,6 +108,16 @@ def identity(result: FetchResult) -> HeaderList:
     return sent if any(name.lower() == _USER_AGENT for name, _ in sent) else ()
 
 
+class StoredState(Protocol):
+    """The stored cookie state (`acquire.cookie_store.CookieStore`)."""
+
+    async def load(self, host: str, engine: BrowserEngine) -> tuple[SessionCookie, ...]: ...
+
+    async def save(self, host: str, engine: BrowserEngine, cookies: Iterable[SessionCookie]) -> bool: ...
+
+    async def clear(self, host: str, engine: BrowserEngine) -> None: ...
+
+
 @dataclass
 class SiteSession:
     site: str
@@ -106,26 +129,28 @@ class SiteSession:
     expires_at: float  # on the store's clock
     fetches_left: int
     passed: bool = False  # it has served an `ok` fetch
+    stored: bool = False  # the site's stored state, for one fetch
 
 
 @dataclass
 class SiteSessions:
-    """The site sessions of one process."""
+    """The site sessions of one process, and the stored cookie state behind them (none without `store`)."""
 
     clock: Callable[[], float] = time.monotonic
     suffixes: Callable[[], PublicSuffixes] = default_suffixes
+    store: StoredState | None = None
     _by_site: dict[tuple[str, str | None], SiteSession] = field(default_factory=dict, repr=False)
     # Sites whose last session was refused before it served an `ok`, until when they open no other (D-1354).
     _refused: dict[tuple[str, str | None], float] = field(default_factory=dict, repr=False)
 
     def open(self, url: str, pool: str | None, export: CookieExport, sent: HeaderList) -> SiteSession | None:
         """A session for the site of `url` through `pool`, from the cookies of `export` that belong to its registrable
-        domain and the identity headers `sent`; it replaces the site's earlier one. None, and no session, when no
-        cookie belongs to the domain, `sent` has no user agent, or the site's last session was refused before it served
-        an `ok` less than `SESSION_TTL` ago."""
+        domain, challenge cookies left out, and the identity headers `sent`; it replaces the site's earlier one. None,
+        and no session, when no cookie is left, `sent` has no user agent, or the site's last session was refused
+        before it served an `ok` less than `SESSION_TTL` ago."""
         site = _host(url)
         domain = self.suffixes().site(site)
-        cookies = tuple(cookie for cookie in export.cookies if _domain_match(cookie.domain, domain))
+        cookies = _replayable(export.cookies, domain)
         if not cookies or not any(name.lower() == _USER_AGENT for name, _ in sent):
             return None
         if (refused_until := self._refused.pop((site, pool), None)) is not None and self.clock() < refused_until:
@@ -144,27 +169,62 @@ class SiteSessions:
         self._by_site[site, pool] = session
         return session
 
-    def take(self, page_url: str, url: str, pool: str | None) -> SiteSession | None:
+    async def take(self, page_url: str, url: str, pool: str | None) -> SiteSession | None:
         """The live session of the site of `page_url` through `pool` for a request to `url` in its registrable domain,
-        one of its fetches spent; None otherwise. A spent or expired session is dropped."""
-        key = (_host(page_url), pool)
-        session = self._by_site.get(key)
-        if session is None:
+        one of its fetches spent; else, on a direct route, the site's stored state as a session for this fetch
+        (`stored`, no identity); None otherwise."""
+        site = _host(page_url)
+        session = self._live((site, pool))
+        domain = session.registrable_domain if session is not None else self.suffixes().site(site)
+        if self.suffixes().site(_host(url)) != domain:
             return None
-        if session.fetches_left <= 0 or self.clock() >= session.expires_at:
-            del self._by_site[key]
+        if session is not None:
+            session.fetches_left -= 1
+            return session
+        if pool is not None or self.store is None:
             return None
-        if self.suffixes().site(_host(url)) != session.registrable_domain:
+        cookies = _replayable(await self.store.load(site, ENGINE), domain)
+        if not cookies:
             return None
-        session.fetches_left -= 1
-        return session
+        return SiteSession(site, domain, None, None, (), cookies, self.clock(), 0, stored=True)
 
-    def settle(self, session: SiteSession | None, result: FetchResult) -> None:
-        """Record how the fetch `session` served went. `blocked` drops it: its cookies no longer pass. A session that
-        is refused (`blocked` or `shell`) before it served an `ok` never carried the site, so it is dropped and the
-        site opens no other for `SESSION_TTL`: its fetches go to the browser rather than solving over and over. An `ok`
-        it then serves (a fetch that was in flight) lifts that refusal."""
+    async def for_browser(self, url: str, pool: str | None) -> tuple[SessionCookie, ...]:
+        """The cookies a browser context for `url` through `pool` starts with: the site's live session's, else, on a
+        direct route, its stored state's."""
+        site = _host(url)
+        if (session := self._live((site, pool))) is not None:
+            return session.cookies
+        if pool is not None or self.store is None:
+            return ()
+        return _replayable(await self.store.load(site, ENGINE), self.suffixes().site(site))
+
+    async def after_browser(
+        self, url: str, pool: str | None, cookies: Sequence[SessionCookie], result: FetchResult
+    ) -> None:
+        """Record how a browser fetch of `url` through `pool` went, its context having held `cookies`: `blocked`
+        drops the site's live session and, on a direct route, its stored state; an `ok` with no challenge keeps the
+        cookies of the site's registrable domain as its stored state (direct routes only). Any other outcome (a
+        `shell`, an error) writes nothing."""
+        site = _host(url)
+        if result.block_class == "blocked":
+            if (session := self._by_site.get((site, pool))) is not None:
+                self.drop(session)
+            await self._clear(site, pool)
+        elif result.block_class == "ok" and result.attempts[-1].challenge is None:
+            if pool is None and self.store is not None:
+                await self.store.save(site, ENGINE, _replayable(cookies, self.suffixes().site(site)))
+
+    async def settle(self, session: SiteSession | None, result: FetchResult) -> None:
+        """Record how the fetch `session` served went. `blocked` drops it, and on a direct route the site's stored
+        state: its cookies no longer pass. A live session that is refused (`blocked` or `shell`) before it served an
+        `ok` never carried the site, so it is dropped and the site opens no other for `SESSION_TTL`: its fetches go to
+        the browser rather than solving over and over. An `ok` it then serves (a fetch that was in flight) lifts that
+        refusal."""
         if session is None:
+            return
+        if result.block_class == "blocked":
+            await self._clear(session.site, session.pool)
+        if session.stored:
             return
         if result.block_class == "ok":
             if not session.passed:
@@ -181,6 +241,27 @@ class SiteSessions:
         key = (session.site, session.pool)
         if self._by_site.get(key) is session:
             del self._by_site[key]
+
+    def _live(self, key: tuple[str, str | None]) -> SiteSession | None:
+        """The site's live session; a spent or expired one is dropped."""
+        session = self._by_site.get(key)
+        if session is not None and (session.fetches_left <= 0 or self.clock() >= session.expires_at):
+            del self._by_site[key]
+            return None
+        return session
+
+    async def _clear(self, site: str, pool: str | None) -> None:
+        if pool is None and self.store is not None:
+            await self.store.clear(site, ENGINE)
+
+
+def _replayable(cookies: Iterable[SessionCookie], domain: str) -> tuple[SessionCookie, ...]:
+    """The cookies of the registrable `domain` that may go with a later fetch: no challenge or clearance cookie."""
+    return tuple(
+        cookie
+        for cookie in cookies
+        if _domain_match(cookie.domain, domain) and not challenge_cookie(cookie.name, cookie.value)
+    )
 
 
 def _host(url: str) -> str:

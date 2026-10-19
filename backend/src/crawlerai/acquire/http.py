@@ -46,7 +46,7 @@ async def fetch_http(
     started = time.monotonic()
     if policy.context is not None:
         sessions = None
-    session = None if sessions is None else sessions.take(url, url, policy.proxy_pool)
+    session = None if sessions is None else await sessions.take(url, url, policy.proxy_pool)
     sent = await send(
         url,
         Hop("GET", _conditional(validators)),
@@ -87,7 +87,7 @@ async def fetch_http(
     )
     report_proxy(sent.pool, sent.proxy, result)
     if sessions is not None:
-        sessions.settle(sent.session, result)
+        await sessions.settle(sent.session, result)
     return result
 
 

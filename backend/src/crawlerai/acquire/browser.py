@@ -8,7 +8,9 @@ through a `SocksGuard`, which applies the SSRF guard to every redirect hop, fram
 `blocked` or `shell` document is labelled with the challenge it presents (`acquire.challenge`), and the pool endpoint
 it went through is told how it went (`core.proxy_health`), as the HTTP rung does. Asked to export (`CookieExport`), the
 fetch reads the context's cookies before the context closes, without changing them, for a site session (INV-29's
-exception). The caller's cookies (`RequestContext`) are added to the context before the navigation, as host-only
+exception). Given the process's site sessions, the context starts with the site's live session's or stored cookies,
+and its cookies after an `ok` are kept as the site's stored state (`acquire.session`, browser to HTTP only). The
+caller's cookies (`RequestContext`) are added to the context before the navigation, as host-only
 cookies of the URL's host; the caller's headers are never set in the browser (INV-44). The caller's page steps run
 after the settle and before the read (`run_steps`), within the browser's time cap plus their own timeouts.
 """
@@ -36,7 +38,7 @@ from crawlerai.acquire.items import element_path, item_groups, lxml_root
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
 from crawlerai.acquire.page_steps import run_steps, steps_budget_s
 from crawlerai.acquire.public_suffix import default_suffixes
-from crawlerai.acquire.session import CookieExport, SessionCookie, browser_cookies
+from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions, browser_cookies
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, RequestContext, StepOutcome
@@ -199,10 +201,16 @@ async def fetch_browser(
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
     export: CookieExport | None = None,
+    sessions: SiteSessions | None = None,
 ) -> FetchResult:
     """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every connection. `export`,
     when given, receives the context's cookies and the endpoint, whatever the outcome; the caller decides whether a
-    session opens."""
+    session opens. `sessions` are this process's site sessions: the context starts with the site's cookies, and the
+    outcome is recorded with them (`SiteSessions.after_browser`); a fetch with the caller's own context neither reads
+    nor writes them (D-1432)."""
+    if policy.context is not None:
+        sessions = None
+    seeded = () if sessions is None else await sessions.for_browser(url, policy.proxy_pool)
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
     timings: dict[str, int] = {}
@@ -214,12 +222,15 @@ async def fetch_browser(
     challenge: str | None = None
     traffic = Traffic()
     steps: tuple[StepOutcome, ...] = ()
+    cookies: tuple[SessionCookie, ...] = ()
     try:
         pool = proxy_pool(policy.proxy_pool, pools)
         proxy = pool_endpoint(pool, url)
         extra_s = steps_budget_s(policy.steps) + (_ARTIFACT_TIMEOUT_S if policy.captures_page else 0)
         async with asyncio.timeout(policy.browser_timeout_s + extra_s):
-            guarded = rendered(url, policy, session, connector or SafeConnector(), proxy, started, timings, traffic)
+            guarded = rendered(
+                url, policy, session, connector or SafeConnector(), proxy, started, timings, traffic, seeded
+            )
             async with guarded as page:
                 steps = await stepped(page)
                 exchange, content = await read_state(page)
@@ -256,6 +267,8 @@ async def fetch_browser(
         artifacts=artifacts,
     )
     report_proxy(pool, proxy, result)
+    if sessions is not None:
+        await sessions.after_browser(url, policy.proxy_pool, cookies, result)
     return result
 
 
@@ -278,6 +291,24 @@ def caller_cookies(url: str, context: RequestContext) -> list[SetCookieParam]:
     parts = urlsplit(url)
     root = f"{parts.scheme}://{parts.netloc}/"
     return [SetCookieParam(name=name, value=value.get_secret_value(), url=root) for name, value in context.cookies]
+
+
+def seeded_cookies(cookies: Sequence[SessionCookie]) -> list[SetCookieParam]:
+    """Session cookies as `BrowserContext.add_cookies` takes them: a host-only cookie given with a URL of its host and
+    path (RFC 6265 §5.3 step 6), a `Domain` cookie with its domain led by a dot (§5.2.3); a session cookie with no
+    expiry."""
+    params: list[SetCookieParam] = []
+    for cookie in cookies:
+        if cookie.host_only:
+            scheme = "https" if cookie.secure else "http"
+            param = SetCookieParam(name=cookie.name, value=cookie.value, url=f"{scheme}://{cookie.domain}{cookie.path}")
+        else:
+            param = SetCookieParam(name=cookie.name, value=cookie.value, domain=f".{cookie.domain}", path=cookie.path)
+        param["secure"] = cookie.secure
+        if cookie.expires is not None:
+            param["expires"] = cookie.expires
+        params.append(param)
+    return params
 
 
 async def capture_artifacts(page: Page, policy: FetchPolicy) -> dict[str, bytes]:
@@ -402,9 +433,11 @@ async def rendered(
     started: float,
     timings: dict[str, int],
     traffic: Traffic,
+    seeded: Sequence[SessionCookie] = (),
 ) -> AsyncIterator[Rendered]:
-    """The page at `url` in a fresh context, once its navigation has settled; the context closes when the block ends,
-    and its wall time is `timings["context"]`. The bytes the guard relays are added to `traffic`. Raises `Failed`."""
+    """The page at `url` in a fresh context holding the `seeded` cookies, once its navigation has settled; the context
+    closes when the block ends, and its wall time is `timings["context"]`. The bytes the guard relays are added to
+    `traffic`. Raises `Failed`."""
     try:
         first = await connector.check(url)  # also refuses `file:`, `data:` and other non-web schemes
     except SsrfRejected as e:
@@ -415,6 +448,8 @@ async def rendered(
         )
         opened = time.monotonic()
         try:
+            if seeded:
+                await context.add_cookies(seeded_cookies(seeded))
             if policy.context is not None and policy.context.cookies:
                 await context.add_cookies(caller_cookies(url, policy.context))
             if policy.block_resources and not policy.captures_page:

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from crawlerai.acquire.api import fetch_json
 from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
 from crawlerai.acquire.browser_tab import Drive, fetch_listing
+from crawlerai.acquire.cookie_store import CookieStore
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
 from crawlerai.acquire.politeness import HostLimiter
@@ -47,18 +48,30 @@ class Runtime:
 
 
 @asynccontextmanager
-async def open_fetching(settings: Settings, connector: SafeConnector | None = None) -> AsyncIterator[Fetching]:
+async def open_fetching(
+    settings: Settings, connector: SafeConnector | None = None, database: AsyncEngine | None = None
+) -> AsyncIterator[Fetching]:
     """What a process fetches pages with (acquisition spec): HTTP, the process's one shared browser (launched when a
     fetch first needs it), the adapters and the process's site sessions, all through one SSRF guard; the browser
-    closes with the block."""
+    closes with the block. With a `database` and a cookie key, the site sessions keep the stored cookie state in it."""
     connector = connector or SafeConnector()
     pools = settings.proxy_pools
+    key = settings.cookie_key
+    store = None if database is None or key is None else CookieStore(database, key.get_secret_value())
+    sessions = SiteSessions(store=store)  # this process's site sessions (INV-29's exception)
 
     async def fetch_in(
         session: BrowserSession, url: str, policy: FetchPolicy, export: CookieExport | None
     ) -> FetchResult:
         return await fetch_browser(
-            url, policy, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools, export=export
+            url,
+            policy,
+            session=session,
+            engine_version=ENGINE_VERSION,
+            connector=connector,
+            pools=pools,
+            export=export,
+            sessions=sessions,
         )
 
     async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
@@ -69,7 +82,6 @@ async def open_fetching(settings: Settings, connector: SafeConnector | None = No
             )
 
     impersonate = rung_impersonation(settings)
-    sessions = SiteSessions()  # this process's site sessions (INV-29's exception), in memory only
     http = partial(
         fetch_http,
         engine_version=ENGINE_VERSION,
@@ -117,7 +129,7 @@ async def open_runtime(settings: Settings) -> AsyncIterator[Runtime]:
     # The normalizers' all-locale tables are built in the background, not by the first request that extracts.
     warming = asyncio.create_task(asyncio.to_thread(warm))
     try:
-        async with open_fetching(settings) as fetching:
+        async with open_fetching(settings, database=engine) as fetching:
             yield Runtime(
                 database=engine,
                 fetching=fetching,

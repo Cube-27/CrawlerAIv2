@@ -12,6 +12,7 @@ dependencies = [
     "babel>=2.16,<3",
     "boto3>=1.35,<2",
     "cronsim>=2.6,<3",
+    "cryptography>=44,<51",
     "cssselect>=1.2,<2",
     # acquire/http.py works around 0.16's handle release order through the session's internals (UAT F06): an
     # upgrade re-checks that workaround.

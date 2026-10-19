@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.browser_tab import ListingRung
-from crawlerai.acquire.challenge import block_class_of, portable
+from crawlerai.acquire.challenge import block_class_of
 from crawlerai.acquire.classify import interstitial
 from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
@@ -265,15 +265,12 @@ async def _page(
 
 
 async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: FetchResult) -> FetchResult:
-    """The browser attempt after the HTTP `result`. When HTTP was refused (`shell` or `blocked`) by a challenge whose
-    cookies may serve plain HTTP (`challenge.portable`) and the process keeps site sessions, the browser's `ok` opens
-    the site's session with the context's cookies and the identity it sent (INV-29's exception), and its attempt says
-    so (`site_session`)."""
+    """The browser attempt after the HTTP `result`. When HTTP was refused (`shell` or `blocked`) and the process keeps
+    site sessions, the browser's `ok` opens the site's session with the context's cookies, challenge and clearance
+    cookies left out, and the identity it sent (INV-29's exception), and its attempt says so (`site_session`)."""
     sessions, exporting = rungs.sessions, rungs.exporting
     # A fetch with the caller's own context opens no session (D-1432): its cookies are the caller's, not the site's.
-    handoff = (
-        policy.context is None and result.block_class in _BROWSER_EVIDENCE and portable(result.attempts[-1].challenge)
-    )
+    handoff = policy.context is None and result.block_class in _BROWSER_EVIDENCE
     if sessions is None or exporting is None or not handoff:
         return await rungs.browser(url, policy)
     export = CookieExport()
