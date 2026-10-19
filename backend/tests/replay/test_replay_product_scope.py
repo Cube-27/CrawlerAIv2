@@ -99,3 +99,13 @@ def test_structured_data_that_agrees_on_every_required_field_settles_the_page() 
     assert SETTLED not in differing.diagnostics
     assert _dom(with_variants)
     assert SETTLED not in with_variants.diagnostics
+
+
+def test_a_block_around_another_item_s_card_is_no_description() -> None:
+    long_text = FieldSpec(type=FieldType.LONG_TEXT, description="d", schema_org="Product.description")
+    schema = SCHEMA.model_copy(update={"fields": {**FIELDS, "description": long_text}})
+    wrapped = f"<div><p>{'Woven upper, cushioned sole and a grippy outsole for the long walk. ' * 3}</p>{CARD}</div>"
+
+    result = _extract(_jsonld("80.00"), PRODUCT + wrapped, schema)
+
+    assert "Synthetic Belt" not in str(_dom(result).get("description"))

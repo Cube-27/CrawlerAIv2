@@ -93,7 +93,8 @@ class _Blocks:
                 OTHER_ITEMS,
             )
         )
-        roots = region.css(selector)
+        # The outermost elements outside the product container are set apart as the selected roots are.
+        roots = [*region.css(selector), *(n for n in region.css("*") if _outermost(n, outside))]
         # Inside an element set apart, and around one (a block that holds a form is not prose).
         self.apart = outside | frozenset(inside.mem_id for root in roots for inside in (root, *root.css("*")))
         self.mixed = frozenset(a.mem_id for root in roots for a in _ancestors(root, region))
@@ -122,6 +123,10 @@ def _ancestors(node: LexborNode, region: LexborNode) -> Iterator[LexborNode]:
         if parent.mem_id == region.mem_id:
             return
         parent = parent.parent
+
+
+def _outermost(node: LexborNode, outside: frozenset[int]) -> bool:
+    return node.mem_id in outside and (node.parent is None or node.parent.mem_id not in outside)
 
 
 def _heading(node: LexborNode) -> bool:
