@@ -51,6 +51,11 @@ async def _job_state(engine: AsyncEngine, job_id: JobId) -> tuple[JobStatus, lis
         return status, list(events)
 
 
+# `_run_until` gives up after this long; the tests that use it carry a pytest timeout a little above it.
+_RUN_BOUND_S = 300
+_TEST_TIMEOUT_S = _RUN_BOUND_S + 30
+
+
 async def _run_until(
     engine: AsyncEngine,
     handlers: Mapping[JobKind, TaskHandler],
@@ -62,7 +67,7 @@ async def _run_until(
     """Run `workers` worker loops until `done()` holds, then stop them and wait for them to exit."""
     stop = asyncio.Event()
     loops = [asyncio.create_task(run_worker(_settings(engine, **settings), handlers, stop)) for _ in range(workers)]
-    async with asyncio.timeout(300):
+    async with asyncio.timeout(_RUN_BOUND_S):
         while not await done():
             await asyncio.sleep(0.1)
         stop.set()
@@ -108,6 +113,7 @@ async def test_2_claimers_take_20_tasks_each_exactly_once_and_at_most_7_a_claim(
     assert all(batches)
 
 
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
 async def test_tasks_of_a_cancelled_job_are_not_run(engine: AsyncEngine) -> None:
     job_id, _ = await _job(engine, 3, status="running", cancel_requested=True)
     runs: list[UrlTaskId] = []
@@ -123,6 +129,7 @@ async def test_tasks_of_a_cancelled_job_are_not_run(engine: AsyncEngine) -> None
     assert [row.status for row in await _tasks(engine)] == ["cancelled"] * 3
 
 
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
 async def test_a_retry_result_requeues_the_task_until_its_attempts_run_out(engine: AsyncEngine) -> None:
     job_id, _ = await _job(engine, 1)
 
@@ -141,6 +148,7 @@ async def test_a_retry_result_requeues_the_task_until_its_attempts_run_out(engin
         (True, "RuntimeError: fetching <url> timed out"),
     ],
 )
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
 async def test_a_handler_exception_is_recorded_and_the_task_retried(
     engine: AsyncEngine, redact: bool, last_error: str
 ) -> None:
@@ -159,6 +167,7 @@ async def test_a_handler_exception_is_recorded_and_the_task_retried(
     assert await _tasks(engine) == [("queued", None, 1, last_error)]
 
 
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
 async def test_work_of_a_task_whose_lease_was_lost_is_rolled_back(engine: AsyncEngine) -> None:
     job_id, [task_id] = await _job(engine, 1)
     ran = asyncio.Event()
