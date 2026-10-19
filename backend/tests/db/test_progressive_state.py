@@ -9,7 +9,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.config_ir.progressive import (
+    LEARN_AFTER_PAGES,
     StateKey,
+    find_activated,
     learning_activated,
     learning_failed,
     request_learning,
@@ -51,8 +53,8 @@ async def _learn_jobs(conn: AsyncConnection, key: StateKey) -> list[Any]:
     return list((await conn.execute(jobs)).all())
 
 
-async def _config(conn: AsyncConnection, key: StateKey) -> ExtractionConfigId:
-    values = {**key.columns(), "version": 1, "ir": {}, "origin": "induced"}
+async def _config(conn: AsyncConnection, key: StateKey, origin: str = "induced") -> ExtractionConfigId:
+    values = {**key.columns(), "version": 1, "ir": {}, "origin": origin}
     config_id: ExtractionConfigId = (
         await conn.execute(insert(ExtractionConfig).values(**values).returning(ExtractionConfig.id))
     ).scalar_one()
@@ -121,7 +123,21 @@ async def test_an_active_state_relearns_only_when_forced_and_keeps_its_config(co
 
     state = await _state(conn, key)
     assert (state.mode, state.active_config_id, state.learning_started_at) == ("active", config_id, None)
-    assert state.retry_at_pages is None
+    assert state.retry_at_pages == state.pages_extracted + LEARN_AFTER_PAGES
+
+
+@pytest.mark.parametrize(("origin", "learns"), [("role_c", True), ("induced", False)])
+async def test_an_active_state_on_role_c_finds_alone_still_learns_in_full(
+    conn: AsyncConnection, origin: str, learns: bool
+) -> None:
+    key = await _key(conn)
+    await _pages(conn, key, LEARN_AFTER_PAGES)
+    await find_activated(conn, key, config_id := await _config(conn, key, origin))
+
+    assert await trigger_learning(conn, batch=BATCH) == learns
+
+    state = await _state(conn, key)
+    assert (state.mode, state.active_config_id, state.learning_started_at is not None) == ("active", config_id, learns)
 
 
 @pytest.mark.parametrize(

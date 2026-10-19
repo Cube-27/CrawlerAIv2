@@ -24,6 +24,7 @@ from crawlerai.config_ir.progressive import (
     StateKey,
     config_approved,
     config_rejected,
+    find_activated,
     learning_activated,
     learning_awaits_approval,
     lock_state,
@@ -135,6 +136,32 @@ async def store_correction(
     await _suspend_waiting(conn, key)  # the operator's config is newer than one waiting for approval (D-1342)
     config_id = await _store(conn, key, validated.ir, validated.report, "active")
     await operator_activated(conn, key, config_id)
+    return config_id
+
+
+async def store_find(
+    conn: AsyncConnection, key: StateKey, found: ExtractionConfigIR, report: ValidationReport
+) -> ExtractionConfigId | None:
+    """Store `found`, the validated steps of role C finds (`config_ir.finds`), as `key`'s next version, active: the
+    active config with the found fields it does not run yet, or `found` itself when there is none; None when the active
+    config runs every one already. The caller holds `key`'s state lock with no learning run in flight. Raises
+    `ConfigMismatch` like `activate`."""
+    await _check_key(conn, key, found)
+    configs = ExtractionConfig
+    active = (*key.config_scope(), configs.status == "active")
+    row = (await conn.execute(select(configs.ir, configs.validation_report).where(*active))).one_or_none()
+    ir, merged = found, report
+    if row is not None:
+        serving = ExtractionConfigIR.model_validate(row.ir)
+        new = {name: steps for name, steps in found.fields.items() if name not in serving.fields}
+        if not new:
+            return None
+        ir = serving.model_copy(update={"fields": {**serving.fields, **new}})
+        before = ValidationReport.model_validate(row.validation_report)
+        merged = before.model_copy(update={"fields": {**before.fields, **{n: report.fields[n] for n in new}}})
+    await _suspend_active(conn, key)
+    config_id = await _store(conn, key, ir, merged, "active")
+    await find_activated(conn, key, config_id)
     return config_id
 
 

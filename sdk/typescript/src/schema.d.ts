@@ -1320,7 +1320,7 @@ export interface components {
              * Origin
              * @enum {string}
              */
-            origin: "adapter" | "induced" | "llm_synth" | "operator";
+            origin: "adapter" | "induced" | "llm_synth" | "role_c" | "operator";
             /**
              * Page Kind
              * @enum {string}
@@ -1379,7 +1379,7 @@ export interface components {
              * Origin
              * @enum {string}
              */
-            origin: "adapter" | "induced" | "llm_synth" | "operator";
+            origin: "adapter" | "induced" | "llm_synth" | "role_c" | "operator";
             /**
              * Page Kind
              * @enum {string}
@@ -3095,7 +3095,7 @@ export interface components {
              * Origin
              * @enum {string}
              */
-            origin: "adapter" | "induced" | "llm_synth" | "operator";
+            origin: "adapter" | "induced" | "llm_synth" | "role_c" | "operator";
             /** Validated On */
             validated_on: string[];
         };

@@ -125,7 +125,9 @@ async def _settle(
         await record_fetch(conn, page.site.id, task.canonical_url, page.result)
         await link_records(conn, task.id, page.standing)
         return Finished("unchanged", capture_id=page.capture_id)
-    result = await extract_records(conn, task, page, records, caller_supplied=True, llm=llm, parsed=parsed)
+    result = await extract_records(
+        conn, task, page, records, caller_supplied=True, llm=llm, store=fetching.store, parsed=parsed
+    )
     if isinstance(result, Finished):
         result = await store_further_pages(
             conn, fetching.store, task, page, records, caller_supplied=True, llm=llm, result=result

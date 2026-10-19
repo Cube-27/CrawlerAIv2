@@ -28,6 +28,8 @@ from crawlerai.collect.run import Adapters
 from crawlerai.collect.schema_org_map import Vocabulary, VocabularyMissing
 from crawlerai.config_ir.active import record_page
 from crawlerai.config_ir.drift import MARGINS_FILE, DriftMargins, load_margins
+from crawlerai.config_ir.finds import FindWriter, found_fields, write_back
+from crawlerai.config_ir.progressive import StateKey
 from crawlerai.content.chunks import Chunk, ChunkOptions, chunks
 from crawlerai.content.fit import FitOptions, markdown_fit
 from crawlerai.content.html import cleaned_html
@@ -541,6 +543,7 @@ async def store_page_record(
     margins: DriftMargins | None,
     caller_supplied: bool = True,
     page_url: str | None = None,
+    finds: FindWriter | None = None,
 ) -> Stored:
     """Store the extraction of a page and what it keeps: a caller-supplied page keeps its records, complete or not
     (`partial`), and a crawl-discovered one only complete records (else `no_match`, §23); none when
@@ -548,7 +551,8 @@ async def store_page_record(
     record; a caller-supplied listing without rows is `partial` with none (its page was read, and listed nothing). A
     page with a record counts toward its progressive state, and its coverage freshens the site's contract; a
     caller-supplied page without one counts towards its staleness (`acquire.memory.learn_extraction`). A page `config`
-    ran on joins the config's drift window (learning-configs spec). `page_url` is `store_extraction`'s."""
+    ran on joins the config's drift window (learning-configs spec). `page_url` is `store_extraction`'s. With `finds`,
+    the page's role C finds are written back to the site's config (`config_ir.finds`)."""
     stored = await store_extraction(
         conn,
         task,
@@ -566,6 +570,10 @@ async def store_page_record(
     if stored.records:
         await learn_extraction(conn, site_id, schema.page_kind, coverage(schema, extraction))
         await _count_page(conn, site_id, schema)
+        if finds is not None:
+            await _write_back(
+                conn, finds, StateKey(site_id, schema.id, schema.page_kind), schema, extraction, capture_id
+            )
     elif caller_supplied:
         # A caller-supplied page is of the schema's kind by the caller's word, so no record is a quality failure; a
         # crawl-discovered page may be of no kind the schema reads.
@@ -642,6 +650,25 @@ async def store_further(
         failed = failed or kept.outcome == "failed"
         records.extend((record, extraction) for record in kept.records)
     return StoredFurther(tuple(records), failed)
+
+
+async def _write_back(
+    conn: AsyncConnection,
+    finds: FindWriter,
+    key: StateKey,
+    schema: SchemaDef,
+    extraction: ExtractionResult,
+    capture_id: CaptureId,
+) -> None:
+    """Write the page's role C finds back (`config_ir.finds.write_back`) in a savepoint: a failure to learn from them
+    leaves the page's record stored and the site's config as it was."""
+    if not found_fields(schema, extraction):
+        return
+    try:
+        async with conn.begin_nested():
+            await write_back(conn, finds, key, schema, extraction, capture_id)
+    except Exception:  # the page is stored either way; the next find tries again
+        log.exception("role C finds of capture %s were not written back", capture_id)
 
 
 def coverage(schema: SchemaDef, extraction: ExtractionResult) -> Coverage:

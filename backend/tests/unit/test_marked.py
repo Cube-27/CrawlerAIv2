@@ -6,7 +6,7 @@ from hypothesis import strategies as st
 
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.text import CleanedText, Mark, MarkKind
-from crawlerai.llm.marked import marked
+from crawlerai.llm.marked import marked, scoped
 
 BASE = "https://jobs.example.test/postings/7"
 BOTH: frozenset[MarkKind] = frozenset({"link", "image"})
@@ -61,3 +61,19 @@ def _spans(inserted: tuple[int, ...], lengths: tuple[int, ...]) -> list[tuple[in
         spans.append((at, length, shift))
         shift += length
     return spans
+
+
+def test_another_items_card_is_left_out_and_offsets_map_back_past_it() -> None:
+    cleaned = _cleaned(
+        "<h1>Oak table</h1><ul><li id='r'><a href='/chair'>Chair</a> $12</li></ul><p class='price'>$480</p>"
+    )
+    card = next(run.node_path for run in cleaned.offsets if cleaned.text[run.start : run.end] == "Chair")
+    root = card.rpartition("/")[0]  # the card's li
+
+    read = scoped(cleaned, frozenset({root}))
+
+    assert "Chair" not in read.text.text
+    assert "$12" not in read.text.text
+    at = read.text.text.index("$480")
+    start, end = read.cleaned_offset(at), read.cleaned_offset(at + 4, end=True)
+    assert cleaned.text[start:end] == "$480"

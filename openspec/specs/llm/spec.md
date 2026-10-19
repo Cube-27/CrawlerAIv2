@@ -82,7 +82,10 @@ D-0024, D-0379, D-1623.
 - **THEN** it is dropped as `role C: <field> ungrounded`
 
 ### Requirement: Role C input, claims and candidates
-Role C SHALL read cleaned text, never raw HTML. On a detail page it reads the flat text cut at 40,000 characters, with
+Role C SHALL read cleaned text, never raw HTML. On a detail page it reads the product's own flat text: the runs inside
+another item's card, a related or recommended list, or a list's other members (`collect/scope.py`, the same scope the
+collectors read) are left out with their separators, and a grounded span is located back at its offsets in the whole
+cleaned text (`llm/marked.py` `scoped`). It reads that text cut at 40,000 characters, with
 an id after each shown link to another resource and at each shown image when an asked field is a url or an image_url
 (`llm/marked.py`; the page is its final URL, so a link to it is unmarked whatever the base URL; the ids take at most
 10,000 characters together, the marks past that unshown), and replies one `{shown, ref, value, start, end}` claim per asked field: a span, or in `ref` the id
@@ -94,14 +97,19 @@ by its enclosing item's context when it has one ([listings](../listings/spec.md)
 field wins, its value is grounded in that block's text, else in its context, only (INV-12) and located at its offset in
 the cleaned text. A listing reads at most 200 blocks across its calls, each call within 80,000 characters and as many
 blocks as their claims fit the reply. Grounded values are normalized into
-`Candidate(source_kind='llm', independent=True)`. (Previously: a detail page's text carried no ids, and its claims
-were spans only.) Refs: §8.4, D-0521, D-1097, D-1600, D-1601, D-1602, D-1606, D-1621, D-1622, D-1623, D-1627.
+`Candidate(source_kind='llm', independent=True)`; a field whose claim the evidence does not hold stays `missing` with
+reason `unverified` (resolution spec "LLM gap hook"). (Previously: a detail page's text carried no ids, and its claims
+were spans only; it read the whole page's text, other items' cards included, and an ungrounded field's reason was
+`no_candidates`.) Refs: §8.4, D-0521, D-1097, D-1600, D-1601, D-1602, D-1606, D-1621, D-1622, D-1623, D-1627.
 #### Scenario: Field not shown
 - **WHEN** a claim is `{shown: false, value: "x"}`
 - **THEN** no candidate is made and the field stays `missing`
 #### Scenario: Claimed link
 - **WHEN** an asked url field's claim names `L1`, the id of `<a href="/apply">Apply</a>`
 - **THEN** its candidate is `/apply` resolved against the page, with the link's `dom:` locator
+#### Scenario: Price of a related product
+- **WHEN** a detail page shows its product without a price and a related product's card shows `$12`
+- **THEN** role C does not read the card, and `price` stays `missing`
 #### Scenario: Value of another block
 - **WHEN** a claim for block 0 names a value only block 1 shows
 - **THEN** it is dropped as `role C: block 0 <field> ungrounded`

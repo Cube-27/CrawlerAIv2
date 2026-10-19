@@ -158,10 +158,17 @@ async def load_captures(
 ) -> list[HeldOutPage]:
     """The held-out pages of `captures` that have a record of `schema`'s version, in `captures` order, each with its
     latest such extraction."""
+    return [page.held_out for page in await load_stored(conn, store, schema, captures)]
+
+
+async def load_stored(
+    conn: AsyncConnection, store: ObjectStore, schema: SchemaDef, captures: Sequence[CaptureId]
+) -> list[StoredPage]:
+    """The stored pages of `captures` that have a record of `schema`'s version, in `captures` order, whatever their
+    task's outcome so far (a page whose task is still running is read too)."""
     rows = await conn.execute(_latest(schema).where(Capture.id.in_(captures)))
     found = {row.id: (row.id, row.object_key, row.extraction_id) for row in rows}
-    pages = await _pages(conn, store, schema, [found[capture] for capture in captures if capture in found])
-    return [page.held_out for page in pages]
+    return await _pages(conn, store, schema, [found[capture] for capture in captures if capture in found])
 
 
 async def _pages(

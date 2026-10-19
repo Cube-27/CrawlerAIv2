@@ -21,6 +21,7 @@ from crawlerai.collect.base import Candidate
 from crawlerai.config_ir.active import active_config, config_by_id, recipe_of
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replays
+from crawlerai.config_ir.finds import FindWriter, write_back
 from crawlerai.config_ir.learning import (
     LEARN_RUN_TIMEOUT,
     LEARNING_FINISHED,
@@ -176,9 +177,12 @@ class LearnSite:
     def key(self) -> StateKey:
         return StateKey(self.site_id, self.schema.id, "detail")
 
-    async def extract(self, n: int, role_c: TextRoleC, *, api: bool = False, anchored: bool = False) -> Stored:
+    async def extract(
+        self, n: int, role_c: TextRoleC, *, api: bool = False, anchored: bool = False, finds: bool = False
+    ) -> Stored:
         """Page `n` fetched and extracted by a scrape job's task, with the site's active config if it has one; with
-        `api`, fetched by the browser, which captured the API's answer for it."""
+        `api`, fetched by the browser, which captured the API's answer for it; with `finds`, its role C finds written
+        back (`config_ir.finds`)."""
         url = f"{self.origin}/p/{n}"
         fetched = self.fetch_result(url, 200, _page(n, anchored=anchored), (("Content-Type", "text/html"),))
         if api:
@@ -204,6 +208,9 @@ class LearnSite:
                 write_records=store_records,
             )
             assert stored.outcome != "failed"
+            if finds:
+                writer = FindWriter(self.store, self.data.vocabulary)
+                await write_back(conn, writer, self.key, self.schema, stored.result, capture_id)
             await complete_task(conn, task, stored.outcome, capture_id=capture_id)
             # An extracted or partial page counts toward learning.
             await conn.execute(
@@ -269,6 +276,27 @@ async def site(
     async with engine.begin() as conn:
         await conn.execute(delete(ProgressiveState).where(ProgressiveState.site_id == site_id))
         await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site_id))
+
+
+async def test_a_role_c_find_is_written_back_once_two_other_pages_reproduce_it(site: LearnSite) -> None:
+    async with site.engine.begin() as conn:
+        await conn.execute(insert(ProgressiveState).values(**site.key.columns()))
+    role_c = TextRoleC()
+    for n in range(1, 4):
+        await site.extract(n, role_c, anchored=True, finds=True)
+        # Pages 1 and 2 have fewer than two other pages to validate the find's steps on.
+        assert (await site.state()).mode == ("active" if n == 3 else "cold")
+
+    async with site.engine.connect() as conn:
+        config = (await conn.execute(select(ExtractionConfig).where(ExtractionConfig.status == "active"))).one()
+    assert (config.origin, sorted(config.ir["fields"]), len(config.validation_report["held_out"])) == (
+        "role_c",
+        ["price"],
+        2,
+    )
+    stored = await site.extract(4, role_c, anchored=True)
+    assert stored.result.entity is not None
+    assert (stored.result.mode, role_c.calls, stored.result.entity["price"].source_kind) == ("config", 3, "config")
 
 
 async def test_a_site_with_8_extracted_pages_is_learned_and_then_served_from_its_config(site: LearnSite) -> None:

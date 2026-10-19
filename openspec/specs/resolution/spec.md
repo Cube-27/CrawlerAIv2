@@ -189,10 +189,18 @@ can be bought), SHALL keep reason `out_of_stock` instead of `no_candidates`, and
 - **THEN** `price` is `missing` with reason `out_of_stock`, and the page is `partial`
 
 ### Requirement: LLM gap hook
-The system SHALL ask role C ([llm](../llm/spec.md)) once per detail page only for missing required fields and unfilled
-required groups (in `active` mode only those the config neither covers nor lists as absent, which stay `missing` with
-reason `absent`); `conflict`, `abstained`, `object` and `list<object>` fields are never sent, and its candidates pass
-the same stages as `llm_grounded`. Refs: §8.4, D-0489, D-0797, D-1341.
+The system SHALL ask role C ([llm](../llm/spec.md)) in one call per detail page for every field still `missing` after
+deterministic resolution, optional ones included (in `active` mode only those the config neither covers nor lists as
+absent, which stay `missing` with reason `absent`), reading the product's own evidence only ([llm](../llm/spec.md)
+"Role C input, claims and candidates"); `conflict`, `abstained`, `object` and `list<object>` fields are never sent, and
+its candidates pass the same stages as `llm_grounded`. A field whose claimed value the evidence does not hold
+(INV-12) stays `missing` with reason `unverified`. A published role C value is written back as a config step when two
+other pages reproduce it ([learning-configs](../learning-configs/spec.md) "Find recipes"), so the site's next pages
+read it without the LLM. (Previously: only missing required fields and groups were asked, an ungrounded field's reason
+was `no_candidates`, and a find was not written back.) Refs: §8.4, D-0489, D-0797, D-1341.
+#### Scenario: Value the page does not hold
+- **WHEN** role C claims `price` `$19` and the product's text holds no `$19`
+- **THEN** `price` stays `missing` with reason `unverified`
 
 ### Requirement: Nothing after resolution changes a value (INV-27)
 No layer after resolution (storage, exporters, API, MCP, UI) SHALL change a published value; fixes go to extraction,

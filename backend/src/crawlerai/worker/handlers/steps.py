@@ -29,6 +29,7 @@ from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.config_ir.active import config_by_id, recipe_of
 from crawlerai.config_ir.api_recipe.execute import MAX_PAGES
 from crawlerai.config_ir.drift import DriftMargins
+from crawlerai.config_ir.finds import FindWriter
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.retry import backoff_delay
@@ -424,11 +425,13 @@ async def extract_records(
     *,
     caller_supplied: bool,
     llm: LLMClient,
+    store: ObjectStore,
     parsed: ParsedPage | None = None,
 ) -> TaskResult:
     """Extract the reached page with what the job pinned and store it (`store_page_record`): `config` mode with the
     pinned config, else cold. Role C on `llm`, charged to the job, fills required fields left missing (extraction spec).
-    `parsed` is the page's parse when the handler already has one (INV-26). A crawl-discovered page may end
+    `parsed` is the page's parse when the handler already has one (INV-26); its role C finds are written back to the
+    site's config, reading the stored pages from `store` (`config_ir.finds`). A crawl-discovered page may end
     `no_match`. A listing without rows ends with the reason (`ExtractionResult.reason`)."""
     schema = records.schema
     config = None
@@ -447,6 +450,7 @@ async def extract_records(
         config=config,
         margins=records.margins,
         caller_supplied=caller_supplied,
+        finds=FindWriter(store, records.data.vocabulary),
     )
     if stored.outcome == "failed":
         return Failed(EXTRACTION_ERROR, transient=False, capture_id=page.capture_id)

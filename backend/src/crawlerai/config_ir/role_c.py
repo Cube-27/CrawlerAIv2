@@ -38,9 +38,16 @@ class _RoleC:
             request.ctx,
             owner=request.target.id,
             job_id=self.job_id,
+            elsewhere=request.elsewhere,
         )
         calls = _calls(c_extract.PROMPT_KIND, filled)
-        return GapReply(filled.candidates, calls, failure=_reason(filled), diagnostics=filled.diagnostics)
+        return GapReply(
+            filled.candidates,
+            calls,
+            failure=_reason(filled),
+            diagnostics=filled.diagnostics,
+            unverified=filled.unverified,
+        )
 
     async def listing(self, request: ListingGapRequest) -> ListingGapReply:
         """The blocks' calls (when blocks are asked), then the page fields' (when page fields are): the page fields are

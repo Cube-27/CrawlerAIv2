@@ -136,11 +136,17 @@ class Validated:
 
 
 def validate(
-    ir: ExtractionConfigIR, schema: SchemaDef, held_out: Sequence[HeldOutPage], vocabulary: Vocabulary
+    ir: ExtractionConfigIR,
+    schema: SchemaDef,
+    held_out: Sequence[HeldOutPage],
+    vocabulary: Vocabulary,
+    *,
+    min_held_out: int = MIN_HELD_OUT,
 ) -> Validated:
-    """Validate `ir` on `held_out` (§4.7). It activates only with at least `MIN_HELD_OUT` pages and one kept field."""
+    """Validate `ir` on `held_out` (§4.7). It activates only with at least `min_held_out` pages (`MIN_HELD_OUT` for a
+    learning run, `finds.MIN_FIND_HELD_OUT` for a role C find) and one kept field."""
     captures = [page.capture_id for page in held_out]
-    if len(held_out) < MIN_HELD_OUT:
+    if len(held_out) < min_held_out:
         return Validated(None, ValidationReport(held_out=captures, fields={}, listing=None, refused="too_few_held_out"))
     executor = EngineExecutor(ir, vocabulary)
     runs = [_PageRun.of(executor, schema, page) for page in held_out]

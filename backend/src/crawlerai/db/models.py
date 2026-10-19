@@ -95,7 +95,8 @@ SourceKind = Literal[
 ]
 # `pending_approval`: a learned config waiting for a person to approve it (`project.require_config_approval`, D-1342).
 ConfigStatus = Literal["draft", "active", "suspended", "pending_approval"]
-ConfigOrigin = Literal["adapter", "induced", "llm_synth", "operator"]
+# `role_c`: a config of role C finds alone (`config_ir.finds`, learning-configs spec "Find recipes").
+ConfigOrigin = Literal["adapter", "induced", "llm_synth", "role_c", "operator"]
 # `extraction_config.field_status` values.
 FieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended", "absent"]
 ProgressiveMode = Literal["cold", "learning", "active"]

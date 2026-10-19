@@ -98,6 +98,24 @@ again. In `active` mode a field the config runs SHALL NOT be asked of role C, ev
 - **WHEN** a `pending_approval` config is rejected
 - **THEN** it is `suspended`, the config serving before stays active, and no run starts until 8 more pages are extracted
 
+### Requirement: Find recipes
+A detail page's published role C value (a value its evidence holds, INV-12) SHALL be written back to the site's config,
+the one recipe store: its locator is induced on that page alone (`induction.py`) and the steps are validated as a run
+validates them, on at least 2 other stored pages of the site that published the field, reproducing the value the engine
+published on each (`config_ir/finds.py`). The kept fields join the active config as its next version, or without one
+form a config of origin `role_c`, which activates the state; a state whose active config is of origin `role_c` still
+learns in full at 8 pages. Nothing is written while a run is in flight, while a config waits for approval, or when the
+project requires approval. A page reads a new version from its next job on (INV-28), and its fields are then never
+asked of role C ("Activation and active-mode extraction"); drift suspends them as any config field. (Previously: a
+role C value was never written back; only a learning run made configs.) Refs: §8.3, §8.4, D-0569, D-1342.
+#### Scenario: Price found by role C on three pages
+- **WHEN** role C publishes `price` on a site's third page and its induced step reproduces the published price on the
+  site's two other stored pages
+- **THEN** a config with `price` is active, and the site's next job reads `price` from it with no LLM call
+#### Scenario: One other page
+- **WHEN** a find's steps reproduce the value on the only other stored page of the site
+- **THEN** nothing is written
+
 ### Requirement: Drift suspension
 Config-mode pages SHALL feed a per-field 50-page window; from 3 pages, a field whose yield or validity falls below its
 baseline minus the margins in `backend/data/drift_margins.json` (fitted on the golden set only,

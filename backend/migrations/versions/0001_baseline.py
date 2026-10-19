@@ -299,7 +299,8 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint(
-            "origin IN ('adapter', 'induced', 'llm_synth', 'operator')", name=op.f("ck_extraction_config_origin")
+            "origin IN ('adapter', 'induced', 'llm_synth', 'role_c', 'operator')",
+            name=op.f("ck_extraction_config_origin"),
         ),
         sa.CheckConstraint("page_kind IN ('detail', 'listing')", name=op.f("ck_extraction_config_page_kind")),
         sa.CheckConstraint(

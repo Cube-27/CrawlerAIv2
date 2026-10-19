@@ -61,6 +61,8 @@ class Collected:
     # The query parameters by which the page's platform selects a variant on a product's own URL
     # (`adapters.platforms.variant_params`); none when the page shows no platform that documents any.
     variant_params: tuple[str, ...] = ()
+    # A detail page's blocks outside its product container (`collect.dom.product_apart`), by element.
+    outside: frozenset[int] = frozenset()
 
 
 def collect_page(
@@ -130,6 +132,7 @@ def collect_page(
         items=items,
         state=state,
         variant_params=_variant_params(page, manifest) if schema.page_kind == "detail" else (),
+        outside=dom.outside,
     )
 
 

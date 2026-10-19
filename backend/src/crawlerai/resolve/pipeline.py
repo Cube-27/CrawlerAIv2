@@ -31,6 +31,7 @@ from pydantic import BaseModel, ConfigDict
 from crawlerai.collect.base import ARRAY_ROW, Candidate, Entity
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.currencies import with_stated_currencies
+from crawlerai.collect.dom import other_item_paths
 from crawlerai.collect.items.bind import Listing, RowBlock, bind
 from crawlerai.collect.items.lines import BlockText, block_texts
 from crawlerai.collect.run import Adapters, Collected, collect_page
@@ -72,6 +73,8 @@ log = logging.getLogger(__name__)
 _FAILED = "extraction failed"
 # The reason of a `missing` field the active config lists as absent (`config_ir.absent`, D-1341).
 ABSENT: Final = "absent"
+# The reason of a `missing` field role C claimed a value for that the page's evidence does not hold (INV-12).
+UNVERIFIED: Final = "unverified"
 
 # D-0486: without a `source_precedence.yaml` no source kind is ranked, so text, long_text, url and image_url fields
 # decline as `unranked` rather than follow an unmeasured order (C7). The repo commits resolution spec's order (D-0444).
@@ -138,25 +141,29 @@ class EngineData:
 @dataclass(frozen=True, slots=True)
 class GapRequest:
     """The fields of `target` that resolution left missing, for role C to read from the page text (llm spec, "When role
-    C is asked")."""
+    C is asked"), without the elements at the node paths `elsewhere`, which hold other items' content
+    (`collect.dom.other_item_paths`)."""
 
     page: ParsedPage
     schema: SchemaDef
     ctx: Context
     target: Entity
     missing: tuple[str, ...]
+    elsewhere: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
 class GapReply:
     """Role C's grounded candidates (`source_kind='llm'`, owned by the target) and the calls it made. `failure` is
     set when its call gave no valid reply (llm spec): the asked fields then stay `missing` with it as their
-    reason. `diagnostics` join the page's (values dropped as ungrounded, truncation)."""
+    reason. `diagnostics` join the page's (values dropped as ungrounded, truncation); `unverified` are the fields
+    whose claimed value the page's evidence does not hold, which stay `missing` with reason `UNVERIFIED`."""
 
     candidates: tuple[Candidate, ...]
     llm_calls: tuple[LLMCallRecord, ...]
     failure: str | None = None
     diagnostics: tuple[str, ...] = ()
+    unverified: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,7 +223,8 @@ async def extract_page(
     llm_calls: tuple[LLMCallRecord, ...] = ()
     missing = _missing(schema, fields, page.config.covered)
     if role_c is not None and missing and isinstance(page.target, Entity):
-        reply = await role_c.detail(GapRequest(page.page, schema, page.ctx, page.target, missing))
+        elsewhere = await asyncio.to_thread(other_item_paths, page.page, page.ctx, page.collected.outside)
+        reply = await role_c.detail(GapRequest(page.page, schema, page.ctx, page.target, missing, elsewhere))
         candidates, llm_calls = (*candidates, *reply.candidates), reply.llm_calls
         diagnostics = (*diagnostics, *reply.diagnostics)
         if reply.candidates:  # without new candidates, resolution would decide the same
@@ -227,6 +235,7 @@ async def extract_page(
                 return _result("error", mode, candidates=candidates, llm_calls=llm_calls, diagnostics=diagnostics)
         if reply.failure is not None:
             fields = _unanswered(fields, missing, reply.failure)
+        fields = _unanswered(fields, reply.unverified, UNVERIFIED)
     fields = await _unpublished_reasons(source, page.page, _absent(fields, page.config.absent))
     return ExtractionResult(
         outcome="extracted" if is_complete(schema, fields) else "partial",
@@ -688,7 +697,8 @@ async def _unpublished_reasons(source: "_Source", page: ParsedPage, fields: Fiel
 
 
 def _unanswered(fields: FieldSet, asked: tuple[str, ...], failure: str) -> FieldSet:
-    """The fields after a role C call that gave no reply: each asked field still `missing` says why (llm spec)."""
+    """The fields after a role C call: each of `asked` still `missing` says why, the call's failure when it gave no
+    reply, `UNVERIFIED` for a claimed value the evidence does not hold (llm spec)."""
     return {
         name: outcome.model_copy(update={"reason": failure})
         if name in asked and outcome.status == "missing"

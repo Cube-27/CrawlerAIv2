@@ -199,7 +199,7 @@ async def _visit(
     if crawl.records is None:
         return Finished("extracted", capture_id=page.capture_id), links
     result = await extract_records(
-        conn, crawl.task, page, crawl.records, caller_supplied=False, llm=crawl.llm, parsed=parsed
+        conn, crawl.task, page, crawl.records, caller_supplied=False, llm=crawl.llm, store=store, parsed=parsed
     )
     if isinstance(result, Finished):
         result = await store_further_pages(

@@ -228,6 +228,7 @@ class Origin(Enum):
     adapter = "adapter"
     induced = "induced"
     llm_synth = "llm_synth"
+    role_c = "role_c"
     operator = "operator"
 
 

@@ -42,6 +42,7 @@ from crawlerai.acquire.types import ActionsReport, AttemptRecord, BrowserActions
 from crawlerai.collect.run import Adapters
 from crawlerai.config_ir.active import active_config, recipe_of
 from crawlerai.config_ir.drift import DriftMargins
+from crawlerai.config_ir.finds import FindWriter
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.chunks import Chunk, ChunkOptions
 from crawlerai.content.fit import FitOptions
@@ -410,7 +411,8 @@ async def _run(
         if isinstance(page, FetchResult):
             capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page, check)
             more = partial(_store_more, conn, fetching.store, task, site.id, derived, extra, work.margins)
-            finished = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, more)
+            finds = None if work.data is None else FindWriter(fetching.store, work.data.vocabulary)
+            finished = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, more, finds)
             members = _fetch_members(page, capture_id, fetching.rungs.adapters)
         else:
             finished = _Finished("blocked", reason=page)
@@ -608,6 +610,7 @@ async def _finish(
     derived: _Derived,
     margins: DriftMargins | None,
     more: Callable[[], Awaitable[StoredFurther]] | None = None,
+    finds: FindWriter | None = None,
 ) -> _Finished:
     """Settle the task with the page's outcome, after storing its extraction and record when `records` asked, and
     the page's run of an active config in its drift window. `more` stores a listing's further kept states (owner
@@ -635,6 +638,7 @@ async def _finish(
         schema=derived.schema,
         config=derived.config,
         margins=margins,
+        finds=finds,
     )
     if stored.outcome == "failed":
         await fail_task(conn, task, EXTRACTION_ERROR, transient=False, capture_id=capture_id)

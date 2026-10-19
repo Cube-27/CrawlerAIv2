@@ -22,7 +22,7 @@ from typing import Any, Final, Literal
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import ColumnElement, case, func, insert, select, update
+from sqlalchemy import ColumnElement, and_, case, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -46,7 +46,16 @@ LEARN_AFTER_PAGES: Final = 8
 TRIGGER_BATCH: Final = 100
 
 LearnEvent = Literal[
-    "start", "start_forced", "activate", "fail", "operator", "schema_edit", "await_approval", "approve", "reject"
+    "start",
+    "start_forced",
+    "activate",
+    "fail",
+    "operator",
+    "schema_edit",
+    "await_approval",
+    "approve",
+    "reject",
+    "find",
 ]
 
 TRANSITIONS: Final[Mapping[LearnEvent, Mapping[ProgressiveMode, ProgressiveMode]]] = {
@@ -65,6 +74,9 @@ TRANSITIONS: Final[Mapping[LearnEvent, Mapping[ProgressiveMode, ProgressiveMode]
     "await_approval": {"learning": "cold", "active": "active"},
     # An approved config activates in any mode, as an operator's does: a person decided.
     "approve": {"cold": "active", "learning": "active", "active": "active"},
+    # A role C find's validated steps (`config_ir.finds`) activate with no run in flight; a cold state's then still
+    # learns in full (`trigger_learning`).
+    "find": {"cold": "active", "active": "active"},
     # A refused config leaves the state's mode as it is: the site serves what it served before (D-1391).
     "reject": {"cold": "cold", "learning": "learning", "active": "active"},
     # An edited schema's states start over: what was learned is for its old document, and a run in
@@ -84,6 +96,7 @@ RUN_IN_FLIGHT: Final[Mapping[LearnEvent, bool | None]] = {
     "await_approval": True,
     "approve": None,
     "reject": None,
+    "find": False,
 }
 
 
@@ -130,8 +143,10 @@ class StateKey:
 
 
 async def trigger_learning(conn: AsyncConnection, *, batch: int) -> int:
-    """Start learning for up to `batch` cold states with enough extracted pages, and return how many. A state whose
-    learned config waits for approval (D-1342) is not learned again until it is approved or a run is forced."""
+    """Start learning for up to `batch` states with enough extracted pages, and return how many: cold ones, and active
+    ones whose config holds only role C finds (origin `role_c`, `config_ir.finds`), which no run has learned yet. A
+    state whose learned config waits for approval (D-1342) is not learned again until it is approved or a run is
+    forced."""
     state, configs = ProgressiveState, ExtractionConfig
     waiting = select(configs.id).where(
         configs.site_id == state.site_id,
@@ -139,20 +154,21 @@ async def trigger_learning(conn: AsyncConnection, *, batch: int) -> int:
         configs.page_kind == state.page_kind,
         configs.status == "pending_approval",
     )
+    finds_only = select(configs.id).where(configs.id == state.active_config_id, configs.origin == "role_c")
     due = (
-        select(state.site_id, state.schema_id, state.page_kind)
+        select(state.site_id, state.schema_id, state.page_kind, state.mode)
         .where(
-            state.mode == "cold",
+            or_(state.mode == "cold", and_(state.mode == "active", finds_only.exists())),
             state.pages_extracted >= func.coalesce(state.retry_at_pages, LEARN_AFTER_PAGES),
             ~waiting.exists(),
         )
         .limit(batch)
         .with_for_update(skip_locked=True)
     )
-    keys = [StateKey(*row) for row in await conn.execute(due)]
-    for key in keys:
-        await request_learning(conn, key)
-    return len(keys)
+    rows = [(StateKey(site, schema, kind), mode) for site, schema, kind, mode in await conn.execute(due)]
+    for key, mode in rows:
+        await request_learning(conn, key, force=mode == "active")
+    return len(rows)
 
 
 async def request_learning(conn: AsyncConnection, key: StateKey, *, force: bool = False) -> JobId | None:
@@ -194,6 +210,13 @@ async def learning_activated(conn: AsyncConnection, key: StateKey, config_id: Ex
         raise NotLearning(key, "activate")
 
 
+async def find_activated(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:
+    """Make `config_id`, a config with a role C find's validated steps (`config_ir.finds`), `key`'s active config, with
+    no learning run in flight. Raises `LookupError` when the state is not there or a run is in flight."""
+    if not await _move(conn, key.where(), "find", active_config_id=config_id):
+        raise LookupError(f"progressive_state {key}: no find without a learning run in flight")
+
+
 async def learning_awaits_approval(conn: AsyncConnection, key: StateKey) -> None:
     """End `key`'s learning run with its config stored `pending_approval` (D-1342): the state serves what it served
     before the run. Raises `NotLearning` when no run is in flight."""
@@ -233,10 +256,11 @@ async def operator_activated(conn: AsyncConnection, key: StateKey, config_id: Ex
 
 
 async def learning_failed(conn: AsyncConnection, key: StateKey) -> None:
-    """End `key`'s learning run with nothing activated: a state that was learning goes cold, to try again after
-    `LEARN_AFTER_PAGES` more pages (§4.8). Raises `NotLearning` when no run is in flight."""
+    """End `key`'s learning run with nothing activated: a state that was learning goes cold, and an active one stays on
+    its config, each to try again after `LEARN_AFTER_PAGES` more pages (§4.8; an active state learns again unforced only
+    while its config holds role C finds alone). Raises `NotLearning` when no run is in flight."""
     state = ProgressiveState
-    retry = case((state.mode == "learning", state.pages_extracted + LEARN_AFTER_PAGES), else_=state.retry_at_pages)
+    retry = state.pages_extracted + LEARN_AFTER_PAGES
     if not await _move(conn, key.where(), "fail", learning_started_at=None, retry_at_pages=retry):
         raise NotLearning(key, "fail")
 
