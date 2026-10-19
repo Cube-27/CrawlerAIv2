@@ -46,8 +46,8 @@ api-client:
 	cd backend && $(UV_RUN) crawlerai openapi > ../frontend/openapi.json
 	cd frontend && pnpm gen:api
 
-## Model-check the worker/queue concurrency with TLC (.claude/skills/verify-worker-queue/SKILL.md); `--mutants` also
-## shows each broken variant caught: `python3 tools/verify/worker_queue.py --mutants`.
+## Model-check the worker/queue concurrency with TLC (.claude/skills/verify-worker-queue/SKILL.md): the checks, the
+## known findings, and each broken variant caught.
 verify-worker-queue:
 	python3 tools/verify/worker_queue.py
 

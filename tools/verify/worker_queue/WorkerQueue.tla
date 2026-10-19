@@ -27,7 +27,7 @@
 (* inside one tick; one tick is less than LEASE - TASK_DEADLINE).          *)
 (*                                                                         *)
 (* `Bug` selects a broken variant of the code, to show that each property  *)
-(* can fail (tools/verify/worker_queue.py --mutants). "none" is the code.   *)
+(* can fail (MUTANTS in tools/verify/worker_queue.py). "none" is the code.   *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets, TLC
 
@@ -62,7 +62,7 @@ Dec(n) == IF n > 0 THEN n - 1 ELSE 0
 \* A run is one claimed task in one worker: `run(task)` of run_worker, i.e. the _run_within_deadline coroutine (`dl`)
 \* and the work it awaits (`pc`, the coroutine `run()` -> _run -> _execute -> handler). Work left behind outlives its
 \* slot, so a worker has records for its slots and for the work it left behind.
-Records == Workers \X (1 .. (Slots + MaxLeftBehind + (IF Bug = "claim_without_free_slot" THEN Slots ELSE 0)))
+Records == Workers \X (1 .. (Slots + MaxLeftBehind + (IF Bug = "claim_slots_not_free" THEN Slots ELSE 0)))
 
 \* pc: where the work is.
 \*   "turn"     polite_fetch -> _first_turn: HostLimiter.admit for the first request (QUEUED.postpone)
@@ -70,7 +70,9 @@ Records == Workers \X (1 .. (Slots + MaxLeftBehind + (IF Bug = "claim_without_fr
 \*   "admit"    the browser retry waiting in place for its turn (admit_next = HostLimiter.wait, up to QUEUED.bound)
 \*   "ctx"      SharedBrowser.fetch waiting for a context (`async with self._contexts`)
 \*   "render"   the browser request in flight, holding a context
-\*   "update"   the handler returned; _execute calls complete_task / fail_task / release_task: the fenced UPDATE
+\*   "update"   the handler returned; _execute calls complete_task / fail_task / release_task: the fenced UPDATE.
+\*              A run that sent a request holds its job's row lock already: the handler's count_fetch (steps.py)
+\*              updated job.usage as its last write (db/usage.py record_usage), in the task's transaction
 \*   "locked"   the url_task row is updated and locked; settle_job is taking the job row lock
 \*   "settling" both locks held; settle_job reads the open tasks, `ending`, commit
 IdleRun == [pc |-> "idle", task |-> None, age |-> 0, cancelled |-> FALSE, stuck |-> FALSE,
@@ -92,7 +94,12 @@ vars == <<status, attempts, leaseLeft, backoff, holder, job, run, hostNext, deat
 Live(r) == run[r].pc # "idle"
 \* PostgreSQL row locks, held by a transaction from its UPDATE / SELECT FOR UPDATE until it commits or rolls back.
 RowLocked(t) == \E r \in Records : run[r].pc \in {"locked", "settling"} /\ run[r].task = t
-JobLocked(j) == \E r \in Records : run[r].pc = "settling" /\ JobOf[run[r].task] = j
+\* The job row: settle_job's FOR NO KEY UPDATE, or earlier count_fetch's UPDATE of job.usage (a run that sent a request;
+\* a Postpone sent none and counts nothing). Both conflict with each other and with settle_job's lock.
+HoldsJob(r) == \/ run[r].pc = "settling"
+               \/ run[r].pc \in {"update", "locked"} /\ run[r].res \in {"finished", "transient"}
+JobLocked(j) == \E r \in Records : HoldsJob(r) /\ JobOf[run[r].task] = j
+JobLockedByOther(r) == \E o \in Records \ {r} : HoldsJob(o) /\ JobOf[run[o].task] = JobOf[run[r].task]
 InFlight(h) == {r \in Records : run[r].pc \in {"http", "render"} /\ HostOf[run[r].task] = h}
 BrowserContexts(w) == {r \in Records : r[1] = w /\ run[r].pc = "render"}
 \* run_worker's `running`: the _run_within_deadline coroutines it has started and not yet seen end.
@@ -132,11 +139,12 @@ Init ==
 (* SELECT ... FOR UPDATE SKIP LOCKED + UPDATE lease up to `free` due tasks (any of them: the priority and round     *)
 (* robin order is not modelled) and start their jobs (start_jobs); then asyncio.create_task(run(task)) for each.   *)
 Claim(w) ==
-    LET free == IF Bug = "claim_without_free_slot" THEN Slots ELSE Slots - Cardinality(Running(w))
+    LET free == Slots - Cardinality(Running(w))
+        n == IF Bug = "claim_slots_not_free" THEN Slots ELSE free   \* claim_tasks(conn, worker, n)
     IN /\ free > 0
        /\ Due # {}
        /\ \E S \in SUBSET Due :
-            /\ Cardinality(S) = Min(free, Cardinality(Due))
+            /\ Cardinality(S) = Min(n, Cardinality(Due))
             /\ \E f \in [S -> FreeRecords(w)] : \A a, b \in S : a # b => f[a] # f[b]
             /\ LET f == CHOOSE g \in [S -> FreeRecords(w)] : \A a, b \in S : a # b => g[a] # g[b]
                IN /\ status' = [t \in Tasks |-> IF t \in S THEN "claimed" ELSE status[t]]
@@ -153,25 +161,31 @@ Claim(w) ==
     /\ UNCHANGED <<backoff, hostNext, deaths, hangs, lefts>>
 
 (* polite_fetch -> _first_turn with QUEUED: HostLimiter.admit(host) records the turn and the request goes, or the  *)
-(* turn is `wait` away: Later -> the handler returns Postpone (fetch_queued).                                     *)
+(* turn is `wait` away: Later -> the handler returns Postpone (fetch_queued). Or the task ends with no request    *)
+(* for its page and none counted (fetch_queued's robots.txt disallow; a stored capture reread, `recent_capture`).  *)
 Turn(r) ==
     LET w == r[1]  h == HostOf[run[r].task] IN
     /\ run[r].pc = "turn" /\ ~run[r].stuck
-    /\ IF hostNext[w][h] = 0 \/ Bug = "admit_without_turn"
-         THEN /\ hostNext' = [hostNext EXCEPT ![w][h] = Spacing]
-              /\ run' = [run EXCEPT ![r].pc = "http"]
-         ELSE /\ run' = [run EXCEPT ![r].pc = "update", ![r].res = "postpone"]
-              /\ UNCHANGED hostNext
+    /\ \/ IF hostNext[w][h] = 0 \/ Bug = "admit_without_turn"
+            THEN /\ hostNext' = [hostNext EXCEPT ![w][h] = Spacing]
+                 /\ run' = [run EXCEPT ![r].pc = "http"]
+            ELSE /\ run' = [run EXCEPT ![r].pc = "update", ![r].res = "postpone"]
+                 /\ UNCHANGED hostNext
+       \/ /\ run' = [run EXCEPT ![r].pc = "update", ![r].res = "unfetched"]
+          /\ UNCHANGED hostNext
     /\ UNCHANGED <<status, attempts, leaseLeft, backoff, holder, job, deaths, hangs, lefts>>
 
 (* The first request answers: an ok page (Finished), a 429/503 (pause_host pauses the host; the handler returns  *)
-(* Failed(transient)), or a page that needs the browser rung (the rungs escalate, acquire/rungs.py).              *)
+(* Failed(transient)), or a page that needs the browser rung (the rungs escalate, acquire/rungs.py). An answer   *)
+(* the handler ends with is extracted, then counted (count_fetch: UPDATE job.usage, which waits for the job row).  *)
 HttpDone(r) ==
     LET w == r[1]  h == HostOf[run[r].task] IN
     /\ run[r].pc = "http" /\ ~run[r].stuck
-    /\ \/ /\ run' = [run EXCEPT ![r].pc = "update", ![r].res = "finished"]
+    /\ \/ /\ ~JobLockedByOther(r)
+          /\ run' = [run EXCEPT ![r].pc = "update", ![r].res = "finished"]
           /\ UNCHANGED hostNext
-       \/ /\ hostNext' = [hostNext EXCEPT ![w][h] = Max(@, Pause)]
+       \/ /\ ~JobLockedByOther(r)
+          /\ hostNext' = [hostNext EXCEPT ![w][h] = Max(@, Pause)]
           /\ run' = [run EXCEPT ![r].pc = "update", ![r].res = "transient"]
        \/ /\ run' = [run EXCEPT ![r].pc = "admit"]
           /\ UNCHANGED hostNext
@@ -179,15 +193,15 @@ HttpDone(r) ==
 
 (* The browser retry's admit_next = HostLimiter.wait(host, gap, QUEUED.bound): admitted when the turn is due     *)
 (* (it sleeps until then, Ticks), refused at once when the turn is more than `bound` away: the fetch keeps the  *)
-(* outcome it has.                                                                                               *)
+(* outcome it has (a page, or a failure), then count_fetch as in HttpDone.                                       *)
 AdmitNext(r) ==
     LET w == r[1]  h == HostOf[run[r].task] IN
     /\ run[r].pc = "admit" /\ ~run[r].stuck
     /\ IF hostNext[w][h] = 0
          THEN /\ hostNext' = [hostNext EXCEPT ![w][h] = Spacing]
               /\ run' = [run EXCEPT ![r].pc = "ctx"]
-         ELSE /\ hostNext[w][h] > Bound
-              /\ run' = [run EXCEPT ![r].pc = "update", ![r].res = "finished"]
+         ELSE /\ hostNext[w][h] > Bound /\ ~JobLockedByOther(r)
+              /\ \E res \in {"finished", "transient"} : run' = [run EXCEPT ![r].pc = "update", ![r].res = res]
               /\ UNCHANGED hostNext
     /\ UNCHANGED <<status, attempts, leaseLeft, backoff, holder, job, deaths, hangs, lefts>>
 
@@ -199,7 +213,7 @@ AcquireContext(r) ==
     /\ UNCHANGED <<status, attempts, leaseLeft, backoff, holder, job, hostNext, deaths, hangs, lefts>>
 
 RenderDone(r) ==
-    /\ run[r].pc = "render" /\ ~run[r].stuck
+    /\ run[r].pc = "render" /\ ~run[r].stuck /\ ~JobLockedByOther(r)
     /\ \E res \in {"finished", "transient"} : run' = [run EXCEPT ![r].pc = "update", ![r].res = res]
     /\ UNCHANGED <<status, attempts, leaseLeft, backoff, holder, job, hostNext, deaths, hangs, lefts>>
 
@@ -220,7 +234,7 @@ UpdateRow(r) ==
 (* settle_job: SELECT ... FROM job FOR NO KEY UPDATE: waits while another transaction holds the job row.         *)
 LockJob(r) ==
     /\ run[r].pc = "locked" /\ ~run[r].stuck
-    /\ ~JobLocked(JobOf[run[r].task])
+    /\ ~JobLockedByOther(r)
     /\ run' = [run EXCEPT ![r].pc = "settling"]
     /\ UNCHANGED <<status, attempts, leaseLeft, backoff, holder, job, hostNext, deaths, hangs, lefts>>
 
@@ -229,7 +243,7 @@ LockJob(r) ==
 (* release_task (Postpone) -> requeued, the attempt given back. A requeued row loses its lease (transition_task). *)
 Commit(r) ==
     LET t == run[r].task  j == JobOf[t]
-        new == CASE run[r].res = "finished"  -> "done"
+        new == CASE run[r].res \in {"finished", "unfetched"} -> "done"
                  [] run[r].res = "transient" -> FailTransient(t)
                  [] run[r].res = "postpone"  -> "queued"
         st == [status EXCEPT ![t] = new]
@@ -276,7 +290,7 @@ DeadlineFail(r) ==
               \* behind. A running transaction commits within _LOCK_WAIT, so the failure waits for it (no step).
               /\ \E o \in Records : /\ run[o].stuck \/ run[o].cancelled
                                    /\ \/ run[o].pc \in {"locked", "settling"} /\ run[o].task = t
-                                      \/ run[o].pc = "settling" /\ JobOf[run[o].task] = j
+                                      \/ HoldsJob(o) /\ JobOf[run[o].task] = j
               /\ UNCHANGED <<status, job>>
     /\ run' = [run EXCEPT ![r] = rec]
     /\ UNCHANGED <<attempts, leaseLeft, backoff, holder, hostNext, deaths, hangs, lefts>>
@@ -290,7 +304,9 @@ LateCancel(r) ==
 (* An await that never returns: a page or render that hangs, a database call that stalls. Cancellable.          *)
 Hang(r) ==
     /\ hangs < MaxHangs
-    /\ run[r].pc \in {"http", "render", "locked", "settling"} /\ ~run[r].stuck
+    /\ \/ run[r].pc \in {"http", "render", "locked", "settling"}
+       \/ run[r].pc = "update" /\ HoldsJob(r)   \* a frontier write or the fenced UPDATE stalls, job row locked
+    /\ ~run[r].stuck
     /\ ~run[r].cancelled \/ LeftBehindHangs
     /\ hangs' = hangs + 1
     /\ run' = [run EXCEPT ![r].stuck = TRUE]

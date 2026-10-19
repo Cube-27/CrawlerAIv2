@@ -1,7 +1,6 @@
 """Model-check the worker and queue concurrency (TLA+, TLC): .claude/skills/verify-worker-queue/SKILL.md.
 
-    python3 tools/verify/worker_queue.py              # the checks and the known findings (CI runs this)
-    python3 tools/verify/worker_queue.py --mutants    # also each broken variant, which must be caught
+    python3 tools/verify/worker_queue.py              # the checks, the known findings, the mutants (CI runs this)
     python3 tools/verify/worker_queue.py left-behind  # only the named checks
 
 Each check runs TLC on the model (tools/verify/worker_queue/WorkerQueue.tla) with one instance and its properties,
@@ -71,6 +70,19 @@ INSTANCES: dict[str, dict[str, object]] = {
         "MaxLeftBehind": 1,
         "LeftBehindHangs": False,
     },
+    # One worker with two slots, three tasks on one host: a postponed task comes due again while a slot is busy, so
+    # a claim happens with fewer free slots than due tasks.
+    "slots": {
+        "Workers": "OneWorker",
+        "Tasks": "ThreeTasks",
+        "HostOf": "SameHost",
+        "Slots": 2,
+        "MaxAttempts": 1,
+        "MaxDeaths": 0,
+        "MaxHangs": 0,
+        "MaxLeftBehind": 0,
+        "LeftBehindHangs": False,
+    },
     # One worker with three slots, three tasks on hosts of their own: three renders could overlap.
     "browser": {
         "Workers": "OneWorker",
@@ -103,6 +115,7 @@ class Check:
 CHECKS = [
     Check("two-workers", "two-workers", SAFETY, TEMPORAL),
     Check("left-behind", "left-behind", SAFETY, TEMPORAL),
+    Check("slots", "slots", SAFETY, TEMPORAL),
     Check("browser", "browser", SAFETY, TEMPORAL),
 ]
 # What the code does that a requested property forbids. Each stays failing until the code changes; then move it.
@@ -156,13 +169,13 @@ MUTANTS = [
         why="LEASE < TASK_DEADLINE",
     ),
     Check(
-        "mutant-claim-without-free-slot",
-        "two-workers",
+        "mutant-claim-slots-not-free",
+        "slots",
         ["SlotCap"],
         [],
         expect="SlotCap",
-        bug="claim_without_free_slot",
-        why="run_worker claims TASK_SLOTS tasks, not `free`",
+        bug="claim_slots_not_free",
+        why="run_worker calls claim_tasks(conn, worker, TASK_SLOTS), not `free`",
     ),
     Check(
         "mutant-no-context-cap",
@@ -272,15 +285,25 @@ def _violated(output: str, check: Check) -> str | None:
 
 
 def _values(body: str) -> dict[str, str]:
-    """A state's variables; a function of records (`run`) splits into one entry per record."""
+    """A state's variables (`/\\ name = value`, the value over one or more lines); a function of records (`run`)
+    splits into one entry per record."""
+    raw: dict[str, list[str]] = {}
+    name = ""
+    for line in body.splitlines():
+        if line.startswith("/\\ ") and " = " in line:
+            name, _, first = line[3:].partition(" = ")
+            raw[name] = [first]
+        elif name:
+            raw[name].append(line)
     values: dict[str, str] = {}
-    for match in re.finditer(r"^/\\ (\w+) = (.*?)(?=^/\\ |\Z)", body, flags=re.M | re.S):
-        name, value = match.group(1), " ".join(match.group(2).split())
-        records = re.findall(r"<<(\w+), (\d+)>> :> \[ (.*?) \]", value)
+    for name, lines in raw.items():
+        value = " ".join(" ".join(lines).split())
+        records = [part.partition(" :> [ ") for part in value.split(" @@ ")] if " :> [ " in value else []
         if not records:
             values[name] = value
-        for worker, slot, fields in records:
-            values[f"{name}[{worker},{slot}]"] = fields.replace(" |-> ", "=")
+        for key, _, fields in records:
+            slot = key.strip("( <>").replace(" ", "")
+            values[f"{name}[{slot}]"] = fields.rstrip(" ])").replace(" |-> ", "=")
     return values
 
 
@@ -335,8 +358,8 @@ def run(check: Check, java: str, jar: Path) -> bool:
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text(output)
     violated = _violated(output, check)
-    states = re.findall(r"([\d,]+) distinct states found", output)
-    size = f"{states[-1]} states" if states else "?"
+    found = [line.split(", ")[1].split()[0] for line in output.splitlines() if line.endswith("states left on queue.")]
+    size = f"{found[-1]} states" if found else "?"
     ok = violated == check.expect
     verdict = "pass" if violated is None else f"violates {violated}"
     print(
@@ -353,19 +376,16 @@ def run(check: Check, java: str, jar: Path) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--mutants", action="store_true", help="also check that each broken variant is caught")
     parser.add_argument("checks", nargs="*", help="run only these checks (by name)")
     args = parser.parse_args()
     every = CHECKS + FINDINGS + MUTANTS
-    chosen = [c for c in every if c.name in args.checks] if args.checks else CHECKS + FINDINGS
-    if args.mutants and not args.checks:
-        chosen += MUTANTS
+    chosen = [c for c in every if c.name in args.checks] if args.checks else every
     if unknown := set(args.checks) - {c.name for c in every}:
         sys.exit(f"unknown checks {sorted(unknown)}; known: {[c.name for c in every]}")
     jar = _fetch(*TLA_JAR, CACHE / f"tla2tools-{TLA_JAR[1][:12]}.jar")
     java = _java()
-    results = [run(check, java, jar) for check in chosen]
-    return 0 if all(results) else 1
+    failures = sum(not run(check, java, jar) for check in chosen)
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
