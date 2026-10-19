@@ -11,7 +11,7 @@ from functools import cache
 
 from babel import Locale, UnknownLocaleError
 from babel.localedata import locale_identifiers
-from babel.numbers import NumberFormatError, get_decimal_symbol, get_group_symbol, parse_decimal
+from babel.numbers import NumberFormatError, parse_decimal
 
 from crawlerai.normalize.base import Context, has_surrogate
 
@@ -197,18 +197,18 @@ def readings(written: str, locales: frozenset[str], decimal: str | None = None) 
 
 def _values(written: str, locales: Iterable[str], decimal: str | None = None) -> list[Decimal]:
     # Locales with one convention read an amount the same way, so one of them is parsed.
-    conventions: dict[Convention, tuple[str, str]] = {}
+    conventions: dict[Convention, tuple[str, dict[int, str]]] = {}
     for loc in locales:
-        for convention, system in _conventions(loc):
-            conventions.setdefault(convention, (loc, system))
+        for convention, as_latn in _conventions(loc):
+            conventions.setdefault(convention, (loc, as_latn))
     # Unicode decimal digits (`١٢٣`, `۱۲۳`) read as the ASCII digits Babel parses in every numbering system.
     latin = "".join(str(d) if (d := unicodedata.decimal(c, None)) is not None else c for c in written)
     values: set[Decimal] = set()
-    for (symbol, group, _), (loc, system) in conventions.items():
+    for (symbol, group, _), (loc, as_latn) in conventions.items():
         if decimal is not None and symbol != decimal:
             continue
         try:
-            value = parse_decimal(_grouped(latin, group), loc, strict=True, numbering_system=system)
+            value = parse_decimal(_grouped(latin, group).translate(as_latn), loc, strict=True)
         except (NumberFormatError, InvalidOperation):
             # A digit run longer than the decimal context holds (Python `decimal`, 28 digits) is no amount either.
             continue
@@ -307,18 +307,26 @@ def _index(key: Callable[[str], str]) -> dict[str, frozenset[str]]:
 
 
 @cache
-def _conventions(identifier: str) -> tuple[tuple[Convention, str], ...]:
-    """A locale's CLDR number conventions (decimal symbol, group symbol, grouping sizes), each with its numbering
-    system: `latn`, and the Arabic system (`_ARABIC_SYSTEMS`) that is the locale's default or native one."""
+def _conventions(identifier: str) -> tuple[tuple[Convention, dict[int, str]], ...]:
+    """A locale's CLDR number conventions (decimal symbol, group symbol, grouping sizes): its `latn` one, and that of
+    the Arabic system (`_ARABIC_SYSTEMS`) that is its default or native one, each with the translation of its symbols
+    into the `latn` ones, in which Babel parses."""
     locale = Locale.parse(identifier)
     pattern = locale.decimal_formats.get(None)
     grouping = pattern.grouping if pattern is not None else None
     native = {str(locale.default_numbering_system), str(locale.other_numbering_systems.get("native"))}
-    systems = ("latn", *sorted(native & _ARABIC_SYSTEMS))
-    return tuple(
-        ((get_decimal_symbol(locale, numbering_system=s), get_group_symbol(locale, numbering_system=s), grouping), s)
-        for s in systems
-    )
+    latn = _symbols(locale, "latn")
+    found: list[tuple[Convention, dict[int, str]]] = [((*latn, grouping), {})]
+    for system in sorted(native & _ARABIC_SYSTEMS):
+        decimal, group = _symbols(locale, system)
+        found.append(((decimal, group, grouping), str.maketrans({decimal: latn[0], group: latn[1]})))
+    return tuple(found)
+
+
+def _symbols(locale: Locale, system: str) -> tuple[str, str]:
+    """A locale's CLDR decimal and group symbols in a numbering system (Babel's defaults where CLDR has none)."""
+    symbols = locale.number_symbols.get(system, {})
+    return symbols.get("decimal", "."), symbols.get("group", ",")
 
 
 @cache

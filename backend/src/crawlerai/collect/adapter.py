@@ -12,7 +12,7 @@ normalizer is the only filter (C7).
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from decimal import Decimal
 from functools import cache
 from typing import Final
@@ -98,13 +98,12 @@ class _Node:
         if (members := self.shape.properties.get(prop)) is not None:
             prefix = self.shape.prefixes.get(prop, "")
             places = self._places(prop)
-            values = [
-                value for at in (members, *self.shape.also.get(prop, ())) for value in self._read(at, prefix, places)
+            meant = self.shape.booleans.get(prop)
+            return [
+                value
+                for at in (members, *self.shape.also.get(prop, ()))
+                for value in self._read(at, prefix, places, meant)
             ]
-            if (meant := self.shape.booleans.get(prop)) is not None:
-                # A JSON boolean as the value the documentation means by it; any other value as stated.
-                values = [replace(v, raw=meant[not v.raw]) if isinstance(v.raw, bool) else v for v in values]
-            return values
         return [
             Value(node.as_object(), self._locator(node.path), node)
             for shape in self.shape.nodes.get(prop, ())
@@ -122,11 +121,16 @@ class _Node:
         found = {name: _one([v.raw for v in self.values(name)]) for name in names}
         return {name: raw for name, raw in found.items() if raw is not None}
 
-    def _read(self, members: Members, prefix: str, places: int | None = None) -> list[Value]:
+    def _read(
+        self, members: Members, prefix: str, places: int | None = None, meant: tuple[str, str] | None = None
+    ) -> list[Value]:
         # RFC 8259 `null`: the API states no value.
         found = [(at, raw) for at, raw in _select(members, self.data, self.path) if raw is not None]
         if places is not None:
             found = [(at, scaled) for at, raw in found if (scaled := _in_major_units(raw, places)) is not None]
+        if meant is not None:
+            # A JSON boolean as the value the documentation means by it (`Shape.booleans`); any other as stated.
+            found = [(at, meant[not raw] if isinstance(raw, bool) else raw) for at, raw in found]
         return [Value(_prefixed(prefix, raw), self._locator(at)) for at, raw in found]
 
     def _places(self, prop: str) -> int | None:

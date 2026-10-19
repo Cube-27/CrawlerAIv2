@@ -177,8 +177,9 @@ monetary range without a period is `Ambiguous`, except a schema.org AggregateOff
 written, and a schema.org `ratingValue` joined to a `reviewCount` of 0 is `Invalid("no_ratings")`. A count with
 `unitCode` `C62` declines a `unitText` that names a CLDR measurement unit. All numbers (money, count, number) are read by the one path in `numbers.py`: a written number that only one CLDR number
 convention can read (`1.234,56`, `12.50`) has that one value whatever the page says; one that conventions read
-differently (`1.234`, `1,234`) takes the value its declared locales give it, then the value of the conventions whose
-decimal symbol is the page's own (`Context.page_convention`: the one decimal symbol every structured `price` the page
+differently (`1.234`, `1,234`) takes the value its declared locales give it (none when no declared locale reads it),
+then, of those locales' conventions (every convention when it declares none), the value of the ones whose decimal
+symbol is the page's own (`Context.page_convention`: the one decimal symbol every structured `price` the page
 writes with a fraction uses where one CLDR convention alone reads it, a JSON number's being `.`;
 `collect/currencies.py`), and is `Ambiguous` when those still read it differently or the page states neither. A
 locale's conventions are its `latn` symbols and, when its default or native CLDR numbering system is `arab` or
