@@ -3,15 +3,22 @@ locales the context states, `price-parser` to locate the amount. A grounded amou
 from the best evidence or unknown; it declines on ambiguous decimal separators, ranges and amounts that are not
 positive. The tests use ISO codes and CLDR symbols only (normalization spec)."""
 
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 
+import babel
 import pytest
+from babel import Locale
+from babel.core import get_cldr_version
+from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from crawlerai.normalize import money
 from crawlerai.normalize.base import Ambiguous, Basis, Context, Invalid, Ok
+from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 AT = datetime(2026, 1, 1, tzinfo=UTC)
@@ -134,3 +141,44 @@ def test_a_structured_price_with_grouping_reads_in_the_page_locale(price: str, t
     raw: JsonValue = {"price": price, "priceCurrency": "USD"}
 
     assert money.normalize(raw, MONEY, _ctx(html_lang=tag)) == _ok(amount, "USD")
+
+
+# Normalization spec, money: an amount written with a CLDR per pattern and a unit is a unit's or a period's price.
+PRICE = next(p for p in load_presets() if p.name == "commerce_detail").fields["price"]
+UNIT_PRICE = FieldSpec(
+    type=FieldType.MONEY, schema_org="Offer.priceSpecification{referenceQuantity}.price+priceCurrency"
+)
+_PER_LOCALES = ("en", "de", "fr", "es", "it", "nl", "pl", "sv", "ja", "ru", "ar", "he", "hi", "tr", "zh")
+_PER_CATEGORIES = ("mass", "volume", "length", "area", "duration")
+
+
+def _per_texts(identifier: str) -> list[str]:
+    """Every way the locale's CLDR unit data writes an amount per one of its units, the amount first (`{0}`): each
+    unit's per pattern (`{0}/kg`), and the compound per pattern (`{0} per {1}`) with each of the unit's names."""
+    data = Locale.parse(identifier)._data
+    compounds = [
+        c for w in data["compound_unit_patterns"]["per"].values() if (c := w.get("compound", "")).startswith("{0}")
+    ]
+    units = [u for u in data["unit_patterns"] if u.split("-")[0] in _PER_CATEGORIES or u == "concentr-item"]
+    own = [p for u in units for w in data["unit_patterns"][u].values() if (p := w.get("per", "")).startswith("{0}")]
+    names = [n for u in units for n in data["unit_display_names"].get(u, {}).values()]
+    return own + [compound.replace("{1}", name) for compound in compounds for name in names]
+
+
+@given(st.sampled_from(_PER_LOCALES), _amounts, st.data())
+def test_an_amount_written_per_a_cldr_unit_of_the_page_locale_is_never_the_price(
+    identifier: str, amount: Decimal, data: st.DataObject
+) -> None:
+    text = data.draw(st.sampled_from(_per_texts(identifier))).replace("{0}", f"€{amount}")
+    ctx = _ctx(html_lang=identifier)
+
+    assert not isinstance(money.normalize(text, PRICE, ctx), Ok)
+    assert money.normalize(text, UNIT_PRICE, ctx) == _ok(str(amount), "EUR")
+
+
+def test_the_cldr_release_is_the_one_the_manifest_pins() -> None:
+    # C4: vocabularies come from versioned data; the CLDR unit data ships in Babel, so its release is pinned.
+    manifest = json.loads((Path(__file__).parents[2] / "data" / "manifest.json").read_text(encoding="utf-8"))
+    [pin] = (p for p in manifest["packaged"] if p["name"] == "CLDR units")
+
+    assert (babel.__version__, get_cldr_version()) == (pin["package_version"], pin["version"])

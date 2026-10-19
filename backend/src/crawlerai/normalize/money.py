@@ -5,6 +5,10 @@ Accepts:
   CLDR compact unit after it multiplies it, `3.5万` = 35000), and the currency sign written next to it (a CLDR symbol,
   one-word CLDR currency count name such as `円`, or ISO 4217 code) or, failing that, the sign `price-parser`
   locates. Unicode CLDR data (Babel) resolves both for the locales the page and the request state;
+- an amount written with a CLDR per pattern and a unit after it (`€25/kg`, `$25/mo`: `normalize.units`) is the price of
+  a unit or a period: for a field with the active-price role (`schemas.paths.price_role`) it is
+  `Invalid("per_unit")` or `Invalid("per_period")`, and every other money field reads the amount before the pattern
+  (a `unit_price` field reads `€25/kg` as 25);
 - a JSON object from a structured source: schema.org `price` + `priceCurrency` (Offer, PriceSpecification), or the
   normalized form `amount` + `currency`. The amount is a JSON number or a string of digits with `.` as the decimal
   point (schema.org `price`: no grouping, no currency sign); a `price` written as display text instead (`$1,295.99`)
@@ -32,8 +36,9 @@ from babel.numbers import get_territory_currencies, list_currencies
 from price_parser import Price
 from pydantic import JsonValue
 
-from crawlerai.normalize import numbers
+from crawlerai.normalize import numbers, units
 from crawlerai.normalize.base import Ambiguous, Basis, Context, Invalid, NormalizeResult, Ok, Raw, raw_key
+from crawlerai.schemas.paths import price_role
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org `price`: ASCII digits with `.` (U+002E) as the decimal point and no grouping symbols.
@@ -53,11 +58,25 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
     """Normalize a money field (normalization spec)."""
     if spec.type is not FieldType.MONEY:
         raise TypeError(f"the money normalizer does not handle type {spec.type}")
+    active = price_role(spec) == "price"
     if isinstance(raw, dict):
-        return _structured(raw, ctx)
+        return _structured(raw, ctx, active=active)
     if isinstance(raw, str):
-        return _text(raw, ctx)
+        return _per_text(raw, ctx, active=active)
     return Invalid("not_money")
+
+
+def _per_text(raw: str, ctx: Context, *, active: bool, stated: str | None = None) -> NormalizeResult:
+    """Money written as text, its amount read before a CLDR per pattern and unit written after it (`units`); for the
+    active price such an amount is no candidate: it prices a unit or a period, not the item (normalization spec,
+    "money")."""
+    per = units.per_suffix(raw, ctx)
+    if per is None:
+        return _text(raw, ctx, stated)
+    head, kinds = per
+    if active:
+        return Invalid(units.PER_UNIT if units.PER_UNIT in kinds else units.PER_PERIOD)
+    return _text(head, ctx, stated)
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +89,7 @@ class _Currency:
     written: bool
 
 
-def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
+def _structured(raw: Mapping[str, JsonValue], ctx: Context, *, active: bool) -> NormalizeResult:
     amount_key, currency_key = ("price", "priceCurrency") if "price" in raw else ("amount", "currency")
     amount, currency = raw.get(amount_key), raw.get(currency_key)
     if amount is None:
@@ -84,7 +103,7 @@ def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
     elif isinstance(amount, str) and amount_key == "price":
         # schema.org `priceCurrency` states the currency of a `price` the page wrote as display text (a sign,
         # grouping), so the text reader reads it with that currency stated (CLDR symbols and number symbols).
-        return _text(amount, ctx, stated=stated)
+        return _per_text(amount, ctx, active=active, stated=stated)
     else:
         return Invalid("unparsable_amount")
     # The structured value names its amount a price, so it publishes; without a currency it takes the page's.
@@ -456,6 +475,12 @@ def same_amount(values: Sequence[JsonValue]) -> bool:
     currencies they state."""
     moneys = [_money_value(value) for value in values]
     return all(m is not None for m in moneys) and len({m[0] for m in moneys if m is not None}) == 1
+
+
+def amount(value: JsonValue) -> Decimal | None:
+    """A normalized money value's amount, or `None` for any other value."""
+    money = _money_value(value)
+    return None if money is None else money[0]
 
 
 def without_currency(value: JsonValue) -> JsonValue:

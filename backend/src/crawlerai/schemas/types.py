@@ -45,11 +45,15 @@ IdentifierScheme = Literal["gtin", "isbn", "mpn", "sku", "custom"]
 NAME_PATTERN = r"[a-z][a-z0-9_]{0,63}"
 Name = Annotated[str, StringConstraints(pattern=rf"^{NAME_PATTERN}$")]
 # schema.org naming conventions: types are UpperCamelCase, properties lowerCamelCase. A path starts at a type and
-# follows properties; `+` joins a second property of the last type into one atomic value (`Offer.price+priceCurrency`).
-# `|` separates up to four alternatives, whose candidates are pooled (variants spec): `Product.sku|Offer.sku`; `>` ranks
-# them: the alternatives after it are read on an entity only when those before it reach no value there
-# (`Product.gtin13>Product.gtin`).
-_ALTERNATIVE = r"[A-Z][A-Za-z0-9]*(\.[a-z][A-Za-z0-9]*)+(\+[a-z][A-Za-z0-9]*)?"
+# follows properties; each `+` joins another property of the last type into one atomic value
+# (`Offer.price+priceCurrency`, `AggregateOffer.lowPrice+highPrice+priceCurrency`). A step's filter predicates keep the
+# nodes whose property `{name=Value}` equals a term, `{name}` is stated, `{!name}` is not
+# (`Offer.priceSpecification{priceType=StrikethroughPrice}.price`; `schemas.paths`). `|` separates up to four
+# alternatives, whose candidates are pooled (variants spec): `Product.sku|Offer.sku`; `>` ranks them: the alternatives
+# after it are read on an entity only when those before it reach no value there (`Product.gtin13>Product.gtin`).
+_PROPERTY = r"[a-z][A-Za-z0-9]*"
+_FILTER = rf"\{{(!?{_PROPERTY}|{_PROPERTY}=[A-Za-z][A-Za-z0-9]*)\}}"
+_ALTERNATIVE = rf"[A-Z][A-Za-z0-9]*(\.{_PROPERTY}({_FILTER})*)+(\+{_PROPERTY})*"
 MAX_ALTERNATIVES = 4
 SchemaOrgPath = Annotated[
     str, StringConstraints(pattern=rf"^{_ALTERNATIVE}([|>]{_ALTERNATIVE}){{0,{MAX_ALTERNATIVES - 1}}}$")

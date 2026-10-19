@@ -2,9 +2,10 @@
 
 OpenGraph names no entity types, so every value describes the page's one object: the entity is `page`, and its URL is
 `og:url`. A property maps to a field through the fixed table below, keyed by the OGP property and the field's role:
-its type and the one schema.org property its `schema_org` path names on the root type (`Product.name` has the role
-`name`; `Product.brand.name` names the brand's name, not the object's, so it has none). The table is justified by the
-OGP specification (C2), not by any page.
+its type and the one schema.org property its `schema_org` path names (`schemas.paths.named_property`: `Product.name`
+has the role `name`, `Product.brand.name` the role `brand`), and for money the field's price role
+(`schemas.paths.price_role`). The table is justified by the OGP specification and the `product:` namespace that
+Open Graph product markup documents (C2), not by any page.
 
 OGP's basic metadata (`og:title`, `og:image`, `og:url`) describes one object. Client-rendered pages often keep the
 site's own defaults there: an `og:title` that names the site (`site_names`) says the object is the site, so its
@@ -18,11 +19,11 @@ from dataclasses import dataclass, replace
 from pydantic import JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate, CollectResult, Entity
-from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.collect.site_names import SiteNames
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
+from crawlerai.schemas.paths import PriceRole, named_property, parse_paths, price_role
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 _URL = FieldSpec(type=FieldType.URL)
@@ -43,23 +44,32 @@ _IMAGES = ("og:image", "og:image:url")
 _DESCRIPTION = "og:description"
 # Open Graph protocol, "Basic Metadata": `og:title` is the object's title, `og:image` its image, `og:url` its
 # canonical URL; "Structured Properties": `og:image:url` is identical to `og:image`; "Optional Metadata":
-# `og:description` is "a one to two sentence description" of the object, prose for a long_text description. The OGP
-# `product` namespace: `product:availability` is the item's availability. `product:price:*` is the money row, read by
-# `_price`. Only properties OGP defines are read (owner, Appendix A #48); others are left to learned configs.
+# `og:description` is "a one to two sentence description" of the object, prose for a long_text description. The
+# `product` namespace: `product:availability` (and the historic OGP product type's `og:availability`) is the item's
+# availability, `product:condition` its condition, `product:retailer_item_id` the retailer's id of it (its sku) and
+# `product:brand` its brand. The prices are the money rows (`_MONEY`). Only properties these define are read (owner,
+# Appendix A #48); others are left to learned configs.
 _TABLE = (
     _Row((_TITLE,), FieldType.TEXT, "name"),
     _Row(_IMAGES, FieldType.IMAGE_URL, "image"),
     _Row((_OG_URL,), FieldType.URL, "url"),
     _Row((_DESCRIPTION,), FieldType.LONG_TEXT, "description"),
-    _Row(("product:availability",), FieldType.ENUM, "availability"),
+    _Row(("product:availability", "og:availability"), FieldType.ENUM, "availability"),
+    _Row(("product:condition",), FieldType.ENUM, "itemCondition"),
+    _Row(("product:retailer_item_id",), FieldType.IDENTIFIER, "sku"),
+    _Row(("product:brand",), FieldType.TEXT, "brand"),
 )
-# OGP `product` namespace: `product:price:amount` is the price and `product:price:currency` its ISO 4217 code.
-_AMOUNT, _CURRENCY = "product:price:amount", "product:price:currency"
-# The same declaration in the `og:` prefix (`og:price:currency`), which pages write for the whole page's prices.
-_OG_CURRENCY = "og:price:currency"
+# The `product` namespace's prices, each an amount with its ISO 4217 currency: `product:price:*` the price (also as
+# `og:price:*`, the historic OGP product type), `product:sale_price:*` the sale price, the price paid when stated, which
+# makes `product:price:*` the price it was reduced from, and `product:original_price:*` that former price itself.
+_PRICE = ("product:price:amount", "product:price:currency")
+_OG_PRICE = ("og:price:amount", "og:price:currency")
+_SALE_PRICE = ("product:sale_price:amount", "product:sale_price:currency")
+_ORIGINAL_PRICE = ("product:original_price:amount", "product:original_price:currency")
+_MONEY = (_PRICE, _OG_PRICE, _SALE_PRICE, _ORIGINAL_PRICE)
 # OGP "Optional Metadata": `og:site_name` is "the name of the overall site" the object is part of.
 _SITE_NAME = "og:site_name"
-_READ = frozenset(p for row in _TABLE for p in row.properties) | {_AMOUNT, _CURRENCY, _OG_CURRENCY, _SITE_NAME}
+_READ = frozenset(p for row in _TABLE for p in row.properties) | {p for pair in _MONEY for p in pair} | {_SITE_NAME}
 _SITE_TITLE = "og: og:title names the site, so og:title, og:image and og:description are not read"
 # The values a site-default block holds about the site rather than the object.
 _SITE_DEFAULTS = (_TITLE, *_IMAGES, _DESCRIPTION)
@@ -93,9 +103,10 @@ class OpenGraphCollector:
 
 
 def price_currencies(page: ParsedPage) -> list[str]:
-    """The `product:price:currency` and `og:price:currency` values the page writes, in document order, read as `_metas`
-    reads every OGP property."""
-    return [meta.content for meta in _metas(page) if meta.property in (_CURRENCY, _OG_CURRENCY)]
+    """The currencies of the prices the page writes (`product:price:currency`, `og:price:currency`, the sale and
+    original price's), in document order, read as `_metas` reads every OGP property."""
+    currencies = {currency for _, currency in _MONEY}
+    return [meta.content for meta in _metas(page) if meta.property in currencies]
 
 
 def _metas(page: ParsedPage) -> list[_Meta]:
@@ -139,11 +150,11 @@ def _candidates(metas: Sequence[_Meta], schema: SchemaDef, ctx: Context) -> Iter
 
 def _value(metas: Sequence[_Meta], spec: FieldSpec) -> _Value | None:
     """The value of the table row that fits `spec`'s role and type; a list field is matched by its item's type."""
+    if spec.type is FieldType.MONEY:
+        return _money(metas, price_role(spec))
     role = _role(spec)
     item = spec.item if spec.type is FieldType.LIST else None
     value_type = (item or spec).type
-    if role == "price" and value_type is FieldType.MONEY:
-        return _price(metas)
     for row in _TABLE:
         if row.role == role and value_type is row.type:
             return _first_or_all([m for m in metas if m.property in row.properties], as_list=item is not None)
@@ -151,12 +162,12 @@ def _value(metas: Sequence[_Meta], spec: FieldSpec) -> _Value | None:
 
 
 def _role(spec: FieldSpec) -> str | None:
-    """The one property a `schema_org` path names on its root type (`Offer.price+priceCurrency` gives `price`), the
-    same in every alternative, or `None` when an alternative goes through another object or the alternatives name
-    different properties (variants spec). A row-mapped field's path names rows, so it has no role."""
+    """The one property a `schema_org` path names (`named_property`: `Product.brand.name` gives `brand`), the same in
+    every alternative, or `None` when the alternatives name different properties (variants spec). A row-mapped field's
+    path names rows, so it has no role."""
     if spec.schema_org is None or spec.row_mapped:
         return None
-    roles = {path.steps[0] if len(path.steps) == 1 else None for path in parse_paths(spec.schema_org)}
+    roles = {named_property(path) for path in parse_paths(spec.schema_org)}
     return roles.pop() if len(roles) == 1 else None
 
 
@@ -171,16 +182,29 @@ def _first_or_all(found: Sequence[_Meta], *, as_list: bool) -> _Value | None:
     return _Value(raw, f"meta:{found[0].property}", reading)
 
 
-def _price(metas: Sequence[_Meta]) -> _Value | None:
-    """The first price amount with the first currency, in the money normalizer's structured form. A missing currency
-    is left out, never filled in here: the money rules take the page's (normalization spec)."""
-    amounts = [m.content for m in metas if m.property == _AMOUNT]
+def _money(metas: Sequence[_Meta], role: PriceRole | None) -> _Value | None:
+    """The price a money field of the role reads: the active price is the sale price when the page states one, else
+    the price; the list price is the original price, else, beside a sale price, the price."""
+    sale = _amount(metas, _SALE_PRICE)
+    stated = _amount(metas, _PRICE) or _amount(metas, _OG_PRICE)
+    if role == "price":
+        return sale or stated
+    if role == "list_price":
+        return _amount(metas, _ORIGINAL_PRICE) or (stated if sale is not None else None)
+    return None
+
+
+def _amount(metas: Sequence[_Meta], pair: tuple[str, str]) -> _Value | None:
+    """The first amount of the pair with its first currency, in the money normalizer's structured form. A missing
+    currency is left out, never filled in here: the money rules take the page's (normalization spec)."""
+    amount, currency = pair
+    amounts = [m.content for m in metas if m.property == amount]
     if not amounts:
         return None
     raw: dict[str, JsonValue] = {"amount": amounts[0]}
-    if currencies := [m.content for m in metas if m.property == _CURRENCY]:
+    if currencies := [m.content for m in metas if m.property == currency]:
         raw["currency"] = currencies[0]
-    return _Value(raw, f"meta:{_AMOUNT}", raw)
+    return _Value(raw, f"meta:{amount}", raw)
 
 
 def _urls(metas: Sequence[_Meta], ctx: Context) -> tuple[str, ...]:

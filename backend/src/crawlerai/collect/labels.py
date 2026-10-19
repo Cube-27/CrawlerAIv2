@@ -11,7 +11,7 @@ label names a field when its words equal one of these, case-folded after NFKC.
 import re
 import unicodedata
 
-from crawlerai.collect.schema_org_map import named_property, parse_paths
+from crawlerai.schemas.paths import named_property, parse_paths
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # Words of a label or a name: runs of letters and digits; a lower-case letter or digit followed by a capital starts a

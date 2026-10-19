@@ -15,12 +15,12 @@ from crawlerai.collect.schema_org_map import (
     Value,
     Vocabulary,
     field_candidates,
-    parse_paths,
     select,
 )
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context
+from crawlerai.schemas.paths import parse_paths
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
@@ -144,3 +144,32 @@ def test_the_job_presets_apply_url_is_the_postings_apply_action_target_only() ->
     entities = (_posting("a", potentialAction=[action]), _posting("b"))
 
     assert _found(entities, _schema(apply_url=apply_url)) == [("apply_url", "a", "jsonld:0:$['act']['target'][0]")]
+
+
+PRESET_PRICE = next(p for p in load_presets() if p.name == "commerce_detail").fields["price"]
+LIST_PRICE = FieldSpec(
+    type=FieldType.MONEY,
+    description="d",
+    schema_org="Offer.priceSpecification{priceType=StrikethroughPrice}.price+priceCurrency"
+    "|Offer.priceSpecification{priceType=ListPrice}.price+priceCurrency",
+)
+UNIT_PRICE = FieldSpec(
+    type=FieldType.MONEY, description="d", schema_org="Offer.priceSpecification{referenceQuantity}.price+priceCurrency"
+)
+
+
+def test_path_predicates_read_each_price_role_from_its_own_price_specification() -> None:
+    # Schemas spec, "schema.org paths": `{name=Value}` matches a term or its IRI, `{name}` presence, `{!name}` absence.
+    struck = _JsonNode(
+        "struck", {"priceType": ["https://schema.org/StrikethroughPrice"], "price": ["40"], "priceCurrency": ["EUR"]}
+    )
+    quantity = _JsonNode("quantity", {"value": [1], "unitCode": ["KGM"]})
+    per_unit = _JsonNode("per-unit", {"referenceQuantity": [quantity], "price": ["2.50"], "priceCurrency": ["EUR"]})
+    offer = _JsonNode("offer", {"price": ["25"], "priceCurrency": ["EUR"], "priceSpecification": [struck, per_unit]})
+    schema = _schema(price=PRESET_PRICE, list_price=LIST_PRICE, unit_price=UNIT_PRICE)
+
+    assert _found((Typed("offer", ("Offer",), offer),), schema) == [
+        ("price", "offer", "jsonld:0:$.offer.price[0]"),
+        ("list_price", "offer", "jsonld:0:$.struck.price[0]"),
+        ("unit_price", "offer", "jsonld:0:$.per-unit.price[0]"),
+    ]

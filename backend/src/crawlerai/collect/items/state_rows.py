@@ -35,12 +35,13 @@ from crawlerai.collect.base import ARRAY_ROW, Candidate, Entity
 from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import field_roles
 from crawlerai.collect.locator import format_locator
-from crawlerai.collect.schema_org_map import candidate, is_item_url, named_property, parse_paths
+from crawlerai.collect.schema_org_map import candidate, is_item_url
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.segment import page_links
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.normalize.url import canonical_url
+from crawlerai.schemas.paths import named_property, parse_paths
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 Scalar = str | int | float

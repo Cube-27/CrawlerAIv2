@@ -3,7 +3,8 @@
 Accepts:
 - a schema.org `MonetaryAmount` (`currency`, and `minValue`/`maxValue`/`value` either on it or on a nested
   `QuantitativeValue` under `value`, whose `unitText` gives the period), or a `QuantitativeValue` (`minValue`,
-  `maxValue`, `value`, `unitText`, `unitCode`), as a JSON object;
+  `maxValue`, `value`, `unitText`, `unitCode`), or a schema.org `AggregateOffer`'s `lowPrice` and `highPrice` with its
+  `priceCurrency` (a price range: no period), as a JSON object;
 - text: two amounts around one separator, with the period from an explicit "per X" or "/X".
 
 The period of a monetary range is read from `unitText`, else `unitCode`, in any of the forms `_period` lists: a
@@ -83,7 +84,13 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context, *, money: MoneyRules) -> 
     return Invalid("not_a_range_value")
 
 
+# schema.org AggregateOffer: `lowPrice` "the lowest price of all offers available", `highPrice` the highest.
+_LOW, _HIGH = "lowPrice", "highPrice"
+
+
 def _from_structured(raw: dict[str, JsonValue], ctx: Context, money: MoneyRules) -> NormalizeResult:
+    if _LOW in raw or _HIGH in raw:
+        return _price_range(raw, ctx, money)
     # schema.org MonetaryAmount: `value` may be a number or a QuantitativeValue that carries the bounds and unitText.
     inner = raw.get("value")
     quantity = inner if isinstance(inner, dict) else raw
@@ -105,6 +112,17 @@ def _from_structured(raw: dict[str, JsonValue], ctx: Context, money: MoneyRules)
     if lo > hi:
         return Invalid("min_greater_than_max")
     return Ok(_value(lo, hi, currency=None, unit=unit, period=period))
+
+
+def _price_range(raw: dict[str, JsonValue], ctx: Context, money: MoneyRules) -> NormalizeResult:
+    """An AggregateOffer's prices, each bound read by the money rules as an Offer's `price` with the `priceCurrency`
+    beside it, so a bound without a stated currency takes the page's. The offers' prices are no rate: no period."""
+    lo, hi = _decimal(raw.get(_LOW)), _decimal(raw.get(_HIGH))
+    if lo is None or hi is None:
+        return Invalid("bound_missing")
+    stated: dict[str, JsonValue] = {"priceCurrency": raw["priceCurrency"]} if "priceCurrency" in raw else {}
+    low, high = (money({"price": format(b, "f"), **stated}, ctx) for b in (lo, hi))
+    return _monetary(low, high, None, periodic=False)
 
 
 def _period(written: str | None, ctx: Context) -> str | None:
@@ -277,8 +295,11 @@ def _stated_monetary(
     return _monetary(low, high, period)
 
 
-def _monetary(lo: NormalizeResult, hi: NormalizeResult, period: str | None) -> NormalizeResult:
-    """Combine the money results of the two bounds: a decline on either is the range's decline (money's reason)."""
+def _monetary(
+    lo: NormalizeResult, hi: NormalizeResult, period: str | None, *, periodic: bool = True
+) -> NormalizeResult:
+    """Combine the money results of the two bounds: a decline on either is the range's decline (money's reason). A
+    `periodic` range (a salary) needs its period."""
     match lo, hi:
         case (Invalid() as declined, _) | (_, Invalid() as declined):
             return declined
@@ -296,12 +317,12 @@ def _monetary(lo: NormalizeResult, hi: NormalizeResult, period: str | None) -> N
             )
             return Ambiguous(reason, options)
         case Ok(value=lo_value), Ok(value=hi_value):
-            return _bounded_money(_amount(lo_value), _amount(hi_value), period)
+            return _bounded_money(_amount(lo_value), _amount(hi_value), period, periodic=periodic)
     raise TypeError("a normalize result is Ok, Ambiguous or Invalid")
 
 
 def _bounded_money(
-    lo: tuple[Decimal, str | None], hi: tuple[Decimal, str | None], period: str | None
+    lo: tuple[Decimal, str | None], hi: tuple[Decimal, str | None], period: str | None, *, periodic: bool
 ) -> NormalizeResult:
     (lo_amount, lo_currency), (hi_amount, hi_currency) = lo, hi
     if lo_currency is None or hi_currency is None:
@@ -312,7 +333,7 @@ def _bounded_money(
         return Invalid("currency_mismatch")
     if lo_amount > hi_amount:
         return Invalid("min_greater_than_max")
-    if period is None:
+    if period is None and periodic:
         return Ambiguous("period_missing", ())
     return Ok(_value(lo_amount, hi_amount, currency=lo_currency, unit=None, period=period))
 

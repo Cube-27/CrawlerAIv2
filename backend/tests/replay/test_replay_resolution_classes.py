@@ -119,3 +119,24 @@ def test_standalone_variants_naming_their_group_s_id_are_its_variants() -> None:
     published = result.entity["variants"]
     assert published.status == "published"
     assert [item.fields["sku"].value for item in published.items or ()] == ["W-S", "W-M"]
+
+
+def test_a_visible_bound_of_a_stated_price_range_is_no_price() -> None:
+    # Resolution spec, "Candidate score": `€80` beside an AggregateOffer of 80-120 is its bound; the range publishes.
+    price_range = {"type": "range", "description": "d", "schema_org": "AggregateOffer.lowPrice+highPrice+priceCurrency"}
+    fields = {**_PRESET.model_dump()["fields"], "price_range": price_range}
+    preset = {**_PRESET.model_dump(), "fields": fields}
+    schema = SchemaDef(**preset, id=SchemaId(uuid7()), origin="user", status="active")
+    offers = {"@type": "AggregateOffer", "lowPrice": 80, "highPrice": 120, "priceCurrency": "EUR"}
+    head = _jsonld(_product(name="Widget One", sku="W-1", offers=offers))
+
+    result = _extract(head, "<main><h1>Widget One</h1><p>From <span>€80</span></p></main>", schema)
+
+    assert _outcomes(result, "price", "price_range") == {
+        "price": ("missing", "range_bound", None),
+        "price_range": (
+            "published",
+            None,
+            {"min": "80", "max": "120", "currency": "EUR", "unit": None, "period": None},
+        ),
+    }

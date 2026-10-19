@@ -44,16 +44,26 @@ currency never drops a price (tied values stating one amount in different curren
 currency `null`, basis `unknown`), but amounts that differ are rival prices, each explained by its role before the
 field is refused: the one amount a rendered `dom` value states is the visible price and beats structured, meta and
 data-call amounts (the disagreement is the flag `disagree`); the shown variant's Offer beats the Offers of other
-variants and sellers (INV-38); a price a single Offer states that is not the anchor's is `offer_split`. List, was
-and unit prices are not rivals: collectors read an Offer's own `price` (never a `priceSpecification`), and the DOM
-collector skips struck text. An amount of the same role for the same variant that nothing explains leaves the field a
+variants and sellers (INV-38); a price a single Offer states that is not the anchor's is `offer_split`. List, was,
+member and unit prices are not rivals: a money field's path predicates give it its price role (schemas spec,
+"Presets"), so the active price reads an Offer's `price` and its `priceSpecification` without a `priceType`,
+`validForMemberTier` or `referenceQuantity`, and collectors read struck, per-unit and per-period text only for the
+fields of those roles (extraction spec, "Structural DOM values"). A `dom` amount of an active-price field equal to a
+bound of a stated price range (an AggregateOffer's `lowPrice` or `highPrice`, the two bounds differing) is that
+range's bound, rejected `range_bound`; a user-added `price_range` publishes the range. An amount of the same role for the same variant that nothing explains leaves the field a
 `conflict` (`disagree`, `offers_disagree` or `offer_split`): accuracy before coverage, and a price range is no price
 unless the page states one amount for the product (a low bound is never derived from disagreeing Offers). (Previously:
-a price always published, owner #68 as then read; exact-match types published only when every kept
+collectors read an Offer's own `price` only, never a `priceSpecification`, and a visible range bound was a price
+candidate; a price always published, owner #68 as then read; exact-match types published only when every kept
 candidate agreed, else `conflict`; money ranked by currency evidence then needed agreement, a weaker one rejected
 `weaker_currency`; text, url and image published from the first source kind in the order, a disagreement within it
 settled only by the first other kind naming one value; each rule had its own tie-breaks.) Refs: §10, owner #68,
-owner 2026-10-19. Enforced by: `tests/property/test_preference.py`, `tests/unit/test_preference.py`; active.
+owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_preference.py`,
+`tests/unit/test_preference.py`; active.
+#### Scenario: A visible range bound
+- **WHEN** JSON-LD states an AggregateOffer from 80 to 120 EUR and no Offer price, and the page shows `€80`
+- **THEN** `price` is `missing`, the `dom` candidate rejected `range_bound`, and a user-added `price_range` publishes
+  80–120 EUR
 #### Scenario: Two prices disagree
 - **WHEN** JSON-LD says 19.90 EUR and microdata says 21.00 EUR for the target
 - **THEN** `price` publishes 19.90 EUR with reason `disagree` and the microdata candidate is rejected `outscored`

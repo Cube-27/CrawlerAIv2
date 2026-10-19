@@ -11,7 +11,7 @@ from crawlerai.config_ir.progressive import StateKey
 from crawlerai.db.models import ExtractionConfig, ProgressiveState
 from crawlerai.schemas import registry
 from crawlerai.schemas.registry import PresetConflict, load_presets
-from crawlerai.schemas.types import SchemaChanges, SchemaContent, SchemaDef, SchemaDocument
+from crawlerai.schemas.types import SchemaChanges, SchemaContent, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services import schemas
 from tests.db.conftest import learned_site
 
@@ -67,6 +67,23 @@ async def test_a_changed_preset_is_updated_in_place_and_its_sites_learn_again(co
     assert await _statuses(conn, key) == ["suspended"]
     assert [s.name for s in await registry.list_schemas(conn)] == PRESETS
     assert await registry.sync_presets(conn, [changed]) == []
+
+
+async def test_the_price_role_predicates_edit_the_commerce_preset_in_place_without_changing_what_it_requires(
+    conn: AsyncConnection,
+) -> None:
+    # Schemas spec, "Presets": only the price path gains its predicates (struck, member and unit prices left out).
+    current = next(p for p in load_presets() if p.name == "commerce_detail")
+    plain = current.fields["price"].model_copy(update={"schema_org": "Offer.price+priceCurrency"})
+    before = current.model_copy(update={"fields": {**current.fields, "price": plain}})
+    [stored] = await registry.sync_presets(conn, [before])
+
+    [edited] = await registry.sync_presets(conn, [current])
+
+    assert edited.id == stored.id
+    assert document_digest(edited) != document_digest(stored)
+    assert edited.model_copy(update={"fields": {**edited.fields, "price": plain}}) == stored
+    assert [n for n, s in edited.fields.items() if s.required] == [n for n, s in stored.fields.items() if s.required]
 
 
 async def test_a_preset_name_taken_by_a_user_schema_is_refused(conn: AsyncConnection) -> None:

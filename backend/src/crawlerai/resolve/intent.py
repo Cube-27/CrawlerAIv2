@@ -15,10 +15,11 @@ from dataclasses import dataclass
 from typing import Literal
 
 from crawlerai.collect.base import Entity
-from crawlerai.collect.schema_org_map import Vocabulary, parse_paths
+from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.collect.scope import LISTS, RELATIONS, leads_elsewhere, page_documents
 from crawlerai.resolve.identity import VARIANT
 from crawlerai.resolve.ownership import OFFER, EntityGraph, names_any
+from crawlerai.schemas.paths import parse_paths
 from crawlerai.schemas.types import SchemaDef
 
 # A primary entity's variants are members of it (`VARIANT`, schema.org `hasVariant`), not other things the page is
