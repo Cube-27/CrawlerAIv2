@@ -294,7 +294,7 @@ def select(node: Node, path: MappedPath, *, as_list: bool) -> list[Selected]:
 def _step(holders: Iterable[Node], path: MappedPath, i: int, named: list[Selected]) -> Iterator[Node]:
     """The nodes step `i` reaches from `holders` that its predicates keep; text standing in for a thing named by the
     step before a final `.name` is added to `named`."""
-    names_thing = path.steps[i + 1 :] == NAME and not path.joined and not path.where(i)
+    names_thing = path.steps[i + 1 :] == NAME and not path.joined and not path.where(i) and not path.where(i + 1)
     for holder in holders:
         for value in holder.values(path.steps[i]):
             if value.node is not None and matches(value.node, path.where(i)):

@@ -125,13 +125,16 @@ MAX_KEY = 3
 
 def _check_row_mapping(row_path: str, item: FieldSpec, key: list[str]) -> None:
     """The row path names nodes, so it joins no value (`+`); its alternatives are pooled, as row discovery reaches rows
-    along each of them, so it ranks none (`>`); the item's sub-fields are leaf values, each with its own path; `key`
-    names one to three distinct identifier or url sub-fields (schemas spec, "Row-mapped lists and key")."""
+    along each of them, so it ranks none (`>`) and filters none (predicates); the item's sub-fields are leaf values,
+    each with its own path; `key` names one to three distinct identifier or url sub-fields (schemas spec, "Row-mapped
+    lists and key")."""
     fields = item.fields or {}
     if "+" in row_path:
         raise ValueError("a row path names the row entities, not a value: no `+`")
     if ">" in row_path:
         raise ValueError("a row path pools its alternatives' rows: no `>` ranking")
+    if "{" in row_path:
+        raise ValueError("a row path reaches every row along its steps: no `{…}` predicates")
     if item.schema_org is not None:
         raise ValueError("the item of a row-mapped field has no `schema_org`: the list's path names its rows")
     if nested := sorted(n for n, s in fields.items() if s.type in (FieldType.LIST, FieldType.OBJECT)):

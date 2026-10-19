@@ -433,31 +433,44 @@ _LOW_PRICE, _HIGH_PRICE = "lowPrice", "highPrice"
 RANGE_BOUND = "range_bound"
 
 
+_Bound = tuple[Decimal, str | None]  # a range bound's amount and the range's currency (`None`: unknown)
+
+
+def _bounds_it(shown: _Bound | None, bounds: frozenset[_Bound]) -> bool:
+    if shown is None:
+        return False
+    amount, currency = shown
+    return any(bound == amount and (None in (currency, ours) or currency == ours) for bound, ours in bounds)
+
+
 def _range_bounds(
     fields: Mapping[str, FieldSpec], screened: Mapping[str, tuple[list[Candidate], list[Rejection]]]
-) -> frozenset[Decimal]:
+) -> frozenset[_Bound]:
     """The amounts that bound a price range structured data states (an AggregateOffer's `lowPrice` and `highPrice`,
-    kept for a range field) whose bounds differ: the page's prices span them, so neither one is the item's price."""
-    bounds: set[Decimal] = set()
-    for name, (kept, _) in screened.items():
-        if fields[name].type is not FieldType.RANGE:
-            continue
-        for candidate in kept:
-            value = value_of(candidate)
-            stated = isinstance(candidate.raw, dict) and _LOW_PRICE in candidate.raw and _HIGH_PRICE in candidate.raw
-            if stated and isinstance(value, dict):
-                low, high = Decimal(str(value["min"])), Decimal(str(value["max"]))
-                bounds.update({low, high} if low != high else ())
-    return frozenset(bounds)
+    kept for a range field) whose bounds differ, each with the range's currency: the page's prices span them, so
+    neither one is the item's price."""
+    ranges = (c for name, (kept, _) in screened.items() if fields[name].type is FieldType.RANGE for c in kept)
+    return frozenset(bound for candidate in ranges for bound in _stated_bounds(candidate))
+
+
+def _stated_bounds(candidate: Candidate) -> tuple[_Bound, ...]:
+    """A price range candidate's bounds, when it is an AggregateOffer's and they differ."""
+    value, raw = value_of(candidate), candidate.raw
+    if not (isinstance(raw, dict) and _LOW_PRICE in raw and _HIGH_PRICE in raw and isinstance(value, dict)):
+        return ()
+    low, high = Decimal(str(value["min"])), Decimal(str(value["max"]))
+    currency = value.get("currency")
+    known = currency if isinstance(currency, str) else None
+    return ((low, known), (high, known)) if low != high else ()
 
 
 def _without_bounds(
-    kept: list[Candidate], rejected: list[Rejection], bounds: frozenset[Decimal]
+    kept: list[Candidate], rejected: list[Rejection], bounds: frozenset[_Bound]
 ) -> tuple[list[Candidate], list[Rejection]]:
     """The price's candidates with the visible amounts that are a stated range's bound (`_range_bounds`) rejected
     `range_bound` (resolution spec, "Candidate score"): "From $80" beside `lowPrice` 80 states the range, not the
-    price."""
-    bound = [c for c in kept if c.source_kind == "dom" and money.amount(value_of(c)) in bounds]
+    price. An amount in another currency than the range's is no bound; a currency either leaves unknown may be."""
+    bound = [c for c in kept if c.source_kind == "dom" and _bounds_it(money.amount_and_currency(value_of(c)), bounds)]
     return [c for c in kept if c not in bound], [*rejected, *((c, RANGE_BOUND) for c in bound)]
 
 

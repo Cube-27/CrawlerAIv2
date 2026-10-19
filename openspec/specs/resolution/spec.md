@@ -49,8 +49,8 @@ member and unit prices are not rivals: a money field's path predicates give it i
 "Presets"), so the active price reads an Offer's `price` and its `priceSpecification` without a `priceType`,
 `validForMemberTier` or `referenceQuantity`, and collectors read struck, per-unit and per-period text only for the
 fields of those roles (extraction spec, "Structural DOM values"). A `dom` amount of an active-price field equal to a
-bound of a stated price range (an AggregateOffer's `lowPrice` or `highPrice`, the two bounds differing) is that
-range's bound, rejected `range_bound`; a user-added `price_range` publishes the range. An amount of the same role for the same variant that nothing explains leaves the field a
+bound of a stated price range (an AggregateOffer's `lowPrice` or `highPrice`, the two bounds differing; in the range's
+currency, or either currency unknown) is that range's bound, rejected `range_bound`; a user-added `price_range` publishes the range. An amount of the same role for the same variant that nothing explains leaves the field a
 `conflict` (`disagree`, `offers_disagree` or `offer_split`): accuracy before coverage, and a price range is no price
 unless the page states one amount for the product (a low bound is never derived from disagreeing Offers). (Previously:
 collectors read an Offer's own `price` only, never a `priceSpecification`, and a visible range bound was a price

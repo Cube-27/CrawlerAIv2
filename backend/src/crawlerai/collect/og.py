@@ -177,7 +177,7 @@ def _value(metas: Sequence[_Meta], spec: FieldSpec, ctx: Context) -> _Value | No
 
 def _role(spec: FieldSpec) -> str | None:
     """The one property of its root type a `schema_org` path reads (`Offer.price+priceCurrency` gives `price`, and
-    `Product.brand.name` `brand`: a final `.name` is the text standing in for the thing, `paths.NAME`), the same in
+    `Product.brand.name` `brand`: a final `.name` is the text standing in for the thing, `NAME`), the same in
     every alternative, or `None` when an alternative goes through another object (`Product.brand.image`) or the
     alternatives name different properties (variants spec). A row-mapped field's path names rows, so it has no role."""
     if spec.schema_org is None or spec.row_mapped:

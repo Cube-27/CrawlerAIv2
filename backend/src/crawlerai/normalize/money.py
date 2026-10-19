@@ -477,10 +477,9 @@ def same_amount(values: Sequence[JsonValue]) -> bool:
     return all(m is not None for m in moneys) and len({m[0] for m in moneys if m is not None}) == 1
 
 
-def amount(value: JsonValue) -> Decimal | None:
-    """A normalized money value's amount, or `None` for any other value."""
-    money = _money_value(value)
-    return None if money is None else money[0]
+def amount_and_currency(value: JsonValue) -> tuple[Decimal, str | None] | None:
+    """A normalized money value's amount and currency (`None`: unknown), or `None` for any other value."""
+    return _money_value(value)
 
 
 def without_currency(value: JsonValue) -> JsonValue:

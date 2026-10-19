@@ -510,9 +510,8 @@ def _typed_found(
     struck = struck_ids(content.region)
     for name in fields:
         spec = schema.fields[name]
-        texts = [(e, text) for e, text in shorts if reads(spec, text, ctx, struck=e.mem_id in struck)]
-        if spec.type is FieldType.IDENTIFIER:
-            texts = _identifier_texts(texts, unlabelled, content)
+        shown_texts = _identifier_texts(shorts, unlabelled, content) if spec.type is FieldType.IDENTIFIER else shorts
+        texts = [(e, text) for e, text in shown_texts if reads(spec, text, ctx, struck=e.mem_id in struck)]
         if (one := _one_value(texts, spec, ctx)) is not None:
             yield name, *one, None
 

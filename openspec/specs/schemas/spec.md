@@ -67,7 +67,7 @@ predicates.)
 
 ### Requirement: Row-mapped lists and key
 A `list` of `object` with a `schema_org` path SHALL be row-mapped: leaf sub-fields only, a row path that neither
-joins (`+`) nor ranks (`>`) its alternatives, and a `key` of 1–3 `identifier` or `url` sub-fields; `key` is required
+joins (`+`) nor ranks (`>`) its alternatives nor filters its steps (predicates), and a `key` of 1–3 `identifier` or `url` sub-fields; `key` is required
 there and refused elsewhere. Row resolution is
 [variants](../variants/spec.md). Refs: §5.2, SPEC-13 §4.2.
 #### Scenario: Misplaced key or nested row field
