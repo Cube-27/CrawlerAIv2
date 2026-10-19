@@ -7,7 +7,8 @@ it fixes a site.
 
 ## Before you start
 
-- What is in progress and what is next: `openspec/backlog.md` and any change folder in `openspec/changes/`.
+- What is in progress and what is next: `openspec/design/architecture-v3.md` §(f) (the ordered PR list) and any
+  change folder in `openspec/changes/`.
 - The current behaviour, as requirements: `openspec/specs/<capability>/spec.md`, invariants (`INV-NN`) included.
 - One PR covers a batch of related tasks of one change (`openspec/changes/<change-id>/tasks.md`): one branch, one PR
   (`CLAUDE.md`). New work starts as a change folder (proposal, tasks, spec deltas); a PR that completes a change
@@ -64,7 +65,7 @@ replay and the reports.
 
 Implementation choices within a change's scope are decided and logged (the change's `design.md` or
 `openspec/decisions/log.md`; listed in the PR body under `## Decisions`). Changes to `openspec/design/` (the
-former ARCHITECTURE.md), the contract or `openspec/OPEN_QUESTIONS.md`, §22 candidates, evaluation access and secrets
+former ARCHITECTURE.md), the contract, open owner items (`openspec/project.md`), §22 candidates, evaluation access and secrets
 are escalated to the owner. `CLAUDE.md` has the procedure.
 
 ## Licensing and the public repo

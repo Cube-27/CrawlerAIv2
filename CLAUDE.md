@@ -8,7 +8,9 @@ CrawlerAI v2 is a schema-driven web extraction engine; see `README.md`.
   `tools/` (repo checks and `tools/orchestrator/` worktree/CI scripts).
 - `openspec/project.md`: the contract C1–C13 and repo checks. `openspec/specs/<capability>/spec.md`: current
   behaviour, the source of truth; a behaviour change edits the spec it touches. `openspec/design/`: goals, owner
-  decisions, candidates register. `openspec/conventions/ENGINEERING.md` (code), `DESIGN.md` (frontend).
+  decisions, candidates register, and `architecture-v3.md` (frozen 2026-10-19: the architecture being implemented
+  and its ordered PR list, the current focus; where a spec differs, it governs until the PR that rewrites the spec).
+  `openspec/conventions/ENGINEERING.md` (code), `DESIGN.md` (frontend).
 - Read only what your change needs. Where a spec, the design and the contract disagree, stop and ask the owner.
 - Work on a branch `change/<id>` in a worktree made by `tools/orchestrator/new_worktree.sh <id> change/<id>`, never
   in the main checkout. `main` takes PRs only. Never merge your own PR.

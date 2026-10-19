@@ -3,8 +3,8 @@
 Clean, normalized, typed records from any website, for any schema, plus an executable per-site extraction config
 that a deterministic crawler can run.
 
-> **Status: implemented; accuracy is measured on the golden set only.** Work in progress:
-> [openspec/backlog.md](openspec/backlog.md).
+> **Status: implemented; accuracy is measured on the golden set only.** Work in progress: the frozen architecture
+> and its ordered PR list, [openspec/design/architecture-v3.md](openspec/design/architecture-v3.md) §(f).
 
 **Agents: read CLAUDE.md before changing anything.**
 
@@ -48,10 +48,9 @@ capability, in-flight work as change folders (deleted once their deltas are appl
 | [CLAUDE.md](CLAUDE.md) | Rules for coding agents working in this repo, what to read, and every command |
 | [openspec/project.md](openspec/project.md) | Project context, the generalization contract C1–C13, open owner items |
 | [openspec/specs/](openspec/specs/) | The current behaviour, one `spec.md` of requirements per capability (invariants `INV-NN` included) |
-| [openspec/backlog.md](openspec/backlog.md) | Current focus, follow-ups and human-only tasks |
-| [openspec/design/](openspec/design/overview.md) | Design rationale (goals, contract evidence, candidates register) and the owner decisions |
+| [openspec/design/](openspec/design/overview.md) | Design rationale (goals, contract evidence, candidates register), the owner decisions, and [architecture-v3.md](openspec/design/architecture-v3.md): the frozen 2026-10-19 architecture and the current focus (its PR list) |
 | [openspec/decisions/](openspec/decisions/README.md) | How decisions are logged, and the cross-cutting log |
-| [openspec/OPEN_QUESTIONS.md](openspec/OPEN_QUESTIONS.md) | Decisions still open, each with a recommended default |
+| [openspec/archive/](openspec/archive/README.md) | Superseded documents (the former backlog and open questions), kept for history |
 | [openspec/conventions/](openspec/conventions/) | `ENGINEERING.md` (engineering principles), `DESIGN.md` (frontend conventions), `RECURRING.md` (recurring agent mistakes) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute: checks, pull requests, the evaluation report |
 | [.claude/skills/](.claude/skills/) | The `implement-pr` procedure |
