@@ -230,12 +230,12 @@ class Resolver:
         visible = [g for g in contenders if any(c.source_kind == "dom" and c.independent for c in g.members)]
         if len(contenders) > 1 and len(visible) == 1:
             return visible[0]
+        if (shown := self._shown_amount(contenders, offers)) is not None:
+            return shown  # the shown variant's Offer states its own price, however the others score
         if offer_field and self._split(top, offers):  # only another Offer than the anchor states it (INV-15)
             return OFFER_SPLIT
         if len(contenders) == 1:
             return top
-        if (shown := self._shown_amount(contenders, offers)) is not None:
-            return shown
         return OFFERS_DISAGREE if offer_field and self._offers_disagree(groups) else DISAGREE
 
     def _shown_amount(self, contenders: list[Group], offers: _Offers) -> Group | None:
