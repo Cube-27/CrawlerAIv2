@@ -31,7 +31,6 @@ Agents can't do these.
 | H4 | Provide LLM provider API keys (OPEN_QUESTIONS #5) as CI and runtime secrets. | Live LLM runs | deferred (owner, 2026-10-13: not needed yet) |
 | H5 | Answer the `needs-owner` entries in the open owner items in `project.md`. | As they come up | none open (#252) |
 | H7 | Optional: configure a proxy pool (OPEN_QUESTIONS #10). | Proxy use in production | todo |
-| H9 | Delete `.github/workflows/claude-review.yml`, `.github/workflows/eval-protected.yml`, the private test databases and `CRAWLERAI_TEST_PRIVATE_DATABASE_URL` in `.github/workflows/ci.yml`, then (same PR, or the job fails) `tools/site_literal_scan.py --hidden-hosts-from-env` and its test (`tools/tests/test_site_literal_scan_hidden.py`); the worker token cannot push workflow files (D-1522). | Clean-up of the retired hidden machinery (#67) | todo |
 | H8 | Create the GitHub release `data-geonames-2026-10-15` holding the three GeoNames files the manifest pins, with the CC BY 4.0 attribution in its notes (D-0311, D-0914; command in #204). Until then `crawlerai data fetch` gets a 404 for them. | `crawlerai data fetch`, SPEC-05's first real run | obsolete: GeoNames dropped (D-0953, #210) |
 
 ## Follow-ups
