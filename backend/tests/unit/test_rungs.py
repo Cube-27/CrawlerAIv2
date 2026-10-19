@@ -107,6 +107,16 @@ def test_a_shell_or_block_over_http_is_retried_in_the_browser_and_its_ok_kept() 
     assert result.duration_ms == 2  # both rungs' time
 
 
+def test_an_http_timeout_is_retried_in_the_browser_not_over_http_again() -> None:
+    stubs = web("error", "ok")
+    stubs.http.error = "timeout"
+
+    result = stubs.acquire(OVERRIDE)
+
+    assert _attempts(result) == [("http", "error"), ("browser", "ok")]
+    assert len(stubs.http.calls) == 1
+
+
 def test_the_bundle_records_every_attempt_beside_its_policy() -> None:
     result = web("shell", "ok").acquire()
 

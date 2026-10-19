@@ -21,7 +21,8 @@ a new site). Every attempt is listed in the result and manifest. Refs: §7.1, D-
 
 ### Requirement: Browser on evidence
 In `auto`, the system SHALL retry in the browser an HTTP `shell` or `blocked` result other than 429/503, and an HTTP
-`error` whose reason is `network_error`, keeping the browser outcome only when `ok`; a 503 that `classify.interstitial`
+`error` whose reason is `network_error` or `timeout` (never the same transport again), keeping the browser outcome only
+when `ok`; a 503 that `classify.interstitial`
 judges to stand in for the page, after the site's pause (`politeness.backoff`), keeping the browser outcome only when
 `ok`; and an HTTP `ok` page the caller's structural render check holds true for (`services/scrape_steps.RenderNeed`, no
 extraction and no LLM): a detail page whose schema requires a `money` field and whose capture holds no Offer entity and
@@ -32,8 +33,8 @@ outcome is kept only when `ok` and the check no longer holds, a listing's also w
 HTTP page (owner #54: the capture with more rows is kept). An HTTP listing shell kept with no browser outcome is `ok`
 when it is a shell by the listing rule alone. Any later request of a fetch is sent only when `admit_next` allows. The
 browser MUST NOT be the default. Role C runs once, on the kept capture. (Previously: a listing was rendered when its
-extraction, role C included, gave no rows.) Refs: §7.1, D-0009, D-0203, D-0865, D-0900, owner #49, D-1202, owner #54,
-D-1261, D-1263, D-1472, master plan 2026-10-18 §3.1.
+extraction, role C included, gave no rows; an HTTP timeout was not retried in the browser.) Refs: §7.1, D-0009, D-0203, D-0865, D-0900, owner #49, D-1202, owner #54,
+D-1261, D-1263, D-1472, master plan 2026-10-18 §3.1, owner plan 2026-10-19 (crawl speed).
 #### Scenario: Client-rendered offer
 - **WHEN** an `auto` fetch of such a detail page answers HTTP `ok` with no Offer and no price, and the browser render
   holds an Offer
@@ -51,6 +52,9 @@ D-1261, D-1263, D-1472, master plan 2026-10-18 §3.1.
 #### Scenario: Network error
 - **WHEN** an `auto` fetch's HTTP attempt ends `error` with `network_error: curl 92` and the browser answers `ok`
 - **THEN** the browser capture is kept and the result lists both attempts
+#### Scenario: HTTP timeout
+- **WHEN** an `auto` fetch's HTTP attempt ends `error` with `timeout` and the browser answers `ok`
+- **THEN** HTTP is not tried again and the browser capture is kept
 
 ### Requirement: Remembered fetch method and re-check
 The system SHALL remember `browser` for a site's pages of one kind (`site_fetch_method`; a fetch with no page kind is
@@ -66,22 +70,25 @@ render sent the site's detail pages to the browser.) Refs: §7.1, D-0204, D-0205
 ### Requirement: HTTP and browser rungs
 The HTTP rung SHALL use `curl_cffi` impersonating Chrome (`CRAWLERAI_IMPERSONATE`, else the profile nearest the
 installed Patchright Chromium major, checked at startup by `acquire/impersonate.py`), at most 5 manual redirects, and
-record headers without cookies or proxy credentials. The browser rung SHALL use Patchright's full Chromium build in
-headless mode, a fresh context per fetch (the caller's cookies added before it navigates), one navigation, no scripted
+record headers without cookies or proxy credentials, within `timeout_s` (10 s by default). The browser rung SHALL use Patchright's full Chromium build in
+headless mode, one browser per process shared by its fetches (worker, API, scheduler, eval) with at most
+`BROWSER_CONTEXTS` (2) rendering at once (`acquire/shared_browser.py`), a fresh context per fetch (the caller's cookies added before it navigates), one navigation, no scripted
 actions (a listing scrape's browser actions and the caller's page steps excepted, below), capped by `browser_timeout_s`
 (plus the steps' own timeouts); it aborts image, font and media requests by resource type, never by hostname, unless
 the policy captures the page as a file or the site loads every resource (`site.load_all_resources`, set when a
 resource-blocked render of its listing showed fewer item blocks than its HTTP page); it reads
 the page after `load` once the DOM's structure and text are unchanged for 2 s or, for a 2xx/3xx document, the network
-is idle, and keeps the main frame's latest document, following a navigation the document starts itself. A document
+is idle, at most 5 s after that wait began whether or not it is quiet, and keeps the main frame's latest document, following a navigation the document starts itself. A document
 `classify.interstitial` judges to stand in for the page (403, 429 or 503; a script or refresh; no page of the site) is
 first given up to 40% of `browser_timeout_s`, and at most 10 s, to navigate on, the wait ending at the main frame's
 next commit, with nothing clicked or typed. The browser reads a body's wire size before the body. The JSON rung
 (`fetch_json`, method `api`) SHALL send through the HTTP rung's client (`acquire/curl_client.py`: impersonation, guard,
 caps, cookie jar, proxy pools, reasons) the headers a page's `fetch()` sends: Fetch Metadata of a CORS request,
 `Referer`, `Origin`, in a `fetch()`'s order. (Previously: every resource loaded, and the interstitial wait had no
-absolute bound.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
-D-1264, D-1265, owner #58, D-1320–D-1322, D-1325, D-1433, D-1437, master plan 2026-10-18 recommendation 12.
+absolute bound; the settle wait had none but the fetch's budget, a browser was launched per fetch outside the worker,
+and the HTTP timeout was 30 s.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
+D-1264, D-1265, owner #58, D-1320–D-1322, D-1325, D-1433, D-1437, master plan 2026-10-18 recommendation 12, owner
+plan 2026-10-19 (crawl speed).
 #### Scenario: Interstitial that navigates on
 - **WHEN** a 403 document with no site structure replaces itself after more than 2 s
 - **THEN** the browser rung reads the document the navigation ends on
@@ -102,9 +109,11 @@ fetch, XMLHttpRequest and document responses (not the main frame's navigation) t
 `text/plain` or not at all, whose bytes are an RFC 8259 object or array (a guard prefix of at most 16 characters
 stripped, `storage.capture_bundle.network_json`); each with its request's method, body and cookie-free headers, the
 cookie-free response headers, the resource type and the count of browser actions before it, within the caps in
-`acquire/browser.py`. A render whose content is quiet while a fetch or XMLHttpRequest call is in flight is read up to
-3 s later, so a late data call is kept. A navigation the main frame commits while the render settles restarts the wait
-on the new document (within the settle deadline), so the capture is the final document. Refs: §7.2, Appendix A #59, D-0010, D-0540, D-1311, D-1312, D-1369.
+`acquire/browser.py`. A render whose content is quiet while a data call is in flight is read up to 3 s later, so a
+late data call is kept; a data call is a fetch or XMLHttpRequest call to the page's own site (HTML §7.1.1) or one whose
+`Accept` names a JSON MIME type, so another site's beacons and pings hold no read. (Previously: every fetch and
+XMLHttpRequest call held the read.) A navigation the main frame commits while the render settles restarts the wait
+on the new document (within the settle deadline), so the capture is the final document. Refs: §7.2, Appendix A #59, D-0010, D-0540, D-1311, D-1312, D-1369, owner plan 2026-10-19 (crawl speed).
 #### Scenario: JSON under another label
 - **WHEN** a page fetches `)]}'` and a JSON object labelled `text/plain`, and a text/plain body that is no JSON
 - **THEN** the first is kept as received and the second is not
@@ -210,7 +219,7 @@ shrinking it by 10% after 20 `ok` answers in a row, never below that interval. O
 one rule (`acquire/politeness.backoff`): the `Retry-After`, else 30 s doubling per try, at most 15 min, a `Retry-After`
 past 15 min ending the fetch `blocked`; each answer spends an attempt; a further request of a fetch (the 503
 interstitial's one browser attempt) waits out that pause within the caller's bound for waiting in place (the worker's
-`WAIT_MAX`, a service's one minute), and is not sent past it. (Previously: four front-ends, with three back-off
+`QUEUED` bound, a third of the task deadline; a service's one minute), and is not sent past it. (Previously: four front-ends, with three back-off
 rules.) Refs: §7.1, D-0163, D-0165, D-0901, D-1263, D-1327, master plan 2026-10-18 §4 item 5.
 #### Scenario: Spacing after a slow-down
 - **WHEN** a host with a 1 s interval answers 429 with `Retry-After: 5`, then `ok`

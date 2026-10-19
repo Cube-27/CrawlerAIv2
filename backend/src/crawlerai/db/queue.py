@@ -54,6 +54,9 @@ from crawlerai.db.models import (
 from crawlerai.db.task_events import record_task_events
 
 LEASE: Final = timedelta(minutes=10)
+# A task's wall-clock limit (`worker/loop`): a page that runs past it is recorded as failed and its job moves on. It
+# ends well inside `LEASE`, so the result is recorded while the claim still holds and no other worker runs it meanwhile.
+TASK_DEADLINE: Final = timedelta(minutes=3)
 MAX_ATTEMPTS: Final = 3
 LAST_ERROR_BYTES: Final = 2048
 # How many stalled jobs one scheduler turn ends (`fail_stalled_jobs`); a full batch runs again at once.

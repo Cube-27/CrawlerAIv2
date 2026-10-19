@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, FinishedOutcome, Job, JobKind, TaskOutcome
 from crawlerai.db.queue import (
-    LEASE,
+    TASK_DEADLINE,
     ClaimedTask,
     JobEnding,
     LeaseLost,
@@ -53,9 +53,6 @@ log = logging.getLogger(__name__)
 # core; the browser's own limit (`BROWSER_CONTEXTS`) bounds how many render at once.
 TASK_SLOTS: Final = 4
 IDLE_POLL: Final = timedelta(seconds=1)
-# A task's wall-clock limit: its result is recorded while its claim still holds the lease (`LEASE`), so no other worker
-# runs it again meanwhile. It covers a host's turn waited for in place (`QUEUED`, half the lease) and the work after.
-TASK_DEADLINE: Final = LEASE - timedelta(minutes=1)
 # How long a task cancelled at its deadline may take to wind down (a browser context closing) before it is left.
 CANCEL_GRACE: Final = timedelta(seconds=15)
 DEADLINE: Final = "timeout: the task ran past its deadline"

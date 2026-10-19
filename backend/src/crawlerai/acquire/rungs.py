@@ -16,7 +16,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Protocol
+from typing import Final, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
 from sqlalchemy import func, select
@@ -80,8 +80,9 @@ _UNAVAILABLE = 503  # RFC 9110 §15.6.4
 _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
 # acquisition spec: the reason of a request a transport failure left unanswered (`curl_client.reason`), such as a reset
 # HTTP/2 stream (curl 92) or connection. A filter may reset a client whose TLS or HTTP/2 fingerprint it does not trust;
-# the browser's own network stack may pass (D-1472). A timeout is not one: the site was slow, not refusing.
-_NETWORK_ERROR = "network_error"
+# the browser's own network stack may pass (D-1472). A timeout (`policy.timeout_s`) counts too: a filter may hold a
+# client it does not trust unanswered, and the same transport again would wait as long.
+_UNANSWERED: Final = ("network_error", "timeout")
 
 
 @dataclass(frozen=True)
@@ -352,7 +353,7 @@ def _browser_may_pass(result: FetchResult) -> bool:
 
 def _unanswered(result: FetchResult) -> bool:
     error = result.attempts[-1].error
-    return result.block_class == "error" and error is not None and error.startswith(_NETWORK_ERROR)
+    return result.block_class == "error" and error is not None and error.startswith(_UNANSWERED)
 
 
 def slow_down(result: FetchResult) -> bool:

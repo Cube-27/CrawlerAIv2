@@ -9,8 +9,8 @@ from typing import cast
 import pytest
 
 from crawlerai.acquire.session import CookieExport
-from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.acquire.shared_browser import SharedBrowser
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 
 pytestmark = pytest.mark.anyio
 

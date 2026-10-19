@@ -33,7 +33,7 @@ from crawlerai.acquire.politeness import (
 from crawlerai.acquire.robots import Fetch, Robots, site_robots
 from crawlerai.acquire.rungs import Rung
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.db.queue import LEASE
+from crawlerai.db.queue import TASK_DEADLINE
 from crawlerai.recurring.conditional import Unchanged
 from crawlerai.services.scrape_steps import site_row
 
@@ -92,9 +92,9 @@ class Waiting:
 
 # D-1263: a caller waiting for the answer waits in place up to a minute for a turn.
 IN_PLACE: Final = Waiting(postpone=False, bound=timedelta(minutes=1))
-# Half the lease leaves the other half for the requests themselves (each within its policy's timeout) and the rest of
-# the task; a longer wait would let the claim lapse and another worker send the first request again.
-QUEUED: Final = Waiting(postpone=True, bound=LEASE / 2)
+# A third of the task's deadline leaves the rest for the requests themselves (each within its policy's timeout) and the
+# rest of the task; a longer wait would spend the deadline on turns and record the page as failed.
+QUEUED: Final = Waiting(postpone=True, bound=TASK_DEADLINE / 3)
 
 
 class Refused(NamedTuple):

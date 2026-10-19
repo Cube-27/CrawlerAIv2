@@ -113,7 +113,7 @@ class FetchPolicy(_Frozen):
     proxy_pool: str | None = None
     respect_robots: bool = True  # false only via an operator override, recorded on job.request
     robots_override_reason: str | None = None
-    timeout_s: PositiveFloat = 30.0
+    timeout_s: PositiveFloat = 10.0
     browser_timeout_s: PositiveFloat = 45.0
     max_body_bytes: PositiveInt = 10_000_000
     max_decompressed_bytes: PositiveInt = 50_000_000
