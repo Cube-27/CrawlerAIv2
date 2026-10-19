@@ -59,7 +59,7 @@ currency symbols of the locales the page's language tags, Content-Language (RFC 
 the territory the URL names (owner 2026-10-19, `url_currency`): of the final URL, then the requested one, a locale
 path segment (`/en-gb/`: language then region, the language used in the region per CLDR territory languages), else a
 country subdomain (`in.`: a first label of two letters that is a CLDR territory, two more labels following), else the
-ccTLD; the first of these that names a territory decides, and it names a currency only when it names one territory,
+ccTLD (a CLDR alias counts in each: `uk` is GB); the first URL and step that names a territory decides, and it names a currency only when it names one territory,
 one of the page's stated languages (if any) is used there, and CLDR gives it one tender currency on the capture date;
 (6) else `null`. A shared sign is narrowed by (2), then (3), then (4), then (5), each step keeping what the last
 left; an amount written without any sign takes the page's currency when (2) and (3) together name exactly one, else

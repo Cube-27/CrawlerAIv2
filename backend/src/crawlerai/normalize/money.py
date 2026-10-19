@@ -191,7 +191,13 @@ def cctld_territory(url: str | None) -> str | None:
     """The territory a URL's country-code top-level domain names (RFC 1591 §2: a two-letter ISO 3166-1 code), when
     CLDR knows it as a territory, or as the alias of one (`uk` is GB); `None` for a generic TLD or no URL."""
     host = urlsplit(url).hostname if url else None
-    label = (host or "").rstrip(".").rpartition(".")[2].upper()
+    return _territory((host or "").rstrip(".").rpartition(".")[2])
+
+
+def _territory(code: str) -> str | None:
+    """The CLDR territory a two-letter ISO 3166-1 code names, itself or through the one territory CLDR aliases it to
+    (`uk` is GB); `None` for any other label."""
+    label = code.upper()
     if len(label) != 2:
         return None
     if label in _territories():
@@ -205,16 +211,21 @@ def url_currency(ctx: Context) -> str | None:
     for: of the final URL, then the requested one, the territory a locale path segment names (`/en-gb/`), else a
     country subdomain (`in.`), else the ccTLD; its one tender currency on the capture date (CLDR territory
     currencies). A segment whose language is not used in its region (CLDR territory languages) is no locale segment.
-    The first step that names a territory decides: several territories, one that none of the page's stated languages
-    is used in, or one with no single tender currency name none (`None`), as does a generic TLD. No host table (C7)."""
+    The first URL and step that names a territory decides: several territories, one that none of the page's stated
+    languages is used in, or one with no single tender currency name none (`None`), as does a generic TLD. No host
+    table (C7)."""
     languages = _page_languages(ctx)
     for url in dict.fromkeys(u for u in (ctx.page_url, ctx.request_url) if u):
         parts = urlsplit(url)
         host = (parts.hostname or "").rstrip(".").lower().split(".")
         steps = (_segment_territories(parts.path), _subdomain_territories(host), _cctld_territories(url))
-        territories = next((step for step in steps if step), set())
+        territories = next((step for step in steps if step), None)
+        if territories is None:
+            continue
+        # The first URL that names a territory decides: an unsettled one never falls through to the next URL.
         if len(territories) == 1 and _speaks(territory := territories.pop(), languages):
             return _tender_currency(territory, ctx)
+        return None
     return None
 
 
@@ -223,16 +234,16 @@ def _segment_territories(path: str) -> set[str]:
     found: set[str] = set()
     for segment in path.split("/"):
         m = _LOCALE_SEGMENT.fullmatch(segment)
-        if m and (territory := m.group(2).upper()) in _territories() and _speaks(territory, {m.group(1).lower()}):
+        if m and (territory := _territory(m.group(2))) and _speaks(territory, {m.group(1).lower()}):
             found.add(territory)
     return found
 
 
 def _subdomain_territories(labels: Sequence[str]) -> set[str]:
     """The territory a host's first label names, when it is a subdomain (two more labels follow) of two letters that
-    CLDR knows as a territory (`in.example.com`)."""
-    first = labels[0].upper() if len(labels) > 2 else ""
-    return {first} if len(first) == 2 and first in _territories() else set()
+    CLDR knows as a territory (`in.example.com`, `uk.example.com`)."""
+    territory = _territory(labels[0]) if len(labels) > 2 else None
+    return set() if territory is None else {territory}
 
 
 def _cctld_territories(url: str) -> set[str]:
@@ -242,9 +253,11 @@ def _cctld_territories(url: str) -> set[str]:
 
 def _page_languages(ctx: Context) -> frozenset[str]:
     """The primary language subtags (BCP 47) the page states: `<html lang>`, `og:locale`, its Content-Language and
-    its own `hreflang`."""
+    its own `hreflang`. Only a language subtag counts (RFC 5646 §2.2.1: two or three letters, not `und`), so
+    `x-default` (a hreflang fallback marker) or a private-use tag names none."""
     tags = (ctx.html_lang, ctx.og_locale, *ctx.content_language, *ctx.hreflang)
-    return frozenset(tag.replace("_", "-").split("-")[0].lower() for tag in tags if tag)
+    primary = (tag.replace("_", "-").split("-")[0].lower() for tag in tags if tag)
+    return frozenset(p for p in primary if 2 <= len(p) <= 3 and p.isascii() and p.isalpha() and p != "und")
 
 
 def _speaks(territory: str, languages: Set[str]) -> bool:

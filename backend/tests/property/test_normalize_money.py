@@ -98,6 +98,16 @@ def test_a_currency_the_page_does_not_state_comes_from_the_territory_its_url_nam
 )
 def test_a_url_naming_no_one_territory_of_the_page_names_no_currency(url: str, lang: str | None) -> None:
     assert money.normalize({"price": "12"}, MONEY, _ctx(page_url=url, html_lang=lang)) == _ok("12", None, "unknown")
+    # The final URL decides: the requested URL never settles what it leaves unsettled.
+    requested = "https://shop.example.com/en-gb/p"
+    ctx = _ctx(page_url=url, request_url=requested, html_lang=lang)
+    expected = _ok("12", "GBP", "url") if url == "https://shop.example.com/p/1" else _ok("12", None, "unknown")
+    assert money.normalize({"price": "12"}, MONEY, ctx) == expected
+
+
+def test_a_hreflang_fallback_marker_is_no_page_language() -> None:
+    ctx = _ctx(page_url="https://shop.example.com/en-gb/p", hreflang=("x-default",))
+    assert money.normalize({"price": "12"}, MONEY, ctx) == _ok("12", "GBP", "url")
 
 
 def test_a_sign_written_with_an_abbreviation_full_stop_is_also_the_symbol_without_it() -> None:
