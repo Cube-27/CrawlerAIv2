@@ -29,8 +29,16 @@ announced name; `visible(value)` is a whole-word match on that text plus shown e
 
 ### Requirement: Run every cheap collector
 The system SHALL run every collector on every served capture in the order of `collect/run.py`; skipping only ever
-skips the LLM or the browser. A collector MUST NOT raise: an error becomes an empty result plus a diagnostic.
-Refs: §8.1, §8.2 rule 1, D-0387, D-0959.
+skips the LLM, the browser, or a detail page's two DOM passes (structural DOM values and the DOM description block)
+when structured data has settled the page: the schema has no row-mapped field (no variants are asked for), it requires
+a field, and two or more kinds of structured or platform data (adapter, JSON-LD, microdata, Open Graph) state every
+required field and a member of every required group, with no value of theirs differing; the diagnostic
+`dom: not read, structured data agrees on every required field` records it. A collector MUST NOT raise: an error
+becomes an empty result plus a diagnostic. (Previously: the DOM passes always ran.) Refs: §8.1, §8.2 rule 1, D-0387,
+D-0959.
+#### Scenario: Settled by structured data
+- **WHEN** JSON-LD and microdata both state the title and the price, equal, and the schema requires only those
+- **THEN** no `dom` candidate is proposed; with differing prices, or a variants field in the schema, the DOM passes run
 
 ### Requirement: Shells are not observations (INV-11)
 Blocked and shell captures SHALL yield zero candidates and zero records; the outcome is the block class (`blocked`,
@@ -110,7 +118,8 @@ field had no labels.)
 ### Requirement: Structural DOM values
 On a detail page the system SHALL take label–value pairs from the page's main region (`main`, else the one
 `role=main`, else the one `article`, else the body) outside chrome, dialogs, media fallback and other items' content
-(microdata `isRelatedTo`, `isSimilarTo`, `review`, Review items; sibling blocks that each link to one other document):
+(microdata `isRelatedTo`, `isSimilarTo`, `review`, Review items; sibling blocks that each link to one other document;
+other items' cards, below):
 two-cell `tr` rows, `dl` groups, elements starting with `Label:` and sibling containers of one shape (two or more)
 holding a label element and a value element, whose label is one of the field's labels; lines and sibling pairs that
 give a field several values are dropped, and an identifier field given two values by any pairs reads none. It SHALL
@@ -123,8 +132,14 @@ source being its `src` unless its `srcset` has width descriptors (HTML Standard 
 source set), when it is the widest candidate; and for a list of images whose path names schema.org `image`, the main
 image's gallery: from the main image up, the first block with siblings of its tag gives, per such block, its shown image
 at the main image's tag path, a source several blocks give left out; none when a block links to another document or
-fewer than two remain. Values MUST be visible. (Previously: labels were only names, and other items' content was read;
-`src` was read before `srcset`; no list of images was read.) Refs: Appendix A #42, D-0955,
+fewer than two remain. Both DOM passes (these values and the DOM description block) leave out the cards of other
+items (`collect/dom.py` `product_apart`): a shown price that is none of the prices structured data states for the
+schema's money fields belongs to the one other document its nearest block holding hyperlinks leads to (HTML Standard
+§4.6.1), and that block is set apart unless it shows a stated price or holds the page's title (the main content's
+first shown `h1`); a block whose hyperlinks lead to several documents is no card, and without a stated price no card
+is set apart. Product microdata items that do not hold the title are set apart too. Values MUST be visible.
+(Previously: labels were only names, and other items' content was read; `src` was read before `srcset`; no list of
+images was read; a recommendation card that was not one of two or more sibling cards was read.) Refs: Appendix A #42, D-0955,
 D-1096, D-1640, D-1641, D-1642, D-1643.
 #### Scenario: Gallery slides
 - **WHEN** the main image is one of three sibling slides, two of which hold an image whose `src` is a shared placeholder
@@ -139,6 +154,10 @@ D-1096, D-1640, D-1641, D-1642, D-1643.
 #### Scenario: One price
 - **WHEN** the main region shows one amount and a struck amount
 - **THEN** `price` has the shown amount as a candidate; with two shown amounts, none
+#### Scenario: Complete-the-look card
+- **WHEN** structured data states the price `$80`, and the main region shows `$80` and one card linking to another
+  product with `$20` and `Brand: Other`
+- **THEN** `price` has the candidate `$80` and `brand` reads nothing from the card
 #### Scenario: Related products' identifiers
 - **WHEN** the main region shows `EAN: <gtin>` and a list of cards linking to other products, each with a GTIN
 - **THEN** `gtin` has the page's GTIN as its one candidate; an identifier inside a link to another product is none
@@ -204,8 +223,9 @@ path. Neither uses an LLM. Refs: D-1422, D-1423.
 
 ### Requirement: DOM description block
 On a detail page the system SHALL propose for each `long_text` field the prose block of the page's main region
-(`collect/dom_text.py`; as the structural DOM values, outside chrome, dialogs and media fallback, and outside reviews
-and related items marked by schema.org `review`, `isRelatedTo`, `isSimilarTo` or a Review `itemtype`) that states it in
+(`collect/dom_text.py`; as the structural DOM values, outside chrome, dialogs and media fallback, outside reviews
+and related items marked by schema.org `review`, `isRelatedTo`, `isSimilarTo` or a Review `itemtype`, and outside
+other items' cards) that states it in
 full: the outermost block, with no table, form control, button, image, media or frame, whose text begins with a
 candidate another collector proposed for the field (or its ellipsis-cut form, white space aside), and the block equal
 to a non-Open-Graph value in place of that value's wider blocks; else the section after a heading, or named by
