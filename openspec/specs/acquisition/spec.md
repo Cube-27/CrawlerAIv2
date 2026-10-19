@@ -190,9 +190,9 @@ Each fetch SHALL have its own HTTP session or browser context; cookies live in a
 (`RequestContext`) seed only that fetch's jar or context, for the fetched URL's host; the exceptions are the site
 session and the stored cookie state (`acquire/session.py`, next requirement). A site session is the cookies of the
 site's registrable domain that a browser `ok` held after a `blocked` or `shell` HTTP attempt, challenge and clearance
-cookies left out, read without change with the user agent it sent; it seeds later HTTP and JSON fetches and browser
-contexts of that site (`site.host`) in that domain through the same pool endpoint, in process memory, for at most
-30 min and 200 fetches; `blocked` drops it, and one refused before any `ok` leaves the site without a session for
+cookies left out, read without change with the user agent it sent; it seeds later HTTP and JSON fetches of that site
+(`site.host`) in that domain through the same pool endpoint, and its browser contexts on a direct route (a pooled
+context picks its own endpoint), in process memory, for at most 30 min and 200 fetches; `blocked` drops it, and one refused before any `ok` leaves the site without a session for
 30 min. No cookie is logged or captured. (Previously: a vendor's clearance cookies were replayed when its signature
 called them portable.) Enforced by: cross-fetch, cross-site, cross-domain, cross-proxy, expiry, no-persistence and
 caller-cookie tests; active. Refs: §7.1, D-0321, D-0884, D-0902, owner #58, D-1350–D-1354, D-1433.
@@ -210,7 +210,8 @@ cookies of the site's registrable domain that a browser context held after an `o
 `site_cookie_state`, encrypted (Fernet) and rewritten only when the HMAC fingerprint of the plain state changes. Only
 cookies are kept: no other storage. Before a write and after a load, challenge and clearance cookies (every vendor
 signature's cookie names and cookie value markers, `adapters/challenges.py`) are dropped, as are cookies with an empty value or past their expiry;
-cookies are de-duplicated by name, domain and path; session cookies stay; a state with nothing left is not written.
+cookies are de-duplicated by name, domain and path; session cookies stay; a state with nothing left is not written
+and drops the kept one. A direct browser `ok` also refreshes the site's live session with its cookies.
 A `shell`, `blocked` or `error` outcome writes nothing, and any `blocked` fetch of the site on a direct route clears
 its state. A browser context of the site starts with its live site session's cookies, else the stored state; HTTP and
 JSON fetches of the site take the live session, else the stored state's cookies (with their own identity). The flow is

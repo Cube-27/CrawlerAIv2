@@ -294,17 +294,15 @@ def caller_cookies(url: str, context: RequestContext) -> list[SetCookieParam]:
 
 
 def seeded_cookies(cookies: Sequence[SessionCookie]) -> list[SetCookieParam]:
-    """Session cookies as `BrowserContext.add_cookies` takes them: a host-only cookie given with a URL of its host and
-    path (RFC 6265 §5.3 step 6), a `Domain` cookie with its domain led by a dot (§5.2.3); a session cookie with no
-    expiry."""
+    """Session cookies as `BrowserContext.add_cookies` takes them, each with its own path: a host-only cookie with its
+    host as the domain (RFC 6265 §5.3 step 6; as Playwright sets a cookie given with a URL), a `Domain` cookie with its
+    domain led by a dot (§5.2.3); a session cookie with no expiry."""
     params: list[SetCookieParam] = []
     for cookie in cookies:
-        if cookie.host_only:
-            scheme = "https" if cookie.secure else "http"
-            param = SetCookieParam(name=cookie.name, value=cookie.value, url=f"{scheme}://{cookie.domain}{cookie.path}")
-        else:
-            param = SetCookieParam(name=cookie.name, value=cookie.value, domain=f".{cookie.domain}", path=cookie.path)
-        param["secure"] = cookie.secure
+        domain = cookie.domain if cookie.host_only else f".{cookie.domain}"
+        param = SetCookieParam(
+            name=cookie.name, value=cookie.value, domain=domain, path=cookie.path, secure=cookie.secure
+        )
         if cookie.expires is not None:
             param["expires"] = cookie.expires
         params.append(param)

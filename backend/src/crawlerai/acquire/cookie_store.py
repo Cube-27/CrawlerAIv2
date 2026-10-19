@@ -75,10 +75,12 @@ class CookieStore:
         return kept((SessionCookie(**cookie) for cookie in json.loads(plain)), self.clock())
 
     async def save(self, host: str, engine: BrowserEngine, cookies: Iterable[SessionCookie]) -> bool:
-        """Keep `cookies` (cleaned, `kept`) as the state of the site `host` and `engine`, unless nothing is left or
-        the site has no row; a state equal to the kept one is not rewritten. Whether a row was written."""
+        """Keep `cookies` (cleaned, `kept`) as the state of the site `host` and `engine`, unless the site has no row;
+        a state equal to the kept one is not rewritten, and one with nothing left is not written but drops the kept
+        one (the context no longer holds it). Whether a row was written."""
         cleaned = kept(cookies, self.clock())
         if not cleaned:
+            await self.clear(host, engine)
             return False
         plain = json.dumps([asdict(cookie) for cookie in cleaned], sort_keys=True, separators=(",", ":")).encode()
         fingerprint = hmac.new(self.key.encode(), plain, hashlib.sha256).hexdigest()

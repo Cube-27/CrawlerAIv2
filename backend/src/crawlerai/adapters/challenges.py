@@ -46,8 +46,8 @@ SIGNATURES: tuple[ChallengeSignature, ...] = (
     ChallengeSignature(
         "akamai",
         cookie_prefixes=("_abck", "bm_sz", "ak_bmsc", "bm_sv"),
-        # The sensor state of its bot manager's cookie (`~0~` validated, `~-1~` not yet).
-        cookie_value_markers=("~-1~", "~0~"),
+        # The unvalidated sensor state of its bot manager's cookie.
+        cookie_value_markers=("~-1~",),
         script_paths=("/akam/",),
         # The edge's waiting-room and failover template, whose ESI comments name it (served with 200).
         stand_in_markers=("AKAMAI-UPA:",),

@@ -189,12 +189,16 @@ class SiteSessions:
         return SiteSession(site, domain, None, None, (), cookies, self.clock(), 0, stored=True)
 
     async def for_browser(self, url: str, pool: str | None) -> tuple[SessionCookie, ...]:
-        """The cookies a browser context for `url` through `pool` starts with: the site's live session's, else, on a
-        direct route, its stored state's."""
+        """The cookies a browser context for `url` through `pool` starts with: on a direct route, the site's live
+        session's (one of its fetches spent), else its stored state's; none through a pool, whose endpoint the browser
+        picks for itself, so a session's cookies could leave through another one."""
+        if pool is not None:
+            return ()
         site = _host(url)
         if (session := self._live((site, pool))) is not None:
+            session.fetches_left -= 1
             return session.cookies
-        if pool is not None or self.store is None:
+        if self.store is None:
             return ()
         return _replayable(await self.store.load(site, ENGINE), self.suffixes().site(site))
 
@@ -202,17 +206,21 @@ class SiteSessions:
         self, url: str, pool: str | None, cookies: Sequence[SessionCookie], result: FetchResult
     ) -> None:
         """Record how a browser fetch of `url` through `pool` went, its context having held `cookies`: `blocked`
-        drops the site's live session and, on a direct route, its stored state; an `ok` with no challenge keeps the
-        cookies of the site's registrable domain as its stored state (direct routes only). Any other outcome (a
-        `shell`, an error) writes nothing."""
+        drops the site's live session and, on a direct route, its stored state; on a direct route, an `ok` with no
+        challenge makes the cookies of the site's registrable domain its live session's (if it has one) and its stored
+        state. Any other outcome (a `shell`, an error) writes nothing."""
         site = _host(url)
+        session = self._by_site.get((site, pool))
         if result.block_class == "blocked":
-            if (session := self._by_site.get((site, pool))) is not None:
+            if session is not None:
                 self.drop(session)
             await self._clear(site, pool)
-        elif result.block_class == "ok" and result.attempts[-1].challenge is None:
-            if pool is None and self.store is not None:
-                await self.store.save(site, ENGINE, _replayable(cookies, self.suffixes().site(site)))
+        elif result.block_class == "ok" and result.attempts[-1].challenge is None and pool is None:
+            replayable = _replayable(cookies, self.suffixes().site(site))
+            if session is not None and replayable:
+                session.cookies = replayable
+            if self.store is not None:
+                await self.store.save(site, ENGINE, replayable)
 
     async def settle(self, session: SiteSession | None, result: FetchResult) -> None:
         """Record how the fetch `session` served went. `blocked` drops it, and on a direct route the site's stored

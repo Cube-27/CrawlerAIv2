@@ -31,7 +31,7 @@ async def test_a_state_is_kept_encrypted_cleaned_rewritten_only_when_it_changes_
     host = own_origin.removeprefix("https://")
     store = CookieStore(engine, Fernet.generate_key().decode(), clock=lambda: NOW)
     state = (
-        cookie("session", "s1"),
+        cookie("session", "s1.v"),
         cookie("cf_clearance", "token"),
         cookie("renamed", "3~-1~abc"),
         cookie("empty", ""),
@@ -44,10 +44,10 @@ async def test_a_state_is_kept_encrypted_cleaned_rewritten_only_when_it_changes_
     assert await store.save(host, ENGINE, state)
     first = await _row(engine, site)
     assert first is not None
-    assert b"s1" not in first[0]
+    assert b"s1.v" not in first[0]
     loaded = await store.load(host, ENGINE)
     assert [(c.name, c.value, c.path) for c in loaded] == [
-        ("session", "s1", "/"),
+        ("session", "s1.v", "/"),
         ("locale", "fr", "/"),
         ("locale", "de", "/de"),
     ]
@@ -55,7 +55,6 @@ async def test_a_state_is_kept_encrypted_cleaned_rewritten_only_when_it_changes_
     assert not await store.save(host, ENGINE, state)
     assert await _row(engine, site) == first
 
-    await store.clear(host, ENGINE)
-    assert await store.load(host, ENGINE) == ()
     assert not await store.save(host, ENGINE, (cookie("datadome", "x"),))
+    assert await store.load(host, ENGINE) == ()
     assert await _row(engine, site) is None
