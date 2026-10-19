@@ -10,29 +10,21 @@ import asyncio
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Literal
 
 import pytest
 
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.render_need import listing_needs_render
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.services.scrape_steps import RenderNeed
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 
-VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
-DATA = EngineData(
-    vocabulary=VOCABULARY, orders=dict.fromkeys(PRECEDENCE_TYPES, ("jsonld", "microdata", "og")), calibration=None
-)
 ORIGIN = "https://shop.example.test"
 URL = f"{ORIGIN}/c/kettles"
 SCHEMA = SchemaDef(
@@ -112,7 +104,7 @@ class Rung:
 
 
 def _fetch(http: str, browser: str, hint: Literal["auto", "http"] = "auto") -> tuple[FetchResult, RenderNeed, Rung]:
-    check = RenderNeed(SCHEMA, DATA)
+    check = RenderNeed(SCHEMA)
     render = Rung("browser", browser)
     rungs = Rungs(http=Rung("http", http), browser=render)
     result = asyncio.run(acquire(URL, FetchPolicy(method_hint=hint), "http", rungs, needs_render=check))

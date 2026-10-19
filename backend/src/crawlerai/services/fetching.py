@@ -359,6 +359,8 @@ class PagePlan:
     validators: Validators | None = None
     has_record: bool = False
     growth: Growth | None = None
+    # On `time.monotonic`: when the task's budget runs out; the browser is not started too close to it (`acquire`).
+    deadline: float | None = None
 
 
 def _uses_recipe(page: PagePlan, url: str) -> bool:
@@ -402,6 +404,7 @@ def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Wa
                 admit_next=admit_next,
                 send=send,
                 needs_render=page.needs_render,
+                deadline=page.deadline,
             )
             page.attempts.extend(result.attempts)
             return result

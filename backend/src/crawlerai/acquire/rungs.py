@@ -13,6 +13,7 @@ hands the context's cookies to a site session (`acquire.session`, INV-29's excep
 """
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -75,6 +76,9 @@ class ExportingRung(Protocol):
 
 
 _NOT_MODIFIED = 304
+# owner plan 2026-10-19 P3: a render takes seconds (`FetchPolicy.browser_timeout_s` at most), so none starts with less
+# than this left of the task's budget; the HTTP outcome is kept instead.
+BROWSER_MIN_S: Final = 20.0
 _UNAVAILABLE = 503  # RFC 9110 §15.6.4
 # The HTTP outcomes that are evidence for the browser, which may pass where HTTP did not.
 _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
@@ -125,6 +129,7 @@ async def acquire(
     admit_next: Admit | None = None,
     send: JsonFetcher | None = None,
     needs_render: RenderCheck | None = None,
+    deadline: float | None = None,
 ) -> FetchResult:
     """Fetch `url` through the active adapter that detects it, if any, requesting its API with `send` (no adapter runs
     without it); a page an adapter does not serve skips the recipe (adapters spec). Otherwise through `recipe`, the
@@ -140,7 +145,8 @@ async def acquire(
     page no adapter detected whose canonical link is its URL without the query, which an adapter detects, is fetched
     again by that adapter on its own turn (adapters spec); an HTTP `ok` page that would be rendered only for lacking
     what the caller reads asks it before the render, which runs only when no adapter serves it (D-1388). A policy that
-    captures the page (`screenshot`, `pdf`) uses neither an adapter nor a recipe."""
+    captures the page (`screenshot`, `pdf`) uses neither an adapter nor a recipe. No browser retry starts with less than
+    `BROWSER_MIN_S` left before `deadline` (on `time.monotonic`), the task's budget: the HTTP outcome is kept."""
     if policy.captures_page:
         send = recipe = None  # a screenshot or PDF is of the page itself, which an adapter's or a recipe's JSON is not
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
@@ -162,7 +168,7 @@ async def acquire(
         async def refer(page: Fetched) -> Fetched:
             return await _by_canonical(url, page, policy, rungs, send, admit_next, asked)
 
-    page = await _page(url, policy, remembered, rungs, validators, admit_next, needs_render, refer)
+    page = await _page(url, policy, remembered, rungs, _Retry(validators, admit_next, needs_render, deadline), refer)
     kept, attempts, duration_ms = page if refer is None else await refer(page)
     if served is not None:
         return with_attempts(kept, served.attempts + attempts, served.duration_ms + duration_ms)
@@ -231,23 +237,31 @@ def _same_resource(a: str, b: str) -> bool:
     )
 
 
+@dataclass(frozen=True)
+class _Retry:
+    """What decides the page rung's requests (`acquire`): the validators for HTTP, the admission of a further request,
+    the caller's render check, and the deadline no browser retry starts too close to."""
+
+    validators: Validators | None
+    admit_next: Admit | None
+    needs_render: RenderCheck | None
+    deadline: float | None
+
+    def in_budget(self) -> bool:
+        return self.deadline is None or self.deadline - time.monotonic() >= BROWSER_MIN_S
+
+
 async def _page(
-    url: str,
-    policy: FetchPolicy,
-    remembered: FetchMethod,
-    rungs: Rungs,
-    validators: Validators | None,
-    admit_next: Admit | None,
-    needs_render: RenderCheck | None,
-    refer: Refer | None = None,
+    url: str, policy: FetchPolicy, remembered: FetchMethod, rungs: Rungs, retry: _Retry, refer: Refer | None = None
 ) -> Fetched:
     """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration. An HTTP
     page kept for want of a browser outcome is the fetch's last page (`_as_last_page`). An HTTP `ok` page that would
     be rendered only for lacking what the caller reads is first offered to `refer` (its adapter canonical or
     referral), whose `ok` answer is kept without the render (D-1388)."""
+    needs_render = retry.needs_render
     method = remembered if policy.method_hint == "auto" else policy.method_hint
     if method == "http" and rungs.conditional is not None:
-        result = await rungs.conditional(url, policy, validators=validators)
+        result = await rungs.conditional(url, policy, validators=retry.validators)
     else:
         result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
     retried = policy.method_hint == "auto" and method == "http" and await _browser_may_help(result, needs_render)
@@ -257,11 +271,17 @@ async def _page(
         if page[0] is not result:
             return page
     _, attempts, duration_ms = page
-    if not retried or not await _admitted(admit_next, after=_paused_by(result)):
+    # The budget is checked again once admitted: the wait for the site's turn may have spent it.
+    if (
+        not retried
+        or not retry.in_budget()
+        or not await _admitted(retry.admit_next, after=_paused_by(result))
+        or not retry.in_budget()
+    ):
         return await _as_last_page(result), attempts, duration_ms
-    retry = await _browser_retry(url, policy, rungs, result)
-    kept = retry if await _better(retry, result, needs_render) else await _as_last_page(result)
-    return kept, attempts + retry.attempts, duration_ms + retry.duration_ms
+    rendered = await _browser_retry(url, policy, rungs, result)
+    kept = rendered if await _better(rendered, result, needs_render) else await _as_last_page(result)
+    return kept, attempts + rendered.attempts, duration_ms + rendered.duration_ms
 
 
 async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: FetchResult) -> FetchResult:

@@ -24,21 +24,35 @@ In `auto`, the system SHALL retry in the browser an HTTP `shell` or `blocked` re
 `error` whose reason is `network_error` or `timeout` (never the same transport again), keeping the browser outcome only
 when `ok`; a 503 that `classify.interstitial`
 judges to stand in for the page, after the site's pause (`politeness.backoff`), keeping the browser outcome only when
-`ok`; and an HTTP `ok` page the caller's structural render check holds true for (`services/scrape_steps.RenderNeed`, no
-extraction and no LLM): a detail page whose schema requires a `money` field and whose capture holds no Offer entity and
-no `money` candidate, or a listing (`content/render_need.py`) whose DOM shows fewer than `MIN_ITEMS` item blocks, whose
+`ok`; and an HTTP `ok` page the caller's render check holds true for (`services/scrape_steps.RenderNeed`, cheap
+signals only: no collector pass, no extraction and no LLM): a detail page whose schema requires a `money` field and
+whose document shows no sign of its offer (`content/render_need.offer_shown`: no schema.org Product with offers, OGP
+`product:price:amount` or microdata Product with offers; no state document of at least `STATE_MIN_VALUES` scalar
+values, whatever its name, `content/state.py`; no heading (`h1` to `h6`) with a digit beside a Unicode Sc currency
+sign in the visible text), any page of a request that names `render_fields` (the fields the caller says only a render shows; that render
+is kept when `ok`), or a listing (`content/render_need.py`) whose DOM shows fewer than `MIN_ITEMS` item blocks, whose
 text inside `hidden` or `display:none` containers outweighs its visible text, or whose structured list names fewer
 entries than its DOM shows item blocks (item blocks counted only when they show more than their link); that browser
 outcome is kept only when `ok` and the check no longer holds, a listing's also when the render lists more items than the
 HTTP page (owner #54: the capture with more rows is kept). An HTTP listing shell kept with no browser outcome is `ok`
-when it is a shell by the listing rule alone. Any later request of a fetch is sent only when `admit_next` allows. The
-browser MUST NOT be the default. Role C runs once, on the kept capture. (Previously: a listing was rendered when its
-extraction, role C included, gave no rows; an HTTP timeout was not retried in the browser.) Refs: §7.1, D-0009, D-0203, D-0865, D-0900, owner #49, D-1202, owner #54,
-D-1261, D-1263, D-1472, master plan 2026-10-18 §3.1, owner plan 2026-10-19 (crawl speed).
+when it is a shell by the listing rule alone. Any later request of a fetch is sent only when `admit_next` allows, and
+no browser retry starts with less than `BROWSER_MIN_S` (20 s) left of the task's budget (a worker task's
+`TASK_DEADLINE`, a scrape's `timeout_s`): the HTTP outcome is kept. No other 4xx (`auth_wall`, `not_found`, `error`)
+and no redirect class is retried in the browser. The browser MUST NOT be the default. Role C runs once, on the kept
+capture. (Previously: a detail page was rendered when a full collector pass found no Offer and no `money` candidate; a
+listing was rendered when its extraction, role C included, gave no rows; an HTTP timeout was not retried in the
+browser.) Refs: §7.1, D-0009, D-0203, D-0865, D-0900, owner #49, D-1202, owner #54, D-1261, D-1263, D-1472, master
+plan 2026-10-18 §3.1, owner plan 2026-10-19 (crawl speed; P3 fetch classification and the browser decision).
 #### Scenario: Client-rendered offer
-- **WHEN** an `auto` fetch of such a detail page answers HTTP `ok` with no Offer and no price, and the browser render
+- **WHEN** an `auto` fetch of such a detail page answers HTTP `ok` with none of the offer signals, and the browser render
   holds an Offer
 - **THEN** the browser capture is kept and the result lists both attempts
+#### Scenario: Offer signals present
+- **WHEN** an `auto` fetch of such a detail page answers HTTP `ok` with a JSON-LD Product with offers
+- **THEN** no browser attempt is made, unless the request names `render_fields`
+#### Scenario: Budget nearly spent
+- **WHEN** an HTTP `shell` arrives with 15 s of the task's budget left
+- **THEN** no browser attempt is made and the HTTP outcome is kept
 #### Scenario: Stream-rendered listing
 - **WHEN** an `auto` fetch of a listing answers HTTP `ok` with its items inside `hidden` containers, and the render
   shows them
@@ -120,11 +134,23 @@ on the new document (within the settle deadline), so the capture is the final do
 - **THEN** the first is kept as received and the second is not
 
 ### Requirement: Structural outcome classification (INV-24)
-The system SHALL classify each final response from status and structure (the classes and the shell, linkless page,
-self-refreshing page and listing-shell rules in `acquire/classify.py`: a 2xx HTML page that is no shell and has no
-hyperlink, or that declares a refresh and has hyperlinks but none to a web page (even one short enough to be a shell),
-is `blocked`; a listing without repeated items is a shell unless its structured data lists items), and from one kind of
-site data only: a 2xx HTML document that shows a vendor's stand-in marker (`adapters/challenges.py`) is `blocked`.
+The system SHALL classify each final response, before extraction, from status and structure (the classes and the shell,
+linkless page, self-refreshing page and listing-shell rules in `acquire/classify.py`: a 2xx HTML page that is no shell
+and has no hyperlink, or that declares a refresh and has hyperlinks but none to a web page (even one short enough to be
+a shell), is `blocked`; a listing without repeated items is a shell unless its structured data lists items; a 401 is
+`auth_wall`), and from one kind of site data only: a 2xx HTML document that shows a vendor's stand-in marker
+(`adapters/challenges.py`) is `blocked`. A block needs corroboration and usable content beats it: a 403, or a 2xx
+document with a stand-in marker, that carries the page's structured data (`classify.usable_content`: a schema.org
+Product with offers, an OGP product price, a microdata Product with offers; on a listing the items its structured data
+lists) is `ok`. A 2xx page fetched as a detail or listing page that a redirect (`classify.Redirect`) led away from the
+page asked for (another host or path past a BCP 47 locale segment) is `geo_redirect` when the answering URL names
+another region (a BCP 47 region subtag in its first path segment, else a two-letter ccTLD, RFC 1591) and another path,
+`soft_404` when it is a site's or an edition's root, and, for a detail page, `redirected_to_listing` when it lists items,
+states no product and its path does not keep the asked path's last segment as a word (a slug added); a fetch of no page
+kind (a crawl's page) is never classed by its redirect. A redirect to a page whose query carries the asked path, as
+given or base64-encoded (RFC 4648), is an interstitial that sends the client back once passed: `blocked`. These classes are the
+transport outcome (the capture's `block_class`); a page in any of them yields zero records and ends its task with the
+same-named outcome, never as a page without a price.
 Generic code and the remembered fetch method MUST NOT use vendor or challenge-page strings, and blocked and shell pages
 end with zero records. A body is decoded once at acquisition by HTML encoding sniffing
 (`storage/capture_bundle.decode_html`, D-1152; a JSON body as UTF-8, RFC 8259 §8.1, whatever charset it is labelled
@@ -138,6 +164,12 @@ Enforced by: the site-literal scan (INV-03), classify and challenge tests and re
 #### Scenario: Vendor stand-in served with 200
 - **WHEN** a 200 HTML document shows a vendor's stand-in marker and links to pages of its site
 - **THEN** the class is `blocked` with that vendor's challenge label
+#### Scenario: Usable content beats vendor noise
+- **WHEN** a 403 HTML document carries a JSON-LD Product with offers
+- **THEN** the class is `ok` and the page is extracted
+#### Scenario: Detail page redirected home
+- **WHEN** a detail page's HTTP fetch is redirected to its site's `/` and answers 200
+- **THEN** the class is `soft_404`, no browser attempt is made, and the task ends `soft_404`
 #### Scenario: Legacy encoding
 - **WHEN** a 200 page declared `charset=euc-jp` carries non-ASCII bytes in a `meta` and an `a` attribute
 - **THEN** it is classified from its decoded text without raising

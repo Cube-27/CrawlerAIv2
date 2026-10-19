@@ -41,13 +41,15 @@ from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData, PinnedData
 from crawlerai.resolve.types import Probability
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import Name, SchemaDef
 from crawlerai.services.fetch_options import KEEP_SECRETS, check_proxy_pool
 from crawlerai.services.fetching import check_targets
 from crawlerai.services.scrape import Budget, RecordsUnavailable
 from crawlerai.services.scrape_steps import (
     DEFAULT_PROJECT,
+    MAX_RENDER_FIELDS,
     MIN_CONFIDENCE_DESCRIPTION,
+    RENDER_FIELDS_DESCRIPTION,
     FetchOptions,
     PageFormat,
     SchemaById,
@@ -80,6 +82,9 @@ class BatchScrapeRequest(WebhookOptions):
     fit: FitOptions | None = None  # `markdown_fit`'s query and block limit
     chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
     min_confidence: Probability | None = Field(default=None, description=MIN_CONFIDENCE_DESCRIPTION)
+    render_fields: list[Name] = Field(
+        default_factory=list, max_length=MAX_RENDER_FIELDS, description=RENDER_FIELDS_DESCRIPTION
+    )
 
     @field_validator("urls")
     @classmethod

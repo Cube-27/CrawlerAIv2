@@ -235,7 +235,7 @@ async def _polite_page(
     policy = FetchPolicy(
         page_kind=schema.page_kind, proxy_pool=site.proxy_pool, block_resources=not site.load_all_resources
     )
-    page = PagePlan(site_rungs(fetching, host, site), site, policy, [], needs_render=render_need(schema, data, None))
+    page = PagePlan(site_rungs(fetching, host, site), site, policy, [], needs_render=render_need(schema, data))
     try:
         # A page not reached is fetched again after the back-off, and the closest capture kept (`best_fetch`).
         return await label_file.best_fetch(lambda: fetch_now(engine, fetching, url, replace(page, attempts=[])))

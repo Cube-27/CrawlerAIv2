@@ -51,7 +51,21 @@ from crawlerai.storage.fs import FsStore
 pytestmark = pytest.mark.anyio
 
 
-OUTCOMES = {"extracted", "partial", "unchanged", "links_only", "blocked", "shell", "not_found", "no_match", "failed"}
+OUTCOMES = {
+    "extracted",
+    "partial",
+    "unchanged",
+    "links_only",
+    "blocked",
+    "shell",
+    "not_found",
+    "auth_wall",
+    "soft_404",
+    "geo_redirect",
+    "redirected_to_listing",
+    "no_match",
+    "failed",
+}
 
 
 def _document(name: str) -> SchemaDocument:

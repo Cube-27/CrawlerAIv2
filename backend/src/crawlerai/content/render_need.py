@@ -1,6 +1,13 @@
-"""Whether an HTTP listing may show more of its items once rendered, judged from its structure alone (master plan
-2026-10-18 §3.1; owner #54): no extraction and no LLM call, so the fetch decides before role C runs once, on the
-capture it keeps.
+"""Whether an HTTP page may need the browser, judged from cheap signals alone (master plan 2026-10-18 §3.1; owner #54;
+owner plan 2026-10-19 P3): no extraction and no LLM call, so the fetch decides before role C runs once, on the capture
+it keeps.
+
+A detail page shows its offer over HTTP (`offer_shown`) when its structured data states a product's offer (a schema.org
+Product with offers, an OGP product price, a microdata Product with offers: `classify.describes_product`), when it
+carries a state document large enough to be the page's data rather than a script's settings (`holds_state`: a hydration
+blob, a platform's analytics object, whatever its name), or when it shows a heading (`h1` to `h6`, HTML Standard §4.3.6;
+a product's name is not always an `h1`) and a price: a digit beside a currency sign (Unicode general category Sc).
+Without any of these its offer is filled in by script, and the browser renders it.
 
 A listing is rendered when its document shows fewer than `MIN_ITEMS` repeated item blocks that show more than their
 link (the item layer's first group, `ParsedPage.item_groups`, counted by `content.segment.shown_blocks`: its grid is
@@ -12,13 +19,60 @@ complete). Text is counted in non-whitespace characters: rendering collapses whi
 non-whitespace makes the count independent of how text nodes are joined.
 """
 
+import re
+import sys
+import unicodedata
+
+from pydantic import JsonValue
 from selectolax.lexbor import LexborNode
 
-from crawlerai.acquire.classify import structured_entries
+from crawlerai.acquire.classify import describes_product, structured_entries
 from crawlerai.acquire.items import MIN_ITEMS, item_groups
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.segment import shown_blocks
+from crawlerai.content.state import script_state
 from crawlerai.content.text import NOT_RENDERED, concealed
+
+# The fewest scalar values (RFC 8259 strings, numbers, literals) a state document holds to be the page's data, not a
+# script's settings: an unmeasured starting point, to be confirmed on dev.
+STATE_MIN_VALUES = 50
+_HEADINGS = "h1, h2, h3, h4, h5, h6"
+# Unicode general category Sc (Symbol, currency): every currency sign, whatever its currency.
+_SIGNS = re.escape("".join(c for c in map(chr, range(sys.maxunicode + 1)) if unicodedata.category(c) == "Sc"))
+# A price as shown: a currency sign beside a digit, with at most one space between them, in either order.
+_SHOWN_PRICE = re.compile(rf"[{_SIGNS}]\s?\d|\d\s?[{_SIGNS}]")
+
+
+def offer_shown(page: ParsedPage) -> bool:
+    """Whether a detail page's HTTP document carries its offer, by the module docstring's signals; the cheapest
+    first."""
+    return describes_product(page.tree) or holds_state(page) or _heading_and_price(page)
+
+
+def holds_state(page: ParsedPage) -> bool:
+    """Whether the page carries a state document of at least `STATE_MIN_VALUES` scalar values (`content.state`): its
+    data came with the HTML, for its script to render."""
+    return any(_values(document) >= STATE_MIN_VALUES for s in page.scripts for document in script_state(s, []))
+
+
+def _values(document: JsonValue) -> int:
+    """The scalar values of a JSON document, counted up to `STATE_MIN_VALUES` (walked with a stack, not recursion)."""
+    count, stack = 0, [document]
+    while stack and count < STATE_MIN_VALUES:
+        value = stack.pop()
+        if isinstance(value, dict):
+            stack.extend(value.values())
+        elif isinstance(value, list):
+            stack.extend(value)
+        else:
+            count += 1
+    return count
+
+
+def _heading_and_price(page: ParsedPage) -> bool:
+    if not any(heading.text(strip=True) for heading in page.tree.css(_HEADINGS)):
+        return False
+    return _SHOWN_PRICE.search(page.cleaned_text.text) is not None
 
 
 def listing_needs_render(page: ParsedPage, over: ParsedPage | None = None) -> bool:

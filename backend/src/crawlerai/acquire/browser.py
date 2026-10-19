@@ -32,7 +32,7 @@ from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
 from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
-from crawlerai.acquire.classify import INTERSTITIAL_STATUS, interstitial
+from crawlerai.acquire.classify import INTERSTITIAL_STATUS, Redirect, interstitial
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.items import element_path, item_groups, lxml_root
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
@@ -237,7 +237,7 @@ async def fetch_browser(
                 cookies = await context_cookies(page.page.context)
                 artifacts = await capture_artifacts(page.page, policy)
         text = markup(content)
-        block_class = await classified(exchange, text)
+        block_class = await classified(exchange, text, Redirect(url, exchange.url, policy.page_kind))
         challenge = await challenge_of(block_class, exchange, text, cookies)
         if export is not None:
             export.cookies, export.proxy = cookies, proxy
@@ -364,12 +364,13 @@ async def challenge_of(
     return await asyncio.to_thread(challenge_label, status, headers, text, exchange.url, names)
 
 
-async def classified(exchange: Exchange, text: str) -> BlockClass:
-    """The block class of a rendered document from its markup `text`. classify parses HTML synchronously; a thread
-    keeps the event loop free. Without the page kind: the listing rule calls a page a shell for the browser to render,
-    and the browser is the last rung, so its page is extracted whatever its links (rows from captured JSON are read
-    then)."""
-    return await asyncio.to_thread(block_class_of, exchange.status, exchange.response_headers, text)
+async def classified(exchange: Exchange, text: str, redirect: Redirect | None = None) -> BlockClass:
+    """The block class of a rendered document from its markup `text`, and from where its navigation led (`classify`'s
+    redirect rules), when given. classify parses HTML synchronously; a thread keeps the event loop free. Without the
+    page kind: the listing rule calls a page a shell for the browser to render, and the browser is the last rung, so
+    its page is extracted whatever its links (rows from captured JSON are read then)."""
+    status, headers = exchange.status, exchange.response_headers
+    return await asyncio.to_thread(block_class_of, status, headers, text, None, redirect)
 
 
 @dataclass
