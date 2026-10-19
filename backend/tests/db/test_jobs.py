@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.api.app import create_app
@@ -20,6 +20,7 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.keys import create_key
 from crawlerai.db.models import (
     ApiKey,
+    Capture,
     CaptureId,
     Extraction,
     Job,
@@ -120,12 +121,41 @@ class World:
                 values = {"job_id": job_id, "url": url, "canonical_url": url, "status": status, "outcome": outcome}
                 await conn.execute(insert(UrlTask).values(**values, last_error=last_error))
 
-    async def record(self, job_id: JobId, data: Mapping[str, Any], field_meta: Mapping[str, Any]) -> RecordId:
-        """A record of the world's schema, stored as a page task stores it."""
+    async def record(
+        self,
+        job_id: JobId,
+        data: Mapping[str, Any],
+        field_meta: Mapping[str, Any],
+        *,
+        capture_id: CaptureId | None = None,
+    ) -> RecordId:
+        """A record of the world's schema, stored as a page task stores it, from the capture `capture_id` if given."""
         async with self.engine.begin() as conn:
-            task_id, url = await self._task(conn, job_id, "extracted", None)
+            task_id, url = await self._task(conn, job_id, "extracted", capture_id)
             [record_id] = await self._store(conn, job_id, task_id, [(url, data, field_meta)])
         return record_id
+
+    async def capture(self, method: str, attempts: Sequence[str] = ()) -> CaptureId:
+        """A capture of the site's by `method`, its fetch having tried the rungs `attempts` (methods) in order."""
+        values = {
+            "site_id": self.site_id,
+            "url": self.origin,
+            "fetched_at": func.now(),
+            "method": method,
+            "status_code": 200,
+            "final_url": self.origin,
+            "block_class": "ok",
+            "object_key": f"captures/{uuid7().hex}",
+            "html_sha256": "0" * 64,
+            "size_bytes": 1,
+            "duration_ms": 1,
+            "fetch_policy": {"attempts": [{"method": m} for m in attempts or (method,)]},
+        }
+        async with self.engine.begin() as conn:
+            capture_id: CaptureId = (
+                await conn.execute(insert(Capture).values(**values).returning(Capture.id))
+            ).scalar_one()
+        return capture_id
 
     async def page(
         self,
@@ -276,6 +306,23 @@ async def test_the_outcomes_count_pages_by_outcome_and_fields_by_status_and_reas
         "interaction_required": 1,
     }
     assert outcomes.reasons == {"no candidate": 2, "out_of_stock": 1, "x": 1}
+    assert (outcomes.missing_unrendered, outcomes.hint) == ({}, None)
+
+
+@pytest.mark.parametrize(("mode", "hint"), [("off", "render.mode: locate"), ("locate", None)])
+async def test_the_outcomes_count_fields_http_pages_did_not_carry(world: World, mode: str, hint: str | None) -> None:
+    job_id = await world.job(request={"render": {"mode": mode, "fields": []}})
+    unfound = {**meta("missing"), "reason": "no_candidates"}
+    fields = {"title": meta("published"), "colour": unfound}
+    for capture in (await world.capture("http"), await world.capture("http")):
+        await world.record(job_id, {"title": "A"}, fields, capture_id=capture)
+    await world.record(job_id, {"title": "B"}, fields, capture_id=await world.capture("browser"))
+    await world.record(job_id, {"title": "C"}, fields, capture_id=await world.capture("http", ["browser", "http"]))
+
+    async with world.engine.connect() as conn:
+        outcomes = await job_outcomes(conn, job_id)
+
+    assert (outcomes.missing_unrendered, outcomes.hint) == ({"colour": 2}, hint)
 
 
 # The list.

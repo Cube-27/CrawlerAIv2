@@ -38,7 +38,6 @@ from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canoni
 from crawlerai.content.context import page_context
 from crawlerai.content.metadata import canonical_link
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.state import holds_state
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import CALIBRATION_FILE
 from crawlerai.db.models import ExtractionMode, SourceKind
@@ -48,7 +47,7 @@ from crawlerai.resolve.evidence import Calibration, assess, assess_fields, load_
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
 from crawlerai.resolve.listing import listing_rows
 from crawlerai.resolve.ownership import OFFER, EntityGraph
-from crawlerai.resolve.page_state import out_of_stock, render_could_show, was_rendered
+from crawlerai.resolve.page_state import out_of_stock, render_bound, was_rendered
 from crawlerai.resolve.pagination import next_page_candidate, next_page_links
 from crawlerai.resolve.preference import (
     PRECEDENCE_FILE,
@@ -227,7 +226,7 @@ async def extract_page(
                 return _result("error", mode, candidates=candidates, llm_calls=llm_calls, diagnostics=diagnostics)
         if reply.failure is not None:
             fields = _unanswered(fields, missing, reply.failure)
-    fields = await _unpublished_reasons(source, page.page, _absent(fields, page.config.absent))
+    fields = _unpublished_reasons(source, _absent(fields, page.config.absent))
     return ExtractionResult(
         outcome="extracted" if is_complete(schema, fields) else "partial",
         entity=fields,
@@ -675,15 +674,14 @@ def _absent(fields: FieldSet, absent: frozenset[str]) -> FieldSet:
     }
 
 
-async def _unpublished_reasons(source: "_Source", page: ParsedPage, fields: FieldSet) -> FieldSet:
-    """What the page's own evidence says of its unpublished fields (`page_state` module): a price missing from a page
-    that states its item is not for sale is `out_of_stock`; a field missing from a page that was not rendered and whose
-    document carries its data for its script to render (`content.state.holds_state`) is `interaction_required`
-    (resolution spec): a render may show it. A rendered page, or a field the outcome explains, stays `missing`."""
+def _unpublished_reasons(source: "_Source", fields: FieldSet) -> FieldSet:
+    """What the page's own evidence and the site's config say of its unpublished fields (`page_state` module): a price
+    missing from a page that states its item is not for sale is `out_of_stock`; a field whose source in the config is
+    the browser, missing from a page that was not rendered, is `interaction_required` (`render_bound`, resolution
+    spec). Every other unpublished field keeps its reason."""
     fields = out_of_stock(source.schema, fields)
-    rendered = was_rendered(source.bundle.manifest)
-    holds = not rendered and await asyncio.to_thread(holds_state, page)
-    return render_could_show(fields, rendered=rendered, holds_state=holds)
+    browser = frozenset() if source.config is None else source.config.browser_fields
+    return render_bound(fields, browser, was_rendered(source.bundle.manifest))
 
 
 def _unanswered(fields: FieldSet, asked: tuple[str, ...], failure: str) -> FieldSet:

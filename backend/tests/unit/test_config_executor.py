@@ -42,13 +42,19 @@ def _schema(page_kind: str = "detail", **fields: FieldSpec) -> SchemaDef:
     )
 
 
-def _ir(fields: dict[str, Any], *, page_kind: str = "detail", listing: dict[str, Any] | None = None) -> EngineExecutor:
+def _ir(
+    fields: dict[str, Any],
+    *,
+    page_kind: str = "detail",
+    listing: dict[str, Any] | None = None,
+    fetch: str = "http",
+) -> EngineExecutor:
     document = {
         "ir_version": "1",
         "site": "shop.example.test",
         "schema": {"name": "synthetic", "digest": "0" * 64},
         "page_kind": page_kind,
-        "fetch": {"method": "http"},
+        "fetch": {"method": fetch},
         "fields": {
             name: {"steps": steps, "status": "uncorroborated"} if isinstance(steps, list) else steps
             for name, steps in fields.items()
@@ -83,6 +89,12 @@ def _config(field: str, raw: Any, normalized: Any, locator: str, entity_id: str 
         locator=locator,
         independent=False,
     )
+
+
+def test_a_config_learned_from_rendered_pages_reads_its_fields_from_the_browser() -> None:
+    fields = {"title": [{"xpath": "//h1"}]}
+    assert _ir(fields, fetch="browser").browser_fields == {"title"}
+    assert _ir(fields).browser_fields == frozenset()
 
 
 def test_an_xpath_step_proposes_the_node_string_value_owned_by_the_page() -> None:

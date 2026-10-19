@@ -56,6 +56,12 @@ class ConfigExecutor(Protocol):
         ...
 
     @property
+    def browser_fields(self) -> frozenset[str]:
+        """The fields whose source is the browser: a page not rendered cannot carry them, so each one missing from it is
+        `interaction_required` (resolution spec, "Render-bound fields")."""
+        ...
+
+    @property
     def learned_calls(self) -> LearnedCalls | None:
         """The calls of a learned listing recipe's endpoint, which the `xhr` collector reads with the recipe's map on
         a page the recipe did not serve (Appendix A #59); None without one."""

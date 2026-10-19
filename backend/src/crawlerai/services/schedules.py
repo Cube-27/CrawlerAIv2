@@ -54,7 +54,7 @@ MAX_NAME: Final = 200
 # Due schedules one scheduler run submits; a full batch runs again at once (`scheduler.loop`). One at a time: a run's
 # submission fetches (the SSRF guard, an extract's maps) inside the transaction that holds its row.
 SCHEDULE_BATCH: Final = 1
-_BATCH_MEMBERS: Final = {"formats", "schema_", "page_kind", "fetch", "locale", "budget", "render_fields"}
+_BATCH_MEMBERS: Final = {"formats", "schema_", "page_kind", "fetch", "locale", "budget", "render"}
 
 ScheduledRequest = BatchScrapeRequest | CrawlRequest | ExtractRequest
 
@@ -492,7 +492,7 @@ def _by_id(request: ScheduledRequest, schema: SchemaDef | None) -> ScheduledRequ
 
 
 def _as_batch(scrape: ScrapeRequest) -> BatchScrapeRequest:
-    """The batch of a scrape's one URL, with its formats, schema, page kind, fetch, locale, budget and render fields."""
+    """The batch of a scrape's one URL, with its formats, schema, page kind, fetch, locale, budget and `render`."""
     if scrape.browser_actions is not None:
         raise Unschedulable("browser actions run in a scrape answered while the caller waits, not on a schedule")
     members = scrape.model_dump(by_alias=True, include=_BATCH_MEMBERS, exclude_none=True)
