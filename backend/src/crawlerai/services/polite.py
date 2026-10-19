@@ -3,10 +3,10 @@ answer (`scrape`, `map`, `extract`, the eval import) or it runs in a worker (`ba
 API endpoint an adapter or recipe asks, or a sitemap.
 
 The steps, in order: the host's rules (its interval setting and robots.txt, `ReadRules`; a robots.txt request takes a
-turn at the host's rate and holds the host as a page's does), a turn at the host's rate, the fetch, with the host held
-from the first turn until it ends (no other task's request goes to it meanwhile), then the host's rate
+turn at the host's rate and holds the host as a page's does), a turn at the host's rate, the fetch, then the host's rate
 adapted to every answer of the fetch (acquisition spec, Per-site rate and backoff) and, when the fetch kept no `ok`
-answer after a 429 or 503, the host paused by the one back-off rule (`politeness.backoff`). A caller that waits for
+answer after a 429 or 503, the host paused by the one back-off rule (`politeness.backoff`), the host held from the
+first turn until then (no other task's request goes to it meanwhile). A caller that waits for
 the answer waits in place for its turns, up to `IN_PLACE.bound`, and a turn further off is not taken (`Refused`,
 `slow_down`). A worker postpones its task when the host's turn for the first request is not due (`Later`): the task
 goes back to the queue, and the worker moves on to other sites; a further request of the fetch, the browser retry,
@@ -146,8 +146,8 @@ async def polite_fetch[R: (FetchResult, FetchResult | Unchanged)](
     host (an API request); a page fetch's `api` attempts went to other hosts, which their own polite fetch observed.
     `tries` counts this fetch among the work's tries, which the back-off doubles with."""
     host = urlsplit(url).hostname or ""
-    # The host is held from the first turn the block takes (robots.txt's, or the fetch's) to the fetch's end
-    # (`HostLimiter.holding`).
+    # The host is held from the first turn the block takes (robots.txt's, or the fetch's) until the fetch's answers
+    # are observed (`HostLimiter.holding`).
     async with limiter.holding(host):
         try:
             known = await rules(url, policy)
@@ -163,11 +163,12 @@ async def polite_fetch[R: (FetchResult, FetchResult | Unchanged)](
             return unsent
         admit_next: Admit = refuse if disallowed else partial(limiter.wait, host, known.gap, waiting.bound)
         result = await fetch(url, admit_next, known)
-    attempts = result.attempts if endpoint else page_requests(result.attempts)
-    await limiter.observe(host, known.gap, attempts)
-    if isinstance(result, Unchanged) or result.block_class == "ok":
-        return result
-    await pause_host(limiter, host, attempts, tries)
+        # Observed, and the host paused, before the hold ends: no other process's turn comes before the back-off.
+        attempts = result.attempts if endpoint else page_requests(result.attempts)
+        await limiter.observe(host, known.gap, attempts)
+        if isinstance(result, Unchanged) or result.block_class == "ok":
+            return result
+        await pause_host(limiter, host, attempts, tries)
     return Refused(ROBOTS) if disallowed else result
 
 
@@ -241,8 +242,8 @@ def page_first(page_host: str, known: HostRules, rules: ReadRules) -> ReadRules:
 def recording(rung: Rung, policy: FetchPolicy, attempts: list[AttemptRecord], turns: Turns, gap: timedelta) -> Fetch:
     """A fetch of robots.txt through `rung` with `policy` that adds the attempts of each fetch to `attempts`, sent as
     politely as a page's request (acquisition spec): a turn at its host's rate (`gap`, the site's interval: its
-    `Crawl-delay` is what it reads) taken as `turns` waits, or `NoTurn`; the host held until it returns; its answers
-    observed, and a slow-down pausing the host. The caller's request context and page steps are the page's, not
+    `Crawl-delay` is what it reads) taken as `turns` waits, or `NoTurn`; the host held until its answers are
+    observed, and a slow-down has paused the host. The caller's request context and page steps are the page's, not
     robots.txt's (D-1432): it goes without them."""
     policy = policy.model_copy(update={"context": None, "steps": ()})
     limiter = turns.limiter
@@ -253,10 +254,10 @@ def recording(rung: Rung, policy: FetchPolicy, attempts: list[AttemptRecord], tu
             if (unsent := await _first_turn(limiter, host, gap, turns.waiting)) is not None:
                 raise NoTurn(unsent)
             result = await rung(url, policy)
+            await limiter.observe(host, gap, result.attempts)
+            if result.block_class != "ok":
+                await pause_host(limiter, host, result.attempts, 1)
         attempts.extend(result.attempts)
-        await limiter.observe(host, gap, result.attempts)
-        if result.block_class != "ok":
-            await pause_host(limiter, host, result.attempts, 1)
         return result
 
     return fetch

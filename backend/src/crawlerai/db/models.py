@@ -303,7 +303,7 @@ class SiteCookieState(Base):
 
 class HostTurn(Base):
     """A host's turn and hold, shared by every process that fetches (acquisition spec, "Per-site rate and backoff";
-    `acquire.host_turns`): when its next request may go, and the fetch holding it, until `held_until` unless renewed.
+    `acquire/host_turns.py`): when its next request may go, and the fetch holding it, until `held_until` unless renewed.
     Keyed by the URL's host, as the limiter is, not by site. Unlogged: the state is seconds long, so a server crash
     that empties it loses one interval's spacing at most (PostgreSQL CREATE TABLE, UNLOGGED)."""
 

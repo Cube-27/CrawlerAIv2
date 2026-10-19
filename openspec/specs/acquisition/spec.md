@@ -344,11 +344,11 @@ host as a page's does (a worker postpones a fetch that has sent nothing, and onc
 for the page's turn up to its bound). It SHALL space requests to a host by
 `crawl_delay_ms`, else 1 req/s, never below robots `Crawl-delay`, postponing a worker task rather than sleeping (a
 caller that waits waits in place up to one minute, a turn further off answering `blocked`, reason `slow_down`, with
-nothing sent); SHALL hold the host from a fetch's turn until the fetch ends, browser navigations included, so no two
+nothing sent); SHALL hold the host from a fetch's turn until the fetch ends and its answers are observed (a back-off stored), browser navigations included, so no two
 fetches are in flight to one host (a navigation and the resources its page loads are one fetch) (owner plan 2026-10-19, P1), and admit no request for work being
 cancelled. A process with the database shares the turns and holds with every other (`host_turn`, `acquire/host_turns.py`):
 a turn and its hold are taken in one statement, and a hold is a 1-minute lease its process renews while the fetch runs
-and gives up as the fetch is cancelled, so a process that dies holds a host at most that long. It SHALL double a host's spacing on a 429, a 503 or a challenge (at most 15 min),
+and gives up as the fetch is cancelled, so a process that dies holds a host at most that long; the scheduler deletes rows whose turn is due and that no lease holds (`expire_host_turns`). It SHALL double a host's spacing on a 429, a 503 or a challenge (at most 15 min),
 shrinking it by 10% after 20 `ok` answers in a row, never below that interval. On 429/503 it SHALL pause the host by
 one rule (`acquire/politeness.backoff`): the `Retry-After`, else 30 s doubling per try, at most 15 min, a `Retry-After`
 past 15 min ending the fetch `blocked`; each answer spends an attempt; a further request of a fetch (the 503

@@ -9,19 +9,23 @@ shares.
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Final
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.politeness import HOLD_LEASE
 
-__all__ = ["HostTurns"]
+__all__ = ["EXPIRE_BATCH", "HostTurns", "expire_host_turns"]
+
+# Rows the scheduler deletes per run (`expire_host_turns`).
+EXPIRE_BATCH: Final = 1000
 
 # The upsert takes the turn (and the hold, with a holder); the outer SELECT reads the row as it was before the
 # statement (PostgreSQL §7.8.4: the sub-statements and the main query see one snapshot), for the wait when it did not.
 _TAKE = text("""
     WITH taken AS (
-        INSERT INTO host_turn AS t (host, next_at, holder, held_until)
+        INSERT INTO host_turn (host, next_at, holder, held_until)
         VALUES (
             :host,
             clock_timestamp() + CAST(:spacing AS interval),
@@ -29,24 +33,37 @@ _TAKE = text("""
             CASE WHEN CAST(:holder AS text) IS NOT NULL THEN clock_timestamp() + CAST(:lease AS interval) END
         )
         ON CONFLICT (host) DO UPDATE
-        SET next_at = excluded.next_at,
-            holder = coalesce(excluded.holder, t.holder),
-            held_until = coalesce(excluded.held_until, t.held_until)
-        WHERE t.next_at <= clock_timestamp()
-          AND (t.holder IS NULL OR t.held_until <= clock_timestamp() OR t.holder = excluded.holder)
+        SET next_at = clock_timestamp() + CAST(:spacing AS interval),
+            holder = coalesce(CAST(:holder AS text), host_turn.holder),
+            held_until = CASE WHEN CAST(:holder AS text) IS NOT NULL
+                              THEN clock_timestamp() + CAST(:lease AS interval) ELSE host_turn.held_until END
+        WHERE host_turn.next_at <= clock_timestamp()
+          AND (host_turn.holder IS NULL OR host_turn.held_until <= clock_timestamp()
+               OR host_turn.holder = CAST(:holder AS text))
         RETURNING 1
     )
     SELECT EXISTS (SELECT FROM taken) AS taken,
-           extract(epoch FROM t.next_at - clock_timestamp()) AS wait,
-           coalesce(t.held_until > clock_timestamp() AND t.holder IS DISTINCT FROM CAST(:holder AS text), false)
-               AS held
-    FROM (VALUES (1)) AS one (x) LEFT JOIN host_turn AS t ON t.host = :host
+           extract(epoch FROM host_turn.next_at - clock_timestamp()) AS wait,
+           coalesce(
+               host_turn.held_until > clock_timestamp() AND host_turn.holder IS DISTINCT FROM CAST(:holder AS text),
+               false
+           ) AS held
+    FROM (VALUES (1)) AS one (x) LEFT JOIN host_turn ON host_turn.host = :host
 """)
 _PAUSE = text("""
-    INSERT INTO host_turn AS t (host, next_at) VALUES (:host, clock_timestamp() + CAST(:after AS interval))
-    ON CONFLICT (host) DO UPDATE SET next_at = greatest(t.next_at, excluded.next_at)
+    INSERT INTO host_turn (host, next_at) VALUES (:host, clock_timestamp() + CAST(:after AS interval))
+    ON CONFLICT (host) DO UPDATE
+    SET next_at = greatest(host_turn.next_at, clock_timestamp() + CAST(:after AS interval))
 """)
 _RELEASE = text("UPDATE host_turn SET holder = NULL, held_until = NULL WHERE host = :host AND holder = :holder")
+# A row whose turn is due and that no lease holds says nothing its absence does not: a take inserts it afresh.
+_EXPIRE = text("""
+    DELETE FROM host_turn WHERE host IN (
+        SELECT host FROM host_turn
+        WHERE next_at <= clock_timestamp() AND (held_until IS NULL OR held_until <= clock_timestamp())
+        LIMIT :batch FOR UPDATE SKIP LOCKED
+    )
+""")
 _RENEW = text("""
     UPDATE host_turn SET held_until = clock_timestamp() + CAST(:lease AS interval)
     WHERE holder = ANY(CAST(:holders AS text[]))
@@ -82,3 +99,10 @@ class HostTurns:
         if names := list(holders):
             async with self.database.begin() as conn:
                 await conn.execute(_RENEW, {"holders": names, "lease": HOLD_LEASE})
+
+
+async def expire_host_turns(conn: AsyncConnection, *, batch: int) -> int:
+    """Delete up to `batch` rows of hosts whose turn is due and that no lease holds, and return how many: one row per
+    host ever fetched would otherwise stay (scheduler)."""
+    result = await conn.execute(_EXPIRE, {"batch": batch})
+    return int(result.rowcount)

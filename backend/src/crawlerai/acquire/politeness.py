@@ -11,7 +11,7 @@ until the holder's fetch returns, browser navigations included, so a page slower
 Work being cancelled (a task at its deadline) neither holds a host nor is admitted: what outlives its cancellation
 sends nothing more.
 
-With a shared store (`SharedTurns`, the database's `host_turn` rows: `acquire.host_turns`) the turn and the hold are
+With a shared store (`SharedTurns`, the database's `host_turn` rows: `acquire/host_turns.py`) the turn and the hold are
 shared by every process (owner plan P1, "pacing shared across processes"): a turn is taken, and the host held, in one
 statement, so two processes never both take a host's turn or hold it at once. The process's own state answers first,
 and refuses without a round trip what the shared state would refuse too; only a turn the process itself would admit is
@@ -53,7 +53,7 @@ log = logging.getLogger(__name__)
 
 
 class SharedTurns(Protocol):
-    """Host turns and holds shared by every process (`acquire.host_turns`)."""
+    """Host turns and holds shared by every process (`acquire/host_turns.py`)."""
 
     async def take(self, host: str, spacing: timedelta, holder: str | None) -> timedelta:
         """Zero when `host`'s turn is due and no other holder's lease on it runs: its next turn is then `spacing` from
@@ -228,15 +228,15 @@ class HostLimiter:
             await self._give_up(token)
 
     async def _give_up(self, token: str) -> None:
-        """End `token`'s hold in the shared store; one not ended now is left to `_renew`, or else to its lease."""
+        """End `token`'s hold in the shared store; one the store did not end lapses with its lease."""
         if self._shared is None or (lease := self._leases.get(token)) is None:
             return
+        # Given up here either way: a hold not released is not renewed, and lapses with its lease.
+        del self._leases[token]
         try:
             await self._shared.release(lease[0], token)
         except Exception:
             log.warning("host hold: not released; it lapses with its lease", exc_info=True)
-            return
-        self._leases.pop(token, None)
 
     async def _renew(self, shared: SharedTurns) -> None:
         """While this process holds hosts in the shared store: every `RENEW_EVERY`, give up the holds of tasks that
@@ -244,9 +244,9 @@ class HostLimiter:
         while self._leases:
             await asyncio.sleep(RENEW_EVERY.total_seconds())
             try:
-                for token, (_, task) in list(self._leases.items()):
-                    if task.done() or task.cancelling():
-                        await self._give_up(token)
+                ended = [token for token, (_, task) in self._leases.items() if task.done() or task.cancelling()]
+                for token in ended:
+                    await self._give_up(token)
                 await shared.renew(tuple(self._leases))
             except Exception:
                 log.warning("host holds: not renewed", exc_info=True)
