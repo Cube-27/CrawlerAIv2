@@ -106,8 +106,8 @@ _AMOUNT = re.compile(r"\d(?:[\d.,'\u00a0\u202f ]*\d)?")
 # What continues a number past its digits, or leads into them: a digit, or a CLDR decimal or group symbol next to one
 # (a space-separated group is three digits, CLDR grouping), so `$4` is not the head of `$4,000` nor `219.98` the tail
 # of `1 219.98`.
-_CONTINUES = re.compile(r"\d|[.,']\d|\s\d{3}(?!\d)")
-_LEADS = re.compile(r"(?:[\d.,]|\d[\s'])\Z")
+_CONTINUES = re.compile(r"\d|[.,'\u2019]\d|\s\d{3}(?!\d)")
+_LEADS = re.compile(r"(?:[\d.,]|\d[\s'\u2019])\Z")
 
 
 def _whole(text: str, start: int, end: int) -> bool:
