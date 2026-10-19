@@ -106,6 +106,16 @@ def test_an_image_url_that_is_the_page_url_is_invalid() -> None:
     assert url.normalize("https://example.test/p.png", IMAGE, ctx) == Ok("https://example.test/p.png")
 
 
+@pytest.mark.parametrize("path", ["/player/index.html?videoId=1", "/v/clip.mp4", "/app.js"])
+def test_an_image_url_naming_a_file_of_another_media_type_is_invalid(path: str) -> None:
+    raw = f"https://cdn.example.test{path}"
+
+    assert url.normalize(raw, IMAGE, CTX) == Invalid("not_an_image")
+    assert isinstance(url.normalize(raw, URL, CTX), Ok)
+    # A path with no registered extension, or an image's, says nothing against it.
+    assert isinstance(url.normalize("https://cdn.example.test/i/123/format:webp", IMAGE, CTX), Ok)
+
+
 def test_the_resource_key_ignores_only_the_scheme_the_query_and_a_stated_size() -> None:
     key = url.resource_key("https://cdn.example.test/i/a-300x200.jpg?w=1")
 

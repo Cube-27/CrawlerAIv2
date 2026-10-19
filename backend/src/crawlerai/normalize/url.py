@@ -4,6 +4,7 @@ Accepts a string, from the DOM, an LLM or a structured source (JSON-LD `url` and
 other JSON value is `Invalid("not_a_string")`. A relative reference resolves against `ctx.base_url`.
 """
 
+import mimetypes
 import re
 import string
 from collections.abc import Hashable, Sequence
@@ -37,6 +38,11 @@ _FORBIDDEN_IN_DOMAIN = frozenset(" #/:<>?@[\\]^|%\x7f" + "".join(chr(c) for c in
 _DEFAULT_PORT = {"http": 80, "https": 443}
 # A relative reference with no base to resolve it against; `resolve.derive` absolutizes these (extraction spec).
 RELATIVE_WITHOUT_BASE = Invalid("relative_without_base")
+# The registered media types of a file name's extension (IANA media types, as Python's built-in `mimetypes` table holds
+# them; `MimeTypes()` reads that table only, never the host's files, so the answer is the same on every machine).
+_MEDIA_TYPES = mimetypes.MimeTypes()
+# RFC 6838 §4.2.2: the top-level type of image media.
+_IMAGE_TYPE = "image"
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
@@ -52,10 +58,25 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
         and ctx.page_url is not None
         and canonical(ctx.page_url, None) == result
     ):
-        # normalization spec: without a fetch there is no content-type evidence, so the one structural check is that an
-        # image is not the page it appears on.
+        # normalization spec: without a fetch there is no content-type evidence, so the structural checks are that an
+        # image is not the page it appears on, and that its path names no file of another media type (`_other_media`).
         return Invalid("page_url")
+    if spec.type is FieldType.IMAGE_URL and isinstance(result, Ok) and _other_media(result.value):
+        return Invalid("not_an_image")
     return result
+
+
+def media_type(url: str) -> str | None:
+    """The registered media type the URL's path names by its file extension (RFC 6838), or `None` when it names none."""
+    return _MEDIA_TYPES.guess_type(urlsplit(url).path, strict=True)[0]
+
+
+def _other_media(value: JsonValue) -> bool:
+    """Whether an image value's path names a file of a registered media type other than an image (RFC 6838 §4.2.2: an
+    HTML document, a script, a video): a page or a player a source lists among its images is none of them. A path with
+    no registered extension says nothing."""
+    found = media_type(value) if isinstance(value, str) else None
+    return found is not None and found.partition("/")[0] != _IMAGE_TYPE
 
 
 def key(value: JsonValue, _spec: FieldSpec) -> Hashable:

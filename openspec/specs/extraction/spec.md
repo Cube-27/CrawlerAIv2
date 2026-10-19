@@ -118,9 +118,18 @@ also take a money or check-digit identifier field's one shown value in the main 
 spots only text showing the type's checked syntax, `Ok.checked`: a number without a currency sign is not money; for
 an identifier also an unlabelled pair's value, never inside a hyperlink to another document; none when several
 differ); an identifier without a check digit is read only next to one of its labels. It SHALL take the main image of
-the one `main`/`role=main`/`article` outside chrome, decorative images and link cards (`collect/dom.py`); values MUST
-be visible. (Previously: labels were only names, and other items' content was read.) Refs: Appendix A #42, D-0955,
+the one `main`/`role=main`/`article` outside chrome, decorative images and link cards (`collect/dom.py`), an image's
+source being its `src` unless its `srcset` has width descriptors (HTML Standard §4.8.4.3: `src` is then out of the
+source set), when it is the widest candidate; and for a list of images whose path names schema.org `image`, the main
+image's gallery: from the main image up, the first block with siblings of its tag gives, per such block, its shown image
+at the main image's tag path, a source several blocks give left out; none when a block links to another document or
+fewer than two remain. Values MUST be visible. (Previously: labels were only names, and other items' content was read;
+`src` was read before `srcset`; no list of images was read.) Refs: Appendix A #42, D-0955,
 D-1096, D-1640, D-1641, D-1642, D-1643.
+#### Scenario: Gallery slides
+- **WHEN** the main image is one of three sibling slides, two of which hold an image whose `src` is a shared placeholder
+  and whose `srcset` lists widths
+- **THEN** the list of images is the slides' images, each at its widest `srcset` candidate
 #### Scenario: Label line
 - **WHEN** the main region holds `Brand: <span>Example Brand</span>`
 - **THEN** `brand` has the candidate `Example Brand` located at the span
