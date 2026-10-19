@@ -19,6 +19,7 @@ export function jobSummary(overrides: Partial<JobSummary> & Pick<JobSummary, "id
       soft_404: 0,
       geo_redirect: 0,
       redirected_to_listing: 0,
+      timeout: 0,
       failed: 0,
     },
     usage: { pages_fetched: 2 },

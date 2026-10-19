@@ -213,7 +213,8 @@ async def fail_task(
 ) -> None:
     """Record a failure. A transient one is retried until `MAX_ATTEMPTS` (D-0006): after `after` when the target
     asked for a delay (a `Retry-After`, acquisition spec), else after `backoff_delay`. A permanent failure, or the last
-    attempt, ends the task with `exhausted`: `failed`, or the outcome the failure stands for (a 429 is `blocked`).
+    attempt, ends the task with `exhausted`: `failed` or `timeout` (a `failed` task), or the outcome the failure
+    stands for (a 429 is `blocked`, a finished task).
     `capture_id` is the page the failed attempt fetched, if it fetched one. `ending` runs if this ends the job."""
     values: dict[str, Any] = {"last_error": _cut(error)}
     if capture_id is not None:
@@ -221,8 +222,8 @@ async def fail_task(
     if retried(task, transient=transient):
         delay = backoff_delay(task.attempts) if after is None else after
         await _move(conn, task, "queued", next_attempt_at=func.now() + delay, **values)
-    elif exhausted == "failed":
-        await _finish(conn, task, "failed", ending, outcome="failed", **values)
+    elif exhausted in ("failed", "timeout"):
+        await _finish(conn, task, "failed", ending, outcome=exhausted, **values)
     else:
         await _finish(conn, task, "done", ending, outcome=exhausted, **values)
 

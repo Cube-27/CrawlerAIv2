@@ -18,7 +18,7 @@ from crawlerai.config_ir.active import active_config
 from crawlerai.content.markdown import markdown
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.errors import Refusal
-from crawlerai.db.models import Capture, CaptureId, Extraction, Record, SiteId
+from crawlerai.db.models import Capture, CaptureId, Extraction, JobId, Record, SiteId, TaskRecord, UrlTask
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.records import record_confidence
 from crawlerai.resolve.task import ActiveConfig, page_records
@@ -46,22 +46,23 @@ class NotReplayable(Exception):
 
 
 async def replay(
-    engine: AsyncEngine, store: ObjectStore, data: EngineData, capture_id: CaptureId
+    engine: AsyncEngine, store: ObjectStore, data: EngineData, capture_id: CaptureId, job_id: JobId | None = None
 ) -> list[ExtractedRecord]:
-    """The records the current engine makes from the capture, one schema after another (by id). A page that
-    resolves nothing (blocked, an error) adds none; an incomplete one adds its record with `complete=false`, as for
-    any caller-supplied URL (§10)."""
+    """The records the current engine makes from the capture, one schema after another (by id), against the schemas
+    of the records stored from it, those of `job_id` when given. A page that resolves nothing (blocked, an error) adds
+    none; an incomplete one adds its record with `complete=false`, as for any caller-supplied URL (§10). It reads the
+    capture's stored bundle and the database, and reaches no network (`reextract_job` runs it for a job's captures)."""
     async with engine.connect() as conn:
         capture = await _capture(conn, capture_id)
-        schema_ids = (
-            await conn.execute(
-                select(Record.schema_id)
-                .distinct()
-                .join(Extraction, Extraction.id == Record.extraction_id)
-                .where(Extraction.capture_id == capture_id)
-                .order_by(Record.schema_id)
-            )
-        ).scalars()
+        if job_id is None:
+            stored = select(Record.schema_id).distinct().join(Extraction, Extraction.id == Record.extraction_id)
+            stored = stored.where(Extraction.capture_id == capture_id)
+        else:
+            # The records the job's tasks stand for, an unchanged page's included (they belong to an earlier job).
+            stored = select(Record.schema_id).distinct().join(TaskRecord, TaskRecord.record_id == Record.id)
+            stored = stored.join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
+            stored = stored.where(UrlTask.job_id == job_id, UrlTask.capture_id == capture_id)
+        schema_ids = (await conn.execute(stored.order_by(Record.schema_id))).scalars()
         schemas = [await registry.get_by_id(conn, schema_id) for schema_id in schema_ids]
         configs = [await active_config(conn, capture.site_id, schema, data.vocabulary) for schema in schemas]
     if not schemas:

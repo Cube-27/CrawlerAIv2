@@ -479,7 +479,7 @@ def upgrade() -> None:
         sa.Column("score", sa.Float(), nullable=True),
         sa.CheckConstraint(
             "outcome IN ('extracted', 'partial', 'unchanged', 'links_only', 'blocked', 'shell', 'not_found',"
-            " 'no_match', 'auth_wall', 'soft_404', 'geo_redirect', 'redirected_to_listing', 'failed')",
+            " 'no_match', 'auth_wall', 'soft_404', 'geo_redirect', 'redirected_to_listing', 'timeout', 'failed')",
             name=op.f("ck_url_task_outcome"),
         ),
         sa.CheckConstraint("page_kind IN ('detail', 'listing')", name=op.f("ck_url_task_page_kind")),

@@ -200,7 +200,7 @@ async def _run_within_deadline(
             # A lock another task's transaction holds is waited for only so long (`_LOCK_WAIT`); past it, the task is
             # left to its lease's expiry.
             await conn.execute(text(f"SET LOCAL lock_timeout = {int(_LOCK_WAIT.total_seconds() * 1000)}"))
-            await fail_task(conn, task, DEADLINE, transient=False, ending=ending)
+            await fail_task(conn, task, DEADLINE, transient=False, exhausted="timeout", ending=ending)
     except LeaseLost:
         pass
     except DBAPIError:

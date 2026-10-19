@@ -142,14 +142,29 @@ stores the record as `partial` and a crawl-discovered URL is `no_match` with no 
 - **THEN** the outcome is `no_match` and no record is stored
 
 ### Requirement: Fields a render would show
-A detail field still `missing` (for want of a candidate, not listed as `absent` by the config) on a page read over HTTP
-whose document carries a state document of at least `STATE_MIN_VALUES` scalar values
-(`content/render_need.holds_state`: its script renders the page's data) SHALL be `interaction_required` with reason
-`script_rendered`, after role C. A request names such fields in `render_fields` to have the page rendered
-([acquisition](../acquisition/spec.md), "Browser on evidence"). Refs: owner plan 2026-10-19 P3, P9.
+A detail field still `missing` for want of a candidate (reason `no_candidates`: not rejected, not listed as `absent` by
+the config, not explained by the page's outcome) on a page no render ran for (the capture is not the browser's and no
+browser attempt is among its `fetch_policy.attempts`), whose document carries a state document of at least
+`STATE_MIN_VALUES` scalar values (`content/render_need.holds_state`: its script renders the page's data), SHALL be
+`interaction_required` with reason `script_rendered`, after role C. Any other unpublished field stays `missing` with
+its reason. A request names such fields in `render_fields` to have the page rendered
+([acquisition](../acquisition/spec.md), "Browser on evidence"). (Previously: any `missing` field of an HTTP page with a
+state document, whether or not a render had been tried.) Refs: owner plan 2026-10-19 P3, P9.
 #### Scenario: Script-rendered size
 - **WHEN** an HTTP detail page carries a hydration blob and no candidate for `size`
 - **THEN** `size` is `interaction_required`, and the same page captured in the browser leaves it `missing`
+#### Scenario: Render tried
+- **WHEN** the fetch tried the browser and kept the HTTP page, which carries a hydration blob and no candidate for `size`
+- **THEN** `size` is `missing`
+
+### Requirement: Out of stock without a price
+A money field whose `schema_org` names `price`, left `missing` for want of a candidate on a page whose published
+availability (an enum of `schema:ItemAvailability`) is `OutOfStock`, `SoldOut` or `Discontinued` (schema.org: nothing
+can be bought), SHALL keep reason `out_of_stock` instead of `no_candidates`, and the field is not
+`interaction_required`. Nothing is published for it. Refs: owner plan 2026-10-19 P9.
+#### Scenario: Sold out
+- **WHEN** a detail page states `SoldOut` and no price
+- **THEN** `price` is `missing` with reason `out_of_stock`, and the page is `partial`
 
 ### Requirement: LLM gap hook
 The system SHALL ask role C ([llm](../llm/spec.md)) once per detail page only for missing required fields and unfilled

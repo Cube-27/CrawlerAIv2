@@ -84,7 +84,9 @@ FinishedOutcome = Literal[
     "geo_redirect",
     "redirected_to_listing",
 ]
-TaskOutcome = Literal[FinishedOutcome, "failed"]
+# The outcomes of a `failed` task: `timeout` when no answer came within the deadline (the fetch rung's, or the task's),
+# else `failed`.
+TaskOutcome = Literal[FinishedOutcome, "failed", "timeout"]
 ExtractionMode = Literal["adhoc", "config"]
 NormalizeStatus = Literal["ok", "ambiguous", "invalid"]
 # `derived`: a page-URL derivation (extraction spec, D-0355), which no candidate states; no candidate row carries it.

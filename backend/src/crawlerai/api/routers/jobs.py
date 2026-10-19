@@ -1,5 +1,6 @@
-"""`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}` and `GET /v1/jobs/{id}/results` (jobs spec): the jobs a page at a
-time, a job's summary, its cancel, and its records or page outputs a page at a time."""
+"""`GET /v1/jobs`, `GET/DELETE /v1/jobs/{id}`, `GET /v1/jobs/{id}/outcomes` and `GET /v1/jobs/{id}/results` (jobs spec):
+the jobs a page at a time, a job's summary and outcomes, its cancel, and its records or page outputs a page at a
+time."""
 
 from typing import Annotated, Any
 
@@ -13,6 +14,7 @@ from crawlerai.config_ir.exporters.files import FileFormat, FormatUnavailable
 from crawlerai.db.models import JobId
 from crawlerai.services import exports, jobs
 from crawlerai.services.fetching import Fetching
+from crawlerai.services.job_outcomes import JobOutcomes, job_outcomes
 from crawlerai.services.jobs import (
     FILE_FORMATS,
     ExportPage,
@@ -53,6 +55,17 @@ async def get_job(job_id: JobId, request: Request) -> JobSummary:
     async with engine.connect() as conn:
         try:
             return await jobs.get_job(conn, job_id)
+        except JobNotFound as e:
+            raise not_found(str(e)) from e
+
+
+@router.get("/{job_id}/outcomes")
+async def get_job_outcomes(job_id: JobId, request: Request) -> JobOutcomes:
+    """The job's pages by outcome, and the fields of its records by status with the reasons the unpublished ones give
+    (resolution spec): counted from what the job stored."""
+    async with database(request).connect() as conn:
+        try:
+            return await job_outcomes(conn, job_id)
         except JobNotFound as e:
             raise not_found(str(e)) from e
 

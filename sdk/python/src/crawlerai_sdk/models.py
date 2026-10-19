@@ -416,6 +416,14 @@ class Method3(Enum):
     api = "api"
 
 
+class FieldCounts(BaseModel):
+    abstained: Annotated[int, Field(title="Abstained")]
+    conflict: Annotated[int, Field(title="Conflict")]
+    interaction_required: Annotated[int, Field(title="Interaction Required")]
+    missing: Annotated[int, Field(title="Missing")]
+    published: Annotated[int, Field(title="Published")]
+
+
 class FieldErrorOut(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -617,6 +625,7 @@ class Outcome(Enum):
     geo_redirect = "geo_redirect"
     redirected_to_listing = "redirected_to_listing"
     failed = "failed"
+    timeout = "timeout"
 
 
 class LLMUsage(BaseModel):
@@ -757,6 +766,7 @@ class OutcomeCounts(BaseModel):
     redirected_to_listing: Annotated[int, Field(title="Redirected To Listing")]
     shell: Annotated[int, Field(title="Shell")]
     soft_404: Annotated[int, Field(title="Soft 404")]
+    timeout: Annotated[int, Field(title="Timeout")]
     unchanged: Annotated[int, Field(title="Unchanged")]
 
 
@@ -1139,6 +1149,7 @@ class Outcome2(Enum):
     soft_404 = "soft_404"
     geo_redirect = "geo_redirect"
     redirected_to_listing = "redirected_to_listing"
+    timeout = "timeout"
     failed = "failed"
 
 
@@ -1480,6 +1491,13 @@ class JobCostPage(BaseModel):
     next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
 
 
+class JobOutcomes(BaseModel):
+    fields: FieldCounts
+    id: Annotated[UUID, Field(title="Id")]
+    pages: OutcomeCounts
+    reasons: Annotated[dict[str, int], Field(title="Reasons")]
+
+
 class JobSummary(BaseModel):
     cancel_requested: Annotated[bool, Field(title="Cancel Requested")]
     counts: TaskCounts
@@ -1668,7 +1686,7 @@ class ScrapeRequest(BaseModel):
     render_fields: Annotated[
         list[RenderField] | None,
         Field(
-            description="Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.",
+            description="Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.",
             max_length=50,
             title="Render Fields",
         ),
@@ -1787,7 +1805,7 @@ class BatchScrapeRequest(BaseModel):
     render_fields: Annotated[
         list[RenderField] | None,
         Field(
-            description="Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.",
+            description="Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.",
             max_length=50,
             title="Render Fields",
         ),
@@ -1858,7 +1876,7 @@ class CrawlRequest(BaseModel):
     render_fields: Annotated[
         list[RenderField] | None,
         Field(
-            description="Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.",
+            description="Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.",
             max_length=50,
             title="Render Fields",
         ),
