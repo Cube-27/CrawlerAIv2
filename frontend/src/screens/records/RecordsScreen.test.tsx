@@ -51,6 +51,8 @@ function storedRecord(overrides: Partial<StoredRecord> = {}): StoredRecord {
     mode: "adhoc",
     complete: false,
     confidence: 0.8,
+    egress_country: null,
+    egress_basis: "unknown",
     fields: { title: recordField({}), price: conflictPrice },
     ...overrides,
   };
