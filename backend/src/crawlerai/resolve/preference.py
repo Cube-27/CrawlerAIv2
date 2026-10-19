@@ -461,7 +461,8 @@ def _stated_bounds(candidate: Candidate) -> tuple[_Bound, ...]:
     low, high = Decimal(str(value["min"])), Decimal(str(value["max"]))
     currency = value.get("currency")
     known = currency if isinstance(currency, str) else None
-    return ((low, known), (high, known)) if low != high else ()
+    bounds = {(low, known), (high, known)}
+    return tuple(bounds) if len(bounds) > 1 else ()  # equal bounds state one price, no range
 
 
 def _without_bounds(
