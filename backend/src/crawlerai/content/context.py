@@ -24,9 +24,11 @@ def page_context(
     captured_at: datetime,
     *,
     request_locale: str | None = None,
+    request_url: str | None = None,
     headers: Sequence[tuple[str, str]] = (),
 ) -> Context:
-    """The page's context; `headers` are the response's, as received."""
+    """The page's context; `request_url` is the URL the page was requested at, `headers` the response's, as
+    received."""
     return Context(
         html_lang=strip(html_lang(page)),
         og_locale=strip(open_graph(page).get("og:locale")),
@@ -36,6 +38,7 @@ def page_context(
         captured_at=captured_at,
         base_url=document_base_url(page, final_url),
         page_url=final_url,
+        request_url=request_url,
     )
 
 

@@ -282,6 +282,9 @@ def _monetary(lo: NormalizeResult, hi: NormalizeResult, period: str | None) -> N
     match lo, hi:
         case (Invalid() as declined, _) | (_, Invalid() as declined):
             return declined
+        case (Ok(basis="url"), _) | (_, Ok(basis="url")):
+            # A range has no basis to flag a currency only its URL names (normalization spec), so it states none.
+            return Ambiguous("currency_unknown", ())
         case (Ambiguous(reason=reason), _) | (_, Ambiguous(reason=reason)):
             # Each reading of the range pairs a reading of each bound in the same currency.
             hi_readings = [_amount(v) for v in _options(hi)]

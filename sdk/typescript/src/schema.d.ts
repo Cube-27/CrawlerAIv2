@@ -3051,7 +3051,7 @@ export interface components {
         /** RecordField */
         RecordField: {
             /** Basis */
-            basis?: ("page" | "locale" | "unknown") | null;
+            basis?: ("page" | "locale" | "url" | "unknown") | null;
             /** Calibrated */
             calibrated: boolean;
             /** Confidence */
@@ -3710,7 +3710,7 @@ export interface components {
          */
         SubFieldMeta: {
             /** Basis */
-            basis?: ("page" | "locale" | "unknown") | null;
+            basis?: ("page" | "locale" | "url" | "unknown") | null;
             /** Calibrated */
             calibrated: boolean;
             /** Confidence */

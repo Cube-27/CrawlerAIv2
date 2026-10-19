@@ -16,10 +16,10 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 from crawlerai.schemas.types import FieldSpec
 
 # normalization spec, money: where a value's currency came from when the value itself does not state it. `page` is a
-# page-level declaration, `locale` the page's language and region narrowing a shared sign, `unknown` none (the
-# currency is null). Weakest last.
-Basis = Literal["page", "locale", "unknown"]
-BASES: tuple[Basis, ...] = ("page", "locale", "unknown")
+# page-level declaration, `locale` the page's language and region narrowing a shared sign, `url` the territory its URL
+# names (a locale path segment, a country subdomain or the ccTLD), `unknown` none (the currency is null). Weakest last.
+Basis = Literal["page", "locale", "url", "unknown"]
+BASES: tuple[Basis, ...] = ("page", "locale", "url", "unknown")
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +76,8 @@ class Context(BaseModel):
 
     `base_url` and `page_url` resolve and check URLs: the document base URL (`<base href>` resolved against the final
     URL, else the final URL; HTML Standard, "document base URL") and the final URL itself. Either is `None` when the
-    value does not come from a page.
+    value does not come from a page. `request_url` is the URL the page was requested at, which the money rules read
+    beside the final URL for the territory it names.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -92,6 +93,7 @@ class Context(BaseModel):
     captured_at: datetime  # for relative dates
     base_url: str | None = None
     page_url: str | None = None
+    request_url: str | None = None
 
 
 class Normalizer(Protocol):

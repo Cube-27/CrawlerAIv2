@@ -160,7 +160,7 @@ def test_only_a_missing_field_is_derived(preference: Preference, canonical: str 
         assert result == preference
 
 
-_SETTLED = st.sampled_from([None, "page", "locale", "unknown"])
+_SETTLED = st.sampled_from([None, "page", "locale", "url", "unknown"])
 
 
 @given(st.lists(st.tuples(st.sampled_from(["10.00", "12.00"]), _SETTLED), min_size=1, max_size=4))
@@ -176,7 +176,7 @@ def test_a_price_on_weaker_currency_evidence_stands_only_where_no_better_settled
 
     result = _resolver().prefer(_schema(price=PRICE), candidates)["price"]
 
-    rank = [None, "page", "locale", "unknown"]
+    rank = [None, "page", "locale", "url", "unknown"]
     best = min(rank.index(b) for _, b in drawn)
     best_values = {(a, b == "unknown") for a, b in drawn if rank.index(b) == best}
     if len(best_values) > 1:

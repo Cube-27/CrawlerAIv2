@@ -105,7 +105,11 @@ async def parsed_with_context(bundle: CaptureBundle) -> tuple[ParsedPage, Contex
     page = await asyncio.to_thread(ParsedPage.of, bundle)  # parsing is CPU work
     return page, with_stated_currencies(
         page_context(
-            page, bundle.manifest.final_url, bundle.manifest.fetched_at, headers=bundle.manifest.headers.response
+            page,
+            bundle.manifest.final_url,
+            bundle.manifest.fetched_at,
+            request_url=bundle.manifest.url,
+            headers=bundle.manifest.headers.response,
         ),
         page,
     )

@@ -207,17 +207,21 @@ class Resolver:
             split = self._offer_split(spec, kept, anchor)
             if split is not None:
                 return _all_rejected("conflict", split, kept, rejected)
-            choosable = [c for c in kept if c.entity_id == anchor]
+            # A field no Offer states (only the target's own values) publishes from those values.
+            choosable = [c for c in kept if c.entity_id == anchor] or kept
         if rule_type(spec) in PRECEDENCE_TYPES:
             return self._by_precedence(spec, kept, choosable, rejected)
         return _by_agreement(spec, kept, choosable[0], rejected)
 
     def _offer_split(self, spec: FieldSpec, kept: list[Candidate], anchor: str) -> str | None:
-        """§4.8: several Offers publish a field only when all agree, and only from the anchor Offer."""
+        """§4.8: several Offers publish a field only when all agree, and only from the anchor Offer. A field that only
+        another Offer states is `offer_split`. One that no Offer states, only the target's own values (its Open Graph,
+        page state or text), is not split across Offers: it publishes from those values (owner: a price the page shows
+        is never dropped)."""
         offered = [c for c in kept if self._offer_of(c) is not None]
         if _offers_disagree(offered, spec):
             return "offers_disagree"
-        if all(c.entity_id != anchor for c in kept):
+        if offered and all(c.entity_id != anchor for c in kept):
             return "offer_split"
         return None
 

@@ -71,12 +71,17 @@ abstain cause, per `resolve/types.py`); every rejected candidate keeps its own r
 
 ### Requirement: Atomic offers (INV-15)
 Price, currency and availability SHALL come from one anchor Offer; Offers that disagree give `offers_disagree`, a field
-the anchor lacks gives `offer_split`, and an `AggregateOffer` range never publishes as the price. Availability the
+the anchor lacks that another Offer states gives `offer_split`, a field no Offer states publishes from the target's own
+values (its Open Graph, page state or text: a shown price is never dropped), and an `AggregateOffer` range never
+publishes as the price. Availability the
 Offers disagree on comes from the one Offer of the variant the target shows, when it shows one (variants spec). Refs: §10, D-0440;
 per-row and common-value rules in [variants](../variants/spec.md). Enforced by: resolver test; active.
 #### Scenario: Price and availability from two Offers
 - **WHEN** Offer A states only price and Offer B states only availability
 - **THEN** the field without a value from the anchor Offer is `conflict` with reason `offer_split`
+#### Scenario: Variant Offers without a price
+- **WHEN** the target's only Offer states availability and no price, and its `og:price:amount` states one
+- **THEN** `price` publishes the Open Graph amount and `availability` the Offer's
 
 ### Requirement: Derived values (INV-07)
 Derived values SHALL fill only `missing` fields and carry `derived_by`; the only derivations are `absolutize`, then for
@@ -96,8 +101,8 @@ Each published field SHALL carry one evidence bucket (`resolve/evidence.py`; `ag
 `network` for a value of the page's captured calls, Appendix A #59; `state` for a value of the page's state JSON) and
 the fitted dev confidence of its `(type, evidence)` bucket from `calibration.json`, which holds only buckets measured on
 at least 20 labelled values (the others are uncalibrated, `calibrated=false`). A money value whose currency only the
-locale settles or nothing settles (`basis` `locale`, `unknown`) is measured apart, in bucket `money|<evidence>|<basis>`,
-for its lower confidence (owner #68); every published field notes its `basis` in `field_meta` when it has one. Every
+locale or the URL settles, or nothing settles (`basis` `locale`, `url`, `unknown`), is measured apart, in bucket
+`money|<evidence>|<basis>`, for its lower confidence (owner #68, owner 2026-10-19); every published field notes its `basis` in `field_meta` when it has one. Every
 chosen value publishes with that
 confidence unless the request sets `min_confidence` and the bucket is calibrated below it: the field is then
 `abstained` with reason `below_min_confidence`. An uncalibrated bucket never abstains. (Previously: a calibrated bucket
