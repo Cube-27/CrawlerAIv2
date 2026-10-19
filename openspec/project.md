@@ -79,16 +79,18 @@ ones. These rules are binding. A change that conflicts with them is wrong, even 
 
 Every job in `.github/workflows/ci.yml` must pass before merge; `make check` runs them locally in CI order, and `.pre-commit-config.yaml` runs the fast ones on staged files.
 
-- **Path gating** — the `changes` job (`tools/ci_changes.py`) skips `backend`, `frontend` and `licenses` when a PR
-  touches none of their inputs (a skipped job counts as passed); a push to `main` runs every job (D-0970).
-- **Backend** — CI `backend`: `uv sync --frozen` from wheels, `ruff check` (incl. `S102`/`S307` against
-  `exec`/`eval`), `ruff format --check`, strict `mypy`, `lint-imports`, `complexipy`, the Alembic
-  upgrade/downgrade/upgrade round trip, and `pytest`.
+- **Path gating** — the `changes` job (`tools/ci_changes.py`) skips `backend`/`backend-static`, `frontend`,
+  `api-client`, `licenses` and the `verify-*` jobs when a PR touches none of their inputs (a skipped job counts as passed); a push to `main` runs every job (D-0970).
+- **Backend** — CI `backend-static`: `uv sync --frozen` from wheels, `ruff check` (incl. `S102`/`S307` against
+  `exec`/`eval`), `ruff format --check`, strict `mypy` (incremental cache per `uv.lock`), `lint-imports`,
+  `complexipy`; beside it CI `backend`: the Alembic upgrade/downgrade/upgrade round trip and `pytest` (60 s per test,
+  `pytest-timeout`).
 - **Import contracts (C8)** — `lint-imports` with `backend/.importlinter` (one module per field type, only
   `crawlerai.normalize` imports the parsing libraries, adapters isolated); INV-08 is in
   [normalization](specs/normalization/spec.md).
 - **Frontend** — CI `frontend`: `tools/theme_only_check.py`, `pnpm check` (Vite+: format, Oxlint incl. complexity,
-  type-check), `pnpm test`, `pnpm build`, and `make api-client` + `git diff --exit-code` ("API client out of date").
+  type-check), `pnpm test`, `pnpm build`; CI `api-client`: `make api-client` + `git diff --exit-code` ("API client
+  out of date").
 - **Theme-only** — `tools/theme_only_check.py` fails on color literals, arbitrary Tailwind values, palette utilities,
   `style=` props, extra CSS files or non-allow-listed UI imports under `frontend/src/` (D-0356, D-0358).
 - **No site literals (INV-03, INV-09)** — `tools/site_literal_scan.py --public` (CI `site-literals`, pre-commit

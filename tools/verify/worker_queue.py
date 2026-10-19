@@ -2,6 +2,7 @@
 
     python3 tools/verify/worker_queue.py              # the checks, the known findings, the mutants (CI runs this)
     python3 tools/verify/worker_queue.py left-behind  # only the named checks
+    python3 tools/verify/worker_queue.py --shard 2/3  # every third check from the second (CI runs 3 shards)
 
 Each check runs TLC on the model (tools/verify/worker_queue/WorkerQueue.tla) with one instance and its properties,
 and must end as it expects: no error, or a violation of the named property (a known finding, a mutant). Anything
@@ -402,12 +403,23 @@ def run(check: Check, java: str, jar: Path) -> bool:
     return ok
 
 
+def _shard(value: str) -> tuple[int, int]:
+    index, _, count = value.partition("/")
+    if not (index.isdigit() and count.isdigit() and 1 <= int(index) <= int(count)):
+        raise argparse.ArgumentTypeError(f"{value!r} is not I/N with 1 <= I <= N")
+    return int(index), int(count)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("checks", nargs="*", help="run only these checks (by name)")
+    parser.add_argument("--shard", type=_shard, help="I/N: run only checks I, I+N, I+2N, ... (1-based) of the chosen")
     args = parser.parse_args()
     every = CHECKS + FINDINGS + MUTANTS
     chosen = [c for c in every if c.name in args.checks] if args.checks else every
+    if args.shard:
+        index, count = args.shard
+        chosen = chosen[index - 1 :: count]
     if unknown := set(args.checks) - {c.name for c in every}:
         sys.exit(f"unknown checks {sorted(unknown)}; known: {[c.name for c in every]}")
     jar = _fetch(*TLA_JAR, CACHE / f"tla2tools-{TLA_JAR[1][:12]}.jar")
