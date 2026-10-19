@@ -411,7 +411,7 @@ async def _run(
         if isinstance(page, FetchResult):
             capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page, check)
             more = partial(_store_more, conn, fetching.store, task, site.id, derived, extra, work.margins)
-            finds = None if work.data is None else FindWriter(fetching.store, work.data.vocabulary)
+            finds = _finds(fetching.store, work.data)
             finished = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, more, finds)
             members = _fetch_members(page, capture_id, fetching.rungs.adapters)
         else:
@@ -599,6 +599,11 @@ class _Finished(NamedTuple):
     records: list[ScrapedRecord] | None = None
     reason: str | None = None
     page: dict[str, RecordField] | None = None
+
+
+def _finds(store: ObjectStore, data: EngineData | None) -> FindWriter | None:
+    """What writes the page's role C finds back to its site's config (`config_ir.finds`), when it is extracted."""
+    return None if data is None else FindWriter(store, data.vocabulary)
 
 
 async def _finish(

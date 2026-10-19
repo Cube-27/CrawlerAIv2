@@ -564,6 +564,7 @@ class _Listing:
         fields, rows = self.page.resolve_listing(candidates, self.entities)
         if reply.failure is not None:
             fields = _unanswered(fields, asked, reply.failure)
+        fields = _unanswered(fields, reply.unverified, UNVERIFIED)
         diagnostics = (*self.diagnostics, *reply.diagnostics)
         return replace(
             self, fields=fields, rows=rows, candidates=candidates, diagnostics=diagnostics, llm_calls=reply.llm_calls

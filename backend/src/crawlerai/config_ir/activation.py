@@ -156,7 +156,13 @@ async def store_find(
         new = {name: steps for name, steps in found.fields.items() if name not in serving.fields}
         if not new:
             return None
-        ir = serving.model_copy(update={"fields": {**serving.fields, **new}})
+        # The captures that validated the new fields join those of the serving config (exports read them).
+        seen = serving.provenance.validated_on
+        validated_on = [*seen, *(c for c in found.provenance.validated_on if c not in seen)]
+        provenance = serving.provenance.model_copy(update={"validated_on": validated_on})
+        absent = [name for name in serving.absent if name not in new]  # a found field is stated after all
+        update = {"fields": {**serving.fields, **new}, "provenance": provenance, "absent": absent}
+        ir = serving.model_copy(update=update)
         before = ValidationReport.model_validate(row.validation_report)
         merged = before.model_copy(update={"fields": {**before.fields, **{n: report.fields[n] for n in new}}})
     await _suspend_active(conn, key)

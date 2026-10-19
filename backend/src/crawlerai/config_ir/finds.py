@@ -5,7 +5,7 @@ When a detail page publishes a role C value (`source_kind='llm'`) for a field th
 induction generalizes that value's locator on the page (`induction.induce`, the sample being the page alone), and the
 steps are validated as a learning run validates them (`validation.validate`, both executors) on the site's other stored
 pages that published the field, at least `MIN_FIND_HELD_OUT` of them: the steps must reproduce the value the engine
-published on every one. The kept fields join the active config as its next version (`activation.store_find`), or,
+published on every one. The kept fields join the active config as its next version (`store_find`, in `activation`), or,
 without one, form a config of their own (origin `role_c`), which still learns in full once enough pages are extracted
 (`progressive.trigger_learning`). Nothing is written while a learning run is in flight (it reads the same pages), nor
 when the site's project requires approval of learned configs (learning-configs spec, "Activation and active-mode
@@ -15,6 +15,7 @@ There is one recipe store: the config IR. A field the config then runs is never 
 "Activation and active-mode extraction"); drift suspends it when its yield or validity falls (§4.9).
 """
 
+import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -89,7 +90,8 @@ async def write_back(
     pages = await load_pages(conn, writer.store, key.site_id, schema, limit=LEARN_AFTER_PAGES)
     others = [p for p in pages if p.held_out.capture_id != capture_id]
     host, fetch = await _site(conn, key)
-    learned = _learned(schema, found, page, others, writer.vocabulary, host, fetch)
+    # Induction and validation parse and run the stored pages: off the event loop.
+    learned = await asyncio.to_thread(_learned, schema, found, page, others, writer.vocabulary, host, fetch)
     if learned is None:
         return None
     await lock_state(conn, key)

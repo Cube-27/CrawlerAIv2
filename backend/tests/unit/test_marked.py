@@ -77,3 +77,5 @@ def test_another_items_card_is_left_out_and_offsets_map_back_past_it() -> None:
     at = read.text.text.index("$480")
     start, end = read.cleaned_offset(at), read.cleaned_offset(at + 4, end=True)
     assert cleaned.text[start:end] == "$480"
+    # A span the cut joined is not in the whole text: it is not located.
+    assert read.whole_span(0, at + 4) is None

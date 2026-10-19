@@ -410,8 +410,10 @@ class _Reader:
         grounded = align(span, self.text.cleaned, money=_money(spec))
         if grounded is None:
             return None
-        start, end = self.scope.cleaned_offset(grounded.start), self.scope.cleaned_offset(grounded.end, end=True)
-        return grounded.value, format_locator("text", str(start), str(end))
+        whole = self.scope.whole_span(grounded.start, grounded.end)
+        if whole is None:
+            return None
+        return grounded.value, format_locator("text", str(whole[0]), str(whole[1]))
 
 
 def _money(spec: FieldSpec) -> bool:

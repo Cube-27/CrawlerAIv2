@@ -122,6 +122,12 @@ class Scoped:
         at, origin = self.segments[index]
         return origin + offset - at
 
+    def whole_span(self, start: int, end: int) -> tuple[int, int] | None:
+        """The span `[start, end)` of the scoped text in the whole cleaned text; None when it crosses where other
+        items' content was cut, as the whole text does not hold it then (INV-12)."""
+        whole = self.cleaned_offset(start), self.cleaned_offset(end, end=True)
+        return whole if whole[1] - whole[0] == end - start else None
+
 
 def scoped(cleaned: CleanedText, elsewhere: frozenset[str]) -> Scoped:
     """`cleaned` without the text runs and marks of the elements at the node paths `elsewhere` and inside them, each
@@ -189,9 +195,13 @@ class _Mover:
 
     kept: tuple[tuple[int, int], ...]
     segments: tuple[tuple[int, int], ...]
+    starts: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "starts", tuple(start for start, _ in self.kept))
 
     def span(self, start: int, end: int) -> tuple[int, int] | None:
-        index = bisect_right([s for s, _ in self.kept], start) - 1
+        index = bisect_right(self.starts, start) - 1
         if index < 0:
             return None
         low, high = self.kept[index]

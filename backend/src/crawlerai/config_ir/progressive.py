@@ -159,6 +159,7 @@ async def trigger_learning(conn: AsyncConnection, *, batch: int) -> int:
         select(state.site_id, state.schema_id, state.page_kind, state.mode)
         .where(
             or_(state.mode == "cold", and_(state.mode == "active", finds_only.exists())),
+            state.learning_started_at.is_(None),  # an active state's forced run keeps its mode while in flight
             state.pages_extracted >= func.coalesce(state.retry_at_pages, LEARN_AFTER_PAGES),
             ~waiting.exists(),
         )

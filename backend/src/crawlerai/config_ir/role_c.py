@@ -58,6 +58,7 @@ class _RoleC:
         diagnostics: list[str] = []
         calls: list[LLMCallRecord] = []
         failure = None
+        page: c_extract.Filled | None = None
         if request.blocks:
             asked = sorted({name for block in request.blocks for name in block.fields})
             rows = await c_extract.extract_listing(
@@ -81,7 +82,13 @@ class _RoleC:
             diagnostics.extend(page.diagnostics)
             calls.extend(_calls(c_extract.LISTING_PROMPT_KIND, page))
             failure = _reason(page)
-        return ListingGapReply(tuple(candidates), tuple(calls), failure=failure, diagnostics=tuple(diagnostics))
+        return ListingGapReply(
+            tuple(candidates),
+            tuple(calls),
+            failure=failure,
+            diagnostics=tuple(diagnostics),
+            unverified=() if page is None else page.unverified,
+        )
 
 
 def _reason(filled: c_extract.Filled) -> str | None:
