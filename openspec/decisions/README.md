@@ -1,10 +1,9 @@
 # Decisions: how they are logged
 
-Agents log the decisions they make while implementing. Owner decisions belong in
-[../design/owner-decisions.md](../design/owner-decisions.md) (ARCHITECTURE Appendix A); open owner questions belong in
-[../OPEN_QUESTIONS.md](../OPEN_QUESTIONS.md). What to decide yourself and when to escalate: `CLAUDE.md`.
-The implementor writes its decisions in its tracker commit, the last commit before it opens the PR, under the
-next free decision IDs. Don't log trivial choices.
+`log.md` is the archive of decisions up to 2026-10-19 and takes no new entries. Since then, decisions within a
+change's scope are written in its PR body only, and owner decisions go in
+[../design/owner-decisions.md](../design/owner-decisions.md). What to decide yourself and when to escalate: `CLAUDE.md`.
+The rest of this file describes the archive.
 
 **Where an entry goes** (OpenSpec keeps decisions with the change they belong to):
 - A decision about a change goes in that change's `design.md`, under `## Decisions` (create the file if the change has

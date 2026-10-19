@@ -119,14 +119,5 @@ and its ID is not reused. A change that adds one takes the next free ID (check w
 
 ## Open owner items
 
-Decisions with status `needs-owner` or `pending-owner` (`CLAUDE.md`). Keep this list current; the entries are in
-[decisions/log.md](decisions/log.md).
-
-| ID | Title | Status |
-|---|---|---|
-| D-0783 | Investigate: approving a learned config before it becomes a reusable recipe | answered (owner delegation 2026-10-17): optional approval, D-1342, #60 |
-| D-0784 | Investigate: an "absent" field status so role C stops asking | answered (owner delegation 2026-10-17): `absent` field status, D-1341, #60 |
-| D-0915 | SimHash at Hamming 0 still misses some one-word edits | answered (owner delegation 2026-10-17): exact digest decides, D-1340, #60 |
-| D-1583 | long_text word overlap drops numbers (a scoring rule) | decided (owner 2026-10-18): option (a), owner-items |
-| D-1593 | Task leasing order across jobs: scored crawl tasks lease first | decided (owner 2026-10-18): option (a), owner-items |
-| D-1665 | Scoring follows the wider image resource key (sizes, conversions, options score as one image) | decided (owner 2026-10-18): accepted as implemented |
+Raised in agents' reports and asked by the orchestrator; answers go in
+[design/owner-decisions.md](design/owner-decisions.md). None are kept here.

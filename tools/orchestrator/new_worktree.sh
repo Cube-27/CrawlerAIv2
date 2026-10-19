@@ -1,6 +1,7 @@
 #!/bin/bash
 # new_worktree.sh NAME BRANCH — fetch origin, then create the worktree <main>/../CrawlerAIv2-worktrees/NAME on a new
-# BRANCH off origin/main, and print its path. <main> is the main checkout (the first entry of `git worktree list`,
+# BRANCH off origin/main, give it the main checkout's untracked inputs (`.env`, the data files `make data` fetches)
+# and a synced backend environment, and print its path. <main> is the main checkout (the first entry of `git worktree list`,
 # which git prints in C:/... form), so the worktree sits beside the repo, never inside it.
 # Exits 2 on bad arguments. Exits 1 with an ERROR on stderr, creating nothing, when NAME's path already exists, BRANCH
 # already exists locally or on origin, or git fails. The local checks run before any network call.
@@ -21,4 +22,10 @@ git -C "$main" rev-parse -q --verify "refs/heads/$branch" >/dev/null && err "bra
 [[ -n $(git -C "$main" ls-remote --heads origin "$branch") ]] && err "branch $branch already exists on origin"
 git -C "$main" fetch -q origin main || err "git fetch origin main failed"
 git -C "$main" worktree add -q -b "$branch" "$dir" origin/main || err "git worktree add $dir failed"
+# Gitignored inputs a worker would otherwise copy by hand; .env is a symlink so the secret has one copy.
+[[ -f $main/.env ]] && ln -s "$main/.env" "$dir/.env"
+for data in schemaorg publicsuffix; do
+  [[ -d $main/backend/data/$data ]] && cp -r "$main/backend/data/$data" "$dir/backend/data/$data"
+done
+(cd "$dir/backend" && uv sync -q) >&2 || echo "WARN uv sync failed in $dir/backend" >&2
 echo "$dir"

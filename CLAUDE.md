@@ -71,11 +71,12 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
   migration. Record versions, draft and active configs and `engine_version` stay.
 - An architecture change deletes what it supersedes in the same PR. Code comments cite the spec requirement or the
   standard, not `D-NNNN`, `ARCHITECTURE §N` or `SPEC-NN`.
-- Tests: few, behaviour-level; no eval loops — one timeboxed regression run per PR; accuracy claims only from a fresh
-  batch's first score. Behaviour and Hypothesis property tests over generated inputs; replay tests of stored synthetic captures
-  for extraction; a `pytest.raises` block holds one call.
-- Decisions within one change's scope are yours: log them in the PR body. Escalate to the owner anything that alters
-  the contract, `openspec/design/`, a public API or schema other capabilities rely on, the evaluation procedure or
-  labels, or needs credentials. To escalate, record a `needs-owner` entry in `openspec/decisions/log.md`, list it
-  under "Open owner items" in `openspec/project.md`, and move to the next task.
+- Verification is runtime grounding on real pages plus the `.claude/skills/verify-*` checks (formal or property) for
+  the paths a change touches, not new example tests. A test is added only for a behaviour nothing else covers; tests a
+  change makes redundant are deleted. No eval loops: one timeboxed regression run per PR, on the final code; accuracy
+  claims only from a fresh batch's first score. A `pytest.raises` block holds one call.
+- Decisions within one change's scope are yours: write them in the PR body only. Escalate to the owner anything that
+  alters the contract, `openspec/design/`, a public API or schema other capabilities rely on, the evaluation procedure
+  or labels, or needs credentials: say so in your report and move on. The orchestrator asks the owner and records the
+  answer in `openspec/design/owner-decisions.md`.
 - Merge needs green CI and every review thread (any bot) fixed or answered and resolved.
