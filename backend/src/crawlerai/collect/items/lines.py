@@ -11,7 +11,8 @@ holds a repeated group of its own (its units, products, sessions), and states on
 them share (a name, an address, column headings). Rows then are the inner blocks, and what they share is not in their
 span. A block that lies inside a block of another repeated group, where two or more blocks of that group hold rows
 (the nesting repeats per outer item; one section holding a grid is no nesting), is read with that enclosing block's
-text before the first block of its own group: its context, a span of the cleaned text too.
+text before its first inner item (the first block of any repeated group inside it): its context, a span of the cleaned
+text too.
 """
 
 from collections import Counter, defaultdict
@@ -72,14 +73,14 @@ def block_texts(
     its enclosing item's context (module docstring); a block the cleaned text holds none of is left out."""
     contexts = _contexts(page, [row_block.block.element for row_block in blocks])
     texts = (
-        block_text(page, row_block, fields[row_block.row], contexts.get(row_block.block.element))
+        _block_text(page, row_block, fields[row_block.row], contexts.get(row_block.block.element))
         for row_block in blocks
         if fields.get(row_block.row)
     )
     return tuple(text for text in texts if text is not None)
 
 
-def block_text(
+def _block_text(
     page: ParsedPage, row_block: RowBlock, fields: Sequence[str], context: Segment | None = None
 ) -> BlockText | None:
     """The block's text for role C to fill `fields` of its row; None when the cleaned text holds none of it."""
@@ -105,12 +106,16 @@ def _contexts(page: ParsedPage, elements: Sequence[HtmlElement]) -> dict[HtmlEle
     holding = Counter(group_of[owner] for owner in enclosed)
     contexts: dict[HtmlElement, Segment] = {}
     for owner, inner in enclosed.items():
-        if holding[group_of[owner]] < 2:
+        if holding[group_of[owner]] < 2 or (context := _context(page, owner, _first_item(owner, group_of))) is None:
             continue
-        for element in inner:
-            if (context := _context(page, owner, page.item_groups[group_of[element]][0])) is not None:
-                contexts[element] = context
+        contexts.update(dict.fromkeys(inner, context))
     return contexts
+
+
+def _first_item(owner: HtmlElement, group_of: Mapping[HtmlElement, int]) -> HtmlElement | None:
+    """The first block of any repeated group inside the enclosing block, in document order: its text and what follows
+    are the inner items', not what they share."""
+    return next((node for node in owner.iterdescendants() if node in group_of), None)
 
 
 def _enclosing(element: HtmlElement, group_of: Mapping[HtmlElement, int]) -> HtmlElement | None:
@@ -124,8 +129,10 @@ def _enclosing(element: HtmlElement, group_of: Mapping[HtmlElement, int]) -> Htm
     return node
 
 
-def _context(page: ParsedPage, owner: HtmlElement, first: HtmlElement) -> Segment | None:
-    """The enclosing block's text before `first`, the first block of the inner group; None when it shows none."""
+def _context(page: ParsedPage, owner: HtmlElement, first: HtmlElement | None) -> Segment | None:
+    """The enclosing block's text before `first`, its first inner item; None when it shows none."""
+    if first is None:
+        return None
     outer = page.text_spans.get(text_path(owner))
     inner = page.text_spans.get(text_path(first))
     if outer is None or inner is None or inner[0] <= outer[0]:
