@@ -2,7 +2,7 @@
 
 **FROZEN 2026-10-19.** The owner's answers to the four open questions are applied in section (g). This text is
 implemented as written, without trial and error; only verification follows implementation. Baseline: `main` at
-`519805d` (#333 and #334 merged; #332 closed unmerged, its branch `change/ai-path` kept on the remote for reference).
+`519805d` (#333 and #334 merged; #332 closed unmerged, its commits kept as `pull/332/head`).
 Inputs: the owner's research notes, kept outside the repo (the technology inventory; the verification of every
 inventory claim, where every former [U] claim this design rests on is CONFIRMED unless marked **[UNCONFIRMED]**
 below; the mapping notes 1–3), and the former acquisition plan, which this document supersedes.
@@ -478,7 +478,7 @@ code are deleted with it; no shim, alias or compatibility branch remains.
 | `resolve/page_state.render_could_show`, `SCRIPT_RENDERED`; `resolve/types.FieldStatus` reason `script_rendered` | `interaction_required/render_bound` from field sources | 2b |
 | `render_fields` in `services/scrape.py`, `batch.py`, `crawl.py`, `schedules._BATCH_MEMBERS`, `worker/handlers/steps._RENDER_FIELDS`, `RENDER_FIELDS_DESCRIPTION`, `MAX_RENDER_FIELDS`, OpenAPI, `sdk/python`, `sdk/typescript`, `frontend/src/api/field.ts` picker | `render` member | 2b |
 | `resolve/preference._price` always-publish-best tie rule (main) | #334 `_price_winner` | merge #334 |
-| `config_ir/finds.py` as a role-C-only write-back (branch `change/ai-path`, #332 closed unmerged) | `config_ir/locate.py` for every source | 2c / 5 |
+| `config_ir/finds.py` as a role-C-only write-back (#332 closed unmerged, `pull/332/head`) | `config_ir/locate.py` for every source | 2c / 5 |
 | `config_ir/api_recipe/model.CREDENTIAL_FIELDS` refusal as absolute | credential **references** to caller-context headers | 5 |
 | `acquire/classify` treating a non-HTML 200 as `ok` | `unsupported_media` | 4 |
 | Owner-decision rows #49 (render on no offer data) and #54 (render on no rows) as operative rules | the 2026-10-19 framework; rows marked superseded in `owner-decisions.md` | 1 |
@@ -501,7 +501,7 @@ and generated SDK files.
 
 Already on `main` (519805d): #334 price accuracy (d.3) and #333 locale normalize (declared-locale readings,
 `in_language`, egress country, per-job locality). Browser `locale`/`timezone_id` from the job locality is not in #333
-and lands in PR 2a. #332 is closed unmerged; PR 2c re-lands its kept parts from the branch `change/ai-path`.
+and lands in PR 2a. #332 is closed unmerged; PR 2c re-lands its kept parts from `git fetch origin pull/332/head`.
 
 **PR 1 — docs freeze (docs only, ~0 LOC)**
 Scope: add this document as `openspec/design/architecture-v3.md`; move the whole documents (h) marks *archived*
@@ -535,7 +535,7 @@ Acceptance: schema test that `render_fields` is rejected (422) and `render` vali
 config with a `browser` field and an unrendered capture gives `interaction_required/render_bound`; an HTTP page
 without a config leaves `missing/no_candidates`; SDK/OpenAPI diff check in CI.
 
-**PR 2c — role C product scope and the `unverified` reason (~+180 / −40 LOC; from branch `change/ai-path`, #332 closed)**
+**PR 2c — role C product scope and the `unverified` reason (~+180 / −40 LOC; from `pull/332/head`, #332 closed)**
 Files: `llm/marked.py` (`scoped`: evidence text limited to the product's own blocks, `other_item_paths` excluded),
 `llm/roles/c_extract.py` (per-page batching of all missing fields in one call; `unverified` for a claim whose value
 is not found in the evidence), `resolve/pipeline.py` (`UNVERIFIED` reason; `GapRequest.elsewhere` dropped), llm and
