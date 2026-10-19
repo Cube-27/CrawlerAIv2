@@ -4,8 +4,8 @@ API endpoint an adapter or recipe asks, or a sitemap.
 
 The steps, in order: the host's rules (its interval setting and robots.txt, `ReadRules`), a turn at the host's rate,
 the fetch, with the host held until it ends (no other task's request goes to it meanwhile), then the host's rate
-adapted to every answer of the fetch (D-1327) and, when the fetch kept no `ok` answer after a 429 or 503, the host
-paused by the one back-off rule (`politeness.backoff`). A caller that waits for
+adapted to every answer of the fetch (acquisition spec, Per-site rate and backoff) and, when the fetch kept no `ok`
+answer after a 429 or 503, the host paused by the one back-off rule (`politeness.backoff`). A caller that waits for
 the answer waits in place for its turns, up to `IN_PLACE.bound`, and a turn further off is not taken (`Refused`,
 `slow_down`). A worker postpones its task when the host's turn for the first request is not due (`Later`): the task
 goes back to the queue, and the worker moves on to other sites; a further request of the fetch, the browser retry,

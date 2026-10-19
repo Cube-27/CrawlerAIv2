@@ -236,6 +236,7 @@ async def _run(
         log.warning("url_task %s: %s", task.id, message)
         with suppress(LeaseLost):
             async with conn.begin():
+                await conn.execute(select(func.set_config("application_name", _session_name(task), True)))
                 await fail_task(conn, task, message, transient=True, ending=ending)
 
 

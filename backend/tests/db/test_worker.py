@@ -202,7 +202,9 @@ async def test_work_left_behind_holding_its_row_has_its_session_ended_and_its_ta
     async with asyncio.timeout(30):
         await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
     release.set()
-    await asyncio.sleep(0.1)
+    left = set(loop._LEFT_BEHIND)
+    await asyncio.wait(left, timeout=10)
+    assert all(work.done() for work in left)
 
     [(status, _, attempts, last_error)] = await _tasks(engine)
     assert (status, attempts, last_error) == ("failed", 1, loop.DEADLINE)
