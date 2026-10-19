@@ -45,5 +45,5 @@ async def batch_scrape(
             data=data,
             llm=llm,
             api_key_id=key,
-            proxy_pools=fetching.proxy_pools,
+            egresses=fetching.egresses,
         )

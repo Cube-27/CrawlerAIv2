@@ -330,6 +330,17 @@ browser's guard relayed), counted as `proxy_bytes` usage of the pool for a fetch
 replays included. (Previously: no rung recorded `proxy_bytes`.) Refs: §7.1, D-0282, D-0286, D-1264, D-1323, D-1324,
 D-1355, D-1381.
 
+### Requirement: Egress country
+A record SHALL state the country its page was fetched from (`record.egress_country`, ISO 3166-1 alpha-2, null when
+unknown) and how that is known (`record.egress_basis`): `pool` for a fetch through a proxy pool that declares its
+`country` (`CRAWLERAI_PROXY_POOLS`: `{"endpoints": [...], "mode": ..., "country": "GB"}`, one country per pool), `machine`
+for a direct fetch from the machine whose country the operator declares (`CRAWLERAI_EGRESS_COUNTRY`), else `unknown`; a
+pool that declares no country is `unknown`, never the machine's. Nothing is looked up from an address (`core/egress.py`).
+Refs: owner plan 2026-10-19 P8.
+#### Scenario: Pool with a country
+- **WHEN** a job's pages go through a pool declaring `GB`
+- **THEN** its records have `egress_country` `GB` and `egress_basis` `pool`
+
 ### Requirement: Cookies stay inside one fetch (INV-29)
 Each fetch SHALL have its own HTTP session or browser context; cookies live in a per-fetch jar matched per RFC 6265
 (public-suffix `Domain` ignored), are sent only on matching hops and are discarded at the end; the caller's cookies

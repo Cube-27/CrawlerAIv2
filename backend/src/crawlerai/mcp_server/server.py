@@ -114,7 +114,7 @@ class _Tools:
             data=runtime.engine_data,
             llm=runtime.llm,
             api_key_id=caller.api_key_id,
-            proxy_pools=runtime.fetching.proxy_pools,
+            egresses=runtime.fetching.egresses,
         )
         return tool_result(submitted.model_dump(mode="json"))
 

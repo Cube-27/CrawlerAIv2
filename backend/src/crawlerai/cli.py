@@ -147,7 +147,7 @@ async def _fetch(
     with the caller's request context and proxy pool (D-1430, D-1434)."""
     settings = AcquireSettings()
     options = options or FetchOptions()
-    policy = fetch_policy(options, None, None)
+    policy = fetch_policy(options, None)
     if options.in_browser:
         async with open_browser() as session:
             result = await fetch_browser(

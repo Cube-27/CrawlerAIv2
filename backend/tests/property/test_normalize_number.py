@@ -11,7 +11,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.normalize import number
+from crawlerai.normalize import number, numbers
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -20,6 +20,9 @@ CTX = Context(captured_at=datetime(2026, 1, 1, tzinfo=UTC))
 EN = CTX.model_copy(update={"html_lang": "en-US"})
 DE = CTX.model_copy(update={"html_lang": "de-DE"})
 NUMBER = FieldSpec(type=FieldType.NUMBER)
+
+# The CLDR number conventions read across every locale are built once here, not inside the first example's deadline.
+numbers.warm()
 
 _decimals = st.decimals(min_value=0, max_value=10**6, places=2, allow_nan=False, allow_infinity=False)
 
@@ -47,6 +50,25 @@ def test_the_page_locale_reads_the_decimal_symbol() -> None:
     assert number.normalize("4,5", NUMBER, DE) == Ok("4.5")
     assert number.normalize("4.50", NUMBER, EN) == Ok("4.50")
     assert number.normalize("1,250", NUMBER, CTX) == Ambiguous("decimal_separator", ("1.250", "1250"))
+
+
+@pytest.mark.parametrize(
+    ("declared", "written", "value"),
+    [
+        ({"html_lang": "de"}, "1.250", "1250"),
+        ({"og_locale": "en_GB"}, "1,250", "1250"),
+        ({"content_language": ("de-AT",)}, "1,250", "1.250"),
+        ({"in_language": ("en",)}, "1.250", "1.250"),
+    ],
+)
+def test_every_declared_locale_settles_an_ambiguous_number(
+    declared: dict[str, object], written: str, value: str
+) -> None:
+    assert number.normalize(written, NUMBER, CTX.model_copy(update=declared)) == Ok(value)
+
+
+def test_a_number_only_one_convention_reads_ignores_the_declared_locale() -> None:
+    assert number.normalize("1.234,5", NUMBER, EN) == Ok("1234.5")
 
 
 @pytest.mark.parametrize(

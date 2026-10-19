@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.content.page import ParsedPage
+from crawlerai.core.egress import Egress
 from crawlerai.core.errors import Refusal
 from crawlerai.crawl.rules import MAX_PATTERNS, UrlGlob, is_glob, url_glob
 from crawlerai.db.jobs import transition_job
@@ -47,6 +48,7 @@ from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import MAX_URLS, OWN_TRANSACTION, Placement, insert_job, insert_tasks, job_pins
 from crawlerai.services.fetch_options import check_proxy_pool
 from crawlerai.services.fetching import Fetching, PagePlan, check_targets, fetch_now, site_rungs
+from crawlerai.services.location import pin_location
 from crawlerai.services.map import MapRequest, map_urls
 from crawlerai.services.scrape import MAX_TIMEOUT_S, Budget, RecordsUnavailable
 from crawlerai.services.scrape_steps import (
@@ -157,7 +159,7 @@ async def submit_extract(
     field names `llm` could not draft), `TargetRejected` for a refused fetch of a map, and `NothingToExtract`. Raises,
     failing the job: `NoSamplePage`, `TargetRejected` for a refused redirect, the LLM client's `LLMFailure`,
     `SchemaUnusable` for a draft of another page kind, and `DraftTimedOut`."""
-    check_proxy_pool(request.fetch, fetching.proxy_pools)
+    check_proxy_pool(request.fetch, fetching.egresses.pools)
     await check_targets(fetching.connector, request.targets(), webhook_url=request.webhook_url)
     if data is None:
         raise RecordsUnavailable("this process has not loaded the engine's data files")
@@ -165,12 +167,13 @@ async def submit_extract(
     urls = await _task_urls(engine, fetching, request)
     if not urls:
         raise NothingToExtract("the request's globs matched no URL")
+    request, egress = await pin_location(engine, fetching.egresses, request, request.fetch, next(iter(urls.values())))
     if schema is None:
         # `named_schema` returns the schema of every request but a prompt's.
         prompt = cast(SchemaPrompt, request.schema_).prompt
-        return await _drafted(engine, fetching, llm, request, prompt, urls, data, api_key_id, draft_timeout_s)
+        return await _drafted(engine, fetching, llm, request, prompt, urls, data, api_key_id, egress, draft_timeout_s)
     async with placement.transaction(engine) as conn:
-        job_id = await _insert_job(conn, request, schema, data, urls, api_key_id, placement.schedule_id)
+        job_id = await _insert_job(conn, request, schema, data, urls, api_key_id, egress, placement.schedule_id)
         await insert_tasks(conn, job_id, request.page_kind, _pairs(urls))
     return ExtractSubmitted(job_id=job_id, schema_=schema)
 
@@ -211,6 +214,7 @@ async def _insert_job(
     data: EngineData | None,
     urls: dict[str, str],
     api_key_id: ApiKeyId | None,
+    egress: Egress,
     schedule_id: ScheduleId | None = None,
 ) -> JobId:
     return await insert_job(
@@ -222,6 +226,7 @@ async def _insert_job(
         urls=list(urls.values()),
         api_key_id=api_key_id,
         schedule_id=schedule_id,
+        egress=egress,
     )
 
 
@@ -234,13 +239,14 @@ async def _drafted(
     urls: dict[str, str],
     data: EngineData,
     api_key_id: ApiKeyId | None,
+    egress: Egress,
     timeout_s: float,
 ) -> ExtractSubmitted:
     """The job of a prompt, stored and started before its draft, which charges its usage and budget, then given the
     draft, its pins and its tasks; it fails when no draft is made. A job that ended during the draft (a cancel, or
     `fail_stalled_jobs`) is given no tasks: they would run for a job that has ended."""
     async with engine.begin() as conn:
-        job_id = await _insert_job(conn, request, None, None, urls, api_key_id)
+        job_id = await _insert_job(conn, request, None, None, urls, api_key_id, egress)
         await transition_job(conn, job_id, "running")
     try:
         async with asyncio.timeout(timeout_s):
@@ -279,7 +285,6 @@ async def _samples(
         policy = fetch_policy(
             request.fetch,
             request.locale,
-            site.proxy_pool,
             page_kind=request.page_kind,
             all_resources=site.load_all_resources,
             scope=str(job_id),

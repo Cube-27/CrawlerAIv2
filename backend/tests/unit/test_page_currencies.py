@@ -6,10 +6,16 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from crawlerai.collect.currencies import declared_currencies, stated_currencies, with_stated_currencies
+from crawlerai.collect.currencies import (
+    declared_currencies,
+    stated_currencies,
+    stated_languages,
+    with_page_declarations,
+)
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize import money
-from crawlerai.normalize.base import Context, Ok
+from crawlerai.normalize.base import Ambiguous, Context, Ok
+from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC))
@@ -47,7 +53,7 @@ def test_the_stated_currency_settles_a_symbol_the_page_writes_in_text() -> None:
     spec = FieldSpec(type=FieldType.MONEY, description="d")
 
     assert money.normalize("$12.50", spec, CTX) == Ok({"amount": "12.50", "currency": None}, basis="unknown")
-    assert money.normalize("$12.50", spec, with_stated_currencies(CTX, page)) == Ok(
+    assert money.normalize("$12.50", spec, with_page_declarations(CTX, page)) == Ok(
         {"amount": "12.50", "currency": "USD"}
     )
 
@@ -63,9 +69,27 @@ def test_a_page_declares_currencies_in_ogp_and_in_generic_state_members() -> Non
     # A price written without a sign takes the page's currency only when every statement agrees.
     one = _page('<meta property="og:price:currency" content="SEK">')
     spec = FieldSpec(type=FieldType.MONEY, description="d")
-    assert money.normalize("12", spec, with_stated_currencies(CTX, one)) == Ok(
+    assert money.normalize("12", spec, with_page_declarations(CTX, one)) == Ok(
         {"amount": "12", "currency": "SEK"}, basis="page", checked=False
     )
-    assert money.normalize("12", spec, with_stated_currencies(CTX, page)) == Ok(
+    assert money.normalize("12", spec, with_page_declarations(CTX, page)) == Ok(
         {"amount": "12", "currency": None}, basis="unknown", checked=False
     )
+
+
+def test_the_in_language_of_the_pages_json_ld_is_a_declared_locale() -> None:
+    page = _page(
+        _jsonld(
+            {
+                "@context": "https://schema.org",
+                "@type": "Article",
+                "inLanguage": ["de-DE", " "],
+                "x": {"inLanguage": "de"},
+            }
+        )
+    )
+    spec = FieldSpec(type=FieldType.NUMBER)
+
+    assert stated_languages(page) == ("de-DE", "de")
+    assert normalize("1.250", spec, CTX) == Ambiguous("decimal_separator", ("1.250", "1250"))
+    assert normalize("1.250", spec, with_page_declarations(CTX, page)) == Ok("1250")

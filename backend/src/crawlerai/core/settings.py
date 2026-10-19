@@ -52,6 +52,9 @@ class AcquireSettings(_Base):
     # `CRAWLERAI_PROXY_POOLS`, JSON `{pool_name: proxy_url | {"endpoints": [proxy_url, ...], "mode": ...}}` (acquisition
     # spec §3, OPEN_QUESTIONS #10, D-1323).
     proxy_pools: dict[str, ProxyPool] = Field(default_factory=dict)
+    # `CRAWLERAI_EGRESS_COUNTRY`: the ISO 3166-1 alpha-2 country this machine's direct fetches go out from, declared by
+    # the operator (acquisition spec, "Egress country"); unset: unknown.
+    egress_country: Annotated[str, Field(pattern=r"^[A-Z]{2}$")] | None = None
     # `CRAWLERAI_DISABLED_ADAPTERS`, comma-separated: the platform adapters that do not run (adapters spec). Every
     # registered adapter runs unless named here (owner, 2026-10-16).
     disabled_adapters: Annotated[tuple[str, ...], NoDecode, BeforeValidator(_comma_separated)] = ()

@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Record, RecordId, SiteId, TaskRecord, UrlTaskId
+from crawlerai.db.models import Job, Record, RecordId, SiteId, TaskRecord, UrlTaskId
 from crawlerai.recurring.record_fp import changed_fields, record_fingerprint
 from crawlerai.resolve.records import FieldMeta, RecordDraft
 from crawlerai.resolve.task import RecordSource, StoredRecord
@@ -108,7 +108,13 @@ async def _insert(
 ) -> Sequence[RecordId]:
     if not new:
         return ()
-    values = [{**_values(schema, source, record), "schema_digest": digest} for record in new]
+    # The country the job's fetches go out from, pinned at its submit, is the one every page of it was fetched from.
+    egress = (
+        (await conn.execute(select(Job.egress_country, Job.egress_basis).where(Job.id == source.job_id)))
+        .one()
+        ._asdict()
+    )
+    values = [{**_values(schema, source, record), **egress, "schema_digest": digest} for record in new]
     inserted = await conn.execute(insert(Record).returning(Record.id, sort_by_parameter_order=True), values)
     return inserted.scalars().all()
 

@@ -31,6 +31,7 @@ from crawlerai.acquire.types import (
 from crawlerai.config_ir.api_recipe.execute import MAX_PAGES, RecipeRung, unserved
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replay, Replays
+from crawlerai.core.egress import Egresses
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
 from crawlerai.crawl.paging import collect
@@ -63,9 +64,9 @@ class Fetching:
     connector: SafeConnector
     store: ObjectStore
     limiter: HostLimiter
-    # The names of the configured proxy pools (`CRAWLERAI_PROXY_POOLS`), which a request's `fetch.proxy_pool` is
-    # checked against (D-1434).
-    proxy_pools: frozenset[str] = frozenset()
+    # The configured proxy pools (`CRAWLERAI_PROXY_POOLS`), which a request's `fetch.proxy_pool` is checked against
+    # (D-1434), and the countries fetches go out from (`core.egress`).
+    egresses: Egresses = field(default_factory=Egresses)
 
 
 class TargetRejected(Refusal):

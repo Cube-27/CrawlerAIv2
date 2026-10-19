@@ -24,6 +24,9 @@ Refs: §9, D-0256, D-0773, D-1482.
 #### Scenario: No context
 - **WHEN** a context carries only `captured_at`
 - **THEN** no normalizer supplies a locale, currency or country of its own
+#### Scenario: Declared locale settles a separator
+- **WHEN** a number text is `1.250` and the page declares `de` (or `de-AT`) it is 1250; declaring `en-GB` it is 1.250;
+  declaring nothing it is `Ambiguous`; `1.250,5` is 1250.5 under any declaration
 #### Scenario: Alternates in other territories
 - **WHEN** a page tagged `en-US` has alternate links to other pages tagged `en-AU` and `en-CA`
 - **THEN** `$10` on it normalizes to USD
@@ -146,8 +149,13 @@ D-1372, D-1373. (Previously: `remote_flag` was `false` when unstated; CLDR's `EU
 `normalize/range.py`, `count.py` and `number.py` SHALL each accept one stated value and decline otherwise: a
 monetary range without a period is `Ambiguous`; count and number decline on two numbers; number keeps digits as
 written, and a schema.org `ratingValue` joined to a `reviewCount` of 0 is `Invalid("no_ratings")`. A count with
-`unitCode` `C62` declines a `unitText` that names a CLDR measurement unit. All numbers are read in the CLDR locale set
-of the page and request language tags (`numbers.py`), and locales that read a number differently give `Ambiguous`.
+`unitCode` `C62` declines a `unitText` that names a CLDR measurement unit. All numbers (money, count, number) are read by the one path in `numbers.py`: a written number that only one CLDR number
+convention can read (`1.234,56`, `12.50`) has that one value whatever the page says; one that conventions read
+differently (`1.234`, `1,234`) takes the value its declared locales give it, and is `Ambiguous` when those still read
+it differently or the page declares none. The declared locales are `<html lang>`, `og:locale`, JSON-LD `inLanguage`
+(`Context.in_language`), Content-Language (RFC 9110 §8.5, its HTML pragma), the page's own `hreflang` and the request's
+locale; a tag with a territory is that CLDR locale, a tag with a language only is the language's own CLDR locale (`de`
+writes `1.234,5`), and the ccTLD narrows a language-only tag only where money reads it (the currency step 4).
 A minus negates a money or count text only when it touches the number. A monetary range's period is read from
 `unitText`, else `unitCode`: a unit word, an interval of one unit (`1 YEAR`), an ISO 8601 duration of one unit (`P1Y`), a
 UN/CEFACT code (`ANN`) or a `type:period` phrase. Refs: §9, D-0275–D-0279, D-0302, D-0921, D-0922, D-0960, D-1184,

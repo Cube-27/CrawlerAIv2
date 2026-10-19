@@ -161,6 +161,7 @@ else 422), `wait_for` (milliseconds, a CSS selector or `network_idle`), `actions
 (422 with `method_hint` `http`), and `headers` go over HTTP only (422 with them). Answers and stored scrape requests
 show every value as `**********`. The scrape answer's `fetch.attempts` carry each step's outcome. MCP tools take the
 same members. Refs: owner delegation 2026-10-17, D-1430–D-1437.
+A stored record answers `egress_country` and `egress_basis` ([acquisition](../acquisition/spec.md), "Egress country").
 #### Scenario: Forbidden header
 - **WHEN** a scrape's `fetch.headers` names `User-Agent`
 - **THEN** the answer is a 422 problem naming `fetch.headers` and no job is created

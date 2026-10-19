@@ -4,7 +4,7 @@ number has under their Unicode CLDR number symbols (Babel). Shared by the normal
 
 import re
 import unicodedata
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from functools import cache
@@ -171,11 +171,20 @@ def negated(before: str) -> bool:
 
 
 def readings(written: str, locales: frozenset[str]) -> list[Decimal]:
-    """Every value the written amount has under the decimal and group symbols of the locales (CLDR number symbols).
-    With no locale evidence, every CLDR convention is possible."""
+    """Every value the written amount has (CLDR number symbols), the one a page's declared locales settle when it has
+    several. A string only one CLDR convention can read (`1.234,56`, `12.50`) has one value whatever the page says;
+    one that conventions read differently (`1.234`, `1,234`) takes the values its declared `locales` give it, and with
+    no locale evidence keeps every value."""
+    every = _values(written, _number_conventions())
+    if len(every) < 2 or not locales:
+        return every
+    return _values(written, locales)
+
+
+def _values(written: str, locales: Iterable[str]) -> list[Decimal]:
     # Locales with one convention read an amount the same way, so one of them is parsed.
     conventions: dict[tuple[str, str, object], str] = {}
-    for loc in locales or _number_conventions():
+    for loc in locales:
         conventions.setdefault(_convention(loc), loc)
     values: set[Decimal] = set()
     for (_, group, _), loc in conventions.items():
@@ -190,23 +199,44 @@ def readings(written: str, locales: frozenset[str]) -> list[Decimal]:
 
 
 def locale_set(ctx: Context) -> frozenset[str]:
-    """The CLDR locales the page and the request state (normalization spec). A tag that names no territory stands for
-    every territory its language is used in, unless the ccTLD names one; the ccTLD alone stands for its territory's
-    locales."""
-    tags = [t for t in (ctx.html_lang, ctx.og_locale, ctx.request_locale, *ctx.hreflang) if t]
+    """The CLDR locales whose number symbols the page declares and the request states (normalization spec): `<html
+    lang>`, `og:locale`, JSON-LD `inLanguage`, Content-Language, the page's own `hreflang` and the request's locale. A
+    tag with a territory is that locale; a tag with a language only is the language's own CLDR locale (`de` writes
+    `1.234,5`), or its locale of the ccTLD's territory when the ccTLD names one; the ccTLD alone stands for its
+    territory's locales."""
+    return _declared(ctx, whole_language=False)
+
+
+def regional_locales(ctx: Context) -> frozenset[str]:
+    """The CLDR locales the page's declarations leave possible, for what a locale only narrows (a currency symbol shared
+    by several currencies): as `locale_set`, but a tag with a language only stands for every territory its language is
+    used in, so that the language alone settles nothing a territory would."""
+    return _declared(ctx, whole_language=True)
+
+
+def _declared(ctx: Context, *, whole_language: bool) -> frozenset[str]:
+    declared = (
+        ctx.html_lang,
+        ctx.og_locale,
+        ctx.request_locale,
+        *ctx.in_language,
+        *ctx.content_language,
+        *ctx.hreflang,
+    )
     out: set[str] = set()
     known = False
-    for tag in tags:
+    for tag in filter(None, declared):
         locale = _parse_tag(tag)
         if locale is None:
             continue  # Not a BCP 47 tag CLDR knows (`x-default`): no evidence.
         known = True
+        with_territory = f"{locale.language}_{ctx.cctld_territory}"
         if locale.territory:
             out.add(str(locale))
-            continue
-        with_territory = f"{locale.language}_{ctx.cctld_territory}"
-        if ctx.cctld_territory and with_territory in identifiers():
+        elif ctx.cctld_territory and with_territory in identifiers():
             out.add(with_territory)
+        elif not whole_language and str(locale) in identifiers():
+            out.add(str(locale))
         else:
             out.update(_by_language().get(locale.language, ()))
     if not known and ctx.cctld_territory:

@@ -28,7 +28,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.collect.currencies import with_stated_currencies
+from crawlerai.collect.currencies import with_page_declarations
 from crawlerai.config_ir.induction import Published, SamplePage
 from crawlerai.config_ir.validation import Facts, HeldOutPage
 from crawlerai.content.context import page_context
@@ -297,4 +297,4 @@ def read_bundle(bundle: CaptureBundle) -> tuple[ParsedPage, Context]:
     ctx = page_context(
         page, manifest.final_url, manifest.fetched_at, request_url=manifest.url, headers=manifest.headers.response
     )
-    return page, with_stated_currencies(ctx, page)
+    return page, with_page_declarations(ctx, page)

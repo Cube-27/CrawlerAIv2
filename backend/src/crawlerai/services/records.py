@@ -15,6 +15,7 @@ from sqlalchemy import Row, RowMapping, ScalarSelect, Select, func, select, tupl
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import aliased
 
+from crawlerai.core.egress import EgressBasis
 from crawlerai.db.models import (
     CaptureId,
     Extraction,
@@ -47,6 +48,8 @@ _COLUMNS = (
     Record.complete,
     Record.data,
     Record.field_meta,
+    Record.egress_country,
+    Record.egress_basis,
     Extraction.capture_id,
 )
 
@@ -87,12 +90,16 @@ class ScrapedRecord(ExtractedRecord):
 class StoredRecord(ScrapedRecord):
     """A `record` row, with the capture it was extracted from (`None` once the capture expired),
     the schema its fields follow, its own version and the fields whose published value differs from the
-    version it supersedes, empty for an entity's first (§14, jobs spec)."""
+    version it supersedes, empty for an entity's first (§14, jobs spec). `egress_country` is the ISO 3166-1 country the
+    page was fetched from (null: unknown) and `egress_basis` how that is known: `pool` (the proxy pool's declared
+    country), `machine` (a direct fetch from the machine's declared country) or `unknown` (acquisition spec)."""
 
     capture_id: CaptureId | None
     schema_id: SchemaId
     version: int
     changed_fields: list[str]
+    egress_country: str | None
+    egress_basis: EgressBasis
 
 
 class RecordPage(BaseModel):
@@ -204,7 +211,17 @@ def _stored(row: RowMapping, schema: SchemaDef) -> StoredRecord:
     fields = {
         name: RecordField.model_validate({**meta, "value": data.get(name)}) for name, meta in row["field_meta"].items()
     }
-    names = ("id", "capture_id", "schema_id", "version", "changed_fields", "mode", "complete")
+    names = (
+        "id",
+        "capture_id",
+        "schema_id",
+        "version",
+        "changed_fields",
+        "mode",
+        "complete",
+        "egress_country",
+        "egress_basis",
+    )
     columns = {name: row[name] for name in names}
     return StoredRecord(**columns, confidence=record_confidence(schema, fields), fields=fields)
 

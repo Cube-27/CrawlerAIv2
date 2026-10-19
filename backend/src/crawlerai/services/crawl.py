@@ -12,7 +12,6 @@ links only (`links_only`, §13.2), unless the crawl has no rules, when every pag
 are crawl-discovered: a page whose required fields don't all publish ends `no_match`, without a record (§10, §23).
 """
 
-from collections.abc import Collection
 from typing import Any, Self
 from urllib.parse import urlsplit
 
@@ -23,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.content.chunks import ChunkOptions
 from crawlerai.content.fit import FitOptions
+from crawlerai.core.egress import Egresses
 from crawlerai.crawl.frontier import Frontier
 from crawlerai.crawl.rules import PageKindRule, Patterns, Scope
 from crawlerai.crawl.scoring import Strategy, query_terms
@@ -35,6 +35,7 @@ from crawlerai.schemas.types import Name
 from crawlerai.services.batch import OWN_TRANSACTION, Placement, insert_job, records_schema
 from crawlerai.services.fetch_options import check_proxy_pool
 from crawlerai.services.fetching import check_targets
+from crawlerai.services.location import pin_location
 from crawlerai.services.map import MAX_LIMIT  # a crawl enqueues at most what a map of the site returns
 from crawlerai.services.scrape import Budget
 from crawlerai.services.scrape_steps import (
@@ -159,20 +160,22 @@ async def submit_crawl(
     data: EngineData | None,
     llm: LLMClient = NO_LLM,
     api_key_id: ApiKeyId | None = None,
-    proxy_pools: Collection[str] | None = None,
+    egresses: Egresses | None = None,
     placement: Placement = OWN_TRANSACTION,
 ) -> CrawlSubmitted:
     """Store `request` as a queued job with the start URL's task, where `placement` says; `api_key_id`, the key that
-    submitted it, signs its webhook (§4.2); `proxy_pools`, the configured pools, which `fetch.proxy_pool` must name one
-    of (D-1434). Raises, storing nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target,
-    `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use."""
-    if proxy_pools is not None:
-        check_proxy_pool(request.fetch, proxy_pools)
+    submitted it, signs its webhook (§4.2); `egresses`, the configured pools, one of which `fetch.proxy_pool` must name
+    (D-1434), and the countries they go out from. The job's location is pinned here (`pin_location`). Raises, storing
+    nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target, `RecordsUnavailable` for
+    `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use."""
+    if egresses is not None:
+        check_proxy_pool(request.fetch, egresses.pools)
     await check_targets(connector, [("url", request.url)], webhook_url=request.webhook_url)
     # A records crawl's rules have one page kind, its schema's (the request's validator).
     page_kind = request.page_kind_rules[0].page_kind if request.page_kind_rules else None
     schema = await records_schema(engine, request.formats, request.schema_, page_kind, data, llm)
     frontier = request.frontier()
+    request, egress = await pin_location(engine, egresses, request, request.fetch, request.start)
     async with placement.transaction(engine) as conn:
         job_id = await insert_job(
             conn,
@@ -183,6 +186,7 @@ async def submit_crawl(
             urls=[request.start],
             api_key_id=api_key_id,
             schedule_id=placement.schedule_id,
+            egress=egress,
         )
         # The start URL is fetched whatever the scope: `include` and `exclude` choose the URLs it leads to.
         await conn.execute(insert(UrlTask).values(frontier.task_row(job_id, request.start, 0, None)))

@@ -31,6 +31,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
+from crawlerai.core.egress import EgressBasis
 from crawlerai.core.ids import uuid7
 
 # SQL referential action (ISO/IEC 9075-2 §11.8): a deleted parent leaves the reference empty.
@@ -498,6 +499,7 @@ class Job(Base):
     __table_args__ = (
         CheckConstraint(one_of("kind", JobKind), name="kind"),
         CheckConstraint(one_of("status", JobStatus), name="status"),
+        CheckConstraint(one_of("egress_basis", EgressBasis), name="egress_basis"),
         # The scheduler's reapers look only at running jobs, oldest start first (`db.queue.reap_stuck_jobs`).
         Index(None, "started_at", postgresql_where=text("status = 'running'")),
         # A schedule's jobs, newest first (its history and its last job).
@@ -531,6 +533,10 @@ class Job(Base):
     webhook_batch: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     # The schedule that submitted it; NULL for a job a caller submitted, and once its schedule is deleted.
     schedule_id: Mapped[ScheduleId | None] = mapped_column(ForeignKey(Schedule.id, ondelete=_SET_NULL))
+    # The country every fetch of the job goes out from, pinned at submit with its proxy pool (`services.location`), and
+    # how it is known (`core.egress`); NULL and `unknown` when nobody declared it.
+    egress_country: Mapped[str | None] = mapped_column(Text)
+    egress_basis: Mapped[EgressBasis] = mapped_column(Text, server_default=text("'unknown'"))
 
 
 class UrlTask(Base):
@@ -716,6 +722,7 @@ class Record(Base):
     __tablename__ = "record"
     __table_args__ = (
         CheckConstraint(one_of("mode", ExtractionMode), name="mode"),
+        CheckConstraint(one_of("egress_basis", EgressBasis), name="egress_basis"),
         version_positive(),
         # Recurring runs compare fingerprints per (site, entity, schema) (jobs spec), and find the newest record that
         # stands for a page, by id (`recurring.state.standing_record`).
@@ -746,6 +753,10 @@ class Record(Base):
     schema_digest: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
     supersedes_record_id: Mapped[RecordId | None] = mapped_column(ForeignKey(f"{__tablename__}.id"))
+    # The country the page was fetched from and how it is known (`core.egress`), the job's pinned egress when the record
+    # was stored; NULL and `unknown` when nobody declared it.
+    egress_country: Mapped[str | None] = mapped_column(Text)
+    egress_basis: Mapped[EgressBasis] = mapped_column(Text, server_default=text("'unknown'"))
 
 
 class TaskRecord(Base):

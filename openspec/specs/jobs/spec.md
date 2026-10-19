@@ -23,6 +23,17 @@ tasks and ran them one at a time with no deadline.) Refs: §6, D-0006, D-0632, D
 - **WHEN** a task's work is still running at its deadline
 - **THEN** it is recorded `failed` with outcome `timeout` and the job's other tasks complete
 
+### Requirement: Crawl location pinned per job
+A job SHALL fetch every page from one location, chosen at submit: the request's `fetch.proxy_pool`, else the proxy pool
+of the site of the job's first URL (a crawl's start URL), else none (direct). It is stored in the job's request, which
+its workers read, so no page of the job falls back to its own site's pool, and the job's egress country and basis
+(`job.egress_country`, `egress_basis`, [acquisition](../acquisition/spec.md)) are pinned with it and copied to each
+record the job stores; a site that prices by the visitor's country (a `/en-in/` path) is then read from one place
+throughout. A scrape pins the same way for its one URL. Refs: owner plan 2026-10-19 P8.
+#### Scenario: Batch over two sites
+- **WHEN** a batch's first URL is on a site with proxy pool `a` and another URL on a site with pool `b`
+- **THEN** every page of the job is fetched through `a`
+
 ### Requirement: Worker and scheduler roles
 `api`, `worker` and `scheduler` SHALL run from one image; the scheduler runs the periodic entries in its table (lease
 release, stalled `map`/`extract` jobs failed, due schedules run, webhook deliveries formed and sent, retention,

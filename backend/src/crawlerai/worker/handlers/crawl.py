@@ -50,7 +50,7 @@ from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.fetching import Fetching, SiteHttp, TargetRejected
 from crawlerai.services.map import TIMEOUT_S
 from crawlerai.services.polite import QUEUED, NoTurn, Turns, rules_in
-from crawlerai.services.scrape_steps import PageFormat, fetch_policy, record_fetch_usage, site_row
+from crawlerai.services.scrape_steps import PageFormat, fetch_policy, record_fetch_usage
 from crawlerai.storage.base import ObjectStore
 from crawlerai.worker.handlers.steps import (
     Ended,
@@ -214,8 +214,7 @@ async def _sitemap_seeds(
     """The URLs of the sitemaps of the site the start page is on, `site_url` there, that the crawl takes, in the order
     read, up to its capacity, with the priorities the sitemaps state for them. The fetches count as the job's usage."""
     task = crawl.task
-    site = await site_row(conn, frontier.scope.host)
-    policy = fetch_policy(crawl.request.fetch, crawl.request.locale, site.proxy_pool, scope=str(task.job_id))
+    policy = fetch_policy(crawl.request.fetch, crawl.request.locale, scope=str(task.job_id))
     attempts: list[AttemptRecord] = []
     # The page's fetch has just stored a fresh snapshot, so this reads it rather than fetching, unless the page
     # redirected to another host.

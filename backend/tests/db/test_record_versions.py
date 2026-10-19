@@ -10,6 +10,7 @@ from pydantic import JsonValue
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.core.egress import UNKNOWN, Egress
 from crawlerai.db.models import Extraction, Job, JobId, Project, Record, Site, SiteId
 from crawlerai.db.queue import insert_claimed
 from crawlerai.recurring.record_fp import record_fingerprint
@@ -61,10 +62,16 @@ class _Site:
         meta = dict.fromkeys(data, META)
         return RecordDraft(data=data, field_meta=meta, complete=True, entity_key=entity_key(self.site_id, url))
 
-    async def run(self, *drafts: RecordDraft) -> tuple[StoredRecord, ...]:
+    async def run(self, *drafts: RecordDraft, egress: Egress = UNKNOWN) -> tuple[StoredRecord, ...]:
         """One extraction of the page in a job of its own, as a re-run of the crawl stores it."""
         job = insert(Job).values(
-            project_id=self.project, kind="scrape", request={}, schema_id=self.schema.id, engine_version="e"
+            project_id=self.project,
+            kind="scrape",
+            request={},
+            schema_id=self.schema.id,
+            engine_version="e",
+            egress_country=egress.country,
+            egress_basis=egress.basis,
         )
         job_id: JobId = (await self.conn.execute(job.returning(Job.id))).scalar_one()
         task = await insert_claimed(self.conn, job_id, PAGE_URL, PAGE_URL, self.schema.page_kind, "test-worker")
@@ -134,3 +141,12 @@ async def test_a_changed_price_adds_version_2_naming_price(site: _Site) -> None:
         "fingerprint": record_fingerprint(CHEAPER, site.schema),
         "data": CHEAPER,
     }
+
+
+async def test_a_record_states_the_egress_its_job_pinned(site: _Site) -> None:
+    (stored,) = await site.run(site.draft(KETTLE), egress=Egress("GB", "pool"))
+    (unknown,) = await site.run(site.draft(CHEAPER))
+
+    query = select(Record.id, Record.egress_country, Record.egress_basis).where(Record.site_id == site.site_id)
+    found = {row.id: (row.egress_country, row.egress_basis) for row in await site.conn.execute(query)}
+    assert found == {stored.id: ("GB", "pool"), unknown.id: (None, "unknown")}

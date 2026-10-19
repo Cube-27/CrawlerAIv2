@@ -7342,7 +7342,7 @@
         "type": "object"
       },
       "StoredRecord": {
-        "description": "A `record` row, with the capture it was extracted from (`None` once the capture expired),\nthe schema its fields follow, its own version and the fields whose published value differs from the\nversion it supersedes, empty for an entity's first (\u00a714, jobs spec).",
+        "description": "A `record` row, with the capture it was extracted from (`None` once the capture expired),\nthe schema its fields follow, its own version and the fields whose published value differs from the\nversion it supersedes, empty for an entity's first (\u00a714, jobs spec). `egress_country` is the ISO 3166-1 country the\npage was fetched from (null: unknown) and `egress_basis` how that is known: `pool` (the proxy pool's declared\ncountry), `machine` (a direct fetch from the machine's declared country) or `unknown` (acquisition spec).",
         "properties": {
           "capture_id": {
             "anyOf": [
@@ -7379,6 +7379,26 @@
               }
             ],
             "title": "Confidence"
+          },
+          "egress_basis": {
+            "enum": [
+              "pool",
+              "machine",
+              "unknown"
+            ],
+            "title": "Egress Basis",
+            "type": "string"
+          },
+          "egress_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Egress Country"
           },
           "fields": {
             "additionalProperties": {
@@ -7419,7 +7439,9 @@
           "capture_id",
           "schema_id",
           "version",
-          "changed_fields"
+          "changed_fields",
+          "egress_country",
+          "egress_basis"
         ],
         "title": "StoredRecord",
         "type": "object"

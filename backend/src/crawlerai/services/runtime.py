@@ -23,6 +23,7 @@ from crawlerai.acquire.shared_browser import SharedBrowser
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
 from crawlerai.config_ir.drift import DriftMargins
+from crawlerai.core.egress import Egresses
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import Settings
@@ -114,7 +115,9 @@ async def open_fetching(
             listing=listing,
         )
         limiter = HostLimiter(shared=None if database is None else HostTurns(database))
-        yield Fetching(rungs, connector, open_store(settings.object_store), limiter, frozenset(pools))
+        yield Fetching(
+            rungs, connector, open_store(settings.object_store), limiter, Egresses(pools, settings.egress_country)
+        )
 
 
 def _search(settings: Settings) -> SearchProvider | None:

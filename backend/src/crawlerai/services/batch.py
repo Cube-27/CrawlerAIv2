@@ -10,7 +10,7 @@ has for the schema and page kind (`job.pinned`, `JobPins`). A URL given twice
 keeps its record, `complete=false`, with outcome `partial`.
 """
 
-from collections.abc import AsyncIterator, Collection, Iterable
+from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Final, Self
@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.content.chunks import ChunkOptions
 from crawlerai.content.fit import FitOptions
+from crawlerai.core.egress import UNKNOWN, Egress, Egresses
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.models import (
     ApiKeyId,
@@ -44,6 +45,7 @@ from crawlerai.resolve.types import Probability
 from crawlerai.schemas.types import Name, SchemaDef
 from crawlerai.services.fetch_options import KEEP_SECRETS, check_proxy_pool
 from crawlerai.services.fetching import check_targets
+from crawlerai.services.location import pin_location
 from crawlerai.services.scrape import Budget, RecordsUnavailable
 from crawlerai.services.scrape_steps import (
     DEFAULT_PROJECT,
@@ -152,20 +154,22 @@ async def submit_batch(
     data: EngineData | None,
     llm: LLMClient = NO_LLM,
     api_key_id: ApiKeyId | None = None,
-    proxy_pools: Collection[str] | None = None,
+    egresses: Egresses | None = None,
     placement: Placement = OWN_TRANSACTION,
 ) -> BatchSubmitted:
     """Store `request` as a queued job with its tasks, where `placement` says; `api_key_id`, the key that submitted
-    it, signs its webhook (jobs spec); `proxy_pools`, the configured pools, which `fetch.proxy_pool` must name one of
-    (D-1434). Raises, storing nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target,
-    `RecordsUnavailable` for `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use
-    (or field names `llm` could not draft)."""
-    if proxy_pools is not None:
-        check_proxy_pool(request.fetch, proxy_pools)
+    it, signs its webhook (jobs spec); `egresses`, the configured pools, one of which `fetch.proxy_pool` must name
+    (D-1434), and the countries they go out from. The job's location is pinned here (`pin_location`). Raises, storing
+    nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target, `RecordsUnavailable` for
+    `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use (or field names `llm` could
+    not draft)."""
+    if egresses is not None:
+        check_proxy_pool(request.fetch, egresses.pools)
     targets = [(f"urls[{index}]", url) for index, url in enumerate(request.urls)]
     await check_targets(connector, targets, webhook_url=request.webhook_url)
     # A format batch that names a schema is a format job.
     schema = await records_schema(engine, request.formats, request.schema_, request.page_kind, data, llm)
+    request, egress = await pin_location(engine, egresses, request, request.fetch, request.urls[0])
     async with placement.transaction(engine) as conn:
         job_id = await insert_job(
             conn,
@@ -176,6 +180,7 @@ async def submit_batch(
             urls=request.urls,
             api_key_id=api_key_id,
             schedule_id=placement.schedule_id,
+            egress=egress,
         )
         urls = [(url, canonicalize(url) or url) for url in request.urls]
         await insert_tasks(conn, job_id, request.page_kind, urls)
@@ -221,10 +226,11 @@ async def insert_job(
     urls: list[str],
     api_key_id: ApiKeyId | None,
     schedule_id: ScheduleId | None,
+    egress: Egress = UNKNOWN,
 ) -> JobId:
     """Insert `request` as a queued job of `kind`, with its webhook options; `schedule_id` names the schedule that
-    submitted it. A records job (`schema`) pins its engine data and the configs active for the hosts of `urls` (INV-28,
-    `JobPins`)."""
+    submitted it, `egress` the country its fetches go out from (`pin_location`). A records job (`schema`) pins its
+    engine data and the configs active for the hosts of `urls` (INV-28, `JobPins`)."""
     pinned = None if schema is None or data is None else await job_pins(conn, data, urls, schema)
     statement = (
         insert(Job)
@@ -241,6 +247,8 @@ async def insert_job(
             engine_version=ENGINE_VERSION,
             pinned=pinned,
             schedule_id=schedule_id,
+            egress_country=egress.country,
+            egress_basis=egress.basis,
         )
         .returning(Job.id)
     )

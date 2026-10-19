@@ -87,6 +87,7 @@ class Context(BaseModel):
     hreflang: tuple[str, ...] = ()
     page_currencies: tuple[str, ...] = ()  # ISO 4217 codes stated in the page's structured data
     declared_currencies: tuple[str, ...] = ()  # ISO 4217 codes the page declares page-wide (OGP, page state)
+    in_language: tuple[str, ...] = ()  # schema.org `inLanguage` written in the page's JSON-LD, as written
     content_language: tuple[str, ...] = ()  # RFC 9110 §8.5 Content-Language and its HTML pragma, as written
     cctld_territory: str | None = None  # from the URL's ccTLD through CLDR territory data; None for gTLDs
     request_locale: str | None = None  # the caller's hint
