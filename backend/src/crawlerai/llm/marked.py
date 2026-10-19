@@ -11,15 +11,22 @@ take at most `budget` characters together, so the text stays near its cut; the m
 
 The ids are not page text: a span the model claims is grounded in the cleaned text itself, its offsets moved back past
 the ids before it (`cleaned_offset`), and a claimed id is grounded in the element it marks (`llm.grounding`, INV-12).
+
+Role C's evidence is the product's own (`scoped`): the text runs and marks of the elements that hold other items'
+content (`collect.dom.other_item_paths`: related and similar items, reviews, lists of other documents' cards, the cards
+of other items whose prices the page shows) are left out, with the line breaks and spaces that follow them, so the
+model neither reads nor grounds a value of another item. Offsets of the scoped text map back to the whole cleaned
+text (`Scoped.cleaned_offset`), where locators point.
 """
 
+from bisect import bisect_right
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final
 from urllib.parse import urldefrag
 
-from crawlerai.content.text import CleanedText, Mark, MarkKind
+from crawlerai.content.text import CleanedText, Mark, MarkKind, TextRun
 from crawlerai.normalize.url import canonical_url
 
 _PREFIX: Final[Mapping[MarkKind, str]] = MappingProxyType({"link": "L", "image": "I"})
@@ -97,3 +104,106 @@ def _label(ref: str, mark: Mark, read: str) -> str:
     shown = read[mark.start : mark.end]
     named = mark.name and mark.name != shown
     return f"[{ref}: {mark.name}]" if named else f"[{ref}]"
+
+
+@dataclass(frozen=True, slots=True)
+class Scoped:
+    """The cleaned text without other items' content: `text` keeps the runs and marks outside `elsewhere`, and
+    `segments` are the kept `(start in text, start in the whole cleaned text)` pairs, in order."""
+
+    text: CleanedText
+    segments: tuple[tuple[int, int], ...] = ((0, 0),)
+
+    def cleaned_offset(self, offset: int, *, end: bool = False) -> int:
+        """The offset in the whole cleaned text of `offset` in the scoped text; an `end` offset at a segment's end
+        stays in that segment (it closes a span there)."""
+        starts = [at for at, _ in self.segments]
+        index = max(0, bisect_right(starts, offset - (1 if end and offset else 0)) - 1)
+        at, origin = self.segments[index]
+        return origin + offset - at
+
+    def whole_span(self, start: int, end: int) -> tuple[int, int] | None:
+        """The span `[start, end)` of the scoped text in the whole cleaned text; None when it crosses where other
+        items' content was cut, as the whole text does not hold it then (INV-12)."""
+        whole = self.cleaned_offset(start), self.cleaned_offset(end, end=True)
+        return whole if whole[1] - whole[0] == end - start else None
+
+
+def scoped(cleaned: CleanedText, elsewhere: frozenset[str]) -> Scoped:
+    """`cleaned` without the text runs and marks of the elements at the node paths `elsewhere` and inside them, each
+    left-out run taken with what separates it from the next run."""
+    if not elsewhere:
+        return Scoped(cleaned)
+    kept = _kept(cleaned, elsewhere)
+    runs, text = cleaned.offsets, cleaned.text
+    pieces: list[str] = []
+    segments: list[tuple[int, int]] = []
+    length = 0
+    for start, stop in kept:
+        segments.append((length, start))
+        pieces.append(text[start:stop])
+        length += stop - start
+    moved = _Mover(tuple(kept), tuple(segments))
+    offsets = tuple(TextRun(*span, run.node_path) for run in runs if (span := moved.span(run.start, run.end)))
+    marks = tuple(
+        mark._replace(start=span[0], end=span[1])
+        for mark in cleaned.marks
+        if not _inside(mark.path, elsewhere) and (span := moved.span(mark.start, mark.end))
+    )
+    return Scoped(CleanedText("".join(pieces), offsets, marks), tuple(segments))
+
+
+def _kept(cleaned: CleanedText, elsewhere: frozenset[str]) -> list[tuple[int, int]]:
+    """The spans of `cleaned`'s text left once the runs inside `elsewhere` are cut, each with what follows it up to the
+    next run (the whole text when no run is: an item of marks only still has them left out)."""
+    runs, text = cleaned.offsets, cleaned.text
+    cuts: list[tuple[int, int]] = []
+    for index, run in enumerate(runs):
+        if not _inside(run.node_path, elsewhere):
+            continue
+        stop = runs[index + 1].start if index + 1 < len(runs) else len(text)
+        if cuts and cuts[-1][1] == run.start:
+            cuts[-1] = (cuts[-1][0], stop)
+        else:
+            cuts.append((run.start, stop))
+    kept: list[tuple[int, int]] = []
+    position = 0
+    for start, stop in cuts:
+        if start > position:
+            kept.append((position, start))
+        position = stop
+    if position < len(text) or not kept:
+        kept.append((position, len(text)))
+    return kept
+
+
+def _inside(path: str, roots: frozenset[str]) -> bool:
+    """Whether the element at `path` is one of `roots` or inside one (an XPath location path is its ancestors' plus
+    one step)."""
+    while path:
+        if path in roots:
+            return True
+        path = path.rpartition("/")[0]
+    return False
+
+
+@dataclass(frozen=True, slots=True)
+class _Mover:
+    """Moves a span of the whole cleaned text into the scoped text, when it lies in one kept segment."""
+
+    kept: tuple[tuple[int, int], ...]
+    segments: tuple[tuple[int, int], ...]
+    starts: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "starts", tuple(start for start, _ in self.kept))
+
+    def span(self, start: int, end: int) -> tuple[int, int] | None:
+        index = bisect_right(self.starts, start) - 1
+        if index < 0:
+            return None
+        low, high = self.kept[index]
+        if not low <= start <= end <= high:
+            return None
+        at = self.segments[index][0]
+        return at + start - low, at + end - low

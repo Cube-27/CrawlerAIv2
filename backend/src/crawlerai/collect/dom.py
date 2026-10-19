@@ -280,6 +280,25 @@ def product_apart(page: ParsedPage, schema: SchemaDef, ctx: Context, stated: Seq
     return _inside((*apart, *_other_cards(region, _priced(region, chrome, money, ctx), own, titled, ctx)))
 
 
+def other_item_paths(page: ParsedPage, ctx: Context, outside: frozenset[int]) -> frozenset[str]:
+    """The node paths of the outermost elements of a detail page that hold other items' content: what `_other_items`
+    finds in the main content (related and similar items, reviews, lists of other documents' cards) and the blocks
+    outside the product container wherever they are (`outside`, `product_apart`: other items' priced cards, schema.org
+    Product items in a sidebar too). Role C reads the page's text without them (llm spec, "Role C input, claims and
+    candidates")."""
+    if page.json_body:
+        return frozenset()
+    region = content_region(page)
+    apart = outside if region is None else _inside(_other_items(region, _Links.of(region, ctx))) | outside
+    if not apart:
+        return frozenset()
+    return frozenset(
+        node_xpath(node)
+        for node in page.tree.css("*")
+        if node.mem_id in apart and (node.parent is None or node.parent.mem_id not in apart)
+    )
+
+
 def _other_cards(
     region: LexborNode,
     priced: Sequence[tuple[LexborNode, object]],

@@ -126,7 +126,7 @@ def induce(schema: SchemaDef, sample: Sequence[SamplePage], vocabulary: Vocabula
 
 def page_level(schema: SchemaDef, name: str) -> bool:
     """Whether a field runs on the whole page: any field of a detail schema; a listing's page-scoped fields and its next
-    page's URL, which the listing's `next` step finds (IR §12.1)."""
+    page's URL, which the listing's `next` step locates (IR §12.1)."""
     return schema.page_kind == "detail" or name == NEXT_PAGE_FIELD or schema.fields[name].scope == "page"
 
 
