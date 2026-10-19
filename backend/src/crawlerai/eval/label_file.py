@@ -46,7 +46,17 @@ PageFetch = Callable[[str, SchemaDef], Awaitable[FetchResult | str]]
 # that answered at screening may refuse one fetch and answer the next.
 IMPORT_TRIES: Final = 3
 # Which capture of a page's fetches is kept: the first reached, else the one that came closest to it.
-_CLOSEST: Final[dict[BlockClass, int]] = {"ok": 0, "shell": 1, "blocked": 2, "not_found": 3, "error": 4}
+_CLOSEST: Final[dict[BlockClass, int]] = {
+    "ok": 0,
+    "shell": 1,
+    "blocked": 2,
+    "auth_wall": 3,
+    "redirected_to_listing": 3,
+    "geo_redirect": 3,
+    "soft_404": 4,
+    "not_found": 4,
+    "error": 5,
+}
 
 
 async def best_fetch(

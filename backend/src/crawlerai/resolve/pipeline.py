@@ -38,6 +38,7 @@ from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canoni
 from crawlerai.content.context import page_context
 from crawlerai.content.metadata import canonical_link
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.render_need import holds_state
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import CALIBRATION_FILE
 from crawlerai.db.models import ExtractionMode, SourceKind
@@ -70,6 +71,8 @@ log = logging.getLogger(__name__)
 _FAILED = "extraction failed"
 # The reason of a `missing` field the active config lists as absent (`config_ir.absent`, D-1341).
 ABSENT: Final = "absent"
+# The reason of an `interaction_required` field (`_interaction_required`).
+SCRIPT_RENDERED: Final = "script_rendered"
 
 # D-0486: without a `source_precedence.yaml` no source kind is ranked, so text, long_text, url and image_url fields
 # decline as `unranked` rather than follow an unmeasured order (C7). The repo commits resolution spec's order (D-0444).
@@ -79,6 +82,10 @@ _NOT_SERVED: Mapping[BlockClass, Outcome] = {
     "blocked": "blocked",
     "shell": "shell",
     "not_found": "not_found",
+    "auth_wall": "auth_wall",
+    "soft_404": "soft_404",
+    "geo_redirect": "geo_redirect",
+    "redirected_to_listing": "redirected_to_listing",
     "error": "error",
 }
 
@@ -222,6 +229,8 @@ async def extract_page(
         if reply.failure is not None:
             fields = _unanswered(fields, missing, reply.failure)
     fields = _absent(fields, page.config.absent)
+    if source.bundle.manifest.method == "http" and await asyncio.to_thread(holds_state, page.page):
+        fields = _interaction_required(fields)
     return ExtractionResult(
         outcome="extracted" if is_complete(schema, fields) else "partial",
         entity=fields,
@@ -659,6 +668,19 @@ def _absent(fields: FieldSet, absent: frozenset[str]) -> FieldSet:
     }
 
 
+def _interaction_required(fields: FieldSet) -> FieldSet:
+    """The fields of a page read over HTTP whose document carries its data for its script to render
+    (`content.render_need.holds_state`): each still `missing` for want of a candidate, not because the config lists
+    it as absent, is `interaction_required` (resolution spec): the page may show it once rendered, which a request
+    asks for with `render_fields` (acquisition spec, "Browser on evidence")."""
+    return {
+        name: outcome.model_copy(update={"status": "interaction_required", "reason": SCRIPT_RENDERED})
+        if outcome.status == "missing" and outcome.reason != ABSENT
+        else outcome
+        for name, outcome in fields.items()
+    }
+
+
 def _unanswered(fields: FieldSet, asked: tuple[str, ...], failure: str) -> FieldSet:
     """The fields after a role C call that gave no reply: each asked field still `missing` says why (llm spec)."""
     return {
@@ -687,29 +709,3 @@ def _result(
         record_confidence=None,
         diagnostics=diagnostics,
     )
-
-
-def lacks_offer_data(
-    bundle: CaptureBundle,
-    schema: SchemaDef,
-    data: EngineData,
-    *,
-    config: ConfigExecutor | None = None,
-    parsed: ParsedPage | None = None,
-) -> bool:
-    """Whether a reached detail page for a schema that requires a `money` field holds nothing an offer could be read
-    from: no Offer entity (schema.org `Offer` or a subtype) and no candidate for any `money` field, from any collector.
-    A render may hold what the page's scripts fill in (owner #49, D-1202). A page that fails to read is never one.
-    `config` is the site's active config, whose candidates count as the collectors' do; `parsed` is the bundle's
-    parse when the caller has one (INV-26)."""
-    money = {name for name, spec in schema.fields.items() if spec.type is FieldType.MONEY}
-    if schema.page_kind != "detail" or not any(schema.fields[name].required for name in money):
-        return False
-    try:
-        page = _Page.read(_Source(bundle, schema, data, parsed, config))
-    except Exception:  # §4.14: the extraction that follows reports the failure
-        log.exception(_FAILED)
-        return False
-    if any(page.graph.is_a(entity, OFFER) for entity in page.graph.entities.values()):
-        return False
-    return not any(candidate.field in money for candidate in page.candidates)

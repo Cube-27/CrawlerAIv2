@@ -3,8 +3,14 @@ import { isJsonObject } from "./json";
 /** The field shape the API returns for every extracted field (rest-api spec), narrowed to what
  * the shared field components read until the generated `schema.d.ts` carries the record schema. */
 
-/** A field's resolution status (extraction spec `FieldOutcome.status`). */
-export type FieldStatus = "published" | "missing" | "conflict" | "abstained";
+/** A field's resolution status (extraction spec `FieldOutcome.status`). `interaction_required`: missing from a page read
+ * over HTTP whose script renders its data; a request's `render_fields` has such a field rendered. */
+export type FieldStatus =
+  | "published"
+  | "missing"
+  | "conflict"
+  | "abstained"
+  | "interaction_required";
 
 export interface FieldResult {
   status: FieldStatus;

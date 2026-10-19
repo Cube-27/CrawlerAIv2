@@ -37,6 +37,7 @@ from crawlerai.normalize.url_key import without_parameters
 from crawlerai.resolve.evidence import bucket_key
 from crawlerai.resolve.preference import rule_type
 from crawlerai.resolve.types import Evidence
+from crawlerai.resolve.types import FieldStatus as OutcomeStatus
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # §4.6: listing rows match by their canonicalized `url`.
@@ -61,7 +62,7 @@ class _Model(BaseModel):
 
 
 class FieldOutput(_Model):
-    status: Literal["published", "missing", "conflict", "abstained"]
+    status: OutcomeStatus
     value: JsonValue = None
     evidence: Evidence | None = None
     basis: Basis | None = None  # `FieldOutcome.basis`: a money value's weaker currency evidence

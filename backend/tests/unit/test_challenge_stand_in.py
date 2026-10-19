@@ -35,3 +35,10 @@ def test_cookies_and_script_paths_alone_never_block_a_2xx_page(signature: Challe
 
     assert stand_in_vendor(_page(scripts)) is None
     assert block_class_of(200, headers, _page(scripts)) == "ok"
+
+
+@pytest.mark.parametrize("sig", _STAND_INS, ids=[s.vendor for s in _STAND_INS])
+def test_usable_content_beats_a_stand_in_marker(sig: ChallengeSignature) -> None:
+    # The marker needs corroboration: a document that carries the page's structured data is the page.
+    price = '<meta property="product:price:amount" content="9.50">'
+    assert block_class_of(200, _HTML, _page(f"<!-- {sig.stand_in_markers[0]} -->{price}")) == "ok"

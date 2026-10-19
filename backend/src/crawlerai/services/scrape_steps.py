@@ -23,7 +23,6 @@ from crawlerai.acquire.challenge import vendor_block
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.rungs import remember_fetch_method, remembered_as
 from crawlerai.acquire.types import AttemptRecord, FetchResult, fetched_as
-from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.run import Adapters
 from crawlerai.collect.schema_org_map import VocabularyMissing
 from crawlerai.config_ir.active import record_page
@@ -35,7 +34,7 @@ from crawlerai.content.links import links
 from crawlerai.content.markdown import markdown
 from crawlerai.content.metadata import PageMetadata, metadata
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.render_need import listing_needs_render, lost_items
+from crawlerai.content.render_need import listing_needs_render, lost_items, offer_shown
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.core.errors import Refusal
@@ -60,11 +59,11 @@ from crawlerai.llm.roles.s_schema import MAX_FIELD_NAMES, draft_fields, normaliz
 from crawlerai.normalize.url import canonical_url
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.recurring.versions import store_records
-from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page, lacks_offer_data
+from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.task import ActiveConfig, Stored, StoredRecord, store_extraction
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.registry import SchemaNotFound, get_by_id
-from crawlerai.schemas.types import Name, SchemaDef
+from crawlerai.schemas.types import FieldType, Name, SchemaDef
 from crawlerai.services import schemas
 from crawlerai.services.fetch_options import CAPTURE_FORMATS as CAPTURE_FORMATS
 from crawlerai.services.fetch_options import FetchOptions as FetchOptions
@@ -117,7 +116,18 @@ def fetch_summary(
     )
 
 
-PageOutcome = Literal["extracted", "partial", "blocked", "shell", "not_found", "failed"]
+PageOutcome = Literal[
+    "extracted",
+    "partial",
+    "blocked",
+    "shell",
+    "not_found",
+    "auth_wall",
+    "soft_404",
+    "geo_redirect",
+    "redirected_to_listing",
+    "failed",
+]
 
 BLOCK_OUTCOMES: Final[dict[BlockClass, PageOutcome]] = {
     # Without `records` the page is extracted once it is fetched; with them, its record decides (`partial`).
@@ -125,6 +135,10 @@ BLOCK_OUTCOMES: Final[dict[BlockClass, PageOutcome]] = {
     "blocked": "blocked",
     "shell": "shell",
     "not_found": "not_found",
+    "auth_wall": "auth_wall",
+    "soft_404": "soft_404",
+    "geo_redirect": "geo_redirect",
+    "redirected_to_listing": "redirected_to_listing",
     "error": "failed",
 }
 # The reason a page a vendor's challenge kept from being reached ends `blocked` with (`challenge.vendor_block`).
@@ -175,6 +189,14 @@ MIN_CONFIDENCE_DESCRIPTION: Final = (
     "Leave unpublished (abstained) a records field whose calibrated confidence is below this. "
     "Unset: every value publishes with its confidence."
 )
+# The description of the `render_fields` member of the requests that extract `records` (acquisition spec, "Browser on
+# evidence"): the browser is the exception, so a field only a render shows is the caller's to name.
+RENDER_FIELDS_DESCRIPTION: Final = (
+    "Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. "
+    "Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field "
+    "missing from an HTTP page that its script fills is `interaction_required`."
+)
+MAX_RENDER_FIELDS: Final = 50
 
 
 def absolute_http_url(url: str) -> str:
@@ -349,22 +371,26 @@ async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None 
 
 @dataclass
 class RenderNeed:
-    """The `needs_render` check of a fetch that extracts with `schema`, from the page's structure, with no extraction
-    and no LLM call (master plan 2026-10-18 §3.1): a listing that may show more items once rendered
-    (`content.render_need`, owner #54), or a detail page that lacks offer data (`lacks_offer_data`, with the site's
-    active `config`, owner #49), is rendered once, and the render is kept when it no longer lacks it (a listing's when
-    it lists more items than the HTTP page). It keeps the parse of each page it read, so the one kept is parsed once
-    (INV-26); role C runs once, on the capture the fetch keeps."""
+    """The `needs_render` check of a fetch that extracts with `schema`, from cheap signals, with no extraction and no
+    LLM call (master plan 2026-10-18 §3.1; owner plan 2026-10-19 P3): a listing that may show more items once rendered
+    (`content.render_need`, owner #54), or a detail page whose schema requires a `money` field and whose document shows
+    no sign of its offer (`content.render_need.offer_shown`, owner #49), is rendered once, and the render is kept when
+    it no longer lacks it (a listing's when it lists more items than the HTTP page). A request's `render_fields`, the
+    fields the caller says only a render shows, have every page rendered, and the render kept when it is `ok`: only
+    those fields send a page with its signals to the browser (owner rule: the browser is the exception). It keeps the
+    parse of each page it read, so the one kept is parsed once (INV-26); role C runs once, on the capture the fetch
+    keeps."""
 
     schema: SchemaDef
-    data: EngineData
-    config: ConfigExecutor | None = None
+    render_fields: frozenset[str] = frozenset()
     # Whether a render with its images, fonts and media blocked listed fewer items than the HTTP page (`lost_items`):
     # the site then loads every resource (`remember_resources`).
     lost_items: bool = False
     _parsed: dict[UUID, ParsedPage] = field(default_factory=dict)
 
     async def __call__(self, result: FetchResult, over: FetchResult | None = None) -> bool:
+        if self.render_fields:
+            return over is None
         bundle = result.bundle
         page = self._read(bundle)
         # Parsing and reading the structure are CPU work: a thread keeps the event loop free.
@@ -373,9 +399,9 @@ class RenderNeed:
             if replaced is not None and bundle.manifest.fetch_policy.get("block_resources"):
                 self.lost_items = self.lost_items or await asyncio.to_thread(lost_items, page, replaced)
             return await asyncio.to_thread(listing_needs_render, page, replaced)
-        return await asyncio.to_thread(
-            lacks_offer_data, bundle, self.schema, self.data, config=self.config, parsed=page
-        )
+        if not _requires_money(self.schema):
+            return False
+        return not await asyncio.to_thread(offer_shown, page)
 
     def _read(self, bundle: CaptureBundle) -> ParsedPage:
         return self._parsed.setdefault(bundle.manifest.capture_id, ParsedPage.of(bundle))
@@ -385,12 +411,20 @@ class RenderNeed:
         return self._parsed.get(bundle.manifest.capture_id) or ParsedPage.of(bundle)
 
 
-def render_need(schema: SchemaDef | None, data: EngineData | None, config: ActiveConfig | None) -> RenderNeed | None:
-    """The `RenderNeed` of a fetch that extracts with `schema` and the site's active `config`; None without a schema or
-    the engine's data."""
+def render_need(
+    schema: SchemaDef | None, data: EngineData | None, render_fields: Iterable[str] = ()
+) -> RenderNeed | None:
+    """The `RenderNeed` of a fetch that extracts with `schema`, with the request's `render_fields` (those the schema
+    has); None without a schema or the engine's data."""
     if schema is None or data is None:
         return None
-    return RenderNeed(schema, data, None if config is None else config.executor)
+    return RenderNeed(schema, frozenset(render_fields) & schema.fields.keys())
+
+
+def _requires_money(schema: SchemaDef) -> bool:
+    """Whether a detail schema requires a `money` field: its pages are read for an offer."""
+    fields = schema.fields.values()
+    return schema.page_kind == "detail" and any(s.type is FieldType.MONEY and s.required for s in fields)
 
 
 def parsed_page(bundle: CaptureBundle, check: RenderNeed | None) -> ParsedPage:

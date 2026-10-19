@@ -25,6 +25,7 @@ canonical URL that reached its page within that many seconds is read again inste
 import asyncio
 import os
 import socket
+import time
 from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass
 from datetime import datetime
@@ -57,7 +58,7 @@ from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.task import ActiveConfig, StoredRecord
 from crawlerai.resolve.types import ExtractionResult, Probability
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import Name, SchemaDef
 from crawlerai.services.fetch_options import CacheMode, check_proxy_pool
 from crawlerai.services.fetching import (
     Fetching,
@@ -75,7 +76,9 @@ from crawlerai.services.scrape_steps import (
     CAPTURE_FORMATS,
     DEFAULT_PROJECT,
     EXTRACTION_ERROR,
+    MAX_RENDER_FIELDS,
     MIN_CONFIDENCE_DESCRIPTION,
+    RENDER_FIELDS_DESCRIPTION,
     FetchOptions,
     FetchSummary,
     FormatOptions,
@@ -148,6 +151,9 @@ class ScrapeRequest(Input):
     fit: FitOptions | None = None  # `markdown_fit`'s query and block limit
     chunking: ChunkOptions | None = None  # `chunks`' strategy, size and overlap
     min_confidence: Probability | None = Field(default=None, description=MIN_CONFIDENCE_DESCRIPTION)
+    render_fields: list[Name] = Field(
+        default_factory=list, max_length=MAX_RENDER_FIELDS, description=RENDER_FIELDS_DESCRIPTION
+    )
 
     @field_validator("url")
     @classmethod
@@ -234,6 +240,7 @@ class _Work:
     data: EngineData | None
     margins: DriftMargins | None
     schema: SchemaDef | None
+    deadline: float | None = None  # on `time.monotonic`: when `request.timeout_s` runs out
 
 
 @dataclass(frozen=True)
@@ -278,10 +285,11 @@ async def scrape(
     `ScrapeTimedOut` past `request.timeout_s`, the LLM client's `LLMFailure` when a prompt could not be drafted, and
     `SchemaUnusable` for a draft of another page kind. Any other exception fails the job with `internal_error` and
     propagates."""
+    deadline = time.monotonic() + request.timeout_s
     await check_target(fetching.connector, request.url)
     check_proxy_pool(request.fetch, fetching.proxy_pools)
     pinned = None if data is None else data.with_min_confidence(request.min_confidence)
-    work = _Work(llm, pinned, margins, await _named_schema(engine, request, data, llm))
+    work = _Work(llm, pinned, margins, await _named_schema(engine, request, data, llm), deadline)
     task = await _start(engine, request, work.schema)
     try:
         async with asyncio.timeout(request.timeout_s):
@@ -369,7 +377,7 @@ async def _run(
         row = await _stored(conn, request, policy, site.id, task.canonical_url, api=recipe is not None)
     recent = await _read_stored(fetching.store, row, request.fetch.cache, request.formats)
     attempts: list[AttemptRecord] = []
-    check = _render_need(work, request, config)
+    check = _render_need(work, request)
     further: tuple[FetchResult, ...] = ()
     report: ActionsReport | None = None
     page: FetchResult | str
@@ -383,7 +391,9 @@ async def _run(
     else:
         growth = _growth(request, fetching)
         rungs = site_rungs(fetching, host, site)
-        plan = PagePlan(rungs, site, policy, attempts, recipe=recipe, needs_render=check, growth=growth)
+        plan = PagePlan(
+            rungs, site, policy, attempts, recipe=recipe, needs_render=check, growth=growth, deadline=work.deadline
+        )
         page = await fetch_now(engine, fetching, request.url, plan)
         if growth is not None and isinstance(page, FetchResult) and (grew := growth.of(page)) is not None:
             further, report = grew.pages[1:], grew.report
@@ -507,12 +517,12 @@ async def _store_more(
     return await store_further(conn, store, task, site_id, derived.schema, extracted, margins)
 
 
-def _render_need(work: _Work, request: ScrapeRequest, config: ActiveConfig | None) -> RenderNeed | None:
-    """The check that renders an HTTP page lacking the offer data or the items `records` reads (owner #49, #54); None
-    without `records`."""
+def _render_need(work: _Work, request: ScrapeRequest) -> RenderNeed | None:
+    """The check that renders an HTTP page lacking the offer data or the items `records` reads (owner #49, #54), or
+    asked for its `render_fields`; None without `records`."""
     if "records" not in request.formats:
         return None
-    return render_need(work.schema, work.data, config)
+    return render_need(work.schema, work.data, request.render_fields)
 
 
 async def _config(conn: AsyncConnection, site_id: SiteId, work: _Work) -> ActiveConfig | None:

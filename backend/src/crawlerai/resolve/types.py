@@ -28,13 +28,28 @@ Evidence = Literal[
     "llm_grounded",
     "derived",
 ]
-FieldStatus = Literal["published", "missing", "conflict", "abstained"]
+# `interaction_required`: missing from a page read over HTTP whose script renders its data (resolution spec).
+FieldStatus = Literal["published", "missing", "conflict", "abstained", "interaction_required"]
 # resolution spec: the derivations core has, each a named function in `resolve/derive.py`.
 Derivation = Literal[PageUrlDerivation, "absolutize"]
 # `url_task.outcome` (§6), except that `error` is stored as `failed`.
-Outcome = Literal["extracted", "partial", "no_match", "blocked", "shell", "not_found", "error"]
+Outcome = Literal[
+    "extracted",
+    "partial",
+    "no_match",
+    "blocked",
+    "shell",
+    "not_found",
+    "auth_wall",
+    "soft_404",
+    "geo_redirect",
+    "redirected_to_listing",
+    "error",
+]
 # Outcomes of a page that was not served (INV-11): no candidates and nothing published.
-_NOT_SERVED: frozenset[Outcome] = frozenset({"blocked", "shell", "not_found"})
+_NOT_SERVED: frozenset[Outcome] = frozenset(
+    {"blocked", "shell", "not_found", "auth_wall", "soft_404", "geo_redirect", "redirected_to_listing"}
+)
 # Those, and a page whose resolution failed (§4.14): nothing is published.
 _UNPUBLISHED: frozenset[Outcome] = _NOT_SERVED | {"error"}
 # A probability: a bucket's measured precision (§4.9).

@@ -14,6 +14,10 @@ const OUTCOMES: readonly TaskOutcome[] = [
   "shell",
   "not_found",
   "no_match",
+  "auth_wall",
+  "soft_404",
+  "geo_redirect",
+  "redirected_to_listing",
   "failed",
 ];
 

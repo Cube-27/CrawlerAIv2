@@ -19,6 +19,7 @@ from curl_cffi.requests import AsyncSession, BrowserTypeLiteral
 from curl_cffi.requests.exceptions import RequestException
 
 from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
+from crawlerai.acquire.classify import Redirect
 from crawlerai.acquire.curl_client import Hop, pinned, reason, send
 from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
 from crawlerai.acquire.session import SiteSessions
@@ -63,8 +64,9 @@ async def fetch_http(
         # The body is decoded once (`decode_html`), and every rule reads that text. Classifying parses HTML
         # synchronously; a thread keeps the event loop free.
         text = decode_html(last.body, last.response_headers, "http")
+        redirect = Redirect(url, last.exchange.url, policy.page_kind)
         block_class = await asyncio.to_thread(
-            block_class_of, last.status, last.response_headers, text, policy.page_kind
+            block_class_of, last.status, last.response_headers, text, policy.page_kind, redirect
         )
         if block_class in CHALLENGED:
             # The document's links resolve against the URL that served it (RFC 3986 §5), the last hop's.

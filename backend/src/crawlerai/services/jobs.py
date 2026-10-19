@@ -111,6 +111,10 @@ class OutcomeCounts(BaseModel):
     shell: int
     not_found: int
     no_match: int
+    auth_wall: int
+    soft_404: int
+    geo_redirect: int
+    redirected_to_listing: int
     failed: int
 
 

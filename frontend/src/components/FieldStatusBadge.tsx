@@ -5,6 +5,7 @@ import { StatusLabel, type StatusTone } from "./StatusLabel";
 const FIELD_STATUS_TONES: Record<FieldStatus, StatusTone> = {
   published: "success",
   missing: "neutral",
+  interaction_required: "neutral",
   abstained: "warning",
   conflict: "danger",
 };

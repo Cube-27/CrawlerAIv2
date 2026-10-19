@@ -17,9 +17,25 @@ A page fetched as a listing is a shell too when nothing on it lists items: no re
 structured data that lists them (`_structured_rows`). Its grid loads by script after the page (an XHR), so the
 browser may render what HTTP did not. Only the HTTP rung passes the page kind: the
 browser is the last rung, and its page is extracted whatever its links.
+
+A 401 asks for credentials (RFC 9110 §15.5.2): an `auth_wall`, which no rung passes, never a block. A block needs
+corroboration, and usable content beats it (`usable_content`): a 403 document that carries the page's structured data
+(a schema.org Product with offers or an OGP product price; on a listing, the items it lists) is the page, served with a
+refusal status. A 2xx page reached through a redirect (`redirect`: the URL asked for and the one that answered) is
+classed by where the redirect led (`_moved`): to another country's site and away from the page (`geo_redirect`), to a
+site's root (`soft_404`: RFC 9110 §15.5.5 asks a server to answer 404 for what it does not have, and a redirect to the
+home page stands in for one), or, for a detail page, to a page that lists items and describes no product
+(`redirected_to_listing`). None of these is a block, so none is fetched again in the browser, whose navigation would
+follow the same redirect. A redirect to a page whose query carries the asked page's path is another thing: an
+interstitial that sends the client back once passed (`_returns_to`), a block the browser may pass.
 """
 
-from urllib.parse import urljoin, urlsplit
+import re
+from base64 import urlsafe_b64decode
+from collections.abc import Callable, Iterator
+from contextlib import suppress
+from typing import NamedTuple
+from urllib.parse import SplitResult, parse_qsl, unquote, urljoin, urlsplit
 
 from selectolax.lexbor import LexborHTMLParser
 
@@ -31,8 +47,12 @@ from crawlerai.storage.capture_bundle import HeaderList
 
 # RFC 9110 §15.5.5 (404 Not Found), §15.5.11 (410 Gone).
 _NOT_FOUND = frozenset({404, 410})
-# RFC 9110 §15.5.2 (401), §15.5.4 (403), §15.5.8 (407), §15.6.4 (503); RFC 6585 §4 (429); RFC 7725 §3 (451).
-_BLOCKED = frozenset({401, 403, 407, 429, 451, 503})
+# RFC 9110 §15.5.2: 401 asks for the user's credentials, which no rung has.
+_AUTH_WALL = 401
+# RFC 9110 §15.5.4 (403), §15.5.8 (407), §15.6.4 (503); RFC 6585 §4 (429); RFC 7725 §3 (451).
+_BLOCKED = frozenset({403, 407, 429, 451, 503})
+# RFC 9110 §15.5.4: a server MAY answer 403 with a representation; when it holds the page's own data, it is the page.
+_FORBIDDEN = 403
 # HTML Standard: these elements' contents are never rendered as page text (script data, style sheets, fallback
 # for script-disabled user agents, inert template contents).
 _INVISIBLE = ["script", "style", "noscript", "template"]
@@ -53,6 +73,27 @@ _MICRODATA = "[itemscope]:not([itemprop])"
 _JSON_LD = "application/ld+json"
 _ITEM_LIST = "ItemList"
 _ENTRIES = "itemListElement"  # schema.org ItemList: the list's entries
+# schema.org Product and its subtypes (ProductGroup, ProductModel, IndividualProduct, SomeProducts), and `offers`, the
+# property that states what it is sold for (an Offer or AggregateOffer).
+_PRODUCTS = frozenset({"Product", "ProductGroup", "ProductModel", "IndividualProduct", "SomeProducts"})
+_OFFERS = "offers"
+# The Open Graph protocol's product object price (`product:price:amount`), in RDFa's `property` or HTML's `name`.
+OGP_PRICE_AMOUNT = "product:price:amount"
+# HTML Standard §5.2 microdata: an item typed as a schema.org Product, under any URL scheme or path form of it.
+_MICRODATA_PRODUCT = "[itemscope][itemtype$='schema.org/Product'], [itemscope][itemtype$='schema.org/ProductGroup']"
+# BCP 47 (RFC 5646 §2.1): a language subtag of 2 or 3 letters, with a region subtag of 2 letters (ISO 3166-1) or none,
+# as a path segment names a site's edition (`en`, `en-us`, `de_DE`).
+_LOCALE_SEGMENT = re.compile(r"[a-z]{2,3}(?:[-_]([a-z]{2}))?", re.ASCII | re.IGNORECASE)
+
+
+class Redirect(NamedTuple):
+    """Where a fetch of `asked`, as a page of `kind`, was answered from: `answered`, past the redirects it followed."""
+
+    asked: str
+    answered: str
+    kind: PageKind | None
+
+
 _TYPE = "@type"  # JSON-LD 1.1 §3.5: a node's type, a string or an array of them
 # D-1206: a refusal a page's own script may lift: 403 (RFC 9110 §15.5.4), 429 (RFC 6585 §4), 503 (RFC 9110 §15.6.4);
 # not 401/407, which ask for credentials (RFC 9110 §11.6), nor 451, a legal refusal (RFC 7725).
@@ -67,20 +108,38 @@ _WEB_SCHEMES = ("http", "https")
 _SCRIPT = "script"
 
 
-def classify(status: int, headers: HeaderList, text: str, page_kind: PageKind | None = None) -> BlockClass:
+def classify(
+    status: int,
+    headers: HeaderList,
+    text: str,
+    page_kind: PageKind | None = None,
+    redirect: Redirect | None = None,
+) -> BlockClass:
     """The response's block class from its decoded `text`; `page_kind` is the kind the page is fetched as, when its
-    task names one."""
+    task names one and the listing rule applies; `redirect` where the fetch was answered from."""
     if status in _NOT_FOUND:
         return "not_found"
+    if status == _AUTH_WALL:
+        return "auth_wall"
     if status in _BLOCKED:
-        return "blocked"
+        usable = status == _FORBIDDEN and is_html(headers) and usable_content(text, page_kind)
+        return "ok" if usable else "blocked"
     if status >= 400:
         return "error"
     if not 200 <= status < 300 or not is_html(headers):
         return "ok"
+    return _document_class(text, headers, page_kind, redirect)
+
+
+def _document_class(
+    text: str, headers: HeaderList, page_kind: PageKind | None, redirect: Redirect | None
+) -> BlockClass:
+    """The class of a 2xx HTML document (`classify`): its structure, then where a redirect led."""
     tree = LexborHTMLParser(text)
     # Read before the shell rule strips script data blocks from the tree.
-    structured = page_kind == "listing" and _structured_rows(tree)
+    documents = _json_ld(tree)
+    structured = _structured_rows(tree, documents)
+    product = _describes_product(tree, documents)
     unstructured = _no_site_page(tree)
     # Before the shell return: a short document that refreshes and links only to mail or phone is a stand-in too.
     if unstructured == "blocked" or (_refreshes(tree, headers) and _offers_no_web_page(tree)):
@@ -89,7 +148,93 @@ def classify(status: int, headers: HeaderList, text: str, page_kind: PageKind | 
         return unstructured
     if page_kind == "listing" and not structured and not lists_items(text):
         return "shell"
+    if redirect is not None and redirect.kind is not None:
+        return _moved(redirect, product=product, lists=lambda: structured or lists_items(text)) or "ok"
     return "ok"
+
+
+def usable_content(text: str, page_kind: PageKind | None = None) -> bool:
+    """Whether an HTML document carries the page's structured data, whatever its status or a vendor's marker says:
+    a schema.org Product with offers or an OGP product price (`_describes_product`), or, fetched as a listing, the
+    items its structured data lists (`_structured_rows`). Usable content beats vendor noise."""
+    tree = LexborHTMLParser(text)
+    documents = _json_ld(tree)
+    return _describes_product(tree, documents) or (page_kind == "listing" and _structured_rows(tree, documents))
+
+
+def describes_product(tree: LexborHTMLParser) -> bool:
+    """Whether the document's structured data states a product's offer (`_describes_product`)."""
+    return _describes_product(tree, _json_ld(tree))
+
+
+def _describes_product(tree: LexborHTMLParser, documents: list[object]) -> bool:
+    """A JSON-LD node typed as a schema.org Product (or subtype) with `offers`, at any depth; an OGP product price with
+    content; or a microdata Product item holding an `offers` property."""
+    if any(_typed(documents, _PRODUCTS, _OFFERS)):
+        return True
+    for meta in tree.css("meta"):
+        attributes = meta.attributes
+        if (attributes.get("property") or attributes.get("name")) == OGP_PRICE_AMOUNT and attributes.get("content"):
+            return True
+    return any(item.css_first("[itemprop~='offers']") is not None for item in tree.css(_MICRODATA_PRODUCT))
+
+
+def _moved(redirect: Redirect, *, product: bool, lists: Callable[[], bool]) -> BlockClass | None:
+    """The class of a 2xx page fetched as a page of a kind that a redirect led elsewhere (module docstring), or None
+    when it is the page asked for: the same host and path past any locale segment (RFC 3986 §6.2.2.1: the host
+    case-insensitively; a query or fragment is no other page). A fetch of no kind (a crawl's page) may land anywhere."""
+    a, b = urlsplit(redirect.asked), urlsplit(redirect.answered)
+    if (a.hostname, _rest(a)) == (b.hostname, _rest(b)):
+        return None
+    if _returns_to(a, b):
+        return "blocked"
+    if (region := _region(b)) is not None and region != _region(a) and _rest(a) != _rest(b):
+        return "geo_redirect"
+    if not _rest(b) and _rest(a):
+        return "soft_404"
+    # RFC 3986 §3.3: the last segment names the resource within its hierarchy; a path that keeps it is the same page
+    # under another name (a slug added), not a listing in its place.
+    if redirect.kind == "detail" and _last_segment(a) not in b.path and not product and lists():
+        return "redirected_to_listing"
+    return None
+
+
+def _returns_to(asked: SplitResult, answered: SplitResult) -> bool:
+    """Whether the page a redirect led to carries the asked page's path in its query (RFC 3986 §3.4), as given or
+    base64-encoded (RFC 4648 §4, §5): an interstitial, a check or a sign-in, that sends the client back once passed."""
+    path = asked.path.rstrip("/")
+    if not path:
+        return False
+    for _, value in parse_qsl(answered.query):
+        decoded = value
+        with suppress(ValueError):
+            decoded = urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode("utf-8", "replace")
+        if path in unquote(value) or path in decoded:
+            return True
+    return False
+
+
+def _last_segment(url: SplitResult) -> str:
+    return next((segment for segment in reversed(url.path.split("/")) if segment), "/")
+
+
+def _region(url: SplitResult) -> str | None:
+    """The region a URL names a site's edition for: a BCP 47 region subtag in its first path segment, else its
+    country-code top-level domain (RFC 1591: the two-letter TLDs are ISO 3166-1 codes), lowercased; None for neither."""
+    segments = url.path.split("/")
+    if len(segments) > 1 and (match := _LOCALE_SEGMENT.fullmatch(segments[1])) is not None and match.group(1):
+        return match.group(1).lower()
+    tld = (url.hostname or "").rsplit(".", 1)[-1]
+    return tld if len(tld) == 2 and tld.isascii() and tld.isalpha() else None
+
+
+def _rest(url: SplitResult) -> str:
+    """The path past a leading BCP 47 locale segment, without its trailing slash: what names the page within an
+    edition; empty for a site's (or an edition's) root."""
+    segments = [segment for segment in url.path.split("/") if segment]
+    if segments and _LOCALE_SEGMENT.fullmatch(segments[0]) is not None:
+        segments = segments[1:]
+    return "/".join(segments)
 
 
 def lacks_site_structure(text: str) -> bool:
@@ -181,8 +326,8 @@ def _is_shell(tree: LexborHTMLParser) -> bool:
     return len("".join(text.split())) < _SHELL_MAX_TEXT_CHARS
 
 
-def _structured_rows(tree: LexborHTMLParser) -> bool:
-    return len(tree.css(_MICRODATA)) >= MIN_ITEMS or bool(_item_lists(tree))
+def _structured_rows(tree: LexborHTMLParser, documents: list[object]) -> bool:
+    return len(tree.css(_MICRODATA)) >= MIN_ITEMS or any(True for _ in _typed(documents, frozenset({_ITEM_LIST})))
 
 
 def structured_entries(tree: LexborHTMLParser) -> int:
@@ -190,13 +335,23 @@ def structured_entries(tree: LexborHTMLParser) -> int:
     grid's (`MIN_ITEMS`; fewer are the page's own, such as its organization), or the entries of its longest JSON-LD
     ItemList (schema.org `itemListElement`), whichever is more; 0 when it lists none."""
     microdata = len(tree.css(_MICRODATA))
-    return max(microdata if microdata >= MIN_ITEMS else 0, *_item_lists(tree), 0)
+    return max(microdata if microdata >= MIN_ITEMS else 0, *_item_lists(_json_ld(tree)), 0)
 
 
-def _item_lists(tree: LexborHTMLParser) -> list[int]:
-    """The entry count of each schema.org ItemList node in the page's JSON-LD script data blocks, at any depth."""
+def _json_ld(tree: LexborHTMLParser) -> list[object]:
+    """The page's JSON-LD script data blocks, parsed (a block that is not JSON states nothing)."""
     blocks = (s.text() for s in tree.css("script[type]") if _media_type(s.attributes.get("type")) == _JSON_LD)
-    return [count for block in blocks for count in _lists(_json(block))]
+    return [_json(block) for block in blocks]
+
+
+def _item_lists(documents: list[object]) -> list[int]:
+    """The entry count (`itemListElement`, one node or an array of them) of each schema.org ItemList node in the
+    page's JSON-LD documents, at any depth."""
+    counts: list[int] = []
+    for node in _typed(documents, frozenset({_ITEM_LIST})):
+        entries = node.get(_ENTRIES)
+        counts.append(len(entries) if isinstance(entries, list) else int(entries is not None))
+    return counts
 
 
 def _media_type(value: str | None) -> str:
@@ -210,22 +365,24 @@ def _json(text: str) -> object:
         return None
 
 
-def _lists(document: object) -> list[int]:
-    """The entry count (`itemListElement`, one node or an array of them) of each node typed ItemList in a JSON-LD
-    document, at any depth (walked with a stack, not recursion)."""
-    counts: list[int] = []
-    stack = [document]
+def _typed(documents: list[object], types: frozenset[str], member: str | None = None) -> Iterator[dict[str, object]]:
+    """Each node of the JSON-LD documents typed as one of `types` (`@type`, a string or an array of them), at any
+    depth (walked with a stack, not recursion); with `member`, only those whose `member` holds a value."""
+    stack: list[object] = list(documents)
     while stack:
         value = stack.pop()
         if isinstance(value, dict):
-            types = value.get(_TYPE)
-            if types == _ITEM_LIST or (isinstance(types, list) and _ITEM_LIST in types):
-                entries = value.get(_ENTRIES)
-                counts.append(len(entries) if isinstance(entries, list) else int(entries is not None))
+            found = value.get(_TYPE)
+            named = (
+                found in types
+                if isinstance(found, str)
+                else isinstance(found, list) and not types.isdisjoint(t for t in found if isinstance(t, str))
+            )
+            if named and (member is None or value.get(member) not in (None, [], {})):
+                yield value
             stack.extend(value.values())
         elif isinstance(value, list):
             stack.extend(value)
-    return counts
 
 
 def lists_items(text: str) -> bool:

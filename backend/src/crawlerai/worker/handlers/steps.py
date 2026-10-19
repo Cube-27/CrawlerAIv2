@@ -33,7 +33,7 @@ from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.retry import backoff_delay
 from crawlerai.db.models import CaptureId, Job, RecordId, SchemaId, SiteId
-from crawlerai.db.queue import LEASE, ClaimedTask
+from crawlerai.db.queue import LEASE, TASK_DEADLINE, ClaimedTask
 from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.conditional import Unchanged
 from crawlerai.recurring.state import record_fetch, standing_listing, standing_record, stored_validators
@@ -95,6 +95,8 @@ _VENDOR_TRIES: Final = 2
 
 # The request's `min_confidence`, as the job row stores it.
 _MIN_CONFIDENCE: Final = TypeAdapter(Probability)
+# The request's `render_fields`, as the job row stores them (absent from a job a schedule or a learning run submitted).
+_RENDER_FIELDS: Final = TypeAdapter(tuple[str, ...])
 _JobRow = Row[dict[str, object], SchemaId | None, dict[str, object] | None]
 
 
@@ -107,6 +109,7 @@ class Records:
     data: EngineData
     config: ActiveConfig | None
     margins: DriftMargins | None
+    render_fields: tuple[str, ...] = ()  # the request's (`RenderNeed`)
 
 
 async def load_job(
@@ -129,7 +132,8 @@ async def load_job(
     )
     config_id = pins.configs.get(urlsplit(task.url).hostname or "")
     config = None if config_id is None else await config_by_id(conn, config_id, pinned.vocabulary)
-    return job.request, Records(pins.schema_, pinned, config, margins)
+    render_fields = _RENDER_FIELDS.validate_python(job.request.get("render_fields", []))
+    return job.request, Records(pins.schema_, pinned, config, margins, render_fields)
 
 
 @dataclass(frozen=True)
@@ -212,7 +216,9 @@ async def fetch_page(
     # that bypasses what is stored sends none (D-1435).
     sends_validators = bool(standing) and options.cache != "bypass"
     validators = await stored_validators(conn, site.id, task.canonical_url) if sends_validators else None
-    plain = PagePlan(rungs, site, policy, [], validators=validators, has_record=bool(standing))
+    # The task's deadline runs from its claim, a moment before this (`worker.loop`).
+    deadline = time.monotonic() + TASK_DEADLINE.total_seconds()
+    plain = PagePlan(rungs, site, policy, [], validators=validators, has_record=bool(standing), deadline=deadline)
     plan = _plan(task, served, llm, listing_pages, plain)
     rules = rules_in(conn, fetching.rungs.http, plan.attempts)
     fetch = page_fetch(fetching, plan, rules, QUEUED)
@@ -229,7 +235,7 @@ def _plan(task: ClaimedTask, served: Records | None, llm: LLMClient, listing_pag
         return plan
     recipe = None if served.config is None else recipe_of(served.config)
     lists = served.schema.page_kind == "listing" and recipe is not None and recipe.pagination is not None
-    check = render_need(served.schema, served.data, served.config)
+    check = render_need(served.schema, served.data, served.render_fields)
     deadline = time.monotonic() + RECIPE_PAGES_SHARE.total_seconds()
     pages = RecipePages(listing_pages, plan.attempts, deadline=deadline) if lists else None
     return replace(plan, recipe=recipe, pages=pages, needs_render=check)

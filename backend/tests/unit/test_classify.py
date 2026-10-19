@@ -2,8 +2,9 @@
 
 import pytest
 
-from crawlerai.acquire.classify import classify, interstitial
+from crawlerai.acquire.classify import Redirect, classify, interstitial
 from crawlerai.acquire.types import BlockClass
+from crawlerai.db.models import PageKind
 
 _HTML = (("content-type", "text/html; charset=utf-8"),)
 _JSON = (("content-type", "application/json"),)
@@ -23,7 +24,7 @@ _EMPTY_APP = '<html><head><script src="/app.js"></script></head><body><div id="r
     [
         (404, "not_found"),
         (410, "not_found"),
-        (401, "blocked"),
+        (401, "auth_wall"),
         (403, "blocked"),
         (407, "blocked"),
         (451, "blocked"),
@@ -80,3 +81,78 @@ def test_an_interstitial_is_a_refusal_that_can_navigate_and_is_no_page_of_the_si
     status: int, headers: tuple[tuple[str, str], ...], body: str, expected: bool
 ) -> None:
     assert interstitial(status, headers, body, _AT) is expected
+
+
+# --- owner plan 2026-10-19 P3: usable content beats a refusal; where a redirect led ---------------------------------
+
+_PRODUCT = (
+    '<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Product", "name": "Widget",'
+    ' "offers": {"@type": "Offer", "price": "9.50", "priceCurrency": "EUR"}}</script>'
+)
+
+
+@pytest.mark.parametrize(
+    ("extra", "expected"),
+    [
+        pytest.param(_PRODUCT, "ok", id="product-with-offers"),
+        pytest.param('<meta property="product:price:amount" content="9.50">', "ok", id="ogp-price"),
+        pytest.param("", "blocked", id="no-structured-data"),
+    ],
+)
+def test_a_403_that_carries_the_page_is_the_page(extra: str, expected: BlockClass) -> None:
+    assert classify(403, _HTML, _page(400, 20, extra)) == expected
+
+
+_LISTING = "<ul>" + "".join(f'<li><a href="/p/{i}">Widget {i}</a><p>{"y" * 40}</p></li>' for i in range(8)) + "</ul>"
+
+
+@pytest.mark.parametrize(
+    ("asked", "answered", "kind", "body", "expected"),
+    [
+        pytest.param(_AT, _AT + "?ref=1", "detail", _FULL, "ok", id="same-page"),
+        pytest.param(_AT, "https://shop.example.test/en-gb/item/1", "detail", _FULL, "ok", id="locale-added"),
+        pytest.param(_AT, "https://shop.example.test/", "detail", _FULL, "soft_404", id="to-the-root"),
+        pytest.param(_AT, "https://shop.example.test/", None, _FULL, "ok", id="no-kind-lands-anywhere"),
+        pytest.param(
+            "https://shop.example.test/en-us/item/1",
+            "https://shop.example.test/de-de/",
+            "detail",
+            _FULL,
+            "geo_redirect",
+            id="another-region",
+        ),
+        pytest.param(_AT, "https://shop.example.test/fr-fr/", "listing", _FULL, "geo_redirect", id="region-root"),
+        pytest.param(
+            _AT,
+            "https://shop.example.test/c/widgets",
+            "detail",
+            _page(400, 0, _LISTING),
+            "redirected_to_listing",
+            id="to-a-listing",
+        ),
+        pytest.param(
+            _AT,
+            "https://shop.example.test/item/1-new",
+            "detail",
+            _page(400, 0, _LISTING + _PRODUCT),
+            "ok",
+            id="moved-product",
+        ),
+        pytest.param(
+            _AT,
+            "https://shop.example.test/item/blue-widget/1",
+            "detail",
+            _page(400, 0, _LISTING),
+            "ok",
+            id="slug-added",
+        ),
+        pytest.param(_AT, "https://shop.example.test/check?next=%2Fitem%2F1", "detail", _FULL, "blocked", id="returns"),
+        pytest.param(
+            _AT, "https://shop.example.test/check?u=L2l0ZW0vMQ", "detail", _page(400, 0, _LISTING), "blocked", id="b64"
+        ),
+    ],
+)
+def test_a_redirect_is_classed_by_where_it_led(
+    asked: str, answered: str, kind: PageKind | None, body: str, expected: BlockClass
+) -> None:
+    assert classify(200, _HTML, body, redirect=Redirect(asked, answered, kind)) == expected
