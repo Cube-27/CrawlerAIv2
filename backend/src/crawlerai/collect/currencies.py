@@ -3,11 +3,12 @@ as evidence the normalizers weigh.
 
 - Stated in structured data: the ISO 4217 codes written as schema.org `priceCurrency` (on an Offer, AggregateOffer,
   PriceSpecification or any other node, in JSON-LD, microdata or RDFa Lite).
-- Declared page-wide: the OGP `product:price:currency` and `og:price:currency`, and a currency in the page's state
-  JSON, a member named `currency`, `currencyCode` or `activeCurrency` (letter case and `_` aside) holding an ISO 4217
-  code (owner decision of 2026-10-18: generic member names only); on a page showing a platform's signal, the script
-  global its documentation names for the shop's currency (`adapters.platforms.CurrencyMember`: Shopify's
-  `Shopify.currency.active`, Shopware's `window.currencyIsoCode`).
+- Declared page-wide: the OGP `product:price:currency` and `og:price:currency`, and a currency in the page's decoded
+  state documents (`collect.js_state`, analytics call arguments included), a member named `currency`, `currencyCode`
+  or `activeCurrency` (letter case and `_` aside) holding an ISO 4217 code (owner decision of 2026-10-18: generic
+  member names only); on a page showing a platform's signal, the script global its documentation names for the shop's
+  currency (`adapters.platforms.CurrencyMember`: Shopify's `Shopify.currency.active`, Shopware's
+  `window.currencyIsoCode`), its value read by the JS literal reader (`content.js_literal`).
 - The page's number convention: the CLDR decimal symbol every structured `price` the page writes with a fraction uses
   when only one CLDR convention reads it (`12.50`, `1.234,56`), which settles amounts the conventions read differently
   (`numbers.readings`).
@@ -25,8 +26,8 @@ from pydantic import JsonValue
 from crawlerai.adapters.platforms import CurrencyMember, signature_of
 from crawlerai.collect import jsonld, microdata, og
 from crawlerai.collect.js_state import state_documents
+from crawlerai.content.js_literal import NotLiteral, read_literal
 from crawlerai.content.page import ParsedPage
-from crawlerai.core.json_text import parse_prefix
 from crawlerai.normalize import numbers
 from crawlerai.normalize.base import Context
 from crawlerai.normalize.money import is_currency_code
@@ -41,8 +42,6 @@ _LANGUAGE = "inLanguage"
 _STATE_MEMBERS = frozenset({"currency", "currencycode", "activecurrency"})
 # schema.org `price`, the amount whose written form shows the page's decimal symbol.
 _PRICE = "price"
-# ECMAScript: a string literal in single or double quotes without escapes (a template's `'{{ isoCode }}'`).
-_QUOTED = re.compile(r"""\s*(['"])([^'"\\\n]*)\1""")
 
 
 def stated_currencies(page: ParsedPage) -> tuple[str, ...]:
@@ -93,13 +92,10 @@ def _platform_currencies(page: ParsedPage) -> Iterator[str]:
 def _assigned(text: str, member: CurrencyMember) -> Iterator[str]:
     """The strings the script `text` assigns to `member.assigned` (followed through `member.members`)."""
     for match in re.finditer(rf"(?<![\w$.]){re.escape(member.assigned)}\s*=(?![=>])", text):
-        if quoted := _QUOTED.match(text, match.end()):
-            value: JsonValue = quoted.group(2)
-        else:
-            try:
-                value, _ = parse_prefix(text, match.end())
-            except ValueError:
-                continue
+        try:
+            value, _ = read_literal(text, match.end())
+        except NotLiteral:
+            continue
         for name in member.members:
             value = value.get(name) if isinstance(value, dict) else None
         if isinstance(value, str):

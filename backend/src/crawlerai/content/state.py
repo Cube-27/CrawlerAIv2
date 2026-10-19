@@ -1,10 +1,16 @@
-"""The JSON state a page carries in its inline scripts (extraction spec, "embedded JSON state"), read by structure only.
+"""The state a page carries in its inline scripts (extraction spec, "Source documents"), read by structure only.
 
-A document is the text of a `<script type="application/json">`, or, in any other script except JSON-LD's, the JSON value
-after the `=` of each `window.<ident> =` or `var|let|const <ident> =` assignment (ECMAScript assignment and variable
-declaration syntax), in script order; the search for the next one starts after the value just read, so an assignment
-written inside a string of that value is not one. Script code that is not such an assignment is not state. No variable
-name or key is looked up. The JSON state collector (`collect.js_state`) admits values from these documents.
+A document is the text of a `<script type="application/json">`, or, in any other script except JSON-LD's, in script
+order:
+- the object or array literal after the `=` of an assignment: `window.<ident> =`, `var|let|const <ident> =`, or a bare
+  `<ident> =` (ECMAScript AssignmentExpression and variable declaration syntax);
+- each object literal argument of a call `<ident>(…)` or `<ident>.<ident>…(…)` whose arguments before it are literals
+  or references (ECMAScript CallExpression: `dataLayer.push({…})`, `fbq('track', 'ViewContent', {…})`,
+  `kit.start(app, element, {…})`).
+Values are read by the JS literal reader (`content.js_literal`); a value that is not a literal (a function, a call)
+is code, not state. The search for the next one starts after the value just read, so an assignment written inside a
+string of that value is not one. No variable name or key is looked up. The JSON state collector (`collect.js_state`)
+decodes and admits values from these documents.
 """
 
 import re
@@ -12,18 +18,22 @@ from collections.abc import Iterator
 
 from pydantic import JsonValue
 
+from crawlerai.content.js_literal import IDENT, NotLiteral, read_literal, skip_space
 from crawlerai.content.page import ScriptBlock
-from crawlerai.core.json_text import parse, parse_prefix
+from crawlerai.core.json_text import parse
 
 # RFC 8259 §1.2 / IANA media types: `application/json` holds JSON text.
 _JSON = "application/json"
 # W3C JSON-LD 1.1 §7.3: JSON-LD's script data blocks, which hold linked data, not a script's state.
 _JSON_LD = "application/ld+json"
-# ECMAScript IdentifierName, its ASCII part plus Unicode letters: `$`, `_` or a letter, then those or digits.
-_IDENT = r"(?:[^\W\d]|\$)[\w$]*"
-# ECMAScript: an assignment to a property of `window` (the global object in a browser, HTML Standard), or a variable
-# declaration with an initializer. `=` not followed by `=` or `>` is assignment, not comparison or an arrow.
-_ASSIGNMENT = re.compile(rf"(?:\bwindow\s*\.\s*|\b(?:var|let|const)\s+){_IDENT}\s*=(?![=>])")
+# ECMAScript: an assignment to an identifier or to a property of `window` (the global object in a browser, HTML
+# Standard), `var|let|const` included; `=` not followed by `=` or `>` is assignment, not comparison or an arrow. Or
+# the callee of a call: an identifier or a member chain that is not itself a member of what precedes it.
+_STATEMENT = re.compile(
+    rf"(?:\bwindow\s*\.\s*|(?<![\w$.])){IDENT}\s*=(?![=>])|(?<![\w$.]){IDENT}(?:\s*\.\s*{IDENT})*\s*\("
+)
+# ECMAScript: an identifier reference or a member chain (`app`, `document.body`), an argument that is not state.
+_REFERENCE = re.compile(rf"{IDENT}(?:\s*\.\s*{IDENT})*")
 
 
 def script_state(script: ScriptBlock, diagnostics: list[str]) -> Iterator[JsonValue]:
@@ -36,13 +46,39 @@ def script_state(script: ScriptBlock, diagnostics: list[str]) -> Iterator[JsonVa
         except ValueError as e:
             diagnostics.append(f"js_state:{script.xpath}: invalid JSON ({e})")
         return
-    start = 0
-    while (match := _ASSIGNMENT.search(script.text, start)) is not None:
+    text, start = script.text, 0
+    while (match := _STATEMENT.search(text, start)) is not None:
         start = match.end()
+        if text[start - 1] == "(":
+            for argument, end in _object_arguments(text, start):
+                yield argument
+                start = end
+            continue
         try:
-            data, start = parse_prefix(script.text, start)
-        except ValueError:
-            continue  # not JSON (`var f = function …`): code, not state
+            data, start = read_literal(text, start)
+        except NotLiteral:
+            continue
         # State is an object or an array; a scalar initializer (`var n = 1`) is a script variable.
         if isinstance(data, (dict, list)):
             yield data
+
+
+def _object_arguments(text: str, pos: int) -> Iterator[tuple[JsonValue, int]]:
+    """The object literal arguments of the call whose `(` ends before `pos`, each with the index after it, up to the
+    first argument that is neither a literal nor a reference."""
+    pos = skip_space(text, pos)
+    while text[pos : pos + 1] not in ("", ")"):
+        try:
+            value, end = read_literal(text, pos)
+        except NotLiteral:
+            reference = _REFERENCE.match(text, pos)
+            if reference is None:
+                return
+            value, end = None, reference.end()
+        pos = skip_space(text, end)
+        if text[pos : pos + 1] not in (",", ")"):  # `{…}.x`, `a + b`: an expression, not that literal
+            return
+        if isinstance(value, dict):
+            yield value, end
+        if text[pos] == ",":
+            pos = skip_space(text, pos + 1)
