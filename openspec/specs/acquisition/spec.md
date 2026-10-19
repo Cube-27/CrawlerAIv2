@@ -178,8 +178,11 @@ Request blocking (`acquire/blocklist.py`), unless the policy captures the page a
 resource (`site.load_all_resources`, set when a resource-blocked render of its listing showed fewer item blocks than its
 HTTP page): image, font, media and ping (Beacon, hyperlink auditing) requests by resource type, and requests to the
 advertising and tracking servers the EasyList and EasyPrivacy server lists name (pinned data, C4; `||host^` lines with
-at most `third-party` and resource-type options), never per site. The main frame's navigation and an anti-bot vendor's
-challenge or bot-management resource (`adapters.challenges.challenge_resource`) are never blocked.
+at most `third-party` and resource-type options), never per site. Never blocked, whatever the lists say: the main frame's
+navigation; an anti-bot challenge resource (`adapters.challenges`) or a fraud-prevention, device-fingerprinting or
+bot-detection vendor's resource (a page whose bot defence cannot run is refused); and a tag manager's container, which
+can inject the page's structured data, while the analytics, ad and pixel endpoints it loads are blocked as any other
+(vendor categories in `adapters.kept_resources`, never per site).
 
 The ready wait, the one wait for a page: from `DOMContentLoaded`, the page is read once it has fired `load` and is
 clearly ready, by the site's learned wait condition (`settle_on`): `data_call`, a data call has ended and none is in
@@ -215,6 +218,10 @@ plan 2026-10-19 (crawl speed, P2 browser wait and blocking).
 - **WHEN** a page loads a script from a server the tracking list names and a vendor's challenge script whose host a
   list also names
 - **THEN** the tracker request is aborted and the challenge script loads
+#### Scenario: Tag manager loaded, its pixels blocked
+- **WHEN** a page loads a tag manager's container, which loads an analytics endpoint and a fraud vendor's
+  fingerprinting script, all on listed servers
+- **THEN** the container and the fingerprinting script load and the analytics request is aborted
 #### Scenario: Offer injected
 - **WHEN** a detail page's script injects a JSON-LD Product with offers 1 s after `load`, with no data call in flight
 - **THEN** the page is read then, not at `READY_MAX_S`

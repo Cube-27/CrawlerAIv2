@@ -11,8 +11,10 @@ because the page's DOM and data calls, which are what is read, never need it.
   domains), and resource-type options to those types. Every other filter (paths, wildcards, other options) is left
   out. Without the files only the resource-type rules apply.
 
-Never blocked: the main frame's own navigation, and a request for an anti-bot vendor's challenge or bot-management
-resource (`adapters.challenges.challenge_resource`): a page whose challenge script cannot load is refused.
+Never blocked: the main frame's own navigation, and a vendor resource of the categories `adapters.kept_resources`
+lists (`kept_resource`): an anti-bot challenge, fraud-prevention, fingerprinting or bot-detection vendor's (a page
+whose bot defence cannot run is refused), or a tag manager's container (it can inject the page's structured data; the
+endpoints it loads are blocked as any other).
 """
 
 import logging
@@ -24,7 +26,7 @@ from typing import Final
 from urllib.parse import urlsplit
 
 from crawlerai.acquire.public_suffix import default_suffixes
-from crawlerai.adapters.challenges import challenge_resource
+from crawlerai.adapters.kept_resources import kept_resource
 from crawlerai.core.engine_version import engine_data_dir
 
 log = logging.getLogger(__name__)
@@ -135,7 +137,7 @@ def blocked_request(
 ) -> bool:
     """Whether the browser aborts a request (module docstring): `document_url` is the URL of the document that made
     it, when known; `navigation` says it is the main frame's own navigation."""
-    if navigation or challenge_resource(url):
+    if navigation or kept_resource(url):
         return False
     if resource_type in _BLOCKED_TYPES:
         return True
