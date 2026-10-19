@@ -1,6 +1,6 @@
 """Browser fetch with Patchright headless Chromium (acquisition spec): one navigation, bounded waits,
-and the JSON bodies the page loads captured, the network data-source layer's input (Appendix A #59) and API
-discovery's (§7.2 step 1).
+and the JSON and Flight bodies the page loads captured, the network data-source layer's input (Appendix A #59) and
+API discovery's (§7.2 step 1).
 
 One browser per worker process (`open_browser`), one context per job and site (`_Contexts`), each page in a tab of its
 own. Every connection a context opens goes through its `SocksGuard`, which applies the SSRF guard to every redirect
@@ -50,6 +50,7 @@ from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, Reques
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
 from crawlerai.storage.artifacts import PDF, SCREENSHOT
 from crawlerai.storage.capture_bundle import (
+    FLIGHT_TYPE,
     HeaderList,
     NetworkBody,
     decode_html,
@@ -89,8 +90,8 @@ _LAUNCH_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
 # `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
 # unless told not to; it is named here so the guard does not rest on a library default.
 _PROXY_ALL_LOOPBACK = "<-loopback>"
-# acquisition spec, D-0010: JSON bodies are captured up to 2 MB each and 50 per page; INV-30 (Appendix A #59): at most
-# 10 MB of them per page in all.
+# acquisition spec, D-0010: data bodies (JSON and Flight) are captured up to 2 MB each and 50 per page; INV-30 (Appendix
+# A #59): at most 10 MB of them per page in all.
 _JSON_BODY_MAX_BYTES = 2_000_000
 JSON_BODIES_MAX = 50
 JSON_PAGE_MAX_BYTES = 10_000_000
@@ -459,7 +460,7 @@ class DataCalls:
         # The main frame's navigation responses are the page itself, not data it loaded.
         if request.is_navigation_request() and request.frame == main_frame:
             return
-        if request.resource_type in DATA_REQUESTS and _json_label(response) is not None:
+        if request.resource_type in DATA_REQUESTS and _data_label(response) is not None:
             self.responses.append((response, self.actions))
 
 
@@ -695,8 +696,8 @@ async def read_state(
 ) -> tuple[Exchange, Content]:
     """The document the page shows now, as an exchange and its content: the first document, or where a navigation
     ended (one it started itself, or a browser action's), under `url` when given (the response's URL otherwise), with
-    the JSON bodies of the data responses in the `calls` slice (all of them by default) whose requests are done.
-    Raises `Failed` for a body past the policy's caps, or a response the browser no longer holds."""
+    the JSON and Flight bodies of the data responses in the `calls` slice (all of them by default) whose requests are
+    done. Raises `Failed` for a body past the policy's caps, or a response the browser no longer holds."""
     policy = rendered.policy
     response = rendered.frame.latest or rendered.response
     try:
@@ -812,9 +813,10 @@ def _same_site(url: str, page_url: str) -> bool:
 
 
 def _asks_json(request: Request) -> bool:
-    """Whether the request's `Accept` names a JSON MIME type (`_json_label`'s rule: RFC 6839 §3.1 `+json` included)."""
+    """Whether the request's `Accept` names a JSON MIME type or a Flight payload (`_data_label`'s rule: RFC 6839 §3.1
+    `+json` included)."""
     accept = request.headers.get("accept", "")
-    return any(_json_essence(part.split(";", 1)[0].strip().lower()) for part in accept.split(","))
+    return any(_data_essence(part.split(";", 1)[0].strip().lower()) for part in accept.split(","))
 
 
 async def _interstitial(page: Page, frame: _MainFrame) -> bool:
@@ -877,22 +879,24 @@ async def _json_size(response: Response) -> int:
         return 0
 
 
-def _json_label(response: Response) -> bool | None:
-    """True when the response is labelled with a JSON MIME type, False when its label leaves its body to be sniffed,
-    None when it names another kind of body (`_SNIFFED_TYPES`). The essence is compared, lower-cased, parameters
-    dropped (WHATWG MIME Sniffing §2.1)."""
+def _data_label(response: Response) -> bool | None:
+    """True when the response is labelled with a JSON MIME type or as a Flight payload, False when its label leaves its
+    body to be sniffed, None when it names another kind of body (`_SNIFFED_TYPES`). The essence is compared,
+    lower-cased, parameters dropped (WHATWG MIME Sniffing §2.1)."""
     essence = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    if _json_essence(essence):
+    if _data_essence(essence):
         return True
     return False if essence in _SNIFFED_TYPES else None
 
 
-def _json_essence(essence: str) -> bool:
-    return essence in ("application/json", "text/json") or essence.endswith("+json")
+def _data_essence(essence: str) -> bool:
+    """Whether `essence` names a JSON MIME type or a Flight payload (`FLIGHT_TYPE`), the bodies a capture keeps."""
+    return essence in ("application/json", "text/json", FLIGHT_TYPE) or essence.endswith("+json")
 
 
 async def json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[NetworkBody, bytes], ...]:
-    """The JSON bodies of `responses` (each with the action count it arrived at) a capture keeps, within its caps."""
+    """The JSON and Flight bodies of `responses` (each with the action count it arrived at) a capture keeps, within its
+    caps."""
     captured: list[tuple[NetworkBody, bytes]] = []
     total = 0
     for response, action in responses:
@@ -923,8 +927,8 @@ async def json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[Netw
 
 
 async def _json_body(response: Response) -> bytes | None:
-    """The response's body when it is not empty, within the per-body cap, and JSON: labelled so, or sniffed as JSON
-    text holding an object or an array (`network_json`)."""
+    """The response's body when it is not empty, within the per-body cap, and data: labelled JSON or Flight, or sniffed
+    as JSON text holding an object or an array (`network_json`)."""
     if await _json_size(response) > _JSON_BODY_MAX_BYTES:
         return None
     try:
@@ -933,7 +937,7 @@ async def _json_body(response: Response) -> bytes | None:
         return None  # no body to read: a redirect, or a request that failed or was evicted
     if not data or len(data) > _JSON_BODY_MAX_BYTES:
         return None  # an empty body (a 204, RFC 9110 §15.3.5) holds no JSON text
-    return data if _json_label(response) or _sniffed(data) else None
+    return data if _data_label(response) or _sniffed(data) else None
 
 
 def _sniffed(data: bytes) -> bool:
