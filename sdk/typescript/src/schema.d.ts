@@ -1031,7 +1031,7 @@ export interface components {
              * Block Class
              * @enum {string}
              */
-            block_class: "ok" | "blocked" | "shell" | "not_found" | "error";
+            block_class: "ok" | "blocked" | "shell" | "not_found" | "error" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing";
             /** Challenge */
             challenge?: string | null;
             /** Duration Ms */
@@ -1113,6 +1113,11 @@ export interface components {
             min_confidence?: number | null;
             /** Page Kind */
             page_kind?: ("detail" | "listing") | null;
+            /**
+             * Render Fields
+             * @description Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.
+             */
+            render_fields?: string[];
             /** Schema */
             schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
             /** Urls */
@@ -1188,7 +1193,7 @@ export interface components {
              * Block Class
              * @enum {string}
              */
-            block_class: "ok" | "blocked" | "shell" | "not_found" | "error";
+            block_class: "ok" | "blocked" | "shell" | "not_found" | "error" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing";
             /**
              * Capture Id
              * Format: uuid
@@ -1491,6 +1496,11 @@ export interface components {
             page_kind_rules?: components["schemas"]["PageKindRule"][];
             /** Query */
             query?: string | null;
+            /**
+             * Render Fields
+             * @description Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.
+             */
+            render_fields?: string[];
             /** Schema */
             schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaFields"] | null;
             /**
@@ -1880,7 +1890,7 @@ export interface components {
              * Block Class
              * @enum {string}
              */
-            block_class: "ok" | "blocked" | "shell" | "not_found" | "error";
+            block_class: "ok" | "blocked" | "shell" | "not_found" | "error" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing";
             /**
              * Method
              * @enum {string}
@@ -2252,7 +2262,7 @@ export interface components {
             fetch?: components["schemas"]["FetchSummary"];
             metadata?: components["schemas"]["PageMetadata"];
             /** Outcome */
-            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "failed") | null;
+            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "failed") | null;
             pdf?: components["schemas"]["Artifact"];
             /** Records */
             records: {
@@ -2679,12 +2689,16 @@ export interface components {
          * @description How many of the job's tasks ended with each outcome (`url_task.outcome`).
          */
         OutcomeCounts: {
+            /** Auth Wall */
+            auth_wall: number;
             /** Blocked */
             blocked: number;
             /** Extracted */
             extracted: number;
             /** Failed */
             failed: number;
+            /** Geo Redirect */
+            geo_redirect: number;
             /** Links Only */
             links_only: number;
             /** No Match */
@@ -2693,8 +2707,12 @@ export interface components {
             not_found: number;
             /** Partial */
             partial: number;
+            /** Redirected To Listing */
+            redirected_to_listing: number;
             /** Shell */
             shell: number;
+            /** Soft 404 */
+            soft_404: number;
             /** Unchanged */
             unchanged: number;
         };
@@ -2809,7 +2827,7 @@ export interface components {
             markdown_fit?: string;
             metadata?: components["schemas"]["PageMetadata"];
             /** Outcome */
-            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "failed") | null;
+            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "failed") | null;
             pdf?: components["schemas"]["Artifact"];
             /** Raw Html */
             raw_html?: string;
@@ -3074,7 +3092,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "published" | "missing" | "conflict" | "abstained";
+            status: "published" | "missing" | "conflict" | "abstained" | "interaction_required";
             value: components["schemas"]["JsonValue"];
         };
         /**
@@ -3448,6 +3466,11 @@ export interface components {
             min_confidence?: number | null;
             /** Page Kind */
             page_kind?: ("detail" | "listing") | null;
+            /**
+             * Render Fields
+             * @description Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.
+             */
+            render_fields?: string[];
             /** Schema */
             schema?: components["schemas"]["SchemaById"] | components["schemas"]["SchemaInline"] | components["schemas"]["SchemaPrompt"] | components["schemas"]["SchemaFields"] | null;
             /**
@@ -3497,7 +3520,7 @@ export interface components {
              * Outcome
              * @enum {string}
              */
-            outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "failed";
+            outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "failed";
             /** Page */
             page?: {
                 [key: string]: components["schemas"]["RecordField"];
@@ -3727,7 +3750,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "published" | "missing" | "conflict" | "abstained";
+            status: "published" | "missing" | "conflict" | "abstained" | "interaction_required";
         };
         /**
          * TaskCounts

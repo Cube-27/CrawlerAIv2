@@ -21,7 +21,7 @@ The diff touches any of these (the CI job `verify-money` is filtered on the same
   `backend/tests/conftest.py` (the `verify` profile), `backend/pyproject.toml` / `backend/uv.lock` (Babel, CLDR data,
   price-parser, Hypothesis).
 
-Last confirmed in sync with the code at `ef91d81a` (after #315, URL-currency fill).
+Last confirmed in sync with the code at `1d9e4af6` (after #315, URL-currency fill, and #320).
 
 ## The one command
 

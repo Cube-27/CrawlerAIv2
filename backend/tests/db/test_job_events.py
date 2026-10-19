@@ -162,6 +162,10 @@ PROGRESS = {
         "shell": 0,
         "not_found": 0,
         "no_match": 0,
+        "auth_wall": 0,
+        "soft_404": 0,
+        "geo_redirect": 0,
+        "redirected_to_listing": 0,
         "failed": 0,
     },
 }

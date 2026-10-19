@@ -58,6 +58,10 @@ class BlockClass(Enum):
     shell = "shell"
     not_found = "not_found"
     error = "error"
+    auth_wall = "auth_wall"
+    soft_404 = "soft_404"
+    geo_redirect = "geo_redirect"
+    redirected_to_listing = "redirected_to_listing"
 
 
 class Method1(Enum):
@@ -94,6 +98,10 @@ class MinConfidence(RootModel[float]):
 class PageKind(Enum):
     detail = "detail"
     listing = "listing"
+
+
+class RenderField(RootModel[str]):
+    root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,63}$")]
 
 
 class WebhookEvent(Enum):
@@ -604,6 +612,10 @@ class Outcome(Enum):
     shell = "shell"
     not_found = "not_found"
     no_match = "no_match"
+    auth_wall = "auth_wall"
+    soft_404 = "soft_404"
+    geo_redirect = "geo_redirect"
+    redirected_to_listing = "redirected_to_listing"
     failed = "failed"
 
 
@@ -733,14 +745,18 @@ class NormalizeRequest(BaseModel):
 
 
 class OutcomeCounts(BaseModel):
+    auth_wall: Annotated[int, Field(title="Auth Wall")]
     blocked: Annotated[int, Field(title="Blocked")]
     extracted: Annotated[int, Field(title="Extracted")]
     failed: Annotated[int, Field(title="Failed")]
+    geo_redirect: Annotated[int, Field(title="Geo Redirect")]
     links_only: Annotated[int, Field(title="Links Only")]
     no_match: Annotated[int, Field(title="No Match")]
     not_found: Annotated[int, Field(title="Not Found")]
     partial: Annotated[int, Field(title="Partial")]
+    redirected_to_listing: Annotated[int, Field(title="Redirected To Listing")]
     shell: Annotated[int, Field(title="Shell")]
+    soft_404: Annotated[int, Field(title="Soft 404")]
     unchanged: Annotated[int, Field(title="Unchanged")]
 
 
@@ -932,6 +948,7 @@ class Status10(Enum):
     missing = "missing"
     conflict = "conflict"
     abstained = "abstained"
+    interaction_required = "interaction_required"
 
 
 class RegexReplaceParams(BaseModel):
@@ -1118,6 +1135,10 @@ class Outcome2(Enum):
     blocked = "blocked"
     shell = "shell"
     not_found = "not_found"
+    auth_wall = "auth_wall"
+    soft_404 = "soft_404"
+    geo_redirect = "geo_redirect"
+    redirected_to_listing = "redirected_to_listing"
     failed = "failed"
 
 
@@ -1203,6 +1224,7 @@ class Status12(Enum):
     missing = "missing"
     conflict = "conflict"
     abstained = "abstained"
+    interaction_required = "interaction_required"
 
 
 class SubFieldMeta(BaseModel):
@@ -1642,6 +1664,14 @@ class ScrapeRequest(BaseModel):
         ),
     ] = None
     page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
+    render_fields: Annotated[
+        list[RenderField] | None,
+        Field(
+            description="Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.",
+            max_length=50,
+            title="Render Fields",
+        ),
+    ] = None
     schema_: Annotated[
         SchemaById | SchemaInline | SchemaPrompt | SchemaFields | None,
         Field(alias="schema", title="Schema"),
@@ -1753,6 +1783,14 @@ class BatchScrapeRequest(BaseModel):
         ),
     ] = None
     page_kind: Annotated[PageKind | None, Field(title="Page Kind")] = None
+    render_fields: Annotated[
+        list[RenderField] | None,
+        Field(
+            description="Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.",
+            max_length=50,
+            title="Render Fields",
+        ),
+    ] = None
     schema_: Annotated[
         SchemaById | SchemaInline | SchemaFields | None,
         Field(alias="schema", title="Schema"),
@@ -1816,6 +1854,14 @@ class CrawlRequest(BaseModel):
         list[PageKindRule] | None, Field(title="Page Kind Rules")
     ] = None
     query: Annotated[Query | None, Field(title="Query")] = None
+    render_fields: Annotated[
+        list[RenderField] | None,
+        Field(
+            description="Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.",
+            max_length=50,
+            title="Render Fields",
+        ),
+    ] = None
     schema_: Annotated[
         SchemaById | SchemaInline | SchemaFields | None,
         Field(alias="schema", title="Schema"),

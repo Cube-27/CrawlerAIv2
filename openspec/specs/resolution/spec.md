@@ -141,6 +141,16 @@ stores the record as `partial` and a crawl-discovered URL is `no_match` with no 
 - **WHEN** a crawl-discovered detail page leaves the required `price` missing
 - **THEN** the outcome is `no_match` and no record is stored
 
+### Requirement: Fields a render would show
+A detail field still `missing` (for want of a candidate, not listed as `absent` by the config) on a page read over HTTP
+whose document carries a state document of at least `STATE_MIN_VALUES` scalar values
+(`content/render_need.holds_state`: its script renders the page's data) SHALL be `interaction_required` with reason
+`script_rendered`, after role C. A request names such fields in `render_fields` to have the page rendered
+([acquisition](../acquisition/spec.md), "Browser on evidence"). Refs: owner plan 2026-10-19 P3, P9.
+#### Scenario: Script-rendered size
+- **WHEN** an HTTP detail page carries a hydration blob and no candidate for `size`
+- **THEN** `size` is `interaction_required`, and the same page captured in the browser leaves it `missing`
+
 ### Requirement: LLM gap hook
 The system SHALL ask role C ([llm](../llm/spec.md)) once per detail page only for missing required fields and unfilled
 required groups (in `active` mode only those the config neither covers nor lists as absent, which stay `missing` with

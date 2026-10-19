@@ -65,8 +65,21 @@ JobKind = Literal["scrape", "batch_scrape", "map", "crawl", "extract", "learn"]
 JobStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 TaskStatus = Literal["queued", "claimed", "done", "failed", "cancelled"]
 # The outcomes of a task that ran to the end (status `done`); `failed` is the outcome of a `failed` task.
+# The data outcome; the transport outcome is the capture's `block_class`. A page not served ends with its block class:
+# a 401's `auth_wall`, or where a redirect led instead of the page (acquisition spec).
 FinishedOutcome = Literal[
-    "extracted", "partial", "unchanged", "links_only", "blocked", "shell", "not_found", "no_match"
+    "extracted",
+    "partial",
+    "unchanged",
+    "links_only",
+    "blocked",
+    "shell",
+    "not_found",
+    "no_match",
+    "auth_wall",
+    "soft_404",
+    "geo_redirect",
+    "redirected_to_listing",
 ]
 TaskOutcome = Literal[FinishedOutcome, "failed"]
 ExtractionMode = Literal["adhoc", "config"]

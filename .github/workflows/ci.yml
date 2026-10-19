@@ -22,7 +22,8 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       licenses: ${{ steps.filter.outputs.licenses }}
-      verify-money: ${{ steps.filter.outputs.verify-money }}
+      verify_worker_queue: ${{ steps.filter.outputs.verify_worker_queue }}
+      verify_money: ${{ steps.filter.outputs.verify_money }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -115,7 +116,7 @@ jobs:
   # Hypothesis profile, on a PR that touches the money code (tools/ci_changes.py). No database, no browser.
   verify-money:
     needs: changes
-    if: needs.changes.outputs.verify-money == 'true'
+    if: needs.changes.outputs.verify_money == 'true'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -169,6 +170,18 @@ jobs:
             echo "::error::API client out of date: run 'make api-client' and commit the result."
             exit 1
           }
+
+  # The worker/queue concurrency model checked with TLC (.claude/skills/verify-worker-queue/SKILL.md), when a change
+  # touches the code it models. The runner's Java runs TLC; the script fetches the pinned tla2tools.jar.
+  verify-worker-queue:
+    needs: changes
+    if: needs.changes.outputs.verify_worker_queue == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: python3 tools/verify/worker_queue.py
+        env:
+          TLC_HEAP: 4g
 
   # SPEC-00 §4.6 job 4: no site literals outside adapters/ (C3, INV-03). Also lints and tests the repo tools and checks
   # the decisions log.
