@@ -64,6 +64,11 @@ class BlockClass(Enum):
     redirected_to_listing = "redirected_to_listing"
 
 
+class DataCall(Enum):
+    platform = "platform"
+    replay = "replay"
+
+
 class Method1(Enum):
     http = "http"
     browser = "browser"
@@ -1345,6 +1350,7 @@ class AttemptRecord(BaseModel):
     )
     block_class: Annotated[BlockClass, Field(title="Block Class")]
     challenge: Annotated[str | None, Field(title="Challenge")] = None
+    data_call: Annotated[DataCall | None, Field(title="Data Call")] = None
     duration_ms: Annotated[int, Field(title="Duration Ms")]
     error: Annotated[str | None, Field(title="Error")] = None
     method: Annotated[Method1, Field(title="Method")]

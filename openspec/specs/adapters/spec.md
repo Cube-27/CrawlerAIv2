@@ -74,12 +74,13 @@ It SHALL detect collection paths only, also under a locale subfolder (`/{languag
 product pages take the page path, D-1118), `POST` the tokenless Storefront GraphQL endpoint on the page's host with the
 handle as a variable, page through the products' cursor up to the adapter row cap, ask a locale-prefixed page in its
 language (`@inContext(language:)`), and class answers `not_platform` (no `X-Shopify-API-Version`), `not_served` (no
-item, GraphQL errors, another language than the page's, or a shop presenting other than exactly one currency, whose
-page the page path reads) or `ok`, as in `adapters/shopify.py`. A fetched `ok` page
+item, GraphQL errors, another language than the page's, a shop presenting other than exactly one currency, whose
+page the page path reads, or a listed product without a price above zero, which the page may still show: an answer
+never takes the page path's prices away) or `ok`, as in `adapters/shopify.py`. A fetched `ok` page
 whose URL has a query is served by the adapter that detects it without the query when the page's canonical link is
 that URL (RFC 6596, D-1120). Refs: Appendix A #46, #47, D-1077, D-1078, D-1114, D-1118, D-1120, D-1385, D-1386.
 (Previously: the first 250 products, and no locale-prefixed URL; a shop of several currencies was served without
-prices.)
+prices; an answer with zero prices was served.)
 
 ### Requirement: Shopify values
 Collection items SHALL read as schema.org products (variants under `hasVariant`, no default variant; see

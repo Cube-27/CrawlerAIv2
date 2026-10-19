@@ -1034,6 +1034,8 @@ export interface components {
             block_class: "ok" | "blocked" | "shell" | "not_found" | "error" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing";
             /** Challenge */
             challenge?: string | null;
+            /** Data Call */
+            data_call?: ("platform" | "replay") | null;
             /** Duration Ms */
             duration_ms: number;
             /** Error */

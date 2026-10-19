@@ -230,6 +230,21 @@
             ],
             "title": "Challenge"
           },
+          "data_call": {
+            "anyOf": [
+              {
+                "enum": [
+                  "platform",
+                  "replay"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Call"
+          },
           "duration_ms": {
             "title": "Duration Ms",
             "type": "integer"

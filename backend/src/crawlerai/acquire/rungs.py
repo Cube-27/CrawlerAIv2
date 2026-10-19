@@ -17,16 +17,17 @@ import time
 from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Final, Protocol
+from typing import Final, Literal, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
-from crawlerai.acquire.api import JsonFetcher
+from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.browser_tab import ListingRung
 from crawlerai.acquire.challenge import block_class_of
 from crawlerai.acquire.classify import interstitial
 from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
+from crawlerai.acquire.replay import joined
 from crawlerai.acquire.session import CookieExport, SiteSessions, identity
 from crawlerai.acquire.types import (
     AttemptRecord,
@@ -37,10 +38,13 @@ from crawlerai.acquire.types import (
     fetched_as,
     policy_with_attempts,
 )
+from crawlerai.adapters.platforms import platform_of, product_json
 from crawlerai.adapters.registry import Registry, platform_adapters
+from crawlerai.db.models import FetchMethod
 from crawlerai.storage.capture_bundle import decode_body
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
+DataCallKind = Literal["platform", "replay"]
 
 
 class RenderCheck(Protocol):
@@ -165,7 +169,8 @@ async def acquire(
         async def refer(page: Fetched) -> Fetched:
             return await _by_canonical(url, page, policy, rungs, send, admit_next, asked)
 
-    page = await _page(url, policy, remembered, rungs, _Retry(validators, admit_next, needs_render, deadline), refer)
+    retry = _Retry(validators, admit_next, needs_render, deadline, send)
+    page = await _page(url, policy, remembered, rungs, retry, refer)
     kept, attempts, duration_ms = page if refer is None else await refer(page)
     if served is not None:
         return with_attempts(kept, served.attempts + attempts, served.duration_ms + duration_ms)
@@ -243,6 +248,8 @@ class _Retry:
     admit_next: Admit | None
     needs_render: RenderCheck | None
     deadline: float | None
+    # The JSON fetch a detail page's data call is sent with (`_data_called`); without it none is sent.
+    send: JsonFetcher | None = None
 
     def in_budget(self) -> bool:
         return self.deadline is None or self.deadline - time.monotonic() >= BROWSER_MIN_S
@@ -254,9 +261,10 @@ async def _page(
     """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration. An HTTP
     page kept for want of a browser outcome is the fetch's last page (`_as_last_page`). An HTTP `ok` page that would
     be rendered only for lacking what the caller reads is first offered to `refer` (its adapter canonical or
-    referral), whose `ok` answer is kept without the render (D-1388)."""
+    referral), whose `ok` answer is kept without the render (D-1388), then joined with its data call (`_data_called`),
+    and kept without the render when the joined page no longer lacks it."""
     needs_render = retry.needs_render
-    method = remembered.method if policy.method_hint == "auto" else policy.method_hint
+    method = _start(url, policy, remembered)
     rendered_with = _settled(policy, remembered)
     if method == "http" and rungs.conditional is not None:
         result = await rungs.conditional(url, policy, validators=retry.validators)
@@ -266,10 +274,11 @@ async def _page(
         result = await rungs.browser(url, rendered_with)
     retried = policy.method_hint == "auto" and method == "http" and await _browser_may_help(result, needs_render)
     page: Fetched = (result, result.attempts, result.duration_ms)
-    if retried and refer is not None and result.block_class == "ok":
-        page = await refer(page)
-        if page[0] is not result:
+    if retried and result.block_class == "ok":
+        page, served = await _instead_of_render(url, policy, page, remembered, retry, refer)
+        if served:
             return page
+        result = page[0]
     _, attempts, duration_ms = page
     # The budget is checked again once admitted: the wait for the site's turn may have spent it.
     if (
@@ -282,6 +291,64 @@ async def _page(
     rendered = await _browser_retry(url, rendered_with, rungs, result)
     kept = rendered if await _better(rendered, result, needs_render) else await _as_last_page(result)
     return kept, attempts + rendered.attempts, duration_ms + rendered.duration_ms
+
+
+def _start(url: str, policy: FetchPolicy, remembered: Remembered) -> FetchMethod:
+    """The rung the page starts with: the policy's method, or in `auto` the one the site's memory says. An
+    `api_replay` contract's pages start over HTTP, where its call replays; one whose URL states no key for the call
+    starts as a render would."""
+    method = remembered.method if policy.method_hint == "auto" else policy.method_hint
+    if method != "api_replay":
+        return method
+    call = remembered.data_call
+    return "http" if call is not None and call.for_page(url) is not None else "browser"
+
+
+async def _instead_of_render(
+    url: str, policy: FetchPolicy, page: Fetched, remembered: Remembered, retry: _Retry, refer: Refer | None
+) -> tuple[Fetched, bool]:
+    """What serves an HTTP `ok` page about to be rendered for lacking what the caller reads, and whether it does: the
+    `ok` answer of `refer` (D-1388), else the page joined with its data call (`_data_called`) when the joined page no
+    longer lacks it; else the page, joined or not, with every attempt."""
+    result = page[0]
+    if refer is not None:
+        page = await refer(page)
+        if page[0] is not result:
+            return page, True
+    page = await _data_called(url, policy, page, remembered, retry)
+    joined_page = page[0]
+    served = joined_page is not result and retry.needs_render is not None and not await retry.needs_render(joined_page)
+    return page, served
+
+
+async def _data_called(url: str, policy: FetchPolicy, page: Fetched, remembered: Remembered, retry: _Retry) -> Fetched:
+    """The HTTP `ok` detail page about to be rendered for lacking what the caller reads, joined with the answer of its
+    data call when the answer states the page's product (`acquire.replay`): the call the site's `api_replay` contract
+    keeps, else the product JSON its platform documents (`adapters.platforms`). The call waits for the site's rate
+    (`admit_next`) and its attempt is added; without a call, or one not admitted, the page as it is."""
+    result, attempts, duration_ms = page
+    send = retry.send
+    called = None if policy.page_kind == "listing" or send is None else _data_call(result, remembered)
+    if send is None or called is None or not await _admitted(retry.admit_next):
+        return page
+    endpoint, key, kind = called
+    sent = await send(JsonRequest(url=endpoint, page_url=url), policy)
+    marked = sent.model_copy(
+        update={"attempts": tuple(a.model_copy(update={"data_call": kind}) for a in sent.attempts)}
+    )
+    kept, call = joined(result, marked, key)
+    return (kept or result), attempts + call.attempts, duration_ms + call.duration_ms
+
+
+def _data_call(result: FetchResult, remembered: Remembered) -> tuple[str, str, DataCallKind] | None:
+    """The endpoint, product key and kind of the page's data call (`_data_called`), or None."""
+    if remembered.method == "api_replay" and remembered.data_call is not None:
+        replay = remembered.data_call.for_page(result.bundle.manifest.final_url)
+        return None if replay is None else (*replay, "replay")
+    manifest = result.bundle.manifest
+    markup = decode_body(result.bundle)
+    documented = product_json(platform_of(markup, manifest.headers.response), manifest.final_url, markup)
+    return None if documented is None else (documented.url, documented.key, "platform")
 
 
 def _settled(policy: FetchPolicy, remembered: Remembered) -> FetchPolicy:
