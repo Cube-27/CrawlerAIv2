@@ -63,8 +63,9 @@ UTC day. Refs: §17, D-0719, D-0724, D-1721.
 ### Requirement: Grounded values (INV-12)
 Every `llm` candidate value SHALL be a verbatim substring of the cleaned text at its stated offsets (INV-12): exact
 match at the claim, else the single or nearest exact occurrence, else dropped; no fuzzy matching (`llm/grounding.py`).
-A money claim the text does not hold verbatim is found with any spacing between its currency sign and its one amount
-(CLDR `currencySpacing`: that space is the locale's presentation), never inside a longer number, and its value is the
+A money claim grounds only on whole numbers, never the head or tail of a longer, grouped or decimal one (`$4` in
+`$4,000`). One the text does not hold verbatim is found with any spacing between its currency sign and its one amount
+(CLDR `currencySpacing`: that space is the locale's presentation), and its value is the
 text's span, never the model's spelling. (Previously: a money claim spaced otherwise than the text was dropped.)
 A claimed link or image SHALL be an element the page has, of the kind its field takes, and its value that element's
 `href` or `src` as the DOM states it, never text of the model's. Enforced by: `tests/property/test_grounding.py`,

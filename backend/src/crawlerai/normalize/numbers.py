@@ -53,24 +53,37 @@ def stated(raw: str, *, percentages: bool = True) -> Stated | str:
     text = unicodedata.normalize("NFKC", raw).strip()
     if not text:
         return "empty"
-    runs = [run for run in AMOUNT_RUN.finditer(text) if percentages or not _percentage(text, run.start(), run.end())]
+    runs: list[tuple[int, int]] = []
+    for run in AMOUNT_RUN.finditer(text):
+        start, end = run.span()
+        if not percentages and _percentage(text, start, end):
+            # A ratio is not grouped by white space: in `12.99 20%` only the last piece is the ratio, the rest a
+            # number of its own.
+            spaced = [m.start() for m in re.finditer(r"\s", run.group())]
+            if not spaced or not _percentage(text, start + spaced[-1] + 1, end):
+                continue
+            end = start + spaced[-1]
+        runs.append((start, end))
     if not runs:
         return "no_number"
     if len(runs) > 1:
         return "several_numbers"
-    run = runs[0]
-    return Stated(run.group(), text[: run.start()], text[run.end() :], text)
+    start, end = runs[0]
+    return Stated(text[start:end], text[:start], text[end:], text)
 
 
 def _percentage(text: str, start: int, end: int) -> bool:
     """Whether a CLDR percent sign is written right after the number (white space between allowed, as `20 %` writes
-    it) or right before it (`%20`), bidi marks (Unicode Cf, as some locales write around the sign) aside. Only the
-    characters next to the number are read, so a text with many numbers is read in linear time."""
+    it) or right before it (`%20`), bidi marks (Unicode Cf, as some locales write around the sign) aside. A sign
+    followed by a digit opens the next number (`12.99 %20`), so it is not this number's. Only the characters next to
+    the number are read, so a text with many numbers is read in linear time."""
     signs = _percent_signs()
     width = max(map(len, signs))
-    after = _unmarked(text, end, 1, width, skip_space=True)
+    after = _unmarked(text, end, 1, width + 1, skip_space=True)
     before = _unmarked(text, start - 1, -1, width, skip_space=False)[::-1]
-    return after.startswith(signs) or before.endswith(signs)
+    return any(after.startswith(s) and not after[len(s) : len(s) + 1].isdigit() for s in signs) or before.endswith(
+        signs
+    )
 
 
 def _unmarked(text: str, index: int, step: int, count: int, *, skip_space: bool) -> str:

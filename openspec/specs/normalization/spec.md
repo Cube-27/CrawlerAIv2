@@ -70,7 +70,8 @@ grounded source may publish (extraction spec). Two signs that share no currency,
 structured `priceCurrency`, contradict each other and are `Invalid`; amounts the locales read differently are
 `Ambiguous`, and the amount must be positive. A text's one amount is read through `numbers.stated`, as count and
 number read theirs: none is `no_amount`, two are `range`; a number written with a CLDR percent sign is a ratio (a
-discount), never the amount. A CLDR compact decimal unit of the page's locales written right after the digits
+discount), never the amount: a ratio's digits are not grouped by white space (`12.99 20%` is a price and a ratio) and
+a percent sign followed by digits opens the next number (`12.99 %20`). A CLDR compact decimal unit of the page's locales written right after the digits
 multiplies them (`decimalFormats-short`: `3.5万円` is 35000), and a currency's one-word CLDR count name (`円`) is a
 sign like its symbol. A sign written with a trailing full stop is also the CLDR symbol without it (an abbreviation's
 full stop: CLDR itself writes `kr` and `kr.`), so it denotes both symbols' currencies for (2)–(4) to narrow. A

@@ -21,7 +21,7 @@ The diff touches any of these (the CI job `verify-money` is filtered on the same
   `backend/tests/conftest.py` (the `verify` profile), `backend/pyproject.toml` / `backend/uv.lock` (Babel, CLDR data,
   price-parser, Hypothesis).
 
-Last confirmed in sync with the code at `1d9e4af6` (after #315, URL-currency fill, and #320).
+Last confirmed in sync with the code at `139865e9` plus the KF-1/KF-2 fix.
 
 ## The one command
 
@@ -38,8 +38,8 @@ the full CI suite) run the same file with fewer examples.
 | --- | --- |
 | `test_a_grounded_amount_always_publishes_with_a_currency_from_evidence_or_none` | A price written as a page in the drawn locale writes it (CLDR symbols via Babel), with or without a sign, or as schema.org `price`, is `Ok` with exactly that amount. Currency is `null` exactly when basis is `unknown`; an ISO code written beside it is the currency; otherwise the currency is one the sign, the page or the URL names, never invented. |
 | `test_a_grounded_money_value_is_a_span_of_the_page_text_with_the_claimed_amount` | A model claim spaced differently from the page between sign and digits grounds (`align(..., money=True)`) at a span that is `text[start:end]`, and normalizes to the same amount as the claim. |
-| `test_a_money_claim_the_text_does_not_write_alone_is_not_grounded` | A claim of an amount the text lacks, of one end of a range, or of the tail of a grouped number (`219.98 €` in `1 219.98€`) is not grounded. |
-| `test_a_percentage_is_never_a_price` | A ratio with a CLDR percent sign (before or after, spaces and bidi marks allowed, with or without a minus) is `no_amount`, as text or as `price`; beside a price it never replaces it. |
+| `test_a_money_claim_the_text_does_not_write_alone_is_not_grounded` | A claim of an amount the text lacks, of one end of a range, or of the head or tail of a grouped or decimal number (`$ 4` in `$4,000`, `219.98 €` in `1 219.98€`) is not grounded. |
+| `test_a_percentage_is_never_a_price` | A ratio with a CLDR percent sign (before or after, spaces and bidi marks allowed, with or without a minus) is `no_amount`, as text or as `price`; beside a price (white space alone between them included: `USD 0.01 1%`, `USD 0.01 %1`) it never replaces it. |
 | `test_a_cldr_compact_unit_multiplies_the_amount` | An amount Babel's own compact formatter writes for the page locale (CLDR `decimalFormats-short`: `3.5万`, `12,345 Mio.`, `1.5L`) reads back as that amount. The oracle is Babel's formatter, not the reader's unit table. |
 | `test_a_compact_unit_that_starts_a_word_is_no_unit` | An `en` unit followed by a letter (`12Kg`) does not multiply. |
 | `test_an_explicit_currency_beats_the_url_one_and_currency_fill_never_changes_the_amount` | A URL naming one territory (locale segment, country subdomain, ccTLD; final or requested URL) fills its single CLDR tender currency, basis `url` (else `null`/`unknown`); `priceCurrency`, a single page or declared currency, or an ISO code written with the amount always wins; the amount is identical with and without the URL. |
@@ -77,11 +77,7 @@ property must follow them, not the other way round.
 
 ## Known findings (open)
 
-- **KF-1** `numbers.stated`: white space alone between a price and a ratio not opened by a minus drops the price:
-  `USD 0.01 1%` (digit runs join across the space: `0.01 1%` is one run, a percentage) and `USD 0.01 %1` (the `%`
-  is read as the price's own suffix) are `Invalid("no_amount")`. Excluded in `test_a_percentage_is_never_a_price`.
-- **KF-2** `grounding._sign_spaced`: a claim whose digits open a grouped amount grounds at its head:
-  `align(SpanClaim("$ 4", ...), "Now $4,000", money=True)` is `$4`. Excluded in `_ungroundable` (range case).
+None.
 
 When a finding is fixed, delete its `assume(...)` and its entry here in the same PR.
 
