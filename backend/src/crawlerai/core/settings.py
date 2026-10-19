@@ -7,10 +7,10 @@ An empty value counts as unset, so unset CI secrets (which arrive as "") behave 
 from typing import Annotated, Literal
 
 from curl_cffi.requests import BrowserTypeLiteral
-from pydantic import BeforeValidator, Field, IPvAnyNetwork, PositiveFloat, PositiveInt, SecretStr
+from pydantic import AfterValidator, BeforeValidator, Field, IPvAnyNetwork, PositiveFloat, PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from crawlerai.core.proxy import ProxyPool
+from crawlerai.core.proxy import ProxyPool, is_country
 
 # `fs:///<absolute path>` or `s3://<bucket>[/<prefix>]`.
 OBJECT_STORE_URL_PATTERN = r"^(fs:///.+|s3://[^/]+(/.*)?)$"
@@ -35,6 +35,12 @@ class DatabaseSettings(_Base):
     database_url: SecretStr
 
 
+def _country(value: str) -> str:
+    if not is_country(value):
+        raise ValueError("an ISO 3166-1 alpha-2 country CLDR knows")
+    return value
+
+
 def _comma_separated(value: object) -> object:
     """`a,b` as `("a", "b")`; duplicates are refused (for providers, the order is the failover order)."""
     if not isinstance(value, str):
@@ -54,7 +60,7 @@ class AcquireSettings(_Base):
     proxy_pools: dict[str, ProxyPool] = Field(default_factory=dict)
     # `CRAWLERAI_EGRESS_COUNTRY`: the ISO 3166-1 alpha-2 country this machine's direct fetches go out from, declared by
     # the operator (acquisition spec, "Egress country"); unset: unknown.
-    egress_country: Annotated[str, Field(pattern=r"^[A-Z]{2}$")] | None = None
+    egress_country: Annotated[str, Field(pattern=r"^[A-Z]{2}$"), AfterValidator(_country)] | None = None
     # `CRAWLERAI_DISABLED_ADAPTERS`, comma-separated: the platform adapters that do not run (adapters spec). Every
     # registered adapter runs unless named here (owner, 2026-10-16).
     disabled_adapters: Annotated[tuple[str, ...], NoDecode, BeforeValidator(_comma_separated)] = ()

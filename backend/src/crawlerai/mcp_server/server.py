@@ -101,6 +101,7 @@ class _Tools:
             data=runtime.engine_data,
             llm=runtime.llm,
             api_key_id=caller.api_key_id,
+            egresses=runtime.fetching.egresses,
         )
         return tool_result(result.model_dump(mode="json"))
 

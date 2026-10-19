@@ -162,3 +162,7 @@ async def test_a_job_pins_one_pool_and_its_egress_at_submit(engine: AsyncEngine)
     assert await pinned("https://pooled.example.test/a") == ("eu", "DE", "pool")
     assert await pinned("https://pooled.example.test/a", proxy_pool="other") == ("other", None, "unknown")
     assert await pinned("https://plain.example.test/a") == (None, "US", "machine")
+    # A site's stored pool this deployment no longer configures is not pinned: the job fetches directly.
+    async with engine.begin() as conn:
+        await conn.execute(insert(Site).values(project_id=DEFAULT_PROJECT, host="gone.example.test", proxy_pool="old"))
+    assert await pinned("https://gone.example.test/a") == (None, "US", "machine")

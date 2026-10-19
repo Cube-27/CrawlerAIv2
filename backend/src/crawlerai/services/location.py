@@ -35,5 +35,7 @@ async def pin_location[R: BaseModel](
     if pool is None:
         async with engine.connect() as conn:
             pool = await site_pool(conn, first_url)
+        if pool is not None and egresses is not None and pool not in egresses.pools:
+            pool = None  # a site's stored pool this deployment no longer configures: a direct fetch, not a failing job
     pinned = request.model_copy(update={"fetch": fetch.model_copy(update={"proxy_pool": pool})})
     return pinned, (egresses or Egresses()).of(pool)

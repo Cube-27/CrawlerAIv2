@@ -251,6 +251,8 @@ def test_pools_are_read_from_json_with_credentials_percent_decoded(monkeypatch: 
         '{"endpoints": ["socks5://user:secret-pw@proxy.example.com:1080"], "mode": "rotate"}',
         # A pool's country is an ISO 3166-1 alpha-2 code.
         '{"endpoints": ["http://user:secret-pw@proxy.example.com:3128"], "mode": "rotate", "country": "gb"}',
+        # ... of a country CLDR knows (`ZZ` is its unknown region).
+        '{"endpoints": ["http://user:secret-pw@proxy.example.com:3128"], "mode": "rotate", "country": "ZZ"}',
     ],
 )
 def test_a_proxy_url_other_than_http_host_port_is_refused_without_echoing_it(

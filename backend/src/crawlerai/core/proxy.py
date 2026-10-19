@@ -14,23 +14,27 @@ proxy's own address. Only HTTP proxies are supported, and every request goes thr
 import base64
 import hashlib
 import itertools
-import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Literal, Self
 from urllib.parse import unquote, urlsplit
 
+from babel.core import get_global
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
 from crawlerai.core.proxy_health import PoolHealth
 
-__all__ = ["PoolMode", "ProxyEndpoint", "ProxyPool", "UnknownProxyPool", "pool_endpoint", "proxy_pool"]
+__all__ = ["PoolMode", "ProxyEndpoint", "ProxyPool", "UnknownProxyPool", "is_country", "pool_endpoint", "proxy_pool"]
 
 PoolMode = Literal["rotate", "sticky"]
 _POOL_KEYS = frozenset({"endpoints", "mode"})
-# ISO 3166-1 alpha-2: two uppercase letters.
-_COUNTRY = re.compile(r"[A-Z]{2}", re.ASCII)
+
+
+def is_country(code: str) -> bool:
+    """Whether `code` is an ISO 3166-1 alpha-2 country CLDR has language data for (`ZZ`, its unknown region, is not)."""
+    return code != "ZZ" and code in get_global("territory_languages")
+
 
 _HTTP_DEFAULT_PORT = 80  # RFC 9110 §4.2.1
 
@@ -100,8 +104,8 @@ class ProxyPool:
                 'a proxy pool is a proxy URL or {"endpoints": [url, ...], "mode": "rotate" | "sticky", '
                 '"country"?: "XX"}'
             )
-        if "country" in value and not (isinstance(country, str) and _COUNTRY.fullmatch(country)):
-            raise ValueError("a proxy pool's country is an ISO 3166-1 alpha-2 code, two uppercase letters")
+        if "country" in value and not (isinstance(country, str) and is_country(country)):
+            raise ValueError("a proxy pool's country is an ISO 3166-1 alpha-2 code, a country CLDR knows")
         if mode != "rotate" and mode != "sticky":
             raise ValueError('a proxy pool\'s mode is "rotate" or "sticky"')
         parsed = tuple(ProxyEndpoint.parse(url) for url in endpoints)

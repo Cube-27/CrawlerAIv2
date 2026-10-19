@@ -407,13 +407,27 @@ async def submit_run(
         case "batch_scrape":
             batch = BatchScrapeRequest.model_validate(request)
             submitted = await submit_batch(
-                engine, fetching.connector, batch, data=data, llm=llm, api_key_id=api_key_id, placement=placement
+                engine,
+                fetching.connector,
+                batch,
+                data=data,
+                llm=llm,
+                api_key_id=api_key_id,
+                placement=placement,
+                egresses=fetching.egresses,
             )
             return submitted.job_id
         case "crawl":
             crawl = CrawlRequest.model_validate(request)
             started = await submit_crawl(
-                engine, fetching.connector, crawl, data=data, llm=llm, api_key_id=api_key_id, placement=placement
+                engine,
+                fetching.connector,
+                crawl,
+                data=data,
+                llm=llm,
+                api_key_id=api_key_id,
+                placement=placement,
+                egresses=fetching.egresses,
             )
             return started.job_id
         case "extract":
