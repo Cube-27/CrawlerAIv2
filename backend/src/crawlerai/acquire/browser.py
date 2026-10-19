@@ -90,8 +90,8 @@ _LAUNCH_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
 # `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
 # unless told not to; it is named here so the guard does not rest on a library default.
 _PROXY_ALL_LOOPBACK = "<-loopback>"
-# acquisition spec, D-0010: data bodies (JSON and Flight) are captured up to 2 MB each and 50 per page; INV-30 (Appendix
-# A #59): at most 10 MB of them per page in all.
+# acquisition spec, "Network body capture": data bodies (JSON and Flight) are captured up to 2 MB each and 50 per page;
+# "Bounded bodies (INV-30)": at most 10 MB of them per page in all.
 _JSON_BODY_MAX_BYTES = 2_000_000
 JSON_BODIES_MAX = 50
 JSON_PAGE_MAX_BYTES = 10_000_000
