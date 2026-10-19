@@ -71,14 +71,23 @@ def ground_element(ref: str, kind: MarkKind, elements: Mapping[str, Mark]) -> Gr
 
 def align(claim: SpanClaim, cleaned_text: str, *, money: bool = False) -> GroundedSpan | None:
     """The claim as a span of `cleaned_text`, or None when the text does not contain its value (ungrounded). A `money`
-    claim the text does not contain verbatim is found with any spacing between its currency sign and its digits."""
+    claim is a whole number of the text, and one the text does not contain verbatim is found with any spacing between
+    its currency sign and its digits."""
     value = claim.value
     if not value:
         return None  # an empty span holds no value
+
+    def holds(start: int, end: int) -> bool:
+        return not money or _whole(cleaned_text, start, end)
+
     # Both ends must be offsets into the text: a negative end would slice counting from the end.
-    if 0 <= claim.start < claim.end <= len(cleaned_text) and cleaned_text[claim.start : claim.end] == value:
+    if (
+        0 <= claim.start < claim.end <= len(cleaned_text)
+        and cleaned_text[claim.start : claim.end] == value
+        and holds(claim.start, claim.end)
+    ):
         return GroundedSpan(value, claim.start, claim.end)
-    spans = [(i, i + len(value)) for i in _occurrences(value, cleaned_text)]
+    spans = [(i, i + len(value)) for i in _occurrences(value, cleaned_text) if holds(i, i + len(value))]
     if not spans and money:
         spans = _sign_spaced(value, cleaned_text)
     if not spans:
@@ -94,12 +103,24 @@ _NOT_AFTER_DASH = rf"(?<![{_DASHES}])(?<![{_DASHES}]\s)"
 _NOT_BEFORE_DASH = rf"(?!\s*[{_DASHES}])"
 # One amount: digits, with the grouping and decimal marks between them.
 _AMOUNT = re.compile(r"\d(?:[\d.,'\u00a0\u202f ]*\d)?")
+# What continues a number past its digits, or leads into them: a digit, or a CLDR decimal or group symbol next to one
+# (a space-separated group is three digits, CLDR grouping), so `$4` is not the head of `$4,000` nor `219.98` the tail
+# of `1 219.98`.
+_CONTINUES = re.compile(r"\d|[.,']\d|\s\d{3}(?!\d)")
+_LEADS = re.compile(r"(?:[\d.,]|\d[\s'])\Z")
+
+
+def _whole(text: str, start: int, end: int) -> bool:
+    """Whether `text[start:end]` writes whole numbers: not the head or tail of a longer, grouped or decimal one."""
+    head = text[end - 1].isdigit() and _CONTINUES.match(text, end) is not None
+    tail = text[start].isdigit() and _LEADS.search(text, max(0, start - 2), start) is not None
+    return not (head or tail)
 
 
 def _sign_spaced(value: str, text: str) -> list[tuple[int, int]]:
     """The spans of `text` that write `value`'s one amount with its sign before or after it, with any whitespace (or
-    none) between sign and digits (CLDR `currencySpacing`); not inside a longer or grouped number, nor one end of a
-    range."""
+    none) between sign and digits (CLDR `currencySpacing`); not part of a longer or grouped number (head or tail), nor
+    one end of a range."""
     amounts = list(_AMOUNT.finditer(value))
     if len(amounts) != 1:
         return []
@@ -107,12 +128,10 @@ def _sign_spaced(value: str, text: str) -> list[tuple[int, int]]:
     before, after = value[: amount.start()].rstrip(), value[amount.end() :].lstrip()
     if not (before or after):
         return []
-    # With no sign before it, the amount must not be the tail of a grouped number (`1 219.98`).
-    prefix = rf"{re.escape(before)}\s*" if before else r"(?<!\d[\s'])"
+    prefix = rf"(?<![\d.,]){re.escape(before)}\s*" if before else ""
     suffix = rf"\s*{re.escape(after)}" if after else ""
-    amount_text = re.escape(amount.group())
-    pattern = rf"{_NOT_AFTER_DASH}(?<![\d.,]){prefix}{amount_text}(?![\d]){suffix}{_NOT_BEFORE_DASH}"
-    return [match.span() for match in re.finditer(pattern, text)]
+    pattern = rf"{_NOT_AFTER_DASH}{prefix}{re.escape(amount.group())}{suffix}{_NOT_BEFORE_DASH}"
+    return [match.span() for match in re.finditer(pattern, text) if _whole(text, *match.span())]
 
 
 def _occurrences(value: str, text: str) -> list[int]:

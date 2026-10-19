@@ -162,23 +162,25 @@ def test_a_grounded_money_value_is_a_span_of_the_page_text_with_the_claimed_amou
 @st.composite
 def _ungroundable(draw: st.DrawFn) -> tuple[str, str]:
     """A page text and a money claim it does not write on its own: an amount the text lacks, one end of a range, or
-    the tail of a grouped number; each claim spaced unlike the text."""
+    the head or tail of a grouped or decimal number; each claim spaced unlike the text."""
     a, b = draw(_amounts), draw(_amounts)
     wa, wb, sign = _written(a, "en-US"), _written(b, "en-US"), draw(st.sampled_from(_SIGNS))
     gap = draw(st.sampled_from(_GAPS))
     other = draw(st.sampled_from(_GAPS).filter(lambda g: g != gap))
     dash = draw(st.sampled_from(["-", "\u2013", "\u2014", "~"]))
-    kind = draw(st.sampled_from(["absent", "range", "grouped"]))
+    kind = draw(st.sampled_from(["absent", "range", "head", "grouped"]))
     if kind == "absent":
         assume(wb not in f"{sign}{gap}{wa}")
         return f"Price {sign}{gap}{wa}", f"{sign}{other}{wb}"
     if kind == "range":
         text = f"{sign}{gap}{wa} {dash} {sign}{gap}{wb}"
-        claimed, rest = draw(st.sampled_from([(wa, wb), (wb, wa)]))
-        # Known finding KF-2 (SKILL.md): a claim whose digits open a grouped amount (`$ 4` in `$4,000`) grounds at
-        # its head; not generated.
-        assume(not rest.startswith((f"{claimed},", f"{claimed}.")))
+        claimed = draw(st.sampled_from([wa, wb]))
         return text, f"{sign}{other}{claimed}"
+    if kind == "head":
+        # The digits before the number's first group or decimal symbol (`$4` in `$4,000.50`).
+        head = wb.split(",")[0].split(".")[0]
+        assume(head != wb)
+        return f"Price {sign}{gap}{wb}", f"{sign}{other}{head}"
     assume("," not in wa)
     return f"1 {wa}{gap}{sign}", f"{wa}{other}{sign}"
 
@@ -211,10 +213,8 @@ def test_a_percentage_is_never_a_price(ratio: str, amount: Decimal, sign: str, w
 
     assert money.normalize(ratio, MONEY, us) == Invalid("no_amount")
     assert money.normalize({"price": ratio, "priceCurrency": "EUR"}, MONEY, us) == Invalid("no_amount")
-    # A discount written beside the price is not a second amount. Known finding KF-1 (SKILL.md): white space alone
-    # between the price and a ratio not opened by a minus (`12.99 20%`, `12.99 %20`) drops the price; not generated.
+    # A discount written beside the price is not a second amount.
     text = [f"{price} ({ratio})", f"{ratio} {price}", f"{price} {ratio}"][where]
-    assume(where != 2 or ratio[0] in "-\u2212")
     assert _amount(money.normalize(text, MONEY, us)) == amount
 
 
