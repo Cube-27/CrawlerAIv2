@@ -666,7 +666,7 @@ def _absent(fields: FieldSet, absent: frozenset[str]) -> FieldSet:
 
 
 async def _unpublished_reasons(source: "_Source", page: ParsedPage, fields: FieldSet) -> FieldSet:
-    """What the page's own evidence says of its unpublished fields (`resolve.page_state`): a price missing from a page
+    """What the page's own evidence says of its unpublished fields (`page_state` module): a price missing from a page
     that states its item is not for sale is `out_of_stock`; a field missing from a page that was not rendered and whose
     document carries its data for its script to render (`content.render_need.holds_state`) is `interaction_required`
     (resolution spec): a render may show it, which a request asks for with `render_fields` (acquisition spec, "Browser

@@ -82,13 +82,19 @@ async def stored_field_tally(conn: AsyncConnection, job_id: JobId) -> FieldTally
     """The fields of the records the job's tasks stand for, by status and reason, in one aggregate query."""
     field = func.jsonb_each(Record.field_meta).table_valued(column("key", Text), column("value", JSONB)).lateral()
     status, reason = field.c.value["status"].astext, field.c.value["reason"].astext
+    # Each record once, though several tasks may stand for it (an unchanged page's task links the earlier record).
+    standing = (
+        select(TaskRecord.record_id)
+        .join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
+        .where(UrlTask.job_id == job_id)
+        .distinct()
+        .subquery()
+    )
     rows = await conn.execute(
         select(status, reason, func.count().label("n"))
-        .select_from(UrlTask)
-        .join(TaskRecord, TaskRecord.url_task_id == UrlTask.id)
-        .join(Record, Record.id == TaskRecord.record_id)
+        .select_from(standing)
+        .join(Record, Record.id == standing.c.record_id)
         .join(field, true())
-        .where(UrlTask.job_id == job_id)
         .group_by(status, reason)
     )
     counts: Counter[tuple[str, str | None]] = Counter()

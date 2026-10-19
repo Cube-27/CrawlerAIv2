@@ -18,7 +18,7 @@ from crawlerai.config_ir.active import active_config
 from crawlerai.content.markdown import markdown
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.errors import Refusal
-from crawlerai.db.models import Capture, CaptureId, Extraction, JobId, Record, SiteId
+from crawlerai.db.models import Capture, CaptureId, Extraction, JobId, Record, SiteId, TaskRecord, UrlTask
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.records import record_confidence
 from crawlerai.resolve.task import ActiveConfig, page_records
@@ -54,10 +54,14 @@ async def replay(
     capture's stored bundle and the database, and reaches no network (`reextract_job` runs it for a job's captures)."""
     async with engine.connect() as conn:
         capture = await _capture(conn, capture_id)
-        stored = select(Record.schema_id).distinct().join(Extraction, Extraction.id == Record.extraction_id)
-        stored = stored.where(Extraction.capture_id == capture_id)
-        if job_id is not None:
-            stored = stored.where(Record.job_id == job_id)
+        if job_id is None:
+            stored = select(Record.schema_id).distinct().join(Extraction, Extraction.id == Record.extraction_id)
+            stored = stored.where(Extraction.capture_id == capture_id)
+        else:
+            # The records the job's tasks stand for, an unchanged page's included (they belong to an earlier job).
+            stored = select(Record.schema_id).distinct().join(TaskRecord, TaskRecord.record_id == Record.id)
+            stored = stored.join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
+            stored = stored.where(UrlTask.job_id == job_id, UrlTask.capture_id == capture_id)
         schema_ids = (await conn.execute(stored.order_by(Record.schema_id))).scalars()
         schemas = [await registry.get_by_id(conn, schema_id) for schema_id in schema_ids]
         configs = [await active_config(conn, capture.site_id, schema, data.vocabulary) for schema in schemas]
