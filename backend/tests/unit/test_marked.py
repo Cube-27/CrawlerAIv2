@@ -79,3 +79,13 @@ def test_another_items_card_is_left_out_and_offsets_map_back_past_it() -> None:
     assert cleaned.text[start:end] == "$480"
     # A span the cut joined is not in the whole text: it is not located.
     assert read.whole_span(0, at + 4) is None
+
+
+def test_an_item_of_marks_only_has_its_marks_left_out() -> None:
+    cleaned = _cleaned("<h1>Oak table</h1><div id='r'><img src='/chair.png' alt=''></div>")
+    (card,) = {mark.path.rpartition("/")[0] for mark in cleaned.marks}
+
+    read = scoped(cleaned, frozenset({card}))
+
+    assert read.text.text == cleaned.text
+    assert read.text.marks == ()

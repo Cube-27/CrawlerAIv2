@@ -132,9 +132,9 @@ class Scoped:
 def scoped(cleaned: CleanedText, elsewhere: frozenset[str]) -> Scoped:
     """`cleaned` without the text runs and marks of the elements at the node paths `elsewhere` and inside them, each
     left-out run taken with what separates it from the next run."""
-    kept = _kept(cleaned, elsewhere) if elsewhere else None
-    if kept is None:
+    if not elsewhere:
         return Scoped(cleaned)
+    kept = _kept(cleaned, elsewhere)
     runs, text = cleaned.offsets, cleaned.text
     pieces: list[str] = []
     segments: list[tuple[int, int]] = []
@@ -153,9 +153,9 @@ def scoped(cleaned: CleanedText, elsewhere: frozenset[str]) -> Scoped:
     return Scoped(CleanedText("".join(pieces), offsets, marks), tuple(segments))
 
 
-def _kept(cleaned: CleanedText, elsewhere: frozenset[str]) -> list[tuple[int, int]] | None:
+def _kept(cleaned: CleanedText, elsewhere: frozenset[str]) -> list[tuple[int, int]]:
     """The spans of `cleaned`'s text left once the runs inside `elsewhere` are cut, each with what follows it up to the
-    next run; None when no run is."""
+    next run (the whole text when no run is: an item of marks only still has them left out)."""
     runs, text = cleaned.offsets, cleaned.text
     cuts: list[tuple[int, int]] = []
     for index, run in enumerate(runs):
@@ -166,8 +166,6 @@ def _kept(cleaned: CleanedText, elsewhere: frozenset[str]) -> list[tuple[int, in
             cuts[-1] = (cuts[-1][0], stop)
         else:
             cuts.append((run.start, stop))
-    if not cuts:
-        return None
     kept: list[tuple[int, int]] = []
     position = 0
     for start, stop in cuts:
