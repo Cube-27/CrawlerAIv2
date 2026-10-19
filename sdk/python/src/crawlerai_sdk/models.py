@@ -1345,6 +1345,7 @@ class AttemptRecord(BaseModel):
     )
     block_class: Annotated[BlockClass, Field(title="Block Class")]
     challenge: Annotated[str | None, Field(title="Challenge")] = None
+    data_call: Annotated[str | None, Field(title="Data Call")] = None
     duration_ms: Annotated[int, Field(title="Duration Ms")]
     error: Annotated[str | None, Field(title="Error")] = None
     method: Annotated[Method1, Field(title="Method")]

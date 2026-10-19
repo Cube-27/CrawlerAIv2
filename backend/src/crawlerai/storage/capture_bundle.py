@@ -5,7 +5,8 @@ manifest.json      # CaptureManifest
 body.html          # response body as received (transfer/content encoding removed); body.json for API captures;
                    # for browser captures, the rendered DOM
 body.raw.html      # browser captures only: the navigation response body as the server sent it (acquisition spec)
-network/0001.json  # captured JSON bodies in response order, as received (browser captures only)
+network/0001.json  # JSON bodies in response order, as received: a render's captured calls, or an HTTP page's data
+                   # calls (`acquire.identity`)
 ```
 
 `encode` and `decode` are pure and `decode(encode(b)) == b` (INV-10). Replay reads nothing but the bundle.
@@ -74,6 +75,10 @@ class NetworkBody(_Frozen):
     response_headers: HeaderList | None = None
     resource_type: str | None = None
     action: int | None = Field(default=None, ge=0)
+    # The platform whose documented product JSON this body is, for a data call an HTTP fetch made whose answer passed
+    # the identity check (`acquire.identity`); None for a render's captured call. Left out of the manifest when None,
+    # so a bundle written before it was kept encodes as it did.
+    data_call: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class CaptureManifest(_Frozen):
@@ -114,8 +119,8 @@ class CaptureBundle(_Frozen):
         raw_sha256 = None if self.raw_body is None else sha256_hex(self.raw_body)
         if raw_sha256 != self.manifest.raw_html_sha256:
             raise ValueError("raw_body does not match manifest raw_html_sha256")
-        if entries and self.manifest.method != "browser":
-            raise ValueError(f"network bodies are captured by the browser only, not by method {self.manifest.method}")
+        if entries and self.manifest.method == "api":
+            raise ValueError("network bodies are a page's: captured by the browser, or data calls an HTTP fetch made")
         if len(self.network) != len(entries):
             raise ValueError(f"network has {len(self.network)} bodies but the manifest lists {len(entries)}")
         for i, (data, entry) in enumerate(zip(self.network, entries, strict=True)):

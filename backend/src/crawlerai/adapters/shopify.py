@@ -31,6 +31,7 @@ import json
 import re
 from collections.abc import Sequence
 from dataclasses import replace
+from decimal import Decimal, InvalidOperation
 from typing import Final
 from urllib.parse import urlsplit
 
@@ -222,6 +223,20 @@ def _one_currency(answer: JsonValue) -> bool:
     return isinstance(currencies, list) and len(currencies) == 1
 
 
+def _priced(answer: JsonValue) -> bool:
+    """Whether every listed product has a price above zero (`priceRange.minVariantPrice.amount`, a `Decimal` string):
+    a shop that hides its prices from the API (amounts of zero) may still show them on its page, and the answer must
+    not take the page path's prices away (adapters spec: an adapter answer never serves a page with less)."""
+    for node in _nodes(answer):
+        amount = _member(_member(_member(node, "priceRange"), "minVariantPrice"), "amount")
+        try:
+            if not isinstance(amount, str) or Decimal(amount) <= 0:
+                return False
+        except InvalidOperation:
+            return False
+    return True
+
+
 def _member(value: JsonValue, name: str) -> JsonValue:
     return value.get(name) if isinstance(value, dict) else None
 
@@ -229,8 +244,9 @@ def _member(value: JsonValue, name: str) -> JsonValue:
 def _verdict(result: FetchResult, language: str | None) -> FetchResult:
     """`result`, or why it does not serve the page. No response, a slow-down or a server error is kept as it is: it
     says nothing of the platform, and the page falls back. An answer without the platform's signal is `NOT_PLATFORM`;
-    the platform's answer holding errors or no collection, for a page in `language` not in that language, or of a shop
-    whose page may show another currency than the answer's (`_one_currency`), is `NOT_SERVED`."""
+    the platform's answer holding errors or no collection, for a page in `language` not in that language, of a shop
+    whose page may show another currency than the answer's (`_one_currency`), or with a product it states no price for
+    (`_priced`), is `NOT_SERVED`."""
     manifest = result.bundle.manifest
     if manifest.status_code == 0 or is_transient(manifest.status_code):
         return result
@@ -246,6 +262,7 @@ def _verdict(result: FetchResult, language: str | None) -> FetchResult:
         and isinstance(_member(answer.get("data"), "collection"), dict)
         and (language is None or _answered_in(answer) == language)
         and _one_currency(answer)
+        and _priced(answer)
     )
     return result if served else as_error(result, NOT_SERVED)
 

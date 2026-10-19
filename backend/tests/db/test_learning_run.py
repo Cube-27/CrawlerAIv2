@@ -79,8 +79,9 @@ def _page(n: int, *, anchored: bool = False) -> bytes:
 
 
 def _answer(n: int) -> bytes:
-    """The API's answer for product `n`."""
-    return json.dumps({"data": {"name": f"Kettle {n}", "price": f"{n}.50", "currency": "EUR"}}).encode()
+    """The API's answer for product `n`, stating its page's path, as the identity check requires."""
+    answer = {"data": {"url": f"/p/{n}", "name": f"Kettle {n}", "price": f"{n}.50", "currency": "EUR"}}
+    return json.dumps(answer).encode()
 
 
 def _browser_capture(fetched: FetchResult, n: int) -> FetchResult:

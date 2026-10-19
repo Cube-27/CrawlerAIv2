@@ -98,7 +98,8 @@ def _products(request: httpx.Request) -> httpx.Response:
     if slug not in PRODUCTS:
         return httpx.Response(404, json={})
     name, price = PRODUCTS[slug]
-    return httpx.Response(200, json={"data": {"name": name, "price": price, "currency": "EUR"}})
+    # The answer states the product it was asked for (its slug), as the identity check requires.
+    return httpx.Response(200, json={"data": {"slug": slug, "name": name, "price": price, "currency": "EUR"}})
 
 
 @dataclass

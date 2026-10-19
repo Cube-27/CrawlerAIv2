@@ -29,7 +29,18 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from crawlerai.acquire.politeness import SLOW_DOWN
 from crawlerai.acquire.session import ENGINE
 from crawlerai.acquire.types import AttemptRecord, FetchResult, fetched_as
-from crawlerai.db.models import BrowserEngine, FetchMethod, PageKind, SettleOn, SiteBlock, SiteContract, SiteId
+from crawlerai.adapters.platforms import platform_of
+from crawlerai.db.models import (
+    BrowserEngine,
+    FetchMethod,
+    PageKind,
+    SettleOn,
+    Site,
+    SiteBlock,
+    SiteContract,
+    SiteId,
+)
+from crawlerai.storage.capture_bundle import decode_body
 
 __all__ = [
     "BLOCK_TTL",
@@ -158,8 +169,10 @@ def _rendered(result: FetchResult, http: AttemptRecord, lacks: bool | None) -> L
 async def learn_fetch(conn: AsyncConnection, site_id: SiteId, result: FetchResult, lacks: bool | None) -> None:
     """Remember what the fetch `result` of a site's page taught: its block or HTTP success in the block history, and
     its `lesson` in the contract of the kind it was fetched as. A plain HTTP `ok` leaves a contract on HTTP as it is (a
-    handoff's HTTP `ok` is the handoff working); a contract the lesson would not change is not rewritten."""
+    handoff's HTTP `ok` is the handoff working); a contract the lesson would not change is not rewritten. The platform
+    an `ok` page shows (`adapters.platforms`) is the site's (`site.platform`)."""
     await _record_block(conn, site_id, result)
+    await _record_platform(conn, site_id, result)
     learned = lesson(result, lacks)
     if learned is None:
         return
@@ -186,6 +199,17 @@ async def learn_fetch(conn: AsyncConnection, site_id: SiteId, result: FetchResul
             where=changed,
         )
     )
+
+
+async def _record_platform(conn: AsyncConnection, site_id: SiteId, result: FetchResult) -> None:
+    """Set the site's platform to the one its `ok` page shows; a page that shows none leaves it."""
+    if result.block_class != "ok" or result.method == "api":
+        return
+    manifest = result.bundle.manifest
+    platform = platform_of(decode_body(result.bundle), manifest.headers.response)
+    if platform is not None:
+        query = update(Site).where(Site.id == site_id, Site.platform.is_distinct_from(platform))
+        await conn.execute(query.values(platform=platform))
 
 
 async def _record_block(conn: AsyncConnection, site_id: SiteId, result: FetchResult) -> None:

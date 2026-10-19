@@ -40,7 +40,8 @@ PRICE = {"type": "money", "required": True, "description": "The price", "schema_
 PAGE = b"""<!doctype html><html lang="en"><head><title>Lamps</title></head>
 <body><main><h1>Lamp page</h1><p>A lamp that lights a desk.</p><a href="/p/other-lamp">Another lamp</a></main></body>
 </html>"""
-PRODUCT = {"data": {"name": "Desk Lamp", "price": 19.5, "currency": "EUR"}}
+# The API's answer states the product it was asked for (its slug), as the identity check requires.
+PRODUCT = {"data": {"slug": "desk-lamp", "name": "Desk Lamp", "price": 19.5, "currency": "EUR"}}
 
 
 @dataclass

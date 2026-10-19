@@ -26,6 +26,7 @@ from crawlerai.collect.api import read_rows
 from crawlerai.collect.base import Candidate
 from crawlerai.collect.induce import induced
 from crawlerai.collect.network_match import DataCall, LearnedCalls, data_calls, row_series
+from crawlerai.collect.platform_json import data_call_bodies
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.segment import group_links
 from crawlerai.normalize.base import Context
@@ -46,7 +47,9 @@ class XhrCollector:
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate]) -> Admitted:
         diagnostics: list[str] = []
-        documents = network_documents(page, diagnostics)
+        # A platform's identity-checked product JSON is read as the platform documents it (`collect.platform_json`).
+        verified = data_call_bodies(page)
+        documents = [d for d in network_documents(page, diagnostics) if int(d.address) not in verified]
         found = None
         if schema.page_kind == "listing":
             found = _learned(page, schema, self.learned) or _proved(page, schema, ctx, others)

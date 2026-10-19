@@ -34,7 +34,9 @@ Refs: Appendix A #43, D-0954.
 - **THEN** all three succeed and constraint names match `test_baseline_migration.py`
 
 ### Requirement: Capture bundle format
-Each capture SHALL be one deterministic zstd tar (manifest, body as received, browser network bodies as received) as
+Each capture SHALL be one deterministic zstd tar (manifest, body as received, network bodies as received: a render's
+captured calls, or the data calls an HTTP page was joined with, acquisition spec "Data calls"; an `api` capture has
+none) as
 defined in the bundle codec; `decode(encode(b)) == b`, and an inconsistent bundle raises `CorruptBundle`. A network
 entry's response headers, resource type and action index decode as None in bundles written before they were kept.
 Replay reads only the bundle, never the `capture` row. Refs: §15, Appendix A #59, D-0097, D-0098, D-1311.

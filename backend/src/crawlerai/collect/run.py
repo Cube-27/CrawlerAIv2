@@ -2,7 +2,9 @@
 and diagnostics as one result.
 
 The standard collectors run first, each on its own: one that raises gives no candidates and a diagnostic, and the
-others still run. An `api` capture of an active adapter adds that adapter's collector (D-0445). Then js_state and xhr
+others still run. An `api` capture of an active adapter adds that adapter's collector (D-0445); a platform's documented
+product JSON that a detail page's HTTP fetch joined after its identity check is read as that platform documents it
+(`collect.platform_json`). Then js_state and xhr
 admit their values against the candidates of the other kinds (D-0418); on a listing, xhr also reads the rows of the
 page's captured calls (Appendix A #59), which resolution takes where structured data and the config give none; on a
 listing none of whose groups aligns and with no call rows, the rows of its state JSON are read too
@@ -27,6 +29,7 @@ from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.microdata import MicrodataCollector
 from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.collect.og import OpenGraphCollector
+from crawlerai.collect.platform_json import PlatformJsonCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.collect.xhr import XhrCollector
 from crawlerai.content.page import ParsedPage
@@ -65,7 +68,12 @@ def collect_page(
     learned: LearnedCalls | None = None,
 ) -> Collected:
     """Every collector over the page; `learned` is the site's learned listing recipe's calls (`collect.xhr`)."""
-    collectors: list[Collector] = [JsonLdCollector(vocabulary), MicrodataCollector(vocabulary), OpenGraphCollector()]
+    collectors: list[Collector] = [
+        JsonLdCollector(vocabulary),
+        MicrodataCollector(vocabulary),
+        OpenGraphCollector(),
+        PlatformJsonCollector(vocabulary),
+    ]
     diagnostics: list[str] = []
     adapter = _adapter_collector(manifest, adapters, vocabulary, diagnostics)
     if adapter is not None:

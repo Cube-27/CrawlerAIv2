@@ -61,7 +61,9 @@ def _capture(i: int) -> CaptureId:
 def _answers(overrides: Answers | None = None) -> dict[str, JsonValue]:
     """The endpoint's answer per product slug: the product's values, unless overridden."""
     answers: dict[str, JsonValue] = {
-        slug: {"data": {"name": name, "price": price, "currency": "EUR"}} for slug, (name, price) in PRODUCTS.items()
+        # Each answer states the product it was asked for (its slug), as the identity check requires.
+        slug: {"data": {"slug": slug, "name": name, "price": price, "currency": "EUR"}}
+        for slug, (name, price) in PRODUCTS.items()
     }
     return {**answers, **(overrides or {})}
 
@@ -132,7 +134,9 @@ def test_a_recipe_that_reproduces_every_held_out_page_is_accepted_with_its_proof
 
 def test_a_value_that_differs_on_one_held_out_page_rejects_the_recipe(stand_in_api: StandInApi) -> None:
     held_out = _held_out()
-    answers = _answers({"oak-chair": {"data": {"name": "Oak Chair", "price": 99, "currency": "EUR"}}})
+    answers = _answers(
+        {"oak-chair": {"data": {"slug": "oak-chair", "name": "Oak Chair", "price": 99, "currency": "EUR"}}}
+    )
 
     result, _ = _run(stand_in_api, answers, held_out)
 

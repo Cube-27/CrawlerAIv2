@@ -1,7 +1,9 @@
 """Recipe replay (adapters spec): send a recipe's request for a captured page over `fetch_json` (so through the
 SSRF guard, INV-16) and check that the response reproduces the page's published values through the recipe's map.
 
-Header minimization replays the sample pages; held-out validation replays the held-out ones the same way. A listing
+A detail recipe's answer must also state the page's product (the identity check, acquisition spec "Data calls"), as
+serving requires (`execute`). Header minimization replays the sample pages; held-out validation replays the held-out
+ones the same way. A listing
 recipe (one with `pagination`) is replayed for its first two pages, the second built by its pagination as serving
 builds it (`next_request` of `pagination.py`), and each must give the rows the page's captured calls gave: the same
 rows in the same order, each mapped field's raw value equal (Appendix A #59).
@@ -14,6 +16,7 @@ from typing import Final
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonRequest
+from crawlerai.acquire.identity import identifies
 from crawlerai.acquire.types import FetchResult
 from crawlerai.collect import json_doc
 from crawlerai.collect.api import read_map
@@ -75,8 +78,10 @@ async def compare(
     spec: RequestSpec, fields: Mapping[str, str], page: ReplayPage, schema: SchemaDef, replay: Replay
 ) -> dict[str, bool]:
     """For each `fields` entry the page has a published value for, whether replaying `spec` for `page` answers JSON
-    whose value at its path is `equal` to that value; every entry is false when the request cannot be made or its
-    answer is not JSON, and nothing is sent when no field is compared."""
+    whose value at its path is `equal` to that value; every entry is false when the request cannot be made, or its
+    answer is not JSON or does not state the page's product (`acquire.identity.identifies`: a parameter value, or a
+    URL with the page's path; serving refuses such an answer, `execute`), and nothing is sent when no field is
+    compared."""
     if spec.pagination is not None:
         return await _compare_listing(spec, spec.pagination, fields, page, replay)
     compared = {name: path for name, path in fields.items() if page.values.get(name) is not None}
@@ -89,6 +94,9 @@ async def compare(
     try:
         document = json_text.parse(result.bundle.body)
     except ValueError:  # UnicodeDecodeError is a ValueError
+        return dict.fromkeys(compared, False)
+    params = resolve_params(spec, page.sample.page_url, page.sample.page_data) or {}
+    if not identifies(document, page.sample.page_url, params.values()):
         return dict.fromkeys(compared, False)
     return {name: _equal(read_map(path, document), name, page, schema) for name, path in compared.items()}
 

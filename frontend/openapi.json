@@ -230,6 +230,17 @@
             ],
             "title": "Challenge"
           },
+          "data_call": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Call"
+          },
           "duration_ms": {
             "title": "Duration Ms",
             "type": "integer"

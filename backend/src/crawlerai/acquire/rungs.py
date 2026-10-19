@@ -20,10 +20,11 @@ from datetime import timedelta
 from typing import Final, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
-from crawlerai.acquire.api import JsonFetcher
+from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.browser_tab import ListingRung
 from crawlerai.acquire.challenge import block_class_of
 from crawlerai.acquire.classify import interstitial
+from crawlerai.acquire.identity import joined
 from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
@@ -37,6 +38,7 @@ from crawlerai.acquire.types import (
     fetched_as,
     policy_with_attempts,
 )
+from crawlerai.adapters.platforms import ProductJson, platform_of, product_json
 from crawlerai.adapters.registry import Registry, platform_adapters
 from crawlerai.storage.capture_bundle import decode_body
 
@@ -165,7 +167,8 @@ async def acquire(
         async def refer(page: Fetched) -> Fetched:
             return await _by_canonical(url, page, policy, rungs, send, admit_next, asked)
 
-    page = await _page(url, policy, remembered, rungs, _Retry(validators, admit_next, needs_render, deadline), refer)
+    retry = _Retry(validators, admit_next, needs_render, deadline, send)
+    page = await _page(url, policy, remembered, rungs, retry, refer)
     kept, attempts, duration_ms = page if refer is None else await refer(page)
     if served is not None:
         return with_attempts(kept, served.attempts + attempts, served.duration_ms + duration_ms)
@@ -243,6 +246,8 @@ class _Retry:
     admit_next: Admit | None
     needs_render: RenderCheck | None
     deadline: float | None
+    # The JSON fetch a detail page's data call is sent with (`_data_called`); without it none is sent.
+    send: JsonFetcher | None = None
 
     def in_budget(self) -> bool:
         return self.deadline is None or self.deadline - time.monotonic() >= BROWSER_MIN_S
@@ -254,7 +259,8 @@ async def _page(
     """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration. An HTTP
     page kept for want of a browser outcome is the fetch's last page (`_as_last_page`). An HTTP `ok` page that would
     be rendered only for lacking what the caller reads is first offered to `refer` (its adapter canonical or
-    referral), whose `ok` answer is kept without the render (D-1388)."""
+    referral), whose `ok` answer is kept without the render (D-1388), then joined with its data call (`_data_called`),
+    and kept without the render when the joined page no longer lacks it."""
     needs_render = retry.needs_render
     method = remembered.method if policy.method_hint == "auto" else policy.method_hint
     rendered_with = _settled(policy, remembered)
@@ -266,10 +272,11 @@ async def _page(
         result = await rungs.browser(url, rendered_with)
     retried = policy.method_hint == "auto" and method == "http" and await _browser_may_help(result, needs_render)
     page: Fetched = (result, result.attempts, result.duration_ms)
-    if retried and refer is not None and result.block_class == "ok":
-        page = await refer(page)
-        if page[0] is not result:
+    if retried and result.block_class == "ok":
+        page, served = await _instead_of_render(policy, page, retry, refer)
+        if served:
             return page
+        result = page[0]
     _, attempts, duration_ms = page
     # The budget is checked again once admitted: the wait for the site's turn may have spent it.
     if (
@@ -282,6 +289,49 @@ async def _page(
     rendered = await _browser_retry(url, rendered_with, rungs, result)
     kept = rendered if await _better(rendered, result, needs_render) else await _as_last_page(result)
     return kept, attempts + rendered.attempts, duration_ms + rendered.duration_ms
+
+
+async def _instead_of_render(
+    policy: FetchPolicy, page: Fetched, retry: _Retry, refer: Refer | None
+) -> tuple[Fetched, bool]:
+    """What serves an HTTP `ok` page about to be rendered for lacking what the caller reads, and whether it does: the
+    `ok` answer of `refer` (D-1388), else the page joined with its data call (`_data_called`) when the joined page no
+    longer lacks it; else the page, joined or not, with every attempt."""
+    result = page[0]
+    if refer is not None:
+        page = await refer(page)
+        if page[0] is not result:
+            return page, True
+    page = await _data_called(policy, page, retry)
+    joined_page = page[0]
+    served = joined_page is not result and retry.needs_render is not None and not await retry.needs_render(joined_page)
+    return page, served
+
+
+async def _data_called(policy: FetchPolicy, page: Fetched, retry: _Retry) -> Fetched:
+    """The HTTP `ok` detail page about to be rendered for lacking what the caller reads, joined with the product JSON
+    its platform documents (`adapters.platforms`) when the answer states the page's product (`acquire.identity`). The
+    call waits for the site's rate (`admit_next`) and its attempt is added; without a call, or one not admitted, the
+    page as it is."""
+    result, attempts, duration_ms = page
+    send = retry.send
+    called = None if policy.page_kind == "listing" or send is None else _documented(result)
+    if send is None or called is None or not await _admitted(retry.admit_next):
+        return page
+    # The page that loaded the product, after its redirects, is the call's referrer.
+    sent = await send(JsonRequest(url=called.url, page_url=result.bundle.manifest.final_url), policy)
+    marked = sent.model_copy(
+        update={"attempts": tuple(a.model_copy(update={"data_call": called.platform}) for a in sent.attempts)}
+    )
+    kept, call = joined(result, marked, called.key, called.platform)
+    return (kept or result), attempts + call.attempts, duration_ms + call.duration_ms
+
+
+def _documented(result: FetchResult) -> ProductJson | None:
+    """The documented product JSON request of the page's platform (`adapters.platforms.product_json`), or None."""
+    manifest = result.bundle.manifest
+    markup = decode_body(result.bundle)
+    return product_json(platform_of(markup, manifest.headers.response), manifest.final_url, markup)
 
 
 def _settled(policy: FetchPolicy, remembered: Remembered) -> FetchPolicy:
