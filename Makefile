@@ -17,7 +17,7 @@ export
 # `check-sdk` is not part of `check`: it needs `uvx` and the SDK's own `pnpm install`. CI checks only that the SDKs
 # were generated from the current API document (tools/tests/test_sdk_digest.py).
 .PHONY: sdk check-sdk dev up db db-down migrate api api-client check check-data check-tools check-backend \
-	check-frontend check-api-client check-licenses check-size-gates check-complexity check-theme
+	check-frontend check-api-client check-licenses check-size-gates check-complexity check-theme verify-worker-queue
 
 ## Start Postgres, apply migrations and run the API on http://localhost:8000.
 dev: db migrate api
@@ -45,6 +45,11 @@ api:
 api-client:
 	cd backend && $(UV_RUN) crawlerai openapi > ../frontend/openapi.json
 	cd frontend && pnpm gen:api
+
+## Model-check the worker/queue concurrency with TLC (.claude/skills/verify-worker-queue/SKILL.md): the checks, the
+## known findings, and each broken variant caught.
+verify-worker-queue:
+	python3 tools/verify/worker_queue.py
 
 ## Everything CI runs (SPEC-00 §4.4, §4.6), in the same order per job, failing at the first error. Needs Docker for
 ## the backend's database steps and `pnpm install` in frontend/. The fast staged-file hooks are in

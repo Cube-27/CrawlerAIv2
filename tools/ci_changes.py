@@ -32,6 +32,21 @@ JOB_INPUTS: dict[str, tuple[str, ...]] = {
         "tools/license_policy.py",
         WORKFLOW,
     ),
+    # The worker/queue model (.claude/skills/verify-worker-queue/SKILL.md): the code it models, and itself.
+    "verify_worker_queue": (
+        "backend/src/crawlerai/worker/loop.py",
+        "backend/src/crawlerai/worker/handlers/",
+        "backend/src/crawlerai/db/queue.py",
+        "backend/src/crawlerai/db/jobs.py",
+        "backend/src/crawlerai/db/usage.py",
+        "backend/src/crawlerai/crawl/frontier.py",
+        "backend/src/crawlerai/scheduler/loop.py",
+        "backend/src/crawlerai/services/polite.py",
+        "backend/src/crawlerai/acquire/politeness.py",
+        "backend/src/crawlerai/acquire/shared_browser.py",
+        "tools/verify/",
+        WORKFLOW,
+    ),
 }
 
 
