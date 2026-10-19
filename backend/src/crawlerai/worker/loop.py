@@ -192,10 +192,8 @@ async def _run_within_deadline(
             await fail_task(conn, task, DEADLINE, transient=False, ending=ending)
     except LeaseLost:
         pass
-    except DBAPIError as error:
-        log.error(
-            "url_task %s: its failure was not recorded (%s); its lease will expire", task.id, type(error).__name__
-        )
+    except DBAPIError:
+        log.exception("url_task %s: its failure was not recorded; its lease will expire", task.id)
 
 
 # The tasks left running past their deadline and cancellation (`_run_within_deadline`): referenced until they end,
