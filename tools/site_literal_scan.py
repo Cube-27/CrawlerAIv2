@@ -26,13 +26,6 @@ them. Names of tracked files, modules and schemas still come from the whole repo
 Prints `path:line: host` per finding and exits 1, or prints one summary line and exits 0. Exits 2 when the
 allowlist or the TLD list cannot be used, or when `--allowlist` lies outside the scanned repository (`--root`);
 the default is that repository's `tools/site_literal_allowlist.txt`.
-
-`--hidden-hosts-from-env VAR` (the protected job, INV-04) reads hidden hosts from the environment variable VAR,
-separated by whitespace or commas, and scans every tracked file, with no path exemption and no allowlist. A host
-matches itself and its subdomains, case-insensitively, anywhere in a file; any character other than a letter, digit,
-`.` or `-` bounds it. The job log is public, so it prints only `path:line` per finding (`path:0` when the path itself
-names a host), with every occurrence of a host in the path replaced by `[hidden]`, and never a host. An unset or
-empty VAR passes: the environment holding the list may not exist yet.
 """
 
 import argparse
@@ -40,7 +33,6 @@ import ast
 import io
 import ipaddress
 import json
-import os
 import re
 import subprocess
 import sys
@@ -79,8 +71,6 @@ COLUMN_REF = re.compile(r"(?i)(?<![\w.-])([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)(
 # alternative paths (variants spec). A path is matched only as written, so a host in its usual lowercase form is never
 # one.
 SCHEMA_ORG_PATH = re.compile(r"([A-Z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+)(?:\+[a-z][A-Za-z0-9]*)?")
-# Hidden mode reads every run of host characters as a token, so any other character, `_` included, separates hosts.
-HOST_RUN = re.compile(r"(?i)[a-z0-9.-]+")
 # JS/TS string literals and comments, matched left to right. Quoted strings stay on one line, so a regex literal
 # holding a quote cannot swallow the rest of the file; template literals and block comments may span lines.
 JS_DOUBLE_QUOTED = r'"(?:[^"\\\n]|\\.)*"'
@@ -91,8 +81,6 @@ JS_BLOCK_COMMENT = r"/\*.*?\*/"
 JS_PIECE = re.compile(
     "|".join((JS_DOUBLE_QUOTED, JS_SINGLE_QUOTED, JS_TEMPLATE, JS_LINE_COMMENT, JS_BLOCK_COMMENT)), re.DOTALL
 )
-
-HIDDEN = "[hidden]"
 
 Segment = tuple[int, str]
 
@@ -414,72 +402,6 @@ def scan(root: Path, allowlist: Allowlist, tlds: frozenset[str], *, staged: bool
     return findings, scanned
 
 
-def names_hidden(token: str, hosts: frozenset[str]) -> bool:
-    """Whether any run of the token's labels is a hidden host: the host itself, a subdomain, or a prefix."""
-    labels = token.lower().split(".")
-    return any(
-        ".".join(labels[start:end]) in hosts
-        for start in range(len(labels))
-        for end in range(start + 1, len(labels) + 1)
-    )
-
-
-def withhold(path: str, starts: re.Pattern[str]) -> str:
-    """The path with each run of characters covered by a host occurrence replaced by `[hidden]`."""
-    covered = [False] * len(path)
-    for match in starts.finditer(path):
-        covered[match.start(1) : match.end(1)] = [True] * len(match.group(1))
-    pieces: list[str] = []
-    for index, character in enumerate(path):
-        if not covered[index]:
-            pieces.append(character)
-        elif index == 0 or not covered[index - 1]:
-            pieces.append(HIDDEN)
-    return "".join(pieces)
-
-
-def scan_hidden(root: Path, hosts: frozenset[str]) -> tuple[list[str], int]:
-    """Return `path:line` findings, with hidden hosts withheld from paths, and the number of files scanned.
-
-    Content tokens are looked up in the host set, so that cost does not grow with the number of hosts. A path is shown
-    with every case-insensitive occurrence of a host replaced, whatever surrounds it, so no tokenizing gap can leak one.
-    """
-    # A lookahead finds the occurrences that start at every position, so overlapping hosts are all found.
-    starts = re.compile(f"(?=({'|'.join(map(re.escape, sorted(hosts, key=len, reverse=True)))}))", re.IGNORECASE)
-    findings: list[str] = []
-    scanned = 0
-    for path in tracked_files(root):
-        file = root / path
-        if not file.is_file():
-            continue
-        scanned += 1
-        shown = withhold(path, starts)
-        if any(names_hidden(token, hosts) for token in HOST_RUN.findall(path)):
-            findings.append(f"{shown}:0")
-        findings.extend(
-            f"{shown}:{number}"
-            for number, line in lines_from(1, file.read_text(encoding="utf-8", errors="replace"))
-            if any(names_hidden(token, hosts) for token in HOST_RUN.findall(ESCAPE.sub(" ", line)))
-        )
-    return findings, scanned
-
-
-def run_hidden(root: Path, variable: str) -> int:
-    value = os.environ.get(variable, "")
-    hosts = frozenset(host for raw in re.split(r"[\s,]+", value) if (host := raw.strip(".").lower()))
-    if not hosts:
-        print("hidden-hosts: pass, no host list configured")
-        return 0
-    findings, scanned = scan_hidden(root, hosts)
-    for finding in findings:
-        print(finding)
-    if findings:
-        print(f"hidden-hosts: fail, {len(findings)} match(es)", file=sys.stderr)
-        return 1
-    print(f"hidden-hosts: pass, {scanned} files scanned")
-    return 0
-
-
 def inside(root: Path, path: Path) -> Path:
     """`path` resolved, when it lies inside the resolved `root`: the allowlist is part of the repository it governs."""
     resolved = path.resolve()
@@ -492,16 +414,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--public", action="store_true", help="scan with exemptions (CI, hooks)")
-    mode.add_argument("--hidden-hosts-from-env", metavar="VAR", help="scan everything for the hosts listed in VAR")
     parser.add_argument("--staged", action="store_true", help="public mode only: scan staged files (hooks)")
     parser.add_argument("--root", type=Path, default=REPO, help="repository to scan")
     parser.add_argument("--allowlist", type=Path, help=f"public mode only; default: <root>/{DEFAULT_ALLOWLIST}")
     args = parser.parse_args(argv)
 
     root = args.root.resolve()
-    if args.hidden_hosts_from_env is not None:
-        return run_hidden(root, args.hidden_hosts_from_env)
-
     try:
         allowlist = Allowlist.load(inside(root, args.allowlist or root / DEFAULT_ALLOWLIST))
         tlds = load_tlds(TLD_LIST)

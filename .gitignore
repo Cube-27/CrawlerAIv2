@@ -16,7 +16,6 @@ secrets/
 .data/
 *.zst
 eval-aggregate.json
-hidden_hosts*.txt
 sites*.txt
 
 # --- Python ---
