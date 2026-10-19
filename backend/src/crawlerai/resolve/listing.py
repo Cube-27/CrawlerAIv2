@@ -24,7 +24,7 @@ from typing import Final
 from crawlerai.acquire.items import MIN_ITEMS
 from crawlerai.collect.base import Entity
 from crawlerai.collect.schema_org_map import ENTRY
-from crawlerai.resolve.identity import LISTS
+from crawlerai.collect.scope import LISTS
 from crawlerai.resolve.intent import AmbiguousTarget, is_primary
 from crawlerai.resolve.ownership import EntityGraph
 

@@ -6,6 +6,7 @@ Pages are synthetic (`example.test`); the schema.org vocabulary is the synthetic
 import asyncio
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId, SourceKind
 from crawlerai.normalize.base import Ok
+from crawlerai.resolve.evidence import Bucket, Calibration
 from crawlerai.resolve.pipeline import (
     EngineData,
     GapReply,
@@ -603,5 +605,17 @@ def test_availability_is_the_shown_variant_s_and_no_default_otherwise() -> None:
     unshown = _extract(_bundle(_html(_offered())), WITH_VARIANTS)
 
     assert shown.entity is not None
-    assert shown.entity["availability"].value == "InStock"
+    assert (shown.entity["availability"].value, shown.entity["availability"].reason) == ("InStock", "offers_disagree")
     assert _statuses(unshown)["availability"] == ("conflict", "offers_disagree")
+
+
+def test_only_a_sku_the_target_publishes_selects_the_shown_variant() -> None:
+    # A sku that publishes below the request's min_confidence, or only the request URL carries (INV-13), is no sku
+    # the target shows.
+    below = Calibration(git_sha="0" * 40, buckets={"identifier|structured": Bucket(n=40, precision=0.5)})
+    doubted = replace(DATA, calibration=below, min_confidence=0.9)
+    unconfident = _extract(_bundle(_html(_offered(sku="W-2"))), WITH_VARIANTS, data=doubted)
+    from_url = _extract(_bundle(_html(_offered(sku="W-2")), url=f"{PAGE_URL}?sku=W-2"), WITH_VARIANTS)
+
+    assert _statuses(unconfident)["availability"] == ("conflict", "offers_disagree")
+    assert _statuses(from_url)["availability"] == ("conflict", "offers_disagree")

@@ -124,3 +124,15 @@ def test_the_resource_key_ignores_only_the_scheme_the_query_and_a_stated_size() 
     assert key != url.resource_key("https://cdn.example.test/i/b-300x200.jpg")
     assert key != url.resource_key("https://img.example.test/i/a-300x200.jpg")
     assert url.resource_key("/i/a.jpg") is None
+
+
+def test_a_proxy_url_names_the_file_its_url_parameter_names() -> None:
+    key = url.resource_key("https://cdn.example.test/i/a.jpg?w=940")
+    proxy = "https://www.example.test/_img?url="
+
+    assert key == url.resource_key(f"{proxy}https%3A%2F%2Fcdn.example.test%2Fi%2Fa.jpg&w=640")
+    assert url.resource_key(f"{proxy}%2Fi%2Fa.jpg") == url.resource_key("https://www.example.test/i/a.jpg")
+    assert url.resource_key(f"{proxy}%2Fi%2Fa.jpg") != url.resource_key(f"{proxy}%2Fi%2Fb.jpg")
+    # Another parameter holding a URL (a fallback, a referrer) is no file the URL serves.
+    other = "https://img.example.test/i/a.jpg?fallback=https%3A%2F%2Fcdn.example.test%2Fi%2Fz.jpg"
+    assert url.resource_key(other) == ("resource", "img.example.test", "/i/a.jpg")

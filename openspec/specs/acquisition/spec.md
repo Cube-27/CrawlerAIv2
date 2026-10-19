@@ -124,7 +124,10 @@ platforms are tried before Next.js, which may front any of them. Where a platfor
 JSON endpoint on the shop's own host (Shopify's Online Store Ajax API `/products/{handle}.js`, only on a page with the
 Online Store's `Shopify.shop` global; WooCommerce's Store API `wc/store/v1/products?slug=` at the REST root the page
 links to, WordPress REST API discovery), that endpoint is a detail page's data call; the other platforms are recorded
-only. Refs: owner plan 2026-10-19 P4 (platform fingerprints).
+only. A platform that addresses a variant by its page URL's query states the parameter (Shopify `variant`, Salesforce
+Commerce Cloud `dwvar_` prefix, WooCommerce `attribute_` prefix), by which a variant row of URLs only is still the
+page's own ([variants](../variants/spec.md), "Own variants"). Refs: owner plan 2026-10-19 P4 (platform fingerprints),
+P6.
 #### Scenario: Headless storefront
 - **WHEN** a page shows the Shopify asset CDN but not the Online Store's global
 - **THEN** its platform is `shopify` and no Ajax API request is sent

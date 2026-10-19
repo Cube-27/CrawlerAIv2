@@ -16,6 +16,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 
+from crawlerai.adapters.platforms import signature_of
 from crawlerai.adapters.registry import Registry
 from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.admission import AdmittingCollector
@@ -31,7 +32,9 @@ from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.platform_json import PlatformJsonCollector
 from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.scope import other_items
 from crawlerai.collect.xhr import XhrCollector
+from crawlerai.content.metadata import canonical_link
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
@@ -55,6 +58,9 @@ class Collected:
     # A listing's rows from its state JSON, read only when no group aligns and no call gives rows; their entities are
     # among `entities`, their candidates only here.
     state: StateRows = field(default_factory=StateRows)
+    # The query parameters by which the page's platform selects a variant on a product's own URL
+    # (`adapters.platforms.variant_params`); none when the page shows no platform that documents any.
+    variant_params: tuple[str, ...] = ()
 
 
 def collect_page(
@@ -81,7 +87,8 @@ def collect_page(
     results = [
         r for c in collectors if (r := _isolated(c, partial(c.collect, page, schema, ctx), diagnostics)) is not None
     ]
-    dom = _DomPasses.of(page, schema, ctx, [c for result in results for c in result.candidates], diagnostics)
+    stated = _stated(results, vocabulary, page, manifest) if schema.page_kind == "detail" else ()
+    dom = _DomPasses.of(page, schema, ctx, stated, diagnostics)
     results.extend(dom.structural(page, schema, ctx, diagnostics))
     # The item layer's blocks are read before the admitting collectors, whose values then agree with the best aligned
     # group's too.
@@ -122,6 +129,7 @@ def collect_page(
         rows=rows,
         items=items,
         state=state,
+        variant_params=_variant_params(page, manifest) if schema.page_kind == "detail" else (),
     )
 
 
@@ -151,6 +159,27 @@ class _DomPasses:
     ) -> CollectResult | None:
         described = DescriptionCollector(self.outside)
         return _isolated(described, partial(described.collect, page, schema, ctx, others), diagnostics)
+
+
+def _stated(
+    results: Sequence[CollectResult], vocabulary: Vocabulary, page: ParsedPage, manifest: CaptureManifest
+) -> list[Candidate]:
+    """The structured collectors' candidates of the page's product: an Offer in another item's scope prices that item,
+    not the product (`collect.scope`)."""
+    elsewhere = other_items([e for r in results for e in r.entities], vocabulary, _page_urls(page, manifest))
+    return [c for r in results for c in r.candidates if c.entity_id not in elsewhere]
+
+
+def _variant_params(page: ParsedPage, manifest: CaptureManifest) -> tuple[str, ...]:
+    """The query parameters by which the page's platform selects a variant (`adapters.platforms`), or none."""
+    signature = signature_of(page.html, manifest.headers.response)
+    return () if signature is None else signature.variant_params
+
+
+def _page_urls(page: ParsedPage, manifest: CaptureManifest) -> tuple[str, ...]:
+    """The request, final and canonical URLs (RFC 6596): the URLs that name the page's own product."""
+    canonical = canonical_link(page, manifest.final_url)
+    return (manifest.url, manifest.final_url, *(() if canonical is None else (canonical,)))
 
 
 def _adapter_collector(

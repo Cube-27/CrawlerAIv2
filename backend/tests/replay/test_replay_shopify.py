@@ -81,18 +81,19 @@ amounts = st.integers(min_value=1, max_value=99_999).map(lambda cents: f"{cents 
 
 
 @given(prices=st.lists(st.tuples(amounts, amounts), min_size=1, max_size=8))
-def test_every_listed_product_is_a_row_with_a_price_only_when_its_range_is_one_price(
+def test_every_listed_product_is_a_row_priced_at_the_low_end_of_its_range(
     prices: list[tuple[str, str]],
 ) -> None:
     result = _extract(f"{SHOP}/collections/widgets", _collection(prices), LISTING)
 
     assert result.outcome == "extracted"
     expected = [
-        {"title": f"Widget {n}", "url": f"{SHOP}/products/widget-{n}"}
-        | ({"price": {"amount": low, "currency": "EUR"}} if low == high else {})
-        for n, (low, high) in enumerate(prices)
+        {"title": f"Widget {n}", "url": f"{SHOP}/products/widget-{n}"} | {"price": {"amount": low, "currency": "EUR"}}
+        for n, (low, _) in enumerate(prices)
     ]
     assert [_published(row) for row in result.rows] == expected
+    flags = [row["price"].reason for row in result.rows]
+    assert flags == [None if low == high else "offers_disagree" for low, high in prices]
 
 
 @pytest.mark.parametrize("currencies", [("EUR", "SEK"), ()])

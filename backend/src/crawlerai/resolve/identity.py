@@ -29,9 +29,8 @@ from typing import Final
 
 from crawlerai.collect.base import ARRAY_ROW, PAGE, Entity
 from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.scope import LISTS
 
-# schema.org: an ItemList (with its ListItems) lists things, so a thing in it is one of many, not the page's own.
-LISTS: Final = ("ItemList", "ListItem")
 # schema.org `hasVariant`: "Indicates a Product that is a member of this ProductGroup". A variant is part of its group,
 # not another thing the page is about, and its Offer offers the group's product too: it joins the group's Offers under
 # the atomic-offer rule. The variant's own values (its sku, its name) stay the variant's.

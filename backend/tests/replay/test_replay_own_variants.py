@@ -32,9 +32,9 @@ def _variant(sku: str, size: str, url: str) -> dict[str, Any]:
     return {"@type": "Product", "sku": sku, "size": size, "url": url, "offers": offer}
 
 
-def _entity(group: dict[str, Any]) -> dict[str, JsonValue]:
+def _entity(group: dict[str, Any], head: str = "") -> dict[str, JsonValue]:
     node = {"@context": "https://schema.org", "@type": "ProductGroup", "name": "Synthetic Widget"} | group
-    raw = f'<html><head><script type="application/ld+json">{json.dumps(node)}</script></head></html>'.encode()
+    raw = f'<html><head>{head}<script type="application/ld+json">{json.dumps(node)}</script></head></html>'.encode()
     result = asyncio.run(extract_page(capture(raw), SCHEMA, None, None, data=DATA))
     assert result.entity is not None
     return {name: outcome.value for name, outcome in result.entity.items()}
@@ -54,6 +54,20 @@ def test_only_members_that_state_more_than_a_url_of_this_page_are_variants() -> 
         ("W-1-S", f"{PAGE_URL}?size=S"),
         ("W-1-M", f"{PAGE_URL}?size=M"),
     ]
+
+
+def test_members_stating_only_a_platform_variant_url_of_this_page_are_variants() -> None:
+    # A platform that addresses a variant by its page URL's query (adapters/platforms.py: Shopify's `variant`) makes
+    # a member stating only such a URL a variant; on a page of no such platform it is a link and is dropped.
+    members = [{"@type": "Product", "url": f"{PAGE_URL}?variant={n}"} for n in (1, 2)]
+    shop = '<script id="shopify-features" type="application/json">{}</script>'  # the platform's own element
+
+    on_platform = _entity({"url": PAGE_URL, "hasVariant": members}, shop)["variants"]
+    elsewhere = _entity({"url": PAGE_URL, "hasVariant": members}).get("variants")
+
+    assert isinstance(on_platform, list)
+    assert [v["url"] for v in on_platform if isinstance(v, dict)] == [f"{PAGE_URL}?variant={n}" for n in (1, 2)]
+    assert elsewhere is None
 
 
 def test_an_image_stated_in_several_widths_is_one_image_its_widest() -> None:
