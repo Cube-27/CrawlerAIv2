@@ -26,10 +26,9 @@ Full table and rejected alternatives: ARCHITECTURE §19. Commands: `CLAUDE.md`.
 | `project.md` | This file: purpose, layout, the contract C1–C13, repo checks, invariant rules, open owner items | Always |
 | `specs/<capability>/spec.md` | The **current behaviour**, as requirements with scenarios; one folder per capability (list below). The source of truth for what the system does. | The capabilities your change touches |
 | `changes/<change-id>/` | In-flight work: `proposal.md` (why, what), `tasks.md` (the checklist; one PR implements a batch of tasks), `design.md` (only when needed; holds the change's decisions), `specs/<capability>/spec.md` deltas (`## ADDED`, `## MODIFIED`, `## REMOVED Requirements`) | Your change |
-| `backlog.md` | Follow-ups left by merged PRs, current focus, human-only tasks not tied to a change | When choosing work |
-| `design/` | [overview.md](design/overview.md): goals, the evidence behind the contract, milestone M, the candidates register (§22); [owner-decisions.md](design/owner-decisions.md): ARCHITECTURE Appendix A, appended as the owner decides. ARCHITECTURE rev 26 (cited in code as `ARCHITECTURE §N`) is deleted; git history holds it | When a spec or a ref points there |
+| `design/` | [overview.md](design/overview.md): goals, the evidence behind the contract, milestone M, the candidates register (§22); [owner-decisions.md](design/owner-decisions.md): ARCHITECTURE Appendix A, appended as the owner decides; [architecture-v3.md](design/architecture-v3.md): the architecture frozen 2026-10-19 (extraction model, source adapters, price handling, deletions, the ordered PR list), the current focus. ARCHITECTURE rev 26 (cited in code as `ARCHITECTURE §N`) is deleted; git history holds it | When a spec or a ref points there |
 | `decisions/` | How decisions are logged ([README](decisions/README.md)) and the cross-cutting log ([log.md](decisions/log.md)) | When logging a decision |
-| `OPEN_QUESTIONS.md` | Questions only the owner or a user can answer, with recommended defaults | When escalating |
+| `archive/` | Superseded documents (the former `backlog.md` and `OPEN_QUESTIONS.md`, 2026-10-19), kept for history; nothing there is current | Only when a reference points there |
 | `conventions/` | `ENGINEERING.md` (how to write code here), `DESIGN.md` (frontend conventions), `RECURRING.md` (repeated agent mistakes and their checks) | Implementors, once per session |
 
 ## Capabilities

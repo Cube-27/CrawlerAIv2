@@ -116,8 +116,8 @@ else it is stored `draft` while the previous version serves (C5). Refs: §13.1, 
 - **THEN** a `draft` version with the report is returned and the active version is unchanged
 
 ### Requirement: Config and record exporters
-`POST /v1/configs/{id}/export` SHALL return `json` (the IR) or `platform_draft` (`draft: true` until OPEN_QUESTIONS
-#1) with the release-check report. Record exports (`exporters/records.py`) keep values as published (INV-27);
+`POST /v1/configs/{id}/export` SHALL return `json` (the IR) or `platform_draft` (`draft: true` until the external
+platform's config format is known, `archive/OPEN_QUESTIONS.md` #1) with the release-check report. Record exports (`exporters/records.py`) keep values as published (INV-27);
 `csv_safe=true` prefixes `'` to formula-like cells, default unchanged. Refs: §12.2, D-0606, D-0879.
 #### Scenario: Formula-like cell
 - **WHEN** a published value is `=1+1`
