@@ -115,6 +115,7 @@ class OutcomeCounts(BaseModel):
     soft_404: int
     geo_redirect: int
     redirected_to_listing: int
+    timeout: int
     failed: int
 
 

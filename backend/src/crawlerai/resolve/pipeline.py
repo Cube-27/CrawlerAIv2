@@ -48,6 +48,7 @@ from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibrat
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
 from crawlerai.resolve.listing import listing_rows
 from crawlerai.resolve.ownership import OFFER, EntityGraph
+from crawlerai.resolve.page_state import out_of_stock, render_could_show, was_rendered
 from crawlerai.resolve.pagination import next_page_candidate, next_page_links
 from crawlerai.resolve.preference import (
     PRECEDENCE_FILE,
@@ -71,8 +72,6 @@ log = logging.getLogger(__name__)
 _FAILED = "extraction failed"
 # The reason of a `missing` field the active config lists as absent (`config_ir.absent`, D-1341).
 ABSENT: Final = "absent"
-# The reason of an `interaction_required` field (`_interaction_required`).
-SCRIPT_RENDERED: Final = "script_rendered"
 
 # D-0486: without a `source_precedence.yaml` no source kind is ranked, so text, long_text, url and image_url fields
 # decline as `unranked` rather than follow an unmeasured order (C7). The repo commits resolution spec's order (D-0444).
@@ -228,7 +227,7 @@ async def extract_page(
                 return _result("error", mode, candidates=candidates, llm_calls=llm_calls, diagnostics=diagnostics)
         if reply.failure is not None:
             fields = _unanswered(fields, missing, reply.failure)
-    fields = await _interaction_required(source, page.page, _absent(fields, page.config.absent))
+    fields = await _unpublished_reasons(source, page.page, _absent(fields, page.config.absent))
     return ExtractionResult(
         outcome="extracted" if is_complete(schema, fields) else "partial",
         entity=fields,
@@ -666,19 +665,16 @@ def _absent(fields: FieldSet, absent: frozenset[str]) -> FieldSet:
     }
 
 
-async def _interaction_required(source: "_Source", page: ParsedPage, fields: FieldSet) -> FieldSet:
-    """The fields of a page read over HTTP whose document carries its data for its script to render
-    (`content.render_need.holds_state`): each still `missing` for want of a candidate, not because the config lists
-    it as absent, is `interaction_required` (resolution spec): the page may show it once rendered, which a request
-    asks for with `render_fields` (acquisition spec, "Browser on evidence")."""
-    if source.bundle.manifest.method != "http" or not await asyncio.to_thread(holds_state, page):
-        return fields
-    return {
-        name: outcome.model_copy(update={"status": "interaction_required", "reason": SCRIPT_RENDERED})
-        if outcome.status == "missing" and outcome.reason != ABSENT
-        else outcome
-        for name, outcome in fields.items()
-    }
+async def _unpublished_reasons(source: "_Source", page: ParsedPage, fields: FieldSet) -> FieldSet:
+    """What the page's own evidence says of its unpublished fields (`resolve.page_state`): a price missing from a page
+    that states its item is not for sale is `out_of_stock`; a field missing from a page that was not rendered and whose
+    document carries its data for its script to render (`content.render_need.holds_state`) is `interaction_required`
+    (resolution spec): a render may show it, which a request asks for with `render_fields` (acquisition spec, "Browser
+    on evidence"). A rendered page, or a field the outcome explains, stays `missing`."""
+    fields = out_of_stock(source.schema, fields)
+    rendered = was_rendered(source.bundle.manifest)
+    holds = not rendered and await asyncio.to_thread(holds_state, page)
+    return render_could_show(fields, rendered=rendered, holds_state=holds)
 
 
 def _unanswered(fields: FieldSet, asked: tuple[str, ...], failure: str) -> FieldSet:

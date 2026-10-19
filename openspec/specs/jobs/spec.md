@@ -15,13 +15,13 @@ UPDATE SKIP LOCKED` by priority, then fairness between jobs, then id ("Crawl str
 vendor's challenge once, every other outcome is terminal, and an SSRF or redirect refusal fails the task at once.
 Politeness is per site, shared by every worker. A worker SHALL run up to `TASK_SLOTS` (4: twice its browser's
 `BROWSER_CONTEXTS`) tasks at once, claiming only for a free slot, and SHALL end a task still running at `TASK_DEADLINE` (3 min, inside the lease): cancelled, recorded `failed`
-with a `timeout` error, not retried, so its job moves on; work that outlives its cancellation has its database session
+with outcome `timeout` (a `timeout` error), not retried, so its job moves on; work that outlives its cancellation has its database session
 ended, and the failure is recorded before the lease expires, so the task is never claimed again beside it. (Previously: a vendor block was terminal; a worker claimed 10
 tasks and ran them one at a time with no deadline.) Refs: §6, D-0006, D-0632, D-0705, D-0764, owner plan 2026-10-19
 (crawl speed).
 #### Scenario: A page that never finishes
 - **WHEN** a task's work is still running at its deadline
-- **THEN** it is recorded `failed` with a `timeout` error and the job's other tasks complete
+- **THEN** it is recorded `failed` with outcome `timeout` and the job's other tasks complete
 
 ### Requirement: Worker and scheduler roles
 `api`, `worker` and `scheduler` SHALL run from one image; the scheduler runs the periodic entries in its table (lease
@@ -55,8 +55,33 @@ by `project.llm_call_cap`, read when the job checks, null meaning no cap (see [l
 same optional `budget` as a batch. (Previously: a crawl took no `budget` of its own.) Refs: §13.1, D-0628, D-0676,
 D-0681, D-0684, D-1044, D-1121, D-1286.
 
+### Requirement: Page outcomes
+A task SHALL end with one outcome, from evidence the fetch and the resolution already hold (no per-site rule): the data
+outcomes `extracted`, `partial`, `no_match`, `unchanged` and `links_only`; the outcomes of a page not served, which are
+the capture's block class (`blocked`, with reason `challenge: <vendor>` when a vendor's challenge says so; `shell`;
+`not_found`; `auth_wall`; `soft_404` and `geo_redirect`, from the final URL against the one asked
+([acquisition](../acquisition/spec.md)); `redirected_to_listing`); and, for a `failed` task, `timeout` when the fetch's
+kept attempt got no answer in time or the task ran past `TASK_DEADLINE`, else `failed`. A served page that states its
+item is not for sale and gives no price is `partial` with `price` `missing`, reason `out_of_stock`
+([resolution](../resolution/spec.md)). Refs: owner plan 2026-10-19 P9.
+#### Scenario: Fetch that timed out
+- **WHEN** a fetch's kept attempt is an `error` with reason `timeout`
+- **THEN** the task ends `failed` with outcome `timeout`, not `failed`
+
+### Requirement: Job outcome summary
+`GET /v1/jobs/{id}/outcomes` and `crawlerai jobs summary <id>` SHALL answer, for one job, its pages counted per outcome
+and the fields of the records its tasks stand for counted per status (`published`, `missing`, `conflict`, `abstained`,
+`interaction_required`) with the reasons of the unpublished ones, all from stored results (`url_task.outcome`,
+`record.field_meta`), with no table of its own. `crawlerai jobs reextract <id>` SHALL extract the job's stored captures
+again with the current engine and each site's active config, reading only the object store and the database (no
+network, no LLM, nothing stored; `services.captures.replay`, whose `extract_page` the worker and the evaluation harness
+run), and print those field counts beside the stored ones. Refs: owner plan 2026-10-19 P9.
+#### Scenario: Summary of a job
+- **WHEN** a job's pages ended `extracted`, `soft_404` and `timeout`, and its records hold fields in three statuses
+- **THEN** the answer counts one page of each outcome and every field under its status, with the reasons of the unpublished
+
 ### Requirement: Job endpoints
-`GET /v1/jobs` SHALL page all jobs newest first; `/v1/jobs/{id}` returns the summary, `/request` the validated request,
+`GET /v1/jobs` SHALL page all jobs newest first; `/v1/jobs/{id}` returns the summary, `/outcomes` the job's outcomes, `/request` the validated request,
 `DELETE` cancels queued tasks (a finished job is 409); `/results` serves records, page outputs, `json_values` and
 exports in the pinned schema's columns, values unchanged (INV-27). A `json_values` clean record holds only published
 fields, a money value flat as its amount and a `currency` (beside `price`) or `<field>_currency` code, the first key

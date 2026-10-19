@@ -72,6 +72,7 @@ from crawlerai.services.scrape_steps import (
     SiteRow,
     blocked_reason,
     extract_further,
+    fetch_failure,
     fetch_policy,
     new_capture,
     parsed_page,
@@ -392,10 +393,13 @@ def unreached(page: FetchedPage, task: ClaimedTask) -> TaskResult | None:
     """The result of a page that was not reached: its outcome (`blocked`, `shell`, `not_found`), or a transient
     failure for a fetch error (D-0632); None for a reached page. A page a vendor's challenge kept out ends `blocked`
     naming the vendor (`blocked_reason`), after at most one retry, once the back-off of its first try is over."""
-    outcome = BLOCK_OUTCOMES[page.result.block_class]
     capture_id = page.capture_id
-    if outcome == "failed":
-        return Failed(page.result.attempts[-1].error or outcome, transient=True, capture_id=capture_id)
+    failure = fetch_failure(page.result)
+    if failure is not None:
+        return Failed(
+            page.result.attempts[-1].error or failure, transient=True, exhausted=failure, capture_id=capture_id
+        )
+    outcome = BLOCK_OUTCOMES[page.result.block_class]
     if outcome == "extracted":
         return None
     reason = blocked_reason(page.result)

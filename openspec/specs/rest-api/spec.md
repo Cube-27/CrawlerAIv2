@@ -232,9 +232,10 @@ whose calibrated confidence is below it is `abstained` with reason `below_min_co
 optional `render_fields`, at most `MAX_RENDER_FIELDS` schema field names (names the schema lacks are ignored): the
 fields the caller says the page shows only once rendered, which have each page rendered in `auto`
 ([acquisition](../acquisition/spec.md), "Browser on evidence"). Without them a field missing from a script-rendered HTTP
-page is `interaction_required` ([resolution](../resolution/spec.md)). A task outcome or a scrape's `outcome` may be
-`auth_wall`, `soft_404`, `geo_redirect` or `redirected_to_listing` (the capture's block class, `fetch.block_class`, is
-the transport outcome; the task outcome is the data outcome). Refs: owner plan 2026-10-19 P3, P9.
+page that was not rendered is `interaction_required` ([resolution](../resolution/spec.md)). A task outcome or a scrape's `outcome` may be
+`auth_wall`, `soft_404`, `geo_redirect`, `redirected_to_listing` or `timeout` (the capture's block class,
+`fetch.block_class`, is the transport outcome; the task outcome is the data outcome; the model is in
+[jobs](../jobs/spec.md), "Page outcomes"). Refs: owner plan 2026-10-19 P3, P9.
 #### Scenario: A size the page renders
 - **WHEN** a scrape for `records` names `render_fields: ["size"]` and HTTP answers the page with its offer signals
 - **THEN** the page is rendered and the browser capture is kept when `ok`

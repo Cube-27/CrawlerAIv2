@@ -475,7 +475,7 @@
             "title": "Page Kind"
           },
           "render_fields": {
-            "description": "Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.",
+            "description": "Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.",
             "items": {
               "pattern": "^[a-z][a-z0-9_]{0,63}$",
               "type": "string"
@@ -1409,7 +1409,7 @@
             "title": "Query"
           },
           "render_fields": {
-            "description": "Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.",
+            "description": "Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.",
             "items": {
               "pattern": "^[a-z][a-z0-9_]{0,63}$",
               "type": "string"
@@ -2485,6 +2485,40 @@
         "title": "FetchSummary",
         "type": "object"
       },
+      "FieldCounts": {
+        "description": "How many fields of a job's records have each status (resolution spec).",
+        "properties": {
+          "abstained": {
+            "title": "Abstained",
+            "type": "integer"
+          },
+          "conflict": {
+            "title": "Conflict",
+            "type": "integer"
+          },
+          "interaction_required": {
+            "title": "Interaction Required",
+            "type": "integer"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          },
+          "published": {
+            "title": "Published",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "published",
+          "missing",
+          "conflict",
+          "abstained",
+          "interaction_required"
+        ],
+        "title": "FieldCounts",
+        "type": "object"
+      },
       "FieldErrorOut": {
         "additionalProperties": false,
         "properties": {
@@ -3105,6 +3139,37 @@
         "title": "JobCostPage",
         "type": "object"
       },
+      "JobOutcomes": {
+        "description": "A job's pages by outcome and the fields of its records by status.",
+        "properties": {
+          "fields": {
+            "$ref": "#/components/schemas/FieldCounts"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "pages": {
+            "$ref": "#/components/schemas/OutcomeCounts"
+          },
+          "reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Reasons",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "pages",
+          "fields",
+          "reasons"
+        ],
+        "title": "JobOutcomes",
+        "type": "object"
+      },
       "JobPage": {
         "description": "One page of jobs, newest first; `next_cursor` is the `cursor` of the page after it, None on the last.",
         "properties": {
@@ -3581,7 +3646,8 @@
                   "soft_404",
                   "geo_redirect",
                   "redirected_to_listing",
-                  "failed"
+                  "failed",
+                  "timeout"
                 ],
                 "type": "string"
               },
@@ -4607,6 +4673,10 @@
             "title": "Soft 404",
             "type": "integer"
           },
+          "timeout": {
+            "title": "Timeout",
+            "type": "integer"
+          },
           "unchanged": {
             "title": "Unchanged",
             "type": "integer"
@@ -4625,6 +4695,7 @@
           "soft_404",
           "geo_redirect",
           "redirected_to_listing",
+          "timeout",
           "failed"
         ],
         "title": "OutcomeCounts",
@@ -4964,7 +5035,8 @@
                   "soft_404",
                   "geo_redirect",
                   "redirected_to_listing",
-                  "failed"
+                  "failed",
+                  "timeout"
                 ],
                 "type": "string"
               },
@@ -6681,7 +6753,7 @@
             "title": "Page Kind"
           },
           "render_fields": {
-            "description": "Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.",
+            "description": "Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.",
             "items": {
               "pattern": "^[a-z][a-z0-9_]{0,63}$",
               "type": "string"
@@ -6825,6 +6897,7 @@
               "soft_404",
               "geo_redirect",
               "redirected_to_listing",
+              "timeout",
               "failed"
             ],
             "title": "Outcome",
@@ -10639,6 +10712,105 @@
           }
         ],
         "summary": "Job Llms Txt",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/v1/jobs/{job_id}/outcomes": {
+      "get": {
+        "description": "The job's pages by outcome, and the fields of its records by status with the reasons the unpublished ones give\n(resolution spec): counted from what the job stored.",
+        "operationId": "get_job_outcomes_v1_jobs__job_id__outcomes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOutcomes"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Job Outcomes",
         "tags": [
           "jobs"
         ]

@@ -69,7 +69,7 @@ _SCOPE: Final = ("url", "include", "exclude", "max_depth", "limit", "page_kind_r
 
 # The outcomes of a page the crawl handler read no links from (`crawlerai.worker.handlers.crawl`).
 _UNREACHED: Final[frozenset[TaskOutcome]] = frozenset(
-    {"blocked", "shell", "failed", "auth_wall", "geo_redirect", "redirected_to_listing"}
+    {"blocked", "shell", "failed", "auth_wall", "geo_redirect", "redirected_to_listing", "timeout"}
 )
 
 _JobRow = Row[str, SchemaId | None, dict[str, Any], str | None, dict[str, Any] | None]

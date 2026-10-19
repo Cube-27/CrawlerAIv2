@@ -115,7 +115,8 @@ def fetch_summary(
     )
 
 
-PageOutcome = Literal[
+# The outcomes of a page the fetch reached.
+ReachedOutcome = Literal[
     "extracted",
     "partial",
     "blocked",
@@ -125,10 +126,12 @@ PageOutcome = Literal[
     "soft_404",
     "geo_redirect",
     "redirected_to_listing",
-    "failed",
 ]
+# The outcome a page task reports (rest-api spec): a reached page's, or its fetch's failure (`FetchFailure`).
+PageOutcome = Literal[ReachedOutcome, "timeout", "failed"]
 
-BLOCK_OUTCOMES: Final[dict[BlockClass, PageOutcome]] = {
+# The outcome of each block class but `error`, which is a fetch failure (`fetch_failure`).
+BLOCK_OUTCOMES: Final[dict[BlockClass, ReachedOutcome]] = {
     # Without `records` the page is extracted once it is fetched; with them, its record decides (`partial`).
     "ok": "extracted",
     "blocked": "blocked",
@@ -138,8 +141,24 @@ BLOCK_OUTCOMES: Final[dict[BlockClass, PageOutcome]] = {
     "soft_404": "soft_404",
     "geo_redirect": "geo_redirect",
     "redirected_to_listing": "redirected_to_listing",
-    "error": "failed",
 }
+# The `AttemptRecord.error` of a rung that got no answer within its deadline (acquisition spec, "Error outcomes and
+# reasons").
+TIMEOUT: Final = "timeout"
+
+
+# The outcomes of a fetch that got no page for want of an answer (`fetch_failure`).
+FetchFailure = Literal["failed", "timeout"]
+
+
+def fetch_failure(result: FetchResult) -> FetchFailure | None:
+    """How the fetch failed, from the kept attempt alone (rest-api spec, one outcome model): `timeout` when its rung
+    got no answer within its deadline, `failed` for any other error, None when the fetch got an answer."""
+    if result.bundle.manifest.block_class != "error":
+        return None
+    return "timeout" if result.attempts[-1].error == TIMEOUT else "failed"
+
+
 # The reason a page a vendor's challenge kept from being reached ends `blocked` with (`challenge.vendor_block`).
 CHALLENGE_REASON: Final = "challenge: {vendor}"
 
@@ -193,7 +212,7 @@ MIN_CONFIDENCE_DESCRIPTION: Final = (
 RENDER_FIELDS_DESCRIPTION: Final = (
     "Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. "
     "Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field "
-    "missing from an HTTP page that its script fills is `interaction_required`."
+    "missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`."
 )
 MAX_RENDER_FIELDS: Final = 50
 

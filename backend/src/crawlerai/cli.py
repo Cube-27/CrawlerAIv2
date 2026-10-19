@@ -49,6 +49,7 @@ from crawlerai.eval.labels import LabelStatus
 from crawlerai.eval.metrics import CHECKED, build_report
 from crawlerai.eval.replay import CappedLLM, replay_split
 from crawlerai.eval.store import EvalNotFound, EvalRunRow, dev_store
+from crawlerai.job_cli import add_job_commands
 from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.normalize.dispatch import warm
@@ -576,6 +577,7 @@ def _parser() -> argparse.ArgumentParser:
     revoke.set_defaults(handler=_run_apikey_revoke)
     revoke.add_argument("id", type=uuid.UUID, help="the key's id, as `apikey create` printed it")
     _add_schedule_commands(commands)
+    add_job_commands(commands)
     _add_eval_commands(commands)
     return parser
 

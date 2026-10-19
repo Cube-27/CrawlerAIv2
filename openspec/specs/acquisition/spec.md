@@ -247,7 +247,8 @@ Enforced by: the site-literal scan (INV-03), classify and challenge tests and re
 
 ### Requirement: Error outcomes and reasons
 Every exception in a rung SHALL become an `error` attempt with a reason (`timeout`, `body_cap`, `network_error`, ...)
-never containing the URL; it stores no body but keeps the last status and headers. Refs: §7.1, D-0127, D-0128.
+never containing the URL; it stores no body but keeps the last status and headers. A fetch whose kept attempt is a
+`timeout` ends its task with outcome `timeout` ([jobs](../jobs/spec.md), "Page outcomes"). Refs: §7.1, D-0127, D-0128.
 
 ### Requirement: Bounded bodies (INV-30)
 The system SHALL bound untrusted bodies by `max_body_bytes` (compressed) and `max_decompressed_bytes` while streaming,

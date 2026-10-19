@@ -39,6 +39,7 @@ from crawlerai.recurring.versions import link_records
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services import jobs
+from crawlerai.services.job_outcomes import job_outcomes
 from crawlerai.services.jobs import (
     ExportPage,
     JsonValuesPage,
@@ -64,6 +65,7 @@ OUTCOMES = {
     "geo_redirect",
     "redirected_to_listing",
     "no_match",
+    "timeout",
     "failed",
 }
 
@@ -250,6 +252,32 @@ async def test_the_summary_counts_tasks_by_status_and_by_outcome(world: World) -
     assert summary.usage == {"llm_calls": 3}
 
 
+async def test_the_outcomes_count_pages_by_outcome_and_fields_by_status_and_reason(world: World) -> None:
+    job_id = await world.job()
+    await world.tasks(job_id, [("failed", "timeout"), ("done", "soft_404")])
+    stock = {**meta("missing"), "reason": "out_of_stock"}
+    await world.record(job_id, {"title": "A"}, {"title": meta("published"), "colour": stock})
+    await world.record(job_id, {"title": "B"}, {"title": meta("published"), "colour": meta("missing")})
+    await world.record(
+        job_id, {}, {"title": meta("conflict"), "colour": {**meta("interaction_required"), "reason": "x"}}
+    )
+
+    async with world.engine.connect() as conn:
+        outcomes = await job_outcomes(conn, job_id)
+
+    assert outcomes.pages.timeout == 1
+    assert outcomes.pages.soft_404 == 1
+    assert outcomes.pages.extracted == 3
+    assert outcomes.fields.model_dump() == {
+        "published": 2,
+        "missing": 2,
+        "conflict": 1,
+        "abstained": 0,
+        "interaction_required": 1,
+    }
+    assert outcomes.reasons == {"no candidate": 2, "out_of_stock": 1, "x": 1}
+
+
 # The list.
 
 
@@ -318,6 +346,7 @@ async def test_job_problems(client: httpx.AsyncClient, world: World) -> None:
         "get unknown": await client.get(f"/v1/jobs/{unknown}"),
         "cancel unknown": await client.delete(f"/v1/jobs/{unknown}"),
         "results unknown": await client.get(f"/v1/jobs/{unknown}/results"),
+        "outcomes unknown": await client.get(f"/v1/jobs/{unknown}/outcomes"),
         "cancel ended": await client.delete(f"/v1/jobs/{ended}"),
         "export without schema": await client.get(f"/v1/jobs/{ended}/results", params={"format": "csv_records"}),
         "unknown format": await client.get(f"/v1/jobs/{ended}/results", params={"format": "xml"}),
@@ -333,6 +362,7 @@ async def test_job_problems(client: httpx.AsyncClient, world: World) -> None:
         "get unknown": (404, "not_found"),
         "cancel unknown": (404, "not_found"),
         "results unknown": (404, "not_found"),
+        "outcomes unknown": (404, "not_found"),
         "cancel ended": (409, "conflict"),
         "export without schema": (409, "conflict"),
         "unknown format": (422, "validation"),

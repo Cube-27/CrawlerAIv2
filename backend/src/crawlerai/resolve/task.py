@@ -10,7 +10,7 @@ was chosen or why it was rejected, and the record holds the published values.
 import re
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import JsonValue
 from sqlalchemy import insert
@@ -27,11 +27,11 @@ from crawlerai.db.models import (
     ExtractionConfigId,
     ExtractionId,
     ExtractionMode,
+    FinishedOutcome,
     JobId,
     NormalizeStatus,
     RecordId,
     SiteId,
-    TaskOutcome,
     UrlTaskId,
 )
 from crawlerai.db.queue import ClaimedTask
@@ -103,7 +103,7 @@ class Stored:
     """The task's outcome (`url_task.outcome`; a resolution `error` is `failed`), the rows written for it, and each
     record's content: at most one record for a detail page, one per kept row for a listing."""
 
-    outcome: TaskOutcome
+    outcome: FinishedOutcome | Literal["failed"]
     extraction_id: ExtractionId
     records: tuple[StoredRecord, ...]
     result: ExtractionResult
@@ -206,7 +206,7 @@ def page_records(
     site_id: SiteId,
     page_url: str,
     caller_supplied: bool,
-) -> tuple[TaskOutcome, tuple[RecordDraft, ...]]:
+) -> tuple[FinishedOutcome, tuple[RecordDraft, ...]]:
     """The page's outcome and the records it keeps: a detail page's one, or a listing's one per row (§4.10)."""
     if schema.page_kind == "listing":
         return assemble_listing(

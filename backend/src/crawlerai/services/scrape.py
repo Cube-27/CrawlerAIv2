@@ -30,7 +30,7 @@ from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import partial
-from typing import Final, NamedTuple, Self, TypedDict
+from typing import Final, NamedTuple, Self, TypedDict, get_args
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, field_validator, model_validator
@@ -79,6 +79,7 @@ from crawlerai.services.scrape_steps import (
     MAX_RENDER_FIELDS,
     MIN_CONFIDENCE_DESCRIPTION,
     RENDER_FIELDS_DESCRIPTION,
+    FetchFailure,
     FetchOptions,
     FetchSummary,
     FormatOptions,
@@ -97,6 +98,7 @@ from crawlerai.services.scrape_steps import (
     check_records,
     check_usable,
     extract_further,
+    fetch_failure,
     fetch_policy,
     fetch_summary,
     format_member,
@@ -415,7 +417,7 @@ async def _run(
             await complete_task(conn, task, "blocked", reason=page)
         await record_fetch_usage(conn, task.job_id, attempts, policy.proxy_pool)
         usage = await _usage(conn, task.job_id)
-    if finished.outcome == "failed":
+    if finished.outcome in get_args(FetchFailure):
         derived = _NOTHING  # §4.8: nothing derived from the page is returned on failure
     return ScrapeResult(
         job_id=task.job_id,
@@ -612,11 +614,12 @@ async def _finish(
     #52), once the page's own extraction did not fail: the answer lists every record once, and a further state whose
     extraction failed makes the outcome `partial`. A listing that kept no record says why, in the answer and the task's
     `last_error` (D-1475), and answers its page fields (D-1476)."""
+    failure = fetch_failure(result)
+    if failure is not None:
+        error = result.attempts[-1].error or failure
+        await fail_task(conn, task, error, transient=False, exhausted=failure, capture_id=capture_id)
+        return _Finished(failure)
     outcome = BLOCK_OUTCOMES[result.block_class]
-    if outcome == "failed":
-        error = result.attempts[-1].error or outcome
-        await fail_task(conn, task, error, transient=False, capture_id=capture_id)
-        return _Finished(outcome)
     if derived.extraction is None or derived.schema is None:
         # A vendor's challenge says why the page was not reached; the caller waits, so it is not retried.
         reason = blocked_reason(result)

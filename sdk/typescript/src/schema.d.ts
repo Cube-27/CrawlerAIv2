@@ -459,6 +459,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs/{job_id}/outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Job Outcomes
+         * @description The job's pages by outcome, and the fields of its records by status with the reasons the unpublished ones give
+         *     (resolution spec): counted from what the job stored.
+         */
+        get: operations["get_job_outcomes_v1_jobs__job_id__outcomes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs/{job_id}/request": {
         parameters: {
             query?: never;
@@ -1117,7 +1138,7 @@ export interface components {
             page_kind?: ("detail" | "listing") | null;
             /**
              * Render Fields
-             * @description Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.
+             * @description Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.
              */
             render_fields?: string[];
             /** Schema */
@@ -1500,7 +1521,7 @@ export interface components {
             query?: string | null;
             /**
              * Render Fields
-             * @description Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.
+             * @description Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.
              */
             render_fields?: string[];
             /** Schema */
@@ -1901,6 +1922,22 @@ export interface components {
             /** Status Code */
             status_code: number | null;
         };
+        /**
+         * FieldCounts
+         * @description How many fields of a job's records have each status (resolution spec).
+         */
+        FieldCounts: {
+            /** Abstained */
+            abstained: number;
+            /** Conflict */
+            conflict: number;
+            /** Interaction Required */
+            interaction_required: number;
+            /** Missing */
+            missing: number;
+            /** Published */
+            published: number;
+        };
         /** FieldErrorOut */
         FieldErrorOut: {
             /** Field */
@@ -2105,6 +2142,23 @@ export interface components {
             next_cursor: string | null;
         };
         /**
+         * JobOutcomes
+         * @description A job's pages by outcome and the fields of its records by status.
+         */
+        JobOutcomes: {
+            fields: components["schemas"]["FieldCounts"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            pages: components["schemas"]["OutcomeCounts"];
+            /** Reasons */
+            reasons: {
+                [key: string]: number;
+            };
+        };
+        /**
          * JobPage
          * @description One page of jobs, newest first; `next_cursor` is the `cursor` of the page after it, None on the last.
          */
@@ -2264,7 +2318,7 @@ export interface components {
             fetch?: components["schemas"]["FetchSummary"];
             metadata?: components["schemas"]["PageMetadata"];
             /** Outcome */
-            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "failed") | null;
+            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "failed" | "timeout") | null;
             pdf?: components["schemas"]["Artifact"];
             /** Records */
             records: {
@@ -2715,6 +2769,8 @@ export interface components {
             shell: number;
             /** Soft 404 */
             soft_404: number;
+            /** Timeout */
+            timeout: number;
             /** Unchanged */
             unchanged: number;
         };
@@ -2829,7 +2885,7 @@ export interface components {
             markdown_fit?: string;
             metadata?: components["schemas"]["PageMetadata"];
             /** Outcome */
-            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "failed") | null;
+            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "failed" | "timeout") | null;
             pdf?: components["schemas"]["Artifact"];
             /** Raw Html */
             raw_html?: string;
@@ -3470,7 +3526,7 @@ export interface components {
             page_kind?: ("detail" | "listing") | null;
             /**
              * Render Fields
-             * @description Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that its script fills is `interaction_required`.
+             * @description Schema fields the page shows only once rendered by its scripts: a page is then rendered in the browser. Unset: the browser is used only when HTTP is refused or the page shows no sign of its data, and a field missing from an HTTP page that was not rendered and whose script fills its data is `interaction_required`.
              */
             render_fields?: string[];
             /** Schema */
@@ -3522,7 +3578,7 @@ export interface components {
              * Outcome
              * @enum {string}
              */
-            outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "failed";
+            outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "timeout" | "failed";
             /** Page */
             page?: {
                 [key: string]: components["schemas"]["RecordField"];
@@ -5538,6 +5594,68 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_job_outcomes_v1_jobs__job_id__outcomes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOutcomes"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

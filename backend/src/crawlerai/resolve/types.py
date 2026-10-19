@@ -28,7 +28,7 @@ Evidence = Literal[
     "llm_grounded",
     "derived",
 ]
-# `interaction_required`: missing from a page read over HTTP whose script renders its data (resolution spec).
+# `interaction_required`: missing from a page that was not rendered, whose script renders its data (resolution spec).
 FieldStatus = Literal["published", "missing", "conflict", "abstained", "interaction_required"]
 # resolution spec: the derivations core has, each a named function in `resolve/derive.py`.
 Derivation = Literal[PageUrlDerivation, "absolutize"]
