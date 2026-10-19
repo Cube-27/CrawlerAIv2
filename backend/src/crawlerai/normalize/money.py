@@ -287,6 +287,13 @@ def is_currency_code(code: str) -> bool:
     return code in _currencies()
 
 
+def warm() -> None:
+    """Build the tables read across every CLDR locale (currency symbols and count names) now, so that the first page a
+    process reads does not wait for them."""
+    _symbol_currencies()
+    _signs_by_length()
+
+
 @cache
 def _currencies() -> frozenset[str]:
     return frozenset(list_currencies())

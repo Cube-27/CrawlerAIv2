@@ -69,6 +69,12 @@ def _names_a_measure(unit_text: str, ctx: Context) -> bool:
     return label in _measure_labels(languages)
 
 
+def warm() -> None:
+    """Build the unit labels of every CLDR locale, which a page that states no language is read with, now, so that the
+    first such page a process reads does not wait for them."""
+    _measure_labels(frozenset())
+
+
 @cache
 def _cldr_languages() -> frozenset[str]:
     """The primary language subtags (RFC 5646 §2.2.1) CLDR has locale data for. A page-stated subtag outside it selects

@@ -24,7 +24,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
-from typing import Final, Protocol
+from typing import Final, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -293,8 +293,20 @@ class _Page:
 
     @classmethod
     def read(cls, source: _Source) -> "_Page":
-        manifest, schema, data = source.bundle.manifest, source.schema, source.data
+        """The page read from `source`; the one read already from the same parse for the same capture, schema, engine
+        data and config, when there is one (`ParsedPage.derived`): the render check and extraction share it."""
         page = ParsedPage.of(source.bundle) if source.parsed is None else source.parsed
+        key = (source.bundle.manifest, source.schema, source.data, source.config)
+        derived = page.derived.get(cls)
+        if derived is not None and all(a is b for a, b in zip(derived[0], key, strict=True)):
+            return cast(_Page, derived[1])
+        read = cls._read(source, page)
+        page.derived[cls] = (key, read)
+        return read
+
+    @classmethod
+    def _read(cls, source: _Source, page: ParsedPage) -> "_Page":
+        manifest, schema, data = source.bundle.manifest, source.schema, source.data
         ctx = with_stated_currencies(
             page_context(page, manifest.final_url, manifest.fetched_at, headers=manifest.headers.response), page
         )

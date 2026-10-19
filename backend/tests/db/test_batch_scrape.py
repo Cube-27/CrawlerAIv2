@@ -37,7 +37,7 @@ from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.jobs import PageOutputPage, ResultsQuery
 from crawlerai.storage.fs import FsStore
-from crawlerai.worker.browser import SharedBrowser
+from crawlerai.acquire.shared_browser import SharedBrowser
 from crawlerai.worker.handlers.table import task_handlers
 from crawlerai.worker.loop import run_worker
 

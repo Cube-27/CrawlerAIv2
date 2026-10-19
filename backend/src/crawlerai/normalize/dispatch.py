@@ -11,7 +11,7 @@ from functools import partial
 
 from pydantic import JsonValue
 
-from crawlerai.normalize import count, date, enum, identifier, location, money, number, text, url
+from crawlerai.normalize import count, date, enum, identifier, location, money, number, numbers, text, url
 from crawlerai.normalize import range as range_
 from crawlerai.normalize.base import (
     BASES,
@@ -56,6 +56,12 @@ _TYPES: dict[FieldType, tuple[Normalizer, EqualityKey]] = {
     FieldType.NUMBER: (number.normalize, number.key),
 }
 _COMPARED: dict[FieldType, tuple[Normalizer, Equality]] = {FieldType.LOCATION: (location.normalize, location.equal)}
+
+
+def warm() -> None:
+    """Build the normalizers' CLDR tables that span every locale (seconds of work on first use), as a worker starts."""
+    for module in (numbers, money, count):
+        module.warm()
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:

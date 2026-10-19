@@ -51,6 +51,10 @@ class ParsedPage:
         # manifest entries (the request each answered), when the caller has them.
         self.network = network
         self.network_entries = network_entries
+        # What a later layer derives from this parse, by the deriving class, so a page read twice for the same work is
+        # read once (INV-26): the extraction pipeline's collection, which the render check reads before extraction.
+        # Each is kept with the inputs it was derived from, compared by identity.
+        self.derived: dict[type, tuple[tuple[object, ...], object]] = {}
 
     @classmethod
     def of(cls, bundle: CaptureBundle) -> "ParsedPage":

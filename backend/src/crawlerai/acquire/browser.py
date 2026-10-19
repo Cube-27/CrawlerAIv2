@@ -35,6 +35,7 @@ from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.items import element_path, item_groups, lxml_root
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
 from crawlerai.acquire.page_steps import run_steps, steps_budget_s
+from crawlerai.acquire.public_suffix import default_suffixes
 from crawlerai.acquire.session import CookieExport, SessionCookie, browser_cookies
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
@@ -102,11 +103,18 @@ _SETTLE_SHARE = 0.9
 # Attribute changes are left out: animations and style toggles change attributes, not content.
 _QUIET_S = 2.0
 _POLL_S = 0.25
-# A page whose content is quiet while one of its fetch or XMLHttpRequest calls (Fetch Standard §2.2.5 destinations) is
-# still in flight is waited for up to this much longer, so a data call that arrives late is kept; a call that never
-# ends (a long poll) holds the read no longer than that.
+# A page whose content is quiet while one of its data calls is still in flight is waited for up to this much longer,
+# so a data call that arrives late is kept; a call that never ends (a long poll) holds the read no longer than that.
+# A data call is a fetch or XMLHttpRequest call (Fetch Standard §2.2.5 destinations) that can carry the page's data:
+# one to the page's own site (HTML Standard §7.1.1, its registrable domain), or one that asks for JSON (an `Accept`
+# naming a JSON MIME type, RFC 9110 §12.5.1). Calls to other sites that ask for no JSON (analytics beacons, ad and
+# tag-manager pings) are always in flight on some pages and carry nothing the page shows.
 _CALL_WAIT_S = 3.0
 _CALLS = frozenset({"fetch", "xhr"})
+# After `load`, a document is read at most this long after its wait began, quiet or not: content that keeps changing
+# (a carousel, a countdown) or a network that never idles holds the read no longer. It covers a quiet period
+# (`_QUIET_S`) plus a late data call (`_CALL_WAIT_S`).
+_SETTLE_MAX_S = _QUIET_S + _CALL_WAIT_S
 # Evaluated in Patchright's isolated world, which shares the document but not the page's globals, so the page neither
 # sees nor touches the observer. It is installed on the first call in each document, and answers the seconds since
 # the last change.
@@ -349,8 +357,9 @@ class DataCalls:
     # a keepalive beacon held open) never reaches, and the read would outlast the fetch's budget.
     done: set[Request] = field(default_factory=set)
 
-    def on_request(self, request: Request) -> None:
-        if request.resource_type in _CALLS:
+    def on_request(self, request: Request, page_url: str) -> None:
+        """Count `request` in flight when it is a data call of the page at `page_url` (`_CALL_WAIT_S`)."""
+        if request.resource_type in _CALLS and (_same_site(request.url, page_url) or _asks_json(request)):
             self.in_flight.add(request)
 
     def on_done(self, request: Request) -> None:
@@ -477,7 +486,7 @@ async def _navigate(
     page.on("response", frame.on_response)
     page.on("requestfailed", frame.on_failed)
     page.on("framenavigated", frame.on_navigated)
-    page.on("request", calls.on_request)
+    page.on("request", lambda request: calls.on_request(request, page.url))
     page.on("requestfinished", calls.on_done)
     page.on("requestfailed", calls.on_done)
     if policy.capture_network_json:
@@ -577,13 +586,14 @@ async def _settle(
     # quiet an interim document: the wait starts over on the document that committed, until `deadline`.
     while time.monotonic() < deadline:
         shown, latest = frame.commits, frame.latest
+        until = min(deadline, time.monotonic() + _SETTLE_MAX_S)
         waits = [asyncio.create_task(_content_quiet(page, frame, calls))]
         if frame.latest is None or frame.latest.status < _ERROR_STATUS:
-            waits.append(asyncio.create_task(_network_idle(page, deadline)))
+            waits.append(asyncio.create_task(_network_idle(page, until)))
         navigated = asyncio.create_task(frame.next_commit())
         try:
             await asyncio.wait(
-                [*waits, navigated], timeout=max(0.0, deadline - time.monotonic()), return_when=asyncio.FIRST_COMPLETED
+                [*waits, navigated], timeout=max(0.0, until - time.monotonic()), return_when=asyncio.FIRST_COMPLETED
             )
         finally:
             for wait in (*waits, navigated):
@@ -593,6 +603,19 @@ async def _settle(
             return
         with contextlib.suppress(PlaywrightTimeout):
             await page.wait_for_load_state("load", timeout=_ms_until(deadline))
+
+
+def _same_site(url: str, page_url: str) -> bool:
+    """Whether `url` is on the same site as `page_url` (HTML Standard §7.1.1: the same registrable domain)."""
+    suffixes = default_suffixes()
+    host, page_host = urlsplit(url).hostname, urlsplit(page_url).hostname
+    return host is not None and page_host is not None and suffixes.site(host) == suffixes.site(page_host)
+
+
+def _asks_json(request: Request) -> bool:
+    """Whether the request's `Accept` names a JSON MIME type (`_json_label`'s rule: RFC 6839 §3.1 `+json` included)."""
+    accept = request.headers.get("accept", "")
+    return any(_json_essence(part.split(";", 1)[0].strip().lower()) for part in accept.split(","))
 
 
 async def _interstitial(page: Page, frame: _MainFrame) -> bool:
@@ -682,9 +705,13 @@ def _json_label(response: Response) -> bool | None:
     None when it names another kind of body (`_SNIFFED_TYPES`). The essence is compared, lower-cased, parameters
     dropped (WHATWG MIME Sniffing §2.1)."""
     essence = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    if essence in ("application/json", "text/json") or essence.endswith("+json"):
+    if _json_essence(essence):
         return True
     return False if essence in _SNIFFED_TYPES else None
+
+
+def _json_essence(essence: str) -> bool:
+    return essence in ("application/json", "text/json") or essence.endswith("+json")
 
 
 async def json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[NetworkBody, bytes], ...]:

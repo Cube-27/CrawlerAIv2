@@ -99,9 +99,12 @@ class _Blocks:
         self.mixed = frozenset(a.mem_id for root in roots for a in _ancestors(root, region))
         # A heading names a block; it is no text of its own, nor is anything inside it.
         titles = frozenset(inside.mem_id for h in region.css(_HEADING) for inside in (h, *h.css("*")))
+        # Nodes are told apart by identity (`mem_id`): selectolax's `==` compares serialized markup, which costs the
+        # size of the subtree and calls two equal-looking elements one.
+        skipped = self.apart | self.mixed | titles | {region.mem_id}
         self.blocks: dict[int, _Block] = {}
         for node in region.css("*"):
-            if node == region or {node.mem_id} & {*self.apart, *self.mixed, *titles}:
+            if node.mem_id in skipped:
                 continue
             span = spans.get(node_xpath(node))
             raw = text[span[0] : span[1]].strip() if span else ""
@@ -116,7 +119,7 @@ def _ancestors(node: LexborNode, region: LexborNode) -> Iterator[LexborNode]:
     parent = node.parent
     while parent is not None:
         yield parent
-        if parent == region:
+        if parent.mem_id == region.mem_id:
             return
         parent = parent.parent
 

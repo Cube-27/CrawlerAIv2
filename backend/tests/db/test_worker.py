@@ -1,6 +1,7 @@
 """The queue and the worker loop across several connections, with committed data (persistence-storage spec)."""
 
 import asyncio
+import threading
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import timedelta
@@ -14,7 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobEvent, JobId, JobKind, JobStatus, Project, UrlTask, UrlTaskId
 from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask, claim_tasks
-from crawlerai.worker.loop import Failed, Finished, TaskHandler, TaskResult, run_worker
+from crawlerai.worker import loop
+from crawlerai.worker.loop import DEADLINE, TASK_SLOTS, Failed, Finished, TaskHandler, TaskResult, run_worker
 
 pytestmark = pytest.mark.anyio
 
@@ -176,3 +178,51 @@ async def test_work_of_a_task_whose_lease_was_lost_is_rolled_back(engine: AsyncE
         task = (await conn.execute(select(UrlTask.status, UrlTask.claimed_by).where(UrlTask.id == task_id))).one()
     assert task == ("claimed", "another-worker")
     assert await _job_state(engine, job_id) == ("running", [])
+
+
+async def test_a_worker_runs_up_to_its_slots_of_tasks_at_once(engine: AsyncEngine) -> None:
+    job_id, _ = await _job(engine, 2 * TASK_SLOTS)
+    running = 0
+    most = 0
+
+    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
+        nonlocal running, most
+        running += 1
+        most = max(most, running)
+        await asyncio.sleep(0.2)
+        running -= 1
+        return Finished("extracted")
+
+    await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
+
+    assert most == TASK_SLOTS
+    assert await _job_state(engine, job_id) == ("completed", ["completed"])
+
+
+async def test_a_task_past_its_deadline_fails_and_its_job_moves_on(
+    engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(loop, "TASK_DEADLINE", timedelta(seconds=1))
+    job_id, [stuck_on_loop, stuck_in_thread, *rest] = await _job(engine, TASK_SLOTS + 2)
+    released = threading.Event()
+
+    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
+        if task.id == stuck_on_loop:
+            await asyncio.Event().wait()  # a wait that never ends
+        if task.id == stuck_in_thread:
+            await asyncio.to_thread(released.wait)  # CPU work in a thread, which cancelling does not stop
+        return Finished("extracted")
+
+    try:
+        await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
+    finally:
+        released.set()
+
+    async with engine.connect() as conn:
+        found = await conn.execute(select(UrlTask.id, UrlTask.status, UrlTask.outcome))
+        rows = {task_id: (status, outcome) for task_id, status, outcome in found}
+        errors = (await conn.execute(select(UrlTask.last_error).where(UrlTask.status == "failed"))).scalars().all()
+    assert {rows[stuck_on_loop], rows[stuck_in_thread]} == {("failed", "failed")}
+    assert {rows[task_id] for task_id in rest} == {("done", "extracted")}
+    assert errors == [DEADLINE, DEADLINE]
+    assert (await _job_state(engine, job_id))[0] == "completed"

@@ -10,7 +10,7 @@ import pytest
 
 from crawlerai.acquire.session import CookieExport
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.worker.browser import SharedBrowser
+from crawlerai.acquire.shared_browser import SharedBrowser
 
 pytestmark = pytest.mark.anyio
 

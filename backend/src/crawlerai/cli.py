@@ -18,16 +18,12 @@ from typing import Final, get_args
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from crawlerai.acquire.api import fetch_json
-from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
-from crawlerai.acquire.browser_tab import Drive, fetch_listing
+from crawlerai.acquire.browser import fetch_browser, open_browser
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
-from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.rungs import Rungs, adapter_registry
-from crawlerai.acquire.session import CookieExport, SiteSessions
+from crawlerai.acquire.rungs import adapter_registry
 from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
+from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.api.webhooks import poster
 from crawlerai.core.data import fetch_data
@@ -55,6 +51,7 @@ from crawlerai.eval.replay import CappedLLM, replay_split
 from crawlerai.eval.store import EvalNotFound, EvalRunRow, dev_store
 from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.llm.providers.from_settings import llm_from_settings
+from crawlerai.normalize.dispatch import warm
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.scheduler.loop import periodic, run_scheduler
@@ -65,13 +62,12 @@ from crawlerai.services import schemas as schemas_service
 from crawlerai.services.fetch_options import FetchOptions, UnknownProxyPool, check_proxy_pool, fetch_policy
 from crawlerai.services.fetching import Fetching, PagePlan, TargetRejected, fetch_now, learning_replay, site_rungs
 from crawlerai.services.records import MAX_PAGE
-from crawlerai.services.runtime import fetching_from_settings
+from crawlerai.services.runtime import open_fetching
 from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
 from crawlerai.services.scrape_paging import learning_render
 from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data, render_need, site_row
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
-from crawlerai.worker.browser import SharedBrowser
 from crawlerai.worker.handlers.table import task_handlers
 from crawlerai.worker.learn import run_learner
 from crawlerai.worker.loop import run_worker
@@ -99,67 +95,14 @@ def _stop_on_signals() -> asyncio.Event:
     return stop
 
 
-@asynccontextmanager
-async def _fetching(settings: Settings, connector: SafeConnector) -> AsyncIterator[Fetching]:
-    """What a process fetches pages with, as a worker does (acquisition spec): HTTP, the shared browser, the adapters,
-    and this process's site sessions; the browser closes with it."""
-    pools = settings.proxy_pools
-
-    async def fetch_in(
-        session: BrowserSession, url: str, policy: FetchPolicy, export: CookieExport | None
-    ) -> FetchResult:
-        return await fetch_browser(
-            url, policy, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools, export=export
-        )
-
-    async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
-        # A learning run's listing renders only (`learning_render`): rare, so a browser is launched per render.
-        async with open_browser() as session:
-            return await fetch_listing(
-                url, policy, drive, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools
-            )
-
-    impersonate = rung_impersonation(settings)
-    sessions = SiteSessions()  # this worker's site sessions (INV-29's exception), in memory only
-    http = partial(
-        fetch_http,
-        engine_version=ENGINE_VERSION,
-        impersonate=impersonate,
-        connector=connector,
-        pools=pools,
-        sessions=sessions,
-    )
-    async with aclosing(
-        SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
-    ) as browser:
-        json = partial(
-            fetch_json,
-            engine_version=ENGINE_VERSION,
-            impersonate=impersonate,
-            connector=connector,
-            pools=pools,
-            sessions=sessions,
-        )
-        rungs = Rungs(
-            http=http,
-            browser=browser.fetch,
-            adapters=adapter_registry(settings.disabled_adapters),
-            conditional=http,
-            json=json,
-            sessions=sessions,
-            exporting=browser.fetch,
-            listing=listing,
-        )
-        store = open_store(settings.object_store)
-        yield Fetching(rungs, connector, store, HostLimiter(), frozenset(settings.proxy_pools))
-
-
 async def _work() -> None:
     quiet_peer_resets(asyncio.get_running_loop())
     settings = Settings()
     engine = create_async_engine(settings.database_url.get_secret_value())
     try:
-        async with _fetching(settings, SafeConnector()) as fetching:
+        async with open_fetching(settings) as fetching:
+            # The normalizers' all-locale tables are built before the first task, not by it.
+            await asyncio.to_thread(warm)
             store, adapters = fetching.store, fetching.rungs.adapters
             llm, setup = llm_from_settings(settings, engine)
             data, margins = load_engine_data(adapters), load_drift_margins()
@@ -190,10 +133,10 @@ async def _schedule() -> None:
         fetch_http, engine_version=ENGINE_VERSION, impersonate=rung_impersonation(settings), pools=settings.proxy_pools
     )
     # A schedule's run submits its job with the schema its creation resolved, so it drafts nothing: no LLM client.
-    fetching = fetching_from_settings(settings)
-    submitting = Submitting(fetching, load_engine_data(fetching.rungs.adapters), NO_LLM)
-    entries = periodic(open_store(settings.object_store), fetch, poster(SafeConnector()), submitting)
-    await run_scheduler(settings, entries, _stop_on_signals())
+    async with open_fetching(settings) as fetching:
+        submitting = Submitting(fetching, load_engine_data(fetching.rungs.adapters), NO_LLM)
+        entries = periodic(open_store(settings.object_store), fetch, poster(SafeConnector()), submitting)
+        await run_scheduler(settings, entries, _stop_on_signals())
 
 
 async def _fetch(
@@ -258,7 +201,7 @@ async def _eval_import_labels(file: Path) -> None:
     labeled = label_file.labeled_pages(pages, schemas)
     engine = create_async_engine(database_url)
     try:
-        async with aclosing(dev_store(settings)) as store, _fetching(settings, SafeConnector()) as fetching:
+        async with aclosing(dev_store(settings)) as store, open_fetching(settings) as fetching:
             data = load_engine_data(fetching.rungs.adapters)
             fetch = partial(_polite_page, engine, fetching, data)
             outcomes = await label_file.import_pages(store, schemas, labeled, fetch, await store.page_urls())

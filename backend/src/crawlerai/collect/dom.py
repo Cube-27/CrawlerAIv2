@@ -575,7 +575,7 @@ def _link_card(image: LexborNode, region: LexborNode, links: "_Links") -> bool:
     """Whether the nearest block around the image that holds a hyperlink to another document holds no other image and
     leads to one document only: the card of that document, whose image is the document's, not this page's entity."""
     node: LexborNode | None = image.parent
-    while node is not None and node != region:
+    while node is not None and node.mem_id != region.mem_id:  # identity: `!=` compares serialized markup
         if len(node.css("img")) > 1:
             return False
         targets = links.of_block(node)
