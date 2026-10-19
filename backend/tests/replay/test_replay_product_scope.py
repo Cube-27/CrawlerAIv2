@@ -65,6 +65,27 @@ def test_another_item_s_card_gives_the_dom_passes_no_value() -> None:
     assert _dom(result) == {"price": [{"amount": "80.00", "currency": "USD"}], "brand": ["Example Brand"]}
 
 
+def test_a_card_whose_link_holds_only_its_price_is_set_apart() -> None:
+    card = '<section><div><a href="/p/2"><span>$20.00</span></a><p>Brand: <span>Other</span></p></div></section>'
+
+    result = _extract(_jsonld("80.00"), PRODUCT + card)
+
+    assert _dom(result)["brand"] == ["Example Brand"]
+
+
+def test_a_nested_product_item_without_the_title_is_set_apart() -> None:
+    nested = (
+        '<div itemscope itemtype="https://schema.org/Product">'
+        + PRODUCT
+        + '<div itemprop="isAccessoryOrSparePartFor" itemscope itemtype="https://schema.org/Product">'
+        "<p>Brand: <span>Other</span></p></div></div>"
+    )
+
+    result = _extract(_jsonld("80.00"), nested)
+
+    assert _dom(result)["brand"] == ["Example Brand"]
+
+
 def test_without_a_stated_price_no_card_is_set_apart() -> None:
     result = _extract("", PRODUCT + CARD)
 

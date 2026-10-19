@@ -253,13 +253,13 @@ def product_apart(page: ParsedPage, schema: SchemaDef, ctx: Context, stated: Seq
 
     The product's prices are those structured data `stated` for the schema's money fields. A price the page shows
     (`items.spot`, outside chrome and struck text) that is none of them belongs to the one other document its nearest
-    block holding hyperlinks leads to (HTML Standard §4.6.1): that block is the other item's card, unless it shows one
-    of the product's prices or holds the page's title, the main content's first shown `h1` (HTML Standard §4.3.6),
-    which are the product's own. A block whose hyperlinks lead to several documents is no card. Recommendations,
-    "complete the look" and bundles of other items are such cards, whatever their markup. So is a schema.org Product
-    item (HTML Standard §5.2: an `itemscope` whose `itemtype` is `Product`, outermost outside other items' content)
-    that does not hold the title. Without a stated price no price is the product's for certain: no card is set
-    apart."""
+    block holding hyperlinks leads to (HTML Standard §4.6.1), or the hyperlink's parent when that block is the
+    hyperlink and the parent leads nowhere else: that block is the other item's card, unless it shows one of the
+    product's prices or holds the page's title, the main content's first shown `h1` (HTML Standard §4.3.6), which are
+    the product's own. A block whose hyperlinks lead to several documents is no card. Recommendations, "complete the
+    look" and bundles of other items are such cards, whatever their markup. So is a schema.org Product item (HTML
+    Standard §5.2: an `itemscope` whose `itemtype` is `Product`, outside other items' content, nested or not) that does
+    not hold the title. Without a stated price no price is the product's for certain: no card is set apart."""
     region = content_region(page)
     money = next((spec for spec in schema.fields.values() if spec.type is FieldType.MONEY), None)
     if region is None or schema.page_kind != "detail" or page.json_body:
@@ -282,19 +282,25 @@ def _other_cards(
     ctx: Context,
 ) -> Iterator[LexborNode]:
     """The cards of the other items whose prices the region shows (`product_apart`): for each price not `own`, its
-    nearest block holding hyperlinks, when they lead to one other document and the block neither holds the title (is
-    in `titled`) nor shows an `own` price."""
+    nearest block holding hyperlinks (or that hyperlink's parent), when they lead to one other document and the block
+    neither holds the title (is in `titled`) nor shows an `own` price."""
     shows: dict[int, set[object]] = {}
     for element, value in priced:
         for node in _up(element, region):
             shows.setdefault(node.mem_id, set()).add(value)
     targets = _targets(region, ctx)
+
+    def foreign(node: LexborNode) -> bool:  # leads to one other document only, not the title's, shows no own price
+        return node.mem_id not in titled and len(targets.get(node.mem_id, ())) == 1 and not own & shows[node.mem_id]
+
     for element, value in priced:
         card = next((node for node in _up(element, region) if node.mem_id in targets), None)
-        if value in own or card is None or card.mem_id in titled:
+        if value in own or card is None or not foreign(card):
             continue
-        if len(targets[card.mem_id]) == 1 and not own & shows[card.mem_id]:
-            yield card
+        # A hyperlink around the price alone leaves the card's other values (its brand, its name) beside it.
+        parent = card.parent if card.tag == "a" else None
+        held = parent is not None and parent.mem_id != region.mem_id and foreign(parent)
+        yield parent if held and parent is not None and targets[parent.mem_id] == targets[card.mem_id] else card
 
 
 def _stated_prices(schema: SchemaDef, stated: Sequence[Candidate]) -> frozenset[object]:
@@ -342,15 +348,14 @@ def _targets(region: LexborNode, ctx: Context) -> dict[int, set[str]]:
 
 
 def _product_items(page: ParsedPage) -> list[LexborNode]:
-    """The page's outermost schema.org Product items outside other items' content (`OTHER_ITEMS`)."""
+    """The page's schema.org Product items outside other items' content (`OTHER_ITEMS`), nested ones included."""
     others = _inside(page.tree.css(OTHER_ITEMS))
-    items = [
+    return [
         element
         for element in page.tree.css("[itemscope][itemtype]")
         if element.mem_id not in others
         and any(schema_term(token) == _PRODUCT for token in (element.attributes.get("itemtype") or "").split())
     ]
-    return [item for item in items if not any(_holds(outer, item) for outer in items if outer.mem_id != item.mem_id)]
 
 
 def _holds(outer: LexborNode, inner: LexborNode) -> bool:
