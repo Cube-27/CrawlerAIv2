@@ -27,5 +27,5 @@ git -C "$main" worktree add -q -b "$branch" "$dir" origin/main || err "git workt
 for data in schemaorg publicsuffix; do
   [[ -d $main/backend/data/$data ]] && cp -r "$main/backend/data/$data" "$dir/backend/data/$data"
 done
-(cd "$dir/backend" && uv sync -q) >&2 || echo "WARN uv sync failed in $dir/backend" >&2
+(cd "$dir/backend" && uv sync -q --no-build) >&2 || err "uv sync failed in $dir/backend"
 echo "$dir"

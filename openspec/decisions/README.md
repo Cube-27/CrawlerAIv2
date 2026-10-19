@@ -5,7 +5,7 @@ change's scope are written in its PR body only, and owner decisions go in
 [../design/owner-decisions.md](../design/owner-decisions.md). What to decide yourself and when to escalate: `CLAUDE.md`.
 The rest of this file describes the archive.
 
-**Where an entry goes** (OpenSpec keeps decisions with the change they belong to):
+**Where archived entries went** (archive only; new decisions follow the paragraph above):
 - A decision about a change goes in that change's `design.md`, under `## Decisions` (create the file if the change has
   none).
 - Cross-cutting and process decisions (tooling, CI, orchestration, UAT and review fixes, rules for every capability),
