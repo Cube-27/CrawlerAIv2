@@ -1,7 +1,7 @@
 """Data calls (acquisition spec, "Data calls"): a platform's documented product JSON joins the page only when it states
 the requested product, and is then read as structured evidence with its documented minor unit; another product's
-answer is refused, as a detail API recipe's is. The fetch path is grounded at runtime; this covers the identity check
-and the unit on any product key and amount."""
+answer is refused, as a detail API recipe's is. The fetch path is grounded at runtime; this covers the identity check,
+the unit and the platform's declared currency on any product key and amount, and the variant rows."""
 
 import json
 from datetime import UTC, datetime
@@ -13,6 +13,7 @@ from hypothesis import strategies as st
 
 from crawlerai.acquire.identity import NOT_THE_PRODUCT, joined
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.collect.currencies import with_page_declarations
 from crawlerai.collect.platform_json import PlatformJsonCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.api_recipe.execute import _identified
@@ -65,10 +66,15 @@ def _capture(url: str, method: CaptureMethod, body: bytes, calls: tuple[tuple[st
 
 
 def _product(key: str, cents: int = 2900) -> bytes:
-    # Shopify Ajax API product (its documentation, "Product"): prices in cents, one price for every variant.
+    # Shopify Ajax API product (its documentation, "Product"): one variant, its price in cents for every currency.
+    variant = {"id": 1, "title": "Default", "sku": f"{key}-1", "barcode": "4006381333931", "price": cents}
     return json.dumps(
-        {"handle": key, "title": "Item", "url": f"/products/{key}", "price": cents, "price_varies": False}
+        {"handle": key, "title": "Item", "url": f"/products/{key}", "variants": [{**variant, "available": True}]}
     ).encode()
+
+
+# An Online Store page: the platform's features script and its presentment currency (`content_for_header`).
+_PAGE = b'<html><script id="shopify-features"></script><script>Shopify.currency = {"active":"CAD"};</script></html>'
 
 
 @given(KEYS, KEYS, CENTS)
@@ -76,21 +82,26 @@ def test_a_documented_answer_joins_only_for_its_product_and_reads_in_major_units
     key: str, other: str, cents: int
 ) -> None:
     page = f"{HOST}/products/{key}"
-    http = _capture(page, "http", b"<html></html>")
+    http = _capture(page, "http", _PAGE)
 
     served, attempt = joined(http, _capture(f"{page}.js", "api", _product(key, cents)), key, "shopify")
 
     assert served is not None
     assert attempt.attempts[-1].error is None
     assert served.bundle.manifest.network_bodies[-1].data_call == "shopify"
+    parsed = ParsedPage.of(served.bundle)
     ctx = Context(captured_at=datetime(2026, 1, 1, tzinfo=UTC), html_lang="en-US", page_url=page, base_url=page)
-    read = PlatformJsonCollector(VOCABULARY).collect(ParsedPage.of(served.bundle), SCHEMA, ctx)
+    read = PlatformJsonCollector(VOCABULARY).collect(parsed, SCHEMA, with_page_declarations(ctx, parsed))
     prices = [c.normalized for c in read.candidates if c.field == "price"]
     assert len(prices) == 1
     assert isinstance(prices[0], Ok)
-    money = prices[0].value
-    assert isinstance(money, dict)
-    assert Decimal(str(money["amount"])) == Decimal(cents).scaleb(-2)
+    # The amount in major units, in the currency the page's `Shopify.currency.active` declares.
+    assert prices[0].value == {"amount": format(Decimal(cents).scaleb(-2), "f"), "currency": "CAD"}
+    # The variant's own identifiers fill a `variants` row.
+    row = {c.field: c.normalized for c in read.candidates if c.field.startswith("variants.")}
+    assert row["variants.sku"] == Ok(f"{key}-1")
+    assert row["variants.gtin"] == Ok("4006381333931")
+    assert row["variants.availability"] == Ok("InStock")
     if other != key:
         # Another product's answer (an endpoint that ignores its key) never joins, and says why.
         refused, attempt = joined(http, _capture(f"{page}.js", "api", _product(other)), key, "shopify")

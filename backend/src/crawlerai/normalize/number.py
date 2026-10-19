@@ -70,7 +70,9 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
     signed = found.before.endswith(numbers.MINUS)  # each minus sign is one character
     if numbers.negative(found.before[:-1] if signed else found.before):
         return Invalid("sign")
-    values = [-v if signed else v for v in numbers.readings(found.written, numbers.locale_set(ctx))]
+    values = [
+        -v if signed else v for v in numbers.readings(found.written, numbers.locale_set(ctx), ctx.page_convention)
+    ]
     if not values:
         return Invalid("not_a_number")  # a run no CLDR convention parses strictly ("1,2,3")
     if len(values) == 1:

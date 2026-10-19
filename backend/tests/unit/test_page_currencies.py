@@ -1,6 +1,6 @@
 """The currencies a page states (normalization spec, money): schema.org `priceCurrency` in JSON-LD, microdata and RDFa
-Lite, and page-wide declarations (OGP price currency, generic currency members of state JSON); ISO 4217 codes as
-written, each once."""
+Lite, and page-wide declarations (OGP price currency, generic currency members of state JSON, a platform's documented
+currency global); ISO 4217 codes as written, each once; and the decimal symbol of the page's structured prices."""
 
 import json
 from datetime import UTC, datetime
@@ -93,3 +93,31 @@ def test_the_in_language_of_the_pages_json_ld_is_a_declared_locale() -> None:
     assert stated_languages(page) == ("de-DE", "de")
     assert normalize("1.250", spec, CTX) == Ambiguous("decimal_separator", ("1.250", "1250"))
     assert normalize("1.250", spec, with_page_declarations(CTX, page)) == Ok("1250")
+
+
+def test_a_platform_declares_its_currency_in_its_documented_global_only_on_its_pages() -> None:
+    shopify = (
+        '<script id="shopify-features"></script><script>Shopify.currency = {"active":"CAD","rate":"1.0"};</script>'
+    )
+    shopware = "<script>window.salesChannelId = 'abc'; window.currencyIsoCode = 'CHF';</script>"
+
+    assert declared_currencies(_page(body=shopify)) == ("CAD",)
+    assert declared_currencies(_page(body=shopware)) == ("CHF",)
+    # Without the platform's signal the global is no declaration.
+    assert declared_currencies(_page(body="<script>window.currencyIsoCode = 'CHF';</script>")) == ()
+
+
+def test_the_decimal_symbol_of_the_pages_structured_prices_settles_an_ambiguous_amount() -> None:
+    offer = {"@context": "https://schema.org", "@type": "Offer", "price": "19.99"}
+    page = _page(_jsonld(offer))
+    spec = FieldSpec(type=FieldType.MONEY, description="d")
+
+    assert normalize("1.234", spec, CTX) == Ambiguous(
+        "decimal_separator", ({"amount": "1.234", "currency": None}, {"amount": "1234", "currency": None})
+    )
+    assert normalize("1.234", spec, with_page_declarations(CTX, page)) == Ok(
+        {"amount": "1.234", "currency": None}, basis="unknown", checked=False
+    )
+    # Prices written with different decimal symbols settle nothing.
+    mixed = _page(_jsonld(offer, {**offer, "price": "1.234,56"}))
+    assert with_page_declarations(CTX, mixed).page_convention is None

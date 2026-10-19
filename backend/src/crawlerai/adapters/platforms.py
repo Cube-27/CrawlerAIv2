@@ -16,9 +16,15 @@ members (adapters spec `Shape`, C2), amounts in the minor unit the documentation
 needs a credential (SFCC's OCAPI client id, BigCommerce's storefront token, Magento's REST token) or that has none
 (Next.js) is recorded only.
 
-A product whose variants are priced differently has no one price its answer states for the page, which shows the
-selected variant's: its answer is read without its Offer, so it never stands against the price the page shows (INV-14;
-the page keeps its prices, adapters spec "merge, don't override").
+Where a platform documents a script global that states the page's currency (the presentment currency the shop shows
+prices in), `currency_members` names it; it is read only on a page that shows the platform's signal, as a page-level
+declaration (normalization spec, "money", `collect.currencies`).
+
+Shopify's product answer states one Offer per variant, each with the variant's own identifiers and price, as a page's
+per-variant Offers do: resolution weighs them as it weighs those (resolution spec, price), and they fill the `variants`
+rows when the page states none (variants spec). WooCommerce's answer states one price for the product: a product whose
+variations are priced differently has none for the page, which shows the selected variation's, so its answer is read
+without its Offer and never stands against the price the page shows (INV-14; adapters spec "merge, don't override").
 """
 
 import re
@@ -33,6 +39,7 @@ from crawlerai.storage.capture_bundle import HeaderList
 
 __all__ = [
     "SIGNATURES",
+    "CurrencyMember",
     "PlatformSignature",
     "ProductJson",
     "answer_shapes",
@@ -43,6 +50,15 @@ __all__ = [
 
 
 @dataclass(frozen=True)
+class CurrencyMember:
+    """A documented script assignment that states the page's currency: the reference assigned to (`Shopify.currency`)
+    and the members from the assigned value to the ISO 4217 code (none: the value is the code)."""
+
+    assigned: str
+    members: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class PlatformSignature:
     platform: str
     markers: tuple[str, ...] = ()  # in the page's markup: the platform's asset paths and script globals
@@ -50,6 +66,7 @@ class PlatformSignature:
     # The query parameters (names, or name prefixes ending in `_`) by which the platform's documented product URLs
     # select one variant of the product.
     variant_params: tuple[str, ...] = ()
+    currency_members: tuple[CurrencyMember, ...] = ()
 
 
 # The global the Online Store's theme layout defines (`content_for_header`); a headless storefront has none, nor the
@@ -65,6 +82,8 @@ SIGNATURES: Final[tuple[PlatformSignature, ...]] = (
         header_names=frozenset({"x-shopid", "x-shopify-stage"}),
         # shopify.dev Liquid `variant.url`: the product URL with `?variant=<id>` selects that variant.
         variant_params=("variant",),
+        # shopify.dev Liquid / `content_for_header`: `Shopify.currency = {"active": <presentment currency>, "rate": …}`.
+        currency_members=(CurrencyMember("Shopify.currency", ("active",)),),
     ),
     # Salesforce Commerce Cloud (Demandware): its controller path and static asset path (SFCC B2C developer docs,
     # "URL syntax": `/on/demandware.store/Sites-{site}-Site/`, `/on/demandware.static/`).
@@ -85,6 +104,13 @@ SIGNATURES: Final[tuple[PlatformSignature, ...]] = (
     # `WC_Product_Variation::get_permalink`).
     PlatformSignature(
         "woocommerce", markers=("/plugins/woocommerce/", "woocommerce-no-js"), variant_params=("attribute_",)
+    ),
+    # Shopware 6: the storefront's bundle asset path and the globals its layout's meta template defines, among them
+    # `window.currencyIsoCode`, the sales channel context's currency.
+    PlatformSignature(
+        "shopware",
+        markers=("/bundles/storefront/", "window.salesChannelId"),
+        currency_members=(CurrencyMember("window.currencyIsoCode"),),
     ),
     # Next.js (commerce or any): the framework's data script and static path (Next.js docs, "Pages Router": the
     # `__NEXT_DATA__` script; the `/_next/static/` build output).
@@ -166,14 +192,26 @@ def _store_api(scheme: str, netloc: str, path: str, markup: str) -> ProductJson 
 
 
 # Shopify Ajax API, "Product" (shopify.dev/docs/api/ajax/reference/product): the product's `title`, `url` (its route
-# on the shop), `featured_image`, `vendor`, and its prices as integers in cents (the response's `price`, `price_min`,
-# `price_max`; "prices are in cents"), with `price_varies` true when its variants are priced differently.
+# on the shop), `featured_image`, `vendor`, and its `variants`, each with its `title`, `sku`, `barcode` (the GTIN, UPC
+# or ISBN), `available` (whether it can be bought) and `price`, an integer in cents for every currency ("prices are
+# in cents").
+_SHOPIFY_VARIANT: Final = Shape(
+    type="Offer",
+    at=("variants", ALL),
+    properties={
+        "name": ("title",),
+        "sku": ("sku",),
+        "gtin": ("barcode",),
+        "price": ("price",),
+        "availability": ("available",),
+    },
+    minor_units={"price": 2},
+    booleans={"availability": ("https://schema.org/InStock", "https://schema.org/OutOfStock")},
+)
 _SHOPIFY_PRODUCT_NODE: Final = Shape(
     type="Product",
     properties={"name": ("title",), "url": ("url",), "image": ("featured_image",), "brand": ("vendor",)},
-)
-_SHOPIFY_OFFER: Final = Shape(
-    type="Offer", anchor=("price",), properties={"price": ("price",)}, minor_units={"price": 2}
+    nodes={"offers": (_SHOPIFY_VARIANT,)},
 )
 # WooCommerce Store API, "Products" (github.com/woocommerce/woocommerce, plugins/woocommerce/src/StoreApi/docs,
 # products.md): a list of products, each with `name`, `permalink`, `sku`, `images[].src`, and `prices`, whose `price`
@@ -196,10 +234,7 @@ def answer_shapes(platform: str, answer: JsonValue) -> tuple[Shape, ...]:
     """The schema.org nodes the documented product JSON `answer` of `platform` holds (module docstring); none for a
     platform with no documented product JSON, or an answer not of its documented form."""
     if platform == "shopify" and isinstance(answer, dict):
-        varies = answer.get("price_varies") is not False
-        return (
-            _SHOPIFY_PRODUCT_NODE if varies else replace(_SHOPIFY_PRODUCT_NODE, nodes={"offers": (_SHOPIFY_OFFER,)}),
-        )
+        return (_SHOPIFY_PRODUCT_NODE,)
     if platform == "woocommerce" and isinstance(answer, list) and len(answer) == 1 and isinstance(answer[0], dict):
         prices = answer[0].get("prices")
         varies = not isinstance(prices, dict) or prices.get("price_range") is not None

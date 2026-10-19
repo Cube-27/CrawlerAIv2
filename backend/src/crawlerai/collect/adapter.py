@@ -12,7 +12,7 @@ normalizer is the only filter (C7).
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from functools import cache
 from typing import Final
@@ -98,9 +98,13 @@ class _Node:
         if (members := self.shape.properties.get(prop)) is not None:
             prefix = self.shape.prefixes.get(prop, "")
             places = self._places(prop)
-            return [
+            values = [
                 value for at in (members, *self.shape.also.get(prop, ())) for value in self._read(at, prefix, places)
             ]
+            if (meant := self.shape.booleans.get(prop)) is not None:
+                # A JSON boolean as the value the documentation means by it; any other value as stated.
+                values = [replace(v, raw=meant[not v.raw]) if isinstance(v.raw, bool) else v for v in values]
+            return values
         return [
             Value(node.as_object(), self._locator(node.path), node)
             for shape in self.shape.nodes.get(prop, ())
