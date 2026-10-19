@@ -109,13 +109,22 @@ Nuxt 3 `__NUXT_DATA__`) becomes the tree its indices reference, with the `Reacti
 `ShallowReactive`, `EmptyRef`, `EmptyShallowRef`, `NuxtError` revivers and devalue's `Date`, `Map`, `Set`, `null` types
 read as JSON; a **normalized cache** (an object of objects holding `{"__ref": key}` members; Apollo `InMemoryCache`) is
 read with every `__ref` replaced by the entry it names, `ROOT_QUERY` first. References on their own path are not
-followed, and a decoded tree past the same bounds leaves the document as written.
-A `<script type="text/x-magento-init">` (Adobe Commerce) is read as a JSON script. After the scripts, in document
-order, the value of each attribute a framework documents as JSON is a document when, as the parser unescapes it, it
-starts with `{` or `[` and is RFC 8259 JSON (`content/attr_json.py`): Inertia `data-page`, Livewire `wire:snapshot`,
-WooCommerce `data-product_variations`, Adobe Commerce `data-mage-init`, and Astro's `props` on `astro-island`, revived
-from its `[type, value]` tuples (`content/state_decoders.py`). No other attribute is read, whatever its value. Its
-locator is `attr:<element xpath>@<name>:<path>`, and a config's `jsonpath` step reads these documents as source `attr`.
+followed, and a decoded tree past the same bounds leaves the document as written. A page's **RSC Flight** stream is one
+more document (`content/rsc.py`, React `ReactFlightClient.js`; Next.js App Router): the string chunks (segment 1,
+UTF-8) and base64 chunks (segment 3) of its `self.__next_f.push([<segment>, <chunk>])` calls, joined in script order
+whatever row they split, read as rows `<hex id>:<tag?><payload>`, where tags `T A O o b U S s L l G g M m V` take a
+`<hex byte length>,` prefix and that many bytes (`T` UTF-8 text, which may hold line ends) and every other row ends at
+a line end; untagged rows are the JSON model, decoded as above and keyed by row id in the document (addressed by the
+first pushing script). `$`-prefixed reference strings (`$L`, `$@`, `$<id>`) are kept as written and `$$` reads as `$`.
+A captured `text/x-component` body is read by the same reader, one document per body. A malformed row adds a
+diagnostic and the other rows are read; a stream over 10^7 bytes is not read.
+A `<script type="text/x-magento-init">` (Adobe Commerce) is read as a JSON script. After the scripts and the Flight
+document, in document order, the value of each attribute a framework documents as JSON is a document when, as the parser
+unescapes it, it starts with `{` or `[` and is RFC 8259 JSON (`content/attr_json.py`): Inertia `data-page`, Livewire
+`wire:snapshot`, WooCommerce `data-product_variations`, Adobe Commerce `data-mage-init`, and Astro's `props` on
+`astro-island`, revived from its `[type, value]` tuples (`content/state_decoders.py`). No other attribute is read,
+whatever its value. Its locator is `attr:<element xpath>@<name>:<path>`, and a config's `jsonpath` step reads these
+documents as source `attr`.
 #### Scenario: Nuxt 2 devalue state
 - **WHEN** a script writes `window.__NUXT__=(function(a,b){return {data:[{price:a,currency:b}]}}(19.99,"EUR"))`
 - **THEN** its document is `{"data": [{"price": 19.99, "currency": "EUR"}]}`
@@ -128,6 +137,10 @@ locator is `attr:<element xpath>@<name>:<path>`, and a config's `jsonpath` step 
   `data-config="{&quot;price&quot;: 1}"` or `data-mage-init="{&quot;configurable&quot;: {"`
 - **THEN** the variations are a document, with locator `attr:<form xpath>@data-product_variations:$[0]['display_price']`
   for the first price, and the other two attributes give none and no error
+#### Scenario: Flight rows split across chunks
+- **WHEN** `self.__next_f.push([1, …])` chunks split a JSON row and a `T` text row, and a `[3, …]` chunk holds another
+  row
+- **THEN** the document holds each JSON row's value under its row id, `"$$19.99"` read as `"$19.99"` and `"$L1"` kept
 #### Scenario: Code in a value
 - **WHEN** an assigned object holds `f: function () { return 1; }` or `at: stamp()`
 - **THEN** it gives no document and no error
@@ -140,8 +153,9 @@ locator is `attr:<element xpath>@<name>:<path>`, and a config's `jsonpath` step 
 - **THEN** the segment is visible text in the boundary's place and the fallback is gone; with `$RX` the fallback stays
 
 ### Requirement: Embedded JSON state and XHR admission
-The system SHALL admit a scalar from the state documents ("Source documents") or captured XHR bodies (other than an
-identity-checked data call's, "Structured-data collectors") only when it equals another
+The system SHALL admit a scalar from the state documents ("Source documents": JS literals, decoded state, RSC rows) or
+captured XHR bodies (JSON or Flight payloads; other than an identity-checked data call's, "Structured-data
+collectors") only when it equals another
 kind's candidate (`independent=false`, owned by that candidate's entity), or when the field has none, the value is
 visible and its type is checkable (`collect/admission.py`) and the value shows the type's checked syntax (`Ok.checked`:
 money with a currency sign or code); text-like types admit by equality only. A value admitted by

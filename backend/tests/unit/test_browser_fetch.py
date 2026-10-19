@@ -41,11 +41,14 @@ fetch('/api/items').then(r => r.json()).then(items => {
   let html = '';
   for (const item of items) html += '<p>' + item['name'] + '</p>';
   document.getElementById('root').innerHTML = html;
-  return Promise.all([fetch('/api/note'), fetch('/style.css')]);
+  return Promise.all([fetch('/api/note'), fetch('/style.css'), fetch('/api/flight')]);
 });
 </script></body></html>"""
 # Enough rendered text that the page is not a shell (acquisition spec: 200 visible characters).
 _ITEMS = json.dumps([{"name": f"Catalogue item {i} with a short description"} for i in range(12)]).encode()
+# A React Server Components Flight payload (React's row grammar), kept beside the JSON.
+_FLIGHT = b'0:{"price":"$$19.99"}\n'
+_FLIGHT_TYPE = "text/x-component"
 _MANY = b"""<html><body><p id="done"></p><script>
 (async () => {
   await fetch('/api/big');
@@ -181,6 +184,7 @@ def server() -> Iterator[Server]:
             "/app": Reply(body=_APP, headers=(("Set-Cookie", "session=s1"),)),
             "/api/items": Reply(content_type=_JSON, body=_ITEMS),
             "/api/note": Reply(content_type="text/plain", body=b"plain text"),
+            "/api/flight": Reply(content_type=_FLIGHT_TYPE, body=_FLIGHT),
             "/style.css": Reply(content_type="text/css", body=b"p { color: black }"),
             "/api/big": Reply(content_type=_JSON, body=b"[" + b"0," * 1_100_000 + b"0]"),
             "/tall": Reply(body=_TALL),
@@ -293,7 +297,7 @@ def browser(server: Server) -> Iterator[Browser]:
         assert not session.browser.is_connected()
 
 
-def test_js_only_page_is_rendered_and_its_json_captured(browser: Browser, server: Server) -> None:
+def test_js_only_page_is_rendered_and_its_json_and_flight_captured(browser: Browser, server: Server) -> None:
     result = browser.fetch(server.url("/app"))
 
     assert (result.method, result.block_class, result.bundle.manifest.status_code) == ("browser", "ok", 200)
@@ -301,9 +305,10 @@ def test_js_only_page_is_rendered_and_its_json_captured(browser: Browser, server
     assert result.bundle.raw_body == _APP
     entries = result.bundle.manifest.network_bodies
     assert [(e.url, e.status, e.content_type, e.file, e.method, e.request_body) for e in entries] == [
-        (server.url("/api/items"), 200, _JSON, "network/0001.json", "GET", None)
+        (server.url("/api/items"), 200, _JSON, "network/0001.json", "GET", None),
+        (server.url("/api/flight"), 200, _FLIGHT_TYPE, "network/0002.json", "GET", None),
     ]
-    assert result.bundle.network == (_ITEMS,)
+    assert result.bundle.network == (_ITEMS, _FLIGHT)
     assert decode(encode(result.bundle)) == result.bundle
 
 
