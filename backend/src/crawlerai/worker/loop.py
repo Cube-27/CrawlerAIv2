@@ -1,8 +1,14 @@
 """The worker process (persistence-storage spec): claim tasks, run each with the handler of its job's kind, record the
 result. Handlers are registered by later specs.
 
+A worker runs up to `TASK_SLOTS` tasks at once, each on its own connection, and claims only as many as it has free
+slots, so a claimed task never waits behind others while its lease runs. Pages of one host still go at the host's
+rate: every task fetches through the process's one `HostLimiter`, which postpones a task whose turn is far off.
+
 Each task runs in one transaction: the handler's writes and the task's result commit together, or not at all (a lost
-lease, an exception). An exception is recorded on the task as a transient failure, and the loop continues.
+lease, an exception). An exception is recorded on the task as a transient failure, and the loop continues. A task
+still running at `TASK_DEADLINE` is cancelled and recorded as failed (`DEADLINE`), so no page holds its job open;
+one whose cancellation does not end within `CANCEL_GRACE` is left behind, its result recorded all the same.
 
 Database errors outside a handler propagate (§4.8), including one raised while recording a handler's exception, which
 usually means the connection is gone: `run_worker` raises and the process exits. Nothing is lost: the tasks it still
@@ -20,14 +26,17 @@ from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import timedelta
+from functools import partial
 from typing import Final, assert_never
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, FinishedOutcome, Job, JobKind, TaskOutcome
 from crawlerai.db.queue import (
+    TASK_DEADLINE,
     ClaimedTask,
     JobEnding,
     LeaseLost,
@@ -41,8 +50,15 @@ from crawlerai.db.queue import (
 
 log = logging.getLogger(__name__)
 
-CLAIM_BATCH: Final = 10
+# Tasks a worker runs at once. A task mostly waits (on the network, the browser, an LLM), so a few overlap well on one
+# core; the browser's own limit (`BROWSER_CONTEXTS`) bounds how many render at once.
+TASK_SLOTS: Final = 4
 IDLE_POLL: Final = timedelta(seconds=1)
+# How long a task cancelled at its deadline may take to wind down (a browser context closing) before it is left.
+CANCEL_GRACE: Final = timedelta(seconds=15)
+DEADLINE: Final = "timeout: the task ran past its deadline"
+# How long recording a task's deadline failure waits for a row lock that work left behind may hold.
+_LOCK_WAIT: Final = timedelta(seconds=10)
 # An absolute URI: an RFC 3986 §3.1 scheme followed by "://" and everything up to the next whitespace.
 URL: Final = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
 
@@ -101,27 +117,88 @@ async def run_worker(
     *,
     ending: JobEnding | None = None,
 ) -> None:
-    """Work until `stop` is set. The task in progress finishes; claimed tasks that have not started go back. `ending`
-    runs as a task's result ends its job (`settle_job`)."""
+    """Work until `stop` is set; the tasks in progress then finish (each within its deadline). `ending` runs as a
+    task's result ends its job (`settle_job`)."""
     worker = f"{socket.gethostname()}:{os.getpid()}:{secrets.token_hex(4)}"
-    engine = create_async_engine(settings.database_url.get_secret_value())
+    # A connection per slot, one for claiming, and one to record a result beside a task left behind.
+    engine = create_async_engine(settings.database_url.get_secret_value(), pool_size=TASK_SLOTS + 2)
     log.info("worker %s: started; job kinds %s", worker, ", ".join(sorted(handlers)))
+    running: set[asyncio.Task[None]] = set()
+    stopping = asyncio.ensure_future(stop.wait())
+    run = partial(_run_within_deadline, engine, handlers=handlers, ending=ending, redact_urls=settings.log_redact_urls)
     try:
         async with engine.connect() as conn:
             while not stop.is_set():
-                async with conn.begin():
-                    tasks = await claim_tasks(conn, worker, CLAIM_BATCH)
-                if not tasks:
-                    with suppress(TimeoutError):
-                        await asyncio.wait_for(stop.wait(), IDLE_POLL.total_seconds())
-                for index, task in enumerate(tasks):
-                    if stop.is_set():
-                        await _release(conn, tasks[index:])
-                        break
-                    await _run(conn, task, handlers, ending, redact_urls=settings.log_redact_urls)
+                free = TASK_SLOTS - len(running)
+                tasks: list[ClaimedTask] = []
+                if free:
+                    async with conn.begin():
+                        tasks = await claim_tasks(conn, worker, free)
+                running.update(asyncio.create_task(run(task)) for task in tasks)
+                if tasks and len(running) < TASK_SLOTS:
+                    continue  # more may be due
+                done, _ = await asyncio.wait(
+                    {*running, stopping}, timeout=IDLE_POLL.total_seconds(), return_when=asyncio.FIRST_COMPLETED
+                )
+                running -= done
+                for finished in done - {stopping}:
+                    finished.result()  # a database error outside a handler ends the worker (§4.8)
+        await asyncio.gather(*running)
     finally:
+        stopping.cancel()
+        for task in running:
+            task.cancel()
+        await asyncio.gather(*running, return_exceptions=True)
         await engine.dispose()
         log.info("worker %s: stopped", worker)
+
+
+async def _run_within_deadline(
+    engine: AsyncEngine,
+    task: ClaimedTask,
+    *,
+    handlers: Mapping[JobKind, TaskHandler],
+    ending: JobEnding | None,
+    redact_urls: bool,
+) -> None:
+    """Run `task` on a connection of its own; at `TASK_DEADLINE`, cancel it and record it as failed (`DEADLINE`)."""
+
+    async def run() -> None:
+        async with engine.connect() as conn:
+            await _run(conn, task, handlers, ending, redact_urls=redact_urls)
+
+    work = asyncio.create_task(run())
+    try:
+        done, _ = await asyncio.wait({work}, timeout=TASK_DEADLINE.total_seconds())
+    except asyncio.CancelledError:  # the worker is stopping at once: the task goes with it
+        work.cancel()
+        raise
+    if done:
+        return work.result()
+    work.cancel()
+    done, _ = await asyncio.wait({work}, timeout=CANCEL_GRACE.total_seconds())
+    if done and not work.cancelled() and (error := work.exception()) is not None:
+        log.warning("url_task %s: %s while it was cancelled", task.id, type(error).__name__)
+    if not done:
+        _LEFT_BEHIND.add(work)
+        work.add_done_callback(_LEFT_BEHIND.discard)
+        log.error("url_task %s: did not stop when cancelled at its deadline; left behind", task.id)
+    log.warning("url_task %s: %s", task.id, DEADLINE)
+    try:
+        async with engine.begin() as conn:
+            # Work left behind may still hold the task's row in its open transaction: the failure waits for it only
+            # so long (PostgreSQL `lock_timeout`), and the task is then left to its lease's expiry.
+            await conn.execute(text(f"SET LOCAL lock_timeout = {int(_LOCK_WAIT.total_seconds() * 1000)}"))
+            await fail_task(conn, task, DEADLINE, transient=False, ending=ending)
+    except LeaseLost:
+        pass
+    except DBAPIError:
+        log.exception("url_task %s: its failure was not recorded; its lease will expire", task.id)
+
+
+# The tasks left running past their deadline and cancellation (`_run_within_deadline`): referenced until they end,
+# since the event loop keeps only weak references to tasks.
+_LEFT_BEHIND: set[asyncio.Task[None]] = set()
 
 
 async def _run(
@@ -187,13 +264,6 @@ async def _execute(
             await cancel_task(conn, task, ending=ending)
         case unreachable:
             assert_never(unreachable)
-
-
-async def _release(conn: AsyncConnection, tasks: list[ClaimedTask]) -> None:
-    for task in tasks:
-        with suppress(LeaseLost):
-            async with conn.begin():
-                await release_task(conn, task)
 
 
 def _error_text(text: str, *, redact_urls: bool) -> str:

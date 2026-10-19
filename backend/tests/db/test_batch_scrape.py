@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.session import CookieExport
+from crawlerai.acquire.shared_browser import SharedBrowser
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
@@ -37,7 +38,6 @@ from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.jobs import PageOutputPage, ResultsQuery
 from crawlerai.storage.fs import FsStore
-from crawlerai.worker.browser import SharedBrowser
 from crawlerai.worker.handlers.table import task_handlers
 from crawlerai.worker.loop import run_worker
 

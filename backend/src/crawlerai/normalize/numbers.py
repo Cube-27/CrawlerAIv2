@@ -64,13 +64,33 @@ def stated(raw: str, *, percentages: bool = True) -> Stated | str:
 
 def _percentage(text: str, start: int, end: int) -> bool:
     """Whether a CLDR percent sign is written right after the number (white space between allowed, as `20 %` writes
-    it) or right before it (`%20`), bidi marks (Unicode Cf, as some locales write around the sign) aside."""
-    after, before = _unmarked(text[end:]).lstrip(), _unmarked(text[:start])
-    return after.startswith(_percent_signs()) or before.endswith(_percent_signs())
+    it) or right before it (`%20`), bidi marks (Unicode Cf, as some locales write around the sign) aside. Only the
+    characters next to the number are read, so a text with many numbers is read in linear time."""
+    signs = _percent_signs()
+    width = max(map(len, signs))
+    after = _unmarked(text, end, 1, width, skip_space=True)
+    before = _unmarked(text, start - 1, -1, width, skip_space=False)[::-1]
+    return after.startswith(signs) or before.endswith(signs)
 
 
-def _unmarked(text: str) -> str:
-    return "".join(c for c in text if unicodedata.category(c) != "Cf")
+def _unmarked(text: str, index: int, step: int, count: int, *, skip_space: bool) -> str:
+    """Up to `count` characters of `text` from `index` on, walking by `step`, format characters (Unicode Cf) left out;
+    with `skip_space`, white space before the first other character too."""
+    kept: list[str] = []
+    while 0 <= index < len(text) and len(kept) < count:
+        char = text[index]
+        index += step
+        if unicodedata.category(char) == "Cf" or (skip_space and not kept and char.isspace()):
+            continue
+        kept.append(char)
+    return "".join(kept)
+
+
+def warm() -> None:
+    """Build the tables read across every CLDR locale (number conventions, percent signs) now, so that the first page
+    a process reads does not wait for them."""
+    _number_conventions()
+    _percent_signs()
 
 
 @cache
