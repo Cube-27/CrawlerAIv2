@@ -890,6 +890,7 @@ class RecipeReport(BaseModel):
 class Basis(Enum):
     page = "page"
     locale = "locale"
+    url = "url"
     unknown = "unknown"
 
 

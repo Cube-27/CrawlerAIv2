@@ -18,7 +18,8 @@ never raising on bad input; every rule names its standard or structural property
 ### Requirement: Context is page and request evidence only
 `Context` (`normalize/base.py`) SHALL hold only evidence from the page and the request; `None` means no evidence,
 never a default. Its `hreflang` holds the languages of the alternate links to the page itself (its final URL or
-canonical link, HTML §4.6.7.1, RFC 6596; `content/context.py`). (Previously: every alternate link's `hreflang`.)
+canonical link, HTML §4.6.7.1, RFC 6596; `content/context.py`); `page_url` and `request_url` are the final and the
+requested URL. (Previously: every alternate link's `hreflang`.)
 Refs: §9, D-0256, D-0773, D-1482.
 #### Scenario: No context
 - **WHEN** a context carries only `captured_at`
@@ -30,7 +31,8 @@ Refs: §9, D-0256, D-0773, D-1482.
 ### Requirement: Decline rather than guess (INV-06)
 A normalizer SHALL NOT return `Ok` for empty or whitespace-only input, map an ambiguous symbol without context, read
 a host table, or apply a default (C7). Money is the one exception to declining: a grounded amount publishes with its
-currency unknown (`null`) rather than decline, and never with a currency nothing on the page names (owner #68).
+currency unknown (`null`) rather than decline, and never with a currency nothing on the page or its URL names (owner
+#68, owner 2026-10-19).
 (Previously: an ambiguous currency sign declined.) Enforced by: Hypothesis property tests per type; active.
 #### Scenario: Empty input
 - **WHEN** any type's normalizer gets `"   "`
@@ -53,10 +55,17 @@ the amount that denotes one currency (CLDR symbols), or the value's own structur
 (`declared_currencies`: OGP `og:price:currency` and `product:price:currency`, and a state JSON member named
 `currency`, `currencyCode` or `activeCurrency` holding an ISO 4217 code; `collect/currencies.py`); (4) the CLDR
 currency symbols of the locales the page's language tags, Content-Language (RFC 9110 §8.5, its HTML pragma) and ccTLD
-(RFC 1591, a CLDR territory) name, when they narrow a shared sign to one currency; (5) else `null`. A shared sign is
-narrowed by (2), then (3), then (4), each step keeping what the last left; an amount written without any sign takes
-the page's currency only when (2) and (3) together name exactly one, else `null`. `Ok.basis` notes the evidence of a
-currency below (2): `page`, `locale` or `unknown`; `Ok.checked` is false for a text without a sign, which only a
+(RFC 1591, a CLDR territory or its CLDR alias: `uk` is GB) name, when they narrow a shared sign to one currency; (5)
+the territory the URL names (owner 2026-10-19, `url_currency`): of the final URL, then the requested one, a locale
+path segment (`/en-gb/`: language then region, the language used in the region per CLDR territory languages), else a
+country subdomain (`in.`: a first label of two letters that is a CLDR territory, two more labels following), else the
+ccTLD; the first of these that names a territory decides, and it names a currency only when it names one territory,
+one of the page's stated languages (if any) is used there, and CLDR gives it one tender currency on the capture date;
+(6) else `null`. A shared sign is narrowed by (2), then (3), then (4), then (5), each step keeping what the last
+left; an amount written without any sign takes the page's currency when (2) and (3) together name exactly one, else
+the URL's (5), else `null`. A generic TLD, several locale segments, and a URL territory the page's language
+contradicts name none. No host table. `Ok.basis` notes the evidence of a currency below (2): `page`, `locale`, `url`
+or `unknown`; `Ok.checked` is false for a text without a sign, which only a
 grounded source may publish (extraction spec). Two signs that share no currency, or a sign that cannot denote the
 structured `priceCurrency`, contradict each other and are `Invalid`; amounts the locales read differently are
 `Ambiguous`, and the amount must be positive. A text's one amount is read through `numbers.stated`, as count and
@@ -65,11 +74,12 @@ discount), never the amount. A CLDR compact decimal unit of the page's locales w
 multiplies them (`decimalFormats-short`: `3.5万円` is 35000), and a currency's one-word CLDR count name (`円`) is a
 sign like its symbol. A sign written with a trailing full stop is also the CLDR symbol without it (an abbreviation's
 full stop: CLDR itself writes `kr` and `kr.`), so it denotes both symbols' currencies for (2)–(4) to narrow. A
-monetary range keeps declining on a `null` currency
-(`currency_unknown`). Refs: §9, owner #68, D-1240, D-1370.
+monetary range keeps declining on a `null` currency, and on one only the URL names (`currency_unknown`: a range has
+no basis to flag it). A label whose currency only the URL names is declined, as one whose currency is `null`.
+Refs: §9, owner #68, owner 2026-10-19, D-1240, D-1370, D-1782.
 (Previously: a sign several currencies share was `Ambiguous`, no sign was `Invalid`, a page currency never supplied a
 missing sign, the locale settled a sign at full confidence, and a sign with a full stop denoted only its own symbol's
-currencies.)
+currencies, and the URL never supplied a currency.)
 #### Scenario: Ambiguous dollar
 - **WHEN** the text is `$10` with `html_lang="en"` and no page currency
 - **THEN** the result is `Ok({amount: "10", currency: null})` with basis `unknown`; with `page_currencies=("CAD",)` it
@@ -78,6 +88,11 @@ currencies.)
 - **WHEN** the text is `12` and the page declares only `og:price:currency` SEK
 - **THEN** the result is `Ok({amount: "12", currency: "SEK"})` with basis `page`, not `checked`; with a second
   currency stated elsewhere on the page the currency is `null`
+#### Scenario: A currency from the URL
+- **WHEN** a structured value is `{price: "12"}` with no currency on the page, at `https://shop.example.com/en-gb/p`
+  (or `gb.example.com`, or a `.uk` host)
+- **THEN** the result is `Ok({amount: "12", currency: "GBP"})` with basis `url`; with `priceCurrency: "EUR"` it is EUR,
+  and at `https://shop.example.com/p` the currency is `null`
 #### Scenario: Structured price with its sign
 - **WHEN** a structured value is `{price: "$1,295.99", priceCurrency: "USD"}`
 - **THEN** the result is `Ok({amount: "1295.99", currency: "USD"})`; with `price: "€12"` it is `Invalid`

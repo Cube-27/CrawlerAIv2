@@ -101,8 +101,8 @@ Each published field SHALL carry one evidence bucket (`resolve/evidence.py`; `ag
 `network` for a value of the page's captured calls, Appendix A #59; `state` for a value of the page's state JSON) and
 the fitted dev confidence of its `(type, evidence)` bucket from `calibration.json`, which holds only buckets measured on
 at least 20 labelled values (the others are uncalibrated, `calibrated=false`). A money value whose currency only the
-locale settles or nothing settles (`basis` `locale`, `unknown`) is measured apart, in bucket `money|<evidence>|<basis>`,
-for its lower confidence (owner #68); every published field notes its `basis` in `field_meta` when it has one. Every
+locale or the URL settles, or nothing settles (`basis` `locale`, `url`, `unknown`), is measured apart, in bucket
+`money|<evidence>|<basis>`, for its lower confidence (owner #68, owner 2026-10-19); every published field notes its `basis` in `field_meta` when it has one. Every
 chosen value publishes with that
 confidence unless the request sets `min_confidence` and the bucket is calibrated below it: the field is then
 `abstained` with reason `below_min_confidence`. An uncalibrated bucket never abstains. (Previously: a calibrated bucket

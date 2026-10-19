@@ -12,14 +12,15 @@ Accepts:
 
 A grounded amount always gives a value; its currency comes from the best evidence (normalization spec, "money"): the
 sign or code written with it, the item's structured data, a page-level declaration, the page's locale and region
-narrowing a shared sign to one currency, else none (`null`, basis `unknown`). Nothing is invented: a currency is
-only ever one the page or its locale names. Any other JSON value is `Invalid("not_money")`; an amount the locales
+narrowing a shared sign to one currency, then the territory the page's URL names (owner 2026-10-19, basis `url`),
+else none (`null`, basis `unknown`). Nothing is invented: a currency is only ever one the page, its locale or its URL
+names. Any other JSON value is `Invalid("not_money")`; an amount the locales
 read differently is `Ambiguous`.
 """
 
 import re
 import unicodedata
-from collections.abc import Callable, Hashable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence, Set
 from dataclasses import dataclass
 from decimal import Decimal
 from functools import cache
@@ -27,7 +28,7 @@ from urllib.parse import urlsplit
 
 from babel import Locale
 from babel.core import get_global
-from babel.numbers import list_currencies
+from babel.numbers import get_territory_currencies, list_currencies
 from price_parser import Price
 from pydantic import JsonValue
 
@@ -41,6 +42,8 @@ _SCHEMA_ORG_PRICE = re.compile(r"\d+(?:\.\d+)?", re.ASCII)
 # fraction digits.
 _MAX_AMOUNT = Decimal(10) ** 12
 _MAX_EXPONENT = -6
+# A URL path segment naming a locale, language then region (BCP 47 order, `-` or `_`): `/en-gb/`, `/fr_CA/`.
+_LOCALE_SEGMENT = re.compile(r"([a-z]{2,3})[-_]([a-z]{2})", re.ASCII | re.IGNORECASE)
 # `numbers.stated` declines a text without one number as `no_number` or `several_numbers`; money names them by what
 # they mean for an amount: none is no amount, and two are a range, not one value.
 _NUMBER_REASONS = {"no_number": "no_amount", "several_numbers": "range"}
@@ -140,24 +143,28 @@ def _currency_of(text: str, before: str, after: str, ctx: Context, stated: str |
 
 def _unwritten(ctx: Context, *, written: bool) -> _Currency:
     """The currency of an amount written without one: the one currency the page states and declares, when every
-    statement agrees (normalization spec, "a page-level declaration ... consistent across the page"); else unknown."""
+    statement agrees (normalization spec, "a page-level declaration ... consistent across the page"); else the one its
+    URL names (`url_currency`); else unknown."""
     declared = set(ctx.page_currencies) | set(ctx.declared_currencies)
     if len(declared) == 1:
         return _Currency(declared.pop(), "page", written)
+    if (code := url_currency(ctx)) is not None:
+        return _Currency(code, "url", written)
     return _Currency(None, "unknown", written)
 
 
 def _narrowed(signs: Sequence[str], denoted: frozenset[str], ctx: Context) -> _Currency:
     """Of the currencies a written sign can denote, the one the evidence settles, strongest first: the page's
     structured data (schema.org `priceCurrency`), its page-level declarations, then its locale and region (CLDR
-    currency symbols of the locales its language tags and ccTLD name). Each step narrows what the one before left;
-    none settling it leaves the currency unknown, never a default (C7)."""
+    currency symbols of the locales its language tags and ccTLD name), then the currency its URL names. Each step
+    narrows what the one before left; none settling it leaves the currency unknown, never a default (C7)."""
     if len(denoted) == 1:
         return _Currency(next(iter(denoted)), None, True)
     steps: tuple[tuple[Callable[[], frozenset[str]], Basis | None], ...] = (
         (lambda: frozenset(ctx.page_currencies), None),
         (lambda: frozenset(ctx.declared_currencies), "page"),
         (lambda: _regional(signs, ctx), "locale"),
+        (lambda: frozenset(filter(None, (url_currency(ctx),))), "url"),
     )
     left = denoted
     for evidence, basis in steps:
@@ -182,10 +189,75 @@ def _regional(signs: Sequence[str], ctx: Context) -> frozenset[str]:
 
 def cctld_territory(url: str | None) -> str | None:
     """The territory a URL's country-code top-level domain names (RFC 1591 §2: a two-letter ISO 3166-1 code), when
-    CLDR knows it as a territory; `None` for a generic TLD or no URL."""
+    CLDR knows it as a territory, or as the alias of one (`uk` is GB); `None` for a generic TLD or no URL."""
     host = urlsplit(url).hostname if url else None
     label = (host or "").rstrip(".").rpartition(".")[2].upper()
-    return label if len(label) == 2 and label in _territories() else None
+    if len(label) != 2:
+        return None
+    if label in _territories():
+        return label
+    alias = get_global("territory_aliases").get(label, ())
+    return alias[0] if len(alias) == 1 and alias[0] in _territories() else None
+
+
+def url_currency(ctx: Context) -> str | None:
+    """The currency of the territory the page's URL names (owner 2026-10-19), for an amount the page states no currency
+    for: of the final URL, then the requested one, the territory a locale path segment names (`/en-gb/`), else a
+    country subdomain (`in.`), else the ccTLD; its one tender currency on the capture date (CLDR territory
+    currencies). A segment whose language is not used in its region (CLDR territory languages) is no locale segment.
+    The first step that names a territory decides: several territories, one that none of the page's stated languages
+    is used in, or one with no single tender currency name none (`None`), as does a generic TLD. No host table (C7)."""
+    languages = _page_languages(ctx)
+    for url in dict.fromkeys(u for u in (ctx.page_url, ctx.request_url) if u):
+        parts = urlsplit(url)
+        host = (parts.hostname or "").rstrip(".").lower().split(".")
+        steps = (_segment_territories(parts.path), _subdomain_territories(host), _cctld_territories(url))
+        territories = next((step for step in steps if step), set())
+        if len(territories) == 1 and _speaks(territory := territories.pop(), languages):
+            return _tender_currency(territory, ctx)
+    return None
+
+
+def _segment_territories(path: str) -> set[str]:
+    """The territories the path's locale segments name, each segment's language used there (`/en-gb/`)."""
+    found: set[str] = set()
+    for segment in path.split("/"):
+        m = _LOCALE_SEGMENT.fullmatch(segment)
+        if m and (territory := m.group(2).upper()) in _territories() and _speaks(territory, {m.group(1).lower()}):
+            found.add(territory)
+    return found
+
+
+def _subdomain_territories(labels: Sequence[str]) -> set[str]:
+    """The territory a host's first label names, when it is a subdomain (two more labels follow) of two letters that
+    CLDR knows as a territory (`in.example.com`)."""
+    first = labels[0].upper() if len(labels) > 2 else ""
+    return {first} if len(first) == 2 and first in _territories() else set()
+
+
+def _cctld_territories(url: str) -> set[str]:
+    territory = cctld_territory(url)
+    return set() if territory is None else {territory}
+
+
+def _page_languages(ctx: Context) -> frozenset[str]:
+    """The primary language subtags (BCP 47) the page states: `<html lang>`, `og:locale`, its Content-Language and
+    its own `hreflang`."""
+    tags = (ctx.html_lang, ctx.og_locale, *ctx.content_language, *ctx.hreflang)
+    return frozenset(tag.replace("_", "-").split("-")[0].lower() for tag in tags if tag)
+
+
+def _speaks(territory: str, languages: Set[str]) -> bool:
+    """Whether one of `languages` is used in `territory` (CLDR territory languages); true when none is stated or CLDR
+    lists none for it."""
+    used = {language.split("_")[0] for language in get_global("territory_languages").get(territory, {})}
+    return not languages or not used or bool(used & languages)
+
+
+def _tender_currency(territory: str, ctx: Context) -> str | None:
+    """The territory's one legal tender currency on the capture date (CLDR territory currencies), else `None`."""
+    current = get_territory_currencies(territory, ctx.captured_at.date(), tender=True)
+    return current[0] if len(current) == 1 else None
 
 
 def _signs(text: str, before: str, after: str) -> list[str] | Invalid:

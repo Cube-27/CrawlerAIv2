@@ -25,9 +25,10 @@ from crawlerai.schemas.types import FieldType, SchemaDef
 
 # The reason of a field a calibrated bucket kept from publishing under the request's `min_confidence`.
 BELOW_MIN_CONFIDENCE: Final = "below_min_confidence"
-# Owner decision 2026-10-18 (resolution spec): a money value whose currency only the page's locale settles, or that
-# nothing settles, publishes with lower confidence: its bucket is measured apart, `<type>|<evidence>|<basis>`.
-_APART: frozenset[Basis] = frozenset({"locale", "unknown"})
+# Owner decisions 2026-10-18 and 2026-10-19 (resolution spec): a money value whose currency only the page's locale or
+# its URL settles, or that nothing settles, publishes with lower confidence: its bucket is measured apart,
+# `<type>|<evidence>|<basis>`.
+_APART: frozenset[Basis] = frozenset({"locale", "url", "unknown"})
 # A bucket with fewer than 20 dev labels reports `calibrated=false` (the `resolution` spec's floor).
 MIN_CALIBRATED_N: Final = 20
 # Buckets by source kind: an adapter or an API recipe; one structured-data standard (schema.org

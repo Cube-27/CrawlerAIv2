@@ -292,6 +292,9 @@ def _monetary(lo: NormalizeResult, hi: NormalizeResult, period: str | None) -> N
                 if a[1] is not None and a[1] == b[1] and a[0] <= b[0]
             )
             return Ambiguous(reason, options)
+        case (Ok(basis="url"), _) | (_, Ok(basis="url")):
+            # A range has no basis to flag a currency only its URL names (normalization spec), so it states none.
+            return Ambiguous("currency_unknown", ())
         case Ok(value=lo_value), Ok(value=hi_value):
             return _bounded_money(_amount(lo_value), _amount(hi_value), period)
     raise TypeError("a normalize result is Ok, Ambiguous or Invalid")

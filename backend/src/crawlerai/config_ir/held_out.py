@@ -293,7 +293,8 @@ def _read(blob: bytes) -> tuple[CaptureBundle, ParsedPage, Context]:
 def read_bundle(bundle: CaptureBundle) -> tuple[ParsedPage, Context]:
     """The bundle's page, parsed, with its context and the currencies it states, as the engine reads it."""
     page = ParsedPage.of(bundle)
+    manifest = bundle.manifest
     ctx = page_context(
-        page, bundle.manifest.final_url, bundle.manifest.fetched_at, headers=bundle.manifest.headers.response
+        page, manifest.final_url, manifest.fetched_at, request_url=manifest.url, headers=manifest.headers.response
     )
     return page, with_stated_currencies(ctx, page)

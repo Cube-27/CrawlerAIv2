@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
@@ -63,6 +64,40 @@ def test_the_currency_comes_from_the_best_evidence_with_weaker_evidence_noted() 
     # nothing.
     assert money.normalize("$5", MONEY, _ctx(request_locale="en-AU")) == _ok("5", None, "unknown")
     assert money.normalize("$5", MONEY, _ctx(html_lang="en-US", og_locale="en-CA")) == _ok("5", None, "unknown")
+
+
+def _cctld(code: str) -> str:
+    """A synthetic URL under RFC 2606's `example` label with the ccTLD `code` (RFC 1591)."""
+    return f"https://shop.example.{code}/p"
+
+
+@given(_amounts, st.sampled_from(["https://shop.example.com/en-gb/p", "https://gb.example.com/p", _cctld("uk")]))
+def test_a_currency_the_page_does_not_state_comes_from_the_territory_its_url_names_flagged(
+    amount: Decimal, url: str
+) -> None:
+    # Owner 2026-10-19: a locale path segment, else a country subdomain, else the ccTLD, through CLDR; flagged `url`.
+    price = format(amount, "f")
+
+    assert money.normalize({"price": price}, MONEY, _ctx(page_url=url)) == _ok(price, "GBP", "url")
+    assert money.normalize(price, MONEY, _ctx(request_url=url)) == _ok(price, "GBP", "url", checked=False)
+    # An explicit offer or page currency always wins, and the amount is never changed.
+    assert money.normalize({"price": price, "priceCurrency": "EUR"}, MONEY, _ctx(page_url=url)) == _ok(price, "EUR")
+    assert money.normalize(price, MONEY, _ctx(page_url=url, declared_currencies=("EUR",))) == _ok(
+        price, "EUR", "page", checked=False
+    )
+
+
+@pytest.mark.parametrize(
+    ("url", "lang"),
+    [
+        ("https://shop.example.com/p/1", None),  # a generic TLD
+        ("https://shop.example.com/en-gb/fr-ca/p", None),  # two locale segments
+        ("https://ar.example.com/p", "ar"),  # a subdomain naming a territory the page's language is not used in
+        (_cctld("co"), "en"),  # likewise a ccTLD
+    ],
+)
+def test_a_url_naming_no_one_territory_of_the_page_names_no_currency(url: str, lang: str | None) -> None:
+    assert money.normalize({"price": "12"}, MONEY, _ctx(page_url=url, html_lang=lang)) == _ok("12", None, "unknown")
 
 
 def test_a_sign_written_with_an_abbreviation_full_stop_is_also_the_symbol_without_it() -> None:

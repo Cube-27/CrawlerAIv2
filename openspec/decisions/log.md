@@ -1245,3 +1245,24 @@ archived ARCHITECTURE.md.
 - Alternatives: `disagree` (the price lost although every source shows it).
 - Why: the amount is grounded; only the currency is in doubt, and C7 never abstains on currency.
 - Reversible: yes
+
+### D-1782 — A currency the page does not state comes from its URL, flagged
+- Date: 2026-10-19 · Change/PR: url-currency · Status: confirmed (owner 2026-10-19, = old repo; supersedes the "no
+  values from URL codes" half of C7 for currency only)
+- Decision: With no currency on the page, money takes the territory its final, then requested, URL names: a locale path
+  segment (`/en-gb/`), else a country subdomain (`in.`), else the ccTLD (a CLDR alias too: `uk` is GB), mapped to its
+  one CLDR tender currency, basis `url` (measured apart, below `locale`). The amount never changes; any page currency
+  wins. A generic TLD, several territories, or a territory none of the page's stated languages is used in (CLDR
+  territory languages) give none. No host table. A range and a label still decline on a URL-only currency.
+- Alternatives: the old repo's per-host hint table (rejected, C3/C7); null currency (owner #68, the previous rule).
+- Why: the URL locale is evidence the site states about its market; flagged, so its lower confidence is visible.
+- Reversible: yes — drop `money.url_currency`.
+
+### D-1783 — A field no Offer states publishes from the target's own values
+- Date: 2026-10-19 · Change/PR: url-currency · Status: decided (applies the owner rule: a shown price is never dropped)
+- Decision: INV-15's `offer_split` holds only when another Offer states the field the anchor lacks. When no Offer
+  states it (variant Offers with availability only), the target's own candidates (Open Graph, page state, text,
+  already screened for ownership) publish by the usual agreement rule.
+- Alternatives: keep `offer_split` (the price lost although the page shows it for this product).
+- Why: no Offer competes, so nothing is split across Offers; ownership already ties the value to the target.
+- Reversible: yes
