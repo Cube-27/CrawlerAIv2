@@ -79,11 +79,22 @@ multiplies them (`decimalFormats-short`: `3.5万円` is 35000), and a currency's
 sign like its symbol. A sign written with a trailing full stop is also the CLDR symbol without it (an abbreviation's
 full stop: CLDR itself writes `kr` and `kr.`), so it denotes both symbols' currencies for (2)–(4) to narrow. A
 monetary range keeps declining on a `null` currency, and on one only the URL names (`currency_unknown`: a range has
-no basis to flag it). A label whose currency only the URL names is declined, as one whose currency is `null`.
-Refs: §9, owner #68, owner 2026-10-19, D-1240, D-1370, D-1782.
+no basis to flag it). A label whose currency only the URL names is declined, as one whose currency is `null`. An
+amount followed by a CLDR per pattern and a unit of the page's or the root locale's CLDR unit data
+(`normalize/units.py`: a unit's own per pattern, `{0}/kg`, or the compound per pattern, `{0}/{1}`, `{0} per {1}`,
+with a unit name, a count before it allowed: `per 100 ml`; a form of two letters or more in any case, a one-letter
+symbol only as CLDR writes it and right after the separator or a count, `$40/M` but not `$40 / M`, a size) prices a
+unit or a period: for a field whose path gives it
+the active-price role (schemas spec, "Presets") it is `Invalid("per_unit")` (mass, volume, length, area, item) or
+`Invalid("per_period")` (duration); any other money field reads the amount before the pattern (`unit_price`: `€25/kg`
+is 25). Refs: §9, owner #68, owner 2026-10-19, D-1240, D-1370, D-1782, architecture-v3 d.2.
 (Previously: a sign several currencies share was `Ambiguous`, no sign was `Invalid`, a page currency never supplied a
 missing sign, the locale settled a sign at full confidence, and a sign with a full stop denoted only its own symbol's
-currencies, and the URL never supplied a currency.)
+currencies, and the URL never supplied a currency; an amount per unit or per period read as the price.)
+#### Scenario: Per unit and per period
+- **WHEN** the text is `€25/kg` or `$25/mo` for the `commerce_detail` `price` with `html_lang="en"`
+- **THEN** the results are `Invalid("per_unit")` and `Invalid("per_period")`; for a `unit_price` field mapped to
+  `Offer.priceSpecification{referenceQuantity}.price+priceCurrency`, `€25/kg` is `Ok({amount: "25", currency: "EUR"})`
 #### Scenario: Ambiguous dollar
 - **WHEN** the text is `$10` with `html_lang="en"` and no page currency
 - **THEN** the result is `Ok({amount: "10", currency: null})` with basis `unknown`; with `page_currencies=("CAD",)` it
@@ -147,7 +158,8 @@ D-1372, D-1373. (Previously: `remote_flag` was `false` when unstated; CLDR's `EU
 
 ### Requirement: range, count and number
 `normalize/range.py`, `count.py` and `number.py` SHALL each accept one stated value and decline otherwise: a
-monetary range without a period is `Ambiguous`; count and number decline on two numbers; number keeps digits as
+monetary range without a period is `Ambiguous`, except a schema.org AggregateOffer's `lowPrice` and `highPrice`
+(a price range: no period), each bound read as an Offer's `price` with its `priceCurrency`; count and number decline on two numbers; number keeps digits as
 written, and a schema.org `ratingValue` joined to a `reviewCount` of 0 is `Invalid("no_ratings")`. A count with
 `unitCode` `C62` declines a `unitText` that names a CLDR measurement unit. All numbers (money, count, number) are read by the one path in `numbers.py`: a written number that only one CLDR number
 convention can read (`1.234,56`, `12.50`) has that one value whatever the page says; one that conventions read
@@ -159,7 +171,8 @@ writes `1.234,5`), and the ccTLD narrows a language-only tag only where money re
 A minus negates a money or count text only when it touches the number. A monetary range's period is read from
 `unitText`, else `unitCode`: a unit word, an interval of one unit (`1 YEAR`), an ISO 8601 duration of one unit (`P1Y`), a
 UN/CEFACT code (`ANN`) or a `type:period` phrase. Refs: §9, D-0275–D-0279, D-0302, D-0921, D-0922, D-0960, D-1184,
-D-1270, D-1271, D-1371. (Previously: only a unit word or a `type:period` phrase.)
+D-1270, D-1271, D-1371, architecture-v3 d.1. (Previously: only a unit word or a `type:period` phrase; an
+AggregateOffer was not a range value.)
 #### Scenario: Rating with its scale
 - **WHEN** a `number` text is "4.5 out of 5"
 - **THEN** the result is `Invalid("several_numbers")`

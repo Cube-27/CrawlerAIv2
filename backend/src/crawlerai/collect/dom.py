@@ -18,9 +18,11 @@ whose meaning the HTML Standard defines, for pages whose structured data leaves 
   identifier inside a hyperlink to another document, which names that document's item.
 - **Typed values.** A money field's or a checked identifier's value the main region shows once, read with the item
   layer's spotting (`collect.items.spot`): the text an element holds itself that the field's normalizer parses, not
-  struck through (`s`, `del`), not set apart, shown; for a checked identifier (a GS1 or ISO 2108 check digit), also
-  the value of a pair whose label names no field. Several distinct values read none. An identifier without a check
-  digit (sku, mpn) is read only next to one of its labels.
+  struck through (`struck`), not set apart, shown; for a checked identifier (a GS1 or ISO 2108 check digit), also
+  the value of a pair whose label names no field. A money field reads by its price role (`schemas.paths.price_role`):
+  a list price only struck text, a unit price only an amount written per unit (`normalize.units`: `€25/kg`), a member
+  price none (its labels read it), any other money field no amount written per unit or per period. Several distinct
+  values read none. An identifier without a check digit (sku, mpn) is read only next to one of its labels.
 - **The main image.** The first image of the page's main region (the `main` element, else the one `role="main"`
   landmark, WAI-ARIA 1.2; else the document's one `article`, §4.3.2), outside the region's tangential content
   (`nav`, `header`, `footer`, `aside`, §4.3), its dialogs (`dialog`, roles `dialog` and `alertdialog`) and the
@@ -49,13 +51,13 @@ from pydantic import JsonValue
 from selectolax.lexbor import LexborNode
 
 from crawlerai.collect.base import PAGE, Candidate, CollectResult
-from crawlerai.collect.items.spot import is_typed, spots
+from crawlerai.collect.items.spot import is_typed, reads, spots
 from crawlerai.collect.labels import Words, field_labels, properties, words
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import NAMESPACES, candidate, schema_term
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage, node_xpath
-from crawlerai.content.text import CELLS, shown
+from crawlerai.content.text import CELLS, declarations, shown
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equality_key
 from crawlerai.normalize.url import canonical_url, media_type
@@ -97,8 +99,12 @@ _SPOTTED_TYPES = frozenset({FieldType.MONEY, FieldType.IDENTIFIER})
 _SPOT_LENGTH = 64
 # schema.org `Product`: the item type whose microdata items other than the page's are set apart (`product_apart`).
 _PRODUCT = "Product"
-# HTML Standard §4.5.4 `s` and §4.7.2 `del`: text that is no longer accurate or was removed is no current value.
-_STRUCK = frozenset({"s", "del"})
+# HTML Standard §4.5.4 `s` and §4.7.2 `del`: text that is no longer accurate or was removed is no current value; the
+# obsolete `strike` (§16.2) renders as `s` does. CSS Text Decoration 3 §2.1-§2.2: an inline `text-decoration` or
+# `text-decoration-line` holding `line-through` strikes the text through.
+_STRUCK_TAGS = frozenset({"s", "del", "strike"})
+_LINE_THROUGH = "line-through"
+_DECORATION = ("text-decoration", "text-decoration-line")
 # schema.org properties whose values are other things than the page's item: `review`, `isRelatedTo`, `isSimilarTo`,
 # as an `itemprop` token names them, bare or as an IRI in either namespace; and a Review item, whose `itemtype` URL ends
 # with `/Review` (HTML Standard §5.4: microdata).
@@ -264,7 +270,7 @@ def product_apart(page: ParsedPage, schema: SchemaDef, ctx: Context, stated: Seq
     money = next((spec for spec in schema.fields.values() if spec.type is FieldType.MONEY), None)
     if region is None or schema.page_kind != "detail" or page.json_body:
         return frozenset()
-    chrome = _apart_ids(region, _STRUCK)
+    chrome = _apart_ids(region) | struck_ids(region)
     title = next((h for h in region.css("h1") if h.mem_id not in chrome and shown(h)), None)
     apart = [item for item in _product_items(page) if title is None or not _holds(item, title)]
     own = _stated_prices(schema, stated)
@@ -492,17 +498,20 @@ def _typed_found(
     page: ParsedPage, schema: SchemaDef, ctx: Context, content: _Content | None, unlabelled: Sequence[Pair]
 ) -> Iterator[Found]:
     """A money or checked-identifier field's value the main region shows once: the elements whose own text the field's
-    normalizer parses (`items.spot`), current (not struck), not set apart and shown; for an identifier, also the value
-    of a pair whose label names no field (`EAN: <digits>`), outside hyperlinks to other documents. A check digit (GS1,
-    ISO 2108) makes the syntax checkable; an identifier without one needs a label (`_pairs_found`). Several distinct
-    values are ambiguous (a price among related products' prices): nothing is read."""
+    normalizer parses (`items.spot`), not set apart and shown, current (not struck) unless the field is a list price
+    (`items.spot.reads`); for an identifier, also the value of a pair whose label names no field (`EAN: <digits>`),
+    outside hyperlinks to other documents. A check digit (GS1, ISO 2108) makes the syntax checkable; an identifier
+    without one needs a label (`_pairs_found`). Several distinct values are ambiguous (a price among related products'
+    prices): nothing is read."""
     fields = [n for n, spec in schema.fields.items() if is_typed(spec) and spec.type in _SPOTTED_TYPES]
     if not fields or content is None or _main_region(page) is None:
         return
-    shorts = _short_texts(content.region, _apart_ids(content.region, _STRUCK) | content.apart)
+    shorts = _short_texts(content.region, content.apart)
+    struck = struck_ids(content.region)
     for name in fields:
         spec = schema.fields[name]
-        texts = _identifier_texts(shorts, unlabelled, content) if spec.type is FieldType.IDENTIFIER else shorts
+        shown_texts = _identifier_texts(shorts, unlabelled, content) if spec.type is FieldType.IDENTIFIER else shorts
+        texts = [(e, text) for e, text in shown_texts if reads(spec, text, ctx, struck=e.mem_id in struck)]
         if (one := _one_value(texts, spec, ctx)) is not None:
             yield name, *one, None
 
@@ -555,13 +564,24 @@ def _cards(group: Sequence[LexborNode], links: "_Links") -> bool:
     return all(len(t) == 1 for t in targets) and len(set().union(*targets)) == len(group)
 
 
-def _apart_ids(region: LexborNode, extra: frozenset[str] = frozenset()) -> frozenset[int]:
-    """The elements in the region's tangential content, in a dialog or a media element's fallback, or inside one of
-    the `extra` tags."""
-    selector = ",".join(
-        (*_TANGENTIAL, *_MEDIA, *extra, "dialog", *(f'[role~="{role}"]' for role in sorted(_DIALOG_ROLES)))
-    )
+def _apart_ids(region: LexborNode) -> frozenset[int]:
+    """The elements in the region's tangential content, in a dialog or a media element's fallback."""
+    selector = ",".join((*_TANGENTIAL, *_MEDIA, "dialog", *(f'[role~="{role}"]' for role in sorted(_DIALOG_ROLES))))
     return frozenset(inside.mem_id for root in region.css(selector) for inside in (root, *root.css("*")))
+
+
+def struck(tag: str, attributes: Mapping[str, str | None]) -> bool:
+    """Whether an element strikes its text through (`_STRUCK_TAGS`, or an inline `line-through` decoration): a value it
+    holds is no current one, a former price."""
+    if tag in _STRUCK_TAGS:
+        return True
+    style = declarations(dict(attributes))
+    return any(_LINE_THROUGH in style.get(prop, "").split() for prop in _DECORATION)
+
+
+def struck_ids(region: LexborNode) -> frozenset[int]:
+    """The region's elements that are struck through (`struck`) or inside one that is."""
+    return _inside(e for e in (region, *region.css("*")) if struck(e.tag or "", e.attributes))
 
 
 def _image_found(page: ParsedPage, schema: SchemaDef, ctx: Context, outside: frozenset[int]) -> Iterator[Found]:

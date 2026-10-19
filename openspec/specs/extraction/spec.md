@@ -45,15 +45,24 @@ The system SHALL read JSON-LD (RFC 8259, `@graph`/`@id` resolved, schema.org ter
 `rdfs:subPropertyOf` for identifiers), microdata and RDFa Lite (HTML Standard item and value rules; a URL-attribute or
 RDFa IRI value is a URL, never text, D-1153) and Open Graph
 (one fixed table of OGP-defined properties: basic and optional metadata, `og:description` filling a long_text
-description, and the `product:` namespace; no translation, site-default blocks skipped) through the field's
-`schema_org` path; a property no published standard defines is left to learned configs (owner, Appendix A #48). A
+description, and the `product:` namespace: `product:price`/`og:price` amount and currency, `product:sale_price`
+as the active price (unless `product:sale_price_dates:end` is before the capture) with the stated price beside it
+as the list price, `product:original_price` as the list price,
+`og:availability`, `product:condition`, `product:retailer_item_id` and `product:brand`; no translation, site-default
+blocks skipped) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
+standing in for that thing; a path through another thing, `Product.offers.seller.url`, has none); a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
 element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. A platform's documented
 product JSON that a detail page's HTTP fetch joined after its identity check (acquisition spec, "Data calls") is read
 as that platform documents its members (`adapters/platforms.answer_shapes`, `collect/platform_json.py`): `adapter`
 candidates of the requested product, amounts in the minor unit the documentation states, and no Offer when its
 variants are priced differently (the page states the selected one). Refs: §8.1,
-D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-19 on #326.
+D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-19 on #326, architecture-v3 d.6.
+(Previously: Open Graph read `product:price` alone, whatever the money field's price role.)
+#### Scenario: OG sale price
+- **WHEN** a page states `product:price:amount` 100 and `product:sale_price:amount` 80, and the schema has `price` and
+  a user-added `list_price`
+- **THEN** `price` has the candidate 80 and `list_price` the candidate 100
 #### Scenario: Escaped markup
 - **WHEN** a text value is block markup written escaped (`&lt;p&gt;…&lt;/p&gt;&lt;ul&gt;…`)
 - **THEN** it normalizes as the unescaped markup does; an escaped `<` that makes no element (`1 &lt; 2`) stays text
@@ -123,7 +132,13 @@ give a field several values are dropped, and an identifier field given two value
 also take a money or check-digit identifier field's one shown value in the main region (`collect/items/spot.py`, which
 spots only text showing the type's checked syntax, `Ok.checked`: a number without a currency sign is not money; for
 an identifier also an unlabelled pair's value, never inside a hyperlink to another document; none when several
-differ); an identifier without a check digit is read only next to one of its labels. It SHALL take the main image of
+differ); an identifier without a check digit is read only next to one of its labels. A money field reads by the
+price role its path gives it (schemas spec, "Presets"): struck text (`s`, `del`, `strike`, HTML Standard; an inline
+`style` whose `text-decoration` or `text-decoration-line` holds `line-through`, CSS Text Decoration 3) only for a list
+price; an amount followed by a CLDR per pattern and a CLDR mass, volume, length, area or item unit (`€25/kg`,
+`$0.50 per 100 ml`; `normalize/units.py`, the page's and the root locale's CLDR unit data) only for a unit price; an
+amount per a CLDR duration unit (`$25/mo`) for no money field; a member price from its labels only. The item layer's
+rows read by the same rule (`collect/items/align.py`). It SHALL take the main image of
 the one `main`/`role=main`/`article` outside chrome, decorative images and link cards (`collect/dom.py`), an image's
 source being its `src` unless its `srcset` has width descriptors (HTML Standard §4.8.4.3: `src` is then out of the
 source set), when it is the widest candidate; and for a list of images whose path names schema.org `image`, the main
@@ -140,7 +155,8 @@ documents is no card, and without a stated price no card is set apart. Product m
 not hold the title are set apart too. Values MUST be visible.
 (Previously: labels were only names, and other items' content was read; `src` was read before `srcset`; no list of
 images was read; a recommendation card that was not one of two or more sibling cards was read; an other item's
-structured price counted as stated, so its card was read.) Refs: Appendix A #42, D-0955,
+structured price counted as stated, so its card was read; struck text was `s` and `del` only, and an amount per unit
+or per period was a price candidate.) Refs: Appendix A #42, D-0955,
 D-1096, D-1640, D-1641, D-1642, D-1643.
 #### Scenario: Gallery slides
 - **WHEN** the main image is one of three sibling slides, two of which hold an image whose `src` is a shared placeholder
@@ -155,6 +171,9 @@ D-1096, D-1640, D-1641, D-1642, D-1643.
 #### Scenario: One price
 - **WHEN** the main region shows one amount and a struck amount
 - **THEN** `price` has the shown amount as a candidate; with two shown amounts, none
+#### Scenario: Per-unit and per-period amounts
+- **WHEN** the main region shows `€25/kg` beside the price, or `$25/mo`
+- **THEN** neither is a `price` candidate; `€25/kg` is a user-added `unit_price` field's candidate
 #### Scenario: Complete-the-look card
 - **WHEN** structured data states the price `$80`, and the main region shows `$80` and one card linking to another
   product with `$20` and `Brand: Other`
@@ -166,8 +185,10 @@ D-1096, D-1640, D-1641, D-1642, D-1643.
 ### Requirement: No generic DOM heuristics
 Collectors SHALL contain no hostname, class fragment, phrase list or card selector; per-site selectors live only in
 configs. Repeated-structure rows are read only by the item layer ([listings](../listings/spec.md)), from structure,
-field types and named standards; the DOM collector reads a typed value only when the main region shows one. (Previously:
-typed value spotting was read only by the item layer.) Refs: C2, C3, C13, owner #67, D-1643.
+field types and named standards; the DOM collector reads a typed value only when the main region shows one. Price-role
+exclusions are HTML Standard, CSS and CLDR rules (struck text, CLDR per patterns and units), never a phrase list.
+(Previously: typed value spotting was read only by the item layer.) Refs: C2, C3, C13, owner #67, D-1643,
+architecture-v3 d.2.
 #### Scenario: Site literal in a collector
 - **WHEN** a change adds a hostname or class fragment under `collect/`
 - **THEN** the site-literal scan fails

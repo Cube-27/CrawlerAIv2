@@ -16,7 +16,6 @@ from urllib.parse import parse_qsl, urlsplit
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate, Entity
-from crawlerai.collect.schema_org_map import MappedPath, parse_paths
 from crawlerai.collect.scope import LISTS, RELATIONS, document
 from crawlerai.normalize.base import Ok
 from crawlerai.normalize.dispatch import equal, equality_key
@@ -24,6 +23,7 @@ from crawlerai.resolve.evidence import BELOW_MIN_CONFIDENCE, Calibration, assess
 from crawlerai.resolve.ownership import AGGREGATE_OFFER, EntityGraph
 from crawlerai.resolve.preference import Orders, PageFacts, Resolver
 from crawlerai.resolve.types import DroppedRow, Evidence, FieldOutcome, FieldStatus, RowOutcome
+from crawlerai.schemas.paths import MappedPath, parse_paths
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # The row whose scope holds a candidate's owner, or None.

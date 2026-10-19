@@ -14,11 +14,11 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from crawlerai.collect.locator import LocatorText
-from crawlerai.collect.schema_org_map import parse_paths
 from crawlerai.db.models import SiteId, SourceKind
 from crawlerai.normalize.base import Basis
 from crawlerai.resolve.evidence import required_fields
 from crawlerai.resolve.types import Derivation, Evidence, FieldOutcome, FieldSet, FieldStatus, Probability
+from crawlerai.schemas.paths import parse_paths
 from crawlerai.schemas.types import FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import sha256_hex
 
@@ -190,7 +190,7 @@ def row_url_fields(schema: SchemaDef) -> list[str]:
         if spec.scope == "row"
         and spec.type is FieldType.URL
         and spec.schema_org is not None
-        and all(path.steps == ("url",) and path.joined is None for path in parse_paths(spec.schema_org))
+        and all(path.steps == ("url",) and not path.joined for path in parse_paths(spec.schema_org))
     ]
 
 

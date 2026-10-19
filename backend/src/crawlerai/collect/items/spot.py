@@ -8,6 +8,8 @@ from typing import Final
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.normalize.identifier import has_check_digit
+from crawlerai.normalize.units import PER_UNIT, per_suffix
+from crawlerai.schemas.paths import price_role
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # The types whose normalizer checks a syntax, so a text it accepts is a value of the type (ISO 4217 and CLDR amounts,
@@ -35,3 +37,21 @@ def spots(raw: str, spec: FieldSpec, ctx: Context, xpath: str, place: str) -> tu
     # Only a text showing the checked syntax is a value of the type (`Ok.checked`): an amount without a currency sign
     # is any number.
     return (Spot(raw, normalized, xpath, place),) if isinstance(normalized, Ok) and normalized.checked else ()
+
+
+def reads(spec: FieldSpec, text: str, ctx: Context, *, struck: bool) -> bool:
+    """Whether the field reads a text, struck through or not (extraction spec, "Structural DOM values"): a struck text
+    is a former price, read only by a list price; a money field reads by its price role (`schemas.paths.price_role`): a
+    unit price only an amount written per unit (`normalize.units`: `€25/kg`), a member price none (its labels read it),
+    any other no amount written per unit or per period (`$25/mo`)."""
+    role = price_role(spec)
+    if role == "list_price" or struck:
+        return role == "list_price" and struck
+    if spec.type is not FieldType.MONEY:
+        return True
+    if role == "member_price":
+        return False
+    per = per_suffix(text, ctx)
+    if role == "unit_price":
+        return per is not None and PER_UNIT in per[1]
+    return per is None

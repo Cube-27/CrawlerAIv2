@@ -38,13 +38,23 @@ publish); a group names only top-level fields of the document. `required` defaul
 - **THEN** it is refused
 
 ### Requirement: schema.org paths
-`schema_org` SHALL be a dotted path from a schema.org type through properties; `+` joins a second property into one
-atomic value, `|` separates pooled alternatives and `>` ranks them (those after it are read on an entity only where
-those before it reach no value), up to four alternatives in all. A path's root SHALL be a type and each step a
-property of the pinned schema.org vocabulary, and a `schema:` `vocab` reference an enumeration of it; a schema a
-caller creates or edits that names others is refused with the error at the field (a process without the vocabulary
-file checks syntax only). `job_detail.apply_url` is `JobPosting.potentialAction.target`. Refs: §5.2, D-0240, D-1374,
-D-1493, D-1626. (Previously: `apply_url` was `JobPosting.potentialAction.target>JobPosting.url`.)
+`schema_org` SHALL be a dotted path from a schema.org type through properties; each `+` joins another property of
+the last node into one atomic value (`AggregateOffer.lowPrice+highPrice+priceCurrency`), `|` separates pooled
+alternatives and `>` ranks them (those after it are read on an entity only where those before it reach no value), up
+to four alternatives in all. A step MAY carry filter predicates that keep only the nodes they match:
+`{name=Value}` a node whose `name` equals `Value` as an IRI or a term, `{name}` a node stating `name`, `{!name}` one
+not stating it (`Offer.priceSpecification{priceType=StrikethroughPrice}.price`). A path's root SHALL be a type,
+each step, predicate name and joined name a property of the pinned schema.org vocabulary, each predicate value one of
+its enumeration members or types, and a `schema:` `vocab`
+reference an enumeration of it; a schema a caller creates or edits that names others is refused with the error at the
+field (a process without the vocabulary file checks syntax only). `job_detail.apply_url` is
+`JobPosting.potentialAction.target`. Refs: §5.2, D-0240, D-1374, D-1493, D-1626, architecture-v3 d.1. (Previously:
+`apply_url` was `JobPosting.potentialAction.target>JobPosting.url`; a path joined one property at most and had no
+predicates.)
+#### Scenario: Price roles from predicates
+- **WHEN** an Offer states its price and a `priceSpecification` with `priceType` `StrikethroughPrice`, and a schema
+  maps `list_price` to `Offer.priceSpecification{priceType=StrikethroughPrice}.price+priceCurrency`
+- **THEN** `list_price` reads the struck price and the preset's `price` reads the Offer's own price
 #### Scenario: Five alternatives
 - **WHEN** a path has five `|`- or `>`-separated alternatives
 - **THEN** the document is refused
@@ -57,7 +67,7 @@ D-1493, D-1626. (Previously: `apply_url` was `JobPosting.potentialAction.target>
 
 ### Requirement: Row-mapped lists and key
 A `list` of `object` with a `schema_org` path SHALL be row-mapped: leaf sub-fields only, a row path that neither
-joins (`+`) nor ranks (`>`) its alternatives, and a `key` of 1–3 `identifier` or `url` sub-fields; `key` is required
+joins (`+`) nor ranks (`>`) its alternatives nor filters its steps (predicates), and a `key` of 1–3 `identifier` or `url` sub-fields; `key` is required
 there and refused elsewhere. Row resolution is
 [variants](../variants/spec.md). Refs: §5.2, SPEC-13 §4.2.
 #### Scenario: Misplaced key or nested row field
@@ -68,7 +78,25 @@ there and refused elsewhere. Row resolution is
 The system SHALL ship the four presets under `backend/src/crawlerai/schemas/presets/`, every field mapped to a
 schema.org path and described; "when shown" fields are optional and no preset holds a derived field (such as a
 count of variants or images). A job's places are a list of locations (`locations`) in both job presets.
-(Previously: `job_listing` had one `location`.) Refs: §5.3, D-0015, D-0245, D-0961, D-0967, D-1477.
+`commerce_detail.price`, `commerce_detail.variants.price` and `commerce_listing.price` are
+`Offer.price{!priceType}{!validForMemberTier}+priceCurrency|Offer.priceSpecification{!priceType}{!validForMemberTier}{!referenceQuantity}{!priceComponentType}.price+priceCurrency|Offer.priceSpecification{priceType=SalePrice}{!validForMemberTier}{!referenceQuantity}{!priceComponentType}.price+priceCurrency`:
+the active price (a sale price included), never a list, struck, member or unit price, nor a price component (a down
+payment, an instalment). A path's predicates give a money field reaching schema.org `price` its price role:
+`{referenceQuantity}` a unit price, `{priceType=StrikethroughPrice}` or `ListPrice` a list price,
+`{validForMemberTier}` a member price, none required or only `{priceType=SalePrice}` the active price. The other price
+roles are fields a user adds to the schema, not preset fields; their recommended paths are:
+
+| Field | Type | `schema_org` |
+|---|---|---|
+| `list_price` | money | `Offer.priceSpecification{priceType=StrikethroughPrice}.price+priceCurrency\|Offer.priceSpecification{priceType=ListPrice}.price+priceCurrency` |
+| `unit_price` | money | `Offer.priceSpecification{referenceQuantity}.price+priceCurrency` |
+| `unit_price_reference` | text | `Offer.priceSpecification{referenceQuantity}.referenceQuantity` |
+| `member_price` | money | `Offer.priceSpecification{validForMemberTier}.price+priceCurrency` |
+| `price_range` | range | `AggregateOffer.lowPrice+highPrice+priceCurrency` |
+| `seller` | text | `Offer.seller.name\|Offer.offeredBy.name` |
+
+(Previously: `job_listing` had one `location`; the commerce presets' prices were `Offer.price+priceCurrency`.) Refs: §5.3,
+D-0015, D-0245, D-0961, D-0967, D-1477, owner decision #74.
 
 ### Requirement: Preset sync
 `crawlerai schemas sync` (run by `make migrate`) SHALL insert a missing preset and edit a changed one in place,

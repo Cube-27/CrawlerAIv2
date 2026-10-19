@@ -45,11 +45,15 @@ IdentifierScheme = Literal["gtin", "isbn", "mpn", "sku", "custom"]
 NAME_PATTERN = r"[a-z][a-z0-9_]{0,63}"
 Name = Annotated[str, StringConstraints(pattern=rf"^{NAME_PATTERN}$")]
 # schema.org naming conventions: types are UpperCamelCase, properties lowerCamelCase. A path starts at a type and
-# follows properties; `+` joins a second property of the last type into one atomic value (`Offer.price+priceCurrency`).
-# `|` separates up to four alternatives, whose candidates are pooled (variants spec): `Product.sku|Offer.sku`; `>` ranks
-# them: the alternatives after it are read on an entity only when those before it reach no value there
-# (`Product.gtin13>Product.gtin`).
-_ALTERNATIVE = r"[A-Z][A-Za-z0-9]*(\.[a-z][A-Za-z0-9]*)+(\+[a-z][A-Za-z0-9]*)?"
+# follows properties; each `+` joins another property of the last type into one atomic value
+# (`Offer.price+priceCurrency`, `AggregateOffer.lowPrice+highPrice+priceCurrency`). A step's filter predicates keep the
+# nodes whose property `{name=Value}` equals a term, `{name}` is stated, `{!name}` is not
+# (`Offer.priceSpecification{priceType=StrikethroughPrice}.price`; `schemas.paths`). `|` separates up to four
+# alternatives, whose candidates are pooled (variants spec): `Product.sku|Offer.sku`; `>` ranks them: the alternatives
+# after it are read on an entity only when those before it reach no value there (`Product.gtin13>Product.gtin`).
+_PROPERTY = r"[a-z][A-Za-z0-9]*"
+_FILTER = rf"\{{(!?{_PROPERTY}|{_PROPERTY}=[A-Za-z][A-Za-z0-9]*)\}}"
+_ALTERNATIVE = rf"[A-Z][A-Za-z0-9]*(\.{_PROPERTY}({_FILTER})*)+(\+{_PROPERTY})*"
 MAX_ALTERNATIVES = 4
 SchemaOrgPath = Annotated[
     str, StringConstraints(pattern=rf"^{_ALTERNATIVE}([|>]{_ALTERNATIVE}){{0,{MAX_ALTERNATIVES - 1}}}$")
@@ -121,13 +125,16 @@ MAX_KEY = 3
 
 def _check_row_mapping(row_path: str, item: FieldSpec, key: list[str]) -> None:
     """The row path names nodes, so it joins no value (`+`); its alternatives are pooled, as row discovery reaches rows
-    along each of them, so it ranks none (`>`); the item's sub-fields are leaf values, each with its own path; `key`
-    names one to three distinct identifier or url sub-fields (schemas spec, "Row-mapped lists and key")."""
+    along each of them, so it ranks none (`>`) and filters none (predicates); the item's sub-fields are leaf values,
+    each with its own path; `key` names one to three distinct identifier or url sub-fields (schemas spec, "Row-mapped
+    lists and key")."""
     fields = item.fields or {}
     if "+" in row_path:
         raise ValueError("a row path names the row entities, not a value: no `+`")
     if ">" in row_path:
         raise ValueError("a row path pools its alternatives' rows: no `>` ranking")
+    if "{" in row_path:
+        raise ValueError("a row path reaches every row along its steps: no `{…}` predicates")
     if item.schema_org is not None:
         raise ValueError("the item of a row-mapped field has no `schema_org`: the list's path names its rows")
     if nested := sorted(n for n, s in fields.items() if s.type in (FieldType.LIST, FieldType.OBJECT)):

@@ -27,8 +27,10 @@ C4):
   checks: an ISO 4217 or CLDR amount, an ISO 8601 or CLDR date, a check digit), and, for an element holding others,
   each of its own text nodes; a line where two text nodes run digits together (`ParsedPage.digit_joins`) is two
   numbers, not one. Of an element and one inside it reading the same value, the inner one. Text the HTML Standard
-  marks as no longer accurate (`s`, §4.5.4) or removed (`del`, §4.7.2) is no current value: a struck-through former
-  price. A place every block gives the same value at is the
+  marks as no longer accurate (`s`, §4.5.4) or removed (`del`, §4.7.2), the obsolete `strike` and text an inline
+  `line-through` decoration strikes (`collect.dom.struck`) is no current value: a struck-through former price, which
+  only a list price field reads; a money field reads by its price role (`collect.items.spot.reads`: no amount written
+  per unit or per period for the price). A place every block gives the same value at is the
   template's (a shipping threshold) when another place gives the field differing values. A block whose places give one
   value publishes it; one whose places give several (a price and an instalment) gives an `ambiguous_in_block`
   candidate, which publishes nothing unless a structured row bound to the block agrees with one of them
@@ -54,9 +56,10 @@ from pydantic import ValidationError
 from crawlerai.acquire.items import MIN_ITEMS, Group, is_hyperlink
 from crawlerai.collect.base import ITEM_BLOCK, Candidate, Entity
 from crawlerai.collect.dom import decorative, image_source, is_image_url
-from crawlerai.collect.items.spot import Spot, is_typed, spots
+from crawlerai.collect.dom import struck as is_struck
+from crawlerai.collect.items.spot import Spot, is_typed, reads, spots
 from crawlerai.collect.locator import format_locator
-from crawlerai.collect.schema_org_map import candidate, is_item_url, named_property, parse_paths
+from crawlerai.collect.schema_org_map import candidate, is_item_url
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.segment import hyperlinks, shows_more, text_path
@@ -64,6 +67,7 @@ from crawlerai.content.text import hidden, xpath_step
 from crawlerai.normalize.base import Ambiguous, Context, raw_key
 from crawlerai.normalize.dispatch import equality_key
 from crawlerai.normalize.url import canonical_url, is_absolute
+from crawlerai.schemas.paths import named_property, parse_paths
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent
 
 # The share of a group's blocks a place must give a field's value in, besides `MIN_ITEMS` (master plan §3.2).
@@ -78,8 +82,6 @@ _IMAGE: Final = "image"
 # HTML Standard §4.3.6: heading content; WAI-ARIA 1.2 role `heading`.
 _HEADINGS: Final = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 _HEADING_ROLE: Final = "heading"
-# HTML Standard §4.5.4 `s` ("contents that are no longer accurate or no longer relevant") and §4.7.2 `del` (a removal).
-_STRUCK: Final = frozenset({"s", "del"})
 # The places of the rules that read one value per block.
 _LINK, _LINK_NAME, _HEADING, _PICTURED, _PICTURE = "@link", "@link-name", "@heading", "@pictured", "@image"
 
@@ -357,7 +359,7 @@ class _View:
             element, path, place, struck = stack.pop()
             if hidden(str(element.tag), dict(element.attrib)):
                 continue
-            struck = struck or element.tag in _STRUCK
+            struck = struck or is_struck(str(element.tag), dict(element.attrib))
             self.elements.append(element)
             self.paths[element] = path
             self.places[element] = place
@@ -469,10 +471,9 @@ class _View:
     def _typed(self, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
         hits: list[tuple[HtmlElement, Spot]] = []
         for element in self.elements:
-            if element in self.struck:
-                continue
             for text, place in self._typed_texts(element):
-                hits.extend((element, spot) for spot in spots(text, spec, ctx, self.paths[element], place))
+                if reads(spec, text, ctx, struck=element in self.struck):
+                    hits.extend((element, spot) for spot in spots(text, spec, ctx, self.paths[element], place))
         return tuple(spot for element, spot in hits if not _inner_hit(element, spot, hits, spec))
 
     def _typed_texts(self, element: HtmlElement) -> list[tuple[str, str]]:

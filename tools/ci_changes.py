@@ -54,6 +54,7 @@ JOB_INPUTS: dict[str, tuple[str, ...]] = {
     "verify_money": (
         "backend/src/crawlerai/normalize/money.py",
         "backend/src/crawlerai/normalize/numbers.py",
+        "backend/src/crawlerai/normalize/units.py",
         "backend/src/crawlerai/normalize/base.py",
         "backend/src/crawlerai/llm/grounding.py",
         "backend/tests/property/test_money_properties.py",
