@@ -182,9 +182,9 @@ class AttemptRecord(_Frozen):
     transferred: int = Field(default=0, ge=0, exclude=True)
     # D-1437: how each of the policy's page steps ended, in order, on the browser attempt that ran them.
     steps: tuple[StepOutcome, ...] = ()
-    # An `api` attempt that was a page's data call (`acquire.replay`): the platform's documented product JSON, or the
-    # replay of the data call the site's contract keeps. Stored only on such an attempt.
-    data_call: Literal["platform", "replay"] | None = Field(default=None, exclude_if=lambda value: value is None)
+    # An `api` attempt that was a detail page's data call (`acquire.data_call`): the platform whose documented product
+    # JSON it requested. Stored only on such an attempt.
+    data_call: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class FetchResult(_Frozen):

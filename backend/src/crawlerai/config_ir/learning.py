@@ -186,9 +186,7 @@ async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
     await transition_job(conn, job_id, "running")
     schema = await registry.get_by_id(conn, key.schema_id)
     site = (await conn.execute(select(Site.host, Site.proxy_pool).where(Site.id == key.site_id))).one()
-    method = (await remembered(conn, key.site_id, key.page_kind, blocks=False)).method
-    # An `api_replay` contract's pages are fetched over HTTP, their data call joined (`acquire.replay`).
-    fetch: FetchMethod = "browser" if method == "browser" else "http"
+    fetch = (await remembered(conn, key.site_id, key.page_kind, blocks=False)).method
     serving = (await conn.execute(select(ProgressiveState.active_config_id).where(*key.where()))).scalar_one()
     await record_event(conn, job_id, LEARNING_STARTED)
     return _Run(job_id, key, schema, site.host, fetch, serving, site.proxy_pool)

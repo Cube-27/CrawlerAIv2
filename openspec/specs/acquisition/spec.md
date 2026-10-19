@@ -29,8 +29,9 @@ signals only: no collector pass, no extraction and no LLM): a detail page whose 
 whose document shows no sign of its offer (`content/render_need.offer_shown`: no schema.org Product with offers, OGP
 `product:price:amount` or microdata Product with offers; no state document of at least `STATE_MIN_VALUES` scalar
 values, whatever its name, `content/state.py`; no heading (`h1` to `h6`) with a digit beside a Unicode Sc currency
-sign in the visible text), any page of a request that names `render_fields` (the fields the caller says only a render shows; that render
-is kept when `ok`), or a listing (`content/render_need.py`) whose DOM shows fewer than `MIN_ITEMS` item blocks, whose
+sign in the visible text) and whose identity-checked data call ("Data calls") states no value of such a field, any
+page of a request that names `render_fields` (the fields the caller says only a render shows; that render is kept when
+`ok`) unless its identity-checked data call states every one of them, or a listing (`content/render_need.py`) whose DOM shows fewer than `MIN_ITEMS` item blocks, whose
 text inside `hidden` or `display:none` containers outweighs its visible text, or whose structured list names fewer
 entries than its DOM shows item blocks (item blocks counted only when they show more than their link); that browser
 outcome is kept only when `ok` and the check no longer holds, a listing's also when the render lists more items than the
@@ -77,17 +78,14 @@ short-lived safety bias age differently, both in Postgres so every process reads
   the method the pages start with, the browser engine that taught it, the learned wait condition (`settle_on`), what
   the browser was needed for (`needs_render`: HTTP was `ok` but lacked what the caller reads, or a shell no challenge
   named; `needs_xhr`: the kept render's document still lacked it and the render captured network JSON;
-  `needs_traversal`: browser steps), `handoff`, the data call an `api_replay` contract replays (`data_call`), and the
+  `needs_traversal`: browser steps), `handoff`, and the
   field coverage (`found`, `missing`) of the last extraction with a record. It is learned only from an `auto` fetch that tried HTTP and kept an `ok`: an HTTP `ok` teaches the
   defaults (and leaves a contract on HTTP as it is); a browser `ok` teaches `browser`, unless HTTP was refused, the
   render needed neither data calls nor steps, and its cookies went on to HTTP (a site session, D-1353): then it was
   needed only to pass the block, `handoff` is set and the pages stay on `http`, their later fetches carrying the
-  stored cookie state (challenge cookies stripped, browser to HTTP only). A detail page's render that needed no steps,
-  whose data calls include one that states the page's product by a key of its URL ("Data calls"), teaches
-  `api_replay` with that call, unless the fetch replayed a call already (refused, or not enough: the contract then
-  stays `browser`); an HTTP `ok` a replay served teaches nothing, so a replay never rewrites the contract's method,
-  engine or flags. An `api_replay` contract's pages start over HTTP, or in the browser when the page URL states no
-  key for its call. The wait condition is `content` when the
+  stored cookie state (challenge cookies stripped, browser to HTTP only). A site's API is replayed by its learned
+  config's API recipe alone ([adapters](../adapters/spec.md), "Recipe execution and fallback"), never by the
+  contract. The wait condition is `content` when the
   kept render's document has what the caller reads (the browser then does not wait for data calls in flight once the
   content is quiet), `data_call` when it came with the data calls, none otherwise. An unchanged contract is not
   rewritten. A contract is stale after `STALE_FAILURES` (2) consecutive caller-supplied pages extracted without a
@@ -99,7 +97,7 @@ short-lived safety bias age differently, both in Postgres so every process reads
   at `BROWSER_FIRST_BLOCKS` (2) the site's pages start in the browser for one `BLOCK_TTL`. A kept HTTP `ok` clears it.
 Precedence: a job's own `method_hint` beats memory; the block history's browser-first beats the contract's method; a
 fresh contract beats the defaults (`http`, the default settle). A learned config's fetch method is the contract's
-alone (`http` for `api_replay`): a block bias it kept would outlive the block history. An `ok` page's platform
+alone: a block bias it kept would outlive the block history. An `ok` page's platform
 ("Platform fingerprints") is recorded on `site.platform`. (Previously: `site_fetch_method` held only `http` or
 `browser`; a site session refused before any `ok` kept its site from opening another for 30 min, in process memory
 only.) Refs: §7.1, D-0204, D-0205, D-1260, D-1353, D-1380, owner plan 2026-10-19 P4 (domain memory).
@@ -114,10 +112,6 @@ only.) Refs: §7.1, D-0204, D-0205, D-1260, D-1353, D-1380, owner plan 2026-10-1
 #### Scenario: Two blocks
 - **WHEN** two HTTP requests to a site are refused within 15 min
 - **THEN** its pages start in the browser until 15 min after the second, unless an HTTP `ok` clears the history first
-#### Scenario: Replay
-- **WHEN** a detail page's render made a GET whose URL and JSON answer name the page URL's last path segment
-- **THEN** the contract says `api_replay` with that call, and the next page of the kind is fetched over HTTP and the
-  call is sent with that page's segment before any render
 #### Scenario: Stale contract
 - **WHEN** two consecutive caller-supplied pages of a `browser` contract's kind are extracted without a record
 - **THEN** the next fetch of that kind starts over HTTP
@@ -136,21 +130,27 @@ only. Refs: owner plan 2026-10-19 P4 (platform fingerprints).
 - **THEN** its platform is `shopify` and no Ajax API request is sent
 
 ### Requirement: Data calls
-An HTTP `ok` detail page that an `auto` fetch would render for lacking what the caller reads SHALL first be joined with
-its data call (`acquire/replay.py`): the call its `api_replay` contract keeps, with the page URL's key, else its
-platform's documented product JSON. The call waits for the site's rate, is an `api` attempt marked `data_call`
-(`platform` or `replay`), and its answer joins the page as one more network body of the HTTP capture only when it states
-the requested product (the identity check: a string or number equal to the page's key, or a URL with the page's path);
-otherwise it is dropped and the attempt is an `error`, `not_the_product`. A joined answer adds evidence the extraction
-reads as it reads a render's network bodies; it never replaces the page's values. The page is kept without the render
-when the caller's check finds that the joined page no longer lacks what it reads; else the render follows as before.
-A kept call is a render's successful GET on the page's site whose URL and JSON answer state a key of the page URL (its
-last path segments, the path's alphanumeric runs, or a query value, at least 4 characters), the key in the URL made a
-placeholder; a call naming no such key is never kept, as it would answer one product for every page. Refs: owner plan
-2026-10-19 P4 (API replay with a product-identity check).
+A data call is a request for one product's JSON made beside its page: a platform's documented product JSON
+("Platform fingerprints"), or a detail API recipe's request ([adapters](../adapters/spec.md), "Recipe execution and
+fallback"), the one replay of a site's API. Its answer SHALL be used only when it states the requested product (the
+identity check, `acquire/data_call.py`: a string or number equal to a key the request was made with, at least 4
+characters, or a URL whose path is the page's path); otherwise it is dropped and its attempt is an `error`,
+`not_the_product`, as an endpoint that ignores its key answers one product for every page. An HTTP `ok` detail page that
+an `auto` fetch would render for lacking what the caller reads is first joined with its platform's documented product
+JSON: the call waits for the site's rate, is an `api` attempt marked `data_call` (the platform), and an answer that
+passes joins the HTTP capture as one more network body marked with its platform. The extraction reads such a body as
+structured evidence of the requested product, as the platform documents its members ([extraction](../extraction/spec.md),
+"Structured-data collectors"); the render check counts the fields it states ("Browser on evidence"), so the page is
+kept without the render when the joined page no longer lacks what the caller reads; else the render follows as before.
+A joined answer adds evidence and never replaces the page's values. Refs: owner plan 2026-10-19 P4 (API replay with a
+product-identity check), owner decision 2026-10-19 on #326.
 #### Scenario: Another product's answer
-- **WHEN** a replayed call answers JSON that names neither the page's key nor its path
-- **THEN** the answer is not joined, the attempt says `not_the_product`, and the contract goes back to `browser`
+- **WHEN** a data call answers JSON that names neither the requested key nor the page's path
+- **THEN** the answer is not joined, the attempt says `not_the_product`, and the page is rendered as before
+#### Scenario: Documented answer states the offer
+- **WHEN** an HTTP detail page shows no offer signal and its platform's product JSON passes the identity check with one
+  price for every variant
+- **THEN** no browser attempt is made and the price is read from the answer
 
 ### Requirement: HTTP and browser rungs
 The HTTP rung SHALL use `curl_cffi` impersonating Chrome (`CRAWLERAI_IMPERSONATE`, else the profile nearest the

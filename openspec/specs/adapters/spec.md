@@ -51,7 +51,10 @@ Enforced by: `tests/unit/test_adapter_registry.py`, `tests/unit/test_pipeline.py
 An adapter SHALL state, for the page it detected (its `AdapterMatch`), the `Shape`s that place schema.org nodes in its
 JSON; the adapter collector walks them into entities and candidates with `source_kind='adapter'`, mapped like JSON-LD,
 listings as `ItemList` rows. A shape may read a property from further members after its own (`also`) and put a
-root before each of a property's string values (`prefixes`); a field that reads a whole node whose shape maps
+root before each of a property's string values (`prefixes`); an amount the API's documentation states as an integer
+count of the currency's minor unit is scaled to the major unit by the places the documentation states, a constant or
+a member of the node (`minor_units`), and any other value of that property is dropped; an amount no documentation
+gives a unit for is never scaled; a field that reads a whole node whose shape maps
 properties reads an object of those properties' schema.org names. Each entity carries what identifies its item as a
 JSON-LD entity does (its identifier values and item URLs), so resolution merges it with the page's own statement of the
 item. A body that does not match yields no entities, never an exception. Refs: §8.1, D-0266, D-1087, D-1115, D-1176,
@@ -208,7 +211,8 @@ Refs: §7.2, D-0559, D-0560.
 
 ### Requirement: Held-out validation
 A recipe SHALL be accepted only for a schema whose HTML config validated, when every map field reproduces on every
-held-out page (at least 3) where it was published (for a listing: replaying its first two pages gives the rows of the
+held-out page (at least 3) where it was published, a detail answer also stating the page's product as serving
+requires (for a listing: replaying its first two pages gives the rows of the
 page's captured calls, in order, each mapped raw value equal); `validation_report.api_recipe` records the result or
 the refusal reason either way, and an error of the recipe learner that is neither an LLM failure nor a database
 error (a replay's usage not stored fails the run) refuses the recipe (`recipe_error: <type>`) without failing the run.
@@ -220,8 +224,10 @@ Refs: §7.2, Appendix A #59, D-0581, D-0583, D-0735, D-1365, D-1389, D-1584.
 
 ### Requirement: Recipe execution and fallback
 `acquire` SHALL run a recipe after adapters and before the page rungs over `httpx`, only for record-only reads; an
-`ok` or a 429/503 is kept, anything else falls back to the configured method with the recipe attempts first. Values
-resolve in the `adapter` evidence bucket. Refs: §7.2, §10, D-0599, D-0601, D-0728.
+`ok` or a 429/503 is kept, anything else falls back to the configured method with the recipe attempts first. A
+detail recipe's `ok` answer is kept only when it states the requested product (acquisition spec, "Data calls": one of
+the request's bound parameter values, or a URL with the page's path); else it is `error`, `not_the_product`, and falls
+back. Values resolve in the `adapter` evidence bucket. The recipe is the one replay of a site's API. Refs: §7.2, §10, D-0599, D-0601, D-0728.
 
 ### Requirement: Recipe politeness and pagination
 The endpoint host SHALL get a `site` row and obey its robots.txt and rate like a page. A listing scrape with browser

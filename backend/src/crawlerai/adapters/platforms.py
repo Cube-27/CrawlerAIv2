@@ -7,18 +7,27 @@ table of sites (C4). A page shows a platform's signal in its markup or its respo
 signal it shows is its platform, the storefront platforms before the Next.js framework, which may front any of them.
 
 Where a platform documents a public, tokenless product JSON endpoint on the shop's own host, `product_json` names the
-request for a product page; a platform whose product API needs a credential (SFCC's OCAPI client id, BigCommerce's
-storefront token, Magento's REST token) or that has none (Next.js) is recorded only.
+request for a product page and `answer_shapes` the schema.org nodes its answer holds, as the platform documents its
+members (adapters spec `Shape`, C2), amounts in the minor unit the documentation states; a platform whose product API
+needs a credential (SFCC's OCAPI client id, BigCommerce's storefront token, Magento's REST token) or that has none
+(Next.js) is recorded only.
+
+A product whose variants are priced differently has no one price its answer states for the page, which shows the
+selected variant's: its answer is read without its Offer, so it never stands against the price the page shows (INV-14;
+the page keeps its prices, adapters spec "merge, don't override").
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 from urllib.parse import quote, urljoin, urlsplit
 
+from pydantic import JsonValue
+
+from crawlerai.adapters.base import ALL, Shape
 from crawlerai.storage.capture_bundle import HeaderList
 
-__all__ = ["SIGNATURES", "PlatformSignature", "ProductJson", "platform_of", "product_json"]
+__all__ = ["SIGNATURES", "PlatformSignature", "ProductJson", "answer_shapes", "platform_of", "product_json"]
 
 
 @dataclass(frozen=True)
@@ -77,9 +86,10 @@ def platform_of(markup: str, headers: HeaderList) -> str | None:
 
 @dataclass(frozen=True)
 class ProductJson:
-    """A platform's public JSON of the product a page shows: the endpoint, and the product's key the page URL names
-    (a handle or slug), which the answer must state (`acquire.replay.identifies`)."""
+    """A platform's public JSON of the product a page shows: the platform, the endpoint, and the product's key the page
+    URL names (a handle or slug), which the answer must state (`acquire.data_call.identifies`)."""
 
+    platform: str
     url: str
     key: str
 
@@ -107,7 +117,7 @@ def product_json(platform: str | None, url: str, markup: str) -> ProductJson | N
     route = _SHOPIFY_PRODUCT.fullmatch(parts.path)
     if platform == "shopify" and route is not None and _ONLINE_STORE in markup[:_SCAN_CHARS]:
         handle = route["handle"]
-        return ProductJson(f"{parts.scheme}://{parts.netloc}{route['prefix']}/products/{handle}.js", handle)
+        return ProductJson("shopify", f"{parts.scheme}://{parts.netloc}{route['prefix']}/products/{handle}.js", handle)
     if platform == "woocommerce":
         return _store_api(parts.scheme, parts.netloc, parts.path, markup)
     return None
@@ -124,4 +134,46 @@ def _store_api(scheme: str, netloc: str, path: str, markup: str) -> ProductJson 
     # its answer can be altered in transit.
     if (urlsplit(root).scheme, urlsplit(root).netloc) != (scheme, netloc) or "?" in root:
         return None
-    return ProductJson(f"{root.rstrip('/')}/wc/store/v1/products?slug={quote(slug)}", slug)
+    return ProductJson("woocommerce", f"{root.rstrip('/')}/wc/store/v1/products?slug={quote(slug)}", slug)
+
+
+# Shopify Ajax API, "Product" (shopify.dev/docs/api/ajax/reference/product): the product's `title`, `url` (its route
+# on the shop), `featured_image`, `vendor`, and its prices as integers in cents (the response's `price`, `price_min`,
+# `price_max`; "prices are in cents"), with `price_varies` true when its variants are priced differently.
+_SHOPIFY_PRODUCT_NODE: Final = Shape(
+    type="Product",
+    properties={"name": ("title",), "url": ("url",), "image": ("featured_image",), "brand": ("vendor",)},
+)
+_SHOPIFY_OFFER: Final = Shape(
+    type="Offer", anchor=("price",), properties={"price": ("price",)}, minor_units={"price": 2}
+)
+# WooCommerce Store API, "Products" (github.com/woocommerce/woocommerce, plugins/woocommerce/src/StoreApi/docs,
+# products.md): a list of products, each with `name`, `permalink`, `sku`, `images[].src`, and `prices`, whose `price`
+# is a string of the amount in the currency's minor unit, `currency_minor_unit` its decimal places and `currency_code`
+# its ISO 4217 code; `price_range` is set when the product's variations are priced differently.
+_WOO_PRODUCT_NODE: Final = Shape(
+    type="Product",
+    at=(ALL,),
+    properties={"name": ("name",), "url": ("permalink",), "sku": ("sku",), "image": ("images", ALL, "src")},
+)
+_WOO_OFFER: Final = Shape(
+    type="Offer",
+    at=("prices",),
+    properties={"price": ("price",), "priceCurrency": ("currency_code",)},
+    minor_units={"price": ("currency_minor_unit",)},
+)
+
+
+def answer_shapes(platform: str, answer: JsonValue) -> tuple[Shape, ...]:
+    """The schema.org nodes the documented product JSON `answer` of `platform` holds (module docstring); none for a
+    platform with no documented product JSON, or an answer not of its documented form."""
+    if platform == "shopify" and isinstance(answer, dict):
+        varies = answer.get("price_varies") is not False
+        return (
+            _SHOPIFY_PRODUCT_NODE if varies else replace(_SHOPIFY_PRODUCT_NODE, nodes={"offers": (_SHOPIFY_OFFER,)}),
+        )
+    if platform == "woocommerce" and isinstance(answer, list) and len(answer) == 1 and isinstance(answer[0], dict):
+        prices = answer[0].get("prices")
+        varies = not isinstance(prices, dict) or prices.get("price_range") is not None
+        return (_WOO_PRODUCT_NODE if varies else replace(_WOO_PRODUCT_NODE, nodes={"offers": (_WOO_OFFER,)}),)
+    return ()

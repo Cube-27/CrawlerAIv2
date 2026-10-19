@@ -56,9 +56,6 @@ WebhookEventId = NewType("WebhookEventId", uuid.UUID)
 WebhookDeliveryId = NewType("WebhookDeliveryId", uuid.UUID)
 
 FetchMethod = Literal["http", "browser"]
-# The rung a site's pages of one kind start with (`site_contract.method`): a fetch method, or `api_replay`, HTTP and
-# then the data call a render of the site's pages made, replayed over HTTP (`acquire.replay`).
-ContractMethod = Literal["http", "browser", "api_replay"]
 PageKind = Literal["detail", "listing"]
 # The browser engines whose cookie state is kept apart (`site_cookie_state`): Patchright's Chromium.
 BrowserEngine = Literal["patchright"]
@@ -246,7 +243,7 @@ class SiteContract(Base):
     __tablename__ = "site_contract"
     __table_args__ = (
         CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
-        CheckConstraint(one_of("method", ContractMethod), name="method"),
+        CheckConstraint(one_of("method", FetchMethod), name="method"),
         CheckConstraint(one_of("engine", BrowserEngine), name="engine"),
         CheckConstraint(one_of("settle_on", SettleOn), name="settle_on"),
         CheckConstraint("failures >= 0", name="failures_non_negative"),
@@ -254,9 +251,8 @@ class SiteContract(Base):
 
     site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id, ondelete="CASCADE"), primary_key=True)
     page_kind: Mapped[PageKind] = mapped_column(Text, primary_key=True)
-    # The rung the pages start with: `http` also when the browser was needed only to pass a block (`handoff`);
-    # `api_replay` when a render's data call carried what HTTP lacked and is replayed over HTTP (`data_call`).
-    method: Mapped[ContractMethod] = mapped_column(Text)
+    # The rung the pages start with: `http` also when the browser was needed only to pass a block (`handoff`).
+    method: Mapped[FetchMethod] = mapped_column(Text)
     # The browser engine whose `ok` taught the contract; None when HTTP did.
     engine: Mapped[BrowserEngine | None] = mapped_column(Text)
     # The learned wait condition (`FetchPolicy.settle_on`); None: the browser's default settle.
@@ -267,9 +263,6 @@ class SiteContract(Base):
     needs_traversal: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     # The browser was needed only to pass a block, and its cookies went on to HTTP (`acquire.session`).
     handoff: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
-    # The data call an `api_replay` contract replays: its URL with the product's key as `{key}`, and where the key sits
-    # in a page URL (`acquire.replay.DataCall`); None for another method.
-    data_call: Mapped[dict[str, str] | None] = mapped_column(JSONB(none_as_null=True))
     # The last extraction with a record: the schema's field names it `found` and those `missing`.
     coverage: Mapped[dict[str, list[str]] | None] = mapped_column(JSONB)
     # Consecutive extractions without a record since the last with one; a block is never one.

@@ -1035,7 +1035,7 @@ export interface components {
             /** Challenge */
             challenge?: string | null;
             /** Data Call */
-            data_call?: ("platform" | "replay") | null;
+            data_call?: string | null;
             /** Duration Ms */
             duration_ms: number;
             /** Error */

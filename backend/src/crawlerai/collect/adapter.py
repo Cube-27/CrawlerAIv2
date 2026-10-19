@@ -13,7 +13,9 @@ normalizer is the only filter (C7).
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from functools import cache
+from typing import Final
 
 from pydantic import JsonValue
 
@@ -26,6 +28,9 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.json_text import parse
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
+
+# ISO 4217 minor units run from 0 (JPY) to 4 (CLF); a stated unit outside them is no currency's.
+_MAX_PLACES: Final = 4
 
 
 class AdapterCollector:
@@ -42,23 +47,8 @@ class AdapterCollector:
             document = parse(page.html)
         except ValueError as e:
             return CollectResult(entities=(), candidates=(), diagnostics=(f"adapter:{name}: not JSON ({e})",))
-        nodes: list[_Node] = []
-        for shape in self._adapter.shapes(self._match, document):
-            nodes.extend(_reach(name, shape, document, ROOT, parent=None, via=None))
-        typed = [Typed(n.id, (n.shape.type,), n) for n in nodes]
-        entities = tuple(
-            entity(t, ctx, self._vocabulary, parent=n.parent, via=n.via) for t, n in zip(typed, nodes, strict=True)
-        )
-        diagnostics: list[str] = []
-        candidates = field_candidates(
-            typed,
-            self._rows_schema(schema),
-            ctx,
-            vocabulary=self._vocabulary,
-            source_kind="adapter",
-            diagnostics=diagnostics,
-        )
-        return CollectResult(entities=entities, candidates=tuple(candidates), diagnostics=tuple(diagnostics))
+        shapes = self._adapter.shapes(self._match, document)
+        return read_shapes(name, shapes, document, self._rows_schema(schema), ctx, self._vocabulary)
 
     def _rows_schema(self, schema: SchemaDef) -> SchemaDef:
         """A listing's page-scoped fields describe the page, not a row (extraction spec): the API's rows hold none."""
@@ -66,6 +56,23 @@ class AdapterCollector:
             return schema
         rows = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}
         return schema.model_copy(update={"fields": rows})
+
+
+def read_shapes(
+    name: str, shapes: Sequence[Shape], document: JsonValue, schema: SchemaDef, ctx: Context, vocabulary: Vocabulary
+) -> CollectResult:
+    """The entities and `adapter` candidates of the nodes `shapes` reach in the platform answer `document`, located
+    under `name` (module docstring)."""
+    nodes: list[_Node] = []
+    for shape in shapes:
+        nodes.extend(_reach(name, shape, document, ROOT, parent=None, via=None))
+    typed = [Typed(n.id, (n.shape.type,), n) for n in nodes]
+    entities = tuple(entity(t, ctx, vocabulary, parent=n.parent, via=n.via) for t, n in zip(typed, nodes, strict=True))
+    diagnostics: list[str] = []
+    candidates = field_candidates(
+        typed, schema, ctx, vocabulary=vocabulary, source_kind="adapter", diagnostics=diagnostics
+    )
+    return CollectResult(entities=entities, candidates=tuple(candidates), diagnostics=tuple(diagnostics))
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +97,10 @@ class _Node:
     def values(self, prop: str) -> Sequence[Value]:
         if (members := self.shape.properties.get(prop)) is not None:
             prefix = self.shape.prefixes.get(prop, "")
-            return [value for at in (members, *self.shape.also.get(prop, ())) for value in self._read(at, prefix)]
+            places = self._places(prop)
+            return [
+                value for at in (members, *self.shape.also.get(prop, ())) for value in self._read(at, prefix, places)
+            ]
         return [
             Value(node.as_object(), self._locator(node.path), node)
             for shape in self.shape.nodes.get(prop, ())
@@ -108,13 +118,23 @@ class _Node:
         found = {name: _one([v.raw for v in self.values(name)]) for name in names}
         return {name: raw for name, raw in found.items() if raw is not None}
 
-    def _read(self, members: Members, prefix: str) -> list[Value]:
+    def _read(self, members: Members, prefix: str, places: int | None = None) -> list[Value]:
         # RFC 8259 `null`: the API states no value.
-        return [
-            Value(_prefixed(prefix, raw), self._locator(at))
-            for at, raw in _select(members, self.data, self.path)
-            if raw is not None
-        ]
+        found = [(at, raw) for at, raw in _select(members, self.data, self.path) if raw is not None]
+        if places is not None:
+            found = [(at, scaled) for at, raw in found if (scaled := _in_major_units(raw, places)) is not None]
+        return [Value(_prefixed(prefix, raw), self._locator(at)) for at, raw in found]
+
+    def _places(self, prop: str) -> int | None:
+        """The decimal places of the minor unit the API states `prop` in (`Shape.minor_units`), or None: no scaling.
+        Places the node's object does not state as one integer from 0 to 4 (ISO 4217's minor units) scale nothing,
+        and the property's values are then dropped (-1)."""
+        unit = self.shape.minor_units.get(prop)
+        if unit is None or isinstance(unit, int):
+            return unit
+        stated = [raw for _, raw in _select(unit, self.data, self.path)]
+        one = stated[0] if len(stated) == 1 else None
+        return one if isinstance(one, int) and not isinstance(one, bool) and 0 <= one <= _MAX_PLACES else -1
 
     def _locator(self, path: str) -> str:
         return format_locator("adapter", self.adapter, path)
@@ -128,6 +148,17 @@ def _prefixed(prefix: str, raw: JsonValue) -> JsonValue:
     if isinstance(raw, str):
         return prefix + raw
     return prefix + str(raw) if isinstance(raw, int) else raw
+
+
+def _in_major_units(raw: JsonValue, places: int) -> str | None:
+    """An integer amount of a minor unit with `places` decimal places as the decimal amount of the major unit, in plain
+    digits (`2900`, 2 places: `29.00`); None for any other value, or for places no unit has (-1)."""
+    if places < 0 or isinstance(raw, bool):
+        return None
+    digits = str(raw) if isinstance(raw, int) else raw if isinstance(raw, str) and raw.isascii() else None
+    if digits is None or not digits.isdigit():
+        return None
+    return format(Decimal(digits).scaleb(-places), "f")
 
 
 def _one(values: list[JsonValue]) -> JsonValue:

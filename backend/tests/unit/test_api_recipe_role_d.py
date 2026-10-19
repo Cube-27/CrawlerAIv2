@@ -43,7 +43,7 @@ SCHEMA = SchemaDef.model_validate(
 )
 MAP = {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"}
 # The page URL ends in the product's slug and id; the endpoint takes the id alone, which no path segment equals.
-PRODUCTS = {"101": ("desk-lamp", "Desk Lamp", 19.5), "202": ("oak-chair", "Oak Chair", 120)}
+PRODUCTS = {"1001": ("desk-lamp", "Desk Lamp", 19.5), "2002": ("oak-chair", "Oak Chair", 120)}
 SITE = "https://shop.example.test"
 ENDPOINT = "https://api.example.test/v1/products"
 REGEX = "regex:^/p/[a-z-]+-([0-9]+)$"
@@ -53,7 +53,7 @@ GOOD: dict[str, JsonValue] = {
     "params": [{"name": "p1", "binder": REGEX}],
     "body": None,
 }
-# Path segment 1 holds `desk-lamp-101`, not the id the endpoint takes.
+# Path segment 1 holds `desk-lamp-1001`, not the id the endpoint takes.
 WHOLE_SEGMENT: dict[str, JsonValue] = {**GOOD, "params": [{"name": "p1", "binder": "path:1"}]}
 
 
@@ -89,7 +89,7 @@ def _for(document: JsonValue, product_id: str) -> JsonValue:
 def _api(stand_in_api: StandInApi, price_offset: float = 0, query: str = "") -> JsonFetcher:
     answers = {
         _endpoint(product_id, query): json.dumps(
-            {"data": {"name": name, "price": price + price_offset, "currency": "EUR"}}
+            {"data": {"id": product_id, "name": name, "price": price + price_offset, "currency": "EUR"}}
         ).encode()
         for product_id, (_, name, price) in PRODUCTS.items()
     }
@@ -124,7 +124,7 @@ def test_a_spec_that_reproduces_the_requests_and_their_values_is_accepted(stand_
     result, sent = _run(client, _pages(), _api(stand_in_api))
 
     assert result == _accepted()
-    assert sent == [f"{ENDPOINT}/101", f"{ENDPOINT}/202"]
+    assert sent == [f"{ENDPOINT}/1001", f"{ENDPOINT}/2002"]
     assert [(r.prompt_kind, r.model_class, r.system) for r in client.requests] == [("d_bind", "strong", SYSTEM)]
 
 
@@ -134,11 +134,11 @@ def test_a_spec_that_does_not_reproduce_a_request_is_repaired_once_and_never_fet
     result, sent = _run(client, _pages(), _api(stand_in_api))
 
     assert result == _accepted()
-    assert sent == [f"{ENDPOINT}/101", f"{ENDPOINT}/202"]  # the replays of the repaired spec only
+    assert sent == [f"{ENDPOINT}/1001", f"{ENDPOINT}/2002"]  # the replays of the repaired spec only
     repair = client.requests[1]
     assert repair.system == REPAIR_SYSTEM
-    assert f"- page 1: url_mismatch({ENDPOINT}/desk-lamp-101, {ENDPOINT}/101)" in repair.user
-    assert f"- page 2: url_mismatch({ENDPOINT}/oak-chair-202, {ENDPOINT}/202)" in repair.user
+    assert f"- page 1: url_mismatch({ENDPOINT}/desk-lamp-1001, {ENDPOINT}/1001)" in repair.user
+    assert f"- page 2: url_mismatch({ENDPOINT}/oak-chair-2002, {ENDPOINT}/2002)" in repair.user
 
 
 def test_a_spec_whose_replay_answers_other_values_is_not_accepted(stand_in_api: StandInApi) -> None:
@@ -147,4 +147,4 @@ def test_a_spec_whose_replay_answers_other_values_is_not_accepted(stand_in_api: 
     result, sent = _run(client, _pages(), _api(stand_in_api, price_offset=1))
 
     assert result == NotLearnable("no single captured header makes the replay reproduce the sample values", 0)
-    assert sent == [f"{ENDPOINT}/101"]  # the first page failed; no captured header was left to try
+    assert sent == [f"{ENDPOINT}/1001"]  # the first page failed; no captured header was left to try

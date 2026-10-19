@@ -20,20 +20,19 @@ caller applies; the block history's browser-first beats the contract's method; a
 
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Final, cast
+from typing import Final
 
 from sqlalchemy import case, delete, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.politeness import SLOW_DOWN
-from crawlerai.acquire.replay import DataCall, learned_call
 from crawlerai.acquire.session import ENGINE
 from crawlerai.acquire.types import AttemptRecord, FetchResult, fetched_as
 from crawlerai.adapters.platforms import platform_of
 from crawlerai.db.models import (
     BrowserEngine,
-    ContractMethod,
+    FetchMethod,
     PageKind,
     SettleOn,
     Site,
@@ -71,24 +70,21 @@ Coverage = dict[str, list[str]]
 class Remembered:
     """What memory says a fetch of a site's page of one kind starts with: the defaults without memory."""
 
-    method: ContractMethod = "http"
+    method: FetchMethod = "http"
     settle_on: SettleOn | None = None
-    # The data call an `api_replay` contract replays (`acquire.replay`).
-    data_call: DataCall | None = None
 
 
 @dataclass(frozen=True)
 class Lesson:
     """What one fetch teaches the contract (`lesson`)."""
 
-    method: ContractMethod
+    method: FetchMethod
     engine: BrowserEngine | None = None
     settle_on: SettleOn | None = None
     needs_render: bool = False
     needs_xhr: bool = False
     needs_traversal: bool = False
     handoff: bool = False
-    data_call: DataCall | None = None
 
 
 def remembered_as(kind: PageKind | None) -> PageKind:
@@ -112,14 +108,12 @@ async def remembered(
     query = select(
         select(SiteContract.method).where(*fresh).scalar_subquery(),
         select(SiteContract.settle_on).where(*fresh).scalar_subquery(),
-        select(SiteContract.data_call).where(*fresh).scalar_subquery(),
         browser_first,
     )
-    row = (await conn.execute(query)).one()
-    settle_on = cast(SettleOn | None, row[1])
-    if row[3] and blocks:
+    method, settle_on, first = (await conn.execute(query)).one()
+    if first and blocks:
         return Remembered("browser", settle_on)
-    return Remembered(cast(ContractMethod | None, row[0]) or "http", settle_on, DataCall.load(row[2]))
+    return Remembered(method or "http", settle_on)
 
 
 def refused(attempt: AttemptRecord) -> bool:
@@ -142,19 +136,12 @@ def lesson(result: FetchResult, lacks: bool | None) -> Lesson | None:
     content alone when the rendered document has what the caller reads, the data calls too when they carried it, the
     default settle when `lacks` is unknown (None). When HTTP was `refused` and the render needed nothing else, and its
     cookies went on to HTTP (an attempt's `site_session`), it was needed only to pass the block: `handoff`, and the
-    pages stay on HTTP. A render of a detail page that needed no steps, whose data calls include one that states the
-    page's product by a key of its URL (`replay.learned_call`), teaches `api_replay` with that call, unless the fetch
-    replayed a call already: the replay was refused, or did not give what the render gave, and the contract stays on
-    the browser. An HTTP `ok` of a fetch that replayed a call teaches nothing: a replay never rewrites the contract it
-    came from."""
+    pages stay on HTTP."""
     http = [attempt for attempt in result.attempts if attempt.method == "http"]
     if result.bundle.manifest.fetch_policy.get("method_hint") != "auto" or result.block_class != "ok" or not http:
         return None
     if result.method == "http":
-        # A replay sent, served or not: the page kept is the replay's contract at work, or the HTTP page a refused
-        # replay and a discarded render left; neither says the site's pages need nothing but HTTP.
-        replayed = any(a.data_call == "replay" for a in result.attempts)
-        return None if replayed else Lesson("http")
+        return Lesson("http")
     return _rendered(result, http[-1], lacks) if result.method == "browser" else None
 
 
@@ -168,25 +155,15 @@ def _rendered(result: FetchResult, http: AttemptRecord, lacks: bool | None) -> L
         settle_on = "data_call" if needs_xhr else None if lacks else "content"
     carried = any(attempt.site_session for attempt in result.attempts)
     handoff = passed_block and carried and not (needs_xhr or needs_traversal)
-    data_call = None if handoff or needs_traversal else _replayable(result)
     return Lesson(
-        method="http" if handoff else "browser" if data_call is None else "api_replay",
+        method="http" if handoff else "browser",
         engine=ENGINE,
         settle_on=settle_on,
         needs_render=not passed_block and http.block_class in ("ok", "shell"),
         needs_xhr=needs_xhr,
         needs_traversal=needs_traversal,
         handoff=handoff,
-        data_call=data_call,
     )
-
-
-def _replayable(result: FetchResult) -> DataCall | None:
-    """The data call of a detail page's render that the contract keeps (`lesson`)."""
-    replayed = any(a.data_call == "replay" for a in result.attempts)
-    if replayed or remembered_as(fetched_as(result.bundle.manifest.fetch_policy)) != "detail":
-        return None
-    return learned_call(result)
 
 
 async def learn_fetch(conn: AsyncConnection, site_id: SiteId, result: FetchResult, lacks: bool | None) -> None:
@@ -207,7 +184,6 @@ async def learn_fetch(conn: AsyncConnection, site_id: SiteId, result: FetchResul
         "needs_xhr": learned.needs_xhr,
         "needs_traversal": learned.needs_traversal,
         "handoff": learned.handoff,
-        "data_call": None if learned.data_call is None else learned.data_call.stored(),
     }
     kind = remembered_as(fetched_as(result.bundle.manifest.fetch_policy))
     insert = pg_insert(SiteContract).values(site_id=site_id, page_kind=kind, checked_at=func.now(), **values)

@@ -4,7 +4,9 @@ active config's API recipe over `fetch_json`, with no browser.
 `RecipeRung` is the recipe bound to its fetchers, the rung `acquire` takes (`acquire.rungs`): it binds the
 parameters from the page URL (fetching the HTML page first only when a binder reads the page's JSON documents,
 `requires_page_fetch`), sends the recipe's request through the SSRF guard (INV-16) and answers a
-`FetchResult(method='api')` whose body is the JSON. A page the recipe cannot serve is an `error` result, and `acquire`
+`FetchResult(method='api')` whose body is the JSON. A detail page's answer serves it only when it states the requested
+product (`acquire.data_call.identifies`, acquisition spec "Data calls"): an endpoint that answers one product for every
+page is an `error`, `not_the_product`. A page the recipe cannot serve is an `error` result, and `acquire`
 fetches it the configured way (§4.10); when the rung fetched the HTML page to bind and reached it, that page is the
 result instead, so it is not fetched twice. A listing's pages come from `pages`, which follows the recipe's pagination
 (`pagination.py`: a page number or offset, a cursor, a next URL or an RFC 8288 `next` link, in the query or the JSON
@@ -22,14 +24,15 @@ from typing import Final
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.outcome import Content, fetch_result
+from crawlerai.acquire.data_call import NOT_THE_PRODUCT, identifies
+from crawlerai.acquire.outcome import Content, as_error, fetch_result
 from crawlerai.acquire.rungs import Rung, slow_down, with_attempts
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.collect import json_doc
 from crawlerai.collect.api import ApiCollector
 from crawlerai.collect.config import Executed
 from crawlerai.collect.network_match import LearnedCalls
-from crawlerai.config_ir.api_recipe.binding import PageData, page_data
+from crawlerai.config_ir.api_recipe.binding import PageData, page_data, resolve_params
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.pagination import first_request, next_request
 from crawlerai.config_ir.api_recipe.replay import request_for
@@ -88,12 +91,14 @@ class RecipeRung:
         bound = await self._request(url, policy)
         if isinstance(bound, FetchResult):
             return bound
-        request, page = bound
+        request, page, keys = bound
         result = (
             self._unserved(url, policy, "unbound_parameter")
             if request is None
             else await self.fetch_json(request, policy)
         )
+        if self.recipe.pagination is None:
+            result = _identified(result, url, keys)
         # A fetch whose policy names the browser falls back to the browser, not to the HTML page fetched to bind.
         return _after(page, result, fallback=policy.method_hint != "browser")
 
@@ -119,7 +124,7 @@ class RecipeRung:
         if isinstance(bound, FetchResult):
             yield bound
             return
-        bound_request, page = bound
+        bound_request, page, _ = bound
         request = None if bound_request is None else first_request(pagination, bound_request)
         if request is None:
             yield _after(page, self._unserved(url, policy, "unbound_parameter"))
@@ -148,10 +153,10 @@ class RecipeRung:
 
     async def _request(
         self, url: str, policy: FetchPolicy
-    ) -> tuple[JsonRequest | None, FetchResult | None] | FetchResult:
+    ) -> tuple[JsonRequest | None, FetchResult | None, tuple[str, ...]] | FetchResult:
         """The recipe's request for the page (None when a parameter cannot be bound), with the HTML page fetch it
-        needed; when that fetch did not reach the page, an `error` result, or the page fetch itself when it asked for
-        fewer requests."""
+        needed and the parameter values it was bound with; when that fetch did not reach the page, an `error` result,
+        or the page fetch itself when it asked for fewer requests."""
         data: PageData = {}
         page = None
         if self.recipe.requires_page_fetch:
@@ -162,10 +167,25 @@ class RecipeRung:
                 return _after(page, self._unserved(url, policy, f"page_{page.block_class}"))
             # Parsing is CPU work: a thread keeps the event loop serving other tasks meanwhile.
             data = await asyncio.to_thread(_page_data, page)
-        return request_for(self.recipe, url, data), page
+        params = resolve_params(self.recipe, url, data)
+        return request_for(self.recipe, url, data), page, tuple(() if params is None else params.values())
 
     def _unserved(self, url: str, policy: FetchPolicy, reason: str) -> FetchResult:
         return unserved(url, policy, self.engine_version, "error", reason)
+
+
+def _identified(result: FetchResult, url: str, keys: tuple[str, ...]) -> FetchResult:
+    """A detail recipe's `ok` answer when it states the product of the page at `url` it was requested with `keys` for
+    (`acquire.data_call.identifies`: a parameter value, or a URL with the page's path); else an `error`,
+    `NOT_THE_PRODUCT`, which the page's configured fetch then serves (§4.10). An answer that is not JSON is the
+    collector's to report."""
+    if result.block_class != "ok":
+        return result
+    try:
+        answer = json_text.parse(result.bundle.body)
+    except ValueError:
+        return result
+    return result if identifies(answer, url, keys) else as_error(result, NOT_THE_PRODUCT)
 
 
 def _done(rows: int, records: int | None, deadline: float | None) -> bool:

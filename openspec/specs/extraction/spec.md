@@ -48,8 +48,12 @@ RDFa IRI value is a URL, never text, D-1153) and Open Graph
 description, and the `product:` namespace; no translation, site-default blocks skipped) through the field's
 `schema_org` path; a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
-element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. Refs: §8.1,
-D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486.
+element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. A platform's documented
+product JSON that a detail page's HTTP fetch joined after its identity check (acquisition spec, "Data calls") is read
+as that platform documents its members (`adapters/platforms.answer_shapes`, `collect/platform_json.py`): `adapter`
+candidates of the requested product, amounts in the minor unit the documentation states, and no Offer when its
+variants are priced differently (the page states the selected one). Refs: §8.1,
+D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-19 on #326.
 #### Scenario: Escaped markup
 - **WHEN** a text value is block markup written escaped (`&lt;p&gt;…&lt;/p&gt;&lt;ul&gt;…`)
 - **THEN** it normalizes as the unescaped markup does; an escaped `<` that makes no element (`1 &lt; 2`) stays text
@@ -64,7 +68,8 @@ D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486.
 - **THEN** that text is the `description` candidate, ranked behind JSON-LD and microdata
 
 ### Requirement: Embedded JSON state and XHR admission
-The system SHALL admit a scalar from `<script>` JSON, JS assignments or captured XHR bodies only when it equals another
+The system SHALL admit a scalar from `<script>` JSON, JS assignments or captured XHR bodies (other than an
+identity-checked data call's, "Structured-data collectors") only when it equals another
 kind's candidate (`independent=false`, owned by that candidate's entity), or when the field has none, the value is
 visible and its type is checkable (`collect/admission.py`) and the value shows the type's checked syntax (`Ok.checked`:
 money with a currency sign or code); text-like types admit by equality only. A value admitted by

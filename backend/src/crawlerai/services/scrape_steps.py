@@ -23,8 +23,9 @@ from crawlerai.acquire.challenge import vendor_block
 from crawlerai.acquire.memory import Coverage, Remembered, learn_extraction, learn_fetch, remembered
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import AttemptRecord, FetchResult, fetched_as
+from crawlerai.collect.platform_json import stated_fields
 from crawlerai.collect.run import Adapters
-from crawlerai.collect.schema_org_map import VocabularyMissing
+from crawlerai.collect.schema_org_map import Vocabulary, VocabularyMissing
 from crawlerai.config_ir.active import record_page
 from crawlerai.config_ir.drift import MARGINS_FILE, DriftMargins, load_margins
 from crawlerai.content.chunks import Chunk, ChunkOptions, chunks
@@ -367,26 +368,31 @@ async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None 
 class RenderNeed:
     """The `needs_render` check of a fetch that extracts with `schema`, from cheap signals, with no extraction and no
     LLM call (master plan 2026-10-18 §3.1; owner plan 2026-10-19 P3): a listing that may show more items once rendered
-    (`content.render_need`, owner #54), or a detail page whose schema requires a `money` field and whose document shows
-    no sign of its offer (`content.render_need.offer_shown`, owner #49), is rendered once, and the render is kept when
-    it no longer lacks it (a listing's when it lists more items than the HTTP page). A request's `render_fields`, the
-    fields the caller says only a render shows, have every page rendered, and the render kept when it is `ok`: only
-    those fields send a page with its signals to the browser (owner rule: the browser is the exception). It keeps the
-    parse of each page it read, so the one kept is parsed once (INV-26); role C runs once, on the capture the fetch
-    keeps."""
+    (`content.render_need`, owner #54), or a detail page whose schema requires a `money` field, whose document shows
+    no sign of its offer (`content.render_need.offer_shown`, owner #49) and whose identity-checked platform data call
+    (`acquire.data_call`) states no value of such a field, is rendered once, and the render is kept when it no longer
+    lacks it (a listing's when it lists more items than the HTTP page). A request's `render_fields`, the fields the
+    caller says only a render shows, have every page rendered, and the render kept when it is `ok`: only those fields
+    send a page with its signals to the browser (owner rule: the browser is the exception), unless the page's
+    identity-checked platform data call states every one of them, structured evidence of the requested product (owner
+    decision 2026-10-19, P4). It keeps the parse of each page it read, so the one kept is parsed once (INV-26); role C
+    runs once, on the capture the fetch keeps."""
 
     schema: SchemaDef
     render_fields: frozenset[str] = frozenset()
     # Whether a render with its images, fonts and media blocked listed fewer items than the HTTP page (`lost_items`):
     # the site then loads every resource (`remember_resources`).
     lost_items: bool = False
+    # The schema.org vocabulary a platform data call's answer is read with (`_stated`); without it none is counted.
+    vocabulary: Vocabulary | None = None
     _parsed: dict[UUID, ParsedPage] = field(default_factory=dict)
 
     async def __call__(self, result: FetchResult, over: FetchResult | None = None) -> bool:
-        # With `render_fields` the HTTP page is rendered, and the render kept, whatever either shows.
-        if self.render_fields and over is None:
-            return True
         bundle = result.bundle
+        # With `render_fields` the HTTP page is rendered, and the render kept, whatever either shows, unless the page's
+        # identity-checked platform data call states every one of them.
+        if self.render_fields and over is None:
+            return not self.render_fields <= await asyncio.to_thread(self._stated, bundle)
         if self.schema.page_kind == "listing":
             page = self._read(bundle)
             replaced = None if over is None else self._read(over.bundle)
@@ -396,7 +402,21 @@ class RenderNeed:
             return not self.render_fields and await asyncio.to_thread(listing_needs_render, page, replaced)
         if self.render_fields or not _requires_money(self.schema):
             return False
-        return not await asyncio.to_thread(offer_shown, self._read(bundle))
+        return not await asyncio.to_thread(self._offered, bundle)
+
+    def _offered(self, bundle: CaptureBundle) -> bool:
+        """Whether the page shows its offer, or its identity-checked platform data call states a required money
+        field's value."""
+        if offer_shown(self._read(bundle)):
+            return True
+        money = {n for n, s in self.schema.fields.items() if s.type is FieldType.MONEY and s.required}
+        return bool(money & self._stated(bundle))
+
+    def _stated(self, bundle: CaptureBundle) -> frozenset[str]:
+        """The fields the page's identity-checked platform data calls state (`collect.platform_json.stated_fields`)."""
+        if self.vocabulary is None:
+            return frozenset()
+        return stated_fields(self._read(bundle), bundle.manifest, self.schema, self.vocabulary)
 
     def _read(self, bundle: CaptureBundle) -> ParsedPage:
         return self._parsed.setdefault(bundle.manifest.capture_id, ParsedPage.of(bundle))
@@ -413,7 +433,7 @@ def render_need(
     has); None without a schema or the engine's data."""
     if schema is None or data is None:
         return None
-    return RenderNeed(schema, frozenset(render_fields) & schema.fields.keys())
+    return RenderNeed(schema, frozenset(render_fields) & schema.fields.keys(), vocabulary=data.vocabulary)
 
 
 def _requires_money(schema: SchemaDef) -> bool:

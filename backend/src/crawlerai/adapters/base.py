@@ -41,8 +41,12 @@ class Shape:
     own in order (an API that keeps a primary value apart from the others: a primary location and the further ones);
     `prefixes`, text that goes before each string or integer value of a property, for an API that states the value
     relative to a root the page's URL names (a job's path under its career site, a job id under a board's job route);
-    `nodes`, the shapes of the nodes each property's values are; and `anchor`, the members that name a node sharing its
-    enclosing node's object (`at=()`), so that it is an entity of its own."""
+    `nodes`, the shapes of the nodes each property's values are; `anchor`, the members that name a node sharing its
+    enclosing node's object (`at=()`), so that it is an entity of its own; and `minor_units`, for an API whose
+    documentation states an amount as an integer count of the currency's minor unit (cents), the number of decimal
+    places of that unit: a constant the documentation states, or the members from the node's object to the value that
+    states it. Only a property listed there is scaled, and only an integer amount (written as a number or in digits);
+    any other value of it is dropped, since the documentation states no unit for it."""
 
     type: str
     at: Members = ()
@@ -51,6 +55,7 @@ class Shape:
     prefixes: Mapping[str, str] = field(default_factory=dict)
     nodes: Mapping[str, tuple["Shape", ...]] = field(default_factory=dict)
     anchor: Members = ()
+    minor_units: Mapping[str, int | Members] = field(default_factory=dict)
 
 
 def apply_action(member: str) -> Shape:
