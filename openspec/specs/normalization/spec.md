@@ -63,10 +63,13 @@ structured `priceCurrency`, contradict each other and are `Invalid`; amounts the
 number read theirs: none is `no_amount`, two are `range`; a number written with a CLDR percent sign is a ratio (a
 discount), never the amount. A CLDR compact decimal unit of the page's locales written right after the digits
 multiplies them (`decimalFormats-short`: `3.5万円` is 35000), and a currency's one-word CLDR count name (`円`) is a
-sign like its symbol. A monetary range keeps declining on a `null` currency
+sign like its symbol. A sign written with a trailing full stop is also the CLDR symbol without it (an abbreviation's
+full stop: CLDR itself writes `kr` and `kr.`), so it denotes both symbols' currencies for (2)–(4) to narrow. A
+monetary range keeps declining on a `null` currency
 (`currency_unknown`). Refs: §9, owner #68, D-1240, D-1370.
 (Previously: a sign several currencies share was `Ambiguous`, no sign was `Invalid`, a page currency never supplied a
-missing sign, and the locale settled a sign at full confidence.)
+missing sign, the locale settled a sign at full confidence, and a sign with a full stop denoted only its own symbol's
+currencies.)
 #### Scenario: Ambiguous dollar
 - **WHEN** the text is `$10` with `html_lang="en"` and no page currency
 - **THEN** the result is `Ok({amount: "10", currency: null})` with basis `unknown`; with `page_currencies=("CAD",)` it
@@ -78,6 +81,9 @@ missing sign, and the locale settled a sign at full confidence.)
 #### Scenario: Structured price with its sign
 - **WHEN** a structured value is `{price: "$1,295.99", priceCurrency: "USD"}`
 - **THEN** the result is `Ok({amount: "1295.99", currency: "USD"})`; with `price: "€12"` it is `Invalid`
+#### Scenario: An abbreviation's full stop
+- **WHEN** the text is `kr. 12` and the page's structured data states NOK
+- **THEN** the result is `Ok({amount: "12", currency: "NOK"})`, `kr.` also being the symbol `kr`
 #### Scenario: CJK units and a discount beside the price
 - **WHEN** the text is `3.5万円` with `html_lang="ja"`, or `$12.99 -20%` with `html_lang="en-US"`
 - **THEN** the results are `Ok({amount: "35000", currency: "JPY"})` and `Ok({amount: "12.99", currency: "USD"})`
