@@ -59,8 +59,9 @@ def test_a_product_card_beside_the_main_content_is_left_out_too() -> None:
     page = ParsedPage(
         f"<html><body><main><h1>Widget One</h1><p>Solid widget</p></main><aside>{card}</aside></body></html>"
     )
-    ctx = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), page_url="https://shop.example.test/p/1")
-    target = Entity(id="page", types=("Product",), urls=(ctx.page_url,), parent=None)
+    url = "https://shop.example.test/p/1"
+    ctx = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), page_url=url)
+    target = Entity(id="page", types=("Product",), urls=(url,), parent=None)
     request = GapRequest(page, SCHEMA, ctx, target, ("price",), product_apart(page, SCHEMA, ctx, ()))
     client = ScriptedClient({"fields": {"price": {"shown": False, "ref": "", "value": "", "start": 0, "end": 0}}})
 
