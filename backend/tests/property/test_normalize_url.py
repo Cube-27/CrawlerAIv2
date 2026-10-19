@@ -124,3 +124,11 @@ def test_the_resource_key_ignores_only_the_scheme_the_query_and_a_stated_size() 
     assert key != url.resource_key("https://cdn.example.test/i/b-300x200.jpg")
     assert key != url.resource_key("https://img.example.test/i/a-300x200.jpg")
     assert url.resource_key("/i/a.jpg") is None
+
+
+def test_a_proxy_url_names_the_one_file_its_query_carries() -> None:
+    key = url.resource_key("https://cdn.example.test/i/a.jpg?w=940")
+
+    assert key == url.resource_key("https://www.example.test/_img?url=https%3A%2F%2Fcdn.example.test%2Fi%2Fa.jpg&w=640")
+    two = "https://www.example.test/_img?a=https%3A%2F%2Fcdn.example.test%2Fi%2Fa.jpg&b=https%3A%2F%2Fcdn.example.test%2Fb"
+    assert url.resource_key(two) == ("resource", "www.example.test", "/_img")

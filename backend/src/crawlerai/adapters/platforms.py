@@ -6,6 +6,10 @@ global its storefront script defines, the response headers its servers send. The
 table of sites (C4). A page shows a platform's signal in its markup or its response headers; the first platform whose
 signal it shows is its platform, the storefront platforms before the Next.js framework, which may front any of them.
 
+Where a platform documents how a URL selects one variant of a product page (a query parameter on the product's own
+URL), `variant_params` names the parameters, so that resolution knows a link to the page's own resource with one of
+them for a variant of the page, not a link to a thing described elsewhere (variants spec, "Own variants").
+
 Where a platform documents a public, tokenless product JSON endpoint on the shop's own host, `product_json` names the
 request for a product page and `answer_shapes` the schema.org nodes its answer holds, as the platform documents its
 members (adapters spec `Shape`, C2), amounts in the minor unit the documentation states; a platform whose product API
@@ -27,7 +31,15 @@ from pydantic import JsonValue
 from crawlerai.adapters.base import ALL, Shape
 from crawlerai.storage.capture_bundle import HeaderList
 
-__all__ = ["SIGNATURES", "PlatformSignature", "ProductJson", "answer_shapes", "platform_of", "product_json"]
+__all__ = [
+    "SIGNATURES",
+    "PlatformSignature",
+    "ProductJson",
+    "answer_shapes",
+    "platform_of",
+    "product_json",
+    "variant_params",
+]
 
 
 @dataclass(frozen=True)
@@ -35,6 +47,9 @@ class PlatformSignature:
     platform: str
     markers: tuple[str, ...] = ()  # in the page's markup: the platform's asset paths and script globals
     header_names: frozenset[str] = frozenset()  # lowercase response header names only the platform's servers send
+    # The query parameters (names, or name prefixes ending in `_`) by which the platform's documented product URLs
+    # select one variant of the product.
+    variant_params: tuple[str, ...] = ()
 
 
 # The global the Online Store's theme layout defines (`content_for_header`); a headless storefront has none, nor the
@@ -48,10 +63,13 @@ SIGNATURES: Final[tuple[PlatformSignature, ...]] = (
         "shopify",
         markers=(_ONLINE_STORE, "cdn.shopify.com/", "shopify-features"),
         header_names=frozenset({"x-shopid", "x-shopify-stage"}),
+        # shopify.dev Liquid `variant.url`: the product URL with `?variant=<id>` selects that variant.
+        variant_params=("variant",),
     ),
     # Salesforce Commerce Cloud (Demandware): its controller path and static asset path (SFCC B2C developer docs,
     # "URL syntax": `/on/demandware.store/Sites-{site}-Site/`, `/on/demandware.static/`).
-    PlatformSignature("sfcc", markers=("/on/demandware.store/", "/on/demandware.static/")),
+    # SFCC developer docs, "Product variation URLs": `dwvar_<product id>_<attribute>=<value>` selects a variation value.
+    PlatformSignature("sfcc", markers=("/on/demandware.store/", "/on/demandware.static/"), variant_params=("dwvar_",)),
     # Magento / Adobe Commerce: its RequireJS module namespace and init script (Adobe Commerce frontend docs,
     # "JavaScript init"); its full-page cache sends `x-magento-tags`.
     PlatformSignature(
@@ -63,7 +81,11 @@ SIGNATURES: Final[tuple[PlatformSignature, ...]] = (
     # `cdn11.bigcommerce.com`, `stencilBootstrap`).
     PlatformSignature("bigcommerce", markers=("cdn11.bigcommerce.com/s-", "stencilBootstrap(")),
     # WooCommerce: the plugin's asset path and the class its script swaps on the body (WooCommerce developer docs).
-    PlatformSignature("woocommerce", markers=("/plugins/woocommerce/", "woocommerce-no-js")),
+    # Its variation links carry `attribute_<attribute slug>=<term>` for each attribute (WooCommerce developer docs,
+    # `WC_Product_Variation::get_permalink`).
+    PlatformSignature(
+        "woocommerce", markers=("/plugins/woocommerce/", "woocommerce-no-js"), variant_params=("attribute_",)
+    ),
     # Next.js (commerce or any): the framework's data script and static path (Next.js docs, "Pages Router": the
     # `__NEXT_DATA__` script; the `/_next/static/` build output).
     PlatformSignature("nextjs", markers=('id="__NEXT_DATA__"', "/_next/static/")),
@@ -82,6 +104,12 @@ def platform_of(markup: str, headers: HeaderList) -> str | None:
         if names & signature.header_names or any(marker in head for marker in signature.markers):
             return signature.platform
     return None
+
+
+def variant_params(markup: str, headers: HeaderList) -> tuple[str, ...]:
+    """The variant-selecting query parameters of the page's platform (`PlatformSignature.variant_params`), or none."""
+    platform = platform_of(markup, headers)
+    return next((s.variant_params for s in SIGNATURES if s.platform == platform), ())
 
 
 @dataclass(frozen=True)

@@ -167,7 +167,7 @@ def assess(
         )
     return FieldOutcome(
         status="published",
-        reason=None,
+        reason=published.flag,
         value=published.value,
         evidence=published.evidence,
         confidence=confidence,
@@ -199,6 +199,7 @@ class _Published:
     chosen: Candidate | None
     kept: tuple[Candidate, ...]
     rejected: tuple[tuple[Candidate, str], ...]
+    flag: str | None = None  # why the field's kept candidates did not all agree (`Chosen.flag`)
 
 
 def _page_url(decision: Derived) -> _Published:
@@ -226,7 +227,9 @@ def _candidate_value(decision: Preference | Derived, *, corroborated: bool) -> _
     evidence = evidence_of(chosen, decision.agreeing, corroborated=corroborated)
     if evidence is None:
         return _unpublished("abstained", "no_bucket", (*rejected, (chosen, "no_bucket")), kept=decision.kept)
-    return _Published(value, evidence, chosen.source_kind, chosen.locator, derived_by, chosen, decision.kept, rejected)
+    return _Published(
+        value, evidence, chosen.source_kind, chosen.locator, derived_by, chosen, decision.kept, rejected, decision.flag
+    )
 
 
 def _unpublished(

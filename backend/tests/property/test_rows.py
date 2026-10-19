@@ -1,6 +1,7 @@
 """Row matching properties (variants spec, INV-33): rows are matched by key and never by position, so the order of rows
 and of sources does not change the published rows; rows with different keys never merge; a sub-field that disagrees
-inside one variant is a conflict, never a value; and JSON-LD and microdata give equal `variants` values."""
+inside one variant publishes the first stated price with its flag; and JSON-LD and microdata give equal `variants`
+values."""
 
 import asyncio
 import json
@@ -134,7 +135,7 @@ def test_rows_never_merge_and_neither_their_order_nor_their_source_changes_them(
 
 @_RUNS_THE_PIPELINE
 @given(VARIANTS, st.sampled_from(["10.00", "12.00"]))
-def test_a_sub_field_that_disagrees_inside_a_variant_is_a_conflict(variant: Variant, other_price: str) -> None:
+def test_a_price_that_disagrees_inside_a_variant_publishes_flagged(variant: Variant, other_price: str) -> None:
     twin = Variant(variant.sku, other_price, variant.color)
     other = Variant("W-99", "10.00", None)  # a second variant, so that the list publishes
 
@@ -143,10 +144,9 @@ def test_a_sub_field_that_disagrees_inside_a_variant_is_a_conflict(variant: Vari
     assert outcome.items is not None
     assert len(outcome.items) == 2
     price = outcome.items[0].fields["price"]
-    if other_price == variant.price:
-        assert price.value == {"amount": variant.price, "currency": "EUR"}
-    else:
-        assert (price.status, price.value) == ("conflict", None)
+    # Owner #68: a grounded price always publishes; the variant's two Offers' disagreement is its flag.
+    assert price.value == {"amount": variant.price, "currency": "EUR"}
+    assert price.reason == (None if other_price == variant.price else "offers_disagree")
 
 
 def test_a_key_never_joins_rows_an_earlier_key_tells_apart() -> None:

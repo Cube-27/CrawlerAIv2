@@ -92,11 +92,15 @@ def resource_key(value: JsonValue) -> Hashable | None:
     (http or https), and without the query (§3.4), which may vary only how it is served, such as an image's size or
     crop. Not an equality (two queries can name two resources): it only tells which of one entity's own values
     another source names, and which values are renditions of one file (extraction spec). `None` for anything that is no
-    absolute URL."""
+    absolute URL. A URL whose query carries one absolute http(s) URL serves that one (an image proxy or optimizer
+    resizes the file it is given, `?url=<file>`), so it names that URL's resource."""
     url = canonical(value, None) if isinstance(value, str) else None
     if not isinstance(url, Ok) or not isinstance(url.value, str):
         return None
     parts = urlsplit(url.value)
+    served = [v for _, v in parse_qsl(parts.query) if urlsplit(v).scheme in _DEFAULT_PORT and urlsplit(v).netloc]
+    if len(served) == 1:  # shorter than the URL holding it, so this ends
+        return resource_key(served[0])
     return ("resource", parts.netloc, _without_dimensions(parts.path))
 
 

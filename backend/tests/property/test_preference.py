@@ -1,6 +1,7 @@
-"""Preference and derivation properties (extraction spec): for any candidate set, exact-match values publish only
-when all agree (INV-14), a query-parameter value publishes only when shown (INV-13), a page's offer fields come
-from one Offer (INV-15), and only a missing field is derived (INV-07)."""
+"""Preference and derivation properties (resolution spec, "Candidate score"): for any candidate set, an exact-match
+value publishes when its score is the best alone and a shared best is a conflict, a query-parameter value publishes
+only when shown (INV-13), a page's offer fields but money come from one Offer and a stated price always publishes
+(INV-15, owner #68), and only a missing field is derived (INV-07)."""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -68,21 +69,28 @@ _SOURCES = st.sampled_from([(PRODUCT.id, "jsonld"), (PAGE, "og"), (PRODUCT.id, "
 
 
 @given(st.lists(st.tuples(_SKUS, _SOURCES), max_size=6))
-def test_exact_values_publish_only_when_all_agree(drawn: list[tuple[str, tuple[str, SourceKind]]]) -> None:
+def test_an_exact_value_publishes_when_the_most_source_kinds_state_it(
+    drawn: list[tuple[str, tuple[str, SourceKind]]],
+) -> None:
+    # Every kind weighs 1 and every candidate is the target's, so the score is the share of kinds stating the value.
     candidates = [_candidate("sku", value, owner, kind, n) for n, (value, (owner, kind)) in enumerate(drawn)]
 
     result = _resolver().prefer(_schema(sku=SKU), candidates)["sku"]
 
-    values = {value for value, _ in drawn}
-    if not values:
+    kinds: dict[str, set[str]] = {}
+    for value, (_, kind) in drawn:
+        kinds.setdefault(value, set()).add(kind)
+    most = max((len(k) for k in kinds.values()), default=0)
+    best = [value for value, k in kinds.items() if len(k) == most]
+    if not drawn:
         assert result == Unpublished("missing", "no_candidates", ())
-    elif len(values) == 1:
-        assert isinstance(result, Chosen)
-        assert result.candidate.normalized == Ok(values.pop())
-        assert len(result.agreeing) == len(drawn) - 1
-    else:
+    elif len(best) > 1:
         assert isinstance(result, Unpublished)
         assert (result.status, result.reason) == ("conflict", "disagree")
+    else:
+        assert isinstance(result, Chosen)
+        assert result.candidate.normalized == Ok(best[0])
+        assert result.flag == (None if len(kinds) == 1 else "disagree")
 
 
 _PARAM = st.text(st.characters(categories=("L", "N")), min_size=1, max_size=8)
@@ -108,7 +116,7 @@ _OFFER = st.tuples(st.none() | _PRICES, st.none() | _STOCK)
 
 
 @given(st.lists(_OFFER, min_size=1, max_size=len(OFFERS)))
-def test_offer_fields_publish_from_one_offer_that_all_offers_agree_with(
+def test_offer_fields_but_money_publish_from_one_offer_and_a_stated_price_always_publishes(
     offers: list[tuple[dict[str, str] | None, str | None]],
 ) -> None:
     candidates = _offer_candidates(offers)
@@ -118,12 +126,12 @@ def test_offer_fields_publish_from_one_offer_that_all_offers_agree_with(
     published = {name: p for name, p in result.items() if isinstance(p, Chosen)}
     if len(offers) == 1:
         assert published.keys() == {c.field for c in candidates}
-    # One source object (INV-15).
-    assert len({p.candidate.entity_id for p in published.values()}) <= 1
-    # Every Offer that states the field states the published value.
-    for name, preference in published.items():
-        stated = [c.normalized for c in candidates if c.field == name]
-        assert all(value == preference.candidate.normalized for value in stated)
+    # Owner #68: a price an Offer states always publishes, flagged when the Offers disagree.
+    assert ("price" in published) == any(c.field == "price" for c in candidates)
+    # Availability is a variant's: it publishes only when every Offer that states it states the published value.
+    if "availability" in published:
+        stated = [c.normalized for c in candidates if c.field == "availability"]
+        assert all(value == published["availability"].candidate.normalized for value in stated)
 
 
 def _offer_candidates(offers: list[tuple[dict[str, str] | None, str | None]]) -> list[Candidate]:
@@ -164,10 +172,8 @@ _SETTLED = st.sampled_from([None, "page", "locale", "url", "unknown"])
 
 
 @given(st.lists(st.tuples(st.sampled_from(["10.00", "12.00"]), _SETTLED), min_size=1, max_size=4))
-def test_a_price_on_weaker_currency_evidence_stands_only_where_no_better_settled_one_contradicts_it(
-    drawn: list[tuple[str, Basis | None]],
-) -> None:
-    # Normalization spec, money: the currency's evidence ranks the values; the best-settled publish by agreement.
+def test_a_price_publishes_on_its_best_currency_evidence(drawn: list[tuple[str, Basis | None]]) -> None:
+    # Normalization spec, money: the currency's evidence is the source weight; of equal weights, the first stated.
     candidates = []
     for n, (amount, basis) in enumerate(drawn):
         value: JsonValue = {"amount": amount, "currency": None if basis == "unknown" else "USD"}
@@ -178,11 +184,12 @@ def test_a_price_on_weaker_currency_evidence_stands_only_where_no_better_settled
 
     rank = [None, "page", "locale", "url", "unknown"]
     best = min(rank.index(b) for _, b in drawn)
-    best_values = {(a, b == "unknown") for a, b in drawn if rank.index(b) == best}
-    if len(best_values) > 1:
-        assert isinstance(result, Unpublished)
-        assert result.status == "conflict"
-    else:
-        assert isinstance(result, Chosen)
-        assert isinstance(result.candidate.normalized, Ok)
-        assert rank.index(result.candidate.normalized.basis) == best
+    # Groups rank by their first member: the first candidate stating a best-evidence value, whatever its own evidence.
+    amounts = {amount for amount, b in drawn if rank.index(b) == best}
+    first = next(a for a, b in drawn if a in amounts and (b == "unknown") == (rank[best] == "unknown"))
+    assert isinstance(result, Chosen)
+    assert isinstance(result.candidate.normalized, Ok)
+    assert rank.index(result.candidate.normalized.basis) == best
+    assert result.candidate.normalized.value["amount"] == first  # type: ignore[call-overload,index]
+    # Another amount, or the same amount without a currency, is another value: the field is flagged.
+    assert result.flag == (None if len({(a, b == "unknown") for a, b in drawn}) == 1 else "disagree")

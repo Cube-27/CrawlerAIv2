@@ -16,69 +16,90 @@ Every candidate SHALL pass its type normalizer ([normalization](../normalization
 rejected `invalid`/`ambiguous`. Which entity a candidate belongs to is
 [identity-and-intent](../identity-and-intent/spec.md). Refs: §8.2, D-1379.
 
-### Requirement: Exact-match agreement (INV-14)
-For exact-match types the system SHALL publish only when every valid, owned, kept candidate agrees after
-normalization, else `conflict` with no value. Refs: §10, D-0437.
-Enforced by: property test; active.
+### Requirement: Candidate score (INV-14)
+Every field SHALL publish the value of its best-scored kept candidate (valid, owned, not a request-URL value), one
+mechanism for every type (`resolve/score.py`, `resolve/preference.py`). A candidate's score is its source weight times
+its scope match times its value's agreement:
+- Source weight: for `text`, `long_text`, `url` and `image_url` the kind's place in the type's order in
+  `backend/data/source_precedence.yaml`, fitted on dev (the first of n kinds weighs 1, each later place 1/n less, a
+  kind outside the order 0); a fragment of another of the field's candidates weighs 0 (`resolve/supersede.py`: a
+  `long_text` that is a prefix or ellipsis-cut prefix of a longer one, or an Open Graph description beside a longer
+  one of another kind; a `text` that is another kind's value plus ` - ` or ` | ` and more text; an Open Graph list of
+  images whose files are all among a longer list's of another kind). For `money` the strength of the currency
+  evidence ([normalization](../normalization/spec.md) `basis`): a stated currency 1, then `page`, `locale`, `url`,
+  `unknown` each 1/(number of bases + 1) less. Every other type weighs every kind 1 (no measured order).
+- Scope match: 1 for the target's own values and its anchor Offer's, 0.5 for another Offer of the target or of its
+  variants (Atomic offers); another item's values are not owned at all.
+- Agreement: of the field's independent candidates, per source kind its best weight, summed over the kinds stating
+  the value, over the sum for every kind; 1 when no candidate is independent (an admitted state value is not).
+Candidates stating one value (equal after normalization; for images, renditions of one file: `resource_key`, the
+authority and path without the size, conversion and options the path states, any scheme or query, a proxy URL naming
+the one file its query carries, a list's as the set of its files) form a group scored by its best member; of those
+members the first publishes, for images the `https` ones (else all) and of a single image's renditions the largest
+(`url.largest_rendition`). The candidates of every other value are rejected `outscored`, and a field whose kept
+candidates state other values publishes with the disagreement flag as its reason (`disagree`, or `offers_disagree` /
+`offer_split` for an offer field). When the best score is 0 the field is `missing` (`unranked`); when two values share
+it the field is a `conflict` (`disagree`, C7: decline rather than guess), except money: a grounded price always
+publishes (C7, owner #68), the first stated, and when the tied values state one amount in different currencies, that
+amount with its currency `null` (basis `unknown`). (Previously: exact-match types published only when every kept
+candidate agreed, else `conflict`; money ranked by currency evidence then needed agreement, a weaker one rejected
+`weaker_currency`; text, url and image published from the first source kind in the order, a disagreement within it
+settled only by the first other kind naming one value; each rule had its own tie-breaks.) Refs: §10, owner #68,
+owner 2026-10-19. Enforced by: `tests/property/test_preference.py`, `tests/unit/test_preference.py`; active.
 #### Scenario: Two prices disagree
 - **WHEN** JSON-LD says 19.90 EUR and microdata says 21.00 EUR for the target
-- **THEN** `price` is `conflict` and has no value
-
-### Requirement: Currency evidence ranks money candidates
-Among a money field's kept candidates, those whose currency rests on the strongest evidence (no `Ok.basis`, then
-`page`, `locale`, `unknown`; [normalization](../normalization/spec.md)) SHALL decide by agreement; a candidate on weaker
-evidence stays only when it equals one of them (it agrees), else it is rejected `weaker_currency`. Candidates left that
-state one amount in different currencies agree on the amount, which publishes with its currency `null` (basis
-`unknown`): only the currency is contradicted, and a grounded price always publishes (C7). (Previously: such
-candidates were a `conflict`.) Refs: owner #68.
+- **THEN** `price` publishes 19.90 EUR with reason `disagree` and the microdata candidate is rejected `outscored`
+  (Previously: `conflict` with no value.)
+#### Scenario: Two sources against one
+- **WHEN** JSON-LD and microdata say 19.90 EUR and a DOM text says 21.00 EUR
+- **THEN** `price` publishes 19.90 EUR with reason `disagree`
 #### Scenario: Unknown currency beside a stated one
 - **WHEN** JSON-LD says 19.90 USD and a DOM text says `$21.00` that no evidence settles
-- **THEN** `price` publishes 19.90 USD and the DOM candidate is rejected `weaker_currency`
+- **THEN** `price` publishes 19.90 USD and the DOM candidate is rejected `outscored` (Previously: `weaker_currency`.)
 #### Scenario: One amount in two currencies
 - **WHEN** JSON-LD says 19.90 EUR and a DOM text says `19.90 USD`
 - **THEN** `price` publishes 19.90 with currency `null` and basis `unknown`
-
-### Requirement: Source precedence for text, url and image
-For `text`, `long_text`, `url` and `image_url` the system SHALL publish from the first source kind in the type's order
-in `backend/data/source_precedence.yaml` that has a valid owned candidate; unranked kinds never win, and disagreement
-within the winning kind is `conflict` unless independent candidates of the first other kind in that order that names
-one of its values settle it. A candidate that is a fragment of another of the field's candidates ranks nowhere
-(`resolve/supersede.py`): a `long_text` that is a prefix or ellipsis-cut prefix of a longer one, or an Open Graph
-description beside a longer one of another kind; a `text` that is another kind's value plus ` - ` or ` | ` and more
-text; an Open Graph list of images whose files are all among a longer list's of another kind (`og:image` is the
-object's representative image, as its description is a summary). Image values naming the same files (`resource_key`: authority and path without the size, conversion and options the path states, any scheme or query; a list's as the set of its files) are renditions: they agree, and of renditions those whose URLs are all
-`https` (else all) are kept and of a single image's the largest publishes (`url.largest_rendition`, as a list ranks them), else the first. A value of the page's state JSON (`js_state`) ranks after every other kind. (Previously: no `js_state` rank; no fragment rule; an Open Graph image list outranked a gallery holding it; the key kept a stated size; the first `https` rendition published, whatever its size.) Refs: §10, D-0439, D-0944, D-1182,
-D-1292, D-1660, D-1773. Enforced by: resolver tests; active.
+#### Scenario: Two skus
+- **WHEN** JSON-LD says sku A-1 and microdata says sku A-2 for the target
+- **THEN** `sku` is `conflict` with reason `disagree`
 #### Scenario: Gallery array
 - **WHEN** JSON-LD `Product.image` lists three URLs and `og:image` equals the second
 - **THEN** `image_url` publishes the second URL
 #### Scenario: Namers disagree
 - **WHEN** `og:image` names the second gallery URL by its file and a `dom` image names the first
-- **THEN** `image_url` publishes the second URL, Open Graph ranking before `dom`
+- **THEN** `image_url` publishes the second URL, Open Graph weighing more than `dom`
 #### Scenario: An http twin
 - **WHEN** two merged JSON-LD blocks state one image over `http` and over `https?w=800`
 - **THEN** `image_url` publishes the `https` URL
+#### Scenario: A proxied image
+- **WHEN** JSON-LD states an image's CDN URL and Open Graph and `dom` state an image proxy URL carrying it in its query
+- **THEN** they are one value and `image_url` publishes the JSON-LD URL
 #### Scenario: A truncated description
 - **WHEN** JSON-LD states a description cut at 250 characters and `dom` states the full text
 - **THEN** `description` publishes the full text
 #### Scenario: A state value beside a page value
 - **WHEN** a `title` has a state value and a `dom` value that differ
-- **THEN** `title` publishes the `dom` value, and a state value alone publishes
+- **THEN** `title` publishes the `dom` value with reason `disagree`, and a state value alone publishes
 
 ### Requirement: Missing reasons name the furthest stage
 An unpublished field SHALL state its status and reason (the furthest screening stage reached, or the conflict or
-abstain cause, per `resolve/types.py`); every rejected candidate keeps its own reason. Refs: SPEC-05 §4.2, D-0438, D-0533.
+abstain cause, per `resolve/types.py`), and a published one whose candidates disagree its flag (Candidate score);
+every rejected candidate keeps its own reason, in `field_meta`. (Previously: a published field had no reason.) Refs: SPEC-05 §4.2, D-0438, D-0533.
 
 ### Requirement: Atomic offers (INV-15)
-Price, currency and availability SHALL come from one anchor Offer; Offers that disagree give `offers_disagree`, a field
-the anchor lacks that another Offer states gives `offer_split`, a field no Offer states publishes from the target's own
-values (its Open Graph, page state or text: a shown price is never dropped), and an `AggregateOffer` range never
-publishes as the price. Availability the
-Offers disagree on comes from the one Offer of the variant the target shows, when it shows one (variants spec). Refs: §10, D-0440;
-per-row and common-value rules in [variants](../variants/spec.md). Enforced by: resolver test; active.
+Price, currency and availability SHALL come from one anchor Offer: the Offer of the variant the target shows (Shown
+variant, [variants](../variants/spec.md)), else the one holding values for the most offer fields, the first on a tie.
+The anchor's values score as the target's own and another Offer's at half (Candidate score). Where Offers state other
+values a price publishes its best one flagged `offers_disagree`; the other offer fields publish only the shown
+variant's value, else `conflict` `offers_disagree`. A value only another Offer than the anchor states publishes
+flagged `offer_split` for a price, else is `conflict` `offer_split`; a field no Offer states publishes from the
+target's own values (its Open Graph, page state or text: a shown price is never dropped), and an `AggregateOffer` range
+never publishes as the price. (Previously: a price whose Offers disagreed, or only another Offer stated, was a
+`conflict`.) Refs: §10, owner #68, owner 2026-10-19; per-row and common-value rules in
+[variants](../variants/spec.md). Enforced by: resolver test; active.
 #### Scenario: Price and availability from two Offers
 - **WHEN** Offer A states only price and Offer B states only availability
-- **THEN** the field without a value from the anchor Offer is `conflict` with reason `offer_split`
+- **THEN** `availability`, which the anchor lacks, is `conflict` with reason `offer_split`
 #### Scenario: Variant Offers without a price
 - **WHEN** the target's only Offer states availability and no price, and its `og:price:amount` states one
 - **THEN** `price` publishes the Open Graph amount and `availability` the Offer's

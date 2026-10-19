@@ -63,7 +63,6 @@ from crawlerai.resolve.preference import (
 from crawlerai.resolve.records import is_complete, record_confidence
 from crawlerai.resolve.row_keys import keyed_rows
 from crawlerai.resolve.rows import RowField, resolve_rows
-from crawlerai.resolve.shown_variant import shown_variant_availability
 from crawlerai.resolve.types import ExtractionResult, FieldSet, LLMCallRecord, Outcome, Probability
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, Scope
 from crawlerai.storage.capture_bundle import CaptureBundle
@@ -368,14 +367,14 @@ class _Page:
     ) -> FieldSet:
         """Preference (§4.7, §4.8) for `target`, derivations, then evidence and confidence. `page_values`: whether
         page-level candidates are the target's (`EntityGraph.owned_by`); `detail`: whether `target` is a detail page's,
-        with its variant fill and row-mapped fields (variants spec)."""
+        with the variant it shows, its variant fill and row-mapped fields (variants spec)."""
         schema = self.schema
         decisions: dict[str, Preference | Derived]
         rows: FieldSet = {}
         if isinstance(target, AmbiguousTarget):
             decisions = dict(intent_ambiguous(schema, candidates))
         else:
-            resolver = Resolver(self.graph, target, self.facts, self.data.orders, page_values, variant_fill=detail)
+            resolver = Resolver(self.graph, target, self.facts, self.data.orders, page_values, detail=detail)
             preferences = resolver.prefer(schema, candidates)
             by_field: dict[str, list[Candidate]] = defaultdict(list)
             for candidate in candidates:
@@ -394,11 +393,7 @@ class _Page:
             }
             if detail:
                 rows = self._rows(target, candidates)
-        fields = self._assess(decisions)
-        # The shown variant is read from the assessed values, so one below the threshold never selects a row.
-        if shown := shown_variant_availability(schema, decisions, fields, rows):
-            fields = self._assess({**decisions, **shown})
-        return fields | rows
+        return self._assess(decisions) | rows
 
     def _assess(self, decisions: Mapping[str, Preference | Derived]) -> FieldSet:
         return assess_fields(
@@ -423,6 +418,7 @@ class _Page:
                     calibration=self.data.calibration,
                     min_confidence=self.data.min_confidence,
                     page_urls=self.page_urls,
+                    variant_params=self.collected.variant_params,
                 ),
                 candidates,
             )

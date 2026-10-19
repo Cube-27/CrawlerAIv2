@@ -37,22 +37,26 @@ rule); active.
 - **THEN** they are two rows
 
 ### Requirement: Per-row resolution
-Each cluster SHALL resolve like an entity: agreement, precedence, evidence and τ per sub-field in `list.<type>`
-buckets; a row publishes when a key sub-field publishes, else it is dropped `key_unpublished`. Refs: §10, D-0800, D-0805.
+Each cluster SHALL resolve like an entity: the candidate score ([resolution](../resolution/spec.md)), evidence and
+confidence per sub-field in `list.<type>` buckets; a row publishes when a key sub-field publishes, else it is dropped `key_unpublished`. Refs: §10, D-0800, D-0805.
 
 ### Requirement: Atomic offers per row (INV-35)
-A row's price, currency, availability and stock quantity SHALL come from one Offer in that row (INV-15 per row).
-Refs: §10, Appendix A #37, #39. Enforced by: resolver test; active.
+A row's price, currency, availability and stock quantity SHALL come from one Offer in that row (INV-15 per row, as
+Atomic offers in [resolution](../resolution/spec.md)). Refs: §10, Appendix A #37, #39, owner #68. Enforced by:
+resolver test; active.
 #### Scenario: Two sellers in one row
 - **WHEN** one row's scope holds two Offers with different prices
-- **THEN** that row's `price` is `conflict` with reason `offers_disagree`
+- **THEN** that row's `price` publishes its anchor Offer's with reason `offers_disagree` (Previously: `conflict`.)
 
 ### Requirement: Own variants
-A published row SHALL be the target's own variant: a row whose only published sub-fields are URLs is dropped `url_only`
-(a link to a thing described elsewhere), and a row whose published URL names another resource than the page and the
+A published row SHALL be the target's own variant: a size or option chosen on the page is a variant, a colourway at
+another URL a sibling. A row whose only published sub-fields are URLs is dropped `url_only` (a link to a thing described
+elsewhere), unless each names the page's resource with a query parameter by which the page's platform selects a
+variant (the platform's fingerprint states it, `adapters/platforms.py`: a variant addressed by its URL), and a row whose published URL names another resource than the page and the
 target (RFC 3986 authority and path, a trailing `/` aside; its query may select the variant) is dropped `other_page` (another product's
 page, such as a sibling colourway). Rows of one variant are already one by their shared key (INV-33). (Previously:
-every row with a published key sub-field published.) Refs: owner 2026-10-18.
+every row with a published key sub-field published; a row of URLs only was always dropped.) Refs: owner 2026-10-18,
+owner 2026-10-19.
 #### Scenario: Sibling products listed as members
 - **WHEN** a ProductGroup's `hasVariant` lists two variants at the page's URL with a `size` query, Products stating only
   a URL of another product page, and a Product with a sku at another product's page
@@ -71,19 +75,21 @@ Refs: §13.1, D-0798, D-0799, D-1185. Enforced by: Pydantic models (`FieldOutcom
 - **WHEN** the target has one Offer with a sku and no variants
 - **THEN** `variants` is `missing` with reason `single_row`, and the Offer's price publishes at top level
 
-### Requirement: No default variant; common values only (INV-38)
-A detail page's top-level price, currency, availability and stock quantity SHALL publish only a value every Offer of the
-target and its variants states alike, else `conflict`/`offers_disagree`, whatever variant a URL names; varying values
-publish only in the row-mapped field. One exception: availability is a variant's, and where the Offers disagree on it
-the target takes the availability of the variant it shows, its default or selected one: the one published row whose
-sku or gtin is the target's own and whose price, sku and gtin agree with the target's published ones (values that
-pass the confidence threshold; a row's sub-field is matched by its type and schema.org property, not its name)
-(`resolve/shown_variant.py`). With no such row it stays `offers_disagree`; no default is taken. (Previously: no
-exception.) Refs: Appendix A #37, #44, D-1057, D-1059, owner 2026-10-19.
-Enforced by: `tests/unit/test_common_variant_fields.py` and `tests/property/test_common_variant_fields.py`; active.
+### Requirement: Shown variant; common values otherwise (INV-38)
+Availability, currency and stock quantity are a variant's: where the Offers of the target and its variants state
+other values, a detail page's top-level field SHALL publish only the value of the variant the target shows, its
+default or selected one, else `conflict`/`offers_disagree`; no other default is taken, whatever variant a URL names.
+The shown variant is the one variant (or Offer of the target) whose sku or gtin, as a field or a row sub-field, equals
+one the target or the page states as its own; its Offers are the anchor (Atomic offers). A price always publishes:
+the shown variant's, else the best-scored, flagged `offers_disagree` (owner #68). Varying values publish per variant in
+the row-mapped field. (Previously: the price was `conflict`; availability took the shown variant's only after
+resolution, from a published row agreeing with the target's published price, sku and gtin,
+`resolve/shown_variant.py`.) Refs: Appendix A #37, #44, D-1057, D-1059, owner #68, owner 2026-10-19.
+Enforced by: `tests/unit/test_common_variant_fields.py` and `tests/unit/test_pipeline.py`; active.
 #### Scenario: URL names one variant
 - **WHEN** the request URL is a variant's own URL and the variants' prices differ
-- **THEN** top-level `price` is `conflict` (`offers_disagree`) and each price is in its `variants` row
+- **THEN** top-level `price` publishes the anchor Offer's with reason `offers_disagree` and each price is in its
+  `variants` row (Previously: `conflict`.)
 #### Scenario: The shown variant's availability
 - **WHEN** a Product states sku W-2 and two Offers, W-1 out of stock and W-2 in stock
 - **THEN** top-level `availability` is `InStock`; with neither a sku nor a gtin of the Product's that is one row's, it

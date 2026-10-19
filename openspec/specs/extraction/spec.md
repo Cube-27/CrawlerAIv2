@@ -131,13 +131,16 @@ image's gallery: from the main image up, the first block with siblings of its ta
 at the main image's tag path, a source several blocks give left out; none when a block links to another document or
 fewer than two remain. Both DOM passes (these values and the DOM description block) leave out the cards of other
 items (`collect/dom.py` `product_apart`): a shown price that is none of the prices structured data states for the
-schema's money fields belongs to the one other document its nearest block holding hyperlinks leads to (HTML Standard
+schema's money fields (only the page product's: not those of an item in another item's scope, `collect/scope.py`: a
+value of `isRelatedTo` or `isSimilarTo`, an `ItemList` or `ListItem` and what it holds, or a root item naming only other
+documents while another root item names the page) belongs to the one other document its nearest block holding hyperlinks leads to (HTML Standard
 §4.6.1), or that hyperlink's parent when it leads nowhere else, and that block is set apart unless it shows a stated
 price or holds the page's title (the main content's first shown `h1`); a block whose hyperlinks lead to several
 documents is no card, and without a stated price no card is set apart. Product microdata items, nested or not, that do
 not hold the title are set apart too. Values MUST be visible.
 (Previously: labels were only names, and other items' content was read; `src` was read before `srcset`; no list of
-images was read; a recommendation card that was not one of two or more sibling cards was read.) Refs: Appendix A #42, D-0955,
+images was read; a recommendation card that was not one of two or more sibling cards was read; an other item's
+structured price counted as stated, so its card was read.) Refs: Appendix A #42, D-0955,
 D-1096, D-1640, D-1641, D-1642, D-1643.
 #### Scenario: Gallery slides
 - **WHEN** the main image is one of three sibling slides, two of which hold an image whose `src` is a shared placeholder

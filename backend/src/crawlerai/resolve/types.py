@@ -67,7 +67,10 @@ class FieldOutcome(_Model):
     `value`, and `dropped`, the rows that did not publish; every other field holds neither."""
 
     status: FieldStatus
-    reason: str | None  # why the field is not published: `invalid`, `not_owned`, `below_tau`, `disagree`, ...
+    # Why the field is not published (`invalid`, `not_owned`, `below_min_confidence`, `disagree`, ...), or, on a
+    # published field, why its kept candidates did not all agree (`disagree`, `offers_disagree`, `offer_split`: the
+    # disagreement flag, resolution spec "Candidate score"); None on a published field they all agree on.
+    reason: str | None
     value: JsonValue
     evidence: Evidence | None
     confidence: Probability | None

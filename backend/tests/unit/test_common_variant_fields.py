@@ -68,7 +68,7 @@ def _resolve(document: dict[str, Any], request_url: str = GROUP_URL, *, fill: bo
     target = select_target(request_url, request_url, GROUP_URL, graph, primary_types(SCHEMA, VOCABULARY))
     assert isinstance(target, Entity)
     facts = PageFacts.of(request_url, lambda value: False)
-    resolver = Resolver(graph, target, facts, dict.fromkeys(PRECEDENCE_TYPES, ORDER), variant_fill=fill)
+    resolver = Resolver(graph, target, facts, dict.fromkeys(PRECEDENCE_TYPES, ORDER), detail=fill)
     return resolver.prefer(SCHEMA, collected.candidates)
 
 

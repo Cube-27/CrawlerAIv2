@@ -11,17 +11,16 @@ Each variant resolves its sub-fields with the resolver's own rules, its scope st
 from collections.abc import Callable, Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final, TypeGuard
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.schema_org_map import MappedPath, parse_paths
+from crawlerai.collect.scope import LISTS, RELATIONS
 from crawlerai.normalize.base import Ok
 from crawlerai.normalize.dispatch import equal, equality_key
 from crawlerai.resolve.evidence import BELOW_MIN_CONFIDENCE, Calibration, assess
-from crawlerai.resolve.identity import LISTS
-from crawlerai.resolve.intent import RELATIONS
 from crawlerai.resolve.ownership import AGGREGATE_OFFER, EntityGraph
 from crawlerai.resolve.preference import Orders, PageFacts, Resolver
 from crawlerai.resolve.types import DroppedRow, Evidence, FieldOutcome, FieldStatus, RowOutcome
@@ -58,6 +57,8 @@ class RowField:
     calibration: Calibration | None
     min_confidence: float | None
     page_urls: tuple[str, ...]  # request, final and canonical URLs, canonicalized
+    # The query parameters by which the page's platform selects a variant on the product's own URL (`Collected`).
+    variant_params: tuple[str, ...] = ()
 
     @property
     def sub_fields(self) -> Mapping[str, FieldSpec]:
@@ -159,14 +160,32 @@ class _Resolved:
 
 
 def _not_own(row_field: RowField, outcome: RowOutcome) -> str | None:
-    """Why a published variant is not one of the target's own (`URL_ONLY`, `OTHER_PAGE`), or None when it is."""
+    """Why a published variant is not one of the target's own (`URL_ONLY`, `OTHER_PAGE`), or None when it is. A row
+    stating only URLs is the page's own variant when each names the page's resource with a query parameter by which
+    the page's platform selects a variant (`RowField.variant_params`): a variant addressed by its URL, not a link."""
     published = {sub: o.value for sub, o in outcome.fields.items() if o.status == "published"}
     urls = {sub for sub in published if row_field.sub_fields[sub].type is FieldType.URL}
-    if not published.keys() - urls:
-        return URL_ONLY
     pages = {_resource(u) for u in (*row_field.page_urls, *row_field.target.urls)} - {None}
     stated = {_resource(published[sub]) for sub in urls} - {None}
+    if not published.keys() - urls and not _variant_urls(row_field, [published[sub] for sub in urls], pages):
+        return URL_ONLY
     return OTHER_PAGE if pages and stated - pages else None
+
+
+def _variant_urls(row_field: RowField, values: Sequence[JsonValue], pages: set[tuple[str, str] | None]) -> bool:
+    """Whether every value is a URL of the page's resource whose query selects a variant (`RowField.variant_params`:
+    a parameter named so, or a name starting with a prefix that ends in `_`)."""
+    params = row_field.variant_params
+    return bool(params) and all(
+        isinstance(v, str)
+        and _resource(v) in pages
+        and any(_selects(name, params) for name, _ in parse_qsl(urlsplit(v).query))
+        for v in values
+    )
+
+
+def _selects(name: str, params: Sequence[str]) -> bool:
+    return any(name == p or (p.endswith("_") and name.startswith(p)) for p in params)
 
 
 def _resource(value: JsonValue) -> tuple[str, str] | None:

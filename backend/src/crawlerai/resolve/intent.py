@@ -13,17 +13,14 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal
-from urllib.parse import urlsplit
 
 from crawlerai.collect.base import Entity
 from crawlerai.collect.schema_org_map import Vocabulary, parse_paths
-from crawlerai.normalize.url import canonical_url as canonical_form
-from crawlerai.resolve.identity import LISTS, VARIANT
+from crawlerai.collect.scope import LISTS, RELATIONS, document
+from crawlerai.resolve.identity import VARIANT
 from crawlerai.resolve.ownership import OFFER, EntityGraph, names_any
 from crawlerai.schemas.types import SchemaDef
 
-# schema.org relation properties of a Product: a thing that is the value of one is another thing than its holder.
-RELATIONS = frozenset({"isRelatedTo", "isSimilarTo"})
 # A primary entity's variants are members of it (`VARIANT`, schema.org `hasVariant`), not other things the page is
 # about: they often repeat the group's URL, which would leave the page ambiguous. schema.org `isVariantOf`, the inverse
 # of `hasVariant`, holds the group its holder is a variant of: a more general thing than the holder.
@@ -98,7 +95,7 @@ def is_primary(graph: EntityGraph, entity: Entity, primary: frozenset[str]) -> b
 
 def _own(candidates: list[Entity], page_urls: list[str]) -> list[Entity]:
     """The candidates that are not another page's item: not leading only to other documents, not repeated."""
-    documents = {_document(url) for url in page_urls}
+    documents = {document(url) for url in page_urls}
     shapes: dict[str, int] = {}
     for entity in candidates:
         shape = _shape(entity)
@@ -107,19 +104,9 @@ def _own(candidates: list[Entity], page_urls: list[str]) -> list[Entity]:
     return [
         e
         for e in candidates
-        if not (e.urls and documents.isdisjoint(map(_document, e.urls)))
+        if not (e.urls and documents.isdisjoint(map(document, e.urls)))
         and shapes.get(_shape(e) or "", 0) < _MIN_REPEATED
     ]
-
-
-def _document(url: str) -> tuple[str, str, str] | None:
-    """The document a URL names: RFC 3986 §3 scheme, authority and path. The query may select within it (a variant of
-    the same page), so it is left out: two URLs differing only there are not taken for other documents."""
-    canonical = canonical_form(url, None)
-    if canonical is None:
-        return None
-    parts = urlsplit(canonical)
-    return parts.scheme, parts.netloc, parts.path
 
 
 def _shape(entity: Entity) -> str | None:

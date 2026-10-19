@@ -1,5 +1,5 @@
-"""Preference (extraction spec rule 4, §10): which of a field's valid, owned candidates
-publishes, and why every other one does not."""
+"""Preference (resolution spec, "Candidate score"): which of a field's valid, owned candidates publishes, and why every
+other one does not."""
 
 from pathlib import Path
 
@@ -117,10 +117,10 @@ def test_candidates_that_decline_or_are_not_owned_never_publish() -> None:
     }
 
 
-# Exact-match types (INV-14)
+# Exact-match types
 
 
-def test_disagreeing_exact_candidates_are_a_conflict() -> None:
+def test_exact_candidates_that_share_the_best_score_are_a_conflict() -> None:
     jsonld = _candidate("sku", "A-1")
     og = _candidate("sku", "A-2", PAGE, "og")
 
@@ -129,7 +129,7 @@ def test_disagreeing_exact_candidates_are_a_conflict() -> None:
     assert result["sku"] == Unpublished("conflict", "disagree", ((jsonld, "disagree"), (og, "disagree")), (jsonld, og))
 
 
-def test_one_amount_in_two_currencies_publishes_the_amount_with_its_currency_unknown() -> None:
+def test_a_price_always_publishes_and_one_amount_in_two_currencies_has_its_currency_unknown() -> None:
     price = FieldSpec(type=FieldType.MONEY, description="d", schema_org="Offer.price+priceCurrency")
     jsonld = _candidate("price", {"amount": "19.90", "currency": "EUR"})
     dom = _candidate("price", {"amount": "19.9", "currency": "USD"}, PAGE, "dom")
@@ -139,20 +139,28 @@ def test_one_amount_in_two_currencies_publishes_the_amount_with_its_currency_unk
 
     assert isinstance(chosen, Chosen)
     assert chosen.candidate.normalized == Ok({"amount": "19.90", "currency": None}, basis="unknown")
-    assert _prefer(_schema(price=price), jsonld, other)["price"].reason == "disagree"  # type: ignore[union-attr]
+    # Two amounts of equal score: the first stated publishes, flagged (owner #68: a grounded price is never dropped).
+    assert _prefer(_schema(price=price), jsonld, other)["price"] == Chosen(
+        jsonld, (), ((other, "outscored"),), (jsonld, other), "disagree"
+    )
 
 
-# Text, url and image_url: source precedence
+# Text, url and image_url: the source weight is the fitted order
 
 
-def test_the_first_ranked_source_kind_wins_and_lower_ones_that_disagree_are_rejected() -> None:
+def test_the_best_scored_value_wins_and_a_fragment_weighs_nothing() -> None:
     og = _candidate("title", "Lamp, the shop", PAGE, "og")
     jsonld = _candidate("title", "Lamp")
     og_same = _candidate("title", "Lamp", PAGE, "og", n=1)
+    decorated = _candidate("title", "Lamp | The Shop", PAGE, "og", n=2)
 
     result = _prefer(_schema(title=TITLE), og, jsonld, og_same)
+    fragment = _prefer(_schema(title=TITLE), decorated, jsonld)
 
-    assert result["title"] == Chosen(jsonld, (og_same,), ((og, "precedence"),), (og, jsonld, og_same))
+    # The other value is outscored and flags the field; a decorated title is a fragment (`supersede`): it weighs 0,
+    # so it neither wins nor flags it.
+    assert result["title"] == Chosen(jsonld, (og_same,), ((og, "outscored"),), (og, jsonld, og_same), "disagree")
+    assert fragment["title"] == Chosen(jsonld, (), ((decorated, "outscored"),), (decorated, jsonld))
 
 
 DOM_ORDER: tuple[SourceKind, ...] = ("jsonld", "og", "dom")
@@ -161,7 +169,7 @@ DOM_ORDER: tuple[SourceKind, ...] = ("jsonld", "og", "dom")
 # Atomic offers (INV-15)
 
 
-def test_a_price_no_offer_states_publishes_from_the_targets_own_values_and_one_another_offer_states_is_split() -> None:
+def test_a_price_no_offer_states_publishes_from_the_targets_own_values_and_another_offer_s_is_flagged() -> None:
     price = FieldSpec(type=FieldType.MONEY, description="d", schema_org="Offer.price+priceCurrency")
     availability = FieldSpec(
         type=FieldType.ENUM, vocab="schema:ItemAvailability", description="d", schema_org="Offer.availability"
@@ -177,7 +185,8 @@ def test_a_price_no_offer_states_publishes_from_the_targets_own_values_and_one_a
 
     assert result["price"] == Chosen(og, (), (), (og,))
     assert result["availability"] == Chosen(stock, (), (), (stock,))
-    assert split["price"].reason == "offer_split"  # type: ignore[union-attr]
+    # A price only another Offer than the anchor states still publishes (owner #68), flagged `offer_split`.
+    assert split["price"] == Chosen(other_offer, (), (), (other_offer,), "offer_split")
 
 
 # URL parameters (INV-13)
