@@ -24,8 +24,8 @@ from crawlerai.acquire.types import PageStep, StepOutcome, StepResult
 
 __all__ = ["Settle", "run_steps", "steps_budget_s"]
 
-# Waits up to the given seconds for the page's content to settle after a step that changes it (the browser rung's
-# quiet-content wait); returns early once it has.
+# Waits up to the given seconds after a step that changes the page for the data calls it started to end (the browser
+# rung's ready wait); returns early once they have.
 Settle = Callable[[float], Awaitable[None]]
 # How many fetch and XMLHttpRequest calls are in flight now.
 InFlight = Callable[[], int]

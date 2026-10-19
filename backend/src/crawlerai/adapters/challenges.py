@@ -15,7 +15,7 @@ cookies are challenge or clearance state, which is never kept nor replayed (`cha
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-__all__ = ["SIGNATURES", "ChallengeSignature", "challenge_cookie", "stand_in_vendor", "vendor_of"]
+__all__ = ["SIGNATURES", "ChallengeSignature", "challenge_cookie", "challenge_resource", "stand_in_vendor", "vendor_of"]
 
 
 @dataclass(frozen=True)
@@ -108,3 +108,10 @@ def challenge_cookie(name: str, value: str) -> bool:
         or any(marker in value for marker in signature.cookie_value_markers)
         for signature in SIGNATURES
     )
+
+
+def challenge_resource(url: str) -> bool:
+    """Whether a request is for a vendor's challenge or bot-management resource: its URL holds one of the vendor's
+    script paths or hosts (`script_paths`). The browser never blocks one (`acquire.blocklist`): a page whose challenge
+    cannot run is refused."""
+    return any(path in url for signature in SIGNATURES for path in signature.script_paths)

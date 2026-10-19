@@ -207,7 +207,13 @@ async def fetch_page(
     rungs = site_rungs(fetching, host, site)
     all_resources = site.load_all_resources
     policy = fetch_policy(
-        options, locale, site.proxy_pool, page_kind=task.page_kind, formats=formats, all_resources=all_resources
+        options,
+        locale,
+        site.proxy_pool,
+        page_kind=task.page_kind,
+        formats=formats,
+        all_resources=all_resources,
+        scope=str(task.job_id),
     )
     if options.cache == "only":
         # A page the config's API recipe serves was stored as its JSON, as a scrape reads it.

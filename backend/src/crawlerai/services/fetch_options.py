@@ -185,10 +185,12 @@ def fetch_policy(
     page_kind: PageKind | None = None,
     formats: Iterable[str] = (),
     all_resources: bool = False,
+    scope: str | None = None,
 ) -> FetchPolicy:
     """The fetch policy of a page task. A screenshot or PDF among its `formats` is made in the browser, which then
     fetches the page whatever the site's remembered method (`FetchPolicy.screenshot`, `pdf`). The browser loads
-    every resource of a site that loads `all_resources` (`site.load_all_resources`)."""
+    every resource of a site that loads `all_resources` (`site.load_all_resources`). `scope` is the task's job, whose
+    pages of one site share a browser context (`FetchPolicy.scope`)."""
     wanted = set(formats)
     return FetchPolicy(
         block_resources=not all_resources,
@@ -203,4 +205,5 @@ def fetch_policy(
         max_rows=options.max_rows,
         context=options.context(),
         steps=to_steps(options.actions, options.wait_for),
+        scope=scope,
     )

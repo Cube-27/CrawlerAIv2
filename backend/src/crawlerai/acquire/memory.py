@@ -127,9 +127,11 @@ def refused(attempt: AttemptRecord) -> bool:
     return attempt.block_class == "shell" and attempt.challenge is not None
 
 
-def lesson(result: FetchResult, lacks: bool | None) -> Lesson | None:
+def lesson(result: FetchResult, lacks: bool | None, *, forced: bool = False) -> Lesson | None:
     """What an `auto` fetch that tried HTTP and kept an `ok` teaches; None for any other fetch (a job's own method, a
-    page that started in the browser or was served by an API: nothing new about HTTP). An HTTP `ok` teaches the
+    page that started in the browser or was served by an API: nothing new about HTTP), and for a render the caller
+    `forced` (its `render_fields`) while the HTTP page, with its data call, held the page's core: HTTP did not fail
+    there, so the site's later pages keep HTTP and the data call. An HTTP `ok` teaches the
     defaults. A browser `ok` teaches the browser and what it was needed for: rendering, when HTTP was `ok` but lacked
     what the caller reads or was a shell no challenge named; the page's data calls, when its rendered document still
     `lacks` what the caller reads and the render captured network JSON; browser steps. Its wait condition is the
@@ -142,7 +144,7 @@ def lesson(result: FetchResult, lacks: bool | None) -> Lesson | None:
         return None
     if result.method == "http":
         return Lesson("http")
-    return _rendered(result, http[-1], lacks) if result.method == "browser" else None
+    return _rendered(result, http[-1], lacks) if result.method == "browser" and not forced else None
 
 
 def _rendered(result: FetchResult, http: AttemptRecord, lacks: bool | None) -> Lesson:
@@ -166,14 +168,16 @@ def _rendered(result: FetchResult, http: AttemptRecord, lacks: bool | None) -> L
     )
 
 
-async def learn_fetch(conn: AsyncConnection, site_id: SiteId, result: FetchResult, lacks: bool | None) -> None:
+async def learn_fetch(
+    conn: AsyncConnection, site_id: SiteId, result: FetchResult, lacks: bool | None, *, forced: bool = False
+) -> None:
     """Remember what the fetch `result` of a site's page taught: its block or HTTP success in the block history, and
-    its `lesson` in the contract of the kind it was fetched as. A plain HTTP `ok` leaves a contract on HTTP as it is (a
-    handoff's HTTP `ok` is the handoff working); a contract the lesson would not change is not rewritten. The platform
-    an `ok` page shows (`adapters.platforms`) is the site's (`site.platform`)."""
+    its `lesson` (`forced` as there) in the contract of the kind it was fetched as. A plain HTTP `ok` leaves a contract
+    on HTTP as it is (a handoff's HTTP `ok` is the handoff working); a contract the lesson would not change is not
+    rewritten. The platform an `ok` page shows (`adapters.platforms`) is the site's (`site.platform`)."""
     await _record_block(conn, site_id, result)
     await _record_platform(conn, site_id, result)
-    learned = lesson(result, lacks)
+    learned = lesson(result, lacks, forced=forced)
     if learned is None:
         return
     values = {

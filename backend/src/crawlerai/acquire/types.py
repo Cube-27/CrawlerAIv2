@@ -118,9 +118,10 @@ class FetchPolicy(_Frozen):
     max_body_bytes: PositiveInt = 10_000_000
     max_decompressed_bytes: PositiveInt = 50_000_000
     capture_network_json: bool = True  # browser only
-    # Browser only: abort image, font and media requests by resource type (never by host); the page's documents,
-    # scripts, styles and data calls still load. Off for a site that opted out (`site.load_all_resources`) and for a
-    # page captured as a file, whose pixels need them.
+    # Browser only: abort the requests the page's DOM and data calls never need (`acquire.blocklist`: images, fonts,
+    # media and pings by resource type, listed advertising and tracking servers by category; never an anti-bot
+    # vendor's); the page's documents, scripts, styles and data calls still load. Off for a site that opted out
+    # (`site.load_all_resources`) and for a page captured as a file, whose pixels need them.
     block_resources: bool = True
     locale_hint: str | None = None  # request locale, for the normalizers' context
     page_kind: PageKind | None = None  # the kind the task fetches the page as, which `classify` reads
@@ -134,10 +135,14 @@ class FetchPolicy(_Frozen):
     # viewport or of the whole page, and a PDF print. Either needs the browser rung (`method_hint` `browser`).
     screenshot: Literal["viewport", "full_page"] | None = None
     pdf: bool = False
-    # Browser only: the wait condition the site's memory learned (`acquire.memory`): `content`, its document has what
-    # the caller reads once quiet, so a data call still in flight does not hold the read; `data_call`, it comes with
-    # one. None: the default settle, which waits for a data call in flight (`acquire.browser`).
+    # Browser only: the wait condition the site's memory learned (`acquire.memory`), what makes a render ready to read
+    # (`acquire.browser._ready`): `content`, its DOM states the product's offer, whatever data call is in flight;
+    # `data_call`, its data call has ended. None: the DOM states the offer and no data call is in flight.
     settle_on: SettleOn | None = None
+    # Browser only: the job whose fetches of one site render in one browser context, kept between them, so the
+    # cookies, storage and passed challenges of the site's earlier pages carry on (`acquire.browser`). None: a context
+    # of the fetch's own. Not part of the capture's policy.
+    scope: str | None = Field(default=None, exclude=True)
 
     @property
     def captures_page(self) -> bool:

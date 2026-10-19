@@ -81,18 +81,6 @@ _HEAVY = b"""<html><body><p id="done"></p><script>
 })();
 </script></body></html>"""
 _HEAVY_BODY = b'{"pad": "' + b"x" * 1_900_000 + b'"}'
-_BUSY = b"""<html><body><p>Polling page</p><p id="tick"></p><script>
-let n = 0;
-setInterval(() => { fetch('/api/n/0'); document.getElementById('tick').textContent = String(n++); }, 100);
-</script></body></html>"""
-# Network traffic that never stops under a DOM that stops changing once its text is in.
-_STILL = b"""<html><body><p>Polling page with settled content</p><script>
-setInterval(() => fetch('/api/n/0'), 100);
-</script></body></html>"""
-# Static content whose data call answers after the 2 s DOM quiet: the call is still in flight when the content is quiet.
-_LATE_CALL = b"""<html><body><p>Static page whose data arrives late</p><script>
-fetch('/api/late').then(r => r.json());
-</script></body></html>"""
 # A data call whose body never ends (its server sends the headers and part of the body, then holds the rest past the
 # fetch), beside one that answers in full.
 _UNENDING_CALL = (
@@ -209,10 +197,6 @@ def server() -> Iterator[Server]:
                 headers=(("Link", '</api/linked?page=2>; rel="next"'), ("Set-Cookie", "session=s2")),
             ),
             "/heavy": Reply(body=_HEAVY),
-            "/busy": Reply(body=_BUSY),
-            "/still": Reply(body=_STILL),
-            "/late-call": Reply(body=_LATE_CALL),
-            "/api/late": Reply(content_type=_JSON, body=b'{"late": true}', delay_s=3.5),
             "/unending-call": Reply(body=_UNENDING_CALL),
             "/api/unending": Reply(content_type=_JSON, body=b'{"never": "complete"}', hold_s=30),
             "/with-worker": Reply(body=_WITH_WORKER),

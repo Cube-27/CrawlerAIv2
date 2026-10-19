@@ -80,14 +80,17 @@ short-lived safety bias age differently, both in Postgres so every process reads
   named; `needs_xhr`: the kept render's document still lacked it and the render captured network JSON;
   `needs_traversal`: browser steps), `handoff`, and the
   field coverage (`found`, `missing`) of the last extraction with a record. It is learned only from an `auto` fetch that tried HTTP and kept an `ok`: an HTTP `ok` teaches the
-  defaults (and leaves a contract on HTTP as it is); a browser `ok` teaches `browser`, unless HTTP was refused, the
+  defaults (and leaves a contract on HTTP as it is); a render made only for the request's `render_fields` while the
+  HTTP page, joined with its data call, held the page's core (a detail page's offer, a listing's items:
+  `RenderNeed.forced`) teaches nothing, so the site's later pages keep HTTP and the data call; any other browser `ok`
+  teaches `browser`, unless HTTP was refused, the
   render needed neither data calls nor steps, and its cookies went on to HTTP (a site session, D-1353): then it was
   needed only to pass the block, `handoff` is set and the pages stay on `http`, their later fetches carrying the
   stored cookie state (challenge cookies stripped, browser to HTTP only). A site's API is replayed by its learned
   config's API recipe alone ([adapters](../adapters/spec.md), "Recipe execution and fallback"), never by the
-  contract. The wait condition is `content` when the
-  kept render's document has what the caller reads (the browser then does not wait for data calls in flight once the
-  content is quiet), `data_call` when it came with the data calls, none otherwise. An unchanged contract is not
+  contract. The wait condition ("HTTP and browser rungs", the ready wait) is `content` when the
+  kept render's document has what the caller reads (the browser then reads it once its DOM states the offer, whatever
+  data call is in flight), `data_call` when it came with the data calls, none otherwise. An unchanged contract is not
   rewritten. A contract is stale after `STALE_FAILURES` (2) consecutive caller-supplied pages extracted without a
   record, and a block (never extracted) is never one; a stale contract is kept but not used, and an extraction with a
   record makes it fresh again. A scheduler re-check SHALL retry each `browser` contract over HTTP after 7 days (the
@@ -161,13 +164,32 @@ installed Patchright Chromium major, checked at startup by `acquire/impersonate.
 record headers without cookies or proxy credentials, within `timeout_s` (10 s by default). The browser rung SHALL use Patchright's full Chromium build in
 headless mode, one browser per process shared by its page fetches (worker, API, scheduler, eval) with at most
 `BROWSER_CONTEXTS` (2) of them rendering at once (`acquire/shared_browser.py`; a listing scrape with browser actions
-launches its own), recycled once worn (after 200 pages or 30 min, by the next fetch that finds no page rendering in it), a fresh context per fetch (the caller's cookies added before it navigates), one navigation, no scripted
+launches its own), recycled once worn (after 200 pages or 30 min, by the next fetch that finds no page rendering in it), each page in a tab of its own, one navigation, no scripted
 actions (a listing scrape's browser actions and the caller's page steps excepted, below), capped by `browser_timeout_s`
-(plus the steps' own timeouts); it aborts image, font and media requests by resource type, never by hostname, unless
-the policy captures the page as a file or the site loads every resource (`site.load_all_resources`, set when a
-resource-blocked render of its listing showed fewer item blocks than its HTTP page); it reads
-the page after `load` once the DOM's structure and text are unchanged for 2 s or, for a 2xx/3xx document, the network
-is idle, at most 5 s after that wait began whether or not it is quiet, and keeps the main frame's latest document, following a navigation the document starts itself. A document
+(plus the steps' own timeouts).
+
+Contexts: a job's pages of one site render in one context (`FetchPolicy.scope`, the job; keyed also by the proxy pool
+and endpoint and whether requests are blocked), kept between them, so the site's cookies, storage and passed challenges
+carry on; a context renders one page at a time, at most 2 idle ones are kept (least recently used closed first), all
+close with the browser, and one whose page ended with an error or a 4xx/5xx document is closed. A fetch outside a job,
+or with the caller's cookies (added before it navigates), gets a context of its own.
+
+Request blocking (`acquire/blocklist.py`), unless the policy captures the page as a file or the site loads every
+resource (`site.load_all_resources`, set when a resource-blocked render of its listing showed fewer item blocks than its
+HTTP page): image, font, media and ping (Beacon, hyperlink auditing) requests by resource type, and requests to the
+advertising and tracking servers the EasyList and EasyPrivacy server lists name (pinned data, C4; `||host^` lines with
+at most `third-party` and resource-type options), never per site. The main frame's navigation and an anti-bot vendor's
+challenge or bot-management resource (`adapters.challenges.challenge_resource`) are never blocked.
+
+The ready wait, the one wait for a page: from `DOMContentLoaded`, the page is read once it has fired `load` and is
+clearly ready, by the site's learned wait condition (`settle_on`): `data_call`, a data call has ended and none is in
+flight; `content`, a detail page's DOM states its product's offer (`classify.usable_content`: a schema.org Product with
+offers in JSON-LD, sent or injected by script, an OGP product price, a microdata Product with offers); none, that with
+no data call in flight. A listing is read when the wait ends unless it waits for a data call. The wait ends at
+`READY_MAX_S` (3.5 s) whether or not the page is ready, and what is there is read; a document the main frame navigates
+to meanwhile (not a same-document navigation) starts it over, within 90% of `browser_timeout_s`, so the capture is the
+final document. A page step that changes the page is followed by the same wait for the data calls it started (3 s at
+most). A document
 `classify.interstitial` judges to stand in for the page (403, 429 or 503; a script or refresh; no page of the site) is
 first given up to 40% of `browser_timeout_s`, and at most 10 s, to navigate on, the wait ending at the main frame's
 next commit, with nothing clicked or typed. The browser reads a body's wire size before the body. The JSON rung
@@ -175,9 +197,11 @@ next commit, with nothing clicked or typed. The browser reads a body's wire size
 caps, cookie jar, proxy pools, reasons) the headers a page's `fetch()` sends: Fetch Metadata of a CORS request,
 `Referer`, `Origin`, in a `fetch()`'s order. (Previously: every resource loaded, and the interstitial wait had no
 absolute bound; the settle wait had none but the fetch's budget, a browser was launched per fetch outside the worker,
-and the HTTP timeout was 30 s.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
+and the HTTP timeout was 30 s; every fetch had a fresh context, only images, fonts and media were blocked, and a page
+was read after `load` once its DOM was unchanged for 2 s or the network idle, at most 5 s later, up to 3 s more while a
+data call was in flight.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
 D-1264, D-1265, owner #58, D-1320–D-1322, D-1325, D-1433, D-1437, master plan 2026-10-18 recommendation 12, owner
-plan 2026-10-19 (crawl speed).
+plan 2026-10-19 (crawl speed, P2 browser wait and blocking).
 #### Scenario: Interstitial that navigates on
 - **WHEN** a 403 document with no site structure replaces itself after more than 2 s
 - **THEN** the browser rung reads the document the navigation ends on
@@ -187,6 +211,16 @@ plan 2026-10-19 (crawl speed).
 #### Scenario: Images not loaded
 - **WHEN** a page loads an image, a font and a JSON call, and the policy captures no file
 - **THEN** the image and font requests are aborted and the JSON call is answered
+#### Scenario: Tracker blocked, challenge loaded
+- **WHEN** a page loads a script from a server the tracking list names and a vendor's challenge script whose host a
+  list also names
+- **THEN** the tracker request is aborted and the challenge script loads
+#### Scenario: Offer injected
+- **WHEN** a detail page's script injects a JSON-LD Product with offers 1 s after `load`, with no data call in flight
+- **THEN** the page is read then, not at `READY_MAX_S`
+#### Scenario: Second page of a site in a job
+- **WHEN** a job's second page of a site renders after its first passed a challenge
+- **THEN** it renders in the first page's context, holding the cookies the challenge set
 #### Scenario: Cross-site JSON call
 - **WHEN** a page on `https://jobs.example.com/` has its JSON fetched from `https://api.example.net/`
 - **THEN** the request carries `Sec-Fetch-Site: cross-site`, `Sec-Fetch-Mode: cors`, `Origin: https://jobs.example.com`
@@ -198,11 +232,9 @@ fetch, XMLHttpRequest and document responses (not the main frame's navigation) t
 `text/plain` or not at all, whose bytes are an RFC 8259 object or array (a guard prefix of at most 16 characters
 stripped, `storage.capture_bundle.network_json`); each with its request's method, body and cookie-free headers, the
 cookie-free response headers, the resource type and the count of browser actions before it, within the caps in
-`acquire/browser.py`. A render whose content is quiet while a data call is in flight is read up to 3 s later, so a
-late data call is kept; a data call is a fetch or XMLHttpRequest call to the page's own site (HTML §7.1.1) or one whose
-`Accept` names a JSON MIME type, so another site's beacons and pings hold no read. (Previously: every fetch and
-XMLHttpRequest call held the read.) A navigation the main frame commits while the render settles restarts the wait
-on the new document (within the settle deadline), so the capture is the final document. Refs: §7.2, Appendix A #59, D-0010, D-0540, D-1311, D-1312, D-1369, owner plan 2026-10-19 (crawl speed).
+`acquire/browser.py`. A data call, which the ready wait ("HTTP and browser rungs") waits for, is a fetch or
+XMLHttpRequest call to the page's own site (HTML §7.1.1) or one whose `Accept` names a JSON MIME type, so another
+site's beacons and pings hold no read. (Previously: every fetch and XMLHttpRequest call held the read.) Refs: §7.2, Appendix A #59, D-0010, D-0540, D-1311, D-1312, D-1369, owner plan 2026-10-19 (crawl speed).
 #### Scenario: JSON under another label
 - **WHEN** a page fetches `)]}'` and a JSON object labelled `text/plain`, and a text/plain body that is no JSON
 - **THEN** the first is kept as received and the second is not
@@ -295,14 +327,17 @@ D-1355, D-1381.
 Each fetch SHALL have its own HTTP session or browser context; cookies live in a per-fetch jar matched per RFC 6265
 (public-suffix `Domain` ignored), are sent only on matching hops and are discarded at the end; the caller's cookies
 (`RequestContext`) seed only that fetch's jar or context, for the fetched URL's host; the exceptions are the site
-session and the stored cookie state (`acquire/session.py`, next requirement). A site session is the cookies of the
+session and the stored cookie state (`acquire/session.py`, next requirement), and a job's browser context of one site
+("HTTP and browser rungs", contexts), which its later pages of that site in the same process render in, never another
+job's nor a fetch with the caller's cookies. A site session is the cookies of the
 site's registrable domain that a browser `ok` held after a `blocked` or `shell` HTTP attempt, challenge and clearance
 cookies left out, read without change with the user agent it sent; it seeds later HTTP and JSON fetches of that site
 (`site.host`) in that domain through the same pool endpoint, and its browser contexts on a direct route (a pooled
 context picks its own endpoint), in process memory, for at most 30 min and 200 fetches; `blocked` drops it, as does a
 `shell` before any `ok`; a site whose sessions keep being refused starts in the browser (block history, above). No cookie is logged or captured. (Previously: a vendor's clearance cookies were replayed when its signature
-called them portable.) Enforced by: cross-fetch, cross-site, cross-domain, cross-proxy, expiry, no-persistence and
-caller-cookie tests; active. Refs: §7.1, D-0321, D-0884, D-0902, owner #58, D-1350–D-1353, D-1433.
+called them portable; every browser fetch had a fresh context.) Enforced by: cross-fetch, cross-site, cross-domain,
+cross-proxy, expiry, no-persistence and caller-cookie tests; active. Refs: §7.1, D-0321, D-0884, D-0902, owner #58,
+D-1350–D-1353, D-1433, owner plan 2026-10-19 P2.
 #### Scenario: Next fetch to the same host
 - **WHEN** fetch A receives `Set-Cookie` from `example.com` and fetch B then requests `example.com`, with no site session
   and no stored cookie state
