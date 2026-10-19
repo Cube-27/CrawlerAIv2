@@ -2,8 +2,9 @@
 and the JSON bodies the page loads captured, the network data-source layer's input (Appendix A #59) and API
 discovery's (§7.2 step 1).
 
-One browser per worker process (`open_browser`), one fresh context per fetch. Every connection the context opens goes
-through a `SocksGuard`, which applies the SSRF guard to every redirect hop, frame and worker (§4.5). As in
+One browser per worker process (`open_browser`), one context per job and site (`_Contexts`), each page in a tab of its
+own. Every connection a context opens goes through its `SocksGuard`, which applies the SSRF guard to every redirect
+hop, frame and worker (§4.5). As in
 `fetch_http`, every failure becomes an `error` outcome with a short reason that never contains the URL (D-0128). A
 `blocked` or `shell` document is labelled with the challenge it presents (`acquire.challenge`), and the pool endpoint
 it went through is told how it went (`core.proxy_health`), as the HTTP rung does. Asked to export (`CookieExport`), the
@@ -11,16 +12,18 @@ fetch reads the context's cookies before the context closes, without changing th
 exception). Given the process's site sessions, the context starts with the site's live session's or stored cookies,
 and its cookies after an `ok` are kept as the site's stored state (`acquire.session`, browser to HTTP only). The
 caller's cookies (`RequestContext`) are added to the context before the navigation, as host-only
-cookies of the URL's host; the caller's headers are never set in the browser (INV-44). The caller's page steps run
-after the settle and before the read (`run_steps`), within the browser's time cap plus their own timeouts.
+cookies of the URL's host; the caller's headers are never set in the browser (INV-44). A page is read once it is
+ready (`_settle`), with what it never needs blocked (`acquire.blocklist`). The caller's page steps run after that wait
+and before the read (`run_steps`), within the browser's time cap plus their own timeouts.
 """
 
 import asyncio
 import contextlib
 import re
 import time
+from collections import OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Final, cast
@@ -31,8 +34,9 @@ from patchright.async_api import Browser, BrowserContext, Frame, Page, Request, 
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
+from crawlerai.acquire.blocklist import blocked_request, default_blocklist
 from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
-from crawlerai.acquire.classify import INTERSTITIAL_STATUS, Redirect, interstitial
+from crawlerai.acquire.classify import INTERSTITIAL_STATUS, Redirect, interstitial, usable_content
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.items import element_path, item_groups, lxml_root
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
@@ -97,52 +101,34 @@ DATA_REQUESTS = frozenset({"fetch", "xhr", "document"})
 # structured syntax suffix (RFC 6839 §3.1). A body labelled `text/plain`, or not labelled, may still be JSON: it is
 # kept only when its bytes are (`network_json`, RFC 8259).
 _SNIFFED_TYPES = frozenset({"text/plain", ""})
-# The wait for the page to settle ends at this share of `browser_timeout_s`; the rest is for reading the DOM and the
-# bodies.
+# The wait for the page to be ready ends at this share of `browser_timeout_s` whatever navigations the page makes; the
+# rest is for reading the DOM and the bodies.
 _SETTLE_SHARE = 0.9
-# D-1200: after `load` (HTML Standard §8.4.6), the page is read once its DOM's structure and text have not changed for
-# this long (DOM Standard §4.3, a MutationObserver on `childList` and `characterData`), or once the network is idle.
-# Attribute changes are left out: animations and style toggles change attributes, not content.
-_QUIET_S = 2.0
+# The one wait (owner plan 2026-10-19 P2, `_settle`): from `DOMContentLoaded` (HTML Standard §8.4.6), a document is read
+# as soon as it is clearly ready (`_ready`), and at most this long after its wait began, ready or not: what is there
+# then is read. An unmeasured starting point within the plan's 3 to 4 s.
+READY_MAX_S: Final = 3.5
 _POLL_S = 0.25
-# A page whose content is quiet while one of its data calls is still in flight is waited for up to this much longer,
-# so a data call that arrives late is kept; a call that never ends (a long poll) holds the read no longer than that.
-# A data call is a fetch or XMLHttpRequest call (Fetch Standard §2.2.5 destinations) that can carry the page's data:
-# one to the page's own site (HTML Standard §7.1.1, its registrable domain), or one that asks for JSON (an `Accept`
-# naming a JSON MIME type, RFC 9110 §12.5.1). Calls to other sites that ask for no JSON (analytics beacons, ad and
-# tag-manager pings) are always in flight on some pages and carry nothing the page shows.
-_CALL_WAIT_S = 3.0
+# A page step that starts no data call has settled once nothing has been in flight this long: Playwright's
+# `networkidle` quiet period (500 ms).
+_STEP_QUIET_S: Final = 0.5
+# A data call is a fetch or XMLHttpRequest call (Fetch Standard §2.2.5 destinations) that can carry the page's data: one
+# to the page's own site (HTML Standard §7.1.1, its registrable domain), or one that asks for JSON (an `Accept` naming
+# a JSON MIME type, RFC 9110 §12.5.1). Calls to other sites that ask for no JSON (analytics beacons, ad and tag-manager
+# pings) are always in flight on some pages and carry nothing the page shows.
 _CALLS = frozenset({"fetch", "xhr"})
-# After `load`, a document is read at most this long after its wait began, quiet or not: content that keeps changing
-# (a carousel, a countdown) or a network that never idles holds the read no longer. It covers a quiet period
-# (`_QUIET_S`) plus a late data call (`_CALL_WAIT_S`).
-_SETTLE_MAX_S = _QUIET_S + _CALL_WAIT_S
-# Evaluated in Patchright's isolated world, which shares the document but not the page's globals, so the page neither
-# sees nor touches the observer. It is installed on the first call in each document, and answers the seconds since
-# the last change.
-_QUIET_JS = """() => {
-  const millis = () => new Date().getTime();
-  if (globalThis.__lastChange === undefined) {
-    globalThis.__lastChange = millis();
-    new MutationObserver(() => { globalThis.__lastChange = millis(); })
-      .observe(document, {subtree: true, childList: true, characterData: true});
-  }
-  return (millis() - globalThis.__lastChange) / 1000;
-}"""
+# Idle site contexts a browser keeps for reuse (`_Contexts`): as many as it renders at once (`BROWSER_CONTEXTS`).
+_KEPT_CONTEXTS = 2
 # RFC 9110 §15.4: a 3xx document answer is a redirect hop (or a validator's 304), never the document the frame shows.
 _REDIRECTION = range(300, 400)
-# RFC 9110 §15.5, §15.6: a 4xx or 5xx document. Its network going idle does not end the wait (D-1201): such a page may
-# still replace itself, and is read once its content is quiet.
+# RFC 9110 §15.5, §15.6: a 4xx or 5xx document; the context that rendered one is not reused (`_Contexts`).
 _ERROR_STATUS = 400
 # D-1206, D-1262: for a document `interstitial` judges to stand in for the page, the wait for the main frame to navigate
-# on lasts up to this share of `browser_timeout_s`, and at most `_INTERSTITIAL_MAX_S`, not the 2 s DOM quiet, and ends
+# on lasts up to this share of `browser_timeout_s`, and at most `_INTERSTITIAL_MAX_S`, not the ready wait, and ends
 # as soon as a navigation commits. Nothing is clicked or typed. The bound is an unmeasured starting point (master plan
 # 2026-10-18 §6): a challenge that does not clear headless held each fetch for the whole share (backlog, #244).
 _INTERSTITIAL_SHARE = 0.4
 _INTERSTITIAL_MAX_S = 10.0
-# Fetch Standard §2.2.5 destinations Playwright names `image`, `font` and `media`: the page's pixels and sound, which
-# the rung never reads (master plan 2026-10-18 recommendation 12). By resource type, never by host.
-_MEDIA = frozenset({"image", "font", "media"})
 # A screenshot or PDF past this size is dropped rather than stored: the capture is kept without it.
 _ARTIFACT_MAX_BYTES = 25_000_000
 # Seconds the files of a page may take beyond the fetch's own budget (Playwright's default per-operation timeout): a
@@ -165,21 +151,72 @@ _MEASURED_BLOCKS_MAX = 2_000
 _NET_ERROR = re.compile(r"net::ERR_[A-Z0-9_]+")
 
 
+@dataclass
+class _Context:
+    """A browser context, the guard every connection it opens goes through, the bytes the guard has relayed, and what
+    closes both."""
+
+    context: BrowserContext
+    guard: SocksGuard
+    traffic: Traffic
+    stack: AsyncExitStack
+
+    async def close(self) -> None:
+        with contextlib.suppress(PlaywrightError):
+            await self.stack.aclose()
+
+
+# What a context may be reused for (`_context_key`): the job, the site, the proxy pool and endpoint, request blocking.
+type _ContextKey = tuple[str, str, str | None, ProxyEndpoint | None, bool]
+
+
+@dataclass
+class _Contexts:
+    """The idle contexts a browser keeps, one per job and site (owner plan 2026-10-19 P2): the site's next page in the
+    job opens in it, so the cookies, storage and passed challenges of its earlier pages carry on, as in one user's
+    browser. A context is taken while a page renders in it, so no two pages share one at once; at most
+    `_KEPT_CONTEXTS` are kept, the least recently used closed first, and all of them close with the browser (which
+    `SharedBrowser` recycles)."""
+
+    idle: OrderedDict[_ContextKey, _Context] = field(default_factory=OrderedDict)
+
+    def take(self, key: _ContextKey) -> _Context | None:
+        return self.idle.pop(key, None)
+
+    async def keep(self, key: _ContextKey, context: _Context) -> None:
+        # Two pages of a site rendered at once each had a context: the one kept first is closed, never dropped open.
+        previous = self.idle.pop(key, None)
+        if previous is not None:
+            await previous.close()
+        self.idle[key] = context
+        while len(self.idle) > _KEPT_CONTEXTS:
+            _, oldest = self.idle.popitem(last=False)
+            await oldest.close()
+
+    async def aclose(self) -> None:
+        while self.idle:
+            _, context = self.idle.popitem()
+            await context.close()
+
+
 @dataclass(frozen=True)
 class BrowserSession:
-    """A launched browser, shared by the fetches of one worker process."""
+    """A launched browser, shared by the fetches of one worker process, and the site contexts it keeps."""
 
     browser: Browser
+    contexts: _Contexts = field(default_factory=_Contexts)
 
 
 @asynccontextmanager
 async def open_browser() -> AsyncIterator[BrowserSession]:
-    """The browser runs until the block ends; leaving it ends the browser and driver processes."""
+    """The browser runs until the block ends; leaving it ends its kept contexts, the browser and driver processes."""
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(channel=_CHANNEL, headless=True, args=_LAUNCH_ARGS)
+        session = BrowserSession(browser)
         try:
-            yield BrowserSession(browser)
+            yield session
         finally:
+            await session.contexts.aclose()
             await browser.close()
 
 
@@ -273,14 +310,22 @@ async def fetch_browser(
 
 
 async def stepped(page: "Rendered") -> tuple[StepOutcome, ...]:
-    """Run the policy's page steps on the settled page, each change followed by a wait for its content to settle."""
+    """Run the policy's page steps on the ready page, each change followed by the wait for the data calls it started
+    (`_called`), within the step's settle bound."""
     if not page.policy.steps:
         return ()
 
     async def settle(within_s: float) -> None:
-        with contextlib.suppress(TimeoutError):
-            async with asyncio.timeout(within_s):
-                await _content_quiet(page.page, page.frame, page.calls)
+        answered = page.calls.answered
+        begun = time.monotonic()
+        deadline = begun + within_s
+
+        async def called() -> bool:
+            # A step that starts no data call (a click that only shows what was loaded) is settled once quiet.
+            quiet = not page.calls.in_flight and time.monotonic() - begun >= _STEP_QUIET_S
+            return quiet or _called(page.calls, answered)
+
+        await _until(page.frame, called, within_s, deadline)
 
     return await run_steps(page.page, page.policy.steps, settle, lambda: len(page.calls.in_flight))
 
@@ -381,19 +426,22 @@ class DataCalls:
 
     responses: list[tuple[Response, int]] = field(default_factory=list)
     actions: int = 0
-    in_flight: set[Request] = field(default_factory=set)  # the fetch and XMLHttpRequest calls not answered yet
+    in_flight: set[Request] = field(default_factory=set)  # the data calls (`_CALLS`) not answered yet
+    answered: int = 0  # the data calls that have ended, answered or failed
     # The data requests whose body arrived in full or failed (`requestfinished`, `requestfailed`). A body is read only
     # once its request is done: reading one still arriving waits for its end, which a body that never ends (a stream,
     # a keepalive beacon held open) never reaches, and the read would outlast the fetch's budget.
     done: set[Request] = field(default_factory=set)
 
     def on_request(self, request: Request, page_url: str) -> None:
-        """Count `request` in flight when it is a data call of the page at `page_url` (`_CALL_WAIT_S`)."""
+        """Count `request` in flight when it is a data call of the page at `page_url` (`_CALLS`)."""
         if request.resource_type in _CALLS and (_same_site(request.url, page_url) or _asks_json(request)):
             self.in_flight.add(request)
 
     def on_done(self, request: Request) -> None:
-        self.in_flight.discard(request)
+        if request in self.in_flight:
+            self.in_flight.discard(request)
+            self.answered += 1
         if request.resource_type in DATA_REQUESTS:
             self.done.add(request)
 
@@ -434,36 +482,113 @@ async def rendered(
     traffic: Traffic,
     seeded: Sequence[SessionCookie] = (),
 ) -> AsyncIterator[Rendered]:
-    """The page at `url` in a fresh context holding the `seeded` cookies, once its navigation has settled; the context
-    closes when the block ends, and its wall time is `timings["context"]`. The bytes the guard relays are added to
-    `traffic`. Raises `Failed`."""
+    """The page at `url`, once it is ready to read (`_settle`), in a new tab of the site's context: the one the job's
+    last page of the site left (`_Contexts`), else a new context holding the `seeded` cookies. The tab closes when the
+    block ends, and the context with it unless it is kept for the site's next page; the tab's wall time is
+    `timings["context"]`. The bytes the guard relays for the page are added to `traffic`. Raises `Failed`."""
     try:
         first = await connector.check(url)  # also refuses `file:`, `data:` and other non-web schemes
     except SsrfRejected as e:
         raise Failed(str(e), None) from e
-    async with SocksGuard(connector, checked=(first,), upstream=proxy, traffic=traffic) as guard:
+    key = _context_key(url, policy, proxy)
+    held = None if key is None else session.contexts.take(key)
+    if held is None:
+        held = await _open_context(url, policy, session, connector, first, proxy, seeded)
+    relayed = held.traffic.bytes
+    opened = time.monotonic()
+    kept = False
+    try:
+        page = await held.context.new_page()
+        try:
+            shown = await _navigate(page, url, first, policy, held.guard, started)
+            yield shown
+            latest = shown.frame.latest or shown.response
+            kept = key is not None and latest.status < _ERROR_STATUS and _context_key(latest.url, policy, proxy) == key
+        finally:
+            with contextlib.suppress(PlaywrightError):
+                await page.close()
+    finally:
+        traffic.bytes += held.traffic.bytes - relayed
+        timings["context"] = round((time.monotonic() - opened) * 1000)
+        if kept and key is not None:
+            await session.contexts.keep(key, held)
+        else:
+            await held.close()
+
+
+async def _open_context(
+    url: str,
+    policy: FetchPolicy,
+    session: BrowserSession,
+    connector: SafeConnector,
+    first: Target,
+    proxy: ProxyEndpoint | None,
+    seeded: Sequence[SessionCookie],
+) -> "_Context":
+    """A new context behind a guard of its own, holding the `seeded` and the caller's cookies, its requests blocked as
+    the policy says (`_blocking`)."""
+    stack = AsyncExitStack()
+    traffic = Traffic()
+    try:
+        guard = await stack.enter_async_context(
+            SocksGuard(connector, checked=(first,), upstream=proxy, traffic=traffic)
+        )
         context = await session.browser.new_context(
             proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK}, accept_downloads=False
         )
-        opened = time.monotonic()
-        try:
-            if seeded:
-                await context.add_cookies(seeded_cookies(seeded))
-            if policy.context is not None and policy.context.cookies:
-                await context.add_cookies(caller_cookies(url, policy.context))
-            if policy.block_resources and not policy.captures_page:
-                await context.route("**/*", _without_media)
-            page = await context.new_page()
-            yield await _navigate(page, url, first, policy, guard, started)
-        finally:
-            await context.close()
-            timings["context"] = round((time.monotonic() - opened) * 1000)
+        stack.push_async_callback(context.close)
+        if seeded:
+            await context.add_cookies(seeded_cookies(seeded))
+        if policy.context is not None and policy.context.cookies:
+            await context.add_cookies(caller_cookies(url, policy.context))
+        if _blocking(policy):
+            await context.route("**/*", _route)
+    except BaseException as e:
+        await stack.aclose()
+        # A context the browser refused while it still runs is this fetch's error, not a crashed browser.
+        if isinstance(e, PlaywrightError) and session.browser.is_connected():
+            raise Failed("render_error", None) from e
+        raise
+    return _Context(context, guard, traffic, stack)
 
 
-async def _without_media(route: Route) -> None:
-    """Abort a request for an image, a font or media (`_MEDIA`) and let every other one through: the page's documents,
-    scripts, styles and data calls load as they would, and what is read of the page is its DOM, not its pixels."""
-    if route.request.resource_type in _MEDIA:
+def _blocking(policy: FetchPolicy) -> bool:
+    """Whether the render blocks requests (`acquire.blocklist`): not for a page captured as a file, whose pixels need
+    every resource, nor for a site that loads every resource (`FetchPolicy.block_resources`)."""
+    return policy.block_resources and not policy.captures_page
+
+
+def _context_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> _ContextKey | None:
+    """What a context may be reused for (`_Contexts`): the job (`FetchPolicy.scope`), the page's site (HTML Standard
+    §7.1.1), the proxy pool and endpoint its guard goes through, and whether it blocks requests. None when it is not
+    reused: a fetch outside a job, or with the caller's own cookies, which are no site's state (acquisition spec,
+    "Cookies stay inside one fetch")."""
+    host = urlsplit(url).hostname
+    if policy.scope is None or policy.context is not None or host is None:
+        return None
+    return (policy.scope, default_suffixes().site(host), policy.proxy_pool, proxy, _blocking(policy))
+
+
+async def _route(route: Route) -> None:
+    """Abort a request the blocklist names (`acquire.blocklist.blocked_request`) and let every other one through: the
+    page's documents, scripts, styles and data calls load as they would, and what is read of the page is its DOM and
+    its data calls."""
+    request = route.request
+    try:
+        frame = request.frame
+    except PlaywrightError:
+        frame = None  # a service worker's request has no frame
+    navigation = frame is not None and request.is_navigation_request()
+    # A frame's navigation is made by the document that holds the frame; any other request by the frame's document.
+    parent = None if frame is None else frame.parent_frame
+    if navigation and parent is not None:
+        document: str | None = parent.url
+    else:
+        document = None if frame is None else frame.url
+    navigation = navigation and parent is None
+    if blocked_request(
+        request.url, request.resource_type, document, navigation=navigation, blocklist=default_blocklist()
+    ):
         await route.abort()
     else:
         await route.continue_()
@@ -471,8 +596,8 @@ async def _without_media(route: Route) -> None:
 
 class _MainFrame:
     """The main frame's document navigations (D-1201): the latest request (one per redirect hop), whether one is in
-    flight, the response of the latest document, which the frame shows once the navigation commits, and how many
-    navigations have committed."""
+    flight, the response of the latest document, which the frame shows once the navigation commits, how many
+    navigations have committed, and whether the latest document has fired `load` (HTML Standard §8.4.6)."""
 
     def __init__(self, page: Page, first_url: str) -> None:
         self._page = page
@@ -480,7 +605,11 @@ class _MainFrame:
         self.pending = False
         self.latest: Response | None = None
         self.commits = 0
+        self.loaded = False
         self._committed = asyncio.Event()
+
+    def on_load(self) -> None:
+        self.loaded = True
 
     def _ours(self, request: Request) -> bool:
         return request.is_navigation_request() and request.frame == self._page.main_frame
@@ -491,7 +620,7 @@ class _MainFrame:
 
     def on_response(self, response: Response) -> None:
         if self._ours(response.request) and response.status not in _REDIRECTION:
-            self.latest, self.pending = response, False
+            self.latest, self.pending, self.loaded = response, False, False
 
     def on_failed(self, request: Request) -> None:
         if self._ours(request):
@@ -520,6 +649,7 @@ async def _navigate(
     page.on("response", frame.on_response)
     page.on("requestfailed", frame.on_failed)
     page.on("framenavigated", frame.on_navigated)
+    page.on("load", lambda _: frame.on_load())
     page.on("request", lambda request: calls.on_request(request, page.url))
     page.on("requestfinished", calls.on_done)
     page.on("requestfailed", calls.on_done)
@@ -533,13 +663,14 @@ async def _navigate(
         raise Failed(_navigation_error(e, guard.rejection_for(frame.last_hop)), None) from e
     if response is None:  # only a same-document navigation has none, and a new page has no document yet
         raise Failed("no_response", None)
-    # A page that never settles is read as it is when the wait ends.
+    # A page that never becomes ready is read as it is when the wait ends.
     await _settle(
         page,
         frame,
+        calls,
+        policy,
         started + _SETTLE_SHARE * policy.browser_timeout_s,
         interstitial_deadline=started + min(_INTERSTITIAL_SHARE * policy.browser_timeout_s, _INTERSTITIAL_MAX_S),
-        calls=None if policy.settle_on == "content" else calls,
     )
     return Rendered(page, frame, response, policy, calls)
 
@@ -605,39 +736,63 @@ def _block_refs(body: bytes) -> list[tuple[str, str]]:
 
 
 async def _settle(
-    page: Page, frame: _MainFrame, deadline: float, *, interstitial_deadline: float, calls: DataCalls | None
+    page: Page,
+    frame: _MainFrame,
+    calls: DataCalls,
+    policy: FetchPolicy,
+    deadline: float,
+    *,
+    interstitial_deadline: float,
 ) -> None:
-    """Wait for `load`, then, while the document is an interstitial, for the next one (until `interstitial_deadline`),
-    then until the content is quiet (`_QUIET_JS`) with no data call in flight (`_CALL_WAIT_S` at most; none waited
-    for without `calls`, a site whose document has what is read once quiet, `FetchPolicy.settle_on`) or, for a
-    document that is no error, the network is idle (no connection for 500 ms), whichever comes first; a navigation
-    the main frame commits meanwhile restarts that wait on its document; at most until `deadline`."""
-    with contextlib.suppress(PlaywrightTimeout):
-        await page.wait_for_load_state("load", timeout=_ms_until(deadline))
+    """While the document is an interstitial, wait for the next one (until `interstitial_deadline`); then wait until
+    the document is ready to read (`_ready`), at most `READY_MAX_S`, a document the main frame navigates to meanwhile
+    starting that wait over (`_until`); at most until `deadline`."""
+    answered = 0  # the data calls of an interstitial the page passed are not the page's
     while time.monotonic() < interstitial_deadline and await _interstitial(page, frame):
         if not await _next_document(page, frame, interstitial_deadline):
             break
-    # A navigation the page starts itself (a script's `location.replace`, a refresh) while the wait runs makes what was
-    # quiet an interim document: the wait starts over on the document that committed, until `deadline`.
-    while time.monotonic() < deadline:
-        shown, latest = frame.commits, frame.latest
-        until = min(deadline, time.monotonic() + _SETTLE_MAX_S)
-        waits = [asyncio.create_task(_content_quiet(page, frame, calls))]
-        if frame.latest is None or frame.latest.status < _ERROR_STATUS:
-            waits.append(asyncio.create_task(_network_idle(page, until)))
-        navigated = asyncio.create_task(frame.next_commit())
-        try:
-            await asyncio.wait(
-                [*waits, navigated], timeout=max(0.0, until - time.monotonic()), return_when=asyncio.FIRST_COMPLETED
-            )
-        finally:
-            for wait in (*waits, navigated):
-                wait.cancel()
-            await asyncio.gather(*waits, navigated, return_exceptions=True)
-        if frame.commits == shown and frame.latest is latest:  # a response in before its commit counts too
-            return
-        with contextlib.suppress(PlaywrightTimeout):
-            await page.wait_for_load_state("load", timeout=_ms_until(deadline))
+        answered = calls.answered
+    await _until(frame, lambda: _ready(page, frame, calls, policy, answered), READY_MAX_S, deadline)
+
+
+async def _until(frame: _MainFrame, ready: Callable[[], Awaitable[bool]], within_s: float, deadline: float) -> None:
+    """Returns once `ready` holds with no navigation in flight, or `within_s` after the wait began, or after the last
+    document the main frame navigated to meanwhile (a script's `location.replace`, a refresh: what was shown was an
+    interim document; a same-document navigation, `history.pushState`, is none), at most at `deadline`."""
+    shown, until = frame.latest, min(deadline, time.monotonic() + within_s)
+    while time.monotonic() < until:
+        if frame.latest is not shown:
+            shown, until = frame.latest, min(deadline, time.monotonic() + within_s)
+        elif not frame.pending and await ready() and not frame.pending and frame.latest is shown:
+            return  # no navigation began while `ready` read the document
+        await asyncio.sleep(_POLL_S)
+
+
+def _called(calls: DataCalls, answered: int) -> bool:
+    """Whether a data call has ended since `answered` had, and none is in flight."""
+    return calls.answered > answered and not calls.in_flight
+
+
+async def _ready(page: Page, frame: _MainFrame, calls: DataCalls, policy: FetchPolicy, answered: int) -> bool:
+    """Whether the document is clearly ready to read (owner plan 2026-10-19 P2), by the site's learned wait condition
+    (`FetchPolicy.settle_on`, `acquire.memory`), once it has fired `load` (HTML Standard §8.4.6): `data_call`, a data
+    call has ended since the wait began (`answered` before it) and none is in flight; `content`, a detail page's DOM
+    states its product's offer (`classify.usable_content`: a schema.org Product with offers in JSON-LD, sent or
+    injected, an OGP product price, a microdata Product with offers); unknown, that, with no data call in flight. A
+    listing has no such target (its structured list may be a subset of the grid the render completes): it is read
+    when the wait ends, unless a data call is what it waits for."""
+    if not frame.loaded:
+        return False
+    if policy.settle_on == "data_call":
+        return _called(calls, answered)
+    if policy.page_kind == "listing" or (policy.settle_on is None and calls.in_flight):
+        return False
+    try:
+        text = await page.content()
+    except PlaywrightError:
+        return False  # the document is being replaced: the next poll reads the next one
+    # Parsing is CPU work: a thread keeps the event loop free.
+    return await asyncio.to_thread(usable_content, text)
 
 
 def _same_site(url: str, page_url: str) -> bool:
@@ -666,38 +821,16 @@ async def _interstitial(page: Page, frame: _MainFrame) -> bool:
 
 
 async def _next_document(page: Page, frame: _MainFrame, deadline: float) -> bool:
-    """Whether the main frame committed another navigation and its document loaded before `deadline`. The commit, not
-    the response: until then the frame still shows the interstitial, whose `load` has fired."""
+    """Whether the main frame committed another navigation and its document was parsed (`DOMContentLoaded`) before
+    `deadline`. The commit, not the response: until then the frame still shows the interstitial."""
     try:
         async with asyncio.timeout(max(0.0, deadline - time.monotonic())):
             await frame.next_commit()
     except TimeoutError:
         return False
     with contextlib.suppress(PlaywrightTimeout):
-        await page.wait_for_load_state("load", timeout=_ms_until(deadline))
+        await page.wait_for_load_state("domcontentloaded", timeout=_ms_until(deadline))
     return True
-
-
-async def _content_quiet(page: Page, frame: _MainFrame, calls: DataCalls | None) -> None:
-    """Returns once no navigation is in flight and the document's structure and text have not changed for `_QUIET_S`,
-    nor for `_CALL_WAIT_S` more while one of `calls` is in flight."""
-    while True:
-        await asyncio.sleep(_POLL_S)
-        if frame.pending:
-            continue
-        try:
-            quiet = cast(float, await page.evaluate(_QUIET_JS))
-        except PlaywrightError:
-            continue  # the document is being replaced, and its observer with it
-        if quiet >= (_QUIET_S + _CALL_WAIT_S if calls is not None and calls.in_flight else _QUIET_S):
-            return
-
-
-async def _network_idle(page: Page, deadline: float) -> None:
-    with contextlib.suppress(PlaywrightTimeout):
-        await page.wait_for_load_state("networkidle", timeout=_ms_until(deadline))
-        return
-    await asyncio.Event().wait()  # never idle: the quiet content or the deadline ends the wait
 
 
 async def _rendered(page: Page, exchange: Exchange) -> bytes:

@@ -162,10 +162,16 @@ class SocksGuard:
             # The scheme only selects `check`'s rules for web URLs: its port allowlist is the same for http and https,
             # and the tunnel carries whichever the page uses.
             self._targets[key] = asyncio.ensure_future(self._connector.check(f"https://{bracketed(host)}:{port}/"))
+        check = self._targets[key]
         try:
-            return await asyncio.shield(self._targets[key])
+            return await asyncio.shield(check)
         except SsrfRejected as e:
             self.rejections[key] = e.reason
+            if e.reason == "dns" and self._targets.get(key) is check:
+                # A resolver failure may be transient, and a site's context keeps its guard for later pages: the next
+                # connection to the host asks again (only this failed check is dropped, never a retry another
+                # connection started). A refusal by policy stands.
+                del self._targets[key]
             raise _Refused(_NOT_ALLOWED) from e
 
 

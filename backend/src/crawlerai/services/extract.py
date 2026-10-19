@@ -282,6 +282,7 @@ async def _samples(
             site.proxy_pool,
             page_kind=request.page_kind,
             all_resources=site.load_all_resources,
+            scope=str(job_id),
         )
         page: FetchResult | str | None
         if request.fetch.cache == "only":

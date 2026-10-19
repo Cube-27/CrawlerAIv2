@@ -215,7 +215,7 @@ async def _sitemap_seeds(
     read, up to its capacity, with the priorities the sitemaps state for them. The fetches count as the job's usage."""
     task = crawl.task
     site = await site_row(conn, frontier.scope.host)
-    policy = fetch_policy(crawl.request.fetch, crawl.request.locale, site.proxy_pool)
+    policy = fetch_policy(crawl.request.fetch, crawl.request.locale, site.proxy_pool, scope=str(task.job_id))
     attempts: list[AttemptRecord] = []
     # The page's fetch has just stored a fresh snapshot, so this reads it rather than fetching, unless the page
     # redirected to another host.

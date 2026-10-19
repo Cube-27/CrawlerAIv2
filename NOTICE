@@ -50,3 +50,14 @@ Licensed under the Mozilla Public License 2.0
 (https://mozilla.org/MPL/2.0/). Fetched unmodified by `crawlerai data fetch`;
 its source is https://github.com/publicsuffix/list.
 ------------------------------------------------------------------------
+EasyList and EasyPrivacy — https://easylist.to/
+Files: easylist_adservers.txt, easyprivacy_trackingservers_general.txt,
+easyprivacy_trackingservers_thirdparty.txt, easyprivacy_trackingservers_international.txt
+Used in: backend/src/crawlerai/acquire/blocklist.py (the browser's request blocking;
+only the lines that name a server are read)
+
+Dual licensed under the GNU General Public License 3.0 and the Creative Commons
+Attribution-ShareAlike 3.0 License (https://creativecommons.org/licenses/by-sa/3.0/);
+used under the latter. Fetched unmodified by `crawlerai data fetch`; its source is
+https://github.com/easylist/easylist.
+------------------------------------------------------------------------

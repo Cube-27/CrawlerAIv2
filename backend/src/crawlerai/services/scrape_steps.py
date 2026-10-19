@@ -402,6 +402,9 @@ class RenderNeed:
     # Whether a render with its images, fonts and media blocked listed fewer items than the HTTP page (`lost_items`):
     # the site then loads every resource (`remember_resources`).
     lost_items: bool = False
+    # Whether the page was rendered only for `render_fields`: its HTTP page, joined with its data call, held its core
+    # (`_lacks`). Such a render teaches the site's contract nothing (`acquire.memory.lesson`).
+    forced: bool = False
     # The schema.org vocabulary a platform data call's answer is read with (`_stated`); without it none is counted.
     vocabulary: Vocabulary | None = None
     _parsed: dict[UUID, ParsedPage] = field(default_factory=dict)
@@ -411,15 +414,23 @@ class RenderNeed:
         # With `render_fields` the HTTP page is rendered, and the render kept, whatever either shows, unless the page's
         # identity-checked platform data call states every one of them.
         if self.render_fields and over is None:
-            return not self.render_fields <= await asyncio.to_thread(self._stated, bundle)
+            needed = not self.render_fields <= await asyncio.to_thread(self._stated, bundle)
+            self.forced = needed and not await self._lacks(result, None)
+            return needed
+        lacks = await self._lacks(result, over)
+        return not self.render_fields and lacks
+
+    async def _lacks(self, result: FetchResult, over: FetchResult | None) -> bool:
+        """Whether the page lacks its core (a listing's items, a detail page's offer), `render_fields` aside."""
+        bundle = result.bundle
         if self.schema.page_kind == "listing":
             page = self._read(bundle)
             replaced = None if over is None else self._read(over.bundle)
             # Parsing and reading the structure are CPU work: a thread keeps the event loop free.
             if replaced is not None and bundle.manifest.fetch_policy.get("block_resources"):
                 self.lost_items = self.lost_items or await asyncio.to_thread(lost_items, page, replaced)
-            return not self.render_fields and await asyncio.to_thread(listing_needs_render, page, replaced)
-        if self.render_fields or not _requires_money(self.schema):
+            return await asyncio.to_thread(listing_needs_render, page, replaced)
+        if not _requires_money(self.schema):
             return False
         return not await asyncio.to_thread(self._offered, bundle)
 
@@ -472,7 +483,7 @@ async def new_capture(
     """Store the fetched page's capture, and remember on its site what the fetch learned (`acquire.memory.learn_fetch`,
     with whether a kept render still lacks what `check` reads), and that its renders need every resource when `check`
     saw a render lose items."""
-    await learn_fetch(conn, site_id, page, await _render_lacks(page, check))
+    await learn_fetch(conn, site_id, page, await _render_lacks(page, check), forced=check is not None and check.forced)
     if check is not None and check.lost_items:
         await conn.execute(update(Site).where(Site.id == site_id).values(load_all_resources=True))
     return await store_capture(conn, store, page, site_id)
