@@ -17,8 +17,8 @@ from functools import partial
 from crawlerai.adapters.registry import Registry
 from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.admission import AdmittingCollector
-from crawlerai.collect.base import Candidate, Collector, Entity
-from crawlerai.collect.dom import DomCollector
+from crawlerai.collect.base import Candidate, Collector, CollectResult, Entity
+from crawlerai.collect.dom import DomCollector, product_apart
 from crawlerai.collect.dom_text import DescriptionCollector
 from crawlerai.collect.items.align import Items, align
 from crawlerai.collect.items.state_rows import StateRows, state_rows
@@ -65,12 +65,7 @@ def collect_page(
     learned: LearnedCalls | None = None,
 ) -> Collected:
     """Every collector over the page; `learned` is the site's learned listing recipe's calls (`collect.xhr`)."""
-    collectors: list[Collector] = [
-        JsonLdCollector(vocabulary),
-        MicrodataCollector(vocabulary),
-        OpenGraphCollector(),
-        DomCollector(),
-    ]
+    collectors: list[Collector] = [JsonLdCollector(vocabulary), MicrodataCollector(vocabulary), OpenGraphCollector()]
     diagnostics: list[str] = []
     adapter = _adapter_collector(manifest, adapters, vocabulary, diagnostics)
     if adapter is not None:
@@ -78,6 +73,8 @@ def collect_page(
     results = [
         r for c in collectors if (r := _isolated(c, partial(c.collect, page, schema, ctx), diagnostics)) is not None
     ]
+    dom = _DomPasses.of(page, schema, ctx, [c for result in results for c in result.candidates], diagnostics)
+    results.extend(dom.structural(page, schema, ctx, diagnostics))
     # The item layer's blocks are read before the admitting collectors, whose values then agree with the best aligned
     # group's too.
     items = _isolated(align, partial(align, page, schema, ctx), diagnostics) or ()
@@ -85,8 +82,7 @@ def collect_page(
     entities = (*(entity for result in results for entity in result.entities), *(e for i in items for e in i.entities))
     others = (*(candidate for result in results for candidate in result.candidates), *best)
     # The description block extends what the other collectors state, so it reads after them.
-    description = DescriptionCollector()
-    described = _isolated(description, partial(description.collect, page, schema, ctx, others), diagnostics)
+    described = dom.description(page, schema, ctx, others, diagnostics)
     if described is not None:
         results.append(described)
         others = (*others, *described.candidates)
@@ -119,6 +115,34 @@ def collect_page(
         items=items,
         state=state,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _DomPasses:
+    """A detail page's two DOM passes, scoped to its product container (`collect.dom.product_apart`, read once against
+    the structured data's prices)."""
+
+    outside: frozenset[int]
+
+    @classmethod
+    def of(
+        cls, page: ParsedPage, schema: SchemaDef, ctx: Context, structured: Sequence[Candidate], diagnostics: list[str]
+    ) -> "_DomPasses":
+        outside = _isolated(product_apart, partial(product_apart, page, schema, ctx, structured), diagnostics)
+        return cls(outside or frozenset())
+
+    def structural(
+        self, page: ParsedPage, schema: SchemaDef, ctx: Context, diagnostics: list[str]
+    ) -> list[CollectResult]:
+        dom = DomCollector(self.outside)
+        found = _isolated(dom, partial(dom.collect, page, schema, ctx), diagnostics)
+        return [] if found is None else [found]
+
+    def description(
+        self, page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate], diagnostics: list[str]
+    ) -> CollectResult | None:
+        described = DescriptionCollector(self.outside)
+        return _isolated(described, partial(described.collect, page, schema, ctx, others), diagnostics)
 
 
 def _adapter_collector(

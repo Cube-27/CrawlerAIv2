@@ -13,7 +13,8 @@ whose meaning the HTML Standard defines, for pages whose structured data leaves 
   sibling pairs repeat for the items a page lists besides its own (related products, variants), so a field they give
   several values reads none from them; an identifier field that pairs of any kind give two values reads none.
 - **Other items.** Values held by other items than the page's own are not read: schema.org microdata's related and
-  similar items and reviews, and sibling blocks that each link to one other document (a list of cards). Nor is an
+  similar items and reviews, sibling blocks that each link to one other document (a list of cards), and the card of
+  any other item whose price the page shows (`product_apart`, also read by the description block). Nor is an
   identifier inside a hyperlink to another document, which names that document's item.
 - **Typed values.** A money field's or a checked identifier's value the main region shows once, read with the item
   layer's spotting (`collect.items.spot`): the text an element holds itself that the field's normalizer parses, not
@@ -47,15 +48,15 @@ from dataclasses import dataclass
 from pydantic import JsonValue
 from selectolax.lexbor import LexborNode
 
-from crawlerai.collect.base import PAGE, CollectResult
+from crawlerai.collect.base import PAGE, Candidate, CollectResult
 from crawlerai.collect.items.spot import is_typed, spots
 from crawlerai.collect.labels import Words, field_labels, properties, words
 from crawlerai.collect.locator import format_locator
-from crawlerai.collect.schema_org_map import NAMESPACES, candidate
+from crawlerai.collect.schema_org_map import NAMESPACES, candidate, schema_term
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.content.text import CELLS, shown
-from crawlerai.normalize.base import Context
+from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equality_key
 from crawlerai.normalize.url import canonical_url, media_type
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
@@ -94,6 +95,8 @@ _MIN_REPEATS = 2
 _SPOTTED_TYPES = frozenset({FieldType.MONEY, FieldType.IDENTIFIER})
 # The longest text a typed value is spotted in: an amount or an identifier is short, a longer text is prose around one.
 _SPOT_LENGTH = 64
+# schema.org `Product`: the item type whose microdata items other than the page's are set apart (`product_apart`).
+_PRODUCT = "Product"
 # HTML Standard §4.5.4 `s` and §4.7.2 `del`: text that is no longer accurate or was removed is no current value.
 _STRUCK = frozenset({"s", "del"})
 # schema.org properties whose values are other things than the page's item: `review`, `isRelatedTo`, `isSimilarTo`,
@@ -112,12 +115,16 @@ OTHER_ITEMS = ",".join(
 
 
 class DomCollector:
+    def __init__(self, outside: frozenset[int] = frozenset()) -> None:
+        # The elements outside the page's product container (`product_apart`).
+        self.outside = outside
+
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult:
         if schema.page_kind != "detail" or page.json_body:
             return CollectResult(entities=(), candidates=())
         diagnostics: list[str] = []
         candidates = []
-        content = _Content.of(page, ctx)
+        content = _Content.of(page, ctx, self.outside)
         labels = field_labels(schema)
         pairs = content.pairs(page) if content is not None else []
         listed = content.listed_pairs(page) if content is not None else []
@@ -126,7 +133,7 @@ class DomCollector:
             *_pairs_found(page, pairs, labels, schema, content),
             *_pairs_found(page, listed, field_labels(lists := _list_fields(schema)), lists, content),
             *_typed_found(page, schema, ctx, content, unlabelled),
-            *_image_found(page, schema, ctx),
+            *_image_found(page, schema, ctx, self.outside),
         ):
             locator = format_locator("dom", xpath)
             found = candidate(name, schema.fields[name], PAGE, "dom", raw, locator, ctx, diagnostics, read=read or None)
@@ -147,20 +154,21 @@ Pair = tuple[str, LexborNode, str, str]  # a label's text, the element holding i
 @dataclass(frozen=True, slots=True)
 class _Content:
     """The page's content region with the elements of it whose values are not the page's own: those `apart` (its
-    tangential content, dialogs and media fallback, and other items' content, `_other_items`), and those `linked`
-    (the content of a hyperlink to another document, which names that document's item)."""
+    tangential content, dialogs and media fallback, other items' content, `_other_items`, and the blocks outside the
+    product container, `product_apart`), and those `linked` (the content of a hyperlink to another document, which
+    names that document's item)."""
 
     region: LexborNode
     apart: frozenset[int]
     linked: frozenset[int]
 
     @classmethod
-    def of(cls, page: ParsedPage, ctx: Context) -> "_Content | None":
+    def of(cls, page: ParsedPage, ctx: Context, outside: frozenset[int]) -> "_Content | None":
         region = content_region(page)
         if region is None:
             return None
         links = _Links.of(region, ctx)
-        apart = _apart_ids(region) | _inside(_other_items(region, links))
+        apart = _apart_ids(region) | _inside(_other_items(region, links)) | outside
         return cls(region, apart, _inside(a for a in region.css(A_HREF) if links.of_block(a)))
 
     def links_out(self, element: LexborNode) -> bool:
@@ -238,6 +246,126 @@ def _unambiguous(name: str, raw: str, kinds: Mapping[tuple[str, str], set[str]],
 def content_region(page: ParsedPage) -> LexborNode | None:
     """The page's main content: its main region, else the document body."""
     return _main_region(page) or page.tree.body
+
+
+def product_apart(page: ParsedPage, schema: SchemaDef, ctx: Context, stated: Sequence[Candidate]) -> frozenset[int]:
+    """The elements of a detail page's main content outside its product container: the cards of other items.
+
+    The product's prices are those structured data `stated` for the schema's money fields. A price the page shows
+    (`items.spot`, outside chrome and struck text) that is none of them belongs to the one other document its nearest
+    block holding hyperlinks leads to (HTML Standard §4.6.1), or the hyperlink's parent when that block is the
+    hyperlink and the parent leads nowhere else: that block is the other item's card, unless it shows one of the
+    product's prices or holds the page's title, the main content's first shown `h1` (HTML Standard §4.3.6), which are
+    the product's own. A block whose hyperlinks lead to several documents is no card. Recommendations, "complete the
+    look" and bundles of other items are such cards, whatever their markup. So is a schema.org Product item (HTML
+    Standard §5.2: an `itemscope` whose `itemtype` is `Product`, outside other items' content, nested or not) that does
+    not hold the title. Without a stated price no price is the product's for certain: no card is set apart."""
+    region = content_region(page)
+    money = next((spec for spec in schema.fields.values() if spec.type is FieldType.MONEY), None)
+    if region is None or schema.page_kind != "detail" or page.json_body:
+        return frozenset()
+    chrome = _apart_ids(region, _STRUCK)
+    title = next((h for h in region.css("h1") if h.mem_id not in chrome and shown(h)), None)
+    apart = [item for item in _product_items(page) if title is None or not _holds(item, title)]
+    own = _stated_prices(schema, stated)
+    if money is None or not own:
+        return _inside(apart)
+    titled = frozenset(node.mem_id for node in _up(title, region)) if title is not None else frozenset()
+    return _inside((*apart, *_other_cards(region, _priced(region, chrome, money, ctx), own, titled, ctx)))
+
+
+def _other_cards(
+    region: LexborNode,
+    priced: Sequence[tuple[LexborNode, object]],
+    own: frozenset[object],
+    titled: frozenset[int],
+    ctx: Context,
+) -> Iterator[LexborNode]:
+    """The cards of the other items whose prices the region shows (`product_apart`): for each price not `own`, its
+    nearest block holding hyperlinks (or that hyperlink's parent), when they lead to one other document and the block
+    neither holds the title (is in `titled`) nor shows an `own` price."""
+    shows: dict[int, set[object]] = {}
+    for element, value in priced:
+        for node in _up(element, region):
+            shows.setdefault(node.mem_id, set()).add(value)
+    targets = _targets(region, ctx)
+
+    def foreign(node: LexborNode) -> bool:  # leads to one other document only, not the title's, shows no own price
+        return node.mem_id not in titled and len(targets.get(node.mem_id, ())) == 1 and not own & shows[node.mem_id]
+
+    for element, value in priced:
+        card = next((node for node in _up(element, region) if node.mem_id in targets), None)
+        if value in own or card is None or not foreign(card):
+            continue
+        # A hyperlink around the price alone leaves the card's other values (its brand, its name) beside it.
+        parent = card.parent if card.tag == "a" else None
+        held = parent is not None and parent.mem_id != region.mem_id and foreign(parent)
+        yield parent if held and parent is not None and targets[parent.mem_id] == targets[card.mem_id] else card
+
+
+def _stated_prices(schema: SchemaDef, stated: Sequence[Candidate]) -> frozenset[object]:
+    """The money values structured data states for the schema's money fields, keyed as `_priced` keys them."""
+    return frozenset(
+        equality_key(c.normalized.value, spec)
+        for c in stated
+        if isinstance(c.normalized, Ok)
+        and (spec := schema.fields.get(c.field)) is not None
+        and spec.type is FieldType.MONEY
+    )
+
+
+def _priced(
+    region: LexborNode, chrome: frozenset[int], money: FieldSpec, ctx: Context
+) -> list[tuple[LexborNode, object]]:
+    """The region's shown elements whose own short text is a money value (`items.spot`), outside `chrome` and struck
+    text, with the value's equality key."""
+    return [
+        (element, equality_key(spot.normalized.value, money))
+        for element, text in _short_texts(region, chrome)
+        for spot in spots(text, money, ctx, "", "")
+        if shown(element)
+    ]
+
+
+def _up(node: LexborNode, region: LexborNode) -> Iterator[LexborNode]:
+    """The node and its ancestors below the region (by identity: `==` compares serialized markup)."""
+    current: LexborNode | None = node
+    while current is not None and current.mem_id != region.mem_id:
+        yield current
+        current = current.parent
+
+
+def _targets(region: LexborNode, ctx: Context) -> dict[int, set[str]]:
+    """The other documents the hyperlinks each element of the region is or holds lead to (`_Links`), for the elements
+    that hold one."""
+    links = _Links.of(region, ctx)
+    held: dict[int, set[str]] = {}
+    for a in region.css(A_HREF):
+        if (target := links.targets.get(a.mem_id)) is not None:
+            for node in _up(a, region):
+                held.setdefault(node.mem_id, set()).add(target)
+    return held
+
+
+def _product_items(page: ParsedPage) -> list[LexborNode]:
+    """The page's schema.org Product items outside other items' content (`OTHER_ITEMS`), nested ones included."""
+    others = _inside(page.tree.css(OTHER_ITEMS))
+    return [
+        element
+        for element in page.tree.css("[itemscope][itemtype]")
+        if element.mem_id not in others
+        and any(schema_term(token) == _PRODUCT for token in (element.attributes.get("itemtype") or "").split())
+    ]
+
+
+def _holds(outer: LexborNode, inner: LexborNode) -> bool:
+    """Whether `inner` is `outer` or inside it (by identity: `==` compares serialized markup)."""
+    node: LexborNode | None = inner
+    while node is not None:
+        if node.mem_id == outer.mem_id:
+            return True
+        node = node.parent
+    return False
 
 
 def _own_text(node: LexborNode) -> str:
@@ -436,19 +564,21 @@ def _apart_ids(region: LexborNode, extra: frozenset[str] = frozenset()) -> froze
     return frozenset(inside.mem_id for root in region.css(selector) for inside in (root, *root.css("*")))
 
 
-def _image_found(page: ParsedPage, schema: SchemaDef, ctx: Context) -> Iterator[Found]:
+def _image_found(page: ParsedPage, schema: SchemaDef, ctx: Context, outside: frozenset[int]) -> Iterator[Found]:
     """The main image for each image field whose path names schema.org `image`, and its gallery for each such list of
-    images."""
+    images, outside the product container's other blocks (`product_apart`)."""
     named = {n: spec for n, spec in schema.fields.items() if _IMAGE in properties(spec)}
     fields = [n for n, spec in named.items() if spec.type is FieldType.IMAGE_URL]
     lists = [n for n, spec in named.items() if spec.item is not None and spec.item.type is FieldType.IMAGE_URL]
     region = _main_region(page) if fields or lists else None
     if region is not None:
-        yield from _region_images(region, ctx, fields, lists)
+        yield from _region_images(region, ctx, fields, lists, outside)
 
 
-def _region_images(region: LexborNode, ctx: Context, fields: Sequence[str], lists: Sequence[str]) -> Iterator[Found]:
-    links, apart = _Links.of(region, ctx), _apart_ids(region)
+def _region_images(
+    region: LexborNode, ctx: Context, fields: Sequence[str], lists: Sequence[str], outside: frozenset[int]
+) -> Iterator[Found]:
+    links, apart = _Links.of(region, ctx), _apart_ids(region) | outside
     found = _main_image(region, links, apart)
     if found is None:
         return

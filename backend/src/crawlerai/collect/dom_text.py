@@ -4,7 +4,7 @@ summary or a cut of it.
 
 Two structures name such a block, both read from the page's main content (`collect.dom`: the `main` element, else the
 `role="main"` landmark, else the one `article`, else the body) outside its tangential content, dialogs, media fallback,
-reviews and related items:
+reviews, related items and the blocks outside the product container (`collect.dom.product_apart`):
 - **Extension.** A block of prose whose text begins with a candidate another collector proposed for the field (the
   JSON-LD, microdata or Open Graph description, or its ellipsis-cut form) and goes on: it is the whole of what that
   candidate begins. A block that equals a candidate is its corroboration. Of the blocks that begin with it, the
@@ -82,7 +82,7 @@ class _Block(NamedTuple):
 class _Blocks:
     """The prose elements of a region with their cleaned text, in document order."""
 
-    def __init__(self, page: ParsedPage, region: LexborNode) -> None:
+    def __init__(self, page: ParsedPage, region: LexborNode, outside: frozenset[int]) -> None:
         self.page, self.region = page, region
         spans, text = page.text_spans, page.cleaned_text.text
         selector = ",".join(
@@ -93,9 +93,10 @@ class _Blocks:
                 OTHER_ITEMS,
             )
         )
-        roots = region.css(selector)
+        # The outermost elements outside the product container are set apart as the selected roots are.
+        roots = [*region.css(selector), *(n for n in region.css("*") if _outermost(n, outside))]
         # Inside an element set apart, and around one (a block that holds a form is not prose).
-        self.apart = frozenset(inside.mem_id for root in roots for inside in (root, *root.css("*")))
+        self.apart = outside | frozenset(inside.mem_id for root in roots for inside in (root, *root.css("*")))
         self.mixed = frozenset(a.mem_id for root in roots for a in _ancestors(root, region))
         # A heading names a block; it is no text of its own, nor is anything inside it.
         titles = frozenset(inside.mem_id for h in region.css(_HEADING) for inside in (h, *h.css("*")))
@@ -124,6 +125,10 @@ def _ancestors(node: LexborNode, region: LexborNode) -> Iterator[LexborNode]:
         parent = parent.parent
 
 
+def _outermost(node: LexborNode, outside: frozenset[int]) -> bool:
+    return node.mem_id in outside and (node.parent is None or node.parent.mem_id not in outside)
+
+
 def _heading(node: LexborNode) -> bool:
     return node.tag in {"h1", "h2", "h3", "h4", "h5", "h6"} or "heading" in tokens(node.attributes.get("role"))
 
@@ -134,6 +139,10 @@ def _stated(candidate_: Candidate) -> str | None:
 
 
 class DescriptionCollector:
+    def __init__(self, outside: frozenset[int] = frozenset()) -> None:
+        # The elements outside the page's product container (`collect.dom.product_apart`).
+        self.outside = outside
+
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate]) -> CollectResult:
         fields = [name for name, spec in schema.fields.items() if spec.type is FieldType.LONG_TEXT]
         lists = [name for name, spec in schema.fields.items() if spec.type is FieldType.LIST and labelled(spec)]
@@ -141,7 +150,7 @@ class DescriptionCollector:
         region = content_region(page) if schema.page_kind == "detail" and not page.json_body and wanted else None
         if region is None:
             return CollectResult(entities=(), candidates=())
-        blocks = _Blocks(page, region)
+        blocks = _Blocks(page, region, self.outside)
         labels = field_labels(schema)
         found: list[tuple[str, _Block, JsonValue]] = [
             (name, block, None) for name in fields if (block := _described(blocks, labels, schema, name, others))
