@@ -129,6 +129,19 @@ def test_disagreeing_exact_candidates_are_a_conflict() -> None:
     assert result["sku"] == Unpublished("conflict", "disagree", ((jsonld, "disagree"), (og, "disagree")), (jsonld, og))
 
 
+def test_one_amount_in_two_currencies_publishes_the_amount_with_its_currency_unknown() -> None:
+    price = FieldSpec(type=FieldType.MONEY, description="d", schema_org="Offer.price+priceCurrency")
+    jsonld = _candidate("price", {"amount": "19.90", "currency": "EUR"})
+    dom = _candidate("price", {"amount": "19.9", "currency": "USD"}, PAGE, "dom")
+    other = _candidate("price", {"amount": "21.00", "currency": "EUR"}, PAGE, "dom", n=1)
+
+    chosen = _prefer(_schema(price=price), jsonld, dom)["price"]
+
+    assert isinstance(chosen, Chosen)
+    assert chosen.candidate.normalized == Ok({"amount": "19.90", "currency": None}, basis="unknown")
+    assert _prefer(_schema(price=price), jsonld, other)["price"].reason == "disagree"  # type: ignore[union-attr]
+
+
 # Text, url and image_url: source precedence
 
 

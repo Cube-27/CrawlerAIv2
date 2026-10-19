@@ -27,10 +27,16 @@ Enforced by: property test; active.
 ### Requirement: Currency evidence ranks money candidates
 Among a money field's kept candidates, those whose currency rests on the strongest evidence (no `Ok.basis`, then
 `page`, `locale`, `unknown`; [normalization](../normalization/spec.md)) SHALL decide by agreement; a candidate on weaker
-evidence stays only when it equals one of them (it agrees), else it is rejected `weaker_currency`. Refs: owner #68.
+evidence stays only when it equals one of them (it agrees), else it is rejected `weaker_currency`. Candidates left that
+state one amount in different currencies agree on the amount, which publishes with its currency `null` (basis
+`unknown`): only the currency is contradicted, and a grounded price always publishes (C7). (Previously: such
+candidates were a `conflict`.) Refs: owner #68.
 #### Scenario: Unknown currency beside a stated one
 - **WHEN** JSON-LD says 19.90 USD and a DOM text says `$21.00` that no evidence settles
 - **THEN** `price` publishes 19.90 USD and the DOM candidate is rejected `weaker_currency`
+#### Scenario: One amount in two currencies
+- **WHEN** JSON-LD says 19.90 EUR and a DOM text says `19.90 USD`
+- **THEN** `price` publishes 19.90 with currency `null` and basis `unknown`
 
 ### Requirement: Source precedence for text, url and image
 For `text`, `long_text`, `url` and `image_url` the system SHALL publish from the first source kind in the type's order
@@ -65,7 +71,8 @@ abstain cause, per `resolve/types.py`); every rejected candidate keeps its own r
 
 ### Requirement: Atomic offers (INV-15)
 Price, currency and availability SHALL come from one anchor Offer; Offers that disagree give `offers_disagree`, a field
-the anchor lacks gives `offer_split`, and an `AggregateOffer` range never publishes as the price. Refs: §10, D-0440;
+the anchor lacks gives `offer_split`, and an `AggregateOffer` range never publishes as the price. Availability the
+Offers disagree on comes from the one Offer of the variant the target shows, when it shows one (variants spec). Refs: §10, D-0440;
 per-row and common-value rules in [variants](../variants/spec.md). Enforced by: resolver test; active.
 #### Scenario: Price and availability from two Offers
 - **WHEN** Offer A states only price and Offer B states only availability
