@@ -1,8 +1,9 @@
-"""The captured network JSON collector (extraction spec): the bodies a browser capture
+"""The captured network body collector (extraction spec): the bodies a browser capture
 kept.
 
-Each body is one document, read as `network_json` reads it (RFC 8259 §8.1, a guard prefix stripped); a body that is not
-JSON is skipped with a diagnostic. Values are admitted by `admission`; locators are `xhr:<n>:<path>`, `n` the body's
+Each body is one document, read as `network_json` reads it (RFC 8259 §8.1, a guard prefix stripped), or, labelled a
+Flight payload (`is_flight`), as the RSC Flight reader reads it (`content.rsc`: its JSON rows by row id); a body that is
+neither is skipped with a diagnostic. Values are admitted by `admission`; locators are `xhr:<n>:<path>`, `n` the body's
 index in the bundle.
 
 On a listing, the calls of one rows endpoint (`network_match.row_series`) give rows: the first series, best first, in
@@ -27,12 +28,13 @@ from crawlerai.collect.base import Candidate
 from crawlerai.collect.induce import induced
 from crawlerai.collect.network_match import DataCall, LearnedCalls, data_calls, row_series
 from crawlerai.collect.platform_json import data_call_bodies
+from crawlerai.content import rsc
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.segment import group_links
 from crawlerai.normalize.base import Context
 from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import network_json
+from crawlerai.storage.capture_bundle import is_flight, network_json
 
 Scalar = str | int | float
 # One row of a series: the scalars it holds by path relative to the row, in document order.
@@ -69,9 +71,15 @@ class XhrCollector:
 
 
 def network_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document]:
-    """The page's captured network bodies that are JSON, each addressed by its index in the bundle."""
+    """The page's captured network bodies that are JSON or Flight payloads, each addressed by its index in the
+    bundle."""
     documents: list[Document] = []
     for index, body in enumerate(page.network):
+        entries = page.network_entries
+        if index < len(entries) and is_flight(entries[index].content_type):
+            if (rows := rsc.model_rows(rsc.read_rows(body, f"xhr:{index}", diagnostics))) is not None:
+                documents.append(Document(rows, str(index)))
+            continue
         try:
             documents.append(Document(network_json(body), str(index)))
         except ValueError as e:  # UnicodeDecodeError is a ValueError

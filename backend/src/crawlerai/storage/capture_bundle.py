@@ -215,6 +215,15 @@ _WINDOWS_1252: Final = "windows-1252"
 _JSON_TYPES: Final = frozenset({"application/json", "text/json"})
 _JSON_SUFFIX: Final = "+json"
 _HTML_TYPES: Final = frozenset({"text/html", "application/xhtml+xml"})
+# React Server Components' Flight payload (React `ReactFlightClient.js`), as Next.js labels it
+# (`app-router-headers.ts`).
+FLIGHT_TYPE: Final = "text/x-component"
+
+
+def is_flight(content_type: str | None) -> bool:
+    """Whether a captured body's `Content-Type` labels a Flight payload: its essence, lower-cased and parameters
+    dropped (WHATWG MIME Sniffing §2.1)."""
+    return (content_type or "").split(";", 1)[0].strip().lower() == FLIGHT_TYPE
 
 
 def sha256_hex(data: bytes) -> str:
