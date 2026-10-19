@@ -63,6 +63,16 @@ def test_pushed_chunks_split_mid_row_make_one_stream_of_rows() -> None:
     assert diagnostics == []
 
 
+def test_a_push_in_a_comment_or_a_string_and_a_chunk_that_is_not_base64_add_nothing() -> None:
+    diagnostics: list[str] = []
+    text = f"// {_push(1, '0:1')}\nlet s = '{_push(1, '1:2')}';\n{_push(3, 'é')}"
+
+    assert flight_rows([ScriptBlock("", text, "/html[1]/body[1]/script[1]")], diagnostics) is None
+    assert [d.split(" (")[0] for d in diagnostics] == [
+        "js_state:/html[1]/body[1]/script[1]: Flight chunk is not base64"
+    ]
+
+
 def test_the_json_rows_are_one_state_document_and_one_xhr_document() -> None:
     html = "<html><body>" + "".join(f"<script>{s.text}</script>" for s in _scripts()) + "</body></html>"
     stream = _ROWS + _BINARY_ROW

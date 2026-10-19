@@ -20,7 +20,6 @@ base64 binary chunks (segment 3) make one Flight stream in script order, split a
 """
 
 import base64
-import binascii
 import re
 from collections.abc import Iterator, Sequence
 
@@ -28,7 +27,7 @@ from pydantic import JsonValue
 
 from crawlerai.content.js_literal import IDENT, STRINGS, NotLiteral, ends_value, read_literal, skip_space
 from crawlerai.content.page import ScriptBlock
-from crawlerai.content.rsc import Row, read_rows
+from crawlerai.content.rsc import MAX_BYTES, Row, read_rows
 from crawlerai.core.json_text import parse
 
 # RFC 8259 §1.2 / IANA media types: `application/json` holds JSON text.
@@ -68,7 +67,7 @@ def script_state(script: ScriptBlock, diagnostics: list[str]) -> Iterator[JsonVa
             diagnostics.append(f"js_state:{script.xpath}: invalid JSON ({e})")
         return
     text, start = script.text, 0
-    while (match := _next_statement(text, start)) is not None:
+    while (match := _next_code(_STATEMENT, text, start)) is not None:
         start = match.end()
         if text[start - 1] == "(":
             for argument, end in _object_arguments(text, start):
@@ -84,9 +83,10 @@ def script_state(script: ScriptBlock, diagnostics: list[str]) -> Iterator[JsonVa
             yield data
 
 
-def _next_statement(text: str, start: int) -> re.Match[str] | None:
-    """The next assignment or call at or after `start` that is not inside a comment or a string or template literal."""
-    while (match := _STATEMENT.search(text, start)) is not None:
+def _next_code(pattern: re.Pattern[str], text: str, start: int) -> re.Match[str] | None:
+    """The next match of `pattern` (an assignment or a call) at or after `start` that is not inside a comment or a
+    string or template literal."""
+    while (match := pattern.search(text, start)) is not None:
         opener = _SKIP_START.search(text, start, match.start())
         if opener is None:
             return match
@@ -125,6 +125,8 @@ def flight_rows(scripts: Sequence[ScriptBlock], diagnostics: list[str]) -> tuple
         for chunk in _flight_chunks(script.text, f"js_state:{script.xpath}", diagnostics):
             first = first or script.xpath
             stream += chunk
+            if len(stream) > MAX_BYTES:  # stop gathering: `read_rows` reads no stream this long
+                return first, read_rows(bytes(stream), f"js_state:{first}", diagnostics)
     if first is None:
         return None
     return first, read_rows(bytes(stream), f"js_state:{first}", diagnostics)
@@ -132,7 +134,7 @@ def flight_rows(scripts: Sequence[ScriptBlock], diagnostics: list[str]) -> tuple
 
 def _flight_chunks(text: str, source: str, diagnostics: list[str]) -> Iterator[bytes]:
     start = 0
-    while (match := _FLIGHT_PUSH.search(text, start)) is not None:
+    while (match := _next_code(_FLIGHT_PUSH, text, start)) is not None:
         start = match.end()
         try:
             segment, start = read_literal(text, start)
@@ -148,5 +150,5 @@ def _flight_chunks(text: str, source: str, diagnostics: list[str]) -> Iterator[b
         elif segment[0] == _BASE64_CHUNK:
             try:
                 yield base64.b64decode(segment[1], validate=True)
-            except binascii.Error as e:
+            except ValueError as e:  # binascii.Error, or a character outside ASCII
                 diagnostics.append(f"{source}: Flight chunk is not base64 ({e})")
