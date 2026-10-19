@@ -503,7 +503,7 @@ async def rendered(
             shown = await _navigate(page, url, first, policy, held.guard, started)
             yield shown
             latest = shown.frame.latest or shown.response
-            kept = key is not None and latest.status < _ERROR_STATUS
+            kept = key is not None and latest.status < _ERROR_STATUS and _context_key(latest.url, policy, proxy) == key
         finally:
             with contextlib.suppress(PlaywrightError):
                 await page.close()
@@ -561,7 +561,8 @@ def _blocking(policy: FetchPolicy) -> bool:
 def _context_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> _ContextKey | None:
     """What a context may be reused for (`_Contexts`): the job (`FetchPolicy.scope`), the page's site (HTML Standard
     §7.1.1), the proxy pool and endpoint its guard goes through, and whether it blocks requests. None when it is not
-    reused: a fetch outside a job, or with the caller's own cookies, which are no site's state (D-1432)."""
+    reused: a fetch outside a job, or with the caller's own cookies, which are no site's state (acquisition spec,
+    "Cookies stay inside one fetch")."""
     host = urlsplit(url).hostname
     if policy.scope is None or policy.context is not None or host is None:
         return None

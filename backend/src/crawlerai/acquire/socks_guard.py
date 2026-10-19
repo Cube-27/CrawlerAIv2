@@ -166,6 +166,10 @@ class SocksGuard:
             return await asyncio.shield(self._targets[key])
         except SsrfRejected as e:
             self.rejections[key] = e.reason
+            if e.reason == "dns":
+                # A resolver failure may be transient, and a site's context keeps its guard for later pages: the next
+                # connection to the host asks again. A refusal by policy stands.
+                self._targets.pop(key, None)
             raise _Refused(_NOT_ALLOWED) from e
 
 

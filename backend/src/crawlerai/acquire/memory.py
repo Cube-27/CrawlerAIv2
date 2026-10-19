@@ -144,6 +144,8 @@ def lesson(result: FetchResult, lacks: bool | None, *, forced: bool = False) -> 
         return None
     if result.method == "http":
         return Lesson("http")
+    # A forced render teaches nothing only over an HTTP `ok`: one over a shell or a refusal was needed anyway.
+    forced = forced and http[-1].block_class == "ok"
     return _rendered(result, http[-1], lacks) if result.method == "browser" and not forced else None
 
 

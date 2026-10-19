@@ -57,8 +57,9 @@ def test_a_contract_is_taught_only_by_an_auto_fetch_that_tried_http_and_a_handof
             assert learned is None
             continue
         assert learned is not None
-        # A render the caller forced while HTTP held the page's core teaches nothing (its pages keep HTTP).
-        assert lesson(rendered, lacks, forced=True) is None
+        # A render the caller forced while an HTTP `ok` held the page's core teaches nothing (its pages keep HTTP); one
+        # over a shell or a refusal was needed anyway.
+        assert (lesson(rendered, lacks, forced=True) is None) == (http_class == "ok")
         passed_block = refused(http)
         assert passed_block == (
             (http_class == "blocked" and status not in (429, 503)) or (http_class == "shell" and challenge is not None)
