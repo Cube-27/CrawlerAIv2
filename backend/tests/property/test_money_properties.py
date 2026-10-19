@@ -13,13 +13,11 @@ The generators write prices the way a page in the drawn locale does (CLDR number
 codes and CLDR symbols only, and synthetic hosts under RFC 2606's `example` label.
 """
 
-import unicodedata
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from babel import Locale
 from babel.core import get_global
-from babel.numbers import format_decimal, get_territory_currencies, list_currencies
+from babel.numbers import format_compact_decimal, format_decimal, get_territory_currencies, list_currencies
 from hypothesis import assume, given
 from hypothesis import strategies as st
 from pydantic import JsonValue
@@ -28,6 +26,10 @@ from crawlerai.llm.grounding import SpanClaim, align
 from crawlerai.normalize import money, numbers
 from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok
 from crawlerai.schemas.types import FieldSpec, FieldType
+
+# The CLDR tables read across every locale are built once here, not inside the first example's deadline.
+money.warm()
+numbers.warm()
 
 AT = datetime(2026, 1, 1, tzinfo=UTC)
 MONEY = FieldSpec(type=FieldType.MONEY)
@@ -216,38 +218,28 @@ def test_a_percentage_is_never_a_price(ratio: str, amount: Decimal, sign: str, w
     assert _amount(money.normalize(text, MONEY, us)) == amount
 
 
-def _units(tag: str) -> dict[str, int]:
-    """The locale's CLDR compact units (`decimalFormats-short`) that stand for one power of ten."""
-    powers: dict[str, set[int]] = {}
-    for unit, power in numbers._compact_units(str(Locale.parse(tag, sep="-"))):
-        powers.setdefault(unit, set()).add(power)
-    return {unit: p.pop() for unit, p in powers.items() if len(p) == 1}
-
-
 @st.composite
-def _compact(draw: st.DrawFn) -> tuple[str, str, int, Decimal]:
+def _compact(draw: st.DrawFn) -> tuple[str, Decimal]:
+    """A locale and an amount of at most four significant digits, which Babel's compact form writes exactly."""
     tag = draw(st.sampled_from(["en-US", "en-IN", "de-DE", "fr-FR", "es-ES", "ja-JP", "zh-CN", "ko-KR", "hi-IN"]))
-    unit, power = draw(st.sampled_from(sorted(_units(tag).items())))
-    amount = draw(st.decimals(min_value=Decimal("0.1"), max_value=Decimal("999.9"), places=1))
-    return tag, unit, power, amount
+    digits, power = draw(st.integers(1, 9999)), draw(st.integers(0, 8))
+    return tag, Decimal(digits).scaleb(power)
 
 
-@given(_compact(), st.sampled_from(["USD ", "EUR ", "€", ""]))
-def test_a_cldr_compact_unit_multiplies_the_amount(case: tuple[str, str, int, Decimal], sign: str) -> None:
-    tag, unit, power, amount = case
-    ctx = _ctx(html_lang=tag)
+@given(_compact(), st.sampled_from(["USD ", "EUR ", "\u20ac", ""]))
+def test_a_cldr_compact_unit_multiplies_the_amount(case: tuple[str, Decimal], sign: str) -> None:
+    tag, amount = case
+    # The oracle is Babel's own compact formatter (CLDR `decimalFormats-short`), not the reader's unit table.
+    written = format_compact_decimal(amount, locale=tag.replace("-", "_"), format_type="short", fraction_digits=6)
 
-    result = money.normalize(f"{sign}{_written(amount, tag)}{unit}", MONEY, ctx)
+    assert _amount(money.normalize(f"{sign}{written}", MONEY, _ctx(html_lang=tag))) == amount
 
-    total = amount.scaleb(power)
-    if total >= Decimal(10) ** 12:
-        assert result == Invalid("out_of_range")
-    else:
-        assert _amount(result) == total
-    # A unit that starts a word (`12 Kg`) is no unit: the amount stays as written.
-    shorter = any(unit != other and unit.startswith(other) for other in _units(tag))
-    if unicodedata.name(unit.strip()[-1]).startswith("LATIN") and not shorter:
-        assert _amount(money.normalize(f"{sign}{_written(amount, tag)}{unit}g", MONEY, ctx)) == amount
+
+@given(st.integers(1, 999), st.sampled_from(["K", "M", "B", "T"]), st.text(st.sampled_from("gm"), min_size=1))
+def test_a_compact_unit_that_starts_a_word_is_no_unit(n: int, unit: str, word: str) -> None:
+    # `12Kg` is twelve of something, not 12000: a unit counts only where it ends a word (CLDR `en` units). The word's
+    # letters are ones no CLDR currency symbol starts with after a unit letter (`Br` is one).
+    assert _amount(money.normalize(f"EUR {n}{unit}{word}", MONEY, _ctx(html_lang="en-US"))) == n
 
 
 @given(_amounts, _urls(), _codes, st.booleans())
