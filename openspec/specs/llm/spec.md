@@ -81,9 +81,10 @@ an id after each shown link to another resource and at each shown image when an 
 10,000 characters together, the marks past that unshown), and replies one `{shown, ref, value, start, end}` claim per asked field: a span, or in `ref` the id
 of the link or image whose target is the value; a value under `shown: false` is not taken (C7). On a
 listing it reads one line per block of the bound item group (`collect/items/lines.py`, [listings](../listings/spec.md)),
-`[n]` its position in the group, the block's span of the cleaned text with each line break shown as a space, and
-replies claims `{block, field, value}`: a claim fills that block's row only for a field its row was asked for, the
-first per block and field wins, its value is grounded in that block's text only (INV-12) and located at its offset in
+`[n]` its position in the group, the block's span of the cleaned text with each line break shown as a space, preceded
+by its enclosing item's context when it has one ([listings](../listings/spec.md) "Role C rows"), and replies claims
+`{block, field, value}`: a claim fills that block's row only for a field its row was asked for, the first per block and
+field wins, its value is grounded in that block's text, else in its context, only (INV-12) and located at its offset in
 the cleaned text. A listing reads at most 200 blocks across its calls, each call within 80,000 characters and as many
 blocks as their claims fit the reply. Grounded values are normalized into
 `Candidate(source_kind='llm', independent=True)`. (Previously: a detail page's text carried no ids, and its claims

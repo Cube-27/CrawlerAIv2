@@ -246,3 +246,17 @@ def test_the_listing_hook_reads_the_blocks_then_the_page_fields_in_the_whole_tex
         ("c_extract_listing", request_hash(page)),
     ]
     assert answer.failure is None
+
+
+def test_a_nested_block_shows_its_context_and_grounds_claims_in_its_own_text_first() -> None:
+    # Listings spec, "Role C rows": the enclosing item's text comes first on the block's line; a value is grounded in
+    # the block's own text when it holds it, else in the context, at that text's offset in the cleaned text.
+    url, row, context = "https://shop.example.test/p/0", "item_block:0", "Unit A\nSKU-1 block"
+    nested = BlockText(0, url, row, 40, "SKU-1 Unit A", ("sku", "title"), context, 10)
+    client = ScriptedClient(claims_reply(claim(0, "title", "SKU-1 block"), claim(0, "sku", "SKU-1")))
+
+    answer = listing_fill(client, (nested,), ())
+
+    (rows,) = client.requests
+    assert "[0] Unit A SKU-1 block SKU-1 Unit A\n</items>" in rows.user
+    assert [(c.field, c.locator) for c in answer.candidates] == [("title", "text:17-28"), ("sku", "text:40-45")]

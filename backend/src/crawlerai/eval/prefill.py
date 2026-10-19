@@ -20,7 +20,7 @@ from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.collect.currencies import with_stated_currencies
 from crawlerai.collect.items.align import align
 from crawlerai.collect.items.bind import RowBlock
-from crawlerai.collect.items.lines import BlockText, block_text
+from crawlerai.collect.items.lines import BlockText, block_texts
 from crawlerai.collect.schema_org_map import is_item_url
 from crawlerai.content.context import page_context
 from crawlerai.content.page import ParsedPage
@@ -95,9 +95,8 @@ def _blocks(page: ParsedPage, ctx: Context, fields: Mapping[str, FieldSpec]) -> 
     if not groups:
         return ()
     asked = [name for name, spec in fields.items() if spec.scope == "row" and not is_item_url(spec)]
-    rows = (RowBlock(i, block, block.entity.id) for i, block in enumerate(groups[0].blocks))
-    texts = (block_text(page, row, asked) for row in rows) if asked else ()
-    return tuple(text for text in texts if text is not None)
+    rows = [RowBlock(i, block, block.entity.id) for i, block in enumerate(groups[0].blocks)]
+    return block_texts(page, rows, {row.row: asked for row in rows})
 
 
 async def parsed_with_context(bundle: CaptureBundle) -> tuple[ParsedPage, Context]:

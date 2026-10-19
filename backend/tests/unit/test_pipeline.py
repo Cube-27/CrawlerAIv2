@@ -389,6 +389,48 @@ def test_role_c_fills_the_block_rows_when_a_row_field_publishes_on_no_row() -> N
     ]
 
 
+PLACED = _schema(
+    "listing",
+    url=LISTING.fields["url"],
+    price=LISTING.fields["price"],
+    location=FieldSpec(type=FieldType.LOCATION, description="d", schema_org="Accommodation.address"),
+)
+
+
+def _building(b: int) -> str:
+    units = "".join(
+        f'<li class="unit"><a href="/u/{b}{u}">Unit {u}</a> <span>{u}.50 EUR</span></li>' for u in (1, 2, 3)
+    )
+    return f'<li class="building"><h3>Building {b}</h3><p>{b} Main Street</p><ul class="units">{units}</ul></li>'
+
+
+def test_role_c_reads_a_nested_row_with_what_its_enclosing_item_states() -> None:
+    # Listings spec, "Role C rows": each building states its name and address once, before its units; the units are
+    # the rows, and role C reads each with its building's text, so a field only the building shows can be claimed.
+    role_c = FakeRoleC()
+    page = _html(body=f'<ul class="buildings">{"".join(_building(b) for b in (1, 2, 3))}</ul>')
+
+    _listing(page, PLACED, role_c=role_c, data=COMMITTED)
+
+    (request,) = role_c.listing_requests
+    assert [(block.context, block.text) for block in request.blocks] == [
+        (f"Building {b}\n{b} Main Street", f"Unit {u} {u}.50 EUR") for b in (1, 2, 3) for u in (1, 2, 3)
+    ]
+
+
+def test_a_grid_in_one_panel_has_no_enclosing_context() -> None:
+    # One of three panels holds the grid: the nesting does not repeat, so the panel's heading is no row's context.
+    role_c = FakeRoleC()
+    grid = f"<h2>Featured</h2><ul>{''.join(_branded(n) for n in (1, 2, 3))}</ul>"
+    others = "".join(f'<div class="panel"><a href="/help/{n}">Help {n}</a></div>' for n in (1, 2))
+    page = _html(body=f'<div class="panels"><div class="panel">{grid}</div>{others}</div>')
+
+    _listing(page, BRANDED, role_c=role_c, data=COMMITTED)
+
+    (request,) = role_c.listing_requests
+    assert [block.context for block in request.blocks] == ["", "", ""]
+
+
 LISTING_CALL = CALL.model_copy(update={"prompt_kind": "c_extract_listing"})
 
 
