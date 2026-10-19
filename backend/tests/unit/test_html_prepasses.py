@@ -83,7 +83,7 @@ def test_eager_frames_are_planned_and_lazy_ones_are_not() -> None:
     )
 
 
-def _result(url: str, body: bytes, method: str = "http") -> FetchResult:
+def _result(url: str, body: bytes, method: str = "http", sent: tuple[tuple[str, str], ...] = ()) -> FetchResult:
     return fetch_result(
         url=url,
         method="api" if method == "api" else "http",
@@ -91,7 +91,7 @@ def _result(url: str, body: bytes, method: str = "http") -> FetchResult:
         engine_version="test",
         fetched_at=datetime.now(UTC),
         started=time.monotonic(),
-        exchange=Exchange(url=url, status=200, request_headers=(), response_headers=_HTML),
+        exchange=Exchange(url=url, status=200, request_headers=sent, response_headers=_HTML),
         content=Content(body=body),
         block_class="ok",
         error=None,
@@ -106,7 +106,7 @@ def test_an_eager_frame_is_fetched_on_the_pages_site_and_its_answer_replaces_the
 
     async def send(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         sent.append(request)
-        return _result(request.url, _ANSWER, "api")
+        return _result(request.url, _ANSWER, "api", request.headers)
 
     rungs = Rungs(http=http, browser=http, frames=eager_frames)
     result = asyncio.run(acquire(URL, FetchPolicy(), Remembered("http"), rungs, send=send))

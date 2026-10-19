@@ -16,7 +16,7 @@ from lxml import html as lxml_html
 from selectolax import lexbor
 
 from crawlerai.acquire.items import Group, item_groups, lxml_root
-from crawlerai.content.fragments import declares_frames, include
+from crawlerai.content.fragments import FRAME_HEADER, Answers, declares_frames, include
 from crawlerai.content.segment import rank
 from crawlerai.content.text import CleanedText, VisibleIndex, render, xpath_step
 from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, decode_body, decode_html
@@ -173,7 +173,7 @@ def node_xpath(node: lexbor.LexborNode) -> str:
     return "/" + "/".join(reversed(steps))
 
 
-def prepassed(html: str, url: str | None = None, answers: Mapping[str, str] | None = None) -> str:
+def prepassed(html: str, url: str | None = None, answers: Answers | None = None) -> str:
     """The document after the three structural pre-passes, in this order (extraction spec, "Source documents"): each
     declarative shadow root's content in place of its `template` under its host; each Suspense boundary a `$RC` call
     completed holding its streamed segment; and each eager Turbo frame of the page at `url` holding the matching
@@ -206,7 +206,7 @@ def _flatten_shadow_roots(tree: lexbor.LexborHTMLParser) -> None:
         if template is None:
             return
         # The parser keeps a template's content apart from the tree; its serialization holds it.
-        for name in list(template.attrs.keys()):
+        for name in [*template.attrs.keys()]:
             del template.attrs[name]
         markup = template.html or ""
         for node in lexbor.parse_fragment(markup[len(_TEMPLATE) + 2 : -(len(_TEMPLATE) + 3)]):
@@ -250,13 +250,14 @@ def _remove_fallback(marker: lexbor.LexborNode) -> None:
         node = node.next
 
 
-def _answers(network: tuple[bytes, ...], entries: tuple[NetworkBody, ...]) -> dict[str, str]:
-    """The captured 2xx HTML answers by URL, decoded as an HTTP body (`decode_html`): the eager frames' answers."""
-    answers: dict[str, str] = {}
+def _answers(network: tuple[bytes, ...], entries: tuple[NetworkBody, ...]) -> dict[tuple[str, str | None], str]:
+    """The captured 2xx HTML answers by URL and the frame their request named (`fragments.FRAME_HEADER`), decoded as
+    an HTTP body (`decode_html`): the eager frames' answers."""
+    answers: dict[tuple[str, str | None], str] = {}
     for body, entry in zip(network, entries, strict=False):
-        headers = entry.response_headers or ()
         if 200 <= entry.status < 300 and entry.data_call is None and _html(entry.content_type):
-            answers.setdefault(entry.url, decode_html(body, headers, "http"))
+            frame = next((v for n, v in entry.request_headers or () if n.lower() == FRAME_HEADER.lower()), None)
+            answers.setdefault((entry.url, frame), decode_html(body, entry.response_headers or (), "http"))
     return answers
 
 

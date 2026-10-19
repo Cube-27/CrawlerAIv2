@@ -126,22 +126,22 @@ async def acquire(
     deadline: float | None = None,
 ) -> FetchResult:
     """Fetch `url` through the active adapter that detects it, if any, requesting its API with `send` (no adapter runs
-        without it); a page an adapter does not serve skips the recipe (adapters spec). Otherwise through `recipe`, the
-        active config's API recipe bound to its fetch (adapters spec), when the site has one. The adapter's result is kept
-        when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if there
-        were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the method the site's
-        memory says (`remembered`). In `auto`, an HTTP block, shell or network error is fetched again in the browser, and
-        the browser's outcome is kept only if it is `ok`; an HTTP `ok` page never is (acquisition spec, "Browser on block
-        or by field source"). Each request after the first (the page after an adapter or a recipe, the browser retry, the
-        companion call) waits for `admit_next` to admit it at the site's rate (acquisition spec), and is not sent when
-        `admit_next` refuses it: the fetch keeps the outcome it has. The result lists every attempt, in its bundle's
-        manifest too. `validators` go with the HTTP rung only (jobs spec): a 304 is `ok` and ends the fetch. A page no
-        adapter detected whose canonical link is its URL without the query, which an adapter detects, is fetched again by
-        that adapter on its own turn (adapters spec). An HTTP `ok` detail page kept is joined with its platform's
-        documented product JSON (`_joined`, sent with `send`), and any kept HTTP `ok` page with the answers of its eager
+    without it); a page an adapter does not serve skips the recipe (adapters spec). Otherwise through `recipe`, the
+    active config's API recipe bound to its fetch (adapters spec), when the site has one. The adapter's result is kept
+    when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if there
+    were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the method the site's
+    memory says (`remembered`). In `auto`, an HTTP block, shell or network error is fetched again in the browser, and
+    the browser's outcome is kept only if it is `ok`; an HTTP `ok` page never is (acquisition spec, "Browser on block
+    or by field source"). Each request after the first (the page after an adapter or a recipe, the browser retry, the
+    companion call) waits for `admit_next` to admit it at the site's rate (acquisition spec), and is not sent when
+    `admit_next` refuses it: the fetch keeps the outcome it has. The result lists every attempt, in its bundle's
+    manifest too. `validators` go with the HTTP rung only (jobs spec): a 304 is `ok` and ends the fetch. A page no
+    adapter detected whose canonical link is its URL without the query, which an adapter detects, is fetched again by
+    that adapter on its own turn (adapters spec). An HTTP `ok` detail page kept is joined with its platform's
+    documented product JSON (`_joined`, sent with `send`), and any kept HTTP `ok` page with the answers of its eager
     fragments on its own site (`_with_frames`). A policy that captures the page (`screenshot`, `pdf`) uses
-        neither an adapter, a recipe nor a companion call. No browser retry starts with less than `BROWSER_MIN_S` left
-        before `deadline` (on `time.monotonic`), the task's budget: the HTTP outcome is kept."""
+    neither an adapter, a recipe nor a companion call. No browser retry starts with less than `BROWSER_MIN_S` left
+    before `deadline` (on `time.monotonic`), the task's budget: the HTTP outcome is kept."""
     if policy.captures_page:
         send = recipe = None  # a screenshot or PDF is of the page itself, which an adapter's or a recipe's JSON is not
     served = None if send is None else await rungs.adapters.serve(url, policy, send)

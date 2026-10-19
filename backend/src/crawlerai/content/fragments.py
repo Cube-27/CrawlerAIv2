@@ -13,8 +13,12 @@ from urllib.parse import urldefrag, urljoin, urlsplit
 
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
-__all__ = ["MAX_FRAMES", "Frame", "declares_frames", "eager_frames", "include"]
+__all__ = ["FRAME_HEADER", "MAX_FRAMES", "Answers", "Frame", "declares_frames", "eager_frames", "include"]
 
+# Turbo handbook (Frames): the request header naming the frame a request is for; a server may answer that frame alone.
+FRAME_HEADER: Final = "Turbo-Frame"
+# The captured answers by URL and the frame their request named (None for a request that named none).
+Answers = Mapping[tuple[str, str | None], str]
 # The most frames of one page that are fetched: each is one more request to the site.
 MAX_FRAMES: Final = 8
 _FRAME: Final = "turbo-frame[id][src]"
@@ -45,18 +49,18 @@ def eager_frames(html: str, page_url: str) -> tuple[Frame, ...]:
     return tuple(frames)[:MAX_FRAMES]
 
 
-def include(tree: LexborHTMLParser, page_url: str, answers: Mapping[str, str]) -> None:
+def include(tree: LexborHTMLParser, page_url: str, answers: Answers) -> None:
     """Replace the children of each eager frame of `tree` with those of the element whose id is the frame's in the
-    answer to its `src` (`answers`, by URL); a frame without an answer, or whose answer holds no such element, keeps
-    its own."""
+    answer to its `src` (`answers`: the one requested for that frame, else one that named no frame); a frame without
+    an answer, or whose answer holds no such element, keeps its own."""
     for node, frame in _frames(tree, page_url):
-        answer = answers.get(frame.src)
+        answer = answers.get((frame.src, frame.id)) or answers.get((frame.src, None))
         if answer is None:
             continue
         source = next((n for n in LexborHTMLParser(answer).css("[id]") if n.attributes.get("id") == frame.id), None)
         if source is None:
             continue
-        for child in list(node.iter(include_text=True)):
+        while (child := node.child) is not None:
             child.decompose()
         for child in source.iter(include_text=True):
             node.insert_child(child)
