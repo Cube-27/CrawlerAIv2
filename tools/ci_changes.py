@@ -32,6 +32,20 @@ JOB_INPUTS: dict[str, tuple[str, ...]] = {
         "tools/license_policy.py",
         WORKFLOW,
     ),
+    # The verify-money skill's one command (.claude/skills/verify-money/SKILL.md): the money code it runs, its test
+    # file and profile, the libraries whose data it reads, and the skill itself.
+    "verify-money": (
+        "backend/src/crawlerai/normalize/money.py",
+        "backend/src/crawlerai/normalize/numbers.py",
+        "backend/src/crawlerai/normalize/base.py",
+        "backend/src/crawlerai/llm/grounding.py",
+        "backend/tests/property/test_money_properties.py",
+        "backend/tests/conftest.py",
+        "backend/pyproject.toml",
+        "backend/uv.lock",
+        ".claude/skills/verify-money/",
+        WORKFLOW,
+    ),
 }
 
 

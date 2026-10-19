@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 TOOL = Path(__file__).resolve().parents[1] / "ci_changes.py"
+_MONEY, _NO_MONEY = "verify-money=true\n", "verify-money=false\n"
 
 
 def run(*args: str, stdin: str = "") -> str:
@@ -19,10 +20,10 @@ def run(*args: str, stdin: str = "") -> str:
 @pytest.mark.parametrize(
     ("changed", "expected"),
     [
-        ("docs/specs/SPEC-99.md\nREADME.md\n", "backend=false\nfrontend=false\nlicenses=false\n"),
-        ("backend/src/crawlerai/cli.py\n", "backend=true\nfrontend=true\nlicenses=false\n"),
-        ("backend/uv.lock\n", "backend=true\nfrontend=true\nlicenses=true\n"),
-        ("", "backend=false\nfrontend=false\nlicenses=false\n"),
+        ("docs/specs/SPEC-99.md\nREADME.md\n", f"backend=false\nfrontend=false\nlicenses=false\n{_NO_MONEY}"),
+        ("backend/src/crawlerai/normalize/money.py\n", f"backend=true\nfrontend=true\nlicenses=false\n{_MONEY}"),
+        ("backend/uv.lock\n", f"backend=true\nfrontend=true\nlicenses=true\n{_MONEY}"),
+        ("", f"backend=false\nfrontend=false\nlicenses=false\n{_NO_MONEY}"),
     ],
 )
 def test_each_job_runs_only_when_a_changed_path_is_one_of_its_inputs(changed: str, expected: str) -> None:
@@ -30,8 +31,9 @@ def test_each_job_runs_only_when_a_changed_path_is_one_of_its_inputs(changed: st
 
 
 def test_a_path_that_only_shares_a_name_prefix_with_a_directory_is_not_its_input() -> None:
-    assert run(stdin="frontend-notes.md\nbackend_old/readme.md\n") == "backend=false\nfrontend=false\nlicenses=false\n"
+    expected = f"backend=false\nfrontend=false\nlicenses=false\n{_NO_MONEY}"
+    assert run(stdin="frontend-notes.md\nbackend_old/readme.md\n") == expected
 
 
 def test_all_runs_every_job_without_reading_input() -> None:
-    assert run("--all") == "backend=true\nfrontend=true\nlicenses=true\n"
+    assert run("--all") == f"backend=true\nfrontend=true\nlicenses=true\n{_MONEY}"
