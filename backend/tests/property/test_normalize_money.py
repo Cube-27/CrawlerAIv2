@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
-from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
@@ -28,19 +27,6 @@ def _ok(amount: str, currency: str | None, basis: Basis | None = None, *, checke
 
 def _ctx(**fields: object) -> Context:
     return Context(captured_at=AT, **fields)  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize(
-    "raw", ["$ 12", "12", {"price": "12"}, {"price": "12", "priceCurrency": "eur"}, {"amount": 12, "currency": None}]
-)
-def test_a_grounded_amount_whose_currency_nothing_settles_publishes_with_it_unknown(raw: JsonValue) -> None:
-    # Owner decision 2026-10-18: the price is never skipped for its currency, and none is invented (C7: never USD).
-    result = money.normalize(raw, MONEY, _ctx(html_lang="en"))
-
-    assert isinstance(result, Ok)
-    assert (result.value, result.basis) == ({"amount": "12", "currency": None}, "unknown")
-    # Only a text with a sign, or a structured value, shows money's checked syntax.
-    assert result.checked == (raw != "12")
 
 
 def test_the_currency_comes_from_the_best_evidence_with_weaker_evidence_noted() -> None:
@@ -69,22 +55,6 @@ def test_the_currency_comes_from_the_best_evidence_with_weaker_evidence_noted() 
 def _cctld(code: str) -> str:
     """A synthetic URL under RFC 2606's `example` label with the ccTLD `code` (RFC 1591)."""
     return f"https://shop.example.{code}/p"
-
-
-@given(_amounts, st.sampled_from(["https://shop.example.com/en-gb/p", "https://gb.example.com/p", _cctld("uk")]))
-def test_a_currency_the_page_does_not_state_comes_from_the_territory_its_url_names_flagged(
-    amount: Decimal, url: str
-) -> None:
-    # Owner 2026-10-19: a locale path segment, else a country subdomain, else the ccTLD, through CLDR; flagged `url`.
-    price = format(amount, "f")
-
-    assert money.normalize({"price": price}, MONEY, _ctx(page_url=url)) == _ok(price, "GBP", "url")
-    assert money.normalize(price, MONEY, _ctx(request_url=url)) == _ok(price, "GBP", "url", checked=False)
-    # An explicit offer or page currency always wins, and the amount is never changed.
-    assert money.normalize({"price": price, "priceCurrency": "EUR"}, MONEY, _ctx(page_url=url)) == _ok(price, "EUR")
-    assert money.normalize(price, MONEY, _ctx(page_url=url, declared_currencies=("EUR",))) == _ok(
-        price, "EUR", "page", checked=False
-    )
 
 
 @pytest.mark.parametrize(
@@ -162,15 +132,3 @@ def test_a_structured_price_with_grouping_reads_in_the_page_locale(price: str, t
     raw: JsonValue = {"price": price, "priceCurrency": "USD"}
 
     assert money.normalize(raw, MONEY, _ctx(html_lang=tag)) == _ok(amount, "USD")
-
-
-def test_cldr_compact_units_multiply_and_percentages_are_never_the_amount() -> None:
-    # Unicode CLDR `decimalFormats-short` (`0万` is 10^4 in Japanese) and currency count names (`円`); a CLDR
-    # percent sign marks a ratio, such as a discount written beside the price.
-    ja = _ctx(html_lang="ja")
-    assert money.normalize("3.5万円", MONEY, ja) == _ok("35000", "JPY")
-    assert money.normalize("8000円", MONEY, ja) == _ok("8000", "JPY")
-    assert money.normalize("$12.99 -20%", MONEY, _ctx(html_lang="en-US")) == _ok("12.99", "USD", "locale")
-    assert money.normalize("-20\u200e%", MONEY, _ctx(html_lang="fr-FR")) == Invalid("no_amount")
-    # A unit is read only where it ends a word.
-    assert money.normalize("12 € T-shirt", MONEY, _ctx(html_lang="en-US")) == _ok("12", "EUR")

@@ -23,6 +23,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       licenses: ${{ steps.filter.outputs.licenses }}
       verify_worker_queue: ${{ steps.filter.outputs.verify_worker_queue }}
+      verify_money: ${{ steps.filter.outputs.verify_money }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -110,6 +111,23 @@ jobs:
       - run: uv run --no-sync --no-build pytest -n "$PYTEST_WORKERS" --durations=20
         env:
           CRAWLERAI_TEST_DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/crawlerai
+
+  # The verify-money skill's one command (.claude/skills/verify-money/SKILL.md): money property checks with the `verify`
+  # Hypothesis profile, on a PR that touches the money code (tools/ci_changes.py). No database, no browser.
+  verify-money:
+    needs: changes
+    if: needs.changes.outputs.verify_money == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.11.28"
+      - run: uv sync --frozen --no-build --no-binary-package crawlerai --no-editable
+      - run: uv run --no-sync --no-build pytest tests/property/test_money_properties.py -q --hypothesis-profile=verify
 
   # SPEC-00 §4.6, including the API client freshness check (§4.5).
   frontend:

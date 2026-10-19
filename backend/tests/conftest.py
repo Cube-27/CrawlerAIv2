@@ -1,7 +1,7 @@
 """Hypothesis profiles: CI runs every property test with a fixed `max_examples=200` (schemas spec); local runs keep
-the Hypothesis default. GitHub Actions sets `CI`. Every test runs without the process's `CRAWLERAI_*` variables. For
-INV-26, counters of HTML parser constructions. For API adapters and recipes (acquisition spec, adapters spec), a
-stand-in API."""
+the Hypothesis default; the verify-* skills run theirs with the `verify` profile. GitHub Actions sets `CI`. Every test
+runs without the process's `CRAWLERAI_*` variables. For INV-26, counters of HTML parser constructions. For API adapters
+and recipes (acquisition spec, adapters spec), a stand-in API."""
 
 import os
 from collections.abc import Callable, Mapping
@@ -21,6 +21,9 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from tests.stand_in import IMPERSONATE, handler_transport
 
 settings.register_profile("ci", max_examples=200)
+# The verify-* skills' one command (`.claude/skills/verify-*/SKILL.md`) asks for more examples, with no per-example
+# deadline (the first example builds the CLDR tables), through `--hypothesis-profile=verify`.
+settings.register_profile("verify", max_examples=2000, deadline=None)
 settings.load_profile("ci" if os.environ.get("CI") else "default")
 
 # The test databases' variables, which name where DB tests may write (`tests/db/conftest.py`).
