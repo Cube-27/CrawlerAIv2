@@ -52,15 +52,18 @@ _JSONLD = "application/ld+json"
 _JSON = "application/json"
 # Adobe Commerce, JavaScript initialization: a `text/x-magento-init` script holds JSON.
 _MAGENTO_INIT = "text/x-magento-init"
+_ASTRO_PROPS = "props"
+# Astro `serializeObject` PROP_TYPE: 0..11, the last ±Infinity.
+_ASTRO_LAST_TYPE = 11
 # The attributes documented to hold JSON, on their elements (extraction spec, "Source documents"): Inertia `data-page`,
 # Livewire `wire:snapshot`, WooCommerce `data-product_variations`, Adobe Commerce `data-mage-init`, Astro island
-# `props` (read as written: this executor revives no Astro tuples, as it decodes no script state).
+# `props`, revived from its `[type, value]` tuples as the engine does (`_astro_props`).
 _JSON_ATTRIBUTES = (
     ("*", "data-page"),
     ("*", "wire:snapshot"),
     ("*", "data-product_variations"),
     ("*", "data-mage-init"),
-    ("astro-island", "props"),
+    ("astro-island", _ASTRO_PROPS),
 )
 # ECMAScript: an assignment to a property of `window` (the global object, HTML Standard) or a variable declaration
 # with an initializer; `=` not followed by `=` or `>` is assignment, not comparison or an arrow. The match ends where
@@ -298,8 +301,9 @@ def _documents(source: JsonSource, page: ReleasePage, root: etree._Element) -> I
             for media_type, text in _scripts(root):
                 yield from _script_json(source, media_type, text)
         case "attr":
-            for value in _json_attributes(root):
-                yield from _loads(value)
+            for name, value in _json_attributes(root):
+                for document in _loads(value):
+                    yield _astro_props(document) if name == _ASTRO_PROPS else document
         case "xhr":
             for body in page.network:
                 yield from _loads(body)
@@ -307,14 +311,48 @@ def _documents(source: JsonSource, page: ReleasePage, root: etree._Element) -> I
             raise _Unreadable("an api source is read through adapters spec's api recipe executor")
 
 
-def _json_attributes(root: etree._Element) -> Iterator[str]:
+def _json_attributes(root: etree._Element) -> Iterator[tuple[str, str]]:
     """The values of the documented JSON attributes that start with `{` or `[` (RFC 8259 whitespace before), in
     document order."""
     for element in root.iter(etree.Element):
         for tag, name in _JSON_ATTRIBUTES:
             value = element.get(name)
             if value is not None and tag in ("*", element.tag) and value.lstrip(" \t\n\r")[:1] in ("{", "["):
-                yield value
+                yield name, value
+
+
+def _astro_props(props: Value) -> Value:
+    """Astro island props as Astro's client revives them (`astro-island.ts`), as JSON: an object whose every value is a
+    `[type, value]` tuple (type 0..11) has each tuple replaced by its value; a JSON array, Map or Set (1, 4, 5) holds
+    tuples itself, ±Infinity (11) and `undefined` (`[0]`) are `null`, every other type its written value. Any other
+    document, or one nested deeper than the stack follows, is read as written."""
+    if not isinstance(props, dict) or not props or not all(_is_astro_tuple(v) for v in props.values()):
+        return props
+    try:
+        return {key: _astro_value(value) for key, value in props.items()}
+    except RecursionError:
+        return props
+
+
+def _is_astro_tuple(value: Value) -> bool:
+    return (
+        isinstance(value, list)
+        and 1 <= len(value) <= 2
+        and isinstance(value[0], int)
+        and not isinstance(value[0], bool)
+        and 0 <= value[0] <= _ASTRO_LAST_TYPE
+    )
+
+
+def _astro_value(raw: Value) -> Value:
+    if not isinstance(raw, list) or len(raw) != 2 or not _is_astro_tuple(raw):
+        return None
+    kind, value = raw
+    if kind == 0 and isinstance(value, dict):
+        return {key: _astro_value(member) for key, member in value.items()}
+    if kind in (1, 4, 5) and isinstance(value, list):
+        return [_astro_value(item) for item in value]
+    return None if kind == _ASTRO_LAST_TYPE else value
 
 
 def _scripts(root: etree._Element) -> Iterator[tuple[str, str]]:
