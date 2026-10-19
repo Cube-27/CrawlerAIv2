@@ -35,7 +35,8 @@ VOCABULARY = Vocabulary.parse(
             _cls("Offer", "Thing"),
             _cls("Enumeration", "Thing"),
             _cls("ItemAvailability", "Enumeration"),
-            *map(_prop, ("name", "description", "offers", "price", "priceCurrency")),
+            {"@id": "schema:StrikethroughPrice", "@type": "schema:PriceTypeEnumeration"},
+            *map(_prop, ("name", "description", "offers", "price", "priceCurrency", "priceSpecification", "priceType")),
         ]
     }
 )
@@ -57,6 +58,10 @@ def _errors(**fields: FieldSpec) -> list[tuple[str, str]]:
         ("Product.offers.cost", "cost is not a schema.org property"),
         ("Product.offers.price+currency", "currency is not a schema.org property"),
         ("Product.name|Gadget.description", "Gadget is not a schema.org type"),
+        (
+            "Offer.priceSpecification{priceType=StrikethruPrice}.price",
+            "StrikethruPrice is not a schema.org enumeration member or type",
+        ),
     ],
 )
 def test_a_path_naming_a_term_the_vocabulary_lacks_is_refused_with_its_reason(path: str, reason: str) -> None:

@@ -72,7 +72,7 @@ async def test_a_changed_preset_is_updated_in_place_and_its_sites_learn_again(co
 async def test_the_price_role_predicates_edit_the_commerce_preset_in_place_without_changing_what_it_requires(
     conn: AsyncConnection,
 ) -> None:
-    # Schemas spec, "Presets": only the price path gains its predicates (struck, member and unit prices left out).
+    # Schemas spec, "Presets": only the price paths gain their predicates (struck, member and unit prices left out).
     current = next(p for p in load_presets() if p.name == "commerce_detail")
     plain = current.fields["price"].model_copy(update={"schema_org": "Offer.price+priceCurrency"})
     before = current.model_copy(update={"fields": {**current.fields, "price": plain}})

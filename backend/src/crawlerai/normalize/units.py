@@ -9,6 +9,11 @@ the CLDR root locale and the locales the page and the request state (`numbers.lo
   count before the name allowed (`per 100 ml`): its unit patterns' text (`{0} kg`, `{0} kilograms`) and its display
   names; a word written as the leading letters of such a name is its abbreviation (`mo` of `mon`, `month`).
 
+A form of two letters or more matches in any case (`KG`, `Month`); a form of one letter (`L`, `m`, German `M` for
+Monat) is a symbol whose case is its meaning, so it matches only as CLDR writes it, and right after the separator
+(`/L`), never apart from it: `$40 / M` and `$25 / S` write a size, not a unit. After a count (`/100 g`) it may stand
+apart.
+
 Mass, volume, length and area units and CLDR `item` are per-unit; duration units are per-period. Other categories
 (speed, temperature) say nothing about a price.
 """
@@ -50,14 +55,15 @@ _MIN_ABBREVIATION = 2
 
 @dataclass(frozen=True, slots=True)
 class _Table:
-    """One locale's CLDR unit data as this module reads it, NFKC, white space collapsed and case-folded."""
+    """One locale's CLDR unit data as this module reads it, NFKC and white space collapsed; each form keyed by `_key`
+    (case-folded from two letters on, as written below)."""
 
     suffixes: Mapping[str, frozenset[Per]]  # per patterns without `{0}`: `/kg`, `per kilogram`
-    # The compound per pattern's text between `{0}` and `{1}` (`/`, `per`), each with whether the pattern writes a
-    # space after it: one written apart (`{0} per {1}`) is a word, followed by a space, not by more letters.
+    # The compound per pattern's text between `{0}` and `{1}` (`/`, `per`), case-folded, each with whether the pattern
+    # writes a space after it: one written apart (`{0} per {1}`) is a word, followed by a space, not by more letters.
     separators: frozenset[tuple[str, bool]]
-    names: Mapping[str, frozenset[Per]]  # unit names and symbols: `kg`, `kilograms`, `mon`
-    words: tuple[str, ...]  # the names that are one word of letters, sorted, for abbreviations
+    names: Mapping[str, frozenset[Per]]  # unit names and symbols: `kg`, `kilograms`, `mon`, `L`
+    words: tuple[str, ...]  # the case-folded names that are one word of letters, sorted, for abbreviations
     longest: int  # the length of the longest name
     suffix_lengths: tuple[int, ...]  # the lengths of the per patterns, longest first
 
@@ -85,17 +91,17 @@ def _suffix_starts(text: str, end: int) -> Iterator[int]:
 
 
 def _per(text: str, tables: Iterable["_Table"]) -> frozenset[Per]:
-    folded = " ".join(text.split()).casefold()
+    written = " ".join(text.split())
     found: set[Per] = set()
     for table in tables:
-        found |= _suffix(folded, table) or _compound(folded, table)
+        found |= _suffix(written, table) or _compound(written, table)
     return frozenset(found)
 
 
 def _suffix(text: str, table: _Table) -> frozenset[Per]:
     """What the longest unit's own per pattern written at the start of `text` makes the amount a price of."""
     for length in table.suffix_lengths:
-        if (kinds := table.suffixes.get(text[:length])) is not None and _ends(text, length):
+        if (kinds := table.suffixes.get(_key(text[:length]))) is not None and _ends(text, length):
             return kinds
     return frozenset()
 
@@ -104,24 +110,31 @@ def _compound(text: str, table: _Table) -> frozenset[Per]:
     """What the compound per pattern and a unit's name (a count before it allowed) at the start of `text` make the
     amount a price of."""
     for separator, apart in table.separators:
-        if not text.startswith(separator) or (apart and not text[len(separator) :].startswith(" ")):
+        after = text[len(separator) :]
+        if text[: len(separator)].casefold() != separator or (apart and not after.startswith(" ")):
             continue
-        rest = text[len(separator) :].lstrip()
-        if kinds := _named(rest, table):
+        rest = after.lstrip()
+        if kinds := _named(rest, table, symbols=rest == after):
             return kinds
         # A count before the unit (`per 100 ml`), a number as `numbers` reads one.
-        if (count := numbers.AMOUNT_RUN.match(rest)) and (kinds := _named(rest[count.end() :].lstrip(), table)):
+        if (count := numbers.AMOUNT_RUN.match(rest)) and (
+            kinds := _named(rest[count.end() :].lstrip(), table, symbols=True)
+        ):
             return kinds
     return frozenset()
 
 
-def _named(text: str, table: _Table) -> frozenset[Per]:
-    """The unit the start of `text` names: the longest unit name written there, else a word abbreviating names."""
+def _named(text: str, table: _Table, *, symbols: bool) -> frozenset[Per]:
+    """The unit the start of `text` names: the longest unit name written there (a one-letter symbol only when
+    `symbols`), else a word abbreviating names."""
     for length in range(min(len(text), table.longest), 0, -1):
-        if (kinds := table.names.get(text[:length])) is not None and _ends(text, length):
+        piece = text[:length]
+        if not symbols and _letters(piece) < _MIN_ABBREVIATION:
+            continue
+        if (kinds := table.names.get(_key(piece))) is not None and _ends(text, length):
             return kinds
     word = re.match(r"[^\W\d_]+", text)
-    if word is None or len(abbreviation := word.group()) < _MIN_ABBREVIATION:
+    if word is None or len(abbreviation := word.group().casefold()) < _MIN_ABBREVIATION:
         return frozenset()
     at = bisect.bisect_left(table.words, abbreviation)
     abbreviated = []
@@ -143,14 +156,23 @@ def _spaced_letter(char: str) -> bool:
 
 
 def _form(pattern: str) -> str:
-    return " ".join(unicodedata.normalize("NFKC", pattern).split()).casefold()
+    return " ".join(unicodedata.normalize("NFKC", pattern).split())
+
+
+def _letters(text: str) -> int:
+    return sum(char.isalpha() for char in text)
+
+
+def _key(form: str) -> str:
+    """A form as the table keys it: case-folded when it has two letters or more, else as written (a symbol)."""
+    return form.casefold() if _letters(form) >= _MIN_ABBREVIATION else form
 
 
 @cache
 def _table(identifier: str) -> _Table:
     data = Locale.parse(identifier)._data  # Babel exposes CLDR unit patterns only through its locale data
     separators = {
-        (form, between[-1:].isspace())
+        (form.casefold(), between[-1:].isspace())
         for width in data["compound_unit_patterns"].get("per", {}).values()
         if (between := _between(width.get("compound", ""))) is not None and (form := _form(between))
     }
@@ -158,7 +180,7 @@ def _table(identifier: str) -> _Table:
     names: dict[str, set[Per]] = {}
     for unit, kind in _units(data["unit_patterns"]):
         for written, is_suffix in _unit_forms(data, unit):
-            (suffixes if is_suffix else names).setdefault(_form(written), set()).add(kind)
+            (suffixes if is_suffix else names).setdefault(_key(_form(written)), set()).add(kind)
     names.pop("", None)
     suffixes.pop("", None)
     frozen = {name: frozenset(kinds) for name, kinds in names.items()}

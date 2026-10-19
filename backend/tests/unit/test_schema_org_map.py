@@ -173,3 +173,14 @@ def test_path_predicates_read_each_price_role_from_its_own_price_specification()
         ("list_price", "offer", "jsonld:0:$.struck.price[0]"),
         ("unit_price", "offer", "jsonld:0:$.per-unit.price[0]"),
     ]
+
+
+def test_the_preset_price_reads_a_sale_price_specification_and_never_a_price_component() -> None:
+    # Schemas spec, "Presets": `SalePrice` is the price paid; a down payment is a component of it, no price.
+    sale = _JsonNode("sale", {"priceType": ["SalePrice"], "price": ["20"], "priceCurrency": ["EUR"]})
+    down = _JsonNode("down", {"priceComponentType": ["Downpayment"], "price": ["5"], "priceCurrency": ["EUR"]})
+    offer = _JsonNode("offer", {"priceSpecification": [sale, down]})
+
+    assert _found((Typed("offer", ("Offer",), offer),), _schema(price=PRESET_PRICE)) == [
+        ("price", "offer", "jsonld:0:$.sale.price[0]")
+    ]

@@ -46,10 +46,11 @@ The system SHALL read JSON-LD (RFC 8259, `@graph`/`@id` resolved, schema.org ter
 RDFa IRI value is a URL, never text, D-1153) and Open Graph
 (one fixed table of OGP-defined properties: basic and optional metadata, `og:description` filling a long_text
 description, and the `product:` namespace: `product:price`/`og:price` amount and currency, `product:sale_price`
-as the active price with the stated price beside it as the list price, `product:original_price` as the list price,
+as the active price (unless `product:sale_price_dates:end` is before the capture) with the stated price beside it
+as the list price, `product:original_price` as the list price,
 `og:availability`, `product:condition`, `product:retailer_item_id` and `product:brand`; no translation, site-default
-blocks skipped) through the field's
-`schema_org` path; a property no published standard defines is left to learned configs (owner, Appendix A #48). A
+blocks skipped) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
+standing in for that thing; a path through another thing, `Product.offers.seller.url`, has none); a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
 element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. A platform's documented
 product JSON that a detail page's HTTP fetch joined after its identity check (acquisition spec, "Data calls") is read

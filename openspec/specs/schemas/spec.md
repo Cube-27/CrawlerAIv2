@@ -43,8 +43,9 @@ the last node into one atomic value (`AggregateOffer.lowPrice+highPrice+priceCur
 alternatives and `>` ranks them (those after it are read on an entity only where those before it reach no value), up
 to four alternatives in all. A step MAY carry filter predicates that keep only the nodes they match:
 `{name=Value}` a node whose `name` equals `Value` as an IRI or a term, `{name}` a node stating `name`, `{!name}` one
-not stating it (`Offer.priceSpecification{priceType=StrikethroughPrice}.price`). A path's root SHALL be a type and
-each step, predicate name and joined name a property of the pinned schema.org vocabulary, and a `schema:` `vocab`
+not stating it (`Offer.priceSpecification{priceType=StrikethroughPrice}.price`). A path's root SHALL be a type,
+each step, predicate name and joined name a property of the pinned schema.org vocabulary, each predicate value one of
+its enumeration members or types, and a `schema:` `vocab`
 reference an enumeration of it; a schema a caller creates or edits that names others is refused with the error at the
 field (a process without the vocabulary file checks syntax only). `job_detail.apply_url` is
 `JobPosting.potentialAction.target`. Refs: §5.2, D-0240, D-1374, D-1493, D-1626, architecture-v3 d.1. (Previously:
@@ -77,11 +78,12 @@ there and refused elsewhere. Row resolution is
 The system SHALL ship the four presets under `backend/src/crawlerai/schemas/presets/`, every field mapped to a
 schema.org path and described; "when shown" fields are optional and no preset holds a derived field (such as a
 count of variants or images). A job's places are a list of locations (`locations`) in both job presets.
-`commerce_detail.price` is
-`Offer.price{!priceType}{!validForMemberTier}+priceCurrency|Offer.priceSpecification{!priceType}{!validForMemberTier}{!referenceQuantity}.price+priceCurrency`:
-the active price, never a list, struck, member or unit price. A path's predicates give a money field reaching
-schema.org `price` its price role: `{referenceQuantity}` a unit price, `{priceType=StrikethroughPrice}` or
-`ListPrice` a list price, `{validForMemberTier}` a member price, none required the active price. The other price
+`commerce_detail.price`, `commerce_detail.variants.price` and `commerce_listing.price` are
+`Offer.price{!priceType}{!validForMemberTier}+priceCurrency|Offer.priceSpecification{!priceType}{!validForMemberTier}{!referenceQuantity}{!priceComponentType}.price+priceCurrency|Offer.priceSpecification{priceType=SalePrice}{!validForMemberTier}{!referenceQuantity}{!priceComponentType}.price+priceCurrency`:
+the active price (a sale price included), never a list, struck, member or unit price, nor a price component (a down
+payment, an instalment). A path's predicates give a money field reaching schema.org `price` its price role:
+`{referenceQuantity}` a unit price, `{priceType=StrikethroughPrice}` or `ListPrice` a list price,
+`{validForMemberTier}` a member price, none required or only `{priceType=SalePrice}` the active price. The other price
 roles are fields a user adds to the schema, not preset fields; their recommended paths are:
 
 | Field | Type | `schema_org` |
@@ -93,7 +95,7 @@ roles are fields a user adds to the schema, not preset fields; their recommended
 | `price_range` | range | `AggregateOffer.lowPrice+highPrice+priceCurrency` |
 | `seller` | text | `Offer.seller.name\|Offer.offeredBy.name` |
 
-(Previously: `job_listing` had one `location`; `commerce_detail.price` was `Offer.price+priceCurrency`.) Refs: §5.3,
+(Previously: `job_listing` had one `location`; the commerce presets' prices were `Offer.price+priceCurrency`.) Refs: §5.3,
 D-0015, D-0245, D-0961, D-0967, D-1477, owner decision #74.
 
 ### Requirement: Preset sync

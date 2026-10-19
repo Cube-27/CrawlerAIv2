@@ -72,11 +72,13 @@ class VocabularyMissing(RuntimeError):
 class Vocabulary:
     """The schema.org types, each with itself and every type it is a subclass of, transitively; each property's
     sub-properties, transitively (`narrower`), among them the properties that identify a thing (`identifier` and
-    its sub-properties: `sku`, `gtin13`); and the names of all properties."""
+    its sub-properties: `sku`, `gtin13`); the names of all properties; and the named instances of its types, an
+    enumeration's members (`SalePrice`)."""
 
     supertypes: Mapping[str, frozenset[str]]
     narrower: Mapping[str, frozenset[str]] = field(default_factory=dict)
     properties: frozenset[str] = frozenset()
+    members: frozenset[str] = frozenset()
 
     @classmethod
     def read(cls, path: Path) -> "Vocabulary":
@@ -93,6 +95,7 @@ class Vocabulary:
             raise ValueError("a schema.org vocabulary file is a JSON-LD document with a @graph")
         parents: dict[str, frozenset[str]] = {}
         broader: dict[str, frozenset[str]] = {}
+        members: set[str] = set()
         for node in graph:
             if not isinstance(node, dict):
                 continue
@@ -100,6 +103,8 @@ class Vocabulary:
                 parents[name] = frozenset(_schema_names(node.get(_SUB_CLASS_OF)))
             elif (name := _term_name(node, _RDF_PROPERTY)) is not None:
                 broader[name] = frozenset(_schema_names(node.get(_SUB_PROPERTY_OF)))
+            elif (name := _member_name(node)) is not None:
+                members.add(name)
         narrower: dict[str, set[str]] = {}
         for name in broader:
             for ancestor in _ancestors(name, broader) - {name}:
@@ -108,6 +113,7 @@ class Vocabulary:
             {name: _ancestors(name, parents) for name in parents},
             {name: frozenset(names) for name, names in narrower.items()},
             frozenset(broader),
+            frozenset(members),
         )
 
     @property
@@ -136,9 +142,10 @@ _ENUMERATION = "Enumeration"
 
 def reference_errors(fields: Mapping[str, FieldSpec], vocabulary: Vocabulary) -> list[tuple[str, str]]:
     """The `schema_org` paths and `schema:` enum references of a schema document's `fields` that the pinned schema.org
-    vocabulary does not define, as (field path, reason) pairs (schemas spec). A path's root must be a type and each
-    step and its `+` join a property; a `schema:` reference must be an enumeration. `type:` references name the
-    shipped type vocabularies, which the normalizer declines on when unknown (`unknown_vocab`)."""
+    vocabulary does not define, as (field path, reason) pairs (schemas spec). A path's root must be a type, each step,
+    predicate and `+` join a property and a predicate's value a member or type; a `schema:` reference must be an
+    enumeration. `type:` references name the shipped type vocabularies, which the normalizer declines on when unknown
+    (`unknown_vocab`)."""
     errors: list[tuple[str, str]] = []
     for name, spec in fields.items():
         _reference_errors(f"fields.{name}", spec, vocabulary, errors)
@@ -159,17 +166,21 @@ def _reference_errors(path: str, spec: FieldSpec, vocabulary: Vocabulary, errors
 
 
 def _path_problems(schema_org: str, vocabulary: Vocabulary) -> list[str]:
-    problems = []
-    for alternative in parse_paths(schema_org):
-        if alternative.root not in vocabulary:
-            problems.append(f"{alternative.root} is not a schema.org type")
-        filtered = (p.name for filters in alternative.filters for p in filters)
-        problems.extend(
-            f"{prop} is not a schema.org property"
-            for prop in dict.fromkeys((*alternative.steps, *filtered, *alternative.joined))
-            if prop not in vocabulary.properties
-        )
-    return problems
+    return [
+        problem for alternative in parse_paths(schema_org) for problem in _alternative_problems(alternative, vocabulary)
+    ]
+
+
+def _alternative_problems(path: MappedPath, vocabulary: Vocabulary) -> Iterator[str]:
+    if path.root not in vocabulary:
+        yield f"{path.root} is not a schema.org type"
+    predicates = [p for filters in path.filters for p in filters]
+    for prop in dict.fromkeys((*path.steps, *(p.name for p in predicates), *path.joined)):
+        if prop not in vocabulary.properties:
+            yield f"{prop} is not a schema.org property"
+    for value in dict.fromkeys(p.value for p in predicates if p.value is not None):
+        if value not in vocabulary.members and value not in vocabulary:
+            yield f"{value} is not a schema.org enumeration member or type"
 
 
 def pinned_reference_errors(fields: Mapping[str, FieldSpec]) -> list[tuple[str, str]]:
@@ -198,6 +209,18 @@ def _term_name(node: Mapping[str, JsonValue], kind: str) -> str | None:
     is_kind = types == kind or (isinstance(types, list) and kind in types)
     node_id = node.get("@id")
     if is_kind and isinstance(node_id, str) and node_id.startswith(_SCHEMA_PREFIX):
+        return node_id.removeprefix(_SCHEMA_PREFIX)
+    return None
+
+
+def _member_name(node: Mapping[str, JsonValue]) -> str | None:
+    """The schema.org term a vocabulary node names as an instance of a schema.org type (`schema:SalePrice`, typed
+    `schema:PriceTypeEnumeration`)."""
+    types = node.get("@type")
+    node_id = node.get("@id")
+    listed = types if isinstance(types, list) else [types]
+    typed = any(isinstance(t, str) and t.startswith(_SCHEMA_PREFIX) for t in listed)
+    if typed and isinstance(node_id, str) and node_id.startswith(_SCHEMA_PREFIX):
         return node_id.removeprefix(_SCHEMA_PREFIX)
     return None
 

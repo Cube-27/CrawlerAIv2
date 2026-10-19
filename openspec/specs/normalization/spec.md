@@ -82,7 +82,9 @@ monetary range keeps declining on a `null` currency, and on one only the URL nam
 no basis to flag it). A label whose currency only the URL names is declined, as one whose currency is `null`. An
 amount followed by a CLDR per pattern and a unit of the page's or the root locale's CLDR unit data
 (`normalize/units.py`: a unit's own per pattern, `{0}/kg`, or the compound per pattern, `{0}/{1}`, `{0} per {1}`,
-with a unit name, a count before it allowed: `per 100 ml`) prices a unit or a period: for a field whose path gives it
+with a unit name, a count before it allowed: `per 100 ml`; a form of two letters or more in any case, a one-letter
+symbol only as CLDR writes it and right after the separator or a count, `$40/M` but not `$40 / M`, a size) prices a
+unit or a period: for a field whose path gives it
 the active-price role (schemas spec, "Presets") it is `Invalid("per_unit")` (mass, volume, length, area, item) or
 `Invalid("per_period")` (duration); any other money field reads the amount before the pattern (`unit_price`: `€25/kg`
 is 25). Refs: §9, owner #68, owner 2026-10-19, D-1240, D-1370, D-1782, architecture-v3 d.2.

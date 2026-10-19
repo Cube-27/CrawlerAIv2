@@ -85,6 +85,8 @@ _PRICE = "price"
 # `ListPrice` "the list price", both a former or reference price rather than the price paid.
 _PRICE_TYPE = "priceType"
 _LIST_TYPES = frozenset({"StrikethroughPrice", "ListPrice"})
+# `SalePrice` "the price is a sale price": the price paid now, the active price.
+_SALE_TYPE = "SalePrice"
 # schema.org `referenceQuantity`: "The reference quantity for which a certain price applies" (UnitPriceSpecification).
 _REFERENCE_QUANTITY = "referenceQuantity"
 # schema.org `validForMemberTier`: "The membership program tier an Offer (or a PriceSpecification) is valid for".
@@ -94,8 +96,9 @@ _MEMBER_TIER = "validForMemberTier"
 def price_role(spec: FieldSpec) -> PriceRole | None:
     """The price role a money field's path gives it (schemas spec, "Price roles"): every alternative reaches schema.org
     `price`, through a node its predicates require to be a unit price (`{referenceQuantity}`), a list or struck price
-    (`{priceType=StrikethroughPrice}`, `ListPrice`) or a member price (`{validForMemberTier}`), else none of these: the
-    active price. `None` for any other field, and for alternatives that give different roles."""
+    (`{priceType=StrikethroughPrice}`, `ListPrice`) or a member price (`{validForMemberTier}`), else the active price
+    when it requires nothing but a sale price (`{priceType=SalePrice}`). `None` for any other field, and for
+    alternatives that give different roles."""
     if spec.type is not FieldType.MONEY or spec.schema_org is None:
         return None
     roles = {_alternative_role(path) for path in parse_paths(spec.schema_org)}
@@ -112,4 +115,4 @@ def _alternative_role(path: MappedPath) -> PriceRole | None:
         return "list_price"
     if any(p.name == _MEMBER_TIER for p in required):
         return "member_price"
-    return "price" if not required else None
+    return "price" if all(p.name == _PRICE_TYPE and p.value == _SALE_TYPE for p in required) else None

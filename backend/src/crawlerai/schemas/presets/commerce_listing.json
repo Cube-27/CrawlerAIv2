@@ -17,7 +17,7 @@
     "price": {
       "type": "money",
       "description": "Price shown in the listing row, with its currency, when the row shows one",
-      "schema_org": "Offer.price+priceCurrency"
+      "schema_org": "Offer.price{!priceType}{!validForMemberTier}+priceCurrency|Offer.priceSpecification{!priceType}{!validForMemberTier}{!referenceQuantity}{!priceComponentType}.price+priceCurrency|Offer.priceSpecification{priceType=SalePrice}{!validForMemberTier}{!referenceQuantity}{!priceComponentType}.price+priceCurrency"
     },
     "next_page_url": {
       "type": "url",

@@ -154,7 +154,8 @@ _PER_CATEGORIES = ("mass", "volume", "length", "area", "duration")
 
 def _per_texts(identifier: str) -> list[str]:
     """Every way the locale's CLDR unit data writes an amount per one of its units, the amount first (`{0}`): each
-    unit's per pattern (`{0}/kg`), and the compound per pattern (`{0} per {1}`) with each of the unit's names."""
+    unit's per pattern (`{0}/kg`), and the compound per pattern (`{0} per {1}`) with each of the unit's names; a
+    one-letter symbol only right after the separator (`{0}/{1}`), apart from it being a size (`$40 / M`)."""
     data = Locale.parse(identifier)._data
     compounds = [
         c for w in data["compound_unit_patterns"]["per"].values() if (c := w.get("compound", "")).startswith("{0}")
@@ -162,7 +163,15 @@ def _per_texts(identifier: str) -> list[str]:
     units = [u for u in data["unit_patterns"] if u.split("-")[0] in _PER_CATEGORIES or u == "concentr-item"]
     own = [p for u in units for w in data["unit_patterns"][u].values() if (p := w.get("per", "")).startswith("{0}")]
     names = [n for u in units for n in data["unit_display_names"].get(u, {}).values()]
-    return own + [compound.replace("{1}", name) for compound in compounds for name in names]
+    return own + [c.replace("{1}", n) for c in compounds for n in names if _attached(c) or _letters(n) > 1]
+
+
+def _attached(compound: str) -> bool:
+    return not compound.partition("{1}")[0][-1:].isspace()
+
+
+def _letters(name: str) -> int:
+    return sum(char.isalpha() for char in name)
 
 
 @given(st.sampled_from(_PER_LOCALES), _amounts, st.data())
@@ -174,6 +183,13 @@ def test_an_amount_written_per_a_cldr_unit_of_the_page_locale_is_never_the_price
 
     assert not isinstance(money.normalize(text, PRICE, ctx), Ok)
     assert money.normalize(text, UNIT_PRICE, ctx) == _ok(str(amount), "EUR")
+
+
+def test_a_size_letter_apart_from_the_slash_is_no_unit() -> None:
+    # A one-letter CLDR symbol is read only as written and right after the separator: `M` is German `Monat`.
+    assert money.normalize("$25 / S", PRICE, _ctx(html_lang="en-US")) == _ok("25", "USD", "locale")
+    assert money.normalize("$40 / M", PRICE, _ctx(html_lang="de-DE")) == _ok("40", "USD", "locale")
+    assert money.normalize("$40/M", PRICE, _ctx(html_lang="de-DE")) == Invalid("per_period")
 
 
 def test_the_cldr_release_is_the_one_the_manifest_pins() -> None:

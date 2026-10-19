@@ -2,10 +2,10 @@
 
 OpenGraph names no entity types, so every value describes the page's one object: the entity is `page`, and its URL is
 `og:url`. A property maps to a field through the fixed table below, keyed by the OGP property and the field's role:
-its type and the one schema.org property its `schema_org` path names (`schemas.paths.named_property`: `Product.name`
-has the role `name`, `Product.brand.name` the role `brand`), and for money the field's price role
-(`schemas.paths.price_role`). The table is justified by the OGP specification and the `product:` namespace that
-Open Graph product markup documents (C2), not by any page.
+its type and the one property of the root type its `schema_org` path reads (`Product.name` has the role `name`, and
+`Product.brand.name` the role `brand`, the text standing in for the brand; `Product.offers.seller.url` reads another
+thing's URL, so it has none), and for money the field's price role (`schemas.paths.price_role`). The table is justified
+by the OGP specification and the `product:` namespace that Open Graph product markup documents (C2), not by any page.
 
 OGP's basic metadata (`og:title`, `og:image`, `og:url`) describes one object. Client-rendered pages often keep the
 site's own defaults there: an `og:title` that names the site (`site_names`) says the object is the site, so its
@@ -15,6 +15,7 @@ site is read without them.
 
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
 
 from pydantic import JsonValue
 
@@ -23,7 +24,7 @@ from crawlerai.collect.site_names import SiteNames
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
-from crawlerai.schemas.paths import PriceRole, named_property, parse_paths, price_role
+from crawlerai.schemas.paths import NAME, MappedPath, PriceRole, parse_paths, price_role
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 _URL = FieldSpec(type=FieldType.URL)
@@ -67,9 +68,22 @@ _OG_PRICE = ("og:price:amount", "og:price:currency")
 _SALE_PRICE = ("product:sale_price:amount", "product:sale_price:currency")
 _ORIGINAL_PRICE = ("product:original_price:amount", "product:original_price:currency")
 _MONEY = (_PRICE, _OG_PRICE, _SALE_PRICE, _ORIGINAL_PRICE)
+# `product:sale_price_dates:end`: the date and time (ISO 8601) the sale ends; after it the sale price is no price.
+_SALE_END = "product:sale_price_dates:end"
+# A time written without its offset may be in any time zone, UTC-12:00 to UTC+14:00 (ISO 8601 offsets in use): it has
+# passed everywhere only this long after it has passed in UTC.
+_LATEST_OFFSET = timedelta(hours=12)
+_DAY = timedelta(days=1)
 # OGP "Optional Metadata": `og:site_name` is "the name of the overall site" the object is part of.
 _SITE_NAME = "og:site_name"
-_READ = frozenset(p for row in _TABLE for p in row.properties) | {p for pair in _MONEY for p in pair} | {_SITE_NAME}
+_READ = (
+    frozenset(p for row in _TABLE for p in row.properties)
+    | {p for pair in _MONEY for p in pair}
+    | {
+        _SITE_NAME,
+        _SALE_END,
+    }
+)
 _SITE_TITLE = "og: og:title names the site, so og:title, og:image and og:description are not read"
 # The values a site-default block holds about the site rather than the object.
 _SITE_DEFAULTS = (_TITLE, *_IMAGES, _DESCRIPTION)
@@ -136,7 +150,7 @@ def _without_site_values(metas: list[_Meta], ctx: Context) -> tuple[list[_Meta],
 
 def _candidates(metas: Sequence[_Meta], schema: SchemaDef, ctx: Context) -> Iterator[Candidate]:
     for name, spec in schema.fields.items():
-        if (found := _value(metas, spec)) is not None:
+        if (found := _value(metas, spec, ctx)) is not None:
             yield Candidate(
                 field=name,
                 entity_id=PAGE,
@@ -148,10 +162,10 @@ def _candidates(metas: Sequence[_Meta], schema: SchemaDef, ctx: Context) -> Iter
             )
 
 
-def _value(metas: Sequence[_Meta], spec: FieldSpec) -> _Value | None:
+def _value(metas: Sequence[_Meta], spec: FieldSpec, ctx: Context) -> _Value | None:
     """The value of the table row that fits `spec`'s role and type; a list field is matched by its item's type."""
     if spec.type is FieldType.MONEY:
-        return _money(metas, price_role(spec))
+        return _money(metas, price_role(spec), ctx)
     role = _role(spec)
     item = spec.item if spec.type is FieldType.LIST else None
     value_type = (item or spec).type
@@ -162,13 +176,20 @@ def _value(metas: Sequence[_Meta], spec: FieldSpec) -> _Value | None:
 
 
 def _role(spec: FieldSpec) -> str | None:
-    """The one property a `schema_org` path names (`named_property`: `Product.brand.name` gives `brand`), the same in
-    every alternative, or `None` when the alternatives name different properties (variants spec). A row-mapped field's
-    path names rows, so it has no role."""
+    """The one property of its root type a `schema_org` path reads (`Offer.price+priceCurrency` gives `price`, and
+    `Product.brand.name` `brand`: a final `.name` is the text standing in for the thing, `paths.NAME`), the same in
+    every alternative, or `None` when an alternative goes through another object (`Product.brand.image`) or the
+    alternatives name different properties (variants spec). A row-mapped field's path names rows, so it has no role."""
     if spec.schema_org is None or spec.row_mapped:
         return None
-    roles = {named_property(path) for path in parse_paths(spec.schema_org)}
+    roles = {_root_property(path) for path in parse_paths(spec.schema_org)}
     return roles.pop() if len(roles) == 1 else None
+
+
+def _root_property(path: MappedPath) -> str | None:
+    if len(path.steps) == 1 or (path.steps[1:] == NAME and not path.joined):
+        return path.steps[0]
+    return None
 
 
 def _first_or_all(found: Sequence[_Meta], *, as_list: bool) -> _Value | None:
@@ -182,16 +203,34 @@ def _first_or_all(found: Sequence[_Meta], *, as_list: bool) -> _Value | None:
     return _Value(raw, f"meta:{found[0].property}", reading)
 
 
-def _money(metas: Sequence[_Meta], role: PriceRole | None) -> _Value | None:
-    """The price a money field of the role reads: the active price is the sale price when the page states one, else
-    the price; the list price is the original price, else, beside a sale price, the price."""
-    sale = _amount(metas, _SALE_PRICE)
+def _money(metas: Sequence[_Meta], role: PriceRole | None, ctx: Context) -> _Value | None:
+    """The price a money field of the role reads: the active price is the sale price when the page states one whose
+    sale has not ended at capture, else the price; the list price is the original price, else, beside such a sale
+    price, the price."""
+    sale = None if _sale_ended(metas, ctx) else _amount(metas, _SALE_PRICE)
     stated = _amount(metas, _PRICE) or _amount(metas, _OG_PRICE)
     if role == "price":
         return sale or stated
     if role == "list_price":
         return _amount(metas, _ORIGINAL_PRICE) or (stated if sale is not None else None)
     return None
+
+
+def _sale_ended(metas: Sequence[_Meta], ctx: Context) -> bool:
+    """Whether the first `product:sale_price_dates:end` is before the capture: a date alone ends with its day, a time
+    without an offset once it has passed in every time zone. An end that is no ISO 8601 date leaves the sale on."""
+    written = next((m.content.strip() for m in metas if m.property == _SALE_END), None)
+    if written is None:
+        return False
+    try:
+        end = datetime.fromisoformat(written)
+    except ValueError:
+        return False
+    if len(written) == len("YYYY-MM-DD"):
+        end += _DAY
+    if end.tzinfo is None:
+        return end + _LATEST_OFFSET < ctx.captured_at.astimezone(UTC).replace(tzinfo=None)
+    return end < ctx.captured_at
 
 
 def _amount(metas: Sequence[_Meta], pair: tuple[str, str]) -> _Value | None:
