@@ -82,9 +82,12 @@ def remembered_as(kind: PageKind | None) -> PageKind:
     return kind or "detail"
 
 
-async def remembered(conn: AsyncConnection, site_id: SiteId, kind: PageKind | None) -> Remembered:
+async def remembered(
+    conn: AsyncConnection, site_id: SiteId, kind: PageKind | None, *, blocks: bool = True
+) -> Remembered:
     """The memory of the site's pages of `kind` (module docstring, precedence): browser-first while the block history
-    says so, else the fresh contract's method and wait condition, else the defaults."""
+    says so, else the fresh contract's method and wait condition, else the defaults. Without `blocks`, the durable
+    contract alone, for what outlives the block history (a learned config's `Target.fetch`)."""
     fresh = (
         SiteContract.site_id == site_id,
         SiteContract.page_kind == remembered_as(kind),
@@ -97,7 +100,7 @@ async def remembered(conn: AsyncConnection, site_id: SiteId, kind: PageKind | No
         browser_first,
     )
     method, settle_on, first = (await conn.execute(query)).one()
-    if first:
+    if first and blocks:
         return Remembered("browser", settle_on)
     return Remembered(method or "http", settle_on)
 
@@ -121,7 +124,7 @@ def lesson(result: FetchResult, lacks: bool | None) -> Lesson | None:
     `lacks` what the caller reads and the render captured network JSON; browser steps. Its wait condition is the
     content alone when the rendered document has what the caller reads, the data calls too when they carried it, the
     default settle when `lacks` is unknown (None). When HTTP was `refused` and the render needed nothing else, and its
-    cookies went on to HTTP (`AttemptRecord.site_session`), it was needed only to pass the block: `handoff`, and the
+    cookies went on to HTTP (an attempt's `site_session`), it was needed only to pass the block: `handoff`, and the
     pages stay on HTTP."""
     http = [attempt for attempt in result.attempts if attempt.method == "http"]
     if result.bundle.manifest.fetch_policy.get("method_hint") != "auto" or result.block_class != "ok" or not http:

@@ -93,7 +93,8 @@ short-lived safety bias age differently, both in Postgres so every process reads
   `shell` a challenge names) counts, the count starting over when the last block is older than `BLOCK_TTL` (15 min);
   at `BROWSER_FIRST_BLOCKS` (2) the site's pages start in the browser for one `BLOCK_TTL`. A kept HTTP `ok` clears it.
 Precedence: a job's own `method_hint` beats memory; the block history's browser-first beats the contract's method; a
-fresh contract beats the defaults (`http`, the default settle). (Previously: `site_fetch_method` held only `http` or
+fresh contract beats the defaults (`http`, the default settle). A learned config's fetch method is the contract's
+alone: a block bias it kept would outlive the block history. (Previously: `site_fetch_method` held only `http` or
 `browser`; a site session refused before any `ok` kept its site from opening another for 30 min, in process memory
 only.) Refs: §7.1, D-0204, D-0205, D-1260, D-1353, D-1380, owner plan 2026-10-19 P4 (domain memory).
 #### Scenario: Listing render
@@ -102,8 +103,8 @@ only.) Refs: §7.1, D-0204, D-0205, D-1260, D-1353, D-1380, owner plan 2026-10-1
 #### Scenario: Browser needed only to pass a block
 - **WHEN** an `auto` fetch's HTTP attempt is `blocked`, the browser's `ok` opens a site session, and its document has
   the offer
-- **THEN** the contract says `http` with `handoff`, and the site's next fetch, in another process, goes over HTTP with
-  the stored cookies
+- **THEN** the contract says `http` with `handoff`, and the site's next fetch goes over HTTP with the site session's
+  cookies, in another process too when the cookie store is configured (`CRAWLERAI_COOKIE_KEY`)
 #### Scenario: Two blocks
 - **WHEN** two HTTP requests to a site are refused within 15 min
 - **THEN** its pages start in the browser until 15 min after the second, unless an HTTP `ok` clears the history first
