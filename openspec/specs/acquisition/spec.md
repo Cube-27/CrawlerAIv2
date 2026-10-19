@@ -168,8 +168,8 @@ can inject the page's structured data, while the analytics, ad and pixel endpoin
 
 The ready wait, the one wait for a page, a fixed condition: the page is read once it has fired `DOMContentLoaded` and
 no data call has been in flight for `_STEP_QUIET_S` (0.5 s); a listing is read when the wait ends (its item-area read).
-The wait ends `READY_MAX_S` (3.5 s) after `load` (or after it began, while `load` has not fired) whatever is still in
-flight, and what is there is read; a document the main frame navigates
+The wait ends `READY_MAX_S` (3.5 s) after `load` whatever is still in flight (before `load`, only the 90% bound below
+ends it), and what is there is read; a document the main frame navigates
 to meanwhile (not a same-document navigation) starts it over, within 90% of `browser_timeout_s`, so the capture is the
 final document. A page step that changes the page is followed by the same wait for the data calls it started (3 s at
 most). A document

@@ -106,9 +106,9 @@ _SNIFFED_TYPES = frozenset({"text/plain", ""})
 # rest is for reading the DOM and the bodies.
 _SETTLE_SHARE = 0.9
 # The one wait (`_settle`, acquisition spec "HTTP and browser rungs"): from `DOMContentLoaded` (HTML Standard
-# §8.4.6), a document is read as soon as it is ready (`_ready`), and at most this long after it fired `load` (or after
-# the wait began, while it has not), ready or not: what is there then is read. An unmeasured starting point within 3
-# to 4 s.
+# §8.4.6), a document is read as soon as it is ready (`_ready`), and at most this long after it fired `load`, ready or
+# not: what is there then is read. Before `load`, only the wait's deadline bounds it. An unmeasured starting point
+# within 3 to 4 s.
 READY_MAX_S: Final = 3.5
 _POLL_S = 0.25
 # A document, or a page step that starts no data call, has settled once no data call has been in flight this long:
@@ -774,14 +774,20 @@ async def _until(
     """Returns once `ready` holds with no navigation in flight, or `within_s` after the wait began, or after the last
     document the main frame navigated to meanwhile (a script's `location.replace`, a refresh: what was shown was an
     interim document; a same-document navigation, `history.pushState`, is none), at most at `deadline`. With
-    `after_load`, a document that has fired `load` is waited for `within_s` after that instead."""
+    `after_load`, the wait ends `within_s` after the document fired `load`, and before that only at `deadline`."""
     shown, begun = frame.latest, time.monotonic()
-    while time.monotonic() < min(deadline, (frame.loaded_at if after_load and frame.loaded else begun) + within_s):
+    while time.monotonic() < _wait_end(frame, begun, within_s, deadline, after_load=after_load):
         if frame.latest is not shown:
             shown, begun = frame.latest, time.monotonic()
         elif not frame.pending and ready():
             return
         await asyncio.sleep(_POLL_S)
+
+
+def _wait_end(frame: _MainFrame, begun: float, within_s: float, deadline: float, *, after_load: bool) -> float:
+    if not after_load:
+        return min(deadline, begun + within_s)
+    return min(deadline, frame.loaded_at + within_s) if frame.loaded else deadline
 
 
 def _called(calls: DataCalls, answered: int) -> bool:
