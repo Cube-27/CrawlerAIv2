@@ -2,7 +2,8 @@
 documents"): each turns a document written in a serializer's reference format into the tree it stands for.
 
 - **devalue flat array** (devalue `stringify`, Nuxt 3's `__NUXT_DATA__` payload): an array whose element 0 is an
-  object whose every value is an in-range index into the array, or a Nuxt reviver tuple naming such an element; every
+  object whose every value is an in-range index into the array after it, or a Nuxt reviver tuple naming such an
+  element; every
   index is replaced by the element it names, typed elements by their revived value.
 - **normalized-cache dereference** (Apollo Client `InMemoryCache`): an object whose every value is an object and that
   holds `{"__ref": "<key>"}` members; every `__ref` is replaced by the entry it names, `ROOT_QUERY` first.
@@ -54,15 +55,19 @@ def _decoder(document: JsonValue) -> Callable[[Any], JsonValue] | None:
     return None
 
 
-def _is_index(value: JsonValue, size: int) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value < size
+def _index(value: JsonValue, size: int) -> int | None:
+    """`value` when it is an index into an array of `size` elements."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < size else None
 
 
 def _is_flat_array(values: list[JsonValue]) -> bool:
-    root = values[0] if values else None
-    if isinstance(root, list) and len(root) == 2 and _is_wrapper(root[0]) and _is_index(root[1], len(values)):
-        root = values[root[1]]  # type: ignore[index]
-    return isinstance(root, dict) and all(_is_index(value, len(values)) for value in root.values())
+    """devalue numbers values in first-visit order, so the root object's members name elements after it."""
+    at, root = 0, values[0] if values else None
+    if isinstance(root, list) and len(root) == 2 and _is_wrapper(root[0]):
+        wrapped = _index(root[1], len(values))
+        if wrapped is not None:
+            at, root = wrapped, values[wrapped]
+    return isinstance(root, dict) and all((i := _index(v, len(values))) is not None and i > at for v in root.values())
 
 
 def _is_wrapper(kind: JsonValue) -> bool:
@@ -187,7 +192,7 @@ def revive_astro_props(props: JsonValue) -> JsonValue | None:
 
 
 def _is_astro_tuple(value: JsonValue) -> bool:
-    return isinstance(value, list) and 1 <= len(value) <= 2 and _is_index(value[0], _ASTRO_LAST_TYPE + 1)
+    return isinstance(value, list) and 1 <= len(value) <= 2 and _index(value[0], _ASTRO_LAST_TYPE + 1) is not None
 
 
 def _revive_tuple(raw: JsonValue, depth: int, budget: _Budget) -> JsonValue:

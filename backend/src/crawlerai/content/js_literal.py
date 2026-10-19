@@ -31,13 +31,14 @@ class NotLiteral(ValueError):
 # ECMAScript WhiteSpace and LineTerminator, and comments.
 _SPACE = re.compile(r"(?:[\s\ufeff]+|/\*.*?\*/|//[^\n\r\u2028\u2029]*)*", re.S)
 # ECMAScript IdentifierName, its ASCII part plus Unicode letters: `$`, `_` or a letter, then those or digits.
-IDENT = r"(?:[^\W\d]|\$)[\w$]*"
+IDENT = r"(?!\d)[\w$]+"
 _IDENT = re.compile(IDENT)
-# ECMAScript NumericLiteral (numeric separators aside).
-_NUMBER = re.compile(r"0[xX][\da-fA-F]+|0[oO][0-7]+|0[bB][01]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
+# ECMAScript NumericLiteral (numeric separators aside): a hex, octal or binary integer, or a decimal literal.
+_RADIX_NUMBER = re.compile(r"0[xXoObB][\da-fA-F]+")
 _RADIX = {"x": 16, "o": 8, "b": 2}
+_DECIMAL = re.compile(r"(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
 # ECMAScript StringLiteral: no unescaped quote or line terminator; an escape takes the next character (CRLF as one).
-_STRINGS = {q: re.compile(rf"{q}((?:[^{q}\\\n\r]|\\(?:\r\n|[\s\S]))*){q}") for q in ("'", '"')}
+STRINGS = {q: re.compile(rf"{q}((?:[^{q}\\\n\r]|\\(?:\r\n|[\s\S]))*){q}") for q in ("'", '"')}
 # ECMAScript EscapeSequence: unicode code point and code unit escapes, hex escapes, line continuations, single chars.
 _ESCAPE = re.compile(r"\\(u\{[0-9a-fA-F]{1,6}\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|\r\n|[\s\S])")
 _SINGLE_ESCAPES = {"b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v", "0": "\0"}
@@ -52,6 +53,17 @@ def skip_space(text: str, pos: int) -> int:
     """The index of the first character at or after `pos` that is not whitespace or a comment."""
     found = _SPACE.match(text, pos)
     return pos if found is None else found.end()
+
+
+# What may follow the end of an expression statement's value: on the same line, after spaces and comments, a `;`, `,`
+# or closing bracket, a line terminator (ECMAScript automatic semicolon insertion) or the end of the text.
+_VALUE_END = re.compile(r"[ \t\ufeff]*(?:/\*.*?\*/[ \t]*)*(?:$|//|[;,)}\]\n\r\u2028\u2029])", re.S)
+
+
+def ends_value(text: str, pos: int) -> bool:
+    """Whether the value read up to `pos` is the whole value: `"USD".replace(…)` or `{…}.items` is another
+    expression, not that literal."""
+    return _VALUE_END.match(text, pos) is not None
 
 
 def read_literal(text: str, start: int = 0) -> tuple[JsonValue, int]:
@@ -87,7 +99,7 @@ class _Reader:
             return self._object(pos + 1, depth, env)
         if char == "[":
             return self._array(pos + 1, depth, env)
-        if char in _STRINGS:
+        if char in STRINGS:
             return self._string(pos)
         if char == "(":
             return self._parenthesized(pos + 1, depth, env)
@@ -119,7 +131,7 @@ class _Reader:
 
     def _key(self, pos: int) -> tuple[str, int]:
         char = self.text[pos : pos + 1]
-        if char in _STRINGS:
+        if char in STRINGS:
             return self._string(pos), self.pos
         if found := _IDENT.match(self.text, pos):
             return found.group(), found.end()
@@ -146,7 +158,7 @@ class _Reader:
         return skip_space(self.text, pos + 1)
 
     def _string(self, pos: int) -> str:
-        found = _STRINGS[self.text[pos]].match(self.text, pos)
+        found = STRINGS[self.text[pos]].match(self.text, pos)
         if found is None:
             raise NotLiteral(f"unterminated string at {pos}")
         self.pos = found.end()
@@ -156,13 +168,16 @@ class _Reader:
         return value
 
     def _number(self, pos: int) -> int | float:
-        found = _NUMBER.match(self.text, pos)
+        found = _RADIX_NUMBER.match(self.text, pos) or _DECIMAL.match(self.text, pos)
         if found is None or _IDENT.match(self.text, found.end()):  # `1px`, `0x` alone: not a numeric literal
             raise NotLiteral(f"no number at {pos}")
         self.pos = found.end()
         written = found.group()
         if radix := _RADIX.get(written[1:2].lower()):
-            return int(written[2:], radix)
+            try:
+                return int(written[2:], radix)
+            except ValueError:  # `0b12`: a digit outside the radix
+                raise NotLiteral(f"no number at {pos}") from None
         if any(c in written for c in ".eE"):
             return float(written)
         return int(written)

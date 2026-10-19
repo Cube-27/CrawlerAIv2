@@ -299,6 +299,11 @@ def test_the_object_argument_of_a_start_call_is_a_document() -> None:
         'var s = {cost: "€5.00", n: compute({x: 1}.x)}',
         'window.__NUXT__=(function(a){a.self=a;return {cost:a}}("€5.00"));',
         'dataLayer.push({cost: "€5.00", done: () => go()});',
+        'var s = {cost: "€5.00"}.cost;',
+        # Commented out, or written inside a string: not a statement.
+        '// dataLayer.push({cost: "€5.00"});',
+        '/* window.__S = {cost: "€5.00"}; */',
+        'log("dataLayer.push({cost: 1})");',
         # Bounds: nesting past the reader's depth, and parameters used past its size.
         "window.__S = " + "[" * 100_000,
         "window.__S = (function(a){return [" + "a," * 2_000 + "]}([" + "0," * 1_000 + "]))",
@@ -306,6 +311,13 @@ def test_the_object_argument_of_a_start_call_is_a_document() -> None:
 )
 def test_code_inside_a_value_ends_the_read_with_no_document(script: str) -> None:
     assert _documents(_page(script, body="€5.00")) == []
+
+
+def test_an_array_whose_root_references_itself_is_no_flat_array() -> None:
+    # devalue numbers values in first-visit order: the root's members name elements after it.
+    document: JsonValue = [{"id": 0}]
+
+    assert _documents(_page(json.dumps(document), script_type="application/json")) == [document]
 
 
 def test_a_flat_array_whose_references_expand_past_the_bound_stays_as_written() -> None:

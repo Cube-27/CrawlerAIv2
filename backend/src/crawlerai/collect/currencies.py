@@ -26,7 +26,7 @@ from pydantic import JsonValue
 from crawlerai.adapters.platforms import CurrencyMember, signature_of
 from crawlerai.collect import jsonld, microdata, og
 from crawlerai.collect.js_state import state_documents
-from crawlerai.content.js_literal import NotLiteral, read_literal
+from crawlerai.content.js_literal import NotLiteral, ends_value, read_literal
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize import numbers
 from crawlerai.normalize.base import Context
@@ -93,8 +93,10 @@ def _assigned(text: str, member: CurrencyMember) -> Iterator[str]:
     """The strings the script `text` assigns to `member.assigned` (followed through `member.members`)."""
     for match in re.finditer(rf"(?<![\w$.]){re.escape(member.assigned)}\s*=(?![=>])", text):
         try:
-            value, _ = read_literal(text, match.end())
+            value, end = read_literal(text, match.end())
         except NotLiteral:
+            continue
+        if not ends_value(text, end):  # `"USD".replace(…)`: an expression, not that literal
             continue
         for name in member.members:
             value = value.get(name) if isinstance(value, dict) else None
