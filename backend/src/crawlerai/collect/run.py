@@ -30,10 +30,8 @@ from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.collect.xhr import XhrCollector
 from crawlerai.content.page import ParsedPage
-from crawlerai.db.models import SourceKind
-from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.dispatch import equal
-from crawlerai.schemas.types import FieldSpec, SchemaDef
+from crawlerai.normalize.base import Context
+from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.capture_bundle import CaptureManifest
 
 log = logging.getLogger(__name__)
@@ -119,70 +117,32 @@ def collect_page(
     )
 
 
-# Why a detail page's DOM passes did not run (`settled`).
-SETTLED = "dom: not read, structured data agrees on every required field"
-# The collectors of structured and platform data (schema.org markup, Open Graph, an adapter's API object).
-_STRUCTURED: frozenset[SourceKind] = frozenset({"adapter", "api", "jsonld", "microdata", "og"})
-
-
 @dataclass(frozen=True, slots=True)
 class _DomPasses:
     """A detail page's two DOM passes, scoped to its product container (`collect.dom.product_apart`, read once against
-    the structured data's prices); neither runs when structured data has settled the page (`settled`)."""
+    the structured data's prices)."""
 
     outside: frozenset[int]
-    run: bool
 
     @classmethod
     def of(
         cls, page: ParsedPage, schema: SchemaDef, ctx: Context, structured: Sequence[Candidate], diagnostics: list[str]
     ) -> "_DomPasses":
-        if settled(schema, structured):
-            diagnostics.append(SETTLED)
-            return cls(frozenset(), run=False)
         outside = _isolated(product_apart, partial(product_apart, page, schema, ctx, structured), diagnostics)
-        return cls(outside or frozenset(), run=True)
+        return cls(outside or frozenset())
 
     def structural(
         self, page: ParsedPage, schema: SchemaDef, ctx: Context, diagnostics: list[str]
     ) -> list[CollectResult]:
         dom = DomCollector(self.outside)
-        found = _isolated(dom, partial(dom.collect, page, schema, ctx), diagnostics) if self.run else None
+        found = _isolated(dom, partial(dom.collect, page, schema, ctx), diagnostics)
         return [] if found is None else [found]
 
     def description(
         self, page: ParsedPage, schema: SchemaDef, ctx: Context, others: Sequence[Candidate], diagnostics: list[str]
     ) -> CollectResult | None:
         described = DescriptionCollector(self.outside)
-        return (
-            _isolated(described, partial(described.collect, page, schema, ctx, others), diagnostics)
-            if self.run
-            else None
-        )
-
-
-def settled(schema: SchemaDef, structured: Sequence[Candidate]) -> bool:
-    """Whether a detail page's DOM passes have nothing to settle (extraction spec, "Structural DOM values"): the
-    schema asks for no variants (no row-mapped field), it requires a field, and two or more kinds of structured or
-    platform data state every required field, and a member of every required group, each with one value they all
-    agree on (`normalize.dispatch.equal`). The DOM passes then only add candidates beside agreeing sources."""
-    fields = schema.fields
-    if schema.page_kind != "detail" or any(spec.row_mapped for spec in fields.values()):
-        return False
-    required = [name for name, spec in fields.items() if spec.required]
-    if not required and not schema.required_groups:
-        return False
-    agreed = {name for name in fields if _agreed(fields[name], [c for c in structured if c.field == name])}
-    return agreed.issuperset(required) and all(agreed.intersection(group) for group in schema.required_groups)
-
-
-def _agreed(spec: FieldSpec, candidates: Sequence[Candidate]) -> bool:
-    stated = [c for c in candidates if c.source_kind in _STRUCTURED]
-    values = [(c.source_kind, c.normalized.value) for c in stated if isinstance(c.normalized, Ok)]
-    if not values or len(values) != len(stated):
-        return False
-    first = values[0][1]
-    return len({kind for kind, _ in values}) >= 2 and all(equal(first, value, spec) for _, value in values)
+        return _isolated(described, partial(described.collect, page, schema, ctx, others), diagnostics)
 
 
 def _adapter_collector(

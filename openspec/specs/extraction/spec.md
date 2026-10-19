@@ -29,16 +29,8 @@ announced name; `visible(value)` is a whole-word match on that text plus shown e
 
 ### Requirement: Run every cheap collector
 The system SHALL run every collector on every served capture in the order of `collect/run.py`; skipping only ever
-skips the LLM, the browser, or a detail page's two DOM passes (structural DOM values and the DOM description block)
-when structured data has settled the page: the schema has no row-mapped field (no variants are asked for), it requires
-a field, and two or more kinds of structured or platform data (adapter, JSON-LD, microdata, Open Graph) state every
-required field and a member of every required group, with no value of theirs differing; the diagnostic
-`dom: not read, structured data agrees on every required field` records it. A collector MUST NOT raise: an error
-becomes an empty result plus a diagnostic. (Previously: the DOM passes always ran.) Refs: §8.1, §8.2 rule 1, D-0387,
-D-0959.
-#### Scenario: Settled by structured data
-- **WHEN** JSON-LD and microdata both state the title and the price, equal, and the schema requires only those
-- **THEN** no `dom` candidate is proposed; with differing prices, or a variants field in the schema, the DOM passes run
+skips the LLM or the browser. A collector MUST NOT raise: an error becomes an empty result plus a diagnostic.
+Refs: §8.1, §8.2 rule 1, D-0387, D-0959.
 
 ### Requirement: Shells are not observations (INV-11)
 Blocked and shell captures SHALL yield zero candidates and zero records; the outcome is the block class (`blocked`,
