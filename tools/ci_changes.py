@@ -18,9 +18,11 @@ JOB_INPUTS: dict[str, tuple[str, ...]] = {
     # Lint, types, migrations and tests of backend/; complexipy also covers ../tools; the job runs
     # infra/postgres/init.sql; `make` targets live in the Makefile.
     "backend": ("backend/", "tools/", "infra/", "Makefile", WORKFLOW),
-    # The frontend checks, plus the API client freshness step, which regenerates the client from backend/ through
-    # the Makefile.
-    "frontend": ("frontend/", "backend/", "tools/theme_only_check.py", "Makefile", WORKFLOW),
+    # The frontend checks.
+    "frontend": ("frontend/", "tools/theme_only_check.py", WORKFLOW),
+    # The API client freshness check: regenerates the client from backend/ with the frontend's generator, through the
+    # Makefile.
+    "api_client": ("frontend/", "backend/", "Makefile", WORKFLOW),
     # The dependency licence scan reads only the lockfiles, the manifests they come from, and its own scripts.
     "licenses": (
         "backend/pyproject.toml",

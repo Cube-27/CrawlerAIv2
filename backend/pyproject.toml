@@ -102,6 +102,9 @@ warn_required_dynamic_aliases = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--import-mode=importlib", "--strict-markers"]
+# A hung test fails after 60 s instead of holding CI until the job's limit (a time limit, not a size gate). A test that
+# legitimately needs longer says so with `@pytest.mark.timeout(<seconds>)`.
+timeout = 60
 markers = [
     "browser: drives headless Chromium (`uv run patchright install --no-shell chromium` once); skipped where it is not installed, except in CI",
 ]
@@ -118,6 +121,7 @@ dev = [
     "mypy>=1,<2",
     "pyarrow>=17",
     "pytest>=8,<10",
+    "pytest-timeout>=2,<3",
     "pytest-xdist>=3,<4",
     "ruff>=0.17,<1",
     "types-dateparser>=1.2,<2",

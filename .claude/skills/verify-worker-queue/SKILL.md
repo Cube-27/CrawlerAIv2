@@ -15,7 +15,8 @@ after its cancellation.
 - Runner: `tools/verify/worker_queue.py` (standard library; pinned `tla2tools.jar` v1.7.4, sha256 `936a2620...`; a
   pinned Temurin 21 JRE is fetched when no `java` 11+ is on PATH; cache and TLC logs in `~/.cache/crawlerai-tla/`).
 - CI: the `verify-worker-queue` job in `.github/workflows/ci.yml`, run when a changed path is one of its inputs in
-  `tools/ci_changes.py` (`verify_worker_queue`).
+  `tools/ci_changes.py` (`verify_worker_queue`), as three parallel shards (`--shard 1/3` .. `3/3`) that together run
+  every check, finding and mutant.
 
 ## Does my change touch it?
 
