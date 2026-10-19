@@ -281,17 +281,20 @@ def product_apart(page: ParsedPage, schema: SchemaDef, ctx: Context, stated: Seq
 
 
 def other_item_paths(page: ParsedPage, ctx: Context, outside: frozenset[int]) -> frozenset[str]:
-    """The node paths of the outermost elements of a detail page's main content that hold other items' content: what
-    `_other_items` finds (related and similar items, reviews, lists of other documents' cards) and the blocks outside
-    the product container (`outside`, `product_apart`, which reads `collect.scope` for the product's stated prices).
-    Role C reads the page's text without them (llm spec, "Role C input, claims and candidates")."""
-    region = content_region(page)
-    if region is None or page.json_body:
+    """The node paths of the outermost elements of a detail page that hold other items' content: what `_other_items`
+    finds in the main content (related and similar items, reviews, lists of other documents' cards) and the blocks
+    outside the product container wherever they are (`outside`, `product_apart`: other items' priced cards, schema.org
+    Product items in a sidebar too). Role C reads the page's text without them (llm spec, "Role C input, claims and
+    candidates")."""
+    if page.json_body:
         return frozenset()
-    apart = _inside(_other_items(region, _Links.of(region, ctx))) | outside
+    region = content_region(page)
+    apart = outside if region is None else _inside(_other_items(region, _Links.of(region, ctx))) | outside
+    if not apart:
+        return frozenset()
     return frozenset(
         node_xpath(node)
-        for node in (region, *region.css("*"))
+        for node in page.tree.css("*")
         if node.mem_id in apart and (node.parent is None or node.parent.mem_id not in apart)
     )
 

@@ -3,13 +3,20 @@ gap hook"): it reads the product's own text, not other items' cards; every missi
 value the evidence does not hold stays `missing` with reason `unverified`. The client is scripted; no provider is
 called. Pages are synthetic (`example.test`)."""
 
+import asyncio
+from datetime import UTC, datetime
+
 from pydantic import JsonValue
 
+from crawlerai.collect.base import Entity
+from crawlerai.collect.dom import product_apart
 from crawlerai.config_ir.role_c import role_c
+from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId
 from crawlerai.llm.providers.fake import ScriptedClient
-from crawlerai.resolve.pipeline import UNVERIFIED
+from crawlerai.normalize.base import Context
+from crawlerai.resolve.pipeline import UNVERIFIED, GapRequest
 from crawlerai.schemas.types import FieldSpec, FieldType
 from tests.unit.test_pipeline import PRODUCT, _bundle, _extract, _html, _product
 
@@ -45,3 +52,20 @@ def test_role_c_reads_the_product_only_asks_once_and_never_publishes_an_unverifi
     assert (price.status, price.reason) == ("missing", UNVERIFIED)
     assert (released.status, released.value) == ("published", "2026-09-30")
     assert not any(c.field == "price" and c.source_kind == "llm" for c in result.candidates)
+
+
+def test_a_product_card_beside_the_main_content_is_left_out_too() -> None:
+    card = '<div itemscope itemtype="https://schema.org/Product"><span itemprop="name">Oak chair</span> 12.00 EUR</div>'
+    page = ParsedPage(
+        f"<html><body><main><h1>Widget One</h1><p>Solid widget</p></main><aside>{card}</aside></body></html>"
+    )
+    ctx = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), page_url="https://shop.example.test/p/1")
+    target = Entity(id="page", types=("Product",), urls=(ctx.page_url,), parent=None)
+    request = GapRequest(page, SCHEMA, ctx, target, ("price",), product_apart(page, SCHEMA, ctx, ()))
+    client = ScriptedClient({"fields": {"price": {"shown": False, "ref": "", "value": "", "start": 0, "end": 0}}})
+
+    asyncio.run(role_c(client, job_id=None).detail(request))
+
+    (call,) = client.requests
+    read = call.user.partition("<page_text>")[2].partition("</page_text>")[0]
+    assert read.strip() == "Widget One\nSolid widget"
