@@ -375,15 +375,20 @@ class _Page:
             }
             if detail:
                 rows = self._rows(target, candidates)
-                shown_variant_availability(schema, decisions, rows)
-        fields = assess_fields(
-            schema,
+        fields = self._assess(decisions)
+        # The shown variant is read from the assessed values, so one below the threshold never selects a row.
+        if shown := shown_variant_availability(schema, decisions, fields, rows):
+            fields = self._assess({**decisions, **shown})
+        return fields | rows
+
+    def _assess(self, decisions: Mapping[str, Preference | Derived]) -> FieldSet:
+        return assess_fields(
+            self.schema,
             decisions,
             self.data.calibration,
             corroborated=self.config.corroborated,
             min_confidence=self.data.min_confidence,
         )
-        return fields | rows
 
     def _rows(self, target: Entity, candidates: Sequence[Candidate]) -> FieldSet:
         """A detail target's row-mapped fields, resolved row by row (variants spec)."""

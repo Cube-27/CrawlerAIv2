@@ -94,7 +94,7 @@ _AMOUNT = re.compile(r"\d(?:[\d.,'\u00a0\u202f ]*\d)?")
 
 def _sign_spaced(value: str, text: str) -> list[tuple[int, int]]:
     """The spans of `text` that write `value`'s one amount with its sign before or after it, with any whitespace (or
-    none) between sign and digits (CLDR `currencySpacing`); not inside a longer number."""
+    none) between sign and digits (CLDR `currencySpacing`); not inside a longer or grouped number."""
     amounts = list(_AMOUNT.finditer(value))
     if len(amounts) != 1:
         return []
@@ -102,7 +102,8 @@ def _sign_spaced(value: str, text: str) -> list[tuple[int, int]]:
     before, after = value[: amount.start()].rstrip(), value[amount.end() :].lstrip()
     if not (before or after):
         return []
-    prefix = rf"{re.escape(before)}\s*" if before else ""
+    # With no sign before it, the amount must not be the tail of a grouped number (`1 219.98`).
+    prefix = rf"{re.escape(before)}\s*" if before else r"(?<!\d[\s'])"
     suffix = rf"\s*{re.escape(after)}" if after else ""
     pattern = rf"(?<![\d.,]){prefix}{re.escape(amount.group())}(?![\d]){suffix}"
     return [match.span() for match in re.finditer(pattern, text)]

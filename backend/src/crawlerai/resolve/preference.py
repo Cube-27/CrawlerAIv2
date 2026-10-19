@@ -290,7 +290,9 @@ def _by_agreement(spec: FieldSpec, kept: list[Candidate], chosen: Candidate, rej
     if not _all_agree(kept, spec):
         if not _currency_only(spec, kept):
             return _all_rejected("conflict", "disagree", kept, rejected)
-        chosen = _currency_unknown(chosen)
+        unknown = _currency_unknown(chosen)
+        kept = [unknown if c is chosen else c for c in kept]
+        chosen = unknown
     return Chosen(chosen, agreeing, tuple(rejected), tuple(kept))
 
 
