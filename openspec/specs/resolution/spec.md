@@ -71,12 +71,17 @@ abstain cause, per `resolve/types.py`); every rejected candidate keeps its own r
 
 ### Requirement: Atomic offers (INV-15)
 Price, currency and availability SHALL come from one anchor Offer; Offers that disagree give `offers_disagree`, a field
-the anchor lacks gives `offer_split`, and an `AggregateOffer` range never publishes as the price. Availability the
+the anchor lacks that another Offer states gives `offer_split`, a field no Offer states publishes from the target's own
+values (its Open Graph, page state or text: a shown price is never dropped), and an `AggregateOffer` range never
+publishes as the price. Availability the
 Offers disagree on comes from the one Offer of the variant the target shows, when it shows one (variants spec). Refs: §10, D-0440;
 per-row and common-value rules in [variants](../variants/spec.md). Enforced by: resolver test; active.
 #### Scenario: Price and availability from two Offers
 - **WHEN** Offer A states only price and Offer B states only availability
 - **THEN** the field without a value from the anchor Offer is `conflict` with reason `offer_split`
+#### Scenario: Variant Offers without a price
+- **WHEN** the target's only Offer states availability and no price, and its `og:price:amount` states one
+- **THEN** `price` publishes the Open Graph amount and `availability` the Offer's
 
 ### Requirement: Derived values (INV-07)
 Derived values SHALL fill only `missing` fields and carry `derived_by`; the only derivations are `absolutize`, then for

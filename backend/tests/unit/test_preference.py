@@ -161,6 +161,25 @@ DOM_ORDER: tuple[SourceKind, ...] = ("jsonld", "og", "dom")
 # Atomic offers (INV-15)
 
 
+def test_a_price_no_offer_states_publishes_from_the_targets_own_values_and_one_another_offer_states_is_split() -> None:
+    price = FieldSpec(type=FieldType.MONEY, description="d", schema_org="Offer.price+priceCurrency")
+    availability = FieldSpec(
+        type=FieldType.ENUM, vocab="schema:ItemAvailability", description="d", schema_org="Offer.availability"
+    )
+    stock = _candidate("availability", "InStock", OFFER_A)
+    og = _candidate("price", {"amount": "6.75", "currency": "USD"}, PAGE, "og")
+    other_offer = _candidate("price", {"amount": "6.75", "currency": "USD"}, OFFER_B)
+    schema = _schema(price=price, availability=availability)
+
+    result = _prefer(schema, stock, og)
+    # Availability first in schema order: Offer A is the anchor, and only Offer B states the price.
+    split = _prefer(_schema(availability=availability, price=price), stock, other_offer)
+
+    assert result["price"] == Chosen(og, (), (), (og,))
+    assert result["availability"] == Chosen(stock, (), (), (stock,))
+    assert split["price"].reason == "offer_split"  # type: ignore[union-attr]
+
+
 # URL parameters (INV-13)
 
 
