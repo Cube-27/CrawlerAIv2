@@ -145,12 +145,15 @@ def lesson(result: FetchResult, lacks: bool | None) -> Lesson | None:
     pages stay on HTTP. A render of a detail page that needed no steps, whose data calls include one that states the
     page's product by a key of its URL (`replay.learned_call`), teaches `api_replay` with that call, unless the fetch
     replayed a call already: the replay was refused, or did not give what the render gave, and the contract stays on
-    the browser. An HTTP `ok` a replay served teaches nothing: a replay never rewrites the contract it came from."""
+    the browser. An HTTP `ok` of a fetch that replayed a call teaches nothing: a replay never rewrites the contract it
+    came from."""
     http = [attempt for attempt in result.attempts if attempt.method == "http"]
     if result.bundle.manifest.fetch_policy.get("method_hint") != "auto" or result.block_class != "ok" or not http:
         return None
     if result.method == "http":
-        replayed = any(a.data_call == "replay" and a.block_class == "ok" for a in result.attempts)
+        # A replay sent, served or not: the page kept is the replay's contract at work, or the HTTP page a refused
+        # replay and a discarded render left; neither says the site's pages need nothing but HTTP.
+        replayed = any(a.data_call == "replay" for a in result.attempts)
         return None if replayed else Lesson("http")
     return _rendered(result, http[-1], lacks) if result.method == "browser" else None
 

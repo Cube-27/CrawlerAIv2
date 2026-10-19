@@ -102,7 +102,7 @@ def product_json(platform: str | None, url: str, markup: str) -> ProductJson | N
     """The documented public product JSON request for the product page at `url` of `platform`, or None: Shopify's Ajax
     API product (`/products/{handle}.js`) of an Online Store page (`_ONLINE_STORE`), or WooCommerce's Store API
     products by slug (developer.woocommerce.com, "Store API, Products": `GET /wp-json/wc/store/v1/products?slug=`), at
-    the API root the page links to, on its own host."""
+    the API root the page links to, on its own origin."""
     parts = urlsplit(url)
     route = _SHOPIFY_PRODUCT.fullmatch(parts.path)
     if platform == "shopify" and route is not None and _ONLINE_STORE in markup[:_SCAN_CHARS]:
@@ -120,6 +120,8 @@ def _store_api(scheme: str, netloc: str, path: str, markup: str) -> ProductJson 
     if not _SLUG.fullmatch(slug) or href is None:
         return None
     root = urljoin(f"{scheme}://{netloc}/", href.group(1).replace("&amp;", "&"))
-    if urlsplit(root).netloc != netloc or "?" in root:
+    # Same origin as the page: a root on another scheme (an `http` link on an `https` page) would send the call where
+    # its answer can be altered in transit.
+    if (urlsplit(root).scheme, urlsplit(root).netloc) != (scheme, netloc) or "?" in root:
         return None
     return ProductJson(f"{root.rstrip('/')}/wc/store/v1/products?slug={quote(slug)}", slug)

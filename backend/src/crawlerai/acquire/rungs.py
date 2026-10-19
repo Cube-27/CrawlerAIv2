@@ -315,13 +315,13 @@ async def _instead_of_render(
         page = await refer(page)
         if page[0] is not result:
             return page, True
-    page = await _data_called(url, policy, page, remembered, retry)
+    page = await _data_called(policy, page, remembered, retry)
     joined_page = page[0]
     served = joined_page is not result and retry.needs_render is not None and not await retry.needs_render(joined_page)
     return page, served
 
 
-async def _data_called(url: str, policy: FetchPolicy, page: Fetched, remembered: Remembered, retry: _Retry) -> Fetched:
+async def _data_called(policy: FetchPolicy, page: Fetched, remembered: Remembered, retry: _Retry) -> Fetched:
     """The HTTP `ok` detail page about to be rendered for lacking what the caller reads, joined with the answer of its
     data call when the answer states the page's product (`acquire.replay`): the call the site's `api_replay` contract
     keeps, else the product JSON its platform documents (`adapters.platforms`). The call waits for the site's rate
@@ -332,7 +332,8 @@ async def _data_called(url: str, policy: FetchPolicy, page: Fetched, remembered:
     if send is None or called is None or not await _admitted(retry.admit_next):
         return page
     endpoint, key, kind = called
-    sent = await send(JsonRequest(url=endpoint, page_url=url), policy)
+    # The page that loaded the product, after its redirects, is the call's referrer.
+    sent = await send(JsonRequest(url=endpoint, page_url=result.bundle.manifest.final_url), policy)
     marked = sent.model_copy(
         update={"attempts": tuple(a.model_copy(update={"data_call": kind}) for a in sent.attempts)}
     )
