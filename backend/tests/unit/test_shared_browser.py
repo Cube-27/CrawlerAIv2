@@ -34,6 +34,7 @@ class Chromium:
     sessions: list[Session] = field(default_factory=list)
     fetched: list[tuple[int, str]] = field(default_factory=list)
     made: list[tuple[FetchResult, tuple[int, str]]] = field(default_factory=list)
+    raises: bool = False  # a fetch that kills its session raises instead of returning
 
     @asynccontextmanager
     async def launch(self) -> AsyncIterator[Session]:
@@ -49,6 +50,8 @@ class Chromium:
         if self.kills.get(url, 0) > 0:
             self.kills[url] -= 1
             session.connected = False
+            if self.raises:
+                raise RuntimeError("Target closed")
         result = cast(FetchResult, object())
         self.made.append((result, (session.number, url)))
         return result
@@ -85,3 +88,16 @@ async def test_a_crashed_browser_is_restarted_once_and_the_page_fetched_again() 
     assert chromium.origin(result) == (2, URL)
     assert chromium.fetched == [(1, URL), (2, URL), (2, OTHER)]
     assert [(s.closed, s.connected) for s in chromium.sessions] == [(True, False), (False, True)]
+
+
+async def test_a_fetch_that_raises_with_the_browser_gone_leaves_no_dead_session() -> None:
+    chromium = Chromium(kills={URL: 1}, raises=True)
+    browser = chromium.browser()
+
+    with pytest.raises(RuntimeError):
+        await browser.fetch(URL, FetchPolicy())
+    await browser.fetch(OTHER, FetchPolicy())
+
+    assert chromium.fetched == [(1, URL), (2, OTHER)]
+    assert chromium.sessions[0].closed
+    await browser.aclose()

@@ -47,15 +47,24 @@ class SharedBrowser[S]:
         (`Rungs.exporting`)."""
         async with self._contexts:
             session = await self._session()
-            result = await self._fetch(session, url, policy, export)
+            result = await self._attempt(session, url, policy, export)
             if self._alive(session):
                 return result
             await self._close(session)
             session = await self._session()
-            result = await self._fetch(session, url, policy, export)
+            result = await self._attempt(session, url, policy, export)
             if not self._alive(session):
                 await self._close(session)
             return result
+
+    async def _attempt(self, session: S, url: str, policy: FetchPolicy, export: CookieExport | None) -> FetchResult:
+        """One fetch in `session`; a fetch that raises with the browser gone ends it, so no later fetch reuses it."""
+        try:
+            return await self._fetch(session, url, policy, export)
+        except Exception:
+            if not self._alive(session):
+                await self._close(session)
+            raise
 
     async def aclose(self) -> None:
         """End the browser, if one is running."""

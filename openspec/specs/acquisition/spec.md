@@ -71,8 +71,9 @@ render sent the site's detail pages to the browser.) Refs: §7.1, D-0204, D-0205
 The HTTP rung SHALL use `curl_cffi` impersonating Chrome (`CRAWLERAI_IMPERSONATE`, else the profile nearest the
 installed Patchright Chromium major, checked at startup by `acquire/impersonate.py`), at most 5 manual redirects, and
 record headers without cookies or proxy credentials, within `timeout_s` (10 s by default). The browser rung SHALL use Patchright's full Chromium build in
-headless mode, one browser per process shared by its fetches (worker, API, scheduler, eval) with at most
-`BROWSER_CONTEXTS` (2) rendering at once (`acquire/shared_browser.py`), a fresh context per fetch (the caller's cookies added before it navigates), one navigation, no scripted
+headless mode, one browser per process shared by its page fetches (worker, API, scheduler, eval) with at most
+`BROWSER_CONTEXTS` (2) of them rendering at once (`acquire/shared_browser.py`; a listing scrape with browser actions
+launches its own), a fresh context per fetch (the caller's cookies added before it navigates), one navigation, no scripted
 actions (a listing scrape's browser actions and the caller's page steps excepted, below), capped by `browser_timeout_s`
 (plus the steps' own timeouts); it aborts image, font and media requests by resource type, never by hostname, unless
 the policy captures the page as a file or the site loads every resource (`site.load_all_resources`, set when a
