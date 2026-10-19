@@ -32,7 +32,7 @@ from crawlerai.collect.base import ARRAY_ROW, Candidate, Entity
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.currencies import with_stated_currencies
 from crawlerai.collect.items.bind import Listing, RowBlock, bind
-from crawlerai.collect.items.lines import BlockText, block_text
+from crawlerai.collect.items.lines import BlockText, block_texts
 from crawlerai.collect.run import Adapters, Collected, collect_page
 from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canonical_urls, item_url_fields
 from crawlerai.content.context import page_context
@@ -509,8 +509,7 @@ class _Listing:
         required = {name for name in askable if schema.fields[name].required}
         if not unpublished and not any(required.intersection(names) for names in lacking.values()):
             return ()
-        texts = (block_text(self.page.page, block, lacking[block.row]) for block in self.blocks if lacking[block.row])
-        return tuple(text for text in texts if text is not None)
+        return block_texts(self.page.page, self.blocks, lacking)
 
     def with_reply(self, reply: ListingGapReply, asked: tuple[str, ...]) -> "_Listing":
         """The listing with role C's candidates, owned by the blocks' rows and the page entity: the rows and the page

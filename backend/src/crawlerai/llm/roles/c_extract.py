@@ -10,9 +10,10 @@ claimed id is kept only when it marks an element of the field's kind, and its ca
 normalizer declines stays a candidate, which preference rejects as `invalid`.
 
 On a listing the model reads the blocks of the item layer's bound group (`collect.items.lines`), one line each under
-its number, and replies with claims `{block, field, value}`. A claim fills the field of the row that block is or is
-bound to, when that row does not publish it; its value is grounded in that block's text only, so a value another block
-shows is dropped, and the span's locator is its offset in the cleaned text. The labeling pre-fill (`c_prefill`,
+its number (after its enclosing item's context, for a nested row), and replies with claims `{block, field, value}`. A
+claim fills the field of the row that block is or is bound to, when that row does not publish it; its value is grounded
+in that block's text, else its context, only, so a value another block shows is dropped, and the span's locator is its
+offset in the cleaned text. The labeling pre-fill (`c_prefill`,
 evaluation spec) makes either call over every field of the schema.
 
 A call that gives no valid reply is not an error of the page: the fields stay `missing`, with the failure's
@@ -21,7 +22,7 @@ reason. Everything else the client raises, a replay's missing recording among th
 
 import asyncio
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from importlib.resources import files
 from typing import Final, cast
 
@@ -268,14 +269,22 @@ def _read_claims(
         block = by_index.get(index)
         if block is None or name not in block.fields or (index, name) in taken or value == _ABSENT:
             continue
-        span = align(SpanClaim(value=value, start=0, end=len(value)), block.text)
-        if span is None:
+        at = _grounded(value, block)
+        if at is None:
             dropped.append(f"role C: block {index} {name} ungrounded")
             continue
         taken.add((index, name))
-        at = GroundedSpan(span.value, block.start + span.start, block.start + span.end)
         candidates.append(_candidate(name, fields[name], block.row, at.value, at.locator, ctx))
     return _Read(tuple(candidates), tuple(dropped))
+
+
+def _grounded(value: str, block: BlockText) -> GroundedSpan | None:
+    """The claimed value as a span of the cleaned text: in the block's own text, else in its enclosing item's context
+    (`collect.items.lines`); None when neither holds it."""
+    for start, text in block.segments:
+        if (span := align(SpanClaim(value=value, start=0, end=len(value)), text)) is not None:
+            return GroundedSpan(span.value, start + span.start, start + span.end)
+    return None
 
 
 def _calls(blocks: Sequence[BlockText], fields: int) -> tuple[tuple[tuple[BlockText, ...], ...], tuple[str, ...]]:
@@ -289,12 +298,12 @@ def _calls(blocks: Sequence[BlockText], fields: int) -> tuple[tuple[tuple[BlockT
     chars = 0
     for whole in read:
         # A block longer than a call's budget is cut to it; its `start` stays, so its claims keep their offsets.
-        block = replace(whole, text=whole.text[:LISTING_MAX_CHARS])
-        if run and (len(run) == per or chars + len(block.text) > LISTING_MAX_CHARS):
+        block = whole.cut(LISTING_MAX_CHARS)
+        if run and (len(run) == per or chars + len(block.line) > LISTING_MAX_CHARS):
             runs.append(tuple(run))
             run, chars = [], 0
         run.append(block)
-        chars += len(block.text)
+        chars += len(block.line)
     runs.extend((tuple(run),) if run else ())
     if len(read) == len(blocks):
         return tuple(runs), ()

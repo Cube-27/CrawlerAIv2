@@ -105,11 +105,19 @@ Role C SHALL be asked for the blocks whose bound rows lack a row field, each for
 URL, when a row field is published on no row or a row lacks a required one, and never beside a config that runs a row
 field; and in a separate call over the whole cleaned text for the missing page fields when a required one is missing.
 Its values fill the blocks' rows; it makes no row, so a listing without rows answers `no_rows: not_asked`.
+A block of a nested listing is read with its enclosing item's context (`collect/items/lines.py`): when the block lies
+inside a block of another repeated group, and two or more blocks of that group hold rows, the enclosing block's text
+before the first block of the inner group (what a building states for its units: its name, its address, column
+headings) comes with the block, as the block's own text does not show it.
 (Previously: role C was asked for rows when the listing had none, and its rows were placed on blocks by their links or
-replaced rows read from blocks alone.) Refs: §8.6, owner #67, D-1603, D-1604, D-1605.
+replaced rows read from blocks alone; a nested row was read without its enclosing item's text.) Refs: §8.6, owner #67,
+D-1603, D-1604, D-1605.
 #### Scenario: Only rows lacking a required field
 - **WHEN** one of five bound rows lacks a required row field and every row field is published on some row
 - **THEN** role C is asked for that block only, for the fields its row lacks
+#### Scenario: Nested rows
+- **WHEN** each of three buildings states its name and address, then lists three units that each link to a unit page
+- **THEN** each unit is a row, and role C reads it with its building's name and address before its own text
 #### Scenario: Listing without blocks
 - **WHEN** a listing has no stated rows and no aligned item group
 - **THEN** role C is not asked for rows and the answer's reason is `no_rows: not_asked`
