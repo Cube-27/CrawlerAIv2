@@ -15,7 +15,10 @@ captures and runs live in it. Refs: owner (2026-10-18, master plan decision 2).
 ### Requirement: Main data model tables
 The main database SHALL hold the §6 tables as defined in the baseline migration, with `site.host` exact, lowercased
 and UNIQUE (no public-suffix logic), `schema_def.name` and `project.name` UNIQUE, and at most one `active`
-`extraction_config` per (site, schema, page kind). Refs: §6, D-0089, D-0091, D-0138.
+`extraction_config` per (site, schema, page kind). A `site_contract` row holds the contract alone (acquisition spec,
+"Acquisition contract and block history"): `method`, `engine`, `handoff`, `coverage`, beside its key, `failures` and
+`checked_at`. (Previously: also `settle_on`, `needs_render`, `needs_xhr` and `needs_traversal`.) Refs: §6, D-0089,
+D-0091, D-0138, architecture v3 (e).
 #### Scenario: Second active config refused
 - **WHEN** a second `active` `extraction_config` is written for the same site, schema and page kind
 - **THEN** the insert fails on `uq_extraction_config_active`

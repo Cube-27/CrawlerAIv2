@@ -117,7 +117,6 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
         crawl.request.fetch,
         crawl.request.locale,
         served=served,
-        llm=crawl.llm,
         listing_pages=pages,
         formats=_formats_of(task, crawl.request),
     )

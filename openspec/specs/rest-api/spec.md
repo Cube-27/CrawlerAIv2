@@ -232,7 +232,7 @@ whose calibrated confidence is below it is `abstained` with reason `below_min_co
 `POST /v1/scrape`, `/v1/batch/scrape` and `/v1/crawl` (and the MCP tools that take their bodies) SHALL accept an
 optional `render_fields`, at most `MAX_RENDER_FIELDS` schema field names (names the schema lacks are ignored): the
 fields the caller says the page shows only once rendered, which have each page rendered in `auto`
-([acquisition](../acquisition/spec.md), "Browser on evidence"). Without them a field missing from a script-rendered HTTP
+([acquisition](../acquisition/spec.md), "Browser on block or by field source"). Without them a field missing from a script-rendered HTTP
 page that was not rendered is `interaction_required` ([resolution](../resolution/spec.md)). A task outcome or a scrape's `outcome` may be
 `auth_wall`, `soft_404`, `geo_redirect`, `redirected_to_listing` or `timeout` (the capture's block class,
 `fetch.block_class`, is the transport outcome; the task outcome is the data outcome; the model is in

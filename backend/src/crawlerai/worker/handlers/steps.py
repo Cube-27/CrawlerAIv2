@@ -68,16 +68,13 @@ from crawlerai.services.scrape_steps import (
     EXTRACTION_ERROR,
     FetchOptions,
     PageFormat,
-    RenderNeed,
     SiteRow,
     blocked_reason,
     extract_further,
     fetch_failure,
     fetch_policy,
     new_capture,
-    parsed_page,
     record_fetch_usage,
-    render_need,
     site_row,
     store_further,
     store_page_record,
@@ -97,8 +94,6 @@ _VENDOR_TRIES: Final = 2
 
 # The request's `min_confidence`, as the job row stores it.
 _MIN_CONFIDENCE: Final = TypeAdapter(Probability)
-# The request's `render_fields`, as the job row stores them (absent from a job a schedule or a learning run submitted).
-_RENDER_FIELDS: Final = TypeAdapter(tuple[str, ...])
 _JobRow = Row[dict[str, object], SchemaId | None, dict[str, object] | None]
 
 
@@ -111,7 +106,6 @@ class Records:
     data: EngineData
     config: ActiveConfig | None
     margins: DriftMargins | None
-    render_fields: tuple[str, ...] = ()  # the request's (`RenderNeed`)
 
 
 async def load_job(
@@ -134,8 +128,7 @@ async def load_job(
     )
     config_id = pins.configs.get(urlsplit(task.url).hostname or "")
     config = None if config_id is None else await config_by_id(conn, config_id, pinned.vocabulary)
-    render_fields = _RENDER_FIELDS.validate_python(job.request.get("render_fields", []))
-    return job.request, Records(pins.schema_, pinned, config, margins, render_fields)
+    return job.request, Records(pins.schema_, pinned, config, margins)
 
 
 @dataclass(frozen=True)
@@ -149,13 +142,12 @@ class FetchedPage:
     standing: tuple[RecordId, ...]
     attempts: tuple[AttemptRecord, ...]
     proxy_pool: str | None
-    check: RenderNeed | None = None
     further: tuple[FetchResult, ...] = ()  # a listing recipe's further pages, in order
 
     @property
     def parsed(self) -> ParsedPage:
-        """The page's one parse (INV-26): the one its fetch's content check read, when it read this capture."""
-        return parsed_page(self.result.bundle, self.check)
+        """The page's one parse (INV-26)."""
+        return ParsedPage.of(self.result.bundle)
 
 
 @dataclass(frozen=True)
@@ -177,7 +169,6 @@ async def fetch_page(
     *,
     recurring: Records | None = None,
     served: Records | None = None,
-    llm: LLMClient,
     listing_pages: int = MAX_PAGES,
     formats: Sequence[PageFormat] = (),
 ) -> FetchedPage | Ended:
@@ -191,9 +182,8 @@ async def fetch_page(
     §4.2).
 
     With `served`, the records the task extracts with when they are all it reads of the page, the config they name
-    serves the page through its API recipe when it has one (adapters spec, `recipe_rung`), and an HTTP page that lacks
-    the offer data or the items their schema reads is rendered once more (`RenderNeed`, owner #49, #54). A listing's
-    recipe with pagination serves up to
+    serves the page through its API recipe when it has one (adapters spec, `recipe_rung`). A listing's recipe with
+    pagination serves up to
     `listing_pages` pages of it (module docstring).
 
     `formats` are those the task's page is read for: a screenshot or PDF among them is made in the browser
@@ -226,7 +216,7 @@ async def fetch_page(
     # The task's deadline runs from its claim, a moment before this (`worker.loop`).
     deadline = time.monotonic() + TASK_DEADLINE.total_seconds()
     plain = PagePlan(rungs, site, policy, [], validators=validators, has_record=bool(standing), deadline=deadline)
-    plan = _plan(task, served, llm, listing_pages, plain)
+    plan = _plan(served, listing_pages, plain)
     rules = rules_in(conn, fetching.rungs.http, plan.attempts, Turns(fetching.limiter, QUEUED))
     fetch = page_fetch(fetching, plan, rules, QUEUED)
     by_adapter = rungs.adapters.would_serve(task.url)
@@ -235,17 +225,15 @@ async def fetch_page(
     return await _kept(conn, fetching, task, plan, fetched, standing)
 
 
-def _plan(task: ClaimedTask, served: Records | None, llm: LLMClient, listing_pages: int, plan: PagePlan) -> PagePlan:
-    """`plan` with what `served` adds: the config's API recipe (serving a listing in pages when it has pagination) and
-    the check that renders an HTTP page lacking what the records read, with role C charged to the task's job."""
+def _plan(served: Records | None, listing_pages: int, plan: PagePlan) -> PagePlan:
+    """`plan` with what `served` adds: the config's API recipe, serving a listing in pages when it has pagination."""
     if served is None:
         return plan
     recipe = None if served.config is None else recipe_of(served.config)
     lists = served.schema.page_kind == "listing" and recipe is not None and recipe.pagination is not None
-    check = render_need(served.schema, served.data, served.render_fields)
     deadline = time.monotonic() + RECIPE_PAGES_SHARE.total_seconds()
     pages = RecipePages(listing_pages, plan.attempts, deadline=deadline) if lists else None
-    return replace(plan, recipe=recipe, pages=pages, needs_render=check)
+    return replace(plan, recipe=recipe, pages=pages)
 
 
 async def _kept(
@@ -262,10 +250,9 @@ async def _kept(
     if isinstance(fetched, FetchResult):
         further_refused = None if plan.pages is None else plan.pages.refused
         if (refused := refusal(fetched) or further_refused) is None:
-            check = plan.needs_render if isinstance(plan.needs_render, RenderNeed) else None
-            capture_id = await new_capture(conn, fetching.store, site.id, fetched, check)
+            capture_id = await new_capture(conn, fetching.store, site.id, fetched)
             further = () if plan.pages is None else tuple(plan.pages.further)
-            return FetchedPage(site, fetched, capture_id, standing, attempts, pool, check, further)
+            return FetchedPage(site, fetched, capture_id, standing, attempts, pool, further)
         fetched = Failed(refused, transient=False)
     if isinstance(fetched, Unchanged):
         await record_fetch(conn, site.id, task.canonical_url, fetched)

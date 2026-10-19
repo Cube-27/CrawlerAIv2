@@ -54,7 +54,6 @@ from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.normalize.dispatch import warm
 from crawlerai.recurring.listing_diff import close_run
-from crawlerai.resolve.pipeline import EngineData
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict
 from crawlerai.schemas.types import SchemaDef
@@ -66,7 +65,7 @@ from crawlerai.services.records import MAX_PAGE
 from crawlerai.services.runtime import open_fetching
 from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
 from crawlerai.services.scrape_paging import learning_render
-from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data, render_need, site_row
+from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data, site_row
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
 from crawlerai.worker.handlers.table import task_handlers
@@ -203,8 +202,7 @@ async def _eval_import_labels(file: Path) -> None:
     engine = create_async_engine(database_url)
     try:
         async with aclosing(dev_store(settings)) as store, open_fetching(settings, database=engine) as fetching:
-            data = load_engine_data(fetching.rungs.adapters)
-            fetch = partial(_polite_page, engine, fetching, data)
+            fetch = partial(_polite_page, engine, fetching)
             outcomes = await label_file.import_pages(store, schemas, labeled, fetch, await store.page_urls())
     finally:
         await engine.dispose()
@@ -223,11 +221,9 @@ async def _eval_rekey(file: Path) -> None:
     sys.stdout.write(rekey.report(outcomes))
 
 
-async def _polite_page(
-    engine: AsyncEngine, fetching: Fetching, data: EngineData | None, url: str, schema: SchemaDef
-) -> FetchResult | str:
-    """The page as a worker fetches it for `schema` (`fetch_now`): robots.txt, the site's rate, its adapters, and
-    a render when the HTTP page lacks what the schema reads; or why it was not fetched."""
+async def _polite_page(engine: AsyncEngine, fetching: Fetching, url: str, schema: SchemaDef) -> FetchResult | str:
+    """The page as a worker fetches it for `schema` (`fetch_now`): robots.txt, the site's rate, its adapters, and the
+    browser on a block; or why it was not fetched."""
     host = http_host(url)
     if host is None:  # `labeled_pages` refuses such a URL
         raise EvalCliError("not an http or https URL with a host")
@@ -236,7 +232,7 @@ async def _polite_page(
     policy = FetchPolicy(
         page_kind=schema.page_kind, proxy_pool=site.proxy_pool, block_resources=not site.load_all_resources
     )
-    page = PagePlan(site_rungs(fetching, host, site), site, policy, [], needs_render=render_need(schema, data))
+    page = PagePlan(site_rungs(fetching, host, site), site, policy, [])
     try:
         # A page not reached is fetched again after the back-off, and the closest capture kept (`best_fetch`).
         return await label_file.best_fetch(lambda: fetch_now(engine, fetching, url, replace(page, attempts=[])))

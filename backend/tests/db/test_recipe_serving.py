@@ -47,8 +47,7 @@ PRODUCT = {"data": {"slug": "desk-lamp", "name": "Desk Lamp", "price": 19.5, "cu
 @dataclass
 class Web:
     """Answers each URL from `pages` over HTTP, and each endpoint from `endpoints` as JSON; anything else is a 404.
-    The browser renders a page as it is served: the lamp page holds no offer data, so a fetch that extracts a price
-    renders it once (owner #49)."""
+    The browser renders a page as it is served."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, bytes] = field(default_factory=dict)

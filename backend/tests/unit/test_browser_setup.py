@@ -4,17 +4,22 @@ headers. A fake Playwright records what `open_browser` and `fetch_browser` ask f
 """
 
 import asyncio
+import re
 from contextlib import asynccontextmanager
 from ipaddress import IPv4Address
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+import crawlerai
 from crawlerai.acquire import browser as browser_module
 from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.core.engine_version import ENGINE_VERSION
+
+_SRC = Path(crawlerai.__file__).parent
 
 
 class _Recorder:
@@ -81,12 +86,12 @@ def recorder(monkeypatch: pytest.MonkeyPatch) -> _Recorder:
     return recorded
 
 
-async def _fetch_once() -> None:
+async def _fetch_once(locale: str | None = None) -> None:
     async with open_browser() as session:
         assert isinstance(session, BrowserSession)
         await fetch_browser(
             "http://shop.example.test/item",
-            FetchPolicy(browser_timeout_s=5),
+            FetchPolicy(browser_timeout_s=5, locale_hint=locale),
             session=session,
             engine_version=ENGINE_VERSION,
             connector=_Connector(),
@@ -109,3 +114,31 @@ def test_inv42_inv43_full_chromium_headless_with_only_the_guard_launch_argument(
 
 # Calls that change the browser's identity or run code in the page's main world (Patchright README: no custom
 # user agent or headers; evaluate runs in an isolated world). Matched in source, so a new call site fails here.
+_IDENTITY_CALLS = re.compile(
+    r"user_agent|extra_http_headers|setUserAgentOverride|add_init_script"
+    r"|new_cdp_session|isolated_context=False|--enable-automation|--disable-blink-features"
+)
+
+
+def test_inv44_no_source_file_changes_the_browser_identity() -> None:
+    offenders = [
+        f"{path.relative_to(_SRC)}:{number}"
+        for path in sorted(_SRC.rglob("*.py"))
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if _IDENTITY_CALLS.search(line)
+    ]
+
+    assert offenders == []
+
+
+def test_inv44_a_context_sets_only_the_proxy_downloads_and_the_request_locale(recorder: _Recorder) -> None:
+    with pytest.raises(_Stop):
+        asyncio.run(_fetch_once("de-DE"))
+
+    # The guard's proxy, no downloads, and the request's locale with its region's zone (owner P8); no user agent,
+    # client hints or headers.
+    assert {k: v for k, v in recorder.context.items() if k in ("locale", "timezone_id")} == {
+        "locale": "de-DE",
+        "timezone_id": "Europe/Berlin",
+    }
+    assert set(recorder.context) == {"proxy", "accept_downloads", "locale", "timezone_id"}

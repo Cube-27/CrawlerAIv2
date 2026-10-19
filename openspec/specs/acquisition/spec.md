@@ -19,45 +19,36 @@ The system SHALL try the detecting active adapter (only when the caller passes `
 recipe, else the page rung: `policy.method_hint` when `http`/`browser`, else the method the site's domain memory says
 (`http` for a new site). Every attempt is listed in the result and manifest. Refs: §7.1, D-0090; see [adapters](../adapters/spec.md).
 
-### Requirement: Browser on evidence
-In `auto`, the system SHALL retry in the browser an HTTP `shell` or `blocked` result other than 429/503, and an HTTP
-`error` whose reason is `network_error` or `timeout` (never the same transport again), keeping the browser outcome only
-when `ok`; a 503 that `classify.interstitial`
-judges to stand in for the page, after the site's pause (`politeness.backoff`), keeping the browser outcome only when
-`ok`; and an HTTP `ok` page the caller's render check holds true for (`services/scrape_steps.RenderNeed`, cheap
-signals only: no collector pass, no extraction and no LLM): a detail page whose schema requires a `money` field and
-whose document shows no sign of its offer (`content/render_need.offer_shown`: no schema.org Product with offers, OGP
-`product:price:amount` or microdata Product with offers; no state document of at least `STATE_MIN_VALUES` scalar
-values, whatever its name, `content/state.py`; no heading (`h1` to `h6`) with a digit beside a Unicode Sc currency
-sign in the visible text) and whose identity-checked data call ("Data calls") states no value of such a field, any
-page of a request that names `render_fields` (the fields the caller says only a render shows; that render is kept when
-`ok`) unless its identity-checked data call states every one of them, or a listing (`content/render_need.py`) whose DOM shows fewer than `MIN_ITEMS` item blocks, whose
-text inside `hidden` or `display:none` containers outweighs its visible text, or whose structured list names fewer
-entries than its DOM shows item blocks (item blocks counted only when they show more than their link); that browser
-outcome is kept only when `ok` and the check no longer holds, a listing's also when the render lists more items than the
-HTTP page (owner #54: the capture with more rows is kept). An HTTP listing shell kept with no browser outcome is `ok`
-when it is a shell by the listing rule alone. Any later request of a fetch is sent only when `admit_next` allows, and
-no browser retry starts with less than `BROWSER_MIN_S` (20 s) left of the task's budget (a worker task's
-`TASK_DEADLINE`, a scrape's `timeout_s`): the HTTP outcome is kept. No other 4xx (`auth_wall`, `not_found`, `error`)
-and no redirect class is retried in the browser. The browser MUST NOT be the default. Role C runs once, on the kept
-capture. (Previously: a detail page was rendered when a full collector pass found no Offer and no `money` candidate; a
-listing was rendered when its extraction, role C included, gave no rows; an HTTP timeout was not retried in the
-browser.) Refs: §7.1, D-0009, D-0203, D-0865, D-0900, owner #49, D-1202, owner #54, D-1261, D-1263, D-1472, master
-plan 2026-10-18 §3.1, owner plan 2026-10-19 (crawl speed; P3 fetch classification and the browser decision).
-#### Scenario: Client-rendered offer
-- **WHEN** an `auto` fetch of such a detail page answers HTTP `ok` with none of the offer signals, and the browser render
-  holds an Offer
-- **THEN** the browser capture is kept and the result lists both attempts
-#### Scenario: Offer signals present
-- **WHEN** an `auto` fetch of such a detail page answers HTTP `ok` with a JSON-LD Product with offers
-- **THEN** no browser attempt is made, unless the request names `render_fields`
+### Requirement: Browser on block or by field source
+In `auto`, the system SHALL retry in the browser exactly the HTTP outcomes in which the server did not give the page to
+this client, and keep the browser outcome only when `ok`:
+
+| HTTP outcome | Browser retry | Kept |
+|---|---|---|
+| `blocked` other than 429/503 | yes | browser `ok` only |
+| 503 that `classify.interstitial` judges to stand in for the page | yes, after the site's pause (`politeness.backoff`) | browser `ok` only |
+| `shell` that a challenge names (`acquire/challenge.py`) | yes | browser `ok` only |
+| `error` whose reason is `network_error` or `timeout` | yes (never the same transport again) | browser `ok` only |
+| `shell` with no challenge (a script-only document) | yes, once per page (owner #72) | browser `ok` only; else the HTTP `shell` |
+| `ok`, whatever it lacks (offer, rows, a requested field) | **no** | HTTP |
+| `auth_wall`, `not_found`, `soft_404`, other `error`, redirect classes | no | HTTP |
+
+An HTTP listing shell kept with no browser outcome is `ok` when it is a shell by the listing rule alone. Any later
+request of a fetch is sent only when `admit_next` allows, and no browser retry starts with less than `BROWSER_MIN_S`
+(20 s) left of the task's budget (a worker task's `TASK_DEADLINE`, a scrape's `timeout_s`): the HTTP outcome is kept.
+The browser MUST NOT be the default: it is also used when `method_hint` is `browser`, the block history says
+browser-first, or the site's contract says `browser`. Role C runs once, on the kept capture. (Previously: an HTTP `ok`
+page was also rendered when a cheap render check, `services/scrape_steps.RenderNeed` and `content/render_need.py`,
+found no sign of a required `money` field's offer, a listing's items fewer, hidden or under-listed, or the request named
+`render_fields`; a detail page was rendered when a full collector pass found no Offer; a listing when its extraction
+gave no rows; an HTTP timeout was not retried in the browser.) Refs: §7.1, D-0009, D-0203, D-0865, D-0900, D-1202,
+D-1261, D-1263, D-1472, owner #70, owner #72, architecture v3 a.3.
+#### Scenario: Script-rendered offer over HTTP
+- **WHEN** an `auto` fetch of a detail page answers HTTP `ok` with no JSON-LD, Open Graph tag or price
+- **THEN** no browser attempt is made and the HTTP capture is kept
 #### Scenario: Budget nearly spent
 - **WHEN** an HTTP `shell` arrives with 15 s of the task's budget left
 - **THEN** no browser attempt is made and the HTTP outcome is kept
-#### Scenario: Stream-rendered listing
-- **WHEN** an `auto` fetch of a listing answers HTTP `ok` with its items inside `hidden` containers, and the render
-  shows them
-- **THEN** the browser capture is kept, the page is extracted once, and the result lists both attempts
 #### Scenario: Listing shell whose render fails
 - **WHEN** a listing answers HTTP with site structure but no repeated items, and the browser render is `blocked`
 - **THEN** the HTTP capture is kept as `ok` and its attempt stays `shell`
@@ -75,23 +66,15 @@ plan 2026-10-18 §3.1, owner plan 2026-10-19 (crawl speed; P3 fetch classificati
 The system SHALL keep a two-tier domain memory (`acquire/memory.py`), apart because a durable strategy and a
 short-lived safety bias age differently, both in Postgres so every process reads the same memory:
 - An acquisition contract per site and page kind (`site_contract`; a fetch with no page kind is the detail pages'):
-  the method the pages start with, the browser engine that taught it, the learned wait condition (`settle_on`), what
-  the browser was needed for (`needs_render`: HTTP was `ok` but lacked what the caller reads, or a shell no challenge
-  named; `needs_xhr`: the kept render's document still lacked it and the render captured network JSON;
-  `needs_traversal`: browser steps), `handoff`, and the
-  field coverage (`found`, `missing`) of the last extraction with a record. It is learned only from an `auto` fetch that tried HTTP and kept an `ok`: an HTTP `ok` teaches the
-  defaults (and leaves a contract on HTTP as it is); a render made only for the request's `render_fields` while the
-  HTTP page, joined with its data call, held the page's core (a detail page's offer, a listing's items:
-  `RenderNeed.forced`) teaches nothing, so the site's later pages keep HTTP and the data call; any other browser `ok`
-  teaches `browser`, unless HTTP was refused, the
-  render needed neither data calls nor steps, and its cookies went on to HTTP (a site session, D-1353): then it was
-  needed only to pass the block, `handoff` is set and the pages stay on `http`, their later fetches carrying the
-  stored cookie state (challenge cookies stripped, browser to HTTP only). A site's API is replayed by its learned
-  config's API recipe alone ([adapters](../adapters/spec.md), "Recipe execution and fallback"), never by the
-  contract. The wait condition ("HTTP and browser rungs", the ready wait) is `content` when the
-  kept render's document has what the caller reads (the browser then reads it once its DOM states the offer, whatever
-  data call is in flight), `data_call` when it came with the data calls, none otherwise. An unchanged contract is not
-  rewritten. A contract is stale after `STALE_FAILURES` (2) consecutive caller-supplied pages extracted without a
+  the method the pages start with, the browser engine that taught it, `handoff`, and the field coverage (`found`,
+  `missing`) of the last extraction with a record; the site's platform is `site.platform` ("Platform fingerprints").
+  It is learned only from an `auto` fetch that tried HTTP and kept an `ok`: an HTTP `ok` teaches the default (and
+  leaves a contract on HTTP as it is); a browser `ok` teaches `browser`, unless HTTP was refused, the render ran no
+  browser steps, and its cookies went on to HTTP (a site session, D-1353): then it was needed only to pass the block,
+  `handoff` is set and the pages stay on `http`, their later fetches carrying the stored cookie state (challenge
+  cookies stripped, browser to HTTP only). A site's API is replayed by its learned config's API recipe alone
+  ([adapters](../adapters/spec.md), "Recipe execution and fallback"), never by the contract. An unchanged contract is
+  not rewritten. A contract is stale after `STALE_FAILURES` (2) consecutive caller-supplied pages extracted without a
   record, and a block (never extracted) is never one; a stale contract is kept but not used, and an extraction with a
   record makes it fresh again. A scheduler re-check SHALL retry each `browser` contract over HTTP after 7 days (the
   latest `ok` URL of that kind, robots allowing) and reset it to `http` on `ok`.
@@ -99,14 +82,13 @@ short-lived safety bias age differently, both in Postgres so every process reads
   `shell` a challenge names) counts, the count starting over when the last block is older than `BLOCK_TTL` (15 min);
   at `BROWSER_FIRST_BLOCKS` (2) the site's pages start in the browser for one `BLOCK_TTL`. A kept HTTP `ok` clears it.
 Precedence: a job's own `method_hint` beats memory; the block history's browser-first beats the contract's method; a
-fresh contract beats the defaults (`http`, the default settle). A learned config's fetch method is the contract's
+fresh contract beats the default (`http`). A learned config's fetch method is the contract's
 alone: a block bias it kept would outlive the block history. An `ok` page's platform
 ("Platform fingerprints") is recorded on `site.platform`. (Previously: `site_fetch_method` held only `http` or
 `browser`; a site session refused before any `ok` kept its site from opening another for 30 min, in process memory
-only.) Refs: §7.1, D-0204, D-0205, D-1260, D-1353, D-1380, owner plan 2026-10-19 P4 (domain memory).
-#### Scenario: Listing render
-- **WHEN** a site's listing is kept from its render because its HTTP page gave no rows
-- **THEN** the site's listings are fetched in the browser and its detail pages still over HTTP
+only; the contract also held a learned wait condition `settle_on`, what the browser was needed for `needs_render`,
+`needs_xhr` and `needs_traversal`, and a render forced by `render_fields` taught nothing.) Refs: §7.1, D-0204, D-0205,
+D-1260, D-1353, D-1380, owner plan 2026-10-19 P4 (domain memory), architecture v3 (e).
 #### Scenario: Browser needed only to pass a block
 - **WHEN** an `auto` fetch's HTTP attempt is `blocked`, the browser's `ok` opens a site session, and its document has
   the offer
@@ -141,22 +123,23 @@ A data call is a request for one product's JSON made beside its page: a platform
 fallback"), the one replay of a site's API. Its answer SHALL be used only when it states the requested product (the
 identity check, `acquire/identity.py`: a string or number equal to a key the request was made with, at least 4
 characters, or a URL whose path is the page's path); otherwise it is dropped and its attempt is an `error`,
-`not_the_product`, as an endpoint that ignores its key answers one product for every page. An HTTP `ok` detail page that
-an `auto` fetch would render for lacking what the caller reads is first joined with its platform's documented product
-JSON: the call waits for the site's rate, is an `api` attempt marked `data_call` (the platform), and an answer that
-passes joins the HTTP capture as one more network body marked with its platform. The extraction reads such a body as
-structured evidence of the requested product, as the platform documents its members ([extraction](../extraction/spec.md),
-"Structured-data collectors"); the render check counts the fields it states ("Browser on evidence"), so the page is
-kept without the render when the joined page no longer lacks what the caller reads; else the render follows as before.
-A joined answer adds evidence and never replaces the page's values. Refs: owner plan 2026-10-19 P4 (API replay with a
-product-identity check), owner decision 2026-10-19 on #326.
+`not_the_product`, as an endpoint that ignores its key answers one product for every page. Every kept HTTP `ok` detail
+page whose platform documents its product JSON is joined with it, always, whether or not any field is missing (a
+companion call, owner #73): one request per page, sent after the page with the fetch's JSON sender (none for a page
+captured as a file), waiting for the site's rate (`politeness`), an `api` attempt marked `data_call` (the platform);
+an answer that passes joins the HTTP capture as one more network body marked with its platform. The extraction reads
+such a body as structured evidence of the requested product, as the platform documents its members
+([extraction](../extraction/spec.md), "Structured-data collectors"). A joined answer adds evidence and never replaces
+the page's values. (Previously: the call was sent only for a page about to be rendered for lacking what the caller
+reads, and the render was skipped when the joined page no longer lacked it.) Refs: owner plan 2026-10-19 P4 (API replay
+with a product-identity check), owner decision 2026-10-19 on #326, owner #73.
 #### Scenario: Another product's answer
 - **WHEN** a data call answers JSON that names neither the requested key nor the page's path
-- **THEN** the answer is not joined, the attempt says `not_the_product`, and the page is rendered as before
+- **THEN** the answer is not joined, the attempt says `not_the_product`, and the HTTP page is kept as it is
 #### Scenario: Documented answer states the offer
-- **WHEN** an HTTP detail page shows no offer signal and its platform's product JSON passes the identity check with one
-  price for every variant
-- **THEN** no browser attempt is made and the price is read from the answer
+- **WHEN** an HTTP detail page of the Online Store states its offer and its platform's product JSON passes the identity
+  check with one price for every variant
+- **THEN** the answer is joined all the same, no browser attempt is made, and the price is read from both
 
 ### Requirement: HTTP and browser rungs
 The HTTP rung SHALL use `curl_cffi` impersonating Chrome (`CRAWLERAI_IMPERSONATE`, else the profile nearest the
@@ -175,8 +158,7 @@ close with the browser, and one whose page ended with an error or a 4xx/5xx docu
 or with the caller's cookies (added before it navigates), gets a context of its own.
 
 Request blocking (`acquire/blocklist.py`), unless the policy captures the page as a file or the site loads every
-resource (`site.load_all_resources`, set when a resource-blocked render of its listing showed fewer item blocks than its
-HTTP page): image, font, media and ping (Beacon, hyperlink auditing) requests by resource type, and requests to the
+resource (`site.load_all_resources`): image, font, media and ping (Beacon, hyperlink auditing) requests by resource type, and requests to the
 advertising and tracking servers the EasyList and EasyPrivacy server lists name (pinned data, C4; `||host^` lines with
 at most `third-party` and resource-type options), never per site. Never blocked, whatever the lists say: the main frame's
 navigation; an anti-bot challenge resource (`adapters.challenges`) or a fraud-prevention, device-fingerprinting or
@@ -184,11 +166,8 @@ bot-detection vendor's resource (a page whose bot defence cannot run is refused)
 can inject the page's structured data, while the analytics, ad and pixel endpoints it loads are blocked as any other
 (vendor categories in `adapters.kept_resources`, never per site).
 
-The ready wait, the one wait for a page: from `DOMContentLoaded`, the page is read once it has fired `load` and is
-clearly ready, by the site's learned wait condition (`settle_on`): `data_call`, a data call has ended and none is in
-flight; `content`, a detail page's DOM states its product's offer (`classify.usable_content`: a schema.org Product with
-offers in JSON-LD, sent or injected by script, an OGP product price, a microdata Product with offers); none, that with
-no data call in flight. A listing is read when the wait ends unless it waits for a data call. The wait ends at
+The ready wait, the one wait for a page: from `DOMContentLoaded`, the page is read once it has fired `load` and no data
+call has been in flight for `_STEP_QUIET_S` (0.5 s), a fixed condition for every page. The wait ends at
 `READY_MAX_S` (3.5 s) whether or not the page is ready, and what is there is read; a document the main frame navigates
 to meanwhile (not a same-document navigation) starts it over, within 90% of `browser_timeout_s`, so the capture is the
 final document. A page step that changes the page is followed by the same wait for the data calls it started (3 s at
@@ -202,7 +181,8 @@ caps, cookie jar, proxy pools, reasons) the headers a page's `fetch()` sends: Fe
 absolute bound; the settle wait had none but the fetch's budget, a browser was launched per fetch outside the worker,
 and the HTTP timeout was 30 s; every fetch had a fresh context, only images, fonts and media were blocked, and a page
 was read after `load` once its DOM was unchanged for 2 s or the network idle, at most 5 s later, up to 3 s more while a
-data call was in flight.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
+data call was in flight; then by a learned wait condition, `settle_on`, a detail page's DOM stating its offer
+(`classify.usable_content`) or a data call ended, a listing at the wait's end.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
 D-1264, D-1265, owner #58, D-1320–D-1322, D-1325, D-1433, D-1437, master plan 2026-10-18 recommendation 12, owner
 plan 2026-10-19 (crawl speed, P2 browser wait and blocking).
 #### Scenario: Interstitial that navigates on
@@ -222,9 +202,9 @@ plan 2026-10-19 (crawl speed, P2 browser wait and blocking).
 - **WHEN** a page loads a tag manager's container, which loads an analytics endpoint and a fraud vendor's
   fingerprinting script, all on listed servers
 - **THEN** the container and the fingerprinting script load and the analytics request is aborted
-#### Scenario: Offer injected
-- **WHEN** a detail page's script injects a JSON-LD Product with offers 1 s after `load`, with no data call in flight
-- **THEN** the page is read then, not at `READY_MAX_S`
+#### Scenario: Data call answered after load
+- **WHEN** a page's only data call ends 1 s after `load`
+- **THEN** the page is read 0.5 s after that call ended, not at `READY_MAX_S`
 #### Scenario: Second page of a site in a job
 - **WHEN** a job's second page of a site renders after its first passed a challenge
 - **THEN** it renders in the first page's context, holding the cookies the challenge set
@@ -436,7 +416,10 @@ The browser rung SHALL follow the Patchright README's setup (owner #50): INV-42,
 Chromium build (`channel="chromium"`, installed with `patchright install --no-shell chromium`), never the headless
 shell; INV-43, its only launch argument is the guard's WebRTC policy (no flag Patchright removes, none that changes
 the fingerprint); INV-44, no context, page or CDP call sets a user agent, client hints, extra headers or init scripts,
-and `evaluate` runs only in Patchright's isolated world. Refs: owner #50, D-1204, D-1205.
+and `evaluate` runs only in Patchright's isolated world (owner #71: no user-agent override). The context's `locale` and
+`timezone_id` are the request's (`FetchPolicy.locale_hint`, `acquire/locality.py`): the locale as a BCP 47 tag, and
+the IANA tz database's zone of its region (`zone1970.tab`) when the region has one, else none. Refs: owner #50, owner
+#71, D-1204, D-1205, owner plan 2026-10-19 P8, architecture v3 a.3.
 Enforced by: `tests/unit/test_browser_setup.py` (launch and context options, source scan); active.
 
 ### Requirement: Listing browser actions

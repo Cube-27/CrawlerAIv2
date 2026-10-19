@@ -36,9 +36,10 @@ from patchright.async_api import TimeoutError as PlaywrightTimeout
 
 from crawlerai.acquire.blocklist import blocked_request, default_blocklist
 from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
-from crawlerai.acquire.classify import INTERSTITIAL_STATUS, Redirect, interstitial, usable_content
+from crawlerai.acquire.classify import INTERSTITIAL_STATUS, Redirect, interstitial
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.items import element_path, item_groups, lxml_root
+from crawlerai.acquire.locality import locality
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
 from crawlerai.acquire.page_steps import run_steps, steps_budget_s
 from crawlerai.acquire.public_suffix import default_suffixes
@@ -104,13 +105,13 @@ _SNIFFED_TYPES = frozenset({"text/plain", ""})
 # The wait for the page to be ready ends at this share of `browser_timeout_s` whatever navigations the page makes; the
 # rest is for reading the DOM and the bodies.
 _SETTLE_SHARE = 0.9
-# The one wait (owner plan 2026-10-19 P2, `_settle`): from `DOMContentLoaded` (HTML Standard §8.4.6), a document is read
-# as soon as it is clearly ready (`_ready`), and at most this long after its wait began, ready or not: what is there
-# then is read. An unmeasured starting point within the plan's 3 to 4 s.
+# The one wait (`_settle`, architecture v3 a.3): from `DOMContentLoaded` (HTML Standard §8.4.6), a document is read as
+# soon as it is ready (`_ready`), and at most this long after its wait began, ready or not: what is there then is
+# read. An unmeasured starting point within 3 to 4 s.
 READY_MAX_S: Final = 3.5
 _POLL_S = 0.25
-# A page step that starts no data call has settled once nothing has been in flight this long: Playwright's
-# `networkidle` quiet period (500 ms).
+# A document, or a page step that starts no data call, has settled once no data call has been in flight this long:
+# Playwright's `networkidle` quiet period (500 ms).
 _STEP_QUIET_S: Final = 0.5
 # A data call is a fetch or XMLHttpRequest call (Fetch Standard §2.2.5 destinations) that can carry the page's data: one
 # to the page's own site (HTML Standard §7.1.1, its registrable domain), or one that asks for JSON (an `Accept` naming
@@ -428,6 +429,7 @@ class DataCalls:
     actions: int = 0
     in_flight: set[Request] = field(default_factory=set)  # the data calls (`_CALLS`) not answered yet
     answered: int = 0  # the data calls that have ended, answered or failed
+    idle_since: float = 0.0  # on `time.monotonic`: when the last data call in flight ended
     # The data requests whose body arrived in full or failed (`requestfinished`, `requestfailed`). A body is read only
     # once its request is done: reading one still arriving waits for its end, which a body that never ends (a stream,
     # a keepalive beacon held open) never reaches, and the read would outlast the fetch's budget.
@@ -442,6 +444,8 @@ class DataCalls:
         if request in self.in_flight:
             self.in_flight.discard(request)
             self.answered += 1
+            if not self.in_flight:
+                self.idle_since = time.monotonic()
         if request.resource_type in DATA_REQUESTS:
             self.done.add(request)
 
@@ -526,7 +530,7 @@ async def _open_context(
     seeded: Sequence[SessionCookie],
 ) -> "_Context":
     """A new context behind a guard of its own, holding the `seeded` and the caller's cookies, its requests blocked as
-    the policy says (`_blocking`)."""
+    the policy says (`_blocking`), with the request locale's `locale` and `timezone_id` (`acquire.locality`)."""
     stack = AsyncExitStack()
     traffic = Traffic()
     try:
@@ -534,7 +538,9 @@ async def _open_context(
             SocksGuard(connector, checked=(first,), upstream=proxy, traffic=traffic)
         )
         context = await session.browser.new_context(
-            proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK}, accept_downloads=False
+            proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK},
+            accept_downloads=False,
+            **locality(policy.locale_hint),
         )
         stack.push_async_callback(context.close)
         if seeded:
@@ -606,10 +612,11 @@ class _MainFrame:
         self.latest: Response | None = None
         self.commits = 0
         self.loaded = False
+        self.loaded_at = 0.0  # on `time.monotonic`: when the latest document fired `load`
         self._committed = asyncio.Event()
 
     def on_load(self) -> None:
-        self.loaded = True
+        self.loaded, self.loaded_at = True, time.monotonic()
 
     def _ours(self, request: Request) -> bool:
         return request.is_navigation_request() and request.frame == self._page.main_frame
@@ -668,7 +675,6 @@ async def _navigate(
         page,
         frame,
         calls,
-        policy,
         started + _SETTLE_SHARE * policy.browser_timeout_s,
         interstitial_deadline=started + min(_INTERSTITIAL_SHARE * policy.browser_timeout_s, _INTERSTITIAL_MAX_S),
     )
@@ -739,7 +745,6 @@ async def _settle(
     page: Page,
     frame: _MainFrame,
     calls: DataCalls,
-    policy: FetchPolicy,
     deadline: float,
     *,
     interstitial_deadline: float,
@@ -747,12 +752,10 @@ async def _settle(
     """While the document is an interstitial, wait for the next one (until `interstitial_deadline`); then wait until
     the document is ready to read (`_ready`), at most `READY_MAX_S`, a document the main frame navigates to meanwhile
     starting that wait over (`_until`); at most until `deadline`."""
-    answered = 0  # the data calls of an interstitial the page passed are not the page's
     while time.monotonic() < interstitial_deadline and await _interstitial(page, frame):
         if not await _next_document(page, frame, interstitial_deadline):
             break
-        answered = calls.answered
-    await _until(frame, lambda: _ready(page, frame, calls, policy, answered), READY_MAX_S, deadline)
+    await _until(frame, lambda: _ready(frame, calls), READY_MAX_S, deadline)
 
 
 async def _until(frame: _MainFrame, ready: Callable[[], Awaitable[bool]], within_s: float, deadline: float) -> None:
@@ -773,26 +776,11 @@ def _called(calls: DataCalls, answered: int) -> bool:
     return calls.answered > answered and not calls.in_flight
 
 
-async def _ready(page: Page, frame: _MainFrame, calls: DataCalls, policy: FetchPolicy, answered: int) -> bool:
-    """Whether the document is clearly ready to read (owner plan 2026-10-19 P2), by the site's learned wait condition
-    (`FetchPolicy.settle_on`, `acquire.memory`), once it has fired `load` (HTML Standard §8.4.6): `data_call`, a data
-    call has ended since the wait began (`answered` before it) and none is in flight; `content`, a detail page's DOM
-    states its product's offer (`classify.usable_content`: a schema.org Product with offers in JSON-LD, sent or
-    injected, an OGP product price, a microdata Product with offers); unknown, that, with no data call in flight. A
-    listing has no such target (its structured list may be a subset of the grid the render completes): it is read
-    when the wait ends, unless a data call is what it waits for."""
-    if not frame.loaded:
-        return False
-    if policy.settle_on == "data_call":
-        return _called(calls, answered)
-    if policy.page_kind == "listing" or (policy.settle_on is None and calls.in_flight):
-        return False
-    try:
-        text = await page.content()
-    except PlaywrightError:
-        return False  # the document is being replaced: the next poll reads the next one
-    # Parsing is CPU work: a thread keeps the event loop free.
-    return await asyncio.to_thread(usable_content, text)
+async def _ready(frame: _MainFrame, calls: DataCalls) -> bool:
+    """Whether the document is ready to read (architecture v3 a.3), a fixed condition: it has fired `load` (HTML
+    Standard §8.4.6), and no data call has been in flight since, for `_STEP_QUIET_S`."""
+    quiet_since = max(frame.loaded_at, calls.idle_since)
+    return frame.loaded and not calls.in_flight and time.monotonic() - quiet_since >= _STEP_QUIET_S
 
 
 def _same_site(url: str, page_url: str) -> bool:

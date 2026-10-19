@@ -23,15 +23,8 @@ from crawlerai.acquire.rungs import Rung
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Capture, FetchMethod, PageKind, Site, SiteContract, SiteId
 
-# A contract set back to `http` forgets what the browser was needed for (`acquire.memory`).
-_HTTP: Final = {
-    "engine": None,
-    "settle_on": None,
-    "needs_render": False,
-    "needs_xhr": False,
-    "needs_traversal": False,
-    "handoff": False,
-}
+# A contract set back to `http` forgets the browser engine that taught it and its handoff (`acquire.memory`).
+_HTTP: Final = {"engine": None, "handoff": False}
 RECHECK_AFTER: Final = timedelta(days=7)  # acquisition spec (D-0009)
 # One site per run: the fetch runs inside the run's transaction, so this bounds how long a site row stays locked,
 # and the scheduler runs a full batch again at once, so a backlog still drains in one turn.

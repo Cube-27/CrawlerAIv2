@@ -2,20 +2,20 @@
 durable strategy and a short-lived safety bias age differently.
 
 - The acquisition contract (`site_contract`), durable, per site and page kind (`remembered_as`): the rung the pages
-  start with, the browser engine that taught it, the learned wait condition (`FetchPolicy.settle_on`), what the browser
-  was needed for (render, the page's data calls, browser steps), whether it was needed only to pass a block (`handoff`:
-  the pages stay on HTTP with the cookies that browser `ok` held, `acquire.session`), and the field coverage of the
-  last extraction with a record. It is learned from a fetch that tried HTTP in `auto` (`learn_fetch`), and goes stale
-  after `STALE_FAILURES` consecutive extractions without a record (`learn_extraction`); a block is never one. A stale
-  contract is kept but not used; an extraction with a record makes it fresh again. The 7-day re-check
-  (`scheduler.recheck`) still sets a `browser` contract back to `http` when HTTP passes.
+  start with, the browser engine that taught it, whether the browser was needed only to pass a block (`handoff`: the
+  pages stay on HTTP with the cookies that browser `ok` held, `acquire.session`), and the field coverage of the last
+  extraction with a record; the site's platform is on `site.platform`. It is learned from a fetch that tried HTTP in
+  `auto` (`learn_fetch`), and goes stale after `STALE_FAILURES` consecutive extractions without a record
+  (`learn_extraction`); a block is never one. A stale contract is kept but not used; an extraction with a record makes
+  it fresh again. The 7-day re-check (`scheduler.recheck`) still sets a `browser` contract back to `http` when HTTP
+  passes.
 - The block history (`site_block`), short-lived, per site: each HTTP request the site refused (`refused`) counts, the
   count starting over when the last one is older than `BLOCK_TTL`; at `BROWSER_FIRST_BLOCKS` the site's pages start in
   the browser for one `BLOCK_TTL`. An HTTP `ok` kept for the site clears it.
 
 Precedence (`remembered`): a job's own setting (`FetchPolicy.method_hint` other than `auto`) beats memory, which the
-caller applies; the block history's browser-first beats the contract's method; a fresh contract beats the defaults
-(HTTP, the browser's default settle). Both tiers are rows, so every process reads the same memory.
+caller applies; the block history's browser-first beats the contract's method; a fresh contract beats the default
+(HTTP). Both tiers are rows, so every process reads the same memory.
 """
 
 from dataclasses import dataclass
@@ -34,7 +34,6 @@ from crawlerai.db.models import (
     BrowserEngine,
     FetchMethod,
     PageKind,
-    SettleOn,
     Site,
     SiteBlock,
     SiteContract,
@@ -71,7 +70,6 @@ class Remembered:
     """What memory says a fetch of a site's page of one kind starts with: the defaults without memory."""
 
     method: FetchMethod = "http"
-    settle_on: SettleOn | None = None
 
 
 @dataclass(frozen=True)
@@ -80,10 +78,6 @@ class Lesson:
 
     method: FetchMethod
     engine: BrowserEngine | None = None
-    settle_on: SettleOn | None = None
-    needs_render: bool = False
-    needs_xhr: bool = False
-    needs_traversal: bool = False
     handoff: bool = False
 
 
@@ -97,7 +91,7 @@ async def remembered(
     conn: AsyncConnection, site_id: SiteId, kind: PageKind | None, *, blocks: bool = True
 ) -> Remembered:
     """The memory of the site's pages of `kind` (module docstring, precedence): browser-first while the block history
-    says so, else the fresh contract's method and wait condition, else the defaults. Without `blocks`, the durable
+    says so, else the fresh contract's method, else the default. Without `blocks`, the durable
     contract alone, for what outlives the block history (a learned config's `Target.fetch`)."""
     fresh = (
         SiteContract.site_id == site_id,
@@ -105,15 +99,11 @@ async def remembered(
         SiteContract.failures < STALE_FAILURES,
     )
     browser_first = exists().where(SiteBlock.site_id == site_id, SiteBlock.browser_first_until > func.now())
-    query = select(
-        select(SiteContract.method).where(*fresh).scalar_subquery(),
-        select(SiteContract.settle_on).where(*fresh).scalar_subquery(),
-        browser_first,
-    )
-    method, settle_on, first = (await conn.execute(query)).one()
+    query = select(select(SiteContract.method).where(*fresh).scalar_subquery(), browser_first)
+    method, first = (await conn.execute(query)).one()
     if first and blocks:
-        return Remembered("browser", settle_on)
-    return Remembered(method or "http", settle_on)
+        return Remembered("browser")
+    return Remembered(method or "http")
 
 
 def refused(attempt: AttemptRecord) -> bool:
@@ -127,70 +117,36 @@ def refused(attempt: AttemptRecord) -> bool:
     return attempt.block_class == "shell" and attempt.challenge is not None
 
 
-def lesson(result: FetchResult, lacks: bool | None, *, forced: bool = False) -> Lesson | None:
+def lesson(result: FetchResult) -> Lesson | None:
     """What an `auto` fetch that tried HTTP and kept an `ok` teaches; None for any other fetch (a job's own method, a
-    page that started in the browser or was served by an API: nothing new about HTTP), and for a render the caller
-    `forced` (its `render_fields`) while the HTTP page, with its data call, held the page's core: HTTP did not fail
-    there, so the site's later pages keep HTTP and the data call. An HTTP `ok` teaches the
-    defaults. A browser `ok` teaches the browser and what it was needed for: rendering, when HTTP was `ok` but lacked
-    what the caller reads or was a shell no challenge named; the page's data calls, when its rendered document still
-    `lacks` what the caller reads and the render captured network JSON; browser steps. Its wait condition is the
-    content alone when the rendered document has what the caller reads, the data calls too when they carried it, the
-    default settle when `lacks` is unknown (None). When HTTP was `refused` and the render needed nothing else, and its
-    cookies went on to HTTP (an attempt's `site_session`), it was needed only to pass the block: `handoff`, and the
+    page that started in the browser or was served by an API: nothing new about HTTP). An HTTP `ok` teaches the
+    default. A browser `ok` teaches the browser, unless HTTP was `refused`, the render ran no browser steps, and its
+    cookies went on to HTTP (an attempt's `site_session`): then it was needed only to pass the block, `handoff`, and the
     pages stay on HTTP."""
     http = [attempt for attempt in result.attempts if attempt.method == "http"]
     if result.bundle.manifest.fetch_policy.get("method_hint") != "auto" or result.block_class != "ok" or not http:
         return None
     if result.method == "http":
         return Lesson("http")
-    # A forced render teaches nothing only over an HTTP `ok`: one over a shell or a refusal was needed anyway.
-    forced = forced and http[-1].block_class == "ok"
-    return _rendered(result, http[-1], lacks) if result.method == "browser" and not forced else None
-
-
-def _rendered(result: FetchResult, http: AttemptRecord, lacks: bool | None) -> Lesson:
-    """What a browser `ok` kept over the HTTP attempt `http` teaches (`lesson`)."""
-    passed_block = refused(http)
-    needs_xhr = lacks is True and bool(result.bundle.network)
-    needs_traversal = any(attempt.steps for attempt in result.attempts if attempt.method == "browser")
-    settle_on: SettleOn | None = None
-    if lacks is not None:
-        settle_on = "data_call" if needs_xhr else None if lacks else "content"
+    if result.method != "browser":
+        return None
+    stepped = any(attempt.steps for attempt in result.attempts if attempt.method == "browser")
     carried = any(attempt.site_session for attempt in result.attempts)
-    handoff = passed_block and carried and not (needs_xhr or needs_traversal)
-    return Lesson(
-        method="http" if handoff else "browser",
-        engine=ENGINE,
-        settle_on=settle_on,
-        needs_render=not passed_block and http.block_class in ("ok", "shell"),
-        needs_xhr=needs_xhr,
-        needs_traversal=needs_traversal,
-        handoff=handoff,
-    )
+    handoff = refused(http[-1]) and carried and not stepped
+    return Lesson(method="http" if handoff else "browser", engine=ENGINE, handoff=handoff)
 
 
-async def learn_fetch(
-    conn: AsyncConnection, site_id: SiteId, result: FetchResult, lacks: bool | None, *, forced: bool = False
-) -> None:
+async def learn_fetch(conn: AsyncConnection, site_id: SiteId, result: FetchResult) -> None:
     """Remember what the fetch `result` of a site's page taught: its block or HTTP success in the block history, and
-    its `lesson` (`forced` as there) in the contract of the kind it was fetched as. A plain HTTP `ok` leaves a contract
-    on HTTP as it is (a handoff's HTTP `ok` is the handoff working); a contract the lesson would not change is not
-    rewritten. The platform an `ok` page shows (`adapters.platforms`) is the site's (`site.platform`)."""
+    its `lesson` in the contract of the kind it was fetched as. A plain HTTP `ok` leaves a contract on HTTP as it is (a
+    handoff's HTTP `ok` is the handoff working); a contract the lesson would not change is not rewritten. The platform
+    an `ok` page shows (`adapters.platforms`) is the site's (`site.platform`)."""
     await _record_block(conn, site_id, result)
     await _record_platform(conn, site_id, result)
-    learned = lesson(result, lacks, forced=forced)
+    learned = lesson(result)
     if learned is None:
         return
-    values = {
-        "method": learned.method,
-        "engine": learned.engine,
-        "settle_on": learned.settle_on,
-        "needs_render": learned.needs_render,
-        "needs_xhr": learned.needs_xhr,
-        "needs_traversal": learned.needs_traversal,
-        "handoff": learned.handoff,
-    }
+    values = {"method": learned.method, "engine": learned.engine, "handoff": learned.handoff}
     kind = remembered_as(fetched_as(result.bundle.manifest.fetch_policy))
     insert = pg_insert(SiteContract).values(site_id=site_id, page_kind=kind, checked_at=func.now(), **values)
     changed = (

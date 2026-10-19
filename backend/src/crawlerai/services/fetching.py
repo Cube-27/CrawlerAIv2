@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.browser_tab import Tab
 from crawlerai.acquire.politeness import Admit, HostLimiter
-from crawlerai.acquire.rungs import RenderCheck, Rung, Rungs, acquire
+from crawlerai.acquire.rungs import Rung, Rungs, acquire
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
 from crawlerai.acquire.types import (
     ActionsReport,
@@ -346,10 +346,9 @@ class Growth:
 @dataclass(frozen=True)
 class PagePlan:
     """How a page is fetched: the site's rungs (`site_rungs`), its row, the policy, the attempts every request of the
-    fetch is added to, the site's active API `recipe` (with `pages` when it serves a listing in pages), the check that
-    renders an HTTP page lacking what the caller reads (owner #49, #54), and the validators the page last answered with
-    when a record stands for it (jobs spec); `growth`, a single-URL listing scrape's browser actions in `auto`
-    (`Growth`)."""
+    fetch is added to, the site's active API `recipe` (with `pages` when it serves a listing in pages), and the
+    validators the page last answered with when a record stands for it (jobs spec); `growth`, a single-URL listing
+    scrape's browser actions in `auto` (`Growth`)."""
 
     rungs: Rungs
     site: SiteRow
@@ -357,7 +356,6 @@ class PagePlan:
     attempts: list[AttemptRecord]
     recipe: ApiRecipe | None = None
     pages: RecipePages | None = None
-    needs_render: RenderCheck | None = None
     validators: Validators | None = None
     has_record: bool = False
     growth: Growth | None = None
@@ -405,7 +403,6 @@ def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Wa
                 validators=validators,
                 admit_next=admit_next,
                 send=send,
-                needs_render=page.needs_render,
                 deadline=page.deadline,
             )
             page.attempts.extend(result.attempts)
