@@ -8,7 +8,10 @@ rate: every task fetches through the process's one `HostLimiter`, which postpone
 Each task runs in one transaction: the handler's writes and the task's result commit together, or not at all (a lost
 lease, an exception). An exception is recorded on the task as a transient failure, and the loop continues. A task
 still running at `TASK_DEADLINE` is cancelled and recorded as failed (`DEADLINE`), so no page holds its job open;
-one whose cancellation does not end within `CANCEL_GRACE` is left behind, its result recorded all the same.
+one whose cancellation does not end within `CANCEL_GRACE` is left behind, its database session ended (PostgreSQL rolls
+its transaction back, releasing its row locks), and its failure recorded all the same, before its lease can expire:
+the task is never claimed again while work left behind runs, and that work sends no further request
+(`HostLimiter.admit`).
 
 Database errors outside a handler propagate (§4.8), including one raised while recording a handler's exception, which
 usually means the connection is gone: `run_worker` raises and the process exits. Nothing is lost: the tasks it still
@@ -29,7 +32,7 @@ from datetime import timedelta
 from functools import partial
 from typing import Final, assert_never
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
@@ -57,8 +60,10 @@ IDLE_POLL: Final = timedelta(seconds=1)
 # How long a task cancelled at its deadline may take to wind down (a browser context closing) before it is left.
 CANCEL_GRACE: Final = timedelta(seconds=15)
 DEADLINE: Final = "timeout: the task ran past its deadline"
-# How long recording a task's deadline failure waits for a row lock that work left behind may hold.
-_LOCK_WAIT: Final = timedelta(seconds=10)
+# How long recording a task's deadline failure waits for a row lock. Work left behind holds none (its session is ended);
+# another task's transaction ends within this: it commits, or is cancelled, or left behind, at its own deadline. A
+# claim's deadline, grace and this wait end well inside its `LEASE`, so the failure lands while the claim holds.
+_LOCK_WAIT: Final = TASK_DEADLINE + CANCEL_GRACE + timedelta(seconds=10)
 # An absolute URI: an RFC 3986 §3.1 scheme followed by "://" and everything up to the next whitespace.
 URL: Final = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
 
@@ -186,8 +191,11 @@ async def _run_within_deadline(
     log.warning("url_task %s: %s", task.id, DEADLINE)
     try:
         async with engine.begin() as conn:
-            # Work left behind may still hold the task's row in its open transaction: the failure waits for it only
-            # so long (PostgreSQL `lock_timeout`), and the task is then left to its lease's expiry.
+            if not done:
+                # Its transaction, if one is open, rolls back as its session ends; its next database call fails.
+                await conn.execute(_END_SESSION, {"name": _session_name(task)})
+            # A lock another task's transaction holds is waited for only so long (`_LOCK_WAIT`); past it, the task is
+            # left to its lease's expiry.
             await conn.execute(text(f"SET LOCAL lock_timeout = {int(_LOCK_WAIT.total_seconds() * 1000)}"))
             await fail_task(conn, task, DEADLINE, transient=False, ending=ending)
     except LeaseLost:
@@ -199,6 +207,14 @@ async def _run_within_deadline(
 # The tasks left running past their deadline and cancellation (`_run_within_deadline`): referenced until they end,
 # since the event loop keeps only weak references to tasks.
 _LEFT_BEHIND: set[asyncio.Task[None]] = set()
+# The session whose open transaction runs a claim (`_session_name`), ended: a session of the same role may be.
+_END_SESSION: Final = text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = :name")
+
+
+def _session_name(task: ClaimedTask) -> str:
+    """The `application_name` a claim's transaction runs under (SET LOCAL: the pooled session drops it at the end), so
+    that its work, if left behind, can be found; at most 63 characters (NAMEDATALEN)."""
+    return f"url_task {task.id.hex} {int(task.lease_until.timestamp() * 1_000_000)}"
 
 
 async def _run(
@@ -211,6 +227,7 @@ async def _run(
 ) -> None:
     try:
         async with conn.begin():
+            await conn.execute(select(func.set_config("application_name", _session_name(task), True)))
             await _execute(conn, task, handlers, ending, redact_urls=redact_urls)
     except LeaseLost:
         log.warning("url_task %s: lease lost; its work was rolled back", task.id)

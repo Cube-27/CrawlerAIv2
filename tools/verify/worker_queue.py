@@ -96,7 +96,7 @@ INSTANCES: dict[str, dict[str, object]] = {
         "LeftBehindHangs": False,
     },
 }
-SAFETY = ["TypeOK", "SlotCap", "BrowserCap", "NoDoubleProcessing"]
+SAFETY = ["TypeOK", "SlotCap", "BrowserCap", "HostOneInFlight", "NoDoubleProcessing", "NoDoubleProcessingStrict"]
 TEMPORAL = ["HostSpacing", "TaskTerminates", "JobFinishes"]
 
 
@@ -117,39 +117,67 @@ CHECKS = [
     Check("left-behind", "left-behind", SAFETY, TEMPORAL),
     Check("slots", "slots", SAFETY, TEMPORAL),
     Check("browser", "browser", SAFETY, TEMPORAL),
+    # One worker, two slots, one host: t2's turn comes due while t1's request is in flight.
+    Check("host-in-flight", "two-workers", SAFETY, TEMPORAL, overrides={"Workers": "OneWorker", "Slots": 2}),
+    # w1 stalls holding the job row while t2's work is left behind; t2 could be requeued and claimed again.
+    Check("left-behind-reclaim", "left-behind", SAFETY, TEMPORAL, overrides={"MaxAttempts": 2}),
+    # Work left behind that never ends, holding its url_task row lock.
+    Check("left-behind-hangs", "left-behind", SAFETY, TEMPORAL, overrides={"LeftBehindHangs": True}),
 ]
-# What the code does that a requested property forbids. Each stays failing until the code changes; then move it.
-FINDINGS = [
+# What the code does that a requested property forbids: each stays failing (expect = the property) until the code
+# changes, and then moves to CHECKS.
+FINDINGS: list[Check] = []
+# Broken variants of the code (the model's `Bug`, or a constant): each must be caught.
+MUTANTS = [
     Check(
-        "finding-host-in-flight",
+        "mutant-no-host-hold",
         "two-workers",
         ["HostOneInFlight"],
         [],
         expect="HostOneInFlight",
+        bug="no_host_hold",
         overrides={"Workers": "OneWorker", "Slots": 2},
-        why="HostLimiter spaces request starts per process; it does not hold a host while a request is in flight",
+        why="polite_fetch without `limiter.holding(host)`: admit spaces request starts only",
     ),
     Check(
-        "finding-left-behind-beside-reclaim",
+        "mutant-cancelled-admits",
         "left-behind",
-        ["NoDoubleProcessingStrict"],
+        ["HostOneInFlight"],
         [],
-        expect="NoDoubleProcessingStrict",
-        overrides={"MaxAttempts": 2},
-        why="work left behind keeps running past its lease while the requeued task runs again",
+        expect="HostOneInFlight",
+        bug="cancelled_admits",
+        why="HostLimiter.admit admits a task being cancelled",
     ),
     Check(
-        "finding-left-behind-hangs-on-its-row",
+        "mutant-hold-while-cancelled",
         "left-behind",
         [],
         ["TaskTerminates"],
         expect="TaskTerminates",
+        bug="hold_while_cancelled",
         overrides={"LeftBehindHangs": True},
-        why="left-behind work that never ends holding its url_task row lock: release_expired_leases skips the row",
+        why="HostLimiter._busy counts a holder being cancelled: work left behind holds its host",
     ),
-]
-# Broken variants of the code (the model's `Bug`, or a constant): each must be caught.
-MUTANTS = [
+    Check(
+        "mutant-deadline-gives-up",
+        "left-behind",
+        ["NoDoubleProcessingStrict"],
+        [],
+        expect="NoDoubleProcessingStrict",
+        bug="deadline_gives_up",
+        overrides={"MaxAttempts": 2},
+        why="_LOCK_WAIT 10 s: the deadline failure gives up on hung work's lock, leaving the task to its lease",
+    ),
+    Check(
+        "mutant-no-end-session",
+        "left-behind",
+        [],
+        ["TaskTerminates"],
+        expect="TaskTerminates",
+        bug="no_end_session",
+        overrides={"LeftBehindHangs": True},
+        why="the deadline path does not end the session of work left behind (_END_SESSION)",
+    ),
     Check(
         "mutant-no-deadline",
         "two-workers",

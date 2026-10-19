@@ -271,7 +271,9 @@ The system SHALL fetch every page and JSON request through one polite fetch (`se
 the host's rate, then the fetch, then the observation and the back-off. It SHALL space requests to a host by
 `crawl_delay_ms`, else 1 req/s, never below robots `Crawl-delay`, postponing a worker task rather than sleeping (a
 caller that waits waits in place up to one minute, a turn further off answering `blocked`, reason `slow_down`, with
-nothing sent), and SHALL double a host's spacing on a 429, a 503 or a challenge (at most 15 min),
+nothing sent); SHALL hold the host from a fetch's turn until the fetch ends, browser navigations included, so a process
+never has two requests in flight to one host (owner plan 2026-10-19, P1), and admit no request for work being
+cancelled; and SHALL double a host's spacing on a 429, a 503 or a challenge (at most 15 min),
 shrinking it by 10% after 20 `ok` answers in a row, never below that interval. On 429/503 it SHALL pause the host by
 one rule (`acquire/politeness.backoff`): the `Retry-After`, else 30 s doubling per try, at most 15 min, a `Retry-After`
 past 15 min ending the fetch `blocked`; each answer spends an attempt; a further request of a fetch (the 503

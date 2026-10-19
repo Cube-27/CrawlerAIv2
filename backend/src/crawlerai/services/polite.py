@@ -3,8 +3,9 @@ answer (`scrape`, `map`, `extract`, the eval import) or it runs in a worker (`ba
 API endpoint an adapter or recipe asks, or a sitemap.
 
 The steps, in order: the host's rules (its interval setting and robots.txt, `ReadRules`), a turn at the host's rate,
-the fetch, then the host's rate adapted to every answer of the fetch (D-1327) and, when the fetch kept no `ok`
-answer after a 429 or 503, the host paused by the one back-off rule (`politeness.backoff`). A caller that waits for
+the fetch, with the host held until it ends (no other task's request goes to it meanwhile), then the host's rate
+adapted to every answer of the fetch (D-1327) and, when the fetch kept no `ok` answer after a 429 or 503, the host
+paused by the one back-off rule (`politeness.backoff`). A caller that waits for
 the answer waits in place for its turns, up to `IN_PLACE.bound`, and a turn further off is not taken (`Refused`,
 `slow_down`). A worker postpones its task when the host's turn for the first request is not due (`Later`): the task
 goes back to the queue, and the worker moves on to other sites; a further request of the fetch, the browser retry,
@@ -144,7 +145,9 @@ async def polite_fetch[R: (FetchResult, FetchResult | Unchanged)](
     if not turn_taken and (unsent := await _first_turn(limiter, host, known.gap, waiting)) is not None:
         return unsent
     admit_next: Admit = refuse if disallowed else partial(limiter.wait, host, known.gap, waiting.bound)
-    result = await fetch(url, admit_next, known)
+    # The host is held from the turn to the fetch's end (`HostLimiter.holding`); no await between them.
+    with limiter.holding(host):
+        result = await fetch(url, admit_next, known)
     attempts = result.attempts if endpoint else page_requests(result.attempts)
     limiter.observe(host, known.gap, attempts)
     if isinstance(result, Unchanged) or result.block_class == "ok":
