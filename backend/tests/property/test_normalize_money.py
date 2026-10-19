@@ -94,16 +94,46 @@ def test_a_sign_written_with_an_abbreviation_full_stop_is_also_the_symbol_withou
     assert money.normalize("kr. 12", MONEY, _ctx(page_currencies=("NOK",))) == _ok("12", "NOK")
 
 
-def test_a_lone_separator_is_ambiguous_until_the_page_locale_settles_it() -> None:
-    readings: tuple[JsonValue, ...] = ({"amount": "1.234", "currency": "EUR"}, {"amount": "1234", "currency": "EUR"})
+def test_a_lone_separator_is_ambiguous_until_the_page_locale_or_convention_settles_it() -> None:
+    # KWD has three decimals (ISO 4217), so both readings are amounts of it.
+    readings: tuple[JsonValue, ...] = ({"amount": "1.234", "currency": "KWD"}, {"amount": "1234", "currency": "KWD"})
 
-    assert money.normalize("1.234 EUR", MONEY, CTX) == Ambiguous("decimal_separator", readings)
-    assert money.normalize("1.234 EUR", MONEY, _ctx(html_lang="en-US")) == _ok("1.234", "EUR")
-    assert money.normalize("1.234 EUR", MONEY, _ctx(html_lang="de-DE")) == _ok("1234", "EUR")
-    # Locales that disagree decline.
-    assert money.normalize("1.234 EUR", MONEY, _ctx(html_lang="en-US", og_locale="de_DE")) == Ambiguous(
-        "decimal_separator", readings
+    assert money.normalize("1.234 KWD", MONEY, CTX) == Ambiguous("decimal_separator", readings)
+    assert money.normalize("1.234 KWD", MONEY, _ctx(html_lang="en-US")) == _ok("1.234", "KWD")
+    assert money.normalize("1.234 KWD", MONEY, _ctx(html_lang="de-DE")) == _ok("1234", "KWD")
+    # Locales that disagree decline; the decimal symbol of the page's structured prices settles it.
+    disagree = _ctx(html_lang="en-US", og_locale="de_DE")
+    assert money.normalize("1.234 KWD", MONEY, disagree) == Ambiguous("decimal_separator", readings)
+    assert money.normalize("1.234 KWD", MONEY, disagree.model_copy(update={"page_convention": "."})) == _ok(
+        "1.234", "KWD"
     )
+    assert money.normalize("1.234", MONEY, _ctx(page_convention=".")) == _ok("1.234", None, "unknown", checked=False)
+    assert money.normalize("$10.999", MONEY, CTX) == Ambiguous(
+        "decimal_separator", ({"amount": "10.999", "currency": None}, {"amount": "10999", "currency": None})
+    )
+
+
+def test_a_reading_with_more_decimals_than_the_currency_minor_unit_is_no_amount_of_it() -> None:
+    # ISO 4217 minor units (CLDR): yen has none, the US dollar two.
+    assert money.normalize("¥1,234", MONEY, _ctx(page_currencies=("JPY",))) == _ok("1234", "JPY")
+    assert money.normalize("$10.999", MONEY, _ctx(html_lang="en-US")) == Invalid("minor_unit")
+
+
+@pytest.mark.parametrize(
+    ("raw", "tag", "expected"),
+    [
+        # CLDR's SAR symbol is `ر.س.` with a right-to-left mark; pages write it with or without both.
+        ("ر.س 120", "ar-SA", ("120", "SAR")),
+        ("ر.س.\u200f120", "ar-SA", ("120", "SAR")),
+        # The ASCII apostrophe for the `de-CH` group symbol U+2019.
+        ("CHF 1'234.50", "de-CH", ("1234.50", "CHF")),
+        # Arabic-Indic and Extended Arabic-Indic digits with the `arab`/`arabext` separators.
+        ("EGP \u0661\u066c\u0662\u0663\u0664\u066b\u0665\u0660", "ar-EG", ("1234.50", "EGP")),
+        ("IRR \u06f1\u066c\u06f2\u06f3\u06f4", "fa-IR", ("1234", "IRR")),
+    ],
+)
+def test_cldr_symbol_and_number_forms_pages_write(raw: str, tag: str, expected: tuple[str, str]) -> None:
+    assert money.normalize(raw, MONEY, _ctx(html_lang=tag)) == _ok(*expected)
 
 
 @pytest.mark.parametrize(
@@ -126,7 +156,8 @@ def test_a_lone_separator_is_ambiguous_until_the_page_locale_settles_it() -> Non
         ({"price": float("nan"), "priceCurrency": "EUR"}, "unparsable_amount"),
         ({"price": "1000000000000", "priceCurrency": "EUR"}, "out_of_range"),
         ({"price": "0", "priceCurrency": "EUR"}, "not_positive"),
-        ("EUR 1." + "9" * 40, "out_of_range"),
+        ("1." + "9" * 40, "out_of_range"),
+        ("EUR 1.9999", "minor_unit"),
     ],
 )
 def test_what_is_no_positive_single_price_is_invalid(raw: JsonValue, reason: str) -> None:

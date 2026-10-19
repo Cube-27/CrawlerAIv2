@@ -46,7 +46,9 @@ class Shape:
     documentation states an amount as an integer count of the currency's minor unit (cents), the number of decimal
     places of that unit: a constant the documentation states, or the members from the node's object to the value that
     states it. Only a property listed there is scaled, and only an integer amount (written as a number or in digits);
-    any other value of it is dropped, since the documentation states no unit for it."""
+    any other value of it is dropped, since the documentation states no unit for it. `booleans` gives a property the
+    API states as a JSON boolean the values its documentation means by `true` and by `false` (a variant's `available`:
+    schema.org `InStock`, `OutOfStock`)."""
 
     type: str
     at: Members = ()
@@ -56,6 +58,7 @@ class Shape:
     nodes: Mapping[str, tuple["Shape", ...]] = field(default_factory=dict)
     anchor: Members = ()
     minor_units: Mapping[str, int | Members] = field(default_factory=dict)
+    booleans: Mapping[str, tuple[str, str]] = field(default_factory=dict)
 
 
 def apply_action(member: str) -> Shape:

@@ -32,7 +32,7 @@ from urllib.parse import urlsplit
 
 from babel import Locale
 from babel.core import get_global
-from babel.numbers import get_territory_currencies, list_currencies
+from babel.numbers import get_currency_precision, get_territory_currencies, list_currencies
 from price_parser import Price
 from pydantic import JsonValue
 
@@ -49,6 +49,9 @@ _MAX_AMOUNT = Decimal(10) ** 12
 _MAX_EXPONENT = -6
 # A URL path segment naming a locale, language then region (BCP 47 order, `-` or `_`): `/en-gb/`, `/fr_CA/`.
 _LOCALE_SEGMENT = re.compile(r"([a-z]{2,3})[-_]([a-z]{2})", re.ASCII | re.IGNORECASE)
+# Unicode bidi controls CLDR writes inside currency symbols (`ر.س.\u200f`): LEFT-TO-RIGHT MARK, RIGHT-TO-LEFT MARK and
+# ARABIC LETTER MARK. A page writes the symbol with or without them.
+_BIDI_CONTROLS = str.maketrans("", "", "\u200e\u200f\u061c")
 # `numbers.stated` declines a text without one number as `no_number` or `several_numbers`; money names them by what
 # they mean for an amount: none is no amount, and two are a range, not one value.
 _NUMBER_REASONS = {"no_number": "no_amount", "several_numbers": "range"}
@@ -128,12 +131,25 @@ def _text(raw: str, ctx: Context, stated: str | None = None) -> NormalizeResult:
     currency = _currency_of(text, before, after, ctx, stated)
     if isinstance(currency, Invalid):
         return currency
-    amounts = [_shifted(amount, power) for amount in numbers.readings(found.written, locales)]
+    amounts = [_shifted(a, power) for a in numbers.readings(found.written, locales, ctx.page_convention)]
     if not amounts:
         return Invalid("unparsable_amount")
+    if currency.code is not None:
+        # ISO 4217 minor unit (CLDR currency data): a reading with more decimals than the currency has is not an
+        # amount of it (`$10.999` is not USD 10.999; `¥1,234` in yen is 1234).
+        places = get_currency_precision(currency.code)
+        amounts = [a for a in amounts if _places(a) <= places]
+        if not amounts:
+            return Invalid("minor_unit")
     if len(amounts) == 1:
         return _money(amounts[0], currency)
     return Ambiguous("decimal_separator", tuple(_value(a, currency.code) for a in amounts))
+
+
+def _places(amount: Decimal) -> int:
+    """The decimal places `amount` is written with, trailing zeros included."""
+    exponent = amount.as_tuple().exponent
+    return -exponent if isinstance(exponent, int) and exponent < 0 else 0
 
 
 def _shifted(amount: Decimal, power: int) -> Decimal:
@@ -389,11 +405,12 @@ def _currencies_for(sign: str) -> frozenset[str]:
 
 
 def _sign_forms(sign: str) -> tuple[str, ...]:
-    """The CLDR symbols a written sign is: itself, and, for a sign ending in a full stop, the abbreviation without
-    it. A full stop marks an abbreviation (CLDR writes one symbol both ways, `kr` and `kr.`), so `Rs.` is also the
-    symbol `Rs` and denotes its currencies too, for the evidence to narrow."""
-    bare = sign.removesuffix(".")
-    return (sign, bare) if bare and bare != sign else (sign,)
+    """The forms of a CLDR symbol or written sign: itself, without bidi controls (`_BIDI_CONTROLS`), and, for one
+    ending in a full stop, the abbreviation without it. A full stop marks an abbreviation (CLDR writes one symbol both
+    ways, `kr` and `kr.`), so `Rs.` is also the symbol `Rs`, and `ر.س.\u200f` (SAR) is also `ر.س`; both the symbol
+    table and the written sign take every form, so each denotes the other's currencies, for the evidence to narrow."""
+    unmarked = sign.translate(_BIDI_CONTROLS)
+    return tuple(form for form in dict.fromkeys((sign, unmarked, unmarked.removesuffix("."))) if form)
 
 
 def is_currency_code(code: str) -> bool:
@@ -427,15 +444,17 @@ def _territories() -> frozenset[str]:
 
 @cache
 def _locale_symbols(identifier: str) -> dict[str, frozenset[str]]:
-    """The currencies each CLDR symbol (NFKC) stands for in one locale, and each one-word name CLDR gives a count of
-    it (`currencyNames` by plural form: `円` for yen in Japanese), which pages write after an amount as a sign."""
+    """The currencies each CLDR symbol (NFKC, in each of its `_sign_forms`) stands for in one locale, and each one-word
+    name CLDR gives a count of it (`currencyNames` by plural form: `円` for yen in Japanese), which pages write after an
+    amount as a sign."""
     locale = Locale.parse(identifier)
     named = locale._data.get("currency_names_plural", {})  # Babel exposes the count forms only through its data
     pairs = [*((code, symbol) for code, symbol in locale.currency_symbols.items())]
     pairs += [(code, name) for code in named for name in dict(named[code]).values() if name and not _spaced(name)]
     by_symbol: dict[str, set[str]] = {}
     for code, symbol in pairs:
-        by_symbol.setdefault(unicodedata.normalize("NFKC", symbol), set()).add(code)
+        for form in _sign_forms(unicodedata.normalize("NFKC", symbol)):
+            by_symbol.setdefault(form, set()).add(code)
     return {symbol: frozenset(codes) for symbol, codes in by_symbol.items()}
 
 

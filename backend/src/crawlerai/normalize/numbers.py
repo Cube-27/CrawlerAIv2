@@ -11,15 +11,25 @@ from functools import cache
 
 from babel import Locale, UnknownLocaleError
 from babel.localedata import locale_identifiers
-from babel.numbers import NumberFormatError, get_decimal_symbol, get_group_symbol, parse_decimal
+from babel.numbers import NumberFormatError, parse_decimal
 
 from crawlerai.normalize.base import Context, has_surrogate
 
-# Structural: a written amount is a run of digits joined by single separators (CLDR decimal and group symbols: `.`,
-# `,`, apostrophes, spaces). An amount below one may open with its decimal symbol (`.99`), unless a letter or digit
-# precedes it; CLDR then decides whether that symbol is a decimal point. A text holding two runs states two amounts:
-# a range or a list, never one value.
-AMOUNT_RUN = re.compile(r"(?:(?<![^\W_])[.,])?\d+(?:[.,'\u2019\s]\d+)*")
+# Structural: a written amount is a run of digits (any Unicode decimal digits) joined by single separators (CLDR
+# decimal and group symbols: `.`, `,`, apostrophes, spaces, and the `arab`/`arabext` U+066B decimal and U+066C group
+# separators). An amount below one may open with its decimal symbol (`.99`), unless a letter or digit precedes it;
+# CLDR then decides whether that symbol is a decimal point. A text holding two runs states two amounts: a range or a
+# list, never one value.
+AMOUNT_RUN = re.compile(r"(?:(?<![^\W_])[.,\u066b])?\d+(?:[.,'\u2019\u066b\u066c\s]\d+)*")
+# UTS #35 numbering systems pages write with their own separators: Arabic-Indic (`arab`) and Extended Arabic-Indic
+# (`arabext`) digits, with U+066B ARABIC DECIMAL SEPARATOR and U+066C ARABIC THOUSANDS SEPARATOR. A locale whose
+# default or native numbering system is one of them reads both its `latn` and that system's symbols.
+_ARABIC_SYSTEMS = frozenset({"arab", "arabext"})
+# The ASCII and compatibility forms pages write for a CLDR group symbol: U+2019 RIGHT SINGLE QUOTATION MARK (`de-CH`)
+# as the ASCII apostrophe and back; a space symbol (U+00A0, U+202F) as any Unicode space separator.
+_GROUP_FALLBACKS = {"\u2019": frozenset("'"), "'": frozenset("\u2019")}
+# A CLDR number convention: decimal symbol, group symbol, grouping sizes.
+Convention = tuple[str, str, object]
 # Unicode HYPHEN-MINUS and MINUS SIGN (the CLDR `minusSign` symbols, after NFKC) before the amount: a negative value.
 MINUS = ("-", "\u2212")
 
@@ -170,32 +180,51 @@ def negated(before: str) -> bool:
     return last >= 0 and not any(c.isspace() for c in before[last + 1 :])
 
 
-def readings(written: str, locales: frozenset[str]) -> list[Decimal]:
+def readings(written: str, locales: frozenset[str], decimal: str | None = None) -> list[Decimal]:
     """Every value the written amount has (CLDR number symbols), the one a page's declared locales settle when it has
-    several. A string only one CLDR convention can read (`1.234,56`, `12.50`) has one value whatever the page says;
-    one that conventions read differently (`1.234`, `1,234`) takes the values its declared `locales` give it, and with
-    no locale evidence keeps every value."""
+    several, then the one the page's decimal symbol (the context's `page_convention`) settles. A string only one CLDR
+    convention can read (`1.234,56`, `12.50`) has one value whatever the page says; one that conventions read
+    differently (`1.234`, `1,234`) takes the values its declared `locales` give it, then those of the conventions whose
+    decimal symbol is `decimal`, and with no evidence keeps every value."""
     every = _values(written, _number_conventions())
-    if len(every) < 2 or not locales:
+    if len(every) < 2:
         return every
-    return _values(written, locales)
+    declared = _values(written, locales) if locales else every
+    if len(declared) < 2 or decimal is None:
+        return declared
+    return _values(written, locales or _number_conventions(), decimal) or declared
 
 
-def _values(written: str, locales: Iterable[str]) -> list[Decimal]:
+def _values(written: str, locales: Iterable[str], decimal: str | None = None) -> list[Decimal]:
     # Locales with one convention read an amount the same way, so one of them is parsed.
-    conventions: dict[tuple[str, str, object], str] = {}
+    conventions: dict[Convention, tuple[str, dict[int, str]]] = {}
     for loc in locales:
-        conventions.setdefault(_convention(loc), loc)
+        for convention, as_latn in _conventions(loc):
+            conventions.setdefault(convention, (loc, as_latn))
+    # Unicode decimal digits (`١٢٣`, `۱۲۳`) read as the ASCII digits Babel parses in every numbering system.
+    latin = "".join(str(d) if (d := unicodedata.decimal(c, None)) is not None else c for c in written)
     values: set[Decimal] = set()
-    for (_, group, _), loc in conventions.items():
-        # CLDR group symbols that are spaces (U+00A0, U+202F) are written as any Unicode space separator on pages.
-        text = "".join(group if unicodedata.category(c) == "Zs" else c for c in written) if group.isspace() else written
+    for (symbol, group, _), (loc, as_latn) in conventions.items():
+        if decimal is not None and symbol != decimal:
+            continue
         try:
-            values.add(parse_decimal(text, loc, strict=True))
+            value = parse_decimal(_grouped(latin, group).translate(as_latn), loc, strict=True)
         except (NumberFormatError, InvalidOperation):
             # A digit run longer than the decimal context holds (Python `decimal`, 28 digits) is no amount either.
             continue
+        # Babel also reads `.` as the decimal point of a locale whose group symbol is a space (`10.999` in `fr`): a
+        # reading in the page's convention has its fraction after the page's decimal symbol.
+        if decimal is None or decimal in written or int(value.as_tuple().exponent) >= 0:
+            values.add(value)
     return sorted(values)
+
+
+def _grouped(written: str, group: str) -> str:
+    """`written` with the forms a page writes for the CLDR `group` symbol (`_GROUP_FALLBACKS`) as the symbol itself."""
+    if group.isspace():
+        return "".join(group if unicodedata.category(c) == "Zs" else c for c in written)
+    fallbacks = _GROUP_FALLBACKS.get(group, frozenset())
+    return "".join(group if c in fallbacks else c for c in written)
 
 
 def locale_set(ctx: Context) -> frozenset[str]:
@@ -278,22 +307,33 @@ def _index(key: Callable[[str], str]) -> dict[str, frozenset[str]]:
 
 
 @cache
-def _convention(identifier: str) -> tuple[str, str, object]:
-    """A locale's CLDR number convention: decimal symbol, group symbol, grouping sizes. Babel reads symbols and parses
-    in the Latin digit system (`latn`) by default, the digits `AMOUNT_RUN` reads after NFKC."""
+def _conventions(identifier: str) -> tuple[tuple[Convention, dict[int, str]], ...]:
+    """A locale's CLDR number conventions (decimal symbol, group symbol, grouping sizes): its `latn` one, and that of
+    the Arabic system (`_ARABIC_SYSTEMS`) that is its default or native one, each with the translation of its symbols
+    into the `latn` ones, in which Babel parses."""
     locale = Locale.parse(identifier)
     pattern = locale.decimal_formats.get(None)
-    return (
-        get_decimal_symbol(locale),
-        get_group_symbol(locale),
-        pattern.grouping if pattern is not None else None,
-    )
+    grouping = pattern.grouping if pattern is not None else None
+    native = {str(locale.default_numbering_system), str(locale.other_numbering_systems.get("native"))}
+    latn = _symbols(locale, "latn")
+    found: list[tuple[Convention, dict[int, str]]] = [((*latn, grouping), {})]
+    for system in sorted(native & _ARABIC_SYSTEMS):
+        decimal, group = _symbols(locale, system)
+        found.append(((decimal, group, grouping), str.maketrans({decimal: latn[0], group: latn[1]})))
+    return tuple(found)
+
+
+def _symbols(locale: Locale, system: str) -> tuple[str, str]:
+    """A locale's CLDR decimal and group symbols in a numbering system (Babel's defaults where CLDR has none)."""
+    symbols = locale.number_symbols.get(system, {})
+    return symbols.get("decimal", "."), symbols.get("group", ",")
 
 
 @cache
 def _number_conventions() -> frozenset[str]:
     """One locale per distinct CLDR number convention."""
-    seen: dict[tuple[str, str, object], str] = {}
+    seen: dict[Convention, str] = {}
     for identifier in sorted(identifiers()):
-        seen.setdefault(_convention(identifier), identifier)
+        for convention, _ in _conventions(identifier):
+            seen.setdefault(convention, identifier)
     return frozenset(seen.values())

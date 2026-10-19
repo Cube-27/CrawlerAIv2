@@ -108,7 +108,7 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
         return Invalid(found)
     if numbers.negated(found.before):
         return Invalid("negative")
-    values = numbers.readings(found.written, numbers.locale_set(ctx))
+    values = numbers.readings(found.written, numbers.locale_set(ctx), ctx.page_convention)
     if not values:
         return Invalid("not_a_count")  # a run no CLDR convention parses strictly ("1,2,3")
     if len(values) == 1:
