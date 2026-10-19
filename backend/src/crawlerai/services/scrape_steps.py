@@ -340,6 +340,16 @@ async def _stated_schema(
     return None
 
 
+def check_render(render: RenderOptions, schema: SchemaDef | None) -> None:
+    """`SchemaUnusable` when `render.fields` names a field the request's schema does not have (rest-api spec, "Render
+    mode"): no locate run fills it. Without a resolved schema (a prompt, drafted on the page), none is checked."""
+    if schema is None:
+        return
+    unknown = [name for name in render.fields if name not in schema.fields]
+    if unknown:
+        raise SchemaUnusable(f"render.fields names fields schema {schema.name} lacks: {', '.join(unknown)}")
+
+
 def check_usable(schema: SchemaDef, page_kind: PageKind | None) -> None:
     if schema.status == "retired":
         raise SchemaUnusable(f"schema {schema.name} is retired")

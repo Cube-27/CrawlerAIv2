@@ -59,6 +59,7 @@ from crawlerai.services.scrape_steps import (
     SchemaInline,
     check_formats,
     check_records,
+    check_render,
     named_schema,
 )
 from crawlerai.services.webhook_options import WebhookOptions
@@ -166,7 +167,9 @@ async def submit_batch(
     targets = [(f"urls[{index}]", url) for index, url in enumerate(request.urls)]
     await check_targets(connector, targets, webhook_url=request.webhook_url)
     # A format batch that names a schema is a format job.
-    schema = await records_schema(engine, request.formats, request.schema_, request.page_kind, data, llm)
+    schema = await records_schema(
+        engine, request.formats, request.schema_, request.page_kind, data, llm, request.render
+    )
     request, egress = await pin_location(engine, egresses, request, request.fetch, request.urls[0])
     async with placement.transaction(engine) as conn:
         job_id = await insert_job(
@@ -204,14 +207,18 @@ async def records_schema(
     page_kind: PageKind | None,
     data: EngineData | None,
     llm: LLMClient,
+    render: RenderOptions,
 ) -> SchemaDef | None:
     """The schema a job's `records` are extracted with; None without `records`, the only format that reads a schema
-    (rest-api spec). Raises `RecordsUnavailable` without `data`, and `named_schema`'s errors."""
+    (rest-api spec). Raises `RecordsUnavailable` without `data`, `named_schema`'s errors, and `check_render`'s for
+    `render.fields` the schema does not have."""
     if "records" not in formats:
         return None
     if data is None:
         raise RecordsUnavailable("this process has not loaded the engine's data files")
-    return await named_schema(engine, schema, page_kind, llm)
+    named = await named_schema(engine, schema, page_kind, llm)
+    check_render(render, named)
+    return named
 
 
 async def insert_job(

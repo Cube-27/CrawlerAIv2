@@ -459,7 +459,7 @@ async def _checked(
             await check_targets(submitting.fetching.connector, [("url", crawl.url)], webhook_url=crawl.webhook_url)
             page_kind = crawl.page_kind_rules[0].page_kind if crawl.page_kind_rules else None
             schema = await records_schema(
-                engine, crawl.formats, crawl.schema_, page_kind, submitting.data, submitting.llm
+                engine, crawl.formats, crawl.schema_, page_kind, submitting.data, submitting.llm, crawl.render
             )
             return "crawl", _by_id(crawl, schema)
         case NewExtractSchedule(request=extract):
@@ -479,7 +479,7 @@ async def _batch_checked(engine: AsyncEngine, submitting: Submitting, batch: Bat
     targets = [(f"urls[{index}]", url) for index, url in enumerate(batch.urls)]
     await check_targets(submitting.fetching.connector, targets, webhook_url=batch.webhook_url)
     schema = await records_schema(
-        engine, batch.formats, batch.schema_, batch.page_kind, submitting.data, submitting.llm
+        engine, batch.formats, batch.schema_, batch.page_kind, submitting.data, submitting.llm, batch.render
     )
     return _by_id(batch, schema)
 

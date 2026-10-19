@@ -10,11 +10,13 @@ from pydantic import ValidationError
 
 from crawlerai.api.app import create_app
 from crawlerai.api.auth import require_api_key
-from crawlerai.db.models import ApiKeyId
+from crawlerai.core.ids import uuid7
+from crawlerai.db.models import ApiKeyId, SchemaId
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.services.batch import BatchScrapeRequest
 from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.scrape import ScrapeRequest
-from crawlerai.services.scrape_steps import RenderOptions
+from crawlerai.services.scrape_steps import RenderOptions, SchemaUnusable, check_render
 
 URL = "https://shop.example.test/p/1"
 BODY = {"urls": [URL], "formats": ["records"], "schema": {"id": str(uuid.UUID(int=1))}, "page_kind": "detail"}
@@ -55,3 +57,14 @@ def test_render_takes_a_mode_and_fields() -> None:
 def test_render_refuses_an_unknown_mode_or_member(render: object) -> None:
     with pytest.raises(ValidationError):
         BatchScrapeRequest.model_validate({**BODY, "render": render})
+
+
+def test_render_fields_are_the_schemas() -> None:
+    fields = {"title": FieldSpec(type=FieldType.TEXT, description="d", required=True)}
+    schema = SchemaDef(
+        id=SchemaId(uuid7()), origin="user", status="active", name="s", page_kind="detail", fields=fields
+    )
+
+    check_render(RenderOptions(mode="locate", fields=["title"]), schema)
+    with pytest.raises(SchemaUnusable, match="size"):
+        check_render(RenderOptions(mode="locate", fields=["title", "size"]), schema)

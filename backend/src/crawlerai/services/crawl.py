@@ -170,7 +170,7 @@ async def submit_crawl(
     await check_targets(connector, [("url", request.url)], webhook_url=request.webhook_url)
     # A records crawl's rules have one page kind, its schema's (the request's validator).
     page_kind = request.page_kind_rules[0].page_kind if request.page_kind_rules else None
-    schema = await records_schema(engine, request.formats, request.schema_, page_kind, data, llm)
+    schema = await records_schema(engine, request.formats, request.schema_, page_kind, data, llm, request.render)
     frontier = request.frontier()
     request, egress = await pin_location(engine, egresses, request, request.fetch, request.start)
     async with placement.transaction(engine) as conn:

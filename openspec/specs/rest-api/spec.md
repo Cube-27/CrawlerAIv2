@@ -233,15 +233,15 @@ whose calibrated confidence is below it is `abstained` with reason `below_min_co
 optional `render: {mode, fields}` (`services.scrape_steps.RenderOptions`): `mode` is `off` (the default: HTTP, the
 browser only when HTTP is refused, [acquisition](../acquisition/spec.md) "Browser on block or by field source"),
 `locate` (the surface's locate run finds where the fields the HTTP pages leave missing, or `fields`, live) or `always`
-(every page rendered); `fields` holds at most `MAX_RENDER_FIELDS` schema field names. It is validated and pinned with
-the request (INV-28); the fetch plan and the locate run that act on it land with architecture v3 PR 5. `render_fields`
-is refused (422), as is any other unknown member. A field whose source in the site's config is the browser, missing
-from a page that was not rendered, is `interaction_required` with reason `render_bound`
-([resolution](../resolution/spec.md)). A task outcome or a scrape's `outcome` may be `auth_wall`, `soft_404`,
-`geo_redirect`, `redirected_to_listing` or `timeout` (the capture's block class, `fetch.block_class`, is the transport
-outcome; the task outcome is the data outcome; the model is in [jobs](../jobs/spec.md), "Page outcomes").
-(Previously: `render_fields`, a list of schema field names stored with the request with no effect on the fetch.)
-Refs: owner plan 2026-10-19 P3, P9; architecture v3 a.1.
+(every page rendered); `fields` holds at most `MAX_RENDER_FIELDS` names of the request's schema's fields (another name
+is refused, `check_render`). It is validated and pinned with the request (INV-28); the fetch plan and the locate run
+that act on it land with architecture v3 PR 5. `render_fields` is refused (422), as is any other unknown member. A field
+whose source in the site's config is the browser, missing from a page that was not rendered, is `interaction_required`
+with reason `render_bound` ([resolution](../resolution/spec.md)). A task outcome or a scrape's `outcome` may be
+`auth_wall`, `soft_404`, `geo_redirect`, `redirected_to_listing` or `timeout` (the capture's block class,
+`fetch.block_class`, is the transport outcome; the task outcome is the data outcome; the model is in
+[jobs](../jobs/spec.md), "Page outcomes"). (Previously: `render_fields`, a list of schema field names stored with the
+request with no effect on the fetch.) Refs: owner plan 2026-10-19 P3, P9; architecture v3 a.1.
 #### Scenario: A list of render fields
 - **WHEN** a batch body names `render_fields: ["size"]`
 - **THEN** the answer is 422 naming `render_fields`

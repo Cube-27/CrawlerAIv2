@@ -97,6 +97,7 @@ from crawlerai.services.scrape_steps import (
     blocked_reason,
     check_formats,
     check_records,
+    check_render,
     check_usable,
     extract_further,
     fetch_failure,
@@ -325,7 +326,9 @@ async def _named_schema(
         return None
     if data is None:
         raise RecordsUnavailable("this process has not loaded the engine's data files")
-    return await named_schema(engine, request.schema_, request.page_kind, llm)
+    named = await named_schema(engine, request.schema_, request.page_kind, llm)
+    check_render(request.render, named)
+    return named
 
 
 async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef | None, egress: Egress) -> ClaimedTask:
