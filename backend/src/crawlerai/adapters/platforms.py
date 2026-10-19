@@ -38,7 +38,7 @@ __all__ = [
     "answer_shapes",
     "platform_of",
     "product_json",
-    "variant_params",
+    "signature_of",
 ]
 
 
@@ -96,20 +96,20 @@ SIGNATURES: Final[tuple[PlatformSignature, ...]] = (
 _SCAN_CHARS: Final = 500_000
 
 
-def platform_of(markup: str, headers: HeaderList) -> str | None:
-    """The platform whose signal the page shows (module docstring), or None."""
+def signature_of(markup: str, headers: HeaderList) -> PlatformSignature | None:
+    """The signature of the platform whose signal the page shows (module docstring), or None."""
     names = {name.lower() for name, _ in headers}
     head = markup[:_SCAN_CHARS]
     for signature in SIGNATURES:
         if names & signature.header_names or any(marker in head for marker in signature.markers):
-            return signature.platform
+            return signature
     return None
 
 
-def variant_params(markup: str, headers: HeaderList) -> tuple[str, ...]:
-    """The variant-selecting query parameters of the page's platform (`PlatformSignature.variant_params`), or none."""
-    platform = platform_of(markup, headers)
-    return next((s.variant_params for s in SIGNATURES if s.platform == platform), ())
+def platform_of(markup: str, headers: HeaderList) -> str | None:
+    """The platform whose signal the page shows (module docstring), or None."""
+    signature = signature_of(markup, headers)
+    return None if signature is None else signature.platform
 
 
 @dataclass(frozen=True)

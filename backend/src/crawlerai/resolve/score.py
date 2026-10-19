@@ -22,6 +22,7 @@ collector order.
 
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Final
 
 from pydantic import JsonValue
@@ -37,21 +38,22 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 PRECEDENCE_TYPES: Final = frozenset({FieldType.TEXT, FieldType.LONG_TEXT, FieldType.URL, FieldType.IMAGE_URL})
 # Another Offer of the target, or of one of its variants, than the anchor: the product's, but not the offer the page
 # states for it (atomic offers, INV-15). Half the anchor's, so it outscores the anchor's value only with at least twice
-# its source weight times agreement.
-OTHER_OFFER: Final = 0.5
-OWN: Final = 1.0
+# its source weight times agreement. Scores are exact fractions, so two values tie only when their scores are equal.
+OTHER_OFFER: Final = Fraction(1, 2)
+OWN: Final = Fraction(1)
+_NONE: Final = Fraction(0)
 
-Scope = Callable[[Candidate], float]
+Scope = Callable[[Candidate], Fraction]
 
 
 @dataclass(frozen=True, slots=True)
 class Score:
-    weight: float
-    scope: float
-    agreement: float
+    weight: Fraction
+    scope: Fraction
+    agreement: Fraction
 
     @property
-    def value(self) -> float:
+    def value(self) -> Fraction:
         return self.weight * self.scope * self.agreement
 
 
@@ -64,7 +66,7 @@ class Group:
     first: int  # the first member's place among the kept candidates
 
     @property
-    def score(self) -> float:
+    def score(self) -> Fraction:
         return max(s.value for s in self.scores)
 
     @property
@@ -82,40 +84,40 @@ def rank(spec: FieldSpec, kept: Sequence[Candidate], scope: Scope, order: Sequen
     groups = []
     for indices in members:
         group = [kept[i] for i in indices]
-        agreement = _support(group, weights) / total if total else 1.0
+        agreement = _support(group, weights) / total if total else OWN
         scores = tuple(Score(weights[id(c)], scope(c), agreement) for c in group)
         groups.append(Group(tuple(group), scores, indices[0]))
     return sorted(groups, key=lambda g: (-g.score, g.first))
 
 
-def source_weights(spec: FieldSpec, kept: Sequence[Candidate], order: Sequence[SourceKind]) -> dict[int, float]:
+def source_weights(spec: FieldSpec, kept: Sequence[Candidate], order: Sequence[SourceKind]) -> dict[int, Fraction]:
     """Each kept candidate's source weight, by `id` (module docstring)."""
     type_ = rule_type(spec)
     if type_ in PRECEDENCE_TYPES:
         fragments = {id(c) for c in superseded(spec, kept)}
-        return {id(c): 0.0 if id(c) in fragments else _place(c.source_kind, order) for c in kept}
+        return {id(c): _NONE if id(c) in fragments else _place(c.source_kind, order) for c in kept}
     if type_ is FieldType.MONEY:
         return {id(c): _currency_strength(c) for c in kept}
-    return {id(c): 1.0 for c in kept}
+    return {id(c): OWN for c in kept}
 
 
-def _place(kind: SourceKind, order: Sequence[SourceKind]) -> float:
-    return (len(order) - order.index(kind)) / len(order) if kind in order else 0.0
+def _place(kind: SourceKind, order: Sequence[SourceKind]) -> Fraction:
+    return Fraction(len(order) - order.index(kind), len(order)) if kind in order else _NONE
 
 
-def _currency_strength(candidate: Candidate) -> float:
+def _currency_strength(candidate: Candidate) -> Fraction:
     """1 for a value that states its currency, else 1 less (1 + the place of its basis in `BASES`) / (len + 1)."""
     basis = candidate.normalized.basis if isinstance(candidate.normalized, Ok) else None
-    return 1.0 if basis is None else 1 - (1 + BASES.index(basis)) / (len(BASES) + 1)
+    return OWN if basis is None else 1 - Fraction(1 + BASES.index(basis), len(BASES) + 1)
 
 
-def _support(candidates: Sequence[Candidate], weights: dict[int, float]) -> float:
+def _support(candidates: Sequence[Candidate], weights: dict[int, Fraction]) -> Fraction:
     """The weight of the independent evidence among `candidates`: per source kind, its best candidate's weight."""
-    best: dict[SourceKind, float] = {}
+    best: dict[SourceKind, Fraction] = {}
     for c in candidates:
         if c.independent:
-            best[c.source_kind] = max(best.get(c.source_kind, 0.0), weights[id(c)])
-    return sum(best.values())
+            best[c.source_kind] = max(best.get(c.source_kind, _NONE), weights[id(c)])
+    return sum(best.values(), _NONE)
 
 
 def _grouped(spec: FieldSpec, kept: Sequence[Candidate]) -> list[list[int]]:

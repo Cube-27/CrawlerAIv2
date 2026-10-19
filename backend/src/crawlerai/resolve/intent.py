@@ -16,7 +16,7 @@ from typing import Literal
 
 from crawlerai.collect.base import Entity
 from crawlerai.collect.schema_org_map import Vocabulary, parse_paths
-from crawlerai.collect.scope import LISTS, RELATIONS, document
+from crawlerai.collect.scope import LISTS, RELATIONS, leads_elsewhere, page_documents
 from crawlerai.resolve.identity import VARIANT
 from crawlerai.resolve.ownership import OFFER, EntityGraph, names_any
 from crawlerai.schemas.types import SchemaDef
@@ -95,17 +95,14 @@ def is_primary(graph: EntityGraph, entity: Entity, primary: frozenset[str]) -> b
 
 def _own(candidates: list[Entity], page_urls: list[str]) -> list[Entity]:
     """The candidates that are not another page's item: not leading only to other documents, not repeated."""
-    documents = {document(url) for url in page_urls}
+    documents = page_documents(page_urls)
     shapes: dict[str, int] = {}
     for entity in candidates:
         shape = _shape(entity)
         if shape is not None:
             shapes[shape] = shapes.get(shape, 0) + 1
     return [
-        e
-        for e in candidates
-        if not (e.urls and documents.isdisjoint(map(document, e.urls)))
-        and shapes.get(_shape(e) or "", 0) < _MIN_REPEATED
+        e for e in candidates if not leads_elsewhere(e, documents) and shapes.get(_shape(e) or "", 0) < _MIN_REPEATED
     ]
 
 

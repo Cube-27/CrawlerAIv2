@@ -16,7 +16,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 
-from crawlerai.adapters.platforms import variant_params
+from crawlerai.adapters.platforms import signature_of
 from crawlerai.adapters.registry import Registry
 from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.admission import AdmittingCollector
@@ -87,7 +87,8 @@ def collect_page(
     results = [
         r for c in collectors if (r := _isolated(c, partial(c.collect, page, schema, ctx), diagnostics)) is not None
     ]
-    dom = _DomPasses.of(page, schema, ctx, _stated(results, vocabulary, page, manifest), diagnostics)
+    stated = _stated(results, vocabulary, page, manifest) if schema.page_kind == "detail" else ()
+    dom = _DomPasses.of(page, schema, ctx, stated, diagnostics)
     results.extend(dom.structural(page, schema, ctx, diagnostics))
     # The item layer's blocks are read before the admitting collectors, whose values then agree with the best aligned
     # group's too.
@@ -128,7 +129,7 @@ def collect_page(
         rows=rows,
         items=items,
         state=state,
-        variant_params=variant_params(page.html, manifest.headers.response) if schema.page_kind == "detail" else (),
+        variant_params=_variant_params(page, manifest) if schema.page_kind == "detail" else (),
     )
 
 
@@ -167,6 +168,12 @@ def _stated(
     not the product (`collect.scope`)."""
     elsewhere = other_items([e for r in results for e in r.entities], vocabulary, _page_urls(page, manifest))
     return [c for r in results for c in r.candidates if c.entity_id not in elsewhere]
+
+
+def _variant_params(page: ParsedPage, manifest: CaptureManifest) -> tuple[str, ...]:
+    """The query parameters by which the page's platform selects a variant (`adapters.platforms`), or none."""
+    signature = signature_of(page.html, manifest.headers.response)
+    return () if signature is None else signature.variant_params
 
 
 def _page_urls(page: ParsedPage, manifest: CaptureManifest) -> tuple[str, ...]:

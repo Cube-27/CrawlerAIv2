@@ -17,7 +17,7 @@ from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.schema_org_map import MappedPath, parse_paths
-from crawlerai.collect.scope import LISTS, RELATIONS
+from crawlerai.collect.scope import LISTS, RELATIONS, document
 from crawlerai.normalize.base import Ok
 from crawlerai.normalize.dispatch import equal, equality_key
 from crawlerai.resolve.evidence import BELOW_MIN_CONFIDENCE, Calibration, assess
@@ -189,11 +189,10 @@ def _selects(name: str, params: Sequence[str]) -> bool:
 
 
 def _resource(value: JsonValue) -> tuple[str, str] | None:
-    """The authority and path of an absolute URL (RFC 3986 §3.2, §3.3), the resource it names; None otherwise."""
-    if not isinstance(value, str):
-        return None
-    parts = urlsplit(value)
-    return (parts.netloc.lower(), parts.path.rstrip("/")) if parts.scheme and parts.netloc else None
+    """The authority and path of the document a URL names (`collect.scope.document`), a trailing `/` aside: the
+    resource it names, however reached; None for anything that is no URL."""
+    named = document(value) if isinstance(value, str) else None
+    return None if named is None else (named[1], named[2].rstrip("/"))
 
 
 def row_entities(graph: EntityGraph, target: Entity, spec: FieldSpec) -> list[Entity]:

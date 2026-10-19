@@ -119,3 +119,16 @@ def test_a_related_item_s_stated_price_does_not_make_its_card_the_product_s() ->
     result = _extract(f'<script type="application/ld+json">{json.dumps(product)}</script>', PRODUCT + CARD)
 
     assert _dom(result) == {"price": [{"amount": "80.00", "currency": "USD"}], "brand": ["Example Brand"]}
+
+
+def test_a_root_of_another_kind_naming_the_page_does_not_set_the_product_apart() -> None:
+    # The page's WebPage names the page; its Product states the URL under another path (a locale prefix). Only an item
+    # of the Product's kind naming the page would make the Product another page's item (collect/scope.py).
+    page = {"@context": "https://schema.org", "@type": "WebPage", "url": PAGE_URL}
+    product = json.loads(_jsonld("80.00").removeprefix('<script type="application/ld+json">').removesuffix("</script>"))
+    product["url"] = PAGE_URL.replace("example.test/", "example.test/en/")
+    head = "".join(f'<script type="application/ld+json">{json.dumps(n)}</script>' for n in (page, product))
+
+    result = _extract(head, PRODUCT + CARD)
+
+    assert _dom(result)["price"] == [{"amount": "80.00", "currency": "USD"}]

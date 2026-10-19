@@ -8,6 +8,7 @@ import mimetypes
 import re
 import string
 from collections.abc import Hashable, Sequence
+from typing import Final
 from urllib.parse import SplitResult, parse_qsl, quote, unquote, urljoin, urlsplit
 
 from pydantic import JsonValue
@@ -92,18 +93,21 @@ def resource_key(value: JsonValue) -> Hashable | None:
     (http or https), and without the query (§3.4), which may vary only how it is served, such as an image's size or
     crop. Not an equality (two queries can name two resources): it only tells which of one entity's own values
     another source names, and which values are renditions of one file (extraction spec). `None` for anything that is no
-    absolute URL. A URL whose query carries one absolute http(s) URL serves that one (an image proxy or optimizer
-    resizes the file it is given, `?url=<file>`), so it names that URL's resource."""
+    absolute URL. An image proxy's URL, whose query names the file it serves in one `url` parameter (an image
+    optimizer's `?url=<file>&w=640`), names that file's resource, resolved against the proxy URL (RFC 3986 §5)."""
     url = canonical(value, None) if isinstance(value, str) else None
     if not isinstance(url, Ok) or not isinstance(url.value, str):
         return None
     parts = urlsplit(url.value)
-    served = [v for _, v in parse_qsl(parts.query) if urlsplit(v).scheme in _DEFAULT_PORT and urlsplit(v).netloc]
-    if len(served) == 1:  # shorter than the URL holding it, so this ends
-        return resource_key(served[0])
+    served = [v for name, v in parse_qsl(parts.query) if name == _PROXIED]
+    if len(served) == 1 and served[0]:  # a file named in the query is shorter than the URL, so this ends
+        file = urljoin(url.value, served[0])
+        return resource_key(file) if urlsplit(file).scheme in _DEFAULT_PORT else None
     return ("resource", parts.netloc, _without_dimensions(parts.path))
 
 
+# The query parameter by which an image proxy or optimizer names the file it serves (`/_next/image?url=`, `?url=`).
+_PROXIED: Final = "url"
 # What an image path states about the rendition it serves, not the file: a whole segment `<width>x<height>` or a list
 # of `<letter>_<number>` transform pairs (`w_300,h_200`); a size closing the file's name before its extension
 # (`name-300x200.ext`, `name_1024x.ext`, `name@2x.ext`); a format conversion appended as a second extension

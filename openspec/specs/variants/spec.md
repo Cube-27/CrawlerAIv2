@@ -80,7 +80,8 @@ Availability, currency and stock quantity are a variant's: where the Offers of t
 other values, a detail page's top-level field SHALL publish only the value of the variant the target shows, its
 default or selected one, else `conflict`/`offers_disagree`; no other default is taken, whatever variant a URL names.
 The shown variant is the one variant (or Offer of the target) whose sku or gtin, as a field or a row sub-field, equals
-one the target or the page states as its own; its Offers are the anchor (Atomic offers). A price always publishes:
+one the target publishes as its own (screened, and publishing at the request's `min_confidence`); its Offers are the
+anchor (Atomic offers), and its value publishes flagged `offers_disagree`. A price always publishes:
 the shown variant's, else the best-scored, flagged `offers_disagree` (owner #68). Varying values publish per variant in
 the row-mapped field. (Previously: the price was `conflict`; availability took the shown variant's only after
 resolution, from a published row agreeing with the target's published price, sku and gtin,

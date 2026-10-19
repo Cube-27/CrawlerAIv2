@@ -133,7 +133,7 @@ fewer than two remain. Both DOM passes (these values and the DOM description blo
 items (`collect/dom.py` `product_apart`): a shown price that is none of the prices structured data states for the
 schema's money fields (only the page product's: not those of an item in another item's scope, `collect/scope.py`: a
 value of `isRelatedTo` or `isSimilarTo`, an `ItemList` or `ListItem` and what it holds, or a root item naming only other
-documents while another root item names the page) belongs to the one other document its nearest block holding hyperlinks leads to (HTML Standard
+documents while another root item of its kind names the page) belongs to the one other document its nearest block holding hyperlinks leads to (HTML Standard
 §4.6.1), or that hyperlink's parent when it leads nowhere else, and that block is set apart unless it shows a stated
 price or holds the page's title (the main content's first shown `h1`); a block whose hyperlinks lead to several
 documents is no card, and without a stated price no card is set apart. Product microdata items, nested or not, that do

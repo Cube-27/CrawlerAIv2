@@ -21,6 +21,7 @@ Evidence buckets, confidence and min_confidence are the next stage's (`resolve.e
 import json
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from itertools import combinations
 from pathlib import Path
 from typing import Literal, cast, get_args
@@ -38,7 +39,17 @@ from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
 from crawlerai.normalize.text import text_form
 from crawlerai.resolve.identity import VARIANT
 from crawlerai.resolve.ownership import OFFER, EntityGraph
-from crawlerai.resolve.score import OTHER_OFFER, OWN, PRECEDENCE_TYPES, Group, rank, rule_type, same_value, value_of
+from crawlerai.resolve.score import (
+    OTHER_OFFER,
+    OWN,
+    PRECEDENCE_TYPES,
+    Group,
+    Scope,
+    rank,
+    rule_type,
+    same_value,
+    value_of,
+)
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 __all__ = ["PRECEDENCE_TYPES", "Chosen", "PageFacts", "Preference", "Resolver", "Unpublished", "rule_type"]
@@ -114,7 +125,9 @@ class Resolver:
     """Preference for one entity, `target`: a detail page's target (§4.6), a listing's page or one of its rows (§4.7).
     Its fields' candidates are screened, then scored. `page_values`: whether page-level candidates are the target's
     (`EntityGraph.owned_by`). `owns` stands in for ownership where the owner is not one entity: a variant's rows
-    (variants spec). `detail`: a detail page's target, which reads the variant it shows and fills from its variants."""
+    (variants spec). `detail`: a detail page's target, which reads the variant it shows and fills from its variants.
+    `confident`: whether a chosen value of the named field would publish at the request's `min_confidence`
+    (`resolve.evidence`); None: every one would."""
 
     graph: EntityGraph
     target: Entity
@@ -123,6 +136,7 @@ class Resolver:
     page_values: bool = True
     detail: bool = False
     owns: Callable[[Candidate], bool] | None = None
+    confident: Callable[[str, FieldSpec, "Chosen"], bool] | None = None
 
     def prefer(self, schema: SchemaDef, candidates: Sequence[Candidate]) -> dict[str, Preference]:
         return self.prefer_fields(schema.fields, candidates)
@@ -136,7 +150,7 @@ class Resolver:
         screened = {name: self.screen(by_field[name]) for name in fields}
         # In schema order: the anchor takes the first Offer seen on a tie.
         offer_fields = [name for name, spec in fields.items() if self._is_offer_field(spec)]
-        offers = self._offers(fields, candidates, {name: screened[name][0] for name in offer_fields})
+        offers = self._page_offers(fields, candidates, screened, offer_fields)
         chosen = {
             name: self._choose(spec, *screened[name], offers=offers, offer_field=name in offer_fields)
             for name, spec in fields.items()
@@ -186,13 +200,13 @@ class Resolver:
         if top.score <= 0:  # every kind outside the fitted order, or a fragment (resolve.score)
             return _all_rejected("missing", "unranked", kept, rejected)
         tied = [g for g in rivals if g.score == top.score]
+        flag = self._flag(top, groups, rivals, offers, offer_field=offer_field)
         if rule_type(spec) is FieldType.MONEY:
-            flag = self._flag(top, groups, rivals, offers, offer_field=offer_field)
             return _price(spec, top, tied, kept, rejected, flag)
         refused = self._refused(top, tied, groups, offers, offer_field=offer_field)
         if refused is not None:
             return _all_rejected("conflict", refused, kept, rejected)
-        return _published(spec, top, kept, rejected, DISAGREE if rivals else None)
+        return _published(spec, top, kept, rejected, flag)
 
     def _refused(
         self, top: Group, tied: list[Group], groups: list[Group], offers: _Offers, *, offer_field: bool
@@ -210,8 +224,8 @@ class Resolver:
     def _flag(
         self, top: Group, groups: list[Group], rivals: list[Group], offers: _Offers, *, offer_field: bool
     ) -> str | None:
-        """The flag of a published price: its Offers disagree, only another Offer than the anchor states it, or its
-        other candidates state other values."""
+        """The flag of a published value: its Offers disagree (the shown variant's value publishes all the same), only
+        another Offer than the anchor states it (a price), or its other candidates state other values."""
         if offer_field and self._offers_disagree(groups):
             return OFFERS_DISAGREE
         if offer_field and self._split(top, offers):
@@ -226,34 +240,56 @@ class Resolver:
         """Whether two of the field's values are stated by Offers (§4.8)."""
         return sum(any(self._offer_of(c) is not None for c in g.members) for g in groups) > 1
 
-    def _scope(self, offers: _Offers) -> Callable[[Candidate], float]:
+    def _scope(self, offers: _Offers) -> Scope:
         """Scope match (`resolve.score`): 1 for the target's own values and the anchor Offer's, `OTHER_OFFER` for
         another Offer's."""
 
-        def scope(candidate: Candidate) -> float:
+        def scope(candidate: Candidate) -> Fraction:
             offer = self._offer_of(candidate)
             return OWN if not offers.anchor or offer is None or offer in offers.anchor else OTHER_OFFER
 
         return scope
 
-    def _offers(
+    def _page_offers(
         self,
         fields: Mapping[str, FieldSpec],
         candidates: Sequence[Candidate],
-        offer_fields: Mapping[str, Sequence[Candidate]],
+        screened: Mapping[str, tuple[list[Candidate], list[Rejection]]],
+        offer_fields: Sequence[str],
     ) -> _Offers:
-        shown = self._shown(_variant_ids(fields), candidates) if self.detail else frozenset()
-        if shown:
-            return _Offers(shown, shown)
-        anchor = self._anchor(offer_fields)
-        return _Offers(frozenset(() if anchor is None else (anchor,)))
+        """The anchor Offer: on a detail page the Offers of the variant the target shows, else the one holding values
+        for the most offer fields."""
+        anchor = self._anchor({name: screened[name][0] for name in offer_fields})
+        offers = _Offers(frozenset(() if anchor is None else (anchor,)))
+        if not self.detail:
+            return offers
+        # The target's own sku and gtin, as they publish, select the variant it shows (variants spec).
+        ids = [name for name in _variant_ids(fields) if name in fields]
+        stated = {name: self._choose(fields[name], *screened[name], offers=offers, offer_field=False) for name in ids}
+        return self._shown_offers(fields, candidates, self._published_ids(fields, stated)) or offers
 
-    def _shown(self, ids: Mapping[str, FieldSpec], candidates: Sequence[Candidate]) -> frozenset[str]:
+    def _published_ids(
+        self, fields: Mapping[str, FieldSpec], stated: Mapping[str, Preference]
+    ) -> list[tuple[Candidate, FieldSpec]]:
+        """The sku and gtin values the target publishes as its own: chosen, its own or the page's (not an Offer's),
+        and confident at the request's `min_confidence`."""
+        return [
+            (decision.candidate, fields[name])
+            for name, decision in stated.items()
+            if isinstance(decision, Chosen)
+            and self.graph.owner_of(decision.candidate).id in (self.target.id, PAGE)
+            and (self.confident is None or self.confident(name, fields[name], decision))
+        ]
+
+    def _shown_offers(
+        self, fields: Mapping[str, FieldSpec], candidates: Sequence[Candidate], own: list[tuple[Candidate, FieldSpec]]
+    ) -> _Offers | None:
         """The Offers of the variant the target shows (variants spec): of the target's Offers and variants, the one
-        whose sku or gtin (a field's or a row sub-field's) the target, or the page, states as its own; none when no
-        single one is."""
+        whose sku or gtin (a field's or a row sub-field's) equals one of `own`; None when no single one is."""
+        if not own:
+            return None
+        ids = _variant_ids(fields)
         valid = [(c, ids[c.field]) for c in candidates if c.field in ids and isinstance(c.normalized, Ok)]
-        own = [(c, spec) for c, spec in valid if self.graph.owner_of(c).id in (self.target.id, PAGE)]
         units = {
             unit
             for c, spec in valid
@@ -261,9 +297,10 @@ class Resolver:
             and any(spec.scheme == o_spec.scheme and same_value(c, o, spec) for o, o_spec in own)
         }
         if len(units) != 1:
-            return frozenset()
+            return None
         held = self.graph.entities[units.pop()]
-        return frozenset(o.id for o in self.graph.offers(held)) if held.via == VARIANT else frozenset({held.id})
+        shown = frozenset(o.id for o in self.graph.offers(held)) if held.via == VARIANT else frozenset({held.id})
+        return _Offers(shown, shown) if shown else None
 
     def _unit(self, candidate: Candidate) -> str | None:
         """The variant or Offer of the target that holds the candidate: a `hasVariant` member, or an Offer of the

@@ -33,8 +33,8 @@ its scope match times its value's agreement:
 - Agreement: of the field's independent candidates, per source kind its best weight, summed over the kinds stating
   the value, over the sum for every kind; 1 when no candidate is independent (an admitted state value is not).
 Candidates stating one value (equal after normalization; for images, renditions of one file: `resource_key`, the
-authority and path without the size, conversion and options the path states, any scheme or query, a proxy URL naming
-the one file its query carries, a list's as the set of its files) form a group scored by its best member; of those
+authority and path without the size, conversion and options the path states, any scheme or query, an image proxy URL
+naming the file its `url` parameter names, a list's as the set of its files) form a group scored by its best member; of those
 members the first publishes, for images the `https` ones (else all) and of a single image's renditions the largest
 (`url.largest_rendition`). The candidates of every other value are rejected `outscored`, and a field whose kept
 candidates state other values publishes with the disagreement flag as its reason (`disagree`, or `offers_disagree` /
@@ -72,7 +72,8 @@ owner 2026-10-19. Enforced by: `tests/property/test_preference.py`, `tests/unit/
 - **WHEN** two merged JSON-LD blocks state one image over `http` and over `https?w=800`
 - **THEN** `image_url` publishes the `https` URL
 #### Scenario: A proxied image
-- **WHEN** JSON-LD states an image's CDN URL and Open Graph and `dom` state an image proxy URL carrying it in its query
+- **WHEN** JSON-LD states an image's CDN URL and Open Graph and `dom` state an image proxy URL naming it in its `url`
+  parameter
 - **THEN** they are one value and `image_url` publishes the JSON-LD URL
 #### Scenario: A truncated description
 - **WHEN** JSON-LD states a description cut at 250 characters and `dom` states the full text

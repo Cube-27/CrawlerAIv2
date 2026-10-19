@@ -44,7 +44,7 @@ from crawlerai.core.engine_version import CALIBRATION_FILE
 from crawlerai.db.models import ExtractionMode, SourceKind
 from crawlerai.normalize.base import Context
 from crawlerai.resolve.derive import Derived, fill, is_page_url_field
-from crawlerai.resolve.evidence import Calibration, assess_fields, load_calibration
+from crawlerai.resolve.evidence import Calibration, assess, assess_fields, load_calibration
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
 from crawlerai.resolve.listing import listing_rows
 from crawlerai.resolve.ownership import OFFER, EntityGraph
@@ -53,6 +53,7 @@ from crawlerai.resolve.pagination import next_page_candidate, next_page_links
 from crawlerai.resolve.preference import (
     PRECEDENCE_FILE,
     PRECEDENCE_TYPES,
+    Chosen,
     Orders,
     PageFacts,
     Preference,
@@ -374,7 +375,9 @@ class _Page:
         if isinstance(target, AmbiguousTarget):
             decisions = dict(intent_ambiguous(schema, candidates))
         else:
-            resolver = Resolver(self.graph, target, self.facts, self.data.orders, page_values, detail=detail)
+            resolver = Resolver(
+                self.graph, target, self.facts, self.data.orders, page_values, detail=detail, confident=self._confident
+            )
             preferences = resolver.prefer(schema, candidates)
             by_field: dict[str, list[Candidate]] = defaultdict(list)
             for candidate in candidates:
@@ -394,6 +397,17 @@ class _Page:
             if detail:
                 rows = self._rows(target, candidates)
         return self._assess(decisions) | rows
+
+    def _confident(self, name: str, spec: FieldSpec, chosen: Chosen) -> bool:
+        """Whether a chosen value of the field publishes at the request's `min_confidence` (`resolve.evidence`)."""
+        outcome = assess(
+            spec.type,
+            chosen,
+            self.data.calibration,
+            min_confidence=self.data.min_confidence,
+            corroborated=name in self.config.corroborated,
+        )
+        return outcome.status == "published"
 
     def _assess(self, decisions: Mapping[str, Preference | Derived]) -> FieldSet:
         return assess_fields(

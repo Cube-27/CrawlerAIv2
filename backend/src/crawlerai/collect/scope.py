@@ -4,9 +4,11 @@ another thing than the product a page is about, whatever page it is.
 A thing that is the value of a relation property of another (schema.org `isRelatedTo`, `isSimilarTo`) is another thing
 than its holder, and a thing in a list (an `ItemList` and its `ListItem`s) is one of many; whatever such a thing holds
 (its Offers, their prices) is in its scope. So is a root item every one of whose URLs names another document than the
-page (RFC 3986 §3: scheme, authority and path; a query may select within the page) while another root item names the
-page: an item described here and sold elsewhere, as recommendations and bundles are. Where no root item names the
-page, none is set apart by its URLs (the page's own may state only a URL the request did not use). Collection reads it
+page (RFC 3986 §3: scheme, authority and path; a query may select within the page) while another root item of its
+kind (one of their types is the other's or a subtype of it) names the page: an item described here and sold
+elsewhere, as recommendations and bundles are. A root of another kind naming the page (its WebPage, a breadcrumb)
+says nothing of which product is the page's, and where no root of its kind names the page, an item is not set apart
+by its URLs (the page's own may state only a URL the request did not use). Collection reads it
 to know the page product's stated prices (`collect.dom.product_apart`); resolution's ownership and intent apply the same
 relations.
 """
@@ -28,14 +30,30 @@ LISTS: Final = ("ItemList", "ListItem")
 def other_items(entities: Sequence[Entity], vocabulary: Vocabulary, page_urls: Iterable[str]) -> frozenset[str]:
     """The ids of the entities in another item's scope (module docstring)."""
     by_id = {e.id: e for e in entities}
-    documents = {document(url) for url in page_urls} - {None}
-    if not any(e.parent is None and _names(e, documents) for e in entities):
-        documents = set()
-    return frozenset(e.id for e in entities if any(_another(n, vocabulary, documents) for n in _chain(e, by_id)))
+    documents = page_documents(page_urls)
+    namers = [e for e in entities if e.parent is None and not documents.isdisjoint(map(document, _own_urls(e)))]
+    return frozenset(
+        e.id for e in entities if any(_another(n, vocabulary, documents, namers) for n in _chain(e, by_id))
+    )
 
 
-def _names(entity: Entity, documents: set[tuple[str, str, str] | None]) -> bool:
-    return not documents.isdisjoint(map(document, entity.item_urls or entity.urls))
+Documents = frozenset[tuple[str, str, str]]
+
+
+def page_documents(page_urls: Iterable[str]) -> Documents:
+    """The documents the page's URLs name (`document`)."""
+    return frozenset(d for url in page_urls if (d := document(url)) is not None)
+
+
+def leads_elsewhere(entity: Entity, documents: Documents) -> bool:
+    """Whether the entity states URLs of its own (its item URLs, else every URL it holds) and none names one of the
+    page's `documents`: a thing described here whose page is another."""
+    urls = _own_urls(entity)
+    return bool(urls) and documents.isdisjoint(map(document, urls))
+
+
+def _own_urls(entity: Entity) -> tuple[str, ...]:
+    return entity.item_urls or entity.urls
 
 
 def _chain(entity: Entity, by_id: dict[str, Entity]) -> Iterable[Entity]:
@@ -46,15 +64,18 @@ def _chain(entity: Entity, by_id: dict[str, Entity]) -> Iterable[Entity]:
         node = by_id.get(node.parent) if node.parent is not None else None
 
 
-def _another(entity: Entity, vocabulary: Vocabulary, documents: set[tuple[str, str, str] | None]) -> bool:
+def _another(entity: Entity, vocabulary: Vocabulary, documents: Documents, namers: Sequence[Entity]) -> bool:
     if entity.via in RELATIONS or any(vocabulary.is_a(t, list_type) for t in entity.types for list_type in LISTS):
         return True
     return (
         entity.parent is None
-        and bool(documents)
-        and bool(entity.item_urls or entity.urls)
-        and not _names(entity, documents)
+        and leads_elsewhere(entity, documents)
+        and any(_kin(entity, namer, vocabulary) for namer in namers)
     )
+
+
+def _kin(a: Entity, b: Entity, vocabulary: Vocabulary) -> bool:
+    return any(vocabulary.is_a(s, t) or vocabulary.is_a(t, s) for s in a.types for t in b.types)
 
 
 def document(url: str) -> tuple[str, str, str] | None:
