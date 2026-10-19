@@ -140,6 +140,12 @@ def test_the_main_images_slides_give_the_image_list_each_at_its_widest_source() 
     assert [value for value, _ in found["image_url"]] == ["https://shop.example.test/p/a.jpg?w=900"]
 
 
+def test_a_width_too_long_to_be_one_is_no_width_descriptor() -> None:
+    found = _collect(f'<main><img src="/p/1.jpg" srcset="/p/2.jpg {"9" * 5000}w" alt="P"></main>')
+
+    assert [value for value, _ in found["image_url"]] == ["https://shop.example.test/p/1.jpg"]
+
+
 @pytest.mark.parametrize(
     "others",
     [

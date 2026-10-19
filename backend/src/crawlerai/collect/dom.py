@@ -76,8 +76,9 @@ _PRESENTATIONAL = frozenset({"none", "presentation"})
 _IMAGE = "image"
 # RFC 2397: a `data:` URL carries its content inline; it addresses no image resource.
 _INLINE = "data:"
-# HTML Standard §4.8.4.2: an image candidate string's width descriptor, a valid non-negative integer and `w`.
-_WIDTH_DESCRIPTOR = re.compile(r"\d+w")
+# HTML Standard §4.8.4.2: an image candidate string's width descriptor, a valid non-negative integer and `w`. A width
+# has a few digits; a longer run is no width a page lays out, and stays clear of `int`'s digit limit.
+_WIDTH_DESCRIPTOR = re.compile(r"\d{1,9}w")
 # A label's end: a colon (U+003A, or the fullwidth U+FF1A that CJK text writes) after optional white space.
 _COLON = re.compile(r"\s*[:\uff1a]")
 
