@@ -162,7 +162,7 @@ def test_the_bundle_records_every_attempt_beside_its_policy() -> None:
 # --- the API recipe rung (adapters spec) ------------------------------------------------------------------------
 
 
-# --- architecture v3 a.3: the browser on a block, never for an HTTP `ok` page -----------------------------------------
+# --- acquisition spec "Browser on block or by field source": never for an HTTP `ok` page ----------------------------
 
 # Whether an `auto` fetch retries each HTTP outcome in the browser (the a.3 table): a block, a shell (a challenge's or
 # a script-only document's), an unanswered request; never an `ok` page, a 4xx class or a redirect class.

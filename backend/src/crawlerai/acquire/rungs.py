@@ -67,7 +67,7 @@ class ExportingRung(Protocol):
 BROWSER_MIN_S: Final = 20.0
 _UNAVAILABLE = 503  # RFC 9110 §15.6.4
 # The HTTP outcomes the browser may pass where HTTP did not: a block, and a shell (a challenge's, or a script-only
-# document's, rendered once per page; architecture v3 decision 2).
+# document's, rendered once per page; acquisition spec, "Browser on block or by field source", owner #72).
 _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
 # acquisition spec: the reason of a request a transport failure left unanswered (`curl_client.reason`), such as a reset
 # HTTP/2 stream (curl 92) or connection. A filter may reset a client whose TLS or HTTP/2 fingerprint it does not trust;
@@ -123,16 +123,16 @@ async def acquire(
     when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if there
     were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the method the site's
     memory says (`remembered`). In `auto`, an HTTP block, shell or network error is fetched again in the browser, and
-    the browser's outcome is kept only if it is `ok`; an HTTP `ok` page never is (architecture v3 a.3). Each request
-    after the first (the page after an adapter or a recipe, the browser retry, the companion call) waits for
-    `admit_next` to admit it at the site's rate (acquisition spec), and is not sent when `admit_next` refuses it: the
-    fetch keeps the outcome it has. The result lists every attempt, in its bundle's manifest too. `validators` go with
-    the HTTP rung only (jobs spec): a 304 is `ok` and ends the fetch. A page no adapter detected whose canonical link is
-    its URL without the query, which an adapter detects, is fetched again by that adapter on its own turn (adapters
-    spec). An HTTP `ok` detail page kept is joined with its platform's documented product JSON (`_joined`, sent with
-    `send`). A policy that captures the page (`screenshot`, `pdf`) uses neither an adapter, a recipe nor a companion
-    call. No browser retry starts with less than `BROWSER_MIN_S` left before `deadline` (on `time.monotonic`), the
-    task's budget: the HTTP outcome is kept."""
+    the browser's outcome is kept only if it is `ok`; an HTTP `ok` page never is (acquisition spec, "Browser on block
+    or by field source"). Each request after the first (the page after an adapter or a recipe, the browser retry, the
+    companion call) waits for `admit_next` to admit it at the site's rate (acquisition spec), and is not sent when
+    `admit_next` refuses it: the fetch keeps the outcome it has. The result lists every attempt, in its bundle's
+    manifest too. `validators` go with the HTTP rung only (jobs spec): a 304 is `ok` and ends the fetch. A page no
+    adapter detected whose canonical link is its URL without the query, which an adapter detects, is fetched again by
+    that adapter on its own turn (adapters spec). An HTTP `ok` detail page kept is joined with its platform's
+    documented product JSON (`_joined`, sent with `send`). A policy that captures the page (`screenshot`, `pdf`) uses
+    neither an adapter, a recipe nor a companion call. No browser retry starts with less than `BROWSER_MIN_S` left
+    before `deadline` (on `time.monotonic`), the task's budget: the HTTP outcome is kept."""
     if policy.captures_page:
         send = recipe = None  # a screenshot or PDF is of the page itself, which an adapter's or a recipe's JSON is not
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
@@ -256,9 +256,9 @@ async def _page(url: str, policy: FetchPolicy, remembered: Remembered, rungs: Ru
 
 async def _joined(policy: FetchPolicy, page: Fetched, admit_next: Admit | None, send: JsonFetcher | None) -> Fetched:
     """The kept HTTP `ok` page fetched as a detail page, joined with the product JSON its platform documents
-    (`adapters.platforms`), always (architecture v3 decision 3), when the answer states the page's product
-    (`acquire.identity`). The call waits for the site's rate (`admit_next`) and its attempt is added; without a call,
-    or one not admitted, the page as it is."""
+    (`adapters.platforms`), always (acquisition spec, "Data calls", owner #73), when the answer states the page's
+    product (`acquire.identity`). The call waits for the site's rate (`admit_next`) and its attempt is added; without a
+    call, or one not admitted, the page as it is."""
     result, attempts, duration_ms = page
     if send is None or policy.page_kind != "detail" or result.method != "http" or result.block_class != "ok":
         return page
@@ -299,8 +299,8 @@ async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: Fe
 
 
 async def _browser_may_help(result: FetchResult) -> bool:
-    """Whether the HTTP outcome is one the browser retries (architecture v3 a.3): a block, a shell, an unanswered
-    request, or a 503 interstitial."""
+    """Whether the HTTP outcome is one the browser retries: a block, a shell, an unanswered request, or a 503
+    interstitial (acquisition spec, "Browser on block or by field source")."""
     return _browser_may_pass(result) or await _interstitial_unavailable(result)
 
 

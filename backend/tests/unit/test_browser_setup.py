@@ -132,8 +132,9 @@ def test_inv44_no_source_file_changes_the_browser_identity() -> None:
 
 
 def test_inv44_a_context_sets_only_the_proxy_downloads_and_the_request_locale(recorder: _Recorder) -> None:
+    fetching = _fetch_once("de-DE")
     with pytest.raises(_Stop):
-        asyncio.run(_fetch_once("de-DE"))
+        asyncio.run(fetching)
 
     # The guard's proxy, no downloads, and the request's locale with its region's zone (owner P8); no user agent,
     # client hints or headers.

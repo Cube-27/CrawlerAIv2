@@ -105,9 +105,9 @@ _SNIFFED_TYPES = frozenset({"text/plain", ""})
 # The wait for the page to be ready ends at this share of `browser_timeout_s` whatever navigations the page makes; the
 # rest is for reading the DOM and the bodies.
 _SETTLE_SHARE = 0.9
-# The one wait (`_settle`, architecture v3 a.3): from `DOMContentLoaded` (HTML Standard §8.4.6), a document is read as
-# soon as it is ready (`_ready`), and at most this long after its wait began, ready or not: what is there then is
-# read. An unmeasured starting point within 3 to 4 s.
+# The one wait (`_settle`, acquisition spec "HTTP and browser rungs"): from `DOMContentLoaded` (HTML Standard
+# §8.4.6), a document is read as soon as it is ready (`_ready`), and at most this long after its wait began, ready or
+# not: what is there then is read. An unmeasured starting point within 3 to 4 s.
 READY_MAX_S: Final = 3.5
 _POLL_S = 0.25
 # A document, or a page step that starts no data call, has settled once no data call has been in flight this long:
@@ -321,7 +321,7 @@ async def stepped(page: "Rendered") -> tuple[StepOutcome, ...]:
         begun = time.monotonic()
         deadline = begun + within_s
 
-        async def called() -> bool:
+        def called() -> bool:
             # A step that starts no data call (a click that only shows what was loaded) is settled once quiet.
             quiet = not page.calls.in_flight and time.monotonic() - begun >= _STEP_QUIET_S
             return quiet or _called(page.calls, answered)
@@ -758,7 +758,7 @@ async def _settle(
     await _until(frame, lambda: _ready(frame, calls), READY_MAX_S, deadline)
 
 
-async def _until(frame: _MainFrame, ready: Callable[[], Awaitable[bool]], within_s: float, deadline: float) -> None:
+async def _until(frame: _MainFrame, ready: Callable[[], bool], within_s: float, deadline: float) -> None:
     """Returns once `ready` holds with no navigation in flight, or `within_s` after the wait began, or after the last
     document the main frame navigated to meanwhile (a script's `location.replace`, a refresh: what was shown was an
     interim document; a same-document navigation, `history.pushState`, is none), at most at `deadline`."""
@@ -766,8 +766,8 @@ async def _until(frame: _MainFrame, ready: Callable[[], Awaitable[bool]], within
     while time.monotonic() < until:
         if frame.latest is not shown:
             shown, until = frame.latest, min(deadline, time.monotonic() + within_s)
-        elif not frame.pending and await ready() and not frame.pending and frame.latest is shown:
-            return  # no navigation began while `ready` read the document
+        elif not frame.pending and ready():
+            return
         await asyncio.sleep(_POLL_S)
 
 
@@ -776,9 +776,9 @@ def _called(calls: DataCalls, answered: int) -> bool:
     return calls.answered > answered and not calls.in_flight
 
 
-async def _ready(frame: _MainFrame, calls: DataCalls) -> bool:
-    """Whether the document is ready to read (architecture v3 a.3), a fixed condition: it has fired `load` (HTML
-    Standard §8.4.6), and no data call has been in flight since, for `_STEP_QUIET_S`."""
+def _ready(frame: _MainFrame, calls: DataCalls) -> bool:
+    """Whether the document is ready to read (acquisition spec, "HTTP and browser rungs"), a fixed condition: it has
+    fired `load` (HTML Standard §8.4.6), and no data call has been in flight since, for `_STEP_QUIET_S`."""
     quiet_since = max(frame.loaded_at, calls.idle_since)
     return frame.loaded and not calls.in_flight and time.monotonic() - quiet_since >= _STEP_QUIET_S
 

@@ -8,6 +8,7 @@
 schema.org  # schema.org vocabulary, used by the structured-data collectors
 www.w3.org  # W3C specifications and namespaces
 .iana.org  # IANA registries, including the root-zone TLD list this scan uses
+zone1970.tab  # not a host: the IANA tz database's zone table file, which `acquire/locality.py` reads
 .unicode.org  # Unicode and CLDR
 .sitemaps.org  # the Sitemaps protocol and its XML namespace (jobs spec)
 llmstxt.org  # the llms.txt proposal, whose format `content/llms.py` writes

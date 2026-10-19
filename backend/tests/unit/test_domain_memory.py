@@ -70,6 +70,7 @@ def test_a_contract_is_taught_only_by_an_auto_fetch_that_tried_http_and_a_handof
 
 
 def test_the_contract_is_method_engine_handoff_and_coverage() -> None:
-    # Its key and bookkeeping aside (the platform is the site's, `site.platform`); architecture v3 (e).
+    # Its key and bookkeeping aside; the platform is the site's, `site.platform` (acquisition spec, "Acquisition
+    # contract and block history").
     bookkeeping = {"site_id", "page_kind", "failures", "checked_at"}
     assert set(SiteContract.__table__.columns.keys()) - bookkeeping == {"method", "engine", "handoff", "coverage"}

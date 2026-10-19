@@ -18,7 +18,7 @@ __all__ = ["Locality", "locality"]
 
 
 class Locality(TypedDict, total=False):
-    """The browser context options the locale sets (Playwright `Browser.new_context`)."""
+    """The browser context options the locale sets (Playwright's `new_context` options)."""
 
     locale: str
     timezone_id: str

@@ -679,8 +679,7 @@ async def _unpublished_reasons(source: "_Source", page: ParsedPage, fields: Fiel
     """What the page's own evidence says of its unpublished fields (`page_state` module): a price missing from a page
     that states its item is not for sale is `out_of_stock`; a field missing from a page that was not rendered and whose
     document carries its data for its script to render (`content.state.holds_state`) is `interaction_required`
-    (resolution spec): a render may show it, which a request asks for with `render_fields` (acquisition spec, "Browser
-    on evidence"). A rendered page, or a field the outcome explains, stays `missing`."""
+    (resolution spec): a render may show it. A rendered page, or a field the outcome explains, stays `missing`."""
     fields = out_of_stock(source.schema, fields)
     rendered = was_rendered(source.bundle.manifest)
     holds = not rendered and await asyncio.to_thread(holds_state, page)
