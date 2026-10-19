@@ -3,7 +3,8 @@ result. Handlers are registered by later specs.
 
 A worker runs up to `TASK_SLOTS` tasks at once, each on its own connection, and claims only as many as it has free
 slots, so a claimed task never waits behind others while its lease runs. Pages of one host still go at the host's
-rate: every task fetches through the process's one `HostLimiter`, which postpones a task whose turn is far off.
+rate: every task fetches through the process's one `HostLimiter`, whose turns and holds every process shares through
+the database, and which postpones a task whose turn is far off.
 
 Each task runs in one transaction: the handler's writes and the task's result commit together, or not at all (a lost
 lease, an exception). An exception is recorded on the task as a transient failure, and the loop continues. A task
@@ -36,6 +37,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
+from crawlerai.acquire.shared_browser import BROWSER_CONTEXTS
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import CaptureId, FinishedOutcome, Job, JobKind, TaskOutcome
 from crawlerai.db.queue import (
@@ -53,9 +55,10 @@ from crawlerai.db.queue import (
 
 log = logging.getLogger(__name__)
 
-# Tasks a worker runs at once. A task mostly waits (on the network, the browser, an LLM), so a few overlap well on one
-# core; the browser's own limit (`BROWSER_CONTEXTS`) bounds how many render at once.
-TASK_SLOTS: Final = 4
+# Tasks a worker runs at once, set by its browser's capacity (owner plan 2026-10-19, P1): at most `BROWSER_CONTEXTS`
+# render at once, and a task mostly waits (on the network, an LLM), so twice that keeps every context busy while as many
+# other tasks fetch over HTTP or extract.
+TASK_SLOTS: Final = 2 * BROWSER_CONTEXTS
 IDLE_POLL: Final = timedelta(seconds=1)
 # How long a task cancelled at its deadline may take to wind down (a browser context closing) before it is left.
 CANCEL_GRACE: Final = timedelta(seconds=15)

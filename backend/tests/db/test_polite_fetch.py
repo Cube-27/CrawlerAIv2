@@ -16,7 +16,7 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Job, JobId, Project, Site, SiteId, UrlTask
 from crawlerai.db.queue import ClaimedTask, claim_tasks
 from crawlerai.recurring.conditional import Unchanged
-from crawlerai.services.polite import HostRules, PageFetch, rules_in
+from crawlerai.services.polite import QUEUED, HostRules, PageFetch, Turns, rules_in
 from crawlerai.worker.handlers.steps import fetch_queued
 from crawlerai.worker.loop import Failed, Finished, TaskResult
 
@@ -86,7 +86,9 @@ async def _polite(
     """`fetch_queued` with `page`, and robots.txt fetched from `robots`, else from `page` (then a `Web`)."""
     web = robots or page
     assert isinstance(web, Web)
-    return await fetch_queued(task, policy, rules_in(conn, web.rung, []), page, limiter, by_adapter=by_adapter)
+    return await fetch_queued(
+        task, policy, rules_in(conn, web.rung, [], Turns(limiter, QUEUED)), page, limiter, by_adapter=by_adapter
+    )
 
 
 async def _snapshot(conn: AsyncConnection, site_id: SiteId, origin: str = ORIGIN) -> RobotsSnapshot | None:

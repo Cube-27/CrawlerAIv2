@@ -20,6 +20,8 @@ from functools import partial
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
+from crawlerai.acquire.host_turns import EXPIRE_BATCH as HOST_TURN_BATCH
+from crawlerai.acquire.host_turns import expire_host_turns
 from crawlerai.acquire.rungs import Rung
 from crawlerai.api.webhooks import DELIVERY_BATCH, Poster, deliver_webhooks
 from crawlerai.config_ir.learning import EXPIRE_BATCH, expire_learn_runs
@@ -61,6 +63,12 @@ def periodic(store: ObjectStore, fetch: Rung, post: Poster, submitting: Submitti
             timedelta(minutes=1),
             partial(fail_stalled_jobs, batch=STALLED_BATCH),
             batch=STALLED_BATCH,
+        ),
+        Periodic(
+            "expire_host_turns",
+            timedelta(minutes=10),
+            partial(expire_host_turns, batch=HOST_TURN_BATCH),
+            batch=HOST_TURN_BATCH,
         ),
         Periodic(
             "expire_captures",

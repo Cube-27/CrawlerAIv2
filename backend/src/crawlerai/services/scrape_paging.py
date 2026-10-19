@@ -26,7 +26,7 @@ from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Render
 from crawlerai.db.models import PageKind
 from crawlerai.services.fetching import Fetching, TargetRejected, grown, recipe_rung, refusal
-from crawlerai.services.polite import IN_PLACE, HostRules, ReadRules, Refused, polite_fetch, rules_of
+from crawlerai.services.polite import IN_PLACE, HostRules, ReadRules, Refused, Turns, polite_fetch, rules_of
 from crawlerai.services.scrape_steps import FetchOptions, site_row
 from crawlerai.storage.capture_bundle import CaptureBundle
 
@@ -75,7 +75,7 @@ async def paged_fetch(
     robots.txt's too, are added to `attempts`. Raises `TargetRejected` when the guard refused a request of the fetch
     (INV-16)."""
     deadline = actions_deadline(timeout_s)
-    rules = rules_of(engine, fetching.rungs.http, attempts)
+    rules = rules_of(engine, fetching.rungs.http, attempts, Turns(fetching.limiter, IN_PLACE))
     paged: list[PagedFetch] = []
 
     async def fetch(target: str, admit_next: Admit, known: HostRules) -> FetchResult:
@@ -164,7 +164,7 @@ def learning_render(engine: AsyncEngine, fetching: Fetching) -> Render | None:
                 kept.extend((await grown(fetching, target, policy, actions, deadline, admit_next, known)).pages)
             return kept[0]
 
-        rules = rules_of(engine, fetching.rungs.http, [])
+        rules = rules_of(engine, fetching.rungs.http, [], Turns(fetching.limiter, IN_PLACE))
         await polite_fetch(url, policy, rules, fetching.limiter, IN_PLACE, fetch)
         return tuple(page.bundle for page in kept if page.block_class == "ok")
 

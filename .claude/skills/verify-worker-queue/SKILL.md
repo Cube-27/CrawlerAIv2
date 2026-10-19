@@ -49,8 +49,8 @@ JVM heap (default `1500m`).
 | `NoDoubleProcessing` | at most one run of a task that has not been cancelled exists at a time | a page is fetched and extracted twice at once |
 | `SlotCap` | a worker never runs more than `TASK_SLOTS` tasks | memory and connection pool exhausted |
 | `BrowserCap` | a worker's shared browser never renders more than `BROWSER_CONTEXTS` pages at once | renderer processes exhaust memory |
-| `HostSpacing` | a request goes to a host only when the worker's `HostLimiter` has its turn due | a site gets more than one request per interval from a worker |
-| `HostOneInFlight` | a worker never has two requests in flight to one host (owner plan P1; each process paces on its own) | a slow site gets parallel load |
+| `HostSpacing` | a request goes to a host only when its turn is due for every worker (`host_turn.next_at`) | a site gets more than one request per interval |
+| `HostOneInFlight` | no two requests are in flight to one host from any workers, robots.txt's included (owner plan P1; the hold is shared through `host_turn`) | a slow site gets parallel load |
 | `NoDoubleProcessingStrict` | not even work left behind runs beside a new claim of its task | duplicate requests from left-behind work |
 
 Checks (instances in `worker_queue.py` `INSTANCES`; each checks every property):
@@ -59,7 +59,8 @@ Checks (instances in `worker_queue.py` `INSTANCES`; each checks every property):
 - `left-behind`: 2 workers x 1 slot, 2 tasks, 1 attempt, one hang, one cancellation left behind.
 - `slots`: 1 worker x 2 slots, 3 tasks on one host, 1 attempt: a postponed task comes due while a slot is busy, so a
   claim runs with fewer free slots than due tasks.
-- `browser`: 1 worker x 3 slots, 3 tasks on 3 hosts, 1 attempt, one hang.
+- `browser`: 1 worker x 3 slots, 3 tasks on 3 hosts, 1 attempt, one hang; robots.txt snapshots fresh (a stale one's
+  request spends the tick a render needs within the deadline; the same-host instances request robots.txt).
 - `host-in-flight`: `two-workers` with 1 worker x 2 slots: t2's turn comes due while t1's request is in flight.
 - `left-behind-reclaim`: `left-behind` with 2 attempts: one run stalls holding the job row while another task's work
   is left behind, so its deadline failure must wait rather than leave the task to its lease.
@@ -71,10 +72,13 @@ tick; a deadline failure waiting for hung work's lock waits at most that work's 
 
 How the code keeps the last two rows (the findings the model first reported):
 
-- `HostLimiter.holding` (entered by `polite_fetch` right after the admitted turn, held until the fetch returns, browser
-  retry and paging included): `admit` admits no other task of the process to the host meanwhile, and answers the
-  spacing as the wait (a worker postpones). A holder being cancelled holds nothing, and `admit` raises
-  `CancelledError` in a task being cancelled, so work left behind neither blocks its host nor sends a request.
+- `HostLimiter.holding` (entered by `polite_fetch` before robots.txt's or the page's first turn, held until the fetch
+  returns, browser retry and paging included): the first request `admit` admits in it takes the host's turn and hold
+  in `host_turn` in one upsert (`acquire/host_turns.py`), so no other task of any process is admitted to the host
+  meanwhile; it answers the spacing as the wait (a worker postpones). The hold is a lease (`HOLD_LEASE`) renewed while
+  its holder runs and given up as the holder ends or is cancelled, so a dead process or work left behind holds the
+  host at most a lease. A holder being cancelled holds nothing, and `admit` raises `CancelledError` in a task being
+  cancelled, so work left behind neither blocks its host nor sends a request.
 - `_run_within_deadline`: work left behind has its database session ended (`_END_SESSION`: `pg_terminate_backend` of
   the session whose `application_name` names the claim, set LOCAL in `_run`), so it holds no row lock; the deadline
   failure then waits up to `_LOCK_WAIT` (`TASK_DEADLINE + CANCEL_GRACE` + 10 s, the longest another run's
@@ -95,7 +99,8 @@ taken and the variables it changed (`run[w1,1]` is worker w1's first slot record
 | Action | Code |
 | --- | --- |
 | `Claim(w)` | `run_worker`: `free`, `claim_tasks` transaction (FOR UPDATE SKIP LOCKED, lease, `attempts + 1`, `start_jobs`), `create_task(run(task))` |
-| `Turn` | `polite_fetch` -> `_first_turn` -> `HostLimiter.admit`, then `holding`; not due, or the host held by another task of the worker -> `Later` -> `Postpone`; or the task ends with no request (robots.txt disallow, stored capture reread) |
+| `Turn` | `polite_fetch` -> `holding`, then `rules_in`'s robots.txt request (stale snapshot) or `_first_turn` -> `HostLimiter.admit` -> `HostTurns.take` (turn and hold in one upsert); not due, or the host held by another task of any worker -> `Later` -> `Postpone`; or the task ends with no request (robots.txt disallow, stored capture reread) |
+| `RobotsDone`, `PageTurn` | robots.txt answers (snapshot stored, or unreachable -> `Failed`); the page's turn waited for in place (`_first_turn(sent=True)`), postponed past `QUEUED.bound` |
 | `HttpDone` | the HTTP rung answers: ok, 429/503 (`pause_host`, `Failed(transient)`), or escalate to the browser; an answer the handler ends with is extracted and counted (`count_fetch` updates `job.usage`: job row locked until commit) |
 | `AdmitNext` | the browser retry's `admit_next` = `HostLimiter.wait(host, gap, QUEUED.bound)`; in work being cancelled, `admit` raises and the work ends |
 | `AcquireContext`, `RenderDone` | `SharedBrowser.fetch`: `async with self._contexts`, the render |
@@ -105,8 +110,8 @@ taken and the variables it changed (`run[w1,1]` is worker w1's first slot record
 | `DeadlineFail` | `_END_SESSION` for work left behind (its transaction rolls back), then `fail_task(DEADLINE, transient=False)` under `lock_timeout = _LOCK_WAIT`, waiting for hung work's own deadline |
 | `Behind` | left-behind work's cleanup returns and it ends |
 | `ReleaseExpired(t)` | scheduler `release_expired_leases` (SKIP LOCKED, `fail_task("lease expired", transient=True)`) |
-| `Hang`, `Die(w)` | faults: an await that never returns; a worker process dies (PostgreSQL rolls back its transactions) |
-| `Tick` | time passes; never past a due deadline or a pending deadline failure |
+| `Hang`, `Die(w)` | faults: an await that never returns; a worker process dies (PostgreSQL rolls back its transactions; its holds in `host_turn` stay until `HOLD_LEASE` lapses: `stale`) |
+| `Tick` | time passes; never past a due deadline or a pending deadline failure; a stale hold lapses (`held_until`) |
 
 ### Real bug or modeling error?
 
@@ -142,16 +147,17 @@ mutant to get a pass.
 ## What this does not cover
 
 - The SQL itself: that `claim_tasks` takes at most `n` due rows each claimed once under concurrency, the fence's
-  UPDATE, READ COMMITTED. The model assumes them; `tests/db/test_queue.py` and
-  `test_2_claimers_take_20_tasks_each_exactly_once_and_at_most_7_a_claim` in `tests/db/test_worker.py` ground them.
+  UPDATE, READ COMMITTED, and that `HostTurns.take` gives a turn and a hold to one holder. The model assumes them;
+  `tests/db/test_queue.py`, `test_2_claimers_take_20_tasks_each_exactly_once_and_at_most_7_a_claim` in
+  `tests/db/test_worker.py` and `tests/db/test_host_turns.py` ground them.
 - Claim order (priority, round robin between jobs, score): any due tasks may be claimed.
 - Job cancellation (`cancel_requested`, `Skipped`, `cancel_task`), `insert_claimed` (synchronous scrape), tasks a crawl
   adds while it runs, `fail_stalled_jobs`, worker stop.
 - `SharedBrowser`'s restart after a crash; the listing scrape's own browser (outside the cap, acquisition spec);
-  adapters, recipes and robots.txt reads; `HostLimiter`'s adaptive spacing arithmetic.
+  adapters and recipes; `HostLimiter`'s adaptive spacing arithmetic (the model's spacing is shared; the adaptive part
+  is per process); the browser's recycling.
 - Timing beyond order: a blocked event loop that delays the deadline timer past `LEASE - TASK_DEADLINE` breaks
   `NoDoubleProcessing`; the model assumes timers fire on time, that a running transaction commits at once (the job
   row from `count_fetch` to the commit: the frontier's writes and `_move`), and that PostgreSQL grants a waited-for
   row lock in queue order (the deadline failure is not overtaken by a later run's lock).
-- The robots.txt request `ReadRules` sends before a turn (no turn admits it and no hold covers it).
 - Sizes beyond the bounds above (at most 2 workers, 3 slots, 3 tasks, 1 job, 2 attempts, one fault of each kind).

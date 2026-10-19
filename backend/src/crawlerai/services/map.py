@@ -42,7 +42,7 @@ from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import Job, JobId
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.services.fetching import Fetching, SiteHttp, TargetRejected, check_target
-from crawlerai.services.polite import rules_of
+from crawlerai.services.polite import IN_PLACE, NoTurn, Turns, rules_of
 from crawlerai.services.scrape_steps import (
     DEFAULT_PROJECT,
     SiteRow,
@@ -211,9 +211,13 @@ async def _discover(
 async def _polite(
     engine: AsyncEngine, fetching: Fetching, site: SiteRow, url: str, attempts: list[AttemptRecord]
 ) -> SiteHttp | None:
-    """Fetches from `site` under the robots.txt of `url` there; `None` when that robots.txt is unreachable."""
+    """Fetches from `site` under the robots.txt of `url` there; `None` when that robots.txt is unreachable, or its
+    request's turn is further off than a caller waits."""
     policy = FetchPolicy(method_hint="http", proxy_pool=site.proxy_pool)
-    rules = await rules_of(engine, fetching.rungs.http, attempts)(url, policy)
+    try:
+        rules = await rules_of(engine, fetching.rungs.http, attempts, Turns(fetching.limiter, IN_PLACE))(url, policy)
+    except NoTurn:
+        return None
     return None if rules is None else SiteHttp(fetching, rules, policy, attempts)
 
 

@@ -2,6 +2,7 @@
 (D-1327)."""
 
 import asyncio
+from collections.abc import Coroutine
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -17,6 +18,10 @@ from crawlerai.acquire.types import AttemptRecord
 from crawlerai.core.retry import FIRST_BACKOFF
 
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
+
+
+def _run[T](step: Coroutine[object, object, T]) -> T:
+    return asyncio.run(step)
 
 
 class Clock:
@@ -69,13 +74,13 @@ def test_the_limiter_admits_one_request_per_interval_per_host() -> None:
     limiter = HostLimiter(clock)
     second = timedelta(seconds=1)
 
-    assert limiter.admit("a.example.test", second) == timedelta(0)
-    assert limiter.admit("b.example.test", second) == timedelta(0)
+    assert _run(limiter.admit("a.example.test", second)) == timedelta(0)
+    assert _run(limiter.admit("b.example.test", second)) == timedelta(0)
     clock.now += 0.25
-    assert limiter.admit("a.example.test", second) == timedelta(seconds=0.75)
+    assert _run(limiter.admit("a.example.test", second)) == timedelta(seconds=0.75)
     # A refused request does not take the slot.
     clock.now += 0.75
-    assert limiter.admit("a.example.test", second) == timedelta(0)
+    assert _run(limiter.admit("a.example.test", second)) == timedelta(0)
 
 
 def test_a_wait_after_a_pause_the_site_asked_for_goes_no_sooner_and_holds_the_host(
@@ -99,7 +104,7 @@ def test_a_wait_after_a_pause_the_site_asked_for_goes_no_sooner_and_holds_the_ho
     assert admitted is True
     assert clock.now - start == pytest.approx(30)
     # The request it admitted took the host's turn: the next one waits the interval.
-    assert limiter.admit("a.example.test", timedelta(seconds=1)) == timedelta(seconds=1)
+    assert _run(limiter.admit("a.example.test", timedelta(seconds=1))) == timedelta(seconds=1)
 
 
 # --- adaptive spacing (D-1327) -----------------------------------------------------------------------------------
@@ -117,28 +122,28 @@ def _answer(status: int, block_class: str = "ok", challenge: str | None = None) 
 def test_a_slow_down_doubles_the_spacing_and_the_next_turn_comes_that_much_later() -> None:
     clock = Clock()
     limiter = HostLimiter(clock)
-    assert limiter.admit(_HOST, _SECOND) == timedelta(0)
+    assert _run(limiter.admit(_HOST, _SECOND)) == timedelta(0)
 
-    limiter.observe(_HOST, _SECOND, [_answer(429, "blocked")])
-    limiter.observe(_HOST, _SECOND, [_answer(503, "blocked")])
+    _run(limiter.observe(_HOST, _SECOND, [_answer(429, "blocked")]))
+    _run(limiter.observe(_HOST, _SECOND, [_answer(503, "blocked")]))
     clock.now += 1
-    assert limiter.admit(_HOST, _SECOND) == 3 * _SECOND  # the slow-down pushed the reservation made at admission
+    assert _run(limiter.admit(_HOST, _SECOND)) == 3 * _SECOND  # the slow-down pushed the reservation made at admission
     clock.now += 3
-    assert limiter.admit(_HOST, _SECOND) == timedelta(0)
+    assert _run(limiter.admit(_HOST, _SECOND)) == timedelta(0)
 
     assert limiter.spacing(_HOST, _SECOND) == 4 * _SECOND
-    assert limiter.admit(_HOST, _SECOND) == 4 * _SECOND
+    assert _run(limiter.admit(_HOST, _SECOND)) == 4 * _SECOND
     assert limiter.spacing("b.example.test", _SECOND) == _SECOND  # per host
 
 
 def test_a_run_of_ok_answers_shrinks_the_spacing_back_to_the_interval_and_no_further() -> None:
     limiter = HostLimiter(Clock())
-    limiter.observe(_HOST, _SECOND, [_answer(429, "blocked")])  # 2 s
+    _run(limiter.observe(_HOST, _SECOND, [_answer(429, "blocked")]))  # 2 s
 
-    limiter.observe(_HOST, _SECOND, [_answer(200)] * (RECOVERY_RUN - 1))
+    _run(limiter.observe(_HOST, _SECOND, [_answer(200)] * (RECOVERY_RUN - 1)))
     assert limiter.spacing(_HOST, _SECOND) == 2 * _SECOND
-    limiter.observe(_HOST, _SECOND, [_answer(200)])
+    _run(limiter.observe(_HOST, _SECOND, [_answer(200)]))
     assert limiter.spacing(_HOST, _SECOND) == 2 * _SECOND * RECOVERY_FACTOR
 
-    limiter.observe(_HOST, _SECOND, [_answer(200)] * RECOVERY_RUN * 20)
+    _run(limiter.observe(_HOST, _SECOND, [_answer(200)] * RECOVERY_RUN * 20))
     assert limiter.spacing(_HOST, _SECOND) == _SECOND
