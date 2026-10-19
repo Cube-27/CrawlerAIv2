@@ -62,6 +62,7 @@ class BlockClass(Enum):
     soft_404 = "soft_404"
     geo_redirect = "geo_redirect"
     redirected_to_listing = "redirected_to_listing"
+    unsupported_media = "unsupported_media"
 
 
 class Method1(Enum):
@@ -620,6 +621,8 @@ class Outcome(Enum):
     soft_404 = "soft_404"
     geo_redirect = "geo_redirect"
     redirected_to_listing = "redirected_to_listing"
+    unsupported_media = "unsupported_media"
+    geo_blocked = "geo_blocked"
     failed = "failed"
     timeout = "timeout"
 
@@ -754,6 +757,7 @@ class OutcomeCounts(BaseModel):
     blocked: Annotated[int, Field(title="Blocked")]
     extracted: Annotated[int, Field(title="Extracted")]
     failed: Annotated[int, Field(title="Failed")]
+    geo_blocked: Annotated[int, Field(title="Geo Blocked")]
     geo_redirect: Annotated[int, Field(title="Geo Redirect")]
     links_only: Annotated[int, Field(title="Links Only")]
     no_match: Annotated[int, Field(title="No Match")]
@@ -764,6 +768,7 @@ class OutcomeCounts(BaseModel):
     soft_404: Annotated[int, Field(title="Soft 404")]
     timeout: Annotated[int, Field(title="Timeout")]
     unchanged: Annotated[int, Field(title="Unchanged")]
+    unsupported_media: Annotated[int, Field(title="Unsupported Media")]
 
 
 class PageKindRule(BaseModel):
@@ -1161,6 +1166,8 @@ class Outcome2(Enum):
     soft_404 = "soft_404"
     geo_redirect = "geo_redirect"
     redirected_to_listing = "redirected_to_listing"
+    unsupported_media = "unsupported_media"
+    geo_blocked = "geo_blocked"
     timeout = "timeout"
     failed = "failed"
 

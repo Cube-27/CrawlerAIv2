@@ -141,6 +141,21 @@ with a product-identity check), owner decision 2026-10-19 on #326, owner #73.
   check with one price for every variant
 - **THEN** the answer is joined all the same, no browser attempt is made, and the price is read from both
 
+### Requirement: Eager fragments
+A kept HTTP `ok` page SHALL fetch each eager HTML fragment it declares as a companion call: a `<turbo-frame id src>`
+without `loading="lazy"` (Hotwire Turbo handbook, Frames: it loads "as soon as the tag appears"), at most 8 per page,
+planned by `content/fragments.py` and sent by `acquire/rungs.py` with the fetch's JSON sender as raw (no JSON parse),
+with the `Accept` and `Turbo-Frame` headers the frame's own request carries. Only a `src` on the page's own site
+(Fetch Metadata §2.1 same-origin or same-site) is fetched, through the SSRF guard, each request waiting for the site's
+rate (`politeness`) like any further request of the fetch. Each answer's attempt is added (an `api` attempt); a 2xx
+answer joins the HTTP capture as one more network body at the frame's URL, which the parse includes in the frame
+([extraction](../extraction/spec.md), "Source documents"). A lazy frame, a frame on another site and a browser capture
+(whose frames the browser loaded) send nothing. Refs: architecture v3 a.2 (iii), a.4 item 1.
+#### Scenario: Eager and lazy frames
+- **WHEN** an HTTP detail page holds `<turbo-frame id="x" src="/f">` and a frame with `loading="lazy"`
+- **THEN** one companion GET of `/f` is sent and its `#x` element's children replace the frame's; the lazy frame is
+  not fetched
+
 ### Requirement: HTTP and browser rungs
 The HTTP rung SHALL use `curl_cffi` impersonating Chrome (`CRAWLERAI_IMPERSONATE`, else the profile nearest the
 installed Patchright Chromium major, checked at startup by `acquire/impersonate.py`), at most 5 manual redirects, and
@@ -236,7 +251,10 @@ a shell), is `blocked`; a listing without repeated items is a shell unless its s
 (`adapters/challenges.py`) is `blocked`. A block needs corroboration and usable content beats it: a 403, or a 2xx
 document with a stand-in marker, that carries the page's structured data (`classify.usable_content`: a schema.org
 Product with offers, an OGP product price, a microdata Product with offers; on a listing the items its structured data
-lists) is `ok`. A 2xx page fetched as a detail or listing page that a redirect (`classify.Redirect`) led away from the
+lists) is `ok`. A 2xx answer whose media type is not HTML (`text/html`, `application/xhtml+xml`; a response without a
+declared type is sniffed as HTML) is `unsupported_media`: no reader reads it and it gets no browser attempt. A 451
+(RFC 7725) is `blocked` with the challenge label `legal`, which names no vendor, and its task ends `geo_blocked`. A 2xx
+page fetched as a detail or listing page that a redirect (`classify.Redirect`) led away from the
 page asked for (another host or path past a BCP 47 locale segment) is `geo_redirect` when the answering URL names
 another region (a BCP 47 region subtag in its first path segment, else a two-letter ccTLD, RFC 1591) and another path,
 `soft_404` when it is a site's or an edition's root, and, for a detail page, `redirected_to_listing` when it lists items,
@@ -244,7 +262,7 @@ states no product and its path does not keep the asked path's last segment as a 
 kind (a crawl's page) is never classed by its redirect. A redirect to a page whose query carries the asked path, as
 given or base64-encoded (RFC 4648), is an interstitial that sends the client back once passed: `blocked`. These classes are the
 transport outcome (the capture's `block_class`); a page in any of them yields zero records and ends its task with the
-same-named outcome, never as a page without a price.
+same-named outcome (a 451's `blocked` with `geo_blocked`), never as a page without a price.
 Generic code and the remembered fetch method MUST NOT use vendor or challenge-page strings, and blocked and shell pages
 end with zero records. A body is decoded once at acquisition by HTML encoding sniffing
 (`storage/capture_bundle.decode_html`, D-1152; a JSON body as UTF-8, RFC 8259 §8.1, whatever charset it is labelled
@@ -267,6 +285,12 @@ Enforced by: the site-literal scan (INV-03), classify and challenge tests and re
 #### Scenario: Legacy encoding
 - **WHEN** a 200 page declared `charset=euc-jp` carries non-ASCII bytes in a `meta` and an `a` attribute
 - **THEN** it is classified from its decoded text without raising
+#### Scenario: Non-HTML answer
+- **WHEN** a page's HTTP fetch answers 200 with `Content-Type: application/pdf`
+- **THEN** the class is `unsupported_media`, no browser attempt is made, and the task ends `unsupported_media`
+#### Scenario: Refused for legal reasons
+- **WHEN** a page's HTTP fetch answers 451
+- **THEN** the class is `blocked`, the attempt's challenge label is `legal`, and the task ends `geo_blocked`
 
 ### Requirement: Error outcomes and reasons
 Every exception in a rung SHALL become an `error` attempt with a reason (`timeout`, `body_cap`, `network_error`, ...)

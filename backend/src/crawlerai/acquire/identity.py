@@ -24,7 +24,7 @@ from crawlerai.acquire.types import FetchResult
 from crawlerai.core.ids import uuid7
 from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, network_file, network_json
 
-__all__ = ["MIN_KEY", "NOT_THE_PRODUCT", "identifies", "joined"]
+__all__ = ["MIN_KEY", "NOT_THE_PRODUCT", "identifies", "joined", "with_call"]
 
 # The reason of a data call's attempt whose answer does not state the requested product.
 NOT_THE_PRODUCT: Final = "not_the_product"
@@ -84,11 +84,18 @@ def joined(page: FetchResult, call: FetchResult, key: str, platform: str) -> tup
         return None, as_error(call, NOT_THE_PRODUCT)
     if not identifies(answer, page.bundle.manifest.final_url, (key,)):
         return None, as_error(call, NOT_THE_PRODUCT)
+    return with_call(page, call, call.bundle.manifest.final_url, platform), call
+
+
+def with_call(page: FetchResult, call: FetchResult, url: str, platform: str | None = None) -> FetchResult:
+    """The HTTP `page` with the answer of the companion `call` it made as one more network body at `url`, marked with
+    the `platform` whose documented JSON it is (None for an eager fragment, `content.fragments`), as a capture of its
+    own (a new id)."""
     sent = call.bundle.manifest
     content_type = next((value for name, value in sent.headers.response if name.lower() == "content-type"), None)
     manifest = page.bundle.manifest
     entry = NetworkBody(
-        url=sent.final_url,
+        url=url,
         status=sent.status_code,
         content_type=content_type,
         sha256=sent.html_sha256,
@@ -109,4 +116,4 @@ def joined(page: FetchResult, call: FetchResult, key: str, platform: str) -> tup
         network=(*page.bundle.network, call.bundle.body),
         raw_body=page.bundle.raw_body,
     )
-    return page.model_copy(update={"bundle": bundle}), call
+    return page.model_copy(update={"bundle": bundle})

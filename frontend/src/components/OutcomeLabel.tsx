@@ -5,7 +5,8 @@ import { StatusLabel, type StatusTone } from "./StatusLabel";
 // `blocked`, `timeout` and `failed` returned none. `not_found` is the page's own answer; `unchanged` (a record still current),
 // `links_only` (a page read for its links) and `no_match` (a discovered page without its required fields, §10) are
 // not failures. `auth_wall` (a 401), `soft_404`, `geo_redirect` and `redirected_to_listing` (where a redirect led
-// instead of the page) are the site's answers, as `not_found` is.
+// instead of the page) and `unsupported_media` (an answer that is no HTML page) are the site's answers, as `not_found`
+// is. `geo_blocked` (a 451, withheld where the request came from) returned none.
 const OUTCOME_TONES: Record<TaskOutcome, StatusTone> = {
   extracted: "success",
   unchanged: "success",
@@ -18,6 +19,8 @@ const OUTCOME_TONES: Record<TaskOutcome, StatusTone> = {
   soft_404: "neutral",
   geo_redirect: "neutral",
   redirected_to_listing: "neutral",
+  unsupported_media: "neutral",
+  geo_blocked: "danger",
   blocked: "danger",
   timeout: "danger",
   failed: "danger",

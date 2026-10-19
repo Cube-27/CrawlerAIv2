@@ -214,7 +214,8 @@
               "auth_wall",
               "soft_404",
               "geo_redirect",
-              "redirected_to_listing"
+              "redirected_to_listing",
+              "unsupported_media"
             ],
             "title": "Block Class",
             "type": "string"
@@ -711,7 +712,8 @@
               "auth_wall",
               "soft_404",
               "geo_redirect",
-              "redirected_to_listing"
+              "redirected_to_listing",
+              "unsupported_media"
             ],
             "title": "Block Class",
             "type": "string"
@@ -2445,7 +2447,8 @@
               "auth_wall",
               "soft_404",
               "geo_redirect",
-              "redirected_to_listing"
+              "redirected_to_listing",
+              "unsupported_media"
             ],
             "title": "Block Class",
             "type": "string"
@@ -3662,6 +3665,8 @@
                   "soft_404",
                   "geo_redirect",
                   "redirected_to_listing",
+                  "unsupported_media",
+                  "geo_blocked",
                   "failed",
                   "timeout"
                 ],
@@ -4657,6 +4662,10 @@
             "title": "Failed",
             "type": "integer"
           },
+          "geo_blocked": {
+            "title": "Geo Blocked",
+            "type": "integer"
+          },
           "geo_redirect": {
             "title": "Geo Redirect",
             "type": "integer"
@@ -4696,6 +4705,10 @@
           "unchanged": {
             "title": "Unchanged",
             "type": "integer"
+          },
+          "unsupported_media": {
+            "title": "Unsupported Media",
+            "type": "integer"
           }
         },
         "required": [
@@ -4711,6 +4724,8 @@
           "soft_404",
           "geo_redirect",
           "redirected_to_listing",
+          "unsupported_media",
+          "geo_blocked",
           "timeout",
           "failed"
         ],
@@ -5051,6 +5066,8 @@
                   "soft_404",
                   "geo_redirect",
                   "redirected_to_listing",
+                  "unsupported_media",
+                  "geo_blocked",
                   "failed",
                   "timeout"
                 ],
@@ -6938,6 +6955,8 @@
               "soft_404",
               "geo_redirect",
               "redirected_to_listing",
+              "unsupported_media",
+              "geo_blocked",
               "timeout",
               "failed"
             ],

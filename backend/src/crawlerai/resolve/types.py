@@ -45,11 +45,21 @@ Outcome = Literal[
     "soft_404",
     "geo_redirect",
     "redirected_to_listing",
+    "unsupported_media",
     "error",
 ]
 # Outcomes of a page that was not served (INV-11): no candidates and nothing published.
 _NOT_SERVED: frozenset[Outcome] = frozenset(
-    {"blocked", "shell", "not_found", "auth_wall", "soft_404", "geo_redirect", "redirected_to_listing"}
+    {
+        "blocked",
+        "shell",
+        "not_found",
+        "auth_wall",
+        "soft_404",
+        "geo_redirect",
+        "redirected_to_listing",
+        "unsupported_media",
+    }
 )
 # Those, and a page whose resolution failed (§4.14): nothing is published.
 _UNPUBLISHED: frozenset[Outcome] = _NOT_SERVED | {"error"}

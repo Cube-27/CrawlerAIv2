@@ -53,6 +53,7 @@ _CLOSEST: Final[dict[BlockClass, int]] = {
     "auth_wall": 3,
     "redirected_to_listing": 3,
     "geo_redirect": 3,
+    "unsupported_media": 4,
     "soft_404": 4,
     "not_found": 4,
     "error": 5,

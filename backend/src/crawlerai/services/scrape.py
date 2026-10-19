@@ -74,7 +74,6 @@ from crawlerai.services.location import pin_location
 from crawlerai.services.records import RecordField, ScrapedRecord, page_fields
 from crawlerai.services.scrape_paging import actions_deadline, check_browser_actions, paged_fetch, record_states
 from crawlerai.services.scrape_steps import (
-    BLOCK_OUTCOMES,
     CAPTURE_FORMATS,
     DEFAULT_PROJECT,
     EXTRACTION_ERROR,
@@ -107,6 +106,7 @@ from crawlerai.services.scrape_steps import (
     named_schema,
     new_capture,
     page_formats,
+    reached_outcome,
     record_fetch_usage,
     records_outcome,
     site_row,
@@ -609,7 +609,7 @@ async def _finish(
         error = result.attempts[-1].error or failure
         await fail_task(conn, task, error, transient=False, exhausted=failure, capture_id=capture_id)
         return _Finished(failure)
-    outcome = BLOCK_OUTCOMES[result.block_class]
+    outcome = reached_outcome(result)
     if derived.extraction is None or derived.schema is None:
         # A vendor's challenge says why the page was not reached; the caller waits, so it is not retried.
         reason = blocked_reason(result)

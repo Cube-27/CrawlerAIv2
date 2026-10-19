@@ -86,6 +86,7 @@ _NOT_SERVED: Mapping[BlockClass, Outcome] = {
     "soft_404": "soft_404",
     "geo_redirect": "geo_redirect",
     "redirected_to_listing": "redirected_to_listing",
+    "unsupported_media": "unsupported_media",
     "error": "error",
 }
 

@@ -255,7 +255,7 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             "block_class IN ('ok', 'blocked', 'shell', 'not_found', 'error', 'auth_wall', 'soft_404', 'geo_redirect',"
-            " 'redirected_to_listing')",
+            " 'redirected_to_listing', 'unsupported_media')",
             name=op.f("ck_capture_block_class"),
         ),
         sa.CheckConstraint("method IN ('http', 'browser', 'api')", name=op.f("ck_capture_method")),
@@ -477,7 +477,8 @@ def upgrade() -> None:
         sa.Column("score", sa.Float(), nullable=True),
         sa.CheckConstraint(
             "outcome IN ('extracted', 'partial', 'unchanged', 'links_only', 'blocked', 'shell', 'not_found',"
-            " 'no_match', 'auth_wall', 'soft_404', 'geo_redirect', 'redirected_to_listing', 'timeout', 'failed')",
+            " 'no_match', 'auth_wall', 'soft_404', 'geo_redirect', 'redirected_to_listing', 'unsupported_media',"
+            " 'geo_blocked', 'timeout', 'failed')",
             name=op.f("ck_url_task_outcome"),
         ),
         sa.CheckConstraint("page_kind IN ('detail', 'listing')", name=op.f("ck_url_task_page_kind")),

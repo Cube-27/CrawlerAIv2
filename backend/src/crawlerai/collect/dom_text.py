@@ -63,7 +63,6 @@ _NOT_PROSE = (
     "embed",
     "script",
     "style",
-    "template",
 )
 # WAI-ARIA 1.2 §5.4: roles of content set apart from the main content.
 _APART_ROLES = ("dialog", "alertdialog", "form", "navigation", "complementary", "banner", "contentinfo")

@@ -65,6 +65,8 @@ OUTCOMES = {
     "soft_404",
     "geo_redirect",
     "redirected_to_listing",
+    "unsupported_media",
+    "geo_blocked",
     "no_match",
     "timeout",
     "failed",

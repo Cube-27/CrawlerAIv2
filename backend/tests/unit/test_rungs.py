@@ -31,6 +31,7 @@ STATUS: dict[BlockClass, int] = {
     "soft_404": 200,
     "geo_redirect": 200,
     "redirected_to_listing": 200,
+    "unsupported_media": 200,
 }
 BLOCK_CLASSES: tuple[BlockClass, ...] = ("ok", "blocked", "shell", "not_found", "error")
 OVERRIDE = FetchPolicy(respect_robots=False, robots_override_reason="the site's operator asked for it")
@@ -165,7 +166,8 @@ def test_the_bundle_records_every_attempt_beside_its_policy() -> None:
 # --- acquisition spec "Browser on block or by field source": never for an HTTP `ok` page ----------------------------
 
 # Whether an `auto` fetch retries each HTTP outcome in the browser (the a.3 table): a block, a shell (a challenge's or
-# a script-only document's), an unanswered request; never an `ok` page, a 4xx class or a redirect class.
+# a script-only document's), an unanswered request; never an `ok` page, a 4xx class, a redirect class or a non-HTML
+# answer.
 RETRIED: dict[tuple[BlockClass, str | None], bool] = {
     ("ok", None): False,
     ("blocked", None): True,
@@ -178,6 +180,7 @@ RETRIED: dict[tuple[BlockClass, str | None], bool] = {
     ("soft_404", None): False,
     ("geo_redirect", None): False,
     ("redirected_to_listing", None): False,
+    ("unsupported_media", None): False,
 }
 
 

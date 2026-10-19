@@ -19,6 +19,8 @@ export function jobSummary(overrides: Partial<JobSummary> & Pick<JobSummary, "id
       soft_404: 0,
       geo_redirect: 0,
       redirected_to_listing: 0,
+      unsupported_media: 0,
+      geo_blocked: 0,
       timeout: 0,
       failed: 0,
     },

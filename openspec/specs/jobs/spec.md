@@ -71,13 +71,18 @@ A task SHALL end with one outcome, from evidence the fetch and the resolution al
 outcomes `extracted`, `partial`, `no_match`, `unchanged` and `links_only`; the outcomes of a page not served, which are
 the capture's block class (`blocked`, with reason `challenge: <vendor>` when a vendor's challenge says so; `shell`;
 `not_found`; `auth_wall`; `soft_404` and `geo_redirect`, from the final URL against the one asked
-([acquisition](../acquisition/spec.md)); `redirected_to_listing`); and, for a `failed` task, `timeout` when the fetch's
+([acquisition](../acquisition/spec.md)); `redirected_to_listing`; `unsupported_media`, a 2xx answer that is no HTML
+document), and `geo_blocked`, a `blocked` page whose kept attempt is a 451 (challenge label `legal`, RFC 7725), which
+is not retried as a vendor's block; and, for a `failed` task, `timeout` when the fetch's
 kept attempt got no answer in time or the task ran past `TASK_DEADLINE`, else `failed`. A served page that states its
 item is not for sale and gives no price is `partial` with `price` `missing`, reason `out_of_stock`
 ([resolution](../resolution/spec.md)). Refs: owner plan 2026-10-19 P9.
 #### Scenario: Fetch that timed out
 - **WHEN** a fetch's kept attempt is an `error` with reason `timeout`
 - **THEN** the task ends `failed` with outcome `timeout`, not `failed`
+#### Scenario: Page withheld for legal reasons
+- **WHEN** a page's fetch is refused with a 451
+- **THEN** the task ends `done` with outcome `geo_blocked` and no records
 
 ### Requirement: Job outcome summary
 `GET /v1/jobs/{id}/outcomes` and `crawlerai jobs summary <id>` SHALL answer, for one job, its pages counted per outcome

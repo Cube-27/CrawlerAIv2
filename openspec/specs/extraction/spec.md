@@ -17,6 +17,29 @@ Enforced by: a test counting parser constructions in `extract_page` and `scrape`
 - **WHEN** a `scrape` request asks for records, `markdown` and `html` of one capture
 - **THEN** selectolax and lxml are each constructed at most once for that body
 
+### Requirement: Source documents
+`ParsedPage` SHALL read the HTML document after three structural pre-passes, applied in this order to the raw document
+before any text or DOM collector runs (`content/page.py::prepassed`; no script runs, each pass matches its documented
+form only, and a document none applies to is not reparsed):
+- **Declarative shadow DOM** (HTML Standard, `template` `shadowrootmode` `open` or `closed`): the template's content
+  takes its place among its host's children; slotted light-DOM children stay where they are.
+- **Completed streaming boundaries** (React Fizz instruction set, `completeBoundary`): for each inline script's
+  `$RC("<boundary id>", "<content id>")` call, the children of the (hidden) element with the content id take the place
+  of the `template` with the boundary id, and the fallback after it, up to the boundary's closing `<!--/$-->` comment,
+  is removed; a `$RX` call leaves the fallback.
+- **Eager fragment inclusion** (Hotwire Turbo, Frames): the children of each eager `<turbo-frame id src>` are replaced
+  by those of the element with the same id in the captured 2xx HTML answer to its `src`
+  ([acquisition](../acquisition/spec.md), "Eager fragments"); a frame without an answer keeps its own.
+The `NOT_RENDERED` set and the hidden rules of `content/text.py` then apply unchanged, and the DOM collectors and the
+listing induction no longer drop `template` elements (a declarative shadow root is already flattened). Refs:
+architecture v3 a.4 item 1.
+#### Scenario: Shadow content
+- **WHEN** a host holds `<template shadowrootmode="open">` with a label and its value
+- **THEN** the text and DOM collectors read the value, and its candidate's XPath addresses the flattened node
+#### Scenario: Late Suspense segment
+- **WHEN** a document holds `<div hidden id="S:1">`, `<template id="B:1">` and a script calling `$RC("B:1","S:1")`
+- **THEN** the segment is visible text in the boundary's place and the fallback is gone; with `$RX` the fallback stays
+
 ### Requirement: Cleaned text and visibility index
 The system SHALL render cleaned text in one walk that drops non-rendered and HTML-hidden elements and joins inline text
 per CSS Text 3 (`content/text.py`); an element whose text ends in an ellipsis and whose `title` extends it reads as
