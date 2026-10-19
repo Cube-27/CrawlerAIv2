@@ -244,7 +244,7 @@ class FieldSteps(_Model):
 
 
 class ListingSpec(_Model):
-    """Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` finds the next
+    """Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` locates the next
     page's URL."""
 
     row: Step
