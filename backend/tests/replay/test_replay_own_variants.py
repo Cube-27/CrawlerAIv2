@@ -60,7 +60,7 @@ def test_members_stating_only_a_platform_variant_url_of_this_page_are_variants()
     # A platform that addresses a variant by its page URL's query (adapters/platforms.py: Shopify's `variant`) makes
     # a member stating only such a URL a variant; on a page of no such platform it is a link and is dropped.
     members = [{"@type": "Product", "url": f"{PAGE_URL}?variant={n}"} for n in (1, 2)]
-    shop = '<script>Shopify.shop = "widgets";</script>'  # the platform's script global
+    shop = '<script id="shopify-features" type="application/json">{}</script>'  # the platform's own element
 
     on_platform = _entity({"url": PAGE_URL, "hasVariant": members}, shop)["variants"]
     elsewhere = _entity({"url": PAGE_URL, "hasVariant": members}).get("variants")
