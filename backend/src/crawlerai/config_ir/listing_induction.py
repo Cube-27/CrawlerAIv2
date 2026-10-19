@@ -57,7 +57,8 @@ from crawlerai.schemas.types import FieldSpec, SchemaDef, document_digest
 
 _STATUS: Final[FieldStatus] = "uncorroborated"  # until validation (§4.7) records corroboration
 # HTML Standard §4.12.1, §4.2.6: a script's and a style's contents are not rendered text, so no value is read there.
-_UNREAD: Final = frozenset({"script", "style", "noscript"})
+# An ordinary `template` left after the pre-passes (`content.page.prepassed`) holds inert content, never rendered.
+_UNREAD: Final = frozenset({"script", "style", "template", "noscript"})
 # The reasons a row field is left to synthesis.
 NO_ITEM_BLOCKS: Final = "no_item_blocks"
 NO_ROW_SELECTOR: Final = "no_row_selector"

@@ -38,7 +38,9 @@ def test_a_declarative_shadow_root_is_read_as_its_hosts_content() -> None:
     page = ParsedPage(
         "<html><body><x-card><template shadowrootmode='open'>"
         "<table><tr><th>Brand</th><td>Example Brand</td></tr></table><slot></slot>"
-        "</template><span>Light text</span></x-card></body></html>"
+        "</template><span>Light text</span></x-card>"
+        # An ordinary template's content is inert: neither text nor a label-value pair.
+        "<template><table><tr><th>Brand</th><td>Inert Brand</td></tr></table></template></body></html>"
     )
 
     assert page.cleaned_text.text.split("\n") == ["Brand Example Brand", "Light text"]

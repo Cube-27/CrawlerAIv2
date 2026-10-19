@@ -30,12 +30,13 @@ form only, and a document none applies to is not reparsed):
 - **Eager fragment inclusion** (Hotwire Turbo, Frames): the children of each eager `<turbo-frame id src>` are replaced
   by those of the element with the same id in the captured 2xx HTML answer to its `src`
   ([acquisition](../acquisition/spec.md), "Eager fragments"); a frame without an answer keeps its own.
-The `NOT_RENDERED` set and the hidden rules of `content/text.py` then apply unchanged, and the DOM collectors and the
-listing induction no longer drop `template` elements (a declarative shadow root is already flattened). Refs:
-architecture v3 a.4 item 1.
+The `NOT_RENDERED` set and the hidden rules of `content/text.py` then apply unchanged. A `template` left after the
+pre-passes is an ordinary one whose content is inert (HTML Standard §4.12.3), so the text and DOM collectors and the
+listing induction still drop it. Refs: architecture v3 a.4 item 1.
 #### Scenario: Shadow content
 - **WHEN** a host holds `<template shadowrootmode="open">` with a label and its value
-- **THEN** the text and DOM collectors read the value, and its candidate's XPath addresses the flattened node
+- **THEN** the text and DOM collectors read the value, and its candidate's XPath addresses the flattened node; an
+  ordinary `template`'s content is read by neither
 #### Scenario: Late Suspense segment
 - **WHEN** a document holds `<div hidden id="S:1">`, `<template id="B:1">` and a script calling `$RC("B:1","S:1")`
 - **THEN** the segment is visible text in the boundary's place and the fallback is gone; with `$RX` the fallback stays
