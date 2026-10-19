@@ -50,7 +50,7 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
   added because one page failed.
 - **C5.** A failing site is fixed by config, a learning re-run or an operator correction; change generic code only for
   a class of failures, shown with golden-set results.
-- **C7.** No defaults; a grounded price always publishes; currency from page evidence, else the URL
+- **C7.** No defaults; an unclear currency never drops a price, but a price whose amount is contested by an unexplained rival is a conflict (INV-14); currency from page evidence, else the URL
   locale/subdomain/ccTLD (flagged), else null; no host tables, and no other value from URL codes (owner #68, D-1782).
 - **C9.** No test is named after a site or asserts one site's output; write property and replay tests.
 - **C10.** A change that alters extraction must improve the golden set and not drop any field type's precision

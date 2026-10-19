@@ -129,20 +129,32 @@ def test_exact_candidates_that_share_the_best_score_are_a_conflict() -> None:
     assert result["sku"] == Unpublished("conflict", "disagree", ((jsonld, "disagree"), (og, "disagree")), (jsonld, og))
 
 
-def test_a_price_always_publishes_and_one_amount_in_two_currencies_has_its_currency_unknown() -> None:
+def test_one_amount_in_two_currencies_publishes_with_its_currency_unknown() -> None:
     price = FieldSpec(type=FieldType.MONEY, description="d", schema_org="Offer.price+priceCurrency")
     jsonld = _candidate("price", {"amount": "19.90", "currency": "EUR"})
     dom = _candidate("price", {"amount": "19.9", "currency": "USD"}, PAGE, "dom")
-    other = _candidate("price", {"amount": "21.00", "currency": "EUR"}, PAGE, "dom", n=1)
 
     chosen = _prefer(_schema(price=price), jsonld, dom)["price"]
 
     assert isinstance(chosen, Chosen)
     assert chosen.candidate.normalized == Ok({"amount": "19.90", "currency": None}, basis="unknown")
-    # Two amounts of equal score: the first stated publishes, flagged (owner #68: a grounded price is never dropped).
-    assert _prefer(_schema(price=price), jsonld, other)["price"] == Chosen(
-        jsonld, (), ((other, "outscored"),), (jsonld, other), "disagree"
+
+
+def test_amounts_that_differ_are_a_conflict_unless_a_role_explains_them() -> None:
+    price = FieldSpec(type=FieldType.MONEY, description="d", schema_org="Offer.price+priceCurrency")
+    jsonld = _candidate("price", {"amount": "19.90", "currency": "EUR"})
+    og = _candidate("price", {"amount": "21.00", "currency": "EUR"}, PAGE, "og", n=1)
+    dom = _candidate("price", {"amount": "21.00", "currency": "EUR"}, PAGE, "dom", n=2)
+    schema = _schema(price=price)
+
+    # Two structured sources state other amounts: the same role, nothing says which is the product's.
+    assert _prefer(schema, jsonld, og)["price"] == Unpublished(
+        "conflict", "disagree", ((jsonld, "disagree"), (og, "disagree")), (jsonld, og)
     )
+    # The rendered price beats stale structured data, which is recorded as the disagreement.
+    chosen = _prefer(schema, jsonld, dom)["price"]
+    assert isinstance(chosen, Chosen)
+    assert (chosen.candidate, chosen.flag) == (dom, "disagree")
 
 
 # Text, url and image_url: the source weight is the fitted order
@@ -185,8 +197,8 @@ def test_a_price_no_offer_states_publishes_from_the_targets_own_values_and_anoth
 
     assert result["price"] == Chosen(og, (), (), (og,))
     assert result["availability"] == Chosen(stock, (), (), (stock,))
-    # A price only another Offer than the anchor states still publishes (owner #68), flagged `offer_split`.
-    assert split["price"] == Chosen(other_offer, (), (), (other_offer,), "offer_split")
+    # A price only another Offer than the anchor states is not shown to be the target's: a conflict.
+    assert split["price"] == Unpublished("conflict", "offer_split", ((other_offer, "offer_split"),), (other_offer,))
 
 
 # URL parameters (INV-13)

@@ -5,8 +5,9 @@ is not a value taken from the request URL's query (INV-13); every other one is r
 candidates are scored (`resolve.score`: source weight times scope match times agreement) and the value of the best score
 publishes; the candidates of every other value are rejected `outscored`. A field whose kept candidates state more than
 one value publishes with a reason, the disagreement flag (`disagree`, `offers_disagree`, `offer_split`). Where the best
-score is shared by two values the field is a `conflict`, except a price: a grounded price always publishes (C7, owner
-#68), the first stated, its currency unknown when the values differ only in it.
+score is shared by two values the field is a `conflict`. A price is a `conflict` too when amounts differ and no role
+explains it (`_price_winner`: the visible price, the shown variant); amounts that differ only in currency publish, the
+currency unknown (C7: an unclear currency never drops a price).
 
 Offers (INV-15, variants spec): the anchor Offer is the one of the variant the target shows (its own sku or gtin is
 that variant's), else the one holding values for the most offer fields; its values and the target's own have scope 1,
@@ -199,6 +200,12 @@ class Resolver:
         top, rivals = groups[0], [g for g in groups[1:] if g.score > 0]
         if top.score <= 0:  # every kind outside the fitted order, or a fragment (resolve.score)
             return _all_rejected("missing", "unranked", kept, rejected)
+        if rule_type(spec) is FieldType.MONEY:
+            won = self._price_winner(top, groups, offers, offer_field=offer_field)
+            if isinstance(won, str):
+                return _all_rejected("conflict", won, kept, rejected)
+            top = won
+            rivals = [g for g in groups if g is not top and g.score > 0]
         tied = [g for g in rivals if g.score == top.score]
         flag = self._flag(top, groups, rivals, offers, offer_field=offer_field)
         if rule_type(spec) is FieldType.MONEY:
@@ -207,6 +214,41 @@ class Resolver:
         if refused is not None:
             return _all_rejected("conflict", refused, kept, rejected)
         return _published(spec, top, kept, rejected, flag)
+
+    def _price_winner(self, top: Group, groups: list[Group], offers: _Offers, *, offer_field: bool) -> Group | str:
+        """The group whose amount publishes as the price, or why none does (`conflict`). Amounts that differ are
+        rival prices, and each is explained by its role before the field is refused:
+        - the visible price: the one amount a rendered `dom` value states beats the structured, meta or data-call
+          amounts (stale markup is the common cause; HTML Standard: struck `s`/`del` text is already no value);
+        - the shown variant (INV-38): its Offer's amount beats the amounts of other Offers (other variants or sellers);
+        - a list or was price, a unit, member, installment or bundle price are not candidates of this field: the
+          collectors read an Offer's own `price` only, and the DOM collector skips struck text.
+        An amount two candidates of one source role state for the same variant, with nothing explaining it, is the
+        product's price by no evidence: `conflict` (owner: accuracy before coverage). Amounts that differ only in
+        currency are not rivals (C7: the currency is unknown, not the price)."""
+        contenders = [top, *(g for g in groups[1:] if g.score > 0 and not _same_amount(top, g))]
+        visible = [g for g in contenders if any(c.source_kind == "dom" and c.independent for c in g.members)]
+        if len(contenders) > 1 and len(visible) == 1:
+            return visible[0]
+        if offer_field and self._split(top, offers):  # only another Offer than the anchor states it (INV-15)
+            return OFFER_SPLIT
+        if len(contenders) == 1:
+            return top
+        if (shown := self._shown_amount(contenders, offers)) is not None:
+            return shown
+        return OFFERS_DISAGREE if offer_field and self._offers_disagree(groups) else DISAGREE
+
+    def _shown_amount(self, contenders: list[Group], offers: _Offers) -> Group | None:
+        """The one amount the shown variant's Offer states when every other amount is only an Offer outside it."""
+
+        def inside(group: Group) -> bool:
+            return any(self._offer_of(c) in offers.shown for c in group.members)
+
+        def elsewhere(group: Group) -> bool:
+            return all((o := self._offer_of(c)) is not None and o not in offers.shown for c in group.members)
+
+        shown = [g for g in contenders if inside(g)]
+        return shown[0] if len(shown) == 1 and all(elsewhere(g) for g in contenders if g not in shown) else None
 
     def _refused(
         self, top: Group, tied: list[Group], groups: list[Group], offers: _Offers, *, offer_field: bool
@@ -378,11 +420,16 @@ def intent_ambiguous(schema: SchemaDef, candidates: Sequence[Candidate]) -> dict
     }
 
 
+def _same_amount(a: Group, b: Group) -> bool:
+    return money.same_amount([value_of(a.members[0]), value_of(b.members[0])])
+
+
 def _price(
     spec: FieldSpec, top: Group, tied: list[Group], kept: list[Candidate], rejected: list[Rejection], flag: str | None
 ) -> Chosen:
-    """Money always publishes its best value (C7, owner #68): of values sharing the best score, the first stated; when
-    they state one amount in different currencies, the amount with its currency unknown (basis `unknown`)."""
+    """A price no other amount contests publishes (`_price_winner`): of values sharing the best score, which state one
+    amount, the first stated; in different currencies, the amount with its currency unknown (basis `unknown`: an
+    unclear currency never drops a price, C7)."""
     chosen = _published(spec, top, kept, rejected, flag)
     if not tied or not money.same_amount([value_of(c) for g in (top, *tied) for c in g.best]):
         return chosen
