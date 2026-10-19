@@ -166,9 +166,10 @@ bot-detection vendor's resource (a page whose bot defence cannot run is refused)
 can inject the page's structured data, while the analytics, ad and pixel endpoints it loads are blocked as any other
 (vendor categories in `adapters.kept_resources`, never per site).
 
-The ready wait, the one wait for a page: from `DOMContentLoaded`, the page is read once it has fired `load` and no data
-call has been in flight for `_STEP_QUIET_S` (0.5 s), a fixed condition for every page. The wait ends at
-`READY_MAX_S` (3.5 s) whether or not the page is ready, and what is there is read; a document the main frame navigates
+The ready wait, the one wait for a page, a fixed condition: the page is read once it has fired `DOMContentLoaded` and
+no data call has been in flight for `_STEP_QUIET_S` (0.5 s); a listing is read when the wait ends (its item-area read).
+The wait ends `READY_MAX_S` (3.5 s) after `load` (or after it began, while `load` has not fired) whatever is still in
+flight, and what is there is read; a document the main frame navigates
 to meanwhile (not a same-document navigation) starts it over, within 90% of `browser_timeout_s`, so the capture is the
 final document. A page step that changes the page is followed by the same wait for the data calls it started (3 s at
 most). A document
@@ -203,7 +204,7 @@ plan 2026-10-19 (crawl speed, P2 browser wait and blocking).
   fingerprinting script, all on listed servers
 - **THEN** the container and the fingerprinting script load and the analytics request is aborted
 #### Scenario: Data call answered after load
-- **WHEN** a page's only data call ends 1 s after `load`
+- **WHEN** a detail page's only data call ends 1 s after `load`
 - **THEN** the page is read 0.5 s after that call ended, not at `READY_MAX_S`
 #### Scenario: Second page of a site in a job
 - **WHEN** a job's second page of a site renders after its first passed a challenge

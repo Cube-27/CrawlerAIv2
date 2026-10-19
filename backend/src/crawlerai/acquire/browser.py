@@ -106,8 +106,9 @@ _SNIFFED_TYPES = frozenset({"text/plain", ""})
 # rest is for reading the DOM and the bodies.
 _SETTLE_SHARE = 0.9
 # The one wait (`_settle`, acquisition spec "HTTP and browser rungs"): from `DOMContentLoaded` (HTML Standard
-# §8.4.6), a document is read as soon as it is ready (`_ready`), and at most this long after its wait began, ready or
-# not: what is there then is read. An unmeasured starting point within 3 to 4 s.
+# §8.4.6), a document is read as soon as it is ready (`_ready`), and at most this long after it fired `load` (or after
+# the wait began, while it has not), ready or not: what is there then is read. An unmeasured starting point within 3
+# to 4 s.
 READY_MAX_S: Final = 3.5
 _POLL_S = 0.25
 # A document, or a page step that starts no data call, has settled once no data call has been in flight this long:
@@ -603,7 +604,8 @@ async def _route(route: Route) -> None:
 class _MainFrame:
     """The main frame's document navigations (D-1201): the latest request (one per redirect hop), whether one is in
     flight, the response of the latest document, which the frame shows once the navigation commits, how many
-    navigations have committed, and whether the latest document has fired `load` (HTML Standard §8.4.6)."""
+    navigations have committed, and when the latest document fired `DOMContentLoaded` and `load` (HTML Standard
+    §8.4.6)."""
 
     def __init__(self, page: Page, first_url: str) -> None:
         self._page = page
@@ -613,10 +615,15 @@ class _MainFrame:
         self.commits = 0
         self.loaded = False
         self.loaded_at = 0.0  # on `time.monotonic`: when the latest document fired `load`
+        self.parsed = False
+        self.parsed_at = 0.0  # on `time.monotonic`: when the latest document fired `DOMContentLoaded`
         self._committed = asyncio.Event()
 
     def on_load(self) -> None:
         self.loaded, self.loaded_at = True, time.monotonic()
+
+    def on_parsed(self) -> None:
+        self.parsed, self.parsed_at = True, time.monotonic()
 
     def _ours(self, request: Request) -> bool:
         return request.is_navigation_request() and request.frame == self._page.main_frame
@@ -627,7 +634,7 @@ class _MainFrame:
 
     def on_response(self, response: Response) -> None:
         if self._ours(response.request) and response.status not in _REDIRECTION:
-            self.latest, self.pending, self.loaded = response, False, False
+            self.latest, self.pending, self.loaded, self.parsed = response, False, False, False
 
     def on_failed(self, request: Request) -> None:
         if self._ours(request):
@@ -657,6 +664,7 @@ async def _navigate(
     page.on("requestfailed", frame.on_failed)
     page.on("framenavigated", frame.on_navigated)
     page.on("load", lambda _: frame.on_load())
+    page.on("domcontentloaded", lambda _: frame.on_parsed())
     page.on("request", lambda request: calls.on_request(request, page.url))
     page.on("requestfinished", calls.on_done)
     page.on("requestfailed", calls.on_done)
@@ -675,6 +683,7 @@ async def _navigate(
         page,
         frame,
         calls,
+        policy,
         started + _SETTLE_SHARE * policy.browser_timeout_s,
         interstitial_deadline=started + min(_INTERSTITIAL_SHARE * policy.browser_timeout_s, _INTERSTITIAL_MAX_S),
     )
@@ -745,27 +754,31 @@ async def _settle(
     page: Page,
     frame: _MainFrame,
     calls: DataCalls,
+    policy: FetchPolicy,
     deadline: float,
     *,
     interstitial_deadline: float,
 ) -> None:
     """While the document is an interstitial, wait for the next one (until `interstitial_deadline`); then wait until
-    the document is ready to read (`_ready`), at most `READY_MAX_S`, a document the main frame navigates to meanwhile
-    starting that wait over (`_until`); at most until `deadline`."""
+    the document is ready to read (`_ready`), at most `READY_MAX_S` after it fired `load`, a document the main frame
+    navigates to meanwhile starting that wait over (`_until`); at most until `deadline`."""
     while time.monotonic() < interstitial_deadline and await _interstitial(page, frame):
         if not await _next_document(page, frame, interstitial_deadline):
             break
-    await _until(frame, lambda: _ready(frame, calls), READY_MAX_S, deadline)
+    await _until(frame, lambda: _ready(frame, calls, policy), READY_MAX_S, deadline, after_load=True)
 
 
-async def _until(frame: _MainFrame, ready: Callable[[], bool], within_s: float, deadline: float) -> None:
+async def _until(
+    frame: _MainFrame, ready: Callable[[], bool], within_s: float, deadline: float, *, after_load: bool = False
+) -> None:
     """Returns once `ready` holds with no navigation in flight, or `within_s` after the wait began, or after the last
     document the main frame navigated to meanwhile (a script's `location.replace`, a refresh: what was shown was an
-    interim document; a same-document navigation, `history.pushState`, is none), at most at `deadline`."""
-    shown, until = frame.latest, min(deadline, time.monotonic() + within_s)
-    while time.monotonic() < until:
+    interim document; a same-document navigation, `history.pushState`, is none), at most at `deadline`. With
+    `after_load`, a document that has fired `load` is waited for `within_s` after that instead."""
+    shown, begun = frame.latest, time.monotonic()
+    while time.monotonic() < min(deadline, (frame.loaded_at if after_load and frame.loaded else begun) + within_s):
         if frame.latest is not shown:
-            shown, until = frame.latest, min(deadline, time.monotonic() + within_s)
+            shown, begun = frame.latest, time.monotonic()
         elif not frame.pending and ready():
             return
         await asyncio.sleep(_POLL_S)
@@ -776,11 +789,13 @@ def _called(calls: DataCalls, answered: int) -> bool:
     return calls.answered > answered and not calls.in_flight
 
 
-def _ready(frame: _MainFrame, calls: DataCalls) -> bool:
+def _ready(frame: _MainFrame, calls: DataCalls, policy: FetchPolicy) -> bool:
     """Whether the document is ready to read (acquisition spec, "HTTP and browser rungs"), a fixed condition: it has
-    fired `load` (HTML Standard §8.4.6), and no data call has been in flight since, for `_STEP_QUIET_S`."""
-    quiet_since = max(frame.loaded_at, calls.idle_since)
-    return frame.loaded and not calls.in_flight and time.monotonic() - quiet_since >= _STEP_QUIET_S
+    fired `DOMContentLoaded` (HTML Standard §8.4.6), and no data call has been in flight since, for `_STEP_QUIET_S`. A
+    listing is read when the wait ends: its item area (`item_areas`) may still be filling in."""
+    if policy.page_kind == "listing" or not frame.parsed or calls.in_flight:
+        return False
+    return time.monotonic() - max(frame.parsed_at, calls.idle_since) >= _STEP_QUIET_S
 
 
 def _same_site(url: str, page_url: str) -> bool:
