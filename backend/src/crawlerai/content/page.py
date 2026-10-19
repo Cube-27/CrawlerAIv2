@@ -7,6 +7,7 @@ formats, pagination, the engine executor) takes a `ParsedPage`, never the raw bo
 """
 
 import itertools
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
@@ -15,9 +16,21 @@ from lxml import html as lxml_html
 from selectolax import lexbor
 
 from crawlerai.acquire.items import Group, item_groups, lxml_root
+from crawlerai.content.fragments import FRAME_HEADER, Answers, declares_frames, include
 from crawlerai.content.segment import rank
 from crawlerai.content.text import CleanedText, VisibleIndex, render, xpath_step
-from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, decode_body
+from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, decode_body, decode_html
+
+# HTML Standard §4.12.3: a `template` whose `shadowrootmode` is `open` or `closed` is a declarative shadow root.
+_SHADOW_ROOT = "template[shadowrootmode]"
+_SHADOW_MARK = re.compile("shadowrootmode", re.IGNORECASE)
+_SHADOW_MODES = frozenset({"open", "closed"})
+_TEMPLATE = "template"
+# React Fizz instruction set (`completeBoundary`, called as `$RC("<boundary id>", "<content id>")`): the call that
+# moves a streamed segment into its Suspense boundary. A `$RX` call renders the fallback on the client: nothing moves.
+_COMPLETE = re.compile(r"""\$RC\(\s*(["'])([^"']+)\1\s*,\s*(["'])([^"']+)\3\s*\)""")
+# Fizz boundary comments: `<!--$-->`, `<!--$?-->`, `<!--$!-->` open one, `<!--/$-->` closes it.
+_OPEN, _CLOSE = "$", "/$"
 
 
 @dataclass(frozen=True)
@@ -39,8 +52,12 @@ class ParsedPage:
         *,
         json_body: bool = False,
         item_areas: Mapping[str, float] | None = None,
+        url: str | None = None,
     ) -> None:
-        self.html = html
+        # The document after its structural pre-passes (`prepassed`), which every reader of the page reads.
+        framed = bool(network_entries) and not json_body and declares_frames(html)
+        answers = _answers(network, network_entries) if framed else None
+        self.html = html if json_body else prepassed(html, url, answers)
         # The rendered area of the page's item blocks, when a browser capture measured them (`CaptureManifest`).
         self.item_areas = item_areas
         # Whether the body is a JSON document, not HTML: an `api` capture's is (`body.json`, persistence-storage spec).
@@ -65,6 +82,7 @@ class ParsedPage:
             manifest.network_bodies,
             json_body=manifest.method == "api",
             item_areas=manifest.item_areas,
+            url=manifest.final_url,
         )
 
     @cached_property
@@ -153,3 +171,95 @@ def node_xpath(node: lexbor.LexborNode) -> str:
         steps.append(xpath_step(current.tag or "", index))
         current = current.parent
     return "/" + "/".join(reversed(steps))
+
+
+def prepassed(html: str, url: str | None = None, answers: Answers | None = None) -> str:
+    """The document after the three structural pre-passes, in this order (extraction spec, "Source documents"): each
+    declarative shadow root's content in place of its `template` under its host; each Suspense boundary a `$RC` call
+    completed holding its streamed segment; and each eager Turbo frame of the page at `url` holding the matching
+    element of its answer in `answers` (`content.fragments`). No script runs. A document none applies to is returned
+    as it is, unparsed."""
+    shadow = _SHADOW_MARK.search(html) is not None
+    streamed = "$RC(" in html
+    frames = bool(answers) and url is not None and declares_frames(html)
+    if not (shadow or streamed or frames):
+        return html
+    tree = lexbor.LexborHTMLParser(html)
+    if shadow:
+        _flatten_shadow_roots(tree)
+    if streamed:
+        _complete_boundaries(tree)
+    if frames and url is not None and answers:
+        include(tree, url, answers)
+    return tree.html or html
+
+
+def _flatten_shadow_roots(tree: lexbor.LexborHTMLParser) -> None:
+    """HTML Standard: a declarative shadow root's content is its host's rendered content, so it takes the template's
+    place among the host's children; slotted light-DOM children stay where they are. A shadow root inside one is
+    flattened in turn."""
+    while True:
+        template = next(
+            (t for t in tree.css(_SHADOW_ROOT) if (t.attributes.get("shadowrootmode") or "").lower() in _SHADOW_MODES),
+            None,
+        )
+        if template is None:
+            return
+        # The parser keeps a template's content apart from the tree; its serialization holds it.
+        for name in [*template.attrs.keys()]:
+            del template.attrs[name]
+        markup = template.html or ""
+        for node in lexbor.parse_fragment(markup[len(_TEMPLATE) + 2 : -(len(_TEMPLATE) + 3)]):
+            template.insert_before(node)
+        template.decompose()
+
+
+def _complete_boundaries(tree: lexbor.LexborHTMLParser) -> None:
+    """For each `$RC(boundary, content)` call of an inline script, the children of the (hidden) element with the
+    content id take the place of the `template` with the boundary id, and the fallback after it, up to the boundary's
+    closing comment, is removed, as `completeBoundary` does."""
+    for script in tree.css("script"):
+        if "src" in script.attributes:
+            continue
+        for match in _COMPLETE.finditer(script.text(deep=True)):
+            # Looked up per call: a completed segment may hold a boundary a later call completes.
+            marker, content = tree.css_first(f'[id="{match.group(2)}"]'), tree.css_first(f'[id="{match.group(4)}"]')
+            if marker is None or content is None or marker.tag != _TEMPLATE:
+                continue
+            _remove_fallback(marker)
+            for child in content.iter(include_text=True):
+                marker.insert_before(child)
+            marker.decompose()
+            content.decompose()
+
+
+def _remove_fallback(marker: lexbor.LexborNode) -> None:
+    """Remove the siblings after a boundary's `template`, up to the comment that closes the boundary (nested
+    boundaries counted); without that comment nothing is removed."""
+    fallback: list[lexbor.LexborNode] = []
+    depth, node = 0, marker.next
+    while node is not None:
+        if node.is_comment_node:
+            data = (node.comment_content or "").strip()
+            if data == _CLOSE and depth == 0:
+                for sibling in fallback:
+                    sibling.decompose()
+                return
+            depth += data.startswith(_OPEN) - (data == _CLOSE)
+        fallback.append(node)
+        node = node.next
+
+
+def _answers(network: tuple[bytes, ...], entries: tuple[NetworkBody, ...]) -> dict[tuple[str, str | None], str]:
+    """The captured 2xx HTML answers by URL and the frame their request named (`fragments.FRAME_HEADER`), decoded as
+    an HTTP body (`decode_html`): the eager frames' answers."""
+    answers: dict[tuple[str, str | None], str] = {}
+    for body, entry in zip(network, entries, strict=False):
+        if 200 <= entry.status < 300 and entry.data_call is None and _html(entry.content_type):
+            frame = next((v for n, v in entry.request_headers or () if n.lower() == FRAME_HEADER.lower()), None)
+            answers.setdefault((entry.url, frame), decode_html(body, entry.response_headers or (), "http"))
+    return answers
+
+
+def _html(content_type: str | None) -> bool:
+    return (content_type or "").split(";", 1)[0].strip().lower() in ("text/html", "application/xhtml+xml")

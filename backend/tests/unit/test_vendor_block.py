@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from crawlerai.acquire.challenge import STRUCTURAL, vendor_block
+from crawlerai.acquire.challenge import LEGAL, STRUCTURAL, challenge_label, vendor_block
 from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
@@ -100,3 +100,12 @@ def test_a_vendor_blocked_task_is_retried_once_after_the_back_off_then_ends_bloc
         f"challenge: {VENDOR}", transient=True, after=FIRST_BACKOFF, exhausted="blocked", capture_id=page.capture_id
     )
     assert second == Finished("blocked", reason=f"challenge: {VENDOR}", capture_id=page.capture_id)
+
+
+def test_a_451_is_blocked_for_legal_reasons_and_ends_geo_blocked_without_a_retry() -> None:
+    # RFC 7725 §3: a refusal for legal reasons, whatever its document shows; no vendor's challenge.
+    assert challenge_label(451, (), "<html><script>void 0</script></html>", URL) == LEGAL
+    page = _fetched(_result("blocked", LEGAL))
+
+    assert vendor_block(page.result) is None
+    assert unreached(page, _task(1)) == Finished("geo_blocked", capture_id=page.capture_id)

@@ -15,10 +15,11 @@ while the job ran never changes which of its records' fields are read.
   `GONE_AFTER_RUNS` in a row gets `gone_at` and a `url_gone` event.
 A run that saw part of its listing only marks nothing missing: one that reached its `limit`, where the frontier stopped
 adding URLs; one with an empty listing, whose pages were not read; one with a page no rule matched (a navigation page)
-that was not reached, as the crawl handler reads no links from a `blocked`, `shell`, `auth_wall`, `geo_redirect`,
-`redirected_to_listing` or failed page; and one whose sitemap reading stopped at its time cap (`SITEMAPS_TIMED_OUT`),
-whose sitemaps' tail was not read. A navigation page `not_found` (or `soft_404`, redirected to the site's root) is gone
-itself, and what only it listed is missing. A URL no listing held (one a scrape fetched) is never missing.
+that was not reached, as the crawl handler reads no links from a `blocked`, `geo_blocked`, `shell`, `auth_wall`,
+`geo_redirect`, `redirected_to_listing`, `unsupported_media` or failed page; and one whose sitemap reading stopped at
+its time cap (`SITEMAPS_TIMED_OUT`), whose sitemaps' tail was not read. A navigation page `not_found` (or `soft_404`,
+redirected to the site's root) is gone itself, and what only it listed is missing. A URL no listing held (one a scrape
+fetched) is never missing.
 
 The diffs of a site's runs take the site's row lock first, so two runs ending together never lock its `url_state` rows
 in opposite orders.
@@ -69,7 +70,17 @@ _SCOPE: Final = ("url", "include", "exclude", "max_depth", "limit", "page_kind_r
 
 # The outcomes of a page the crawl handler read no links from (`crawlerai.worker.handlers.crawl`).
 _UNREACHED: Final[frozenset[TaskOutcome]] = frozenset(
-    {"blocked", "shell", "failed", "auth_wall", "geo_redirect", "redirected_to_listing", "timeout"}
+    {
+        "blocked",
+        "shell",
+        "failed",
+        "auth_wall",
+        "geo_redirect",
+        "redirected_to_listing",
+        "unsupported_media",
+        "geo_blocked",
+        "timeout",
+    }
 )
 
 _JobRow = Row[str, SchemaId | None, dict[str, Any], str | None, dict[str, Any] | None]

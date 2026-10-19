@@ -77,6 +77,21 @@ D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-1
 - **THEN** that text is the `description` candidate, ranked behind JSON-LD and microdata
 
 ### Requirement: Source documents
+`ParsedPage` SHALL read the HTML document after three structural pre-passes, applied in this order to the raw document
+before any text or DOM collector runs (`content/page.py::prepassed`; no script runs, each pass matches its documented
+form only, and a document none applies to is not reparsed):
+- **Declarative shadow DOM** (HTML Standard, `template` `shadowrootmode` `open` or `closed`): the template's content
+  takes its place among its host's children; slotted light-DOM children stay where they are.
+- **Completed streaming boundaries** (React Fizz instruction set, `completeBoundary`): for each inline script's
+  `$RC("<boundary id>", "<content id>")` call, the children of the (hidden) element with the content id take the place
+  of the `template` with the boundary id, and the fallback after it, up to the boundary's closing `<!--/$-->` comment,
+  is removed; a `$RX` call leaves the fallback.
+- **Eager fragment inclusion** (Hotwire Turbo, Frames): the children of each eager `<turbo-frame id src>` are replaced
+  by those of the element with the same id in the captured 2xx HTML answer to its `src`
+  ([acquisition](../acquisition/spec.md), "Eager fragments"); a frame without an answer keeps its own.
+The `NOT_RENDERED` set and the hidden rules of `content/text.py` then apply unchanged. A `template` left after the
+pre-passes is an ordinary one whose content is inert (HTML Standard §4.12.3), so the text and DOM collectors and the
+listing induction still drop it. Refs: architecture v3 a.4 item 1.
 The system SHALL read a page's embedded state as source documents, by documented structure and never by a variable name
 or key (`content/state.py`, `content/js_literal.py`, `content/state_decoders.py`). In every inline script but JSON-LD's,
 in script order: the text of a `<script type="application/json">`; the object or array literal after the `=` of
@@ -105,6 +120,13 @@ followed, and a decoded tree past the same bounds leaves the document as written
 #### Scenario: Code in a value
 - **WHEN** an assigned object holds `f: function () { return 1; }` or `at: stamp()`
 - **THEN** it gives no document and no error
+#### Scenario: Shadow content
+- **WHEN** a host holds `<template shadowrootmode="open">` with a label and its value
+- **THEN** the text and DOM collectors read the value, and its candidate's XPath addresses the flattened node; an
+  ordinary `template`'s content is read by neither
+#### Scenario: Late Suspense segment
+- **WHEN** a document holds `<div hidden id="S:1">`, `<template id="B:1">` and a script calling `$RC("B:1","S:1")`
+- **THEN** the segment is visible text in the boundary's place and the fallback is gone; with `$RX` the fallback stays
 
 ### Requirement: Embedded JSON state and XHR admission
 The system SHALL admit a scalar from the state documents ("Source documents") or captured XHR bodies (other than an

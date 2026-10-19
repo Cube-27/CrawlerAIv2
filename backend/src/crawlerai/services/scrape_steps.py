@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.challenge import vendor_block
+from crawlerai.acquire.challenge import LEGAL, vendor_block
 from crawlerai.acquire.memory import Coverage, Remembered, learn_extraction, learn_fetch, remembered
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import AttemptRecord, FetchResult, fetched_as
@@ -122,6 +122,8 @@ ReachedOutcome = Literal[
     "soft_404",
     "geo_redirect",
     "redirected_to_listing",
+    "unsupported_media",
+    "geo_blocked",
 ]
 # The outcome a page task reports (rest-api spec): a reached page's, or its fetch's failure (`FetchFailure`).
 PageOutcome = Literal[ReachedOutcome, "timeout", "failed"]
@@ -137,7 +139,18 @@ BLOCK_OUTCOMES: Final[dict[BlockClass, ReachedOutcome]] = {
     "soft_404": "soft_404",
     "geo_redirect": "geo_redirect",
     "redirected_to_listing": "redirected_to_listing",
+    "unsupported_media": "unsupported_media",
 }
+
+
+def reached_outcome(result: FetchResult) -> ReachedOutcome:
+    """The outcome of a page the fetch reached, from its block class (`BLOCK_OUTCOMES`), except that a `blocked` page
+    whose kept attempt is labelled `LEGAL` (a 451, RFC 7725) is `geo_blocked`: withheld where the request came from."""
+    outcome = BLOCK_OUTCOMES[result.block_class]
+    kept = next((a for a in reversed(result.attempts) if a.method == result.method), None)
+    return "geo_blocked" if outcome == "blocked" and kept is not None and kept.challenge == LEGAL else outcome
+
+
 # The `AttemptRecord.error` of a rung that got no answer within its deadline (acquisition spec, "Error outcomes and
 # reasons").
 TIMEOUT: Final = "timeout"

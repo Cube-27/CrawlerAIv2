@@ -23,6 +23,7 @@ from crawlerai.acquire.shared_browser import SharedBrowser
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
 from crawlerai.config_ir.drift import DriftMargins
+from crawlerai.content.fragments import eager_frames
 from crawlerai.core.egress import Egresses
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.event_loop import quiet_peer_resets
@@ -114,6 +115,7 @@ async def open_fetching(
             sessions=sessions,
             exporting=browser.fetch,
             listing=listing,
+            frames=eager_frames,
         )
         limiter = HostLimiter(shared=None if database is None else HostTurns(database))
         egresses = Egresses(pools, settings.egress_country)

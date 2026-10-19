@@ -67,7 +67,8 @@ JobStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 TaskStatus = Literal["queued", "claimed", "done", "failed", "cancelled"]
 # The outcomes of a task that ran to the end (status `done`); `failed` is the outcome of a `failed` task.
 # The data outcome; the transport outcome is the capture's `block_class`. A page not served ends with its block class:
-# a 401's `auth_wall`, or where a redirect led instead of the page (acquisition spec).
+# a 401's `auth_wall`, where a redirect led instead of the page, or a 2xx answer that is no HTML document
+# (`unsupported_media`); a 451 refusal is `geo_blocked` (acquisition spec).
 FinishedOutcome = Literal[
     "extracted",
     "partial",
@@ -81,6 +82,8 @@ FinishedOutcome = Literal[
     "soft_404",
     "geo_redirect",
     "redirected_to_listing",
+    "unsupported_media",
+    "geo_blocked",
 ]
 # The outcomes of a `failed` task: `timeout` when no answer came within the deadline (the fetch rung's, or the task's),
 # else `failed`.

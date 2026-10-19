@@ -171,3 +171,18 @@ def test_a_redirect_is_classed_by_where_it_led(
 def test_an_empty_item_list_lists_nothing(entries: str, expected: BlockClass) -> None:
     item_list = f'<script type="application/ld+json">{{"@type": "ItemList", "itemListElement": {entries}}}</script>'
     assert classify(200, _HTML, _page(400, 2, item_list), page_kind="listing") == expected
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected"),
+    [
+        ((("content-type", "application/pdf"),), "unsupported_media"),
+        (_JSON, "unsupported_media"),
+        ((("Content-Type", "application/xhtml+xml"),), "ok"),
+        ((), "ok"),  # no declared type: sniffed as HTML (WHATWG MIME Sniffing §7)
+    ],
+)
+def test_a_2xx_answer_that_is_no_html_document_is_unsupported_media(
+    headers: tuple[tuple[str, str], ...], expected: BlockClass
+) -> None:
+    assert classify(200, headers, _FULL) == expected

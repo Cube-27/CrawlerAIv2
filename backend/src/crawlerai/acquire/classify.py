@@ -18,6 +18,10 @@ structured data that lists them (`_structured_rows`). Its grid loads by script a
 browser may render what HTTP did not. Only the HTTP rung passes the page kind: the
 browser is the last rung, and its page is extracted whatever its links.
 
+A 2xx answer whose media type is not HTML (a PDF, an image, a feed) is `unsupported_media`: no page reader reads it, and
+the browser would render the same bytes, so it gets no browser attempt. A 451 is a refusal for legal reasons (RFC 7725
+§3): `blocked`, which `acquire.challenge` labels `legal`.
+
 A 401 asks for credentials (RFC 9110 §15.5.2): an `auth_wall`, which no rung passes, never a block. A block needs
 corroboration, and usable content beats it (`usable_content`): a 403 document that carries the page's structured data
 (a schema.org Product with offers or an OGP product price; on a listing, the items it lists) is the page, served with a
@@ -128,8 +132,10 @@ def classify(
         return "ok" if usable else "blocked"
     if status >= 400:
         return "error"
-    if not 200 <= status < 300 or not is_html(headers):
+    if not 200 <= status < 300:
         return "ok"
+    if not is_html(headers):
+        return "unsupported_media"
     return _document_class(text, headers, page_kind, redirect)
 
 

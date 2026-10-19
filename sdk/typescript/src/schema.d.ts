@@ -1052,7 +1052,7 @@ export interface components {
              * Block Class
              * @enum {string}
              */
-            block_class: "ok" | "blocked" | "shell" | "not_found" | "error" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing";
+            block_class: "ok" | "blocked" | "shell" | "not_found" | "error" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media";
             /** Challenge */
             challenge?: string | null;
             /** Data Call */
@@ -1219,7 +1219,7 @@ export interface components {
              * Block Class
              * @enum {string}
              */
-            block_class: "ok" | "blocked" | "shell" | "not_found" | "error" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing";
+            block_class: "ok" | "blocked" | "shell" | "not_found" | "error" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media";
             /**
              * Capture Id
              * Format: uuid
@@ -1919,7 +1919,7 @@ export interface components {
              * Block Class
              * @enum {string}
              */
-            block_class: "ok" | "blocked" | "shell" | "not_found" | "error" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing";
+            block_class: "ok" | "blocked" | "shell" | "not_found" | "error" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media";
             /**
              * Method
              * @enum {string}
@@ -2330,7 +2330,7 @@ export interface components {
             fetch?: components["schemas"]["FetchSummary"];
             metadata?: components["schemas"]["PageMetadata"];
             /** Outcome */
-            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "failed" | "timeout") | null;
+            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media" | "geo_blocked" | "failed" | "timeout") | null;
             pdf?: components["schemas"]["Artifact"];
             /** Records */
             records: {
@@ -2765,6 +2765,8 @@ export interface components {
             extracted: number;
             /** Failed */
             failed: number;
+            /** Geo Blocked */
+            geo_blocked: number;
             /** Geo Redirect */
             geo_redirect: number;
             /** Links Only */
@@ -2785,6 +2787,8 @@ export interface components {
             timeout: number;
             /** Unchanged */
             unchanged: number;
+            /** Unsupported Media */
+            unsupported_media: number;
         };
         /** PageDetail */
         PageDetail: {
@@ -2897,7 +2901,7 @@ export interface components {
             markdown_fit?: string;
             metadata?: components["schemas"]["PageMetadata"];
             /** Outcome */
-            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "failed" | "timeout") | null;
+            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media" | "geo_blocked" | "failed" | "timeout") | null;
             pdf?: components["schemas"]["Artifact"];
             /** Raw Html */
             raw_html?: string;
@@ -3608,7 +3612,7 @@ export interface components {
              * Outcome
              * @enum {string}
              */
-            outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "timeout" | "failed";
+            outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media" | "geo_blocked" | "timeout" | "failed";
             /** Page */
             page?: {
                 [key: string]: components["schemas"]["RecordField"];

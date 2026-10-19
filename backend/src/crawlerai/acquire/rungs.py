@@ -15,17 +15,17 @@ hands the context's cookies to a site session (`acquire.session`, INV-29's excep
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable, Collection
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Final, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
-from crawlerai.acquire.api import JsonFetcher, JsonRequest
+from crawlerai.acquire.api import JsonFetcher, JsonRequest, site_relation
 from crawlerai.acquire.browser_tab import ListingRung
 from crawlerai.acquire.challenge import block_class_of
 from crawlerai.acquire.classify import interstitial
-from crawlerai.acquire.identity import joined
+from crawlerai.acquire.identity import joined, with_call
 from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
@@ -44,6 +44,9 @@ from crawlerai.adapters.registry import Registry, platform_adapters
 from crawlerai.storage.capture_bundle import decode_body
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
+# The eager fragments a document at a URL declares, as (id, absolute URL) pairs (`content.fragments.eager_frames`,
+# which sits above `acquire`, so the process hands it in).
+FramePlan = Callable[[str, str], Sequence[tuple[str, str]]]
 
 
 # A fetch so far: the outcome kept, every attempt and their duration.
@@ -74,6 +77,9 @@ _BROWSER_EVIDENCE: frozenset[BlockClass] = frozenset({"shell", "blocked"})
 # the browser's own network stack may pass (D-1472). A timeout (`policy.timeout_s`) counts too: a filter may hold a
 # client it does not trust unanswered, and the same transport again would wait as long.
 _UNANSWERED: Final = ("network_error", "timeout")
+# Turbo handbook (Frames): a frame's request asks for HTML and names the frame, so the server may answer it alone.
+_FRAME_ACCEPT: Final = "text/html, application/xhtml+xml"
+_FRAME_HEADER: Final = "Turbo-Frame"
 
 
 @dataclass(frozen=True)
@@ -92,6 +98,8 @@ class Rungs:
     # form that opens them; without both a browser retry opens none (INV-29 without its exception).
     sessions: SiteSessions | None = None
     exporting: ExportingRung | None = None
+    # The eager fragments of an HTTP page, each fetched as a companion call (`_with_frames`); without it none is.
+    frames: FramePlan | None = None
 
 
 def adapter_registry(disabled: Collection[str]) -> Registry:
@@ -130,7 +138,8 @@ async def acquire(
     manifest too. `validators` go with the HTTP rung only (jobs spec): a 304 is `ok` and ends the fetch. A page no
     adapter detected whose canonical link is its URL without the query, which an adapter detects, is fetched again by
     that adapter on its own turn (adapters spec). An HTTP `ok` detail page kept is joined with its platform's
-    documented product JSON (`_joined`, sent with `send`). A policy that captures the page (`screenshot`, `pdf`) uses
+    documented product JSON (`_joined`, sent with `send`), and any kept HTTP `ok` page with the answers of its eager
+    fragments on its own site (`_with_frames`). A policy that captures the page (`screenshot`, `pdf`) uses
     neither an adapter, a recipe nor a companion call. No browser retry starts with less than `BROWSER_MIN_S` left
     before `deadline` (on `time.monotonic`), the task's budget: the HTTP outcome is kept."""
     if policy.captures_page:
@@ -150,7 +159,8 @@ async def acquire(
     # "Referral from a tenant's own host").
     if send is not None and (served is None or by_recipe):
         page = await _by_canonical(url, page, policy, rungs, send, admit_next)
-    kept, attempts, duration_ms = await _joined(policy, page, admit_next, send)
+    page = await _joined(policy, page, admit_next, send)
+    kept, attempts, duration_ms = await _with_frames(policy, page, admit_next, send, rungs.frames)
     if served is not None:
         return with_attempts(kept, served.attempts + attempts, served.duration_ms + duration_ms)
     return with_attempts(kept, attempts, duration_ms)
@@ -272,6 +282,31 @@ async def _joined(policy: FetchPolicy, page: Fetched, admit_next: Admit | None, 
     )
     kept, call = joined(result, marked, called.key, called.platform)
     return (kept or result), attempts + call.attempts, duration_ms + call.duration_ms
+
+
+async def _with_frames(
+    policy: FetchPolicy, page: Fetched, admit_next: Admit | None, send: JsonFetcher | None, plan: FramePlan | None
+) -> Fetched:
+    """The kept HTTP `ok` page with the answers of its eager Turbo frames (`content.fragments`), each a companion GET
+    of the frame's `src` on the page's own site (Fetch Metadata §2.1: same-origin or same-site), sent as the frame's
+    own request would be, through the SSRF-guarded JSON rung (`send`, raw), and admitted at the site's rate
+    (`admit_next`) like any further request. Every attempt is added; an `ok` answer joins the capture as a network body
+    at the frame's URL, which the page's parse includes (`content.page.prepassed`)."""
+    result, attempts, duration_ms = page
+    if plan is None or send is None or result.method != "http" or result.block_class != "ok":
+        return page
+    page_url = result.bundle.manifest.final_url
+    for frame_id, src in plan(decode_body(result.bundle), page_url):
+        if site_relation(page_url, src) == "cross-site":
+            continue
+        if not await _admitted(admit_next):
+            break
+        headers = (("Accept", _FRAME_ACCEPT), (_FRAME_HEADER, frame_id))
+        sent = await send(JsonRequest(url=src, page_url=page_url, headers=headers, raw=True), policy)
+        attempts, duration_ms = attempts + sent.attempts, duration_ms + sent.duration_ms
+        if sent.block_class == "ok":
+            result = with_call(result, sent, src)
+    return result, attempts, duration_ms
 
 
 def _documented(result: FetchResult) -> ProductJson | None:

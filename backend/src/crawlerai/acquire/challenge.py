@@ -22,6 +22,7 @@ from crawlerai.storage.capture_bundle import HeaderList
 
 __all__ = [
     "CHALLENGED",
+    "LEGAL",
     "STRUCTURAL",
     "block_class_of",
     "challenge_label",
@@ -34,6 +35,10 @@ log = logging.getLogger(__name__)
 
 # The label of a challenge no vendor signature names.
 STRUCTURAL: Final = "structural"
+# The label of a 451, a refusal for legal reasons (RFC 7725 §3): the page is withheld where the request came from, no
+# vendor's challenge; its page ends `geo_blocked` (jobs spec).
+LEGAL: Final = "legal"
+_UNAVAILABLE_FOR_LEGAL_REASONS = 451
 _SET_COOKIE = "set-cookie"  # RFC 6265 §4.1
 # The classes a challenge takes (`classify`): a refusal, or a document with nothing of the page in it.
 CHALLENGED: Final[frozenset[BlockClass]] = frozenset({"blocked", "shell"})
@@ -68,7 +73,10 @@ def challenge_label(
 ) -> str | None:
     """The label of a response in a `CHALLENGED` class. `headers` are as received, `Set-Cookie` included: only
     the cookie names are read (RFC 6265 §4.1.1, the name before the first `=`), never a value. `cookie_names` adds the
-    names a browser holds for the page, whose capture records no `Set-Cookie`."""
+    names a browser holds for the page, whose capture records no `Set-Cookie`. A 451 is `LEGAL`, whatever else it
+    shows."""
+    if status == _UNAVAILABLE_FOR_LEGAL_REASONS:
+        return LEGAL
     names = (*_cookie_names(headers), *cookie_names)
     signature = vendor_of((name for name, _ in headers), names, text)
     if signature is not None:
@@ -78,13 +86,13 @@ def challenge_label(
 
 def vendor_block(result: FetchResult) -> str | None:
     """The vendor whose challenge kept a `blocked` fetch from its page: the label of the latest attempt of the kept
-    outcome's method that names one (not `STRUCTURAL`; a rejected attempt of another rung is not what the kept capture
-    shows); None for any other fetch. Such a page is a `blocked` outcome naming the vendor, never an engine
+    outcome's method that names one (not `STRUCTURAL` nor `LEGAL`; a rejected attempt of another rung is not what the
+    kept capture shows); None for any other fetch. Such a page is a `blocked` outcome naming the vendor, never an engine
     failure to retry as one (master plan 2026-10-18 §3.1; owner #50: nothing is evaded)."""
     if result.block_class != "blocked":
         return None
     kept = (a for a in reversed(result.attempts) if a.method == result.method)
-    return next((a.challenge for a in kept if a.challenge not in (None, STRUCTURAL)), None)
+    return next((a.challenge for a in kept if a.challenge not in (None, STRUCTURAL, LEGAL)), None)
 
 
 def _cookie_names(headers: HeaderList) -> tuple[str, ...]:

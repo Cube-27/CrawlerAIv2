@@ -64,7 +64,6 @@ from crawlerai.services.polite import (
     rules_in,
 )
 from crawlerai.services.scrape_steps import (
-    BLOCK_OUTCOMES,
     EXTRACTION_ERROR,
     FetchOptions,
     PageFormat,
@@ -74,6 +73,7 @@ from crawlerai.services.scrape_steps import (
     fetch_failure,
     fetch_policy,
     new_capture,
+    reached_outcome,
     record_fetch_usage,
     site_row,
     store_further,
@@ -391,7 +391,7 @@ def unreached(page: FetchedPage, task: ClaimedTask) -> TaskResult | None:
         return Failed(
             page.result.attempts[-1].error or failure, transient=True, exhausted=failure, capture_id=capture_id
         )
-    outcome = BLOCK_OUTCOMES[page.result.block_class]
+    outcome = reached_outcome(page.result)
     if outcome == "extracted":
         return None
     reason = blocked_reason(page.result)
