@@ -1266,3 +1266,14 @@ archived ARCHITECTURE.md.
 - Alternatives: keep `offer_split` (the price lost although the page shows it for this product).
 - Why: no Offer competes, so nothing is split across Offers; ownership already ties the value to the target.
 - Reversible: yes
+
+### D-1784 — Differing price amounts publish only when a role explains them
+- Date: 2026-10-19 · Change/PR: price-accuracy · Status: decided (owner: an unclear currency never drops a price; accuracy beats coverage)
+- Decision: amounts that differ are rival prices. The visible (`dom`) amount beats structured, meta and data-call
+  ones; the shown variant's Offer beats other Offers; a price only another Offer than the anchor states is
+  `offer_split`; any other difference between candidates of one role for one variant is `conflict` (`disagree` /
+  `offers_disagree`). A price range is no price unless the page states one amount. Amounts that differ only in
+  currency still publish, the currency unknown. Supersedes the "always publishes on disagreement" part of #68.
+- Alternatives: publish the best-scored amount flagged (wrong variant prices published); drop every disagreement.
+- Why: a wrong price is worse than none; a price the page's own roles explain is not a disagreement.
+- Reversible: yes — `Resolver._price_winner`.

@@ -609,6 +609,20 @@ def test_availability_is_the_shown_variant_s_and_no_default_otherwise() -> None:
     assert _statuses(unshown)["availability"] == ("conflict", "offers_disagree")
 
 
+def test_a_price_that_differs_between_variants_is_the_shown_variant_s_and_no_default_otherwise() -> None:
+    def priced(**product: Any) -> dict[str, Any]:
+        node = _offered(**product)
+        node["offers"][1]["price"] = "24.90"
+        return node
+
+    shown = _extract(_bundle(_html(priced(sku="W-2"))), WITH_VARIANTS)
+    unshown = _extract(_bundle(_html(priced())), WITH_VARIANTS)
+
+    assert shown.entity is not None
+    assert shown.entity["price"].value == {"amount": "24.90", "currency": "EUR"}
+    assert _statuses(unshown)["price"] == ("conflict", "offers_disagree")
+
+
 def test_only_a_sku_the_target_publishes_selects_the_shown_variant() -> None:
     # A sku that publishes below the request's min_confidence, or only the request URL carries (INV-13), is no sku
     # the target shows.

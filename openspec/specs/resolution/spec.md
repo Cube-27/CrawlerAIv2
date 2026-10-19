@@ -39,9 +39,17 @@ members the first publishes, for images the `https` ones (else all) and of a sin
 (`url.largest_rendition`). The candidates of every other value are rejected `outscored`, and a field whose kept
 candidates state other values publishes with the disagreement flag as its reason (`disagree`, or `offers_disagree` /
 `offer_split` for an offer field). When the best score is 0 the field is `missing` (`unranked`); when two values share
-it the field is a `conflict` (`disagree`, C7: decline rather than guess), except money: a grounded price always
-publishes (C7, owner #68), the first stated, and when the tied values state one amount in different currencies, that
-amount with its currency `null` (basis `unknown`). (Previously: exact-match types published only when every kept
+it the field is a `conflict` (`disagree`, C7: decline rather than guess). Money differs in one way: an unclear
+currency never drops a price (tied values stating one amount in different currencies publish that amount with its
+currency `null`, basis `unknown`), but amounts that differ are rival prices, each explained by its role before the
+field is refused: the one amount a rendered `dom` value states is the visible price and beats structured, meta and
+data-call amounts (the disagreement is the flag `disagree`); the shown variant's Offer beats the Offers of other
+variants and sellers (INV-38); a price a single Offer states that is not the anchor's is `offer_split`. List, was
+and unit prices are not rivals: collectors read an Offer's own `price` (never a `priceSpecification`), and the DOM
+collector skips struck text. An amount of the same role for the same variant that nothing explains leaves the field a
+`conflict` (`disagree`, `offers_disagree` or `offer_split`): accuracy before coverage, and a price range is no price
+unless the page states one amount for the product (a low bound is never derived from disagreeing Offers). (Previously:
+a price always published, owner #68 as then read; exact-match types published only when every kept
 candidate agreed, else `conflict`; money ranked by currency evidence then needed agreement, a weaker one rejected
 `weaker_currency`; text, url and image published from the first source kind in the order, a disagreement within it
 settled only by the first other kind naming one value; each rule had its own tie-breaks.) Refs: §10, owner #68,
@@ -91,12 +99,11 @@ every rejected candidate keeps its own reason, in `field_meta`. (Previously: a p
 Price, currency and availability SHALL come from one anchor Offer: the Offer of the variant the target shows (Shown
 variant, [variants](../variants/spec.md)), else the one holding values for the most offer fields, the first on a tie.
 The anchor's values score as the target's own and another Offer's at half (Candidate score). Where Offers state other
-values a price publishes its best one flagged `offers_disagree`; the other offer fields publish only the shown
-variant's value, else `conflict` `offers_disagree`. A value only another Offer than the anchor states publishes
-flagged `offer_split` for a price, else is `conflict` `offer_split`; a field no Offer states publishes from the
-target's own values (its Open Graph, page state or text: a shown price is never dropped), and an `AggregateOffer` range
-never publishes as the price. (Previously: a price whose Offers disagreed, or only another Offer stated, was a
-`conflict`.) Refs: §10, owner #68, owner 2026-10-19; per-row and common-value rules in
+values an offer field publishes only the shown variant's value, else it is `conflict` `offers_disagree` (a price
+also publishes when the visible price explains the difference, Candidate score). A value only another Offer than the
+anchor states is `conflict` `offer_split`; a field no Offer states publishes from the target's own values (its Open
+Graph, page state or text), and an `AggregateOffer` range never publishes as the price. (Previously: a price whose
+Offers disagreed, or only another Offer stated, published flagged.) Refs: §10, owner #68, owner 2026-10-19; per-row and common-value rules in
 [variants](../variants/spec.md). Enforced by: resolver test; active.
 #### Scenario: Price and availability from two Offers
 - **WHEN** Offer A states only price and Offer B states only availability

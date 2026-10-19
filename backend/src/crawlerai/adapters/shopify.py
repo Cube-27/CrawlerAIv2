@@ -84,9 +84,8 @@ def _bound(at: Members) -> Shape:
 
 
 # A collection lists its products (schema.org ItemList). A listed product's two Offers are its price range's bounds:
-# equal bounds are the one price of every variant; different ones disagree, so the first, the lowest price (the "from"
-# price a listing card shows), publishes flagged `offers_disagree` (resolution spec, "Candidate score": a price always
-# publishes).
+# equal bounds are the one price of every variant; different ones disagree, and the answer states no one price of the
+# product, so its price is a `conflict` `offers_disagree` (resolution spec, "Candidate score": no low bound is derived).
 _LISTED: Final = Shape(
     type="Product",
     at=("nodes", ALL),

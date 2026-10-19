@@ -46,7 +46,8 @@ Atomic offers in [resolution](../resolution/spec.md)). Refs: §10, Appendix A #3
 resolver test; active.
 #### Scenario: Two sellers in one row
 - **WHEN** one row's scope holds two Offers with different prices
-- **THEN** that row's `price` publishes its anchor Offer's with reason `offers_disagree` (Previously: `conflict`.)
+- **THEN** that row's `price` is `conflict` with reason `offers_disagree`: nothing says which Offer is the row's (Previously: it
+  published the anchor Offer's, flagged.)
 
 ### Requirement: Own variants
 A published row SHALL be the target's own variant: a size or option chosen on the page is a variant, a colourway at
@@ -81,16 +82,17 @@ other values, a detail page's top-level field SHALL publish only the value of th
 default or selected one, else `conflict`/`offers_disagree`; no other default is taken, whatever variant a URL names.
 The shown variant is the one variant (or Offer of the target) whose sku or gtin, as a field or a row sub-field, equals
 one the target publishes as its own (screened, and publishing at the request's `min_confidence`); its Offers are the
-anchor (Atomic offers), and its value publishes flagged `offers_disagree`. A price always publishes:
-the shown variant's, else the best-scored, flagged `offers_disagree` (owner #68). Varying values publish per variant in
-the row-mapped field. (Previously: the price was `conflict`; availability took the shown variant's only after
+anchor (Atomic offers), and its value publishes flagged `offers_disagree`. A price follows the same rule: the shown
+variant's, else (Offers stating other amounts) `conflict` `offers_disagree`, unless the visible price explains the
+difference (Candidate score). Varying values publish per variant in the row-mapped field. (Previously: the price
+published the best-scored Offer's, flagged; availability took the shown variant's only after
 resolution, from a published row agreeing with the target's published price, sku and gtin,
 `resolve/shown_variant.py`.) Refs: Appendix A #37, #44, D-1057, D-1059, owner #68, owner 2026-10-19.
 Enforced by: `tests/unit/test_common_variant_fields.py` and `tests/unit/test_pipeline.py`; active.
 #### Scenario: URL names one variant
 - **WHEN** the request URL is a variant's own URL and the variants' prices differ
-- **THEN** top-level `price` publishes the anchor Offer's with reason `offers_disagree` and each price is in its
-  `variants` row (Previously: `conflict`.)
+- **THEN** top-level `price` publishes the shown variant's with reason `offers_disagree` and each price is in its
+  `variants` row; for a URL that selects none, `price` is `conflict` (`offers_disagree`)
 #### Scenario: The shown variant's availability
 - **WHEN** a Product states sku W-2 and two Offers, W-1 out of stock and W-2 in stock
 - **THEN** top-level `availability` is `InStock`; with neither a sku nor a gtin of the Product's that is one row's, it

@@ -1,7 +1,7 @@
 """Preference and derivation properties (resolution spec, "Candidate score"): for any candidate set, an exact-match
 value publishes when its score is the best alone and a shared best is a conflict, a query-parameter value publishes
-only when shown (INV-13), a page's offer fields but money come from one Offer and a stated price always publishes
-(INV-15, owner #68), and only a missing field is derived (INV-07)."""
+only when shown (INV-13), a page's offer fields but money come from one Offer and a price publishes only when no
+other amount contests it (INV-15, INV-14), and only a missing field is derived (INV-07)."""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -116,7 +116,7 @@ _OFFER = st.tuples(st.none() | _PRICES, st.none() | _STOCK)
 
 
 @given(st.lists(_OFFER, min_size=1, max_size=len(OFFERS)))
-def test_offer_fields_but_money_publish_from_one_offer_and_a_stated_price_always_publishes(
+def test_offer_fields_but_money_publish_from_one_offer_and_a_price_only_when_its_amount_is_uncontested(
     offers: list[tuple[dict[str, str] | None, str | None]],
 ) -> None:
     candidates = _offer_candidates(offers)
@@ -126,8 +126,12 @@ def test_offer_fields_but_money_publish_from_one_offer_and_a_stated_price_always
     published = {name: p for name, p in result.items() if isinstance(p, Chosen)}
     if len(offers) == 1:
         assert published.keys() == {c.field for c in candidates}
-    # Owner #68: a price an Offer states always publishes, flagged when the Offers disagree.
-    assert ("price" in published) == any(c.field == "price" for c in candidates)
+    # Offers that state other amounts, none of them the shown variant's, leave the price a conflict.
+    amounts = {c.normalized.value["amount"] for c in candidates if c.field == "price"}  # type: ignore[union-attr,call-overload,index]
+    if len(offers) == 1:
+        assert ("price" in published) == bool(amounts)
+    if len(amounts) > 1:
+        assert "price" not in published
     # Availability is a variant's: it publishes only when every Offer that states it states the published value.
     if "availability" in published:
         stated = [c.normalized for c in candidates if c.field == "availability"]
@@ -171,7 +175,7 @@ def test_only_a_missing_field_is_derived(preference: Preference, canonical: str 
 _SETTLED = st.sampled_from([None, "page", "locale", "url", "unknown"])
 
 
-@given(st.lists(st.tuples(st.sampled_from(["10.00", "12.00"]), _SETTLED), min_size=1, max_size=4))
+@given(st.lists(st.tuples(st.just("10.00"), _SETTLED), min_size=1, max_size=4))
 def test_a_price_publishes_on_its_best_currency_evidence(drawn: list[tuple[str, Basis | None]]) -> None:
     # Normalization spec, money: the currency's evidence is the source weight; of equal weights, the first stated.
     candidates = []
