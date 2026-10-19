@@ -180,17 +180,17 @@ def check_proxy_pool(options: FetchOptions, pools: Collection[str]) -> None:
 def fetch_policy(
     options: FetchOptions,
     locale: str | None,
-    site_pool: str | None,
     *,
     page_kind: PageKind | None = None,
     formats: Iterable[str] = (),
     all_resources: bool = False,
     scope: str | None = None,
 ) -> FetchPolicy:
-    """The fetch policy of a page task. A screenshot or PDF among its `formats` is made in the browser, which then
-    fetches the page whatever the site's remembered method (`FetchPolicy.screenshot`, `pdf`). The browser loads
-    every resource of a site that loads `all_resources` (`site.load_all_resources`). `scope` is the task's job, whose
-    pages of one site share a browser context (`FetchPolicy.scope`)."""
+    """The fetch policy of a page task, through the proxy pool `options` names: for a job's pages, the one pool its
+    submit pinned (`services.location`), never a site's own. A screenshot or PDF among its `formats` is made in the
+    browser, which then fetches the page whatever the site's remembered method (`FetchPolicy.screenshot`, `pdf`). The
+    browser loads every resource of a site that loads `all_resources` (`site.load_all_resources`). `scope` is the
+    task's job, whose pages of one site share a browser context (`FetchPolicy.scope`)."""
     wanted = set(formats)
     return FetchPolicy(
         block_resources=not all_resources,
@@ -198,7 +198,7 @@ def fetch_policy(
         method_hint="browser" if options.in_browser or CAPTURE_FORMATS & wanted else options.method_hint,
         screenshot=options.screenshot if "screenshot" in wanted else None,
         pdf="pdf" in wanted,
-        proxy_pool=options.proxy_pool or site_pool,
+        proxy_pool=options.proxy_pool,
         respect_robots=options.respect_robots,
         robots_override_reason=options.robots_override_reason,
         locale_hint=locale,

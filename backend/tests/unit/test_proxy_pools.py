@@ -27,6 +27,7 @@ from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.core.egress import UNKNOWN, Egress, Egresses
 from crawlerai.core.proxy import PoolMode, ProxyEndpoint, ProxyPool
 from crawlerai.core.settings import IMPERSONATE_DEFAULT, AcquireSettings
 
@@ -248,6 +249,8 @@ def test_pools_are_read_from_json_with_credentials_percent_decoded(monkeypatch: 
         '{"endpoints": ["http://user:secret-pw@a.example.com:1", "http://user:secret-pw@a.example.com:1"], '
         '"mode": "sticky"}',
         '{"endpoints": ["socks5://user:secret-pw@proxy.example.com:1080"], "mode": "rotate"}',
+        # A pool's country is an ISO 3166-1 alpha-2 code.
+        '{"endpoints": ["http://user:secret-pw@proxy.example.com:3128"], "mode": "rotate", "country": "gb"}',
     ],
 )
 def test_a_proxy_url_other_than_http_host_port_is_refused_without_echoing_it(
@@ -260,6 +263,17 @@ def test_a_proxy_url_other_than_http_host_port_is_refused_without_echoing_it(
 
     assert "secret-pw" not in str(refused.value)
     assert refused.value.errors()[0]["loc"] == ("proxy_pools", "dc")
+
+
+def test_a_fetch_goes_out_from_its_pools_declared_country_else_the_machines_else_nowhere_known() -> None:
+    declared = ProxyPool.parse({"endpoints": ["http://a.example.com:1"], "mode": "rotate", "country": "GB"})
+    egresses = Egresses({"gb": declared, "bare": ProxyPool.parse("http://b.example.com:1")}, machine_country="US")
+
+    assert egresses.of("gb") == Egress("GB", "pool")
+    assert egresses.of("bare") == UNKNOWN  # a pool without a declared country is not the machine's
+    assert egresses.of("missing") == UNKNOWN
+    assert egresses.of(None) == Egress("US", "machine")
+    assert Egresses().of(None) == UNKNOWN
 
 
 # --- HTTP fetch --------------------------------------------------------------------------------------------------
@@ -379,3 +393,11 @@ def test_a_browser_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, pr
     assert b"<h1>Catalogue</h1>" in through_pool.bundle.body
     assert set(proxy.tunnels) == {"shop.example.test:80"}
     assert _outcome(unknown) == (0, "error", "proxy_pool_unknown")
+
+
+def test_a_declared_egress_country_must_be_a_country_cldr_knows() -> None:
+    from crawlerai.normalize.money import is_country
+
+    assert is_country("GB")
+    assert not is_country("ZZ")
+    assert not is_country("gb")

@@ -136,9 +136,12 @@ def upgrade() -> None:
         ),
         sa.Column("webhook_batch", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("schedule_id", sa.Uuid(), nullable=True),
+        sa.Column("egress_country", sa.Text(), nullable=True),
+        sa.Column("egress_basis", sa.Text(), server_default=sa.text("'unknown'"), nullable=False),
         sa.CheckConstraint(
             "kind IN ('scrape', 'batch_scrape', 'map', 'crawl', 'extract', 'learn')", name=op.f("ck_job_kind")
         ),
+        sa.CheckConstraint("egress_basis IN ('pool', 'machine', 'unknown')", name=op.f("ck_job_egress_basis")),
         sa.CheckConstraint(
             "status IN ('queued', 'running', 'completed', 'failed', 'cancelled')", name=op.f("ck_job_status")
         ),
@@ -626,7 +629,10 @@ def upgrade() -> None:
         sa.Column("schema_digest", sa.Text(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("supersedes_record_id", sa.Uuid(), nullable=True),
+        sa.Column("egress_country", sa.Text(), nullable=True),
+        sa.Column("egress_basis", sa.Text(), server_default=sa.text("'unknown'"), nullable=False),
         sa.CheckConstraint("mode IN ('adhoc', 'config')", name=op.f("ck_record_mode")),
+        sa.CheckConstraint("egress_basis IN ('pool', 'machine', 'unknown')", name=op.f("ck_record_egress_basis")),
         sa.CheckConstraint("version >= 1", name=op.f("ck_record_version_positive")),
         sa.ForeignKeyConstraint(["extraction_id"], ["extraction.id"], name=op.f("fk_record_extraction_id_extraction")),
         sa.ForeignKeyConstraint(["job_id"], ["job.id"], name=op.f("fk_record_job_id_job")),

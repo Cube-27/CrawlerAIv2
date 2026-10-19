@@ -1230,6 +1230,12 @@ class StepOutcome(BaseModel):
     outcome: Annotated[Outcome3, Field(title="Outcome")]
 
 
+class EgressBasis(Enum):
+    pool = "pool"
+    machine = "machine"
+    unknown = "unknown"
+
+
 class Status12(Enum):
     published = "published"
     missing = "missing"
@@ -2163,6 +2169,8 @@ class StoredRecord(BaseModel):
     changed_fields: Annotated[list[str], Field(title="Changed Fields")]
     complete: Annotated[bool, Field(title="Complete")]
     confidence: Annotated[Confidence | None, Field(title="Confidence")] = None
+    egress_basis: Annotated[EgressBasis, Field(title="Egress Basis")]
+    egress_country: Annotated[str | None, Field(title="Egress Country")] = None
     fields: Annotated[dict[str, RecordField], Field(title="Fields")]
     id: Annotated[UUID, Field(title="Id")]
     mode: Annotated[Mode, Field(title="Mode")]

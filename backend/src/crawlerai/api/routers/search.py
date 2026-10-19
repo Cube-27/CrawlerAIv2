@@ -40,7 +40,14 @@ async def search(
     try:
         with submission_problems():
             return await search_service.search(
-                database(request), fetching.connector, provider, body, data=data, llm=llm, api_key_id=key
+                database(request),
+                fetching.connector,
+                provider,
+                body,
+                data=data,
+                llm=llm,
+                api_key_id=key,
+                egresses=fetching.egresses,
             )
     except SearchUnavailable as e:
         raise ProblemError(503, "search_unavailable", "Search unavailable", str(e)) from e

@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.ssrf import SafeConnector, SsrfRejected
+from crawlerai.core.egress import Egresses
 from crawlerai.core.errors import Refusal
 from crawlerai.db.models import ApiKeyId, JobId, PageKind
 from crawlerai.llm.client import NO_LLM, LLMClient
@@ -107,6 +108,7 @@ async def search(
     data: EngineData | None,
     llm: LLMClient = NO_LLM,
     api_key_id: ApiKeyId | None = None,
+    egresses: Egresses | None = None,
 ) -> SearchResult:
     """The results of `request`, scraped when it says so. Raises `SearchUnavailable` without a provider,
     `SearchFailed` when it does not answer, and a batch's submission errors for `scrape`."""
@@ -126,7 +128,9 @@ async def search(
     body = BatchScrapeRequest.model_validate(
         {**request.scrape.model_dump(mode="json", by_alias=True, exclude_none=True), "urls": scrapable}
     )
-    submitted = await batch.submit_batch(engine, connector, body, data=data, llm=llm, api_key_id=api_key_id)
+    submitted = await batch.submit_batch(
+        engine, connector, body, data=data, llm=llm, api_key_id=api_key_id, egresses=egresses
+    )
     return SearchResult(
         query=request.query, results=results, job_id=submitted.job_id, skipped=len(results) - len(scrapable)
     )

@@ -2,8 +2,9 @@
 `CRAWLERAI_PROXY_POOLS`, and used for a site whose `proxy_pool` names its pool. A pool is one proxy URL, or
 `{"endpoints": [url, ...], "mode": "rotate" | "sticky"}` (D-1323): `rotate` takes its endpoints in turn, `sticky` keeps
 each site on one endpoint (rendezvous hashing, Thaler and Ravishankar 1998: a site moves only when its endpoint leaves
-the choice). An endpoint in quarantine (`proxy_health`) is chosen only when every endpoint of the pool is, and then the
-one that recovers first: a pool never sends a site's request direct.
+the choice). A pool may declare the `country` its endpoints go out from (ISO 3166-1 alpha-2: one pool, one country),
+which records state as their egress (`core/egress.py`). An endpoint in quarantine (`proxy_health`) is chosen only
+when every endpoint of the pool is, and then the one that recovers first: a pool never sends a site's request direct.
 
 Being configured is the allowlist §7.1 asks of proxy endpoints: the SSRF guard checks the pages' hosts, not the
 proxy's own address. Only HTTP proxies are supported, and every request goes through a CONNECT tunnel
@@ -13,6 +14,7 @@ proxy's own address. Only HTTP proxies are supported, and every request goes thr
 import base64
 import hashlib
 import itertools
+import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Literal, Self
@@ -27,6 +29,8 @@ __all__ = ["PoolMode", "ProxyEndpoint", "ProxyPool", "UnknownProxyPool", "pool_e
 
 PoolMode = Literal["rotate", "sticky"]
 _POOL_KEYS = frozenset({"endpoints", "mode"})
+# ISO 3166-1 alpha-2: two uppercase letters.
+_COUNTRY = re.compile(r"[A-Z]{2}", re.ASCII)
 
 _HTTP_DEFAULT_PORT = 80  # RFC 9110 §4.2.1
 
@@ -73,6 +77,7 @@ class ProxyPool:
 
     endpoints: tuple[ProxyEndpoint, ...]
     mode: PoolMode = "rotate"
+    country: str | None = None
     health: PoolHealth = field(default_factory=PoolHealth, compare=False, repr=False)
     _turns: Iterator[int] = field(default_factory=itertools.count, compare=False, repr=False)
 
@@ -84,19 +89,25 @@ class ProxyPool:
     @classmethod
     def parse(cls, value: object) -> Self:
         """A proxy URL (`ProxyEndpoint.parse`), or `{"endpoints": [url, ...], "mode": "rotate" | "sticky"}` with at
-        least one endpoint; `mode` is required with a list, so a pool's behaviour is never a default (C7). Error
-        messages never contain a URL."""
+        least one endpoint and, optionally, the `country` the endpoints go out from; `mode` is required with a list, so
+        a pool's behaviour is never a default (C7). Error messages never contain a URL."""
         if not isinstance(value, dict):
             return cls((ProxyEndpoint.parse(value),))
         endpoints, mode = value.get("endpoints"), value.get("mode")
-        if set(value) != _POOL_KEYS or not isinstance(endpoints, list) or not endpoints:
-            raise ValueError('a proxy pool is a proxy URL or {"endpoints": [url, ...], "mode": "rotate" | "sticky"}')
+        country = value.get("country")
+        if set(value) - {"country"} != _POOL_KEYS or not isinstance(endpoints, list) or not endpoints:
+            raise ValueError(
+                'a proxy pool is a proxy URL or {"endpoints": [url, ...], "mode": "rotate" | "sticky", '
+                '"country"?: "XX"}'
+            )
+        if "country" in value and not (isinstance(country, str) and _COUNTRY.fullmatch(country)):
+            raise ValueError("a proxy pool's country is an ISO 3166-1 alpha-2 code, two uppercase letters")
         if mode != "rotate" and mode != "sticky":
             raise ValueError('a proxy pool\'s mode is "rotate" or "sticky"')
         parsed = tuple(ProxyEndpoint.parse(url) for url in endpoints)
         if len(set(parsed)) != len(parsed):
             raise ValueError("a proxy pool lists an endpoint twice")
-        return cls(parsed, mode)
+        return cls(parsed, mode, country)
 
     def pick(self, key: str) -> ProxyEndpoint:
         """The endpoint a request for `key` (the requested host) goes through."""

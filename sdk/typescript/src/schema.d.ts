@@ -3752,7 +3752,9 @@ export interface components {
          * StoredRecord
          * @description A `record` row, with the capture it was extracted from (`None` once the capture expired),
          *     the schema its fields follow, its own version and the fields whose published value differs from the
-         *     version it supersedes, empty for an entity's first (§14, jobs spec).
+         *     version it supersedes, empty for an entity's first (§14, jobs spec). `egress_country` is the ISO 3166-1 country the
+         *     page was fetched from (null: unknown) and `egress_basis` how that is known: `pool` (the proxy pool's declared
+         *     country), `machine` (a direct fetch from the machine's declared country) or `unknown` (acquisition spec).
          */
         StoredRecord: {
             /** Capture Id */
@@ -3763,6 +3765,13 @@ export interface components {
             complete: boolean;
             /** Confidence */
             confidence: number | null;
+            /**
+             * Egress Basis
+             * @enum {string}
+             */
+            egress_basis: "pool" | "machine" | "unknown";
+            /** Egress Country */
+            egress_country: string | null;
             /** Fields */
             fields: {
                 [key: string]: components["schemas"]["RecordField"];

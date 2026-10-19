@@ -209,7 +209,6 @@ async def fetch_page(
     policy = fetch_policy(
         options,
         locale,
-        site.proxy_pool,
         page_kind=task.page_kind,
         formats=formats,
         all_resources=all_resources,

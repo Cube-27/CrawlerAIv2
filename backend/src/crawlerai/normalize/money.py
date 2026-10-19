@@ -176,13 +176,13 @@ def _narrowed(signs: Sequence[str], denoted: frozenset[str], ctx: Context) -> _C
 
 
 def _regional(signs: Sequence[str], ctx: Context) -> frozenset[str]:
-    """The currencies the signs stand for in the CLDR locales of the page's language and region: its language tags
-    (`numbers.locale_set`), its Content-Language (RFC 9110 §8.5), and the territory its ccTLD names."""
+    """The currencies the signs stand for in the CLDR locales of the page's language and region: the locales it
+    declares (`numbers.regional_locales`: a language alone stands for every territory it is used in, so it settles
+    no shared sign) and the territory its ccTLD names."""
     territory = ctx.cctld_territory or cctld_territory(ctx.page_url)
     # The page's own signals only: the locale a request asked for (`request_locale`) is the caller's, not the page's.
-    update = {"cctld_territory": territory, "hreflang": (*ctx.hreflang, *ctx.content_language), "request_locale": None}
-    tags = ctx.model_copy(update=update)
-    locales = numbers.locale_set(tags)
+    page = ctx.model_copy(update={"cctld_territory": territory, "request_locale": None})
+    locales = numbers.regional_locales(page)
     symbols = [form for sign in signs for form in _sign_forms(unicodedata.normalize("NFKC", sign))]
     return frozenset(code for loc in locales for sign in symbols for code in _locale_symbols(loc).get(sign, ()))
 
@@ -252,10 +252,10 @@ def _cctld_territories(url: str) -> set[str]:
 
 
 def _page_languages(ctx: Context) -> frozenset[str]:
-    """The primary language subtags (BCP 47) the page states: `<html lang>`, `og:locale`, its Content-Language and
-    its own `hreflang`. Only a language subtag counts (RFC 5646 §2.2.1: two or three letters, not `und`), so
-    `x-default` (a hreflang fallback marker) or a private-use tag names none."""
-    tags = (ctx.html_lang, ctx.og_locale, *ctx.content_language, *ctx.hreflang)
+    """The primary language subtags (BCP 47) the page states: `<html lang>`, `og:locale`, JSON-LD `inLanguage`, its
+    Content-Language and its own `hreflang`. Only a language subtag counts (RFC 5646 §2.2.1: two or three letters, not
+    `und`), so `x-default` (a hreflang fallback marker) or a private-use tag names none."""
+    tags = (ctx.html_lang, ctx.og_locale, *ctx.in_language, *ctx.content_language, *ctx.hreflang)
     primary = (tag.replace("_", "-").split("-")[0].lower() for tag in tags if tag)
     return frozenset(p for p in primary if 2 <= len(p) <= 3 and p.isascii() and p.isalpha() and p != "und")
 
@@ -393,6 +393,11 @@ def warm() -> None:
 @cache
 def _currencies() -> frozenset[str]:
     return frozenset(list_currencies())
+
+
+def is_country(code: str) -> bool:
+    """Whether `code` is an ISO 3166-1 alpha-2 country CLDR has currency data for (`ZZ`, its unknown region, is not)."""
+    return code != "ZZ" and code in _territories()
 
 
 @cache

@@ -30,7 +30,7 @@ from pydantic import BaseModel, ConfigDict
 
 from crawlerai.collect.base import ARRAY_ROW, Candidate, Entity
 from crawlerai.collect.config import ConfigExecutor
-from crawlerai.collect.currencies import with_stated_currencies
+from crawlerai.collect.currencies import with_page_declarations
 from crawlerai.collect.items.bind import Listing, RowBlock, bind
 from crawlerai.collect.items.lines import BlockText, block_texts
 from crawlerai.collect.run import Adapters, Collected, collect_page
@@ -317,7 +317,7 @@ class _Page:
         ctx = page_context(
             page, manifest.final_url, manifest.fetched_at, request_url=manifest.url, headers=manifest.headers.response
         )
-        ctx = with_stated_currencies(ctx, page)
+        ctx = with_page_declarations(ctx, page)
         learned = None if source.config is None else source.config.learned_calls
         collected = collect_page(
             page, manifest, schema, ctx, vocabulary=data.vocabulary, adapters=data.adapters, learned=learned

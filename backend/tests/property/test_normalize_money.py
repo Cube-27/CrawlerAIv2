@@ -43,6 +43,8 @@ def test_the_currency_comes_from_the_best_evidence_with_weaker_evidence_noted() 
     )
     assert money.normalize("$12.99", MONEY, _ctx(html_lang="en-AU")) == _ok("12.99", "AUD", "locale")
     assert money.normalize("$12.99", MONEY, _ctx(html_lang="en", cctld_territory="CA")) == _ok("12.99", "CAD", "locale")
+    # A language alone is every territory it is used in: `en` settles no shared sign, though it settles a separator.
+    assert money.normalize("$12.99", MONEY, _ctx(html_lang="en")) == _ok("12.99", None, "unknown")
     cctld = "ca"  # RFC 1591: a two-letter ISO 3166-1 code; the host is synthetic, under RFC 2606's `example` label
     assert money.normalize("$5", MONEY, _ctx(page_url=f"https://shop.example.{cctld}/p")) == _ok("5", "CAD", "locale")
     assert money.normalize("$5", MONEY, _ctx(content_language=("en-NZ",))) == _ok("5", "NZD", "locale")

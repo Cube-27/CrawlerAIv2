@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.politeness import HostLimiter
@@ -18,13 +18,16 @@ from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.capture import CaptureMethod
+from crawlerai.core.egress import Egresses
+from crawlerai.core.proxy import ProxyPool
 from crawlerai.core.redaction import REDACTED
-from crawlerai.db.models import Job
+from crawlerai.db.models import Job, Site
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetch_options import UnknownProxyPool
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.jobs import job_request
 from crawlerai.services.scrape import ScrapeRequest, scrape
+from crawlerai.services.scrape_steps import DEFAULT_PROJECT
 from crawlerai.storage.artifacts import SCREENSHOT
 from crawlerai.storage.fs import FsStore
 
@@ -69,7 +72,13 @@ def web(fetch_result: Callable[..., FetchResult]) -> Web:
 @pytest.fixture
 def fetching(web: Web, tmp_path: Path) -> Fetching:
     rungs = Rungs(http=web.rung("http"), browser=web.rung("browser"))
-    return Fetching(rungs, SafeConnector(_public), FsStore(tmp_path), HostLimiter(), frozenset({"eu"}))
+    return Fetching(
+        rungs,
+        SafeConnector(_public),
+        FsStore(tmp_path),
+        HostLimiter(),
+        Egresses({"eu": ProxyPool.parse("http://proxy.test:3128")}),
+    )
 
 
 def _scrape(url: str, **members: Any) -> ScrapeRequest:
@@ -130,5 +139,30 @@ async def test_a_proxy_pool_not_configured_is_refused_before_any_job(
         {"urls": [request.url], "formats": ["markdown"], "fetch": {"proxy_pool": "us"}}
     )
     with pytest.raises(UnknownProxyPool):
-        await submit_batch(engine, fetching.connector, batch, data=None, proxy_pools=fetching.proxy_pools)
+        await submit_batch(engine, fetching.connector, batch, data=None, egresses=fetching.egresses)
     assert web.fetched == []
+
+
+async def test_a_job_pins_one_pool_and_its_egress_at_submit(engine: AsyncEngine) -> None:
+    pool = ProxyPool.parse({"endpoints": ["http://p.test:3128"], "mode": "rotate", "country": "DE"})
+    egresses = Egresses({"eu": pool, "other": ProxyPool.parse("http://q.test:3128")}, "US")
+    async with engine.begin() as conn:
+        await conn.execute(insert(Site).values(project_id=DEFAULT_PROJECT, host="pooled.example.test", proxy_pool="eu"))
+
+    async def pinned(url: str, **fetch: Any) -> tuple[str | None, str | None, str]:
+        request = BatchScrapeRequest.model_validate({"urls": [url], "formats": ["markdown"], "fetch": fetch})
+        job = await submit_batch(engine, SafeConnector(_public), request, data=None, egresses=egresses)
+        columns = (Job.request, Job.egress_country, Job.egress_basis)
+        async with engine.connect() as conn:
+            row = (await conn.execute(select(*columns).where(Job.id == job.job_id))).one()
+        return row.request["fetch"]["proxy_pool"], row.egress_country, row.egress_basis
+
+    # The first URL's site names the pool, the request's own pool wins, a pool without a declared country is unknown
+    # (never the machine's), and a job with no pool goes out from the machine.
+    assert await pinned("https://pooled.example.test/a") == ("eu", "DE", "pool")
+    assert await pinned("https://pooled.example.test/a", proxy_pool="other") == ("other", None, "unknown")
+    assert await pinned("https://plain.example.test/a") == (None, "US", "machine")
+    # A site's stored pool this deployment no longer configures is not pinned: the job fetches directly.
+    async with engine.begin() as conn:
+        await conn.execute(insert(Site).values(project_id=DEFAULT_PROJECT, host="gone.example.test", proxy_pool="old"))
+    assert await pinned("https://gone.example.test/a") == (None, "US", "machine")

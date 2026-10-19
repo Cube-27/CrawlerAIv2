@@ -42,6 +42,8 @@ const records: RecordPage = {
       complete: true,
       confidence: 0.97,
       changed_fields: [],
+      egress_country: null,
+      egress_basis: "unknown",
       fields: { title: recordField({ value: "Blue kettle" }) },
     },
   ],

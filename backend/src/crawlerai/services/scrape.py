@@ -47,6 +47,7 @@ from crawlerai.content.chunks import Chunk, ChunkOptions
 from crawlerai.content.fit import FitOptions
 from crawlerai.content.metadata import PageMetadata
 from crawlerai.content.page import ParsedPage
+from crawlerai.core.egress import Egress
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.errors import Refusal
 from crawlerai.db.models import CaptureId, Job, JobId, PageKind, SiteId
@@ -69,6 +70,7 @@ from crawlerai.services.fetching import (
     fetch_now,
     site_rungs,
 )
+from crawlerai.services.location import pin_location
 from crawlerai.services.records import RecordField, ScrapedRecord, page_fields
 from crawlerai.services.scrape_paging import actions_deadline, check_browser_actions, paged_fetch, record_states
 from crawlerai.services.scrape_steps import (
@@ -288,10 +290,11 @@ async def scrape(
     `SchemaUnusable` for a draft of another page kind. Any other exception fails the job with `internal_error` and
     propagates."""
     await check_target(fetching.connector, request.url)
-    check_proxy_pool(request.fetch, fetching.proxy_pools)
+    check_proxy_pool(request.fetch, fetching.egresses.pools)
     pinned = None if data is None else data.with_min_confidence(request.min_confidence)
     work = _Work(llm, pinned, margins, await _named_schema(engine, request, data, llm))
-    task = await _start(engine, request, work.schema)
+    request, egress = await pin_location(engine, fetching.egresses, request, request.fetch, request.url)
+    task = await _start(engine, request, work.schema, egress)
     # The browser's budget is the timeout's, which starts here (`acquire.rungs.BROWSER_MIN_S`).
     work = replace(work, deadline=time.monotonic() + request.timeout_s)
     try:
@@ -330,7 +333,7 @@ async def _named_schema(
     return await named_schema(engine, request.schema_, request.page_kind, llm)
 
 
-async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef | None) -> ClaimedTask:
+async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef | None, egress: Egress) -> ClaimedTask:
     """The running job, with its task claimed by this process. Committed on its own, so that a scrape that fails
     or times out can still record that on them."""
     async with engine.begin() as conn:
@@ -345,6 +348,8 @@ async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef 
                     status="running",
                     started_at=func.now(),
                     engine_version=ENGINE_VERSION,
+                    egress_country=egress.country,
+                    egress_basis=egress.basis,
                 )
                 .returning(Job.id)
             )
@@ -372,7 +377,6 @@ async def _run(
         policy = fetch_policy(
             request.fetch,
             request.locale,
-            site.proxy_pool,
             page_kind=request.page_kind,
             formats=request.formats,
             all_resources=site.load_all_resources,

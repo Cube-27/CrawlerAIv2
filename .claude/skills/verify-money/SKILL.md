@@ -21,7 +21,7 @@ The diff touches any of these (the CI job `verify-money` is filtered on the same
   `backend/tests/conftest.py` (the `verify` profile), `backend/pyproject.toml` / `backend/uv.lock` (Babel, CLDR data,
   price-parser, Hypothesis).
 
-Last confirmed in sync with the code at `139865e9` plus the KF-1/KF-2 fix.
+Last confirmed in sync with the code at `eeb57101` plus the P8 locale change (`numbers.readings`, `locale_set`).
 
 ## The one command
 

@@ -254,6 +254,8 @@ async def test_records_are_listed_in_the_field_shape_with_a_cursor(client: httpx
         "complete",
         "confidence",
         "fields",
+        "egress_country",
+        "egress_basis",
     }
     assert (newest["id"], newest["capture_id"]) == (str(made[1].record_id), str(made[1].capture_id))
     assert newest["fields"]["price"]["value"] == {"amount": "19.90", "currency": "EUR"}

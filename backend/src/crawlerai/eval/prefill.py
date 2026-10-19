@@ -17,7 +17,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 
 from crawlerai.collect.base import PAGE, Candidate
-from crawlerai.collect.currencies import with_stated_currencies
+from crawlerai.collect.currencies import with_page_declarations
 from crawlerai.collect.items.align import align
 from crawlerai.collect.items.bind import RowBlock
 from crawlerai.collect.items.lines import BlockText, block_texts
@@ -103,7 +103,7 @@ async def parsed_with_context(bundle: CaptureBundle) -> tuple[ParsedPage, Contex
     """The captured page parsed, and the normalizers' context it states (locales, currencies), as the pipeline reads
     them: what a label value is normalized in."""
     page = await asyncio.to_thread(ParsedPage.of, bundle)  # parsing is CPU work
-    return page, with_stated_currencies(
+    return page, with_page_declarations(
         page_context(
             page,
             bundle.manifest.final_url,
