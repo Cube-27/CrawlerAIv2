@@ -74,7 +74,7 @@ class Web:
     """Answers each URL from `pages` over HTTP; anything else is a 404. A URL of `redirects` answers as its target,
     reached through the site's redirect. A URL in `refused` redirects to a private address: the rung reports the
     guard's refusal as the attempt's error. A URL in `held` answers once its event is set. The browser renders a page
-    as it is served (`rendered` lists the URLs): a page without offer data is rendered once (owner #49)."""
+    as it is served (`rendered` lists the URLs)."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, Page] = field(default_factory=dict)

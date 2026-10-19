@@ -4,11 +4,13 @@ The rungs are stubs answering synthetic outcomes; no network.
 """
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import get_args
 
 from crawlerai.acquire.memory import Remembered
-from crawlerai.acquire.rungs import Rungs, acquire
+from crawlerai.acquire.rungs import BROWSER_MIN_S, Rungs, acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
@@ -19,7 +21,17 @@ URL = "https://shop.example.test/item/1"
 SHELL = b"<html><body><div id='app'></div></body></html>"
 PAGE = b"<html><body><h1>Item</h1></body></html>"
 # A status for each outcome a rung can report.
-STATUS: dict[BlockClass, int] = {"ok": 200, "shell": 200, "blocked": 403, "not_found": 404, "error": 500}
+STATUS: dict[BlockClass, int] = {
+    "ok": 200,
+    "shell": 200,
+    "blocked": 403,
+    "not_found": 404,
+    "error": 500,
+    "auth_wall": 401,
+    "soft_404": 200,
+    "geo_redirect": 200,
+    "redirected_to_listing": 200,
+}
 BLOCK_CLASSES: tuple[BlockClass, ...] = ("ok", "blocked", "shell", "not_found", "error")
 OVERRIDE = FetchPolicy(respect_robots=False, robots_override_reason="the site's operator asked for it")
 
@@ -150,34 +162,44 @@ def test_the_bundle_records_every_attempt_beside_its_policy() -> None:
 # --- the API recipe rung (adapters spec) ------------------------------------------------------------------------
 
 
-# --- owner #49: the browser for an HTTP `ok` page the caller finds lacking --------------------------------------------
+# --- acquisition spec "Browser on block or by field source": never for an HTTP `ok` page ----------------------------
+
+# Whether an `auto` fetch retries each HTTP outcome in the browser (the a.3 table): a block, a shell (a challenge's or
+# a script-only document's), an unanswered request; never an `ok` page, a 4xx class or a redirect class.
+RETRIED: dict[tuple[BlockClass, str | None], bool] = {
+    ("ok", None): False,
+    ("blocked", None): True,
+    ("shell", None): True,
+    ("error", "network_error: curl 92"): True,
+    ("error", "timeout"): True,
+    ("error", "http_error"): False,
+    ("not_found", None): False,
+    ("auth_wall", None): False,
+    ("soft_404", None): False,
+    ("geo_redirect", None): False,
+    ("redirected_to_listing", None): False,
+}
 
 
-@dataclass
-class Lacking:
-    """A `needs_render` check that finds the captures of `methods` lacking, recording each one it was asked about."""
+def test_the_browser_is_tried_exactly_for_the_block_classes_of_the_table() -> None:
+    assert {block_class for block_class, _ in RETRIED} == set(get_args(BlockClass))
+    for (block_class, error), retried in RETRIED.items():
+        for kind in ("detail", "listing"):
+            stubs = web(block_class, "ok")
+            stubs.http.error = error
+            # The `ok` page states no JSON-LD, Open Graph tag or price (`PAGE`): still no render.
+            stubs.acquire(FetchPolicy(page_kind=kind))
+            assert bool(stubs.browser.calls) is retried, (block_class, error, kind)
 
-    methods: tuple[CaptureMethod, ...] = ()
-    asked: list[CaptureMethod] = field(default_factory=list)
 
-    async def __call__(self, result: FetchResult, _over: FetchResult | None = None) -> bool:
-        self.asked.append(result.method)
-        return result.method in self.methods
-
-
-def _acquire_checked(stubs: Web, check: Lacking, policy: FetchPolicy | None = None) -> FetchResult:
+def test_no_browser_retry_starts_too_close_to_the_deadline() -> None:
+    stubs = web("shell", "ok")
     rungs = Rungs(http=stubs.http, browser=stubs.browser)
-    return asyncio.run(acquire(URL, policy or FetchPolicy(), Remembered(), rungs, needs_render=check))
+    deadline = time.monotonic() + BROWSER_MIN_S - 1
 
+    result = asyncio.run(acquire(URL, FetchPolicy(), Remembered(), rungs, deadline=deadline))
 
-def test_an_ok_page_lacking_what_the_caller_reads_is_rendered_and_the_render_kept_when_it_holds_it() -> None:
-    stubs = web("ok", "ok")
-
-    result = _acquire_checked(stubs, Lacking(("http",)))
-
-    assert (result.method, result.block_class) == ("browser", "ok")
-    assert _attempts(result) == [("http", "ok"), ("browser", "ok")]
-    assert result.duration_ms == 2
+    assert (result.method, stubs.browser.calls) == ("http", [])
 
 
 # --- D-1261: an HTTP listing shell kept for want of a browser outcome is the fetch's last page ---

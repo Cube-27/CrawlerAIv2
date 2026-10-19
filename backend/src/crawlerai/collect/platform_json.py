@@ -17,13 +17,12 @@ from crawlerai.adapters.platforms import answer_shapes
 from crawlerai.collect.adapter import read_shapes
 from crawlerai.collect.base import Candidate, CollectResult, Entity
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.content.context import page_context
 from crawlerai.content.page import ParsedPage
-from crawlerai.normalize.base import Context, Ok
+from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.storage.capture_bundle import CaptureManifest, network_json
+from crawlerai.storage.capture_bundle import network_json
 
-__all__ = ["PlatformJsonCollector", "data_call_bodies", "stated_fields"]
+__all__ = ["PlatformJsonCollector", "data_call_bodies"]
 
 
 def data_call_bodies(page: ParsedPage) -> frozenset[int]:
@@ -61,18 +60,3 @@ def _answers(page: ParsedPage, diagnostics: list[str]) -> Iterator[tuple[str, Js
             continue
         if platform is not None:
             yield platform, answer
-
-
-def stated_fields(
-    page: ParsedPage, manifest: CaptureManifest, schema: SchemaDef, vocabulary: Vocabulary
-) -> frozenset[str]:
-    """The fields of `schema` the page's identity-checked platform data calls state a value of (one that normalizes),
-    by top-level name: what the render check counts as shown (`services.scrape_steps.RenderNeed`). Empty, with nothing
-    read, when the page has no such call."""
-    if not data_call_bodies(page):
-        return frozenset()
-    ctx = page_context(
-        page, manifest.final_url, manifest.fetched_at, request_url=manifest.url, headers=manifest.headers.response
-    )
-    read = PlatformJsonCollector(vocabulary).collect(page, schema, ctx)
-    return frozenset(c.field.partition(".")[0] for c in read.candidates if isinstance(c.normalized, Ok))

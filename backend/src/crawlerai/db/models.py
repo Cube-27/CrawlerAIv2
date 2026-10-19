@@ -60,9 +60,6 @@ FetchMethod = Literal["http", "browser"]
 PageKind = Literal["detail", "listing"]
 # The browser engines whose cookie state is kept apart (`site_cookie_state`): Patchright's Chromium.
 BrowserEngine = Literal["patchright"]
-# The learned wait condition of a site's renders (`site_contract.settle_on`): the content alone, or also the page's
-# data calls (`acquire.browser`).
-SettleOn = Literal["content", "data_call"]
 SchemaOrigin = Literal["preset", "user", "prompt_draft"]
 SchemaStatus = Literal["active", "retired"]
 JobKind = Literal["scrape", "batch_scrape", "map", "crawl", "extract", "learn"]
@@ -240,15 +237,14 @@ class Site(Base):
 class SiteContract(Base):
     """The acquisition contract of a site's pages of one kind (acquisition spec, "Acquisition contract and block
     history"): how they were last fetched with an `ok` that HTTP alone did not give, learned from the fetch, and how
-    the pages extracted since. No row, or a stale one (`failures` at `STALE_FAILURES`), is the defaults: HTTP, the
-    browser's default settle. `checked_at` starts the 7-day re-check's clock."""
+    the pages extracted since. No row, or a stale one (`failures` at `STALE_FAILURES`), is the default: HTTP.
+    `checked_at` starts the 7-day re-check's clock."""
 
     __tablename__ = "site_contract"
     __table_args__ = (
         CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
         CheckConstraint(one_of("method", FetchMethod), name="method"),
         CheckConstraint(one_of("engine", BrowserEngine), name="engine"),
-        CheckConstraint(one_of("settle_on", SettleOn), name="settle_on"),
         CheckConstraint("failures >= 0", name="failures_non_negative"),
     )
 
@@ -258,12 +254,6 @@ class SiteContract(Base):
     method: Mapped[FetchMethod] = mapped_column(Text)
     # The browser engine whose `ok` taught the contract; None when HTTP did.
     engine: Mapped[BrowserEngine | None] = mapped_column(Text)
-    # The learned wait condition (`FetchPolicy.settle_on`); None: the browser's default settle.
-    settle_on: Mapped[SettleOn | None] = mapped_column(Text)
-    # What the browser was needed for: rendering what HTTP lacked, the page's data calls, browser steps.
-    needs_render: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
-    needs_xhr: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
-    needs_traversal: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     # The browser was needed only to pass a block, and its cookies went on to HTTP (`acquire.session`).
     handoff: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     # The last extraction with a record: the schema's field names it `found` and those `missing`.

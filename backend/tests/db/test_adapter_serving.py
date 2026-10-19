@@ -56,8 +56,7 @@ ANSWER = {
 @dataclass
 class Web:
     """Answers each URL from `pages` over HTTP, and the storefront endpoint with `answer` and, when `platform`, the
-    platform's version header. The browser renders a page as it is served (`rendered` lists the URLs): a listing page
-    the page rungs fetch gives no rows, so it is rendered once (owner #54)."""
+    platform's version header. The browser renders a page as it is served (`rendered` lists the URLs)."""
 
     fetch_result: Callable[..., FetchResult]
     pages: dict[str, bytes] = field(default_factory=dict)

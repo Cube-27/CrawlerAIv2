@@ -89,7 +89,6 @@ def scrape_handler(
             request.locale,
             recurring=records,
             served=records,
-            llm=llm,
             formats=request.formats,
         )
         result = (

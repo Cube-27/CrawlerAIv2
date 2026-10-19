@@ -52,7 +52,7 @@ class ParsedPage:
         self.network = network
         self.network_entries = network_entries
         # What a later layer derives from this parse, by the deriving class, so a page read twice for the same work is
-        # read once (INV-26): the extraction pipeline's collection, which the render check reads before extraction.
+        # read once (INV-26): the extraction pipeline's collection.
         # Each is kept with the inputs it was derived from, compared by identity.
         self.derived: dict[type, tuple[tuple[object, ...], object]] = {}
 

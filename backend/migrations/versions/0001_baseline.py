@@ -186,10 +186,6 @@ def upgrade() -> None:
         sa.Column("page_kind", sa.Text(), nullable=False),
         sa.Column("method", sa.Text(), nullable=False),
         sa.Column("engine", sa.Text(), nullable=True),
-        sa.Column("settle_on", sa.Text(), nullable=True),
-        sa.Column("needs_render", sa.Boolean(), server_default=sa.text("false"), nullable=False),
-        sa.Column("needs_xhr", sa.Boolean(), server_default=sa.text("false"), nullable=False),
-        sa.Column("needs_traversal", sa.Boolean(), server_default=sa.text("false"), nullable=False),
         sa.Column("handoff", sa.Boolean(), server_default=sa.text("false"), nullable=False),
         sa.Column("coverage", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("failures", sa.Integer(), server_default=sa.text("0"), nullable=False),
@@ -198,7 +194,6 @@ def upgrade() -> None:
         sa.CheckConstraint("failures >= 0", name=op.f("ck_site_contract_failures_non_negative")),
         sa.CheckConstraint("method IN ('http', 'browser')", name=op.f("ck_site_contract_method")),
         sa.CheckConstraint("page_kind IN ('detail', 'listing')", name=op.f("ck_site_contract_page_kind")),
-        sa.CheckConstraint("settle_on IN ('content', 'data_call')", name=op.f("ck_site_contract_settle_on")),
         sa.ForeignKeyConstraint(
             ["site_id"], ["site.id"], name=op.f("fk_site_contract_site_id_site"), ondelete="CASCADE"
         ),

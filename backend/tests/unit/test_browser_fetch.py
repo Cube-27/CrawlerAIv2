@@ -419,7 +419,7 @@ def test_a_page_that_navigates_itself_during_the_settle_is_captured_as_its_final
 ) -> None:
     shell = (
         b"<html><body><p>Interim shell</p>"
-        b"<script>setTimeout(() => location.replace('/self-final'), 1000);</script></body></html>"
+        b"<script>setTimeout(() => location.replace('/self-final'), 200);</script></body></html>"
     )
     server.routes["/self-nav"] = Reply(404, body=shell)
     server.routes["/self-final"] = Reply(body=b"<html><body><p>Final document</p></body></html>")

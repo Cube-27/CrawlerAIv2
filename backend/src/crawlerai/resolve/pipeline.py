@@ -38,7 +38,7 @@ from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canoni
 from crawlerai.content.context import page_context
 from crawlerai.content.metadata import canonical_link
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.render_need import holds_state
+from crawlerai.content.state import holds_state
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import CALIBRATION_FILE
 from crawlerai.db.models import ExtractionMode, SourceKind
@@ -301,7 +301,7 @@ class _Page:
     @classmethod
     def read(cls, source: _Source) -> "_Page":
         """The page read from `source`; the one read already from the same parse for the same capture, schema, engine
-        data and config, when there is one (`ParsedPage.derived`): the render check and extraction share it."""
+        data and config, when there is one (`ParsedPage.derived`)."""
         page = ParsedPage.of(source.bundle) if source.parsed is None else source.parsed
         key = (source.bundle.manifest, source.schema, source.data, source.config)
         derived = page.derived.get(cls)
@@ -678,9 +678,8 @@ def _absent(fields: FieldSet, absent: frozenset[str]) -> FieldSet:
 async def _unpublished_reasons(source: "_Source", page: ParsedPage, fields: FieldSet) -> FieldSet:
     """What the page's own evidence says of its unpublished fields (`page_state` module): a price missing from a page
     that states its item is not for sale is `out_of_stock`; a field missing from a page that was not rendered and whose
-    document carries its data for its script to render (`content.render_need.holds_state`) is `interaction_required`
-    (resolution spec): a render may show it, which a request asks for with `render_fields` (acquisition spec, "Browser
-    on evidence"). A rendered page, or a field the outcome explains, stays `missing`."""
+    document carries its data for its script to render (`content.state.holds_state`) is `interaction_required`
+    (resolution spec): a render may show it. A rendered page, or a field the outcome explains, stays `missing`."""
     fields = out_of_stock(source.schema, fields)
     rendered = was_rendered(source.bundle.manifest)
     holds = not rendered and await asyncio.to_thread(holds_state, page)

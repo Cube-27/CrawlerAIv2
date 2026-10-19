@@ -17,7 +17,7 @@ from pydantic import (
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.redaction import REDACTED
-from crawlerai.db.models import PageKind, SettleOn
+from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 __all__ = [
@@ -123,7 +123,8 @@ class FetchPolicy(_Frozen):
     # vendor's); the page's documents, scripts, styles and data calls still load. Off for a site that opted out
     # (`site.load_all_resources`) and for a page captured as a file, whose pixels need them.
     block_resources: bool = True
-    locale_hint: str | None = None  # request locale, for the normalizers' context
+    # The request's locale (BCP 47), for the normalizers' context and the browser context's `locale` and `timezone_id`.
+    locale_hint: str | None = None
     page_kind: PageKind | None = None  # the kind the task fetches the page as, which `classify` reads
     # A soft row target for a list an adapter's API serves in pages: its walk ends once it has at least this many rows
     # (whole pages are kept); None asks for every page, up to the adapters' hard cap (`adapters.paging.MAX_ROWS`).
@@ -135,10 +136,6 @@ class FetchPolicy(_Frozen):
     # viewport or of the whole page, and a PDF print. Either needs the browser rung (`method_hint` `browser`).
     screenshot: Literal["viewport", "full_page"] | None = None
     pdf: bool = False
-    # Browser only: the wait condition the site's memory learned (`acquire.memory`), what makes a render ready to read
-    # (`acquire.browser._ready`): `content`, its DOM states the product's offer, whatever data call is in flight;
-    # `data_call`, its data call has ended. None: the DOM states the offer and no data call is in flight.
-    settle_on: SettleOn | None = None
     # Browser only: the job whose fetches of one site render in one browser context, kept between them, so the
     # cookies, storage and passed challenges of the site's earlier pages carry on (`acquire.browser`). None: a context
     # of the fetch's own. Not part of the capture's policy.

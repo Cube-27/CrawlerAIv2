@@ -90,7 +90,6 @@ from crawlerai.services.scrape_steps import (
     Input,
     PageFormat,
     PageOutcome,
-    RenderNeed,
     SchemaPrompt,
     SchemaRequest,
     SchemaUnusable,
@@ -107,10 +106,8 @@ from crawlerai.services.scrape_steps import (
     named_schema,
     new_capture,
     page_formats,
-    parsed_page,
     record_fetch_usage,
     records_outcome,
-    render_need,
     site_row,
     store_further,
     store_page_record,
@@ -384,7 +381,6 @@ async def _run(
         row = await _stored(conn, request, policy, site.id, task.canonical_url, api=recipe is not None)
     recent = await _read_stored(fetching.store, row, request.fetch.cache, request.formats)
     attempts: list[AttemptRecord] = []
-    check = _render_need(work, request)
     further: tuple[FetchResult, ...] = ()
     report: ActionsReport | None = None
     page: FetchResult | str
@@ -398,21 +394,19 @@ async def _run(
     else:
         growth = _growth(request, fetching)
         rungs = site_rungs(fetching, host, site)
-        plan = PagePlan(
-            rungs, site, policy, attempts, recipe=recipe, needs_render=check, growth=growth, deadline=work.deadline
-        )
+        plan = PagePlan(rungs, site, policy, attempts, recipe=recipe, growth=growth, deadline=work.deadline)
         page = await fetch_now(engine, fetching, request.url, plan)
         if growth is not None and isinstance(page, FetchResult) and (grew := growth.of(page)) is not None:
             further, report = grew.pages[1:], grew.report
             record_states(further, attempts)  # the first state's attempts came with the page
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
-    derived = await _derive_reached(engine, work, request, task, page, recent, config, check)
+    derived = await _derive_reached(engine, work, request, task, page, recent, config)
     extra = await _extract_more(work, task, derived, config, further)
     members, finished = _NOT_FETCHED, _Finished("blocked")
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
-            capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page, check)
+            capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page)
             more = partial(_store_more, conn, fetching.store, task, site.id, derived, extra, work.margins)
             finished = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, more)
             members = _fetch_members(page, capture_id, fetching.rungs.adapters)
@@ -469,14 +463,13 @@ async def _derive_reached(
     page: FetchResult | str,
     recent: Recent | None,
     config: ActiveConfig | None,
-    check: RenderNeed | None,
 ) -> _Derived:
     """What `_derive` makes of the page when it was reached, else nothing; `recent` is the capture reread instead of a
     fetch, whose stored files the answer names."""
     if not isinstance(page, FetchResult) or page.block_class != "ok":
         return _NOTHING
     files = frozenset(page.artifacts) if recent is None else recent.artifacts
-    reached = (page, parsed_page(page.bundle, check))
+    reached = (page, ParsedPage.of(page.bundle))
     return await _derive(engine, work, request, task, reached, config, files=files)
 
 
@@ -522,14 +515,6 @@ async def _store_more(
     if derived.schema is None:
         return StoredFurther()
     return await store_further(conn, store, task, site_id, derived.schema, extracted, margins)
-
-
-def _render_need(work: _Work, request: ScrapeRequest) -> RenderNeed | None:
-    """The check that renders an HTTP page lacking the offer data or the items `records` reads (owner #49, #54), or
-    asked for its `render_fields`; None without `records`."""
-    if "records" not in request.formats:
-        return None
-    return render_need(work.schema, work.data, request.render_fields)
 
 
 async def _config(conn: AsyncConnection, site_id: SiteId, work: _Work) -> ActiveConfig | None:

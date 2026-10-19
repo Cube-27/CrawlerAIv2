@@ -13,7 +13,7 @@ import pytest
 
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.content.render_need import STATE_MIN_VALUES
+from crawlerai.content.state import STATE_MIN_VALUES
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
