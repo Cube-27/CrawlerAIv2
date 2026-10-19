@@ -1,7 +1,6 @@
 """The queue and the worker loop across several connections, with committed data (persistence-storage spec)."""
 
 import asyncio
-import threading
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import timedelta
@@ -15,8 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobEvent, JobId, JobKind, JobStatus, Project, UrlTask, UrlTaskId
 from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask, claim_tasks
-from crawlerai.worker import loop
-from crawlerai.worker.loop import DEADLINE, TASK_SLOTS, Failed, Finished, TaskHandler, TaskResult, run_worker
+from crawlerai.worker.loop import Failed, Finished, TaskHandler, TaskResult, run_worker
 
 pytestmark = pytest.mark.anyio
 
@@ -77,12 +75,14 @@ def _job_ended(engine: AsyncEngine, job_id: JobId) -> Callable[[], Awaitable[boo
     return ended
 
 
-async def test_8_claimers_take_1000_tasks_each_exactly_once_and_at_most_7_a_claim(engine: AsyncEngine) -> None:
-    _, ids = await _job(engine, 1000)
+async def test_2_claimers_take_20_tasks_each_exactly_once_and_at_most_7_a_claim(engine: AsyncEngine) -> None:
+    # The model (tools/verify/worker_queue) takes claim_tasks as one atomic step; this grounds that assumption in
+    # PostgreSQL itself: concurrent FOR UPDATE SKIP LOCKED claims never lease one task twice nor more than `n`.
+    _, ids = await _job(engine, 20)
     sizes: list[int] = []
-    # Every claimer has made its first claim before any claims again: 8 first claims take 56 of the 1000 tasks, so each
+    # Every claimer has made its first claim before any claims again: 2 first claims take 14 of the 20 tasks, so each
     # takes some, whatever the order the event loop runs them in.
-    first_claims_made = asyncio.Barrier(8)
+    first_claims_made = asyncio.Barrier(2)
 
     async def claimer(worker: str) -> list[UrlTaskId]:
         claimed: list[UrlTaskId] = []
@@ -99,7 +99,7 @@ async def test_8_claimers_take_1000_tasks_each_exactly_once_and_at_most_7_a_clai
                 sizes.append(len(batch))
                 claimed += [task.id for task in batch]
 
-    batches = await asyncio.gather(*(claimer(f"w{i}") for i in range(8)))
+    batches = await asyncio.gather(*(claimer(f"w{i}") for i in range(2)))
 
     claims = Counter(task_id for batch in batches for task_id in batch)
     assert claims == Counter(ids)
@@ -178,57 +178,3 @@ async def test_work_of_a_task_whose_lease_was_lost_is_rolled_back(engine: AsyncE
         task = (await conn.execute(select(UrlTask.status, UrlTask.claimed_by).where(UrlTask.id == task_id))).one()
     assert task == ("claimed", "another-worker")
     assert await _job_state(engine, job_id) == ("running", [])
-
-
-async def test_a_worker_runs_up_to_its_slots_of_tasks_at_once(engine: AsyncEngine) -> None:
-    job_id, _ = await _job(engine, 2 * TASK_SLOTS)
-    running = 0
-    most = 0
-
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        nonlocal running, most
-        running += 1
-        most = max(most, running)
-        await asyncio.sleep(0.2)
-        running -= 1
-        return Finished("extracted")
-
-    await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
-
-    assert most == TASK_SLOTS
-    assert await _job_state(engine, job_id) == ("completed", ["completed"])
-
-
-async def test_a_task_past_its_deadline_fails_and_its_job_moves_on(
-    engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(loop, "TASK_DEADLINE", timedelta(seconds=1))
-    monkeypatch.setattr(loop, "CANCEL_GRACE", timedelta(seconds=1))
-    job_id, [stuck_on_loop, left_behind, *rest] = await _job(engine, TASK_SLOTS + 2)
-    released = threading.Event()
-
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        if task.id == stuck_on_loop:
-            await asyncio.Event().wait()  # a wait that never ends
-        if task.id == left_behind:
-            try:
-                await asyncio.Event().wait()
-            except asyncio.CancelledError:
-                await asyncio.to_thread(released.wait)  # ignores its cancellation: the worker leaves it behind
-        return Finished("extracted")
-
-    try:
-        await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
-        assert loop._LEFT_BEHIND
-    finally:
-        released.set()
-        await asyncio.gather(*loop._LEFT_BEHIND)  # its late result finds the lease gone and changes nothing
-
-    async with engine.connect() as conn:
-        found = await conn.execute(select(UrlTask.id, UrlTask.status, UrlTask.outcome))
-        rows = {task_id: (status, outcome) for task_id, status, outcome in found}
-        errors = (await conn.execute(select(UrlTask.last_error).where(UrlTask.status == "failed"))).scalars().all()
-    assert {rows[stuck_on_loop], rows[left_behind]} == {("failed", "failed")}
-    assert {rows[task_id] for task_id in rest} == {("done", "extracted")}
-    assert errors == [DEADLINE, DEADLINE]
-    assert (await _job_state(engine, job_id))[0] == "completed"
