@@ -109,6 +109,9 @@ _SETTLE_SHARE = 0.9
 # then is read. An unmeasured starting point within the plan's 3 to 4 s.
 READY_MAX_S: Final = 3.5
 _POLL_S = 0.25
+# A page step that starts no data call has settled once nothing has been in flight this long: Playwright's
+# `networkidle` quiet period (500 ms).
+_STEP_QUIET_S: Final = 0.5
 # A data call is a fetch or XMLHttpRequest call (Fetch Standard §2.2.5 destinations) that can carry the page's data: one
 # to the page's own site (HTML Standard §7.1.1, its registrable domain), or one that asks for JSON (an `Accept` naming
 # a JSON MIME type, RFC 9110 §12.5.1). Calls to other sites that ask for no JSON (analytics beacons, ad and tag-manager
@@ -181,6 +184,10 @@ class _Contexts:
         return self.idle.pop(key, None)
 
     async def keep(self, key: _ContextKey, context: _Context) -> None:
+        # Two pages of a site rendered at once each had a context: the one kept first is closed, never dropped open.
+        previous = self.idle.pop(key, None)
+        if previous is not None:
+            await previous.close()
         self.idle[key] = context
         while len(self.idle) > _KEPT_CONTEXTS:
             _, oldest = self.idle.popitem(last=False)
@@ -310,8 +317,15 @@ async def stepped(page: "Rendered") -> tuple[StepOutcome, ...]:
 
     async def settle(within_s: float) -> None:
         answered = page.calls.answered
-        deadline = time.monotonic() + within_s
-        await _until(page.frame, lambda: _called(page.calls, answered), within_s, deadline)
+        begun = time.monotonic()
+        deadline = begun + within_s
+
+        async def called() -> bool:
+            # A step that starts no data call (a click that only shows what was loaded) is settled once quiet.
+            quiet = not page.calls.in_flight and time.monotonic() - begun >= _STEP_QUIET_S
+            return quiet or _called(page.calls, answered)
+
+        await _until(page.frame, called, within_s, deadline)
 
     return await run_steps(page.page, page.policy.steps, settle, lambda: len(page.calls.in_flight))
 
@@ -529,8 +543,11 @@ async def _open_context(
             await context.add_cookies(caller_cookies(url, policy.context))
         if _blocking(policy):
             await context.route("**/*", _route)
-    except BaseException:
+    except BaseException as e:
         await stack.aclose()
+        # A context the browser refused while it still runs is this fetch's error, not a crashed browser.
+        if isinstance(e, PlaywrightError) and session.browser.is_connected():
+            raise Failed("render_error", None) from e
         raise
     return _Context(context, guard, traffic, stack)
 
@@ -563,7 +580,10 @@ async def _route(route: Route) -> None:
     navigation = frame is not None and request.is_navigation_request()
     # A frame's navigation is made by the document that holds the frame; any other request by the frame's document.
     parent = None if frame is None else frame.parent_frame
-    document = parent.url if navigation and parent is not None else None if frame is None else frame.url
+    if navigation and parent is not None:
+        document: str | None = parent.url
+    else:
+        document = None if frame is None else frame.url
     navigation = navigation and parent is None
     if blocked_request(
         request.url, request.resource_type, document, navigation=navigation, blocklist=default_blocklist()
@@ -742,12 +762,12 @@ async def _until(frame: _MainFrame, ready: Callable[[], Awaitable[bool]], within
     while time.monotonic() < until:
         if frame.latest is not shown:
             shown, until = frame.latest, min(deadline, time.monotonic() + within_s)
-        elif not frame.pending and await ready():
-            return
+        elif not frame.pending and await ready() and not frame.pending and frame.latest is shown:
+            return  # no navigation began while `ready` read the document
         await asyncio.sleep(_POLL_S)
 
 
-async def _called(calls: DataCalls, answered: int) -> bool:
+def _called(calls: DataCalls, answered: int) -> bool:
     """Whether a data call has ended since `answered` had, and none is in flight."""
     return calls.answered > answered and not calls.in_flight
 
@@ -763,7 +783,7 @@ async def _ready(page: Page, frame: _MainFrame, calls: DataCalls, policy: FetchP
     if not frame.loaded:
         return False
     if policy.settle_on == "data_call":
-        return await _called(calls, answered)
+        return _called(calls, answered)
     if policy.page_kind == "listing" or (policy.settle_on is None and calls.in_flight):
         return False
     try:

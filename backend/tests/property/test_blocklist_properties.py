@@ -19,7 +19,7 @@ _VENDOR_PATHS = [path for signature in SIGNATURES for path in signature.script_p
 def test_a_listed_server_is_blocked_as_its_rule_says(name: str, sub: list[str], kind: str) -> None:
     lists = Blocklist.parse(
         f"! a comment\n||{name}.example.net^\n||{name}.example.org^$third-party\n"
-        f"||{name}.example.edu^$script,xmlhttprequest,third-party\n||x.test/path\n||y.test^$domain=a.test\n"
+        f"||{name}.typed.example^$script,xmlhttprequest,third-party\n||x.test/path\n||y.test^$domain=a.test\n"
     )
     host = ".".join([*sub, name])
 
@@ -29,7 +29,7 @@ def test_a_listed_server_is_blocked_as_its_rule_says(name: str, sub: list[str], 
     # From a document on the third-party server's own site it is first-party: only the resource type may block it.
     own = f"https://www.{name}.example.org/"
     assert blocked_request(third, kind, own, navigation=False, blocklist=lists) == (kind in _BY_TYPE)
-    typed = blocked_request(f"https://{host}.example.edu/a", kind, _PAGE, navigation=False, blocklist=lists)
+    typed = blocked_request(f"https://{host}.typed.example/a", kind, _PAGE, navigation=False, blocklist=lists)
     assert typed == (kind in _BY_TYPE | {"script", "xhr", "fetch"})
     # A line with a path or an option not read blocks nothing.
     for unread in ("https://x.test/path", "https://y.test/"):

@@ -14,6 +14,7 @@ cookies are challenge or clearance state, which is never kept nor replayed (`cha
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 __all__ = ["SIGNATURES", "ChallengeSignature", "challenge_cookie", "challenge_resource", "stand_in_vendor", "vendor_of"]
 
@@ -111,7 +112,16 @@ def challenge_cookie(name: str, value: str) -> bool:
 
 
 def challenge_resource(url: str) -> bool:
-    """Whether a request is for a vendor's challenge or bot-management resource: its URL holds one of the vendor's
-    script paths or hosts (`script_paths`). The browser never blocks one (`acquire.blocklist`): a page whose challenge
-    cannot run is refused."""
-    return any(path in url for signature in SIGNATURES for path in signature.script_paths)
+    """Whether a request is for a vendor's challenge or bot-management resource: its path holds one of the vendor's
+    script paths, or its host ends with one of the vendor's hosts (`script_paths`). The browser never blocks one
+    (`acquire.blocklist`): a page whose challenge cannot run is refused."""
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    # A path is matched in the URL's path (with its `?` when it names one), a host at the end of the URL's host: never
+    # in a query string, where any URL may carry it.
+    located = parts.path + ("?" if "?" in url else "")
+    return any(
+        (path in located) if path.startswith("/") else host.endswith(path)
+        for signature in SIGNATURES
+        for path in signature.script_paths
+    )
