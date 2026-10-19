@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import pytest
 
 from crawlerai.acquire.challenge import STRUCTURAL, vendor_block
+from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
 from crawlerai.adapters.challenges import SIGNATURES
@@ -86,7 +87,7 @@ def _task(attempts: int) -> ClaimedTask:
 
 
 def _fetched(result: FetchResult) -> FetchedPage:
-    site = SiteRow(SiteId(uuid7()), "http", None, None, None)
+    site = SiteRow(SiteId(uuid7()), Remembered(), None, None, None)
     return FetchedPage(site, result, CaptureId(uuid7()), (), result.attempts, None)
 
 

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.rungs import BROWSER_MIN_S, Rungs, acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.collect.schema_org_map import Vocabulary
@@ -114,7 +115,7 @@ def _fetch(http: str, check: RenderNeed, deadline: float | None = None) -> tuple
     browser = Rung("browser", RENDERED)
     rungs = Rungs(http=Rung("http", http), browser=browser)
     policy = FetchPolicy(page_kind="detail")
-    return asyncio.run(acquire(URL, policy, "http", rungs, needs_render=check, deadline=deadline)), browser
+    return asyncio.run(acquire(URL, policy, Remembered(), rungs, needs_render=check, deadline=deadline)), browser
 
 
 @pytest.mark.parametrize(

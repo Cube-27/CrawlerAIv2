@@ -17,7 +17,7 @@ from pydantic import (
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.redaction import REDACTED
-from crawlerai.db.models import PageKind
+from crawlerai.db.models import PageKind, SettleOn
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 __all__ = [
@@ -134,6 +134,10 @@ class FetchPolicy(_Frozen):
     # viewport or of the whole page, and a PDF print. Either needs the browser rung (`method_hint` `browser`).
     screenshot: Literal["viewport", "full_page"] | None = None
     pdf: bool = False
+    # Browser only: the wait condition the site's memory learned (`acquire.memory`): `content`, its document has what
+    # the caller reads once quiet, so a data call still in flight does not hold the read; `data_call`, it comes with
+    # one. None: the default settle, which waits for a data call in flight (`acquire.browser`).
+    settle_on: SettleOn | None = None
 
     @property
     def captures_page(self) -> bool:
@@ -169,8 +173,9 @@ class AttemptRecord(_Frozen):
     # measured from `fetched_at`, so the pause is never shorter than asked. Read by the politeness step whichever
     # attempt's outcome is kept; not stored, as the response's other headers are not.
     retry_after: timedelta | None = Field(default=None, exclude=True)
-    # D-1353: this browser `ok` opened a site session with its cookies (`acquire.session`), so the site's later fetches
-    # stay on HTTP while it lives (`rungs.remember_fetch_method`). In memory only, like `retry_after`.
+    # D-1353: this browser `ok` opened a site session with its cookies (`acquire.session`): when it was needed only to
+    # pass a block, the site's contract keeps its pages on HTTP (`acquire.memory`, handoff). In memory only, like
+    # `retry_after`.
     site_session: bool = Field(default=False, exclude=True)
     # The bytes the attempt moved both ways (`outcome.Traffic`), which `proxy_bytes` usage counts for a fetch through a
     # pool (D-1381). Not stored, as the attempt's other wire details are not.

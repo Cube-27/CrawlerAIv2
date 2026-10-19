@@ -14,6 +14,7 @@ from typing import Literal
 
 import pytest
 
+from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.content.page import ParsedPage
@@ -107,7 +108,7 @@ def _fetch(http: str, browser: str, hint: Literal["auto", "http"] = "auto") -> t
     check = RenderNeed(SCHEMA)
     render = Rung("browser", browser)
     rungs = Rungs(http=Rung("http", http), browser=render)
-    result = asyncio.run(acquire(URL, FetchPolicy(method_hint=hint), "http", rungs, needs_render=check))
+    result = asyncio.run(acquire(URL, FetchPolicy(method_hint=hint), Remembered(), rungs, needs_render=check))
     return result, check, render
 
 

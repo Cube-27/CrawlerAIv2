@@ -7,6 +7,7 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.core.capture import BlockClass, CaptureMethod
@@ -76,7 +77,8 @@ class Web:
 
     def acquire(self, policy: FetchPolicy | None = None, remembered: FetchMethod = "http") -> FetchResult:
         rungs = Rungs(http=self.http, browser=self.browser)
-        return asyncio.run(acquire(URL, policy or FetchPolicy(), remembered, rungs, recipe=self.recipe))
+        memory = Remembered(remembered)
+        return asyncio.run(acquire(URL, policy or FetchPolicy(), memory, rungs, recipe=self.recipe))
 
 
 def web(
@@ -165,7 +167,7 @@ class Lacking:
 
 def _acquire_checked(stubs: Web, check: Lacking, policy: FetchPolicy | None = None) -> FetchResult:
     rungs = Rungs(http=stubs.http, browser=stubs.browser)
-    return asyncio.run(acquire(URL, policy or FetchPolicy(), "http", rungs, needs_render=check))
+    return asyncio.run(acquire(URL, policy or FetchPolicy(), Remembered(), rungs, needs_render=check))
 
 
 def test_an_ok_page_lacking_what_the_caller_reads_is_rendered_and_the_render_kept_when_it_holds_it() -> None:

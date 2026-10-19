@@ -15,13 +15,13 @@ from typing import Any, Final, Literal, TypedDict
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import and_, select, update
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.challenge import vendor_block
+from crawlerai.acquire.memory import Coverage, Remembered, learn_extraction, learn_fetch, remembered
 from crawlerai.acquire.persist import store_capture
-from crawlerai.acquire.rungs import remember_fetch_method, remembered_as
 from crawlerai.acquire.types import AttemptRecord, FetchResult, fetched_as
 from crawlerai.collect.run import Adapters
 from crawlerai.collect.schema_org_map import VocabularyMissing
@@ -40,14 +40,12 @@ from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.core.errors import Refusal
 from crawlerai.db.models import (
     CaptureId,
-    FetchMethod,
     JobId,
     PageKind,
     ProgressiveState,
     Project,
     SchemaId,
     Site,
-    SiteFetchMethod,
     SiteId,
     UsageResource,
 )
@@ -326,12 +324,12 @@ def check_usable(schema: SchemaDef, page_kind: PageKind | None) -> None:
 
 @dataclass(frozen=True, slots=True)
 class SiteRow:
-    """A site as a fetch reads it: its id, the fetch method remembered for the page kind fetched, its proxy pool,
-    robots.txt snapshot and interval setting, the adapters that declined its host (`Registry.for_host`), and whether
-    the browser loads all its resources."""
+    """A site as a fetch reads it: its id, what its memory says of the page kind fetched (`acquire.memory`), its proxy
+    pool, robots.txt snapshot and interval setting, the adapters that declined its host (`Registry.for_host`), and
+    whether the browser loads all its resources."""
 
     id: SiteId
-    fetch_method: FetchMethod
+    remembered: Remembered
     proxy_pool: str | None
     robots_snapshot: str | None
     crawl_delay_ms: int | None
@@ -340,27 +338,23 @@ class SiteRow:
 
 
 async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None = None) -> SiteRow:
-    """The site of `host`, created in the default project the first time one of its pages is fetched, with the fetch
-    method remembered for its pages of `page_kind` (`rungs.remembered_as`; `http` when none is, acquisition spec)."""
+    """The site of `host`, created in the default project the first time one of its pages is fetched, with what its
+    memory says of its pages of `page_kind` (`acquire.memory.remembered`)."""
     await conn.execute(
         pg_insert(Site).values(project_id=DEFAULT_PROJECT, host=host).on_conflict_do_nothing(index_elements=[Site.host])
     )
-    memory = and_(SiteFetchMethod.site_id == Site.id, SiteFetchMethod.page_kind == remembered_as(page_kind))
     columns = (
         Site.id,
-        SiteFetchMethod.method,
         Site.proxy_pool,
         Site.robots_snapshot,
         Site.crawl_delay_ms,
         Site.adapter_declined,
         Site.load_all_resources,
     )
-    query = select(*columns).select_from(Site).outerjoin(SiteFetchMethod, memory).where(Site.host == host)
-    row = (await conn.execute(query)).one()
-    method: FetchMethod = "browser" if row.method == "browser" else "http"
+    row = (await conn.execute(select(*columns).where(Site.host == host))).one()
     return SiteRow(
         row.id,
-        method,
+        await remembered(conn, row.id, page_kind),
         row.proxy_pool,
         row.robots_snapshot,
         row.crawl_delay_ms,
@@ -436,12 +430,21 @@ def parsed_page(bundle: CaptureBundle, check: RenderNeed | None) -> ParsedPage:
 async def new_capture(
     conn: AsyncConnection, store: ObjectStore, site_id: SiteId, page: FetchResult, check: RenderNeed | None = None
 ) -> CaptureId:
-    """Store the fetched page's capture, and remember on its site what the fetch learned: the method it needed
-    (`remember_fetch_method`), and that its renders need every resource when `check` saw a render lose items."""
-    await remember_fetch_method(conn, site_id, page)
+    """Store the fetched page's capture, and remember on its site what the fetch learned (`acquire.memory.learn_fetch`,
+    with whether a kept render still lacks what `check` reads), and that its renders need every resource when `check`
+    saw a render lose items."""
+    await learn_fetch(conn, site_id, page, await _render_lacks(page, check))
     if check is not None and check.lost_items:
         await conn.execute(update(Site).where(Site.id == site_id).values(load_all_resources=True))
     return await store_capture(conn, store, page, site_id)
+
+
+async def _render_lacks(page: FetchResult, check: RenderNeed | None) -> bool | None:
+    """Whether a kept render still lacks what `check` reads (`acquire.memory.lesson`); None when that is unknown: no
+    render kept, no check, or a check that renders whatever the page shows (`render_fields`)."""
+    if check is None or check.render_fields or page.method != "browser" or page.block_class != "ok":
+        return None
+    return await check(page)
 
 
 async def record_fetch_usage(
@@ -493,8 +496,9 @@ async def store_page_record(
     (`partial`), and a crawl-discovered one only complete records (else `no_match`, §23); none when
     resolution failed (extraction spec). The outcome is `failed` then, and for a caller-supplied detail page without a
     record; a caller-supplied listing without rows is `partial` with none (its page was read, and listed nothing). A
-    page with a record counts toward its progressive state. A page `config` ran on joins the config's drift window
-    (learning-configs spec). `page_url` is `store_extraction`'s."""
+    page with a record counts toward its progressive state, and its coverage freshens the site's contract; a
+    caller-supplied page without one counts towards its staleness (`acquire.memory.learn_extraction`). A page `config`
+    ran on joins the config's drift window (learning-configs spec). `page_url` is `store_extraction`'s."""
     stored = await store_extraction(
         conn,
         task,
@@ -510,8 +514,12 @@ async def store_page_record(
     if config is not None:
         await record_page(conn, config, extraction, margins=margins, job_id=task.job_id)
     if stored.records:
+        await learn_extraction(conn, site_id, schema.page_kind, coverage(schema, extraction))
         await _count_page(conn, site_id, schema)
     elif caller_supplied:
+        # A caller-supplied page is of the schema's kind by the caller's word, so no record is a quality failure; a
+        # crawl-discovered page may be of no kind the schema reads.
+        await learn_extraction(conn, site_id, schema.page_kind, None)
         listed_nothing = schema.page_kind == "listing" and stored.outcome != "failed"
         return replace(stored, outcome="partial" if listed_nothing else "failed")
     return stored
@@ -584,6 +592,13 @@ async def store_further(
         failed = failed or kept.outcome == "failed"
         records.extend((record, extraction) for record in kept.records)
     return StoredFurther(tuple(records), failed)
+
+
+def coverage(schema: SchemaDef, extraction: ExtractionResult) -> Coverage:
+    """The schema's fields an extraction published, on its entity or on any of its rows, and those it did not."""
+    sets = (extraction.entity or {}, *extraction.rows)
+    found = {name for fields in sets for name, outcome in fields.items() if outcome.status == "published"}
+    return {"found": sorted(found & schema.fields.keys()), "missing": sorted(schema.fields.keys() - found)}
 
 
 def records_outcome(records: tuple[StoredRecord, ...]) -> Literal["extracted", "partial"]:

@@ -397,7 +397,7 @@ def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Wa
             result = await acquire(
                 url,
                 page.policy,
-                page.site.fetch_method,
+                page.site.remembered,
                 rungs,
                 recipe=rung,
                 validators=validators,

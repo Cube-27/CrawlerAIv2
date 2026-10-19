@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.rungs import remembered_method
+from crawlerai.acquire.memory import remembered
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.absent import ABSENT, absent_fields
 from crawlerai.config_ir.activation import activate, store_pending
@@ -186,7 +186,7 @@ async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
     await transition_job(conn, job_id, "running")
     schema = await registry.get_by_id(conn, key.schema_id)
     site = (await conn.execute(select(Site.host, Site.proxy_pool).where(Site.id == key.site_id))).one()
-    fetch = await remembered_method(conn, key.site_id, key.page_kind)
+    fetch = (await remembered(conn, key.site_id, key.page_kind, blocks=False)).method
     serving = (await conn.execute(select(ProgressiveState.active_config_id).where(*key.where()))).scalar_one()
     await record_event(conn, job_id, LEARNING_STARTED)
     return _Run(job_id, key, schema, site.host, fetch, serving, site.proxy_pool)

@@ -59,6 +59,9 @@ FetchMethod = Literal["http", "browser"]
 PageKind = Literal["detail", "listing"]
 # The browser engines whose cookie state is kept apart (`site_cookie_state`): Patchright's Chromium.
 BrowserEngine = Literal["patchright"]
+# The learned wait condition of a site's renders (`site_contract.settle_on`): the content alone, or also the page's
+# data calls (`acquire.browser`).
+SettleOn = Literal["content", "data_call"]
 SchemaOrigin = Literal["preset", "user", "prompt_draft"]
 SchemaStatus = Literal["active", "retired"]
 JobKind = Literal["scrape", "batch_scrape", "map", "crawl", "extract", "learn"]
@@ -231,20 +234,56 @@ class Site(Base):
     load_all_resources: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
 
-class SiteFetchMethod(Base):
-    """The fetch method a site's pages of one kind are remembered to need (acquisition spec, D-1380): a row once a fetch
-    of that kind kept a browser `ok` over HTTP; no row is `http`. `checked_at` starts the re-check's clock."""
+class SiteContract(Base):
+    """The acquisition contract of a site's pages of one kind (acquisition spec, "Acquisition contract and block
+    history"): how they were last fetched with an `ok` that HTTP alone did not give, learned from the fetch, and how
+    the pages extracted since. No row, or a stale one (`failures` at `STALE_FAILURES`), is the defaults: HTTP, the
+    browser's default settle. `checked_at` starts the 7-day re-check's clock."""
 
-    __tablename__ = "site_fetch_method"
+    __tablename__ = "site_contract"
     __table_args__ = (
         CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
         CheckConstraint(one_of("method", FetchMethod), name="method"),
+        CheckConstraint(one_of("engine", BrowserEngine), name="engine"),
+        CheckConstraint(one_of("settle_on", SettleOn), name="settle_on"),
+        CheckConstraint("failures >= 0", name="failures_non_negative"),
     )
 
-    site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id), primary_key=True)
+    site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id, ondelete="CASCADE"), primary_key=True)
     page_kind: Mapped[PageKind] = mapped_column(Text, primary_key=True)
+    # The rung the pages start with: `http` also when the browser was needed only to pass a block (`handoff`).
     method: Mapped[FetchMethod] = mapped_column(Text)
+    # The browser engine whose `ok` taught the contract; None when HTTP did.
+    engine: Mapped[BrowserEngine | None] = mapped_column(Text)
+    # The learned wait condition (`FetchPolicy.settle_on`); None: the browser's default settle.
+    settle_on: Mapped[SettleOn | None] = mapped_column(Text)
+    # What the browser was needed for: rendering what HTTP lacked, the page's data calls, browser steps.
+    needs_render: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    needs_xhr: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    needs_traversal: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # The browser was needed only to pass a block, and its cookies went on to HTTP (`acquire.session`).
+    handoff: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # The last extraction with a record: the schema's field names it `found` and those `missing`.
+    coverage: Mapped[dict[str, list[str]] | None] = mapped_column(JSONB)
+    # Consecutive extractions without a record since the last with one; a block is never one.
+    failures: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SiteBlock(Base):
+    """A site's recent blocks (acquisition spec, "Acquisition contract and block history"): short-lived, apart from
+    the durable contract. No row: no block since the last HTTP success, or none within `BLOCK_TTL`."""
+
+    __tablename__ = "site_block"
+    __table_args__ = (CheckConstraint("blocks > 0", name="blocks_positive"),)
+
+    site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id, ondelete="CASCADE"), primary_key=True)
+    blocks: Mapped[int] = mapped_column(Integer)
+    last_block_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # The vendor the last block's challenge named (`AttemptRecord.challenge`), when one did.
+    vendor: Mapped[str | None] = mapped_column(Text)
+    # Until when the site's pages start in the browser, once `BROWSER_FIRST_BLOCKS` blocks fell within `BLOCK_TTL`.
+    browser_first_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SiteCookieState(Base):

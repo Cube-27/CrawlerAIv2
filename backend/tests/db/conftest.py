@@ -44,7 +44,8 @@ from crawlerai.db.models import (
     Schedule,
     SchemaDef,
     Site,
-    SiteFetchMethod,
+    SiteBlock,
+    SiteContract,
     SiteId,
     SourceKind,
     UrlState,
@@ -152,7 +153,7 @@ async def _origin(database_url: str, host: str) -> AsyncIterator[str]:
     engine = create_async_engine(database_url)
     async with engine.begin() as connection:
         site_ids = select(Site.id).where(Site.host == host).scalar_subquery()
-        for model in (Record, ProgressiveState, Capture, UrlState, SiteFetchMethod):
+        for model in (Record, ProgressiveState, Capture, UrlState, SiteContract, SiteBlock):
             await connection.execute(delete(model).where(model.site_id.in_(site_ids)))
         await connection.execute(delete(Site).where(Site.host == host))
     await engine.dispose()
