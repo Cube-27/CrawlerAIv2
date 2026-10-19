@@ -149,7 +149,10 @@ D-1270, D-1271, D-1371. (Previously: only a unit word or a `type:period` phrase.
 ### Requirement: identifier, text and url
 `normalize/identifier.py` SHALL check GTIN and ISBN check digits and publish the identifier as a string, the scheme being
 the field's (D-1209); `text.py` cleans text and declines templates; `url.py` parses per WHATWG, absolutizes,
-canonicalizes and declines non-http(s) or hostless URLs, never repairing. Refs: §9, D-0287–D-0290, D-0257–D-0263, D-1022, D-1209.
+canonicalizes and declines non-http(s) or hostless URLs, never repairing; an `image_url` whose path names a file of a
+registered media type other than an image by its extension (RFC 6838: an HTML page, a video, a script) is
+`Invalid("not_an_image")`, and a path with no registered extension says nothing. (Previously: any http(s) URL but the
+page's was an image.) Refs: §9, D-0287–D-0290, D-0257–D-0263, D-1022, D-1209.
 #### Scenario: Check digit fails
 - **WHEN** one digit of a valid GTIN-13 is changed
 - **THEN** the result is `Invalid("check_digit")`

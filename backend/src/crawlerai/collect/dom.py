@@ -27,18 +27,22 @@ whose meaning the HTML Standard defines, for pages whose structured data leaves 
   (RFC 2397). A decorative image (an empty `alt`, §4.8.4.4; roles `none` and `presentation`, WAI-ARIA 1.2) is not
   it, and neither is a link card's: an image whose nearest block holding a hyperlink holds no other image, and whose
   hyperlinks lead to one other document, illustrates that document (a teaser of another product, a promotion). It
-  fills an `image_url` field whose path names schema.org `image`.
+  fills an `image_url` field whose path names schema.org `image`. An image's source is its `src`, unless its `srcset`
+  has width descriptors, which leave `src` out of its source set (HTML Standard §4.8.4.3): then its widest candidate.
+- **The gallery.** The main image's slides fill a list of images whose path names schema.org `image`: from the main
+  image up, the first block with siblings of its tag; each such block's shown image at the main image's tag path, a
+  source several blocks give (a placeholder) left out; none when a block links to another document (cards) or fewer
+  than two images remain (`_gallery`).
 
 A value must be shown on the page (`VisibleIndex`). Every candidate is the page's, like an Open Graph value, and
 independent; it goes through normalization and resolution like any other (no trust of its own). Listing schemas are
 skipped: a page-level pair says nothing of one row.
 """
 
-import mimetypes
 import re
+from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from urllib.parse import urlsplit
 
 from pydantic import JsonValue
 from selectolax.lexbor import LexborNode
@@ -53,7 +57,7 @@ from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.content.text import CELLS, shown
 from crawlerai.normalize.base import Context
 from crawlerai.normalize.dispatch import equality_key
-from crawlerai.normalize.url import canonical_url
+from crawlerai.normalize.url import canonical_url, media_type
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # HTML Standard §4.3: sectioning content of a region that is not its main content (navigation, headers, footers and
@@ -68,13 +72,12 @@ _DIALOG_ROLES = frozenset({"dialog", "alertdialog"})
 _MEDIA = frozenset({"video", "audio", "object", "canvas"})
 # WAI-ARIA 1.2 §5.4: roles `none` and `presentation` remove an element's meaning; for an image, it is decorative.
 _PRESENTATIONAL = frozenset({"none", "presentation"})
-# RFC 6838 top-level type `image`, by the standard library's built-in extension map (no system registry, so every
-# platform reads the same table).
-_MEDIA_TYPES = mimetypes.MimeTypes()
 # schema.org `Thing.image`: the property an image field's path names.
 _IMAGE = "image"
 # RFC 2397: a `data:` URL carries its content inline; it addresses no image resource.
 _INLINE = "data:"
+# HTML Standard §4.8.4.2: an image candidate string's width descriptor, a valid non-negative integer and `w`.
+_WIDTH_DESCRIPTOR = re.compile(r"\d+w")
 # A label's end: a colon (U+003A, or the fullwidth U+FF1A that CJK text writes) after optional white space.
 _COLON = re.compile(r"\s*[:\uff1a]")
 
@@ -136,7 +139,7 @@ A_HREF = "a[href]"
 
 # A field, the raw value, the XPath of the element it came from, and what the field reads of it when that is not the
 # raw value (a list field's items).
-Found = tuple[str, str, str, JsonValue]
+Found = tuple[str, JsonValue, str, JsonValue]
 Pair = tuple[str, LexborNode, str, str]  # a label's text, the element holding its value, its text and the kind
 
 
@@ -433,15 +436,27 @@ def _apart_ids(region: LexborNode, extra: frozenset[str] = frozenset()) -> froze
 
 
 def _image_found(page: ParsedPage, schema: SchemaDef, ctx: Context) -> Iterator[Found]:
-    fields = [n for n, spec in schema.fields.items() if spec.type is FieldType.IMAGE_URL and _IMAGE in properties(spec)]
-    region = _main_region(page) if fields else None
-    found = _main_image(region, ctx) if region is not None else None
+    """The main image for each image field whose path names schema.org `image`, and its gallery for each such list of
+    images."""
+    named = {n: spec for n, spec in schema.fields.items() if _IMAGE in properties(spec)}
+    fields = [n for n, spec in named.items() if spec.type is FieldType.IMAGE_URL]
+    lists = [n for n, spec in named.items() if spec.item is not None and spec.item.type is FieldType.IMAGE_URL]
+    region = _main_region(page) if fields or lists else None
+    if region is not None:
+        yield from _region_images(region, ctx, fields, lists)
+
+
+def _region_images(region: LexborNode, ctx: Context, fields: Sequence[str], lists: Sequence[str]) -> Iterator[Found]:
+    links, apart = _Links.of(region, ctx), _apart_ids(region)
+    found = _main_image(region, links, apart)
     if found is None:
         return
     image, source = found
-    xpath = node_xpath(image)
-    for name in fields:
-        yield name, source, xpath, None
+    yield from ((name, source, node_xpath(image), None) for name in fields)
+    gallery = _gallery(image, region, links, apart) if lists else None
+    if gallery is not None:
+        views: list[JsonValue] = [*gallery[1]]
+        yield from ((name, views, node_xpath(gallery[0]), None) for name in lists)
 
 
 def _main_region(page: ParsedPage) -> LexborNode | None:
@@ -453,30 +468,101 @@ def _main_region(page: ParsedPage) -> LexborNode | None:
     return None
 
 
-def _main_image(region: LexborNode, ctx: Context) -> tuple[LexborNode, str] | None:
-    links = _Links.of(region, ctx)
-    apart = _apart_ids(region)
+def _main_image(region: LexborNode, links: "_Links", apart: frozenset[int]) -> tuple[LexborNode, str] | None:
     for image in region.css("img"):
-        source = image_source(image.attributes)
-        if (
-            source is not None
-            and shown(image)
-            and not decorative(image.attributes)
-            and image.mem_id not in apart
-            and not _link_card(image, region, links)
-        ):
+        source = _shown_source(image, apart)
+        if source is not None and not _link_card(image, region, links):
             return image, source
+    return None
+
+
+def _shown_source(image: LexborNode, apart: frozenset[int]) -> str | None:
+    """A shown, non-decorative image's source, outside the elements set `apart`."""
+    if image.mem_id in apart or decorative(image.attributes) or not shown(image):
+        return None
+    return image_source(image.attributes)
+
+
+def _gallery(
+    image: LexborNode, region: LexborNode, links: "_Links", apart: frozenset[int]
+) -> tuple[LexborNode, list[str]] | None:
+    """The main image's gallery: the holder and the image sources of the blocks of one repeated structure around it.
+
+    From the main image up, the first block that has siblings of its tag (two or more blocks of one tag, the repetition
+    `_repeated_pairs` reads) is a slide among slides: each block holding a shown image at the main image's tag path
+    within its block gives that image, in document order. A block linking to another document makes the blocks cards
+    of other items (`_cards`), not views of this one, so they are no gallery. A source several blocks give is the
+    template's, as the align step reads a place every block repeats (a lazy loader's placeholder), not a view. Fewer
+    than two distinct sources are no gallery."""
+    node = image
+    while node is not region and (parent := node.parent) is not None:
+        blocks = [child for child in _children(parent) if child.tag == node.tag]
+        if len(blocks) >= _MIN_REPEATS:
+            views = _views(blocks, _tag_path(image, node), links, apart)
+            return (parent, views) if len(views) >= _MIN_REPEATS else None
+        node = parent
+    return None
+
+
+def _views(blocks: Sequence[LexborNode], path: tuple[str, ...], links: "_Links", apart: frozenset[int]) -> list[str]:
+    """The sources the blocks show once each at `path` (`_gallery`); none when a block links to another document."""
+    if any(links.of_block(block) for block in blocks):
+        return []
+    sources = [s for block in blocks if (s := _block_source(block, path, apart)) is not None]
+    counts = Counter(sources)
+    return [source for source in dict.fromkeys(sources) if counts[source] == 1]
+
+
+def _tag_path(element: LexborNode, block: LexborNode) -> tuple[str, ...]:
+    """The tags from a block (excluded) down to an element inside it (included)."""
+    tags = [element.tag or ""]
+    tags.extend(ancestor.tag or "" for ancestor in _up_to(element, block))
+    return tuple(reversed(tags))
+
+
+def _block_source(block: LexborNode, path: tuple[str, ...], apart: frozenset[int]) -> str | None:
+    """The source of a block's first shown image at the tag path `path` from the block."""
+    images = [block] if block.tag == "img" else block.css("img")
+    for image in images:
+        if _tag_path(image, block) == path and (source := _shown_source(image, apart)) is not None:
+            return source
     return None
 
 
 def image_source(attributes: Mapping[str, str | None]) -> str | None:
     """An `img` element's `src`, else the URL of its first `srcset` candidate (HTML Standard §4.8.4.3: a URL, then
-    optional descriptors, candidates separated by commas); an inline `data:` URL is none."""
-    sources = [attributes.get("src") or "", *(attributes.get("srcset") or "").split()[:1]]
-    for source in (s.strip().rstrip(",") for s in sources):
+    optional descriptors, candidates separated by commas); an inline `data:` URL is none. A `srcset` with width
+    descriptors leaves `src` out of the image's source set (HTML Standard §4.8.4.3, "update the source set"): the image
+    never shows it (a lazy loader's placeholder), so its source is the widest candidate."""
+    candidates = _srcset(attributes.get("srcset") or "")
+    widths = [width for _, width in candidates]
+    if any(width is not None for width in widths):
+        widest = max(range(len(candidates)), key=lambda i: widths[i] or 0)
+        sources = [candidates[widest][0]]
+    else:
+        sources = [attributes.get("src") or "", *(url for url, _ in candidates[:1])]
+    for source in (s.strip() for s in sources):
         if source and not source.lower().startswith(_INLINE):
             return source
     return None
+
+
+def _srcset(srcset: str) -> list[tuple[str, int | None]]:
+    """A `srcset`'s image candidate strings (HTML Standard §4.8.4.2): each URL, with its width descriptor's value when
+    it has one. A URL ends at white space, a trailing comma ending its candidate; its descriptors run to the next
+    comma."""
+    candidates: list[tuple[str, int | None]] = []
+    open_candidate = False
+    for token in srcset.split():
+        if not open_candidate:
+            candidates.append((token.rstrip(","), None))
+            open_candidate = not token.endswith(",")
+            continue
+        descriptor = token.rstrip(",")
+        if _WIDTH_DESCRIPTOR.fullmatch(descriptor):
+            candidates[-1] = (candidates[-1][0], int(descriptor[:-1]))
+        open_candidate = not token.endswith(",")
+    return candidates
 
 
 def decorative(attributes: Mapping[str, str | None]) -> bool:
@@ -520,5 +606,5 @@ class _Links:
 
 def is_image_url(url: str) -> bool:
     """Whether the URL's path names an image file (RFC 6838: the top-level type `image`, by its extension)."""
-    media_type, _ = _MEDIA_TYPES.guess_type(urlsplit(url).path)
-    return media_type is not None and media_type.startswith("image/")
+    found = media_type(url)
+    return found is not None and found.startswith("image/")

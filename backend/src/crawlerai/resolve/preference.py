@@ -226,7 +226,7 @@ class Resolver:
     ) -> Preference:
         order = self.orders[rule_type(spec)]
         # A fragment of another candidate's value (`supersede`) ranks nowhere; it can still agree with the winner.
-        fragments = superseded(spec.type, kept)
+        fragments = superseded(spec, kept)
         live, live_choosable = _without(kept, fragments), _without(choosable, fragments)
         # A kind outside the order is not ranked on dev, so it never wins; it can still agree.
         kind = next((k for k in order if any(c.source_kind == k for c in live_choosable)), None)

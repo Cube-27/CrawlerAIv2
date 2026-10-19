@@ -122,7 +122,36 @@ def test_the_main_image_is_the_first_image_of_the_main_element_outside_its_navig
         '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw="><img src="/p/1.jpg"><img src="/p/2.jpg"></main>'
     )
 
-    assert found == {"image_url": [("https://shop.example.test/p/1.jpg", "dom:/html[1]/body[1]/main[1]/img[2]")]}
+    assert found["image_url"] == [("https://shop.example.test/p/1.jpg", "dom:/html[1]/body[1]/main[1]/img[2]")]
+
+
+def test_the_main_images_slides_give_the_image_list_each_at_its_widest_source() -> None:
+    # A lazy loader's placeholder `src` is left out of a source set with width descriptors (HTML Standard §4.8.4.3);
+    # a slide without an image (a video) gives none.
+    slide = '<div><span><img src="/lazy.gif" srcset="/p/{0}.jpg?w=300 300w, /p/{0}.jpg?w=900 900w" alt=P></span></div>'
+    found = _collect(f"<main><div>{slide.format('a')}<div><video></video></div>{slide.format('b')}</div></main>")
+
+    assert found["images"] == [
+        (
+            ["https://shop.example.test/p/a.jpg?w=900", "https://shop.example.test/p/b.jpg?w=900"],
+            "dom:/html[1]/body[1]/main[1]/div[1]",
+        )
+    ]
+    assert [value for value, _ in found["image_url"]] == ["https://shop.example.test/p/a.jpg?w=900"]
+
+
+@pytest.mark.parametrize(
+    "others",
+    [
+        '<div><img src="/p/2.jpg" alt="Q"><a href="/c/b">Other product</a></div>',  # cards of other documents
+        '<div><img src="/p/1.jpg" alt="Q"></div>',  # one source in every block: the template's, not a view
+        "<div><p>Specifications</p></div>",  # no other block shows an image
+    ],
+)
+def test_blocks_that_link_elsewhere_or_repeat_one_source_are_no_gallery(others: str) -> None:
+    found = _collect(f'<main><section><div><img src="/p/1.jpg" alt="P"></div>{others}</section></main>')
+
+    assert "images" not in found
 
 
 @pytest.mark.parametrize(

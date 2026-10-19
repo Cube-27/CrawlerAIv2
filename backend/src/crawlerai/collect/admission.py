@@ -26,13 +26,11 @@ A field with candidates from other kinds admits values only by equality ("leaves
 lacking a candidate or for agreement checks"), so a value both equal and visible is not independent.
 """
 
-import mimetypes
 import re
 from collections.abc import Callable, Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
 from typing import Literal, Protocol
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
@@ -43,6 +41,7 @@ from crawlerai.collect.schema_org_map import canonical_urls
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok, raw_key
 from crawlerai.normalize.dispatch import checkable, equal, equality_key, normalize
+from crawlerai.normalize.url import media_type
 from crawlerai.schemas.types import FieldSpec, SchemaDef
 
 StateKind = Literal["js_state", "xhr"]
@@ -234,17 +233,14 @@ def _names_a_document(item: Mapping[str, JsonValue], ctx: Context) -> bool:
     return any(not _media(url) for url in canonical_urls(written, ctx))
 
 
-# The registered media types of a file name's extension (IANA media types, as Python's built-in `mimetypes` table holds
-# them; `MimeTypes()` reads that table only, never the host's files, so the answer is the same on every machine).
-_MEDIA_TYPES = mimetypes.MimeTypes()
 # RFC 6838 §4.2: the top-level types of media content rather than documents.
 _MEDIA_TOP_LEVEL = frozenset({"image", "audio", "video", "font"})
 
 
 def _media(url: str) -> bool:
     """Whether the URL's path names a file of an image, audio, video or font media type by its extension."""
-    media_type, _ = _MEDIA_TYPES.guess_type(urlsplit(url).path, strict=True)
-    return media_type is not None and media_type.partition("/")[0] in _MEDIA_TOP_LEVEL
+    found = media_type(url)
+    return found is not None and found.partition("/")[0] in _MEDIA_TOP_LEVEL
 
 
 class _Rows:
