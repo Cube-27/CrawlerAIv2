@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobEvent, JobId, JobKind, JobStatus, Project, UrlTask, UrlTaskId
 from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask, claim_tasks
+from crawlerai.worker import loop
 from crawlerai.worker.loop import Failed, Finished, TaskHandler, TaskResult, run_worker
 
 pytestmark = pytest.mark.anyio
@@ -178,3 +179,33 @@ async def test_work_of_a_task_whose_lease_was_lost_is_rolled_back(engine: AsyncE
         task = (await conn.execute(select(UrlTask.status, UrlTask.claimed_by).where(UrlTask.id == task_id))).one()
     assert task == ("claimed", "another-worker")
     assert await _job_state(engine, job_id) == ("running", [])
+
+
+async def test_work_left_behind_holding_its_row_has_its_session_ended_and_its_task_fails(
+    engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(loop, "TASK_DEADLINE", timedelta(seconds=1))
+    monkeypatch.setattr(loop, "CANCEL_GRACE", timedelta(seconds=0.5))
+    monkeypatch.setattr(loop, "_LOCK_WAIT", timedelta(seconds=5))
+    job_id, _ = await _job(engine, 1)
+    release = asyncio.Event()
+
+    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
+        # Its row locked in its open transaction, the work ignores its cancellation until released.
+        await conn.execute(update(UrlTask).where(UrlTask.id == task.id).values(priority=UrlTask.priority))
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            await release.wait()
+        return Finished("extracted")
+
+    async with asyncio.timeout(30):
+        await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
+    release.set()
+    left = set(loop._LEFT_BEHIND)
+    await asyncio.wait(left, timeout=10)
+    assert all(work.done() for work in left)
+
+    [(status, _, attempts, last_error)] = await _tasks(engine)
+    assert (status, attempts, last_error) == ("failed", 1, loop.DEADLINE)
+    assert (await _job_state(engine, job_id))[0] == "failed"

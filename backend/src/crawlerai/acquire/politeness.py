@@ -6,13 +6,20 @@ congestion signal, grow back slowly): a 429 or 503 (`SLOW_DOWN`), or a challenge
 the host's spacing, up to `BACKOFF_MAX`; after `RECOVERY_RUN` `ok` answers in a row it shrinks by `RECOVERY_FACTOR`,
 never below the site's configured interval and its robots.txt `Crawl-delay` (`interval`).
 
-The limiter's state lives in the worker process. With several workers a site sees up to one request per interval
-from each, which the design point (0.1 tasks/s) accepts; shared state is a candidate only if measured.
+A host is also held while a request to it is in flight (owner plan 2026-10-19, P1): no other task's request goes to it
+until the holder's fetch returns, browser navigations included, so a page slower than the interval is not overlapped.
+Work being cancelled (a task at its deadline) neither holds a host nor is admitted: what outlives its cancellation
+sends nothing more.
+
+The limiter's state lives in the worker process. With several workers a site sees up to one request per interval,
+and one in flight, from each, which the design point (0.1 tasks/s) accepts; shared state is a candidate only if
+measured.
 """
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Final, Protocol
@@ -94,26 +101,61 @@ def retry_after(headers: HeaderList, now: datetime) -> timedelta | None:
     return max(when - now, timedelta(0))
 
 
+def _current() -> asyncio.Task[object] | None:
+    try:
+        return asyncio.current_task()
+    except RuntimeError:  # no event loop runs: a synchronous caller
+        return None
+
+
 class HostLimiter:
-    """Admission per host: one request per spacing (a token bucket that holds one token), and none while a pause
-    a server asked for runs. The spacing is the site's interval, or longer while the host's answers asked for fewer
-    requests (`observe`)."""
+    """Admission per host: one request per spacing (a token bucket that holds one token), none while another task's
+    request to it is in flight (`holding`), and none while a pause a server asked for runs. The spacing is the site's
+    interval, or longer while the host's answers asked for fewer requests (`observe`)."""
 
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
         self._next: dict[str, float] = {}  # host -> when its next request may go, on `clock`
         self._adapted: dict[str, timedelta] = {}  # host -> its spacing, while longer than its interval
         self._ok_run: dict[str, int] = {}  # host -> `ok` answers since its spacing last changed
+        self._held: dict[str, asyncio.Task[object]] = {}  # host -> the task whose request to it is in flight
 
     def admit(self, host: str, interval: timedelta) -> timedelta:
-        """Zero, recording a request to `host` now, when one may go; otherwise how long until one may."""
+        """Zero, recording a request to `host` now, when one may go; otherwise how long until one may: while another
+        task's request to `host` is in flight, the spacing, after which the caller asks again. Raises `CancelledError`
+        in a task being cancelled (module docstring)."""
+        current = _current()
+        if current is not None and current.cancelling():
+            raise asyncio.CancelledError
         now = self._clock()
         # In timedelta's microseconds, so that a wait too short to express admits the request rather than return 0.
         wait = timedelta(seconds=self._next.get(host, now) - now)
+        if wait <= timedelta(0) and self._busy(host, current):
+            wait = self.spacing(host, interval)
         if wait > timedelta(0):
             return wait
         self._next[host] = now + self.spacing(host, interval).total_seconds()
         return timedelta(0)
+
+    @contextmanager
+    def holding(self, host: str) -> Iterator[None]:
+        """Hold `host` for the current task while the block runs (a fetch, its requests in flight): `admit` lets no
+        other task's request go to it until the block ends or the task is being cancelled. A hold the task has already
+        is kept (an adapter's request to the page's host within the page's fetch)."""
+        current = _current()
+        if current is None or self._held.get(host) is current:
+            yield
+            return
+        self._held[host] = current
+        try:
+            yield
+        finally:
+            if self._held.get(host) is current:
+                del self._held[host]
+
+    def _busy(self, host: str, current: asyncio.Task[object] | None) -> bool:
+        holder = self._held.get(host)
+        return holder is not None and holder is not current and not holder.done() and not holder.cancelling()
 
     def spacing(self, host: str, interval: timedelta) -> timedelta:
         """The time between two requests to `host` now: its `interval`, or the adapted spacing while longer."""
@@ -150,15 +192,16 @@ class HostLimiter:
     async def wait(
         self, host: str, interval: timedelta, bound: timedelta = timedelta.max, *, after: timedelta = timedelta(0)
     ) -> bool:
-        """Wait in place until a request to `host` may go, record it and answer True; answer False at once, recording
-        nothing, when it may go only more than `bound` from now. `after` pauses the host first (`pause`): a pause
+        """Wait in place until a request to `host` may go, record it and answer True; answer False, recording nothing,
+        once it may go only more than `bound` after the wait began. `after` pauses the host first (`pause`): a pause
         longer than `bound` is not waited for, and is left to the caller's backoff."""
         if after > bound:
             return False
         if after:
             self.pause(host, after)
+        give_up = self._clock() + bound.total_seconds()
         while wait := self.admit(host, interval):
-            if wait > bound:
+            if self._clock() + wait.total_seconds() > give_up:
                 return False
             await asyncio.sleep(wait.total_seconds())
         return True
