@@ -140,21 +140,16 @@ class SiteSessions:
     suffixes: Callable[[], PublicSuffixes] = default_suffixes
     store: StoredState | None = None
     _by_site: dict[tuple[str, str | None], SiteSession] = field(default_factory=dict, repr=False)
-    # Sites whose last session was refused before it served an `ok`, until when they open no other (D-1354).
-    _refused: dict[tuple[str, str | None], float] = field(default_factory=dict, repr=False)
 
     def open(self, url: str, pool: str | None, export: CookieExport, sent: HeaderList) -> SiteSession | None:
         """A session for the site of `url` through `pool`, from the cookies of `export` that belong to its registrable
         domain, challenge cookies left out, and the identity headers `sent`; it replaces the site's earlier one. None,
-        and no session, when no cookie is left, `sent` has no user agent, or the site's last session was refused
-        before it served an `ok` less than `SESSION_TTL` ago."""
+        and no session, when no cookie is left or `sent` has no user agent. A site whose sessions keep being refused
+        starts its pages in the browser for a while (`acquire.memory`, block history), which opens none."""
         site = _host(url)
         domain = self.suffixes().site(site)
         cookies = _replayable(export.cookies, domain)
         if not cookies or not any(name.lower() == _USER_AGENT for name, _ in sent):
-            return None
-        if (refused_until := self._refused.pop((site, pool), None)) is not None and self.clock() < refused_until:
-            self._refused[site, pool] = refused_until
             return None
         session = SiteSession(
             site=site,
@@ -225,9 +220,7 @@ class SiteSessions:
     async def settle(self, session: SiteSession | None, result: FetchResult) -> None:
         """Record how the fetch `session` served went. `blocked` drops it, and on a direct route the site's stored
         state: its cookies no longer pass. A live session that is refused (`blocked` or `shell`) before it served an
-        `ok` never carried the site, so it is dropped and the site opens no other for `SESSION_TTL`: its fetches go to
-        the browser rather than solving over and over. An `ok` it then serves (a fetch that was in flight) lifts that
-        refusal."""
+        `ok` never carried the site, so it is dropped too."""
         if session is None:
             return
         if result.block_class == "blocked":
@@ -235,14 +228,8 @@ class SiteSessions:
         if session.stored:
             return
         if result.block_class == "ok":
-            if not session.passed:
-                # A concurrent fetch's refusal may have been settled first: the session did carry the site after all.
-                self._refused.pop((session.site, session.pool), None)
             session.passed = True
-        elif result.block_class in ("blocked", "shell") and not session.passed:
-            self._refused[session.site, session.pool] = self.clock() + SESSION_TTL.total_seconds()
-            self.drop(session)
-        elif result.block_class == "blocked":
+        elif result.block_class == "blocked" or (result.block_class == "shell" and not session.passed):
             self.drop(session)
 
     def drop(self, session: SiteSession) -> None:

@@ -539,7 +539,7 @@ async def _navigate(
         frame,
         started + _SETTLE_SHARE * policy.browser_timeout_s,
         interstitial_deadline=started + min(_INTERSTITIAL_SHARE * policy.browser_timeout_s, _INTERSTITIAL_MAX_S),
-        calls=calls,
+        calls=None if policy.settle_on == "content" else calls,
     )
     return Rendered(page, frame, response, policy, calls)
 
@@ -605,10 +605,11 @@ def _block_refs(body: bytes) -> list[tuple[str, str]]:
 
 
 async def _settle(
-    page: Page, frame: _MainFrame, deadline: float, *, interstitial_deadline: float, calls: DataCalls
+    page: Page, frame: _MainFrame, deadline: float, *, interstitial_deadline: float, calls: DataCalls | None
 ) -> None:
     """Wait for `load`, then, while the document is an interstitial, for the next one (until `interstitial_deadline`),
-    then until the content is quiet (`_QUIET_JS`) with no data call in flight (`_CALL_WAIT_S` at most) or, for a
+    then until the content is quiet (`_QUIET_JS`) with no data call in flight (`_CALL_WAIT_S` at most; none waited
+    for without `calls`, a site whose document has what is read once quiet, `FetchPolicy.settle_on`) or, for a
     document that is no error, the network is idle (no connection for 500 ms), whichever comes first; a navigation
     the main frame commits meanwhile restarts that wait on its document; at most until `deadline`."""
     with contextlib.suppress(PlaywrightTimeout):
@@ -677,9 +678,9 @@ async def _next_document(page: Page, frame: _MainFrame, deadline: float) -> bool
     return True
 
 
-async def _content_quiet(page: Page, frame: _MainFrame, calls: DataCalls) -> None:
+async def _content_quiet(page: Page, frame: _MainFrame, calls: DataCalls | None) -> None:
     """Returns once no navigation is in flight and the document's structure and text have not changed for `_QUIET_S`,
-    nor for `_CALL_WAIT_S` more while a data call is in flight."""
+    nor for `_CALL_WAIT_S` more while one of `calls` is in flight."""
     while True:
         await asyncio.sleep(_POLL_S)
         if frame.pending:
@@ -688,7 +689,7 @@ async def _content_quiet(page: Page, frame: _MainFrame, calls: DataCalls) -> Non
             quiet = cast(float, await page.evaluate(_QUIET_JS))
         except PlaywrightError:
             continue  # the document is being replaced, and its observer with it
-        if quiet >= (_QUIET_S + _CALL_WAIT_S if calls.in_flight else _QUIET_S):
+        if quiet >= (_QUIET_S + _CALL_WAIT_S if calls is not None and calls.in_flight else _QUIET_S):
             return
 
 

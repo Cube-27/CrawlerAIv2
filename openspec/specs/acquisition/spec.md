@@ -10,14 +10,14 @@ the SSRF guard, proxies, body bounds, per-fetch cookies and site sessions, and t
 ### Requirement: Pure fetch, separate persistence
 The system SHALL fetch through a pure `acquire(...)` that returns a `FetchResult` (bundle, duration, at least one
 attempt) and writes nothing; `store_capture` writes the bundle object before its `capture` row, eval captures never
-go through it, and only `remember_fetch_method` and the re-check write `site_fetch_method`. Refs: §7.1, D-0144, D-0206,
-D-1380.
+go through it, and only `acquire/memory.py` and the re-check write the domain memory (`site_contract`, `site_block`).
+Refs: §7.1, D-0144, D-0206, D-1380.
 (Previously: `site.fetch_method`, one per site.)
 
 ### Requirement: Rung order
 The system SHALL try the detecting active adapter (only when the caller passes `send`), else the active config's API
-recipe, else the page rung: `policy.method_hint` when `http`/`browser`, else the site's remembered method (`http` for
-a new site). Every attempt is listed in the result and manifest. Refs: §7.1, D-0090; see [adapters](../adapters/spec.md).
+recipe, else the page rung: `policy.method_hint` when `http`/`browser`, else the method the site's domain memory says
+(`http` for a new site). Every attempt is listed in the result and manifest. Refs: §7.1, D-0090; see [adapters](../adapters/spec.md).
 
 ### Requirement: Browser on evidence
 In `auto`, the system SHALL retry in the browser an HTTP `shell` or `blocked` result other than 429/503, and an HTTP
@@ -70,16 +70,46 @@ plan 2026-10-18 §3.1, owner plan 2026-10-19 (crawl speed; P3 fetch classificati
 - **WHEN** an `auto` fetch's HTTP attempt ends `error` with `timeout` and the browser answers `ok`
 - **THEN** HTTP is not tried again and the browser capture is kept
 
-### Requirement: Remembered fetch method and re-check
-The system SHALL remember `browser` for a site's pages of one kind (`site_fetch_method`; a fetch with no page kind is
-the detail pages') only when a browser `ok` was kept over an HTTP attempt of the same `auto` fetch of that kind (an
-HTTP `shell`/`blocked`, or an HTTP `ok` that lacked what the caller reads) and did not open a site session; its other
-kind keeps its own memory. A scheduler re-check SHALL retry each such memory over HTTP after 7 days (the latest `ok`
-URL of that kind, robots allowing) and reset it to `http` on `ok`. (Previously: one memory per site, so a listing's
-render sent the site's detail pages to the browser.) Refs: §7.1, D-0204, D-0205, D-1260, D-1353, D-1380.
+### Requirement: Acquisition contract and block history
+The system SHALL keep a two-tier domain memory (`acquire/memory.py`), apart because a durable strategy and a
+short-lived safety bias age differently, both in Postgres so every process reads the same memory:
+- An acquisition contract per site and page kind (`site_contract`; a fetch with no page kind is the detail pages'):
+  the method the pages start with, the browser engine that taught it, the learned wait condition (`settle_on`), what
+  the browser was needed for (`needs_render`: HTTP was `ok` but lacked what the caller reads, or a shell no challenge
+  named; `needs_xhr`: the kept render's document still lacked it and the render captured network JSON;
+  `needs_traversal`: browser steps), `handoff`, and the field coverage (`found`, `missing`) of the last extraction with
+  a record. It is learned only from an `auto` fetch that tried HTTP and kept an `ok`: an HTTP `ok` teaches the
+  defaults (and leaves a contract on HTTP as it is); a browser `ok` teaches `browser`, unless HTTP was refused, the
+  render needed neither data calls nor steps, and its cookies went on to HTTP (a site session, D-1353): then it was
+  needed only to pass the block, `handoff` is set and the pages stay on `http`, their later fetches carrying the
+  stored cookie state (challenge cookies stripped, browser to HTTP only). The wait condition is `content` when the
+  kept render's document has what the caller reads (the browser then does not wait for data calls in flight once the
+  content is quiet), `data_call` when it came with the data calls, none otherwise. An unchanged contract is not
+  rewritten. A contract is stale after `STALE_FAILURES` (2) consecutive caller-supplied pages extracted without a
+  record, and a block (never extracted) is never one; a stale contract is kept but not used, and an extraction with a
+  record makes it fresh again. A scheduler re-check SHALL retry each `browser` contract over HTTP after 7 days (the
+  latest `ok` URL of that kind, robots allowing) and reset it to `http` on `ok`.
+- A block history per site (`site_block`): each HTTP request the site refused (`blocked` other than 429/503, or a
+  `shell` a challenge names) counts, the count starting over when the last block is older than `BLOCK_TTL` (15 min);
+  at `BROWSER_FIRST_BLOCKS` (2) the site's pages start in the browser for one `BLOCK_TTL`. A kept HTTP `ok` clears it.
+Precedence: a job's own `method_hint` beats memory; the block history's browser-first beats the contract's method; a
+fresh contract beats the defaults (`http`, the default settle). (Previously: `site_fetch_method` held only `http` or
+`browser`; a site session refused before any `ok` kept its site from opening another for 30 min, in process memory
+only.) Refs: §7.1, D-0204, D-0205, D-1260, D-1353, D-1380, owner plan 2026-10-19 P4 (domain memory).
 #### Scenario: Listing render
 - **WHEN** a site's listing is kept from its render because its HTTP page gave no rows
 - **THEN** the site's listings are fetched in the browser and its detail pages still over HTTP
+#### Scenario: Browser needed only to pass a block
+- **WHEN** an `auto` fetch's HTTP attempt is `blocked`, the browser's `ok` opens a site session, and its document has
+  the offer
+- **THEN** the contract says `http` with `handoff`, and the site's next fetch, in another process, goes over HTTP with
+  the stored cookies
+#### Scenario: Two blocks
+- **WHEN** two HTTP requests to a site are refused within 15 min
+- **THEN** its pages start in the browser until 15 min after the second, unless an HTTP `ok` clears the history first
+#### Scenario: Stale contract
+- **WHEN** two consecutive caller-supplied pages of a `browser` contract's kind are extracted without a record
+- **THEN** the next fetch of that kind starts over HTTP
 
 ### Requirement: HTTP and browser rungs
 The HTTP rung SHALL use `curl_cffi` impersonating Chrome (`CRAWLERAI_IMPERSONATE`, else the profile nearest the
@@ -224,10 +254,10 @@ session and the stored cookie state (`acquire/session.py`, next requirement). A 
 site's registrable domain that a browser `ok` held after a `blocked` or `shell` HTTP attempt, challenge and clearance
 cookies left out, read without change with the user agent it sent; it seeds later HTTP and JSON fetches of that site
 (`site.host`) in that domain through the same pool endpoint, and its browser contexts on a direct route (a pooled
-context picks its own endpoint), in process memory, for at most 30 min and 200 fetches; `blocked` drops it, and one refused before any `ok` leaves the site without a session for
-30 min. No cookie is logged or captured. (Previously: a vendor's clearance cookies were replayed when its signature
+context picks its own endpoint), in process memory, for at most 30 min and 200 fetches; `blocked` drops it, as does a
+`shell` before any `ok`; a site whose sessions keep being refused starts in the browser (block history, above). No cookie is logged or captured. (Previously: a vendor's clearance cookies were replayed when its signature
 called them portable.) Enforced by: cross-fetch, cross-site, cross-domain, cross-proxy, expiry, no-persistence and
-caller-cookie tests; active. Refs: §7.1, D-0321, D-0884, D-0902, owner #58, D-1350–D-1354, D-1433.
+caller-cookie tests; active. Refs: §7.1, D-0321, D-0884, D-0902, owner #58, D-1350–D-1353, D-1433.
 #### Scenario: Next fetch to the same host
 - **WHEN** fetch A receives `Set-Cookie` from `example.com` and fetch B then requests `example.com`, with no site session
   and no stored cookie state

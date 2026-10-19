@@ -17,6 +17,7 @@ from ipaddress import ip_address
 import httpx
 
 from crawlerai.acquire.api import JsonFetcher, fetch_json
+from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.rungs import Rungs, acquire
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
@@ -139,7 +140,7 @@ def test_a_page_is_served_over_the_api_with_no_browser_and_its_values_are_api_ca
     url = f"{SITE}/p/desk-lamp"
 
     result = asyncio.run(
-        acquire(url, POLICY, "browser", Rungs(http=http, browser=browser), recipe=_rung(DETAIL_RECIPE, api))
+        acquire(url, POLICY, Remembered("browser"), Rungs(http=http, browser=browser), recipe=_rung(DETAIL_RECIPE, api))
     )
 
     assert (result.method, result.block_class) == ("api", "ok")

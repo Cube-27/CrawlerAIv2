@@ -1,5 +1,5 @@
-"""Rung selection (acquisition spec): HTTP by default, the browser on evidence, and the method that
-worked remembered per site and page kind in `site_fetch_method` (D-1380).
+"""Rung selection (acquisition spec): HTTP by default, the browser on evidence, and what the site's memory says
+(`acquire.memory`): the rung its pages of the kind start with and the browser's learned wait condition.
 
 A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) first, and to the page rungs when the
 adapter does not serve it (adapters spec). A page whose own canonical link is its URL without the query, which an
@@ -20,14 +20,11 @@ from datetime import timedelta
 from typing import Final, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
-from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncConnection
-
 from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.browser_tab import ListingRung
 from crawlerai.acquire.challenge import block_class_of
 from crawlerai.acquire.classify import interstitial
+from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
 from crawlerai.acquire.session import CookieExport, SiteSessions, identity
@@ -41,7 +38,6 @@ from crawlerai.acquire.types import (
     policy_with_attempts,
 )
 from crawlerai.adapters.registry import Registry, platform_adapters
-from crawlerai.db.models import FetchMethod, PageKind, SiteFetchMethod, SiteId
 from crawlerai.storage.capture_bundle import decode_body
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
@@ -121,7 +117,7 @@ def adapter_registry(disabled: Collection[str]) -> Registry:
 async def acquire(
     url: str,
     policy: FetchPolicy,
-    remembered: FetchMethod,
+    remembered: Remembered,
     rungs: Rungs,
     *,
     recipe: Rung | None = None,
@@ -135,9 +131,10 @@ async def acquire(
     without it); a page an adapter does not serve skips the recipe (adapters spec). Otherwise through `recipe`, the
     active config's API recipe bound to its fetch (adapters spec), when the site has one. The adapter's result is kept
     when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if there
-    were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the site's `remembered`
-    method. In `auto`, an HTTP shell, block or network error is fetched again in the browser, and the browser's outcome
-    is kept only if it is `ok`; so is an HTTP `ok` page `needs_render` holds true for, whose browser outcome is kept
+    were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the method the site's
+    memory says (`remembered`); a render waits as the policy says, or else as the memory says (`settle_on`). In `auto`,
+    an HTTP shell, block or network error is fetched again in the browser, and the browser's outcome is kept only if
+    it is `ok`; so is an HTTP `ok` page `needs_render` holds true for, whose browser outcome is kept
     only if it is `ok` and `needs_render` no longer holds (owner #49, #54). Each request after the first (the page after
     an adapter or a recipe, the browser retry) waits for `admit_next` to admit it at the site's rate (acquisition spec),
     and is not sent when `admit_next` refuses it: the fetch keeps the outcome it has. The result lists every attempt, in
@@ -252,18 +249,21 @@ class _Retry:
 
 
 async def _page(
-    url: str, policy: FetchPolicy, remembered: FetchMethod, rungs: Rungs, retry: _Retry, refer: Refer | None = None
+    url: str, policy: FetchPolicy, remembered: Remembered, rungs: Rungs, retry: _Retry, refer: Refer | None = None
 ) -> Fetched:
     """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration. An HTTP
     page kept for want of a browser outcome is the fetch's last page (`_as_last_page`). An HTTP `ok` page that would
     be rendered only for lacking what the caller reads is first offered to `refer` (its adapter canonical or
     referral), whose `ok` answer is kept without the render (D-1388)."""
     needs_render = retry.needs_render
-    method = remembered if policy.method_hint == "auto" else policy.method_hint
+    method = remembered.method if policy.method_hint == "auto" else policy.method_hint
+    rendered_with = _settled(policy, remembered)
     if method == "http" and rungs.conditional is not None:
         result = await rungs.conditional(url, policy, validators=retry.validators)
+    elif method == "http":
+        result = await rungs.http(url, policy)
     else:
-        result = await (rungs.http if method == "http" else rungs.browser)(url, policy)
+        result = await rungs.browser(url, rendered_with)
     retried = policy.method_hint == "auto" and method == "http" and await _browser_may_help(result, needs_render)
     page: Fetched = (result, result.attempts, result.duration_ms)
     if retried and refer is not None and result.block_class == "ok":
@@ -279,9 +279,16 @@ async def _page(
         or not retry.in_budget()
     ):
         return await _as_last_page(result), attempts, duration_ms
-    rendered = await _browser_retry(url, policy, rungs, result)
+    rendered = await _browser_retry(url, rendered_with, rungs, result)
     kept = rendered if await _better(rendered, result, needs_render) else await _as_last_page(result)
     return kept, attempts + rendered.attempts, duration_ms + rendered.duration_ms
+
+
+def _settled(policy: FetchPolicy, remembered: Remembered) -> FetchPolicy:
+    """The policy a render goes with: its own wait condition, else the one the site's memory learned."""
+    if policy.settle_on is not None or remembered.settle_on is None:
+        return policy
+    return policy.model_copy(update={"settle_on": remembered.settle_on})
 
 
 async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: FetchResult) -> FetchResult:
@@ -384,48 +391,3 @@ def with_attempts(result: FetchResult, attempts: tuple[AttemptRecord, ...], dura
     fetch_policy = policy_with_attempts(manifest.fetch_policy, attempts)
     bundle = result.bundle.model_copy(update={"manifest": manifest.model_copy(update={"fetch_policy": fetch_policy})})
     return result.model_copy(update={"bundle": bundle, "duration_ms": duration_ms, "attempts": attempts})
-
-
-def remembered_as(kind: PageKind | None) -> PageKind:
-    """The page kind whose remembered method a fetch of `kind` reads and writes (D-1380). A fetch with no page kind is
-    classified as a detail page is (`classify` applies the listing rule to listings only), so it shares the detail
-    pages' memory."""
-    return kind or "detail"
-
-
-async def remembered_method(conn: AsyncConnection, site_id: SiteId, kind: PageKind | None) -> FetchMethod:
-    """The method remembered for the site's pages of `kind` (`remembered_as`): `http` when none is (acquisition
-    spec)."""
-    query = select(SiteFetchMethod.method).where(
-        SiteFetchMethod.site_id == site_id, SiteFetchMethod.page_kind == remembered_as(kind)
-    )
-    method: FetchMethod | None = (await conn.execute(query)).scalar_one_or_none()
-    return method or "http"
-
-
-async def remember_fetch_method(conn: AsyncConnection, site_id: SiteId, result: FetchResult) -> None:
-    """Remember `browser` for the site's pages of the kind `result` was fetched as when it kept a browser `ok` over an
-    HTTP attempt of the same fetch: HTTP failed (a shell or a block), or HTTP was `ok` but lacked what the caller reads
-    (D-1260, owner #49, #54), so the site's later fetches of that kind go straight to the browser instead of paying
-    for both; its other kind keeps its own memory (D-1380). In `auto`, a kept browser outcome follows an HTTP attempt
-    only on that evidence (`_page`). Only the re-check (`crawlerai.scheduler.recheck`) sets it back to `http`, so
-    `checked_at` starts its clock here. A browser `ok` that opened a site session leaves the kind on HTTP (D-1353): its
-    later fetches pass over HTTP with the session's cookies, and when the session ends the next refusal is solved in
-    the browser again."""
-    fetch_policy = result.bundle.manifest.fetch_policy
-    # Only `auto` renders on evidence: a browser fetch asked for (`method_hint`) is no evidence about HTTP, even beside
-    # an HTTP attempt of a recipe's page request.
-    by_evidence = fetch_policy.get("method_hint") == "auto"
-    by_http = any(a.method == "http" for a in result.attempts)
-    handed_off = any(a.site_session for a in result.attempts)
-    if result.method != "browser" or result.block_class != "ok" or not by_evidence or not by_http or handed_off:
-        return
-    row = {"site_id": site_id, "page_kind": remembered_as(fetched_as(fetch_policy)), "method": "browser"}
-    insert = pg_insert(SiteFetchMethod).values(**row, checked_at=func.now())
-    await conn.execute(
-        insert.on_conflict_do_update(
-            index_elements=[SiteFetchMethod.site_id, SiteFetchMethod.page_kind],
-            set_={"method": "browser", "checked_at": func.now()},
-            where=SiteFetchMethod.method != "browser",
-        )
-    )

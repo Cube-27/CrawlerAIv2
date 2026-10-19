@@ -1,8 +1,8 @@
-"""The scheduler's `recheck_fetch_method` (acquisition spec): a site's page kind remembered as
-`browser` (`site_fetch_method`, D-1380) is tried over HTTP again every 7 days, and set back to `http` when HTTP passes.
+"""The scheduler's `recheck_fetch_method` (acquisition spec): a site's page kind whose contract says `browser`
+(`site_contract`, `acquire.memory`) is tried over HTTP again every 7 days, and set back to `http` when HTTP passes.
 
 The URL tried is the site's latest `ok` capture fetched as that kind (a fetch with no page kind counts as a detail
-page's, `rungs.remembered_as`): a page known to exist, so a miss is evidence about the method, not the page. robots.txt
+page's, `memory.remembered_as`): a page known to exist, so a miss is evidence about the method, not the page. robots.txt
 is honoured as for any fetch; a page it disallows, or a robots.txt that cannot be read, leaves the kind on `browser`
 until the next turn.
 
@@ -21,8 +21,17 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from crawlerai.acquire.robots import site_robots
 from crawlerai.acquire.rungs import Rung
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.db.models import Capture, FetchMethod, PageKind, Site, SiteFetchMethod, SiteId
+from crawlerai.db.models import Capture, FetchMethod, PageKind, Site, SiteContract, SiteId
 
+# A contract set back to `http` forgets what the browser was needed for (`acquire.memory`).
+_HTTP: Final = {
+    "engine": None,
+    "settle_on": None,
+    "needs_render": False,
+    "needs_xhr": False,
+    "needs_traversal": False,
+    "handoff": False,
+}
 RECHECK_AFTER: Final = timedelta(days=7)  # acquisition spec (D-0009)
 # One site per run: the fetch runs inside the run's transaction, so this bounds how long a site row stays locked,
 # and the scheduler runs a full batch again at once, so a backlog still drains in one turn.
@@ -33,20 +42,20 @@ async def recheck_fetch_method(conn: AsyncConnection, fetch: Rung, *, batch: int
     """Re-check up to `batch` due (site, page kind) memories over HTTP, the longest unchecked first, and return how
     many. `fetch` is the HTTP rung."""
     due = (
-        select(SiteFetchMethod.site_id, SiteFetchMethod.page_kind, Site.robots_snapshot, Site.proxy_pool)
-        .join(Site, Site.id == SiteFetchMethod.site_id)
-        .where(SiteFetchMethod.method == "browser", SiteFetchMethod.checked_at < func.now() - RECHECK_AFTER)
-        .order_by(SiteFetchMethod.checked_at.asc())
+        select(SiteContract.site_id, SiteContract.page_kind, Site.robots_snapshot, Site.proxy_pool)
+        .join(Site, Site.id == SiteContract.site_id)
+        .where(SiteContract.method == "browser", SiteContract.checked_at < func.now() - RECHECK_AFTER)
+        .order_by(SiteContract.checked_at.asc())
         .limit(batch)
-        .with_for_update(of=SiteFetchMethod, skip_locked=True)
+        .with_for_update(of=SiteContract, skip_locked=True)
     )
     memories = (await conn.execute(due)).all()
     for memory in memories:
         method = await _method(conn, memory.site_id, memory.page_kind, memory.robots_snapshot, memory.proxy_pool, fetch)
         await conn.execute(
-            update(SiteFetchMethod)
-            .where(SiteFetchMethod.site_id == memory.site_id, SiteFetchMethod.page_kind == memory.page_kind)
-            .values(method=method, checked_at=func.now())
+            update(SiteContract)
+            .where(SiteContract.site_id == memory.site_id, SiteContract.page_kind == memory.page_kind)
+            .values(method=method, checked_at=func.now(), **({} if method == "browser" else _HTTP))
         )
     return len(memories)
 
