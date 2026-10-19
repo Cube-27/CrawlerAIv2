@@ -226,6 +226,15 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("site_id", "engine", name=op.f("pk_site_cookie_state")),
     )
     op.create_table(
+        "host_turn",
+        sa.Column("host", sa.Text(), nullable=False),
+        sa.Column("next_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("holder", sa.Text(), nullable=True),
+        sa.Column("held_until", sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint("host", name=op.f("pk_host_turn")),
+        prefixes=["UNLOGGED"],
+    )
+    op.create_table(
         "capture",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("site_id", sa.Uuid(), nullable=False),
@@ -755,6 +764,7 @@ def downgrade() -> None:
         "site_contract",
         "site_block",
         "site_cookie_state",
+        "host_turn",
         "site",
         "job",
         "schedule",

@@ -158,7 +158,7 @@ installed Patchright Chromium major, checked at startup by `acquire/impersonate.
 record headers without cookies or proxy credentials, within `timeout_s` (10 s by default). The browser rung SHALL use Patchright's full Chromium build in
 headless mode, one browser per process shared by its page fetches (worker, API, scheduler, eval) with at most
 `BROWSER_CONTEXTS` (2) of them rendering at once (`acquire/shared_browser.py`; a listing scrape with browser actions
-launches its own), a fresh context per fetch (the caller's cookies added before it navigates), one navigation, no scripted
+launches its own), recycled once worn (after 200 pages or 30 min, by the next fetch that finds no page rendering in it), a fresh context per fetch (the caller's cookies added before it navigates), one navigation, no scripted
 actions (a listing scrape's browser actions and the caller's page steps excepted, below), capped by `browser_timeout_s`
 (plus the steps' own timeouts); it aborts image, font and media requests by resource type, never by hostname, unless
 the policy captures the page as a file or the site loads every resource (`site.load_all_resources`, set when a
@@ -339,18 +339,22 @@ D-1155, D-1156.
 
 ### Requirement: Per-site rate and backoff
 The system SHALL fetch every page and JSON request through one polite fetch (`services/polite.py`): robots.txt, then
-the host's rate, then the fetch, then the observation and the back-off. It SHALL space requests to a host by
+the host's rate, then the fetch, then the observation and the back-off; a robots.txt request takes a turn and holds the
+host as a page's does (a worker postpones a fetch that has sent nothing, and once robots.txt was requested waits in place
+for the page's turn up to its bound). It SHALL space requests to a host by
 `crawl_delay_ms`, else 1 req/s, never below robots `Crawl-delay`, postponing a worker task rather than sleeping (a
 caller that waits waits in place up to one minute, a turn further off answering `blocked`, reason `slow_down`, with
-nothing sent); SHALL hold the host from a fetch's turn until the fetch ends, browser navigations included, so a process
-never has two fetches in flight to one host (a navigation and the resources its page loads are one fetch) (owner plan 2026-10-19, P1), and admit no request for work being
-cancelled; and SHALL double a host's spacing on a 429, a 503 or a challenge (at most 15 min),
+nothing sent); SHALL hold the host from a fetch's turn until the fetch ends, browser navigations included, so no two
+fetches are in flight to one host (a navigation and the resources its page loads are one fetch) (owner plan 2026-10-19, P1), and admit no request for work being
+cancelled. A process with the database shares the turns and holds with every other (`host_turn`, `acquire/host_turns.py`):
+a turn and its hold are taken in one statement, and a hold is a 1-minute lease its process renews while the fetch runs
+and gives up as the fetch is cancelled, so a process that dies holds a host at most that long. It SHALL double a host's spacing on a 429, a 503 or a challenge (at most 15 min),
 shrinking it by 10% after 20 `ok` answers in a row, never below that interval. On 429/503 it SHALL pause the host by
 one rule (`acquire/politeness.backoff`): the `Retry-After`, else 30 s doubling per try, at most 15 min, a `Retry-After`
 past 15 min ending the fetch `blocked`; each answer spends an attempt; a further request of a fetch (the 503
 interstitial's one browser attempt) waits out that pause within the caller's bound for waiting in place (the worker's
 `QUEUED` bound, a third of the task deadline; a service's one minute), and is not sent past it. (Previously: four front-ends, with three back-off
-rules.) Refs: §7.1, D-0163, D-0165, D-0901, D-1263, D-1327, master plan 2026-10-18 §4 item 5.
+rules; the rate and the hold per process, robots.txt unpaced.) Refs: §7.1, D-0163, D-0165, D-0901, D-1263, D-1327, master plan 2026-10-18 §4 item 5.
 #### Scenario: Spacing after a slow-down
 - **WHEN** a host with a 1 s interval answers 429 with `Retry-After: 5`, then `ok`
 - **THEN** the next request goes no sooner than 5 s after the 429, and the one after it 2 s later

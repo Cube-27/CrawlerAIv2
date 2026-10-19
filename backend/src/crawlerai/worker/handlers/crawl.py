@@ -49,7 +49,7 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.fetching import Fetching, SiteHttp, TargetRejected
 from crawlerai.services.map import TIMEOUT_S
-from crawlerai.services.polite import QUEUED, rules_in
+from crawlerai.services.polite import QUEUED, NoTurn, Turns, rules_in
 from crawlerai.services.scrape_steps import PageFormat, fetch_policy, record_fetch_usage, site_row
 from crawlerai.storage.base import ObjectStore
 from crawlerai.worker.handlers.steps import (
@@ -219,11 +219,15 @@ async def _sitemap_seeds(
     attempts: list[AttemptRecord] = []
     # The page's fetch has just stored a fresh snapshot, so this reads it rather than fetching, unless the page
     # redirected to another host.
-    rules = await rules_in(conn, fetching.rungs.http, attempts)(site_url, policy)
+    # The reading waits in place for the host's turns, as a further request of a task does.
+    waiting = replace(QUEUED, postpone=False)
+    try:
+        rules = await rules_in(conn, fetching.rungs.http, attempts, Turns(fetching.limiter, waiting))(site_url, policy)
+    except NoTurn:
+        rules = None
     if rules is None:
         return [], {}
-    # The reading waits in place for the host's turns, as a further request of a task does.
-    polite = SiteHttp(fetching, rules, policy, attempts, replace(QUEUED, postpone=False))
+    polite = SiteHttp(fetching, rules, policy, attempts, waiting)
     reader = SitemapReader(polite.sitemap_body, frontier.scope.host)
     start = roots(site_url, () if rules.robots is None else rules.robots.sitemaps)
     seeds: dict[str, None] = {}

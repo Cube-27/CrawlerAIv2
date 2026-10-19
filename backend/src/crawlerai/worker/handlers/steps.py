@@ -59,6 +59,7 @@ from crawlerai.services.polite import (
     PageFetch,
     ReadRules,
     Refused,
+    Turns,
     polite_fetch,
     rules_in,
 )
@@ -220,7 +221,7 @@ async def fetch_page(
     deadline = time.monotonic() + TASK_DEADLINE.total_seconds()
     plain = PagePlan(rungs, site, policy, [], validators=validators, has_record=bool(standing), deadline=deadline)
     plan = _plan(task, served, llm, listing_pages, plain)
-    rules = rules_in(conn, fetching.rungs.http, plan.attempts)
+    rules = rules_in(conn, fetching.rungs.http, plan.attempts, Turns(fetching.limiter, QUEUED))
     fetch = page_fetch(fetching, plan, rules, QUEUED)
     by_adapter = rungs.adapters.would_serve(task.url)
     fetched = await fetch_queued(task, policy, rules, fetch, fetching.limiter, by_adapter=by_adapter)

@@ -118,4 +118,4 @@ def test_a_slow_down_with_a_retry_after_pauses_the_endpoint_host(tmp_path: Path)
 
     asyncio.run(one())
 
-    assert limiter.admit(PAGE_HOST, timedelta(seconds=1)) == timedelta(seconds=20)
+    assert asyncio.run(limiter.admit(PAGE_HOST, timedelta(seconds=1))) == timedelta(seconds=20)

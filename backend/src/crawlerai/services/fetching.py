@@ -44,6 +44,7 @@ from crawlerai.services.polite import (
     PageFetch,
     ReadRules,
     Refused,
+    Turns,
     Waiting,
     page_first,
     polite_fetch,
@@ -230,7 +231,7 @@ def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
 
         async def replay(request: JsonRequest) -> FetchResult:
             attempts: list[AttemptRecord] = []
-            rules = rules_of(engine, fetching.rungs.http, attempts)
+            rules = rules_of(engine, fetching.rungs.http, attempts, Turns(fetching.limiter, IN_PLACE))
             result = await _polite_send(fetching, json, rules, _Turn(None))(request, policy)
             async with engine.begin() as conn:
                 await record_fetch_usage(conn, job_id, [*attempts, *result.attempts], proxy_pool)
@@ -421,7 +422,7 @@ async def fetch_now(
     (`polite.Refused`); the adapter declines it made are stored on the site (D-1384). Raises `TargetRejected` when the
     guard refused a request of the fetch (INV-16)."""
     host = urlsplit(url).hostname or ""
-    rules = rules_of(engine, fetching.rungs.http, page.attempts)
+    rules = rules_of(engine, fetching.rungs.http, page.attempts, Turns(fetching.limiter, IN_PLACE))
     fetch = page_fetch(fetching, page, rules, IN_PLACE)
     by_adapter = page.rungs.adapters.would_serve(url)
     result = await polite_fetch(

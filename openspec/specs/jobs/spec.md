@@ -13,8 +13,8 @@ Job and task kinds, statuses and outcomes SHALL be those in `db/models.py`; task
 UPDATE SKIP LOCKED` by priority, then fairness between jobs, then id ("Crawl strategy and best-first scoring") under a 10-minute lease; a fetch `error` is retried to 3 attempts with backoff
 30 s × 2^(n−1) (`core/retry.backoff_delay`, the rule the polite fetch also pauses a host by), a page `blocked` by a
 vendor's challenge once, every other outcome is terminal, and an SSRF or redirect refusal fails the task at once.
-Politeness is per site in the worker. A worker SHALL run up to `TASK_SLOTS` (4) tasks at once, claiming only for a free
-slot, and SHALL end a task still running at `TASK_DEADLINE` (3 min, inside the lease): cancelled, recorded `failed`
+Politeness is per site, shared by every worker. A worker SHALL run up to `TASK_SLOTS` (4: twice its browser's
+`BROWSER_CONTEXTS`) tasks at once, claiming only for a free slot, and SHALL end a task still running at `TASK_DEADLINE` (3 min, inside the lease): cancelled, recorded `failed`
 with a `timeout` error, not retried, so its job moves on; work that outlives its cancellation has its database session
 ended, and the failure is recorded before the lease expires, so the task is never claimed again beside it. (Previously: a vendor block was terminal; a worker claimed 10
 tasks and ran them one at a time with no deadline.) Refs: §6, D-0006, D-0632, D-0705, D-0764, owner plan 2026-10-19

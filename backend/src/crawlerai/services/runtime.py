@@ -13,6 +13,7 @@ from crawlerai.acquire.api import fetch_json
 from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
 from crawlerai.acquire.browser_tab import Drive, fetch_listing
 from crawlerai.acquire.cookie_store import CookieStore
+from crawlerai.acquire.host_turns import HostTurns
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
 from crawlerai.acquire.politeness import HostLimiter
@@ -53,7 +54,8 @@ async def open_fetching(
 ) -> AsyncIterator[Fetching]:
     """What a process fetches pages with (acquisition spec): HTTP, the process's one shared browser (launched when a
     fetch first needs it), the adapters and the process's site sessions, all through one SSRF guard; the browser
-    closes with the block. With a `database` and a cookie key, the site sessions keep the stored cookie state in it."""
+    closes with the block. With a `database`, hosts' turns and holds are shared with every process through it
+    (`acquire.host_turns`), and with a cookie key too, the site sessions keep the stored cookie state in it."""
     connector = connector or SafeConnector()
     pools = settings.proxy_pools
     key = settings.cookie_key
@@ -111,7 +113,8 @@ async def open_fetching(
             exporting=browser.fetch,
             listing=listing,
         )
-        yield Fetching(rungs, connector, open_store(settings.object_store), HostLimiter(), frozenset(pools))
+        limiter = HostLimiter(shared=None if database is None else HostTurns(database))
+        yield Fetching(rungs, connector, open_store(settings.object_store), limiter, frozenset(pools))
 
 
 def _search(settings: Settings) -> SearchProvider | None:
