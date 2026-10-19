@@ -100,7 +100,7 @@ async def _work() -> None:
     settings = Settings()
     engine = create_async_engine(settings.database_url.get_secret_value())
     try:
-        async with open_fetching(settings) as fetching:
+        async with open_fetching(settings, database=engine) as fetching:
             # The normalizers' all-locale tables are built before the first task, not by it.
             await asyncio.to_thread(warm)
             store, adapters = fetching.store, fetching.rungs.adapters
@@ -201,7 +201,7 @@ async def _eval_import_labels(file: Path) -> None:
     labeled = label_file.labeled_pages(pages, schemas)
     engine = create_async_engine(database_url)
     try:
-        async with aclosing(dev_store(settings)) as store, open_fetching(settings) as fetching:
+        async with aclosing(dev_store(settings)) as store, open_fetching(settings, database=engine) as fetching:
             data = load_engine_data(fetching.rungs.adapters)
             fetch = partial(_polite_page, engine, fetching, data)
             outcomes = await label_file.import_pages(store, schemas, labeled, fetch, await store.page_urls())

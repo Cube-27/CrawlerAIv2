@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     Text,
     TextClause,
@@ -56,6 +57,8 @@ WebhookDeliveryId = NewType("WebhookDeliveryId", uuid.UUID)
 
 FetchMethod = Literal["http", "browser"]
 PageKind = Literal["detail", "listing"]
+# The browser engines whose cookie state is kept apart (`site_cookie_state`): Patchright's Chromium.
+BrowserEngine = Literal["patchright"]
 SchemaOrigin = Literal["preset", "user", "prompt_draft"]
 SchemaStatus = Literal["active", "retired"]
 JobKind = Literal["scrape", "batch_scrape", "map", "crawl", "extract", "learn"]
@@ -229,6 +232,21 @@ class SiteFetchMethod(Base):
     page_kind: Mapped[PageKind] = mapped_column(Text, primary_key=True)
     method: Mapped[FetchMethod] = mapped_column(Text)
     checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SiteCookieState(Base):
+    """The cookies a browser engine's context held after an `ok` page of the site (acquisition spec, "Stored cookie
+    state"), challenge cookies left out, encrypted (`acquire.cookie_store`); `fingerprint` (an HMAC of the plain
+    state) says whether a new state differs. No row: none is kept."""
+
+    __tablename__ = "site_cookie_state"
+    __table_args__ = (CheckConstraint(one_of("engine", BrowserEngine), name="engine"),)
+
+    site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id, ondelete="CASCADE"), primary_key=True)
+    engine: Mapped[BrowserEngine] = mapped_column(Text, primary_key=True)
+    state: Mapped[bytes] = mapped_column(LargeBinary)
+    fingerprint: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class SchemaDef(Base):

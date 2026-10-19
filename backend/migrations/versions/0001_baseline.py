@@ -189,6 +189,19 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("site_id", "page_kind", name=op.f("pk_site_fetch_method")),
     )
     op.create_table(
+        "site_cookie_state",
+        sa.Column("site_id", sa.Uuid(), nullable=False),
+        sa.Column("engine", sa.Text(), nullable=False),
+        sa.Column("state", sa.LargeBinary(), nullable=False),
+        sa.Column("fingerprint", sa.Text(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint("engine IN ('patchright')", name=op.f("ck_site_cookie_state_engine")),
+        sa.ForeignKeyConstraint(
+            ["site_id"], ["site.id"], name=op.f("fk_site_cookie_state_site_id_site"), ondelete="CASCADE"
+        ),
+        sa.PrimaryKeyConstraint("site_id", "engine", name=op.f("pk_site_cookie_state")),
+    )
+    op.create_table(
         "capture",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("site_id", sa.Uuid(), nullable=False),
@@ -714,6 +727,7 @@ def downgrade() -> None:
         "extraction_config",
         "capture",
         "site_fetch_method",
+        "site_cookie_state",
         "site",
         "job",
         "schedule",
