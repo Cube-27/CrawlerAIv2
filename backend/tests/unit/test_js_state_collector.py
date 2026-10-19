@@ -12,8 +12,10 @@ from pydantic import JsonValue
 
 from crawlerai.collect.admission import Admitted
 from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
-from crawlerai.collect.js_state import JsStateCollector
+from crawlerai.collect.currencies import declared_currencies
+from crawlerai.collect.js_state import JsStateCollector, state_documents
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.state_decoders import revive_astro_props
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId, SourceKind
 from crawlerai.normalize.base import Context, NormalizeResult, Ok
@@ -136,4 +138,218 @@ def test_a_visible_value_in_an_array_row_is_owned_by_its_row() -> None:
     )
 
 
-# One value repeated under many paths (D-1343): one candidate per field, normalized value and owner.
+def _documents(page: ParsedPage) -> list[JsonValue]:
+    return [document.data for document in state_documents(page, [])]
+
+
+LAMP = {"name": "Desk lamp", "price": 19.99, "currency": "EUR"}
+
+
+def test_a_devalue_iife_reads_with_its_parameters_substituted() -> None:
+    # devalue `uneval` output as Nuxt 2 writes it after `window.__NUXT__=`: repeated values hoisted into parameters.
+    script = (
+        'window.__NUXT__=(function(a,b,c){return {layout:"default",data:[{product:{name:"Desk lamp",price:a,'
+        'currency:b,tags:[c,c]}}],state:{cart:{currency:b}},serverRendered:true,routePath:"\\u002Fp\\u002Flamp"}}'
+        '(19.99,"EUR",void 0));'
+    )
+
+    assert _documents(_page(script)) == [
+        {
+            "layout": "default",
+            "data": [{"product": {**LAMP, "tags": [None, None]}}],
+            "state": {"cart": {"currency": "EUR"}},
+            "serverRendered": True,
+            "routePath": "/p/lamp",
+        }
+    ]
+
+
+def test_a_devalue_flat_array_reads_as_the_tree_it_references() -> None:
+    # devalue `stringify` as Nuxt 3 writes `__NUXT_DATA__`: indices into the array, Nuxt's reviver tuples, a Date.
+    payload = [
+        ["ShallowReactive", 1],
+        {"data": 2, "state": 8, "serverRendered": 11},
+        ["ShallowReactive", 3],
+        {"product-1": 4},
+        {"name": 5, "price": 6, "offers": 7, "updated": 12},
+        "Desk lamp",
+        19.99,
+        [13, 13],
+        ["Reactive", 9],
+        {"$scurrency": 10},
+        ["Ref", 14],
+        True,
+        ["Date", "2026-10-01T00:00:00.000Z"],
+        {"price": 6},
+        "EUR",
+    ]
+
+    documents = _documents(_page(json.dumps(payload), script_type="application/json"))
+
+    assert documents == [
+        {
+            "data": {
+                "product-1": {
+                    "name": "Desk lamp",
+                    "price": 19.99,
+                    "offers": [{"price": 19.99}, {"price": 19.99}],
+                    "updated": "2026-10-01T00:00:00.000Z",
+                }
+            },
+            "state": {"$scurrency": "EUR"},
+            "serverRendered": True,
+        }
+    ]
+
+
+def test_a_normalized_cache_reads_with_its_references_replaced_root_query_first() -> None:
+    # Apollo SSR: `JSON.stringify(cache.extract())` with `<` escaped, `__ref` members naming cache IDs.
+    script = (
+        'window.__APOLLO_STATE__={"Product:1":{"__typename":"Product","name":"Desk lamp \\u003c 40 W",'
+        '"offer":{"__ref":"Offer:9"}},"Offer:9":{"__typename":"Offer","price":"19.99","currency":"EUR"},'
+        '"ROOT_QUERY":{"__typename":"Query","product({\\"id\\":\\"1\\"})":{"__ref":"Product:1"}}};'
+    )
+    offer = {"__typename": "Offer", "price": "19.99", "currency": "EUR"}
+    product = {"__typename": "Product", "name": "Desk lamp < 40 W", "offer": offer}
+
+    [document] = _documents(_page(script))
+
+    assert document == {
+        "ROOT_QUERY": {"__typename": "Query", 'product({"id":"1"})': product},
+        "Product:1": product,
+        "Offer:9": offer,
+    }
+    assert isinstance(document, dict)
+    assert next(iter(document)) == "ROOT_QUERY"
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        # Redux SSR: `JSON.stringify(preloadedState).replace(/</g, '\\u003c')`.
+        'window.__PRELOADED_STATE__ = {"product":{"name":"\\u003cb\\u003eDesk lamp","price":19.99}}',
+        # Pinia SSR: devalue's JS literal, `<` escaped as `\\u003C`.
+        "window.__pinia = {product:{name:'\\u003Cb\\u003EDesk lamp',price:19.99,},}",
+    ],
+)
+def test_serialized_state_reads_with_its_escapes(script: str) -> None:
+    assert _documents(_page(script)) == [{"product": {"name": "<b>Desk lamp", "price": 19.99}}]
+
+
+ANALYTICS = """
+window.dataLayer = window.dataLayer || [];
+dataLayer.push({ ecommerce: null });
+dataLayer.push({
+  event: "view_item",
+  ecommerce: {currency: "USD", value: 30.03, items: [{item_id: "SKU_1", price: 10.01, quantity: 3,},],},
+});
+fbq('track', 'ViewContent', {value: 30.03, currency: 'USD', content_ids: ['SKU_1'], content_type: 'product'});
+"""
+
+
+def test_analytics_call_arguments_are_documents_and_declare_their_currency() -> None:
+    page = _page(ANALYTICS)
+
+    assert _documents(page) == [
+        {"ecommerce": None},
+        {
+            "event": "view_item",
+            "ecommerce": {
+                "currency": "USD",
+                "value": 30.03,
+                "items": [{"item_id": "SKU_1", "price": 10.01, "quantity": 3}],
+            },
+        },
+        {"value": 30.03, "currency": "USD", "content_ids": ["SKU_1"], "content_type": "product"},
+    ]
+    assert declared_currencies(page) == ("USD",)
+
+
+def test_the_object_argument_of_a_start_call_is_a_document() -> None:
+    # SvelteKit's hydration script: a bare assignment whose value holds calls (not state), then `kit.start` with
+    # `devalue.uneval` data among reference arguments.
+    script = """{
+      __sveltekit_x1 = {base: new URL(".", location).pathname.slice(0, -1), env: {}};
+      const element = document.currentScript.parentElement;
+      Promise.all([import("./start.js"), import("./app.js")]).then(([kit, app]) => {
+        kit.start(app, element, {
+          node_ids: [0, 2],
+          data: [null,{type:"data",data:{product:{name:"Desk lamp",price:19.99,currency:"EUR"}},uses:{params:["id"]}}],
+          form: null,
+          error: null
+        });
+      });
+    }"""
+
+    assert _documents(_page(script)) == [
+        {
+            "node_ids": [0, 2],
+            "data": [None, {"type": "data", "data": {"product": LAMP}, "uses": {"params": ["id"]}}],
+            "form": None,
+            "error": None,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        'window.__S = {cost: "€5.00", f: function () { return 1; }};',
+        'window.__S = {cost: "€5.00", at: stamp()};',
+        'var s = {cost: "€5.00", n: compute({x: 1}.x)}',
+        'window.__NUXT__=(function(a){a.self=a;return {cost:a}}("€5.00"));',
+        'dataLayer.push({cost: "€5.00", done: () => go()});',
+        'var s = {cost: "€5.00"}.cost;',
+        # Commented out, or written inside a string: not a statement.
+        '// dataLayer.push({cost: "€5.00"});',
+        '/* window.__S = {cost: "€5.00"}; */',
+        'log("dataLayer.push({cost: 1})");',
+        # Bounds: nesting past the reader's depth, and parameters used past its size.
+        "window.__S = " + "[" * 100_000,
+        "window.__S = (function(a){return [" + "a," * 2_000 + "]}([" + "0," * 1_000 + "]))",
+    ],
+)
+def test_code_inside_a_value_ends_the_read_with_no_document(script: str) -> None:
+    assert _documents(_page(script, body="€5.00")) == []
+
+
+def test_an_array_whose_root_references_itself_is_no_flat_array() -> None:
+    # devalue numbers values in first-visit order: the root's members name elements after it.
+    document: JsonValue = [{"id": 0}]
+
+    assert _documents(_page(json.dumps(document), script_type="application/json")) == [document]
+
+
+def test_a_flat_array_whose_references_expand_past_the_bound_stays_as_written() -> None:
+    # Each element references the next twice: the tree it stands for has 2**40 leaves.
+    links: list[JsonValue] = [[i + 2, i + 2] for i in range(40)]
+    payload: list[JsonValue] = [{"a": 1}, *links, "leaf"]
+
+    assert _documents(_page(json.dumps(payload), script_type="application/json")) == [payload]
+
+
+def test_astro_island_props_revive_from_their_type_tuples() -> None:
+    # Astro `serializeObject`: every value a `[type, value]` tuple; `undefined` is `[0]`.
+    props: JsonValue = {
+        "product": [
+            0,
+            {
+                "name": [0, "Desk lamp"],
+                "price": [0, 19.99],
+                "sizes": [1, [[0, "S"], [0, "M"]]],
+                "added": [3, "2026-10-01T00:00:00.000Z"],
+                "gone": [0],
+            },
+        ]
+    }
+
+    assert revive_astro_props(props) == {
+        "product": {
+            "name": "Desk lamp",
+            "price": 19.99,
+            "sizes": ["S", "M"],
+            "added": "2026-10-01T00:00:00.000Z",
+            "gone": None,
+        }
+    }
+    assert revive_astro_props({"name": "Desk lamp"}) is None

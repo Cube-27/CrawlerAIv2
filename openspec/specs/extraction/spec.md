@@ -76,8 +76,38 @@ D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-1
 - **WHEN** a page states only `og:description` for its product
 - **THEN** that text is the `description` candidate, ranked behind JSON-LD and microdata
 
+### Requirement: Source documents
+The system SHALL read a page's embedded state as source documents, by documented structure and never by a variable name
+or key (`content/state.py`, `content/js_literal.py`, `content/state_decoders.py`). In every inline script but JSON-LD's,
+in script order: the text of a `<script type="application/json">`; the object or array literal after the `=` of
+`window.X =`, `var|let|const X =` or a bare `X =` (ECMAScript assignment); and each object literal argument of a call
+`X(...)` or `X.y(...)` whose arguments before it are literals or references (ECMAScript CallExpression: GA4
+`dataLayer.push`, Meta Pixel `fbq`, SvelteKit `kit.start`). Values are read by the JS literal reader: the ECMAScript
+literal subset (object and array literals with identifier, string or numeric keys and trailing commas, string literals
+in either quote with their escapes, numeric literals, `true|false|null`, `undefined` and `void 0` as `null`,
+parentheses) and the devalue IIFE `(function(a,...){return <literal>}(<args>))` with each parameter replaced by its
+argument (Nuxt 2 `window.__NUXT__=`). Comments and string and template literals hold no statement. A value holding
+anything else (a function, a call, an operator), or followed by more of its expression, is code and gives no document;
+nesting deeper than 128 or more than 10^6 values gives none either. Each document is then decoded by shape: a **devalue
+flat array** (element 0 an object whose every value is an in-range index after it, or a Nuxt reviver tuple naming one;
+Nuxt 3 `__NUXT_DATA__`) becomes the tree its indices reference, with the `Reactive`, `Ref`, `ShallowRef`,
+`ShallowReactive`, `EmptyRef`, `EmptyShallowRef`, `NuxtError` revivers and devalue's `Date`, `Map`, `Set`, `null` types
+read as JSON; a **normalized cache** (an object of objects holding `{"__ref": key}` members; Apollo `InMemoryCache`) is
+read with every `__ref` replaced by the entry it names, `ROOT_QUERY` first. References on their own path are not
+followed, and a decoded tree past the same bounds leaves the document as written.
+#### Scenario: Nuxt 2 devalue state
+- **WHEN** a script writes `window.__NUXT__=(function(a,b){return {data:[{price:a,currency:b}]}}(19.99,"EUR"))`
+- **THEN** its document is `{"data": [{"price": 19.99, "currency": "EUR"}]}`
+#### Scenario: Analytics payload
+- **WHEN** a script calls `dataLayer.push({event: "view_item", ecommerce: {currency: "USD", value: 30.03}})`
+- **THEN** that object is a state document, admitted by the rule of "Embedded JSON state and XHR admission" and its
+  `currency` a declared page currency
+#### Scenario: Code in a value
+- **WHEN** an assigned object holds `f: function () { return 1; }` or `at: stamp()`
+- **THEN** it gives no document and no error
+
 ### Requirement: Embedded JSON state and XHR admission
-The system SHALL admit a scalar from `<script>` JSON, JS assignments or captured XHR bodies (other than an
+The system SHALL admit a scalar from the state documents ("Source documents") or captured XHR bodies (other than an
 identity-checked data call's, "Structured-data collectors") only when it equals another
 kind's candidate (`independent=false`, owned by that candidate's entity), or when the field has none, the value is
 visible and its type is checkable (`collect/admission.py`) and the value shows the type's checked syntax (`Ok.checked`:
