@@ -34,3 +34,5 @@ def test_a_money_claim_is_grounded_at_the_text_whatever_the_spacing_after_its_si
     assert align(SpanClaim(value="$19.98", start=0, end=0), text) is None
     assert align(SpanClaim(value="$9.98", start=0, end=0), text, money=True) is None
     assert align(SpanClaim(value="219.98 €", start=0, end=0), "1 219.98€", money=True) is None
+    assert align(SpanClaim(value="$19.98", start=0, end=0), "$ 19.98 \u2013 $ 24.99", money=True) is None
+    assert align(SpanClaim(value="$24.99", start=0, end=0), "$ 19.98 \u2013 $ 24.99", money=True) is None

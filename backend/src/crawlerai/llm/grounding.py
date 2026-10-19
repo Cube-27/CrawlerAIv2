@@ -88,13 +88,18 @@ def align(claim: SpanClaim, cleaned_text: str, *, money: bool = False) -> Ground
     return GroundedSpan(cleaned_text[start:end], start, end)
 
 
+# A spaced match is not one end of a displayed range (`$ 19.98 - $ 24.99`): no range dash right before or after it.
+_DASHES = "\\-\u2013\u2014~"
+_NOT_AFTER_DASH = rf"(?<![{_DASHES}])(?<![{_DASHES}]\s)"
+_NOT_BEFORE_DASH = rf"(?!\s*[{_DASHES}])"
 # One amount: digits, with the grouping and decimal marks between them.
 _AMOUNT = re.compile(r"\d(?:[\d.,'\u00a0\u202f ]*\d)?")
 
 
 def _sign_spaced(value: str, text: str) -> list[tuple[int, int]]:
     """The spans of `text` that write `value`'s one amount with its sign before or after it, with any whitespace (or
-    none) between sign and digits (CLDR `currencySpacing`); not inside a longer or grouped number."""
+    none) between sign and digits (CLDR `currencySpacing`); not inside a longer or grouped number, nor one end of a
+    range."""
     amounts = list(_AMOUNT.finditer(value))
     if len(amounts) != 1:
         return []
@@ -105,7 +110,8 @@ def _sign_spaced(value: str, text: str) -> list[tuple[int, int]]:
     # With no sign before it, the amount must not be the tail of a grouped number (`1 219.98`).
     prefix = rf"{re.escape(before)}\s*" if before else r"(?<!\d[\s'])"
     suffix = rf"\s*{re.escape(after)}" if after else ""
-    pattern = rf"(?<![\d.,]){prefix}{re.escape(amount.group())}(?![\d]){suffix}"
+    amount_text = re.escape(amount.group())
+    pattern = rf"{_NOT_AFTER_DASH}(?<![\d.,]){prefix}{amount_text}(?![\d]){suffix}{_NOT_BEFORE_DASH}"
     return [match.span() for match in re.finditer(pattern, text)]
 
 
