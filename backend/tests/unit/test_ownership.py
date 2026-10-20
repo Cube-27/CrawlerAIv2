@@ -18,12 +18,15 @@ AGGREGATE = Entity(id="jsonld:0:$['offers'][1]", types=("AggregateOffer",), urls
 INNER_OFFER = Entity(
     id="jsonld:0:$['offers'][1]['offers']", types=("Offer",), urls=(), parent=AGGREGATE.id, via="offers"
 )
+ADD_ON = Entity(  # an Offer an Offer names otherwise (`addOn`): another item's
+    id="jsonld:0:$['offers']['addOn']", types=("Offer",), urls=(), parent=OFFER.id, via="addOn"
+)
 BRAND = Entity(id="jsonld:0:$['brand']", types=("Brand",), urls=(), parent=PRODUCT.id, via="brand")
 RELATED = Entity(id="jsonld:0:$['isRelatedTo']", types=("Product",), urls=(), parent=PRODUCT.id, via="isRelatedTo")
 RELATED_OFFER = Entity(id="jsonld:0:$['isRelatedTo']['offers']", types=("Offer",), urls=(), parent=RELATED.id)
 OTHER = Entity(id="jsonld:1:$", types=("Product",), urls=(), parent=None)
 
-ENTITIES = (PRODUCT, OFFER, AGGREGATE, INNER_OFFER, BRAND, RELATED, RELATED_OFFER, OTHER)
+ENTITIES = (PRODUCT, OFFER, AGGREGATE, INNER_OFFER, ADD_ON, BRAND, RELATED, RELATED_OFFER, OTHER)
 
 
 def _candidate(entity: Entity | str) -> Candidate:
@@ -56,7 +59,8 @@ def _candidate(entity: Entity | str) -> Candidate:
         (PAGE, True),  # page-level values describe the target (§4.6 step 4)
         (OFFER, True),  # an Offer of the target (atomic offers, §4.8)
         (AGGREGATE, True),  # AggregateOffer is an Offer (rdfs:subClassOf)
-        (INNER_OFFER, False),  # an Offer of an Offer is not the target's child
+        (INNER_OFFER, True),  # an AggregateOffer's Offers offer the same item (schema.org `offers`)
+        (ADD_ON, False),  # an Offer an Offer holds otherwise than as its `offers`
         (BRAND, False),  # another thing the target names
         (RELATED, False),  # a related product
         (RELATED_OFFER, False),  # a related product's Offer

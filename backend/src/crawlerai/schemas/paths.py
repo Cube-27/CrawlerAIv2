@@ -11,7 +11,7 @@ syntax, so parsing never fails.
 import re
 from typing import Literal, NamedTuple
 
-from crawlerai.schemas.types import FieldSpec, FieldType
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent
 
 
 class Predicate(NamedTuple):
@@ -67,6 +67,32 @@ def _predicates(written: str) -> Filters:
 # schema.org data model ("Conformance"): where a property expects a Thing, a text value is accepted; the text names
 # that thing. So a path ending in `.name` takes the text that stands in for the thing.
 NAME = ("name",)
+
+
+def required_types(schema: SchemaContent) -> tuple[str, ...]:
+    """The schema.org types the schema's required row fields' `schema_org` paths start at (each alternative's), sorted:
+    the types of the items a page is read for (a listing's page fields describe the page, not its rows)."""
+    return _roots(schema, {name for name, spec in schema.fields.items() if spec.required})
+
+
+def target_types(schema: SchemaContent) -> tuple[str, ...]:
+    """`required_types`, the fields a `required_groups` group names counted as required: a schema may require its row
+    data only through a group."""
+    grouped = {name for group in schema.required_groups for name in group}
+    return _roots(schema, grouped | {name for name, spec in schema.fields.items() if spec.required})
+
+
+def _roots(schema: SchemaContent, names: set[str]) -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            {
+                path.root
+                for name in names
+                if (spec := schema.fields.get(name)) is not None and spec.schema_org and spec.scope == "row"
+                for path in parse_paths(spec.schema_org)
+            }
+        )
+    )
 
 
 def named_property(path: MappedPath) -> str:

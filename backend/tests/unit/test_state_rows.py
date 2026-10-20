@@ -44,3 +44,15 @@ def test_a_value_the_page_does_not_show_is_not_read() -> None:
     result = _listing(_html(body=_state(items) + _SHOWN), data=COMMITTED)
 
     assert [sorted(row) for row in _row_values(result)] == [["title", "url"]] * 3
+
+
+def test_only_the_contents_links_ground_a_state_rows_item_url() -> None:
+    # WAI-ARIA 1.2 `menubar`: a menu's links are the site's navigation; the same links in the content ground the rows.
+    links = '<p><a href="/p/1">View</a></p><div><a href="/p/2">View</a></div><section><a href="/p/3">View</a></section>'
+    state = _state([_item(n) for n in (1, 2, 3)])
+
+    in_menu = _listing(_html(body=f'{state}<div role="menubar">{links}</div>'), data=COMMITTED)
+    in_content = _listing(_html(body=f"{state}<div>{links}</div>"), data=COMMITTED)
+
+    assert in_menu.rows == ()
+    assert [row["url"] for row in _row_values(in_content)] == [_url(n) for n in (1, 2, 3)]

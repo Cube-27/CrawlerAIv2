@@ -33,7 +33,9 @@ NOT_SERVED: Final = "not_served"
 # collectors read with that adapter's shapes (`collect.run`).
 ADAPTER_CALL: Final = "adapter"
 
-Members = tuple[str, ...]  # member names from a JSON object to a value; `ALL` takes every item of an array
+# Steps from a JSON object to a value: a member name, `ALL` for every item of an array, or an index for one item of it
+# (RFC 9535 §2.3.3, the index selector).
+Members = tuple[str | int, ...]
 
 
 @dataclass(frozen=True)
@@ -135,7 +137,8 @@ class Referring(Protocol):
     """An adapter whose platform serves sites on tenants' own hosts, which tell their platform page only by what the
     site's own page states (adapters spec)."""
 
-    def referred(self, refs: PageRefs, kind: PageKind | None, /) -> str | None:
+    def referred(self, refs: PageRefs, kind: PageKind | None, types: tuple[str, ...], /) -> str | None:
         """The platform page URL (one `detect` accepts) that the page with `refs` stands for, as the page kind `kind`
-        (None: any); None when its references do not say, or say several."""
+        (None: any), read for the schema.org types `types` (the fetch policy's `target_types`); None when its
+        references do not say, or say several."""
         ...

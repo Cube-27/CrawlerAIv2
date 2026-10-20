@@ -85,3 +85,37 @@ def test_every_section_of_one_row_shape_gives_rows_each_item_once() -> None:
 
     assert [row["url"] for row in _row_values(result)] == [_url(n) for n in (1, 2, 3, 4, 5, 6)]
     assert all(row["price"] == _price(n) for n, row in zip(range(1, 7), _row_values(result), strict=True))
+
+
+def test_a_cards_shown_amount_rivals_its_stated_rows_and_two_shown_amounts_contest_it() -> None:
+    # Resolution spec, "the visible price": a card's one shown amount publishes over its row's stated one, flagged; a
+    # card showing two amounts, neither the stated one, leaves the price a conflict; one of them equal to it agrees.
+    offer = {"@type": "Offer", "price": "28.59", "priceCurrency": "EUR"}
+    stated = _item_list(*(_row(n, offers=offer) for n in range(1, 6)))
+    two = "</span><span>".join
+    shown = [
+        "15.58 EUR",
+        two(["15.58 EUR", "17.29 EUR"]),
+        two(["28.59 EUR", "31.00 EUR"]),
+        two(["28.59 EUR", "31.00 EUR"]),
+    ]
+    cards = _cards(*(_card(n, price=price) for n, price in enumerate(shown, 1)), _card(5))
+
+    result = _listing(_html(stated, body=cards), data=COMMITTED)
+
+    outcomes = [(row["price"].status, row["price"].value, row["price"].reason) for row in result.rows]
+    assert outcomes[0] == ("published", {"amount": "15.58", "currency": "EUR"}, "disagree")
+    assert outcomes[1] == ("conflict", None, "disagree")
+    assert outcomes[2] == ("published", {"amount": "28.59", "currency": "EUR"}, None)
+    assert outcomes[4] == ("published", _price(5), "disagree")
+
+
+def test_a_rows_price_inside_its_aggregate_offer_is_the_rows() -> None:
+    # schema.org `offers`: an AggregateOffer's Offers offer its item, so their price is the row's.
+    def aggregate(n: int) -> dict[str, JsonValue]:
+        offer: dict[str, JsonValue] = {"@type": "Offer", "price": f"{n}.50", "priceCurrency": "EUR"}
+        return {"@type": "AggregateOffer", "offerCount": 1, "offers": [offer]}
+
+    result = _listing(_html(_item_list(*(_row(n, offers=aggregate(n)) for n in (1, 2, 3)))), data=COMMITTED)
+
+    assert [row.get("price") for row in _row_values(result)] == [_price(n) for n in (1, 2, 3)]

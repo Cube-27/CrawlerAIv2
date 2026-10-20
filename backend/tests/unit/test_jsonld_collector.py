@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate, CollectResult, Entity
 from crawlerai.collect.jsonld import JsonLdCollector
@@ -445,3 +446,41 @@ def test_a_property_value_a_field_label_names_gives_its_value_to_the_entity_hold
 
     assert found == [("jsonld:0:$", "M-7"), ("jsonld:0:$['isRelatedTo']", "M-8")]
     assert _collect(block, schema=_schema(mpn=mpn)).candidates == ()
+
+
+def test_an_image_object_is_the_url_it_states() -> None:
+    # schema.org `image`: ImageObject or URL; a MediaObject's `contentUrl` is its file, else its `url`.
+    images = [
+        {"@type": "ImageObject", "contentUrl": "/a.png", "url": "/a-page"},
+        {"@type": "ImageObject", "url": "https://shop.example.test/b.png"},
+        "/c.png",
+    ]
+
+    result = _collect({"@context": SCHEMA_ORG, "@type": "Product", "name": "Widget 9", "image": images})
+
+    found = next(c for c in result.candidates if c.field == "images")
+    expected: list[JsonValue] = [f"https://shop.example.test/{name}.png" for name in "abc"]
+    assert found.normalized == Ok(expected)
+
+
+def test_a_listed_product_named_only_by_its_iri_has_that_item_url() -> None:
+    # JSON-LD 1.1 §4.1.2: `@id` is the node's IRI, read last for a row's item URL: absolute, on the page's site, with no
+    # fragment, and not the page's own URL.
+    listing = _schema(
+        title=_text("Product.name"), url=FieldSpec(type=FieldType.URL, description="d", schema_org="Product.url")
+    ).model_copy(update={"page_kind": "listing"})
+    ids = [
+        "https://shop.example.test/p/7",
+        "https://shop.example.test/p/8#product",
+        "https://elsewhere.example/p/9",
+        PAGE_URL,
+        "https://shop.example.test/p/10",
+    ]
+    items = [{"@type": "Product", "@id": iri, "name": f"Widget {n}"} for n, iri in enumerate(ids)]
+    items[4]["url"] = "https://shop.example.test/p/11"
+    elements = [{"@type": "ListItem", "position": n + 1, "item": item} for n, item in enumerate(items)]
+
+    result = _collect({"@context": SCHEMA_ORG, "@type": "ItemList", "itemListElement": elements}, schema=listing)
+
+    stated, named = (Ok(f"https://shop.example.test/p/{n}") for n in (11, 7))
+    assert [c.normalized for c in result.candidates if c.field == "url"] == [stated, named]

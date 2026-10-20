@@ -259,7 +259,7 @@ def _referred(page: FetchResult, policy: FetchPolicy, adapters: Registry) -> str
     canonical link, `og:url`, links; adapters spec): a site on a tenant's own host that the platform serves."""
     if page.block_class != "ok":
         return None
-    return adapters.referred(lambda: page_refs(page), policy.page_kind)
+    return adapters.referred(lambda: page_refs(page), policy.page_kind, policy.target_types)
 
 
 def _same_resource(a: str, b: str) -> bool:

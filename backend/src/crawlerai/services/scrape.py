@@ -380,6 +380,7 @@ async def _run(
             request.fetch,
             request.locale,
             page_kind=request.page_kind,
+            schema=work.schema,
             formats=request.formats,
             all_resources=site.load_all_resources,
         )
