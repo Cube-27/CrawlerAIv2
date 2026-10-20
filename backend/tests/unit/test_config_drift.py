@@ -12,12 +12,14 @@ from crawlerai.config_ir.drift import (
     drifted,
     extend,
     observe,
+    relocated,
 )
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
+from crawlerai.config_ir.progressive import LocateRequest
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
+from crawlerai.db.models import JobId, SchemaId
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
@@ -105,3 +107,15 @@ def test_validity_below_the_margin_suspends_a_field_that_still_matches() -> None
     assert drifted(ir, at, MARGINS) == []
     (found,) = drifted(ir, _window(("price", [HIT, DECLINED, HIT, DECLINED])), MARGINS)
     assert (found.field, found.yield_, found.validity) == ("price", 1.0, 0.5)
+
+
+def test_a_drifted_located_field_requeues_a_locate_run_while_the_surface_locates() -> None:
+    rendered = {**_field("//div[@class='price']"), "needs": "browser"}
+    ir = _ir(title=_field(), price=rendered)
+
+    job = JobId(uuid7())
+    assert relocated(ir, ["title", "price"], "locate", job) == LocateRequest(job_id=job, fields=["price"])
+    assert relocated(ir, ["price"], "off") is None
+    assert relocated(ir, ["title"], "always") is None
+    by_locate = ir.model_copy(update={"provenance": ir.provenance.model_copy(update={"origin": "located"})})
+    assert relocated(by_locate, ["title"], "always") == LocateRequest(fields=["title"])
