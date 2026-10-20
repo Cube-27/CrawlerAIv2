@@ -10,12 +10,16 @@ by the OGP specification and the `product:` namespace that Open Graph product ma
 OGP's basic metadata (`og:title`, `og:image`, `og:url`) describes one object. Client-rendered pages often keep the
 site's own defaults there: an `og:title` that names the site (`site_names`) says the object is the site, so its
 `og:title`, `og:image` and `og:description` are not the entity's. A title that ends in separator segments naming the
-site is read without them.
+site is read without them, and a title that holds the words of a slug in the page URL's path is read as those words:
+the slug names the item, the words around it are the site's wording ("Buy ... Online").
 """
 
+import re
+import unicodedata
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from urllib.parse import unquote, urlsplit
 
 from pydantic import JsonValue
 
@@ -145,7 +149,46 @@ def _without_site_values(metas: list[_Meta], ctx: Context) -> tuple[list[_Meta],
     site = SiteNames.of([m.content for m in metas if m.property == _SITE_NAME], ctx.page_url)
     if site.names(title):
         return [m for m in metas if m.property not in _SITE_DEFAULTS], (_SITE_TITLE,)
-    return [replace(m, reading=site.without_site(m.content)) if m.property == _TITLE else m for m in metas], ()
+    return [
+        replace(m, reading=slug_span(site.without_site(m.content), ctx.page_url)) if m.property == _TITLE else m
+        for m in metas
+    ], ()
+
+
+# A word: a run of letters and digits (Unicode categories L* and N*).
+_WORD = re.compile(r"[^\W_]+")
+
+
+def slug_span(title: str, page_url: str | None) -> str:
+    """The run of the title's words that the page URL's slug spells, after words of the title's own, else the title.
+    The slug is the last path segment (RFC 3986 §3.3, percent-decoded) of two or more words, one with a letter, joined
+    by separators: a hierarchical path names its item below its categories, so earlier segments are the item's
+    categories, not its name. The slug names the document's item, so the words before it are the site's wording
+    ("Buy"), and so are the words after it. A title that starts with the slug's words is read as written: its further
+    words may go on naming the item. Words compare folded (`_folded`)."""
+    slug = _slug(page_url) if page_url is not None else None
+    if slug is None:
+        return title
+    words = list(_WORD.finditer(title))
+    keys = [_folded(w.group()) for w in words]
+    if keys[: len(slug)] == slug:
+        return title
+    start = next((i for i in range(1, len(keys) - len(slug) + 1) if keys[i : i + len(slug)] == slug), None)
+    return title if start is None else title[words[start].start() : words[start + len(slug) - 1].end()]
+
+
+def _slug(page_url: str) -> list[str] | None:
+    """The last path segment of the page URL that reads as a slug (`slug_span`), as its folded words."""
+    segments = [_WORD.findall(_folded(unquote(segment))) for segment in urlsplit(page_url).path.split("/")]
+    slugs = [words for words in segments if len(words) >= 2 and any(not w.isdigit() for w in words)]
+    return slugs[-1] if slugs else None
+
+
+def _folded(text: str) -> str:
+    """NFKD with the combining marks dropped, case folded (Unicode default case folding): a slug writes `Café` as
+    `cafe`."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
 
 
 def _candidates(metas: Sequence[_Meta], schema: SchemaDef, ctx: Context) -> Iterator[Candidate]:

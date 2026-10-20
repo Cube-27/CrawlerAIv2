@@ -17,12 +17,18 @@ C4):
   author's, a category's page: an item is listed once), and the block's item is the one other document its links lead
   to at the tag path where a quorum of the blocks link to one such document. A block without one such document is no
   row.
-- **name** (a row text field whose path names schema.org `name`, or JobPosting `title`): the accessible name of the
-  block's first hyperlink to its item that has one (WAI-ARIA Accessible Name and Description Computation 1.2:
-  `aria-labelledby`, `aria-label`, its content when that is one line of text, the `alt` of an image it holds when it
-  shows no text, its `title`), or the block's one heading (HTML Standard §4.3.6, WAI-ARIA role `heading`). Content of
-  several lines is the whole card, not its name. Of the two, the one whose values differ most across the blocks: text
-  every block repeats is the template's (a call to action), not an item's.
+- **name** (a row text field whose path names schema.org `name`, or JobPosting `title`): the shown content of the
+  block's first hyperlink to its item when that is one line of text (HTML Standard §4.5.1), the block's one heading
+  (HTML Standard §4.3.6, WAI-ARIA role `heading`), or the name the item's attributes state (`Stated`): an item link's
+  `aria-labelledby`, `aria-label` or `title`, an image's `alt` (WAI-ARIA Accessible Name and Description Computation
+  1.2), kept where the block shows it (WCAG 2.1 SC 2.5.3 Label in Name, over one or several whole lines, a line cut
+  short by an ellipsis standing for the rest), its leading and trailing words the block does not show dropped when
+  every block states the same ones (the template's `Details of`). Content of several lines is the whole card, not its
+  name. Of the three, the one whose values differ most across the blocks: text every block repeats is the template's
+  (a call to action), not an item's. A block the chosen rule gives no name reads the one line at the tag path the
+  rule's names have in a quorum of blocks (DEPTA alignment: a sold-out card's extra heading, a stale `alt`); a child
+  element of the name whose text every block repeats is the template's (screen-reader-only helper text) and is left
+  out of the name.
 - **image** (a row image_url field whose path names schema.org `image`): the block's first shown image that is not
   decorative (`collect.dom.image_source`, `collect.dom.decorative`).
 - **typed values** (a row money, date or datetime field, or an identifier under a scheme with a check digit): typed
@@ -64,12 +70,13 @@ from crawlerai.collect.base import ITEM_BLOCK, Candidate, Entity
 from crawlerai.collect.dom import decorative, image_source, is_image_url
 from crawlerai.collect.dom import struck as is_struck
 from crawlerai.collect.items.spot import Spot, is_typed, reads, spots
+from crawlerai.collect.items.stated import Stated, Word, same, words
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate, is_item_url
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.segment import hyperlinks, shows_more, text_path
-from crawlerai.content.text import hidden, xpath_step
+from crawlerai.content.text import completed, hidden, xpath_step
 from crawlerai.normalize.base import Ambiguous, Context, raw_key
 from crawlerai.normalize.dispatch import equality_key
 from crawlerai.normalize.url import canonical_url, is_absolute
@@ -91,7 +98,8 @@ _HEADING_ROLE: Final = "heading"
 # WAI-ARIA 1.2 `aria-current` token: "represents the current page within a set of pages".
 _CURRENT_PAGE: Final = "page"
 # The places of the rules that read one value per block.
-_LINK, _LINK_NAME, _HEADING, _PICTURED, _PICTURE = "@link", "@link-name", "@heading", "@pictured", "@image"
+_LINK, _LINK_NAME, _HEADING, _STATED, _PICTURE = "@link", "@link-name", "@heading", "@stated-name", "@image"
+
 
 Role = Literal["url", "name", "image", "typed"]
 
@@ -235,9 +243,7 @@ class _Aligned:
             return None
         aligned = cls(group, views)
         for name, role in roles.items():
-            spec = schema.fields[name]
-            spots = [view.read(role, spec, ctx) for view in views]
-            if (kept := _aligned(spots, needed, spec, one_place=role == "name")) is not None:
+            if (kept := _field(views, role, schema.fields[name], ctx, needed)) is not None:
                 aligned.fields[name] = kept
         return aligned
 
@@ -266,6 +272,120 @@ class _Aligned:
             f"item layer: {name}: {AMBIGUOUS_IN_BLOCK} in {n} rows" for name, n in ambiguous.items() if n
         )
         return Items(tuple(blocks), tuple(candidates), self.group, tuple(diagnostics), frozenset(self.fields))
+
+
+def _field(
+    views: Sequence["_View"], role: Role, spec: FieldSpec, ctx: Context, needed: int
+) -> list[tuple[Spot, ...]] | None:
+    """Each block's spots of a field at its aligned places (module docstring); None when no place aligns."""
+    found = [view.read(role, spec, ctx) for view in views]
+    if role != "name":
+        return _aligned(found, needed, spec, one_place=False)
+    stated = [view.stated() for view in views]
+    own = [_completed(spots_, name, spec, ctx) for spots_, name in zip(found, stated, strict=True)]
+    more = _stated_names(views, stated, spec, ctx, needed)
+    names = [tuple(s for s in (*a, *b) if not is_absolute(s.raw)) for a, b in zip(own, more, strict=True)]
+    kept = _aligned(names, needed, spec, one_place=True)
+    return None if kept is None else _untemplated(views, _filled(views, kept, spec, ctx, needed), spec, ctx)
+
+
+def _completed(found: tuple[Spot, ...], stated: Stated | None, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
+    """The block's names, one cut short by an ellipsis read as the stated name it begins (`content.text.completed`)."""
+    if stated is None:
+        return found
+    return tuple(
+        next(iter(spots(full, spec, ctx, spot.xpath, spot.place)), spot)
+        if (full := completed(spot.raw, stated.text))
+        else spot
+        for spot in found
+    )
+
+
+def _stated_names(
+    views: Sequence["_View"], found: Sequence[Stated | None], spec: FieldSpec, ctx: Context, needed: int
+) -> list[tuple[Spot, ...]]:
+    """Each block's attribute-stated name (`Stated`). Where a quorum of blocks show theirs, only a shown one is kept,
+    without the leading and trailing words the block does not show that every such block states alike (a template's);
+    a block whose leading words differ from the others' is not named by its attributes (WCAG 2.1 SC 2.5.3 has the
+    visible label start the name). Where they do not (an image-only grid), a block whose item links show no one-line
+    content is named whole by its first stated name, as its accessible name."""
+    shown = [s for s in found if s is not None and s.shown]
+    if len(shown) < needed:
+        return [
+            spots(s.text, spec, ctx, s.xpath, _STATED) if s is not None and view.link_line() is None else ()
+            for view, s in zip(views, found, strict=True)
+        ]
+    lead, trail = same(s.lead for s in shown), same(s.trail for s in shown)
+    return [() if s is None else _trimmed(s, lead, trail, spec, ctx) for s in found]
+
+
+def _trimmed(stated: Stated, lead: str, trail: str, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
+    """A shown stated name without the group's common unshown `lead` and `trail` (the trail kept after a line an
+    ellipsis cut); none for one not shown or whose
+    unshown leading words are its own."""
+    if not stated.shown or (stated.lead and stated.lead != lead):
+        return ()
+    # A run an ellipsis cut short goes on in the unshown words, so they stay even when every block states them.
+    keep_trail = not trail or stated.cut
+    return spots(stated.trimmed(lead=bool(stated.lead), trail=not keep_trail), spec, ctx, stated.xpath, _STATED)
+
+
+def _filled(
+    views: Sequence["_View"], kept: list[tuple[Spot, ...]], spec: FieldSpec, ctx: Context, needed: int
+) -> list[tuple[Spot, ...]]:
+    """The names, a block the chosen rule gives none read at the tag path a quorum of the rule's names are one line at
+    (DEPTA partial alignment: the blocks' trees aligned, the name's node is the one at that path), when the block
+    shows one line of text there."""
+    place = next((spot.place for found in kept for spot in found), None)
+    lines = Counter(
+        path for view, found in zip(views, kept, strict=True) if (path := view.line_place(found)) is not None
+    )
+    common = lines.most_common(1)
+    if place is None or not common or common[0][1] < needed:
+        return kept
+    path = common[0][0]
+    return [found or _at_place(view, path, spec, ctx, place) for view, found in zip(views, kept, strict=True)]
+
+
+def _at_place(view: "_View", path: str, spec: FieldSpec, ctx: Context, place: str) -> tuple[Spot, ...]:
+    """The block's one line of text at the tag path `path`, as a spot of `place`; none when the block shows none or
+    several there."""
+    at = [(element, text) for element in view.elements if view.places[element] == path and (text := view.line(element))]
+    if len({text for _, text in at}) != 1 or is_absolute(at[0][1]):
+        return ()
+    element, text = at[0]
+    return spots(text, spec, ctx, view.paths[element], place)
+
+
+def _untemplated(
+    views: Sequence["_View"], kept: list[tuple[Spot, ...]], spec: FieldSpec, ctx: Context
+) -> list[tuple[Spot, ...]]:
+    """The names without a child element's text that every named block shows alike at the same tag path inside its
+    name (DEPTA: a node whose value never varies across the records is the template's, such as helper text a
+    stylesheet hides from sight but the HTML shows); a name that would be left empty stays whole."""
+    named = [
+        (view, found[0], element)
+        for view, found in zip(views, kept, strict=True)
+        if (element := view.named(found)) is not None
+    ]
+    if len(named) < MIN_ITEMS or len(named) < sum(1 for found in kept if found):
+        return kept
+    template = _template([view.children_text(element) for view, _, element in named])
+    if not template:
+        return kept
+    renamed = {
+        id(spot): spots(text, spec, ctx, spot.xpath, spot.place)
+        if (text := view.without(element, template))
+        else (spot,)
+        for view, spot, element in named
+    }
+    return [renamed.get(id(found[0]), found) if found else found for found in kept]
+
+
+def _template(children: Sequence[Mapping[str, tuple[str, int, int]]]) -> set[str]:
+    """The tag paths at which every name's child shows the same text."""
+    first, *others = children
+    return {rel for rel, (text, _, _) in first.items() if all(rel in c and c[rel][0] == text for c in others)}
 
 
 def _aligned(
@@ -347,6 +467,7 @@ class _View:
     places: dict[HtmlElement, str] = field(default_factory=dict)
     struck: set[HtmlElement] = field(default_factory=set)
     holding_struck: set[HtmlElement] = field(default_factory=set)
+    by_path: dict[str, HtmlElement] = field(default_factory=dict)
 
     @classmethod
     def of(
@@ -403,25 +524,21 @@ class _View:
             anchor_path = self.paths.get(self.anchors[0], self.path) if self.anchors else self.path
             return spots(self.href, spec, ctx, anchor_path, _LINK)
         if role == "name":
-            names = (*self._link_name(spec, ctx), *self._heading(spec, ctx), *self._pictured_name(spec, ctx))
-            # A URL is not prose (RFC 3986 §4.3, an absolute URI): a link whose label is its own address names nothing.
-            return tuple(spot for spot in names if not is_absolute(spot.raw))
+            # A URL is not prose (RFC 3986 §4.3, an absolute URI): a link whose label is its own address names nothing;
+            # `_field` drops such names.
+            return (*self._link_name(spec, ctx), *self._heading(spec, ctx))
         if role == "image":
             return self._image(spec, ctx)
         return self._typed(spec, ctx)
 
     def _link_name(self, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
-        """The name of the first hyperlink to the item that its shown content labels (HTML Standard §4.5.1: an `a`
-        element's content labels its link), else of the first one with an accessible name: an empty overlay link
-        names its item only through its attributes, which may say more than the name."""
-        shown = [anchor for anchor in self.anchors if anchor in self.paths]
-        for anchor in shown:
-            if (text := self.line(anchor)) is not None:
-                return spots(text, spec, ctx, self.paths[anchor], _LINK_NAME)
-        for anchor in shown:
-            if (name := self._accessible_name(anchor)) is not None:
-                return spots(name, spec, ctx, self.paths[anchor], _LINK_NAME)
-        return ()
+        found = self.link_line()
+        return () if found is None else spots(found[1], spec, ctx, self.paths[found[0]], _LINK_NAME)
+
+    def link_line(self) -> tuple[HtmlElement, str] | None:
+        """The first shown hyperlink to the item whose content is one line, with that line (HTML Standard §4.5.1: an
+        `a` element's content labels its link)."""
+        return next(((a, text) for a in self.anchors if a in self.paths and (text := self.line(a)) is not None), None)
 
     def _heading(self, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
         headings = [(e, text) for e in self.elements if _is_heading(e) and (text := self.line(e)) is not None]
@@ -430,38 +547,83 @@ class _View:
         element, text = headings[0]
         return spots(text, spec, ctx, self.paths[element], _HEADING)
 
-    def _pictured_name(self, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
-        """The block's one-line text that its item's image names (`alt`, HTML Standard §4.8.4.4: the image's text
-        alternative) or that its item link's `title` gives (§3.2.6.1): a card that is one hyperlink has no one-line
-        name of its own, and the text its image or link states again is the item's name."""
-        stated = [_squeezed_text(a.get("title")) for a in self.anchors]
-        stated += [
-            _squeezed_text(e.get("alt")) for e in self.elements if e.tag == "img" and not decorative(dict(e.attrib))
-        ]
-        names = {name for name in stated if name}
+    def stated(self) -> Stated | None:
+        """The block's attribute-stated name the block shows most words of (the first on a tie), else its first
+        stated name (`Stated`); None when it states none."""
+        shown = self._words()
+        best: Stated | None = None
+        for text, element in self._stated_texts():
+            found = Stated.of(text, self.paths[element], shown, self.holding)
+            if best is None or found.covered > best.covered:
+                best = found
+        return best
+
+    def _stated_texts(self) -> list[tuple[str, HtmlElement]]:
+        """The names the item's attributes state, with their elements: each shown item link's `aria-labelledby`,
+        `aria-label` and `title` (Accessible Name Computation 1.2, steps 2B, 2C, 2I), then each shown image's `alt`
+        (HTML Standard §4.8.4.4: the image's text alternative), decorative ones aside."""
+        texts: list[tuple[str, HtmlElement]] = []
+        for anchor in (a for a in self.anchors if a in self.paths):
+            stated = (self._labelled_by(anchor), anchor.get("aria-label"), anchor.get("title"))
+            texts.extend((text, anchor) for value in stated if (text := _squeezed_text(value)))
+        images = (e for e in self.elements if e.tag == "img" and not decorative(dict(e.attrib)))
+        texts.extend((text, e) for e in images if (text := _squeezed_text(e.get("alt"))))
+        return texts
+
+    def _words(self) -> list[Word]:
+        span = self.page.text_spans.get(self.path)
+        return [] if span is None else words(self.page.cleaned_text.text, *span)
+
+    def holding(self, start: int, end: int) -> str:
+        """The XPath of the innermost shown element whose text holds the cleaned text's `start` to `end`."""
+        best = (math.inf, self.path)
         for element in self.elements:
-            if (text := self.line(element)) is not None and _squeezed_text(text) in names:
-                return spots(text, spec, ctx, self.paths[element], _PICTURED)
-        return ()
+            span = self.page.text_spans.get(self.paths[element])
+            if span is not None and span[0] <= start and end <= span[1] and span[1] - span[0] <= best[0]:
+                best = (span[1] - span[0], self.paths[element])
+        return best[1]
 
-    def _accessible_name(self, anchor: HtmlElement) -> str | None:
-        """The hyperlink's accessible name (module docstring), None when it has none or its content is several
-        lines."""
-        if (labelled := self._labelled_by(anchor)) is not None:
-            return self._visible_label(labelled)
-        if label := " ".join((anchor.get("aria-label") or "").split()):
-            return self._visible_label(label)
-        if self.page.text_spans.get(self.paths[anchor]) is not None:
-            return self.line(anchor) or _title(anchor)
-        alts = [" ".join((img.get("alt") or "").split()) for img in anchor.iter("img") if img in self.paths]
-        return next((alt for alt in alts if alt), None) or _title(anchor)
+    def line_place(self, found: tuple[Spot, ...]) -> str | None:
+        """The tag path of the element a block's name is read at, when that element shows one line of text."""
+        element = self.named(found) if found else None
+        return self.places[element] if element is not None else None
 
-    def _visible_label(self, name: str) -> str:
-        """The part of a name given by attributes that the block shows: WCAG 2.1 SC 2.5.3 (Label in Name) has a
-        component's accessible name contain its visible label, so the block's longest one-line text the name holds is
-        that label (a name `Details of <title>` shows `<title>`); the whole name when the block shows none of it."""
-        shown = (text for element in self.elements if (text := self.line(element)) is not None and text in name)
-        return max(shown, key=len, default=name)
+    def named(self, found: tuple[Spot, ...]) -> HtmlElement | None:
+        """The element a block's one name is read at, when the name is that element's one line of text."""
+        if len(found) != 1:
+            return None
+        element = self.at(found[0].xpath)
+        return element if element is not None and self.line(element) is not None else None
+
+    def at(self, xpath: str) -> HtmlElement | None:
+        if not self.by_path:
+            self.by_path = {path: element for element, path in self.paths.items()}
+        return self.by_path.get(xpath)
+
+    def children_text(self, element: HtmlElement) -> dict[str, tuple[str, int, int]]:
+        """The text and cleaned-text span of each shown element inside `element`, keyed by its tag path below it, for
+        the paths one element has."""
+        depth = len(self.places[element])
+        found: dict[str, list[tuple[str, int, int]]] = {}
+        for child in element.iterdescendants():
+            span = self.page.text_spans.get(self.paths[child]) if child in self.paths else None
+            if span is not None:
+                text = " ".join(self.page.cleaned_text.text[span[0] : span[1]].split())
+                found.setdefault(self.places[child][depth:], []).append((text, *span))
+        return {rel: texts[0] for rel, texts in found.items() if len(texts) == 1 and texts[0][0]}
+
+    def without(self, element: HtmlElement, template: frozenset[str] | set[str]) -> str:
+        """The element's one line of text without its children's at the tag paths `template`."""
+        span = self.page.text_spans[self.paths[element]]
+        children = self.children_text(element)
+        cuts = sorted((children[rel][1], children[rel][2]) for rel in template if rel in children)
+        text = self.page.cleaned_text.text
+        parts, at = [], span[0]
+        for start, end in cuts:
+            parts.append(text[at : max(at, start)])
+            at = max(at, end)
+        parts.append(text[at : span[1]])
+        return " ".join(" ".join(parts).split())
 
     def _labelled_by(self, anchor: HtmlElement) -> str | None:
         """WAI-ARIA `aria-labelledby`: the text of the elements its ID references name, joined with spaces."""
@@ -587,12 +749,6 @@ def _squeezed_text(text: str | None) -> str:
 
 def _is_heading(element: HtmlElement) -> bool:
     return element.tag in _HEADINGS or _HEADING_ROLE in tokens(element.get("role"))
-
-
-def _title(element: HtmlElement) -> str | None:
-    """HTML Standard §3.2.6.1 `title`: advisory information, the accessible name's last resort (Accessible Name
-    Computation 1.2, step 2I)."""
-    return " ".join((element.get("title") or "").split()) or None
 
 
 def one_link(

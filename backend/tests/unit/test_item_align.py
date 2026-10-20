@@ -114,6 +114,45 @@ def test_adjacent_elements_digits_are_two_numbers_and_own_text_beside_a_child_pr
     assert all(isinstance(p, Ambiguous) and p.reason == AMBIGUOUS_IN_BLOCK for p in prices)
 
 
+def test_a_name_the_item_states_in_attributes_is_kept_where_the_card_shows_it_over_several_lines() -> None:
+    # WAI-ARIA Accessible Name 1.2 and WCAG 2.1 SC 2.5.3 Label in Name: an overlay link's `aria-label` beats a size
+    # picker's one-line link; a template's unshown `Details of` goes, an unshown trailing code stays.
+    overlay = (
+        '<li class="c"><a href="/p/{i}" aria-label="Details of Runner {i} Blue Code{i}"></a>'
+        '<div>Runner {i}</div><div>Blue</div><a href="/p/{i}">36 37 38</a><span>1{i}.00 EUR</span></li>'
+    )
+    # One link of several lines: the image's `alt`, shown as two lines, names the item.
+    split = (
+        '<li class="c"><a href="/p/{i}"><img src="/i/{i}.jpg" alt="Maker {i} Chair"><p>Maker {i}</p><p>Chair</p></a>'
+        "</li>"
+    )
+    # A line cut short by an ellipsis stands for the stated name it begins.
+    cut = '<li class="c"><a href="/p/{i}"><img src="/i/{i}.jpg" alt="Lamp {i} with brass base">Lamp {i} with…</a></li>'
+
+    assert [row["title"] for row in _rows(_repeat(overlay))] == [f"Runner {i} Blue Code{i}" for i in range(4)]
+    assert [row["title"] for row in _rows(_repeat(split))] == [f"Maker {i} Chair" for i in range(4)]
+    assert [row["title"] for row in _rows(_repeat(cut))] == [f"Lamp {i} with brass base" for i in range(4)]
+
+
+def test_helper_text_every_card_repeats_inside_the_name_is_the_templates() -> None:
+    # DEPTA: a node whose value never varies across the records is the template's (a screen-reader-only phrase).
+    card = '<li class="c"><a href="/p/{i}"><span class="sr">View product</span> Boot {i}</a><b>1{i}.00 EUR</b></li>'
+
+    assert [row["title"] for row in _rows(_repeat(card))] == [f"Boot {i}" for i in range(4)]
+
+
+def test_a_card_the_chosen_rule_does_not_name_reads_the_line_at_the_groups_name_path() -> None:
+    # DEPTA alignment by tag path: a sold-out card's second heading leaves `_heading` nothing; the `h3` path names it.
+    card = '<li class="c"><a href="/p/{i}"><img src="/i/{i}.jpg"><h3>Tea {i}</h3><span>1{i}.00 EUR</span></a></li>'
+    sold = (
+        '<li class="c"><a href="/p/9"><img src="/i/9.jpg"><h2>Sold out</h2><h3>Tea 9</h3><span>19.00 EUR</span></a>'
+        "</li>"
+    )
+    body = "<ul>" + "".join(card.format(i=i) for i in range(4)) + sold + "</ul>"
+
+    assert [row.get("title") for row in _rows(body)] == [*(f"Tea {i}" for i in range(4)), "Tea 9"]
+
+
 def test_a_card_linking_its_item_its_author_and_a_shared_vendor_takes_the_item_at_the_groups_link_place() -> None:
     # DEPTA alignment: a vendor page every card links to is the template's; the item's link is at the place where a
     # quorum of the cards link to a document of their own, a link holding the card's image first.

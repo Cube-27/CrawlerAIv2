@@ -56,7 +56,8 @@ description, and the `product:` namespace: `product:price`/`og:price` amount and
 as the active price (unless `product:sale_price_dates:end` is before the capture) with the stated price beside it
 as the list price, `product:original_price` as the list price,
 `og:availability`, `product:condition`, `product:retailer_item_id` and `product:brand`; no translation, site-default
-blocks skipped) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
+blocks skipped, an `og:title` read without trailing segments naming the site and, when words of its own come before a
+run of its words that the last slug segment of the page URL path spells, as that run) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
 standing in for that thing; a path through another thing, `Product.offers.seller.url`, has none); a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
 element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. A url or image field
@@ -88,6 +89,9 @@ ImageObject was an invalid value.)
 #### Scenario: og:description
 - **WHEN** a page states only `og:description` for its product
 - **THEN** that text is the `description` candidate, ranked behind JSON-LD and microdata
+#### Scenario: og:title around a slug
+- **WHEN** `og:title` is `Buy Kettle 2L for Kitchens Online` on a page at `/kettle-2l/p/12`
+- **THEN** the title candidate reads `Kettle 2L`
 
 ### Requirement: Source documents
 `ParsedPage` SHALL read the HTML document after four structural pre-passes, applied in this order to the raw document
