@@ -9,6 +9,9 @@ site that is not the platform's gets at most one adapter request per window. A r
 made for as long as it lives; the processes that fetch take one per page (`for_host`) from the declines stored on the
 page's site row (`site.adapter_declined`, D-1384) and store the ones it made back (`declined_for`), so the window holds
 across processes and restarts.
+
+A page-scoped adapter (`PageScoped`, a storefront collection) is never asked on the page's own turn: it serves a page
+already fetched, with that page's references (`serve` with `page`), so `would_serve` names it only for such a page.
 """
 
 from collections.abc import Callable, Iterable, Mapping
@@ -21,7 +24,7 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.adp import ADP
 from crawlerai.adapters.ashby import Ashby
 from crawlerai.adapters.bamboohr import BambooHR
-from crawlerai.adapters.base import NOT_PLATFORM, Adapter, AdapterMatch, PageRefs, Referring
+from crawlerai.adapters.base import NOT_PLATFORM, Adapter, AdapterMatch, PageRefs, PageScoped, Referring
 from crawlerai.adapters.greenhouse import Greenhouse
 from crawlerai.adapters.lever import Lever
 from crawlerai.adapters.oracle_recruiting import OracleRecruiting
@@ -114,24 +117,39 @@ class Registry:
                 return url
         return None
 
-    def would_serve(self, url: str) -> bool:
-        """Whether `serve` would ask an adapter for `url`: an active one detects it and has not declined its host."""
-        return self._serving(url) is not None
+    def would_serve(self, url: str, *, fetched: bool = False) -> bool:
+        """Whether `serve` would ask an adapter for `url`: an active one detects it and has not declined its host; a
+        page-scoped one only for a page already `fetched`."""
+        return self._serving(url, fetched=fetched) is not None
 
-    async def serve(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult | None:
+    async def serve(
+        self, url: str, policy: FetchPolicy, send: JsonFetcher, page: Callable[[], PageRefs] | None = None
+    ) -> FetchResult | None:
         """The answer of the active adapter that detects `url` and has not declined its host, requested with `send`;
-        None when there is none."""
-        adapter = self._serving(url)
+        None when there is none. A page-scoped adapter serves only a fetched page, whose references `page` reads."""
+        adapter = self._serving(url, fetched=page is not None)
         if adapter is None:
             return None
-        result = await adapter.fetch(url, policy, send)
+        if isinstance(adapter, PageScoped) and page is not None:
+            result = await adapter.fetch_listed(url, page(), policy, send)
+        else:
+            result = await adapter.fetch(url, policy, send)
         if result.attempts[-1].error == NOT_PLATFORM:
             self._decline(adapter, urlsplit(url).hostname or "")
         return result
 
-    def _serving(self, url: str) -> Adapter | None:
+    def _serving(self, url: str, *, fetched: bool) -> Adapter | None:
         host = urlsplit(url).hostname or ""
-        return next((a for a in self._active if a.detect(url) is not None and not self._is_declined(a, host)), None)
+        return next(
+            (
+                a
+                for a in self._active
+                if a.detect(url) is not None
+                and not self._is_declined(a, host)
+                and (fetched or not isinstance(a, PageScoped))
+            ),
+            None,
+        )
 
     def _is_declined(self, adapter: Adapter, host: str) -> bool:
         until = self._declined.get((adapter.name, host))

@@ -73,17 +73,30 @@ documented apply link (Lever and SmartRecruiters `applyUrl`) is its ApplyAction'
 (Previously: apply links were not mapped.) Refs: D-0267, D-0307, D-0310, D-1483, D-1493.
 
 ### Requirement: Shopify adapter
-It SHALL detect collection paths only, also under a locale subfolder (`/{language}[-{region}]/collections/{handle}`;
-product pages take the page path, D-1118), `POST` the tokenless Storefront GraphQL endpoint on the page's host with the
-handle as a variable, page through the products' cursor up to the adapter row cap, ask a locale-prefixed page in its
-language (`@inContext(language:)`), and class answers `not_platform` (no `X-Shopify-API-Version`), `not_served` (no
-item, GraphQL errors, another language than the page's, a shop presenting other than exactly one currency, whose
-page the page path reads, or a listed product without a price above zero, which the page may still show: an answer
-never takes the page path's prices away) or `ok`, as in `adapters/shopify.py`. A fetched `ok` page
-whose URL has a query is served by the adapter that detects it without the query when the page's canonical link is
-that URL (RFC 6596, D-1120). Refs: Appendix A #46, #47, D-1077, D-1078, D-1114, D-1118, D-1120, D-1385, D-1386.
+It SHALL detect collection paths only, with any query, also under a locale subfolder
+(`/{language}[-{region}]/collections/{handle}`; product pages take the page path, D-1118). It is page-scoped
+(`PageScoped`): a collection page shows one page of the collection, of a size its theme chooses (Liquid `paginate`),
+which no documented API states, and the Storefront API pages by cursor only, so the adapter is never asked on the
+page's own turn; the page is fetched first (robots.txt and the page rungs as for any page), and an `ok` page is then
+served with the collection's products that page links to (`/products/{handle}` on the page's host, also under a
+collection or a locale subfolder), matched by `handle`, in the page's order. It SHALL `POST` the tokenless Storefront
+GraphQL endpoint on the page's host with the handle as a variable, page through the products' cursor until every
+product the page links to is read or the adapter row cap, ask a locale-prefixed page in its language
+(`@inContext(language:)`), and class answers `not_platform` (no `X-Shopify-API-Version`), `not_served` (no item,
+GraphQL errors, none of the page's products, another language than the page's, a shop presenting other than exactly
+one currency, whose page the page path reads, or a listed product without a price above zero, which the page may
+still show: an answer never takes the page path's prices away) or `ok`, as in `adapters/shopify.py`. The collection's
+next page is the crawl's to follow (pagination), never one adapter answer's. A fetched `ok` page whose URL has a query
+is served by an adapter that detects it without the query when the page's canonical link is that URL (RFC 6596,
+D-1120), with the fetched page's links. Refs: Appendix A #46, #47, D-1077, D-1078, D-1114, D-1118, D-1120, D-1385,
+D-1386.
 (Previously: the first 250 products, and no locale-prefixed URL; a shop of several currencies was served without
-prices; an answer with zero prices was served.)
+prices; an answer with zero prices was served; the adapter served a collection before its page was fetched, with every
+product of the collection up to the row cap, whatever page the URL asked, and declined a URL with a query.)
+#### Scenario: One page of a paged collection
+- **WHEN** a collection of four products shows two a page, the API answers two a page, and `?page=2` links the third
+  and fourth
+- **THEN** both API pages are requested and the answer holds the third and fourth products only
 
 ### Requirement: Shopify values
 Collection items SHALL read as schema.org products (variants under `hasVariant`, no default variant; see

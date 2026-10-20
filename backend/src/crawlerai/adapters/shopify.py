@@ -11,12 +11,20 @@ candidate, and the answer's version header is the platform's signal. An answer w
 it that holds no collection for the handle, or GraphQL `errors`, is `NOT_SERVED`. Either way the page falls back to the
 generic rungs (adapters spec).
 
-A collection's products come in pages of at most 250 (the Storefront API's `first` limit), joined by the connection's
-cursor (`pageInfo { hasNextPage endCursor }`, Relay cursor connections, the API's pagination documentation) up to the
-adapter row cap (`adapters.paging`, D-1385). A locale subfolder names the language the page shows (the platform's
-international domains documentation: `/{language}` or `/{language}-{country}`): the query asks the collection in that
-language with `@inContext(language:)` and is served only when the answer's `localization` says it holds that language
-(a shop without the language answers in its default one). The subfolder's country is not used: prices are read only
+A collection page shows one page of the collection, of a size its theme chooses (the Liquid `paginate` tag's `by`),
+which no documented API states; the Storefront API pages by cursor only (no page number or offset). So the adapter is
+page-scoped (`adapters.base.PageScoped`): it serves a fetched page, and its answer holds the collection's products the
+page links to (`/products/{handle}` on the page's host, also under a collection or a locale subfolder), matched by
+`handle`, in the page's order; a page linking to none is `NOT_SERVED`, and the page path reads it. Any query (`?page=`,
+a sort, a filter) is the page's own: its links say which products it shows. The products come in pages of at most 250
+(the Storefront API's `first` limit), joined by the connection's cursor (`pageInfo { hasNextPage endCursor }`, Relay
+cursor connections, the API's pagination documentation) until every product the page links to is read, up to the
+adapter row cap (`adapters.paging`, D-1385). The next page of the collection is the crawl's to follow, not this one's.
+
+A locale subfolder names the language the page shows (the platform's international domains documentation:
+`/{language}` or `/{language}-{country}`): the query asks the collection in that language with
+`@inContext(language:)` and is served only when the answer's `localization` says it holds that language (a shop
+without the language answers in its default one). The subfolder's country is not used: prices are read only
 from a shop with one presentment currency (D-1114, D-1386). A shop with several is not served: the answer's amounts
 are its primary market's, while its page may show another market's amounts, so the page path publishes the price the
 page shows, with the currency the page states or, failing that, unknown (normalization spec, money). A stored answer
@@ -41,7 +49,8 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.outcome import as_error
 from crawlerai.acquire.robots import at_origin
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import ALL, NOT_PLATFORM, NOT_SERVED, AdapterMatch, Members, Shape
+from crawlerai.adapters.answer import recorded
+from crawlerai.adapters.base import ALL, NOT_PLATFORM, NOT_SERVED, AdapterMatch, Members, PageRefs, Shape
 from crawlerai.adapters.paging import fetch_pages
 from crawlerai.core import json_text
 from crawlerai.core.retry import is_transient
@@ -57,6 +66,11 @@ _HANDLE: Final = re.compile(r"[\w-]+", re.ASCII)
 # A locale subfolder: a BCP 47 language subtag (RFC 5646 §2.2.1, ISO 639-1 or 639-2), optionally a region subtag
 # (§2.2.4, ISO 3166-1 alpha-2), as the platform writes them in a path segment.
 _LOCALE: Final = re.compile(r"([a-z]{2,3})(?:-[a-z]{2})?", re.ASCII | re.IGNORECASE)
+# The Online Store's product route (shopify.dev Liquid `product.url`: `/products/{handle}`, also under a collection,
+# `/collections/{handle}/products/{handle}`, and a locale subfolder), as a page links its products.
+_PRODUCT_PATH: Final = re.compile(
+    r"(?:/[a-z]{2,3}(?:-[a-z]{2})?)?(?:/collections/[\w-]+)?/products/([\w-]+)/?", re.ASCII | re.IGNORECASE
+)
 # The most products one Storefront API connection page holds (`first`, the API's pagination documentation).
 PAGE_SIZE: Final = 250
 # The query asks for the currencies the shop presents prices in (`PaymentSettings.enabledPresentmentCurrencies`, "A
@@ -69,7 +83,7 @@ _COLLECTION_QUERY: Final = """query Collection($handle: String!, $after: String{
     products(first: {page_size}, after: $after) {{
       pageInfo {{ hasNextPage endCursor }}
       nodes {{
-        id title onlineStoreUrl
+        id handle title onlineStoreUrl
         featuredImage {{ url }}
         priceRange {{ minVariantPrice {{ amount currencyCode }} maxVariantPrice {{ amount currencyCode }} }}
       }}
@@ -104,10 +118,10 @@ class Shopify:
         parts = urlsplit(url)
         if parts.scheme.lower() not in {"http", "https"} or not parts.hostname:
             return None
-        # A collection URL with a query shows a page, an order or a filter of it, which the first page of the
-        # unqueried collection does not reproduce.
+        # A query (a page, an order or a filter of the collection) is the page's own: the page's links say which
+        # products it shows (`fetch_listed`).
         handle = _collection(parts.path)
-        if handle is None or parts.query:
+        if handle is None:
             return None
         return AdapterMatch(tenant=parts.hostname, page_kind="listing", item=handle)
 
@@ -117,13 +131,17 @@ class Shopify:
         return parts.hostname == match.tenant and _ENDPOINT_PATH.fullmatch(parts.path) is not None
 
     async def fetch(self, url: str, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
+        raise TypeError("a collection is served with the page it shows (fetch_listed)")
+
+    async def fetch_listed(self, url: str, page: PageRefs, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         match = self.detect(url)
         if match is None or match.item is None:
             raise ValueError("not a storefront URL this adapter detects")
+        listed = _listed(page, match.tenant)
         language = _language(urlsplit(url).path)
         handle = match.item
 
-        def page(after: str | None) -> JsonRequest:
+        def request(after: str | None) -> JsonRequest:
             # The handle, cursor and language go in as GraphQL variables, never into the query's text.
             variables: dict[str, str] = {"handle": handle}
             if after is not None:
@@ -139,11 +157,15 @@ class Shopify:
             )
 
         def next_page(answers: Sequence[JsonValue]) -> JsonRequest | None:
+            read = {_handle(node) for answer in answers for node in _nodes(answer)}
             cursor = _next_cursor(answers[-1])
-            return None if cursor is None else page(cursor)
+            return None if cursor is None or read.issuperset(listed) else request(cursor)
 
-        result = await fetch_pages(page(None), policy, send, next_page=next_page, merge=_merge, rows=_rows)
-        return _verdict(result, language)
+        # The page bounds the rows, not the request's row target (`max_rows` counts the collection's products read,
+        # not the page's): the walk goes on until every product the page links to is read, up to the hard cap.
+        whole = policy.model_copy(update={"max_rows": None})
+        result = await fetch_pages(request(None), whole, send, next_page=next_page, merge=_merge, rows=_rows)
+        return _verdict(_shown(result, listed), language)
 
     def shapes(self, _match: AdapterMatch, answer: JsonValue, /) -> tuple[Shape, ...]:
         return (_LISTING if _one_currency(answer) else _UNPRICED_LISTING,)
@@ -188,6 +210,33 @@ def _nodes(answer: JsonValue) -> list[JsonValue]:
     return nodes if isinstance(nodes, list) else []
 
 
+def _listed(page: PageRefs, host: str) -> dict[str, int]:
+    """The handles of the products the page links to on its own `host`, each with its first position on the page."""
+    listed: dict[str, int] = {}
+    for link in page.links:
+        parts = urlsplit(link)
+        if parts.hostname == host and (route := _PRODUCT_PATH.fullmatch(parts.path)) is not None:
+            listed.setdefault(route.group(1).lower(), len(listed))
+    return listed
+
+
+def _shown(result: FetchResult, listed: dict[str, int]) -> FetchResult:
+    """`result` with only the products of `listed`, in the page's order; an answer that is not `ok` as it is."""
+    if result.block_class != "ok":
+        return result
+    answer = json_text.parse(result.bundle.body)  # `fetch_json` checked that an `ok` body is JSON
+    shown = sorted((n for n in _nodes(answer) if _handle(n) in listed), key=lambda node: listed[_handle(node)])
+    products = _products(answer)
+    return recorded(
+        result, _with_products(answer, {**(products if isinstance(products, dict) else {}), "nodes": shown})
+    )
+
+
+def _handle(node: JsonValue) -> str:
+    handle = _member(node, "handle")
+    return handle.lower() if isinstance(handle, str) else ""
+
+
 def _rows(answer: JsonValue) -> int:
     return len(_nodes(answer))
 
@@ -201,17 +250,21 @@ def _next_cursor(answer: JsonValue) -> str | None:
 
 def _merge(answers: Sequence[JsonValue]) -> JsonValue:
     """The first answer with every page's products in order, and the last page's `pageInfo`."""
-    first = answers[0]
-    if not isinstance(first, dict):
-        return first
     products = {
         "pageInfo": _member(_products(answers[-1]), "pageInfo"),
         "nodes": [n for a in answers for n in _nodes(a)],
     }
-    data = _member(first, "data")
+    return _with_products(answers[0], products)
+
+
+def _with_products(answer: JsonValue, products: JsonValue) -> JsonValue:
+    """`answer` with its collection's `products` replaced by `products`."""
+    if not isinstance(answer, dict):
+        return answer
+    data = _member(answer, "data")
     collection = _member(data, "collection")
     merged_collection = {**(collection if isinstance(collection, dict) else {}), "products": products}
-    return {**first, "data": {**(data if isinstance(data, dict) else {}), "collection": merged_collection}}
+    return {**answer, "data": {**(data if isinstance(data, dict) else {}), "collection": merged_collection}}
 
 
 def _one_currency(answer: JsonValue) -> bool:
@@ -245,9 +298,9 @@ def _member(value: JsonValue, name: str) -> JsonValue:
 def _verdict(result: FetchResult, language: str | None) -> FetchResult:
     """`result`, or why it does not serve the page. No response, a slow-down or a server error is kept as it is: it
     says nothing of the platform, and the page falls back. An answer without the platform's signal is `NOT_PLATFORM`;
-    the platform's answer holding errors or no collection, for a page in `language` not in that language, of a shop
-    whose page may show another currency than the answer's (`_one_currency`), or with a product it states no price for
-    (`_priced`), is `NOT_SERVED`."""
+    the platform's answer holding errors, no collection or none of the page's products, for a page in `language` not
+    in that language, of a shop whose page may show another currency than the answer's (`_one_currency`), or with a
+    product it states no price for (`_priced`), is `NOT_SERVED`."""
     manifest = result.bundle.manifest
     if manifest.status_code == 0 or is_transient(manifest.status_code):
         return result
@@ -261,6 +314,7 @@ def _verdict(result: FetchResult, language: str | None) -> FetchResult:
         isinstance(answer, dict)
         and not answer.get("errors")
         and isinstance(_member(answer.get("data"), "collection"), dict)
+        and _rows(answer) > 0
         and (language is None or _answered_in(answer) == language)
         and _one_currency(answer)
         and _priced(answer)
