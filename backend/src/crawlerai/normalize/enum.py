@@ -2,9 +2,12 @@
 
 - `schema:<Enumeration>`: the input is a string or a JSON-LD node reference (`{"@id": …}`) naming a member by IRI
   (`https://schema.org/InStock`, `http://schema.org/InStock`), compact IRI (`schema:InStock`) or name (`InStock`).
-  The value is the member name. Other text, not an IRI, is read as the `type:` path reads it, against each type
-  vocabulary whose codes are all members of the enumeration (`type:availability` for `ItemAvailability`), and a
-  member name in any case also counts (`instock`), so a page that states "In stock (5 available)" gives `InStock`.
+  The value is the member name. An IRI on the schema.org host also names its member written as a network-path
+  reference (`//schema.org/InStock`), with its scheme or host in any case, or the member name in another case
+  (`http://schema.org/instock`) when exactly one member has that name. Other text, not an IRI, is read as the
+  `type:` path reads it, against each type vocabulary whose codes are all members of the enumeration
+  (`type:availability` for `ItemAvailability`), and a member name in any case also counts (`instock`), so a page
+  that states "In stock (5 available)" gives `InStock`.
 - `type:<name>`: the input is a string; it states a code when the tokens of its first clause are exactly one of the
   code's phrases (`crawlerai.normalize.vocab`), and no other code's phrase appears later in it. "Not in stock" states
   nothing (D-0782).
@@ -14,6 +17,7 @@ No match is `Invalid`; two members in one input are `Ambiguous`.
 
 import re
 from collections.abc import Hashable, Mapping
+from urllib.parse import urlsplit
 
 from pydantic import JsonValue
 
@@ -23,7 +27,9 @@ from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org names its terms under https://schema.org/ and, earlier, http://schema.org/ (schema.org, "Data model");
 # `schema:` is the prefix its JSON-LD context declares for compact IRIs (JSON-LD 1.1 §4.1.5).
-_SCHEMA_PREFIXES = ("https://schema.org/", "http://schema.org/", "schema:")
+_SCHEMA_HOST = "schema.org"
+_SCHEMA_SCHEMES = frozenset({"https", "http", ""})  # "": a network-path reference, `//schema.org/…` (RFC 3986 §4.2)
+_COMPACT = "schema:"
 # An absolute IRI starts with its scheme and a colon (RFC 3987 §2.2, RFC 3986 §3.1) and holds no white space; it names
 # a resource, so it is never read as text.
 _IRI = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:\S*")
@@ -53,13 +59,37 @@ def _schema_member(raw: Raw, enumeration: str, ctx: Context) -> NormalizeResult:
     name = raw.strip()
     if not name:
         return Invalid("empty")
-    prefix = next((p for p in _SCHEMA_PREFIXES if name.startswith(p)), "")
-    member = name.removeprefix(prefix)
-    if member in members:
-        return Ok(member)
-    if prefix or _IRI.fullmatch(name):
+    term = _schema_term(name)
+    if term is not None:
+        return _named_member(term, members)
+    if name in members:
+        return Ok(name)
+    if _IRI.fullmatch(name):
         return Invalid("not_a_member")
     return _stated_member(name, members, ctx)
+
+
+def _schema_term(name: str) -> str | None:
+    """The term a schema.org IRI or compact IRI names; None for other text. The scheme and host of a URI compare in
+    any case (RFC 3986 §3.1, §3.2.2), and a network-path reference resolves on the page's scheme, http or https
+    (RFC 3986 §5.2), so `//schema.org/InStock` names the term as `https://schema.org/InStock` does."""
+    if name.startswith(_COMPACT):
+        return name.removeprefix(_COMPACT)
+    try:
+        parts = urlsplit(name)
+    except ValueError:  # an invalid IPv6 host (RFC 3986 §3.2.2): no schema.org IRI
+        return None
+    on_host = parts.scheme.lower() in _SCHEMA_SCHEMES and parts.netloc.lower() == _SCHEMA_HOST
+    return parts.path.removeprefix("/") if on_host and not (parts.query or parts.fragment) else None
+
+
+def _named_member(term: str, members: frozenset[str]) -> NormalizeResult:
+    """The member a schema.org term names: itself, else the one member whose name it is in another case (schema.org
+    names no two members of an enumeration alike but for case, so the name stays unambiguous)."""
+    if term in members:
+        return Ok(term)
+    folded = [m for m in members if m.casefold() == term.casefold()]
+    return Ok(folded[0]) if len(folded) == 1 else Invalid("not_a_member")
 
 
 def _stated_member(text: str, members: frozenset[str], ctx: Context) -> NormalizeResult:

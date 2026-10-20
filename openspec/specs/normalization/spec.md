@@ -137,7 +137,11 @@ kept whatever its currency's minor unit; a code that is also a unit name read as
 
 ### Requirement: enum and the first-clause rule (INV-37)
 `normalize/enum.py` SHALL match `schema:` members by IRI or name exactly, and otherwise read only the text's first
-clause, which must equal a member phrase as a whole; extra words decline, never substring match. Refs: §9, D-0271–D-0274, D-0882, D-0920.
+clause, which must equal a member phrase as a whole; extra words decline, never substring match. An IRI on the
+schema.org host names its term also as a network-path reference (`//schema.org/InStock`, RFC 3986 §4.2) and with its
+scheme or host in any case (RFC 3986 §3.1, §3.2.2); its term names a member in another case (`instock`) when exactly one
+member has that name. (Previously: only `https://schema.org/`, `http://schema.org/` and `schema:` exactly, the member
+name exactly.) Refs: §9, D-0271–D-0274, D-0882, D-0920.
 Enforced by: `tests/property/test_normalize_enum.py` and `tests/replay/test_replay_stock.py`; active.
 #### Scenario: Qualified phrase
 - **WHEN** availability text is "Not in stock", "In stock soon" or "5 in stock"

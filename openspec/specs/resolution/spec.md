@@ -124,8 +124,10 @@ every rejected candidate keeps its own reason, in `field_meta`. (Previously: a p
 ### Requirement: Atomic offers (INV-15)
 Price, currency and availability SHALL come from one anchor Offer: the Offer of the variant the target shows (Shown
 variant, [variants](../variants/spec.md)), else the one holding values for the most offer fields, the first on a tie.
-On a detail page where two or more sources (collectors; each adapter a source of its own) state one Offer each for the target, those Offers are the
-item's one offer: each is the anchor and the shown variant's.
+On a detail page a source (a collector; each adapter a source of its own) that states one Offer alone for the target
+states the item's offer, the shown variant's (Shown variant), unless that source's Offer is already named by the
+target's sku or gtin; a source listing several states which is shown by its sku or gtin. (Previously: only when every
+source stated one Offer each.)
 The anchor's values score as the target's own and another Offer's at half (Candidate score). Where Offers state other
 values an offer field publishes only the shown variant's value, else it is `conflict` `offers_disagree` (a price
 also publishes when the visible price explains the difference, Candidate score). A value only another Offer than the
@@ -145,6 +147,10 @@ AggregateOffer was no item's.) Refs: §10, owner #68, owner 2026-10-19; per-row 
 - **WHEN** the JSON-LD Product's one Offer states `PreOrder` and the microdata Product's one Offer states its sku, gtin
   and price
 - **THEN** `availability` publishes `PreOrder`
+#### Scenario: One Offer beside a list of variants
+- **WHEN** the JSON-LD Product's one Offer states `InStock`, and the microdata Product's Offers list each variant,
+  the one of the Product's sku stating no availability and another `OutOfStock`
+- **THEN** `availability` publishes `InStock` with reason `offers_disagree`
 #### Scenario: Variant Offers without a price
 - **WHEN** the target's only Offer states availability and no price, and its `og:price:amount` states one
 - **THEN** `price` publishes the Open Graph amount and `availability` the Offer's

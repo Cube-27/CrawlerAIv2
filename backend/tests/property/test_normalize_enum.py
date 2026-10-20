@@ -27,11 +27,15 @@ def _phrase(member: str) -> str:
     return " ".join(re.findall(r"[A-Z][a-z]*", member)).lower()
 
 
-@given(_members, st.sampled_from(["https://schema.org/{}", "schema:{}", "{}"]), _whitespace)
+_FORMS = ["https://schema.org/{}", "schema:{}", "{}", "//schema.org/{}", "HTTP://Schema.org/{}"]
+
+
+@given(_members, st.sampled_from(_FORMS), _whitespace)
 def test_a_schema_member_matches_by_iri_or_name_or_node_reference(member: str, form: str, pad: str) -> None:
     assert enum.normalize(pad + form.format(member) + pad, SCHEMA, CTX) == Ok(member)
     assert enum.normalize({"@id": f"https://schema.org/{member}"}, SCHEMA, CTX) == Ok(member)
     assert enum.normalize(member.upper(), SCHEMA, CTX) == Ok(member)
+    assert enum.normalize(f"http://schema.org/{member.lower()}", SCHEMA, CTX) == Ok(member)
 
 
 @pytest.mark.parametrize(

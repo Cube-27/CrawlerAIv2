@@ -222,13 +222,15 @@ class Resolver:
         offer_field: bool,
     ) -> Preference:
         """The value that publishes of the ranked `groups` (a scored best one), or the field's conflict."""
-        top, rivals = groups[0], [g for g in groups[1:] if g.score > 0]
+        top = groups[0]
         if rule_type(spec) is FieldType.MONEY:
             won = self._price_winner(top, groups, offers, offer_field=offer_field)
             if isinstance(won, str):
                 return _all_rejected("conflict", won, kept, rejected)
             top = won
-            rivals = [g for g in groups if g is not top and g.score > 0]
+        elif offer_field:
+            top = self._shown_value([g for g in groups if g.score > 0], offers) or top
+        rivals = [g for g in groups if g is not top and g.score > 0]
         tied = [g for g in rivals if g.score == top.score]
         flag = self._flag(top, groups, rivals, offers, offer_field=offer_field)
         if rule_type(spec) is FieldType.MONEY:
@@ -255,7 +257,7 @@ class Resolver:
         visible = [g for g in contenders if any(c.source_kind == "dom" and c.independent for c in g.members)]
         if len(contenders) > 1 and len(visible) == 1:
             return visible[0]
-        if (shown := self._shown_amount(contenders, offers)) is not None:
+        if (shown := self._shown_value(contenders, offers)) is not None:
             return shown  # the shown variant's Offer states its own price, however the others score
         if offer_field and self._split(top, offers):  # only another Offer than the anchor states it (INV-15)
             return OFFER_SPLIT
@@ -263,8 +265,9 @@ class Resolver:
             return top
         return OFFERS_DISAGREE if offer_field and self._offers_disagree(groups) else DISAGREE
 
-    def _shown_amount(self, contenders: list[Group], offers: _Offers) -> Group | None:
-        """The one amount the shown variant's Offer states when every other amount is only an Offer outside it."""
+    def _shown_value(self, contenders: list[Group], offers: _Offers) -> Group | None:
+        """The one value (an amount, an availability) the shown variant's Offers state when every other value is
+        only an Offer outside it (INV-38): the other variants' values are theirs, not the item's."""
 
         def inside(group: Group) -> bool:
             return any(self._offer_of(c) in offers.shown for c in group.members)
@@ -282,8 +285,7 @@ class Resolver:
         when it is not the shown variant's (`offers_disagree`), a value only another Offer than the anchor states
         (`offer_split`), or a best score two values share (`disagree`, C7: decline rather than guess)."""
         if offer_field and self._offers_disagree(groups):
-            shown = any(self._offer_of(c) in offers.shown for c in top.members)
-            return None if shown and not tied else OFFERS_DISAGREE
+            return None if self._shown_value([top, *tied], offers) is top else OFFERS_DISAGREE
         if offer_field and self._split(top, offers):
             return OFFER_SPLIT
         return DISAGREE if tied else None
@@ -330,12 +332,12 @@ class Resolver:
         offers = _Offers(frozenset(() if anchor is None else (anchor,)))
         if not self.detail:
             return offers
-        if lone := self._lone_offers():
-            return _Offers(lone, lone)
         # The target's own sku and gtin, as they publish, select the variant it shows (variants spec).
         ids = [name for name in _variant_ids(fields) if name in fields]
         stated = {name: self._choose(fields[name], *screened[name], offers=offers, offer_field=False) for name in ids}
-        return self._shown_offers(fields, candidates, self._published_ids(fields, stated)) or offers
+        shown = self._shown_offers(fields, candidates, self._published_ids(fields, stated))
+        shown |= self._lone_offers(frozenset(_source(offer) for offer in shown))
+        return _Offers(shown, shown) if shown else offers
 
     def _published_ids(
         self, fields: Mapping[str, FieldSpec], stated: Mapping[str, Preference]
@@ -350,34 +352,39 @@ class Resolver:
             and (self.confident is None or self.confident(name, fields[name], decision))
         ]
 
-    def _lone_offers(self) -> frozenset[str]:
-        """The target's Offers when two or more sources state one each (`_source`): each source's one Offer of the
-        item is its offer, the variant the page shows; none otherwise. A source listing several states which of them
-        each is."""
-        offers = self.graph.offers(self.target)
-        sources = {_source(offer.id) for offer in offers}
-        return frozenset(o.id for o in offers) if len(offers) > 1 and len(sources) == len(offers) else frozenset()
+    def _lone_offers(self, named: frozenset[str]) -> frozenset[str]:
+        """The Offers of the target each of whose sources (`_source`) other than `named` states one alone: a source's
+        one Offer of the item is its offer, the variant the page shows (resolution spec, Atomic offers). A source
+        listing several states which of them each is by its sku or gtin."""
+        by_source: dict[str, list[str]] = {}
+        for offer in self.graph.offers(self.target):
+            by_source.setdefault(_source(offer.id), []).append(offer.id)
+        return frozenset(o[0] for source, o in by_source.items() if len(o) == 1 and source not in named)
 
     def _shown_offers(
         self, fields: Mapping[str, FieldSpec], candidates: Sequence[Candidate], own: list[tuple[Candidate, FieldSpec]]
-    ) -> _Offers | None:
-        """The Offers of the variant the target shows (variants spec): of the target's Offers and variants, the one
-        whose sku or gtin (a field's or a row sub-field's) equals one of `own`; None when no single one is."""
-        if not own:
-            return None
+    ) -> frozenset[str]:
+        """The Offers of the variant the target shows (variants spec): of the target's Offers and variants, those
+        whose sku or gtin (a field's or a row sub-field's) equals one of `own`, at most one per source, with every
+        other source's Offer stating the same sku or gtin as one of them (GS1 GTIN and a seller's SKU identify one
+        variant, whichever source states it); none when no unit matches or a source names two."""
         ids = _variant_ids(fields)
-        valid = [(c, ids[c.field]) for c in candidates if c.field in ids and isinstance(c.normalized, Ok)]
-        units = {
-            unit
-            for c, spec in valid
-            if (unit := self._unit(c)) is not None
-            and any(spec.scheme == o_spec.scheme and same_value(c, o, spec) for o, o_spec in own)
-        }
-        if len(units) != 1:
-            return None
-        held = self.graph.entities[units.pop()]
-        shown = frozenset(o.id for o in self.graph.offers(held)) if held.via == VARIANT else frozenset({held.id})
-        return _Offers(shown, shown) if shown else None
+        stated = [
+            (unit, c, ids[c.field])
+            for c in candidates
+            if c.field in ids and isinstance(c.normalized, Ok) and (unit := self._unit(c)) is not None
+        ]
+        matched = {unit for unit, c, spec in stated if _names(c, spec, own)}
+        if not matched or len({_source(unit) for unit in matched}) < len(matched):
+            return frozenset()
+        held = [(c, spec) for unit, c, spec in stated if unit in matched]
+        same = {unit for unit, c, spec in stated if _names(c, spec, held)}
+        return frozenset(offer for unit in matched | same for offer in self._unit_offers(unit))
+
+    def _unit_offers(self, unit: str) -> frozenset[str]:
+        """A variant's Offers, or the one Offer `unit` is."""
+        held = self.graph.entities[unit]
+        return frozenset(o.id for o in self.graph.offers(held)) if held.via == VARIANT else frozenset({held.id})
 
     def _unit(self, candidate: Candidate) -> str | None:
         """The variant or Offer of the target that holds the candidate: a `hasVariant` member, or an Offer of the
@@ -641,6 +648,11 @@ def parse_orders(document: object) -> dict[str, tuple[SourceKind, ...]]:
             raise ValueError(f"{PRECEDENCE_FILE}: {type_} names an unknown source kind {unknown}")
         orders[str(type_)] = cast(tuple[SourceKind, ...], tuple(order))
     return orders
+
+
+def _names(candidate: Candidate, spec: FieldSpec, ids: Sequence[tuple[Candidate, FieldSpec]]) -> bool:
+    """Whether a sku or gtin candidate states one of `ids` of its own scheme."""
+    return any(spec.scheme == o_spec.scheme and same_value(candidate, o, spec) for o, o_spec in ids)
 
 
 def _source(entity_id: str) -> str:

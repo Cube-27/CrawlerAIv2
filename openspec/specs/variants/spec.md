@@ -85,9 +85,12 @@ Refs: §13.1, D-0798, D-0799, D-1185. Enforced by: Pydantic models (`FieldOutcom
 Availability, currency and stock quantity are a variant's: where the Offers of the target and its variants state
 other values, a detail page's top-level field SHALL publish only the value of the variant the target shows, its
 default or selected one, else `conflict`/`offers_disagree`; no other default is taken, whatever variant a URL names.
-The shown variant is the one variant (or Offer of the target) whose sku or gtin, as a field or a row sub-field, equals
-one the target publishes as its own (screened, and publishing at the request's `min_confidence`); its Offers are the
-anchor (Atomic offers), and its value publishes flagged `offers_disagree`. A price follows the same rule: the shown
+The shown variant is the one variant (or Offer of the target) of a source whose sku or gtin, as a field or a row
+sub-field, equals one the target publishes as its own (screened, and publishing at the request's `min_confidence`),
+with every other source's Offer stating that variant's sku or gtin (GS1 GTIN and a seller's SKU identify one variant
+whichever source states it), and a source's one Offer alone (Atomic offers); a source naming two variants names none.
+Its Offers are the anchor (Atomic offers), and the one value they state publishes flagged `offers_disagree` when
+every other value is only other variants' Offers'. (Previously: one variant of one source only.) A price follows the same rule: the shown
 variant's, else (Offers stating other amounts) `conflict` `offers_disagree`, unless the visible price explains the
 difference (Candidate score). Varying values publish per variant in the row-mapped field. (Previously: the price
 published the best-scored Offer's, flagged; availability took the shown variant's only after
