@@ -2169,6 +2169,10 @@ export interface components {
             reasons: {
                 [key: string]: number;
             };
+            /** Signals */
+            signals: {
+                [key: string]: number;
+            };
         };
         /**
          * JobPage

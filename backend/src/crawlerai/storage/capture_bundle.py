@@ -101,6 +101,10 @@ class CaptureManifest(_Frozen):
     # Browser listing captures: the rendered area (CSS pixels) of each repeated item block, by its element path in the
     # body (`acquire.items.element_path`); None when not measured (the segment step then ranks by structure).
     item_areas: dict[str, float] | None = None
+    # Browser captures: per Fetch resource type the browser named (`websocket`, `eventsource`, `script`...), how many
+    # the page loaded, and per counted media type (`application/wasm`, `application/grpc-web`) how many responses
+    # carried it; counts only, no URLs (`content.signals`). Left out of the manifest when None, as `data_call` is.
+    resources: dict[str, int] | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class CaptureBundle(_Frozen):
@@ -218,6 +222,10 @@ _HTML_TYPES: Final = frozenset({"text/html", "application/xhtml+xml"})
 # React Server Components' Flight payload (React `ReactFlightClient.js`), as Next.js labels it
 # (`app-router-headers.ts`).
 FLIGHT_TYPE: Final = "text/x-component"
+# The media types a browser capture counts among its resources (`CaptureManifest.resources`), by essence;
+# `GRPC_WEB_TYPE` stands for every `application/grpc-web*` type.
+WASM_TYPE: Final = "application/wasm"
+GRPC_WEB_TYPE: Final = "application/grpc-web"
 
 
 def is_flight(content_type: str | None) -> bool:
