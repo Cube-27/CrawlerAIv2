@@ -25,8 +25,8 @@ its scope match times its value's agreement:
   kind outside the order 0); a fragment of another of the field's candidates weighs 0 (`resolve/supersede.py`: a
   `long_text` that is a prefix or ellipsis-cut prefix of a longer one, an Open Graph description, or a value of
   another kind stating the same text as it, beside a longer one of a kind other than Open Graph, or one that states
-  another's text with fewer line breaks, white space aside (its paragraphs and line breaks flattened); a `text` that is another kind's value plus ` - ` or ` | ` and more text; an Open Graph list of
-  images whose files are all among a longer list's of another kind). For `money` the strength of the currency
+  another's text with fewer line breaks, white space aside (its paragraphs and line breaks flattened); a `text` that is another kind's value plus ` - ` or ` | ` and more text; a list of
+  images, of any kind, whose files are all among a longer list's of another kind (Previously: an Open Graph list only)). For `money` the strength of the currency
   evidence ([normalization](../normalization/spec.md) `basis`): a stated currency 1, then `page`, `locale`, `url`,
   `unknown` each 1/(number of bases + 1) less. Every other type weighs every kind 1 (no measured order).
 - Scope match: 1 for the target's own values and its anchor Offer's, 0.5 for another Offer of the target or of its
@@ -84,6 +84,9 @@ owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_prefere
 #### Scenario: Gallery array
 - **WHEN** JSON-LD `Product.image` lists three URLs and `og:image` equals the second
 - **THEN** `image_url` publishes the second URL
+#### Scenario: A main image beside the gallery
+- **WHEN** JSON-LD `Product.image` states one image and the page's `dom` gallery lists it and four other views
+- **THEN** the list of images publishes the gallery's five, the JSON-LD list weighing 0
 #### Scenario: Namers disagree
 - **WHEN** `og:image` names the second gallery URL by its file and a `dom` image names the first
 - **THEN** `image_url` publishes the second URL, Open Graph weighing more than `dom`

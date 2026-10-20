@@ -118,12 +118,13 @@ Collection items SHALL read as schema.org products (variants under `hasVariant`,
 [variants](../variants/spec.md)), with prices only when the shop presents exactly one currency, never inferred from
 the URL (C7); a stored answer of a shop of several currencies reads without prices. The Online Store's documented
 product JSON (`/products/{handle}.js`, a data call; `adapters/platforms.py` `answer_shapes`) SHALL read as a Product
-with one Offer per `variants[]` member: `title` as `name`, `sku`, `barcode` as `gtin`, `price` in cents for every
+with `description` (its HTML body) as `description`, every `images[]` URL as `image` (the featured image first), and
+one Offer per `variants[]` member: `title` as `name`, `sku`, `barcode` as `gtin`, `price` in cents for every
 currency (×100), `available` as `InStock`/`OutOfStock` (`Shape.booleans`), so the variants rows fill from it; its
 currency is the page's `Shopify.currency.active`, a platform signature's `currency_members` (Shopware:
 `window.currencyIsoCode`), read only on a page showing the platform's signal. Refs: D-1080, D-1081, D-1085, D-1114,
 D-1118, architecture-v3 d.7. (Previously: the answer's top-level `price` only, read without its Offer when
-`price_varies`; no currency member.)
+`price_varies`; no currency member; the product JSON's `featured_image` only and no `description`.)
 
 ### Requirement: Workday adapter
 It SHALL detect career sites on `{tenant}.{dc}.myworkdayjobs.com/[{locale}/]{site}` and

@@ -4,17 +4,20 @@ one typed value outside other items, and the main content's first image. Every
 candidate is the page's, independent, with a `dom:` locator naming the element its value came from. Pages are
 synthetic (`example.test`, C3, C9)."""
 
+from collections.abc import Hashable
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import JsonValue
 
-from crawlerai.collect.base import PAGE
-from crawlerai.collect.dom import DomCollector
+from crawlerai.collect.base import PAGE, Candidate
+from crawlerai.collect.dom import DomCollector, stated_images
 from crawlerai.collect.locator import parse_locator
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId
 from crawlerai.normalize.base import Context, Invalid, Ok
+from crawlerai.normalize.url import resource_key
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
@@ -204,6 +207,51 @@ def test_an_image_in_a_dialog_or_a_hidden_subtree_is_not_the_main_image(wrapper:
     found = _collect(f'<main>{wrapper.format("<img src=/badge.png>")}<img src="/p/1.jpg"></main>')
 
     assert [value for value, _ in found["image_url"]] == ["https://shop.example.test/p/1.jpg"]
+
+
+def test_the_shown_image_of_the_stated_main_file_anchors_the_main_image_and_its_gallery() -> None:
+    # No main landmark (a client-rendered storefront): the image structured data states, found by its file, is the main
+    # image, and its slides the gallery; the header's logo is tangential content.
+    slides = "".join(f'<div><img src="/p/{n}.jpg?w=200" alt="{n}"></div>' for n in "abc")
+    body = f'<header><img src="/logo.png"></header><div><img src="/badge.png"></div><div>{slides}</div>'
+    primary = frozenset({resource_key("https://shop.example.test/p/b.jpg")})
+
+    def collect(markup: str, stated: frozenset[Hashable]) -> dict[str, object]:
+        page = ParsedPage(f"<html><body>{markup}</body></html>")
+        found = DomCollector(primary=stated).collect(page, SCHEMA, CTX).candidates
+        return {c.field: c.normalized.value for c in found if isinstance(c.normalized, Ok)}
+
+    found = collect(body, primary)
+    assert found["image_url"] == "https://shop.example.test/p/b.jpg?w=200"
+    assert found["images"] == [f"https://shop.example.test/p/{n}.jpg?w=200" for n in "abc"]
+    # In a main region the anchor goes before the region's first image.
+    assert collect(f"<main>{body}</main>", primary)["image_url"] == "https://shop.example.test/p/b.jpg?w=200"
+    # Without a stated file the page has no main region image.
+    assert collect(body, frozenset()) == {}
+
+
+def test_the_stated_main_image_is_each_sources_first_image() -> None:
+    # An image field holds a candidate per value a source states; the source's first names the main image.
+    def stated(field: str, value: JsonValue, kind: str = "jsonld") -> Candidate:
+        return Candidate.model_validate(
+            {
+                "field": field,
+                "entity_id": "e",
+                "source_kind": kind,
+                "raw": value,
+                "normalized": Ok(value),
+                "locator": "jsonld:0:$['x']",
+                "independent": True,
+            }
+        )
+
+    files: list[JsonValue] = [f"https://cdn.example.test/p/{n}.jpg" for n in "abcd"]
+    found = stated_images(
+        SCHEMA,
+        [stated("image_url", files[0]), stated("image_url", files[1]), stated("images", files[2:], "og")],
+    )
+
+    assert found == {resource_key(files[0]), resource_key(files[2])}
 
 
 def test_a_hidden_main_region_has_no_main_image() -> None:
