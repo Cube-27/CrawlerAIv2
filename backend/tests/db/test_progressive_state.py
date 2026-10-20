@@ -15,22 +15,31 @@ from crawlerai.config_ir.progressive import (
     request_learning,
     trigger_learning,
 )
-from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, Job, ProgressiveState, Project, SchemaDef, Site
+from crawlerai.db.models import (
+    ExtractionConfig,
+    ExtractionConfigId,
+    Job,
+    PageKind,
+    ProgressiveState,
+    Project,
+    SchemaDef,
+    Site,
+)
 
 pytestmark = pytest.mark.anyio
 
 BATCH = 10
 
 
-async def _key(conn: AsyncConnection) -> StateKey:
+async def _key(conn: AsyncConnection, page_kind: PageKind = "detail") -> StateKey:
     project = select(Project.id).where(Project.name == "default").scalar_subquery()
     host = f"shop-{uuid.uuid4().hex[:12]}.example.test"
     site_id = (await conn.execute(insert(Site).values(project_id=project, host=host).returning(Site.id))).scalar_one()
-    values = {"name": f"s_{uuid.uuid4().hex[:12]}", "page_kind": "detail", "fields": {}}
+    values = {"name": f"s_{uuid.uuid4().hex[:12]}", "page_kind": page_kind, "fields": {}}
     schema_id = (
         await conn.execute(insert(SchemaDef).values(**values, origin="user", status="active").returning(SchemaDef.id))
     ).scalar_one()
-    return StateKey(site_id=site_id, schema_id=schema_id, page_kind="detail")
+    return StateKey(site_id=site_id, schema_id=schema_id, page_kind=page_kind)
 
 
 async def _pages(conn: AsyncConnection, key: StateKey, pages: int) -> None:
@@ -87,6 +96,17 @@ async def test_eight_extracted_pages_start_one_learn_job(conn: AsyncConnection) 
         "page_kind": "detail",
         "force": False,
     }
+
+
+@pytest.mark.parametrize(("render_mode", "learned"), [("off", 0), ("locate", 1)])
+async def test_a_listing_whose_pages_kept_no_record_is_learned_only_as_a_locate_run(
+    conn: AsyncConnection, render_mode: str, learned: int
+) -> None:
+    key = await _key(conn, "listing")
+    await _pages(conn, key, 8)
+    await conn.execute(update(ProgressiveState).where(*key.where()).values(render_mode=render_mode))
+
+    assert await trigger_learning(conn, batch=BATCH) == learned
 
 
 async def test_a_failed_run_goes_cold_and_retries_after_eight_more_pages(conn: AsyncConnection) -> None:

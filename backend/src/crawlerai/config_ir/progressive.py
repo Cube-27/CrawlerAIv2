@@ -27,7 +27,7 @@ from typing import Any, Final, Literal
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import ColumnElement, case, func, insert, select, update
+from sqlalchemy import ColumnElement, case, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -40,6 +40,7 @@ from crawlerai.db.models import (
     PageKind,
     ProgressiveMode,
     ProgressiveState,
+    Record,
     RenderMode,
     SchemaId,
     Site,
@@ -156,7 +157,9 @@ class StateKey:
 
 async def trigger_learning(conn: AsyncConnection, *, batch: int) -> int:
     """Start learning for up to `batch` cold states with enough extracted pages, and return how many. A state whose
-    learned config waits for approval (D-1342) is not learned again until it is approved or a run is forced."""
+    learned config waits for approval (D-1342) is not learned again until it is approved or a run is forced. A listing
+    surface none of whose pages kept a record (each listed nothing) is learned only as a locate run (`render_mode` not
+    `off`): a learning run reads pages with records alone, so it would have nothing to learn from."""
     state, configs = ProgressiveState, ExtractionConfig
     waiting = select(configs.id).where(
         configs.site_id == state.site_id,
@@ -164,12 +167,14 @@ async def trigger_learning(conn: AsyncConnection, *, batch: int) -> int:
         configs.page_kind == state.page_kind,
         configs.status == "pending_approval",
     )
+    recorded = select(Record.id).where(Record.site_id == state.site_id, Record.schema_id == state.schema_id)
     due = (
         select(state.site_id, state.schema_id, state.page_kind)
         .where(
             state.mode == "cold",
             state.pages_extracted >= func.coalesce(state.retry_at_pages, LEARN_AFTER_PAGES),
             ~waiting.exists(),
+            or_(state.page_kind != "listing", state.render_mode != "off", recorded.exists()),
         )
         .limit(batch)
         .with_for_update(skip_locked=True)

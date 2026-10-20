@@ -93,7 +93,8 @@ page, a caller-supplied listing that listed nothing included. Refs: §8.4, §5.2
 - **THEN** a `learn` job is created and the mode becomes `learning`
 
 ### Requirement: Learning trigger, sample and job
-Learning SHALL start when 8 pages are extracted (or 8 more after a failed run), or on `POST /v1/sites/{host}/learn`;
+Learning SHALL start when 8 pages are extracted (or 8 more after a failed run; on a listing surface none of whose
+pages kept a record, only as a locate run, `render_mode` not `off`), or on `POST /v1/sites/{host}/learn`;
 5 pages form the sample and the rest (≥ 3) are held out. A run is a `job(kind='learn')` charged for role A; every
 non-activating end (failure, budget, expiry, shutdown, cancel, schema edit) returns the state to cold with a retry.
 Refs: §8.3, D-0030, D-0547, D-0549, D-0622.

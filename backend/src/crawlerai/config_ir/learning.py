@@ -29,13 +29,13 @@ ends the run (`SHUTDOWN`), so its job never waits for `expire_learn_runs`. The j
 
 import asyncio
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
-from pydantic import SecretStr, ValidationError
+from pydantic import JsonValue, SecretStr, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -71,7 +71,7 @@ from crawlerai.config_ir.progressive import (
     lock_state,
 )
 from crawlerai.config_ir.synthesis import synthesize
-from crawlerai.config_ir.validation import HeldOutPage, Validated, ValidationReport, validate, with_unlearned
+from crawlerai.config_ir.validation import Facts, HeldOutPage, Validated, ValidationReport, validate, with_unlearned
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.redaction import REDACTED
 from crawlerai.db.jobs import JOB_TRANSITIONS, record_event, transition_job
@@ -414,20 +414,36 @@ async def _located(
         return validated
     replay = None if replays is None else replays(run.job_id, run.proxy_pool)
     calls = None if replay is None else Calls(client, replay, run.job_id, run.context)
-    recipe = _listing_recipe(client, run, validated, replays, hooks.render)
+    recipe = _listing_recipe(client, run, validated, replays, hooks.render, pages)
     located = await locate(base, run.schema, names, pages, vocabulary, calls, recipe)
     return with_unlearned(located_config(validated, base, located), located.reasons)
 
 
 def _listing_recipe(
-    client: LLMClient, run: _Run, validated: Validated, replays: Replays | None, render: Render | None
+    client: LLMClient,
+    run: _Run,
+    validated: Validated,
+    replays: Replays | None,
+    render: Render | None,
+    rendered: Sequence[Sampled],
 ) -> ListingRecipe | None:
-    """A listing's `call` tier: its recipe, learned from the run's pages as `_page_recipe` learns one; None when the run
-    already tried (a config validated) or cannot replay."""
+    """A listing's `call` tier: its recipe, learned from the surface's pages as `_page_recipe` learns one, a page that
+    listed nothing with the rows its render published (`rendered`), which the recipe's calls are matched with; None
+    when the run already tried (a config validated) or cannot replay."""
     if validated.ir is not None or replays is None:
         return None
-    sample, held_out = split(run.schema, run.surface)
+    rows = {page.stored.held_out.capture_id: page.rows for page in rendered if not page.stored.held_out.rows}
+    pages = [_with_rows(page, rows.get(page.held_out.capture_id, ())) for page in run.surface]
+    sample, held_out = split(run.schema, pages)
     return lambda: _page_recipe(client, run, sample, held_out, replays, render)
+
+
+def _with_rows(page: StoredPage, rows: Sequence[Mapping[str, JsonValue]]) -> StoredPage:
+    """`page` with `rows` as its published rows, when it has any."""
+    if not rows:
+        return page
+    facts = tuple(Facts(published=dict(row)) for row in rows)
+    return replace(page, held_out=replace(page.held_out, rows=facts))
 
 
 @dataclass(frozen=True, slots=True)

@@ -3,10 +3,11 @@ validated on, each parsed with its context and with the facts the engine stored 
 
 The pages are a site's most recent captures with outcome `extracted` or `partial` that have records of the schema
 version (§4.4), each with its latest extraction. A locate run samples the surface's stored pages (`listed_nothing`):
-those, and the listing pages of a job of the schema that listed nothing (`partial` without a record), whose rows a
-render may show (learning-configs spec, "Locate run"). A capture whose bundle is no longer stored (captures expire, §15)
-is skipped. What the engine published is the extraction's records (`record.data` holds published fields only, §6): a
-detail page's one, or a listing's one per row in the order they were stored, which is the page's row order.
+those, and the listing pages of a job of the schema that listed nothing (no record, though a further page of its task
+may have kept some), whose rows a render may show (learning-configs spec, "Locate run"). A capture whose bundle is no
+longer stored (captures expire, §15) is skipped. What the engine published is the extraction's records (`record.data`
+holds published fields only, §6): a detail page's one, or a listing's one per row in the order they were stored, which
+is the page's row order.
 
 The references corroboration compares with (§8.3 step 4) are the valid structured-data or adapter candidates owned by
 an entity that published a field of the page. Records do not say which row entity a listing record came from, so a
@@ -237,7 +238,8 @@ async def _extractions(
 
 def _latest(schema: SchemaDef, *, listed_nothing: bool = False) -> Select[CaptureId, str, ExtractionId]:
     """Each capture's latest extraction with a record of `schema` (ids are UUIDv7, so the greatest is the latest); with
-    `listed_nothing`, or of a listing task of a job of `schema` that listed nothing (`partial` without a record)."""
+    `listed_nothing`, or of a listing task of a job of `schema`, which listed nothing when it has none (`_extractions`
+    keeps the tasks that ended `extracted` or `partial`)."""
     kept: ColumnElement[bool] = (
         select(Record.id)
         .where(
@@ -250,7 +252,7 @@ def _latest(schema: SchemaDef, *, listed_nothing: bool = False) -> Select[Captur
         empty = (
             select(UrlTask.id)
             .join(Job, Job.id == UrlTask.job_id)
-            .where(UrlTask.id == Extraction.url_task_id, UrlTask.outcome == "partial", Job.schema_id == schema.id)
+            .where(UrlTask.id == Extraction.url_task_id, Job.schema_id == schema.id)
             .exists()
         )
         kept = or_(kept, empty)
