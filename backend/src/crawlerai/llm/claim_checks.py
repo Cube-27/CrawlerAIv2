@@ -4,7 +4,9 @@ Grounding (`llm.grounding`) finds where the page states a claimed value; these c
 text is, from the page's own structure, never from words listed in code (C4):
 - An identifier starts at the identifier. A label the claim kept before it, ended by a colon and white space (the
   label-value pair, `Ref.: X`), and the number sign before a number (Unicode U+0023, read "number": `#123`) are not
-  part of it: the span moves past them.
+  part of it: the span moves past them. What remains lies within one text run, the text of one node: an identifier is
+  one token the page states (schema.org `identifier`), and two runs side by side (`<span>1234</span> <span>WHT</span>`)
+  are two values the page states apart, not one it states.
 - A span the page labels as another field is not this field's. Its label is the text right before it on its line, ended
   by a colon ("ISBN: 1400215528" for a product id); for a number, also the words right after it on its line, which
   name what it counts ("293 Reviews" for a rating). A label names the fields whose label vocabulary holds its words
@@ -33,13 +35,15 @@ _MAX_LABEL_WORDS = 6
 _COUNTED = frozenset({FieldType.NUMBER, FieldType.COUNT})
 
 
-def checked(span: GroundedSpan, text: str, name: str, spec: FieldSpec, labels: Labels) -> GroundedSpan | None:
-    """The span of `text` that holds the field's value, or None when the page labels it as another field's (module
-    docstring)."""
+def checked(
+    span: GroundedSpan, text: str, name: str, spec: FieldSpec, labels: Labels, breaks: frozenset[int]
+) -> GroundedSpan | None:
+    """The span of `text` that holds the field's value, or None when the page labels it as another field's, or it
+    is an identifier two text runs state (module docstring). `breaks` are the offsets where two text runs meet."""
     kind = value_type(spec)
     if kind is FieldType.IDENTIFIER:
         found = unlabelled(span, text)
-        if found is None:
+        if found is None or any(found.start < at < found.end for at in breaks):
             return None
         span = found
     named = [_label_before(text, span.start, labels)]

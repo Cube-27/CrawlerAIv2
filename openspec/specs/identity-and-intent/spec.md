@@ -11,8 +11,12 @@ What then publishes and how far it is trusted is [resolution](../resolution/spec
 ## Requirements
 
 ### Requirement: Entity identity, intent and ownership
-Entities of one most specific type that share an IRI, an identifier value (unless their item URLs differ) or, across
-collectors, an item URL other than a page URL SHALL be one entity before intent (`resolve/identity.py`). The root
+Entities that share an IRI, when the most specific types of all entities stating it are each other's or subtypes of
+one another (JSON-LD 1.1 node map generation merges node objects with one `@id`; with one unrelated pair, only those of
+one most specific type), and entities of one most specific type that share an identifier value
+(unless their item URLs differ) or, across collectors, an item URL other than a page URL SHALL be one entity before
+intent (`resolve/identity.py`); the merged entity holds every member's types, most specific first. (Previously: an IRI
+joined entities of one most specific type only.) The root
 of an identity-checked data call's answer (acquisition spec "Data calls") SHALL be one entity with the page's single
 root entity of its most specific type, and stay apart when the page states none or several.
 `select_target` SHALL pick one primary-type entity (`resolve/intent.py`) or none, which makes every field
@@ -32,6 +36,9 @@ D-1291, D-1379.
 - **WHEN** a detail page's JSON-LD Product has no identifier and its identity-checked Shopify product JSON states the
   sku and price on its variants
 - **THEN** the page has one target, owning the JSON-LD description and the JSON's price and variant sku
+#### Scenario: A product group and a product under one IRI
+- **WHEN** a JSON-LD ProductGroup and a separate JSON-LD Product with an `aggregateRating` state one `@id`
+- **THEN** they are one target, which owns the rating; a WebPage, an Organization and a Thing under one `@id` stay apart
 #### Scenario: A product's rating names the product
 - **WHEN** a Product's `aggregateRating` holds an `itemReviewed` Product naming the page URL
 - **THEN** the outer Product is the target and intent is not ambiguous

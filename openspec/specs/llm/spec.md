@@ -133,7 +133,9 @@ reason was `no_candidates`.) Refs: §8.4, D-0521, D-1097, D-1600, D-1601, D-1602
 ### Requirement: Role C value checks
 A grounded role C span SHALL be the field's own fact, as the page's structure states it (`llm/claim_checks.py`): an
 identifier's span starts past a label written before it with a colon (`REF.: CLU-1` is `CLU-1`) and past a number sign
-(`#123` is `123`); a span the page labels as another field is not taken: the label right before it on its line, ended
+(`#123` is `123`), and what remains SHALL lie within one text run, the text of one node: an identifier is one token,
+and two runs side by side (`<span>1234</span> <span>WHT</span>`) are two values the page states apart (previously:
+a span across two runs was taken); a span the page labels as another field is not taken: the label right before it on its line, ended
 by a colon, and for a number or count also the words right after it ("293 Reviews"), read with the schema's label
 vocabulary (extraction spec, "Label vocabulary"), name fields of which this one is none. A label that names no field,
 or this one, decides nothing. On a listing, a place claimed for a row from its block's heading (HTML `h1`-`h6`, the
@@ -146,6 +148,9 @@ Refs: §11, INV-12.
 #### Scenario: Label kept with an identifier
 - **WHEN** a product_id claim is `REF.: CLU459_4712_V2`
 - **THEN** its candidate is `CLU459_4712_V2`, located past the label
+#### Scenario: Identifier joined across two runs
+- **WHEN** a product_id claim is `1234 WHT` and the page states `1234` and `WHT` in two sibling spans
+- **THEN** it is not taken, and product_id stays `missing` (`unverified`)
 #### Scenario: Another field's label
 - **WHEN** a product_id claim is a span after `ISBN:` and `ISBN` is a label of gtin only
 - **THEN** it is not taken, and product_id stays `missing` (`unverified`)

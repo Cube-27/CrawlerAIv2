@@ -310,7 +310,7 @@ def _grounded(value: str, block: BlockText, name: str, spec: FieldSpec, labels: 
         span = align(
             claim, text, money=_money(spec), identifier=value_type(spec) is FieldType.IDENTIFIER, breaks=breaks
         )
-        if span is not None and (span := checked(span, text, name, spec, labels)) is not None:
+        if span is not None and (span := checked(span, text, name, spec, labels, breaks)) is not None:
             return GroundedSpan(span.value, start + span.start, start + span.end)
     return None
 
@@ -483,7 +483,7 @@ class _Reader:
         grounded = align(
             span, cleaned, money=_money(spec), identifier=value_type(spec) is FieldType.IDENTIFIER, breaks=self.breaks
         )
-        if grounded is None or (grounded := checked(grounded, cleaned, name, spec, self.labels)) is None:
+        if grounded is None or (grounded := checked(grounded, cleaned, name, spec, self.labels, self.breaks)) is None:
             return None
         whole = self.scope.whole_span(grounded.start, grounded.end)
         if whole is None:
