@@ -14,6 +14,7 @@ from collections.abc import Iterator
 
 from pydantic import JsonValue
 
+from crawlerai.adapters.base import ADAPTER_CALL
 from crawlerai.adapters.platforms import answer_shapes
 from crawlerai.collect.adapter import read_shapes
 from crawlerai.collect.base import Candidate, CollectResult, Entity
@@ -59,6 +60,8 @@ def _answers(page: ParsedPage, diagnostics: list[str]) -> Iterator[tuple[str, Js
         return
     for index in sorted(data_call_bodies(page)):
         platform = page.network_entries[index].data_call
+        if platform == ADAPTER_CALL:
+            continue  # an adapter's answer, which its adapter's shapes read (`collect.run`)
         try:
             answer = network_json(page.network[index])
         except ValueError as e:
