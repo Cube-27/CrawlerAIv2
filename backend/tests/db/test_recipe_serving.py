@@ -151,9 +151,15 @@ async def _drift_window(engine: AsyncEngine, config_id: uuid.UUID) -> object:
 # The scrape service.
 
 
-def _scrape(url: str, schema: SchemaDef, *formats: str) -> ScrapeRequest:
+def _scrape(url: str, schema: SchemaDef, *formats: str, **fields: Any) -> ScrapeRequest:
     return ScrapeRequest.model_validate(
-        {"url": url, "formats": ["records", *formats], "schema": {"id": str(schema.id)}, "page_kind": "detail"}
+        {
+            "url": url,
+            "formats": ["records", *formats],
+            "schema": {"id": str(schema.id)},
+            "page_kind": "detail",
+            **fields,
+        }
     )
 
 
@@ -199,8 +205,9 @@ async def test_an_endpoint_robots_txt_disallows_is_not_requested_and_the_page_is
     web.pages[url] = PAGE
     web.pages[f"{own_origin}/robots.txt"] = b"User-agent: *\nDisallow: /api/\n"
     web.endpoints[f"{own_origin}/api/products/desk-lamp"] = PRODUCT
+    obeying = _scrape(url, lamp_schema, fetch={"respect_robots": True})
 
-    result = await scrape(engine, fetching, _scrape(url, lamp_schema), data=engine_data)
+    result = await scrape(engine, fetching, obeying, data=engine_data)
 
     assert result.fetch is not None
     assert (result.fetch.method, web.page_fetches(), web.requested) == ("http", [url], [])

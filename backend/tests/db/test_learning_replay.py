@@ -1,6 +1,6 @@
 """A learning run's recipe replays (adapters spec) go out as politely as a served recipe's request (acquisition spec,
-D-0731): only where the endpoint host's robots.txt allows, at that host's rate; through the site's proxy pool, counted
-as the learn job's usage (D-1381)."""
+D-0731): at the endpoint host's rate, with no robots.txt request (owner decision #75); through the site's proxy pool,
+counted as the learn job's usage (D-1381)."""
 
 import json
 from collections.abc import AsyncIterator, Callable
@@ -27,18 +27,15 @@ pytestmark = pytest.mark.anyio
 
 @dataclass
 class Web:
-    """Answers robots.txt from `robots` and every endpoint with one JSON object; the browser is never used."""
+    """Answers every endpoint with one JSON object; neither a page, robots.txt nor the browser is ever fetched."""
 
     fetch_result: Callable[..., FetchResult]
-    robots: bytes
     requested: list[str] = field(default_factory=list)
-    pools: list[str | None] = field(default_factory=list)  # the proxy pool of each request, robots.txt's too
+    pools: list[str | None] = field(default_factory=list)  # the proxy pool of each request
     transferred: int = 0  # the bytes each answer says it moved
 
     async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
-        assert url.endswith("/robots.txt"), "a replay fetches no page"
-        self.pools.append(policy.proxy_pool)
-        return self._moved(self.fetch_result(url, 200, self.robots))
+        raise AssertionError("a replay fetches no page, and by default no robots.txt (owner decision #75)")
 
     async def browser(self, url: str, policy: FetchPolicy) -> FetchResult:
         raise AssertionError("a replay never needs a browser")
@@ -78,33 +75,19 @@ def _fetching(web: Web, tmp_path: Path) -> Fetching:
     return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
 
 
-async def test_a_replay_robots_txt_disallows_is_not_sent(
-    engine: AsyncEngine, fetch_result: Callable[..., FetchResult], api_host: str, tmp_path: Path, job_id: JobId
-) -> None:
-    web = Web(fetch_result, b"User-agent: *\nDisallow: /v1/\n")
-    replays = learning_replay(engine, _fetching(web, tmp_path))
-    assert replays is not None
-
-    result = await replays(job_id, None)(
-        JsonRequest(f"https://{api_host}/v1/products/item-a", "https://shop.example.test/p/item-a")
-    )
-
-    assert (result.block_class, result.attempts[-1].error, web.requested) == ("blocked", "robots", [])
-
-
 async def test_a_replay_goes_through_the_sites_proxy_pool_and_counts_its_bytes_as_the_jobs_usage(
     engine: AsyncEngine, fetch_result: Callable[..., FetchResult], api_host: str, tmp_path: Path, job_id: JobId
 ) -> None:
-    web = Web(fetch_result, b"User-agent: *\nAllow: /\n", transferred=700)
+    web = Web(fetch_result, transferred=700)
     replays = learning_replay(engine, _fetching(web, tmp_path))
     assert replays is not None
 
     result = await replays(job_id, "dc")(JsonRequest(f"https://{api_host}/v1/p/a", "https://shop.example.test/p/a"))
 
     assert result.block_class == "ok"
-    assert web.pools == ["dc", "dc"]  # robots.txt, then the endpoint
+    assert web.pools == ["dc"]
     async with engine.connect() as conn:
         usage: dict[str, int] = (await conn.execute(select(Job.usage).where(Job.id == job_id))).scalar_one()
         pools = set((await conn.execute(select(UsageEvent.model_or_pool).where(UsageEvent.job_id == job_id))).scalars())
-    assert usage == {"http_requests": 2, "proxy_bytes": 1400}
+    assert usage == {"http_requests": 1, "proxy_bytes": 700}
     assert pools == {"dc"}

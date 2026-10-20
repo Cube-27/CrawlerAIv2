@@ -325,7 +325,7 @@ async def test_a_prompt_is_drafted_from_the_first_pages_reached_and_returned(
     assert [url for url, _, _ in await _tasks(engine, submitted.job_id)] == urls
     async with engine.connect() as conn:
         summary = await jobs.get_job(conn, submitted.job_id)
-    assert (summary.usage["llm_calls"], summary.usage["http_requests"]) == (1, 4)  # robots.txt and the three samples
+    assert (summary.usage["llm_calls"], summary.usage["http_requests"]) == (1, 3)  # the three samples
 
 
 async def test_a_prompt_drafted_before_is_returned_without_a_call(

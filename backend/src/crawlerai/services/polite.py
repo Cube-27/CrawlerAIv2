@@ -49,6 +49,7 @@ __all__ = [
     "ReadRules",
     "Refused",
     "Waiting",
+    "listed_sitemaps",
     "page_first",
     "polite_fetch",
     "recording",
@@ -227,6 +228,19 @@ def rules_of(engine: AsyncEngine, http: Rung, attempts: list[AttemptRecord], tur
             return await rules_in(conn, http, attempts, turns)(url, policy)
 
     return read
+
+
+async def listed_sitemaps(rules: ReadRules, url: str, policy: FetchPolicy, known: HostRules) -> tuple[str, ...]:
+    """The sitemaps the robots.txt of `url`'s origin lists (`Sitemap:`), for a reading of the site's sitemaps: those of
+    `known`, the rules read with `policy`; read through `rules` for their `Sitemap:` lines alone when `policy` does not
+    obey robots.txt (owner decision #75). None when it is unreachable or its turn is further off than the caller
+    waits."""
+    if known.robots is None and not policy.respect_robots:
+        try:
+            known = await rules(url, policy.model_copy(update={"respect_robots": True})) or known
+        except NoTurn:
+            return ()
+    return () if known.robots is None else known.robots.sitemaps
 
 
 def page_first(page_host: str, known: HostRules, rules: ReadRules) -> ReadRules:

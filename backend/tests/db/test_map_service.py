@@ -129,7 +129,7 @@ async def test_the_redirect_target_s_robots_txt_decides_what_is_fetched_there(
         f"{www_origin}/": (200, page("/c/1"), "ok", None),
     }
 
-    result = await map_urls(engine, fetching, request(f"{own_origin}/"))
+    result = await map_urls(engine, fetching, request(f"{own_origin}/", respect_robots=True))
 
     assert result.urls == [f"{www_origin}/c/1"]
     assert f"{www_origin}/sitemap.xml" not in web.urls()
@@ -145,7 +145,7 @@ async def test_robots_txt_decides_what_is_fetched(
         f"{own_origin}/start": (200, page("/l"), "ok", None),
     }
 
-    result = await map_urls(engine, fetching, request(f"{own_origin}/start"))
+    result = await map_urls(engine, fetching, request(f"{own_origin}/start", respect_robots=True))
 
     assert result.urls == []
     assert web.urls() == [f"{own_origin}/robots.txt"]

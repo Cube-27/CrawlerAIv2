@@ -157,10 +157,13 @@ A scrape answer's `fetch` SHALL carry `adapter`, the name of the platform adapte
 `fetch` of scrape, batch, crawl and extract SHALL take `headers` and `cookies` (names to secret values; a Fetch
 Standard forbidden request-header name, `User-Agent` or a `Cookie` header is 422), `proxy_pool` (a configured pool,
 else 422), `wait_for` (milliseconds, a CSS selector or `network_idle`), `actions` (at most 20 steps,
-`config_ir/page_actions.py`) and `cache` (`default`, `bypass`, `only`); `wait_for` and `actions` run in the browser
+`config_ir/page_actions.py`), `cache` (`default`, `bypass`, `only`) and `respect_robots` (default `false`: robots.txt
+is neither requested nor obeyed; `true` obeys it, [acquisition](../acquisition/spec.md) "robots.txt", owner decision
+#75; map takes it as a member of its own); `wait_for` and `actions` run in the browser
 (422 with `method_hint` `http`), and `headers` go over HTTP only (422 with them). Answers and stored scrape requests
 show every value as `**********`. The scrape answer's `fetch.attempts` carry each step's outcome. MCP tools take the
-same members. Refs: owner delegation 2026-10-17, D-1430–D-1437.
+same members. (Previously: `respect_robots` defaulted to `true`, `false` needing a `robots_override_reason`.) Refs:
+owner delegation 2026-10-17, D-1430–D-1437, owner decision #75.
 A stored record answers `egress_country` and `egress_basis` ([acquisition](../acquisition/spec.md), "Egress country").
 #### Scenario: Forbidden header
 - **WHEN** a scrape's `fetch.headers` names `User-Agent`

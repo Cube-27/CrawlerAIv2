@@ -1117,7 +1117,7 @@ export interface components {
              *       "cookies": {},
              *       "headers": {},
              *       "method_hint": "auto",
-             *       "respect_robots": true,
+             *       "respect_robots": false,
              *       "screenshot": "viewport"
              *     }
              */
@@ -1500,7 +1500,7 @@ export interface components {
              *       "cookies": {},
              *       "headers": {},
              *       "method_hint": "auto",
-             *       "respect_robots": true,
+             *       "respect_robots": false,
              *       "screenshot": "viewport"
              *     }
              */
@@ -1760,7 +1760,7 @@ export interface components {
              *       "cookies": {},
              *       "headers": {},
              *       "method_hint": "auto",
-             *       "respect_robots": true,
+             *       "respect_robots": false,
              *       "screenshot": "viewport"
              *     }
              */
@@ -1907,11 +1907,9 @@ export interface components {
             proxy_pool?: string | null;
             /**
              * Respect Robots
-             * @default true
+             * @default false
              */
             respect_robots: boolean;
-            /** Robots Override Reason */
-            robots_override_reason?: string | null;
             /**
              * Screenshot
              * @default viewport
@@ -2582,6 +2580,11 @@ export interface components {
              * @default false
              */
             llms_txt: boolean;
+            /**
+             * Respect Robots
+             * @default false
+             */
+            respect_robots: boolean;
             /** Url */
             url: string;
             /**
@@ -3572,7 +3575,7 @@ export interface components {
              *       "cookies": {},
              *       "headers": {},
              *       "method_hint": "auto",
-             *       "respect_robots": true,
+             *       "respect_robots": false,
              *       "screenshot": "viewport"
              *     }
              */
@@ -3775,7 +3778,7 @@ export interface components {
              *       "cookies": {},
              *       "headers": {},
              *       "method_hint": "auto",
-             *       "respect_robots": true,
+             *       "respect_robots": false,
              *       "screenshot": "viewport"
              *     }
              */

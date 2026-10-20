@@ -26,7 +26,7 @@ ORIGIN = "https://shop.example.test"
 ROBOTS = "User-agent: *\nDisallow: /private/\n"
 PAGE = b"<html><body><h1>Item</h1></body></html>"
 DEFAULT_PROJECT = select(Project.id).where(Project.name == "default").scalar_subquery()
-OVERRIDE = FetchPolicy(respect_robots=False, robots_override_reason="the site's operator asked for it")
+OBEYS = FetchPolicy(respect_robots=True)
 
 
 @dataclass
@@ -101,7 +101,7 @@ async def test_a_disallowed_page_is_blocked_by_robots_without_being_fetched(conn
     site_id = await _site(conn)
     [task] = await _tasks(conn, "/private/a")
 
-    result = await _polite(conn, task, FetchPolicy(), web, HostLimiter())
+    result = await _polite(conn, task, OBEYS, web, HostLimiter())
 
     assert result == Finished("blocked", reason="robots")
     assert web.fetched == [f"{ORIGIN}/robots.txt"]
@@ -110,12 +110,12 @@ async def test_a_disallowed_page_is_blocked_by_robots_without_being_fetched(conn
     assert (snapshot.status_code, snapshot.body) == (200, ROBOTS)
 
 
-async def test_the_override_fetches_a_disallowed_page_without_reading_robots(conn: AsyncConnection, web: Web) -> None:
+async def test_by_default_a_disallowed_page_is_fetched_without_reading_robots(conn: AsyncConnection, web: Web) -> None:
     await _site(conn)
     web.pages[f"{ORIGIN}/private/a"] = (200, PAGE, ())
     [task] = await _tasks(conn, "/private/a")
 
-    result = await _polite(conn, task, OVERRIDE, web, HostLimiter())
+    result = await _polite(conn, task, FetchPolicy(), web, HostLimiter())
 
     assert isinstance(result, FetchResult)
     assert web.fetched == [f"{ORIGIN}/private/a"]
@@ -127,7 +127,7 @@ async def test_an_unreachable_robots_file_fails_the_attempt_and_stores_nothing(c
     web.pages[f"{ORIGIN}/robots.txt"] = (503, b"", ())
     [task] = await _tasks(conn, "/item/1")
 
-    result = await _polite(conn, task, FetchPolicy(), web, HostLimiter())
+    result = await _polite(conn, task, OBEYS, web, HostLimiter())
 
     assert result == Failed("robots_unreachable", transient=True, exhausted="blocked")
     assert web.fetched == [f"{ORIGIN}/robots.txt"]

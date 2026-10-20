@@ -26,7 +26,7 @@ from pydantic import (
     model_validator,
 )
 
-from crawlerai.acquire.types import FetchPolicy, RequestContext, check_robots_override
+from crawlerai.acquire.types import FetchPolicy, RequestContext
 from crawlerai.config_ir.page_actions import MAX_ACTIONS, Action, WaitFor, to_steps, wait_for_action
 from crawlerai.core.errors import Refusal
 from crawlerai.core.redaction import REDACTED
@@ -107,8 +107,7 @@ class FetchOptions(BaseModel):
 
     method_hint: Literal["auto", "http", "browser"] = "auto"
     screenshot: Literal["viewport", "full_page"] = "viewport"  # the area a `screenshot` format shows
-    respect_robots: bool = True
-    robots_override_reason: str | None = None
+    respect_robots: bool = False  # `FetchPolicy.respect_robots`
     proxy_pool: str | None = None
     max_rows: PositiveInt | None = None  # `FetchPolicy.max_rows`
     headers: Secrets = {}
@@ -149,7 +148,6 @@ class FetchOptions(BaseModel):
 
     @model_validator(mode="after")
     def _coherent(self) -> Self:
-        check_robots_override(self.respect_robots, self.robots_override_reason)
         in_browser = self.wait_for is not None or bool(self.actions)
         if in_browser and self.method_hint == "http":
             raise ValueError("wait_for and actions run in the browser, so method_hint cannot be http")
@@ -205,7 +203,6 @@ def fetch_policy(
         pdf="pdf" in wanted,
         proxy_pool=options.proxy_pool,
         respect_robots=options.respect_robots,
-        robots_override_reason=options.robots_override_reason,
         locale_hint=locale,
         max_rows=options.max_rows,
         context=options.context(),

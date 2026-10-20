@@ -1,13 +1,14 @@
 """The map service (jobs spec): the URLs of a site, found while the caller waits, from its
 sitemaps and the links of the start page. `POST /v1/map` calls it; the MCP `map` tool will (jobs spec PR 7).
 
-The start page is fetched over HTTP only, and its links are read only when it was reached (`ok`). Its sitemaps are
-read through `crawl.sitemaps`. Every fetch goes through robots.txt and the site's rate (acquisition spec), and
-robots.txt that cannot be reached allows nothing (RFC 9309 §2.3.1.4). URLs are canonical (`crawl.canonical`) and kept by
-the request's scope (`crawl.rules`): the start page's exact host, or the `include` globs, less the `exclude` globs. The
-start page's host is where the site's own redirects took it, on the same site (RFC 9110 §15.4; D-0991): a start URL
-whose host redirects to its `www.` subdomain, or back, is mapped on that host, under its robots.txt and rate; a
-redirect to an unrelated host leaves the start URL's (D-0672).
+The start page is fetched over HTTP only, and its links are read only when it was reached (`ok`). Its sitemaps are read
+through `crawl.sitemaps`, from the `Sitemap:` lines of robots.txt whether or not the request obeys it. Every fetch goes
+through the site's rate (acquisition spec), and through robots.txt when `respect_robots` asks for it (owner decision
+#75): then robots.txt that cannot be reached allows nothing (RFC 9309 §2.3.1.4). URLs are canonical (`crawl.canonical`)
+and kept by the request's scope (`crawl.rules`): the start page's exact host, or the `include` globs, less the `exclude`
+globs. The start page's host is where the site's own redirects took it, on the same site (RFC 9110 §15.4; D-0991): a
+start URL whose host redirects to its `www.` subdomain, or back, is mapped on that host, under its robots.txt and rate;
+a redirect to an unrelated host leaves the start URL's (D-0672).
 
 Sitemap URLs come first, in the order read, then the other links; `sources` counts the returned URLs by source, and a
 URL both found counts as a sitemap's. `truncated` says that more URLs were found than `limit`, or that a cap or the
@@ -42,7 +43,7 @@ from crawlerai.db.jobs import transition_job
 from crawlerai.db.models import Job, JobId
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.services.fetching import Fetching, SiteHttp, TargetRejected, check_target
-from crawlerai.services.polite import IN_PLACE, NoTurn, Turns, rules_of
+from crawlerai.services.polite import IN_PLACE, NoTurn, ReadRules, Turns, listed_sitemaps, rules_of
 from crawlerai.services.scrape_steps import (
     DEFAULT_PROJECT,
     SiteRow,
@@ -71,6 +72,7 @@ class MapRequest(BaseModel):
     use_sitemaps: bool = True
     use_links: bool = True
     llms_txt: bool = False  # also answer an `llms.txt` of the URLs found
+    respect_robots: bool = False  # `FetchPolicy.respect_robots`
 
     @field_validator("url")
     @classmethod
@@ -187,7 +189,7 @@ async def _discover(
     before the sitemaps, which can take the rest of the timeout. The start page is fetched even when its links are not
     taken, for where it is: when the site redirects it to another host of the site (`crawl.rules.located`), the scope,
     robots.txt and the sitemaps are that host's."""
-    polite = await _polite(engine, fetching, site, request.url, attempts)
+    polite = await _polite(engine, fetching, request, site, request.url, attempts)
     if polite is None:
         return
     page = await polite.fetch(request.url, polite.policy)
@@ -198,33 +200,41 @@ async def _discover(
         async with engine.begin() as conn:
             site = await site_row(conn, host)
         # Only the sitemaps are read under the redirect target's robots.txt: without them it is not looked up.
-        polite = await _polite(engine, fetching, site, site_url, attempts) if request.use_sitemaps else None
+        polite = await _polite(engine, fetching, request, site, site_url, attempts) if request.use_sitemaps else None
     if page is not None and page.block_class == "ok" and request.llms_txt:
         found.start_page = await asyncio.to_thread(_start_page, page.bundle)
     if request.use_links and page is not None and page.block_class == "ok":
         # Parsing and canonicalizing are CPU work: one thread keeps the event loop free.
         found.add("links", await asyncio.to_thread(_page_links, page.bundle))
     if polite is not None and request.use_sitemaps and not found.full:
-        await _read_sitemaps(polite, site_url, found)
+        await _read_sitemaps(polite, _rules(engine, fetching, attempts), site_url, found)
+
+
+def _rules(engine: AsyncEngine, fetching: Fetching, attempts: list[AttemptRecord]) -> ReadRules:
+    return rules_of(engine, fetching.rungs.http, attempts, Turns(fetching.limiter, IN_PLACE))
 
 
 async def _polite(
-    engine: AsyncEngine, fetching: Fetching, site: SiteRow, url: str, attempts: list[AttemptRecord]
+    engine: AsyncEngine,
+    fetching: Fetching,
+    request: MapRequest,
+    site: SiteRow,
+    url: str,
+    attempts: list[AttemptRecord],
 ) -> SiteHttp | None:
-    """Fetches from `site` under the robots.txt of `url` there; `None` when that robots.txt is unreachable, or its
-    request's turn is further off than a caller waits."""
-    policy = FetchPolicy(method_hint="http", proxy_pool=site.proxy_pool)
+    """Fetches from `site`, under the robots.txt of `url` there when `request` obeys it; `None` when that robots.txt is
+    unreachable, or its request's turn is further off than a caller waits."""
+    policy = FetchPolicy(method_hint="http", proxy_pool=site.proxy_pool, respect_robots=request.respect_robots)
     try:
-        rules = await rules_of(engine, fetching.rungs.http, attempts, Turns(fetching.limiter, IN_PLACE))(url, policy)
+        rules = await _rules(engine, fetching, attempts)(url, policy)
     except NoTurn:
         return None
     return None if rules is None else SiteHttp(fetching, rules, policy, attempts)
 
 
-async def _read_sitemaps(polite: SiteHttp, site_url: str, found: _Found) -> None:
+async def _read_sitemaps(polite: SiteHttp, rules: ReadRules, site_url: str, found: _Found) -> None:
     """Add to `found` the URLs of the sitemaps of the start page's host, `site_url` there, until it is full."""
-    robots = polite.rules.robots
-    listed = () if robots is None else robots.sitemaps
+    listed = await listed_sitemaps(rules, site_url, polite.policy, polite.rules)
     reader = SitemapReader(polite.sitemap_body, found.scope.host)
     async with aclosing(reader.urls(roots(site_url, listed))) as urls:
         async for url in urls:

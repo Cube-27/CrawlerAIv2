@@ -406,7 +406,7 @@
               "cookies": {},
               "headers": {},
               "method_hint": "auto",
-              "respect_robots": true,
+              "respect_robots": false,
               "screenshot": "viewport"
             }
           },
@@ -1329,7 +1329,7 @@
               "cookies": {},
               "headers": {},
               "method_hint": "auto",
-              "respect_robots": true,
+              "respect_robots": false,
               "screenshot": "viewport"
             }
           },
@@ -2016,7 +2016,7 @@
               "cookies": {},
               "headers": {},
               "method_hint": "auto",
-              "respect_robots": true,
+              "respect_robots": false,
               "screenshot": "viewport"
             }
           },
@@ -2409,20 +2409,9 @@
             "title": "Proxy Pool"
           },
           "respect_robots": {
-            "default": true,
+            "default": false,
             "title": "Respect Robots",
             "type": "boolean"
-          },
-          "robots_override_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Robots Override Reason"
           },
           "screenshot": {
             "default": "viewport",
@@ -4251,6 +4240,11 @@
           "llms_txt": {
             "default": false,
             "title": "Llms Txt",
+            "type": "boolean"
+          },
+          "respect_robots": {
+            "default": false,
+            "title": "Respect Robots",
             "type": "boolean"
           },
           "url": {
@@ -6842,7 +6836,7 @@
               "cookies": {},
               "headers": {},
               "method_hint": "auto",
-              "respect_robots": true,
+              "respect_robots": false,
               "screenshot": "viewport"
             }
           },
@@ -7367,7 +7361,7 @@
               "cookies": {},
               "headers": {},
               "method_hint": "auto",
-              "respect_robots": true,
+              "respect_robots": false,
               "screenshot": "viewport"
             }
           },

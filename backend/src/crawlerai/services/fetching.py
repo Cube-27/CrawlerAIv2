@@ -219,10 +219,9 @@ def _polite_send(
 
 def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
     """A learning run's recipe replays (adapters spec) over this process's JSON rung, as politely as a served
-    recipe's request: only where the endpoint host's robots.txt allows it, at that host's rate (D-0731). A `learn` job
-    names no fetch policy, so replays go with the default one, which respects robots.txt, through the site's proxy
-    pool, as its pages are fetched; their requests, robots.txt's too, count as the job's usage (D-1381). None without
-    the JSON rung."""
+    recipe's request: at the endpoint host's rate (D-0731). A `learn` job names no fetch policy, so replays go with
+    the default one, which does not read robots.txt (owner decision #75), through the site's proxy pool, as its pages
+    are fetched; their requests count as the job's usage (D-1381). None without the JSON rung."""
     json = fetching.rungs.json
     if json is None:
         return None

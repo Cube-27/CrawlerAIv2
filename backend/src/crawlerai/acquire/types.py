@@ -13,7 +13,6 @@ from pydantic import (
     PositiveInt,
     SecretStr,
     field_serializer,
-    model_validator,
 )
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
@@ -36,19 +35,12 @@ __all__ = [
     "StepOutcome",
     "StopReason",
     "Validators",
-    "check_robots_override",
     "policy_with_attempts",
 ]
 
 
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
-
-
-def check_robots_override(respect_robots: bool, reason: str | None) -> None:
-    """Ignoring robots.txt is an operator's decision, recorded with its reason."""
-    if not respect_robots and not (reason or "").strip():
-        raise ValueError("respect_robots=false needs a robots_override_reason")
 
 
 # A caller's header or cookie: its name and secret value.
@@ -134,8 +126,9 @@ class CallEndpoint(_Frozen):
 class FetchPolicy(_Frozen):
     method_hint: Literal["auto", "http", "browser"] = "auto"
     proxy_pool: str | None = None
-    respect_robots: bool = True  # false only via an operator override, recorded on job.request
-    robots_override_reason: str | None = None
+    # Obey robots.txt (acquisition spec): off unless the request switches it on (owner decision #75), and then no
+    # robots.txt request is sent.
+    respect_robots: bool = False
     timeout_s: PositiveFloat = 10.0
     browser_timeout_s: PositiveFloat = 45.0
     max_body_bytes: PositiveInt = 10_000_000
@@ -174,11 +167,6 @@ class FetchPolicy(_Frozen):
     def captures_page(self) -> bool:
         """Whether the fetch must end on the rendered page itself, for a file the browser makes of it."""
         return self.screenshot is not None or self.pdf
-
-    @model_validator(mode="after")
-    def _override_has_a_reason(self) -> "FetchPolicy":
-        check_robots_override(self.respect_robots, self.robots_override_reason)
-        return self
 
 
 class Validators(_Frozen):
