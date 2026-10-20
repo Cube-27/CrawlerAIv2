@@ -234,6 +234,12 @@ def is_flight(content_type: str | None) -> bool:
     return (content_type or "").split(";", 1)[0].strip().lower() == FLIGHT_TYPE
 
 
+def is_html(content_type: str | None) -> bool:
+    """Whether a captured body's `Content-Type` labels HTML (`text/html`, `application/xhtml+xml`): its essence,
+    lower-cased and parameters dropped (WHATWG MIME Sniffing §2.1)."""
+    return (content_type or "").split(";", 1)[0].strip().lower() in _HTML_TYPES
+
+
 def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 

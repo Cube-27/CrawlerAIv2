@@ -8,7 +8,7 @@ formats, pagination, the engine executor) takes a `ParsedPage`, never the raw bo
 
 import itertools
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -17,10 +17,10 @@ from selectolax import lexbor
 
 from crawlerai.acquire.items import Group, item_groups, lxml_root
 from crawlerai.content.attr_json import DOCUMENTED, SELECTOR
-from crawlerai.content.fragments import FRAME_HEADER, Answers, declares_frames, include
+from crawlerai.content.fragments import FRAME_HEADER, Answers, append, declares_frames, include, is_partial
 from crawlerai.content.segment import rank
 from crawlerai.content.text import CleanedText, VisibleIndex, render, xpath_step
-from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, decode_body, decode_html
+from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, decode_body, decode_html, is_html
 
 # HTML Standard §4.12.3: a `template` whose `shadowrootmode` is `open` or `closed` is a declarative shadow root.
 _SHADOW_ROOT = "template[shadowrootmode]"
@@ -67,9 +67,10 @@ class ParsedPage:
         url: str | None = None,
     ) -> None:
         # The document after its structural pre-passes (`prepassed`), which every reader of the page reads.
-        framed = bool(network_entries) and not json_body and declares_frames(html)
-        answers = _answers(network, network_entries) if framed else None
-        self.html = html if json_body else prepassed(html, url, answers)
+        fetched = () if json_body or not network_entries else _html_answers(network, network_entries)
+        answers = _answers(fetched) if fetched and declares_frames(html) else None
+        partials = tuple((entry.url, text) for entry, text in fetched if is_partial(text))
+        self.html = html if json_body else prepassed(html, url, answers, partials)
         # The document as it arrived, before its pre-passes (`content.signals` reads its declarative shadow roots).
         self.source_html = html
         # The rendered area of the page's item blocks, when a browser capture measured them (`CaptureManifest`).
@@ -197,24 +198,27 @@ def node_xpath(node: lexbor.LexborNode) -> str:
     return "/" + "/".join(reversed(steps))
 
 
-def prepassed(html: str, url: str | None = None, answers: Answers | None = None) -> str:
-    """The document after the three structural pre-passes, in this order (extraction spec, "Source documents"): each
+def prepassed(
+    html: str, url: str | None = None, answers: Answers | None = None, partials: Sequence[tuple[str, str]] = ()
+) -> str:
+    """The document after the four structural pre-passes, in this order (extraction spec, "Source documents"): each
     declarative shadow root's content in place of its `template` under its host; each Suspense boundary a `$RC` call
-    completed holding its streamed segment; and each eager Turbo frame of the page at `url` holding the matching
-    element of its answer in `answers` (`content.fragments`). No script runs. A document none applies to is returned
-    as it is, unparsed."""
+    completed holding its streamed segment; each eager Turbo frame of the page at `url` holding the matching element
+    of its answer in `answers`; and the fetched `partials` (URL, markup) whose text it does not show appended to its
+    body (`content.fragments`). No script runs. A document none applies to is returned as it is, unparsed."""
     shadow = _SHADOW_MARK.search(html) is not None
     streamed = "$RC(" in html
     frames = bool(answers) and url is not None and declares_frames(html)
-    if not (shadow or streamed or frames):
+    if not (shadow or streamed or frames or partials):
         return html
     tree = lexbor.LexborHTMLParser(html)
     if shadow:
         _flatten_shadow_roots(tree)
     if streamed:
         _complete_boundaries(tree)
-    if frames and url is not None and answers:
-        include(tree, url, answers)
+    included = include(tree, url, answers) if frames and url is not None and answers else set()
+    if partials:
+        append(tree, partials, included)
     return tree.html or html
 
 
@@ -274,16 +278,26 @@ def _remove_fallback(marker: lexbor.LexborNode) -> None:
         node = node.next
 
 
-def _answers(network: tuple[bytes, ...], entries: tuple[NetworkBody, ...]) -> dict[tuple[str, str | None], str]:
-    """The captured 2xx HTML answers by URL and the frame their request named (`fragments.FRAME_HEADER`), decoded as
-    an HTTP body (`decode_html`): the eager frames' answers."""
+def _html_answers(network: tuple[bytes, ...], entries: tuple[NetworkBody, ...]) -> tuple[tuple[NetworkBody, str], ...]:
+    """The captured 2xx HTML answers (no data call's), each decoded as an HTTP body (`decode_html`), in capture
+    order."""
+    return tuple(
+        (entry, decode_html(body, entry.response_headers or _labelled(entry), "http"))
+        for body, entry in zip(network, entries, strict=False)
+        if 200 <= entry.status < 300 and entry.data_call is None and is_html(entry.content_type)
+    )
+
+
+def _labelled(entry: NetworkBody) -> tuple[tuple[str, str], ...]:
+    """A body's `Content-Type` as its only header, for an entry that kept no response headers."""
+    return () if entry.content_type is None else (("content-type", entry.content_type),)
+
+
+def _answers(fetched: Sequence[tuple[NetworkBody, str]]) -> dict[tuple[str, str | None], str]:
+    """The `fetched` HTML answers by URL and the frame their request named (`fragments.FRAME_HEADER`): the eager
+    frames' answers."""
     answers: dict[tuple[str, str | None], str] = {}
-    for body, entry in zip(network, entries, strict=False):
-        if 200 <= entry.status < 300 and entry.data_call is None and _html(entry.content_type):
-            frame = next((v for n, v in entry.request_headers or () if n.lower() == FRAME_HEADER.lower()), None)
-            answers.setdefault((entry.url, frame), decode_html(body, entry.response_headers or (), "http"))
+    for entry, text in fetched:
+        frame = next((v for n, v in entry.request_headers or () if n.lower() == FRAME_HEADER.lower()), None)
+        answers.setdefault((entry.url, frame), text)
     return answers
-
-
-def _html(content_type: str | None) -> bool:
-    return (content_type or "").split(";", 1)[0].strip().lower() in ("text/html", "application/xhtml+xml")

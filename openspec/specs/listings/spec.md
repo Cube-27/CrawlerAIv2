@@ -69,7 +69,9 @@ values equal a block field on `MIN_ITEMS` bound rows is that field's key for eve
 On a listing the `xhr` collector SHALL read rows from the calls of one method, origin and path, body shape and row query
 (`collect/network_match.py`), the first series in which a row field's path is admitted in `MIN_ITEMS` rows or more (for
 a url field also: a link of the page's item groups), each row an `array_row` entity read through the API recipe row
-reader; with a learned listing recipe, its map. They are the stated rows where structured data and the config give
+reader; with a learned listing recipe, its map. A call's HTML answer is no row series: a partial the page does not
+show is part of the page tree ([extraction](../extraction/spec.md), "Source documents"), whose item blocks give rows as
+the page's do. They are the stated rows where structured data and the config give
 none; when they leave a record incomplete role C fills, through their bound blocks, the fields they lack. A locate run
 on a listing without rows learns the renders' call series as the config's listing recipe, with its pagination
 ([learning-configs](../learning-configs/spec.md), "Locate run"). (Previously: role C's rows replaced them; a locate run

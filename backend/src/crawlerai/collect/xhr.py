@@ -2,8 +2,9 @@
 kept.
 
 Each body is one document, read as `network_json` reads it (RFC 8259 §8.1, a guard prefix stripped), or, labelled a
-Flight payload (`is_flight`), as the RSC Flight reader reads it (`content.rsc`: its JSON rows by row id); a body that is
-neither is skipped with a diagnostic. Values are admitted by `admission`; locators are `xhr:<n>:<path>`, `n` the body's
+Flight payload (`is_flight`), as the RSC Flight reader reads it (`content.rsc`: its JSON rows by row id); an HTML body
+is a fragment the page tree reads (`content.fragments`), not read here; a body that is none of them is skipped with a
+diagnostic. Values are admitted by `admission`; locators are `xhr:<n>:<path>`, `n` the body's
 index in the bundle.
 
 On a listing, the calls of one rows endpoint (`network_match.row_series`) give rows: the first series, best first, in
@@ -34,7 +35,7 @@ from crawlerai.content.segment import group_links
 from crawlerai.normalize.base import Context
 from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.storage.capture_bundle import is_flight, network_json
+from crawlerai.storage.capture_bundle import is_flight, is_html, network_json
 
 Scalar = str | int | float
 # One row of a series: the scalars it holds by path relative to the row, in document order.
@@ -76,6 +77,8 @@ def network_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document
     documents: list[Document] = []
     for index, body in enumerate(page.network):
         entries = page.network_entries
+        if index < len(entries) and is_html(entries[index].content_type):
+            continue
         if index < len(entries) and is_flight(entries[index].content_type):
             if (rows := rsc.model_rows(rsc.read_rows(body, f"xhr:{index}", diagnostics))) is not None:
                 documents.append(Document(rows, str(index)))

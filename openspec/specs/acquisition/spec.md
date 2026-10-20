@@ -248,18 +248,23 @@ When `capture_network_json` is set, the browser rung SHALL save, from any origin
 fetch, XMLHttpRequest and document responses (not the main frame's navigation) that are JSON by media type, React
 Server Components Flight payloads (`text/x-component`, `storage.capture_bundle.is_flight`) or, labelled `text/plain` or
 not at all, whose bytes are an RFC 8259 object or array (a guard prefix of at most 16 characters stripped,
-`storage.capture_bundle.network_json`); each with its request's method, body and cookie-free headers, the cookie-free
+`storage.capture_bundle.network_json`), and the 2xx HTML answers (`text/html`, `application/xhtml+xml`) of fetch and
+XMLHttpRequest calls to the page's own site (HTML §7.1.1): the fragments the page fetches (Turbo frames, htmx-style
+partials), which the page tree reads ([extraction](../extraction/spec.md), "Source documents"); each with its request's method, body and cookie-free headers, the cookie-free
 response headers, the resource type and the count of browser actions before it, within the caps in `acquire/browser.py`,
 which apply to all captured bodies together. A data call, which the ready wait ("HTTP and browser rungs") waits for, is a fetch or
 XMLHttpRequest call to the page's own site (HTML §7.1.1) or one whose `Accept` names a JSON MIME type or
 `text/x-component`, so another site's beacons and pings hold no read. (Previously: every fetch and XMLHttpRequest call
-held the read; only JSON bodies were kept.) Refs: §7.2, Appendix A #59, D-0010, D-0540, D-1311, D-1312, D-1369, owner plan 2026-10-19 (crawl speed).
+held the read; only JSON and Flight bodies were kept.) Refs: architecture v3 a.3, §7.2, Appendix A #59, D-0010, D-0540, D-1311, D-1312, D-1369, owner plan 2026-10-19 (crawl speed).
 #### Scenario: JSON under another label
 - **WHEN** a page fetches `)]}'` and a JSON object labelled `text/plain`, and a text/plain body that is no JSON
 - **THEN** the first is kept as received and the second is not
 #### Scenario: Flight payload
 - **WHEN** a page fetches a body labelled `text/x-component`
 - **THEN** it is kept as received with its content type, within the same caps as the JSON bodies
+#### Scenario: HTML fragment
+- **WHEN** a page fetches an HTML answer from its own site, and one from another site
+- **THEN** the first is kept with its content type and resource type, within the same caps, and the second is not
 
 ### Requirement: Structural outcome classification (INV-24)
 The system SHALL classify each final response, before extraction, from status and structure (the classes and the shell,
