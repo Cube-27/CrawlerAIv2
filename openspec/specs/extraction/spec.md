@@ -57,7 +57,8 @@ as the active price (unless `product:sale_price_dates:end` is before the capture
 as the list price, `product:original_price` as the list price,
 `og:availability`, `product:condition`, `product:retailer_item_id` and `product:brand`; no translation, site-default
 blocks skipped, an `og:title` read without trailing segments naming the site and, when words of its own come before a
-run of its words that the last slug segment of the page URL path spells, as that run) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
+run of its words that the document's one `h1` states (two words or more), as that run, else before a run that a slug
+segment of the page URL path spells (the last such segment the title holds), as that run) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
 standing in for that thing; a path through another thing, `Product.offers.seller.url`, has none); a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
 element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. A url or image field
@@ -91,7 +92,11 @@ ImageObject was an invalid value.)
 - **THEN** that text is the `description` candidate, ranked behind JSON-LD and microdata
 #### Scenario: og:title around a slug
 - **WHEN** `og:title` is `Buy Kettle 2L for Kitchens Online` on a page at `/kettle-2l/p/12`
-- **THEN** the title candidate reads `Kettle 2L`
+- **THEN** the title candidate reads `Kettle 2L`, and so it does at `/kettle-2l/12/item-page`, a fixed last segment
+  the title does not hold
+#### Scenario: og:title around the h1
+- **WHEN** `og:title` is `Buy Acme Kettle 2L Online at Example` and the page's one `h1` is `Acme Kettle 2L`
+- **THEN** the title candidate reads `Acme Kettle 2L`
 
 ### Requirement: Source documents
 `ParsedPage` SHALL read the HTML document after four structural pre-passes, applied in this order to the raw document
@@ -240,14 +245,17 @@ price; an amount followed by a CLDR per pattern and a CLDR mass, volume, length,
 `$0.50 per 100 ml`; `normalize/units.py`, the page's and the root locale's CLDR unit data) only for a unit price; an
 amount per a CLDR duration unit (`$25/mo`) for no money field; a member price from its labels only. The item layer's
 rows read by the same rule (`collect/items/align.py`). It SHALL take as the main image the first shown image (in that
-region, else in the body) whose file (`resource_key`) is the main image the page's own structured data or Open Graph
-states (an image field's value, a list's first), else the first image of
-the one `main`/`role=main`/`article`, outside chrome, decorative images and link cards (`collect/dom.py`), an image's
-source being its `src` unless its `srcset` has width descriptors (HTML Standard §4.8.4.3: `src` is then out of the
-source set), when it is the widest candidate; and for a list of images whose path names schema.org `image`, the main
-image's gallery: from the main image up, the first block with siblings of its tag gives, per such block, its shown image
-at the main image's tag path, a source several blocks give left out; none when a block links to another document or
-fewer than two remain. Both DOM passes (these values and the DOM description block) leave out the cards of other
+region, else in the body) whose file (`same_file`: the file, or a rendition an image server writes into the path,
+under a prefix, below the file or with parameters after a directory) is the main image the page's own structured data
+or Open Graph states (an image field's value, a list's first), else the first image of
+the one `main`/`role=main`/`article`, outside chrome, decorative images and link cards (`collect/dom_images.py`), an
+image's source being its `src` unless its `srcset` has width descriptors or a candidate of pixel density 1 (one without
+a descriptor too; HTML Standard §4.8.4.3: `src` is then out of the source set), when it is the widest candidate, else
+the first; a lazy loader's `data-srcset` and `data-src` (custom data attributes named after the standard ones, §3.2.6.6)
+stand for `srcset` and `src`; and for a list of images whose path names schema.org `image`, the main
+image's gallery: from the main image up, the first block with siblings of its tag gives, per such block, its image at
+the main image's tag path, shown or not (a carousel hides the slides but the current one), a source several blocks give
+left out; none when a block links to another document or fewer than two remain. Both DOM passes (these values and the DOM description block) leave out the cards of other
 items (`collect/dom.py` `product_apart`): a shown price that is none of the prices structured data states for the
 schema's money fields (only the page product's: not those of an item in another item's scope, `collect/scope.py`: a
 value of `isRelatedTo` or `isSimilarTo`, an `ItemList` or `ListItem` and what it holds, or a root item naming only other
@@ -256,7 +264,7 @@ documents while another root item of its kind names the page) belongs to the one
 price or holds the page's title (the main content's first shown `h1`); a block whose hyperlinks lead to several
 documents is no card, and without a stated price no card is set apart. Product microdata items, nested or not, that do
 not hold the title are set apart too. Values MUST be visible.
-(Previously: labels were only names, and other items' content was read; `src` was read before `srcset`; no list of
+(Previously: labels were only names, and other items' content was read; `src` was read before `srcset`, and beside a `1x` candidate; lazy sources, hidden slides and renditions in the path were not read; no list of
 images was read; a recommendation card that was not one of two or more sibling cards was read; an other item's
 structured price counted as stated, so its card was read; struck text was `s` and `del` only, and an amount per unit
 or per period was a price candidate; a page without a main landmark had no main image and no gallery.) Refs: Appendix A #42, D-0955,
@@ -359,15 +367,19 @@ full: the outermost block, with no table, form control, button, media or frame (
 is phrasing content, HTML Standard §3.2.5.2.5), whose text begins with a candidate another collector proposed for
 the field (or its ellipsis-cut form, white space aside), and the block equal to a value that is no summary (neither
 Open Graph's nor one stating the same text) in place of that value's wider blocks; or, where it goes on further, the
-element a microdata or RDFa value is stated on with the prose and headings of its following siblings, up to one that
-is no prose or states another property or item; else the section after a heading, or named by `aria-label` or
+element a microdata or RDFa value is stated on with the prose and headings of its following siblings (of the
+outermost wrapper holding nothing after it, inside the element opening the item), up to one that is no prose or states
+another property or item; else the section after a heading (a sibling holding a control besides its prose giving its
+outermost prose elements), or named by `aria-label` or
 `aria-labelledby`, whose words are the field's or its schema.org property's; else, for a field whose path names
 `description` that only Open Graph (or nothing) states, the longest maximal prose block with no image that is not
 mostly links, without its opening heading, unless it holds the page's title heading (`h1`, or an ARIA heading of level
 1) or a price the structural pass read, or, beside an Open Graph summary, is no longer than it or holds at most half
-of its words other than the title heading's. Blocks that differ are ambiguous: none. The candidate is `dom`, independent, in
+of its words other than the title heading's (a summary with fewer words of its own than of the title heading only names
+the item, and asks no words of the block). Blocks that differ are ambiguous: none. The candidate is `dom`, independent, in
 the `dom` evidence bucket. (Previously: any image made a block no prose, an element-valued description was never
-continued, and the main text was the longest block whatever it held.) Refs: C2, C4, D-1700, D-1701, D-1702, D-1703, D-1704. Enforced by: unit and replay tests; active.
+continued, and the main text was the longest block whatever it held; continuation stopped at the element's wrapper,
+and a section panel holding a button gave no text.) Refs: C2, C4, D-1700, D-1701, D-1702, D-1703, D-1704. Enforced by: unit and replay tests; active.
 #### Scenario: Summary and full text
 - **WHEN** `og:description` is the first sentence of a paragraph block that goes on, and no other kind states a
   description

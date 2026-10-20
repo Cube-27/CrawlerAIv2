@@ -10,8 +10,9 @@ by the OGP specification and the `product:` namespace that Open Graph product ma
 OGP's basic metadata (`og:title`, `og:image`, `og:url`) describes one object. Client-rendered pages often keep the
 site's own defaults there: an `og:title` that names the site (`site_names`) says the object is the site, so its
 `og:title`, `og:image` and `og:description` are not the entity's. A title that ends in separator segments naming the
-site is read without them, and a title that holds the words of a slug in the page URL's path is read as those words:
-the slug names the item, the words around it are the site's wording ("Buy ... Online").
+site is read without them, and a title that holds, after words of its own, the words of the page's one top-level
+heading or of a slug in the page URL's path is read as those words: the heading and the slug name the item, the words
+around them are the site's wording ("Buy ... Online").
 """
 
 import re
@@ -114,7 +115,7 @@ class OpenGraphCollector:
         metas = _metas(page)
         if not metas:
             return CollectResult(entities=(), candidates=())
-        metas, diagnostics = _without_site_values(metas, ctx)
+        metas, diagnostics = _without_site_values(metas, ctx, _heading(page))
         candidates = tuple(_candidates(metas, schema, ctx))
         entity = Entity(id=PAGE, types=(PAGE,), urls=_urls(metas, ctx), parent=None)
         return CollectResult(entities=(entity,), candidates=candidates, diagnostics=diagnostics)
@@ -140,9 +141,10 @@ def _metas(page: ParsedPage) -> list[_Meta]:
     return metas
 
 
-def _without_site_values(metas: list[_Meta], ctx: Context) -> tuple[list[_Meta], tuple[str, ...]]:
+def _without_site_values(metas: list[_Meta], ctx: Context, heading: str | None) -> tuple[list[_Meta], tuple[str, ...]]:
     """The metas the fields read: without `og:title`, `og:image` and `og:description` when the (first) title names the
-    site, else with each title read without its trailing site segments."""
+    site, else with each title read without its trailing site segments, and as the item's name it holds
+    (`named_span`)."""
     title = next((m.content for m in metas if m.property == _TITLE), None)
     if title is None:
         return metas, ()
@@ -150,38 +152,66 @@ def _without_site_values(metas: list[_Meta], ctx: Context) -> tuple[list[_Meta],
     if site.names(title):
         return [m for m in metas if m.property not in _SITE_DEFAULTS], (_SITE_TITLE,)
     return [
-        replace(m, reading=slug_span(site.without_site(m.content), ctx.page_url)) if m.property == _TITLE else m
+        replace(m, reading=named_span(site.without_site(m.content), heading, ctx.page_url))
+        if m.property == _TITLE
+        else m
         for m in metas
     ], ()
 
 
 # A word: a run of letters and digits (Unicode categories L* and N*).
 _WORD = re.compile(r"[^\W_]+")
+# A name the title is read as has two words or more: one word inside a title may begin a longer name.
+_MIN_WORDS = 2
+
+
+def _heading(page: ParsedPage) -> str | None:
+    """The text of the document's one `h1` (HTML Standard §4.3.6: the top-level heading, the document's title), or
+    none when it has none or several."""
+    headings = page.tree.css("h1")
+    if len(headings) != 1:
+        return None
+    return " ".join(headings[0].text(deep=True, separator=" ").split()) or None
+
+
+def named_span(title: str, heading: str | None, page_url: str | None) -> str:
+    """The run of the title's words that the page's top-level heading states, after words of the title's own, else the
+    run a slug of the page URL's path spells (`slug_span`), else the title. The heading is the document's title as the
+    page shows it, so a title holding it among other words is the heading wrapped in the site's wording."""
+    named = [_folded(w) for w in _WORD.findall(heading)] if heading is not None else []
+    span = _span(title, named) if len(named) >= _MIN_WORDS else None
+    return span if span is not None else slug_span(title, page_url)
 
 
 def slug_span(title: str, page_url: str | None) -> str:
-    """The run of the title's words that the page URL's slug spells, after words of the title's own, else the title.
-    The slug is the last path segment (RFC 3986 §3.3, percent-decoded) of two or more words, one with a letter, joined
-    by separators: a hierarchical path names its item below its categories, so earlier segments are the item's
-    categories, not its name. The slug names the document's item, so the words before it are the site's wording
+    """The run of the title's words that a slug of the page URL's path spells, after words of the title's own, else the
+    title. A slug is a path segment (RFC 3986 §3.3, percent-decoded) of two or more words, one with a letter, joined by
+    separators: a hierarchical path names its item below its categories, so of the slugs the title holds the last one
+    names the item, and the earlier are its categories; a slug the title does not hold (a fixed segment naming the
+    page's kind) says nothing. The slug names the document's item, so the words before it are the site's wording
     ("Buy"), and so are the words after it. A title that starts with the slug's words is read as written: its further
     words may go on naming the item. Words compare folded (`_folded`)."""
-    slug = _slug(page_url) if page_url is not None else None
-    if slug is None:
-        return title
+    for slug in reversed(_slugs(page_url) if page_url is not None else []):
+        span = _span(title, slug)
+        if span is not None:
+            return span
+    return title
+
+
+def _span(title: str, named: list[str]) -> str | None:
+    """The title when it starts with the `named` words, else the run of its words they are, else none."""
     words = list(_WORD.finditer(title))
     keys = [_folded(w.group()) for w in words]
-    if keys[: len(slug)] == slug:
+    if keys[: len(named)] == named:
         return title
-    start = next((i for i in range(1, len(keys) - len(slug) + 1) if keys[i : i + len(slug)] == slug), None)
-    return title if start is None else title[words[start].start() : words[start + len(slug) - 1].end()]
+    start = next((i for i in range(1, len(keys) - len(named) + 1) if keys[i : i + len(named)] == named), None)
+    return None if start is None else title[words[start].start() : words[start + len(named) - 1].end()]
 
 
-def _slug(page_url: str) -> list[str] | None:
-    """The last path segment of the page URL that reads as a slug (`slug_span`), as its folded words."""
+def _slugs(page_url: str) -> list[list[str]]:
+    """The path segments of the page URL that read as slugs (`slug_span`), as their folded words, in path order."""
     segments = [_WORD.findall(_folded(unquote(segment))) for segment in urlsplit(page_url).path.split("/")]
-    slugs = [words for words in segments if len(words) >= 2 and any(not w.isdigit() for w in words)]
-    return slugs[-1] if slugs else None
+    return [words for words in segments if len(words) >= _MIN_WORDS and any(not w.isdigit() for w in words)]
 
 
 def _folded(text: str) -> str:

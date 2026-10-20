@@ -23,22 +23,8 @@ whose meaning the HTML Standard defines, for pages whose structured data leaves 
   a list price only struck text, a unit price only an amount written per unit (`normalize.units`: `€25/kg`), a member
   price none (its labels read it), any other money field no amount written per unit or per period. Several distinct
   values read none. An identifier without a check digit (sku, mpn) is read only next to one of its labels.
-- **The main image.** The first image of the page's main region (the `main` element, else the one `role="main"`
-  landmark, WAI-ARIA 1.2; else the document's one `article`, §4.3.2), outside the region's tangential content
-  (`nav`, `header`, `footer`, `aside`, §4.3), its dialogs (`dialog`, roles `dialog` and `alertdialog`) and the
-  fallback content of media elements (§4.8), shown by the cleaned text's rules, whose source is not inline `data:`
-  (RFC 2397). A decorative image (an empty `alt`, §4.8.4.4; roles `none` and `presentation`, WAI-ARIA 1.2) is not
-  it, and neither is a link card's: an image whose nearest block holding a hyperlink holds no other image, and whose
-  hyperlinks lead to one other document, illustrates that document (a teaser of another product, a promotion). It
-  fills an `image_url` field whose path names schema.org `image`. An image's source is its `src`, unless its `srcset`
-  has width descriptors, which leave `src` out of its source set (HTML Standard §4.8.4.3): then its widest candidate.
-  Before it, the first such image (in the main region, else in the body) whose file (`url.resource_key`) is the main
-  image the page's structured data or Open Graph states (`stated_images`): independent evidence of the product's
-  image, which a page without a main landmark (a client-rendered storefront) needs to have a main image at all.
-- **The gallery.** The main image's slides fill a list of images whose path names schema.org `image`: from the main
-  image up, the first block with siblings of its tag; each such block's shown image at the main image's tag path, a
-  source several blocks give (a placeholder) left out; none when a block links to another document (cards) or fewer
-  than two images remain (`_gallery`).
+- **Images.** The main image and its gallery (`collect.dom_images`), which also holds the rules of the main
+  region, the elements set apart from it and where its hyperlinks lead, shared with the passes here.
 
 A value must be shown on the page (`VisibleIndex`). Every candidate is the page's, like an Open Graph value, and
 independent; it goes through normalization and resolution like any other (no trust of its own). Listing schemas are
@@ -46,45 +32,33 @@ skipped: a page-level pair says nothing of one row.
 """
 
 import re
-from collections import Counter
-from collections.abc import Hashable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
-from pydantic import JsonValue
 from selectolax.lexbor import LexborNode
 
 from crawlerai.collect.base import PAGE, Candidate, CollectResult
+from crawlerai.collect.dom_images import (
+    A_HREF,
+    MIN_REPEATS,
+    Found,
+    Links,
+    apart_ids,
+    children,
+    image_found,
+    main_region,
+    up_to,
+)
 from crawlerai.collect.items.spot import is_typed, reads, spots
-from crawlerai.collect.labels import Words, field_labels, properties, words
+from crawlerai.collect.labels import Words, field_labels, words
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import NAMESPACES, candidate, schema_term
-from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.content.text import CELLS, declarations, shown
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equality_key
-from crawlerai.normalize.url import canonical_url, media_type, resource_key
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
-# HTML Standard §4.3: sectioning content of a region that is not its main content (navigation, headers, footers and
-# content tangential to it).
-_TANGENTIAL = frozenset({"nav", "header", "footer", "aside"})
-# HTML Standard §4.11.4 (`dialog`) and WAI-ARIA 1.2 §5.4 (roles `dialog`, `alertdialog`): a window apart from the
-# page's content, such as a drawer or a modal, whose images are its own, not the main content's. A closed `dialog` is
-# not rendered at all (`content.text.shown`); an open one or a dialog role is still apart.
-_DIALOG_ROLES = frozenset({"dialog", "alertdialog"})
-# HTML Standard §4.8.7 (`object`), §4.8.9 (`video`, `audio`), §4.12.5 (`canvas`): their children are fallback content,
-# shown only where the element itself cannot be.
-_MEDIA = frozenset({"video", "audio", "object", "canvas"})
-# WAI-ARIA 1.2 §5.4: roles `none` and `presentation` remove an element's meaning; for an image, it is decorative.
-_PRESENTATIONAL = frozenset({"none", "presentation"})
-# schema.org `Thing.image`: the property an image field's path names.
-_IMAGE = "image"
-# RFC 2397: a `data:` URL carries its content inline; it addresses no image resource.
-_INLINE = "data:"
-# HTML Standard §4.8.4.2: an image candidate string's width descriptor, a valid non-negative integer and `w`. A width
-# has a few digits; a longer run is no width a page lays out, and stays clear of `int`'s digit limit.
-_WIDTH_DESCRIPTOR = re.compile(r"\d{1,9}w")
 # A label's end: a colon (U+003A, or the fullwidth U+FF1A that CJK text writes) after optional white space.
 _COLON = re.compile(r"\s*[:\uff1a]")
 
@@ -94,8 +68,6 @@ _TABLE, _LINE, _SIBLINGS = "table", "line", "siblings"
 _REPEATING = (_LINE, _SIBLINGS)
 # HTML Standard §4.9 (tables) and §4.4.9 (description lists): the elements whose rows and groups `_pairs` reads itself.
 _TABULAR = frozenset({"table", "thead", "tbody", "tfoot", "tr", "dl"})
-# Sibling containers repeat from two on.
-_MIN_REPEATS = 2
 # The typed fields read without a label: dates and datetimes have sources of their own.
 _SPOTTED_TYPES = frozenset({FieldType.MONEY, FieldType.IDENTIFIER})
 # The longest text a typed value is spotted in: an amount or an identifier is short, a longer text is prose around one.
@@ -124,10 +96,10 @@ OTHER_ITEMS = ",".join(
 
 
 class DomCollector:
-    def __init__(self, outside: frozenset[int] = frozenset(), primary: frozenset[Hashable] = frozenset()) -> None:
+    def __init__(self, outside: frozenset[int] = frozenset(), primary: Sequence[str] = ()) -> None:
         # The elements outside the page's product container (`product_apart`).
         self.outside = outside
-        # The files of the main image the page's structured data states (`stated_images`).
+        # The main image the page's structured data states (`collect.dom_images.stated_images`).
         self.primary = primary
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult:
@@ -144,7 +116,7 @@ class DomCollector:
             *_pairs_found(page, pairs, labels, schema, content),
             *_pairs_found(page, listed, field_labels(lists := _list_fields(schema)), lists, content),
             *_typed_found(page, schema, ctx, content, unlabelled),
-            *_image_found(page, schema, ctx, self.outside, self.primary),
+            *image_found(page, schema, ctx, self.outside, self.primary),
         ):
             locator = format_locator("dom", xpath)
             found = candidate(name, schema.fields[name], PAGE, "dom", raw, locator, ctx, diagnostics, read=read or None)
@@ -153,12 +125,6 @@ class DomCollector:
         return CollectResult(entities=(), candidates=tuple(candidates), diagnostics=tuple(diagnostics))
 
 
-# A hyperlink (HTML Standard §4.6.1: an `a` element with an `href` attribute).
-A_HREF = "a[href]"
-
-# A field, the raw value, the XPath of the element it came from, and what the field reads of it when that is not the
-# raw value (a list field's items).
-Found = tuple[str, JsonValue, str, JsonValue]
 Pair = tuple[str, LexborNode, str, str]  # a label's text, the element holding its value, its text and the kind
 
 
@@ -178,8 +144,8 @@ class _Content:
         region = content_region(page)
         if region is None:
             return None
-        links = _Links.of(region, ctx)
-        apart = _apart_ids(region) | _inside(_other_items(region, links)) | outside
+        links = Links.of(region, ctx)
+        apart = apart_ids(region) | _inside(_other_items(region, links)) | outside
         return cls(region, apart, _inside(a for a in region.css(A_HREF) if links.of_block(a)))
 
     def links_out(self, element: LexborNode) -> bool:
@@ -256,7 +222,7 @@ def _unambiguous(name: str, raw: str, kinds: Mapping[tuple[str, str], set[str]],
 
 def content_region(page: ParsedPage) -> LexborNode | None:
     """The page's main content: its main region, else the document body."""
-    return _main_region(page) or page.tree.body
+    return main_region(page) or page.tree.body
 
 
 def product_apart(page: ParsedPage, schema: SchemaDef, ctx: Context, stated: Sequence[Candidate]) -> frozenset[int]:
@@ -275,7 +241,7 @@ def product_apart(page: ParsedPage, schema: SchemaDef, ctx: Context, stated: Seq
     money = next((spec for spec in schema.fields.values() if spec.type is FieldType.MONEY), None)
     if region is None or schema.page_kind != "detail" or page.json_body:
         return frozenset()
-    chrome = _apart_ids(region) | struck_ids(region)
+    chrome = apart_ids(region) | struck_ids(region)
     title = next((h for h in region.css("h1") if h.mem_id not in chrome and shown(h)), None)
     apart = [item for item in _product_items(page) if title is None or not _holds(item, title)]
     own = _stated_prices(schema, stated)
@@ -294,7 +260,7 @@ def other_item_paths(page: ParsedPage, ctx: Context, outside: frozenset[int]) ->
     if page.json_body:
         return frozenset()
     region = content_region(page)
-    apart = outside if region is None else _inside(_other_items(region, _Links.of(region, ctx))) | outside
+    apart = outside if region is None else _inside(_other_items(region, Links.of(region, ctx))) | outside
     if not apart:
         return frozenset()
     return frozenset(
@@ -366,9 +332,9 @@ def _up(node: LexborNode, region: LexborNode) -> Iterator[LexborNode]:
 
 
 def _targets(region: LexborNode, ctx: Context) -> dict[int, set[str]]:
-    """The other documents the hyperlinks each element of the region is or holds lead to (`_Links`), for the elements
+    """The other documents the hyperlinks each element of the region is or holds lead to (`Links`), for the elements
     that hold one."""
-    links = _Links.of(region, ctx)
+    links = Links.of(region, ctx)
     held: dict[int, set[str]] = {}
     for a in region.css(A_HREF):
         if (target := links.targets.get(a.mem_id)) is not None:
@@ -419,19 +385,11 @@ def list_items(element: LexborNode, page: ParsedPage) -> list[str]:
     items = [
         item
         for lst in lists
-        if not any(ancestor.tag == "li" for ancestor in _up_to(lst, element))
-        for item in _children(lst)
+        if not any(ancestor.tag == "li" for ancestor in up_to(lst, element))
+        for item in children(lst)
         if item.tag == "li" and node_xpath(item) in page.text_spans
     ]
     return [text for text in map(_text, items) if text]
-
-
-def _up_to(node: LexborNode, top: LexborNode) -> Iterator[LexborNode]:
-    """The ancestors of `node` below `top`."""
-    parent = node.parent if node != top else None
-    while parent is not None and parent != top:
-        yield parent
-        parent = parent.parent
 
 
 def _pairs(region: LexborNode) -> Iterator[Pair]:
@@ -439,7 +397,7 @@ def _pairs(region: LexborNode) -> Iterator[Pair]:
     list groups, elements that start with `Label:` and sibling containers of one shape that each hold a label element
     and a value element."""
     for row in region.css("tr"):
-        cells = _children(row)
+        cells = children(row)
         if len(cells) == 2 and all(cell.tag in CELLS for cell in cells):
             yield _text(cells[0]), cells[1], _text(cells[1]), _TABLE
     for described in region.css("dl"):
@@ -455,7 +413,7 @@ def _groups(dl: LexborNode) -> Iterator[tuple[LexborNode, LexborNode]]:
     group labels every description of it. A `div` child of a `dl` wraps one group."""
     terms: list[LexborNode] = []
     described = False
-    items = (grand for child in _children(dl) for grand in (_children(child) if child.tag == "div" else (child,)))
+    items = (grand for child in children(dl) for grand in (children(child) if child.tag == "div" else (child,)))
     for item in items:
         if item.tag == "dt":
             if described:
@@ -489,7 +447,7 @@ def _line_value(element: LexborNode, first: LexborNode, rest: str, inner: str) -
         return (first if first.is_element_node else element), inner
     if not rest:
         return None
-    others = [child for child in _children(element) if child != first]
+    others = [child for child in children(element) if child != first]
     return (others[0] if len(others) == 1 and _text(others[0]) == rest else element), rest
 
 
@@ -503,19 +461,15 @@ def _repeated_pairs(parent: LexborNode) -> Iterator[Pair]:
     """Sibling containers of one shape (the same tag, each with two children of the same tags) hold a label and its
     value: the first child labels the second. One such container is no repetition, so no structure."""
     shapes: dict[tuple[str, ...], list[LexborNode]] = {}
-    for child in () if _structured(parent) else _children(parent):
-        parts = _children(child)
+    for child in () if _structured(parent) else children(parent):
+        parts = children(child)
         if len(parts) == 2:
             shapes.setdefault((child.tag or "", parts[0].tag or "", parts[1].tag or ""), []).append(child)
     for group in shapes.values():
-        if len(group) >= _MIN_REPEATS:
+        if len(group) >= MIN_REPEATS:
             for container in group:
-                label, value = _children(container)
+                label, value = children(container)
                 yield _text(label), value, _text(value), _SIBLINGS
-
-
-def _children(node: LexborNode) -> list[LexborNode]:
-    return [child for child in node.iter(include_text=False) if child.is_element_node]
 
 
 def _typed_found(
@@ -528,7 +482,7 @@ def _typed_found(
     without one needs a label (`_pairs_found`). Several distinct values are ambiguous (a price among related products'
     prices): nothing is read."""
     fields = [n for n, spec in schema.fields.items() if is_typed(spec) and spec.type in _SPOTTED_TYPES]
-    if not fields or content is None or _main_region(page) is None:
+    if not fields or content is None or main_region(page) is None:
         return
     shorts = _short_texts(content.region, content.apart)
     struck = struck_ids(content.region)
@@ -568,7 +522,7 @@ def _inside(roots: Iterable[LexborNode]) -> frozenset[int]:
     return frozenset(inside.mem_id for root in roots for inside in (root, *root.css("*")))
 
 
-def _other_items(region: LexborNode, links: "_Links") -> Iterator[LexborNode]:
+def _other_items(region: LexborNode, links: "Links") -> Iterator[LexborNode]:
     """The region's elements holding items besides the page's own: what schema.org microdata marks as a related or
     similar item or a review (`itemprop` `isRelatedTo`, `isSimilarTo`, `review`; a `Review` item), and sibling blocks
     of one tag (two or more) that each link to one other document, a different one each: a list of other documents'
@@ -576,22 +530,16 @@ def _other_items(region: LexborNode, links: "_Links") -> Iterator[LexborNode]:
     yield from region.css(OTHER_ITEMS)
     for parent in (region, *region.css("*")):
         groups: dict[str, list[LexborNode]] = {}
-        for child in _children(parent):
+        for child in children(parent):
             groups.setdefault(child.tag or "", []).append(child)
         for group in groups.values():
-            if len(group) >= _MIN_REPEATS and _cards(group, links):
+            if len(group) >= MIN_REPEATS and _cards(group, links):
                 yield from group
 
 
-def _cards(group: Sequence[LexborNode], links: "_Links") -> bool:
+def _cards(group: Sequence[LexborNode], links: "Links") -> bool:
     targets = [links.of_block(block) for block in group]
     return all(len(t) == 1 for t in targets) and len(set().union(*targets)) == len(group)
-
-
-def _apart_ids(region: LexborNode) -> frozenset[int]:
-    """The elements in the region's tangential content, in a dialog or a media element's fallback."""
-    selector = ",".join((*_TANGENTIAL, *_MEDIA, "dialog", *(f'[role~="{role}"]' for role in sorted(_DIALOG_ROLES))))
-    return frozenset(inside.mem_id for root in region.css(selector) for inside in (root, *root.css("*")))
 
 
 def struck(tag: str, attributes: Mapping[str, str | None]) -> bool:
@@ -606,222 +554,3 @@ def struck(tag: str, attributes: Mapping[str, str | None]) -> bool:
 def struck_ids(region: LexborNode) -> frozenset[int]:
     """The region's elements that are struck through (`struck`) or inside one that is."""
     return _inside(e for e in (region, *region.css("*")) if struck(e.tag or "", e.attributes))
-
-
-def _image_found(
-    page: ParsedPage, schema: SchemaDef, ctx: Context, outside: frozenset[int], primary: frozenset[Hashable]
-) -> Iterator[Found]:
-    """The main image for each image field whose path names schema.org `image`, and its gallery for each such list of
-    images, outside the product container's other blocks (`product_apart`). The main image is the shown image of the
-    `primary` file (`_anchor`), else, in a main region, that region's first image (`_main_image`)."""
-    named = _image_fields(schema)
-    fields = [n for n, spec in named.items() if spec.type is FieldType.IMAGE_URL]
-    lists = [n for n, spec in named.items() if spec.type is FieldType.LIST]
-    landmark = _main_region(page)
-    region = landmark or page.tree.body
-    if not (fields or lists) or region is None:
-        return
-    links, apart = _Links.of(region, ctx), _apart_ids(region) | outside
-    found = _anchor(region, links, apart, primary, ctx.base_url or ctx.page_url)
-    if found is None and landmark is not None:
-        found = _main_image(region, links, apart)
-    if found is None:
-        return
-    image, source = found
-    yield from ((name, source, node_xpath(image), None) for name in fields)
-    gallery = _gallery(image, region, links, apart) if lists else None
-    if gallery is not None:
-        views: list[JsonValue] = [*gallery[1]]
-        yield from ((name, views, node_xpath(gallery[0]), None) for name in lists)
-
-
-def _image_fields(schema: SchemaDef) -> dict[str, FieldSpec]:
-    """The image fields and lists of images whose path names schema.org `image`."""
-    return {
-        name: spec
-        for name, spec in schema.fields.items()
-        if _IMAGE in properties(spec)
-        and FieldType.IMAGE_URL in (spec.type, spec.item.type if spec.item is not None else None)
-    }
-
-
-def stated_images(schema: SchemaDef, stated: Sequence[Candidate]) -> frozenset[Hashable]:
-    """The files (`url.resource_key`) of the main image the page's own structured data and Open Graph state for its
-    product (`stated`): per image field or list of images, entity and source kind, the first value, the
-    representative image a source names first (schema.org `image` written as several values or a list; Open Graph's
-    first `og:image`). An image field holds a candidate per stated value, so only the first one counts."""
-    named = _image_fields(schema)
-    firsts: dict[tuple[str, str, str], JsonValue] = {}
-    for c in stated:
-        if c.field in named and isinstance(c.normalized, Ok):
-            firsts.setdefault((c.field, c.entity_id, c.source_kind), c.normalized.value)
-    values = (value[0] if isinstance(value, list) and value else value for value in firsts.values())
-    return frozenset(key for value in values if (key := resource_key(value)) is not None)
-
-
-def _anchor(
-    region: LexborNode, links: "_Links", apart: frozenset[int], primary: frozenset[Hashable], base: str | None
-) -> tuple[LexborNode, str] | None:
-    """The region's first shown image of a `primary` file, not a link card's: the product's main image as structured
-    data states it, found by its file (independent evidence of which image is the product's), so a page with no main
-    landmark has one too, and its gallery is read from it."""
-    if not primary:
-        return None
-    for image in region.css("img"):
-        source = _shown_source(image, apart)
-        if source is None or (absolute := canonical_url(source, base)) is None:
-            continue
-        if resource_key(absolute) in primary and not _link_card(image, region, links):
-            return image, source
-    return None
-
-
-def _main_region(page: ParsedPage) -> LexborNode | None:
-    """The `main` element, else the `role="main"` landmark, else the one `article`; none when the page has several."""
-    for selector in ("main", '[role="main"]', "article"):
-        found = page.tree.css(selector)
-        if found:
-            return found[0] if len(found) == 1 else None
-    return None
-
-
-def _main_image(region: LexborNode, links: "_Links", apart: frozenset[int]) -> tuple[LexborNode, str] | None:
-    for image in region.css("img"):
-        source = _shown_source(image, apart)
-        if source is not None and not _link_card(image, region, links):
-            return image, source
-    return None
-
-
-def _shown_source(image: LexborNode, apart: frozenset[int]) -> str | None:
-    """A shown, non-decorative image's source, outside the elements set `apart`."""
-    if image.mem_id in apart or decorative(image.attributes) or not shown(image):
-        return None
-    return image_source(image.attributes)
-
-
-def _gallery(
-    image: LexborNode, region: LexborNode, links: "_Links", apart: frozenset[int]
-) -> tuple[LexborNode, list[str]] | None:
-    """The main image's gallery: the holder and the image sources of the blocks of one repeated structure around it.
-
-    From the main image up, the first block that has siblings of its tag (two or more blocks of one tag, the repetition
-    `_repeated_pairs` reads) is a slide among slides: each block holding a shown image at the main image's tag path
-    within its block gives that image, in document order. A block linking to another document makes the blocks cards
-    of other items (`_cards`), not views of this one, so they are no gallery. A source several blocks give is the
-    template's, as the align step reads a place every block repeats (a lazy loader's placeholder), not a view. Fewer
-    than two distinct sources are no gallery."""
-    node = image
-    while node is not region and (parent := node.parent) is not None:
-        blocks = [child for child in _children(parent) if child.tag == node.tag]
-        if len(blocks) >= _MIN_REPEATS:
-            views = _views(blocks, _tag_path(image, node), links, apart)
-            return (parent, views) if len(views) >= _MIN_REPEATS else None
-        node = parent
-    return None
-
-
-def _views(blocks: Sequence[LexborNode], path: tuple[str, ...], links: "_Links", apart: frozenset[int]) -> list[str]:
-    """The sources the blocks show once each at `path` (`_gallery`); none when a block links to another document."""
-    if any(links.of_block(block) for block in blocks):
-        return []
-    sources = [s for block in blocks if (s := _block_source(block, path, apart)) is not None]
-    counts = Counter(sources)
-    return [source for source in dict.fromkeys(sources) if counts[source] == 1]
-
-
-def _tag_path(element: LexborNode, block: LexborNode) -> tuple[str, ...]:
-    """The tags from a block (excluded) down to an element inside it (included)."""
-    tags = [element.tag or ""]
-    tags.extend(ancestor.tag or "" for ancestor in _up_to(element, block))
-    return tuple(reversed(tags))
-
-
-def _block_source(block: LexborNode, path: tuple[str, ...], apart: frozenset[int]) -> str | None:
-    """The source of a block's first shown image at the tag path `path` from the block."""
-    images = [block] if block.tag == "img" else block.css("img")
-    for image in images:
-        if _tag_path(image, block) == path and (source := _shown_source(image, apart)) is not None:
-            return source
-    return None
-
-
-def image_source(attributes: Mapping[str, str | None]) -> str | None:
-    """An `img` element's `src`, else the URL of its first `srcset` candidate (HTML Standard §4.8.4.3: a URL, then
-    optional descriptors, candidates separated by commas); an inline `data:` URL is none. A `srcset` with width
-    descriptors leaves `src` out of the image's source set (HTML Standard §4.8.4.3, "update the source set"): the image
-    never shows it (a lazy loader's placeholder), so its source is the widest candidate."""
-    candidates = _srcset(attributes.get("srcset") or "")
-    widths = [width for _, width in candidates]
-    if any(width is not None for width in widths):
-        widest = max(range(len(candidates)), key=lambda i: widths[i] or 0)
-        sources = [candidates[widest][0]]
-    else:
-        sources = [attributes.get("src") or "", *(url for url, _ in candidates[:1])]
-    for source in (s.strip() for s in sources):
-        if source and not source.lower().startswith(_INLINE):
-            return source
-    return None
-
-
-def _srcset(srcset: str) -> list[tuple[str, int | None]]:
-    """A `srcset`'s image candidate strings (HTML Standard §4.8.4.2): each URL, with its width descriptor's value when
-    it has one. A URL ends at white space, a trailing comma ending its candidate; its descriptors run to the next
-    comma."""
-    candidates: list[tuple[str, int | None]] = []
-    open_candidate = False
-    for token in srcset.split():
-        if not open_candidate:
-            candidates.append((token.rstrip(","), None))
-            open_candidate = not token.endswith(",")
-            continue
-        descriptor = token.rstrip(",")
-        if _WIDTH_DESCRIPTOR.fullmatch(descriptor):
-            candidates[-1] = (candidates[-1][0], int(descriptor[:-1]))
-        open_candidate = not token.endswith(",")
-    return candidates
-
-
-def decorative(attributes: Mapping[str, str | None]) -> bool:
-    """Whether an `img` is decorative: an empty `alt` (HTML Standard §4.8.4.4), or roles `none`/`presentation`."""
-    return attributes.get("alt") == "" or not _PRESENTATIONAL.isdisjoint(tokens(attributes.get("role")))
-
-
-def _link_card(image: LexborNode, region: LexborNode, links: "_Links") -> bool:
-    """Whether the nearest block around the image that holds a hyperlink to another document holds no other image and
-    leads to one document only: the card of that document, whose image is the document's, not this page's entity."""
-    node: LexborNode | None = image.parent
-    while node is not None and node.mem_id != region.mem_id:  # identity: `!=` compares serialized markup
-        if len(node.css("img")) > 1:
-            return False
-        targets = links.of_block(node)
-        if targets:
-            return len(targets) == 1
-        node = node.parent
-    return False
-
-
-@dataclass(frozen=True, slots=True)
-class _Links:
-    """The other document each hyperlink of a region leads to (HTML Standard §4.6.1: an `a` with `href`), by element:
-    canonical (`canonical_url`: http(s), without the fragment), other than the page itself and other than images (a
-    larger copy)."""
-
-    targets: Mapping[int, str]
-
-    @classmethod
-    def of(cls, region: LexborNode, ctx: Context) -> "_Links":
-        here = canonical_url(ctx.page_url, None) if ctx.page_url is not None else None
-        base = ctx.base_url or ctx.page_url
-        found = {a.mem_id: canonical_url(a.attributes.get("href") or "", base) for a in region.css(A_HREF)}
-        return cls({key: t for key, t in found.items() if t is not None and t != here and not is_image_url(t)})
-
-    def of_block(self, block: LexborNode) -> set[str]:
-        """The other documents the block's hyperlinks lead to, the block's own included when it is one."""
-        return {self.targets[a.mem_id] for a in (block, *block.css(A_HREF)) if a.mem_id in self.targets}
-
-
-def is_image_url(url: str) -> bool:
-    """Whether the URL's path names an image file (RFC 6838: the top-level type `image`, by its extension)."""
-    found = media_type(url)
-    return found is not None and found.startswith("image/")

@@ -126,6 +126,30 @@ def test_the_resource_key_ignores_only_the_scheme_the_query_and_a_stated_size() 
     assert url.resource_key("/i/a.jpg") is None
 
 
+@pytest.mark.parametrize(
+    ("rendition", "same"),
+    [
+        ("https://cdn.example.test/i/7/a.jpg?w=9", True),  # one resource_key
+        ("https://cdn.example.test/image/v2/site/i/7/a.jpg", True),  # an image service's prefix
+        ("https://cdn.example.test/i/7-800-auto/a.jpg", True),  # rendition parameters after a directory
+        ("https://cdn.example.test/i/7/a.jpg/renditions/600.jpg", True),  # a rendition below the file
+        ("https://cdn.example.test/i/77/a.jpg", False),  # another directory
+        ("https://cdn.example.test/i/7/b.jpg", False),  # another file
+        ("https://img.example.test/i/7/a.jpg", False),  # another authority
+    ],
+)
+def test_renditions_an_image_server_writes_into_the_path_name_one_file(rendition: str, same: bool) -> None:
+    file = "https://cdn.example.test/i/7/a.jpg"
+
+    assert url.same_file(file, rendition) is same
+    assert url.same_file(rendition, file) is same
+    # Two renditions of one directory; parameters without a size are another directory.
+    assert url.same_file("https://cdn.example.test/i/7-800-auto/a.jpg", "https://cdn.example.test/i/7-600-auto/a.jpg")
+    assert not url.same_file("https://cdn.example.test/i/7-blue/a.jpg", "https://cdn.example.test/i/7-red/a.jpg")
+    # A bare file name is no evidence of one file.
+    assert not url.same_file("https://cdn.example.test/a.jpg", "https://cdn.example.test/i/a.jpg")
+
+
 def test_a_proxy_url_names_the_file_its_url_parameter_names() -> None:
     key = url.resource_key("https://cdn.example.test/i/a.jpg?w=940")
     proxy = "https://www.example.test/_img?url="

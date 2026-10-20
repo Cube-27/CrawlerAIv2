@@ -215,7 +215,12 @@ def test_an_og_title_holding_the_page_urls_slug_reads_as_the_slugs_words() -> No
 
     (title,) = [c for c in OpenGraphCollector().collect(page, SCHEMA, ctx).candidates if c.field == "title"]
     assert title.normalized == Ok("Crème Kettle 2L")
-    # Only the last slug segment names the item: a category segment earlier in the path is not its name.
+    # A slug the title does not hold (a fixed segment naming the page's kind) says nothing; an earlier one names it.
+    detail = Context(captured_at=CTX.captured_at, page_url="https://shop.example.test/creme-kettle-2l/12345/item-page")
+    (title,) = [c for c in OpenGraphCollector().collect(page, SCHEMA, detail).candidates if c.field == "title"]
+    assert title.normalized == Ok("Crème Kettle 2L")
+    # Only the last slug segment the title holds names the item: a category segment earlier in the path is not its
+    # name.
     category = Context(captured_at=CTX.captured_at, page_url="https://shop.example.test/kitchen-tools/acme-kettle")
     page = _page(("og:title", "Acme Kettle for Kitchen Tools"))
     (title,) = [c for c in OpenGraphCollector().collect(page, SCHEMA, category).candidates if c.field == "title"]
@@ -224,3 +229,20 @@ def test_an_og_title_holding_the_page_urls_slug_reads_as_the_slugs_words() -> No
     page = _page(("og:title", "Acme Kettle Deluxe - Buy Acme Kettle Online"))
     (title,) = [c for c in OpenGraphCollector().collect(page, SCHEMA, category).candidates if c.field == "title"]
     assert title.normalized == Ok("Acme Kettle Deluxe - Buy Acme Kettle Online")
+
+
+def test_an_og_title_holding_the_pages_top_level_heading_reads_as_the_heading() -> None:
+    # HTML Standard §4.3.6: the one `h1` is the document's title as the page shows it; the words around it in og:title
+    # are the site's wording.
+    def title(heading: str) -> object:
+        page = ParsedPage(
+            '<html><head><meta property="og:title" content="Buy Acme Kettle Deluxe 2L Online at Synthetic Shop">'
+            f"</head><body>{heading}</body></html>"
+        )
+        (found,) = [c for c in OpenGraphCollector().collect(page, SCHEMA, CTX).candidates if c.field == "title"]
+        return found.normalized
+
+    assert title("<h1>Acme Kettle Deluxe 2L</h1>") == Ok("Acme Kettle Deluxe 2L")
+    # One word may begin a longer name; several `h1` name no one title.
+    assert title("<h1>Acme</h1>") == Ok("Buy Acme Kettle Deluxe 2L Online at Synthetic Shop")
+    assert title("<h1>Acme Kettle</h1><h1>Deluxe 2L</h1>") == Ok("Buy Acme Kettle Deluxe 2L Online at Synthetic Shop")

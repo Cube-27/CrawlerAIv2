@@ -25,8 +25,12 @@ its scope match times its value's agreement:
   kind outside the order 0); a fragment of another of the field's candidates weighs 0 (`resolve/supersede.py`: a
   `long_text` that is a prefix or ellipsis-cut prefix of a longer one, an Open Graph description, or a value of
   another kind stating the same text as it, beside a longer one of a kind other than Open Graph, or one that states
-  another's text with fewer line breaks, white space aside (its paragraphs and line breaks flattened); a `text` that is another kind's value plus ` - ` or ` | ` and more text; a list of
-  images, of any kind, whose files are all among a longer list's of another kind (Previously: an Open Graph list only)). For `money` the strength of the currency
+  another's text with fewer line breaks, white space aside (its paragraphs and line breaks flattened), or that is a
+  first line, then the start of a longer one, white space aside (a section's heading kept as text); a `text` that is
+  another kind's value plus ` - ` or ` | ` and more text; a list of
+  images, of any kind, whose files (`same_file`: a file or a rendition of it) are all among a longer list's of another
+  kind, for an Open Graph list its first file only (Open Graph "Arrays": the first is preferred; a site default after it
+  is no view) (Previously: an Open Graph list only; files compared by `resource_key`, every Open Graph file)). For `money` the strength of the currency
   evidence ([normalization](../normalization/spec.md) `basis`): a stated currency 1, then `page`, `locale`, `url`,
   `unknown` each 1/(number of bases + 1) less. Every other type weighs every kind 1 (no measured order).
 - Scope match: 1 for the target's own values and its anchor Offer's, 0.5 for another Offer of the target or of its

@@ -8,23 +8,28 @@ Two structural properties of the values say a candidate is a fragment of another
   is a summary, and so is a candidate of another kind stating the same text as it, so a longer description of a kind
   other than Open Graph supersedes it. A text that is another's with fewer line breaks, white space aside, is that
   text with its block structure flattened (paragraphs and `br` line breaks, HTML Standard §4.4.1, §4.5.27, dropped),
-  so the rendition keeping more of its lines supersedes it.
+  so the rendition keeping more of its lines supersedes it. A text whose first line stands alone before the start of a
+  longer candidate is that text with the heading that names its block kept as text (HTML Standard §4.3.6: a heading
+  names its section, it is not its content; microdata reads an element's whole text content), a cut of it all the
+  same, white space aside.
 - text: a value that is another kind's value plus a separator (a dash or a vertical bar, between spaces) and more
   text, at either end, is that value with decoration; the other kind's undecorated value supersedes it.
-- a list of images: a list whose files are all among a longer list's of another kind (`resource_key`: the set of
-  files a list names, a strict subset of the other's) is that list's representative part, whatever its kind: an Open
-  Graph `og:image` (an image to represent the object), or a structured `image` stating the main image only while the
-  page's gallery or another source lists every view. The longer list supersedes it; it must name every file the
-  shorter one does, so a list of other images never supersedes it.
+- a list of images: a list whose files are all among a longer list's of another kind (`url.same_file`: a file or a
+  rendition of it, and the other list names more files) is that list's representative part, whatever its kind: a
+  structured `image` stating the main image only while the page's gallery or another source lists every view. The
+  longer list supersedes it; it must name every file the shorter one does, so a list of other images never supersedes
+  it. An Open Graph list needs only its first file named: `og:image` is an image to represent the object, and of a
+  repeated property the first is preferred (Open Graph protocol, "Basic Metadata" and "Arrays"), so its further images
+  (a site's default image beside the object's) are no views the longer list must hold.
 """
 
 import re
 import unicodedata
-from collections.abc import Hashable, Sequence
+from collections.abc import Sequence
 
 from crawlerai.collect.base import Candidate
 from crawlerai.normalize.base import Ok
-from crawlerai.normalize.dispatch import resource_key
+from crawlerai.normalize.url import same_file
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 _ELLIPSIS = re.compile(r"\s*(?:…|\.{3})$")
@@ -39,20 +44,31 @@ def superseded(spec: FieldSpec, kept: Sequence[Candidate]) -> list[Candidate]:
     if spec.type is FieldType.TEXT:
         return _decorated(kept)
     if spec.item is not None and spec.item.type is FieldType.IMAGE_URL:
-        return _representative(spec.item, kept)
+        return _representative(kept)
     return []
 
 
-def _representative(item: FieldSpec, kept: Sequence[Candidate]) -> list[Candidate]:
-    files = [(c, _files(c, item)) for c in kept]
-    return [c for c, own in files if own and any(o.source_kind != c.source_kind and own < other for o, other in files)]
+def _representative(kept: Sequence[Candidate]) -> list[Candidate]:
+    files = [(c, _files(c)) for c in kept]
+    return [
+        c
+        for c, own in files
+        if own and any(o.source_kind != c.source_kind and _part_of(c, own, other) for o, other in files)
+    ]
 
 
-def _files(c: Candidate, item: FieldSpec) -> frozenset[Hashable]:
-    """The files a list of images names (`resource_key`)."""
+def _part_of(c: Candidate, own: Sequence[str], other: Sequence[str]) -> bool:
+    """Whether the list `own` (of `c`) is the representative part of `other` (module docstring): `other` names the files
+    it must and one more."""
+    named = own[:1] if c.source_kind == _OPEN_GRAPH else own
+    extra = any(not any(same_file(image, file) for file in own) for image in other)
+    return extra and all(any(same_file(file, image) for image in other) for file in named)
+
+
+def _files(c: Candidate) -> list[str]:
+    """The images a list names, each file once (the normalizer keeps one rendition of a file)."""
     value = c.normalized.value if isinstance(c.normalized, Ok) else None
-    keys = [resource_key(v, item) for v in value] if isinstance(value, list) else []
-    return frozenset(k for k in keys if k is not None)
+    return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
 
 
 def _forms(kept: Sequence[Candidate]) -> list[tuple[Candidate, str]]:
@@ -84,7 +100,16 @@ def _longer(c: Candidate, form: str, other: Candidate, longer: str, summaries: s
     cut = _ELLIPSIS.sub("", form)
     truncation = bool(cut) and longer.startswith(cut)
     summary = form in summaries and other.source_kind != _OPEN_GRAPH
-    return truncation or summary
+    return truncation or summary or _headed(c, longer)
+
+
+def _headed(c: Candidate, longer: str) -> bool:
+    """Whether `c`'s text is a first line, then the start of `longer`, white space aside (text content joins the
+    paragraphs a rendered text separates)."""
+    value = c.normalized.value if isinstance(c.normalized, Ok) else None
+    _, line_break, rest = value.strip().partition("\n") if isinstance(value, str) else ("", "", "")
+    cut = "".join(_ELLIPSIS.sub("", rest.strip()).split())
+    return bool(line_break) and bool(cut) and "".join(longer.split()).startswith(cut)
 
 
 def _flattened(c: Candidate, kept: Sequence[Candidate]) -> bool:

@@ -30,7 +30,7 @@ C4):
   element of the name whose text every block repeats is the template's (screen-reader-only helper text) and is left
   out of the name.
 - **image** (a row image_url field whose path names schema.org `image`): the block's first shown image that is not
-  decorative (`collect.dom.image_source`, `collect.dom.decorative`).
+  decorative (`collect.dom_images.image_source`, `collect.dom_images.decorative`).
 - **typed values** (a row money, date or datetime field, or an identifier under a scheme with a check digit): typed
   value spotting. The block's shown elements whose text, on one line, the field's normalizer parses (a syntax it
   checks: an ISO 4217 or CLDR amount, an ISO 8601 or CLDR date, a check digit), and, for an element holding others,
@@ -67,8 +67,8 @@ from pydantic import ValidationError
 
 from crawlerai.acquire.items import MIN_ITEMS, Group, is_hyperlink
 from crawlerai.collect.base import ITEM_BLOCK, Candidate, Entity
-from crawlerai.collect.dom import decorative, image_source, is_image_url
 from crawlerai.collect.dom import struck as is_struck
+from crawlerai.collect.dom_images import decorative, image_source, is_image_url
 from crawlerai.collect.items.spot import Spot, is_typed, reads, spots
 from crawlerai.collect.items.stated import Stated, Word, same, words
 from crawlerai.collect.locator import format_locator
