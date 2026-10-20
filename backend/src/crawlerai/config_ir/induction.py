@@ -342,7 +342,7 @@ def source_steps(
     f = _Field(name, spec, schema, [SamplePage(page, ctx, {name: Published(value, "")})], vocabulary)
     found: dict[JsonSource | None, list[Step]] = {}
     for source in LOCATED_SOURCES:
-        paths = (path for document in documents(source, page) for path in _holding(document, value, spec, ctx))
+        paths = (path for document in documents(source, page) for path in holding(document, value, spec, ctx))
         steps = (_first_verified(list(_json_candidates(source, path)), f) for path in paths)
         found[source] = _distinct(steps)
     elements = _elements_holding(page.lxml_tree, value, spec, ctx)
@@ -365,7 +365,7 @@ def _distinct(steps: Iterator[Step | None]) -> list[Step]:
     return list(found.values())
 
 
-def _holding(document: JsonValue, value: JsonValue, spec: FieldSpec, ctx: Context) -> Iterator[str]:
+def holding(document: JsonValue, value: JsonValue, spec: FieldSpec, ctx: Context) -> Iterator[str]:
     """The normalized path of each member of `document` that normalizes to `value`."""
     for path, scalar in scalars(document):
         if _normalizes_to(scalar, value, spec, ctx):

@@ -64,8 +64,10 @@ _field = st.builds(
     _ratio,
 )
 _fields = st.dictionaries(st.from_regex(r"[a-z][a-z0-9_]{0,10}", fullmatch=True), _field, max_size=4)
+# A row of elements: a JSON row (`jsonpath`) reads jsonpath fields only, which `_fields` does not keep to.
+_element_row = _step.filter(lambda step: "jsonpath" not in step)
 _listing = st.none() | st.builds(
-    lambda row, fields, next_: {"row": row, "fields": fields, "next": next_}, _step, _fields, st.none() | _step
+    lambda row, fields, next_: {"row": row, "fields": fields, "next": next_}, _element_row, _fields, st.none() | _step
 )
 _RECIPE = {
     "method": "GET",

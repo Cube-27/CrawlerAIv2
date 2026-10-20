@@ -133,6 +133,16 @@ def release_run(ir: ExtractionConfigIR, page: ReleasePage, rules: Mapping[str, F
     return Released(fields=fields, rows=rows, diagnostics=tuple(run.diagnostics))
 
 
+@dataclass(frozen=True, slots=True)
+class _Item:
+    """A row a `jsonpath` row step selects: the JSON object its fields' `jsonpath` steps read from (`$` is the row)."""
+
+    value: Value
+
+
+_Node = etree._Element | _Item
+
+
 class _Unreadable(Exception):
     """A step this executor cannot run on the page; its message becomes a diagnostic and the next step runs."""
 
@@ -145,7 +155,7 @@ class _Run:
     diagnostics: list[str] = field(default_factory=list)
     _json: dict[JsonSource, list[Value]] = field(default_factory=dict)
 
-    def fields(self, fields: Mapping[str, FieldSteps], node: etree._Element, *, in_row: bool) -> dict[str, Value]:
+    def fields(self, fields: Mapping[str, FieldSteps], node: _Node, *, in_row: bool) -> dict[str, Value]:
         values: dict[str, Value] = {}
         for name, steps in fields.items():
             rule = self.rules.get(name)
@@ -158,7 +168,7 @@ class _Run:
         return values
 
     def first_valid(
-        self, name: str, steps: Sequence[Step], rule: FieldRule, node: etree._Element, *, in_row: bool
+        self, name: str, steps: Sequence[Step], rule: FieldRule, node: _Node, *, in_row: bool
     ) -> Value | None:
         for index, step in enumerate(steps):
             try:
@@ -173,7 +183,11 @@ class _Run:
                 return value
         return None
 
-    def matches(self, step: Step, node: etree._Element, *, in_row: bool) -> list[Value]:
+    def matches(self, step: Step, node: _Node, *, in_row: bool) -> list[Value]:
+        if isinstance(node, _Item):
+            if not isinstance(step, JsonPathStep):
+                raise _Unreadable("a JSON row is read by jsonpath steps only")
+            return _query(step.jsonpath, [node.value])
         if in_row and isinstance(step, (RegexStep, JsonLdStep, JsonPathStep)):
             raise _Unreadable("regex, jsonld and jsonpath steps read the whole page, not a row")
         match step:
@@ -195,9 +209,16 @@ class _Run:
             self._json[source] = list(_documents(source, self.page, self.root))
         return self._json[source]
 
-    def rows(self, step: Step) -> list[etree._Element]:
+    def rows(self, step: Step) -> list[_Node]:
+        if isinstance(step, JsonPathStep):
+            try:
+                items = _query(step.jsonpath, self.json(step.source))
+            except _Unreadable as unreadable:
+                self.diagnostics.append(f"row: {unreadable}")
+                return []
+            return [_Item(item) for item in items if isinstance(item, dict)]
         if not isinstance(step, (XPathStep, CssStep)):
-            self.diagnostics.append("row: a row step is an xpath or css step")
+            self.diagnostics.append("row: a row step is an xpath, css or jsonpath step")
             return []
         try:
             found = self.root.xpath(step.xpath)
