@@ -15,7 +15,7 @@ from crawlerai.collect.items.lines import BlockText
 from crawlerai.collect.labels import field_labels
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.text import CleanedText
+from crawlerai.content.text import CleanedText, TextRun
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId, SchemaId
 from crawlerai.llm.client import (
@@ -63,9 +63,14 @@ def specs(*names: str) -> dict[str, FieldSpec]:
     return {name: SCHEMA.fields[name] for name in names}
 
 
-def extract(client: ScriptedClient, fields: Sequence[str] = ("title", "released"), text: str = TEXT) -> Filled:
+def extract(
+    client: ScriptedClient,
+    fields: Sequence[str] = ("title", "released"),
+    text: str = TEXT,
+    runs: tuple[TextRun, ...] = (),
+) -> Filled:
     asked = specs(*fields)
-    filled = extract_detail(client, CleanedText(text, ()), asked, CTX, owner=OWNER, job_id=JOB, labels=LABELS)
+    filled = extract_detail(client, CleanedText(text, runs), asked, CTX, owner=OWNER, job_id=JOB, labels=LABELS)
     return asyncio.run(filled)
 
 
@@ -123,6 +128,32 @@ def test_a_grounded_span_is_checked_for_its_field(field: str, claimed: str, star
 
     assert [(c.raw, c.locator) for c in filled.candidates] == ([] if kept is None else [kept])
     assert filled.unverified == (() if kept else (field,))
+
+
+# `Ref.: ` in one span, `AB-12` in the next; `1234` and `WHT` in two sibling spans of one line.
+RUNS = "Ref.: AB-12\n(#1234 WHT)"
+SPANS = (
+    TextRun(0, 5, "/html[1]/body[1]/p[1]/span[1]"),
+    TextRun(6, 11, "/html[1]/body[1]/p[1]/span[2]"),
+    TextRun(12, 14, "/html[1]/body[1]/p[2]"),
+    TextRun(14, 18, "/html[1]/body[1]/p[2]/span[1]"),
+    TextRun(19, 22, "/html[1]/body[1]/p[2]/span[2]"),
+    TextRun(22, 23, "/html[1]/body[1]/p[2]"),
+)
+
+
+@pytest.mark.parametrize(
+    ("claimed", "start", "kept"),
+    [
+        ("Ref.: AB-12", 0, ("AB-12", "text:6-11")),  # the label's run is cut off, the identifier is one run
+        ("1234 WHT", 14, None),  # two runs' values joined are no identifier the page states
+        ("1234", 14, ("1234", "text:14-18")),
+    ],
+)
+def test_an_identifier_lies_within_one_text_run(claimed: str, start: int, kept: tuple[str, str] | None) -> None:
+    filled = extract(ScriptedClient(reply(sku=span(claimed, start))), fields=("sku",), text=RUNS, runs=SPANS)
+
+    assert [(c.raw, c.locator) for c in filled.candidates] == ([] if kept is None else [kept])
 
 
 # --- failures (§4.7) ---

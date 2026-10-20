@@ -75,6 +75,20 @@ def test_two_definitions_of_one_node_id_are_one_entity() -> None:
     assert graph.aliases == {"jsonld:1:$": "jsonld:0:$"}
 
 
+def test_one_node_id_merges_a_product_group_and_a_product_but_not_unrelated_types() -> None:
+    # JSON-LD 1.1 node map generation merges node objects with one @id whatever their types; a ProductGroup is a
+    # Product, so the Product's values are the group's. A WebPage under the same @id is no Product: it stays apart.
+    node = {"@id": "/p/1#product"}
+    group = {"@context": SCHEMA_ORG, "@type": "ProductGroup", **node, "url": PAGE_URL}
+    page = {"@context": SCHEMA_ORG, "@type": "WebPage", **node, "name": "Shop"}
+
+    graph, candidates = _graph(group, _product(**node, name="Widget One"), page)
+
+    assert graph.aliases == {"jsonld:1:$": "jsonld:0:$"}
+    assert graph.entities["jsonld:0:$"].types == ("ProductGroup", "Product")
+    assert [(c.field, c.entity_id) for c in candidates] == [("title", "jsonld:0:$")]
+
+
 # `isVariantOf` (D-1344): the inverse of `hasVariant`, so the group stands beside the page's Product.
 
 

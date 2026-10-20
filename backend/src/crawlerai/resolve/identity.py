@@ -1,9 +1,12 @@
 """Identity (resolution spec): the entities that state one item are one entity, whichever collector found them.
 
 The entities considered are the items that stand on their own (a root, or an item only lists hold) and the members of
-a product group (`hasVariant`). Two of them of one most specific type are one item when
-- they share an IRI (a JSON-LD `@id`, a microdata `itemid`): JSON-LD 1.1 node map generation merges node objects with
-  one `@id`, and the HTML Standard's `itemid` is the item's global identifier;
+a product group (`hasVariant`). Two of them are one item when
+- they share an IRI (a JSON-LD `@id`, a microdata `itemid`) and one's most specific type is the other's or a subtype of
+  it (a ProductGroup and a Product): JSON-LD 1.1 node map generation merges node objects with one `@id`, whatever
+  types each states, and the HTML Standard's `itemid` is the item's global identifier; two unrelated types under one
+  IRI (a WebSite and an Organization) state two things, and stay apart;
+and, of one most specific type, when
 - they share a value of a schema.org identifier property (`schema_org_map.identity`), unless their own URLs name two
   different items (schema.org `url`, "URL of the item"): a listing's items may repeat an identifier;
 - they name one item URL that is not a page URL, stated by two collectors or by a group's member and a standalone
@@ -17,7 +20,8 @@ the page states exactly one and that root is the page's own (it names no other d
 Every pair that agrees joins, so two later entities that agree join even when an earlier one stays apart. Two members
 of product groups never join (two variants sharing a sku are two sizes of one sku, variants spec INV-33), nor does an
 entity join its own ancestor. The merged entity is the group member when there is one, else the first in collector
-order; it takes every member's URLs, identity and children, and their candidates (`EntityGraph.adopt`).
+order; it takes every member's types (most specific first), URLs, identity and children, and their candidates
+(`EntityGraph.adopt`).
 
 A standalone Product whose `inProductGroupWithID` is the `productGroupID` of one standalone ProductGroup on the page is
 that group's variant, as `hasVariant` would state it (schema.org: "the productGroupID for a ProductGroup that this
@@ -67,11 +71,11 @@ def identify(entities: Sequence[Entity], vocabulary: Vocabulary, page_urls: Sequ
     sets = _Sets.of(eligible, by_id, pages)
     for (_, prop, _), members in _keyed(eligible, pages).items():
         for i, j in combinations(members, 2):
-            if prop != _URL or _url_joins(eligible[i], eligible[j]):
+            if _agree(eligible[i], eligible[j], prop, vocabulary):
                 sets.join(i, j, certain=prop == _IRI)
     _join_requested(eligible, sets, page_documents(pages))
     aliases, groups = sets.aliases(), sets.groups()
-    merged = [_merged(e, groups.get(e.id, ()), aliases) for e in entities if e.id not in aliases]
+    merged = [_merged(e, groups.get(e.id, ()), aliases, vocabulary) for e in entities if e.id not in aliases]
     named = {aliases.get(p, p): aliases.get(g, g) for p, g in variant_of.items()}
     return Identified(tuple(_grouped(merged, vocabulary, named)), aliases)
 
@@ -143,6 +147,14 @@ def _root(entity: Entity, type_: str) -> bool:
     return not entity.requested and entity.parent is None and entity.types[0] == type_
 
 
+def _agree(a: Entity, b: Entity, prop: str, vocabulary: Vocabulary) -> bool:
+    """Whether two entities stating one value of `prop` are one item (module docstring)."""
+    if prop == _IRI:
+        kind_a, kind_b = a.types[0], b.types[0]
+        return kind_a == kind_b or vocabulary.is_a(kind_a, kind_b) or vocabulary.is_a(kind_b, kind_a)
+    return prop != _URL or _url_joins(a, b)
+
+
 def _url_joins(a: Entity, b: Entity) -> bool:
     """Whether one item URL makes two entities one: two collectors' statements of an item, or a group's member and a
     standalone product (one collector lists distinct items under one URL, so a URL alone does not join its own)."""
@@ -155,11 +167,12 @@ def _collector(entity: Entity) -> str:
 
 
 def _keyed(eligible: Sequence[Entity], page_urls: frozenset[str]) -> dict[tuple[str, str, str], list[int]]:
-    """The indexes of the entities stating each (most specific type, property, value): IRI, identifiers, item URLs."""
+    """The indexes of the entities stating each (most specific type, property, value): identifiers and item URLs; an
+    IRI's of any type (`_agree` relates the types)."""
     keyed: defaultdict[tuple[str, str, str], list[int]] = defaultdict(list)
     for i, e in enumerate(eligible):
         for prop, value in e.identity:
-            keyed[e.types[0], prop, value].append(i)
+            keyed["" if prop == _IRI else e.types[0], prop, value].append(i)
         for url in dict.fromkeys(e.item_urls):
             if url not in page_urls:
                 keyed[e.types[0], _URL, url].append(i)
@@ -246,13 +259,14 @@ class _Sets:
         return found
 
 
-def _merged(entity: Entity, members: Sequence[Entity], aliases: Mapping[str, str]) -> Entity:
+def _merged(entity: Entity, members: Sequence[Entity], aliases: Mapping[str, str], vocabulary: Vocabulary) -> Entity:
     parent = aliases.get(entity.parent, entity.parent) if entity.parent is not None else None
     if len(members) < 2:
         return entity if parent == entity.parent else entity.model_copy(update={"parent": parent})
     return entity.model_copy(
         update={
             "parent": parent,
+            "types": _types(members, vocabulary),
             "urls": _union(m.urls for m in members),
             "identity": _union(m.identity for m in members),
             "item_urls": _union(m.item_urls for m in members),
@@ -260,6 +274,14 @@ def _merged(entity: Entity, members: Sequence[Entity], aliases: Mapping[str, str
             "variant_of": _union(m.variant_of for m in members),
         }
     )
+
+
+def _types(members: Sequence[Entity], vocabulary: Vocabulary) -> tuple[str, ...]:
+    """The members' types, each once: the vocabulary's most specific first (JSON-LD 1.1 node map generation merges the
+    `@type` values of one node), then the names it does not know."""
+    named = _union(m.types for m in members)
+    known = vocabulary.specific_first(named)
+    return (*known, *(t for t in named if t not in known))
 
 
 def _union[T](parts: Iterator[tuple[T, ...]]) -> tuple[T, ...]:
