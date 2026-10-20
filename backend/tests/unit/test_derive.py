@@ -84,3 +84,36 @@ def test_a_published_field_is_not_filled() -> None:
     preference = Chosen(chosen, (), (), (chosen,))
 
     assert _fill(URL, preference) == preference
+
+
+def _url(source_kind: SourceKind, value: str) -> Candidate:
+    return Candidate(
+        field="url",
+        entity_id=PRODUCT.id,
+        source_kind=source_kind,
+        raw=value,
+        normalized=Ok(value),
+        locator="jsonld:0:$['url']" if source_kind == "jsonld" else "meta:og:url",
+        independent=True,
+    )
+
+
+def test_a_url_naming_another_document_than_the_canonical_final_url_is_rejected() -> None:
+    # RFC 6596 and RFC 9110 §15.4 agree on the page's URL: a structured `url` with another path names another document.
+    own = CTX.model_copy(update={"page_url": CANONICAL})
+    other, og = _url("jsonld", "https://shop.example.test/p/75"), _url("og", CANONICAL)
+
+    stated = _fill(URL, RESOLVER.prefer_field(URL, [other, og]), other, og, ctx=own)
+    derived = _fill(URL, RESOLVER.prefer_field(URL, [other]), other, ctx=own)
+    kept = _fill(URL, RESOLVER.prefer_field(URL, [other]), other)  # canonical and final URL differ: not settled
+
+    assert isinstance(stated, Chosen)
+    assert (stated.candidate, stated.rejected) == (og, ((other, "other_document"),))
+    assert isinstance(derived, Derived)
+    assert (derived.value, derived.derived_by, derived.rejected) == (
+        CANONICAL,
+        "canonical_link",
+        ((other, "other_document"),),
+    )
+    assert isinstance(kept, Chosen)
+    assert kept.candidate is other

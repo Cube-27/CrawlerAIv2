@@ -161,16 +161,21 @@ read, and only the first page decides the outcome. Refs: D-1300, D-1301.
 An adapter MAY state, from what a fetched page declares about itself (its final URL after redirects, `link
 rel=canonical`, `og:url`) and the targets of its links, the platform page the page stands for (`Referring.referred`);
 a page the adapter did not detect by URL is then served by that adapter, recorded under the platform page, when the
-page is `ok`, the site's rate admits the request and the platform's host is not declined. An HTTP page that would be
+page is `ok`, the site's rate admits the request and the platform's host is not declined. A page's links alone refer it
+only when the schema's items are the platform's (the fetch policy's `target_types`, the schema.org types of its required row
+fields: JobPosting for a job board): a link leads elsewhere, it is not the page's identity. An HTTP page that would be
 rendered for lacking what the caller reads asks its referral or canonical URL first, and is rendered only when no
 adapter serves it. Only structure decides, never a list of hosts or words. Refs: D-1302, D-1388.
-(Previously: the page was rendered first.)
+(Previously: the page was rendered first; links referred a page whatever its schema read.)
 #### Scenario: Branded careers page
 - **WHEN** a listing page on another host links only to job and sign-in pages of one Workday career site
 - **THEN** that site's list is served by the Workday adapter and the result lists the page attempt then the `api`
   attempts, with no render
 #### Scenario: Two sites
 - **WHEN** a listing page links to two Workday career sites
+- **THEN** no site is referred and the page stays as fetched
+#### Scenario: Footer careers link on a store
+- **WHEN** a product listing read with a product schema links, in its footer, only to one Workday career site
 - **THEN** no site is referred and the page stays as fetched
 
 ### Requirement: Ashby, SmartRecruiters, Recruitee, Workable and Rippling adapters
@@ -187,7 +192,14 @@ by company and center id), fetch the documented JSON, JSON Feed, search API, emb
 pages of 50 by `Top` and `Skip`; a list that holds no row, a redirect to the platform's own site, or a page that embeds
 nothing is `not_served`) and map `JobPosting` title, locations, date posted, employment type, description, identifier,
 URL and the pay where the platform states one, as in `adapters/{bamboohr,teamtailor,ukg,personio,adp}.py`; Teamtailor
-and Personio have no endpoint for one job, so a job page falls to the page rungs. Refs: D-1330, D-1333, D-1334, D-1335.
+and Personio have no endpoint for one job, so a job page falls to the page rungs. A UKG job page's date posted is the
+`ExternalPostedDate` of its opportunity's membership of the board the URL names (`JobBoardMemberships`, by
+`JobBoardId`), else the requisition's `PostedDate`. (Previously: always `PostedDate`.) Refs: D-1330, D-1333, D-1334,
+D-1335.
+#### Scenario: UKG board date
+- **WHEN** a UKG opportunity states `PostedDate` 2026-08-20 and its membership of the page's board
+  `ExternalPostedDate` 2026-10-13
+- **THEN** its date posted is 2026-10-13
 #### Scenario: Board without a careers site
 - **WHEN** a company's careers list endpoint answers a redirect to the platform's own site
 - **THEN** the adapter's answer is `not_served` and the page is fetched by the page rungs

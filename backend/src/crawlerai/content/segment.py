@@ -17,7 +17,7 @@ from typing import Final
 
 from lxml.html import HtmlElement
 
-from crawlerai.acquire.items import LINKS, Group, element_path, is_hyperlink
+from crawlerai.acquire.items import LINKS, Group, content_root, element_path, in_chrome, is_hyperlink
 from crawlerai.content.text import hidden, xpath_step
 from crawlerai.normalize.url import canonical_url
 
@@ -94,13 +94,16 @@ def block_links(block: HtmlElement, base: str | None) -> Iterator[str]:
             yield url
 
 
-def page_links(root: HtmlElement, base: str | None) -> frozenset[str]:
-    """The canonical URLs the page's rendered hyperlinks lead to (HTML Standard §4.6.1; hidden ones left out, as
-    `rank` leaves out unrendered blocks)."""
+def content_links(root: HtmlElement, base: str | None) -> frozenset[str]:
+    """The canonical URLs the rendered hyperlinks of the page's content lead to (HTML Standard §4.6.1): in its main
+    landmark, else its body, outside the site's chrome (`in_chrome` of `acquire.items`: navigation, header, footer,
+    aside, menus), hidden ones left out, as `rank` leaves out unrendered blocks."""
     return frozenset(
         url
-        for anchor in hyperlinks(root)
-        if not _hidden(anchor) and (url := canonical_url(anchor.get("href") or "", base)) is not None
+        for anchor in hyperlinks(content_root(root))
+        if not _hidden(anchor)
+        and not in_chrome(anchor)
+        and (url := canonical_url(anchor.get("href") or "", base)) is not None
     )
 
 

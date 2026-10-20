@@ -117,9 +117,14 @@ def test_a_listing_stands_for_the_one_career_site_its_links_belong_to() -> None:
         "https://www.example.com/",
     )
     refs = _refs("https://careers.example.test/", links=links)
-    assert ADAPTER.referred(refs, "listing") == ROOT
-    assert ADAPTER.referred(refs, "detail") is None
-    assert ADAPTER.referred(refs, None) is None
+    jobs = ("JobPosting",)
+    assert ADAPTER.referred(refs, "listing", jobs) == ROOT
+    assert ADAPTER.referred(refs, "detail", jobs) is None
+    assert ADAPTER.referred(refs, None, jobs) is None
+    # A listing read for other items (a store's footer linking to its careers site) is not the career site's.
+    assert ADAPTER.referred(refs, "listing", ("Offer", "Product")) is None
+    # The page's own URL is its identity, whatever it is read for (RFC 6596, RFC 9110 §15.4).
+    assert ADAPTER.referred(_refs(ROOT, links=links), "listing", ("Product",)) == ROOT
 
 
 VOCABULARY = Vocabulary.read(FIXTURES / "synthetic" / "schemaorg_vocabulary.jsonld")

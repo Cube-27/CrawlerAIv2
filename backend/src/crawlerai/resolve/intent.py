@@ -20,7 +20,7 @@ from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.collect.scope import LISTS, RELATIONS, leads_elsewhere, page_documents
 from crawlerai.resolve.identity import VARIANT
 from crawlerai.resolve.ownership import OFFER, EntityGraph, names_any
-from crawlerai.schemas.paths import parse_paths
+from crawlerai.schemas.paths import target_types
 from crawlerai.schemas.types import SchemaDef
 
 # schema.org `itemReviewed` ("the item that is being reviewed/rated") points back at the item its Review or
@@ -50,12 +50,7 @@ def primary_types(schema: SchemaDef, vocabulary: Vocabulary) -> frozenset[str]:
     """The types the schema's required row fields' `schema_org` paths start at (each alternative's), without Offer
     when another type remains: an Offer belongs to the item it offers (`OFFER`). A listing's page fields describe the
     page, not its rows (§5.2), so they name no primary type."""
-    roots = {
-        path.root
-        for spec in schema.fields.values()
-        if spec.required and spec.schema_org and spec.scope == "row"
-        for path in parse_paths(spec.schema_org)
-    }
+    roots = target_types(schema)
     items = frozenset(root for root in roots if not vocabulary.is_a(root, OFFER))
     return items or frozenset(roots)
 

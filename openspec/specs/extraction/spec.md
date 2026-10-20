@@ -52,13 +52,16 @@ as the list price, `product:original_price` as the list price,
 blocks skipped) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
 standing in for that thing; a path through another thing, `Product.offers.seller.url`, has none); a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
-element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. A platform's documented
+element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. A url or image field
+whose path ends at a node (schema.org `image`: ImageObject or URL) reads the node's `contentUrl`, else its `url`. A
+platform's documented
 product JSON that a detail page's HTTP fetch joined after its identity check (acquisition spec, "Data calls") is read
 as that platform documents its members (`adapters/platforms.answer_shapes`, `collect/platform_json.py`): `adapter`
 candidates of the requested product, amounts in the minor unit the documentation states, and no Offer when its
 variants are priced differently (the page states the selected one). Refs: §8.1,
 D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-19 on #326, architecture-v3 d.6.
-(Previously: Open Graph read `product:price` alone, whatever the money field's price role.)
+(Previously: Open Graph read `product:price` alone, whatever the money field's price role; an `image` written as an
+ImageObject was an invalid value.)
 #### Scenario: OG sale price
 - **WHEN** a page states `product:price:amount` 100 and `product:sale_price:amount` 80, and the schema has `price` and
   a user-added `list_price`
@@ -72,6 +75,9 @@ D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-1
 #### Scenario: Two types
 - **WHEN** a JSON-LD node is typed `["VideoGame", "Product"]` and states an Offer
 - **THEN** the node is a Product for intent and ownership, and its Offer's price publishes
+#### Scenario: Image objects
+- **WHEN** a Product's `image` is two ImageObjects, one stating `contentUrl` and one only `url`
+- **THEN** the image list candidate holds both files
 #### Scenario: og:description
 - **WHEN** a page states only `og:description` for its product
 - **THEN** that text is the `description` candidate, ranked behind JSON-LD and microdata

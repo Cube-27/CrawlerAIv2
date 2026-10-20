@@ -213,5 +213,8 @@ def _select(members: Members, data: JsonValue, path: str) -> list[tuple[str, Jso
 
 @cache  # shapes are module constants: a few distinct member tuples, looked up per node
 def _segments(members: Members) -> str:
-    """`members` as RFC 9535 segments: a name segment each, a wildcard segment for `ALL`."""
-    return "".join("[*]" if name == ALL else member("", name) for name in members)
+    """`members` as RFC 9535 segments: a name segment each, a wildcard segment for `ALL`, an index segment for an
+    index."""
+    return "".join(
+        f"[{name}]" if isinstance(name, int) else "[*]" if name == ALL else member("", name) for name in members
+    )

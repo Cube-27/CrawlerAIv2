@@ -3,8 +3,10 @@ embedded state (`collect.js_state`) but whose blocks give no rows still gets one
 
 A row source is a JSON array of `MIN_ITEMS` or more objects. Each row field is read at one path relative to a row,
 induced across the array's rows (`collect.induce`, quorum `MIN_ITEMS`): a path a row proposes for a field when
-- for the item URL (`is_item_url`): its value is the target of one of the page's rendered hyperlinks (HTML Standard
-  §4.6.1), or the path's own member names the field and its value normalizes as a URL;
+- for the item URL (`is_item_url`): its value is the target of one of the rendered hyperlinks of the page's content
+  (HTML Standard §4.6.1; `content_links`, the site's navigation, header, footer and menus left out: a state tree of
+  the site's menu is grounded by the menu's links, not by any listing), or the path's own member names the field and
+  its value normalizes as a URL;
 - for any other field: the path's own member (its first name segment) names the field, by the field's name or the
   schema.org property its path reaches (`named_property`), compared without case or separators; and its value
   normalizes as the field's type and is shown in the page text (`content.text.VisibleIndex`); for another URL field,
@@ -36,7 +38,7 @@ from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import field_roles
 from crawlerai.collect.schema_org_map import candidate, is_item_url
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.segment import page_links
+from crawlerai.content.segment import content_links
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.normalize.url import canonical_url
@@ -98,7 +100,7 @@ class _Reader:
         self.url_field = url_field
         self.names = {name for name, role in field_roles(schema).items() if role == "name"}
         self.row_fields = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}
-        self.links = page_links(page.lxml_tree, ctx.base_url)
+        self.links = content_links(page.lxml_tree, ctx.base_url)
         self.read_urls: set[str] = set()
         self._words = {name: _field_words(name, spec) for name, spec in self.row_fields.items()}
 

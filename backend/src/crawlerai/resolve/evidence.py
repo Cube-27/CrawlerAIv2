@@ -206,7 +206,7 @@ def _page_url(decision: Derived) -> _Published:
     # D-0355: no candidate states a page-URL derivation, so it carries the `derived` source kind and bucket and a
     # `derived:` locator naming the derivation.
     locator = format_locator("derived", decision.derived_by)
-    return _Published(decision.value, "derived", "derived", locator, decision.derived_by, None, (), ())
+    return _Published(decision.value, "derived", "derived", locator, decision.derived_by, None, (), decision.rejected)
 
 
 def _candidate_value(decision: Preference | Derived, *, corroborated: bool) -> _Published | FieldOutcome:

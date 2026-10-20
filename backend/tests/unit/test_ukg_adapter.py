@@ -57,3 +57,19 @@ def test_every_listed_opportunity_is_a_posting_whose_page_is_under_its_board() -
         (row, "locations"): ["Northtown", "Eastport"],
         (row, "identifier"): "REQ0001",
     }
+
+
+def test_a_job_pages_date_posted_is_its_boards_published_date() -> None:
+    other = "00000000-0000-4000-8000-0000000000b2"
+    memberships = [
+        {"JobBoardId": other, "ExternalPostedDate": "2026-09-01T00:00:00Z"},
+        {"JobBoardId": BOARD.upper(), "ExternalPostedDate": "2026-10-13T22:19:00Z"},
+    ]
+    opportunity = {"Title": "Synthetic Engineer", "PostedDate": "2026-08-20T00:00:00Z"}
+    detail = AdapterMatch(TENANT, "detail", item=OPPORTUNITY)
+
+    on_board = candidates(ADAPTER, detail, json.dumps({**opportunity, "JobBoardMemberships": memberships}))
+    elsewhere = candidates(ADAPTER, detail, json.dumps({**opportunity, "JobBoardMemberships": memberships[:1]}))
+
+    assert on_board[("adapter:ukg:$", "date_posted")] == "2026-10-13T22:19:00Z"
+    assert elsewhere[("adapter:ukg:$", "date_posted")] == "2026-08-20T00:00:00Z"

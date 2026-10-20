@@ -68,12 +68,12 @@ PRODUCT = _Node(
 
 def test_a_path_follows_nodes_and_text_stands_for_a_thing_s_name() -> None:
     # schema.org data model: where a Thing is expected, a text value is accepted, and it names that thing.
-    assert select(PRODUCT, parse_paths("Product.brand.name")[0], as_list=False) == [
+    assert select(PRODUCT, parse_paths("Product.brand.name")[0], as_list=False, as_url=False) == [
         Selected("Acme 7", "brand/name/0"),
         Selected("Other 3", "product/brand/1"),
     ]
     # ... and for no other property.
-    assert select(PRODUCT, parse_paths("Product.brand.logo")[0], as_list=False) == []
+    assert select(PRODUCT, parse_paths("Product.brand.logo")[0], as_list=False, as_url=False) == []
 
 
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url="https://shop.example.test/p/1")

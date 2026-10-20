@@ -85,10 +85,19 @@ class EntityGraph:
             return True
         if ARRAY_ROW in owner.types:
             return page_values and self._names_target(owner, target)
-        if owner.parent is None or not self.is_a(owner, OFFER):
+        holder = self.offered(owner)
+        if holder is owner:
             return False
-        holder = self.entities[owner.parent]
         return holder.id == target.id or (holder.via == VARIANT and holder.parent == target.id)
+
+    def offered(self, entity: Entity) -> Entity:
+        """The item an Offer offers: the nearest ancestor of `entity` that is no Offer, through the Offers between
+        (schema.org `offers`: an AggregateOffer's `offers` are Offers of the same item); `entity` itself when it is no
+        Offer or no item holds it."""
+        holder = entity
+        while self.is_a(holder, OFFER) and holder.parent is not None:
+            holder = self.entities[holder.parent]
+        return entity if self.is_a(holder, OFFER) else holder
 
     def _names_target(self, row: Entity, target: Entity) -> bool:
         """Whether an array row and every row enclosing it names the page's subject: one of its URLs equals a page URL

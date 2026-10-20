@@ -56,7 +56,7 @@ def _candidate(entity: Entity | str) -> Candidate:
         (PAGE, True),  # page-level values describe the target (§4.6 step 4)
         (OFFER, True),  # an Offer of the target (atomic offers, §4.8)
         (AGGREGATE, True),  # AggregateOffer is an Offer (rdfs:subClassOf)
-        (INNER_OFFER, False),  # an Offer of an Offer is not the target's child
+        (INNER_OFFER, True),  # an AggregateOffer's Offers offer the same item (schema.org `offers`)
         (BRAND, False),  # another thing the target names
         (RELATED, False),  # a related product
         (RELATED_OFFER, False),  # a related product's Offer

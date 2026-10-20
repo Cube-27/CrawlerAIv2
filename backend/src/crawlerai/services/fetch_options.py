@@ -31,6 +31,8 @@ from crawlerai.config_ir.page_actions import MAX_ACTIONS, Action, WaitFor, to_st
 from crawlerai.core.errors import Refusal
 from crawlerai.core.redaction import REDACTED
 from crawlerai.db.models import PageKind
+from crawlerai.schemas.paths import target_types
+from crawlerai.schemas.types import SchemaContent
 
 __all__ = [
     "CAPTURE_FORMATS",
@@ -182,6 +184,7 @@ def fetch_policy(
     locale: str | None,
     *,
     page_kind: PageKind | None = None,
+    schema: SchemaContent | None = None,
     formats: Iterable[str] = (),
     all_resources: bool = False,
     scope: str | None = None,
@@ -190,11 +193,13 @@ def fetch_policy(
     submit pinned (`services.location`), never a site's own. A screenshot or PDF among its `formats` is made in the
     browser, which then fetches the page whatever the site's remembered method (`FetchPolicy.screenshot`, `pdf`). The
     browser loads every resource of a site that loads `all_resources` (`site.load_all_resources`). `scope` is the
-    task's job, whose pages of one site share a browser context (`FetchPolicy.scope`)."""
+    task's job, whose pages of one site share a browser context (`FetchPolicy.scope`). `schema`, the one the page is
+    read with, names the types of the items it is read for (the policy's `target_types`)."""
     wanted = set(formats)
     return FetchPolicy(
         block_resources=not all_resources,
         page_kind=page_kind,
+        target_types=() if schema is None else target_types(schema),
         method_hint="browser" if options.in_browser or CAPTURE_FORMATS & wanted else options.method_hint,
         screenshot=options.screenshot if "screenshot" in wanted else None,
         pdf="pdf" in wanted,
