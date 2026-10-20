@@ -14,7 +14,7 @@ The page's detect-and-report signals (`content.signals`) join the diagnostics.
 """
 
 import logging
-from collections.abc import Callable, Hashable, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 
@@ -24,7 +24,8 @@ from crawlerai.adapters.registry import Registry
 from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.admission import AdmittingCollector
 from crawlerai.collect.base import Candidate, Collector, CollectResult, Entity
-from crawlerai.collect.dom import DomCollector, product_apart, stated_images
+from crawlerai.collect.dom import DomCollector, product_apart
+from crawlerai.collect.dom_images import stated_images
 from crawlerai.collect.dom_text import DescriptionCollector
 from crawlerai.collect.items.align import Items, align
 from crawlerai.collect.items.state_rows import StateRows, state_rows
@@ -160,8 +161,8 @@ class _DomPasses:
     the structured data's prices)."""
 
     outside: frozenset[int]
-    # The files of the main image the structured data states (`collect.dom.stated_images`).
-    primary: frozenset[Hashable] = frozenset()
+    # The main image the structured data states (`collect.dom_images.stated_images`).
+    primary: tuple[str, ...] = ()
 
     @classmethod
     def of(

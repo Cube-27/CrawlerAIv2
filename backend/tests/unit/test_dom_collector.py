@@ -4,20 +4,19 @@ one typed value outside other items, and the main content's first image. Every
 candidate is the page's, independent, with a `dom:` locator naming the element its value came from. Pages are
 synthetic (`example.test`, C3, C9)."""
 
-from collections.abc import Hashable
 from datetime import UTC, datetime
 
 import pytest
 from pydantic import JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate
-from crawlerai.collect.dom import DomCollector, stated_images
+from crawlerai.collect.dom import DomCollector
+from crawlerai.collect.dom_images import stated_images
 from crawlerai.collect.locator import parse_locator
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId
 from crawlerai.normalize.base import Context, Invalid, Ok
-from crawlerai.normalize.url import resource_key
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
@@ -214,9 +213,9 @@ def test_the_shown_image_of_the_stated_main_file_anchors_the_main_image_and_its_
     # image, and its slides the gallery; the header's logo is tangential content.
     slides = "".join(f'<div><img src="/p/{n}.jpg?w=200" alt="{n}"></div>' for n in "abc")
     body = f'<header><img src="/logo.png"></header><div><img src="/badge.png"></div><div>{slides}</div>'
-    primary = frozenset({resource_key("https://shop.example.test/p/b.jpg")})
+    primary = ("https://shop.example.test/p/b.jpg",)
 
-    def collect(markup: str, stated: frozenset[Hashable]) -> dict[str, object]:
+    def collect(markup: str, stated: tuple[str, ...]) -> dict[str, object]:
         page = ParsedPage(f"<html><body>{markup}</body></html>")
         found = DomCollector(primary=stated).collect(page, SCHEMA, CTX).candidates
         return {c.field: c.normalized.value for c in found if isinstance(c.normalized, Ok)}
@@ -227,7 +226,24 @@ def test_the_shown_image_of_the_stated_main_file_anchors_the_main_image_and_its_
     # In a main region the anchor goes before the region's first image.
     assert collect(f"<main>{body}</main>", primary)["image_url"] == "https://shop.example.test/p/b.jpg?w=200"
     # Without a stated file the page has no main region image.
-    assert collect(body, frozenset()) == {}
+    assert collect(body, ()) == {}
+    # A rendition the image server writes into the path is the stated file too (`url.same_file`).
+    served = body.replace("/p/b.jpg", "/cdn/v2/p/b.jpg/renditions/600.jpg")
+    assert collect(served, primary)["image_url"] == "https://shop.example.test/cdn/v2/p/b.jpg/renditions/600.jpg?w=200"
+
+
+def test_a_lazy_or_hidden_slide_gives_its_source_to_the_gallery() -> None:
+    # HTML Standard §4.8.4.3: a srcset candidate without a descriptor is 1x, which leaves the placeholder `src` out; a
+    # lazy loader keeps the sources in `data-srcset`/`data-src`; a carousel hides the slides but the current one.
+    slides = (
+        '<div><img src="/ph.svg" srcset="/p/a.jpg, /p/a2.jpg 2x" alt="P"></div>'
+        '<div style="display:none"><img src="/ph.svg" data-srcset="/p/b.jpg 300w,/p/b-big.jpg 900w" alt="P"></div>'
+        '<div hidden><img src="/ph.svg" data-src="/p/c.jpg" alt="P"></div>'
+    )
+    found = _values(f"<main><div>{slides}</div></main>")
+
+    assert found["image_url"] == ["https://shop.example.test/p/a.jpg"]
+    assert found["images"] == [[f"https://shop.example.test/p/{n}.jpg" for n in ("a", "b-big", "c")]]
 
 
 def test_the_stated_main_image_is_each_sources_first_image() -> None:
@@ -251,7 +267,7 @@ def test_the_stated_main_image_is_each_sources_first_image() -> None:
         [stated("image_url", files[0]), stated("image_url", files[1]), stated("images", files[2:], "og")],
     )
 
-    assert found == {resource_key(files[0]), resource_key(files[2])}
+    assert found == (files[0], files[2])
 
 
 def test_a_hidden_main_region_has_no_main_image() -> None:

@@ -74,6 +74,19 @@ def test_an_image_list_yields_to_a_longer_list_of_another_kind_naming_its_files(
     assert superseded(images, [main, other]) == []
     # A longer list of the same kind is no other source's account of the images.
     assert superseded(images, [main, _c([f"{cdn}/a.jpg", f"{cdn}/b.jpg"], kind)]) == []
+    # A rendition an image server writes into the path names the file too (`url.same_file`).
+    served = _c([f"{cdn}/v2/p/a.jpg/renditions/600.jpg", f"{cdn}/b.jpg"], "dom")
+    assert superseded(images, [main, served]) == [main]
+
+
+def test_an_open_graph_image_list_yields_to_a_longer_list_naming_its_first_image() -> None:
+    # Open Graph "Arrays": the first og:image is preferred; a site default after it is no view of the object.
+    images = FieldSpec.model_validate({"type": "list", "item": {"type": "image_url"}})
+    cdn = "https://cdn.example.test/p"
+    gallery = _c([f"{cdn}/a.jpg", f"{cdn}/b.jpg", f"{cdn}/c.jpg"], "dom")
+    og, jsonld = _c([f"{cdn}/a.jpg", f"{cdn}/site.png"], "og"), _c([f"{cdn}/a.jpg", f"{cdn}/site.png"], "jsonld")
+
+    assert superseded(images, [og, jsonld, gallery]) == [og]
 
 
 def test_a_value_stating_the_open_graph_summary_is_a_summary_whatever_its_kind() -> None:
@@ -87,3 +100,11 @@ def test_a_text_with_its_line_breaks_dropped_yields_to_the_rendition_that_keeps_
     other = _c("Includes:• 1 lantern• 3 bulbs", "microdata")
 
     assert superseded(FieldSpec(type=FieldType.LONG_TEXT), [flat, lined, other]) == [flat]
+
+
+def test_a_text_led_by_its_heading_yields_to_the_longer_text_without_it() -> None:
+    # HTML Standard §4.3.6: a heading names its section; text content runs the paragraphs together.
+    headed = _c("About this role\n\nThe role owns the example service end to end.  It\nreviews", "microdata")
+    full = _c(LONG, "dom")
+
+    assert superseded(FieldSpec(type=FieldType.LONG_TEXT), [headed, full]) == [headed]

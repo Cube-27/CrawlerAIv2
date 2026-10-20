@@ -14,14 +14,19 @@ reviews, related items and the blocks outside the product container (`collect.do
   one of the field's labels (`collect.labels`: its name, schema.org property, description and drafted synonyms), as
   label-value pairs are read (C4: the schema's words, never a list). For a list field of values (a job's
   requirements, a recipe's ingredients), what such a section states is the items of its lists (HTML Standard §4.4.5-
-  §4.4.8: `ul`, `ol` and `menu` items, `collect.dom.list_items`): one value per item.
+  §4.4.8: `ul`, `ol` and `menu` items, `collect.dom.list_items`): one value per item. A sibling of the heading that
+  holds a control besides its prose (a disclosure panel with a "more" button) gives its outermost prose elements.
 - **Item continuation.** A value microdata or RDFa states on an element (`itemprop`, `property`) whose following
   sibling blocks go on with prose: the element and those siblings, their headings with them, up to the first sibling
   that is no prose or that states another property or item. The siblings are inside the item's scope (HTML Standard
-  §5.2.2), so they are its text; a template that marks only a description's first section is read whole.
+  §5.2.2), so they are its text; a template that marks only a description's first section is read whole. An element
+  that is the last of its wrappers goes on with the siblings of the outermost wrapper holding nothing after it, inside
+  the element that opens the item (`itemscope`, RDFa `typeof`).
 - **Main text.** For a description that only an Open Graph summary states (or nothing does), the longest prose block.
   A summary is shorter than what it summarizes and restates it, so the block must be longer than the summary and hold
-  most of the summary's words other than the title's (the page's `h1`); and it must not be the buy box: a block holding
+  most of the summary's words other than the title's (the page's `h1`), unless the summary holds fewer words of its
+  own than of the title, a line that only names the item ("Buy <title> at <site>"); and it must not be the buy box: a
+  block holding
   the page's title heading (an `h1`, or an ARIA heading of level 1) or a price the structural pass read is not text.
 
 Prose is a block that holds no table, form control, button, image, media, frame or other element that is not running
@@ -85,6 +90,7 @@ _TITLE_HEADING = 'h1,[role~="heading"][aria-level="1"]'
 # HTML Standard §5.2.2 (microdata) and RDFa Core 1.1 §7.5: attributes that state a property or an item of their own.
 _ITEM_ATTRIBUTES = ("itemprop", "itemscope", "property", "typeof")
 _ITEM_SELECTOR = ",".join(f"[{a}]" for a in _ITEM_ATTRIBUTES)
+_ITEM_SCOPES = frozenset({"itemscope", "typeof"})  # the attributes that open an item
 _ELEMENT_VALUED = "microdata"  # the collector of microdata and RDFa: a value states the element its locator names
 _OPEN_GRAPH = "og"  # the protocol defines og:description as a one-to-two sentence summary
 _DESCRIPTION = "description"  # schema.org `Thing.description`
@@ -220,8 +226,9 @@ def _continued(blocks: _Blocks, stated: Candidate) -> _Block | None:
 
 def _going_on(blocks: _Blocks, element: LexborNode) -> Iterator[str]:
     """The texts of the element's following siblings that are prose or headings, up to the first that is neither or
-    that states (or holds an element stating) another property or item."""
-    for sibling in _after(element):
+    that states (or holds an element stating) another property or item. An element that is the last of its parent's
+    goes on with its parent's following siblings, up to the element that opens the item's scope (`_continuing`)."""
+    for sibling in _continuing(blocks, element):
         if not sibling.is_element_node:
             continue
         if _states_items(sibling) or sibling.mem_id in blocks.apart:
@@ -231,6 +238,19 @@ def _going_on(blocks: _Blocks, element: LexborNode) -> Iterator[str]:
             return
         if raw:
             yield raw
+
+
+def _continuing(blocks: _Blocks, element: LexborNode) -> Iterator[LexborNode]:
+    """The siblings after the element, or after its nearest ancestor that has any, climbing only out of wrappers that
+    hold nothing after it and stay inside the item: an element opening an item (`itemscope`, RDFa `typeof`, HTML
+    Standard §5.2.2) or the region bounds its scope."""
+    node = element
+    while not any(sibling.is_element_node for sibling in _after(node)):
+        parent = node.parent
+        if parent is None or parent.mem_id == blocks.region.mem_id or not _ITEM_SCOPES.isdisjoint(parent.attributes):
+            return
+        node = parent
+    yield from _after(node)
 
 
 def _states_items(node: LexborNode) -> bool:
@@ -319,9 +339,13 @@ class _MainText:
 
 def _summarizes(summary: str, block: _Block, title: set[str]) -> bool:
     """Whether `summary` can summarize the block: it is shorter, and most of its words other than the title's are the
-    block's."""
-    own = set(words(summary)) - title
-    return len(block.form) > len(summary) and 2 * len(own & set(words(block.form))) > len(own)
+    block's. A summary holding fewer words of its own than of the title only names the item ("Buy <title> at <site>"):
+    it states nothing of a block, so any longer block can be what it stands for."""
+    stated = set(words(summary))
+    own = stated - title
+    if len(block.form) <= len(summary):
+        return False
+    return len(own) < len(stated & title) or 2 * len(own & set(words(block.form))) > len(own)
 
 
 def _extending(blocks: _Blocks, stated: Sequence[tuple[str, str]]) -> _Block | None:
@@ -412,15 +436,29 @@ def _after(node: LexborNode) -> Iterator[LexborNode]:
 
 
 def _following(blocks: _Blocks, node: LexborNode) -> list[_Block]:
-    """The prose elements after `node` among its siblings, up to the next heading."""
+    """The prose elements after `node` among its siblings, up to the next heading; of a sibling that holds a control
+    besides its prose (a disclosure panel's "more" button), its outermost prose elements."""
     parts: list[_Block] = []
     for sibling in _after(node):
-        if sibling.is_element_node and _stops(sibling):
+        if not sibling.is_element_node:
+            continue
+        if _stops(sibling):
             break
-        block = blocks.prose(sibling) if sibling.is_element_node else None
+        block = blocks.prose(sibling)
         if block is not None:
             parts.append(block)
+        elif sibling.mem_id in blocks.mixed:
+            parts.extend(_outermost_prose(blocks, sibling))
     return parts
+
+
+def _outermost_prose(blocks: _Blocks, node: LexborNode) -> list[_Block]:
+    """The prose elements inside `node` that no other prose element holds, in document order."""
+    return [
+        block
+        for inner in node.css("*")
+        if (block := blocks.prose(inner)) is not None and (inner.parent is None or blocks.prose(inner.parent) is None)
+    ]
 
 
 def _stops(node: LexborNode) -> bool:

@@ -106,6 +106,45 @@ def resource_key(value: JsonValue) -> Hashable | None:
     return ("resource", parts.netloc, _without_dimensions(parts.path))
 
 
+def same_file(a: JsonValue, b: JsonValue) -> bool:
+    """Whether two image URLs name one file (`resource_key`), or two renditions of it that an image server writes into
+    the path rather than the query: on one authority, both paths hold the same file name (the first segment naming an
+    image file by its extension, RFC 6838), anything after it being a rendition below the file
+    (`<file>.jpg/renditions/600.jpg`), and the directories before it, read back from the file, are the same, a segment
+    with rendition parameters after a separator standing for the bare one (`/1234-800-auto/` for `/1234/`); further
+    leading segments of the longer path are the image service's prefix (`/image/v2/<file's path>`). At least one
+    directory must be read alike: a bare file name is no evidence of one file."""
+    first, second = resource_key(a), resource_key(b)
+    if first is None or second is None:
+        return False
+    if first == second:
+        return True
+    one, other = _file_path(first), _file_path(second)
+    if one is None or other is None or one[0] != other[0] or one[-1] != other[-1]:
+        return False
+    directories = list(zip(reversed(one[1:-1]), reversed(other[1:-1]), strict=False))
+    return bool(directories) and all(_rendition_segment(x, y) for x, y in directories)
+
+
+def _file_path(key: Hashable) -> tuple[str, ...] | None:
+    """The authority, then the path's segments up to the first that names an image file (`same_file`)."""
+    if not isinstance(key, tuple) or len(key) != 3:
+        return None
+    segments = [segment for segment in str(key[2]).split("/") if segment]
+    for index, segment in enumerate(segments):
+        found = _MEDIA_TYPES.guess_type(segment, strict=True)[0]
+        if found is not None and found.partition("/")[0] == _IMAGE_TYPE:
+            return (str(key[1]), *segments[: index + 1])
+    return None
+
+
+def _rendition_segment(x: str, y: str) -> bool:
+    """Whether two path segments are one, or one is the other followed by a separator (no letter or digit) and
+    rendition parameters."""
+    short, long = sorted((x, y), key=len)
+    return short == long or (bool(short) and long.startswith(short) and not long[len(short)].isalnum())
+
+
 # The query parameter by which an image proxy or optimizer names the file it serves (`/_next/image?url=`, `?url=`).
 _PROXIED: Final = "url"
 # What an image path states about the rendition it serves, not the file: a whole segment `<width>x<height>` or a list

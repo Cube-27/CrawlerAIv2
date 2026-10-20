@@ -88,6 +88,19 @@ def test_main_text_stands_for_a_description_only_an_og_summary_states() -> None:
     )
     found = _read(body, _stated("og", "A sturdy kettle that boils fast."))
     assert found["description"] == f"{FIRST}\n{SECOND}"
+    # A line that only names the item (fewer words of its own than of the title) summarizes no block in particular.
+    named = body.replace("<h1>Kettle</h1>", "<h1>Acme Steel Kettle 2L</h1>")
+    found = _read(named, _stated("og", "Buy Acme Steel Kettle 2L at Example."))
+    assert found["description"] == f"{FIRST}\n{SECOND}"
+
+
+def test_a_section_panel_holding_a_control_gives_its_prose() -> None:
+    # A disclosure panel's "more" button beside the prose: the section's text is the panel's prose.
+    body = (
+        "<main><h1>Kettle</h1><h2><button>Description</button></h2>"
+        f"<div><div><p>{FIRST}</p><p>{SECOND}</p></div><button>Read more</button></div><h2>Care</h2><p>Dry.</p></main>"
+    )
+    assert _read(body, _stated("og", "Buy Kettle at Example."))["description"] == f"{FIRST}\n{SECOND}"
 
 
 @pytest.mark.parametrize(
@@ -157,6 +170,19 @@ def test_an_element_valued_description_goes_on_over_its_sibling_sections_in_its_
         ParsedPage(f"<html><body>{nested}</body></html>"), _schema(), CTX, (stated,)
     )
     assert [c.normalized for c in nested_found.candidates] == [Ok(FIRST)]
+    # Out of wrappers holding nothing after it, inside the item; its own heading names it, it is no text.
+    wrapped = body.replace(
+        f'<section itemprop="description"><p>{FIRST}</p></section>',
+        f'<div><div><section itemprop="description"><h2>About</h2><p>{FIRST}</p></section></div></div>',
+    )
+    page = ParsedPage(f"<html><body>{wrapped}</body></html>")
+    element = page.tree.css_first('[itemprop="description"]')
+    assert element is not None
+    locator = format_locator("microdata", node_xpath(element))
+    stated = candidate("description", _schema().fields["description"], PAGE, "microdata", FIRST, locator, CTX, [])
+    assert stated is not None
+    wrapped_found = DescriptionCollector().collect(page, _schema(), CTX, (stated,)).candidates
+    assert [c.normalized for c in wrapped_found] == [Ok(f"{FIRST}\nDuties\n{SECOND}")]
 
 
 def test_schema_without_long_text_reads_nothing() -> None:
