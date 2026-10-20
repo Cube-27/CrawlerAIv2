@@ -334,14 +334,12 @@ class Resolver:
         ]
 
     def _lone_offers(self) -> frozenset[str]:
-        """The target's Offers when two or more sources state one each (`resolve.identity`: an entity id starts with
-        its collector): each source's one Offer of the item is its offer, the variant the page shows; none otherwise.
-        A source listing several states which of them each is."""
+        """The target's Offers when two or more sources state one each (`_source`): each source's one Offer of the
+        item is its offer, the variant the page shows; none otherwise. A source listing several states which of them
+        each is."""
         offers = self.graph.offers(self.target)
-        collectors = [offer.id.partition(":")[0] for offer in offers]
-        return (
-            frozenset(o.id for o in offers) if len(offers) > 1 and len(set(collectors)) == len(offers) else frozenset()
-        )
+        sources = {_source(offer.id) for offer in offers}
+        return frozenset(o.id for o in offers) if len(offers) > 1 and len(sources) == len(offers) else frozenset()
 
     def _shown_offers(
         self, fields: Mapping[str, FieldSpec], candidates: Sequence[Candidate], own: list[tuple[Candidate, FieldSpec]]
@@ -596,3 +594,10 @@ def parse_orders(document: object) -> dict[str, tuple[SourceKind, ...]]:
             raise ValueError(f"{PRECEDENCE_FILE}: {type_} names an unknown source kind {unknown}")
         orders[str(type_)] = cast(tuple[SourceKind, ...], tuple(order))
     return orders
+
+
+def _source(entity_id: str) -> str:
+    """The source an entity id names (`resolve.identity`): its collector, and for an adapter read the adapter it reads
+    for (`adapter:<name>:<path>`), so two adapters' answers are two sources."""
+    collector, _, rest = entity_id.partition(":")
+    return f"{collector}:{rest.partition(':')[0]}" if collector == "adapter" else collector
