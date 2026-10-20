@@ -110,14 +110,16 @@ def test_a_group_s_variants_with_offers_are_one_row_each() -> None:
     assert outcome.locator == "jsonld:0:$['hasVariant'][0]"
 
 
-def test_rows_whose_key_sub_fields_disagree_do_not_publish() -> None:
-    # INV-33: both rows name one GTIN, but say W-11 and W-12: two variants joined, or one source wrong.
+def test_entries_of_one_list_with_other_skus_are_two_variants_whatever_barcode_they_repeat() -> None:
+    # INV-33: one list names each of its items once, so two entries saying W-11 and W-12 are two variants (a sold-out
+    # one as well), though both repeat the product's GTIN.
     first = _variant("W-11", "10.00", gtin="4006381333931")
-    second = _variant("W-12", "10.00", gtin="4006381333931")
+    second = _variant("W-12", "10.00", gtin="4006381333931", offers=_offer("10.00", availability="OutOfStock"))
 
-    outcome = _variants(_group(first, second))
-
-    assert (outcome.status, outcome.reason) == ("missing", "row_key_conflict")
+    assert [(row["sku"], row["availability"]) for row in _rows(_variants(_group(first, second)))] == [
+        ("W-11", "InStock"),
+        ("W-12", "OutOfStock"),
+    ]
 
 
 def test_role_c_is_never_asked_for_a_row_mapped_field() -> None:

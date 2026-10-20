@@ -165,6 +165,8 @@ def _currency_of(text: str, before: str, after: str, ctx: Context, stated: str |
     signs = _signs(text, before, after)
     if isinstance(signs, Invalid):
         return _Currency(stated, None, True) if stated is not None else _unwritten(ctx, written=False)
+    if any(_measure(sign, ctx) for sign in signs):
+        return Invalid("measure")
     denoted = _agreed_currencies(signs)
     if isinstance(denoted, Invalid):
         return denoted
@@ -174,6 +176,21 @@ def _currency_of(text: str, before: str, after: str, ctx: Context, stated: str |
         # A sign `price-parser` locates that no CLDR symbol or ISO 4217 code is: written, but no currency.
         return _unwritten(ctx, written=True)
     return _narrowed(signs, denoted, ctx)
+
+
+def _measure(sign: str, ctx: Context) -> bool:
+    """Whether a sign written as an ISO 4217 code is a CLDR unit's name in the page's locales instead (`units`:
+    `3.5 CUP` is a volume, not Cuban pesos): a code that is also a unit counts as a currency only where the page names
+    that currency (`_page_currencies`), so a quantity in a product's name is never read as an amount of money."""
+    return sign in _currencies() and units.is_unit(sign, ctx) and sign not in _page_currencies(ctx)
+
+
+def _page_currencies(ctx: Context) -> frozenset[str]:
+    """The currencies the page names: its structured and declared currencies, its URL's, and the tender currencies
+    of the territories of the CLDR locales its declarations leave possible (`numbers.regional_locales`)."""
+    territories = {Locale.parse(loc).territory for loc in numbers.regional_locales(ctx)}
+    tender = {code for t in territories if t and (code := _tender_currency(t, ctx)) is not None}
+    return frozenset({*ctx.page_currencies, *ctx.declared_currencies, *filter(None, (url_currency(ctx),)), *tender})
 
 
 def _unwritten(ctx: Context, *, written: bool) -> _Currency:

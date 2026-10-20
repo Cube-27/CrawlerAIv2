@@ -30,7 +30,7 @@ from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from crawlerai.llm.grounding import SpanClaim, align
-from crawlerai.normalize import money, numbers
+from crawlerai.normalize import money, numbers, units
 from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -292,9 +292,13 @@ def test_an_explicit_currency_beats_the_url_one_and_currency_fill_never_changes_
     for stated in ({"page_currencies": (code,)}, {"declared_currencies": (code,)}):
         page = money.normalize(price, MONEY, _ctx(**where, **stated))
         assert (_currency(page), _amount(page)) == (code, amount)
-    # A sign naming one currency is explicit too.
+    # A sign naming one currency is explicit too, unless the code is also a unit word (`CUP`) the page names no
+    # currency of: then it is a quantity.
     signed = money.normalize(f"{code} {price}", MONEY, _ctx(**where))
-    assert (_currency(signed), _amount(signed)) == (code, amount)
+    if units.is_unit(code, _ctx(**where)) and code != expected:
+        assert signed == Invalid("measure")
+    else:
+        assert (_currency(signed), _amount(signed)) == (code, amount)
 
 
 @st.composite

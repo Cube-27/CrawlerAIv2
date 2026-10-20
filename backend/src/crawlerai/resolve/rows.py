@@ -336,9 +336,13 @@ def linked(
 ) -> list[list[Entity]]:
     """Connected components of rows that share a value of a key sub-field and state no different value of a key
     sub-field listed before it (§4.4, INV-33): `key_fields` runs from the most specific key to the least (the preset's
-    `key`: a GTIN names one trade item, a seller's SKU may name its sizes together, a URL its colours).
-    Order-independent, each in collector order, ordered by its first row."""
+    `key`: a GTIN names one trade item, a seller's SKU may name its sizes together, a URL its colours). Two rows one
+    document lists side by side (`_siblings`) are told apart by any key sub-field: one list names each of its items
+    once, so two entries with other SKUs are two variants, whatever barcode they repeat; two documents may write one
+    item's SKU each their own way, which only an earlier key overrules. Order-independent, each in collector order,
+    ordered by its first row."""
     parent = {row.id: row.id for row in rows}
+    by_id = {row.id: row for row in rows}
 
     def root(row_id: str) -> str:
         while parent[row_id] != row_id:
@@ -350,7 +354,7 @@ def linked(
     for sub, spec in key_fields.items():
         values = [(row.id, v) for row in rows for v in keys[row.id].get(sub, ())]
         for a, b in _sharing(values, spec):
-            if not _told_apart(keys[a], keys[b], earlier):
+            if not _told_apart(keys[a], keys[b], key_fields if _siblings(by_id[a], by_id[b]) else earlier):
                 parent[root(b)] = root(a)
         earlier[sub] = spec
     groups: dict[str, list[Entity]] = {}
@@ -370,6 +374,11 @@ def _sharing(values: Sequence[tuple[str, JsonValue]], spec: FieldSpec) -> Iterat
             seen[key].append(row_id)
             continue
         yield from ((other_id, row_id) for other_id, other in values[:i] if equal(value, other, spec))
+
+
+def _siblings(a: Entity, b: Entity) -> bool:
+    """Whether two rows are values of one property of one node: entries of one list the document states."""
+    return a.parent is not None and (a.parent, a.via) == (b.parent, b.via)
 
 
 def _told_apart(

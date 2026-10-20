@@ -89,7 +89,8 @@ is not served), with the collection's products that page links to (`/products/{h
 collection or a locale subfolder), matched by `handle`, in the page's order. The page stays the capture: the answer
 joins it as a data call marked `adapter` (identity-checked by construction: it holds only products the page links to,
 and one holding none is `not_served`), read with the adapter's shapes, so the page keeps its markup, its cards and its
-next-page link. It SHALL `POST` the tokenless Storefront GraphQL endpoint on that host with the handle as a variable, page through the products' cursor until every
+next-page link; each answer row also goes by the page's links to its product (`row_links`: the same handle on the
+row's host, under a collection or a locale subfolder), so it binds to the page's card (listings spec). It SHALL `POST` the tokenless Storefront GraphQL endpoint on that host with the handle as a variable, page through the products' cursor until every
 product the page links to is read or the adapter row cap, ask a locale-prefixed page in its language
 (`@inContext(language:)`), and class answers `not_platform` (no `X-Shopify-API-Version`), `not_served` (no item,
 GraphQL errors, none of the page's products, another language than the page's, a shop presenting other than exactly
@@ -120,11 +121,13 @@ the URL (C7); a stored answer of a shop of several currencies reads without pric
 product JSON (`/products/{handle}.js`, a data call; `adapters/platforms.py` `answer_shapes`) SHALL read as a Product
 with `description` (its HTML body) as `description`, every `images[]` URL as `image` (the featured image first), and
 one Offer per `variants[]` member: `title` as `name`, `sku`, `barcode` as `gtin`, `price` in cents for every
-currency (×100), `available` as `InStock`/`OutOfStock` (`Shape.booleans`), so the variants rows fill from it; its
+currency (×100), `available: false` as `OutOfStock` (`Shape.booleans`; `true`, it can be bought, names no one schema.org
+ItemAvailability: a variant on pre-order or back order can be bought too, so the page states which), so the variants
+rows fill from it; its
 currency is the page's `Shopify.currency.active`, a platform signature's `currency_members` (Shopware:
 `window.currencyIsoCode`), read only on a page showing the platform's signal. Refs: D-1080, D-1081, D-1085, D-1114,
 D-1118, architecture-v3 d.7. (Previously: the answer's top-level `price` only, read without its Offer when
-`price_varies`; no currency member; the product JSON's `featured_image` only and no `description`.)
+`price_varies`; no currency member; the product JSON's `featured_image` only and no `description`; `available: true` read as `InStock`.)
 
 ### Requirement: Workday adapter
 It SHALL detect career sites on `{tenant}.{dc}.myworkdayjobs.com/[{locale}/]{site}` and

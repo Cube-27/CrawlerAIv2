@@ -80,6 +80,13 @@ def per_suffix(text: str, ctx: Context) -> tuple[str, frozenset[Per]] | None:
     return None
 
 
+def is_unit(word: str, ctx: Context) -> bool:
+    """Whether `word` is a unit's name or symbol (mass, volume, length, area, duration or item) in the CLDR root locale
+    or a locale the page and the request state, in the case rules the module docstring gives."""
+    written = _form(word)
+    return any(_key(written) in _table(identifier).names for identifier in {_ROOT, *numbers.locale_set(ctx)})
+
+
 def _suffix_starts(text: str, end: int) -> Iterator[int]:
     """Where a per pattern may start after an amount ending at `end`: right after it, white space aside, and after
     one token of a sign written there (`€`, `EUR`)."""

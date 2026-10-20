@@ -172,6 +172,18 @@ class Shopify:
     def shapes(self, _match: AdapterMatch, answer: JsonValue, /) -> tuple[Shape, ...]:
         return (_LISTING if _one_currency(answer) else _UNPRICED_LISTING,)
 
+    def row_links(self, url: str, links: Sequence[str], /) -> tuple[str, ...]:
+        # The Online Store routes one product as `/products/{handle}` and, under a collection or a locale subfolder,
+        # `/collections/{handle}/products/{handle}` (`_PRODUCT_PATH`): a page link on the row's host with its handle.
+        parts = urlsplit(url)
+        handle = _product_handle(parts.path)
+        if handle is None:
+            return ()
+        found = (urlsplit(link) for link in links)
+        return tuple(
+            link.geturl() for link in found if link.hostname == parts.hostname and _product_handle(link.path) == handle
+        )
+
 
 def _collection(path: str) -> str | None:
     """The handle of a collection page's path, also under a locale subfolder; None for another path."""
@@ -217,9 +229,15 @@ def _listed(page: PageRefs, host: str) -> dict[str, int]:
     listed: dict[str, int] = {}
     for link in page.links:
         parts = urlsplit(link)
-        if parts.hostname == host and (route := _PRODUCT_PATH.fullmatch(parts.path)) is not None:
-            listed.setdefault(route.group(1).lower(), len(listed))
+        if parts.hostname == host and (handle := _product_handle(parts.path)) is not None:
+            listed.setdefault(handle, len(listed))
     return listed
+
+
+def _product_handle(path: str) -> str | None:
+    """The handle of a product route's path (`_PRODUCT_PATH`), lower-cased; None for another path."""
+    route = _PRODUCT_PATH.fullmatch(path)
+    return None if route is None else route.group(1).lower()
 
 
 def _shown(result: FetchResult, listed: dict[str, int]) -> FetchResult:

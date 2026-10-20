@@ -5,7 +5,8 @@ the browser's paging driver) takes it from there or from `rank`, so one ranker d
 
 A block the page does not render is not one of its items: with the browser's geometry, a block with no rendered area
 (CSSOM View `getBoundingClientRect`), else a block the HTML Standard's rendering rules or the page's inline styles
-hide (`content.text.hidden`, on the block or an ancestor). Groups are then ranked:
+hide (`content.text.hidden`, on the block or an ancestor), unless a script reveals that element (`revealed`: the
+paths of the elements `content.text.script_revealed` names, as the cleaned text shows them). Groups are then ranked:
 - with geometry (a browser capture), by the rendered area of their blocks: a listing's items fill the page's content
   (DEPTA, Zhai and Liu 2005: visual cues separate data records from navigation and adverts);
 - else by structural evidence: each block counts one for an image and one for text in two or more runs (a label and
@@ -27,10 +28,12 @@ Areas = Mapping[str, float]
 _VISIBLE_TEXT: Final = "descendant-or-self::text()[not(ancestor::script or ancestor::style or ancestor::template)]"
 
 
-def rank(groups: Sequence[Group], areas: Areas | None = None) -> tuple[Group, ...]:
+def rank(
+    groups: Sequence[Group], areas: Areas | None = None, revealed: frozenset[str] = frozenset()
+) -> tuple[Group, ...]:
     """`groups` with their unrendered blocks left out, best first (module docstring); a group left with no block is
     dropped. Ties keep the order of `groups`."""
-    shown = [kept for group in groups if (kept := _rendered(group, areas))]
+    shown = [kept for group in groups if (kept := _rendered(group, areas, revealed))]
     if areas is not None:
         scored = [(sum(areas.get(element_path(block), 0.0) for block in group), group) for group in shown]
     else:
@@ -39,18 +42,18 @@ def rank(groups: Sequence[Group], areas: Areas | None = None) -> tuple[Group, ..
     return tuple(scored[i][1] for i in order)
 
 
-def _rendered(group: Group, areas: Areas | None) -> Group:
+def _rendered(group: Group, areas: Areas | None, revealed: frozenset[str]) -> Group:
     """The group's blocks the page renders: with geometry, those not measured with no area (a block past the browser
     rung's measuring cap has no entry and stays); else those the rendering rules do not hide."""
     if areas is not None:
         return tuple(block for block in group if areas.get(element_path(block), 1.0) > 0)
-    return tuple(block for block in group if not _hidden(block))
+    return tuple(block for block in group if not _hidden(block, revealed))
 
 
-def _hidden(element: HtmlElement) -> bool:
+def _hidden(element: HtmlElement, revealed: frozenset[str]) -> bool:
     node: HtmlElement | None = element
     while node is not None:
-        if isinstance(node.tag, str) and hidden(node.tag, dict(node.attrib)):
+        if isinstance(node.tag, str) and hidden(node.tag, dict(node.attrib)) and text_path(node) not in revealed:
             return True
         node = node.getparent()
     return False
@@ -94,14 +97,14 @@ def block_links(block: HtmlElement, base: str | None) -> Iterator[str]:
             yield url
 
 
-def content_links(root: HtmlElement, base: str | None) -> frozenset[str]:
+def content_links(root: HtmlElement, base: str | None, revealed: frozenset[str] = frozenset()) -> frozenset[str]:
     """The canonical URLs the rendered hyperlinks of the page's content lead to (HTML Standard §4.6.1): in its main
     landmark, else its body, outside the site's chrome (`in_chrome` of `acquire.items`: navigation, header, footer,
     aside, menus), hidden ones left out, as `rank` leaves out unrendered blocks."""
     return frozenset(
         url
         for anchor in hyperlinks(content_root(root))
-        if not _hidden(anchor)
+        if not _hidden(anchor, revealed)
         and not in_chrome(anchor)
         and (url := canonical_url(anchor.get("href") or "", base)) is not None
     )

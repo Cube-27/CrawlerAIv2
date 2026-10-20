@@ -15,7 +15,8 @@ hyperlink, outside chrome (`acquire/items.py`: `nav`, `header`, `footer`, `aside
 the WAI-ARIA `menubar` and `menu` roles), ranked once per parse (`ParsedPage.item_groups`, `content/segment.py`):
 by the rendered area of their blocks when the browser capture measured it (`CaptureManifest.item_areas`, recorded for
 listing captures), else by blocks showing an image or two or more text runs, then size; a block not rendered (no area,
-or hidden by the HTML rendering rules) is left out. The markdown format, `xhr` and the paging driver read this one
+or hidden by the HTML rendering rules, unless the element hiding it is content a script reveals, extraction spec
+"Cleaned text and visibility index") is left out. The markdown format, `xhr` and the paging driver read this one
 ranking. (Previously: role C's item text read it too; a `menubar`, `menu` or `search` landmark was content.) Refs:
 owner #67, master plan §3.2.
 #### Scenario: Tag cloud beside a grid
@@ -81,7 +82,9 @@ starting after the chosen group's `rel=next` link (past the listing's end); an i
 (D-1776). Where one structured list is the page's `mainEntity`, only its entries are stated rows
 (`resolve/listing.py`); else, with stated rows in several lists, the list or lists with the most rows bound to the chosen group's blocks, give rows; with
 none bound, all do. Stated rows and those blocks bind one to one by item URL (session parameters, a trailing
-slash and added query parameters aside) or by a name the block shows (`collect/items/bind.py`). With no stated rows or
+slash and added query parameters aside) or by a name the block shows (`collect/items/bind.py`); a page-scoped adapter's
+row also goes by the page's links its platform routes to the same item (`PageScoped.row_links`: a Shopify product under
+the collection, adapters spec). With no stated rows or
 only stubs, the blocks are the rows; otherwise stated rows stay and the group's blocks no stated row names extend them.
 A config's rows bind no blocks. A bound entity's values join its row where the row has none for the field or equals
 them; a block's link replaces a respelled stated item URL. Of a money field, a block bound by URL takes part whatever

@@ -20,11 +20,12 @@ from typing import Final
 
 from pydantic import JsonValue
 
-from crawlerai.adapters.base import ALL, Adapter, AdapterMatch, Members, Section, Shape
-from crawlerai.collect.base import CollectResult
+from crawlerai.adapters.base import ALL, Adapter, AdapterMatch, Booleans, Members, PageScoped, Section, Shape
+from crawlerai.collect.base import CollectResult, Entity
 from crawlerai.collect.json_doc import ROOT, member, select
 from crawlerai.collect.locator import format_locator
-from crawlerai.collect.schema_org_map import Typed, Value, Vocabulary, entity, field_candidates
+from crawlerai.collect.schema_org_map import Typed, Value, Vocabulary, canonical_urls, entity, field_candidates
+from crawlerai.content.links import links
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.json_text import parse
 from crawlerai.normalize.base import Context
@@ -52,7 +53,14 @@ class AdapterCollector:
         except ValueError as e:
             return CollectResult(entities=(), candidates=(), diagnostics=(f"adapter:{name}: not JSON ({e})",))
         shapes = self._adapter.shapes(self._match, document)
-        return read_shapes(name, shapes, document, self._rows_schema(schema), ctx, self._vocabulary)
+        read = read_shapes(name, shapes, document, self._rows_schema(schema), ctx, self._vocabulary)
+        if self._call is None or not isinstance(self._adapter, PageScoped):
+            return read
+        # A page-scoped answer's rows are the page's own items: each also goes by the page's links to it, so it meets
+        # the page's block of the item (`PageScoped.row_links`).
+        shown = links(page, ctx.page_url or "")
+        rows = tuple(_with_links(e, self._adapter, shown, ctx) for e in read.entities)
+        return read.model_copy(update={"entities": rows})
 
     def _rows_schema(self, schema: SchemaDef) -> SchemaDef:
         """A listing's page-scoped fields describe the page, not a row (extraction spec): the API's rows hold none."""
@@ -60,6 +68,11 @@ class AdapterCollector:
             return schema
         rows = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}
         return schema.model_copy(update={"fields": rows})
+
+
+def _with_links(row: Entity, adapter: PageScoped, shown: Sequence[str], ctx: Context) -> Entity:
+    found = (link for url in row.item_urls for link in adapter.row_links(url, shown))
+    return row.model_copy(update={"urls": tuple(dict.fromkeys((*row.urls, *canonical_urls(found, ctx))))})
 
 
 def read_shapes(
@@ -128,15 +141,14 @@ class _Node:
         return {name: raw for name, raw in found.items() if raw is not None}
 
     def _read(
-        self, members: Members, prefix: str, places: int | None = None, meant: tuple[str, str] | None = None
+        self, members: Members, prefix: str, places: int | None = None, meant: Booleans | None = None
     ) -> list[Value]:
         # RFC 8259 `null`: the API states no value.
         found = [(at, raw) for at, raw in _select(members, self.data, self.path) if raw is not None]
         if places is not None:
             found = [(at, scaled) for at, raw in found if (scaled := _in_major_units(raw, places)) is not None]
         if meant is not None:
-            # A JSON boolean as the value the documentation means by it (`Shape.booleans`); any other as stated.
-            found = [(at, meant[not raw] if isinstance(raw, bool) else raw) for at, raw in found]
+            found = [(at, value) for at, raw in found if (value := _meant(raw, meant)) is not None]
         return [Value(_prefixed(prefix, raw), self._locator(at)) for at, raw in found]
 
     def _joined(self, sections: Sequence[Section]) -> list[Value]:
@@ -167,6 +179,12 @@ class _Node:
 
     def _locator(self, path: str) -> str:
         return format_locator("adapter", self.adapter, path)
+
+
+def _meant(raw: JsonValue, meant: Booleans) -> JsonValue:
+    """A JSON boolean as the value the documentation means by it (`Shape.booleans`), None where it means no one value;
+    any other value as stated."""
+    return meant[not raw] if isinstance(raw, bool) else raw
 
 
 def _prefixed(prefix: str, raw: JsonValue) -> JsonValue:

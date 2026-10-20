@@ -78,3 +78,13 @@ def test_a_concealed_block_holding_the_pages_title_and_form_is_shown_a_lone_conc
 
     assert _text(gated + template) == "Kettle\n12.50 EUR"
     assert _text("<h1>Kettle</h1>" + gated.replace("Kettle", "Quick view")) == "Kettle"
+
+
+def test_the_main_landmark_s_concealed_content_is_shown_when_nothing_else_in_it_renders() -> None:
+    # A gate conceals the main landmark's titled content and shows its own message; a lone value is no content.
+    content = "<div style='display:none'><h2>Kettles</h2><p>12.50 EUR</p></div>"
+    gate = "<div style='display:none'>Locked</div>"
+
+    assert _text(f"<main>{content}{gate}</main>") == "Kettles\n12.50 EUR"
+    assert _text(f"<main><p>Open</p>{content}</main>") == "Open"
+    assert _text("<main><p style='display:none'>12.50 EUR</p></main>") == ""
