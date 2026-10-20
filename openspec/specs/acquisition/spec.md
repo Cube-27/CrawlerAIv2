@@ -80,7 +80,7 @@ short-lived safety bias age differently, both in Postgres so every process reads
   not rewritten. A contract is stale after `STALE_FAILURES` (2) consecutive caller-supplied pages extracted without a
   record, and a block (never extracted) is never one; a stale contract is kept but not used, and an extraction with a
   record makes it fresh again. A scheduler re-check SHALL retry each `browser` contract over HTTP after 7 days (the
-  latest `ok` URL of that kind, robots allowing) and reset it to `http` on `ok`.
+  latest `ok` URL of that kind, with no robots.txt request) and reset it to `http` on `ok`.
 - A block history per site (`site_block`): each HTTP request the site refused (`blocked` other than 429/503, or a
   `shell` a challenge names) counts, the count starting over when the last block is older than `BLOCK_TTL` (15 min);
   at `BROWSER_FIRST_BLOCKS` (2) the site's pages start in the browser for one `BLOCK_TTL`. A kept HTTP `ok` clears it.
@@ -416,19 +416,24 @@ owner 2026-10-19 (acquisition plan P2).
 - **THEN** the site has no stored state, and nothing is written
 
 ### Requirement: robots.txt
-The system SHALL honour robots.txt by default per RFC 9309 for user agent `*`, cached per origin for 24 h in
-`site.robots_snapshot`; a disallowed URL is `blocked`/`robots` without a request, an unreachable one (5xx or 429)
-ends `blocked`/`robots_unreachable`, unless the job records a `respect_robots=false` override. A page an adapter would
-serve is not held back by its own robots.txt: the adapter's request obeys its host's robots.txt, the page rungs are
-not admitted, and an adapter answer that is not `ok` ends `robots`. Refs: §7.1, D-0159, D-0866,
-D-1155, D-1156.
+The system SHALL NOT read or obey robots.txt unless the request switches it on with `respect_robots: true` (the
+`fetch` member of scrape, batch, crawl, extract and search, and of their schedules; a member of map), owner decision
+#75. Off, no robots.txt request is made and neither a disallow nor its `Crawl-delay` applies; a fetch that has no
+request (a learning replay or render, the method re-check) goes by the default. On, it SHALL honour robots.txt per
+RFC 9309 for user agent `*`, cached per origin for 24 h in `site.robots_snapshot`; a disallowed URL is
+`blocked`/`robots` without a request, an unreachable one (5xx or 429) ends `blocked`/`robots_unreachable`, and its
+`Crawl-delay` feeds the host's rate. A page an adapter would serve is not held back by its own robots.txt: the
+adapter's request obeys its host's robots.txt, the page rungs are not admitted, and an adapter answer that is not `ok`
+ends `robots`. Either way, a crawl or map that reads sitemaps reads robots.txt for its `Sitemap:` lines alone
+(`crawl/sitemaps.py`). (Previously: honoured by default, unless the job recorded a `respect_robots=false`
+override with a `robots_override_reason`.) Refs: §7.1, D-0159, D-0866, D-1155, D-1156, owner decision #75.
 
 ### Requirement: Per-site rate and backoff
 The system SHALL fetch every page and JSON request through one polite fetch (`services/polite.py`): robots.txt, then
 the host's rate, then the fetch, then the observation and the back-off; a robots.txt request takes a turn and holds the
 host as a page's does (a worker postpones a fetch that has sent nothing, and once robots.txt was requested waits in place
 for the page's turn up to its bound). It SHALL space requests to a host by
-`crawl_delay_ms`, else 1 req/s, never below robots `Crawl-delay`, postponing a worker task rather than sleeping (a
+`crawl_delay_ms`, else 1 req/s, never below robots `Crawl-delay` when robots.txt is obeyed, postponing a worker task rather than sleeping (a
 caller that waits waits in place up to one minute, a turn further off answering `blocked`, reason `slow_down`, with
 nothing sent); SHALL hold the host from a fetch's turn until the fetch ends and its answers are observed (a back-off stored), browser navigations included, so no two
 fetches are in flight to one host (a navigation and the resources its page loads are one fetch) (owner plan 2026-10-19, P1), and admit no request for work being

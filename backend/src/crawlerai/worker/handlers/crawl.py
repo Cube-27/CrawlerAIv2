@@ -49,7 +49,7 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.fetching import Fetching, SiteHttp, TargetRejected
 from crawlerai.services.map import TIMEOUT_S
-from crawlerai.services.polite import QUEUED, NoTurn, Turns, rules_in
+from crawlerai.services.polite import QUEUED, NoTurn, Turns, listed_sitemaps, rules_in
 from crawlerai.services.scrape_steps import PageFormat, fetch_policy, record_fetch_usage
 from crawlerai.storage.base import ObjectStore
 from crawlerai.worker.handlers.steps import (
@@ -225,24 +225,27 @@ async def _sitemap_seeds(
     # redirected to another host.
     # The reading waits in place for the host's turns, as a further request of a task does.
     waiting = replace(QUEUED, postpone=False)
+    read = rules_in(conn, fetching.rungs.http, attempts, Turns(fetching.limiter, waiting))
     try:
-        rules = await rules_in(conn, fetching.rungs.http, attempts, Turns(fetching.limiter, waiting))(site_url, policy)
+        rules = await read(site_url, policy)
     except NoTurn:
         rules = None
     if rules is None:
         return [], {}
     polite = SiteHttp(fetching, rules, policy, attempts, waiting)
     reader = SitemapReader(polite.sitemap_body, frontier.scope.host)
-    start = roots(site_url, () if rules.robots is None else rules.robots.sitemaps)
     seeds: dict[str, None] = {}
     capped = False
     try:
-        async with asyncio.timeout(SITEMAP_TIMEOUT_S), aclosing(reader.urls(start)) as urls:
-            async for url in urls:
-                if frontier.admits(url):
-                    seeds[url] = None
-                if len(seeds) >= frontier.capacity:
-                    break
+        # The time cap covers robots.txt's `Sitemap:` lines too, read here when the crawl does not obey robots.txt.
+        async with asyncio.timeout(SITEMAP_TIMEOUT_S):
+            start = roots(site_url, await listed_sitemaps(read, site_url, policy, rules))
+            async with aclosing(reader.urls(start)) as urls:
+                async for url in urls:
+                    if frontier.admits(url):
+                        seeds[url] = None
+                    if len(seeds) >= frontier.capacity:
+                        break
     except TimeoutError:
         capped = True
     except TargetRejected:

@@ -173,7 +173,7 @@ async def test_answers_the_requested_formats_and_only_those(
         "llm_tokens_in": 0,
         "llm_tokens_out": 0,
         "browser_seconds": 0,
-        "http_requests": 2,
+        "http_requests": 1,
     }
 
 

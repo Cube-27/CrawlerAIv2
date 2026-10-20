@@ -140,7 +140,7 @@ async def test_a_page_robots_txt_disallows_is_blocked_without_fetching_it(
     url = f"{own_origin}/private/kettle"
     web.pages[url] = (200, PAGE, "ok", None)
 
-    result = await scrape(engine, fetching, request(url, "markdown"))
+    result = await scrape(engine, fetching, request(url, "markdown", fetch={"respect_robots": True}))
 
     assert web.page_fetches() == []
     assert (result.outcome, result.reason) == ("blocked", "robots")
@@ -149,6 +149,21 @@ async def test_a_page_robots_txt_disallows_is_blocked_without_fetching_it(
         engine, select(UrlTask.status, UrlTask.outcome, UrlTask.last_error).where(UrlTask.job_id == result.job_id)
     )
     assert tuple(task) == ("done", "blocked", "robots")
+
+
+async def test_by_default_robots_txt_is_not_requested_and_its_disallow_does_not_block(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
+) -> None:
+    # Owner decision #75: robots.txt is obeyed only when the request switches it on.
+    url = f"{own_origin}/private/kettle"
+    web.pages[url] = (200, PAGE, "ok", None)
+
+    result = await scrape(engine, fetching, request(url, "markdown"))
+
+    assert web.fetched == [("http", url)]
+    assert result.reason is None
+    assert result.capture_id is not None
+    assert result.markdown is not None
 
 
 async def test_a_private_target_is_rejected_before_any_job_or_fetch(
