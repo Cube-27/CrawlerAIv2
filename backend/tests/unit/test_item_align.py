@@ -128,10 +128,19 @@ def test_a_name_the_item_states_in_attributes_is_kept_where_the_card_shows_it_ov
     )
     # A line cut short by an ellipsis stands for the stated name it begins.
     cut = '<li class="c"><a href="/p/{i}"><img src="/i/{i}.jpg" alt="Lamp {i} with brass base">Lamp {i} with…</a></li>'
+    # The stated name's leading words are a line of their own above the rest, a size line between: a designer line,
+    # not the name's visible label, which is the product line.
+    apart = (
+        '<li class="c"><a href="/p/{i}"><img src="/i/{i}.jpg" alt="{m} Wool Coat {i}"><p>{m}</p><p>xs</p>'
+        "<p>Wool Coat {i}</p></a><p>1{i}.00 EUR</p></li>"
+    )
+    makers = ("Alder", "Birch", "Cedar", "Dogwood")
 
     assert [row["title"] for row in _rows(_repeat(overlay))] == [f"Runner {i} Blue Code{i}" for i in range(4)]
     assert [row["title"] for row in _rows(_repeat(split))] == [f"Maker {i} Chair" for i in range(4)]
     assert [row["title"] for row in _rows(_repeat(cut))] == [f"Lamp {i} with brass base" for i in range(4)]
+    apart_body = "<ul>" + "".join(apart.format(i=i, m=m) for i, m in enumerate(makers)) + "</ul>"
+    assert [row["title"] for row in _rows(apart_body)] == [f"Wool Coat {i}" for i in range(4)]
 
 
 def test_a_stated_name_running_over_the_price_is_the_cards_text_and_a_link_name_runs_on_as_pictured() -> None:

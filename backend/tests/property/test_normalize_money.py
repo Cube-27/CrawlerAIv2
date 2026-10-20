@@ -234,6 +234,9 @@ def test_a_code_that_is_also_a_cldr_unit_is_a_currency_only_where_the_page_names
     assert money.normalize(f"{amount} USD", MONEY, _ctx(html_lang="en-US", page_currencies=("EUR",))) == _ok(
         str(amount), "USD"
     )
+    # `L` is a CLDR litre symbol (`l` in Portuguese) and a CLDR symbol of the lempira and the leu: a volume on a page
+    # naming neither.
+    assert money.normalize(f"Kettle {amount} L", MONEY, _ctx(html_lang="pt-BR")) == Invalid("measure")
 
 
 def test_the_cldr_release_is_the_one_the_manifest_pins() -> None:

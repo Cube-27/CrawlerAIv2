@@ -94,19 +94,25 @@ symbol only as CLDR writes it and right after the separator or a count, `$40/M` 
 unit or a period: for a field whose path gives it
 the active-price role (schemas spec, "Presets") it is `Invalid("per_unit")` (mass, volume, length, area, item) or
 `Invalid("per_period")` (duration); any other money field reads the amount before the pattern (`unit_price`: `€25/kg`
-is 25). A sign written as an ISO 4217 code that is also a unit name of the page's or the root locale's CLDR unit
-data (`CUP`, the volume `cup`) is a currency only where the page names that currency (its structured, declared or URL
-currency, or the tender currency of a territory its locales leave possible); else the text states a measure, not an
-amount: `Invalid("measure")` (`3.5 CUP FOOD CHOPPER`). Refs: §9, owner #68, owner 2026-10-19, D-1240, D-1370, D-1782, architecture-v3 d.2, d.4, d.7.
+is 25). A sign written as an ISO 4217 code or a CLDR currency symbol that is also a unit name or symbol of the
+CLDR unit data of the root locale or a locale the page or the request states (`CUP`, the volume `cup`; `L`, the litre
+and a symbol of the lempira and the leu; a one-letter sign in either case, CLDR writing the litre `l` and `L` by
+locale) is a currency only where the page names a currency it denotes (its structured, declared or URL currency, or
+the tender currency of a territory its own locales, not the request's, leave possible); else the text states a
+measure, not an amount: `Invalid("measure")` (`3.5 CUP FOOD CHOPPER`, `Kettle 1,7 L`). Refs: §9, owner #68, owner 2026-10-19, D-1240, D-1370, D-1782, architecture-v3 d.2, d.4, d.7.
 (Previously: a sign several currencies share was `Ambiguous`, no sign was `Invalid`, a page currency never supplied a
 missing sign, the locale settled a sign at full confidence, and a sign with a full stop denoted only its own symbol's
 currencies, and the URL never supplied a currency; an amount per unit or per period read as the price; a symbol
 written without CLDR's bidi controls was not that symbol, no platform global declared a currency, and a reading was
-kept whatever its currency's minor unit; a code that is also a unit name read as a currency.)
+kept whatever its currency's minor unit; a code that is also a unit name read as a currency, and a CLDR symbol that is
+also a unit symbol, `L`, still did.)
 #### Scenario: Per unit and per period
 - **WHEN** the text is `€25/kg` or `$25/mo` for the `commerce_detail` `price` with `html_lang="en"`
 - **THEN** the results are `Invalid("per_unit")` and `Invalid("per_period")`; for a `unit_price` field mapped to
   `Offer.priceSpecification{referenceQuantity}.price+priceCurrency`, `€25/kg` is `Ok({amount: "25", currency: "EUR"})`
+#### Scenario: A volume in a name
+- **WHEN** the text is `Kettle 1,7 L` with `html_lang="pt-BR"`
+- **THEN** the result is `Invalid("measure")`; on a page whose locale is `es-HN`, `L 120` is `Ok({amount: "120", currency: "HNL"})`
 #### Scenario: Ambiguous dollar
 - **WHEN** the text is `$10` with `html_lang="en"` and no page currency
 - **THEN** the result is `Ok({amount: "10", currency: null})` with basis `unknown`; with `page_currencies=("CAD",)` it
