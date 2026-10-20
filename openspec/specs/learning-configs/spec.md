@@ -34,9 +34,11 @@ output is never executed (INV-17, [llm](../llm/spec.md)). Refs: §12.1, D-0034, 
 ### Requirement: Engine executor
 The engine executor SHALL run each field's steps in order over the shared `ParsedPage` (no second parse, INV-26); the
 first step giving an `Ok` value becomes `Candidate(source_kind='config', independent=False)`. A `jsonld` or `jsonpath`
-step's value is read as the structured collectors read it (`schema_org_map.fragment_read`), in both executors. A config
-for another schema or page kind raises `ConfigMismatch`. Refs: §12.1, D-0475, D-0480, D-1502.
-(Previously: a structured value was taken as written.)
+step's value is read as the structured collectors read it (`schema_org_map.fragment_read`), in both executors. A
+listing's `jsonpath` row step SHALL select one row per JSON object in its source's documents, and the row's fields,
+`jsonpath` steps of that source only, read from the row (`$` is the row object), in both executors. A config for
+another schema or page kind raises `ConfigMismatch`. Refs: §12.1, D-0475, D-0480, D-1502, architecture v3 a.6.
+(Previously: a structured value was taken as written; a row step selected elements only.)
 #### Scenario: First step fails, second valid
 - **WHEN** step 0's value is declined and step 1 gives an `Ok` value
 - **THEN** the candidate is step 1's value
@@ -57,12 +59,22 @@ captured calls, an `xpath` step for a DOM element), and each is validated by bot
 with the answer of the call's API recipe replayed over HTTP (`validation.replayed`; its headers proven by replay,
 [adapters](../adapters/spec.md)), as `browser` on their renders. The cheapest tier that validated wins (`http` <
 `call` < `browser`); the located fields join the run's config, else the config the surface serves, else a config of
-their own, with origin `located`. Refs: architecture v3 a.6, #332.
+their own, with origin `located`. A listing whose config reads no rows (no listing, no listing recipe), or whose row
+fields the run is asked for, SHALL have its rows located the same way on the rows the renders published: the first
+render's rows propose a `jsonpath` listing over the JSON document the HTML carries that holds their item URLs
+([listings](../listings/spec.md), "Rows from page state") and the listing induced on its item blocks; one validated
+on the other pages' HTTP captures is `http`, else the listing recipe of the renders' call series with its pagination
+(`api_recipe.learn`, [listings](../listings/spec.md) "Rows from captured calls") is `call`, else one validated on
+their renders is `browser`, its row fields written with that `needs`. Refs: architecture v3 a.6, #332.
 #### Scenario: State in the HTTP page wins
 - **WHEN** each render publishes a field whose value its embedded state, a captured call and a DOM element all hold,
   and the HTTP captures carry the state
 - **THEN** all three steps validate and the field is written with `needs: http`; without the state it is `call` and the
   config holds the call's recipe; without the call too it is `browser`
+#### Scenario: Listing rows in state
+- **WHEN** the renders of a listing without rows publish four items its HTTP pages' state lists
+- **THEN** the config's listing selects the state's items with `needs: http`, and no recipe is learned; without the
+  state, and with no call series, the listing reads the render's item blocks with `needs: browser`
 
 ### Requirement: Progressive mode
 Each (site, schema, page kind) SHALL have a `progressive_state` in mode `cold`, `learning` (pages still served cold)

@@ -256,11 +256,20 @@ class FieldSteps(_Model):
 
 class ListingSpec(_Model):
     """Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` locates the next
-    page's URL."""
+    page's URL. A `jsonpath` row step selects the rows' JSON objects in its source's documents (listings spec, "Rows
+    from page state"), and its fields' steps are `jsonpath` steps of the same source read from each row (`$`)."""
 
     row: Step
     fields: dict[Name, FieldSteps]
     next: Step | None = None
+
+    @model_validator(mode="after")
+    def _json_rows_read_json(self) -> Self:
+        if isinstance(self.row, JsonPathStep):
+            steps = [step for steps in self.fields.values() for step in steps.steps]
+            if any(not isinstance(step, JsonPathStep) or step.source != self.row.source for step in steps):
+                raise ValueError("a JSON row's fields are jsonpath steps of the row's source")
+        return self
 
 
 class SchemaRef(_Model):

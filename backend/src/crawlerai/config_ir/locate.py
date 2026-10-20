@@ -20,11 +20,18 @@ document that holds it (`induction.source_steps`, step 3). Each step is validate
 
 The cheapest tier whose step validated wins (`http` < `call` < `browser`, step 5), written with `FieldSteps.needs` and,
 for `call`, the recipe it names in the config's `recipes`; a field that validated nowhere stays out (`not_located`).
+
+A listing's rows follow the same tiers when its config reads none (no listing, no listing recipe), on the rows the
+renders published: rows in a JSON document the HTML carries become a `jsonpath` row step (`json_rows`), and rows of
+the render's item blocks a listing induced on it (`listing_induction`); each candidate is validated as `http` on the
+other pages' HTTP captures, else as `browser` on their renders, its row fields written with that `needs`. Between them
+is `call`: the listing recipe of the renders' call series, with its pagination (`api_recipe.learn`, which the run
+gives as `Rows.recipe`), served as the config's `api_recipe`.
 """
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Final, get_args
 
 from pydantic import JsonValue
@@ -36,11 +43,22 @@ from crawlerai.config_ir.api_recipe.discovery import DiscoverySample, discover
 from crawlerai.config_ir.api_recipe.learn import prove
 from crawlerai.config_ir.api_recipe.model import ApiRecipe, Proof, RequestSpec
 from crawlerai.config_ir.api_recipe.replay import Replay, ReplayPage
+from crawlerai.config_ir.api_recipe.validate import RecipeValidated
 from crawlerai.config_ir.held_out import StoredPage, read_bundle
-from crawlerai.config_ir.induction import page_level, source_steps
-from crawlerai.config_ir.model import ExtractionConfigIR, FieldSteps, Needs, Step
+from crawlerai.config_ir.induction import Published, SamplePage, page_level, source_steps
+from crawlerai.config_ir.json_rows import json_listings
+from crawlerai.config_ir.listing_induction import induce_listing, row_fields
+from crawlerai.config_ir.model import ExtractionConfigIR, FieldSteps, ListingSpec, Needs, Step
 from crawlerai.config_ir.progressive import LOCATE_SAMPLES
-from crawlerai.config_ir.validation import Facts, FieldReport, HeldOutPage, Validated, replayed, validate
+from crawlerai.config_ir.validation import (
+    Facts,
+    FieldReport,
+    HeldOutPage,
+    ListingReport,
+    Validated,
+    replayed,
+    validate,
+)
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import CaptureId, JobId
 from crawlerai.llm.client import LLMClient
@@ -55,7 +73,9 @@ __all__ = [
     "NOT_FOUND_IN_RENDER",
     "Calls",
     "Extract",
+    "ListingRecipe",
     "Located",
+    "Rows",
     "Sampled",
     "locate",
     "located_config",
@@ -72,18 +92,21 @@ _TIERS: Final[tuple[Needs, ...]] = get_args(Needs)  # cheapest first
 # Extracts a rendered capture for a schema as a page is extracted (`resolve.pipeline.extract_page`, role C charged to
 # the job): the locate run's oracle.
 Extract = Callable[[CaptureBundle, SchemaDef, JobId], Awaitable[ExtractionResult]]
+# Learns the listing recipe of the run's pages (`api_recipe.learn.learn_recipe`): a listing's `call` tier.
+ListingRecipe = Callable[[], Awaitable[RecipeValidated]]
 
 
 @dataclass(frozen=True)
 class Sampled:
     """A sample page of a locate run: its stored HTTP capture, its render parsed with its context, and the page-level
-    values the render published."""
+    values the render published, and a listing's rows'."""
 
     stored: StoredPage
     render: CaptureBundle
     page: ParsedPage
     ctx: Context
     published: Mapping[str, JsonValue]
+    rows: Sequence[Mapping[str, JsonValue]] = ()
 
     def held_out(self, name: str, *, rendered: bool) -> HeldOutPage:
         """The page as validation reads it for `name`: its render or its HTTP capture, with the render's value."""
@@ -93,13 +116,23 @@ class Sampled:
             return HeldOutPage(page.capture_id, self.page, self.ctx, facts)
         return HeldOutPage(page.capture_id, page.page, page.ctx, facts)
 
+    def held_out_rows(self, *, rendered: bool) -> HeldOutPage:
+        """The page as validation reads a listing's rows: its render or its HTTP capture, with the render's rows."""
+        page = self.stored.held_out
+        facts = Facts(published=self.published)
+        rows = [Facts(published=row) for row in self.rows]
+        if rendered:
+            return HeldOutPage(page.capture_id, self.page, self.ctx, facts, rows)
+        return HeldOutPage(page.capture_id, page.page, page.ctx, facts, rows)
+
 
 def sampled(stored: StoredPage, render: CaptureBundle, extraction: ExtractionResult) -> Sampled:
     """The sample page of `stored` rendered as `render`, which `extraction` extracted."""
     page, ctx = read_bundle(render)
     entity = extraction.entity or {}
     published = {name: outcome.value for name, outcome in entity.items() if outcome.status == "published"}
-    return Sampled(stored, render, page, ctx, published)
+    rows = [{name: o.value for name, o in row.items() if o.status == "published"} for row in extraction.rows]
+    return Sampled(stored, render, page, ctx, published, rows)
 
 
 @dataclass(frozen=True)
@@ -124,6 +157,18 @@ class Located:
     sources: dict[str, dict[Needs, FieldSteps]] = field(default_factory=dict)
     reasons: dict[str, str] = field(default_factory=dict)
     validated_on: dict[CaptureId, None] = field(default_factory=dict)  # the pages the chosen steps validated on
+    rows: "Rows | None" = None  # a listing's rows, when asked
+
+
+@dataclass(frozen=True)
+class Rows:
+    """A listing's located rows: the listing (`http` or `browser` row fields) with its report, or the listing recipe
+    (`call`); else why none."""
+
+    listing: ListingSpec | None = None
+    report: ListingReport | None = None
+    recipe: RecipeValidated | None = None
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -141,21 +186,79 @@ async def locate(
     pages: Sequence[Sampled],
     vocabulary: Vocabulary,
     calls: Calls | None,
+    recipe: ListingRecipe | None = None,
 ) -> Located:
     """Locate `names` on `pages` (module docstring); `base` gives the config's identity (site, schema, fetch). Without
-    `calls`, no `call` source is tried."""
+    `calls`, no `call` source is tried; a listing's rows are located when `names` holds a row field, their `call` tier
+    by `recipe`."""
     run = _Run(base, schema, vocabulary, calls)
     located = Located()
+    listed = [name for name in names if schema.page_kind == "listing" and name in row_fields(schema)]
     for name in names:
-        if name not in schema.fields or not page_level(schema, name) or schema.fields[name].row_mapped:
-            located.reasons[name] = NOT_LOCATED
-            continue
-        with_value = [page for page in pages if page.published.get(name) is not None]
-        if not with_value:
-            located.reasons[name] = NOT_FOUND_IN_RENDER
-            continue
-        await _locate_field(run, name, with_value, located)
-    return located
+        if name not in listed:
+            await _page_field(run, name, pages, located)
+    if not listed:
+        return located
+    rows = await _locate_rows(run, pages, recipe)
+    if rows.listing is None and rows.recipe is None:
+        located.reasons.update(dict.fromkeys(listed, rows.reason or NOT_LOCATED))
+    else:
+        held = [page.stored.held_out.capture_id for page in pages if page.rows][1:]
+        located.validated_on.update(dict.fromkeys(held))
+    return replace(located, rows=rows)
+
+
+async def _page_field(run: _Run, name: str, pages: Sequence[Sampled], located: Located) -> None:
+    schema = run.schema
+    if name not in schema.fields or not page_level(schema, name) or schema.fields[name].row_mapped:
+        located.reasons[name] = NOT_LOCATED
+        return
+    with_value = [page for page in pages if page.published.get(name) is not None]
+    if not with_value:
+        located.reasons[name] = NOT_FOUND_IN_RENDER
+        return
+    await _locate_field(run, name, with_value, located)
+
+
+async def _locate_rows(run: _Run, pages: Sequence[Sampled], recipe: ListingRecipe | None) -> Rows:
+    """The listing's rows on `pages` (module docstring), the cheapest tier that validated."""
+    with_rows = [page for page in pages if page.rows]
+    if not with_rows:
+        return Rows(reason=NOT_FOUND_IN_RENDER)
+    if len(with_rows) <= MIN_LOCATE_HELD_OUT:
+        return Rows(reason="too_few_held_out")
+    candidates = await asyncio.to_thread(_row_candidates, run, with_rows[0])
+    others = with_rows[1:]
+    if (http := await asyncio.to_thread(_validated_rows, run, candidates, "http", others)) is not None:
+        return http
+    if recipe is not None and (found := await recipe()).recipe is not None:
+        return Rows(recipe=found)
+    if (browser := await asyncio.to_thread(_validated_rows, run, candidates, "browser", others)) is not None:
+        return browser
+    return Rows(reason=NOT_LOCATED)
+
+
+def _row_candidates(run: _Run, first: Sampled) -> list[ListingSpec]:
+    """The listings the first render's rows propose: in its JSON documents, then in its item blocks."""
+    found = json_listings(first.page, first.ctx, run.schema, first.rows)
+    rows = [{name: Published(value, "") for name, value in row.items()} for row in first.rows]
+    induced = induce_listing(run.schema, [SamplePage(first.page, first.ctx, {}, rows)], run.vocabulary).listing
+    return [*found, *([induced] if induced is not None else [])]
+
+
+def _validated_rows(
+    run: _Run, candidates: Sequence[ListingSpec], needs: Needs, pages: Sequence[Sampled]
+) -> Rows | None:
+    """The first candidate whose rows validate for `needs` on `pages`, its row fields written with `needs`."""
+    held_out = [page.held_out_rows(rendered=needs == "browser") for page in pages]
+    for listing in candidates:
+        ir = run.base.model_copy(update={"fields": {}, "listing": listing, "recipes": {}, "api_recipe": None})
+        validated = validate(ir, run.schema, held_out, run.vocabulary, min_held_out=MIN_LOCATE_HELD_OUT)
+        kept = validated.ir.listing if validated.ir is not None else None
+        if kept is not None:
+            fields = {name: steps.model_copy(update={"needs": needs}) for name, steps in kept.fields.items()}
+            return Rows(kept.model_copy(update={"fields": fields}), validated.report.listing)
+    return None
 
 
 async def _locate_field(run: _Run, name: str, pages: Sequence[Sampled], located: Located) -> None:
@@ -290,7 +393,8 @@ async def _recipe(run: _Run, calls: Calls, name: str, pages: Sequence[Sampled]) 
 def located_config(validated: Validated, base: ExtractionConfigIR, located: Located) -> Validated:
     """`validated` (the run's learned config; else `base`, the config the surface serves or an empty one) with the
     located fields and their recipes, origin `located`, and their reports; unchanged when nothing was located."""
-    if not located.fields:
+    rows = located.rows or Rows()
+    if not located.fields and rows.listing is None and rows.recipe is None:
         return validated
     ir = validated.ir or base
     report = validated.report
@@ -301,6 +405,8 @@ def located_config(validated: Validated, base: ExtractionConfigIR, located: Loca
         update={
             "fields": {**ir.fields, **located.fields},
             "recipes": {**ir.recipes, **located.recipes},
+            "listing": rows.listing or ir.listing,
+            "api_recipe": rows.recipe.recipe if rows.recipe is not None else ir.api_recipe,
             "provenance": provenance,
         }
     )
@@ -308,5 +414,9 @@ def located_config(validated: Validated, base: ExtractionConfigIR, located: Loca
     # IR's validators on the merged document.
     merged = merged.model_copy(update={"recipes": merged.named_recipes()})
     checked = ExtractionConfigIR.model_validate(merged.model_dump(by_alias=True))
-    fields = {**report.fields, **located.reports}
-    return Validated(checked, report.model_copy(update={"fields": fields, "refused": None}))
+    update: dict[str, object] = {"fields": {**report.fields, **located.reports}, "refused": None}
+    if rows.report is not None:
+        update["listing"] = rows.report
+    if rows.recipe is not None:
+        update["api_recipe"] = rows.recipe.report
+    return Validated(checked, report.model_copy(update=update))

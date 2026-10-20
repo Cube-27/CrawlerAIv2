@@ -49,8 +49,17 @@ from crawlerai.config_ir.api_recipe.replay import Render, Replays
 from crawlerai.config_ir.api_recipe.validate import RecipeValidated, attach, refused
 from crawlerai.config_ir.held_out import StoredPage, load_pages
 from crawlerai.config_ir.induction import Induction, SamplePage, induce, page_level
-from crawlerai.config_ir.listing_induction import ListingInduction, induce_listing
-from crawlerai.config_ir.locate import LOCATE_SAMPLES, Calls, Extract, Sampled, locate, located_config, sampled
+from crawlerai.config_ir.listing_induction import ListingInduction, induce_listing, row_fields
+from crawlerai.config_ir.locate import (
+    LOCATE_SAMPLES,
+    Calls,
+    Extract,
+    ListingRecipe,
+    Sampled,
+    locate,
+    located_config,
+    sampled,
+)
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR, Fetch, Provenance, SchemaRef
 from crawlerai.config_ir.progressive import (
     LEARN_AFTER_PAGES,
@@ -322,7 +331,7 @@ async def _locate_step(
         return validated
     try:
         rendered = await _samples(run, hooks.render, hooks.extract)
-        return await _located(client, run, target, validated, vocabulary, rendered, hooks.replay)
+        return await _located(client, run, target, validated, vocabulary, rendered, hooks)
     except (LLMFailure, SQLAlchemyError):
         raise  # the run's own failures, as `_page_recipe` re-raises them
     except Exception:
@@ -373,23 +382,42 @@ async def _located(
     validated: Validated,
     vocabulary: Vocabulary,
     pages: Sequence[Sampled],
-    replays: Replays | None,
+    hooks: _Hooks,
 ) -> Validated:
     """`validated` with the fields the run's locate request asks for (none named: the page-level fields the config
-    does not read) located on the rendered `pages` (`locate`), and why each other one was not."""
+    does not read, and a listing's row fields when it reads no rows) located on the rendered `pages` (`locate`), and
+    why each other one was not."""
+    replays = hooks.replay
     base = validated.ir or run.serving_ir or _induced(target, Induction(), ListingInduction())[0]
     asked = run.locate.fields if run.locate is not None else []
+    # A listing whose config reads no rows (no listing, no listing recipe) has its rows located too.
+    rowless = run.schema.page_kind == "listing" and base.listing is None and base.api_recipe is None
     names = asked or [
-        name
-        for name, spec in run.schema.fields.items()
-        if page_level(run.schema, name) and not spec.row_mapped and name not in base.fields
+        *(
+            name
+            for name, spec in run.schema.fields.items()
+            if page_level(run.schema, name) and not spec.row_mapped and name not in base.fields
+        ),
+        *(row_fields(run.schema) if rowless else ()),
     ]
     if not names:
         return validated
     replay = None if replays is None else replays(run.job_id, run.proxy_pool)
     calls = None if replay is None else Calls(client, replay, run.job_id, run.context)
-    located = await locate(base, run.schema, names, pages, vocabulary, calls)
+    recipe = _listing_recipe(client, run, validated, replays, hooks.render)
+    located = await locate(base, run.schema, names, pages, vocabulary, calls, recipe)
     return with_unlearned(located_config(validated, base, located), located.reasons)
+
+
+def _listing_recipe(
+    client: LLMClient, run: _Run, validated: Validated, replays: Replays | None, render: Render | None
+) -> ListingRecipe | None:
+    """A listing's `call` tier: its recipe, learned from the run's pages as `_page_recipe` learns one; None when the run
+    already tried (a config validated) or cannot replay."""
+    if validated.ir is not None or replays is None:
+        return None
+    sample, held_out = split(run.schema, run.pages)
+    return lambda: _page_recipe(client, run, sample, held_out, replays, render)
 
 
 @dataclass(frozen=True, slots=True)

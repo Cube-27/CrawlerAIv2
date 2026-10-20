@@ -70,8 +70,10 @@ On a listing the `xhr` collector SHALL read rows from the calls of one method, o
 (`collect/network_match.py`), the first series in which a row field's path is admitted in `MIN_ITEMS` rows or more (for
 a url field also: a link of the page's item groups), each row an `array_row` entity read through the API recipe row
 reader; with a learned listing recipe, its map. They are the stated rows where structured data and the config give
-none; when they leave a record incomplete role C fills, through their bound blocks, the fields they lack. (Previously:
-role C's rows replaced them.) Refs: §8.1, §8.6, Appendix A #59, D-1603.
+none; when they leave a record incomplete role C fills, through their bound blocks, the fields they lack. A locate run
+on a listing without rows learns the renders' call series as the config's listing recipe, with its pagination
+([learning-configs](../learning-configs/spec.md), "Locate run"). (Previously: role C's rows replaced them; a locate run
+located no rows.) Refs: §8.1, §8.6, Appendix A #59, D-1603, architecture v3 a.6.
 #### Scenario: Complete rows of a call
 - **WHEN** the rows of a call publish every required field
 - **THEN** role C is not asked
@@ -82,8 +84,12 @@ page's state JSON SHALL give rows (`collect/items/state_rows.py`): each row fiel
 rows whose own member names the field (its name or schema.org property) and whose value normalizes and is shown in the
 page text (an image: normalizes), the item URL also at a path whose values the page's rendered hyperlinks lead to; a row
 is kept only when its item URL is such a link or its name is shown, an array with fewer such rows gives none, and an item
-read once is not read again. Values are `js_state` candidates (bucket `state`). (Previously: no rows, D-1774.)
-Refs: D-1773, D-1775.
+read once is not read again. Values are `js_state` candidates (bucket `state`). A locate run writes such rows into the
+config as paths (`config_ir/json_rows.py`): a `jsonpath` row step selecting the array that holds `MIN_ITEMS` or more of
+the rendered rows' item URLs in a document the HTML carries (embedded state, JSON-LD, JSON attributes, RSC rows), and
+for each row field the path relative to the item that more than half of the paired items hold
+([learning-configs](../learning-configs/spec.md), "Locate run"). (Previously: no rows, D-1774; the paths were induced on
+every page only.) Refs: D-1773, D-1775, architecture v3 a.6.
 #### Scenario: Items only in state
 - **WHEN** a script's JSON lists three items whose names and prices the page shows without item links
 - **THEN** the listing has three rows with state evidence, and none when the page shows none of them

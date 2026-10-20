@@ -2544,7 +2544,8 @@ export interface components {
         /**
          * ListingSpec
          * @description Rows of a listing page: `row` selects the row nodes, `fields` run relative to each row, `next` locates the next
-         *     page's URL.
+         *     page's URL. A `jsonpath` row step selects the rows' JSON objects in its source's documents (listings spec, "Rows
+         *     from page state"), and its fields' steps are `jsonpath` steps of the same source read from each row (`$`).
          */
         ListingSpec: {
             /** Fields */

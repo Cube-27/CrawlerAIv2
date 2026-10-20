@@ -70,10 +70,13 @@ class _Refused(Exception):
 
 @dataclass(frozen=True, slots=True)
 class _Scope:
-    """Where a step runs: the page's document element, or one listing row."""
+    """Where a step runs: the page's document element, or one listing row: an element, or for a row a `jsonpath` row
+    step selects, the JSON value (`item`), which its fields' `jsonpath` steps read from (`$` is the row)."""
 
     node: HtmlElement
     in_row: bool
+    item: JsonValue = None
+    json_row: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,10 +228,10 @@ class _Run:
         candidate from `next`."""
         rows: list[Entity] = []
         candidates: list[Candidate] = []
-        for n, node in enumerate(self.rows(listing)):
+        for n, scope in enumerate(self.rows(listing)):
             owner = row_id(n)
             rows.append(Entity(id=owner, types=(ROW_KIND,), urls=(), parent=None))
-            candidates.extend(self.fields(listing.fields, _Scope(node, in_row=True), owner))
+            candidates.extend(self.fields(listing.fields, scope, owner))
         next_spec = self.schema.fields.get(NEXT_PAGE_FIELD)
         if listing.next is not None and next_spec is not None:
             found = self.first_value(NEXT_PAGE_FIELD, [listing.next], next_spec, document, PAGE)
@@ -236,10 +239,12 @@ class _Run:
                 candidates.append(found)
         return rows, candidates
 
-    def rows(self, listing: ListingSpec) -> list[HtmlElement]:
+    def rows(self, listing: ListingSpec) -> list[_Scope]:
         step = listing.row
+        if isinstance(step, JsonPathStep):
+            return self.json_rows(step)
         if not isinstance(step, (XPathStep, CssStep)):
-            self.diagnostics.append("config:row: a row step selects elements, so it is an xpath or css step")
+            self.diagnostics.append("config:row: a row step selects elements or JSON objects: xpath, css or jsonpath")
             return []
         try:
             found = _evaluate(step.xpath, self.page.lxml_tree)
@@ -248,12 +253,27 @@ class _Run:
             return []
         if not isinstance(found, list):
             return []
-        return [node for node in found if isinstance(node, HtmlElement)]
+        return [_Scope(node, in_row=True) for node in found if isinstance(node, HtmlElement)]
+
+    def json_rows(self, step: JsonPathStep) -> list[_Scope]:
+        """One row per JSON object the step selects in its source's documents (listings spec, "Rows from page
+        state")."""
+        try:
+            found = [value for document in self.documents(step.source) for _, value in select(step.jsonpath, document)]
+        except (ValueError, _Refused) as error:
+            self.diagnostics.append(f"config:row: {error}")
+            return []
+        root = self.page.lxml_tree
+        return [_Scope(root, in_row=True, item=item, json_row=True) for item in found if isinstance(item, dict)]
 
 
 def _matches(step: Step, scope: _Scope, run: _Run) -> list[Raw]:
     """The values `step` selects in `scope`, in document order."""
     match step:
+        case _ if scope.json_row and not isinstance(step, JsonPathStep):
+            raise _Refused("a JSON row is read by jsonpath steps only")
+        case JsonPathStep() if scope.json_row:
+            return _select_all(step.jsonpath, [scope.item])
         case XPathStep() | CssStep():
             return _xpath_values(step.xpath, scope.node)
         case AttrStep():
