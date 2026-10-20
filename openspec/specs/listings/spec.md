@@ -43,9 +43,14 @@ excluded, also from the lines of the elements holding it; an element's line is n
 together, a token boundary the text does not show; an element holding others is also read in each of its own text
 nodes). Values are `dom` candidates with locators; the group aligning most fields is first. A group one of whose blocks
 stands for the page itself (a link marked `aria-current="page"`, or links to this very URL only) is the site's
-navigation and gives no rows. (Previously: a card linking to its item and to an author or vendor page gave no item URL
-unless a heading or most of its text held the item's link; a category or city hub listing the page was rows.) Refs:
-owner #67.
+navigation and gives no rows; so is a group that aligns no typed value and more than half of whose blocks lead to
+documents a hyperlink of the site's chrome (as "Item groups" names it) outside the group leads to: the site's sections
+repeated in the content (a category carousel, a menu's tiles), not the page's items. An item's own list is a group
+lying in one block of another group at one tag path in two or more of its blocks (one template renders every item's
+list alike); the different lists a page's sections hold are no item's. (Previously: a card linking to its item and to
+an author or vendor page gave no item URL unless a heading or most of its text held the item's link; a category or city
+hub listing the page was rows; a section-level group whose sections held different lists made each list an item's own,
+its links no item's.) Refs: owner #67.
 #### Scenario: Cards with title, link and price
 - **WHEN** a listing shows cards of varying tags and class tokens, each with a heading link and one price
 - **THEN** each card is a row with its title, URL and price
@@ -71,6 +76,13 @@ owner #67.
 #### Scenario: Hub listing the current page
 - **WHEN** a group of category tiles holds one tile marked `aria-current="page"`
 - **THEN** the group gives no rows
+#### Scenario: Category tiles the menu links
+- **WHEN** a listing's only group is four category tiles with an image and a name, three of whose categories the `nav`
+  also links, and no tile shows a price
+- **THEN** the listing has no rows (`no_rows: no_blocks`); the same tiles each showing a price are its rows
+#### Scenario: Sections holding different lists
+- **WHEN** a page's sections each link to more and hold one list: three job cards in one, three salary cards in another
+- **THEN** the job cards are rows
 
 ### Requirement: Stated rows and blocks (bind)
 The stated rows SHALL be structured data's (`resolve/listing.py`), else the active config's, else the captured calls'.
@@ -142,21 +154,25 @@ page's state JSON SHALL give rows (`collect/items/state_rows.py`): each row fiel
 rows whose own member names the field (its name or schema.org property) and whose value normalizes and is shown in the
 page text (an image: normalizes), the item URL also at a path whose values the rendered hyperlinks of the page's content
 lead to (its main landmark, else its body, outside chrome); a row is kept only when its item URL is such a link or its
-name is shown, an array with fewer such rows gives none, and an item
+name is shown, an array with fewer such rows gives none, as does, with the arrays inside it, one that reads no typed
+value and more than half of whose rows' items are documents the site's chrome links to (the site's menu tree, whatever
+copy of the menu outside the chrome shows them too), and an item
 read once is not read again (after the choice below); of several arrays read, only the one or ones with the most rows whose item URL the page's
 first item group links to give rows (all, when none does). Values are `js_state` candidates (bucket `state`). A locate run writes such rows into the
 config as paths (`config_ir/json_rows.py`): a `jsonpath` row step selecting the array that holds `MIN_ITEMS` or more of
 the rendered rows' item URLs in a document the HTML carries (embedded state, JSON-LD, JSON attributes, RSC rows), and
 for each row field the path relative to the item that more than half of the paired items hold
 ([learning-configs](../learning-configs/spec.md), "Locate run"). (Previously: no rows, D-1774; the paths were induced on
-every page only; any rendered link, the site's menus included, grounded an item URL; every array read gave rows.) Refs: D-1773, D-1775,
+every page only; any rendered link, the site's menus included, grounded an item URL; every array read gave rows; a menu
+tree whose entries a footer outside the chrome repeated gave rows.) Refs: D-1773, D-1775,
 architecture v3 a.6.
 #### Scenario: Items only in state
 - **WHEN** a script's JSON lists three items whose names and prices the page shows without item links
 - **THEN** the listing has three rows with state evidence, and none when the page shows none of them
 #### Scenario: State menu tree
 - **WHEN** a script's JSON holds the site's menu entries, whose links the page renders only under `role="menubar"`
-- **THEN** those links ground no row
+- **THEN** those links ground no row; nor do the entries' names when a footer outside the chrome repeats the links, and
+  the entries' submenu arrays give no rows either
 
 ### Requirement: Row item URL
 A row's item URL field SHALL read schema.org `url`, else the item's `offers.url`, else its `mainEntityOfPage` (a URL or

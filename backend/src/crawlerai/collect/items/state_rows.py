@@ -15,9 +15,14 @@ Key names are the schema's own words, never a list kept for a site (C2, C4); the
 every value, so a state value is one the page renders (INV-12's rule for role C, applied to state).
 
 A row is kept only when it is grounded: its item URL is the target of a rendered hyperlink, or its name is shown. An
-array whose grounded rows are fewer than `MIN_ITEMS`, or that has no item URL path, gives none. Arrays inside a row
-source are the row's own data, not further sources; a row whose item URL an earlier row has is not read again (a blob
-caching one list twice; a trailing slash and the order of query parameters aside). With several arrays read, the rows
+array whose grounded rows are fewer than `MIN_ITEMS`, or that has no item URL path, gives none; nor does the site's
+menu tree (`_menu`): an array that reads no typed value (a price, a date) and more than half of whose rows' items are
+documents the site's chrome links to (`chrome_links` of `content.segment`: its navigation, header, footer, aside and
+menus), which the site's sections are and a listing's items are not, whatever copy of the menu (a footer's) shows them
+too.
+Arrays inside a row source, or inside the menu tree, are the row's own data (its submenus), not further sources; a row
+whose item URL an earlier row has is not read again (a blob caching one list twice; a trailing slash and the order of
+query parameters aside). With several arrays read, the rows
 are those of the array or arrays whose items the page's first item group links to most (`_grid_sources`): a recently
 viewed or recommended array is not the page's list. Each row is an `array_row` entity
 `js_state:<script xpath>@<document position>:<row path>`, and each value a
@@ -40,7 +45,7 @@ from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import field_roles
 from crawlerai.collect.schema_org_map import candidate, is_item_url
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.segment import block_links, content_links
+from crawlerai.content.segment import block_links, chrome_links, content_links
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.normalize.url import canonical_url
@@ -143,9 +148,11 @@ class _Reader:
         self.schema = schema
         self.ctx = ctx
         self.url_field = url_field
-        self.names = {name for name, role in field_roles(schema).items() if role == "name"}
+        self.roles = field_roles(schema)
+        self.names = {name for name, role in self.roles.items() if role == "name"}
         self.row_fields = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}
         self.links = content_links(page.lxml_tree, ctx.base_url, page.revealed)
+        self.chrome = frozenset(url for _, url in chrome_links(page.lxml_tree, ctx.base_url))
         self._words = {name: _field_words(name, spec) for name, spec in self.row_fields.items()}
 
     def read(self, number: int, document: Document, objects: Sequence[tuple[str, JsonValue]]) -> StateRows | None:
@@ -166,12 +173,27 @@ class _Reader:
         fresh = self._fresh(made)
         if len(fresh) < MIN_ITEMS:
             return None
+        if self._menu(keys, [item for _, item in fresh]):
+            # The menu tree is a source of no rows: its submenus, arrays inside it, are not read either.
+            return StateRows()
         notes.append(f"item layer: {len(fresh)} rows from page state, fields: {sorted(keys)}")
         return StateRows(
             tuple(entity for _, (entity, _) in fresh),
             tuple(c for _, (_, values) in fresh for c in values),
             tuple(notes),
         )
+
+    def _menu(self, keys: Mapping[str, str], rows: Sequence[tuple[Entity, list[Candidate]]]) -> bool:
+        """Whether the array is the site's menu tree (module docstring): it reads no typed value, and more than half of
+        its rows' items are documents the site's chrome links to."""
+        if any(self.roles.get(name) == "typed" for name in keys):
+            return False
+        led = sum(
+            c.field == self.url_field and isinstance(c.normalized, Ok) and c.normalized.value in self.chrome
+            for _, values in rows
+            for c in values
+        )
+        return 2 * led > len(rows)
 
     def _proposed(self, name: str, row: Mapping[str, Scalar]) -> Iterator[str]:
         return (path for path, raw in row.items() if json_doc.is_query(path) and self._reads(name, path, raw))

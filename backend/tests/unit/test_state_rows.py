@@ -58,6 +58,20 @@ def test_only_the_contents_links_ground_a_state_rows_item_url() -> None:
     assert [row["url"] for row in _row_values(in_content)] == [_url(n) for n in (1, 2, 3)]
 
 
+def test_the_sites_menu_tree_gives_no_rows_though_a_footer_outside_the_chrome_repeats_it() -> None:
+    # WAI-ARIA 1.2 `menubar`: the tree's entries are the site's sections; its submenus are part of it, not rows.
+    children = {n: [{"name": f"Sub {n}{k}", "url": f"/s/{n}/{k}"} for k in "abc"] for n in (1, 2, 3)}
+    tree = [{"name": f"Section {n}", "url": f"/s/{n}", "children": children[n]} for n in (1, 2, 3)]
+    menu = "".join(f'<a href="/s/{n}">Section {n}</a>' for n in (1, 2, 3))
+    entries = [(f"/s/{n}", f"Section {n}") for n in (1, 2, 3)]
+    entries += [(sub["url"], sub["name"]) for subs in children.values() for sub in subs]
+    footer = "".join(f'<p><a href="{url}">{name}</a></p>' for url, name in entries)
+
+    result = _listing(_html(body=f'{_state(tree)}<div role="menubar">{menu}</div><div>{footer}</div>'), data=COMMITTED)
+
+    assert result.rows == ()
+
+
 def test_of_several_state_arrays_the_one_the_pages_item_group_links_gives_the_rows() -> None:
     # A recently viewed array beside the page's own list: only the array whose items the page's item group links to.
     # The recent array comes first and repeats item 1: it does not take the list's item from it.

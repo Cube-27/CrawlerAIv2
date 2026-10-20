@@ -484,7 +484,9 @@ async def store_page_record(
     page with a record counts toward its progressive state, and its coverage freshens the site's contract; a
     caller-supplied page without one counts towards its staleness (`acquire.memory.learn_extraction`). A page `config`
     ran on joins the config's drift window (learning-configs spec). `page_url` is `store_extraction`'s. A page with a
-    record applies the job's `render` (None: the job inherits the surface's) to its surface (`render_surface`)."""
+    record, or a caller-supplied listing that listed nothing, applies the job's `render` (None: the job inherits the
+    surface's) to its surface (`render_surface`): a listing's rows the HTTP page does not carry are for a locate run to
+    find, as any field's are."""
     stored = await store_extraction(
         conn,
         task,
@@ -502,12 +504,14 @@ async def store_page_record(
     if stored.records:
         await learn_extraction(conn, site_id, schema.page_kind, coverage(schema, extraction))
         await _count_page(conn, site_id, schema)
-        await render_surface(conn, task.job_id, StateKey(site_id, schema.id, schema.page_kind), render, extraction)
+        await render_surface(conn, task.job_id, site_id, schema, render, extraction)
     elif caller_supplied:
         # A caller-supplied page is of the schema's kind by the caller's word, so no record is a quality failure; a
         # crawl-discovered page may be of no kind the schema reads.
         await learn_extraction(conn, site_id, schema.page_kind, None)
         listed_nothing = schema.page_kind == "listing" and stored.outcome != "failed"
+        if listed_nothing:
+            await render_surface(conn, task.job_id, site_id, schema, render, extraction)
         return replace(stored, outcome="partial" if listed_nothing else "failed")
     return stored
 
@@ -609,17 +613,23 @@ async def surface_plan(
 
 
 async def render_surface(
-    conn: AsyncConnection, job_id: JobId, key: StateKey, render: RenderOptions | None, extraction: ExtractionResult
+    conn: AsyncConnection,
+    job_id: JobId,
+    site_id: SiteId,
+    schema: SchemaDef,
+    render: RenderOptions | None,
+    extraction: ExtractionResult,
 ) -> RenderMode:
     """Apply a job's `render` to its surface (rest-api spec, "Render mode"), and return the mode its pages are fetched
     by: the job's mode is stored as the surface's, and a job without one inherits it. In `locate` or `always` the
     surface's locate run is started once per job (`request_locate`), for the job's `render.fields`, else the fields
     `extraction` left unpublished (`always` locates even when none is: the sources of every field the config does not
     read, so the surface can fall back to HTTP)."""
+    key = StateKey(site_id, schema.id, schema.page_kind)
     if render is not None:
         await set_render_mode(conn, key, render.mode)
     mode = render.mode if render is not None else await render_mode(conn, key)
-    fields = list(render.fields) if render is not None and render.fields else unpublished(extraction)
+    fields = list(render.fields) if render is not None and render.fields else unpublished(extraction, schema)
     if mode == "always" or (mode == "locate" and fields):
         await request_locate(conn, key, LocateRequest(job_id=job_id, fields=fields))
     return mode
@@ -635,12 +645,15 @@ def learning_extract(data: EngineData, llm: LLMClient) -> Extract:
     return extract
 
 
-def unpublished(extraction: ExtractionResult) -> list[str]:
-    """The fields `extraction` publishes no value of: the entity's, and a listing's row fields no row publishes."""
+def unpublished(extraction: ExtractionResult, schema: SchemaDef) -> list[str]:
+    """The fields `extraction` publishes no value of: the entity's, and a listing's row fields no row publishes (each
+    of `schema`'s row fields when it has no row)."""
     entity = extraction.entity or {}
     names = [name for name, outcome in entity.items() if outcome.status != "published"]
     rows = [row for row in extraction.rows]
-    row_names = {name for row in rows for name in row}
+    row_names = {name for row in rows for name in row} or {
+        name for name, spec in schema.fields.items() if spec.scope == "row"
+    }
     names += sorted(n for n in row_names if all(row.get(n) is None or row[n].status != "published" for row in rows))
     return names
 

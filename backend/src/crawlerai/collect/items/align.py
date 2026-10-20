@@ -46,7 +46,13 @@ C4):
   (`collect.items.bind`).
 
 A group one of whose blocks stands for the page itself (`_current_page`: `aria-current="page"`, or links to this very
-URL only) is the site's navigation (a category or city hub listing the page among its documents) and gives no rows.
+URL only) is the site's navigation (a category or city hub listing the page among its documents) and gives no rows. So
+is a group that aligns no typed value and more than half of whose blocks lead to documents the site's chrome links to
+outside the group (`copies_navigation`; chrome as `in_chrome` of `acquire.items` reads it: the HTML Standard's `nav`,
+`header`, `footer`, `aside`, `search` and their WAI-ARIA landmarks, the `menubar` and `menu` roles): the site's
+navigation repeated in the content (a category carousel, a menu's tiles, a list of a sidebar's links), whose
+destinations are the site's sections, not the page's items. A typed value (a price, a date) is what an item shows and a
+section's link does not: a shop whose menu links its few products still lists them with their prices.
 
 Shown means rendered by the cleaned text's rules (`content.text.hidden`): a hidden subtree of a block is not read. The
 group whose blocks align the most fields is the listing's, the segment step's order breaking ties: profile cards align
@@ -75,7 +81,7 @@ from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate, is_item_url
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.segment import hyperlinks, shows_more, text_path
+from crawlerai.content.segment import chrome_links, hyperlinks, shows_more, text_path
 from crawlerai.content.text import completed, hidden, xpath_step
 from crawlerai.normalize.base import Ambiguous, Context, raw_key
 from crawlerai.normalize.dispatch import equality_key
@@ -145,7 +151,13 @@ def align(page: ParsedPage, schema: SchemaContent, ctx: Context) -> tuple[Items,
         return ()
     groups = page.item_groups[:_GROUPS_TRIED]
     sublists = _sublist_links(page.item_groups)
-    aligned = [a for group in groups if (a := _Aligned.of(page, group, schema, roles, ctx, sublists)) is not None]
+    chrome = chrome_links(page.lxml_tree, ctx.base_url)
+    aligned = [
+        a
+        for group in groups
+        if (a := _Aligned.of(page, group, schema, roles, ctx, sublists)) is not None
+        and not a.copies_navigation(roles, chrome)
+    ]
     order = sorted(range(len(aligned)), key=lambda i: (-len(aligned[i].fields), i))
     return tuple(aligned[i].items(schema, ctx, number) for number, i in enumerate(order))
 
@@ -153,14 +165,16 @@ def align(page: ParsedPage, schema: SchemaContent, ctx: Context) -> tuple[Items,
 def _sublist_links(groups: Sequence[Group]) -> frozenset[HtmlElement]:
     """The hyperlinks of items' own lists (their share buttons, their colour swatches), whose links lead to an item's
     related documents, not to the item (`_View.of`): groups that each lie inside one block of another group, where two
-    or more of that group's blocks hold one (the structure repeats per item; a grid inside one section of a page is
-    not an item's list) and each such block also links outside it (the item's own link; a section holding a list of
-    items is no item)."""
+    or more of that group's blocks hold one at one tag path (the structure repeats per item, DEPTA: one template
+    renders every item's list alike; a grid inside one section of a page is not an item's list, nor are the different
+    lists the page's sections hold) and each such block also links outside it (the item's own link; a section holding
+    a list of items is no item)."""
     owner_of = {block: number for number, group in enumerate(groups) for block in group}
-    nested: dict[int, list[tuple[HtmlElement, frozenset[HtmlElement]]]] = {}
+    nested: dict[tuple[int, str], list[tuple[HtmlElement, frozenset[HtmlElement]]]] = {}
     for number, group in enumerate(groups):
         if (found := _item_list(group, number, owner_of)) is not None:
-            nested.setdefault(owner_of[found[0]], []).append(found)
+            owner, _ = found
+            nested.setdefault((owner_of[owner], _tag_path(owner, group[0])), []).append(found)
     repeated = (lists for lists in nested.values() if len({owner for owner, _ in lists}) >= 2)
     return frozenset(anchor for lists in repeated for _, inner in lists for anchor in inner)
 
@@ -246,6 +260,16 @@ class _Aligned:
             if (kept := _field(views, role, schema.fields[name], ctx, needed)) is not None:
                 aligned.fields[name] = kept
         return aligned
+
+    def copies_navigation(self, roles: Mapping[str, Role], chrome: Sequence[tuple[HtmlElement, str]]) -> bool:
+        """Whether the group is a copy of the site's navigation (module docstring): it aligns no typed value, and more
+        than half of its blocks (all of them, those without an item URL counting against it) lead to documents a
+        hyperlink of the site's chrome outside the group leads to."""
+        if any(roles[name] == "typed" for name in self.fields):
+            return False
+        blocks = set(self.group)
+        led = {url for anchor, url in chrome if anchor not in blocks and blocks.isdisjoint(anchor.iterancestors())}
+        return 2 * sum(view.link in led for view in self.views) > len(self.group)
 
     def items(self, schema: SchemaContent, ctx: Context, number: int) -> Items:
         """The group's rows, its entities numbered `item_block:<number>:<block>`."""

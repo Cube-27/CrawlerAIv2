@@ -110,6 +110,16 @@ def content_links(root: HtmlElement, base: str | None, revealed: frozenset[str] 
     )
 
 
+def chrome_links(root: HtmlElement, base: str | None) -> list[tuple[HtmlElement, str]]:
+    """The hyperlinks of the site's chrome (`in_chrome` of `acquire.items`: navigation, header, footer, aside, search,
+    menus), each with the canonical URL it leads to, in document order."""
+    return [
+        (anchor, url)
+        for anchor in hyperlinks(root)
+        if in_chrome(anchor) and (url := canonical_url(anchor.get("href") or "", base)) is not None
+    ]
+
+
 def group_links(groups: Sequence[Group], base: str | None) -> list[frozenset[str]]:
     """The documents each group's blocks link to, by group."""
     return [frozenset(url for block in group for url in block_links(block, base)) for group in groups]
