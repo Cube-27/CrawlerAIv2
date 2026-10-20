@@ -9,6 +9,7 @@ admit their values against the candidates of the other kinds (D-0418); on a list
 page's captured calls (Appendix A #59), which resolution takes where structured data and the config give none; on a
 listing none of whose groups aligns and with no call rows, the rows of its state JSON are read too
 (`collect.items.state_rows`), resolution taking them, and their candidates, only where no other source gives rows.
+The page's detect-and-report signals (`content.signals`) join the diagnostics.
 """
 
 import logging
@@ -36,8 +37,10 @@ from crawlerai.collect.scope import other_items
 from crawlerai.collect.xhr import XhrCollector
 from crawlerai.content.metadata import canonical_link
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.signals import PREFIX as SIGNAL_PREFIX
+from crawlerai.content.signals import page_signals
 from crawlerai.normalize.base import Context
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import CaptureManifest
 
 log = logging.getLogger(__name__)
@@ -114,19 +117,21 @@ def collect_page(
     if schema.page_kind == "listing" and not items and not rows:
         read = partial(state_rows, page, state_documents(page, []), schema, ctx)
         state = _isolated(state_rows, read, diagnostics) or StateRows()
+    candidates = (
+        *others,
+        *(candidate for group in items[1:] for candidate in group.candidates),
+        *(candidate for result in admitted for candidate in result.candidates),
+    )
     return Collected(
         entities=(*entities, *(entity for result in admitted for entity in result.entities), *state.rows),
-        candidates=(
-            *others,
-            *(candidate for group in items[1:] for candidate in group.candidates),
-            *(candidate for result in admitted for candidate in result.candidates),
-        ),
+        candidates=candidates,
         diagnostics=(
             *(d for result in results for d in result.diagnostics),
             *(d for group in items for d in group.diagnostics),
             *(d for result in admitted for d in result.diagnostics),
             *state.diagnostics,
             *diagnostics,
+            *_signals(page, manifest, schema, (*candidates, *state.candidates)),
         ),
         rows=rows,
         items=items,
@@ -134,6 +139,19 @@ def collect_page(
         variant_params=_variant_params(page, manifest) if schema.page_kind == "detail" else (),
         outside=dom.outside,
     )
+
+
+def _signals(
+    page: ParsedPage, manifest: CaptureManifest, schema: SchemaDef, candidates: Sequence[Candidate]
+) -> tuple[str, ...]:
+    """The page's detect-and-report signals as diagnostics (`content.signals`): reported only, read by nothing here."""
+    money = {name for name, spec in schema.fields.items() if FieldType.MONEY in (spec.type, _item_type(spec))}
+    texts = (c.raw for c in candidates if c.field in money and isinstance(c.raw, str))
+    return tuple(f"{SIGNAL_PREFIX}{signal}" for signal in page_signals(page, manifest.resources, texts))
+
+
+def _item_type(spec: FieldSpec) -> FieldType | None:
+    return None if spec.item is None else spec.item.type
 
 
 @dataclass(frozen=True, slots=True)

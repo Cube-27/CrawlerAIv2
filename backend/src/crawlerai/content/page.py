@@ -58,6 +58,8 @@ class ParsedPage:
         framed = bool(network_entries) and not json_body and declares_frames(html)
         answers = _answers(network, network_entries) if framed else None
         self.html = html if json_body else prepassed(html, url, answers)
+        # The document as it arrived, before its pre-passes (`content.signals` reads its declarative shadow roots).
+        self.source_html = html
         # The rendered area of the page's item blocks, when a browser capture measured them (`CaptureManifest`).
         self.item_areas = item_areas
         # Whether the body is a JSON document, not HTML: an `api` capture's is (`body.json`, persistence-storage spec).
