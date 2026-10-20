@@ -53,6 +53,7 @@ export const STEP_KINDS: Readonly<Record<StepKind, string>> = {
 export const JSONPATH_SOURCES: Readonly<Record<JsonPathSource, string>> = {
   jsonld: "JSON-LD",
   js_state: "Script state",
+  attr: "JSON attribute",
   xhr: "XHR response",
   api: "API response",
 };

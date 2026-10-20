@@ -65,7 +65,7 @@ _ABSOLUTIZE: Final = AbsolutizeUrlOp.model_validate({"absolutize_url": {}})
 # The schemes whose values come from an adapter's or API recipe's mapping, which the config reuses.
 MAPPED: Final = frozenset({"adapter", "api"})
 # The schemes of values read from a JSON document or a meta element: one step reads a list as well as a value.
-STRUCTURED: Final = frozenset({"jsonld", "meta", "js_state", "xhr"})
+STRUCTURED: Final = frozenset({"jsonld", "meta", "js_state", "attr", "xhr"})
 # The schemes of values read from one element: structured markup, the DOM, a config's step, and role C's grounded
 # claims (a verbatim span of the cleaned text, INV-12, or a link's or image's element).
 ELEMENTS: Final = frozenset({"microdata", "dom", "config", "text"})
@@ -209,7 +209,7 @@ def _proposals(locator: Locator, sample: SamplePage, f: _Field) -> list[_Candida
             return list(_jsonld_candidates(sample.page, f.vocabulary, locator))
         case "meta":
             return list(_meta_candidates(locator.parts[0]))
-        case "js_state" | "xhr":
+        case "js_state" | "attr" | "xhr":
             return list(_jsonpath_candidates(locator))
         case "text":
             element = span_element(sample.page, int(locator.parts[0]), int(locator.parts[1]))
@@ -302,9 +302,10 @@ def _meta_candidates(name: str) -> Iterator[_Candidate]:
 
 
 def _jsonpath_candidates(locator: Locator) -> Iterator[_Candidate]:
-    """A `jsonpath` step over the page's documents of the locator's source (embedded state, captured calls): the path
-    with array indices stripped (`[*]`), then as written; then the same for the object holding the value."""
-    source: JsonSource = "js_state" if locator.scheme == "js_state" else "xhr"
+    """A `jsonpath` step over the page's documents of the locator's source (embedded state, JSON attributes, captured
+    calls): the path with array indices stripped (`[*]`), then as written; then the same for the object holding the
+    value."""
+    source: JsonSource = locator.scheme if locator.scheme in ("js_state", "attr") else "xhr"
     try:
         written = segments(locator.parts[-1])
     except ValueError:  # a member name the engine's JSONPath reader does not take

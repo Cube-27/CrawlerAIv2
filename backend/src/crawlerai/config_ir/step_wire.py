@@ -25,7 +25,7 @@ from crawlerai.schemas.types import FieldType
 _NONE: Final = ""
 SELECTORS: Final = ("xpath", "css", "jsonld", "jsonpath", "regex", "attr")
 # The sources role A may name; `api` belongs to API recipes (adapters spec), not to steps the model writes.
-_SOURCES: Final = ("jsonld", "js_state", "xhr")
+_SOURCES: Final = ("jsonld", "js_state", "attr", "xhr")
 _REGEX_REPLACE: Final = "regex_replace"
 _PARAMETERLESS: Final = ("trim", "absolutize_url")
 # schemas spec: `list` and `object` have no normalizer of their own, so no post op names them.
