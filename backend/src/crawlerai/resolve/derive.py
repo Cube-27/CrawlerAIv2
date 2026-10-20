@@ -67,11 +67,18 @@ def fill(
     A value from the field's own candidate comes first; the page URL only when the field is the page's
     (`is_page_url_field`): the canonical link, then the final URL.
     """
+    own = _own_url(spec, canonical_url, ctx) if page_url_field else None
     if page_url_field:
-        preference = _held_to_page(spec, preference, candidates, resolver, _own_url(spec, canonical_url, ctx))
+        preference = _held_to_page(spec, preference, candidates, resolver, own)
     if not (isinstance(preference, Unpublished) and preference.status == "missing"):
         return preference
     derived = absolutize(spec, candidates, resolver, ctx)
+    if derived is not None and derived.source is not None and own is not None and _another_document(derived.value, own):
+        # A relative reference resolves only here, so it is held to the page once resolved.
+        source = derived.source
+        kept = tuple(r for r in preference.rejected if r[0] is not source)
+        preference = replace(preference, rejected=(*kept, (source, OTHER_DOCUMENT)))
+        derived = None
     if derived is None and page_url_field:
         derived = canonical_link(spec, canonical_url, ctx) or final_url(spec, ctx)
     return preference if derived is None else replace(derived, rejected=preference.rejected)
@@ -81,8 +88,8 @@ def _own_url(spec: FieldSpec, canonical_url: str | None, ctx: Context) -> str | 
     """The page's own URL when its canonical link (RFC 6596) and its final URL (RFC 9110 §15.4) name one, else None:
     a canonical link to another page (a parent, the home page) says nothing about which document this one is."""
     found = [normalize(url, spec, ctx) for url in (canonical_url, ctx.page_url) if url is not None]
-    values = {r.value for r in found if isinstance(r, Ok) and isinstance(r.value, str)}
-    return values.pop() if len(found) == 2 and len(values) == 1 else None
+    values = [r.value for r in found if isinstance(r, Ok) and isinstance(r.value, str)]
+    return values[0] if len(values) == 2 and values[0] == values[1] else None
 
 
 def _held_to_page(
@@ -91,7 +98,7 @@ def _held_to_page(
     """`preference` with the kept candidates naming another document than the page's own URL `own` rejected
     `OTHER_DOCUMENT`, preference deciding among the rest: a structured `url` built from another id than the page's
     (a SKU) names another document, while the page states its own by both its canonical link and its final URL."""
-    others = [c for c in preference.kept if own is not None and _another_document(c, own)]
+    others = [c for c in preference.kept if own is not None and _another_document(_value(c), own)]
     if not others:
         return preference
     rest = [c for c in candidates if not any(c is other for other in others)]
@@ -99,15 +106,18 @@ def _held_to_page(
     return replace(held, rejected=(*held.rejected, *((c, OTHER_DOCUMENT) for c in others)))
 
 
-def _another_document(candidate: Candidate, own: str) -> bool:
-    """Whether the candidate's URL names another document than `own`: another host, port or path (RFC 3986 §3.2, §3.3),
+def _value(candidate: Candidate) -> object:
+    return candidate.normalized.value if isinstance(candidate.normalized, Ok) else None
+
+
+def _another_document(value: object, own: str) -> bool:
+    """Whether the URL `value` names another document than `own`: another host, port or path (RFC 3986 §3.2, §3.3),
     a trailing slash aside (§6.2.4). A query or a fragment the page's URL does not carry may select a view or a part
     of the same document (a variant, an anchor), so it alone names no other one."""
-    value = candidate.normalized.value if isinstance(candidate.normalized, Ok) else None
     if not isinstance(value, str):
         return False
     a, b = urlsplit(value), urlsplit(own)
-    return (a.hostname, a.port, a.path.rstrip("/")) != (b.hostname, b.port, b.path.rstrip("/"))
+    return (a.hostname, a.port, a.path.removesuffix("/")) != (b.hostname, b.port, b.path.removesuffix("/"))
 
 
 def absolutize(spec: FieldSpec, candidates: Sequence[Candidate], resolver: Resolver, ctx: Context) -> Derived | None:

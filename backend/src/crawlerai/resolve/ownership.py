@@ -25,6 +25,8 @@ OFFER = "Offer"
 # §4.3), so it is never a variant holder.
 AGGREGATE_OFFER = "AggregateOffer"
 _URL = FieldSpec(type=FieldType.URL)
+# schema.org `offers`: "An offer to provide this item".
+_OFFERS = "offers"
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,12 +93,15 @@ class EntityGraph:
         return holder.id == target.id or (holder.via == VARIANT and holder.parent == target.id)
 
     def offered(self, entity: Entity) -> Entity:
-        """The item an Offer offers: the nearest ancestor of `entity` that is no Offer, through the Offers between
-        (schema.org `offers`: an AggregateOffer's `offers` are Offers of the same item); `entity` itself when it is no
-        Offer or no item holds it."""
+        """The item an Offer offers: its parent, through the Offers between that hold it as their `offers` (schema.org:
+        an AggregateOffer's `offers` are Offers of the same item); `entity` itself when it is no Offer, no item holds
+        it, or an Offer holds it otherwise."""
         holder = entity
         while self.is_a(holder, OFFER) and holder.parent is not None:
-            holder = self.entities[holder.parent]
+            parent = self.entities[holder.parent]
+            if self.is_a(parent, OFFER) and holder.via != _OFFERS:
+                return entity
+            holder = parent
         return entity if self.is_a(holder, OFFER) else holder
 
     def _names_target(self, row: Entity, target: Entity) -> bool:
