@@ -28,23 +28,26 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.core.json_text import parse
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
+from crawlerai.storage.capture_bundle import network_json
 
 # ISO 4217 minor units run from 0 (JPY) to 4 (CLF); a stated unit outside them is no currency's.
 _MAX_PLACES: Final = 4
 
 
 class AdapterCollector:
-    """The collector of a capture `adapter` fetched, for a page the adapter detected as `match`."""
+    """The collector of a capture `adapter` fetched, for a page the adapter detected as `match`: the capture's body, or
+    the network body at `call`, the answer a page-scoped adapter joined to the page it serves (`ADAPTER_CALL`)."""
 
-    def __init__(self, adapter: Adapter, match: AdapterMatch, vocabulary: Vocabulary) -> None:
+    def __init__(self, adapter: Adapter, match: AdapterMatch, vocabulary: Vocabulary, call: int | None = None) -> None:
         self._adapter = adapter
         self._match = match
         self._vocabulary = vocabulary
+        self._call = call
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult:
         name = self._adapter.name
         try:
-            document = parse(page.html)
+            document = parse(page.html) if self._call is None else network_json(page.network[self._call])
         except ValueError as e:
             return CollectResult(entities=(), candidates=(), diagnostics=(f"adapter:{name}: not JSON ({e})",))
         shapes = self._adapter.shapes(self._match, document)

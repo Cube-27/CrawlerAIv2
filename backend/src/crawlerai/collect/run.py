@@ -1,14 +1,15 @@
 """Every collector over one page (extraction spec rule 1): their entities, candidates
 and diagnostics as one result.
 
-The standard collectors run first, each on its own: one that raises gives no candidates and a diagnostic, and the
-others still run. An `api` capture of an active adapter adds that adapter's collector (D-0445); a platform's documented
-product JSON that a detail page's HTTP fetch joined after its identity check is read as that platform documents it
-(`collect.platform_json`). Then js_state and xhr
-admit their values against the candidates of the other kinds (D-0418); on a listing, xhr also reads the rows of the
-page's captured calls (Appendix A #59), which resolution takes where structured data and the config give none; on a
-listing none of whose groups aligns and with no call rows, the rows of its state JSON are read too
-(`collect.items.state_rows`), resolution taking them, and their candidates, only where no other source gives rows.
+The adapter collectors, then the standard collectors, run first, each on its own: one that raises gives no candidates
+and a diagnostic, and the others still run. An `api` capture of an active adapter adds that adapter's collector
+(D-0445), as does the answer a page-scoped adapter joined to the page it serves (`ADAPTER_CALL`), read with that
+adapter's shapes; a platform's documented product JSON that a detail page's HTTP fetch joined after its identity check
+is read as that platform documents it (`collect.platform_json`). Then js_state and xhr admit their values against the
+candidates of the other kinds (D-0418); on a listing, xhr also reads the rows of the page's captured calls (Appendix A
+#59), which resolution takes where structured data and the config give none; on a listing none of whose groups aligns
+and with no call rows, the rows of its state JSON are read too (`collect.items.state_rows`), resolution taking them, and
+their candidates, only where no other source gives rows.
 The page's detect-and-report signals (`content.signals`) join the diagnostics.
 """
 
@@ -17,6 +18,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 
+from crawlerai.adapters.base import ADAPTER_CALL
 from crawlerai.adapters.platforms import signature_of
 from crawlerai.adapters.registry import Registry
 from crawlerai.collect.adapter import AdapterCollector
@@ -86,9 +88,7 @@ def collect_page(
         PlatformJsonCollector(vocabulary),
     ]
     diagnostics: list[str] = []
-    adapter = _adapter_collector(manifest, adapters, vocabulary, diagnostics)
-    if adapter is not None:
-        collectors.insert(0, adapter)
+    collectors[:0] = _adapter_collectors(page, manifest, adapters, vocabulary, diagnostics)
     results = [
         r for c in collectors if (r := _isolated(c, partial(c.collect, page, schema, ctx), diagnostics)) is not None
     ]
@@ -203,19 +203,29 @@ def _page_urls(page: ParsedPage, manifest: CaptureManifest) -> tuple[str, ...]:
     return (manifest.url, manifest.final_url, *(() if canonical is None else (canonical,)))
 
 
-def _adapter_collector(
-    manifest: CaptureManifest, adapters: Adapters | None, vocabulary: Vocabulary, diagnostics: list[str]
-) -> AdapterCollector | None:
+def _adapter_collectors(
+    page: ParsedPage,
+    manifest: CaptureManifest,
+    adapters: Adapters | None,
+    vocabulary: Vocabulary,
+    diagnostics: list[str],
+) -> list[AdapterCollector]:
     """D-0445, INV-39: an `api` capture holds the JSON of the adapter that detects its page URL, the bundle's `url`, and
-    fetches from its final URL."""
-    if manifest.method != "api":
-        return None
-    found = None if adapters is None else adapters.reader(manifest.url, manifest.final_url)
-    if found is None:
-        diagnostics.append("adapter: no active adapter reads this api capture")
-        return None
-    adapter, match = found
-    return AdapterCollector(adapter, match, vocabulary)
+    fetches from its final URL; a network body marked `ADAPTER_CALL` holds the JSON of the page-scoped adapter that
+    detects the page's final URL (the one it served) and fetches from the body's URL."""
+    if manifest.method == "api":
+        calls: list[tuple[int | None, str, str]] = [(None, manifest.url, manifest.final_url)]
+    else:
+        joined = enumerate(page.network_entries[: len(page.network)])
+        calls = [(i, manifest.final_url, entry.url) for i, entry in joined if entry.data_call == ADAPTER_CALL]
+    collectors: list[AdapterCollector] = []
+    for call, url, endpoint in calls:
+        found = None if adapters is None else adapters.reader(url, endpoint)
+        if found is None:
+            diagnostics.append("adapter: no active adapter reads this answer")
+            continue
+        collectors.append(AdapterCollector(*found, vocabulary, call))
+    return collectors
 
 
 def _isolated[R](collector: object, run: Callable[[], R], diagnostics: list[str]) -> R | None:

@@ -52,9 +52,16 @@ sections show is one block (D-1776). Stated rows and those blocks bind one to on
 slash and added query parameters aside) or by a name the block shows (`collect/items/bind.py`). With no stated rows or
 only stubs, the blocks are the rows; otherwise stated rows stay and the group's blocks no stated row names extend them.
 A config's rows bind no blocks. A bound entity's values join its row where the row has none for the field or equals
-them; a block's link replaces a respelled stated item URL. State and call array rows bind by URL, and a JSON key whose
+them; a block's link replaces a respelled stated item URL. A row only a platform adapter's answer states (its money
+field's candidates all `adapter`) takes a block bound by URL's one visible amount of that field as a rival, which the
+resolution spec's visible-price rule weighs (#334: it publishes, flagged `disagree`); a block showing several amounts
+joins only an option equal to the row's (C1, a theme showing a tax-inclusive amount the catalogue price excludes). State and call array rows bind by URL, and a JSON key whose
 values equal a block field on `MIN_ITEMS` bound rows is that field's key for every bound row (`collect/induce.py`).
-(Previously: the blocks of one group only.) Refs: owner #67, Appendix A #59, D-1776.
+(Previously: the blocks of one group only; a bound block's amount that disagreed with an adapter row's was dropped.)
+Refs: owner #67, Appendix A #59, D-1776.
+#### Scenario: Visible card price of an adapter row
+- **WHEN** an adapter's answer states a row's price 19.50 EUR and the row's card, bound by URL, shows €23.40
+- **THEN** the row's price publishes 23.40 EUR, flagged `disagree`
 #### Scenario: Two sections of one shape
 - **WHEN** a listing shows items 1–3 in one section and items 3–6 in another of the same cards
 - **THEN** the listing has six rows
