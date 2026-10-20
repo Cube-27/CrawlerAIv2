@@ -41,7 +41,8 @@ several, else, at group level, the one document no other block links to at the t
 link to such a document, a path whose link holds an image before the first other one: documents two or more blocks
 link to, a vendor's, an author's or a category's page, are the template's), the name (the item link's
 one-line content, the block's heading, or the name the item's attributes state, `aria-labelledby`/`aria-label`/`title`
-or an image's `alt`, kept where the block shows it over one or several whole lines in order, WCAG label in name, a line
+or an image's `alt`, kept where the block shows it over one or several whole lines in order, WCAG label in name (leading words the
+block shows as lines of their own apart from the rest, a designer line above a size line, are no part of it), a line
 cut by an ellipsis standing for the rest, its unshown leading or trailing words dropped when every block states the
 same, and none where its shown run holds a price or other typed value the block shows (the whole card's text); a name
 read from the item link's content runs on over the block's next whole lines while an image's `alt`, hidden ones
@@ -60,7 +61,8 @@ list alike); the different lists a page's sections hold are no item's. (Previous
 an author or vendor page gave no item URL unless a heading or most of its text held the item's link; a category or city
 hub listing the page was rows; a section-level group whose sections held different lists made each list an item's own,
 its links no item's; a stated name holding the heading, the price and the colours was the name; a link's line was the
-whole name where the card stated it over that line and the next.) Refs: owner #67.
+whole name where the card stated it over that line and the next; a stated name whose leading words stood as a line
+apart from the rest named nothing.) Refs: owner #67.
 #### Scenario: Cards with title, link and price
 - **WHEN** a listing shows cards of varying tags and class tokens, each with a heading link and one price
 - **THEN** each card is a row with its title, URL and price
@@ -76,6 +78,9 @@ whole name where the card stated it over that line and the next.) Refs: owner #6
 - **WHEN** a card's link shows `Clog 1`, the next lines show `Suede Leather` and `Taupe`, and a hidden image's `alt` is
   `Clog 1 Suede Leather - main view`
 - **THEN** its name is `Clog 1 Suede Leather`
+#### Scenario: A designer line above a size line
+- **WHEN** a card shows `Alder`, `xs` and `Wool Coat 1` on three lines and its image's `alt` is `Alder Wool Coat 1`
+- **THEN** its name is `Wool Coat 1`
 #### Scenario: Helper text in the name link
 - **WHEN** every card's name link holds `<span>View product</span>` before the item's name
 - **THEN** the names leave `View product` out

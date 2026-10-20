@@ -33,7 +33,8 @@ class Stated:
     """A name the item's attributes state and the run of its words the block shows: WCAG 2.1 SC 2.5.3 (Label in Name)
     has the accessible name hold the visible label, here one or several whole lines of the block in order, folded
     (`site_names.fold`: case and punctuation aside), the last of them possibly cut short by an ellipsis (U+2026, or
-    the three full stops it decomposes to under NFKC: a truncated display of the name). `lead` and `trail` are the
+    the three full stops it decomposes to under NFKC: a truncated display of the name); leading words the block shows
+    as lines of their own apart from the run are left out of `text` (`_lines_before`). `lead` and `trail` are the
     folded words before and after the shown run (none shown: the whole name is neither); `xpath` is the shown run's
     innermost element, else the stating element's; `shown_at` is the shown run's span of the cleaned text."""
 
@@ -64,6 +65,11 @@ class Stated:
         if not covered:
             return cls(text, xpath)
         start, end = keys[i][1], keys[i + covered - 1][2]
+        # Leading words the block shows as whole lines of their own apart from the run (a designer line, a size line,
+        # then the product line) are another statement the name joins (Accessible Name Computation 1.2: an `alt` may
+        # join several), not part of the run's label: the name is the run on.
+        if i and _lines_before(folded[:i], words, j):
+            text, start, end = text[start:], 0, end - start
         shown_at = (words[j].start, words[j + covered - 1].end)
         return cls(
             text,
@@ -96,6 +102,15 @@ def _run(keys: Sequence[str], i: int, words: Sequence[Word], j: int) -> int:
         if prefix:
             break
     return whole
+
+
+def _lines_before(keys: Sequence[str], words: Sequence[Word], j: int) -> bool:
+    """Whether whole lines of the block before its word `j`, not running on into it, show all of `keys` in order and
+    nothing else; a line an ellipsis cut short goes on, so it is no such line."""
+    return any(
+        words[k].first and _run(keys, 0, words, k) == len(keys) and not words[k + len(keys) - 1].cut
+        for k in range(j - len(keys) - 1, -1, -1)
+    )
 
 
 def words(text: str, start: int, end: int) -> list[Word]:

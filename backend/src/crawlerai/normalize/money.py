@@ -179,10 +179,14 @@ def _currency_of(text: str, before: str, after: str, ctx: Context, stated: str |
 
 
 def _measure(sign: str, ctx: Context) -> bool:
-    """Whether a sign written as an ISO 4217 code is a CLDR unit's name in the page's locales instead (`units`:
-    `3.5 CUP` is a volume, not Cuban pesos): a code that is also a unit counts as a currency only where the page names
-    that currency (`_page_currencies`), so a quantity in a product's name is never read as an amount of money."""
-    return sign in _currencies() and units.is_unit(sign, ctx) and sign not in _page_currencies(ctx)
+    """Whether a sign written as an ISO 4217 code or a CLDR currency symbol is a CLDR unit's name or symbol in the
+    page's locales instead (`units`: `3.5 CUP` is a volume, not Cuban pesos; `1,7 L` a volume, not lempiras or lei): a
+    sign that is also a unit counts as a currency only where the page names a currency it denotes
+    (`_page_currencies`), so a quantity in a product's name is never read as an amount of money. A one-letter sign is
+    a unit in either case here: CLDR writes the litre `l` in the root locale and `L` in others, and a page writes either
+    whatever its locale."""
+    unit = any(units.is_unit(form, ctx) for form in {sign, sign.lower(), sign.upper()})
+    return unit and not _currencies_for(sign) & _page_currencies(ctx)
 
 
 def _page_currencies(ctx: Context) -> frozenset[str]:
