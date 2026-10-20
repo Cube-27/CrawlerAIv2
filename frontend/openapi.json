@@ -3257,6 +3257,29 @@
             },
             "title": "Reasons",
             "type": "object"
+          },
+          "signals": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "websocket",
+                "eventsource",
+                "wasm",
+                "grpc_web",
+                "flutter",
+                "blazor_wasm",
+                "live_view",
+                "obfuscated_text",
+                "closed_shadow_root",
+                "turbo_stream",
+                "gatsby_page_data",
+                "amp_alternate"
+              ]
+            },
+            "title": "Signals",
+            "type": "object"
           }
         },
         "required": [
@@ -3265,7 +3288,8 @@
           "fields",
           "reasons",
           "missing_unrendered",
-          "hint"
+          "hint",
+          "signals"
         ],
         "title": "JobOutcomes",
         "type": "object"

@@ -21,7 +21,7 @@ import asyncio
 import contextlib
 import re
 import time
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
@@ -51,6 +51,8 @@ from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, poo
 from crawlerai.storage.artifacts import PDF, SCREENSHOT
 from crawlerai.storage.capture_bundle import (
     FLIGHT_TYPE,
+    GRPC_WEB_TYPE,
+    WASM_TYPE,
     HeaderList,
     NetworkBody,
     decode_html,
@@ -120,6 +122,7 @@ _STEP_QUIET_S: Final = 0.5
 # a JSON MIME type, RFC 9110 §12.5.1). Calls to other sites that ask for no JSON (analytics beacons, ad and tag-manager
 # pings) are always in flight on some pages and carry nothing the page shows.
 _CALLS = frozenset({"fetch", "xhr"})
+_WEBSOCKET = "websocket"
 # Idle site contexts a browser keeps for reuse (`_Contexts`): as many as it renders at once (`BROWSER_CONTEXTS`).
 _KEPT_CONTEXTS = 2
 # RFC 9110 §15.4: a 3xx document answer is a redirect hop (or a validator's 304), never the document the frame shows.
@@ -487,6 +490,28 @@ class DataCalls:
 
 
 @dataclass
+class Resources:
+    """The resources a page has loaded, counted (`CaptureManifest.resources`): per Fetch resource type, and per media
+    type the signals read (`content.signals`). A WebSocket is counted from the page's `websocket` event, its own."""
+
+    counts: Counter[str] = field(default_factory=Counter)
+
+    def on_request(self, request: Request) -> None:
+        if request.resource_type != _WEBSOCKET:
+            self.counts[request.resource_type] += 1
+
+    def on_websocket(self) -> None:
+        self.counts[_WEBSOCKET] += 1
+
+    def on_response(self, response: Response) -> None:
+        media_type = (response.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+        if media_type == WASM_TYPE:
+            self.counts[WASM_TYPE] += 1
+        elif media_type.startswith(GRPC_WEB_TYPE):
+            self.counts[GRPC_WEB_TYPE] += 1
+
+
+@dataclass
 class Rendered:
     """A page whose navigation has settled: the tab, its main frame's navigations, the first document's response, the
     policy it was fetched with, and the data responses it has loaded so far."""
@@ -496,6 +521,7 @@ class Rendered:
     response: Response
     policy: FetchPolicy
     calls: DataCalls = field(default_factory=DataCalls)
+    resources: Resources = field(default_factory=Resources)
 
 
 @asynccontextmanager
@@ -681,7 +707,10 @@ async def _navigate(
     page: Page, url: str, first: Target, policy: FetchPolicy, guard: SocksGuard, started: float
 ) -> Rendered:
     frame = _MainFrame(page, first.url)
-    calls = DataCalls()
+    calls, resources = DataCalls(), Resources()
+    page.on("request", resources.on_request)
+    page.on("response", resources.on_response)
+    page.on("websocket", lambda _: resources.on_websocket())
     page.on("request", frame.on_request)
     page.on("response", frame.on_response)
     page.on("requestfailed", frame.on_failed)
@@ -710,7 +739,7 @@ async def _navigate(
         started + _SETTLE_SHARE * policy.browser_timeout_s,
         interstitial_deadline=started + min(_INTERSTITIAL_SHARE * policy.browser_timeout_s, _INTERSTITIAL_MAX_S),
     )
-    return Rendered(page, frame, response, policy, calls)
+    return Rendered(page, frame, response, policy, calls, resources)
 
 
 async def read_state(
@@ -745,7 +774,8 @@ async def read_state(
     if max(len(body), len(raw_body or b"")) > policy.max_decompressed_bytes:
         raise Failed("body_cap", exchange)
     areas = await item_areas(rendered.page, body) if policy.page_kind == "listing" else None
-    return exchange, Content(body=body, raw_body=raw_body, network=network, item_areas=areas)
+    resources = dict(sorted(rendered.resources.counts.items()))
+    return exchange, Content(body=body, raw_body=raw_body, network=network, item_areas=areas, resources=resources)
 
 
 async def item_areas(page: Page, body: bytes) -> dict[str, float] | None:

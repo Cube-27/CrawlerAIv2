@@ -50,6 +50,7 @@ class Content:
     item_areas: dict[str, float] | None = (
         None  # browser listings only: rendered area of item blocks (`CaptureManifest`)
     )
+    resources: dict[str, int] | None = None  # browser only: the page's resources counted (`CaptureManifest`)
 
 
 def fetch_result(
@@ -96,6 +97,7 @@ def fetch_result(
         fetch_policy=policy.model_dump(mode="json"),
         engine_version=engine_version,
         item_areas=content.item_areas,
+        resources=content.resources,
     )
     status = exchange.status or None
     attempt = AttemptRecord(

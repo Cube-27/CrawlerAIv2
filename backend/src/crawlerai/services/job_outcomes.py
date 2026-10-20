@@ -1,8 +1,9 @@
 """A job's outcomes (jobs spec, "Job outcome summary"): how many of its pages ended with each outcome, and how many
 of the fields of its records have each status, with the reasons the unpublished ones give, and per field how many pages
 fetched over HTTP alone left it `missing/no_candidates`, with the next step when the job did not ask for rendering
-(`render.mode: locate`). All are counted from what the job stored (`url_task.outcome`, `record.field_meta`,
-`capture`): no table of its own. `GET /v1/jobs/{id}/outcomes` and
+(`render.mode: locate`), and per detect-and-report signal how many of its pages raised it (`content.signals`; names
+only, no URLs). All are counted from what the job stored (`url_task.outcome`, `record.field_meta`, `capture`,
+`extraction.diagnostics`): no table of its own. `GET /v1/jobs/{id}/outcomes` and
 `crawlerai jobs summary` answer with it; `crawlerai jobs reextract` counts the same fields of the records the current
 engine makes again from the job's stored captures (`services.reextract`).
 """
@@ -16,7 +17,9 @@ from sqlalchemy import Text, column, false, func, select, true
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Capture, Job, JobId, Record, TaskRecord, UrlTask
+from crawlerai.content.signals import PREFIX as SIGNAL_PREFIX
+from crawlerai.content.signals import SIGNALS, Signal
+from crawlerai.db.models import Capture, Extraction, Job, JobId, Record, TaskRecord, UrlTask
 from crawlerai.resolve.page_state import NO_CANDIDATES
 from crawlerai.resolve.types import FieldStatus
 from crawlerai.services.jobs import OutcomeCounts, get_job
@@ -79,6 +82,8 @@ class JobOutcomes(BaseModel):
     missing_unrendered: dict[str, int]
     # The next step for those fields when the job's `render.mode` is `off`; None without any or when it asked for one.
     hint: str | None
+    # Per detect-and-report signal, the job's pages an extraction found it on; a signal no page raised is left out.
+    signals: dict[Signal, int]
 
 
 async def job_outcomes(conn: AsyncConnection, job_id: JobId) -> JobOutcomes:
@@ -95,7 +100,23 @@ async def job_outcomes(conn: AsyncConnection, job_id: JobId) -> JobOutcomes:
         reasons=tally.reasons,
         missing_unrendered=missing,
         hint=LOCATE_HINT if missing and mode == "off" else None,
+        signals=await _signals(conn, job_id),
     )
+
+
+async def _signals(conn: AsyncConnection, job_id: JobId) -> dict[Signal, int]:
+    """Per signal, the job's tasks with an extraction whose diagnostics name it (`content.signals.PREFIX`)."""
+    note = func.jsonb_array_elements_text(Extraction.diagnostics).table_valued(column("value", Text)).lateral()
+    rows = await conn.execute(
+        select(note.c.value, func.count(UrlTask.id.distinct()))
+        .select_from(UrlTask)
+        .join(Extraction, Extraction.url_task_id == UrlTask.id)
+        .join(note, true())
+        .where(UrlTask.job_id == job_id, note.c.value.startswith(SIGNAL_PREFIX, autoescape=True))
+        .group_by(note.c.value)
+    )
+    counts = {cast(str, note_).removeprefix(SIGNAL_PREFIX): cast(int, n) for note_, n in rows.all()}
+    return {signal: counts[signal] for signal in SIGNALS if signal in counts}
 
 
 async def _missing_unrendered(conn: AsyncConnection, job_id: JobId) -> dict[str, int]:

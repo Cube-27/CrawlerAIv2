@@ -89,12 +89,17 @@ item is not for sale and gives no price is `partial` with `price` `missing`, rea
 and the fields of the records its tasks stand for counted per status (`published`, `missing`, `conflict`, `abstained`,
 `interaction_required`) with the reasons of the unpublished ones, and per field the records of pages fetched over HTTP
 with no browser attempt that left it `missing` with reason `no_candidates` (`missing_unrendered`), with the hint
-`render.mode: locate` when there are any and the job's `render.mode` is `off` (never an XHR, selector or blob name), all
-from stored results (`url_task.outcome`, `record.field_meta`, `capture`), with no table of its own. `crawlerai jobs
-reextract <id>` SHALL extract the job's stored captures again with the current engine and each site's active config,
+`render.mode: locate` when there are any and the job's `render.mode` is `off` (never an XHR, selector or blob name), and
+per detect-and-report signal (`signals`: `websocket`, `eventsource`, `wasm`, `grpc_web`, `flutter`, `blazor_wasm`,
+`live_view`, `obfuscated_text`, `closed_shadow_root`, `turbo_stream`, `gatsby_page_data`, `amp_alternate`) the pages an
+extraction raised it on (its `signal:<name>` diagnostic; a browser capture records its resources counted by type, never
+a URL), names and counts only, a signal no page raised left out; a signal changes no fetch and no extraction. All are
+from stored results (`url_task.outcome`, `record.field_meta`, `capture`, `extraction.diagnostics`), with no table of
+its own. `crawlerai jobs reextract <id>` SHALL extract the job's stored captures again with the current engine and each site's active config,
 reading only the object store and the database (no network, no LLM, nothing stored; `services.captures.replay`, whose
 `extract_page` the worker and the evaluation harness run), and print those field counts beside the stored ones.
-(Previously: no per-field counts or hint.) Refs: owner plan 2026-10-19 P9; architecture v3 a.5.
+(Previously: no per-field counts or hint; no signal counts.) Refs: owner plan 2026-10-19 P9; architecture v3 a.5, (b)
+"report" rows, PR 8.
 #### Scenario: Summary of a job
 - **WHEN** a job's pages ended `extracted`, `soft_404` and `timeout`, and its records hold fields in three statuses
 - **THEN** the answer counts one page of each outcome and every field under its status, with the reasons of the unpublished
@@ -102,6 +107,10 @@ reading only the object store and the database (no network, no LLM, nothing stor
 - **WHEN** a job with `render.mode` `off` stores two records of HTTP pages and one of a rendered page, each leaving
   `colour` `missing/no_candidates`
 - **THEN** `missing_unrendered` is `{"colour": 2}` and the hint is `render.mode: locate`
+#### Scenario: Signal counts
+- **WHEN** two of a job's pages opened a WebSocket and one of them also links an AMP alternate
+- **THEN** `signals` is `{"websocket": 2, "amp_alternate": 1}`, with no URL, and both pages were fetched and extracted as
+  any other
 
 ### Requirement: Job endpoints
 `GET /v1/jobs` SHALL page all jobs newest first; `/v1/jobs/{id}` returns the summary, `/outcomes` the job's outcomes, `/request` the validated request,

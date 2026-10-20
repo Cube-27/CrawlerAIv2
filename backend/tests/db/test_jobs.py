@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.api.app import create_app
@@ -293,6 +293,12 @@ async def test_the_outcomes_count_pages_by_outcome_and_fields_by_status_and_reas
     await world.record(
         job_id, {}, {"title": meta("conflict"), "colour": {**meta("interaction_required"), "reason": "x"}}
     )
+    tasks = select(UrlTask.id).where(UrlTask.job_id == job_id).scalar_subquery()
+    async with world.engine.begin() as conn:
+        signals = ["signal:websocket", "js_state:/x: invalid JSON", "signal:amp_alternate"]
+        await conn.execute(update(Extraction).where(Extraction.url_task_id.in_(tasks)).values(diagnostics=signals))
+        first = select(Extraction.id).where(Extraction.url_task_id.in_(tasks)).limit(1).scalar_subquery()
+        await conn.execute(update(Extraction).where(Extraction.id == first).values(diagnostics=["signal:wasm"]))
 
     async with world.engine.connect() as conn:
         outcomes = await job_outcomes(conn, job_id)
@@ -309,6 +315,7 @@ async def test_the_outcomes_count_pages_by_outcome_and_fields_by_status_and_reas
     }
     assert outcomes.reasons == {"no candidate": 2, "out_of_stock": 1, "x": 1}
     assert (outcomes.missing_unrendered, outcomes.hint) == ({}, None)
+    assert outcomes.signals == {"wasm": 1, "websocket": 2, "amp_alternate": 2}
 
 
 @pytest.mark.parametrize(("mode", "hint"), [("off", "render.mode: locate"), ("locate", None)])

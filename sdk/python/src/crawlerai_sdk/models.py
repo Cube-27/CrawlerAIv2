@@ -1559,6 +1559,7 @@ class JobOutcomes(BaseModel):
     missing_unrendered: Annotated[dict[str, int], Field(title="Missing Unrendered")]
     pages: OutcomeCounts
     reasons: Annotated[dict[str, int], Field(title="Reasons")]
+    signals: Annotated[dict[str, int], Field(title="Signals")]
 
 
 class JobSummary(BaseModel):
