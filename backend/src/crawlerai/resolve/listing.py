@@ -53,7 +53,8 @@ def listing_rows(
     if isinstance(target, AmbiguousTarget):
         rows += _unlisted(primaries, rows)
     if not rows:
-        rows = [entity for entity in graph.entities.values() if entity.id in holders and _entry(graph, entity)]
+        entries = [entity for entity in graph.entities.values() if entity.id in holders and _entry(graph, entity)]
+        rows = _main_list(graph, entries)
     return tuple(rows)
 
 
@@ -64,14 +65,15 @@ def row_lists(graph: EntityGraph, rows: Sequence[Entity]) -> dict[str, str]:
 
 
 def _main_list(graph: EntityGraph, rows: list[Entity]) -> list[Entity]:
-    """With rows in several lists, those of the one list that is the page's main entity (schema.org `mainEntity`:
-    "the primary entity described in some page", a CollectionPage's list of items; a related or recently viewed list
-    beside it is not the page's), else all of them (`collect.items.bind` keeps the lists the page's grid shows)."""
-    lists = row_lists(graph, rows)
-    main = {found for found in lists.values() if graph.entities[found].via == _MAIN_ENTITY}
-    if len(set(lists.values())) < 2 or len(main) != 1:
+    """With rows in lists, those of the one list that is the page's main entity (schema.org `mainEntity`: "the primary
+    entity described in some page", a CollectionPage's list of items; a related or recently viewed list beside it is
+    not the page's), none when it lists none of them; all of them when the page names no one main list
+    (`collect.items.bind` keeps the lists the page's grid shows)."""
+    main = {e.id for e in graph.entities.values() if graph.is_a(e, _LIST) and e.via == _MAIN_ENTITY}
+    if len(main) != 1:
         return rows
-    return [row for row in rows if lists.get(row.id) in main]
+    lists = row_lists(graph, rows)
+    return [row for row in rows if row.id not in lists or any(a.id in main for a in graph.ancestors(row))]
 
 
 def _unlisted(primaries: list[Entity], listed: list[Entity]) -> list[Entity]:

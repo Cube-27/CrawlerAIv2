@@ -116,10 +116,11 @@ def test_adjacent_elements_digits_are_two_numbers_and_own_text_beside_a_child_pr
 
 def test_a_card_linking_its_item_its_author_and_a_shared_vendor_takes_the_item_at_the_groups_link_place() -> None:
     # DEPTA alignment: a vendor page every card links to is the template's; the item's link is at the place where a
-    # quorum of the cards link to a document of their own, the first such place.
+    # quorum of the cards link to a document of their own, a link holding the card's image first.
     body = _repeat(
-        '<li class="c"><a href="/p/{i}"><img src="/i/{i}.jpg" alt=""></a><div><a href="/p/{i}">Book {i}</a></div>'
-        '<p>by <a href="/author/{i}">Author {i}</a> at <a href="/vendor">Vendor</a></p><span>1{i}.50 EUR</span></li>'
+        '<li class="c"><p>by <a href="/author/{i}">Author {i}</a> at <a href="/vendor">Vendor</a></p>'
+        '<a href="/p/{i}"><img src="/i/{i}.jpg" alt=""></a><div><a href="/p/{i}">Book {i}</a></div>'
+        "<span>1{i}.50 EUR</span></li>"
     )
 
     assert [row["url"] for row in _rows(body)] == [_url(f"/p/{i}") for i in range(4)]

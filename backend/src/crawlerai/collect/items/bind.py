@@ -165,10 +165,12 @@ def _grid_lists(listing: Listing, chosen: Items, row_urls: _RowUrls) -> tuple[Li
         return listing, []
     session = session_parameters([b.link for b in chosen.blocks], listing.page_urls)
     index = _Index([(b.entity.id, b.link) for b in chosen.blocks], session)
-    shown: Counter[str] = Counter(dict.fromkeys(lists, 0))
+    # Each block counts once per list: two rows naming one block bind neither (`_one_to_one`).
+    blocks: dict[str, set[str]] = {found: set() for found in lists}
     for row in listing.stated:
-        if (found := listing.lists.get(row.id)) is not None and index.find(row_urls.of(row)):
-            shown[found] += 1
+        if (found := listing.lists.get(row.id)) is not None:
+            blocks[found] |= index.find(row_urls.of(row))
+    shown = {found: len(named) for found, named in blocks.items()}
     most = max(shown.values())
     if not most:
         return listing, []

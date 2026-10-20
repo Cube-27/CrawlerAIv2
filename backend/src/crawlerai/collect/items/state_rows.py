@@ -71,7 +71,7 @@ def state_rows(page: ParsedPage, documents: Sequence[Document], schema: SchemaDe
         return StateRows()
     reader = _Reader(page, schema, ctx, url_fields[0])
     read = [found for number, document in enumerate(documents) for found in _sources(reader, number, document)]
-    read = _grid_sources(page, ctx, url_fields[0], read)
+    read = _once(_grid_sources(page, ctx, url_fields[0], read), url_fields[0])
     return StateRows(
         tuple(row for found in read for row in found.rows),
         tuple(c for found in read for c in found.candidates),
@@ -98,6 +98,29 @@ def _grid_sources(page: ParsedPage, ctx: Context, url_field: str, read: list[Sta
     return [found for found, count in zip(read, shown, strict=True) if count == most] if most else read
 
 
+def _once(read: list[StateRows], url_field: str) -> list[StateRows]:
+    """The arrays with each item read once, in order: a row whose item an earlier array's row names is not read again,
+    and an array left with fewer than `MIN_ITEMS` rows gives none (module docstring)."""
+    seen: set[str] = set()
+    kept: list[StateRows] = []
+    for found in read:
+        keys = _row_keys(found, url_field)
+        rows = [row for row in found.rows if keys.get(row.id) not in seen]
+        if len(rows) < MIN_ITEMS:
+            continue
+        seen.update(keys[row.id] for row in rows if row.id in keys)
+        ids = {row.id for row in rows}
+        candidates = tuple(c for c in found.candidates if c.entity_id in ids)
+        kept.append(StateRows(tuple(rows), candidates, found.diagnostics))
+    return kept
+
+
+def _row_keys(found: StateRows, url_field: str) -> dict[str, str]:
+    """Each row's item key (`_item_key`), by row entity."""
+    urls = ((c.entity_id, c.normalized) for c in found.candidates if c.field == url_field)
+    return {row: _item_key(url.value) for row, url in urls if isinstance(url, Ok) and isinstance(url.value, str)}
+
+
 def _sources(reader: "_Reader", number: int, document: Document) -> Iterator[StateRows]:
     """The rows of each array of `document` that is a row source, arrays inside a source left out."""
     sources: list[str] = []
@@ -113,7 +136,7 @@ def _sources(reader: "_Reader", number: int, document: Document) -> Iterator[Sta
 
 
 class _Reader:
-    """One page's state arrays read as rows, the item URLs already read kept across them."""
+    """One page's state arrays read as rows."""
 
     def __init__(self, page: ParsedPage, schema: SchemaDef, ctx: Context, url_field: str) -> None:
         self.page = page
@@ -123,7 +146,6 @@ class _Reader:
         self.names = {name for name, role in field_roles(schema).items() if role == "name"}
         self.row_fields = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}
         self.links = content_links(page.lxml_tree, ctx.base_url)
-        self.read_urls: set[str] = set()
         self._words = {name: _field_words(name, spec) for name, spec in self.row_fields.items()}
 
     def read(self, number: int, document: Document, objects: Sequence[tuple[str, JsonValue]]) -> StateRows | None:
@@ -144,7 +166,6 @@ class _Reader:
         fresh = self._fresh(made)
         if len(fresh) < MIN_ITEMS:
             return None
-        self.read_urls.update(url for url, _ in fresh)
         notes.append(f"item layer: {len(fresh)} rows from page state, fields: {sorted(keys)}")
         return StateRows(
             tuple(entity for _, (entity, _) in fresh),
@@ -204,14 +225,14 @@ class _Reader:
     def _fresh(
         self, made: Sequence[tuple[Entity, list[Candidate]]]
     ) -> list[tuple[str, tuple[Entity, list[Candidate]]]]:
-        """The rows whose item no row read before names, each once, with its item's key (`_item_key`)."""
+        """The rows each naming their item once in the array, with its item's key (`_item_key`)."""
         fresh: dict[str, tuple[Entity, list[Candidate]]] = {}
         for entity, values in made:
             url = next(
                 (c.normalized.value for c in values if c.field == self.url_field and isinstance(c.normalized, Ok)), None
             )
-            if isinstance(url, str) and (key := _item_key(url)) not in self.read_urls:
-                fresh.setdefault(key, (entity, values))
+            if isinstance(url, str):
+                fresh.setdefault(_item_key(url), (entity, values))
         return list(fresh.items())
 
 

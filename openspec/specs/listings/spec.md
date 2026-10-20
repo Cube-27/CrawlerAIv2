@@ -31,7 +31,7 @@ showing more than their link, SHALL give an `item_block` row per item URL (`coll
 a place shared by a quorum of the blocks whose value its normalizer accepts: the item URL (the one document the block's
 links lead to, not the page in another state, an image file or an item's own nested list; for a block linking to
 several, else, at group level, the one document no other block links to at the tag path where a quorum of the blocks
-link to such a document, the first such path: documents two or more blocks link to, a vendor's, an author's or a
+link to such a document, a path whose link holds an image before the first other one: documents two or more blocks link to, a vendor's, an author's or a
 category's page, are the template's), the name (the accessible
 name of the item link, WCAG label in name, or the block's heading; never a URL; text every block repeats is the
 template's), the image, and typed value spotting for money, dates and check-digit identifiers (text in `s`/`del`
@@ -65,8 +65,8 @@ of its row shape (or holding every required field it aligns and a field beyond t
 documents of the kind its blocks lead to (host, path depth, first segment), apart from blocks already read, fewer than
 half of whose blocks lead to items the chosen group lists (else it is a featured or recently viewed copy) and not
 starting after the chosen group's `rel=next` link (past the listing's end); an item two sections show is one block
-(D-1776). With stated rows in several structured lists, only the list that is the page's `mainEntity`
-(`resolve/listing.py`), else the list or lists with the most rows bound to the chosen group's blocks, give rows; with
+(D-1776). Where one structured list is the page's `mainEntity`, only its entries are stated rows
+(`resolve/listing.py`); else, with stated rows in several lists, the list or lists with the most rows bound to the chosen group's blocks, give rows; with
 none bound, all do. Stated rows and those blocks bind one to one by item URL (session parameters, a trailing
 slash and added query parameters aside) or by a name the block shows (`collect/items/bind.py`). With no stated rows or
 only stubs, the blocks are the rows; otherwise stated rows stay and the group's blocks no stated row names extend them.
@@ -127,7 +127,7 @@ rows whose own member names the field (its name or schema.org property) and whos
 page text (an image: normalizes), the item URL also at a path whose values the rendered hyperlinks of the page's content
 lead to (its main landmark, else its body, outside chrome); a row is kept only when its item URL is such a link or its
 name is shown, an array with fewer such rows gives none, and an item
-read once is not read again; of several arrays read, only the one or ones with the most rows whose item URL the page's
+read once is not read again (after the choice below); of several arrays read, only the one or ones with the most rows whose item URL the page's
 first item group links to give rows (all, when none does). Values are `js_state` candidates (bucket `state`). A locate run writes such rows into the
 config as paths (`config_ir/json_rows.py`): a `jsonpath` row step selecting the array that holds `MIN_ITEMS` or more of
 the rendered rows' item URLs in a document the HTML carries (embedded state, JSON-LD, JSON attributes, RSC rows), and

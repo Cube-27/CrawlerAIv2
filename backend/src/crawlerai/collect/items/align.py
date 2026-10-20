@@ -546,9 +546,9 @@ def _contains(outer: HtmlElement, inner: HtmlElement) -> bool:
 def _current_page(block: HtmlElement, base: str | None, here: str | None) -> bool:
     """Whether the block stands for the page itself in a set of pages: a hyperlink of it is marked as the current page
     (WAI-ARIA 1.2 `aria-current="page"`), or every one of its hyperlinks leads to this very URL, query included (a
-    same-document `#` reference aside, HTML Standard §7.4.2.3.3). A listing's items never include the listing, so a
-    group holding such a block lists documents of the page's own kind: the other categories, cities or sorts of a
-    link hub, the site's navigation rather than the page's items."""
+    same-document `#` reference aside: HTML Standard, navigating to a fragment). A listing's items never include the
+    listing, so a group holding such a block lists documents of the page's own kind: the other categories, cities or
+    sorts of a link hub, the site's navigation rather than the page's items."""
     anchors = [a for a in hyperlinks(block) if not (a.get("href") or "").strip().startswith("#")]
     if any((a.get("aria-current") or "").strip().lower() == _CURRENT_PAGE for a in anchors):
         return True
@@ -635,7 +635,8 @@ def item_links(
     placed = [_placed_targets(block, base, here, sublists) for block in group]
     shared = _shared_targets(placed)
     own = [_without(block, shared) for block in placed]
-    place = _group_place(own, quorum(len(group)))
+    pictured = [_pictured_places(block, sublists) for block in group]
+    place = _group_place(own, pictured, quorum(len(group)))
     for i, targets in enumerate(own):
         at = targets.get(place) if place is not None and found[i] is None else None
         if at is not None and len(at) == 1:
@@ -673,15 +674,34 @@ def _without(placed: Mapping[str, Mapping[str, str]], shared: frozenset[str]) ->
     return {place: targets for place, targets in kept.items() if targets}
 
 
-def _group_place(own: Sequence[Mapping[str, Mapping[str, str]]], needed: int) -> str | None:
+def _group_place(
+    own: Sequence[Mapping[str, Mapping[str, str]]], pictured: Sequence[set[str]], needed: int
+) -> str | None:
     """The tag path at which a quorum of the blocks link to one document no other block links to: the group's item
     link place, where the template puts each item's link (DEPTA alignment). Of several, the one that comes first in
-    the most blocks; None when no place does."""
+    the most blocks, a place whose link holds an image before the others (HTML Standard §4.8.4: an `img` in a
+    hyperlink is the link's content; a card pictures its item, not its author or seller); None when no place does."""
     counts = Counter(place for block in own for place, targets in block.items() if len(targets) == 1)
     qualified = {place for place, count in counts.items() if count >= needed}
-    firsts = Counter(next((place for place in block if place in qualified), None) for block in own)
+    firsts = Counter(_first_place(block, held, qualified) for block, held in zip(own, pictured, strict=True))
     firsts.pop(None, None)
     return firsts.most_common(1)[0][0] if firsts else None
+
+
+def _first_place(places: Iterable[str], pictured: set[str], qualified: set[str]) -> str | None:
+    """The block's first qualified place, those whose link holds an image first."""
+    return next(
+        (place for place in sorted(places, key=lambda place: place not in pictured) if place in qualified), None
+    )
+
+
+def _pictured_places(block: HtmlElement, sublists: frozenset[HtmlElement]) -> set[str]:
+    """The tag paths of the block's hyperlinks that hold an image."""
+    return {
+        _tag_path(block, anchor)
+        for anchor in hyperlinks(block)
+        if anchor not in sublists and next(anchor.iter("img"), None) is not None
+    }
 
 
 def _tag_path(block: HtmlElement, element: HtmlElement) -> str:

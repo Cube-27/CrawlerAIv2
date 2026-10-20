@@ -60,7 +60,8 @@ def test_only_the_contents_links_ground_a_state_rows_item_url() -> None:
 
 def test_of_several_state_arrays_the_one_the_pages_item_group_links_gives_the_rows() -> None:
     # A recently viewed array beside the page's own list: only the array whose items the page's item group links to.
-    state = json.dumps({"page": {"items": [_item(n) for n in (1, 2, 3)]}, "recent": [_item(n) for n in (4, 5, 6)]})
+    # The recent array comes first and repeats item 1: it does not take the list's item from it.
+    state = json.dumps({"recent": [_item(n) for n in (1, 4, 5, 6)], "page": {"items": [_item(n) for n in (1, 2, 3)]}})
     grid = "<ul>" + "".join(f'<li><a href="/p/{n}">View</a></li>' for n in (1, 2, 3)) + "</ul>"
     apart = '<p><a href="/p/4">View</a></p><div><a href="/p/5">View</a></div><section><a href="/p/6">View</a></section>'
     shown = "".join(f"<p>Widget {n} costs {n}.50 EUR</p>" for n in range(1, 7))
