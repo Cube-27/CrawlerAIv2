@@ -1,9 +1,10 @@
 """A job's outcomes (jobs spec, "Job outcome summary"): how many of its pages ended with each outcome, and how many
 of the fields of its records have each status, with the reasons the unpublished ones give, and per field how many pages
 fetched over HTTP alone left it `missing/no_candidates`, with the next step when the job did not ask for rendering
-(`render.mode: locate`), and per detect-and-report signal how many of its pages raised it (`content.signals`; names
-only, no URLs). All are counted from what the job stored (`url_task.outcome`, `record.field_meta`, `capture`,
-`extraction.diagnostics`): no table of its own. `GET /v1/jobs/{id}/outcomes` and
+(`render.mode: locate`), also named when a listing page fetched over HTTP alone listed nothing, and per
+detect-and-report signal how many of its pages raised it (`content.signals`; names only, no URLs). All are counted
+from what the job stored (`url_task.outcome`, `record.field_meta`, `capture`, `extraction.diagnostics`): no table of
+its own. `GET /v1/jobs/{id}/outcomes` and
 `crawlerai jobs summary` answer with it; `crawlerai jobs reextract` counts the same fields of the records the current
 engine makes again from the job's stored captures (`services.reextract`).
 """
@@ -80,7 +81,8 @@ class JobOutcomes(BaseModel):
     reasons: dict[str, int]
     # Per field, the records of pages no render ran for that left it `missing` with reason `no_candidates`.
     missing_unrendered: dict[str, int]
-    # The next step for those fields when the job's `render.mode` is `off`; None without any or when it asked for one.
+    # The next step for those fields, and for listing pages over HTTP that listed nothing, when the job's `render.mode`
+    # is `off`; None without any or when it asked for one.
     hint: str | None
     # Per detect-and-report signal, the job's pages an extraction found it on; a signal no page raised is left out.
     signals: dict[Signal, int]
@@ -91,6 +93,7 @@ async def job_outcomes(conn: AsyncConnection, job_id: JobId) -> JobOutcomes:
     job = await get_job(conn, job_id)
     tally = await stored_field_tally(conn, job_id)
     missing = await _missing_unrendered(conn, job_id)
+    unlisted = await _listed_nothing_unrendered(conn, job_id)
     request: dict[str, Any] = (await conn.execute(select(Job.request).where(Job.id == job_id))).scalar_one()
     mode = (request.get("render") or {}).get("mode", "off")
     return JobOutcomes(
@@ -99,7 +102,7 @@ async def job_outcomes(conn: AsyncConnection, job_id: JobId) -> JobOutcomes:
         fields=tally.statuses,
         reasons=tally.reasons,
         missing_unrendered=missing,
-        hint=LOCATE_HINT if missing and mode == "off" else None,
+        hint=LOCATE_HINT if (missing or unlisted) and mode == "off" else None,
         signals=await _signals(conn, job_id),
     )
 
@@ -142,6 +145,28 @@ async def _missing_unrendered(conn: AsyncConnection, job_id: JobId) -> dict[str,
         .order_by(field.c.key)
     )
     return {cast(str, key): cast(int, n) for key, n in rows.all()}
+
+
+async def _listed_nothing_unrendered(conn: AsyncConnection, job_id: JobId) -> int:
+    """The job's listing pages fetched over HTTP with no browser attempt that listed nothing (`partial` with no record,
+    `services.scrape_steps`): a render may show their rows."""
+    browser_tried = Capture.fetch_policy["attempts"].contains([{"method": "browser"}])
+    kept = select(TaskRecord.url_task_id).where(TaskRecord.url_task_id == UrlTask.id).exists()
+    found = await conn.execute(
+        select(func.count())
+        .select_from(UrlTask)
+        .join(Capture, Capture.id == UrlTask.capture_id)
+        .where(
+            UrlTask.job_id == job_id,
+            UrlTask.page_kind == "listing",
+            UrlTask.outcome == "partial",
+            Capture.method == "http",
+            ~func.coalesce(browser_tried, false()),
+            ~kept,
+        )
+    )
+    count: int = found.scalar_one()
+    return count
 
 
 async def stored_field_tally(conn: AsyncConnection, job_id: JobId) -> FieldTally:

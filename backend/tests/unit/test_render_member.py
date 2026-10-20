@@ -12,11 +12,12 @@ from crawlerai.api.app import create_app
 from crawlerai.api.auth import require_api_key
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import ApiKeyId, SchemaId
+from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.services.batch import BatchScrapeRequest
 from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.scrape import ScrapeRequest
-from crawlerai.services.scrape_steps import RenderOptions, SchemaUnusable, check_render
+from crawlerai.services.scrape_steps import RenderOptions, SchemaUnusable, check_render, unpublished
 
 URL = "https://shop.example.test/p/1"
 BODY = {"urls": [URL], "formats": ["records"], "schema": {"id": str(uuid.UUID(int=1))}, "page_kind": "detail"}
@@ -68,3 +69,19 @@ def test_render_fields_are_the_schemas() -> None:
     check_render(RenderOptions(mode="locate", fields=["title"]), schema)
     with pytest.raises(SchemaUnusable, match="size"):
         check_render(RenderOptions(mode="locate", fields=["title", "size"]), schema)
+
+
+def test_a_listing_without_rows_leaves_each_row_field_for_the_locate_run() -> None:
+    fields = {
+        "title": FieldSpec(type=FieldType.TEXT, description="d"),
+        "colour": FieldSpec(type=FieldType.TEXT, description="d"),
+        "next": FieldSpec(type=FieldType.URL, description="d", scope="page"),
+    }
+    schema = SchemaDef(
+        id=SchemaId(uuid7()), origin="user", status="active", name="s", page_kind="listing", fields=fields
+    )
+    listed_nothing = ExtractionResult(
+        outcome="extracted", entity={}, rows=(), candidates=(), llm_calls=(), mode="adhoc", record_confidence=None
+    )
+
+    assert unpublished(listed_nothing, schema) == ["colour", "title"]

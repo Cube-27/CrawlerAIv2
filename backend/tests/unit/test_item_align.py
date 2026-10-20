@@ -172,3 +172,24 @@ def test_a_group_holding_the_current_page_is_navigation_not_rows(current: str) -
     body = "<ul>" + "".join(tile.format(link=current if i == 0 else f'href="/c/{i}"', i=i) for i in range(4)) + "</ul>"
 
     assert _groups(body) == ()
+
+
+@pytest.mark.parametrize(("price", "rows"), [("", 0), ("<span>1{i}.50 EUR</span>", 4)])
+def test_tiles_leading_where_the_menu_leads_are_navigation_unless_they_show_typed_values(price: str, rows: int) -> None:
+    # The site's chrome (HTML Standard `nav`) links three of the four documents: its sections, not the page's items.
+    menu = "<nav><ul>" + "".join(f'<li><a href="/c/{i}">Category {i}</a></li>' for i in range(3)) + "</ul></nav>"
+    tile = '<li class="c"><a href="/c/{i}"><img src="/t/{i}.jpg" alt=""> Category {i}</a>' + price + "</li>"
+
+    assert len(_rows(menu + _repeat(tile))) == rows
+
+
+def test_lists_that_different_sections_hold_are_no_items_own_lists() -> None:
+    jobs = "".join(f'<li class="job"><h3><a href="/job/{n}">Job {n}</a></h3><p>Remote</p></li>' for n in range(3))
+    pay = "".join(f'<a class="pay" href="/pay/{n}"><b>Role {n}</b><i>9{n} USD</i></a>' for n in range(3))
+    body = (
+        f'<section class="s"><h2>Jobs</h2><div><ul>{jobs}</ul></div><a href="/jobs">All jobs</a></section>'
+        f'<section class="s"><h2>Pay</h2><div><div>{pay}</div></div><a href="/pay">All pay</a></section>'
+        '<section class="s"><h2>About</h2><p>Text</p><a href="/about">About</a></section>'
+    )
+
+    assert [row["url"] for row in _rows(body, _schema(title=_TITLE, url=_URL))] == [_url(f"/job/{n}") for n in range(3)]

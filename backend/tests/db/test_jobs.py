@@ -334,6 +334,23 @@ async def test_the_outcomes_count_fields_http_pages_did_not_carry(world: World, 
     assert (outcomes.missing_unrendered, outcomes.hint) == ({"colour": 2}, hint)
 
 
+@pytest.mark.parametrize(("method", "hint"), [("http", "render.mode: locate"), ("browser", None)])
+async def test_a_listing_that_listed_nothing_over_http_names_the_locate_hint(
+    world: World, method: str, hint: str | None
+) -> None:
+    job_id = await world.job(request={"render": {"mode": "off", "fields": []}})
+    capture_id = await world.capture(method)
+    url = f"{world.origin}/c/{uuid7().hex}"
+    values = {"job_id": job_id, "url": url, "canonical_url": url, "status": "done", "outcome": "partial"}
+    async with world.engine.begin() as conn:
+        await conn.execute(insert(UrlTask).values(**values, page_kind="listing", capture_id=capture_id))
+
+    async with world.engine.connect() as conn:
+        outcomes = await job_outcomes(conn, job_id)
+
+    assert (outcomes.missing_unrendered, outcomes.hint) == ({}, hint)
+
+
 # The list.
 
 
