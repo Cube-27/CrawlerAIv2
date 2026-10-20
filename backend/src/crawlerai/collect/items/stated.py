@@ -35,7 +35,7 @@ class Stated:
     (`site_names.fold`: case and punctuation aside), the last of them possibly cut short by an ellipsis (U+2026, or
     the three full stops it decomposes to under NFKC: a truncated display of the name). `lead` and `trail` are the
     folded words before and after the shown run (none shown: the whole name is neither); `xpath` is the shown run's
-    innermost element, else the stating element's."""
+    innermost element, else the stating element's; `shown_at` is the shown run's span of the cleaned text."""
 
     text: str
     xpath: str
@@ -45,6 +45,7 @@ class Stated:
     lead: str = ""
     trail: str = ""
     cut: bool = False  # the shown run ends in a word an ellipsis cut short: the name goes on past it
+    shown_at: tuple[int, int] = (0, 0)
 
     @property
     def shown(self) -> bool:
@@ -63,15 +64,17 @@ class Stated:
         if not covered:
             return cls(text, xpath)
         start, end = keys[i][1], keys[i + covered - 1][2]
+        shown_at = (words[j].start, words[j + covered - 1].end)
         return cls(
             text,
-            holding(words[j].start, words[j + covered - 1].end),
+            holding(*shown_at),
             covered,
             start,
             end,
             fold(text[:start]),
             fold(text[end:]),
             words[j + covered - 1].cut,
+            shown_at,
         )
 
     def trimmed(self, *, lead: bool, trail: bool) -> str:
@@ -115,3 +118,13 @@ def same(values: Iterable[str]) -> str:
     """The one value every item of `values` is, when it is not empty; else empty."""
     distinct = set(values)
     return distinct.pop() if len(distinct) == 1 else ""
+
+
+def continues(stated: str, name: str) -> bool:
+    """Whether the stated name begins with `name`, word by word, folded (`site_names.fold`)."""
+    keys, start = _keys(stated), _keys(name)
+    return bool(start) and keys[: len(start)] == start
+
+
+def _keys(text: str) -> list[str]:
+    return [key for m in _TOKEN.finditer(text) if (key := fold(m.group()))]

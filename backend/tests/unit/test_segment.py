@@ -43,6 +43,30 @@ def test_siblings_that_share_no_class_token_with_most_others_are_not_grouped() -
     assert _first(page) == ()
 
 
+def test_items_in_sibling_sections_of_one_template_are_one_group_however_few_each_holds() -> None:
+    # A list split into sections, each a label and its items: sections of one, two and three items are one list.
+    sections = "".join(
+        f'<div class="team"><div class="label">Team {t}</div>'
+        + "".join(f'<div class="job"><a href="/j/{t}{i}">Job {t}{i}</a><span>City</span></div>' for i in range(n))
+        + "</div>"
+        for t, n in enumerate((1, 2, 3))
+    )
+    page = _page(f'<div class="board">{sections}</div>')
+
+    assert _hrefs(page) == ["/j/00", "/j/10", "/j/11", "/j/20", "/j/21", "/j/22"]
+
+
+def test_a_part_each_card_shows_once_is_no_section_run() -> None:
+    # Each card's title wrapper is one per card: the cards are the items, not their title wrappers across the grid.
+    cards = "".join(
+        f'<div class="card"><div class="title"><a href="/p/{i}">Kettle {i}</a></div><span>{i}9.90 EUR</span></div>'
+        for i in range(4)
+    )
+    page = _page(f'<div class="grid">{cards}</div>')
+
+    assert [len(group) for group in page.item_groups] == [4]
+
+
 def test_a_grid_of_varying_tiles_outranks_a_smaller_pager() -> None:
     pager = '<ol class="pages">' + "".join(f'<li><a href="?page={i}">{i}</a></li>' for i in range(1, 5)) + "</ol>"
     page = _page(_grid([f"tile order-{i}" for i in range(8)]) + pager)

@@ -8,6 +8,11 @@ One template renders them all, so siblings of one tag share the class tokens the
 token of an item's own (its position, a state), so a shape is the tag and the tokens most of those siblings carry, not
 the whole class list. They are looked for in the page's content: its main landmark (§4.4.14), else its body, without
 the site's chrome.
+
+A list split into sections (a job board's teams, a grid's rows: each section a label and then its items) renders each
+section with one template and its items with another: the items of one shape in sibling sections of one shape are one
+group, in document order, however few items a section holds, when two or more sections hold them and one holds several
+(a part each item shows once, the wrapper of its title or its image, is no section's run).
 """
 
 from collections import Counter
@@ -66,12 +71,56 @@ def item_groups(root: HtmlElement) -> tuple[Group, ...]:
             gathered.add(node)
             siblings.setdefault((parent, node.tag), []).append(node)
             node = parent
+    runs = [items for nodes in siblings.values() for items in _shapes(nodes)]
     return tuple(
-        tuple(items)
-        for (parent, _), nodes in siblings.items()
-        for items in _shapes(nodes)
-        if len(items) >= MIN_ITEMS and not in_chrome(parent)
+        tuple(items) for items in _sectioned(runs) if len(items) >= MIN_ITEMS and not in_chrome(items[0].getparent())
     )
+
+
+def _sectioned(runs: list[list[HtmlElement]]) -> list[list[HtmlElement]]:
+    """The runs of sibling items, those of one shape in sibling sections of one shape joined into one group (module
+    docstring) where the first of them was, the others' items as they are."""
+    joined = {id(node): group for group in _joined(runs) for node in group}
+    groups: list[list[HtmlElement]] = []
+    emitted: set[int] = set()
+    for run in runs:
+        for group in {id(joined[id(node)]): joined[id(node)] for node in run if id(node) in joined}.values():
+            if id(group) not in emitted:
+                emitted.add(id(group))
+                groups.append(group)
+        if rest := [node for node in run if id(node) not in joined]:
+            groups.append(rest)
+    return groups
+
+
+def _joined(runs: list[list[HtmlElement]]) -> list[list[HtmlElement]]:
+    """The groups that join runs of sibling sections (`_sectioned`)."""
+    sections: dict[tuple[HtmlElement | None, object, object], list[HtmlElement]] = {}
+    for run in runs:
+        if (parent := run[0].getparent()) is not None:
+            sections.setdefault((parent.getparent(), parent.tag, run[0].tag), []).extend(run)
+    return [group for (container, _, _), nodes in sections.items() for group in _section_groups(container, nodes)]
+
+
+def _section_groups(container: HtmlElement | None, nodes: list[HtmlElement]) -> list[list[HtmlElement]]:
+    """The items `nodes` of the sibling sections of `container` (children of one tag) joined by section shape and
+    item shape, in document order, where they span sections (`_spans_sections`)."""
+    parent_of = {node: parent for node in nodes if (parent := node.getparent()) is not None}
+    parents = list(dict.fromkeys(parent_of.values()))
+    if container is None or len(parents) < 2:
+        return []
+    order = {parent: container.index(parent) for parent in parents}
+    groups: list[list[HtmlElement]] = []
+    for shaped in map(set, _shapes(parents)):
+        held = sorted((node for node in parent_of if parent_of[node] in shaped), key=lambda n: order[parent_of[n]])
+        groups.extend(items for items in _shapes(held) if _spans_sections(items))
+    return groups
+
+
+def _spans_sections(items: list[HtmlElement]) -> bool:
+    """Whether the items lie in two or more sections and one section holds several of them."""
+    per_section = Counter(item.getparent() for item in items)
+    return len(per_section) >= 2 and max(per_section.values()) >= 2
 
 
 def _shapes(nodes: list[HtmlElement]) -> list[list[HtmlElement]]:

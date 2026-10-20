@@ -134,6 +134,34 @@ def test_a_name_the_item_states_in_attributes_is_kept_where_the_card_shows_it_ov
     assert [row["title"] for row in _rows(_repeat(cut))] == [f"Lamp {i} with brass base" for i in range(4)]
 
 
+def test_a_stated_name_running_over_the_price_is_the_cards_text_and_a_link_name_runs_on_as_pictured() -> None:
+    # A name holds no price: an overlay link labelled with the whole card's text (a badge, the heading, the price,
+    # unshown colours) is not its name, even where two cards share a heading (HTML Standard §4.3.6) that then names it.
+    whole = (
+        '<li class="c"><a href="/p/{i}" aria-label="New Coat {n} 1{i}.00 EUR In {i} colours"></a>'
+        "<p>New</p><h3>Coat {n}</h3><span>1{i}.00 EUR</span></li>"
+    )
+    body = "<ul>" + "".join(whole.format(i=i, n=min(i, 2)) for i in range(4)) + "</ul>"
+    # WCAG 2.1 SC 2.5.3: the item's stated name (a hidden carousel's `alt`) holds the link's line and the variant line
+    # below it, not the colour line after.
+    variant = (
+        '<li class="c"><div hidden><img src="/i/{i}.jpg" alt="Clog {i} Suede Leather - main view"></div>'
+        '<a href="/p/{i}">Clog {i}</a><p>Suede Leather</p><p>Taupe</p><span>1{i}.00 EUR</span></li>'
+    )
+    # RFC 3986 §3.4: a card's links lead to its item refined by a query, and one card's button to the item itself;
+    # its picture's label names it, not the button's.
+    card = (
+        '<li class="c"><div><a href="/p/{i}?v=1" aria-label="Big Mug {i}"></a><img src="/i/{i}.jpg" alt="Big Mug {i}">'
+        '</div><div><a href="/p/{i}?v=1"><p>Big Mug {i}</p><p>Stoneware</p></a><span>1{i}.00 EUR</span>{cta}</div></li>'
+    )
+    cta = '<div><a href="/p/3" aria-label="Add to cart"><span>Add to cart</span></a></div>'
+    button = "<ul>" + "".join(card.format(i=i, cta=cta if i == 3 else "") for i in range(4)) + "</ul>"
+
+    assert [row["title"] for row in _rows(body)] == ["Coat 0", "Coat 1", "Coat 2", "Coat 2"]
+    assert [row["title"] for row in _rows(_repeat(variant))] == [f"Clog {i} Suede Leather" for i in range(4)]
+    assert [row["title"] for row in _rows(button)] == [f"Big Mug {i}" for i in range(4)]
+
+
 def test_helper_text_every_card_repeats_inside_the_name_is_the_templates() -> None:
     # DEPTA: a node whose value never varies across the records is the template's (a screen-reader-only phrase).
     card = '<li class="c"><a href="/p/{i}"><span class="sr">View product</span> Boot {i}</a><b>1{i}.00 EUR</b></li>'

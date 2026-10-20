@@ -288,6 +288,27 @@ def test_a_place_in_a_block_heading_is_not_taken_when_the_block_states_remote() 
     assert [(c.entity_id, c.locator) for c in filled.candidates] == [("item_block:1", "text:52-62")]
 
 
+def test_a_place_keeps_the_remote_label_written_on_the_line_above_it() -> None:
+    # Normalization spec, "location as stated": the label the place is written under is part of how the page states it.
+    places = {"locations": FieldSpec(type=FieldType.LIST, item=FieldSpec(type=FieldType.LOCATION), description="d")}
+    text = "Video Editor\nRemote from\nUSA\nWork type"
+    labelled = BlockText(0, "https://jobs.example.test/j/0", "item_block:0", 5, text, ("locations",), heading=(5, 17))
+    plain = BlockText(1, "https://jobs.example.test/j/1", "item_block:1", 60, "Editor\nOffice\nUSA", ("locations",))
+    client = ScriptedClient(claims_reply(claim(0, "locations", "USA"), claim(1, "locations", "USA")))
+
+    filled = asyncio.run(extract_listing(client, (labelled, plain), places, CTX, job_id=JOB, labels={}))
+
+    assert [(c.raw, c.locator) for c in filled.candidates] == [
+        ("Remote from\nUSA", "text:18-33"),
+        ("USA", "text:74-77"),
+    ]
+    values = [c.normalized.value for c in filled.candidates if isinstance(c.normalized, Ok)]
+    assert [[place.get("text") for place in v if isinstance(place, dict)] for v in values if isinstance(v, list)] == [
+        ["Remote from USA"],
+        ["USA"],
+    ]
+
+
 def test_a_nested_block_shows_its_context_and_grounds_claims_in_its_own_text_first() -> None:
     # Listings spec, "Role C rows": the enclosing item's text comes first on the block's line; a value is grounded in
     # the block's own text when it holds it, else in the context, at that text's offset in the cleaned text.
