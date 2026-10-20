@@ -19,7 +19,7 @@ from pydantic import JsonValue
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.config_ir.api_recipe.learn import learn_recipe
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, Proof
+from crawlerai.config_ir.api_recipe.model import ApiRecipe, HeaderValue, Proof
 from crawlerai.config_ir.api_recipe.validate import RecipeValidated
 from crawlerai.config_ir.held_out import StoredPage
 from crawlerai.config_ir.induction import SamplePage
@@ -164,7 +164,7 @@ def test_an_endpoint_that_carries_the_sample_values_becomes_a_validated_recipe(s
             method="GET",
             url=f"{ENDPOINT}/{{p1}}",
             params_from_url={"p1": "path:1"},
-            headers={"Accept": "application/json"},
+            headers=[HeaderValue(name="Accept", value="application/json")],
             map=MAP,
             proof=Proof(
                 validated_on=[_capture(5), _capture(6), _capture(7)], headers_tried=0, bound_by="deterministic"

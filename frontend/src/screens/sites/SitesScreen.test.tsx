@@ -90,12 +90,14 @@ const detail: ConfigDetail = {
     fetch: { method: "http" },
     fields: {
       title: {
+        needs: "http",
         status: "corroborated",
         steps: [{ xpath: "//h1", post: [{ trim: {} }] }],
         yield: 1,
         validity: 1,
       },
       price: {
+        needs: "http",
         status: "uncorroborated",
         steps: [{ jsonld: "$.offers.price", when_type: "Product", post: [{ money: {} }] }],
         yield: 0.5,

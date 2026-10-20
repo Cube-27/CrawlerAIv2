@@ -93,7 +93,7 @@ async def learn_recipe(
     if found is None:
         return refused(_no_endpoint(sample))
     endpoint, pages = found
-    bound = await _proven(client, endpoint.map, pages, schema, replay, job_id)
+    bound = await prove(client, endpoint.map, pages, schema, replay, job_id)
     if isinstance(bound, str):
         return refused(bound)
     proven, bound_by = bound
@@ -155,7 +155,7 @@ async def learn_listing(
     if isinstance(found, str):
         return refused(found)
     endpoint, pagination, replayed = found
-    bound = await _proven(client, endpoint.map, replayed, schema, replay, job_id, pagination)
+    bound = await prove(client, endpoint.map, replayed, schema, replay, job_id, pagination)
     if isinstance(bound, str):
         return refused(bound)
     proven, bound_by = bound
@@ -237,7 +237,7 @@ def _replay_page(page: StoredPage, request: CapturedRequest) -> ReplayPage:
     return ReplayPage(sample, page.held_out.facts.published, page.held_out.ctx)
 
 
-async def _proven(
+async def prove(
     client: LLMClient,
     fields: Mapping[str, str],
     pages: Sequence[ReplayPage],

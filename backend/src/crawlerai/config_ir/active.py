@@ -7,17 +7,26 @@ row is the authority: `extraction_config` holds at most one active config per si
 page the config ran on, served and resolved, is added to its drift window (`drift.record_run`).
 """
 
+from functools import partial
+from urllib.parse import urlsplit
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.acquire.api import JsonRequest
+from crawlerai.acquire.rungs import FetchPlan
+from crawlerai.acquire.types import CallEndpoint, FetchPolicy, FetchResult
 from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.config_ir.api_recipe.binding import page_data, resolve_params
 from crawlerai.config_ir.api_recipe.execute import RecipeExecutor
-from crawlerai.config_ir.api_recipe.model import ApiRecipe
+from crawlerai.config_ir.api_recipe.model import PLACEHOLDER, ApiRecipe
+from crawlerai.config_ir.api_recipe.replay import request_for
 from crawlerai.config_ir.drift import Drifted, DriftMargins, record_run
 from crawlerai.config_ir.executor import EngineExecutor
-from crawlerai.config_ir.model import ExtractionConfigIR
+from crawlerai.config_ir.model import ExtractionConfigIR, FieldSteps
 from crawlerai.config_ir.progressive import StateKey
-from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, JobId, SiteId
+from crawlerai.content.page import ParsedPage
+from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, JobId, RenderMode, SiteId
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import SchemaDef
@@ -42,6 +51,50 @@ async def config_by_id(conn: AsyncConnection, config_id: ExtractionConfigId, voc
     configs = ExtractionConfig
     row = (await conn.execute(select(configs.version, configs.ir).where(configs.id == config_id))).one()
     return _bound(config_id, row.version, ExtractionConfigIR.model_validate(row.ir), vocabulary)
+
+
+def fetch_plan(config: ActiveConfig | None, render_mode: RenderMode) -> FetchPlan:
+    """The fetch plan of the config's field sources (acquisition spec, "Fetch plan"; learning-configs spec, "Locate
+    run" step 6): the browser when a running field's source is the browser's render or the surface renders every page
+    (`always`); the companion call of each recipe a running `call` field names, and its endpoint for the browser's
+    ready wait."""
+    ir = config.executor.ir if config is not None and isinstance(config.executor, EngineExecutor) else None
+    running = [] if ir is None else _running(ir)
+    recipes = {} if ir is None else {s.call: ir.recipes[s.call] for s in running if s.call is not None}
+    return FetchPlan(
+        browser=render_mode == "always" or any(steps.needs == "browser" for steps in running),
+        calls=tuple(partial(companion_request, recipe) for recipe in recipes.values()),
+        endpoints=tuple(endpoint(recipe) for recipe in recipes.values()),
+    )
+
+
+def _running(ir: ExtractionConfigIR) -> list[FieldSteps]:
+    listed = ir.listing.fields.values() if ir.listing is not None else ()
+    return [steps for steps in (*ir.fields.values(), *listed) if steps.status != "suspended"]
+
+
+def companion_request(
+    recipe: ApiRecipe, page: FetchResult, policy: FetchPolicy
+) -> tuple[JsonRequest, tuple[str, ...]] | None:
+    """`recipe`'s request for the HTTP `page`, bound from the URL it was requested at and, when a binder reads them,
+    its JSON documents, with the headers it references from the policy's request context, and the values it was bound
+    with (the identity check's keys); None when it binds nothing."""
+    url = page.bundle.manifest.url
+    data = page_data(ParsedPage.of(page.bundle)) if recipe.requires_page_fetch else {}
+    request = request_for(recipe, url, data, policy.context)
+    params = resolve_params(recipe, url, data)
+    return None if request is None or params is None else (request, tuple(params.values()))
+
+
+def endpoint(recipe: ApiRecipe) -> CallEndpoint:
+    """The endpoint `recipe` calls, as the browser's ready wait matches the page's own calls of it."""
+    parts = urlsplit(recipe.url.partition("?")[0])
+    segments = parts.path[1:].split("/") if parts.path else []
+    return CallEndpoint(
+        method=recipe.method,
+        origin=f"{parts.scheme}://{parts.netloc}",
+        segments=tuple(None if PLACEHOLDER.search(segment) else segment for segment in segments),
+    )
 
 
 def recipe_of(config: ActiveConfig) -> ApiRecipe | None:

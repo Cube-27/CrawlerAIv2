@@ -48,6 +48,7 @@ from crawlerai.services.scrape_steps import (
     SchemaById,
     SchemaPrompt,
     named_schema,
+    stored_request,
 )
 
 MAX_NAME: Final = 200
@@ -255,7 +256,7 @@ async def create_schedule(
             "project_id": DEFAULT_PROJECT,
             "name": new.name,
             "kind": kind,
-            "request": request.model_dump(mode="json", by_alias=True),
+            "request": stored_request(request),
             "cron": new.cron,
             "interval_s": new.interval_s,
             "timezone": new.timezone,
@@ -284,7 +285,7 @@ async def update_schedule(
         values |= {"timezone": new.timezone, "updated_at": func.now()}
         if checked is not None:
             kind, request = checked
-            values |= {"kind": kind, "request": request.model_dump(mode="json", by_alias=True)}
+            values |= {"kind": kind, "request": stored_request(request)}
         if _cadence_changed(current, new):
             values["next_run_at"] = next_run(new.cadence(), await _now(conn))
         await _update(conn, schedule_id, values)
@@ -495,7 +496,9 @@ def _as_batch(scrape: ScrapeRequest) -> BatchScrapeRequest:
     """The batch of a scrape's one URL, with its formats, schema, page kind, fetch, locale, budget and `render`."""
     if scrape.browser_actions is not None:
         raise Unschedulable("browser actions run in a scrape answered while the caller waits, not on a schedule")
-    members = scrape.model_dump(by_alias=True, include=_BATCH_MEMBERS, exclude_none=True)
+    # A `render` the caller left out stays out, so the batch inherits its surface's render mode (`stored_request`).
+    included = _BATCH_MEMBERS if "render" in scrape.model_fields_set else _BATCH_MEMBERS - {"render"}
+    members = scrape.model_dump(by_alias=True, include=included, exclude_none=True)
     try:
         return BatchScrapeRequest.model_validate({"urls": [scrape.url], **members})
     except ValidationError as e:

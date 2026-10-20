@@ -91,10 +91,14 @@ def _config(field: str, raw: Any, normalized: Any, locator: str, entity_id: str 
     )
 
 
-def test_a_config_learned_from_rendered_pages_reads_its_fields_from_the_browser() -> None:
-    fields = {"title": [{"xpath": "//h1"}]}
-    assert _ir(fields, fetch="browser").browser_fields == {"title"}
-    assert _ir(fields).browser_fields == frozenset()
+def test_the_browser_fields_are_the_running_fields_whose_source_is_the_render() -> None:
+    def steps(needs: str, status: str = "uncorroborated") -> dict[str, Any]:
+        return {"steps": [{"xpath": "//h1"}], "status": status, "needs": needs}
+
+    executor = _ir({"title": steps("browser"), "brand": steps("http"), "sku": steps("browser", "suspended")})
+    assert executor.browser_fields == {"title"}
+    # The config's fetch method says nothing of a field's source.
+    assert _ir({"title": [{"xpath": "//h1"}]}, fetch="browser").browser_fields == frozenset()
 
 
 def test_an_xpath_step_proposes_the_node_string_value_owned_by_the_page() -> None:

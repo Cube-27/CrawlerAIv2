@@ -32,8 +32,12 @@ from crawlerai.schemas.types import NEXT_PAGE_FIELD as NEXT_PAGE_FIELD  # the ex
 from crawlerai.schemas.types import FieldType, Name
 
 # Where a `jsonpath` step reads JSON: the page's JSON-LD, its script state, its documented JSON attributes
-# (`attr`, extraction spec "Source documents"), a captured network body, an API response.
-JsonSource = Literal["jsonld", "js_state", "attr", "xhr", "api"]
+# (`attr`, extraction spec "Source documents"), each row of its inline RSC Flight stream (`rsc`), a captured network
+# body, an API response.
+JsonSource = Literal["jsonld", "js_state", "attr", "rsc", "xhr", "api"]
+# What a field's located source needs fetched (learning-configs spec, "Locate run"): the HTTP page (its HTML or an
+# embedded document), the HTTP page and a replayed call (`call`), or the browser's render.
+Needs = Literal["http", "call", "browser"]
 
 XPath1 = Annotated[str, AfterValidator(check_xpath1)]
 PortableRegex = Annotated[str, AfterValidator(check_pattern)]
@@ -235,12 +239,18 @@ class FieldSteps(_Model):
     status: FieldStatus
     yield_: Ratio | None = Field(default=None, alias="yield")
     validity: Ratio | None = None
+    # What the field's source needs fetched (`http` when absent); a `call` field names its recipe in the config's
+    # `recipes`, whose answer its `xhr` step reads.
+    needs: Needs = "http"
+    call: Name | None = None
 
     @model_validator(mode="after")
     def _has_steps_to_run(self) -> Self:
         # An absent field has no steps: the config lists it in `absent` (`config_ir.absent`).
         if self.status == "absent":
             raise ValueError("a field with steps is not absent")
+        if (self.needs == "call") != (self.call is not None):
+            raise ValueError("a field names a recipe exactly when it needs a call")
         return self
 
 
@@ -282,6 +292,9 @@ class ExtractionConfigIR(_Model):
     listing: ListingSpec | None = None
     # The recipe held-out validation accepted (adapters spec), served by the acquisition's API rung (§7.1).
     api_recipe: ApiRecipe | None = None
+    # The recipes of the `call` fields (learning-configs spec, "Locate run"), one per endpoint, by id: each is a
+    # companion call of the HTTP page (acquisition spec, "Data calls").
+    recipes: dict[Name, ApiRecipe] = Field(default_factory=dict)
     provenance: Provenance
     # The required fields the learning pages never stated, which role C is not asked for (`config_ir.absent`, D-1341).
     absent: list[Name] = Field(default_factory=list)
@@ -292,3 +305,25 @@ class ExtractionConfigIR(_Model):
         if any(name in self.fields or name in listed for name in self.absent):
             raise ValueError("an absent field has no steps")
         return self
+
+    @model_validator(mode="after")
+    def _calls_name_recipes(self) -> Self:
+        named = self._called()
+        if unknown := sorted(named - self.recipes.keys()):
+            raise ValueError(f"fields name recipes the config does not hold: {unknown}")
+        if unused := sorted(self.recipes.keys() - named):
+            raise ValueError(f"recipes no field names: {unused}")
+        return self
+
+    def _called(self) -> set[str]:
+        listed = self.listing.fields.values() if self.listing is not None else ()
+        return {steps.call for steps in (*self.fields.values(), *listed) if steps.call is not None}
+
+    def named_recipes(self) -> dict[Name, ApiRecipe]:
+        """The recipes some field still names: a field corrected, removed or re-located drops its call's recipe."""
+        called = self._called()
+        return {name: recipe for name, recipe in self.recipes.items() if name in called}
+
+    def needs(self, *, running: bool = True) -> dict[str, Needs]:
+        """Each page-level field's `needs`, the suspended ones left out when `running`."""
+        return {name: steps.needs for name, steps in self.fields.items() if not running or steps.status != "suspended"}

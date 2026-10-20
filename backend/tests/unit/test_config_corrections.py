@@ -64,12 +64,20 @@ def _correct(body: dict[str, Any], ir: ExtractionConfigIR = BASE, schema: Schema
 
 def test_corrected_steps_replace_the_fields_steps_as_operator_and_drop_their_measurements() -> None:
     corrected = _correct({"fields": {"title": {"steps": [H2]}}})
-    assert corrected["fields"]["title"] == {"steps": [H2_STORED], "status": "operator", "yield": None, "validity": None}
+    sourced = {"needs": "http", "call": None}
+    assert corrected["fields"]["title"] == {
+        "steps": [H2_STORED],
+        "status": "operator",
+        "yield": None,
+        "validity": None,
+        **sourced,
+    }
     assert corrected["fields"]["brand"] == {
         "steps": [H2_STORED],
         "status": "uncorroborated",
         "yield": None,
         "validity": None,
+        **sourced,
     }
 
 

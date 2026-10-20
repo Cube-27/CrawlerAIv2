@@ -37,7 +37,10 @@ An HTTP listing shell kept with no browser outcome is `ok` when it is a shell by
 request of a fetch is sent only when `admit_next` allows, and no browser retry starts with less than `BROWSER_MIN_S`
 (20 s) left of the task's budget (a worker task's `TASK_DEADLINE`, a scrape's `timeout_s`): the HTTP outcome is kept.
 The browser MUST NOT be the default: it is also used when `method_hint` is `browser`, the block history says
-browser-first, or the site's contract says `browser`. Role C runs once, on the kept capture. (Previously: an HTTP `ok`
+browser-first, the site's contract says `browser`, or the page's fetch plan does (`acquire/rungs.FetchPlan`, from the
+surface's active config alone, `config_ir/active.fetch_plan`): a running field of the config needs the render
+(`needs: browser`, [learning-configs](../learning-configs/spec.md) "Locate run"), or the surface's `render_mode` is
+`always`. Role C runs once, on the kept capture. (Previously: an HTTP `ok`
 page was also rendered when a cheap render check, `services/scrape_steps.RenderNeed` and `content/render_need.py`,
 found no sign of a required `money` field's offer, a listing's items fewer, hidden or under-listed, or the request named
 `render_fields`; a detail page was rendered when a full collector pass found no Offer; a listing when its extraction
@@ -130,8 +133,14 @@ captured as a file), waiting for the site's rate (`politeness`), an `api` attemp
 an answer that passes joins the HTTP capture as one more network body marked with its platform. The extraction reads
 such a body as structured evidence of the requested product, as the platform documents its members
 ([extraction](../extraction/spec.md), "Structured-data collectors"). A joined answer adds evidence and never replaces
-the page's values. (Previously: the call was sent only for a page about to be rendered for lacking what the caller
-reads, and the render was skipped when the joined page no longer lacked it.) Refs: owner plan 2026-10-19 P4 (API replay
+the page's values. A kept HTTP `ok` page whose surface's active config has running `call` field sources is also
+joined with the answer of each one's recipe ([learning-configs](../learning-configs/spec.md) "Locate run"), bound from
+the page URL and documents, a header it references taken from the caller's request context (sent only to the page's
+own host), sent the same way and marked `data_call: located`; its answer joins only when it states the page's product
+(the identity check, with the values the request was bound with), and a recipe that binds nothing on the page sends
+nothing. (Previously: the call was
+sent only for a page about to be rendered for lacking what the caller reads, and the render was skipped when the joined
+page no longer lacked it; no field source named a call.) Refs: owner plan 2026-10-19 P4 (API replay
 with a product-identity check), owner decision 2026-10-19 on #326, owner #73.
 #### Scenario: Another product's answer
 - **WHEN** a data call answers JSON that names neither the requested key nor the page's path
@@ -182,7 +191,11 @@ can inject the page's structured data, while the analytics, ad and pixel endpoin
 (vendor categories in `adapters.kept_resources`, never per site).
 
 The ready wait, the one wait for a page, a fixed condition: the page is read once it has fired `DOMContentLoaded` and
-no data call has been in flight for `_STEP_QUIET_S` (0.5 s); a listing is read when the wait ends (its item-area read).
+(a) every endpoint the surface's located `call` field sources name (`FetchPolicy.ready_calls`, from the fetch plan) has
+answered in full, else (b) no data call has been in flight for `_STEP_QUIET_S` (0.5 s); a listing is read when the wait
+ends (its item-area read). The rendered document is read with its open shadow roots: `Element.getHTML` with
+`serializableShadowRoots` and every open root found by walking `shadowRoot`, run with `evaluate` in Patchright's
+isolated world (no init script), giving declarative `<template shadowrootmode="open">` markup; closed roots stay out.
 The wait ends `READY_MAX_S` (3.5 s) after `load` whatever is still in flight (before `load`, only the 90% bound below
 ends it), and what is there is read; a document the main frame navigates
 to meanwhile (not a same-document navigation) starts it over, within 90% of `browser_timeout_s`, so the capture is the
@@ -198,7 +211,8 @@ absolute bound; the settle wait had none but the fetch's budget, a browser was l
 and the HTTP timeout was 30 s; every fetch had a fresh context, only images, fonts and media were blocked, and a page
 was read after `load` once its DOM was unchanged for 2 s or the network idle, at most 5 s later, up to 3 s more while a
 data call was in flight; then by a learned wait condition, `settle_on`, a detail page's DOM stating its offer
-(`classify.usable_content`) or a data call ended, a listing at the wait's end.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
+(`classify.usable_content`) or a data call ended, a listing at the wait's end; no endpoint was named, and the document
+was read as `page.content()`, without shadow roots.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
 D-1264, D-1265, owner #58, D-1320–D-1322, D-1325, D-1433, D-1437, master plan 2026-10-18 recommendation 12, owner
 plan 2026-10-19 (crawl speed, P2 browser wait and blocking).
 #### Scenario: Interstitial that navigates on

@@ -11,12 +11,11 @@ from pathlib import Path
 from hypothesis import given
 from hypothesis import strategies as st
 
-from crawlerai.acquire.identity import NOT_THE_PRODUCT, joined
+from crawlerai.acquire.identity import NOT_THE_PRODUCT, identified, joined
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.collect.currencies import with_page_declarations
 from crawlerai.collect.platform_json import PlatformJsonCollector
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir.api_recipe.execute import _identified
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
@@ -108,5 +107,5 @@ def test_a_documented_answer_joins_only_for_its_product_and_reads_in_major_units
         assert refused is None
         assert (attempt.block_class, attempt.attempts[-1].error) == ("error", NOT_THE_PRODUCT)
         # A detail API recipe's answer is checked the same way.
-        recipe = _identified(_capture(f"{HOST}/api/p", "api", _product(other)), page, (key,))
+        recipe = identified(_capture(f"{HOST}/api/p", "api", _product(other)), page, (key,))
         assert recipe.attempts[-1].error == NOT_THE_PRODUCT

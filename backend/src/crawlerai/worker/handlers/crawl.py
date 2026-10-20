@@ -119,6 +119,8 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
         served=served,
         listing_pages=pages,
         formats=_formats_of(task, crawl.request),
+        # A page read for its links only is no page of the records surface: its fetch plan is not the surface's.
+        planned=crawl.records if _extracted(task, crawl.request) else None,
     )
     if not isinstance(page, Ended):
         await _record_final_url(conn, task, page)
@@ -154,8 +156,12 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
 def _formats_of(task: ClaimedTask, request: CrawlRequest) -> Sequence[PageFormat]:
     """The formats the task's page is fetched for: a page no rule matched is read for its links only, so it needs no
     file made of it."""
-    extracted = task.page_kind is not None or not request.page_kind_rules
-    return request.formats if extracted else ()
+    return request.formats if _extracted(task, request) else ()
+
+
+def _extracted(task: ClaimedTask, request: CrawlRequest) -> bool:
+    """Whether the task's page is extracted: one a page-kind rule matched, or any page of a crawl without rules."""
+    return task.page_kind is not None or not request.page_kind_rules
 
 
 async def _record_final_url(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage) -> None:

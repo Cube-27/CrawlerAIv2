@@ -297,7 +297,8 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint(
-            "origin IN ('adapter', 'induced', 'llm_synth', 'operator')", name=op.f("ck_extraction_config_origin")
+            "origin IN ('adapter', 'induced', 'llm_synth', 'operator', 'located')",
+            name=op.f("ck_extraction_config_origin"),
         ),
         sa.CheckConstraint("page_kind IN ('detail', 'listing')", name=op.f("ck_extraction_config_page_kind")),
         sa.CheckConstraint(
@@ -433,6 +434,7 @@ def upgrade() -> None:
         sa.Column("last_learned_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("active_config_id", sa.Uuid(), nullable=True),
         sa.Column("retry_at_pages", sa.Integer(), nullable=True),
+        sa.Column("render_mode", sa.Text(), server_default=sa.text("'off'"), nullable=False),
         sa.CheckConstraint(
             "mode <> 'active' OR active_config_id IS NOT NULL", name=op.f("ck_progressive_state_active_has_config")
         ),
@@ -443,6 +445,7 @@ def upgrade() -> None:
         sa.CheckConstraint("mode IN ('cold', 'learning', 'active')", name=op.f("ck_progressive_state_mode")),
         sa.CheckConstraint("page_kind IN ('detail', 'listing')", name=op.f("ck_progressive_state_page_kind")),
         sa.CheckConstraint("pages_extracted >= 0", name=op.f("ck_progressive_state_pages_extracted_non_negative")),
+        sa.CheckConstraint("render_mode IN ('off', 'locate', 'always')", name=op.f("ck_progressive_state_render_mode")),
         sa.CheckConstraint("retry_at_pages >= 0", name=op.f("ck_progressive_state_retry_at_pages_non_negative")),
         sa.ForeignKeyConstraint(
             ["active_config_id"],

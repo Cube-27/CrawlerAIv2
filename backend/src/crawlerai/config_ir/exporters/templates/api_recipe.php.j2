@@ -31,7 +31,11 @@
 {% endif %}
 {% endif %}
 
-function api_recipe_request(string $page_url, array $params): array
+{% if context_headers %}
+// $context holds the values of the headers the recipe takes from the caller's request context, by name; the recipe
+// stores the names alone.
+{% endif %}
+function api_recipe_request(string $page_url, array $params, array $context = []): array
 {
     $path = [];
     $query = [];
@@ -58,6 +62,9 @@ function api_recipe_request(string $page_url, array $params): array
             {{ line|php_literal }},
 {% endif %}
 {% endfor %}
+{% for name in context_headers %}
+            {{ (name ~ ": ")|php_literal }} . $context[{{ name|php_literal }}],
+{% endfor %}
 {% if no_content_type %}
             // curl sends a form content type with a POST; an empty value sends none, as CrawlerAI does.
             'Content-Type:',
@@ -72,9 +79,9 @@ function api_recipe_request(string $page_url, array $params): array
 }
 
 // The decoded JSON response, or null when the request fails, the status is not 2xx or the body is not JSON.
-function api_recipe_fetch(string $page_url, array $params): mixed
+function api_recipe_fetch(string $page_url, array $params, array $context = []): mixed
 {
-    $request = api_recipe_request($page_url, $params);
+    $request = api_recipe_request($page_url, $params, $context);
     $curl = curl_init($request['url']);
     curl_setopt_array($curl, [
         CURLOPT_HTTPHEADER => $request['headers'],

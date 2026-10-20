@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.api_recipe.replay import Render, Replays
 from crawlerai.config_ir.learning import next_learn_job, run_learn_job
+from crawlerai.config_ir.locate import Extract
 from crawlerai.llm.client import LLMClient
 from crawlerai.storage.base import ObjectStore
 
@@ -40,10 +41,11 @@ async def run_learner(
     max_chars: int,
     replay: Replays | None,
     render: Render | None = None,
+    extract: Extract | None = None,
 ) -> None:
     """Run queued `learn` jobs until `stop` is set, which cancels the run in progress. `max_chars` is role A's HTML
-    limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); `replay` sends the runs' recipe replays (adapters spec), and
-    `render` their browser renders (Appendix A #59)."""
+    limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); `replay` sends the runs' recipe replays (adapters spec), `render`
+    their browser renders (Appendix A #59), and `extract` extracts a locate run's renders (learning-configs spec)."""
     while not stop.is_set():
         try:
             async with engine.connect() as conn:
@@ -58,6 +60,7 @@ async def run_learner(
                     max_chars=max_chars,
                     replay=replay,
                     render=render,
+                    extract=extract,
                 )
                 await _until_stopped(run, stop)
                 continue

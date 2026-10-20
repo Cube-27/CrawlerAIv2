@@ -226,6 +226,7 @@ class Origin(Enum):
     induced = "induced"
     llm_synth = "llm_synth"
     operator = "operator"
+    located = "located"
 
 
 class Status(Enum):
@@ -238,6 +239,14 @@ class Status(Enum):
 class Format1(Enum):
     json = "json"
     platform_draft = "platform_draft"
+
+
+class ContextHeader(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    from_context: Annotated[Literal[True], Field(title="From Context")]
+    name: Annotated[str, Field(pattern="^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$", title="Name")]
 
 
 class ConfirmItem(RootModel[str]):
@@ -498,6 +507,16 @@ class Vocab(RootModel[str]):
     ]
 
 
+class Call(RootModel[str]):
+    root: Annotated[str, Field(pattern="^[a-z][a-z0-9_]{0,63}$", title="Call")]
+
+
+class Needs(Enum):
+    http = "http"
+    call = "call"
+    browser = "browser"
+
+
 class Yield(RootModel[float]):
     root: Annotated[float, Field(ge=0.0, le=1.0, title="Yield")]
 
@@ -548,6 +567,14 @@ class FitOptions(BaseModel):
     )
     max_blocks: Annotated[MaxBlocks | None, Field(title="Max Blocks")] = None
     query: Annotated[Query1 | None, Field(title="Query")] = None
+
+
+class HeaderValue(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: Annotated[str, Field(pattern="^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$", title="Name")]
+    value: Annotated[str, Field(title="Value")]
 
 
 class Llm(Enum):
@@ -601,6 +628,7 @@ class Source1(Enum):
     jsonld = "jsonld"
     js_state = "js_state"
     attr = "attr"
+    rsc = "rsc"
     xhr = "xhr"
     api = "api"
 
@@ -1364,7 +1392,9 @@ class ApiRecipe(BaseModel):
         extra="forbid",
     )
     body: RequestBody | None = None
-    headers: Annotated[dict[str, str] | None, Field(title="Headers")] = {}
+    headers: Annotated[
+        list[HeaderValue | ContextHeader] | None, Field(title="Headers")
+    ] = []
     map: Annotated[dict[str, str], Field(title="Map")]
     method: Annotated[Method, Field(title="Method")]
     pagination: Annotated[
@@ -2265,6 +2295,8 @@ class FieldSteps(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    call: Annotated[Call | None, Field(title="Call")] = None
+    needs: Annotated[Needs | None, Field(title="Needs")] = "http"
     status: Annotated[Status3, Field(title="Status")]
     steps: Annotated[
         list[
@@ -2374,6 +2406,7 @@ class ExtractionConfigIR(BaseModel):
     listing: ListingSpec | None = None
     page_kind: Annotated[PageKind, Field(title="Page Kind")]
     provenance: Provenance
+    recipes: Annotated[dict[str, ApiRecipe] | None, Field(title="Recipes")] = None
     schema_: Annotated[SchemaRef, Field(alias="schema")]
     site: Annotated[str, Field(min_length=1, title="Site")]
 

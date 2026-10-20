@@ -7,7 +7,7 @@ import json
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import httpx
 import pytest
@@ -57,6 +57,10 @@ def _page(name: str) -> bytes:
     return f"<html><head>{script}</head><body>{body}</body></html>".encode()
 
 
+# The field sources a stored config states (learning-configs spec, "Locate run").
+SOURCED: Final = {"needs": "http", "call": None}
+
+
 def _ir(host: str, schema: SchemaDef, step: dict[str, Any], **more: dict[str, Any]) -> dict[str, Any]:
     steps = {"title": step, **more}
     return {
@@ -66,11 +70,12 @@ def _ir(host: str, schema: SchemaDef, step: dict[str, Any], **more: dict[str, An
         "page_kind": "detail",
         "fetch": {"method": "http"},
         "fields": {
-            name: {"steps": [field_step], "status": "uncorroborated", "yield": 1.0, "validity": 1.0}
+            name: {"steps": [field_step], "status": "uncorroborated", "yield": 1.0, "validity": 1.0, **SOURCED}
             for name, field_step in steps.items()
         },
         "listing": None,
         "api_recipe": None,
+        "recipes": {},
         "provenance": {
             "origin": "induced",
             "validated_on": [],
@@ -313,7 +318,13 @@ async def test_a_correction_that_validates_becomes_the_active_operator_version(
     body = response.json()
     assert (body["version"], body["status"], body["origin"]) == (2, "active", "operator")
     assert body["field_status"] == {"title": "operator"}
-    assert body["ir"]["fields"]["title"] == {"steps": [H1], "status": "operator", "yield": 1.0, "validity": 1.0}
+    assert body["ir"]["fields"]["title"] == {
+        "steps": [H1],
+        "status": "operator",
+        "yield": 1.0,
+        "validity": 1.0,
+        **SOURCED,
+    }
     assert body["ir"]["provenance"]["origin"] == "operator"
     assert set(body["ir"]["provenance"]["validated_on"]) == {str(c) for c in held_out}
     report = body["validation_report"]

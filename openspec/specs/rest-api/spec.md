@@ -234,8 +234,12 @@ optional `render: {mode, fields}` (`services.scrape_steps.RenderOptions`): `mode
 browser only when HTTP is refused, [acquisition](../acquisition/spec.md) "Browser on block or by field source"),
 `locate` (the surface's locate run finds where the fields the HTTP pages leave missing, or `fields`, live) or `always`
 (every page rendered); `fields` holds at most `MAX_RENDER_FIELDS` names of the request's schema's fields (another name
-is refused, `check_render`). It is validated and pinned with the request (INV-28); the fetch plan and the locate run
-that act on it land with architecture v3 PR 5. `render_fields` is refused (422), as is any other unknown member. A field
+is refused, `check_render`). It is validated and pinned with the request (INV-28), and stored as the surface's render
+mode (`progressive_state.render_mode`) when a page of the job keeps a record; a request without `render` stores none
+and inherits the surface's mode. The mode drives the page's fetch plan ([acquisition](../acquisition/spec.md) "Browser
+on block or by field source": `always` renders every page) and, in `locate` or `always`, starts the surface's locate run
+once per job ([learning-configs](../learning-configs/spec.md) "Locate run") for `fields`, else the fields the page left
+unpublished. `render_fields` is refused (422), as is any other unknown member. A field
 whose source in the site's config is the browser, missing from a page that was not rendered, is `interaction_required`
 with reason `render_bound` ([resolution](../resolution/spec.md)). A task outcome or a scrape's `outcome` may be
 `auth_wall`, `soft_404`, `geo_redirect`, `redirected_to_listing`, `unsupported_media`, `geo_blocked` or `timeout`

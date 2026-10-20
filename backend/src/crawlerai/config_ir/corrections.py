@@ -67,6 +67,7 @@ def correct(
     absent = [name for name in ir.absent if correction.fields.get(name) is None]
     update = {"fields": _unmeasured(page), "listing": listing, "provenance": provenance, "absent": absent}
     corrected_ir = ir.model_copy(update=update)
+    corrected_ir = corrected_ir.model_copy(update={"recipes": corrected_ir.named_recipes()})
     # `model_copy` skips validation; the round trip runs the IR's validators on the corrected document.
     return ExtractionConfigIR.model_validate(corrected_ir.model_dump(by_alias=True))
 

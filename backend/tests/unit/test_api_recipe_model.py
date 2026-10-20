@@ -1,12 +1,13 @@
 """The `ApiRecipe` model (adapters spec): a recipe document survives a JSON round trip, and documents that leave a
-placeholder unbound, move the host, carry credentials or use paths the engine cannot read are refused."""
+placeholder unbound, move the host, carry a credential's value or use paths the engine cannot read are refused. A
+credential is a reference to the caller's request context (`ContextHeader`), which the stored recipe holds by name."""
 
 import uuid
 from typing import Any
 
 import pytest
 
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, Binder, parse_binder
+from crawlerai.config_ir.api_recipe.model import ApiRecipe, Binder, ContextHeader, parse_binder
 
 _CAPTURE = str(uuid.UUID(int=1))
 
@@ -16,7 +17,7 @@ def _recipe(**changes: Any) -> dict[str, Any]:
         "method": "GET",
         "url": "https://api.example.test/v1/products/{slug}?lang={lang}",
         "params_from_url": {"slug": "path:1", "lang": "query:hl"},
-        "headers": {"Accept": "application/json", "Referer": "{page_url}"},
+        "headers": [{"name": "Accept", "value": "application/json"}, {"name": "Referer", "value": "{page_url}"}],
         "map": {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"},
         "pagination": {
             "kind": "param",
@@ -76,14 +77,30 @@ _REFUSED: dict[str, tuple[dict[str, Any], str]] = {
     "non-http scheme": ({"url": "ftp://api.example.test/{slug}?lang={lang}"}, "an absolute http"),
     "fragment": ({"url": "https://api.example.test/{slug}?lang={lang}#x"}, "without a fragment"),
     "body on GET": ({"body": {"template": "{}"}}, "only a POST carries a body"),
-    "authorization header in any case": ({"headers": {"authorization": "x"}}, "a recipe carries no credentials"),
-    "a field the client sets": ({"headers": {"Content-Length": "2"}}, "no field the HTTP client sets itself"),
-    "header named twice": ({"headers": {"Accept": "a", "accept": "b"}}, "a header named twice"),
+    "authorization value in any case": (
+        {"headers": [{"name": "authorization", "value": "x"}]},
+        "a recipe holds no credential value",
+    ),
+    "a field the client sets": (
+        {"headers": [{"name": "Content-Length", "value": "2"}]},
+        "no field the HTTP client sets itself",
+    ),
+    "a field the client sets, by reference": (
+        {"headers": [{"name": "Host", "from_context": True}]},
+        "no field the HTTP client sets itself",
+    ),
+    "header named twice": (
+        {"headers": [{"name": "Accept", "value": "a"}, {"name": "accept", "from_context": True}]},
+        "a header named twice",
+    ),
     "header placeholder other than page_url": (
-        {"headers": {"X-Id": "{slug}"}},
+        {"headers": [{"name": "X-Id", "value": "{slug}"}]},
         "{page_url} is the only placeholder a header value takes",
     ),
-    "line break in a header value": ({"headers": {"X-A": "a\r\nX-B: b"}}, "a field value holds no line break"),
+    "line break in a header value": (
+        {"headers": [{"name": "X-A", "value": "a\r\nX-B: b"}]},
+        "a field value holds no line break",
+    ),
     "requires_page_fetch without a page data binder": (
         {"requires_page_fetch": True},
         "requires_page_fetch is true exactly when a binder reads",
@@ -117,3 +134,16 @@ _REFUSED: dict[str, tuple[dict[str, Any], str]] = {
         "not a query of name, wildcard and index",
     ),
 }
+
+
+def test_a_credential_is_stored_as_a_reference_to_the_request_context() -> None:
+    document = _recipe(
+        headers=[{"name": "Accept", "value": "application/json"}, {"name": "Authorization", "from_context": True}]
+    )
+
+    recipe = ApiRecipe.model_validate(document)
+
+    assert recipe.headers[1] == ContextHeader(name="Authorization", from_context=True)
+    assert recipe.context_headers == {"authorization"}
+    assert ApiRecipe.model_validate_json(recipe.model_dump_json()) == recipe
+    assert "value" not in recipe.model_dump()["headers"][1]

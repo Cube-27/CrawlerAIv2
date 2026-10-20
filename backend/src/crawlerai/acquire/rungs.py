@@ -1,6 +1,8 @@
 """Rung selection (acquisition spec): HTTP by default, the browser on a block, and what the site's memory says
-(`acquire.memory`): the rung its pages of the kind start with. An HTTP detail page of a platform that documents its
-product JSON is joined with that JSON, always (`_joined`).
+(`acquire.memory`): the rung its pages of the kind start with. The fetch plan of the page's field sources
+(`FetchPlan`, acquisition spec "Fetch plan") starts it in the browser when a located field source is the browser's
+render (or the surface renders every page), and adds the companion calls of its `call` sources to an HTTP page. An
+HTTP detail page of a platform that documents its product JSON is joined with that JSON, always (`_joined`).
 
 A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) first, and to the page rungs when the
 adapter does not serve it (adapters spec). A page whose own canonical link is its URL without the query, which an
@@ -25,7 +27,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest, site_relation
 from crawlerai.acquire.browser_tab import ListingRung
 from crawlerai.acquire.challenge import block_class_of
 from crawlerai.acquire.classify import interstitial
-from crawlerai.acquire.identity import joined, with_call
+from crawlerai.acquire.identity import identified, joined, with_call
 from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
@@ -33,6 +35,7 @@ from crawlerai.acquire.session import CookieExport, SiteSessions, identity
 from crawlerai.acquire.types import (
     AttemptRecord,
     BlockClass,
+    CallEndpoint,
     FetchPolicy,
     FetchResult,
     Validators,
@@ -51,6 +54,28 @@ FramePlan = Callable[[str, str], Sequence[tuple[str, str]]]
 
 # A fetch so far: the outcome kept, every attempt and their duration.
 Fetched = tuple[FetchResult, tuple[AttemptRecord, ...], int]
+# A companion call of a located `call` field source (acquisition spec, "Data calls"): the request its recipe makes for
+# the kept HTTP page, bound from the page's URL and documents and the policy's request context; None when it binds
+# nothing there (the field falls back to the generic path on that page). The config IR builds it: it sits above
+# `acquire` (`.importlinter`).
+CallPlan = Callable[[FetchResult, FetchPolicy], tuple[JsonRequest, tuple[str, ...]] | None]
+# The `data_call` mark of a located field source's companion call.
+LOCATED_CALL: Final = "located"
+
+
+@dataclass(frozen=True)
+class FetchPlan:
+    """What the page's field sources need fetched (acquisition spec, "Fetch plan"), from the site's active config
+    alone: the browser for a located `browser` field source (or a surface whose `render_mode` is `always`), the
+    companion calls of its `call` sources, and their endpoints, which the browser's ready wait names."""
+
+    browser: bool = False
+    calls: tuple[CallPlan, ...] = ()
+    endpoints: tuple[CallEndpoint, ...] = ()
+
+
+# The plan of a page no config's field source asks anything of.
+NO_PLAN: Final = FetchPlan()
 
 
 class ConditionalRung(Protocol):
@@ -124,24 +149,26 @@ async def acquire(
     admit_next: Admit | None = None,
     send: JsonFetcher | None = None,
     deadline: float | None = None,
+    plan: FetchPlan = NO_PLAN,
 ) -> FetchResult:
     """Fetch `url` through the active adapter that detects it, if any, requesting its API with `send` (no adapter runs
     without it); a page an adapter does not serve skips the recipe (adapters spec). Otherwise through `recipe`, the
     active config's API recipe bound to its fetch (adapters spec), when the site has one. The adapter's result is kept
     when it is `ok`, the recipe's when it is `ok` or asks for fewer requests; otherwise the page is fetched as if there
-    were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else the method the site's
-    memory says (`remembered`). In `auto`, an HTTP block, shell or network error is fetched again in the browser, and
-    the browser's outcome is kept only if it is `ok`; an HTTP `ok` page never is (acquisition spec, "Browser on block
-    or by field source"). Each request after the first (the page after an adapter or a recipe, the browser retry, the
-    companion call) waits for `admit_next` to admit it at the site's rate (acquisition spec), and is not sent when
-    `admit_next` refuses it: the fetch keeps the outcome it has. The result lists every attempt, in its bundle's
-    manifest too. `validators` go with the HTTP rung only (jobs spec): a 304 is `ok` and ends the fetch. A page no
-    adapter detected whose canonical link is its URL without the query, which an adapter detects, is fetched again by
-    that adapter on its own turn (adapters spec). An HTTP `ok` detail page kept is joined with its platform's
-    documented product JSON (`_joined`, sent with `send`), and any kept HTTP `ok` page with the answers of its eager
-    fragments on its own site (`_with_frames`). A policy that captures the page (`screenshot`, `pdf`) uses
-    neither an adapter, a recipe nor a companion call. No browser retry starts with less than `BROWSER_MIN_S` left
-    before `deadline` (on `time.monotonic`), the task's budget: the HTTP outcome is kept."""
+    were neither (§4.10, INV-40). Without either, fetch it with `policy.method_hint`, or else in the browser when the
+    `plan` says so, or else the method the site's memory says (`remembered`). In `auto`, an HTTP block, shell or network
+    error is fetched again in the browser, and the browser's outcome is kept only if it is `ok`; an HTTP `ok` page never
+    is (acquisition spec, "Browser on block or by field source"). Each request after the first (the page after an
+    adapter or a recipe, the browser retry, the companion call) waits for `admit_next` to admit it at the site's rate
+    (acquisition spec), and is not sent when `admit_next` refuses it: the fetch keeps the outcome it has. The result
+    lists every attempt, in its bundle's manifest too. `validators` go with the HTTP rung only (jobs spec): a 304 is
+    `ok` and ends the fetch. A page no adapter detected whose canonical link is its URL without the query, which an
+    adapter detects, is fetched again by that adapter on its own turn (adapters spec). An HTTP `ok` detail page kept is
+    joined with its platform's documented product JSON (`_joined`, sent with `send`), and any kept HTTP `ok` page with
+    the answers of its eager fragments on its own site (`_with_frames`), and with the answers of the `plan`'s companion
+    calls (`_with_calls`, sent with `send`). A policy that captures the page (`screenshot`, `pdf`) uses neither an
+    adapter, a recipe nor a companion call. No browser retry starts with less than `BROWSER_MIN_S` left before
+    `deadline` (on `time.monotonic`), the task's budget: the HTTP outcome is kept."""
     if policy.captures_page:
         send = recipe = None  # a screenshot or PDF is of the page itself, which an adapter's or a recipe's JSON is not
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
@@ -154,12 +181,14 @@ async def acquire(
         served.block_class == "ok" or (by_recipe and slow_down(served)) or not await _admitted(admit_next)
     ):
         return served
-    page = await _page(url, policy, remembered, rungs, _Retry(validators, admit_next, deadline))
+    ready, planned = _planned(policy, remembered, plan)
+    page = await _page(url, ready, planned, rungs, _Retry(validators, admit_next, deadline))
     # A page no adapter detected (none answered, or only the recipe did) may name a URL one does (adapters spec,
     # "Referral from a tenant's own host").
     if send is not None and (served is None or by_recipe):
         page = await _by_canonical(url, page, policy, rungs, send, admit_next)
     page = await _joined(policy, page, admit_next, send)
+    page = await _with_calls(policy, page, admit_next, send, plan.calls)
     kept, attempts, duration_ms = await _with_frames(policy, page, admit_next, send, rungs.frames)
     if served is not None:
         return with_attempts(kept, served.attempts + attempts, served.duration_ms + duration_ms)
@@ -282,6 +311,39 @@ async def _joined(policy: FetchPolicy, page: Fetched, admit_next: Admit | None, 
     )
     kept, call = joined(result, marked, called.key, called.platform)
     return (kept or result), attempts + call.attempts, duration_ms + call.duration_ms
+
+
+def _planned(policy: FetchPolicy, remembered: Remembered, plan: FetchPlan) -> tuple[FetchPolicy, Remembered]:
+    """The policy and memory the page is fetched with under `plan`: the browser first when a field source needs it, and
+    a ready wait that names the endpoints of the plan's calls (acquisition spec, "Ready condition")."""
+    ready = policy.model_copy(update={"ready_calls": plan.endpoints}) if plan.endpoints else policy
+    return ready, Remembered("browser") if plan.browser else remembered
+
+
+async def _with_calls(
+    policy: FetchPolicy, page: Fetched, admit_next: Admit | None, send: JsonFetcher | None, calls: Sequence[CallPlan]
+) -> Fetched:
+    """The kept HTTP `ok` page with the answers of its located companion calls (`FetchPlan.calls`), each sent with
+    `send` (the SSRF-guarded JSON rung, polite to the endpoint's host) once the site's rate admits it (`admit_next`).
+    Every attempt is added, marked `LOCATED_CALL`; an `ok` answer joins the capture as a network body at the call's
+    URL, which the field's `xhr` step reads, once it states the page's product (`identified`, with the values the
+    request was bound with). A call that binds nothing on the page is not sent."""
+    result, attempts, duration_ms = page
+    if not calls or send is None or result.method != "http" or result.block_class != "ok":
+        return page
+    for call in calls:
+        bound = await asyncio.to_thread(call, result, policy)  # binding parses the page: CPU work
+        if bound is None:
+            continue
+        if not await _admitted(admit_next):
+            break
+        request, keys = bound
+        sent = identified(await send(request, policy), result.bundle.manifest.url, keys)
+        marked = tuple(a.model_copy(update={"data_call": LOCATED_CALL}) for a in sent.attempts)
+        attempts, duration_ms = attempts + marked, duration_ms + sent.duration_ms
+        if sent.block_class == "ok":
+            result = with_call(result, sent, request.url, method=request.method, request_body=request.body)
+    return result, attempts, duration_ms
 
 
 async def _with_frames(

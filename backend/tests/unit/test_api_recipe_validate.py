@@ -17,7 +17,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.config_ir.api_recipe.binding import CapturedRequest, Sample
 from crawlerai.config_ir.api_recipe.headers import Proven
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, Proof, RequestSpec
+from crawlerai.config_ir.api_recipe.model import ApiRecipe, HeaderValue, Proof, RequestSpec
 from crawlerai.config_ir.api_recipe.replay import ReplayPage
 from crawlerai.config_ir.api_recipe.validate import HeldOutReplay, RecipeValidated, validate_recipe
 from crawlerai.config_ir.validation import RecipeFieldReport, RecipeReport
@@ -46,7 +46,7 @@ SPEC = RequestSpec(
     method="GET",
     url=f"{ENDPOINT}/{{p1}}",
     params_from_url={"p1": "path:1"},
-    headers={"Accept": "application/json"},
+    headers=[HeaderValue(name="Accept", value="application/json")],
 )
 PROVEN = Proven(SPEC, headers_tried=2)
 
@@ -121,7 +121,7 @@ def test_a_recipe_that_reproduces_every_held_out_page_is_accepted_with_its_proof
             method="GET",
             url=f"{ENDPOINT}/{{p1}}",
             params_from_url={"p1": "path:1"},
-            headers={"Accept": "application/json"},
+            headers=[HeaderValue(name="Accept", value="application/json")],
             map=MAP,
             proof=Proof(
                 validated_on=[_capture(0), _capture(1), _capture(2)], headers_tried=2, bound_by="deterministic"

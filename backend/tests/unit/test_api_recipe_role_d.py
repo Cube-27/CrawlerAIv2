@@ -17,7 +17,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.config_ir.api_recipe.binding import Ambiguous, CapturedRequest, PageData, Sample, bind
 from crawlerai.config_ir.api_recipe.headers import NotLearnable, Proven
-from crawlerai.config_ir.api_recipe.model import RequestSpec
+from crawlerai.config_ir.api_recipe.model import HeaderValue, RequestSpec
 from crawlerai.config_ir.api_recipe.replay import ReplayPage
 from crawlerai.config_ir.api_recipe.role_d import REPAIR_SYSTEM, SYSTEM, Rejected, bind_by_role_d
 from crawlerai.core.ids import uuid7
@@ -113,7 +113,10 @@ def _run(
 
 def _accepted() -> Proven:
     spec = RequestSpec(
-        method="GET", url=f"{ENDPOINT}/{{p1}}", params_from_url={"p1": REGEX}, headers={"Accept": "application/json"}
+        method="GET",
+        url=f"{ENDPOINT}/{{p1}}",
+        params_from_url={"p1": REGEX},
+        headers=[HeaderValue(name="Accept", value="application/json")],
     )
     return Proven(spec, headers_tried=0)
 

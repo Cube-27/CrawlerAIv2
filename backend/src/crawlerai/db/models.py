@@ -96,10 +96,13 @@ SourceKind = Literal[
 ]
 # `pending_approval`: a learned config waiting for a person to approve it (`project.require_config_approval`, D-1342).
 ConfigStatus = Literal["draft", "active", "suspended", "pending_approval"]
-ConfigOrigin = Literal["adapter", "induced", "llm_synth", "operator"]
+ConfigOrigin = Literal["adapter", "induced", "llm_synth", "operator", "located"]
 # `extraction_config.field_status` values.
 FieldStatus = Literal["corroborated", "uncorroborated", "operator", "suspended", "absent"]
 ProgressiveMode = Literal["cold", "learning", "active"]
+# How a surface's pages are rendered for fields (rest-api spec, "Render mode"): HTTP, a locate run then the fetch its
+# field sources need, or every page in the browser.
+RenderMode = Literal["off", "locate", "always"]
 # What `usage_event` counts (persistence-storage spec), each in whole units: calls, tokens, seconds, bytes, requests.
 UsageResource = Literal[
     "llm_calls", "llm_tokens_in", "llm_tokens_out", "browser_seconds", "proxy_bytes", "http_requests"
@@ -412,6 +415,7 @@ class ProgressiveState(Base):
         CheckConstraint("mode <> 'learning' OR learning_started_at IS NOT NULL", name="learning_has_started"),
         CheckConstraint("mode <> 'active' OR active_config_id IS NOT NULL", name="active_has_config"),
         CheckConstraint("retry_at_pages >= 0", name="retry_at_pages_non_negative"),
+        CheckConstraint(one_of("render_mode", RenderMode), name="render_mode"),
     )
 
     site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id), primary_key=True)
@@ -426,6 +430,8 @@ class ProgressiveState(Base):
     active_config_id: Mapped[ExtractionConfigId | None] = mapped_column(ForeignKey(ExtractionConfig.id))
     # The `pages_extracted` at which learning is tried again after a failed run; NULL until one fails (§4.8, D-0030).
     retry_at_pages: Mapped[int | None] = mapped_column(Integer)
+    # The surface's `render.mode` (rest-api spec): the last one a job set, which a job submitted without one inherits.
+    render_mode: Mapped[RenderMode] = mapped_column(Text, server_default=text("'off'"))
 
 
 class UrlState(Base):

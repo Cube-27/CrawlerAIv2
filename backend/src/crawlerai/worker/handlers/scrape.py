@@ -90,6 +90,7 @@ def scrape_handler(
             recurring=records,
             served=records,
             formats=request.formats,
+            planned=records,
         )
         result = (
             page.task_result if isinstance(page, Ended) else await _settle(conn, fetching, task, page, records, llm)

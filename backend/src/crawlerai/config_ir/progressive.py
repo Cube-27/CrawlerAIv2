@@ -14,6 +14,11 @@ waits, and an approved config activates in any mode.
 
 The `learn` job is created `queued` with its state in `request`; running it is the learning pipeline's (§4.5 to §4.7),
 which ends the run with `learning_activated`, `learning_awaits_approval` or `learning_failed`.
+
+A state is also a surface's render setting (`render_mode`, rest-api spec "Render mode"): the last `render.mode` a job
+set for it, which a job submitted without one inherits. A job whose mode is `locate` or `always` starts the surface's
+locate run (learning-configs spec, "Locate run") once, as a forced `learn` job whose request names the job and the
+fields it asked for (`request_locate`).
 """
 
 from collections.abc import Mapping
@@ -35,6 +40,7 @@ from crawlerai.db.models import (
     PageKind,
     ProgressiveMode,
     ProgressiveState,
+    RenderMode,
     SchemaId,
     Site,
     SiteId,
@@ -92,12 +98,26 @@ class NotLearning(Exception):
         super().__init__(f"progressive_state {key}: {event} with no learning run in flight")
 
 
+# The stored pages of a surface a locate run renders: one to induce on, the others to hold out (learning-configs spec).
+LOCATE_SAMPLES: Final = 3
+
+
+class LocateRequest(BaseModel):
+    """What a locate run is asked for (learning-configs spec, "Locate run"): the job whose `render` started it (whose
+    request context a recipe's referenced headers are replayed with; none for a schema edit's), and the fields it
+    named (none: the fields the surface's config does not read)."""
+
+    job_id: UUID | None = None
+    fields: list[str] = []
+
+
 class _LearnRequest(BaseModel):
     """The `request` of a `learn` job, as `request_learning` writes it (D-0549)."""
 
     site_id: UUID
     schema_id: UUID
     page_kind: PageKind
+    locate: LocateRequest | None = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +128,11 @@ class StateKey:
 
     def columns(self) -> dict[str, Any]:
         return asdict(self)
+
+    @staticmethod
+    def locate_of(request: Mapping[str, Any]) -> LocateRequest | None:
+        """The locate run a `learn` job's `request` asks for, if any."""
+        return _LearnRequest.model_validate(request).locate
 
     @classmethod
     def from_request(cls, request: Mapping[str, Any]) -> "StateKey":
@@ -155,15 +180,20 @@ async def trigger_learning(conn: AsyncConnection, *, batch: int) -> int:
     return len(keys)
 
 
-async def request_learning(conn: AsyncConnection, key: StateKey, *, force: bool = False) -> JobId | None:
+async def request_learning(
+    conn: AsyncConnection, key: StateKey, *, force: bool = False, locate: LocateRequest | None = None
+) -> JobId | None:
     """Start a learning run for `key`, a state created cold if there is none yet, and return its `learn` job; None
-    when a run is already in flight, or the state is active and `force` is not set."""
+    when a run is already in flight, or the state is active and `force` is not set. With `locate`, the run is the
+    surface's locate run too."""
     await conn.execute(pg_insert(ProgressiveState).values(**key.columns()).on_conflict_do_nothing())
     event: LearnEvent = "start_forced" if force else "start"
     if not await _move(conn, key.where(), event, learning_started_at=func.now()):
         return None
     project = select(Site.project_id).where(Site.id == key.site_id).scalar_subquery()
     request = {**key.columns(), "site_id": str(key.site_id), "schema_id": str(key.schema_id), "force": force}
+    if locate is not None:
+        request["locate"] = locate.model_dump(mode="json")
     job_id: JobId = (
         await conn.execute(
             insert(Job)
@@ -178,6 +208,61 @@ async def request_learning(conn: AsyncConnection, key: StateKey, *, force: bool 
         )
     ).scalar_one()
     return job_id
+
+
+async def render_mode(conn: AsyncConnection, key: StateKey) -> RenderMode:
+    """The surface's render mode; `off` for a surface no job has set one for."""
+    found: RenderMode | None = (
+        await conn.execute(select(ProgressiveState.render_mode).where(*key.where()))
+    ).scalar_one_or_none()
+    return found or "off"
+
+
+async def set_render_mode(conn: AsyncConnection, key: StateKey, mode: RenderMode) -> None:
+    """Store `mode` as the surface's render mode, a state created cold if there is none yet."""
+    await conn.execute(
+        pg_insert(ProgressiveState)
+        .values(**key.columns(), render_mode=mode)
+        .on_conflict_do_update(
+            index_elements=[ProgressiveState.site_id, ProgressiveState.schema_id, ProgressiveState.page_kind],
+            set_={"render_mode": mode},
+            where=ProgressiveState.render_mode != mode,
+        )
+    )
+
+
+async def request_locate(conn: AsyncConnection, key: StateKey, locate: LocateRequest) -> JobId | None:
+    """Start the surface's locate run for `locate.job_id` once the surface has `LOCATE_SAMPLES` extracted pages to
+    render, unless that job already started one for `key` or a run is in flight; its `learn` job, or None."""
+    pages = select(ProgressiveState.pages_extracted).where(*key.where())
+    if ((await conn.execute(pages)).scalar_one_or_none() or 0) < LOCATE_SAMPLES:
+        return None
+    job = Job
+    started = select(job.id).where(
+        job.kind == "learn",
+        job.request["site_id"].astext == str(key.site_id),
+        job.request["schema_id"].astext == str(key.schema_id),
+        job.request["page_kind"].astext == key.page_kind,
+        job.request["locate"]["job_id"].astext == str(locate.job_id),
+    )
+    if (await conn.execute(select(started.exists()))).scalar_one():
+        return None
+    return await request_learning(conn, key, force=True, locate=locate)
+
+
+async def locate_added(conn: AsyncConnection, schema_id: SchemaId, fields: list[str]) -> None:
+    """Start the locate run of every surface of `schema_id` whose render mode locates (`locate`, `always`) and whose
+    pages were extracted, for `fields`, which an edit added to the schema (learning-configs spec, "Locate run")."""
+    state = ProgressiveState
+    surfaces = await conn.execute(
+        select(state.site_id, state.page_kind).where(
+            state.schema_id == schema_id, state.render_mode != "off", state.pages_extracted >= LOCATE_SAMPLES
+        )
+    )
+    for site_id, page_kind in surfaces.all():
+        await request_learning(
+            conn, StateKey(site_id, schema_id, page_kind), force=True, locate=LocateRequest(fields=fields)
+        )
 
 
 async def learning_activated(conn: AsyncConnection, key: StateKey, config_id: ExtractionConfigId) -> None:

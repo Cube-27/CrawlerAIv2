@@ -17,8 +17,11 @@ The main database SHALL hold the §6 tables as defined in the baseline migration
 and UNIQUE (no public-suffix logic), `schema_def.name` and `project.name` UNIQUE, and at most one `active`
 `extraction_config` per (site, schema, page kind). A `site_contract` row holds the contract alone (acquisition spec,
 "Acquisition contract and block history"): `method`, `engine`, `handoff`, `coverage`, beside its key, `failures` and
-`checked_at`. (Previously: also `settle_on`, `needs_render`, `needs_xhr` and `needs_traversal`.) Refs: §6, D-0089,
-D-0091, D-0138, architecture v3 (e).
+`checked_at`. The surface's render mode (`site_surface.render_mode` of architecture v3) is
+`progressive_state.render_mode`, on the config's key scope (site, schema, page kind): `off` (the default), `locate` or
+`always`, the last `render.mode` a job set for it (rest-api spec, "Render mode"); `extraction_config.origin` may be
+`located`. (Previously: also `settle_on`, `needs_render`, `needs_xhr` and `needs_traversal`; no render mode was
+stored.) Refs: §6, D-0089, D-0091, D-0138, architecture v3 (e), PR 5.
 #### Scenario: Second active config refused
 - **WHEN** a second `active` `extraction_config` is written for the same site, schema and page kind
 - **THEN** the insert fails on `uq_extraction_config_active`

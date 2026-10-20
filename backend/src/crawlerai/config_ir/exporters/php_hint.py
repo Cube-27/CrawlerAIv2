@@ -5,7 +5,8 @@ run (§18, INV-17).
 The hint builds the request as `fetch_json` sends it (`replay.request_for`): each `{name}` placeholder filled with its
 parameter, percent-encoded for the path or the query (`binding.render_url`) or escaped as JSON string content in a body
 (`binding.render_body`); `Accept: application/json` first, replaced by a recipe header of the same name; `{page_url}` in
-a header value replaced by the page URL. The caller supplies the parameters, read from the page as each binder says.
+a header value replaced by the page URL; a header the recipe takes from the caller's request context from `$context`.
+The caller supplies the parameters, read from the page as each binder says, and that context.
 
 Every recipe string reaches the template only through `php_literal` (a PHP single-quoted literal) or `php_comment`
 (a JSON string in a `//` comment), and the template refuses any other value, so no recipe string ends a literal, a
@@ -13,7 +14,7 @@ comment or PHP mode.
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Sequence
 from typing import Final
 
 from jinja2 import Environment, PackageLoader, StrictUndefined
@@ -22,7 +23,7 @@ from markupsafe import Markup
 from crawlerai.acquire.api import ACCEPT
 from crawlerai.acquire.redirects import MAX_REDIRECTS
 from crawlerai.config_ir.api_recipe.binding import PATH_SAFE, QUERY_SAFE
-from crawlerai.config_ir.api_recipe.model import PAGE_URL, ApiRecipe
+from crawlerai.config_ir.api_recipe.model import PAGE_URL, ApiRecipe, ContextHeader, HeaderValue, RecipeHeader
 
 
 class _Php(Markup):
@@ -77,6 +78,7 @@ def php_hint(recipe: ApiRecipe) -> str:
         path_decode=_decode_map(PATH_SAFE),
         query_decode=_decode_map(QUERY_SAFE),
         headers=_headers(recipe),
+        context_headers=[h.name for h in recipe.headers if isinstance(h, ContextHeader)],
         no_content_type=recipe.method == "POST" and not _has_header(recipe.headers, "content-type"),
         max_redirects=MAX_REDIRECTS,
         page_url=f"{{{PAGE_URL}}}",
@@ -89,11 +91,12 @@ def _decode_map(safe: str) -> dict[str, str]:
     return {f"%{ord(char):02X}": char for char in safe}
 
 
-def _has_header(headers: Mapping[str, str], name: str) -> bool:
-    return any(header.lower() == name for header in headers)  # RFC 9110 §5.1: field names are case-insensitive
+def _has_header(headers: Sequence[RecipeHeader], name: str) -> bool:
+    return any(header.name.lower() == name for header in headers)  # RFC 9110 §5.1: field names are case-insensitive
 
 
 def _headers(recipe: ApiRecipe) -> list[str]:
-    """The header lines `fetch_json` sends: `Accept` first, unless the recipe names it, then the recipe's in order."""
+    """The header lines with a value `fetch_json` sends: `Accept` first, unless the recipe names it, then the recipe's
+    in order."""
     lines = [] if _has_header(recipe.headers, "accept") else [f"Accept: {ACCEPT}"]
-    return lines + [f"{name}: {value}" for name, value in recipe.headers.items()]
+    return lines + [f"{h.name}: {h.value}" for h in recipe.headers if isinstance(h, HeaderValue)]
