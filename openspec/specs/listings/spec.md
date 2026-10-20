@@ -27,15 +27,28 @@ ranking. (Previously: role C's item text read it too.) Refs: owner #67, master p
 Each group whose blocks lead to one item, at least a quorum of `max(MIN_ITEMS, 60%)` of them, `MIN_ITEMS` of them
 showing more than their link, SHALL give an `item_block` row per item URL (`collect/items/align.py`); a field is read at
 a place shared by a quorum of the blocks whose value its normalizer accepts: the item URL (the one document the block's
-links lead to, not the page in another state, an image file or an item's own nested list), the name (the accessible
-name of the item link, WCAG label in name, or the block's heading; never a URL; text every block repeats is the
-template's), the image, and typed value spotting for money, dates and check-digit identifiers (text in `s`/`del`
+links lead to, not the page in another state, an image file or an item's own nested list), the name (the item link's
+one-line content, the block's heading, or the name the item's attributes state, `aria-labelledby`/`aria-label`/`title`
+or an image's `alt`, kept where the block shows it over one or several whole lines in order, WCAG label in name, a line
+cut by an ellipsis standing for the rest, its unshown leading or trailing words dropped when every block states the
+same; never a URL; text every block repeats is the template's, also a child element of the name every block shows alike;
+a block the chosen rule leaves unnamed reads the one line at the tag path a quorum of its names have), the image, and typed value spotting for money, dates and check-digit identifiers (text in `s`/`del`
 excluded, also from the lines of the elements holding it; an element's line is not read where two text nodes run digits
 together, a token boundary the text does not show; an element holding others is also read in each of its own text
 nodes). Values are `dom` candidates with locators; the group aligning most fields is first. Refs: owner #67.
 #### Scenario: Cards with title, link and price
 - **WHEN** a listing shows cards of varying tags and class tokens, each with a heading link and one price
 - **THEN** each card is a row with its title, URL and price
+#### Scenario: A name the attributes state
+- **WHEN** each card has an empty item link with `aria-label="Details of Runner 1 Blue R1"`, shows `Runner 1` and
+  `Blue` on two lines, and a size picker linking to the item
+- **THEN** each card's name is `Runner 1 Blue R1`
+#### Scenario: Helper text in the name link
+- **WHEN** every card's name link holds `<span>View product</span>` before the item's name
+- **THEN** the names leave `View product` out
+#### Scenario: A card with a second heading
+- **WHEN** one card of a grid named by its `h3` adds an `h2` `Sold out`
+- **THEN** that card is named by its `h3`
 #### Scenario: Was and now prices
 - **WHEN** a card shows a current price and a second price not struck through
 - **THEN** its price is `ambiguous_in_block` and publishes nothing unless a stated row bound to it agrees with one
