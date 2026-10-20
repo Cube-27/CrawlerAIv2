@@ -53,7 +53,9 @@ class Shape:
     states it. Only a property listed there is scaled, and only an integer amount (written as a number or in digits);
     any other value of it is dropped, since the documentation states no unit for it. `booleans` gives a property the
     API states as a JSON boolean the values its documentation means by `true` and by `false` (a variant's `available`:
-    schema.org `InStock`, `OutOfStock`)."""
+    schema.org `InStock`, `OutOfStock`). `sections` gives a property the API states as parts of one rich text (a
+    posting's body, its lists, its closing remarks) those parts in the order the platform's page shows them: its one
+    value is the HTML text of them all (`Section`)."""
 
     type: str
     at: Members = ()
@@ -64,6 +66,18 @@ class Shape:
     anchor: Members = ()
     minor_units: Mapping[str, int | Members] = field(default_factory=dict)
     booleans: Mapping[str, tuple[str, str]] = field(default_factory=dict)
+    sections: Mapping[str, tuple["Section", ...]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Section:
+    """A part of a text an API splits over members: the objects at `at` from the node's object (the object itself for
+    `()`), each a part whose `body` is HTML and whose optional `heading` is plain text that titles it. A part with no
+    body is none; the parts are joined one per line, each heading an `h2` (HTML Standard §4.3.6) before its body."""
+
+    body: Members
+    at: Members = ()
+    heading: Members = ()
 
 
 def apply_action(member: str) -> Shape:

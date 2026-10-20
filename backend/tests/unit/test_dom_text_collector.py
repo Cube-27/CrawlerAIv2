@@ -5,11 +5,13 @@ Pages are synthetic (`example.test`, C3, C9)."""
 
 from datetime import UTC, datetime
 
+import pytest
+
 from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.collect.dom_text import DescriptionCollector
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate
-from crawlerai.content.page import ParsedPage
+from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId, SourceKind
 from crawlerai.normalize.base import Context, Ok
@@ -59,6 +61,7 @@ def _read(body: str, *stated: Candidate, schema: SchemaDef | None = None) -> dic
 SUMMARY = "A sturdy kettle for everyday use."
 FIRST = "A sturdy kettle for everyday use. It boils a litre in two minutes."
 SECOND = "The lid locks and the handle stays cool."
+TAGLINE = "Sturdy everyday kettle; boils a litre fast."  # a summary that is no prefix of the text
 
 
 def test_block_extending_a_summary_is_the_description() -> None:
@@ -83,8 +86,77 @@ def test_main_text_stands_for_a_description_only_an_og_summary_states() -> None:
         f"<main><h1>Kettle</h1><button>Buy</button><div><h2>Overview</h2><p>{FIRST}</p><p>{SECOND}</p></div>"
         "<p>Short note.</p></main>"
     )
-    found = _read(body, _stated("og", "Shop kettles at our store."))
+    found = _read(body, _stated("og", "A sturdy kettle that boils fast."))
     assert found["description"] == f"{FIRST}\n{SECOND}"
+
+
+@pytest.mark.parametrize(
+    ("body", "summary"),
+    [
+        # The buy box: the title heading and a price beside a line of text.
+        (f"<main><div><h1>Kettle</h1><p>{FIRST} Now on sale.</p></div><p>Note.</p></main>", TAGLINE),
+        # A block no longer than the summary.
+        ("<main><h1>Kettle</h1><p>Sturdy kettle, boils.</p></main>", TAGLINE),
+        # A notice that restates none of the summary's words beyond the title's.
+        ("<main><h1>Kettle</h1><p>Prices include tax; delivery fees are shown at checkout.</p></main>", TAGLINE),
+    ],
+)
+def test_main_text_must_be_what_the_summary_summarizes(body: str, summary: str) -> None:
+    assert _read(body, _stated("og", summary)) == {}
+
+
+def test_a_main_text_block_holding_a_read_price_is_the_buy_box() -> None:
+    body = f"<main><h2>Kettle</h2><div><p>{FIRST}</p><p>{SECOND}</p><span>$20</span></div><p>Note.</p></main>"
+    page = ParsedPage(f"<html><body>{body}</body></html>")
+    span = page.tree.css_first("span")
+    assert span is not None
+    schema = _schema()
+    schema = schema.model_copy(update={"fields": {**schema.fields, "price": _field(FieldType.MONEY, None)}})
+    price = candidate(
+        "price", schema.fields["price"], PAGE, "dom", "$20", format_locator("dom", node_xpath(span)), CTX, []
+    )
+    assert price is not None
+
+    found = DescriptionCollector().collect(page, schema, CTX, (_stated("og", TAGLINE), price)).candidates
+
+    assert found == ()
+
+
+def test_a_stated_value_equal_to_the_summary_is_extended_by_a_longer_stated_text() -> None:
+    body = f"<main><h1>Kettle</h1><p>{SUMMARY}</p><div><p>{FIRST}</p><p>{SECOND}</p></div></main>"
+    full = f"{FIRST} {SECOND}"
+    found = _read(body, _stated("og", SUMMARY), _stated("jsonld", SUMMARY), _stated("jsonld", full))
+    assert found == {"description": f"{FIRST}\n{SECOND}"}
+
+
+def test_an_image_among_the_paragraphs_keeps_the_rich_text_one_block() -> None:
+    body = f'<main><h1>Kettle</h1><div><p>{FIRST}</p><p><img src="/a.png" alt="Kettle"></p><p>{SECOND}</p></div></main>'
+    assert _read(body, _stated("og", SUMMARY)) == {"description": f"{FIRST}\n{SECOND}"}
+
+
+def test_an_element_valued_description_goes_on_over_its_sibling_sections_in_its_item() -> None:
+    body = (
+        '<main><div itemscope itemtype="https://schema.org/JobPosting"><h1 itemprop="title">Engineer</h1>'
+        f'<section itemprop="description"><p>{FIRST}</p></section>'
+        f'<section><h2>Duties</h2><p>{SECOND}</p><img src="/icon.png" alt=""></section>'
+        '<span itemprop="datePosted">2026-10-01</span><p>Apply today.</p></div></main>'
+    )
+    page = ParsedPage(f"<html><body>{body}</body></html>")
+    element = page.tree.css_first('[itemprop="description"]')
+    assert element is not None
+    locator = format_locator("microdata", node_xpath(element))
+    stated = candidate("description", _schema().fields["description"], PAGE, "microdata", FIRST, locator, CTX, [])
+    assert stated is not None
+
+    found = DescriptionCollector().collect(page, _schema(), CTX, (stated,)).candidates
+
+    assert [c.normalized for c in found] == [Ok(f"{FIRST}\nDuties\n{SECOND}")]
+    # A sibling holding another property's element is not the description's text.
+    nested = body.replace("<h2>Duties</h2>", '<h2 itemprop="occupationalCategory">Duties</h2>')
+    nested_found = DescriptionCollector().collect(
+        ParsedPage(f"<html><body>{nested}</body></html>"), _schema(), CTX, (stated,)
+    )
+    assert [c.normalized for c in nested_found.candidates] == [Ok(FIRST)]
 
 
 def test_schema_without_long_text_reads_nothing() -> None:

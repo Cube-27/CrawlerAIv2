@@ -70,7 +70,8 @@ def test_every_listed_offer_is_a_job_with_its_stated_fields() -> None:
     first = "adapter:recruitee:$['offers'][0]"
     assert found[(first, "title")] == "Synthetic Engineer"
     assert found[(first, "url")] == "https://careers.example.test/o/synthetic-engineer"
-    assert found[(first, "description")] == "<p>Do Synthetic Engineer.</p>"
+    # The page shows the requirements after the description.
+    assert found[(first, "description")] == "<p>Do Synthetic Engineer.</p>\n<p>Req.</p>"
     assert found[(first, "date_posted")] == "2026-09-30 10:00:00 UTC"
     assert found[(first, "employment_type")] == "fulltime_permanent"
     assert found[(first, "locations")] == ["Northtown, Exampleland"]

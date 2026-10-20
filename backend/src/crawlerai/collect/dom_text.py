@@ -2,7 +2,7 @@
 page that states a long_text field in full, for pages whose structured data and Open Graph metadata hold only a
 summary or a cut of it.
 
-Two structures name such a block, both read from the page's main content (`collect.dom`: the `main` element, else the
+These structures name such a block, all read from the page's main content (`collect.dom`: the `main` element, else the
 `role="main"` landmark, else the one `article`, else the body) outside its tangential content, dialogs, media fallback,
 reviews, related items and the blocks outside the product container (`collect.dom.product_apart`):
 - **Extension.** A block of prose whose text begins with a candidate another collector proposed for the field (the
@@ -15,9 +15,19 @@ reviews, related items and the blocks outside the product container (`collect.do
   label-value pairs are read (C4: the schema's words, never a list). For a list field of values (a job's
   requirements, a recipe's ingredients), what such a section states is the items of its lists (HTML Standard §4.4.5-
   §4.4.8: `ul`, `ol` and `menu` items, `collect.dom.list_items`): one value per item.
+- **Item continuation.** A value microdata or RDFa states on an element (`itemprop`, `property`) whose following
+  sibling blocks go on with prose: the element and those siblings, their headings with them, up to the first sibling
+  that is no prose or that states another property or item. The siblings are inside the item's scope (HTML Standard
+  §5.2.2), so they are its text; a template that marks only a description's first section is read whole.
+- **Main text.** For a description that only an Open Graph summary states (or nothing does), the longest prose block.
+  A summary is shorter than what it summarizes and restates it, so the block must be longer than the summary and hold
+  most of the summary's words other than the title's (the page's `h1`); and it must not be the buy box: a block holding
+  the page's title heading (an `h1`, or an ARIA heading of level 1) or a price the structural pass read is not text.
 
 Prose is a block that holds no table, form control, button, image, media, frame or other element that is not running
-text (HTML Standard §3.2.5: flow and phrasing content). A block's text is the cleaned text of its element
+text (HTML Standard §3.2.5: flow and phrasing content). In the extension, labelled-section and item-continuation paths
+an image (`img`, `picture`) is phrasing content (HTML Standard §3.2.5.2.5), as rich text places one among its
+paragraphs; the main text, which nothing stated names, holds none. A block's text is the cleaned text of its element
 (`content.text`): visible text, one block box per line. Reviews and related items are the elements whose `itemprop`
 is one of schema.org's `review`, `isRelatedTo` or `isSimilarTo`, and Review items (`itemtype`). Several distinct
 blocks that neither contain one another's text nor continue it are ambiguous: nothing is read.
@@ -34,7 +44,7 @@ from selectolax.lexbor import LexborNode
 from crawlerai.collect.base import PAGE, Candidate, CollectResult
 from crawlerai.collect.dom import OTHER_ITEMS, content_region, list_items
 from crawlerai.collect.labels import field_labels, labelled, properties, words
-from crawlerai.collect.locator import format_locator
+from crawlerai.collect.locator import InvalidLocator, format_locator, parse_locator
 from crawlerai.collect.schema_org_map import candidate
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage, node_xpath
@@ -65,9 +75,17 @@ _NOT_PROSE = (
     "style",
     "template",
 )
+# HTML Standard §3.2.5.2.5: embedded content that is phrasing content, and so runs among the text of rich prose.
+_PHRASING_IMAGES = frozenset({"img", "picture"})
 # WAI-ARIA 1.2 §5.4: roles of content set apart from the main content.
 _APART_ROLES = ("dialog", "alertdialog", "form", "navigation", "complementary", "banner", "contentinfo")
 _HEADING = 'h1,h2,h3,h4,h5,h6,[role~="heading"]'
+# HTML Standard §4.3.6 and WAI-ARIA 1.2 `aria-level`: the page's title heading, which opens the item, not its text.
+_TITLE_HEADING = 'h1,[role~="heading"][aria-level="1"]'
+# HTML Standard §5.2.2 (microdata) and RDFa Core 1.1 §7.5: attributes that state a property or an item of their own.
+_ITEM_ATTRIBUTES = ("itemprop", "itemscope", "property", "typeof")
+_ITEM_SELECTOR = ",".join(f"[{a}]" for a in _ITEM_ATTRIBUTES)
+_ELEMENT_VALUED = "microdata"  # the collector of microdata and RDFa: a value states the element its locator names
 _OPEN_GRAPH = "og"  # the protocol defines og:description as a one-to-two sentence summary
 _DESCRIPTION = "description"  # schema.org `Thing.description`
 _ELLIPSES = ("…", "...")  # Unicode U+2026, and its NFKC form: how a cut text ends
@@ -82,13 +100,14 @@ class _Block(NamedTuple):
 class _Blocks:
     """The prose elements of a region with their cleaned text, in document order."""
 
-    def __init__(self, page: ParsedPage, region: LexborNode, outside: frozenset[int]) -> None:
+    def __init__(self, page: ParsedPage, region: LexborNode, outside: frozenset[int], *, images: bool = False) -> None:
+        """`images`: whether an image is phrasing content (module docstring)."""
         self.page, self.region = page, region
         spans, text = page.text_spans, page.cleaned_text.text
         selector = ",".join(
             (
                 *_TANGENTIAL,
-                *_NOT_PROSE,
+                *(tag for tag in _NOT_PROSE if not (images and tag in _PHRASING_IMAGES)),
                 *(f'[role~="{role}"]' for role in _APART_ROLES),
                 OTHER_ITEMS,
             )
@@ -114,6 +133,11 @@ class _Blocks:
 
     def prose(self, node: LexborNode) -> _Block | None:
         return self.blocks.get(node.mem_id)
+
+    def text(self, node: LexborNode) -> str:
+        """The cleaned text of an element, its headings with it: one block box per line."""
+        span = self.page.text_spans.get(node_xpath(node))
+        return self.page.cleaned_text.text[span[0] : span[1]].strip() if span else ""
 
 
 def _ancestors(node: LexborNode, region: LexborNode) -> Iterator[LexborNode]:
@@ -150,10 +174,11 @@ class DescriptionCollector:
         region = content_region(page) if schema.page_kind == "detail" and not page.json_body and wanted else None
         if region is None:
             return CollectResult(entities=(), candidates=())
-        blocks = _Blocks(page, region, self.outside)
+        blocks = _Blocks(page, region, self.outside, images=True)
+        main = _MainText(page, region, self.outside, schema, others)
         labels = field_labels(schema)
         found: list[tuple[str, _Block, JsonValue]] = [
-            (name, block, None) for name in fields if (block := _described(blocks, labels, schema, name, others))
+            (name, block, None) for name in fields if (block := _described(blocks, main, labels, name, others))
         ]
         found.extend((name, *listed) for name in lists if (listed := _listed(blocks, labels, name)) is not None)
         diagnostics: list[str] = []
@@ -166,11 +191,60 @@ class DescriptionCollector:
 
 
 def _described(
-    blocks: _Blocks, labels: dict[tuple[str, ...], list[str]], schema: SchemaDef, name: str, others: Sequence[Candidate]
+    blocks: _Blocks, main: "_MainText", labels: dict[tuple[str, ...], list[str]], name: str, others: Sequence[Candidate]
 ) -> _Block | None:
-    """A long_text field's block: the one extending a stated value, else its labelled section, else the main text."""
+    """A long_text field's block: the one extending a stated value or continuing an element-valued one, whichever goes
+    on further, else its labelled section, else the main text."""
     stated = [(c.source_kind, form) for c in others if c.field == name and (form := _stated(c))]
-    return _extending(blocks, stated) or _labelled(blocks, labels, name) or _main_text(blocks, schema, name, stated)
+    extended = _extending(blocks, stated)
+    continued = _only([b for c in others if c.field == name and (b := _continued(blocks, c)) is not None])
+    if continued is not None and (extended is None or _goes_on(continued, extended)):
+        return continued
+    return extended or _labelled(blocks, labels, name) or main.read(name, stated)
+
+
+def _goes_on(block: _Block, other: _Block) -> bool:
+    return len(block.form) > len(other.form) and _solid(block.form).startswith(_solid(other.form))
+
+
+def _continued(blocks: _Blocks, stated: Candidate) -> _Block | None:
+    """The element a microdata or RDFa value states with the prose its following siblings go on with (module
+    docstring, item continuation); none when no sibling goes on."""
+    element = _element(blocks, stated) if stated.source_kind == _ELEMENT_VALUED and _stated(stated) else None
+    start = None if element is None else blocks.prose(element)
+    if element is None or start is None:
+        return None
+    raws = [start.raw, *_going_on(blocks, element)]
+    return _Block(element, "\n".join(raws), " ".join(" ".join(r.split()) for r in raws)) if len(raws) > 1 else None
+
+
+def _going_on(blocks: _Blocks, element: LexborNode) -> Iterator[str]:
+    """The texts of the element's following siblings that are prose or headings, up to the first that is neither or
+    that states (or holds an element stating) another property or item."""
+    for sibling in _after(element):
+        if not sibling.is_element_node:
+            continue
+        if _states_items(sibling) or sibling.mem_id in blocks.apart:
+            return
+        raw = blocks.text(sibling)
+        if raw and not (_heading(sibling) or blocks.prose(sibling) is not None):
+            return
+        if raw:
+            yield raw
+
+
+def _states_items(node: LexborNode) -> bool:
+    """Whether the element, or an element inside it, states a property or an item of its own."""
+    return any(a in node.attributes for a in _ITEM_ATTRIBUTES) or node.css_first(_ITEM_SELECTOR) is not None
+
+
+def _element(blocks: _Blocks, stated: Candidate) -> LexborNode | None:
+    """The region's element a microdata or RDFa candidate's locator names (`microdata:<xpath>`)."""
+    try:
+        xpath = parse_locator(stated.locator).parts[0]
+    except InvalidLocator:
+        return None
+    return next((n for n in blocks.region.css("[itemprop],[property]") if node_xpath(n) == xpath), None)
 
 
 def _candidate(
@@ -204,23 +278,69 @@ def _section_items(blocks: _Blocks, heading: LexborNode) -> tuple[_Block, JsonVa
     return listed[0][0], [*(item for _, items in listed for item in items)]
 
 
-def _main_text(blocks: _Blocks, schema: SchemaDef, name: str, stated: Sequence[tuple[str, str]]) -> _Block | None:
-    """The main text, for a description that only an Open Graph summary (or nothing) states."""
-    if _DESCRIPTION not in properties(schema.fields[name]) or any(kind != _OPEN_GRAPH for kind, _ in stated):
-        return None
-    return _largest(blocks)
+class _MainText:
+    """The main text of a region (module docstring), for a description that only an Open Graph summary (or nothing)
+    states. Its blocks, in which an image is no prose, are read only when it is asked for."""
+
+    def __init__(
+        self,
+        page: ParsedPage,
+        region: LexborNode,
+        outside: frozenset[int],
+        schema: SchemaDef,
+        others: Sequence[Candidate],
+    ) -> None:
+        self.page, self.region, self.outside, self.schema = page, region, outside, schema
+        # The elements of the prices the structural pass read (`dom:<xpath>` locators of money fields' candidates).
+        self.prices = [
+            c.locator.removeprefix("dom:")
+            for c in others
+            if c.source_kind == "dom"
+            and (spec := schema.fields.get(c.field)) is not None
+            and spec.type is FieldType.MONEY
+        ]
+
+    def read(self, name: str, stated: Sequence[tuple[str, str]]) -> _Block | None:
+        if _DESCRIPTION not in properties(self.schema.fields[name]) or any(kind != _OPEN_GRAPH for kind, _ in stated):
+            return None
+        block = _largest(_Blocks(self.page, self.region, self.outside))
+        if block is None or self._buy_box(block):
+            return None
+        title = {w for h in self.region.css(_TITLE_HEADING) for w in words(h.text(deep=True, separator=" "))}
+        return block if all(_summarizes(form, block, title) for _, form in stated) else None
+
+    def _buy_box(self, block: _Block) -> bool:
+        """Whether the block holds the page's title heading or a price the structural pass read."""
+        path = node_xpath(block.node)
+        return block.node.css_first(_TITLE_HEADING) is not None or any(
+            p == path or p.startswith(f"{path}/") for p in self.prices
+        )
+
+
+def _summarizes(summary: str, block: _Block, title: set[str]) -> bool:
+    """Whether `summary` can summarize the block: it is shorter, and most of its words other than the title's are the
+    block's."""
+    own = set(words(summary)) - title
+    return len(block.form) > len(summary) and 2 * len(own & set(words(block.form))) > len(own)
 
 
 def _extending(blocks: _Blocks, stated: Sequence[tuple[str, str]]) -> _Block | None:
     """The outermost prose block that begins with a stated value (or its ellipsis-cut form) and goes on or equals it.
-    A block that equals a value other than the Open Graph summary is that value in full, and nothing beyond it. White
-    space is not compared: a meta description joins the paragraphs a page's blocks separate."""
-    solids = [_solid(form) for kind, form in stated if kind != _OPEN_GRAPH]
+    A block that equals a value other than a summary (the Open Graph description, and any value stating the same text)
+    is that value in full, and nothing beyond it. White space is not compared: a meta description joins the paragraphs
+    a page's blocks separate."""
+    solids = _full(stated)
     cuts = [(cut, _solid(form) != cut) for _, form in stated if (cut := _uncut(_solid(form)))]
     matching = {b.node.mem_id: b for b in blocks.blocks.values() if any(_begins(b.form, *cut) for cut in cuts)}
     equal = [b for b in matching.values() if _solid(b.form) in solids]
     outer = [b for b in matching.values() if not any(a.mem_id in matching for a in _ancestors(b.node, blocks.region))]
     return _only(equal) or _only(outer)
+
+
+def _full(stated: Sequence[tuple[str, str]]) -> list[str]:
+    """The stated values, white space aside, that are no summary: neither Open Graph's nor one stating its text."""
+    summaries = {_solid(form) for kind, form in stated if kind == _OPEN_GRAPH}
+    return [solid for _, form in stated if (solid := _solid(form)) not in summaries]
 
 
 def _uncut(solid: str) -> str:

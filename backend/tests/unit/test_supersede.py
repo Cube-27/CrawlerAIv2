@@ -71,3 +71,16 @@ def test_an_open_graph_image_list_yields_to_a_longer_list_of_another_kind_naming
     assert superseded(images, [og, gallery]) == [og]
     # A longer list that leaves the Open Graph file out is another set of images, not its gallery.
     assert superseded(images, [og, other]) == []
+
+
+def test_a_value_stating_the_open_graph_summary_is_a_summary_whatever_its_kind() -> None:
+    summary, tagline, full = _c("See all open roles.", "og"), _c("See all open roles.", "jsonld"), _c(LONG, "dom")
+
+    assert superseded(FieldSpec(type=FieldType.LONG_TEXT), [summary, tagline, full]) == [summary, tagline]
+
+
+def test_a_text_with_its_line_breaks_dropped_yields_to_the_rendition_that_keeps_them() -> None:
+    flat, lined = _c("Includes:• 1 lantern• 2 bulbs", "jsonld"), _c("Includes:\n• 1 lantern\n• 2 bulbs", "dom")
+    other = _c("Includes:• 1 lantern• 3 bulbs", "microdata")
+
+    assert superseded(FieldSpec(type=FieldType.LONG_TEXT), [flat, lined, other]) == [flat]

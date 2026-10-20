@@ -23,8 +23,9 @@ its scope match times its value's agreement:
 - Source weight: for `text`, `long_text`, `url` and `image_url` the kind's place in the type's order in
   `backend/data/source_precedence.yaml`, fitted on dev (the first of n kinds weighs 1, each later place 1/n less, a
   kind outside the order 0); a fragment of another of the field's candidates weighs 0 (`resolve/supersede.py`: a
-  `long_text` that is a prefix or ellipsis-cut prefix of a longer one, or an Open Graph description beside a longer
-  one of another kind; a `text` that is another kind's value plus ` - ` or ` | ` and more text; an Open Graph list of
+  `long_text` that is a prefix or ellipsis-cut prefix of a longer one, an Open Graph description, or a value of
+  another kind stating the same text as it, beside a longer one of a kind other than Open Graph, or one that states
+  another's text with fewer line breaks, white space aside (its paragraphs and line breaks flattened); a `text` that is another kind's value plus ` - ` or ` | ` and more text; an Open Graph list of
   images whose files are all among a longer list's of another kind). For `money` the strength of the currency
   evidence ([normalization](../normalization/spec.md) `basis`): a stated currency 1, then `page`, `locale`, `url`,
   `unknown` each 1/(number of bases + 1) less. Every other type weighs every kind 1 (no measured order).

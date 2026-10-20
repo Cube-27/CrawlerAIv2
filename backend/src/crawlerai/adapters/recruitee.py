@@ -16,7 +16,7 @@ from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Shape
+from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Section, Shape
 from crawlerai.db.models import PageKind
 
 DOMAIN: Final = "recruitee.com"
@@ -26,7 +26,8 @@ _LABEL: Final = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", re.ASCII)
 
 # An offer as a schema.org JobPosting. `salary` states its amounts only when the company shows them, so the node is
 # there only when `min` is; `period` is the unit the amounts are for. The hiring organization is the offer's own
-# `company_name`, so its node is a view of the offer anchored at that member.
+# `company_name`, so its node is a view of the offer anchored at that member. Its description is the offer's
+# `description` and then its `requirements`, both HTML, as the offer's page shows them.
 _SALARY: Final = Shape(
     type="MonetaryAmount",
     at=("salary",),
@@ -39,12 +40,12 @@ _OFFER: Final = Shape(
     properties={
         "title": ("title",),
         "url": ("careers_url",),
-        "description": ("description",),
         "datePosted": ("published_at",),
         "employmentType": ("employment_type_code",),
         "jobLocation": ("location",),
         "identifier": ("guid",),
     },
+    sections={"description": (Section(body=("description",)), Section(body=("requirements",)))},
     nodes={"baseSalary": (_SALARY,), "hiringOrganization": (_EMPLOYER,)},
 )
 # The offers answer is one offer under `offer`; the list answer lists them under `offers` (schema.org ItemList).
