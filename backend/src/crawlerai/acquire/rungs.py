@@ -9,7 +9,7 @@ adapter does not serve it (adapters spec). A fetched page a page-scoped adapter 
 its final URL when a redirect kept it on its site, is joined with that adapter's answer for the rows the page lists, a
 data call marked `ADAPTER_CALL` (adapters spec). A fetched page whose own canonical link is its URL without the query,
 which an adapter detects, or which an adapter says stands for one of its platform's pages, is then served by that
-adapter (adapters spec). A
+adapter (adapters spec); an HTTP shell that would be rendered for lacking content asks it before the render. A
 site whose active config has an API recipe is served by the recipe's rung (adapters spec), which the caller binds to
 the recipe: the config IR sits above `acquire` (`.importlinter`). The browser rung is
 `crawlerai.acquire.browser.fetch_browser`. Every rung is a function of (url, policy), so `acquire` decides and records
@@ -186,11 +186,14 @@ async def acquire(
     ):
         return served
     ready, planned = _planned(policy, remembered, plan)
-    page = await _page(url, ready, planned, rungs, _Retry(validators, admit_next, deadline))
     # A page no adapter detected (none answered, or only the recipe did) may name a URL one does (adapters spec,
-    # "Referral from a tenant's own host").
-    if send is not None and (served is None or by_recipe):
-        page = await _by_canonical(url, page, policy, rungs, send, admit_next)
+    # "Referral from a tenant's own host"): asked before a render for lacking content (`_page`), and of the kept page.
+    refer = (
+        None if send is None or not (served is None or by_recipe) else _Referral(url, policy, rungs, send, admit_next)
+    )
+    page = await _page(url, ready, planned, rungs, _Retry(validators, admit_next, deadline, refer))
+    if refer is not None:
+        page = await refer(page)
     page = await _joined(policy, page, admit_next, send)
     page = await _with_calls(policy, page, admit_next, send, plan.calls)
     kept, attempts, duration_ms = await _with_frames(policy, page, admit_next, send, rungs.frames)
@@ -199,33 +202,48 @@ async def acquire(
     return with_attempts(kept, attempts, duration_ms)
 
 
-async def _by_canonical(
-    url: str,
-    page: Fetched,
-    policy: FetchPolicy,
-    rungs: Rungs,
-    send: JsonFetcher,
-    admit_next: Admit | None,
-) -> Fetched:
-    """The page joined with a page-scoped adapter's answer for the rows it lists (`_listed`); else the adapter's answer
-    for the page's canonical URL (`_query_dropped`), or for the platform page the page on its own host stands for
-    (`_referred`), when there is one, it is `ok` and the site's rate admits the request; else the page. Either way with
-    every attempt."""
-    kept, attempts, duration_ms = page
-    listed = _listed(url, kept, rungs.adapters)
-    canonical = listed or _query_dropped(url, kept, rungs.adapters) or _referred(kept, policy, rungs.adapters)
-    if canonical is None or not await _admitted(admit_next):
-        return page
-    served = await rungs.adapters.serve(canonical, policy, send, page=lambda: page_refs(kept))
-    if served is None:
-        return page
-    if served.block_class == "ok" and listed is not None:
-        # The page stays the capture. The answer holds only products the page links to (the adapter's identity check:
-        # an answer stating none is `not_served`), and joins the page as a data call.
-        kept = with_call(kept, served, served.bundle.manifest.final_url, ADAPTER_CALL, method="POST")
-    elif served.block_class == "ok":
-        kept = served
-    return kept, attempts + served.attempts, duration_ms + served.duration_ms
+@dataclass
+class _Referral:
+    """The adapter answers a fetched page asks for (adapters spec), each URL once per fetch (`asked`): the page asks
+    before its render for lacking content (`_page`) and again once kept, and the second ask of one URL would take a
+    turn at the site's rate for an answer already had."""
+
+    url: str
+    policy: FetchPolicy
+    rungs: Rungs
+    send: JsonFetcher
+    admit_next: Admit | None
+    asked: set[str] = field(default_factory=set)
+
+    async def __call__(self, page: Fetched) -> Fetched:
+        """The page joined with a page-scoped adapter's answer for the rows it lists (`_listed`); else the adapter's
+        answer for the page's canonical URL (`_query_dropped`), or for the platform page the page on its own host
+        stands for (`_referred`), when there is one not asked yet, it is `ok` and the site's rate admits the request;
+        else the page. Either way with every attempt."""
+        kept, attempts, duration_ms = page
+        adapters = self.rungs.adapters
+        listed = _listed(self.url, kept, adapters)
+        canonical = listed or _query_dropped(self.url, kept, adapters) or _referred(kept, self.policy, adapters)
+        if canonical is None or canonical in self.asked or not await _admitted(self.admit_next):
+            return page
+        self.asked.add(canonical)
+        served = await adapters.serve(canonical, self.policy, self.send, page=lambda: page_refs(kept))
+        if served is None:
+            return page
+        if served.block_class == "ok" and listed is not None:
+            # The page stays the capture. The answer holds only products the page links to (the adapter's identity
+            # check: an answer stating none is `not_served`), and joins the page as a data call.
+            kept = with_call(kept, served, served.bundle.manifest.final_url, ADAPTER_CALL, method="POST")
+        elif served.block_class == "ok":
+            kept = served
+        return kept, attempts + served.attempts, duration_ms + served.duration_ms
+
+
+def _referable(page: FetchResult) -> bool:
+    """Whether the page states what it stands for: an `ok` page, or a `shell` no challenge names (a script-only
+    document, acquisition spec): its redirect, canonical link and `og:url` are the server's own, though it lacks the
+    content. A challenge's document and a refusal state nothing of the page."""
+    return page.block_class == "ok" or (page.block_class == "shell" and page.attempts[-1].challenge is None)
 
 
 def _listed(url: str, page: FetchResult, adapters: Registry) -> str | None:
@@ -245,7 +263,7 @@ def _query_dropped(url: str, page: FetchResult, adapters: Registry) -> str | Non
     Standard §4.6.7.3, `link rel=canonical`): the page says the parameters it drops do not identify it. No list of
     parameter names decides it (C4). None otherwise."""
     parts = urlsplit(url)
-    if not parts.query or page.block_class != "ok":
+    if not parts.query or not _referable(page):
         return None
     bare = urlunsplit(parts._replace(query="", fragment=""))
     # A host its adapter declined is not asked again, so the request would take a turn at the site's rate for nothing.
@@ -257,7 +275,7 @@ def _query_dropped(url: str, page: FetchResult, adapters: Registry) -> str | Non
 def _referred(page: FetchResult, policy: FetchPolicy, adapters: Registry) -> str | None:
     """The platform page an active adapter says the fetched page stands for, from what the page states (its redirect,
     canonical link, `og:url`, links; adapters spec): a site on a tenant's own host that the platform serves."""
-    if page.block_class != "ok":
+    if not _referable(page):
         return None
     return adapters.referred(lambda: page_refs(page), policy.page_kind, policy.target_types)
 
@@ -278,11 +296,12 @@ def _same_resource(a: str, b: str) -> bool:
 @dataclass(frozen=True)
 class _Retry:
     """What decides the page rung's requests (`acquire`): the validators for HTTP, the admission of a further request,
-    and the deadline no browser retry starts too close to."""
+    the deadline no browser retry starts too close to, and the referral a page asks before its render (`refer`)."""
 
     validators: Validators | None
     admit_next: Admit | None
     deadline: float | None
+    refer: _Referral | None = None
 
     def in_budget(self) -> bool:
         return self.deadline is None or self.deadline - time.monotonic() >= BROWSER_MIN_S
@@ -290,7 +309,9 @@ class _Retry:
 
 async def _page(url: str, policy: FetchPolicy, remembered: Remembered, rungs: Rungs, retry: _Retry) -> Fetched:
     """The page over HTTP or in the browser (`acquire`): the outcome kept, every attempt and their duration. An HTTP
-    page kept for want of a browser outcome is the fetch's last page (`_as_last_page`)."""
+    page kept for want of a browser outcome is the fetch's last page (`_as_last_page`). An HTTP shell the browser
+    would retry for lacking content (`_referable`) asks its referral first (`retry.refer`), and an `ok` answer is kept
+    without the render (adapters spec, "Referral from a tenant's own host")."""
     method = remembered.method if policy.method_hint == "auto" else policy.method_hint
     if method == "http" and rungs.conditional is not None:
         result = await rungs.conditional(url, policy, validators=retry.validators)
@@ -300,6 +321,10 @@ async def _page(url: str, policy: FetchPolicy, remembered: Remembered, rungs: Ru
         result = await rungs.browser(url, policy)
     retried = policy.method_hint == "auto" and method == "http" and await _browser_may_help(result)
     attempts, duration_ms = result.attempts, result.duration_ms
+    if retried and retry.refer is not None and result.block_class != "ok" and _referable(result):
+        referred, attempts, duration_ms = await retry.refer((result, attempts, duration_ms))
+        if referred is not result:
+            return referred, attempts, duration_ms
     # The budget is checked again once admitted: the wait for the site's turn may have spent it.
     if (
         not retried
