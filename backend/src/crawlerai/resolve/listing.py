@@ -19,6 +19,7 @@ page lists no entity of a primary type and has too few top-level ones, the entri
 schema.org defines it as "a chain of linked Web pages" leading to the current page, its navigation, not its items.
 """
 
+from collections.abc import Sequence
 from typing import Final
 
 from crawlerai.acquire.items import MIN_ITEMS
@@ -34,6 +35,9 @@ MIN_TOP_LEVEL_ROWS: Final = MIN_ITEMS
 # schema.org BreadcrumbList: "an ItemList consisting of a chain of linked Web pages ... typically ending with the
 # current page".
 _TRAIL: Final = "BreadcrumbList"
+_LIST: Final = "ItemList"
+# schema.org WebPage.mainEntity: "Indicates the primary entity described in some page or other CreativeWork".
+_MAIN_ENTITY: Final = "mainEntity"
 
 
 def listing_rows(
@@ -45,12 +49,29 @@ def listing_rows(
     """The rows (module docstring), in collector order. `target` is intent's answer for the page (§4.6); `holders` are
     the entities holding a candidate of a row field."""
     primaries = [entity for entity in graph.entities.values() if is_primary(graph, entity, primary)]
-    rows = [entity for entity in primaries if _listed(graph, entity, primary)]
+    rows = _main_list(graph, [entity for entity in primaries if _listed(graph, entity, primary)])
     if isinstance(target, AmbiguousTarget):
         rows += _unlisted(primaries, rows)
     if not rows:
         rows = [entity for entity in graph.entities.values() if entity.id in holders and _entry(graph, entity)]
     return tuple(rows)
+
+
+def row_lists(graph: EntityGraph, rows: Sequence[Entity]) -> dict[str, str]:
+    """Each listed row's list: the nearest ItemList holding it."""
+    lists = {row.id: next((a.id for a in graph.ancestors(row) if graph.is_a(a, _LIST)), None) for row in rows}
+    return {row: found for row, found in lists.items() if found is not None}
+
+
+def _main_list(graph: EntityGraph, rows: list[Entity]) -> list[Entity]:
+    """With rows in several lists, those of the one list that is the page's main entity (schema.org `mainEntity`:
+    "the primary entity described in some page", a CollectionPage's list of items; a related or recently viewed list
+    beside it is not the page's), else all of them (`collect.items.bind` keeps the lists the page's grid shows)."""
+    lists = row_lists(graph, rows)
+    main = {found for found in lists.values() if graph.entities[found].via == _MAIN_ENTITY}
+    if len(set(lists.values())) < 2 or len(main) != 1:
+        return rows
+    return [row for row in rows if lists.get(row.id) in main]
 
 
 def _unlisted(primaries: list[Entity], listed: list[Entity]) -> list[Entity]:

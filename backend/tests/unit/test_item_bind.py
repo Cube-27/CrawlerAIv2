@@ -119,3 +119,30 @@ def test_a_rows_price_inside_its_aggregate_offer_is_the_rows() -> None:
     result = _listing(_html(_item_list(*(_row(n, offers=aggregate(n)) for n in (1, 2, 3)))), data=COMMITTED)
 
     assert [row.get("price") for row in _row_values(result)] == [_price(n) for n in (1, 2, 3)]
+
+
+def test_a_strip_repeating_the_listings_items_or_past_its_next_page_link_is_no_section() -> None:
+    grid = _section(*(_card(n) for n in range(1, 7)))
+    featured = _section(*(_card(n) for n in (1, 2, 3, 9)))
+    pager = '<a rel="next" href="/c/widgets?page=3">Next</a>'
+    after = _section(*(_card(n) for n in (7, 8, 9)))
+
+    for body in (grid + featured, grid + pager + after):
+        assert [row["url"] for row in _row_values(_listing(_html(body=body), data=COMMITTED))] == [
+            _url(n) for n in range(1, 7)
+        ]
+
+
+def test_of_several_item_lists_the_pages_main_entity_or_the_one_its_grid_shows_gives_the_rows() -> None:
+    # schema.org `mainEntity`: the page's own list; a related list beside it is not its rows.
+    main = {"@type": "WebPage", "mainEntity": _item_list(*(_row(n) for n in (1, 2, 3)))}
+    related = _item_list(*(_row(n) for n in (7, 8, 9)))
+
+    from_main = _listing(_html(main, related), data=COMMITTED)
+    from_grid = _listing(
+        _html(related, _item_list(*(_row(n) for n in (1, 2, 3))), body=_cards(*(_card(n) for n in (1, 2, 3)))),
+        data=COMMITTED,
+    )
+
+    assert [row["url"] for row in _row_values(from_main)] == [_url(n) for n in (1, 2, 3)]
+    assert [row["url"] for row in _row_values(from_grid)] == [_url(n) for n in (1, 2, 3)]

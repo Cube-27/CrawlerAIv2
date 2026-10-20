@@ -17,7 +17,9 @@ every value, so a state value is one the page renders (INV-12's rule for role C,
 A row is kept only when it is grounded: its item URL is the target of a rendered hyperlink, or its name is shown. An
 array whose grounded rows are fewer than `MIN_ITEMS`, or that has no item URL path, gives none. Arrays inside a row
 source are the row's own data, not further sources; a row whose item URL an earlier row has is not read again (a blob
-caching one list twice; a trailing slash and the order of query parameters aside). Each row is an `array_row` entity
+caching one list twice; a trailing slash and the order of query parameters aside). With several arrays read, the rows
+are those of the array or arrays whose items the page's first item group links to most (`_grid_sources`): a recently
+viewed or recommended array is not the page's list. Each row is an `array_row` entity
 `js_state:<script xpath>@<document position>:<row path>`, and each value a
 `js_state` candidate, whose evidence bucket is `state` (resolution spec).
 """
@@ -38,7 +40,7 @@ from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import field_roles
 from crawlerai.collect.schema_org_map import candidate, is_item_url
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.segment import content_links
+from crawlerai.content.segment import block_links, content_links
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.normalize.url import canonical_url
@@ -69,11 +71,31 @@ def state_rows(page: ParsedPage, documents: Sequence[Document], schema: SchemaDe
         return StateRows()
     reader = _Reader(page, schema, ctx, url_fields[0])
     read = [found for number, document in enumerate(documents) for found in _sources(reader, number, document)]
+    read = _grid_sources(page, ctx, url_fields[0], read)
     return StateRows(
         tuple(row for found in read for row in found.rows),
         tuple(c for found in read for c in found.candidates),
         tuple(note for found in read for note in found.diagnostics),
     )
+
+
+def _grid_sources(page: ParsedPage, ctx: Context, url_field: str, read: list[StateRows]) -> list[StateRows]:
+    """With several arrays read, the one or ones with the most rows whose item URL a block of the page's first item
+    group (`ParsedPage.item_groups`, the segment step's ranking) links to: the page's own list, a recently viewed or
+    recommended array rendered as a strip beside it being no rows of it. All of them when no row's item is linked
+    from that group."""
+    if len(read) < 2 or not page.item_groups:
+        return read
+    grid = {url for block in page.item_groups[0] for url in block_links(block, ctx.base_url)}
+    shown = [
+        sum(
+            c.field == url_field and isinstance(c.normalized, Ok) and c.normalized.value in grid
+            for c in found.candidates
+        )
+        for found in read
+    ]
+    most = max(shown)
+    return [found for found, count in zip(read, shown, strict=True) if count == most] if most else read
 
 
 def _sources(reader: "_Reader", number: int, document: Document) -> Iterator[StateRows]:

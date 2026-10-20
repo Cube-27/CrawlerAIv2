@@ -69,3 +69,12 @@ def test_hidden_content_is_not_text_and_not_visible(hidden: str) -> None:
     assert page.cleaned_text.text == "shown"
     for value in ("gone", "closed", "secret", "later", "var x = 1;", "Tab", "drawn", "enable js"):
         assert not page.visible_values.visible(value)
+
+
+def test_a_concealed_block_holding_the_pages_title_and_form_is_shown_a_lone_concealed_one_is_not() -> None:
+    # A script reveals the page's own content (it holds the one `h1` and the item's form); a variant template does not.
+    gated = "<div style='display:none'><h1>Kettle</h1><form><span>12.50 EUR</span></form></div>"
+    template = "<div hidden><form><span>9.99 EUR</span></form></div>"
+
+    assert _text(gated + template) == "Kettle\n12.50 EUR"
+    assert _text("<h1>Kettle</h1>" + gated.replace("Kettle", "Quick view")) == "Kettle"

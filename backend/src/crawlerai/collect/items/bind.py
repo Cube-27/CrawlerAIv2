@@ -11,7 +11,9 @@ written, a later batch a call loaded).
 **Sections.** A listing split into sections reads them all: beside the chosen group, each aligned group of its row
 shape (or holding every required field it aligns and a field beyond the item URL), whose blocks lead to documents of
 the kind its blocks lead to and lie apart from the blocks already read (`_sections`); one item two sections show is
-one block.
+one block. A group half or more of whose blocks lead to items the chosen group lists repeats the listing (a featured,
+trending or recently viewed strip), and a group after the chosen group's next-page link (`rel=next`) lies past the
+listing's end (a "you may also like" strip): neither is a section, so none of its blocks is read.
 
 **Binding.** A row and a block are one item when the row names the block's item URL, and neither names another's (one
 to one, else neither binds: C7). URLs are compared as the page's links name items: without the page's session
@@ -104,6 +106,8 @@ class Listing:
     array_rows: tuple[Entity, ...]
     candidates: tuple[Candidate, ...]
     holder: Holder
+    # Each stated row's list, for rows a structured list holds (`resolve.listing.row_lists`).
+    lists: Mapping[str, str] = field(default_factory=dict)
 
 
 def bind(listing: Listing) -> Bound:
@@ -112,12 +116,14 @@ def bind(listing: Listing) -> Bound:
     left out."""
     urls = _RowUrls(listing)
     first = _chosen(listing, urls)
+    listing, dropped = _grid_lists(listing, first, urls)
     chosen = _sections(listing, first)
     read = {block.entity.id for block in chosen.blocks}
     others = {block.entity.id for group in listing.items for block in group.blocks if block.entity.id not in read}
     candidates = tuple(c for c in listing.candidates if c.entity_id not in others)
     binder = _Binder(replace(listing, candidates=candidates), chosen, urls)
     binder.notes.extend(() if chosen is first else chosen.diagnostics)
+    binder.notes.extend(f"item layer: list {found} is not the grid's, its rows dropped" for found in dropped)
     rows = binder.rows()
     binder.bind_array_rows(rows)
     induced_values = binder.induced_values()
@@ -150,21 +156,41 @@ def _chosen(listing: Listing, row_urls: _RowUrls) -> Items:
     return listing.items[max(range(len(bound)), key=lambda i: (bound[i], -i))]
 
 
+def _grid_lists(listing: Listing, chosen: Items, row_urls: _RowUrls) -> tuple[Listing, list[str]]:
+    """With stated rows in several lists (`Listing.lists`), the listing with the rows of the list or lists most of whose
+    rows the chosen group's blocks show, and the lists dropped: a related, recently viewed or recommended list beside
+    the page's own is not its rows. Unchanged when the rows are in one list or no list's rows bind to a block."""
+    lists = [found for row in listing.stated if (found := listing.lists.get(row.id)) is not None]
+    if len(set(lists)) < 2:
+        return listing, []
+    session = session_parameters([b.link for b in chosen.blocks], listing.page_urls)
+    index = _Index([(b.entity.id, b.link) for b in chosen.blocks], session)
+    shown: Counter[str] = Counter(dict.fromkeys(lists, 0))
+    for row in listing.stated:
+        if (found := listing.lists.get(row.id)) is not None and index.find(row_urls.of(row)):
+            shown[found] += 1
+    most = max(shown.values())
+    if not most:
+        return listing, []
+    dropped = [found for found, count in shown.items() if count < most]
+    stated = tuple(row for row in listing.stated if listing.lists.get(row.id) not in dropped)
+    return replace(listing, stated=stated), dropped
+
+
 def _sections(listing: Listing, chosen: Items) -> Items:
     """The chosen group with the listing's other sections, as one group (module docstring): each aligned group of the
     chosen one's fields, or of other fields among which every required field the chosen one aligns and one beyond the
     item URL, a quorum of whose blocks lead to documents of a kind the chosen one's lead to (`_url_kind`), none of whose
-    blocks is, holds or lies in a block already read. Blocks are in document order; a block
+    blocks is, holds or lies in a block already read, fewer than half of whose blocks lead to items the chosen group
+    lists (`_Index`) and that does not lie past the chosen group's next-page link. Blocks are in document order; a block
     leading to an item an earlier one leads to, as the page's links name items (`_Index`), is that item again (a
     featured copy)."""
-    required = {name for name in chosen.fields if listing.schema.fields[name].required}
-    kinds = {_url_kind(block.link) for block in chosen.blocks}
+    section = _Section.of(listing, chosen)
     groups = [chosen]
-    elements = {block.element for block in chosen.blocks}
     for group in listing.items:
-        if group is not chosen and _section_of(group, chosen, required, kinds, elements):
+        if group is not chosen and section.admits(group):
             groups.append(group)
-            elements.update(block.element for block in group.blocks)
+            section.elements.update(block.element for block in group.blocks)
     return chosen if len(groups) < 2 else _merged(listing, groups)
 
 
@@ -185,13 +211,56 @@ def _merged(listing: Listing, groups: Sequence[Items]) -> Items:
     return Items(tuple(blocks), candidates, chosen.group, (note,), chosen.fields)
 
 
-def _section_of(
-    group: Items, chosen: Items, required: set[str], kinds: set[tuple[str, int, str]], elements: set[HtmlElement]
-) -> bool:
-    """Whether `group` is a further section of the chosen group's listing (`_sections`)."""
-    shaped = group.fields == chosen.fields or (required <= group.fields and len(group.fields) > 1)
-    alike = sum(_url_kind(block.link) in kinds for block in group.blocks) >= quorum(len(group.blocks))
-    return shaped and alike and not any(_overlaps(block.element, elements) for block in group.blocks)
+@dataclass
+class _Section:
+    """What a further section of the chosen group's listing is tested against (`_sections`)."""
+
+    chosen: Items
+    required: set[str]
+    kinds: set[tuple[str, int, str]]
+    elements: set[HtmlElement]
+    listed: "_Index"
+    position: dict[HtmlElement, int]
+    end: int | None  # the document position of the chosen group's next-page link, when one follows its blocks
+
+    @classmethod
+    def of(cls, listing: Listing, chosen: Items) -> "_Section":
+        required = {name for name in chosen.fields if listing.schema.fields[name].required}
+        links = [block.link for group in listing.items for block in group.blocks]
+        listed = _Index([(b.entity.id, b.link) for b in chosen.blocks], session_parameters(links, listing.page_urls))
+        position = {element: i for i, element in enumerate(listing.page.lxml_tree.iter())}
+        last = max((position.get(block.element, -1) for block in chosen.blocks), default=-1)
+        pagers = (position[a] for a in listing.page.lxml_tree.iter("a") if _next_link(a) and position[a] > last)
+        kinds = {_url_kind(block.link) for block in chosen.blocks}
+        elements = {block.element for block in chosen.blocks}
+        return cls(chosen, required, kinds, elements, listed, position, min(pagers, default=None))
+
+    def admits(self, group: Items) -> bool:
+        """Whether `group` is a further section of the chosen group's listing: of its shape, its kind of item URL, apart
+        from the blocks read, not a copy of its items and not past its end."""
+        fields = self.chosen.fields
+        shaped = group.fields == fields or (self.required <= group.fields and len(group.fields) > 1)
+        alike = sum(_url_kind(block.link) in self.kinds for block in group.blocks) >= quorum(len(group.blocks))
+        apart = not any(_overlaps(block.element, self.elements) for block in group.blocks)
+        return shaped and alike and apart and not self._copy(group) and not self._past_end(group)
+
+    def _copy(self, group: Items) -> bool:
+        """Whether half or more of the group's blocks lead to items the chosen group lists: a featured, trending or
+        recently viewed strip repeating the listing's items, whose other blocks are no items of the listing either."""
+        repeated = sum(bool(self.listed.matching([block.link])) for block in group.blocks)
+        return 2 * repeated >= len(group.blocks)
+
+    def _past_end(self, group: Items) -> bool:
+        """Whether the group starts after the chosen group's next-page link (HTML Standard §4.6.7 `rel=next`): the
+        listing ends at its pager, so what follows it (a "you may also like" strip) is not one of its sections."""
+        start = min((self.position.get(block.element, -1) for block in group.blocks), default=-1)
+        return self.end is not None and start > self.end
+
+
+def _next_link(anchor: HtmlElement) -> bool:
+    """Whether a hyperlink names the next document of a series (HTML Standard §4.6.7 `rel=next`; `rel` is a set of
+    space-separated tokens, compared ASCII case-insensitively)."""
+    return anchor.get("href") is not None and "next" in (anchor.get("rel") or "").lower().split()
 
 
 def _url_kind(url: str) -> tuple[str, int, str]:

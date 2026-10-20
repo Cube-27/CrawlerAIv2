@@ -45,7 +45,7 @@ from crawlerai.normalize.base import Context
 from crawlerai.resolve.derive import Derived, fill, is_page_url_field
 from crawlerai.resolve.evidence import Calibration, assess, assess_fields, load_calibration
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
-from crawlerai.resolve.listing import listing_rows
+from crawlerai.resolve.listing import listing_rows, row_lists
 from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.resolve.page_state import out_of_stock, render_bound, was_rendered
 from crawlerai.resolve.pagination import next_page_candidate, next_page_links
@@ -454,10 +454,10 @@ def _read_and_resolve(source: _Source) -> tuple[_Page, FieldSet]:
 
 
 # Why a listing gave no rows, as `no_rows: <cause>` (rest-api spec, "Scrape outcomes, not errors, for page failures"):
-# structured data, the config, the captured calls and the item layer gave none, so role C, which fills the rows of
-# blocks, was not asked for rows.
+# structured data, the config, the captured calls, the page state and the item layer gave none: the page showed no
+# block of items, so role C, which fills the rows of blocks, had none to read.
 NO_ROWS: Final = "no_rows"
-NOT_ASKED: Final = "not_asked"
+NO_BLOCKS: Final = "no_blocks"
 
 
 def no_rows(cause: str) -> str:
@@ -510,6 +510,7 @@ class _Listing:
                 tuple(e for e in page.graph.entities.values() if ARRAY_ROW in e.types),
                 candidates,
                 partial(_holder, page.graph),
+                row_lists(page.graph, structured),
             )
         )
         diagnostics.extend(bound.diagnostics)
@@ -591,7 +592,7 @@ class _Listing:
             record_confidence=_least_confident(record_confidence(schema, record) for record in records),
             diagnostics=self.diagnostics,
             next_pages=self.next_pages,
-            reason=None if self.rows else no_rows(NOT_ASKED),
+            reason=None if self.rows else no_rows(NO_BLOCKS),
             session_params=session,
         )
 
