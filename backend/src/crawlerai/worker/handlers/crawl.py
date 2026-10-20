@@ -234,16 +234,18 @@ async def _sitemap_seeds(
         return [], {}
     polite = SiteHttp(fetching, rules, policy, attempts, waiting)
     reader = SitemapReader(polite.sitemap_body, frontier.scope.host)
-    start = roots(site_url, await listed_sitemaps(read, site_url, policy, rules))
     seeds: dict[str, None] = {}
     capped = False
     try:
-        async with asyncio.timeout(SITEMAP_TIMEOUT_S), aclosing(reader.urls(start)) as urls:
-            async for url in urls:
-                if frontier.admits(url):
-                    seeds[url] = None
-                if len(seeds) >= frontier.capacity:
-                    break
+        # The time cap covers robots.txt's `Sitemap:` lines too, read here when the crawl does not obey robots.txt.
+        async with asyncio.timeout(SITEMAP_TIMEOUT_S):
+            start = roots(site_url, await listed_sitemaps(read, site_url, policy, rules))
+            async with aclosing(reader.urls(start)) as urls:
+                async for url in urls:
+                    if frontier.admits(url):
+                        seeds[url] = None
+                    if len(seeds) >= frontier.capacity:
+                        break
     except TimeoutError:
         capped = True
     except TargetRejected:
