@@ -134,7 +134,8 @@ class Vocabulary:
         """The vocabulary's types among `names`, each once, most specific first: a type that another listed type is a
         subtype of follows it."""
         known = list(dict.fromkeys(name for name in names if name in self))
-        return tuple(sorted(known, key=lambda t: any(o != t and self.is_a(o, t) for o in known)))
+        # By how many listed types are subtypes of each: a supertype of two listed types follows a supertype of one.
+        return tuple(sorted(known, key=lambda t: sum(o != t and self.is_a(o, t) for o in known)))
 
 
 # schema.org: "An Enumeration is a type whose members are named instances of it" (`schema:Enumeration`).

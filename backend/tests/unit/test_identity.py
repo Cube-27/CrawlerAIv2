@@ -75,18 +75,28 @@ def test_two_definitions_of_one_node_id_are_one_entity() -> None:
     assert graph.aliases == {"jsonld:1:$": "jsonld:0:$"}
 
 
-def test_one_node_id_merges_a_product_group_and_a_product_but_not_unrelated_types() -> None:
+def test_one_node_id_merges_related_types_most_specific_first() -> None:
     # JSON-LD 1.1 node map generation merges node objects with one @id whatever their types; a ProductGroup is a
-    # Product, so the Product's values are the group's. A WebPage under the same @id is no Product: it stays apart.
+    # Product, which is a Thing, so the Product's values are the group's.
     node = {"@id": "/p/1#product"}
     group = {"@context": SCHEMA_ORG, "@type": "ProductGroup", **node, "url": PAGE_URL}
-    page = {"@context": SCHEMA_ORG, "@type": "WebPage", **node, "name": "Shop"}
+    thing = {"@context": SCHEMA_ORG, "@type": "Thing", **node}
 
-    graph, candidates = _graph(group, _product(**node, name="Widget One"), page)
+    graph, candidates = _graph(thing, _product(**node, name="Widget One"), group)
 
-    assert graph.aliases == {"jsonld:1:$": "jsonld:0:$"}
-    assert graph.entities["jsonld:0:$"].types == ("ProductGroup", "Product")
+    assert graph.aliases == {"jsonld:1:$": "jsonld:0:$", "jsonld:2:$": "jsonld:0:$"}
+    assert graph.entities["jsonld:0:$"].types == ("ProductGroup", "Product", "Thing")
     assert [(c.field, c.entity_id) for c in candidates] == [("title", "jsonld:0:$")]
+
+
+def test_one_node_id_of_unrelated_types_merges_nothing() -> None:
+    # A WebPage and an Organization are no one thing, though each is a Thing: the IRI states several things.
+    node = {"@id": "/p/1#site"}
+    blocks = [{"@context": SCHEMA_ORG, "@type": kind, **node} for kind in ("WebPage", "Organization", "Thing")]
+
+    graph, _ = _graph(*blocks)
+
+    assert graph.aliases == {}
 
 
 # `isVariantOf` (D-1344): the inverse of `hasVariant`, so the group stands beside the page's Product.

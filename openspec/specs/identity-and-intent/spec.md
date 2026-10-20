@@ -11,8 +11,9 @@ What then publishes and how far it is trusted is [resolution](../resolution/spec
 ## Requirements
 
 ### Requirement: Entity identity, intent and ownership
-Entities that share an IRI, when one's most specific type is the other's or a subtype of it (JSON-LD 1.1 node map
-generation merges node objects with one `@id`), and entities of one most specific type that share an identifier value
+Entities that share an IRI, when the most specific types of all entities stating it are each other's or subtypes of
+one another (JSON-LD 1.1 node map generation merges node objects with one `@id`; with one unrelated pair, only those of
+one most specific type), and entities of one most specific type that share an identifier value
 (unless their item URLs differ) or, across collectors, an item URL other than a page URL SHALL be one entity before
 intent (`resolve/identity.py`); the merged entity holds every member's types, most specific first. (Previously: an IRI
 joined entities of one most specific type only.) The root
@@ -37,7 +38,7 @@ D-1291, D-1379.
 - **THEN** the page has one target, owning the JSON-LD description and the JSON's price and variant sku
 #### Scenario: A product group and a product under one IRI
 - **WHEN** a JSON-LD ProductGroup and a separate JSON-LD Product with an `aggregateRating` state one `@id`
-- **THEN** they are one target, which owns the rating; a WebSite and an Organization under one `@id` stay apart
+- **THEN** they are one target, which owns the rating; a WebPage, an Organization and a Thing under one `@id` stay apart
 #### Scenario: A product's rating names the product
 - **WHEN** a Product's `aggregateRating` holds an `itemReviewed` Product naming the page URL
 - **THEN** the outer Product is the target and intent is not ambiguous

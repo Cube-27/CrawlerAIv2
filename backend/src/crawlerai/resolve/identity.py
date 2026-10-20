@@ -4,8 +4,9 @@ The entities considered are the items that stand on their own (a root, or an ite
 a product group (`hasVariant`). Two of them are one item when
 - they share an IRI (a JSON-LD `@id`, a microdata `itemid`) and one's most specific type is the other's or a subtype of
   it (a ProductGroup and a Product): JSON-LD 1.1 node map generation merges node objects with one `@id`, whatever
-  types each states, and the HTML Standard's `itemid` is the item's global identifier; two unrelated types under one
-  IRI (a WebSite and an Organization) state two things, and stay apart;
+  types each states, and the HTML Standard's `itemid` is the item's global identifier; where two of the types under
+  one IRI are unrelated (a WebSite and an Organization, though both are a Thing), it states several things, and only
+  entities of one most specific type join by it;
 and, of one most specific type, when
 - they share a value of a schema.org identifier property (`schema_org_map.identity`), unless their own URLs name two
   different items (schema.org `url`, "URL of the item"): a listing's items may repeat an identifier;
@@ -70,8 +71,9 @@ def identify(entities: Sequence[Entity], vocabulary: Vocabulary, page_urls: Sequ
     pages = frozenset(page_urls)
     sets = _Sets.of(eligible, by_id, pages)
     for (_, prop, _), members in _keyed(eligible, pages).items():
+        related = prop != _IRI or _related(eligible, members, vocabulary)
         for i, j in combinations(members, 2):
-            if _agree(eligible[i], eligible[j], prop, vocabulary):
+            if _agree(eligible[i], eligible[j], prop, related):
                 sets.join(i, j, certain=prop == _IRI)
     _join_requested(eligible, sets, page_documents(pages))
     aliases, groups = sets.aliases(), sets.groups()
@@ -147,11 +149,19 @@ def _root(entity: Entity, type_: str) -> bool:
     return not entity.requested and entity.parent is None and entity.types[0] == type_
 
 
-def _agree(a: Entity, b: Entity, prop: str, vocabulary: Vocabulary) -> bool:
-    """Whether two entities stating one value of `prop` are one item (module docstring)."""
+def _related(eligible: Sequence[Entity], members: Sequence[int], vocabulary: Vocabulary) -> bool:
+    """Whether the most specific types of the entities stating one IRI are each other's or subtypes of one another,
+    every pair of them: one unrelated pair (a WebSite and an Organization, both a Thing) and the IRI states several
+    things, so only entities of one most specific type join by it."""
+    kinds = {eligible[i].types[0] for i in members}
+    return all(vocabulary.is_a(a, b) or vocabulary.is_a(b, a) for a, b in combinations(kinds, 2))
+
+
+def _agree(a: Entity, b: Entity, prop: str, related: bool) -> bool:
+    """Whether two entities stating one value of `prop` are one item (module docstring); `related`: whether the
+    types of every entity stating that value are related (`_related`)."""
     if prop == _IRI:
-        kind_a, kind_b = a.types[0], b.types[0]
-        return kind_a == kind_b or vocabulary.is_a(kind_a, kind_b) or vocabulary.is_a(kind_b, kind_a)
+        return related or a.types[0] == b.types[0]
     return prop != _URL or _url_joins(a, b)
 
 
