@@ -40,18 +40,27 @@ Row = Mapping[str, JsonValue]
 
 def json_listings(page: ParsedPage, ctx: Context, schema: SchemaDef, rows: Sequence[Row]) -> list[ListingSpec]:
     """The row sources of `page` for its published `rows` (module docstring), the array holding most rows first."""
-    url_fields = row_url_fields(schema)
-    if not url_fields or len(rows) < MIN_ITEMS:
+    # The first item URL field the rows publish identifies them.
+    url = next((name for name in row_url_fields(schema) if any(row.get(name) is not None for row in rows)), None)
+    if url is None or len(rows) < MIN_ITEMS:
         return []
-    url = url_fields[0]
-    found: list[tuple[int, ListingSpec]] = []
-    for source in ROW_SOURCES:
-        for document in documents(source, page):
-            for (array, relative), held in _arrays(document, rows, url, schema, ctx).items():
-                if len(held) >= MIN_ITEMS and (spec := _listing(source, document, array, relative, rows, schema, ctx)):
-                    found.append((len(held), spec))
+    found = [
+        found
+        for source in ROW_SOURCES
+        for document in documents(source, page)
+        for found in _document_listings(source, document, url, rows, schema, ctx)
+    ]
     found.sort(key=lambda item: -item[0])
     return [spec for _, spec in found[:_MAX_LISTINGS]]
+
+
+def _document_listings(
+    source: JsonSource, document: JsonValue, url: str, rows: Sequence[Row], schema: SchemaDef, ctx: Context
+) -> Iterator[tuple[int, ListingSpec]]:
+    """The listings of `document`'s arrays holding `MIN_ITEMS` or more of the rows' URLs, with how many they hold."""
+    for (array, relative), held in _arrays(document, rows, url, schema, ctx).items():
+        if len(held) >= MIN_ITEMS and (spec := _listing(source, document, (array, relative, url), rows, schema, ctx)):
+            yield len(held), spec
 
 
 def _arrays(
@@ -72,7 +81,10 @@ def _arrays(
 def _split(path: str) -> tuple[str, str] | None:
     """The path's array (its last index replaced by `[*]`) and the path relative to that array's item; None for a path
     through no array."""
-    parts = segments(path)
+    try:
+        parts = segments(path)
+    except ValueError:  # a member name holding a quote or a backslash, which the engine's JSONPath reader does not take
+        return None
     last = max((i for i, part in enumerate(parts) if part[1:-1].isdigit()), default=None)
     if last is None:
         return None
@@ -82,13 +94,13 @@ def _split(path: str) -> tuple[str, str] | None:
 def _listing(
     source: JsonSource,
     document: JsonValue,
-    array: str,
-    relative: str,
+    found: tuple[str, str, str],
     rows: Sequence[Row],
     schema: SchemaDef,
     ctx: Context,
 ) -> ListingSpec | None:
-    url = row_url_fields(schema)[0]
+    """The listing of the array, whose items hold the item URL field `url` at `relative` (`found`)."""
+    array, relative, url = found
     pairs = list(_pairs(document, array, relative, rows, url, schema, ctx))
     fields = {url: _steps(source, relative, schema.fields[url].type)}
     for name in row_fields(schema):
