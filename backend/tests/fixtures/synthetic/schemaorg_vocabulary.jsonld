@@ -24,6 +24,8 @@
     { "@id": "schema:ItemList", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
     { "@id": "schema:BreadcrumbList", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:ItemList" } },
     { "@id": "schema:ListItem", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
+    { "@id": "schema:Rating", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
+    { "@id": "schema:AggregateRating", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Rating" } },
     { "@id": "schema:JobPosting", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "schema:Intangible" } },
     { "@id": "schema:DataType", "@type": "rdfs:Class", "rdfs:subClassOf": { "@id": "rdfs:Class" } },
     { "@id": "schema:Text", "@type": ["rdfs:Class", "schema:DataType"] },

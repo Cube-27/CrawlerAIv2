@@ -6,7 +6,8 @@ documents, fetched beside a detail page's HTTP fetch and kept only when it state
 Such a body is structured evidence of the requested product, as an adapter's answer is: its values are `adapter`
 candidates read by the schema.org path rules (`read_shapes` of `collect/adapter.py`), located under `<platform>_json`,
 not admitted by the equality-or-visibility rule the captured network JSON of unknown keys takes (`collect.admission`),
-which never reads these bodies. Every other network body keeps that rule.
+which never reads these bodies. Every other network body keeps that rule. The answer's root is the requested product
+by construction (`Entity.requested`), so identity merges it into the page's own product (`resolve.identity`).
 """
 
 from collections.abc import Iterator
@@ -42,10 +43,15 @@ class PlatformJsonCollector:
             read = read_shapes(
                 f"{platform}_json", answer_shapes(platform, answer), answer, schema, ctx, self._vocabulary
             )
-            entities.extend(read.entities)
+            entities.extend(_requested(e) for e in read.entities)
             candidates.extend(read.candidates)
             diagnostics.extend(read.diagnostics)
         return CollectResult(entities=tuple(entities), candidates=tuple(candidates), diagnostics=tuple(diagnostics))
+
+
+def _requested(entity: Entity) -> Entity:
+    """The answer's root marked as the requested item: the answer passed the identity check (`acquire.identity`)."""
+    return entity.model_copy(update={"requested": True}) if entity.parent is None else entity
 
 
 def _answers(page: ParsedPage, diagnostics: list[str]) -> Iterator[tuple[str, JsonValue]]:

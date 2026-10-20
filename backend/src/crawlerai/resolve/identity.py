@@ -9,6 +9,11 @@ a product group (`hasVariant`). Two of them of one most specific type are one it
 - they name one item URL that is not a page URL, stated by two collectors or by a group's member and a standalone
   product: a page often states its items in two syntaxes (JSON-LD and microdata), and a URL naming the page itself
   names no item.
+The root of an identity-checked data call's answer (`Entity.requested`, acquisition spec "Data calls") states the
+requested item by construction, though it may name it by no identifier the page's markup states (Shopify's product
+JSON holds its sku and barcode on its variants only): it is the page's one root item of its most specific type, when
+the page states exactly one and that root is the page's own (it names no other document than the page's,
+`scope.leads_elsewhere`); of none or several, or another page's item, it stays apart.
 Every pair that agrees joins, so two later entities that agree join even when an earlier one stays apart. Two members
 of product groups never join (two variants sharing a sku are two sizes of one sku, variants spec INV-33), nor does an
 entity join its own ancestor. The merged entity is the group member when there is one, else the first in collector
@@ -29,7 +34,7 @@ from typing import Final
 
 from crawlerai.collect.base import ARRAY_ROW, PAGE, Entity
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.collect.scope import LISTS
+from crawlerai.collect.scope import LISTS, Documents, leads_elsewhere, page_documents
 
 # schema.org `hasVariant`: "Indicates a Product that is a member of this ProductGroup". A variant is part of its group,
 # not another thing the page is about, and its Offer offers the group's product too: it joins the group's Offers under
@@ -63,7 +68,8 @@ def identify(entities: Sequence[Entity], vocabulary: Vocabulary, page_urls: Sequ
     for (_, prop, _), members in _keyed(eligible, pages).items():
         for i, j in combinations(members, 2):
             if prop != _URL or _url_joins(eligible[i], eligible[j]):
-                sets.join(i, j, by_iri=prop == _IRI)
+                sets.join(i, j, certain=prop == _IRI)
+    _join_requested(eligible, sets, page_documents(pages))
     aliases, groups = sets.aliases(), sets.groups()
     merged = [_merged(e, groups.get(e.id, ()), aliases) for e in entities if e.id not in aliases]
     named = {aliases.get(p, p): aliases.get(g, g) for p, g in variant_of.items()}
@@ -119,6 +125,22 @@ def _is_list(entity: Entity, vocabulary: Vocabulary) -> bool:
 
 def _is_a(entity: Entity, type_: str, vocabulary: Vocabulary) -> bool:
     return any(vocabulary.is_a(t, type_) for t in entity.types)
+
+
+def _join_requested(eligible: Sequence[Entity], sets: "_Sets", documents: Documents) -> None:
+    """Join each identity-checked data call's root (`Entity.requested`) to the page's one root item of its type, when
+    the page states exactly one and that root is the page's own (module docstring)."""
+    for i, e in enumerate(eligible):
+        if e.requested and e.parent is None:
+            roots = {sets.find(j): o for j, o in enumerate(eligible) if _root(o, e.types[0])}
+            if len(roots) == 1:
+                (j, root), *_ = roots.items()
+                if not leads_elsewhere(root, documents):
+                    sets.join(i, j, certain=True)
+
+
+def _root(entity: Entity, type_: str) -> bool:
+    return not entity.requested and entity.parent is None and entity.types[0] == type_
 
 
 def _url_joins(a: Entity, b: Entity) -> bool:
@@ -177,9 +199,11 @@ class _Sets:
             i = self.parent[i]
         return i
 
-    def join(self, i: int, j: int, *, by_iri: bool) -> None:
+    def join(self, i: int, j: int, *, certain: bool) -> None:
+        """Make `i` and `j` one item. `certain`: the agreement needs no item URL check (a shared IRI, a checked data
+        call's answer)."""
         a, b = self.find(i), self.find(j)
-        if a == b or not self._joinable(a, b, by_iri=by_iri):
+        if a == b or not self._joinable(a, b, certain=certain):
             return
         keep, drop = (b, a) if self.variant[b] or (not self.variant[a] and self.head[b] < self.head[a]) else (a, b)
         self.parent[drop] = keep
@@ -188,13 +212,13 @@ class _Sets:
         self.ancestors[keep] |= self.ancestors[drop]
         self.variant[keep] = self.variant[keep] or self.variant[drop]
 
-    def _joinable(self, a: int, b: int, *, by_iri: bool) -> bool:
+    def _joinable(self, a: int, b: int, *, certain: bool) -> bool:
         if self.variant[a] and self.variant[b]:
             return False
         ids_a, ids_b = self._ids(a), self._ids(b)
         if ids_a & self.ancestors[b] or ids_b & self.ancestors[a]:
             return False
-        return by_iri or self._same_item_urls(self.urls[a], self.urls[b])
+        return certain or self._same_item_urls(self.urls[a], self.urls[b])
 
     def _same_item_urls(self, a: set[str], b: set[str]) -> bool:
         """Whether two sets' item URLs may name one item: one states none, or they share one. A URL naming the page

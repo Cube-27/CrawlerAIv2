@@ -123,3 +123,12 @@ def test_the_group_a_product_is_a_variant_of_is_the_target_and_the_product_its_v
     target = _select(product, group, request_url=OTHER_URL)
     assert isinstance(target, Entity)
     assert (target.id, target.parent) == (group.id, None)
+
+
+def test_the_item_a_products_rating_reviews_is_the_product_itself() -> None:
+    # schema.org `itemReviewed`: the item the AggregateRating rates, here the page's Product restated with its URL.
+    reviewed = {"@type": "Product", "name": "Widget", "url": PAGE_URL}
+    rating = {"@type": "AggregateRating", "ratingValue": "4.5", "reviewCount": "12", "itemReviewed": reviewed}
+    target = _jsonld_target(_product(PAGE_URL, name="Widget", aggregateRating=rating))
+    assert isinstance(target, Entity)
+    assert target.id == "jsonld:0:$"
