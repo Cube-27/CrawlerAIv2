@@ -22,9 +22,12 @@ the row's name. A state or call array row (`array_row`) binds by URL to a listin
 
 **Values.** A bound entity's candidates join its row where the row holds no candidate of the field, or where they equal
 one of the row's (agreement, normalization spec); a value that disagrees with the row's own is dropped, so the row's
-source stays authoritative. A block's `ambiguous_in_block` value joins as its one option equal to the row's value. A
-stated row bound by URL takes the block's link as its item URL (the page's own spelling of it), its respelled stated URL
-dropped.
+source stays authoritative. One exception: a row a platform adapter's answer states (`adapter` candidates only, an API
+answer, not the page's markup) takes its bound block's one visible amount of a money field as a rival, so that
+resolution weighs the amount the page shows against the answer's (resolution spec, "the visible price"; C1, a theme
+showing a tax-inclusive amount the catalogue price excludes). A block's `ambiguous_in_block` value joins as its one
+option equal to the row's value. A stated row bound by URL takes the block's link as its item URL (the page's own
+spelling of it), its respelled stated URL dropped.
 
 **Key induction.** Across the array rows bound to rows whose blocks show a field, a key of those rows (a JSON path
 relative to the row) whose value equals the block's on `MIN_ITEMS` rows or more is that field's key on this page
@@ -57,7 +60,7 @@ from crawlerai.normalize.base import Ambiguous, Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.normalize.text import compose
 from crawlerai.normalize.url_key import session_parameters, without_parameters
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # The entity whose row fields a candidate fills: its owner, or the item an Offer it is in offers.
 Holder = Callable[[Candidate], str]
@@ -404,6 +407,8 @@ class _Binder:
         values = [t.normalized.value for t in theirs if isinstance(t.normalized, Ok)]
         if isinstance(c.normalized, Ok) and any(equal(c.normalized.value, v, spec) for v in values):
             return c.model_copy(update={"entity_id": row})
+        if by_url and _shown_amount(c, spec, theirs):
+            return c.model_copy(update={"entity_id": row})  # a rival of the adapter's amount (module docstring)
         if by_url and c.field in self.url_fields and c.source_kind == "dom":
             # The stated URL respells the block's link (a slash, an added query): the page's own spelling replaces it.
             replaced.update(id(t) for t in theirs if t.source_kind != "dom")
@@ -421,6 +426,17 @@ class _Binder:
             if isinstance(normalized, Ok) and any(equal(normalized.value, v, spec) for v in values):
                 return c.model_copy(update={"entity_id": row, "raw": raw, "normalized": normalized})
         return None
+
+
+def _shown_amount(c: Candidate, spec: FieldSpec, theirs: Sequence[Candidate]) -> bool:
+    """Whether `c` is a block's one visible amount of a money field whose row only a platform adapter states."""
+    return (
+        spec.type == FieldType.MONEY
+        and c.source_kind == "dom"
+        and c.independent
+        and isinstance(c.normalized, Ok)
+        and all(t.source_kind == "adapter" for t in theirs)
+    )
 
 
 @dataclass(frozen=True, slots=True)

@@ -29,6 +29,9 @@ ALL: Final = "*"
 # lacks the platform's own signal, so the host is not the platform; or the platform answered, but not for this page.
 NOT_PLATFORM: Final = "not_platform"
 NOT_SERVED: Final = "not_served"
+# The `data_call` mark of a page-scoped adapter's answer joined to the page it serves (`PageScoped`), which the
+# collectors read with that adapter's shapes (`collect.run`).
+ADAPTER_CALL: Final = "adapter"
 
 Members = tuple[str, ...]  # member names from a JSON object to a value; `ALL` takes every item of an array
 
@@ -119,7 +122,8 @@ class Adapter(Protocol):
 class PageScoped(Protocol):
     """An adapter whose API serves a whole list while the page shows one page of it (a storefront collection, paged by
     its theme): it serves the page only after the page is fetched, with the rows the page itself lists (`page`, its
-    references), never on its own turn (adapters spec). Its `fetch` is never called."""
+    references), never on its own turn, and its answer joins that page as a data call marked `ADAPTER_CALL`: the page
+    stays the capture, with its own markup and next-page link (adapters spec). Its `fetch` is never called."""
 
     async def fetch_listed(self, url: str, page: PageRefs, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         """`fetch` for the page at `url`, the answer holding only the rows the page links to, in the page's order."""

@@ -13,13 +13,15 @@ generic rungs (adapters spec).
 
 A collection page shows one page of the collection, of a size its theme chooses (the Liquid `paginate` tag's `by`),
 which no documented API states; the Storefront API pages by cursor only (no page number or offset). So the adapter is
-page-scoped (`adapters.base.PageScoped`): it serves a fetched page, and its answer holds the collection's products the
-page links to (`/products/{handle}` on the page's host, also under a collection or a locale subfolder), matched by
-`handle`, in the page's order; a page linking to none is `NOT_SERVED`, and the page path reads it. Any query (`?page=`,
-a sort, a filter) is the page's own: its links say which products it shows. The products come in pages of at most 250
-(the Storefront API's `first` limit), joined by the connection's cursor (`pageInfo { hasNextPage endCursor }`, Relay
-cursor connections, the API's pagination documentation) until every product the page links to is read, up to the
-adapter row cap (`adapters.paging`, D-1385). The next page of the collection is the crawl's to follow, not this one's.
+page-scoped (`adapters.base.PageScoped`): it serves a fetched page (at its final URL when a redirect kept it on its
+site, so the tenant is the host the page's links are on), its answer joins that page as a data call, and it holds the
+collection's products the page links to (`/products/{handle}` on the page's host, also under a collection or a locale
+subfolder), matched by `handle`, in the page's order; a page linking to none is `NOT_SERVED`, and the page path reads
+it. Any query (`?page=`, a sort, a filter) is the page's own: its links say which products it shows. The products come
+in pages of at most 250 (the Storefront API's `first` limit), joined by the connection's cursor (`pageInfo { hasNextPage
+endCursor }`, Relay cursor connections, the API's pagination documentation) until every product the page links to is
+read, up to the adapter row cap (`adapters.paging`, D-1385). The next page of the collection is the crawl's to follow,
+by the page's own link, not this one's.
 
 A locale subfolder names the language the page shows (the platform's international domains documentation:
 `/{language}` or `/{language}-{country}`): the query asks the collection in that language with

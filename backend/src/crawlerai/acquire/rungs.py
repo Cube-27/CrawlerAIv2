@@ -5,9 +5,11 @@ render (or the surface renders every page), and adds the companion calls of its 
 HTTP detail page of a platform that documents its product JSON is joined with that JSON, always (`_joined`).
 
 A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) first, and to the page rungs when the
-adapter does not serve it (adapters spec). A fetched page that a page-scoped adapter detects (a storefront collection),
-whose own canonical link is its URL without the query, which an adapter detects, or which an adapter says stands for
-one of its platform's pages, is then served by that adapter, with the rows the fetched page lists (adapters spec). A
+adapter does not serve it (adapters spec). A fetched page a page-scoped adapter detects (a storefront collection), at
+its final URL when a redirect kept it on its site, is joined with that adapter's answer for the rows the page lists, a
+data call marked `ADAPTER_CALL` (adapters spec). A fetched page whose own canonical link is its URL without the query,
+which an adapter detects, or which an adapter says stands for one of its platform's pages, is then served by that
+adapter (adapters spec). A
 site whose active config has an API recipe is served by the recipe's rung (adapters spec), which the caller binds to
 the recipe: the config IR sits above `acquire` (`.importlinter`). The browser rung is
 `crawlerai.acquire.browser.fetch_browser`. Every rung is a function of (url, policy), so `acquire` decides and records
@@ -43,6 +45,7 @@ from crawlerai.acquire.types import (
     fetched_as,
     policy_with_attempts,
 )
+from crawlerai.adapters.base import ADAPTER_CALL
 from crawlerai.adapters.platforms import ProductJson, platform_of, product_json
 from crawlerai.adapters.registry import Registry, platform_adapters
 from crawlerai.storage.capture_bundle import decode_body
@@ -204,29 +207,37 @@ async def _by_canonical(
     send: JsonFetcher,
     admit_next: Admit | None,
 ) -> Fetched:
-    """The adapter's answer for the fetched page itself when a page-scoped adapter detects it, for the page's
-    canonical URL (`_query_dropped`), or for the platform page the page on its own host stands for (`_referred`), when
-    there is one, it is `ok` and the site's rate admits the request; else the page. Either way with every attempt. The
-    adapter is given the fetched page's references (`page_refs`): a page-scoped one serves only the rows it lists."""
+    """The page joined with a page-scoped adapter's answer for the rows it lists (`_listed`); else the adapter's answer
+    for the page's canonical URL (`_query_dropped`), or for the platform page the page on its own host stands for
+    (`_referred`), when there is one, it is `ok` and the site's rate admits the request; else the page. Either way with
+    every attempt."""
     kept, attempts, duration_ms = page
-    canonical = _listed(url, kept, rungs.adapters) or _query_dropped(url, kept, rungs.adapters)
-    canonical = canonical or _referred(kept, policy, rungs.adapters)
+    listed = _listed(url, kept, rungs.adapters)
+    canonical = listed or _query_dropped(url, kept, rungs.adapters) or _referred(kept, policy, rungs.adapters)
     if canonical is None or not await _admitted(admit_next):
         return page
     served = await rungs.adapters.serve(canonical, policy, send, page=lambda: page_refs(kept))
     if served is None:
         return page
-    return (
-        (served if served.block_class == "ok" else kept),
-        attempts + served.attempts,
-        duration_ms + served.duration_ms,
-    )
+    if served.block_class == "ok" and listed is not None:
+        # The page stays the capture. The answer holds only products the page links to (the adapter's identity check:
+        # an answer stating none is `not_served`), and joins the page as a data call.
+        kept = with_call(kept, served, served.bundle.manifest.final_url, ADAPTER_CALL, method="POST")
+    elif served.block_class == "ok":
+        kept = served
+    return kept, attempts + served.attempts, duration_ms + served.duration_ms
 
 
 def _listed(url: str, page: FetchResult, adapters: Registry) -> str | None:
-    """`url`, when the page is `ok` and only a page-scoped adapter, which serves a fetched page, detects it."""
-    listed = page.block_class == "ok" and adapters.would_serve(url, fetched=True) and not adapters.would_serve(url)
-    return url if listed else None
+    """The URL of the `ok` page a page-scoped adapter, which serves a fetched page, detects: its final URL, whose links
+    the page's references resolve against, when a redirect kept it on the request's site (HTML Standard §7.1.1 "same
+    site": an apex host and its `www` host); None for a page that left its site or that no such adapter detects."""
+    if page.block_class != "ok":
+        return None
+    final = page.bundle.manifest.final_url
+    if site_relation(url, final) == "cross-site":
+        return None
+    return final if adapters.would_serve(final, fetched=True) and not adapters.would_serve(final) else None
 
 
 def _query_dropped(url: str, page: FetchResult, adapters: Registry) -> str | None:
@@ -238,7 +249,7 @@ def _query_dropped(url: str, page: FetchResult, adapters: Registry) -> str | Non
         return None
     bare = urlunsplit(parts._replace(query="", fragment=""))
     # A host its adapter declined is not asked again, so the request would take a turn at the site's rate for nothing.
-    if not adapters.would_serve(bare, fetched=True) or (canonical := canonical_link(page)) is None:
+    if not adapters.would_serve(bare) or (canonical := canonical_link(page)) is None:
         return None
     return bare if _same_resource(canonical, bare) else None
 

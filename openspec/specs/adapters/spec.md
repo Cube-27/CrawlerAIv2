@@ -78,25 +78,34 @@ It SHALL detect collection paths only, with any query, also under a locale subfo
 (`PageScoped`): a collection page shows one page of the collection, of a size its theme chooses (Liquid `paginate`),
 which no documented API states, and the Storefront API pages by cursor only, so the adapter is never asked on the
 page's own turn; the page is fetched first (robots.txt and the page rungs as for any page), and an `ok` page is then
-served with the collection's products that page links to (`/products/{handle}` on the page's host, also under a
-collection or a locale subfolder), matched by `handle`, in the page's order. It SHALL `POST` the tokenless Storefront
-GraphQL endpoint on the page's host with the handle as a variable, page through the products' cursor until every
+served, at its final URL when a redirect kept it on the request's site (an apex host and its `www` host; another site
+is not served), with the collection's products that page links to (`/products/{handle}` on that host, also under a
+collection or a locale subfolder), matched by `handle`, in the page's order. The page stays the capture: the answer
+joins it as a data call marked `adapter` (identity-checked by construction: it holds only products the page links to,
+and one holding none is `not_served`), read with the adapter's shapes, so the page keeps its markup, its cards and its
+next-page link. It SHALL `POST` the tokenless Storefront GraphQL endpoint on that host with the handle as a variable, page through the products' cursor until every
 product the page links to is read or the adapter row cap, ask a locale-prefixed page in its language
 (`@inContext(language:)`), and class answers `not_platform` (no `X-Shopify-API-Version`), `not_served` (no item,
 GraphQL errors, none of the page's products, another language than the page's, a shop presenting other than exactly
 one currency, whose page the page path reads, or a listed product without a price above zero, which the page may
 still show: an answer never takes the page path's prices away) or `ok`, as in `adapters/shopify.py`. The collection's
-next page is the crawl's to follow (pagination), never one adapter answer's. A fetched `ok` page whose URL has a query
-is served by an adapter that detects it without the query when the page's canonical link is that URL (RFC 6596,
-D-1120), with the fetched page's links. Refs: Appendix A #46, #47, D-1077, D-1078, D-1114, D-1118, D-1120, D-1385,
+next page is the crawl's to follow from the page's own link (pagination), never one adapter answer's. A fetched `ok`
+page whose URL has a query is served by an adapter, not page-scoped, that detects it without the query when the page's
+canonical link is that URL (RFC 6596, D-1120). Refs: Appendix A #46, #47, D-1077, D-1078, D-1114, D-1118, D-1120, D-1385,
 D-1386.
 (Previously: the first 250 products, and no locale-prefixed URL; a shop of several currencies was served without
 prices; an answer with zero prices was served; the adapter served a collection before its page was fetched, with every
-product of the collection up to the row cap, whatever page the URL asked, and declined a URL with a query.)
+product of the collection up to the row cap, whatever page the URL asked, and declined a URL with a query; the
+answer then replaced the fetched page as the capture, and a redirect to the `www` host was not served.)
 #### Scenario: One page of a paged collection
 - **WHEN** a collection of four products shows two a page, the API answers two a page, and `?page=2` links the third
   and fourth
 - **THEN** both API pages are requested and the answer holds the third and fourth products only
+#### Scenario: The page stays the capture
+- **WHEN** a collection page with three cards and a `rel=next` link is served, after a redirect from the apex host to
+  its `www` host
+- **THEN** the API is asked on the `www` host, the capture is the HTML page with the answer as its data call, its
+  rows' names are the answer's, and its next-page link is the page's
 
 ### Requirement: Shopify values
 Collection items SHALL read as schema.org products (variants under `hasVariant`, no default variant; see
