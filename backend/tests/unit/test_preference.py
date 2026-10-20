@@ -19,6 +19,7 @@ from crawlerai.resolve.preference import (
     Resolver,
     Unpublished,
 )
+from crawlerai.resolve.score import value_of
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
@@ -127,6 +128,25 @@ def test_exact_candidates_that_share_the_best_score_are_a_conflict() -> None:
     result = _prefer(_schema(sku=SKU), jsonld, og)
 
     assert result["sku"] == Unpublished("conflict", "disagree", ((jsonld, "disagree"), (og, "disagree")), (jsonld, og))
+
+
+def _place(text: str, locality: str | None = None, region: str | None = None) -> dict[str, JsonValue]:
+    return {"text": text, "locality": locality, "region": region, "country": None, "remote_flag": None}
+
+
+def test_a_list_of_places_publishes_every_member_its_sources_state() -> None:
+    # Two places that both belong to the item are members, not rivals; a text naming a structured place's locality
+    # states that place, and stands for it.
+    places = FieldSpec(type=FieldType.LIST, item=FieldSpec(type=FieldType.LOCATION), description="d")
+    brooklyn, austin = _place("Brooklyn, NY", "Brooklyn", "NY"), _place("Austin, TX", "Austin", "TX")
+    jsonld = _candidate("places", [brooklyn, austin])
+    dom = _candidate("places", [_place("New York City"), _place("Austin; Denver")], PAGE, "dom")
+
+    chosen = _prefer(_schema(places=places), jsonld, dom)["places"]
+
+    assert isinstance(chosen, Chosen)
+    assert value_of(chosen.candidate) == [brooklyn, _place("Austin; Denver"), _place("New York City")]
+    assert (chosen.rejected, chosen.flag) == ((), None)
 
 
 def test_one_amount_in_two_currencies_publishes_with_its_currency_unknown() -> None:

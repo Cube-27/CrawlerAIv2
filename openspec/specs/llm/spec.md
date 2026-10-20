@@ -67,6 +67,12 @@ A money claim grounds only on whole numbers, never the head or tail of a longer,
 `$4,000`). One the text does not hold verbatim is found with any spacing between its currency sign and its one amount
 (CLDR `currencySpacing`: that space is the locale's presentation), and its value is the
 text's span, never the model's spelling. (Previously: a money claim spaced otherwise than the text was dropped.)
+A span SHALL be whole words (Unicode UAX #29: letters, marks, digits and connector punctuation continue a word, except
+in scripts written without spaces, UAX #11 wide and fullwidth characters and UAX #14 class SA); where two text runs of
+the page meet, a word ends. An occurrence inside a longer word holds no value (`0` inside `9781400215522`). An
+identifier claim SHALL NOT ground inside an address: a URL or path reference (RFC 3986) or a media file's name (a
+registered image, audio or video media type's extension) is a resource the page names, not an identifier it states.
+(Previously: any occurrence grounded, a part of a word or an address included.)
 A claimed link or image SHALL be an element the page has, of the kind its field takes, and its value that element's
 `href` or `src` as the DOM states it, never text of the model's. Enforced by: `tests/property/test_grounding.py`,
 `tests/unit/test_grounding.py`, `tests/unit/test_role_c.py`; active. (Previously: only text spans.) Refs: §11,
@@ -77,6 +83,12 @@ D-0024, D-0379, D-1623.
 #### Scenario: Money spaced otherwise
 - **WHEN** a price claim is `$19.98` and the text writes `$ 19.98`
 - **THEN** it is grounded at `$ 19.98`, which is its value
+#### Scenario: Part of a longer number
+- **WHEN** a rating claim is `0` and the text's only `0`s are inside `ISBN13: 9781400215522`
+- **THEN** it is dropped as `role C: rating ungrounded`
+#### Scenario: Identifier in an image path
+- **WHEN** an mpn claim is `EKA20X2` and the text writes it only in `.../EKA20X1.EKA20X2-Frontal.jpg`
+- **THEN** it is dropped as `role C: mpn ungrounded`
 #### Scenario: Claimed id of no such element
 - **WHEN** a url field's claim names an id no link on the page has, or an image's
 - **THEN** it is dropped as `role C: <field> ungrounded`
@@ -117,6 +129,28 @@ reason was `no_candidates`.) Refs: §8.4, D-0521, D-1097, D-1600, D-1601, D-1602
 #### Scenario: Long listing
 - **WHEN** a listing asks 210 blocks
 - **THEN** role C reads the first 200 in calls that fit the reply, and records that it read 200 of 210 blocks
+
+### Requirement: Role C value checks
+A grounded role C span SHALL be the field's own fact, as the page's structure states it (`llm/claim_checks.py`): an
+identifier's span starts past a label written before it with a colon (`REF.: CLU-1` is `CLU-1`) and past a number sign
+(`#123` is `123`); a span the page labels as another field is not taken: the label right before it on its line, ended
+by a colon, and for a number or count also the words right after it ("293 Reviews"), read with the schema's label
+vocabulary (extraction spec, "Label vocabulary"), name fields of which this one is none. A label that names no field,
+or this one, decides nothing. On a listing, a place claimed for a row from its block's heading (HTML `h1`-`h6`, the
+item's name) is not taken when a line of the block outside the heading states that the job is remote (the location
+normalizer's `type:remote` clause): the block states its place there. A value not taken leaves the field as an
+ungrounded one does. (Previously: any grounded span was taken.) Enforced by: `tests/unit/test_role_c.py`; active.
+Refs: §11, INV-12.
+#### Scenario: Label kept with an identifier
+- **WHEN** a product_id claim is `REF.: CLU459_4712_V2`
+- **THEN** its candidate is `CLU459_4712_V2`, located past the label
+#### Scenario: Another field's label
+- **WHEN** a product_id claim is a span after `ISBN:` and `ISBN` is a label of gtin only
+- **THEN** it is not taken, and product_id stays `missing` (`unverified`)
+#### Scenario: Remote card, city in the title
+- **WHEN** a job card's heading is `Sales Rep - Austin, TX` and a line of the card says `Remote`, and the claim for the
+  row's locations is `Austin, TX`
+- **THEN** it is not taken
 
 ### Requirement: When role C is asked
 In cold mode role C SHALL be asked on a detail page when any field is `missing`, optional ones included, for every

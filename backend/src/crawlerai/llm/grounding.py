@@ -11,13 +11,22 @@ A money claim may differ from the text only in the spacing between its currency 
 `currencySpacing` makes that space the locale's presentation, so `$19.98` is grounded at the text's `$ 19.98`, and the
 value is the text's span, never the model's spelling.
 
+A span is whole words (Unicode UAX #29 word boundaries: letters, digits and connector punctuation such as `_` continue
+a word; ideographic and South-East Asian scripts, written without spaces, break anywhere): an occurrence that continues
+a word of the text, the `0` inside `9781400215522`, holds no value. Where two text runs of the page meet, a word ends
+(`breaks`: the element boundary is a boundary the text does not show). An identifier claim grounds only outside an
+address: an occurrence inside a URL or a media file's name (RFC 3986 URI or path reference, a name whose extension is
+a registered image, audio or video media type) is a resource the page names, not an identifier it states.
+
 A claim of a link or an image names the id the text gave it (`llm.marked`): it is kept only when that id marks an
 element of the kind the field takes on the page, and its value is the element's `href` or `src` as the DOM states it,
 never text of the model's.
 """
 
+import mimetypes
 import re
-from collections.abc import Mapping
+import unicodedata
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict
@@ -69,17 +78,22 @@ def ground_element(ref: str, kind: MarkKind, elements: Mapping[str, Mark]) -> Gr
     return GroundedElement(mark.target, mark.path)
 
 
-def align(claim: SpanClaim, cleaned_text: str, *, money: bool = False) -> GroundedSpan | None:
-    """The claim as a span of `cleaned_text`, or None when the text does not contain its value (ungrounded). A `money`
-    claim is a whole number of the text, and one the text does not contain verbatim is found with any spacing between
-    its currency sign and its digits."""
+def align(
+    claim: SpanClaim,
+    cleaned_text: str,
+    *,
+    money: bool = False,
+    identifier: bool = False,
+    breaks: frozenset[int] = frozenset(),
+) -> GroundedSpan | None:
+    """The claim as a span of `cleaned_text`, or None when the text does not contain its value as whole words
+    (ungrounded). A `money` claim is a whole number of the text, and one the text does not contain verbatim is found
+    with any spacing between its currency sign and its digits. An `identifier` claim is not grounded in an address
+    (module docstring). `breaks` are the offsets where two text runs meet."""
     value = claim.value
     if not value:
         return None  # an empty span holds no value
-
-    def holds(start: int, end: int) -> bool:
-        return not money or _whole(cleaned_text, start, end)
-
+    holds = _holds(cleaned_text, money=money, identifier=identifier, breaks=breaks)
     # Both ends must be offsets into the text: a negative end would slice counting from the end.
     if (
         0 <= claim.start < claim.end <= len(cleaned_text)
@@ -89,12 +103,84 @@ def align(claim: SpanClaim, cleaned_text: str, *, money: bool = False) -> Ground
         return GroundedSpan(value, claim.start, claim.end)
     spans = [(i, i + len(value)) for i in _occurrences(value, cleaned_text) if holds(i, i + len(value))]
     if not spans and money:
-        spans = _sign_spaced(value, cleaned_text)
+        spans = [span for span in _sign_spaced(value, cleaned_text) if holds(*span)]
     if not spans:
         return None
     # Nearest to the claimed start; of two equally near, the earlier, so the choice is deterministic (INV-10).
     start, end = min(spans, key=lambda span: (abs(span[0] - claim.start), span[0]))
     return GroundedSpan(cleaned_text[start:end], start, end)
+
+
+def _holds(text: str, *, money: bool, identifier: bool, breaks: frozenset[int]) -> Callable[[int, int], bool]:
+    """Whether the span `[start, end)` of `text` can hold the claim's value (module docstring)."""
+
+    def holds(start: int, end: int) -> bool:
+        if not bounded(text, start, end, breaks):
+            return False
+        if money and not _whole(text, start, end):
+            return False
+        return not (identifier and in_address(text, start, end))
+
+    return holds
+
+
+def bounded(text: str, start: int, end: int, breaks: frozenset[int] = frozenset()) -> bool:
+    """Whether `text[start:end]` begins and ends at word boundaries (UAX #29), a meeting of two text runs being one."""
+    return _boundary(text, start, breaks) and _boundary(text, end, breaks)
+
+
+def _boundary(text: str, at: int, breaks: frozenset[int]) -> bool:
+    if at <= 0 or at >= len(text) or at in breaks:
+        return True
+    return not (_word_char(text[at - 1]) and _word_char(text[at]))
+
+
+# UAX #14 class SA (complex context: Thai, Lao, Myanmar, Khmer) writes words without spaces, as East Asian wide and
+# fullwidth characters (UAX #11: ideographs, kana, Hangul syllables) do; UAX #29 finds no boundary between letters from
+# the characters alone there, so none is required.
+_SPACELESS = ((0x0E00, 0x0EFF), (0x1000, 0x109F), (0x1780, 0x17FF))
+
+
+def _word_char(char: str) -> bool:
+    """A character that continues a word (UAX #29 ALetter, Numeric, ExtendNumLet: letters, marks, digits and connector
+    punctuation), outside the scripts written without spaces."""
+    if unicodedata.category(char)[0] not in "LMN" and unicodedata.category(char) != "Pc":
+        return False
+    if unicodedata.east_asian_width(char) in ("W", "F"):
+        return False
+    return not any(low <= ord(char) <= high for low, high in _SPACELESS)
+
+
+# An address is never longer than this many characters (RFC 9110 §4.1 recommends supporting URIs of 8000 octets), so
+# the token around a span is looked for no further.
+_LONGEST = 8000
+# RFC 3986 §3: a URI's scheme and authority (`https://`), or a network-path or absolute-path reference (§4.2).
+_URI = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://|\A//|\A/[^/\s]")
+# The media types Python ships (`mimetypes` defaults, from the IANA registry), never the host's own files, so the
+# reading is the same on every machine (INV-10).
+_MEDIA_TYPES = mimetypes.MimeTypes(filenames=())
+_MEDIA = ("image/", "audio/", "video/")
+
+
+def in_address(text: str, start: int, end: int) -> bool:
+    """Whether the span lies inside a URL or a media file's name the text writes (module docstring)."""
+    span = text[start:end]
+    if any(char.isspace() for char in span):
+        return False  # an address holds no white space
+    word = text[_token_edge(text, start, -1) : _token_edge(text, end, 1)]
+    if _URI.search(word):
+        return True
+    name = word.rsplit("/", 1)[-1].split("?", 1)[0].split("#", 1)[0]
+    media, _ = _MEDIA_TYPES.guess_type(name, strict=True)
+    return media is not None and media.startswith(_MEDIA)
+
+
+def _token_edge(text: str, at: int, step: int) -> int:
+    """Where the run of non-space characters through `at` ends, going back (`step` -1) or on (1)."""
+    limit = max(0, at - _LONGEST) if step < 0 else min(len(text), at + _LONGEST)
+    while at != limit and not text[at - 1 if step < 0 else at].isspace():
+        at += step
+    return at
 
 
 # A spaced match is not one end of a displayed range (`$ 19.98 - $ 24.99`): no range dash right before or after it.

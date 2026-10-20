@@ -43,7 +43,12 @@ naming the file its `url` parameter names, a list's as the set of its files) for
 members the first publishes, for images the `https` ones (else all) and of a single image's renditions the largest
 (`url.largest_rendition`). The candidates of every other value are rejected `outscored`, and a field whose kept
 candidates state other values publishes with the disagreement flag as its reason (`disagree`, or `offers_disagree` /
-`offer_split` for an offer field). When the best score is 0 the field is `missing` (`unranked`); when two values share
+`offer_split` for an offer field). A list of the item's facts (its items neither lists, objects, urls nor images: a
+job's places) publishes instead every member its scored values state, the best value's first: two sources stating
+different members state more of the item, not rival values. A member equal to one already listed is that one, and a
+location the page writes as text alone that names a listed place's locality (its region when it states none: "Austin"
+or "Raleigh; Austin; Denver" for `addressLocality` Austin) stands for it, in its place; no value is outscored and no
+flag is set. (Previously: a list was one value, and different lists were rivals.) When the best score is 0 the field is `missing` (`unranked`); when two values share
 it the field is a `conflict` (`disagree`, C7: decline rather than guess). Money differs in one way: an unclear
 currency never drops a price (tied values stating one amount in different currencies publish that amount with its
 currency `null`, basis `unknown`), but amounts that differ are rival prices, each explained by its role before the
@@ -69,6 +74,9 @@ owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_prefere
 - **WHEN** JSON-LD states an AggregateOffer from 80 to 120 EUR and no Offer price, and the page shows `€80`
 - **THEN** `price` is `missing`, the `dom` candidate rejected `range_bound`, and a user-added `price_range` publishes
   80–120 EUR
+#### Scenario: Places from structured data and the page
+- **WHEN** JSON-LD states a job's place `Brooklyn, New York, USA` (locality Brooklyn) and the page shows `New York City`
+- **THEN** `locations` publishes both, `Brooklyn, New York, USA` then `New York City`
 #### Scenario: Two prices disagree
 - **WHEN** JSON-LD says 19.90 EUR and microdata says 21.00 EUR for the target
 - **THEN** `price` publishes 19.90 EUR with reason `disagree` and the microdata candidate is rejected `outscored`

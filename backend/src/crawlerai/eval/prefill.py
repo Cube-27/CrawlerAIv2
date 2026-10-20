@@ -21,6 +21,7 @@ from crawlerai.collect.currencies import with_page_declarations
 from crawlerai.collect.items.align import align
 from crawlerai.collect.items.bind import RowBlock
 from crawlerai.collect.items.lines import BlockText, block_texts
+from crawlerai.collect.labels import labels_of
 from crawlerai.collect.schema_org_map import is_item_url
 from crawlerai.content.context import page_context
 from crawlerai.content.page import ParsedPage
@@ -46,7 +47,11 @@ async def prefill(
         # A detail page's fields are its one entity's; a listing schema without row fields has only the page's,
         # so role C is asked for no rows.
         cleaned = page.cleaned_text
-        filled = [await c_extract.extract_detail(llm, cleaned, fields, ctx, owner=PAGE, job_id=None, kind=kind)]
+        filled = [
+            await c_extract.extract_detail(
+                llm, cleaned, fields, ctx, owner=PAGE, job_id=None, labels=labels_of(fields, None), kind=kind
+            )
+        ]
         rows: tuple[str, ...] = ()
     else:
         blocks = await asyncio.to_thread(_blocks, page, ctx, fields)
@@ -79,11 +84,17 @@ async def _listing(
     filled: list[c_extract.Filled] = []
     if blocks:
         listed = {name: fields[name] for block in blocks for name in block.fields}
-        filled.append(await c_extract.extract_listing(llm, blocks, listed, ctx, job_id=None, kind=kind))
+        filled.append(
+            await c_extract.extract_listing(
+                llm, blocks, listed, ctx, job_id=None, labels=labels_of(fields, None), kind=kind
+            )
+        )
     if page_fields := {name: spec for name, spec in fields.items() if spec.scope == "page"}:
         cleaned = page.cleaned_text
         filled.append(
-            await c_extract.extract_detail(llm, cleaned, page_fields, ctx, owner=PAGE, job_id=None, kind=kind)
+            await c_extract.extract_detail(
+                llm, cleaned, page_fields, ctx, owner=PAGE, job_id=None, labels=labels_of(fields, None), kind=kind
+            )
         )
     return filled
 

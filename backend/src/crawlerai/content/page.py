@@ -142,6 +142,11 @@ class ParsedPage:
         return frozenset(node_xpath(node) for node in self.tree.css("[hidden], [style]") if script_revealed(node))
 
     @cached_property
+    def run_starts(self) -> tuple[int, ...]:
+        """Where each text run of the cleaned text starts, in order (the runs are in document order)."""
+        return tuple(run.start for run in self.cleaned_text.offsets)
+
+    @cached_property
     def text_spans(self) -> dict[str, tuple[int, int]]:
         """Each element's span of the cleaned text, from its first text run to its last, by its node path in the
         selectolax tree (`content.text.TextRun`); an element that renders no text has none."""

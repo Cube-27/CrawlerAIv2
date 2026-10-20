@@ -3,7 +3,8 @@
 On a detail page the model reads the page's cleaned text, never its HTML, with each requested field's name, type and
 description, and replies, for each field, whether the page shows it and, when it does, one verbatim span of its value,
 or, for a url or image_url field, the id of the link or image the text marks (`llm.marked`). Each span is aligned to
-the text (`llm.grounding`, INV-12): a value the text does not contain is dropped, and an aligned one is normalized like
+the text (`llm.grounding`, INV-12) and checked as the field's own fact (`llm.claim_checks`): a value the text does
+not contain, or labels as another field's, is dropped, and an aligned one is normalized like
 any collector's raw value and proposed as a `source_kind='llm'` candidate with its `text:<start>-<end>` locator. A
 claimed id is kept only when it marks an element of the field's kind, and its candidate is that element's `href` or
 `src`, with its `dom:` locator. Resolution then treats it like any candidate (`llm_grounded` bucket); a value its
@@ -33,10 +34,11 @@ from crawlerai.collect.items.lines import BlockText
 from crawlerai.collect.locator import format_locator
 from crawlerai.content.text import CleanedText, MarkKind
 from crawlerai.db.models import JobId
+from crawlerai.llm.claim_checks import Labels, checked
 from crawlerai.llm.client import LLMClient, LLMFailure, LLMRequest, LLMResponse, PromptKind, closed_object
 from crawlerai.llm.grounding import GroundedSpan, SpanClaim, align, ground_element
 from crawlerai.llm.marked import MarkedText, Scoped, marked, scoped
-from crawlerai.normalize.base import Context
+from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -192,12 +194,13 @@ async def extract_detail(
     *,
     owner: str,
     job_id: JobId | None,
+    labels: Labels,
     kind: PromptKind = PROMPT_KIND,
     elsewhere: frozenset[str] = frozenset(),
 ) -> Filled:
     """Role C's candidates for `fields` of the entity `owner`, read from the page's `cleaned` text without the
     elements at the node paths `elsewhere` (other items' content, `llm.marked.scoped`), with the links and images the
-    fields can claim marked in it."""
+    fields can claim marked in it; each value checked against the page's `labels` (`llm.claim_checks`)."""
     scope = scoped(cleaned, elsewhere)
     cut, notes = _cut(scope.text.text, DETAIL_MAX_CHARS)  # what the model reads, and so what its spans are aligned to
     kinds = frozenset(_ELEMENT_OF[spec.type] for spec in fields.values() if spec.type in _ELEMENT_OF)
@@ -208,7 +211,8 @@ async def extract_detail(
     except LLMFailure as failure:
         return Filled((), failure, (*notes, _failed(failure)))
     # Aligning and normalizing are CPU work: a thread keeps the event loop serving other tasks meanwhile.
-    reader = _Reader(fields, read, scope, ctx)
+    breaks = frozenset(run.start for run in scope.text.offsets)
+    reader = _Reader(fields, read, scope, ctx, labels, breaks)
     read_fields = await asyncio.to_thread(reader.read, _claims_of(response.data["fields"]), owner)
     return Filled(read_fields.candidates, response, (*notes, *read_fields.dropped), read_fields.unverified)
 
@@ -220,6 +224,7 @@ async def extract_listing(
     ctx: Context,
     *,
     job_id: JobId | None,
+    labels: Labels,
     kind: PromptKind = LISTING_PROMPT_KIND,
 ) -> FilledListing:
     """Role C's candidates for the rows `blocks` fill, each block's own `fields` among `fields`. The first
@@ -230,7 +235,7 @@ async def extract_listing(
     diagnostics = list(notes)
     replies: list[LLMResponse | LLMFailure] = []
     for chunk in calls:
-        filled = await _listing_call(client, chunk, fields, ctx, job_id, kind)
+        filled = await _listing_call(client, chunk, _Asked(fields, labels), ctx, job_id, kind)
         candidates.extend(filled.candidates)
         diagnostics.extend(filled.diagnostics)
         replies.append(filled.reply)
@@ -239,33 +244,42 @@ async def extract_listing(
     return FilledListing(tuple(candidates), replies[0], tuple(diagnostics), more=tuple(replies[1:]))
 
 
+@dataclass(frozen=True, slots=True)
+class _Asked:
+    """The fields a listing's calls ask, and the page's labels their values are checked against."""
+
+    fields: Mapping[str, FieldSpec]
+    labels: Labels
+
+
 async def _listing_call(
     client: LLMClient,
     blocks: Sequence[BlockText],
-    fields: Mapping[str, FieldSpec],
+    asked: _Asked,
     ctx: Context,
     job_id: JobId | None,
     kind: PromptKind,
 ) -> Filled:
-    request = listing_request(blocks, fields, page_url=ctx.page_url, job_id=job_id, kind=kind)
+    request = listing_request(blocks, asked.fields, page_url=ctx.page_url, job_id=job_id, kind=kind)
     try:
         response = await client.complete_json(request)
     except LLMFailure as failure:
         return Filled((), failure, (_failed(failure),))
     # As for a detail page, reading the reply runs in a thread.
     claims = cast(list[dict[str, JsonValue]], response.data["claims"])  # the client checked it against the schema
-    read = await asyncio.to_thread(_read_claims, claims, blocks, fields, ctx)
+    read = await asyncio.to_thread(_read_claims, claims, blocks, asked, ctx)
     return Filled(read.candidates, response, read.dropped)
 
 
 def _read_claims(
     claims: Sequence[Mapping[str, JsonValue]],
     blocks: Sequence[BlockText],
-    fields: Mapping[str, FieldSpec],
+    asked: _Asked,
     ctx: Context,
 ) -> "_Read":
     """Each claim's candidate, owned by its block's row: the first claim of a block and field its row does not publish,
-    grounded in that block's text (INV-12). A claim of another block, or of a field the row publishes, is not taken."""
+    grounded in that block's text (INV-12) and checked (`llm.claim_checks`, `_heading_place`). A claim of another
+    block, or of a field the row publishes, is not taken."""
     by_index = {block.index: block for block in blocks}
     candidates: list[Candidate] = []
     dropped: list[str] = []
@@ -275,22 +289,52 @@ def _read_claims(
         block = by_index.get(index)
         if block is None or name not in block.fields or (index, name) in taken or value == _ABSENT:
             continue
-        at = _grounded(value, block, money=_money(fields[name]))
-        if at is None:
+        spec = asked.fields[name]
+        at = _grounded(value, block, name, spec, asked.labels)
+        if at is None or _heading_place(block, at, spec, ctx):
             dropped.append(f"role C: block {index} {name} ungrounded")
             continue
         taken.add((index, name))
-        candidates.append(_candidate(name, fields[name], block.row, at.value, at.locator, ctx))
+        candidates.append(_candidate(name, spec, block.row, at.value, at.locator, ctx))
     return _Read(tuple(candidates), tuple(dropped))
 
 
-def _grounded(value: str, block: BlockText, *, money: bool) -> GroundedSpan | None:
-    """The claimed value as a span of the cleaned text: in the block's own text, else in its enclosing item's context
-    (`collect.items.lines`); None when neither holds it."""
+def _grounded(value: str, block: BlockText, name: str, spec: FieldSpec, labels: Labels) -> GroundedSpan | None:
+    """The claimed value as a checked span of the cleaned text: in the block's own text, else in its enclosing item's
+    context (`collect.items.lines`); None when neither holds it."""
     for start, text in block.segments:
-        if (span := align(SpanClaim(value=value, start=0, end=len(value)), text, money=money)) is not None:
+        breaks = frozenset(at - start for at in block.breaks if start < at < start + len(text))
+        claim = SpanClaim(value=value, start=0, end=len(value))
+        span = align(claim, text, money=_money(spec), identifier=spec.type is FieldType.IDENTIFIER, breaks=breaks)
+        if span is not None and (span := checked(span, text, name, spec, labels)) is not None:
             return GroundedSpan(span.value, start + span.start, start + span.end)
     return None
+
+
+def _heading_place(block: BlockText, at: GroundedSpan, spec: FieldSpec, ctx: Context) -> bool:
+    """Whether a place claimed for a row lies in its block's heading (HTML Standard §4.3.6: the heading names the item)
+    while a line of the block outside it states that the job is remote (a `type:remote` clause, as the location
+    normalizer reads it): the block states its place on that line, and the heading's place names something else of
+    the item (a territory, a team's office)."""
+    item = spec.item if spec.type is FieldType.LIST else spec
+    if item is None or item.type is not FieldType.LOCATION or block.heading is None:
+        return False
+    low, high = block.heading
+    if not low <= at.start < at.end <= high:
+        return False
+    offset = block.start
+    for line in block.text.split("\n"):
+        outside = offset + len(line) <= low or offset >= high
+        if outside and _remote(line, item, ctx):
+            return True
+        offset += len(line) + 1
+    return False
+
+
+def _remote(line: str, spec: FieldSpec, ctx: Context) -> bool:
+    """Whether the line, read as a location, states the job is remote."""
+    read = normalize(line, spec, ctx)
+    return isinstance(read, Ok) and isinstance(read.value, dict) and read.value.get("remote_flag") is True
 
 
 def _calls(blocks: Sequence[BlockText], fields: int) -> tuple[tuple[tuple[BlockText, ...], ...], tuple[str, ...]]:
@@ -378,6 +422,8 @@ class _Reader:
     text: MarkedText
     scope: Scoped
     ctx: Context
+    labels: Labels
+    breaks: frozenset[int]  # where two text runs of the scoped text meet
 
     def read(self, claims: Mapping[str, Mapping[str, JsonValue]], owner: str) -> _Read:
         """The claims' candidates, each grounded in the text or in the element it names."""
@@ -388,7 +434,7 @@ class _Reader:
             claim = claims[name]
             if claim["shown"] is not True or claim["value"] == claim["ref"] == _ABSENT:
                 continue  # the page does not show it: the field stays missing
-            grounded = self._ground(self.fields[name], claim)
+            grounded = self._ground(name, claim)
             if grounded is None:
                 dropped.append(f"role C: {name} ungrounded")
                 unverified.append(name)
@@ -396,9 +442,10 @@ class _Reader:
                 candidates.append(_candidate(name, self.fields[name], owner, *grounded, self.ctx))
         return _Read(tuple(candidates), tuple(dropped), tuple(unverified))
 
-    def _ground(self, spec: FieldSpec, claim: Mapping[str, JsonValue]) -> tuple[str, str] | None:
-        """The claim's raw value and locator: the element its `ref` names, else its span of the cleaned text, its
-        offsets moved back past the ids before them; None when ungrounded (INV-12)."""
+    def _ground(self, name: str, claim: Mapping[str, JsonValue]) -> tuple[str, str] | None:
+        """The claim's raw value and locator: the element its `ref` names, else its checked span of the cleaned text
+        (`llm.claim_checks`), its offsets moved back past the ids before them; None when ungrounded (INV-12)."""
+        spec = self.fields[name]
         ref = str(claim["ref"])
         if ref != _ABSENT:
             kind = _ELEMENT_OF.get(spec.type)
@@ -407,8 +454,11 @@ class _Reader:
         span = SpanClaim.model_validate({key: claim[key] for key in _SPAN})
         at = self.text.cleaned_offset
         span = span.model_copy(update={"start": at(span.start), "end": at(span.end)})
-        grounded = align(span, self.text.cleaned, money=_money(spec))
-        if grounded is None:
+        cleaned = self.text.cleaned
+        grounded = align(
+            span, cleaned, money=_money(spec), identifier=spec.type is FieldType.IDENTIFIER, breaks=self.breaks
+        )
+        if grounded is None or (grounded := checked(grounded, cleaned, name, spec, self.labels)) is None:
             return None
         whole = self.scope.whole_span(grounded.start, grounded.end)
         if whole is None:

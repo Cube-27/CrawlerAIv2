@@ -4,6 +4,7 @@ with their reason. The client is scripted; no provider is called. Pages are synt
 
 import asyncio
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -11,6 +12,7 @@ from pydantic import JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate, Entity
 from crawlerai.collect.items.lines import BlockText
+from crawlerai.collect.labels import field_labels
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.text import CleanedText
@@ -27,6 +29,7 @@ from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.llm.roles.c_extract import (
     Filled,
     extract_detail,
+    extract_listing,
 )
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.resolve.pipeline import GapReply, GapRequest, ListingGapReply, ListingGapRequest
@@ -48,6 +51,7 @@ SCHEMA = SchemaDef(
     },
 )
 TEXT = "Widget One\nReleased 2026-09-30\nIn stock"
+LABELS = field_labels(SCHEMA)
 OWNER = "jsonld:0:$"
 
 
@@ -60,7 +64,9 @@ def specs(*names: str) -> dict[str, FieldSpec]:
 
 
 def extract(client: ScriptedClient, fields: Sequence[str] = ("title", "released"), text: str = TEXT) -> Filled:
-    return asyncio.run(extract_detail(client, CleanedText(text, ()), specs(*fields), CTX, owner=OWNER, job_id=JOB))
+    asked = specs(*fields)
+    filled = extract_detail(client, CleanedText(text, ()), asked, CTX, owner=OWNER, job_id=JOB, labels=LABELS)
+    return asyncio.run(filled)
 
 
 # The claim of a field the page does not show.
@@ -97,6 +103,25 @@ def test_a_grounded_value_becomes_an_llm_candidate_owned_by_the_target() -> None
         ),
     )
     assert filled.diagnostics == ()
+
+
+CHECKED = "Widget One\nRef.: AB-12\nReleased: 2026\nhttps://cdn.example.test/img/QX9.jpg\nItem 123 / 12"
+
+
+@pytest.mark.parametrize(
+    ("field", "claimed", "start", "kept"),
+    [
+        ("sku", "Ref.: AB-12", 11, ("AB-12", "text:17-22")),  # a label kept before an identifier is not part of it
+        ("sku", "QX9", 0, None),  # an identifier only in an address is no identifier the page states
+        ("title", "2026", 0, None),  # a span the page labels as another field is not this field's
+        ("sku", "12", 80, ("12", "text:86-88")),  # the head of `123` is no value: the whole `12` is
+    ],
+)
+def test_a_grounded_span_is_checked_for_its_field(field: str, claimed: str, start: int, kept: tuple[str, str]) -> None:
+    filled = extract(ScriptedClient(reply(**{field: span(claimed, start)})), fields=(field,), text=CHECKED)
+
+    assert [(c.raw, c.locator) for c in filled.candidates] == ([] if kept is None else [kept])
+    assert filled.unverified == (() if kept else (field,))
 
 
 # --- failures (§4.7) ---
@@ -246,6 +271,20 @@ def test_the_listing_hook_reads_the_blocks_then_the_page_fields_in_the_whole_tex
         ("c_extract_listing", request_hash(page)),
     ]
     assert answer.failure is None
+
+
+def test_a_place_in_a_block_heading_is_not_taken_when_the_block_states_remote() -> None:
+    # The heading names the item; a line of its own stating the job is remote is where the block states its place.
+    places = {"locations": FieldSpec(type=FieldType.LIST, item=FieldSpec(type=FieldType.LOCATION), description="d")}
+    text = "Sales Rep - Austin, TX\nRemote"
+    remote = BlockText(0, "https://jobs.example.test/j/0", "item_block:0", 5, text, ("locations",), heading=(5, 27))
+    stated = BlockText(1, "https://jobs.example.test/j/1", "item_block:1", 40, "Sales Rep - Austin, TX", ("locations",))
+    stated = replace(stated, heading=(40, 62))
+    client = ScriptedClient(claims_reply(claim(0, "locations", "Austin, TX"), claim(1, "locations", "Austin, TX")))
+
+    filled = asyncio.run(extract_listing(client, (remote, stated), places, CTX, job_id=JOB, labels={}))
+
+    assert [(c.entity_id, c.locator) for c in filled.candidates] == [("item_block:1", "text:52-62")]
 
 
 def test_a_nested_block_shows_its_context_and_grounds_claims_in_its_own_text_first() -> None:

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.collect.dom import other_item_paths
+from crawlerai.collect.labels import field_labels
 from crawlerai.db.models import JobId
 from crawlerai.llm.client import LLMClient, LLMFailure, PromptKind
 from crawlerai.llm.roles import c_extract
@@ -43,6 +44,7 @@ class _RoleC:
             request.ctx,
             owner=request.target.id,
             job_id=self.job_id,
+            labels=field_labels(request.schema),
             elsewhere=elsewhere,
         )
         calls = _calls(c_extract.PROMPT_KIND, filled)
@@ -59,6 +61,7 @@ class _RoleC:
         read in the whole cleaned text, as a detail page's, since a block shows one item only. A failed call ends the
         page's calls, and its reason is the asked page fields'."""
         fields = request.schema.fields
+        labels = field_labels(request.schema)
         candidates: list[Candidate] = []
         diagnostics: list[str] = []
         calls: list[LLMCallRecord] = []
@@ -67,7 +70,12 @@ class _RoleC:
         if request.blocks:
             asked = sorted({name for block in request.blocks for name in block.fields})
             rows = await c_extract.extract_listing(
-                self.client, request.blocks, {name: fields[name] for name in asked}, request.ctx, job_id=self.job_id
+                self.client,
+                request.blocks,
+                {name: fields[name] for name in asked},
+                request.ctx,
+                job_id=self.job_id,
+                labels=labels,
             )
             candidates.extend(rows.candidates)
             diagnostics.extend(rows.diagnostics)
@@ -81,6 +89,7 @@ class _RoleC:
                 request.ctx,
                 owner=PAGE,
                 job_id=self.job_id,
+                labels=labels,
                 kind=c_extract.LISTING_PROMPT_KIND,
             )
             candidates.extend(page.candidates)
