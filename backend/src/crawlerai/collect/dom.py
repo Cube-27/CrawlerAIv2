@@ -647,12 +647,16 @@ def _image_fields(schema: SchemaDef) -> dict[str, FieldSpec]:
 
 def stated_images(schema: SchemaDef, stated: Sequence[Candidate]) -> frozenset[Hashable]:
     """The files (`url.resource_key`) of the main image the page's own structured data and Open Graph state for its
-    product (`stated`): each image field's value and each list of images' first, the representative image a list
-    names first (schema.org `image`; Open Graph's first `og:image`)."""
+    product (`stated`): per image field or list of images, entity and source kind, the first value, the
+    representative image a source names first (schema.org `image` written as several values or a list; Open Graph's
+    first `og:image`). An image field holds a candidate per stated value, so only the first one counts."""
     named = _image_fields(schema)
-    values = (c.normalized.value for c in stated if c.field in named and isinstance(c.normalized, Ok))
-    firsts = (value[0] if isinstance(value, list) and value else value for value in values)
-    return frozenset(key for value in firsts if (key := resource_key(value)) is not None)
+    firsts: dict[tuple[str, str, str], JsonValue] = {}
+    for c in stated:
+        if c.field in named and isinstance(c.normalized, Ok):
+            firsts.setdefault((c.field, c.entity_id, c.source_kind), c.normalized.value)
+    values = (value[0] if isinstance(value, list) and value else value for value in firsts.values())
+    return frozenset(key for value in values if (key := resource_key(value)) is not None)
 
 
 def _anchor(

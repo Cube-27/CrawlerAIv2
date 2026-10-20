@@ -8,9 +8,10 @@ from collections.abc import Hashable
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import JsonValue
 
-from crawlerai.collect.base import PAGE
-from crawlerai.collect.dom import DomCollector
+from crawlerai.collect.base import PAGE, Candidate
+from crawlerai.collect.dom import DomCollector, stated_images
 from crawlerai.collect.locator import parse_locator
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
@@ -227,6 +228,30 @@ def test_the_shown_image_of_the_stated_main_file_anchors_the_main_image_and_its_
     assert collect(f"<main>{body}</main>", primary)["image_url"] == "https://shop.example.test/p/b.jpg?w=200"
     # Without a stated file the page has no main region image.
     assert collect(body, frozenset()) == {}
+
+
+def test_the_stated_main_image_is_each_sources_first_image() -> None:
+    # An image field holds a candidate per value a source states; the source's first names the main image.
+    def stated(field: str, value: JsonValue, kind: str = "jsonld") -> Candidate:
+        return Candidate.model_validate(
+            {
+                "field": field,
+                "entity_id": "e",
+                "source_kind": kind,
+                "raw": value,
+                "normalized": Ok(value),
+                "locator": "jsonld:0:$['x']",
+                "independent": True,
+            }
+        )
+
+    files: list[JsonValue] = [f"https://cdn.example.test/p/{n}.jpg" for n in "abcd"]
+    found = stated_images(
+        SCHEMA,
+        [stated("image_url", files[0]), stated("image_url", files[1]), stated("images", files[2:], "og")],
+    )
+
+    assert found == {resource_key(files[0]), resource_key(files[2])}
 
 
 def test_a_hidden_main_region_has_no_main_image() -> None:
