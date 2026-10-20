@@ -6,7 +6,10 @@ back to cold-mode resolution, and the site re-learns.
 
 `record_run` does this for one page in the database, under a row lock on the config: it stores the window
 (`extraction_config.drift_window`), suspends the fields that drifted in both the IR and `field_status`, logs a
-`drift_suspended` job event per field and starts a forced learning run (`progressive.request_learning`).
+`drift_suspended` job event per field and starts a forced learning run (`progressive.request_learning`). On a surface
+whose render mode still locates (`locate`, `always`), a suspended field a locate run placed (its `needs` is not `http`,
+or its config's origin is `located`) makes that run a locate run for it too (`relocated`; learning-configs spec,
+"Locate run").
 
 The margins are `backend/data/drift_margins.json`, stamped `source_split: dev` and with how they were
 obtained: until labels exist, learning-configs spec's values, stamped "spec default, unfitted" (D-0576). Without the
@@ -24,9 +27,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.config_ir.model import ExtractionConfigIR, FieldSteps
-from crawlerai.config_ir.progressive import StateKey, lock_state, request_learning
+from crawlerai.config_ir.progressive import LocateRequest, StateKey, lock_state, render_mode, request_learning
 from crawlerai.db.jobs import record_event
-from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, JobId
+from crawlerai.db.models import ExtractionConfig, ExtractionConfigId, JobId, RenderMode
 from crawlerai.normalize.base import Ok
 
 # learning-configs spec: the window is the config's last 50 pages.
@@ -152,6 +155,20 @@ def suspend(ir: ExtractionConfigIR, names: Iterable[str]) -> ExtractionConfigIR:
     return ir.model_copy(update={"fields": _suspended(ir.fields), "listing": listing})
 
 
+def relocated(
+    ir: ExtractionConfigIR, names: Iterable[str], mode: RenderMode, job_id: JobId | None = None
+) -> LocateRequest | None:
+    """The locate run for the located fields among `names`, which drifted (module docstring), replaying with the
+    request context of `job_id`, the job whose page showed the drift; None when the surface no longer locates (`mode`
+    `off`) or none was located."""
+    if mode == "off":
+        return None
+    running = {name: steps for name, steps, _ in _running(ir)}
+    by_locate = ir.provenance.origin == "located"
+    located = [name for name in names if name in running and (by_locate or running[name].needs != "http")]
+    return LocateRequest(job_id=job_id, fields=located) if located else None
+
+
 def _load_window(stored: Mapping[str, object]) -> Window:
     return {name: [Observation(*page) for page in pages] for name, pages in _STORED.validate_python(stored).items()}
 
@@ -190,8 +207,22 @@ async def record_run(
     for name in stated:
         await record_event(conn, job_id, ABSENT_STATED, {"config_id": str(config_id), "field": name})
     if found or stated:
-        await request_learning(conn, StateKey(config.site_id, config.schema_id, config.page_kind), force=True)
+        await _relearn(conn, config, ir, [d.field for d in found], job_id)
     return found
+
+
+async def _relearn(
+    conn: AsyncConnection,
+    config: Row[ExtractionConfig],
+    ir: ExtractionConfigIR,
+    suspended: Sequence[str],
+    job_id: JobId,
+) -> None:
+    """Start a forced learning run for `config`, a locate run for the `suspended` fields a locate run placed while
+    the surface still locates (`relocated`), with `job_id`'s request context."""
+    key = StateKey(config.site_id, config.schema_id, config.page_kind)
+    locate = relocated(ir, suspended, await render_mode(conn, key), job_id) if suspended else None
+    await request_learning(conn, key, force=True, locate=locate)
 
 
 async def _locked_active(conn: AsyncConnection, config_id: ExtractionConfigId) -> Row[ExtractionConfig] | None:

@@ -65,7 +65,9 @@ render's rows propose a `jsonpath` listing over the JSON document the HTML carri
 ([listings](../listings/spec.md), "Rows from page state") and the listing induced on its item blocks; one validated
 on the other pages' HTTP captures is `http`, else the listing recipe of the renders' call series with its pagination
 (`api_recipe.learn`, [listings](../listings/spec.md) "Rows from captured calls") is `call`, else one validated on
-their renders is `browser`, its row fields written with that `needs`. Refs: architecture v3 a.6, #332.
+their renders is `browser`, its row fields written with that `needs`. An eager fragment's answer is a source document of
+the HTTP page, as the page tree includes it ([extraction](../extraction/spec.md), "Eager fragment inclusion"): a value
+or rows only a fragment holds validate on the HTTP captures and are located as `http`. Refs: architecture v3 a.6, #332.
 #### Scenario: State in the HTTP page wins
 - **WHEN** each render publishes a field whose value its embedded state, a captured call and a DOM element all hold,
   and the HTTP captures carry the state
@@ -136,11 +138,16 @@ again. In `active` mode a field the config runs SHALL NOT be asked of role C, ev
 ### Requirement: Drift suspension
 Config-mode pages SHALL feed a per-field 50-page window; from 3 pages, a field whose yield or validity falls below its
 baseline minus the margins in `backend/data/drift_margins.json` (fitted on the golden set only,
-[evaluation](../evaluation/spec.md)) is `suspended`, falls back to cold extraction and triggers re-learning.
-Refs: §8.3, D-0032, D-0571.
+[evaluation](../evaluation/spec.md)) is `suspended`, falls back to cold extraction and triggers re-learning. On a
+surface whose `render_mode` still locates (`locate`, `always`), that run is a locate run for the suspended fields a
+locate run placed (`needs` other than `http`, or the config's origin `located`; `drift.relocated`).
+Refs: §8.3, D-0032, D-0571, architecture v3 a.6 step 6.
 #### Scenario: Layout change
 - **WHEN** a field matches on 1 of the last 10 pages after validating at yield 1.0
 - **THEN** it is suspended, role C may fill it, and a learn job runs
+#### Scenario: Located field drifts
+- **WHEN** a `browser` field drifts on a surface whose render mode is `locate`
+- **THEN** the learn job it starts locates that field again; with render mode `off` it is an ordinary learn job
 
 ### Requirement: Operator corrections and config API
 The system SHALL serve config list, read and `PUT /v1/configs/{id}` on the latest version (else 409). A correction is
