@@ -90,7 +90,8 @@ form only, and a document none applies to is not reparsed):
   by those of the element with the same id in the captured 2xx HTML answer to its `src`
   ([acquisition](../acquisition/spec.md), "Eager fragments"); a frame without an answer keeps its own.
 - **Fetched partials** (htmx-style swaps, frames the browser filled): each captured 2xx HTML answer that is no whole
-  document (no DOCTYPE, `html`, `head` or `body` tag) and whose text the document does not already show is appended to
+  document (it does not start, after white space and comments, with a DOCTYPE or an `html`, `head` or `body` tag), is
+  no answer a frame included, and whose visible text the document's visible text does not already hold is appended to
   the body in an element naming its URL (`data-fragment-src`), in capture order, so the text, DOM and item collectors
   read its values and rows as the page's and a locate run places them as it places the page's
   ([acquisition](../acquisition/spec.md), "Network body capture"); a whole document (a Turbo Drive visit) is not.

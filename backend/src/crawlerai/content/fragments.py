@@ -12,12 +12,14 @@ body (`append`), so the page's readers read it as they read the page; a whole do
 """
 
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from typing import Final, NamedTuple
 from urllib.parse import urldefrag, urljoin, urlsplit
 
 from selectolax import lexbor
 from selectolax.lexbor import LexborHTMLParser, LexborNode
+
+from crawlerai.content.text import render
 
 __all__ = [
     "FRAME_HEADER",
@@ -42,9 +44,11 @@ _LAZY: Final = "lazy"
 # The custom element's tag (HTML Standard §4.13: tag names compare ASCII case-insensitively).
 _MARKER: Final = re.compile(r"<turbo-frame\b", re.IGNORECASE)
 _WEB_SCHEMES: Final = ("http", "https")  # RFC 9110 §4.2
-# HTML Standard §13.1: a whole document starts with its DOCTYPE, or an `html`, `head` or `body` start tag; a partial
-# holds none of them.
-_DOCUMENT: Final = re.compile(r"<(?:!doctype|html|head|body)[\s>]", re.IGNORECASE)
+# HTML Standard §13.1: a whole document starts, after a byte order mark, white space and comments, with its DOCTYPE or
+# an `html`, `head` or `body` start tag; a partial starts with none of them (one inside a script or comment counts not).
+_DOCUMENT: Final = re.compile(
+    r"\A\ufeff?\s*(?:<!--.*?-->\s*)*<(?:!doctype|html|head|body)[\s>]", re.IGNORECASE | re.DOTALL
+)
 # The element an appended partial is held in, naming the URL it answered.
 _PARTIAL: Final = "<div data-fragment-src></div>"
 
@@ -70,10 +74,11 @@ def eager_frames(html: str, page_url: str) -> tuple[Frame, ...]:
     return tuple(frames)[:MAX_FRAMES]
 
 
-def include(tree: LexborHTMLParser, page_url: str, answers: Answers) -> None:
+def include(tree: LexborHTMLParser, page_url: str, answers: Answers) -> set[str]:
     """Replace the children of each eager frame of `tree` with those of the element whose id is the frame's in the
     answer to its `src` (`answers`: the one requested for that frame, else one that named no frame); a frame without
-    an answer, or whose answer holds no such element, keeps its own."""
+    an answer, or whose answer holds no such element, keeps its own. The URLs of the answers included are returned."""
+    included: set[str] = set()
     for node, frame in _frames(tree, page_url):
         answer = answers.get((frame.src, frame.id)) or answers.get((frame.src, None))
         if answer is None:
@@ -85,6 +90,8 @@ def include(tree: LexborHTMLParser, page_url: str, answers: Answers) -> None:
             child.decompose()
         for child in source.iter(include_text=True):
             node.insert_child(child)
+        included.add(frame.src)
+    return included
 
 
 def _frames(tree: LexborHTMLParser, page_url: str) -> Iterator[tuple[LexborNode, Frame]]:
@@ -103,23 +110,26 @@ def _frames(tree: LexborHTMLParser, page_url: str) -> Iterator[tuple[LexborNode,
 
 def is_partial(markup: str) -> bool:
     """Whether `markup` is a partial: no whole document (`_DOCUMENT`)."""
-    return _DOCUMENT.search(markup) is None
+    return _DOCUMENT.match(markup) is None
 
 
-def append(tree: LexborHTMLParser, partials: Sequence[tuple[str, str]]) -> None:
+def append(tree: LexborHTMLParser, partials: Sequence[tuple[str, str]], included: Collection[str] = ()) -> None:
     """Append to the body of `tree` each of the `partials` (URL, markup) whose text the document does not already
-    show, in capture order, each in an element naming its URL (`data-fragment-src`); one with no text adds nothing."""
+    show (its visible text, `content.text.render`; a hidden copy shows nothing), in capture order, each in an element
+    naming its URL (`data-fragment-src`); one with no visible text, or a frame's answer `included`, adds nothing."""
     body = tree.body
     if body is None:
         return
-    shown = _words(body.text(deep=True))
+    shown = _words(render(body)[0].text)
     for url, markup in partials:
+        if url in included:  # a frame's answer, read in its frame (`include`)
+            continue
         holder = LexborHTMLParser(_PARTIAL).css_first("div")
         if holder is None:
             return
         for node in lexbor.parse_fragment(markup):
             holder.insert_child(node)
-        text = _words(holder.text(deep=True))
+        text = _words(render(holder)[0].text)
         if not text or text in shown:
             continue
         holder.attrs["data-fragment-src"] = url

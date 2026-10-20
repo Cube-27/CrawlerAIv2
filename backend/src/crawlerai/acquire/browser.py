@@ -959,9 +959,11 @@ def _data_label(response: Response) -> bool | None:
 
 
 def _fragment(response: Response, page_url: str) -> bool:
-    """Whether `response` answers a fetch or XMLHttpRequest call to the page's own site (`_same_site`) with HTML
-    (`_HTML_TYPES`): an HTML fragment the page fetched."""
-    return response.request.resource_type in _CALLS and _html_label(response) and _same_site(response.url, page_url)
+    """Whether `response` is a success (RFC 9110 §15.3) answering a fetch or XMLHttpRequest call to the page's own site
+    (`_same_site`) with HTML (`_html_label`): an HTML fragment the page fetched and shows."""
+    request = response.request
+    success = 200 <= response.status < 300
+    return success and request.resource_type in _CALLS and _html_label(response) and _same_site(response.url, page_url)
 
 
 def _data_essence(essence: str) -> bool:

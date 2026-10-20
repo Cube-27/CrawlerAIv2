@@ -248,7 +248,7 @@ When `capture_network_json` is set, the browser rung SHALL save, from any origin
 fetch, XMLHttpRequest and document responses (not the main frame's navigation) that are JSON by media type, React
 Server Components Flight payloads (`text/x-component`, `storage.capture_bundle.is_flight`) or, labelled `text/plain` or
 not at all, whose bytes are an RFC 8259 object or array (a guard prefix of at most 16 characters stripped,
-`storage.capture_bundle.network_json`), and the HTML answers (`text/html`, `application/xhtml+xml`) of fetch and
+`storage.capture_bundle.network_json`), and the 2xx HTML answers (`text/html`, `application/xhtml+xml`) of fetch and
 XMLHttpRequest calls to the page's own site (HTML §7.1.1): the fragments the page fetches (Turbo frames, htmx-style
 partials), which the page tree reads ([extraction](../extraction/spec.md), "Source documents"); each with its request's method, body and cookie-free headers, the cookie-free
 response headers, the resource type and the count of browser actions before it, within the caps in `acquire/browser.py`,

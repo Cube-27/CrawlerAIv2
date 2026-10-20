@@ -216,10 +216,9 @@ def prepassed(
         _flatten_shadow_roots(tree)
     if streamed:
         _complete_boundaries(tree)
-    if frames and url is not None and answers:
-        include(tree, url, answers)
+    included = include(tree, url, answers) if frames and url is not None and answers else set()
     if partials:
-        append(tree, partials)
+        append(tree, partials, included)
     return tree.html or html
 
 
@@ -283,10 +282,15 @@ def _html_answers(network: tuple[bytes, ...], entries: tuple[NetworkBody, ...]) 
     """The captured 2xx HTML answers (no data call's), each decoded as an HTTP body (`decode_html`), in capture
     order."""
     return tuple(
-        (entry, decode_html(body, entry.response_headers or (), "http"))
+        (entry, decode_html(body, entry.response_headers or _labelled(entry), "http"))
         for body, entry in zip(network, entries, strict=False)
         if 200 <= entry.status < 300 and entry.data_call is None and is_html(entry.content_type)
     )
+
+
+def _labelled(entry: NetworkBody) -> tuple[tuple[str, str], ...]:
+    """A body's `Content-Type` as its only header, for an entry that kept no response headers."""
+    return () if entry.content_type is None else (("content-type", entry.content_type),)
 
 
 def _answers(fetched: Sequence[tuple[NetworkBody, str]]) -> dict[tuple[str, str | None], str]:
