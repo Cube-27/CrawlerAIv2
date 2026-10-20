@@ -1,15 +1,15 @@
 """Every collector over one page (extraction spec rule 1): their entities, candidates
 and diagnostics as one result.
 
-The standard collectors run first, each on its own: one that raises gives no candidates and a diagnostic, and the
-others still run. An `api` capture of an active adapter adds that adapter's collector (D-0445), as does the answer a
-page-scoped adapter joined to the page it serves (`ADAPTER_CALL`), read with that adapter's shapes; a platform's
-documented product JSON that a detail page's HTTP fetch joined after its identity check is read as that platform
-documents it (`collect.platform_json`). Then js_state and xhr admit their values against the candidates of the other
-kinds (D-0418); on a listing, xhr also reads the rows of the page's captured calls (Appendix A #59), which resolution
-takes where structured data and the config give none; on a listing none of whose groups aligns and with no call rows,
-the rows of its state JSON are read too (`collect.items.state_rows`), resolution taking them, and their candidates, only
-where no other source gives rows.
+The adapter collectors, then the standard collectors, run first, each on its own: one that raises gives no candidates
+and a diagnostic, and the others still run. An `api` capture of an active adapter adds that adapter's collector
+(D-0445), as does the answer a page-scoped adapter joined to the page it serves (`ADAPTER_CALL`), read with that
+adapter's shapes; a platform's documented product JSON that a detail page's HTTP fetch joined after its identity check
+is read as that platform documents it (`collect.platform_json`). Then js_state and xhr admit their values against the
+candidates of the other kinds (D-0418); on a listing, xhr also reads the rows of the page's captured calls (Appendix A
+#59), which resolution takes where structured data and the config give none; on a listing none of whose groups aligns
+and with no call rows, the rows of its state JSON are read too (`collect.items.state_rows`), resolution taking them, and
+their candidates, only where no other source gives rows.
 The page's detect-and-report signals (`content.signals`) join the diagnostics.
 """
 
