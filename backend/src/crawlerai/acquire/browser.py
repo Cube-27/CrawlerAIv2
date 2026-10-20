@@ -164,11 +164,12 @@ DOCUMENT_HTML_JS: Final = """() => {
   };
   walk(document);
   const html = document.documentElement;
-  const doctype = document.doctype ? `<!DOCTYPE ${document.doctype.name}>` : '';
+  const { doctype: type } = document;
+  const doctype = type ? `<!DOCTYPE ${type['name']}>` : '';
   if (html === null) return doctype;
   if (typeof html.getHTML !== 'function') return doctype + html.outerHTML;
   const quoted = (value) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-  const attributes = Array.from(html.attributes, (a) => ` ${a.name}="${quoted(a.value)}"`).join('');
+  const attributes = Array.from(html.attributes, ({ name, value }) => ` ${name}="${quoted(value)}"`).join('');
   const inner = html.getHTML({ serializableShadowRoots: true, shadowRoots: roots });
   return `${doctype}<html${attributes}>${inner}</html>`;
 }"""

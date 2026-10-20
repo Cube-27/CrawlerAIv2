@@ -54,6 +54,7 @@ export const JSONPATH_SOURCES: Readonly<Record<JsonPathSource, string>> = {
   jsonld: "JSON-LD",
   js_state: "Script state",
   attr: "JSON attribute",
+  rsc: "Flight payload",
   xhr: "XHR response",
   api: "API response",
 };
