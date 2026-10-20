@@ -2,8 +2,10 @@
 validated on, each parsed with its context and with the facts the engine stored for it.
 
 The pages are a site's most recent captures with outcome `extracted` or `partial` that have records of the schema
-version (§4.4), each with its latest extraction. A capture whose bundle is no longer stored (captures expire, §15) is
-skipped. What the engine published is the extraction's records (`record.data` holds published fields only, §6): a
+version (§4.4), each with its latest extraction. A locate run samples the surface's stored pages (`listed_nothing`):
+those, and the listing pages of a job of the schema that listed nothing (`partial` without a record), whose rows a
+render may show (learning-configs spec, "Locate run"). A capture whose bundle is no longer stored (captures expire, §15)
+is skipped. What the engine published is the extraction's records (`record.data` holds published fields only, §6): a
 detail page's one, or a listing's one per row in the order they were stored, which is the page's row order.
 
 The references corroboration compares with (§8.3 step 4) are the valid structured-data or adapter candidates owned by
@@ -24,7 +26,7 @@ from dataclasses import dataclass
 from typing import Final, get_args
 
 from pydantic import JsonValue
-from sqlalchemy import Select, select
+from sqlalchemy import ColumnElement, Select, or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -39,6 +41,7 @@ from crawlerai.db.models import (
     CaptureId,
     Extraction,
     ExtractionId,
+    Job,
     Record,
     SiteId,
     SourceKind,
@@ -147,10 +150,17 @@ async def load_held_out(
 
 
 async def load_pages(
-    conn: AsyncConnection, store: ObjectStore, site_id: SiteId, schema: SchemaDef, *, limit: int
+    conn: AsyncConnection,
+    store: ObjectStore,
+    site_id: SiteId,
+    schema: SchemaDef,
+    *,
+    limit: int,
+    listed_nothing: bool = False,
 ) -> list[StoredPage]:
-    """Up to `limit` stored pages of `site_id` for `schema`'s version, most recent first."""
-    return await _pages(conn, store, schema, await _extractions(conn, site_id, schema, limit))
+    """Up to `limit` stored pages of `site_id` for `schema`'s version, most recent first; with `listed_nothing`, a
+    listing's pages that listed nothing too (module docstring)."""
+    return await _pages(conn, store, schema, await _extractions(conn, site_id, schema, limit, listed_nothing))
 
 
 async def load_captures(
@@ -206,12 +216,12 @@ async def _llm_calls(conn: AsyncConnection, ids: Sequence[ExtractionId]) -> dict
 
 
 async def _extractions(
-    conn: AsyncConnection, site_id: SiteId, schema: SchemaDef, limit: int
+    conn: AsyncConnection, site_id: SiteId, schema: SchemaDef, limit: int, listed_nothing: bool
 ) -> list[tuple[CaptureId, str, ExtractionId]]:
     """The most recent captures with a record of `schema`'s version from an `extracted` or `partial` task, each with
-    its latest such extraction."""
+    its latest such extraction; with `listed_nothing`, a listing's `partial` ones without a record too."""
     latest = (
-        _latest(schema)
+        _latest(schema, listed_nothing=listed_nothing)
         .add_columns(Capture.fetched_at)
         .join(UrlTask, UrlTask.id == Extraction.url_task_id)
         .where(Capture.site_id == site_id, UrlTask.outcome.in_(EXTRACTED))
@@ -225,9 +235,10 @@ async def _extractions(
     return [(row.id, row.object_key, row.extraction_id) for row in await conn.execute(query)]
 
 
-def _latest(schema: SchemaDef) -> Select[CaptureId, str, ExtractionId]:
-    """Each capture's latest extraction with a record of `schema` (ids are UUIDv7, so the greatest is the latest)."""
-    has_record = (
+def _latest(schema: SchemaDef, *, listed_nothing: bool = False) -> Select[CaptureId, str, ExtractionId]:
+    """Each capture's latest extraction with a record of `schema` (ids are UUIDv7, so the greatest is the latest); with
+    `listed_nothing`, or of a listing task of a job of `schema` that listed nothing (`partial` without a record)."""
+    kept: ColumnElement[bool] = (
         select(Record.id)
         .where(
             Record.extraction_id == Extraction.id,
@@ -235,10 +246,18 @@ def _latest(schema: SchemaDef) -> Select[CaptureId, str, ExtractionId]:
         )
         .exists()
     )
+    if listed_nothing and schema.page_kind == "listing":
+        empty = (
+            select(UrlTask.id)
+            .join(Job, Job.id == UrlTask.job_id)
+            .where(UrlTask.id == Extraction.url_task_id, UrlTask.outcome == "partial", Job.schema_id == schema.id)
+            .exists()
+        )
+        kept = or_(kept, empty)
     return (
         select(Capture.id, Capture.object_key, Extraction.id.label("extraction_id"))
         .join(Extraction, Extraction.capture_id == Capture.id)
-        .where(has_record)
+        .where(kept)
         .order_by(Capture.id, Extraction.id.desc())
         .ext(distinct_on(Capture.id))
     )

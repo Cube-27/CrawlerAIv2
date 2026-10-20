@@ -14,10 +14,11 @@ started before it does not replace. A job that cannot start, its request naming 
 `running` after `LEARN_RUN_TIMEOUT` (its process died; `expire_learn_runs`), end failed too.
 
 A run on a surface whose render mode locates (`locate`, `always`), or one a job's `render` started
-(`progressive.request_locate`), is the surface's locate run too (`locate`): it renders the newest stored pages and
-writes the fields it locates into the config it learned, else the config the surface serves, else a config of those
-fields alone. A recipe it proves may reference a header of the request context of the job that started it (whose
-stored request keeps the caller's secrets, jobs spec "Stored request"), never hold its value.
+(`progressive.request_locate`), is the surface's locate run too (`locate`): it renders the newest stored pages (a
+listing's that listed nothing included, `held_out.load_pages`) and writes the fields it locates into the config it
+learned, else the config the surface serves, else a config of those fields alone. A recipe it proves may reference a
+header of the request context of the job that started it (whose stored request keeps the caller's secrets, jobs spec
+"Stored request"), never hold its value.
 
 A run takes two transactions: one starts the job, one ends it; the pages are read between them. None is open while
 role A or role D is called or a recipe is replayed: the LLM client commits usage on a connection of its own and must
@@ -133,8 +134,10 @@ class _Run:
     serving: ExtractionConfigId | None
     proxy_pool: str | None = None
     pages: Sequence[StoredPage] = ()
-    # The locate run it is too (module docstring), the config the surface serves, and the starting job's context.
+    # The locate run it is too (module docstring), the surface's stored pages it samples, the config the surface
+    # serves, and the starting job's context.
     locate: LocateRequest | None = None
+    surface: Sequence[StoredPage] = ()
     serving_ir: ExtractionConfigIR | None = None
     context: RequestContext | None = None
 
@@ -176,8 +179,15 @@ async def run_learn_job(
         # The job is running and its row unlocked, so the bundle reads hold no lock anyone waits on.
         async with engine.connect() as conn:
             pages = await load_pages(conn, store, run.key.site_id, run.schema, limit=LEARN_AFTER_PAGES)
+            surface = pages
+            # A listing's pages that listed nothing are the surface's too: a locate run renders them.
+            if run.locate is not None and run.schema.page_kind == "listing":
+                surface = await load_pages(
+                    conn, store, run.key.site_id, run.schema, limit=LEARN_AFTER_PAGES, listed_nothing=True
+                )
         hooks = _Hooks(replay, render, extract)
-        validated = await _learned(client, replace(run, pages=pages), vocabulary, max_chars, hooks)
+        run = replace(run, pages=pages, surface=surface)
+        validated = await _learned(client, run, vocabulary, max_chars, hooks)
         async with engine.begin() as conn:
             return await _finish(conn, run, validated)
     except LLMFailure as e:
@@ -365,9 +375,9 @@ async def _page_recipe(
 
 
 async def _samples(run: _Run, render: Render, extract: Extract) -> list[Sampled]:
-    """The run's `LOCATE_SAMPLES` newest pages rendered, each with what its render published."""
+    """The surface's `LOCATE_SAMPLES` newest stored pages rendered, each with what its render published."""
     pages: list[Sampled] = []
-    for page in run.pages[:LOCATE_SAMPLES]:
+    for page in run.surface[:LOCATE_SAMPLES]:
         bundles = await render(page.bundle.manifest.url, run.schema.page_kind)
         if bundles:
             extraction = await extract(bundles[0], run.schema, run.job_id)
@@ -416,7 +426,7 @@ def _listing_recipe(
     already tried (a config validated) or cannot replay."""
     if validated.ir is not None or replays is None:
         return None
-    sample, held_out = split(run.schema, run.pages)
+    sample, held_out = split(run.schema, run.surface)
     return lambda: _page_recipe(client, run, sample, held_out, replays, render)
 
 

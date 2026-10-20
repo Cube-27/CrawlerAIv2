@@ -481,12 +481,12 @@ async def store_page_record(
     (`partial`), and a crawl-discovered one only complete records (else `no_match`, §23); none when
     resolution failed (extraction spec). The outcome is `failed` then, and for a caller-supplied detail page without a
     record; a caller-supplied listing without rows is `partial` with none (its page was read, and listed nothing). A
-    page with a record counts toward its progressive state, and its coverage freshens the site's contract; a
-    caller-supplied page without one counts towards its staleness (`acquire.memory.learn_extraction`). A page `config`
-    ran on joins the config's drift window (learning-configs spec). `page_url` is `store_extraction`'s. A page with a
-    record, or a caller-supplied listing that listed nothing, applies the job's `render` (None: the job inherits the
+    page with a record, or a caller-supplied listing that listed nothing, counts toward its progressive state (an
+    `extracted` or `partial` page: a locate run renders it) and applies the job's `render` (None: the job inherits the
     surface's) to its surface (`render_surface`): a listing's rows the HTTP page does not carry are for a locate run to
-    find, as any field's are."""
+    find, as any field's are. A page with a record freshens the site's contract with its coverage; a caller-supplied
+    page without one counts towards its staleness (`acquire.memory.learn_extraction`). A page `config` ran on joins the
+    config's drift window (learning-configs spec). `page_url` is `store_extraction`'s."""
     stored = await store_extraction(
         conn,
         task,
@@ -511,6 +511,7 @@ async def store_page_record(
         await learn_extraction(conn, site_id, schema.page_kind, None)
         listed_nothing = schema.page_kind == "listing" and stored.outcome != "failed"
         if listed_nothing:
+            await _count_page(conn, site_id, schema)
             await render_surface(conn, task.job_id, site_id, schema, render, extraction)
         return replace(stored, outcome="partial" if listed_nothing else "failed")
     return stored
