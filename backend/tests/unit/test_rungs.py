@@ -34,7 +34,7 @@ STATUS: dict[BlockClass, int] = {
     "unsupported_media": 200,
 }
 BLOCK_CLASSES: tuple[BlockClass, ...] = ("ok", "blocked", "shell", "not_found", "error")
-OVERRIDE = FetchPolicy(respect_robots=False, robots_override_reason="the site's operator asked for it")
+POLICY = FetchPolicy()
 
 
 @dataclass
@@ -114,11 +114,11 @@ def test_a_shell_or_block_over_http_is_retried_in_the_browser_and_its_ok_kept() 
     http: BlockClass = "shell"
     stubs = web(http, "ok")
 
-    result = stubs.acquire(OVERRIDE)
+    result = stubs.acquire(POLICY)
 
     assert (result.method, result.block_class, result.bundle.body) == ("browser", "ok", PAGE)
     assert _attempts(result) == [("http", http), ("browser", "ok")]
-    assert stubs.browser.calls == [(URL, OVERRIDE)]
+    assert stubs.browser.calls == [(URL, POLICY)]
     assert result.duration_ms == 2  # both rungs' time
 
 
@@ -126,7 +126,7 @@ def test_an_http_timeout_is_retried_in_the_browser_not_over_http_again() -> None
     stubs = web("error", "ok")
     stubs.http.error = "timeout"
 
-    result = stubs.acquire(OVERRIDE)
+    result = stubs.acquire(POLICY)
 
     assert _attempts(result) == [("http", "error"), ("browser", "ok")]
     assert len(stubs.http.calls) == 1

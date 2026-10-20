@@ -724,6 +724,7 @@ class MapRequest(BaseModel):
     include: Annotated[list[str] | None, Field(max_length=20, title="Include")] = []
     limit: Annotated[int | None, Field(ge=1, le=5000, title="Limit")] = 5000
     llms_txt: Annotated[bool | None, Field(title="Llms Txt")] = False
+    respect_robots: Annotated[bool | None, Field(title="Respect Robots")] = False
     url: Annotated[str, Field(title="Url")]
     use_links: Annotated[bool | None, Field(title="Use Links")] = True
     use_sitemaps: Annotated[bool | None, Field(title="Use Sitemaps")] = True
@@ -1489,10 +1490,7 @@ class FetchOptions(BaseModel):
     max_rows: Annotated[MaxRows | None, Field(title="Max Rows")] = None
     method_hint: Annotated[MethodHint | None, Field(title="Method Hint")] = "auto"
     proxy_pool: Annotated[str | None, Field(title="Proxy Pool")] = None
-    respect_robots: Annotated[bool | None, Field(title="Respect Robots")] = True
-    robots_override_reason: Annotated[
-        str | None, Field(title="Robots Override Reason")
-    ] = None
+    respect_robots: Annotated[bool | None, Field(title="Respect Robots")] = False
     screenshot: Annotated[Screenshot | None, Field(title="Screenshot")] = "viewport"
     wait_for: Annotated[WaitFor | WaitFor1 | None, Field(title="Wait For")] = None
 
@@ -1732,7 +1730,7 @@ class ScrapeRequest(BaseModel):
         "cookies": {},
         "headers": {},
         "method_hint": "auto",
-        "respect_robots": True,
+        "respect_robots": False,
         "screenshot": "viewport",
     }
     fit: FitOptions | None = None
@@ -1772,7 +1770,7 @@ class SearchScrape(BaseModel):
         "cookies": {},
         "headers": {},
         "method_hint": "auto",
-        "respect_robots": True,
+        "respect_robots": False,
         "screenshot": "viewport",
     }
     formats: Annotated[list[Format5] | None, Field(min_length=1, title="Formats")] = [
@@ -1850,7 +1848,7 @@ class BatchScrapeRequest(BaseModel):
         "cookies": {},
         "headers": {},
         "method_hint": "auto",
-        "respect_robots": True,
+        "respect_robots": False,
         "screenshot": "viewport",
     }
     fit: FitOptions | None = None
@@ -1904,7 +1902,7 @@ class CrawlRequest(BaseModel):
         "cookies": {},
         "headers": {},
         "method_hint": "auto",
-        "respect_robots": True,
+        "respect_robots": False,
         "screenshot": "viewport",
     }
     fit: FitOptions | None = None
@@ -1987,7 +1985,7 @@ class ExtractRequest(BaseModel):
         "cookies": {},
         "headers": {},
         "method_hint": "auto",
-        "respect_robots": True,
+        "respect_robots": False,
         "screenshot": "viewport",
     }
     limit: Annotated[int | None, Field(ge=1, le=1000, title="Limit")] = 1000

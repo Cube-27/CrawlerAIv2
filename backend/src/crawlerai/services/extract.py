@@ -186,7 +186,7 @@ async def _task_urls(engine: AsyncEngine, fetching: Fetching, request: ExtractRe
     for glob in filter(None, globs):
         patterns.setdefault(glob.origin, []).append(glob.pattern)
     expanded = await asyncio.gather(
-        *(_expand(engine, fetching, origin, include, request.limit) for origin, include in patterns.items())
+        *(_expand(engine, fetching, origin, include, request) for origin, include in patterns.items())
     )
     urls: dict[str, str] = {}
     # The request's validator refuses a URL that is not a glob and has no canonical form.
@@ -199,11 +199,12 @@ async def _task_urls(engine: AsyncEngine, fetching: Fetching, request: ExtractRe
 
 
 async def _expand(
-    engine: AsyncEngine, fetching: Fetching, origin: str, include: list[str], limit: int
+    engine: AsyncEngine, fetching: Fetching, origin: str, include: list[str], request: ExtractRequest
 ) -> list[tuple[str, str]]:
-    """The URLs that a map of `origin` finds and its globs, `include`, match; a map's URLs are canonical (§4.4), so
-    each is its own canonical form."""
-    found = await map_urls(engine, fetching, MapRequest(url=origin, include=include, limit=limit))
+    """The URLs that a map of `origin` finds and its globs, `include`, match, obeying robots.txt as `request` does; a
+    map's URLs are canonical (§4.4), so each is its own canonical form."""
+    mapping = MapRequest(url=origin, include=include, limit=request.limit, respect_robots=request.fetch.respect_robots)
+    found = await map_urls(engine, fetching, mapping)
     return [(url, url) for url in found.urls]
 
 

@@ -81,7 +81,10 @@ async def test_a_listing_robots_txt_disallows_is_not_fetched(
     schema = await listing_schema(engine, schema_name)
 
     result = await scrape(
-        engine, fetching, _request(f"{own_origin}/private/kettles", schema.id, browser_actions={}), data=engine_data
+        engine,
+        fetching,
+        _request(f"{own_origin}/private/kettles", schema.id, browser_actions={}, fetch={"respect_robots": True}),
+        data=engine_data,
     )
 
     assert (result.outcome, result.capture_id, result.browser_actions, listing.asked) == ("blocked", None, None, [])

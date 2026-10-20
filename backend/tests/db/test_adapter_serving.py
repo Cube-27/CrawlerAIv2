@@ -118,9 +118,9 @@ async def lamp_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
         return await registry.create(conn, SchemaDocument.model_validate(document), "user")
 
 
-def _scrape(url: str, schema: SchemaDef) -> ScrapeRequest:
+def _scrape(url: str, schema: SchemaDef, **fields: Any) -> ScrapeRequest:
     return ScrapeRequest.model_validate(
-        {"url": url, "formats": ["records"], "schema": {"id": str(schema.id)}, "page_kind": "listing"}
+        {"url": url, "formats": ["records"], "schema": {"id": str(schema.id)}, "page_kind": "listing", **fields}
     )
 
 
@@ -152,9 +152,10 @@ async def test_a_page_robots_txt_disallows_is_served_by_its_adapter_and_never_fe
     web.pages[url] = PAGE
     web.pages[f"{own_origin}/robots.txt"] = b"User-agent: *\nDisallow: /collections/\n"
 
-    served = await scrape(engine, fetching, _scrape(url, lamp_schema), data=data)
+    obeying = _scrape(url, lamp_schema, fetch={"respect_robots": True})
+    served = await scrape(engine, fetching, obeying, data=data)
     web.platform = False
-    unserved = await scrape(engine, fetching, _scrape(url, lamp_schema), data=data)
+    unserved = await scrape(engine, fetching, obeying, data=data)
 
     assert served.fetch is not None
     assert (served.outcome, served.fetch.method) == ("extracted", "api")
