@@ -108,7 +108,7 @@ def _lines_before(keys: Sequence[str], words: Sequence[Word], j: int) -> bool:
     """Whether whole lines of the block before its word `j`, not running on into it, show all of `keys` in order and
     nothing else; a line an ellipsis cut short goes on, so it is no such line."""
     return any(
-        words[k].first and _run(keys, 0, words, k) == len(keys) and not words[k + len(keys) - 1].cut
+        words[k].first and _run(keys, 0, words, k) == len(keys) and not any(w.cut for w in words[k : k + len(keys)])
         for k in range(j - len(keys) - 1, -1, -1)
     )
 

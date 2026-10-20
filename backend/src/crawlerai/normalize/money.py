@@ -191,8 +191,10 @@ def _measure(sign: str, ctx: Context) -> bool:
 
 def _page_currencies(ctx: Context) -> frozenset[str]:
     """The currencies the page names: its structured and declared currencies, its URL's, and the tender currencies
-    of the territories of the CLDR locales its declarations leave possible (`numbers.regional_locales`)."""
-    territories = {Locale.parse(loc).territory for loc in numbers.regional_locales(ctx)}
+    of the territories of the CLDR locales its declarations leave possible (`numbers.regional_locales`), the locale a
+    request asked for aside: that is the caller's, not the page's (as `_regional`)."""
+    page = ctx.model_copy(update={"request_locale": None})
+    territories = {Locale.parse(loc).territory for loc in numbers.regional_locales(page)}
     tender = {code for t in territories if t and (code := _tender_currency(t, ctx)) is not None}
     return frozenset({*ctx.page_currencies, *ctx.declared_currencies, *filter(None, (url_currency(ctx),)), *tender})
 

@@ -95,10 +95,11 @@ unit or a period: for a field whose path gives it
 the active-price role (schemas spec, "Presets") it is `Invalid("per_unit")` (mass, volume, length, area, item) or
 `Invalid("per_period")` (duration); any other money field reads the amount before the pattern (`unit_price`: `€25/kg`
 is 25). A sign written as an ISO 4217 code or a CLDR currency symbol that is also a unit name or symbol of the
-page's or the root locale's CLDR unit data (`CUP`, the volume `cup`; `L`, the litre and a symbol of the lempira and the
-leu; a one-letter sign in either case, CLDR writing the litre `l` and `L` by locale) is a currency only where the page names a currency it denotes (its structured, declared or URL currency, or the
-tender currency of a territory its locales leave possible); else the text states a measure, not an amount:
-`Invalid("measure")` (`3.5 CUP FOOD CHOPPER`, `Kettle 1,7 L`). Refs: §9, owner #68, owner 2026-10-19, D-1240, D-1370, D-1782, architecture-v3 d.2, d.4, d.7.
+CLDR unit data of the root locale or a locale the page or the request states (`CUP`, the volume `cup`; `L`, the litre
+and a symbol of the lempira and the leu; a one-letter sign in either case, CLDR writing the litre `l` and `L` by
+locale) is a currency only where the page names a currency it denotes (its structured, declared or URL currency, or
+the tender currency of a territory its own locales, not the request's, leave possible); else the text states a
+measure, not an amount: `Invalid("measure")` (`3.5 CUP FOOD CHOPPER`, `Kettle 1,7 L`). Refs: §9, owner #68, owner 2026-10-19, D-1240, D-1370, D-1782, architecture-v3 d.2, d.4, d.7.
 (Previously: a sign several currencies share was `Ambiguous`, no sign was `Invalid`, a page currency never supplied a
 missing sign, the locale settled a sign at full confidence, and a sign with a full stop denoted only its own symbol's
 currencies, and the URL never supplied a currency; an amount per unit or per period read as the price; a symbol
