@@ -34,7 +34,6 @@ from crawlerai.collect.admission import Document
 from crawlerai.collect.base import ARRAY_ROW, Candidate, Entity
 from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import field_roles
-from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate, is_item_url
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.segment import page_links
@@ -84,7 +83,7 @@ def _sources(reader: "_Reader", number: int, document: Document) -> Iterator[Sta
         objects: list[tuple[str, JsonValue]] = [
             (f"{path}[{i}]", item) for i, item in enumerate(value) if isinstance(item, dict)
         ]
-        if len(objects) >= MIN_ITEMS and (read := reader.read(number, document.address, objects)) is not None:
+        if len(objects) >= MIN_ITEMS and (read := reader.read(number, document, objects)) is not None:
             sources.append(path)
             yield read
 
@@ -103,7 +102,7 @@ class _Reader:
         self.read_urls: set[str] = set()
         self._words = {name: _field_words(name, spec) for name, spec in self.row_fields.items()}
 
-    def read(self, number: int, address: str, objects: Sequence[tuple[str, JsonValue]]) -> StateRows | None:
+    def read(self, number: int, document: Document, objects: Sequence[tuple[str, JsonValue]]) -> StateRows | None:
         rows = [(path, dict(json_doc.scalars(item))) for path, item in objects]
         keys = {
             name: key
@@ -115,7 +114,7 @@ class _Reader:
         made: list[tuple[Entity, list[Candidate]]] = []
         notes: list[str] = []
         for path, row in rows:
-            found = self._row((number, address), path, row, keys, notes)
+            found = self._row((number, document), path, row, keys, notes)
             if found is not None:
                 made.append(found)
         fresh = self._fresh(made)
@@ -153,7 +152,7 @@ class _Reader:
 
     def _row(
         self,
-        document: tuple[int, str],
+        document: tuple[int, Document],
         path: str,
         row: Mapping[str, Scalar],
         keys: Mapping[str, str],
@@ -161,15 +160,15 @@ class _Reader:
     ) -> tuple[Entity, list[Candidate]] | None:
         """The row's entity and its grounded values; None when the row is not grounded (module docstring). The
         entity id holds the document's position, as one script can hold several documents."""
-        number, address = document
-        owner = f"{_KIND}:{address}@{number}:{path}"
+        number, read = document
+        owner = f"{_KIND}:{read.address}@{number}:{path}"
         values: list[Candidate] = []
         grounded = False
         for name, key in keys.items():
             raw = row.get(key)
             if raw is None or not self._reads(name, key, raw):
                 continue
-            locator = format_locator(_KIND, address, path + key[len(json_doc.ROOT) :])
+            locator = read.locator(_KIND, path + key[len(json_doc.ROOT) :])
             made = candidate(name, self.row_fields[name], owner, _KIND, raw, locator, self.ctx, notes)
             if made is not None:
                 values.append(made)

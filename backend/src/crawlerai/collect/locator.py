@@ -4,7 +4,8 @@
 
 The address parts are separated by `:`; the last part takes the rest of the string, since XPath, JSONPath, CSS
 selectors and meta property names (`og:title`) may hold `:` themselves. `js_state` has two open-ended parts and is
-split after the first `script[n]` step, the step `ParsedPage` ends a script's path with.
+split after the first `script[n]` step, the step `ParsedPage` ends a script's path with; `attr` after the documented
+attribute name (`wire:snapshot` holds a `:`).
 """
 
 import re
@@ -12,12 +13,15 @@ from typing import Annotated, Literal, NamedTuple, cast, get_args
 
 from pydantic import AfterValidator
 
+from crawlerai.content.attr_json import NAME_PATTERN as ATTRIBUTE_NAMES
 from crawlerai.schemas.types import NAME_PATTERN
 
 # The page-URL derivations (extraction spec, D-0355): the capture's `<link rel=canonical>` (RFC 6596) or its final URL
 # (RFC 9110 §15.4). No candidate states them, so their locator names the derivation.
 PageUrlDerivation = Literal["canonical_link", "final_url"]
-Scheme = Literal["jsonld", "microdata", "dom", "meta", "js_state", "xhr", "adapter", "api", "config", "text", "derived"]
+Scheme = Literal[
+    "jsonld", "microdata", "dom", "meta", "js_state", "attr", "xhr", "adapter", "api", "config", "text", "derived"
+]
 
 # An index into a list the capture holds (script blocks, network bodies, config steps): ASCII digits without a leading
 # zero, so that each index has one spelling.
@@ -41,6 +45,9 @@ _ADDRESS: dict[str, re.Pattern[str]] = {
     # HTML Standard, the meta element: a `name` or `property` value; OpenGraph names hold `:` but no whitespace.
     "meta": re.compile(r"(\S+)"),
     "js_state": re.compile(rf"(/.*?script\[[1-9][0-9]*\]):{_JSONPATH}", re.DOTALL),
+    # A documented JSON attribute (`content.attr_json`): its element's path, `@` and its name, then a path in its
+    # document. The element's path holds no `@` (one positional step per ancestor, `ParsedPage`).
+    "attr": re.compile(rf"(/[^@]*@(?:{ATTRIBUTE_NAMES})):{_JSONPATH}", re.DOTALL),
     # The nth captured network body in the bundle.
     "xhr": _INDEXED_JSONPATH,
     "adapter": _NAMED_JSONPATH,

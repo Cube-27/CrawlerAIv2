@@ -118,6 +118,13 @@ a line end; untagged rows are the JSON model, decoded as above and keyed by row 
 first pushing script). `$`-prefixed reference strings (`$L`, `$@`, `$<id>`) are kept as written and `$$` reads as `$`.
 A captured `text/x-component` body is read by the same reader, one document per body. A malformed row adds a
 diagnostic and the other rows are read; a stream over 10^7 bytes is not read.
+A `<script type="text/x-magento-init">` (Adobe Commerce) is read as a JSON script. After the scripts and the Flight
+document, in document order, the value of each attribute a framework documents as JSON is a document when, as the parser
+unescapes it, it starts with `{` or `[` and is RFC 8259 JSON (`content/attr_json.py`): Inertia `data-page`, Livewire
+`wire:snapshot`, WooCommerce `data-product_variations`, Adobe Commerce `data-mage-init`, and Astro's `props` on
+`astro-island`, revived from its `[type, value]` tuples (`content/state_decoders.py`). No other attribute is read,
+whatever its value. Its locator is `attr:<element xpath>@<name>:<path>`, and a config's `jsonpath` step reads these
+documents as source `attr`.
 #### Scenario: Nuxt 2 devalue state
 - **WHEN** a script writes `window.__NUXT__=(function(a,b){return {data:[{price:a,currency:b}]}}(19.99,"EUR"))`
 - **THEN** its document is `{"data": [{"price": 19.99, "currency": "EUR"}]}`
@@ -125,6 +132,11 @@ diagnostic and the other rows are read; a stream over 10^7 bytes is not read.
 - **WHEN** a script calls `dataLayer.push({event: "view_item", ecommerce: {currency: "USD", value: 30.03}})`
 - **THEN** that object is a state document, admitted by the rule of "Embedded JSON state and XHR admission" and its
   `currency` a declared page currency
+#### Scenario: Documented JSON attribute
+- **WHEN** a form carries `data-product_variations="[{&quot;display_price&quot;: 18, ...}]"`, and another element
+  `data-config="{&quot;price&quot;: 1}"` or `data-mage-init="{&quot;configurable&quot;: {"`
+- **THEN** the variations are a document, with locator `attr:<form xpath>@data-product_variations:$[0]['display_price']`
+  for the first price, and the other two attributes give none and no error
 #### Scenario: Flight rows split across chunks
 - **WHEN** `self.__next_f.push([1, …])` chunks split a JSON row and a `T` text row, and a `[3, …]` chunk holds another
   row

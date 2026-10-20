@@ -600,6 +600,7 @@ class WhenType(RootModel[str]):
 class Source1(Enum):
     jsonld = "jsonld"
     js_state = "js_state"
+    attr = "attr"
     xhr = "xhr"
     api = "api"
 

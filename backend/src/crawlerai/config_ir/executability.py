@@ -26,7 +26,7 @@ def step_class(step: Step, *, has_recipe: bool) -> Executability:
             return "needs-browser"
         case "api":
             return "api-call" if has_recipe else "unexecutable"
-        case "jsonld" | "js_state":
+        case "jsonld" | "js_state" | "attr":
             return "static-html"
 
 

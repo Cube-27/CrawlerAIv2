@@ -71,12 +71,14 @@ def cut_around(text: str, values: Iterable[str], limit: int) -> Cut:
 
 
 def json_keys(page: ParsedPage, limit: int) -> Cut:
-    """One line per JSON document of the page (JSON-LD blocks, script state, captured responses) with its key paths,
-    array indices as `[*]` (RFC 9535 §2.5.1.2), cut to `limit` characters (at most `KEYS_MAX_CHARS`)."""
+    """One line per JSON document of the page (JSON-LD blocks, script state, JSON attributes, captured responses)
+    with its key paths, array indices as `[*]` (RFC 9535 §2.5.1.2), cut to `limit` characters (at most
+    `KEYS_MAX_CHARS`)."""
     limit = min(limit, KEYS_MAX_CHARS)
     documents = [
         *((f"jsonld block {index}", data) for index, data in jsonld.blocks(page, [])),
-        *((f"js_state {document.address}", document.data) for document in js_state.state_documents(page, [])),
+        *((f"js_state {document.address}", document.data) for document in js_state.script_documents(page, [])),
+        *((f"attr {document.address}", document.data) for document in js_state.attribute_documents(page)),
         *((f"xhr {document.address}", document.data) for document in xhr.network_documents(page, [])),
     ]
     text = "\n".join(f"{name}: {' '.join(_key_paths(data))}" for name, data in documents)

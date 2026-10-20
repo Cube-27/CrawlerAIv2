@@ -16,6 +16,7 @@ from lxml import html as lxml_html
 from selectolax import lexbor
 
 from crawlerai.acquire.items import Group, item_groups, lxml_root
+from crawlerai.content.attr_json import DOCUMENTED, SELECTOR
 from crawlerai.content.fragments import FRAME_HEADER, Answers, declares_frames, include
 from crawlerai.content.segment import rank
 from crawlerai.content.text import CleanedText, VisibleIndex, render, xpath_step
@@ -40,6 +41,17 @@ class ScriptBlock:
 
     type: str
     text: str
+    xpath: str
+
+
+@dataclass(frozen=True)
+class AttributeBlock:
+    """A documented JSON attribute (`content.attr_json.DOCUMENTED`): its element's tag, its name, its value as the
+    parser unescaped it, and its element's XPath 1.0 path in the selectolax tree."""
+
+    tag: str
+    name: str
+    value: str
     xpath: str
 
 
@@ -106,6 +118,16 @@ class ParsedPage:
                 media_type = (attributes.get("type") or "").split(";", 1)[0].strip().lower()
                 blocks.append(ScriptBlock(type=media_type, text=node.text(deep=True), xpath=node_xpath(node)))
         return tuple(blocks)
+
+    @cached_property
+    def json_attributes(self) -> tuple[AttributeBlock, ...]:
+        """The documented JSON attributes of the page's elements, in document order."""
+        return tuple(
+            AttributeBlock(tag=node.tag or "", name=name, value=value or "", xpath=node_xpath(node))
+            for node in self.tree.css(SELECTOR)
+            for name, value in node.attributes.items()
+            if name in DOCUMENTED
+        )
 
     @cached_property
     def item_groups(self) -> tuple[Group, ...]:

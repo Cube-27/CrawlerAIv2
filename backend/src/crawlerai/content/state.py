@@ -1,7 +1,7 @@
 """The state a page carries in its inline scripts (extraction spec, "Source documents"), read by structure only.
 
-A document is the text of a `<script type="application/json">`, or, in any other script except JSON-LD's, in script
-order:
+A document is the text of a `<script type="application/json">` (or Adobe Commerce's `text/x-magento-init`), or, in
+any other script except JSON-LD's, in script order:
 - the object or array literal after the `=` of an assignment: `window.<ident> =`, `var|let|const <ident> =`, or a bare
   `<ident> =` (ECMAScript AssignmentExpression and variable declaration syntax);
 - each object literal argument of a call `<ident>(…)` or `<ident>.<ident>…(…)` whose arguments before it are literals
@@ -32,6 +32,8 @@ from crawlerai.core.json_text import parse
 
 # RFC 8259 §1.2 / IANA media types: `application/json` holds JSON text.
 _JSON = "application/json"
+# Adobe Commerce, JavaScript initialization: `text/x-magento-init` scripts hold JSON (`{"<selector>": {...}}`).
+_MAGENTO_INIT = "text/x-magento-init"
 # W3C JSON-LD 1.1 §7.3: JSON-LD's script data blocks, which hold linked data, not a script's state.
 _JSON_LD = "application/ld+json"
 # ECMAScript: an assignment to an identifier or to a property of `window` (the global object in a browser, HTML
@@ -60,7 +62,7 @@ def script_state(script: ScriptBlock, diagnostics: list[str]) -> Iterator[JsonVa
     """The state documents of one inline script, in order; an invalid JSON script adds a diagnostic."""
     if script.type == _JSON_LD:  # the JSON-LD collector's blocks
         return
-    if script.type == _JSON:
+    if script.type in (_JSON, _MAGENTO_INIT):
         try:
             yield parse(script.text)
         except ValueError as e:
