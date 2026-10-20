@@ -590,18 +590,18 @@ class _View:
 
     def stated(self) -> Stated | None:
         """The block's attribute-stated name the block shows most words of (the first on a tie), else its first
-        stated name (`Stated`); None when it states none, or when the one it shows most of runs over a typed value the
-        block shows (`note_values`): a name holds no price or date, so a stated name running on over the card's price
-        is the whole card's text, as an accessible name computed from a link's content reads it (Accessible Name
-        Computation 1.2, step 2F), not the item's name."""
+        stated name (`Stated`); None when it states none. A stated name whose shown run holds a typed value the block
+        shows (`note_values`) is left out: a name holds no price or date, so one running on over the card's price is the
+        whole card's text, as an accessible name computed from a link's content reads it (Accessible Name Computation
+        1.2, step 2F), not the item's name."""
         shown = self._words()
         best: Stated | None = None
         for text, element in self._stated_texts():
             found = Stated.of(text, self.paths[element], shown, self.holding)
+            if found.shown and any(_overlap(found.shown_at, at) for at in self.values):
+                continue
             if best is None or found.covered > best.covered:
                 best = found
-        if best is not None and best.shown and any(_overlap(best.shown_at, at) for at in self.values):
-            return None
         return best
 
     def note_values(self, found: Iterable[Spot]) -> None:

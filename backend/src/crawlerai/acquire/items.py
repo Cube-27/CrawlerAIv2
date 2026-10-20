@@ -109,7 +109,7 @@ def _section_groups(container: HtmlElement | None, nodes: list[HtmlElement]) -> 
     parents = list(dict.fromkeys(parent_of.values()))
     if container is None or len(parents) < 2:
         return []
-    order = {parent: container.index(parent) for parent in parents}
+    order = {child: i for i, child in enumerate(container)}
     groups: list[list[HtmlElement]] = []
     for shaped in map(set, _shapes(parents)):
         held = sorted((node for node in parent_of if parent_of[node] in shaped), key=lambda n: order[parent_of[n]])
