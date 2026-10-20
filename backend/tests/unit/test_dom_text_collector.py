@@ -151,6 +151,12 @@ def test_an_element_valued_description_goes_on_over_its_sibling_sections_in_its_
     found = DescriptionCollector().collect(page, _schema(), CTX, (stated,)).candidates
 
     assert [c.normalized for c in found] == [Ok(f"{FIRST}\nDuties\n{SECOND}")]
+    # A sibling holding another property's element is not the description's text.
+    nested = body.replace("<h2>Duties</h2>", '<h2 itemprop="occupationalCategory">Duties</h2>')
+    nested_found = DescriptionCollector().collect(
+        ParsedPage(f"<html><body>{nested}</body></html>"), _schema(), CTX, (stated,)
+    )
+    assert [c.normalized for c in nested_found.candidates] == [Ok(FIRST)]
 
 
 def test_schema_without_long_text_reads_nothing() -> None:

@@ -84,6 +84,7 @@ _HEADING = 'h1,h2,h3,h4,h5,h6,[role~="heading"]'
 _TITLE_HEADING = 'h1,[role~="heading"][aria-level="1"]'
 # HTML Standard §5.2.2 (microdata) and RDFa Core 1.1 §7.5: attributes that state a property or an item of their own.
 _ITEM_ATTRIBUTES = ("itemprop", "itemscope", "property", "typeof")
+_ITEM_SELECTOR = ",".join(f"[{a}]" for a in _ITEM_ATTRIBUTES)
 _ELEMENT_VALUED = "microdata"  # the collector of microdata and RDFa: a value states the element its locator names
 _OPEN_GRAPH = "og"  # the protocol defines og:description as a one-to-two sentence summary
 _DESCRIPTION = "description"  # schema.org `Thing.description`
@@ -219,17 +220,22 @@ def _continued(blocks: _Blocks, stated: Candidate) -> _Block | None:
 
 def _going_on(blocks: _Blocks, element: LexborNode) -> Iterator[str]:
     """The texts of the element's following siblings that are prose or headings, up to the first that is neither or
-    that states another property or item."""
+    that states (or holds an element stating) another property or item."""
     for sibling in _after(element):
         if not sibling.is_element_node:
             continue
-        if any(a in sibling.attributes for a in _ITEM_ATTRIBUTES) or sibling.mem_id in blocks.apart:
+        if _states_items(sibling) or sibling.mem_id in blocks.apart:
             return
         raw = blocks.text(sibling)
         if raw and not (_heading(sibling) or blocks.prose(sibling) is not None):
             return
         if raw:
             yield raw
+
+
+def _states_items(node: LexborNode) -> bool:
+    """Whether the element, or an element inside it, states a property or an item of its own."""
+    return any(a in node.attributes for a in _ITEM_ATTRIBUTES) or node.css_first(_ITEM_SELECTOR) is not None
 
 
 def _element(blocks: _Blocks, stated: Candidate) -> LexborNode | None:
