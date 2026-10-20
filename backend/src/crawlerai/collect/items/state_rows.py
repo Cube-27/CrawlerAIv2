@@ -17,7 +17,9 @@ every value, so a state value is one the page renders (INV-12's rule for role C,
 A row is kept only when it is grounded: its item URL is the target of a rendered hyperlink, or its name is shown. An
 array whose grounded rows are fewer than `MIN_ITEMS`, or that has no item URL path, gives none. Arrays inside a row
 source are the row's own data, not further sources; a row whose item URL an earlier row has is not read again (a blob
-caching one list twice; a trailing slash and the order of query parameters aside). Each row is an `array_row` entity
+caching one list twice; a trailing slash and the order of query parameters aside). With several arrays read, the rows
+are those of the array or arrays whose items the page's first item group links to most (`_grid_sources`): a recently
+viewed or recommended array is not the page's list. Each row is an `array_row` entity
 `js_state:<script xpath>@<document position>:<row path>`, and each value a
 `js_state` candidate, whose evidence bucket is `state` (resolution spec).
 """
@@ -38,7 +40,7 @@ from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import field_roles
 from crawlerai.collect.schema_org_map import candidate, is_item_url
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.segment import content_links
+from crawlerai.content.segment import block_links, content_links
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.normalize.url import canonical_url
@@ -69,11 +71,54 @@ def state_rows(page: ParsedPage, documents: Sequence[Document], schema: SchemaDe
         return StateRows()
     reader = _Reader(page, schema, ctx, url_fields[0])
     read = [found for number, document in enumerate(documents) for found in _sources(reader, number, document)]
+    read = _once(_grid_sources(page, ctx, url_fields[0], read), url_fields[0])
     return StateRows(
         tuple(row for found in read for row in found.rows),
         tuple(c for found in read for c in found.candidates),
         tuple(note for found in read for note in found.diagnostics),
     )
+
+
+def _grid_sources(page: ParsedPage, ctx: Context, url_field: str, read: list[StateRows]) -> list[StateRows]:
+    """With several arrays read, the one or ones with the most rows whose item URL a block of the page's first item
+    group (`ParsedPage.item_groups`, the segment step's ranking) links to: the page's own list, a recently viewed or
+    recommended array rendered as a strip beside it being no rows of it. All of them when no row's item is linked
+    from that group."""
+    if len(read) < 2 or not page.item_groups:
+        return read
+    grid = {url for block in page.item_groups[0] for url in block_links(block, ctx.base_url)}
+    shown = [
+        sum(
+            c.field == url_field and isinstance(c.normalized, Ok) and c.normalized.value in grid
+            for c in found.candidates
+        )
+        for found in read
+    ]
+    most = max(shown)
+    return [found for found, count in zip(read, shown, strict=True) if count == most] if most else read
+
+
+def _once(read: list[StateRows], url_field: str) -> list[StateRows]:
+    """The arrays with each item read once, in order: a row whose item an earlier array's row names is not read again,
+    and an array left with fewer than `MIN_ITEMS` rows gives none (module docstring)."""
+    seen: set[str] = set()
+    kept: list[StateRows] = []
+    for found in read:
+        keys = _row_keys(found, url_field)
+        rows = [row for row in found.rows if keys.get(row.id) not in seen]
+        if len(rows) < MIN_ITEMS:
+            continue
+        seen.update(keys[row.id] for row in rows if row.id in keys)
+        ids = {row.id for row in rows}
+        candidates = tuple(c for c in found.candidates if c.entity_id in ids)
+        kept.append(StateRows(tuple(rows), candidates, found.diagnostics))
+    return kept
+
+
+def _row_keys(found: StateRows, url_field: str) -> dict[str, str]:
+    """Each row's item key (`_item_key`), by row entity."""
+    urls = ((c.entity_id, c.normalized) for c in found.candidates if c.field == url_field)
+    return {row: _item_key(url.value) for row, url in urls if isinstance(url, Ok) and isinstance(url.value, str)}
 
 
 def _sources(reader: "_Reader", number: int, document: Document) -> Iterator[StateRows]:
@@ -91,7 +136,7 @@ def _sources(reader: "_Reader", number: int, document: Document) -> Iterator[Sta
 
 
 class _Reader:
-    """One page's state arrays read as rows, the item URLs already read kept across them."""
+    """One page's state arrays read as rows."""
 
     def __init__(self, page: ParsedPage, schema: SchemaDef, ctx: Context, url_field: str) -> None:
         self.page = page
@@ -101,7 +146,6 @@ class _Reader:
         self.names = {name for name, role in field_roles(schema).items() if role == "name"}
         self.row_fields = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}
         self.links = content_links(page.lxml_tree, ctx.base_url)
-        self.read_urls: set[str] = set()
         self._words = {name: _field_words(name, spec) for name, spec in self.row_fields.items()}
 
     def read(self, number: int, document: Document, objects: Sequence[tuple[str, JsonValue]]) -> StateRows | None:
@@ -122,7 +166,6 @@ class _Reader:
         fresh = self._fresh(made)
         if len(fresh) < MIN_ITEMS:
             return None
-        self.read_urls.update(url for url, _ in fresh)
         notes.append(f"item layer: {len(fresh)} rows from page state, fields: {sorted(keys)}")
         return StateRows(
             tuple(entity for _, (entity, _) in fresh),
@@ -182,14 +225,14 @@ class _Reader:
     def _fresh(
         self, made: Sequence[tuple[Entity, list[Candidate]]]
     ) -> list[tuple[str, tuple[Entity, list[Candidate]]]]:
-        """The rows whose item no row read before names, each once, with its item's key (`_item_key`)."""
+        """The rows each naming their item once in the array, with its item's key (`_item_key`)."""
         fresh: dict[str, tuple[Entity, list[Candidate]]] = {}
         for entity, values in made:
             url = next(
                 (c.normalized.value for c in values if c.field == self.url_field and isinstance(c.normalized, Ok)), None
             )
-            if isinstance(url, str) and (key := _item_key(url)) not in self.read_urls:
-                fresh.setdefault(key, (entity, values))
+            if isinstance(url, str):
+                fresh.setdefault(_item_key(url), (entity, values))
         return list(fresh.items())
 
 

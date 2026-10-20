@@ -3,6 +3,7 @@ which values it gives, from structure, types and standards only. Pages are synth
 
 from datetime import UTC, datetime
 
+import pytest
 from pydantic import JsonValue
 
 from crawlerai.collect.items.align import AMBIGUOUS_IN_BLOCK, Items, align
@@ -150,3 +151,24 @@ def test_a_card_the_chosen_rule_does_not_name_reads_the_line_at_the_groups_name_
     body = "<ul>" + "".join(card.format(i=i) for i in range(4)) + sold + "</ul>"
 
     assert [row.get("title") for row in _rows(body)] == [*(f"Tea {i}" for i in range(4)), "Tea 9"]
+
+
+def test_a_card_linking_its_item_its_author_and_a_shared_vendor_takes_the_item_at_the_groups_link_place() -> None:
+    # DEPTA alignment: a vendor page every card links to is the template's; the item's link is at the place where a
+    # quorum of the cards link to a document of their own, a link holding the card's image first.
+    body = _repeat(
+        '<li class="c"><p>by <a href="/author/{i}">Author {i}</a> at <a href="/vendor">Vendor</a></p>'
+        '<a href="/p/{i}"><img src="/i/{i}.jpg" alt=""></a><div><a href="/p/{i}">Book {i}</a></div>'
+        "<span>1{i}.50 EUR</span></li>"
+    )
+
+    assert [row["url"] for row in _rows(body)] == [_url(f"/p/{i}") for i in range(4)]
+
+
+@pytest.mark.parametrize("current", ['href="/search"', 'href="/c/0" aria-current="page"'])
+def test_a_group_holding_the_current_page_is_navigation_not_rows(current: str) -> None:
+    # WAI-ARIA 1.2 `aria-current="page"`; a link to this very URL: the group lists the page among its documents.
+    tile = '<li class="c"><a {link}><img src="/t/{i}.jpg" alt=""> Category {i}</a></li>'
+    body = "<ul>" + "".join(tile.format(link=current if i == 0 else f'href="/c/{i}"', i=i) for i in range(4)) + "</ul>"
+
+    assert _groups(body) == ()

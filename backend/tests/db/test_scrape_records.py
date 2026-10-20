@@ -234,12 +234,12 @@ async def test_a_listing_without_rows_says_why_and_answers_its_page_fields(
 
     result = await scrape(engine, fetching, scraped, data=data)
 
-    assert (result.records, result.reason) == ([], "no_rows: not_asked")
+    assert (result.records, result.reason) == ([], "no_rows: no_blocks")
     assert result.page is not None
     assert result.page["next_page_url"].value == f"{own_origin}/c/kettles?page=2"
     assert set(result.page) == {"next_page_url"}
     task = await _row(engine, select(UrlTask.last_error).where(UrlTask.url == url))
-    assert task.last_error == "no_rows: not_asked"
+    assert task.last_error == "no_rows: no_blocks"
     assert "page" in result.model_dump(by_alias=True)
 
 

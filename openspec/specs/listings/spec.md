@@ -11,12 +11,13 @@ publishes is [resolution](../resolution/spec.md). Rationale: master plan §3.2 (
 
 ### Requirement: Item groups (segment)
 A listing page's repeated item groups SHALL be `MIN_ITEMS` or more sibling blocks of one shape that each are or hold a
-hyperlink, outside chrome (`acquire/items.py`: `nav`, `header`, `footer`, `aside`, their landmark roles and the WAI-ARIA
-`menubar` and `menu` roles), ranked once per parse (`ParsedPage.item_groups`, `content/segment.py`):
+hyperlink, outside chrome (`acquire/items.py`: `nav`, `header`, `footer`, `aside`, `search`, their landmark roles and
+the WAI-ARIA `menubar` and `menu` roles), ranked once per parse (`ParsedPage.item_groups`, `content/segment.py`):
 by the rendered area of their blocks when the browser capture measured it (`CaptureManifest.item_areas`, recorded for
 listing captures), else by blocks showing an image or two or more text runs, then size; a block not rendered (no area,
 or hidden by the HTML rendering rules) is left out. The markdown format, `xhr` and the paging driver read this one
-ranking. (Previously: role C's item text read it too; a `menubar` or `menu` was content.) Refs: owner #67, master plan §3.2.
+ranking. (Previously: role C's item text read it too; a `menubar`, `menu` or `search` landmark was content.) Refs:
+owner #67, master plan §3.2.
 #### Scenario: Tag cloud beside a grid
 - **WHEN** a listing holds 30 bare tag links and 4 cards with an image, a link and a price
 - **THEN** the cards' group ranks first
@@ -28,7 +29,10 @@ ranking. (Previously: role C's item text read it too; a `menubar` or `menu` was 
 Each group whose blocks lead to one item, at least a quorum of `max(MIN_ITEMS, 60%)` of them, `MIN_ITEMS` of them
 showing more than their link, SHALL give an `item_block` row per item URL (`collect/items/align.py`); a field is read at
 a place shared by a quorum of the blocks whose value its normalizer accepts: the item URL (the one document the block's
-links lead to, not the page in another state, an image file or an item's own nested list), the name (the item link's
+links lead to, not the page in another state, an image file or an item's own nested list; for a block linking to
+several, else, at group level, the one document no other block links to at the tag path where a quorum of the blocks
+link to such a document, a path whose link holds an image before the first other one: documents two or more blocks
+link to, a vendor's, an author's or a category's page, are the template's), the name (the item link's
 one-line content, the block's heading, or the name the item's attributes state, `aria-labelledby`/`aria-label`/`title`
 or an image's `alt`, kept where the block shows it over one or several whole lines in order, WCAG label in name, a line
 cut by an ellipsis standing for the rest, its unshown leading or trailing words dropped when every block states the
@@ -36,7 +40,11 @@ same; never a URL; text every block repeats is the template's, also a child elem
 a block the chosen rule leaves unnamed reads the one line at the tag path a quorum of its names have), the image, and typed value spotting for money, dates and check-digit identifiers (text in `s`/`del`
 excluded, also from the lines of the elements holding it; an element's line is not read where two text nodes run digits
 together, a token boundary the text does not show; an element holding others is also read in each of its own text
-nodes). Values are `dom` candidates with locators; the group aligning most fields is first. Refs: owner #67.
+nodes). Values are `dom` candidates with locators; the group aligning most fields is first. A group one of whose blocks
+stands for the page itself (a link marked `aria-current="page"`, or links to this very URL only) is the site's
+navigation and gives no rows. (Previously: a card linking to its item and to an author or vendor page gave no item URL
+unless a heading or most of its text held the item's link; a category or city hub listing the page was rows.) Refs:
+owner #67.
 #### Scenario: Cards with title, link and price
 - **WHEN** a listing shows cards of varying tags and class tokens, each with a heading link and one price
 - **THEN** each card is a row with its title, URL and price
@@ -56,13 +64,23 @@ nodes). Values are `dom` candidates with locators; the group aligning most field
 #### Scenario: A badge next to the price
 - **WHEN** a card renders `<span>EUR 10.99</span><span>20</span>` with no space between them
 - **THEN** its price is `10.99` EUR from the first span, never `10.9920`
+#### Scenario: Cards linking an author and a shared vendor
+- **WHEN** each card links its item from its image and its title, its own author, and a vendor page every card links
+- **THEN** each card's item URL is its item's
+#### Scenario: Hub listing the current page
+- **WHEN** a group of category tiles holds one tile marked `aria-current="page"`
+- **THEN** the group gives no rows
 
 ### Requirement: Stated rows and blocks (bind)
 The stated rows SHALL be structured data's (`resolve/listing.py`), else the active config's, else the captured calls'.
 The blocks are those of the group the stated rows name most and of every other section read with it: an aligned group
 of its row shape (or holding every required field it aligns and a field beyond the item URL) whose blocks lead, a quorum of them, to
-documents of the kind its blocks lead to (host, path depth, first segment), apart from blocks already read; an item two
-sections show is one block (D-1776). Stated rows and those blocks bind one to one by item URL (session parameters, a trailing
+documents of the kind its blocks lead to (host, path depth, first segment), apart from blocks already read, fewer than
+half of whose blocks lead to items the chosen group lists (else it is a featured or recently viewed copy) and not
+starting after the chosen group's `rel=next` link (past the listing's end); an item two sections show is one block
+(D-1776). Where one structured list is the page's `mainEntity`, only its entries are stated rows
+(`resolve/listing.py`); else, with stated rows in several lists, the list or lists with the most rows bound to the chosen group's blocks, give rows; with
+none bound, all do. Stated rows and those blocks bind one to one by item URL (session parameters, a trailing
 slash and added query parameters aside) or by a name the block shows (`collect/items/bind.py`). With no stated rows or
 only stubs, the blocks are the rows; otherwise stated rows stay and the group's blocks no stated row names extend them.
 A config's rows bind no blocks. A bound entity's values join its row where the row has none for the field or equals
@@ -74,7 +92,8 @@ block showing several amounts joins its option equal to the row's, else every op
 catalogue price excludes). State and call array rows bind by URL, and a JSON key whose
 values equal a block field on `MIN_ITEMS` bound rows is that field's key for every bound row (`collect/induce.py`).
 (Previously: the blocks of one group only; a bound block's amount that disagreed with a row's was dropped unless only
-an adapter stated the row, and a block's several amounts joined only an option equal to the row's.)
+an adapter stated the row, and a block's several amounts joined only an option equal to the row's; a featured copy or a
+strip after the pager was read as a section; every structured list gave rows.)
 Refs: owner #67, Appendix A #59, D-1776.
 #### Scenario: Visible card price of an adapter row
 - **WHEN** an adapter's answer states a row's price 19.50 EUR and the row's card, bound by URL, shows €23.40
@@ -85,6 +104,13 @@ Refs: owner #67, Appendix A #59, D-1776.
 #### Scenario: Two sections of one shape
 - **WHEN** a listing shows items 1–3 in one section and items 3–6 in another of the same cards
 - **THEN** the listing has six rows
+#### Scenario: Featured strip and a strip after the pager
+- **WHEN** a grid of items 1–6 is followed by a strip of the same cards showing items 1, 2, 3 and 9, or by a `rel=next`
+  link and then a strip of items 7–9
+- **THEN** the listing has the six rows of the grid
+#### Scenario: Several item lists
+- **WHEN** a page's `WebPage.mainEntity` lists items 1–3 and another `ItemList` lists items 7–9
+- **THEN** the listing has the rows of items 1–3; without `mainEntity`, the same when the grid's cards show items 1–3
 #### Scenario: Stub rows
 - **WHEN** an `ItemList` names three items by URL only and the page's cards show their titles and prices
 - **THEN** the listing has three rows with the cards' titles, prices and links
@@ -114,12 +140,13 @@ rows whose own member names the field (its name or schema.org property) and whos
 page text (an image: normalizes), the item URL also at a path whose values the rendered hyperlinks of the page's content
 lead to (its main landmark, else its body, outside chrome); a row is kept only when its item URL is such a link or its
 name is shown, an array with fewer such rows gives none, and an item
-read once is not read again. Values are `js_state` candidates (bucket `state`). A locate run writes such rows into the
+read once is not read again (after the choice below); of several arrays read, only the one or ones with the most rows whose item URL the page's
+first item group links to give rows (all, when none does). Values are `js_state` candidates (bucket `state`). A locate run writes such rows into the
 config as paths (`config_ir/json_rows.py`): a `jsonpath` row step selecting the array that holds `MIN_ITEMS` or more of
 the rendered rows' item URLs in a document the HTML carries (embedded state, JSON-LD, JSON attributes, RSC rows), and
 for each row field the path relative to the item that more than half of the paired items hold
 ([learning-configs](../learning-configs/spec.md), "Locate run"). (Previously: no rows, D-1774; the paths were induced on
-every page only; any rendered link, the site's menus included, grounded an item URL.) Refs: D-1773, D-1775,
+every page only; any rendered link, the site's menus included, grounded an item URL; every array read gave rows.) Refs: D-1773, D-1775,
 architecture v3 a.6.
 #### Scenario: Items only in state
 - **WHEN** a script's JSON lists three items whose names and prices the page shows without item links
@@ -149,7 +176,7 @@ result. Refs: owner #67 decisions 1 and 6.
 Role C SHALL be asked for the blocks whose bound rows lack a row field, each for the fields its row lacks but the item
 URL, when a row field is published on no row or a row lacks a required one, and never beside a config that runs a row
 field; and in a separate call over the whole cleaned text for the missing page fields when a required one is missing.
-Its values fill the blocks' rows; it makes no row, so a listing without rows answers `no_rows: not_asked`.
+Its values fill the blocks' rows; it makes no row, so a listing without rows answers `no_rows: no_blocks`.
 A block of a nested listing is read with its enclosing item's context (`collect/items/lines.py`): when the block lies
 inside a block of another repeated group, and two or more blocks of that group hold rows, the enclosing block's text
 before the first block of the inner group (what a building states for its units: its name, its address, column
@@ -165,7 +192,7 @@ D-1603, D-1604, D-1605.
 - **THEN** each unit is a row, and role C reads it with its building's name and address before its own text
 #### Scenario: Listing without blocks
 - **WHEN** a listing has no stated rows and no aligned item group
-- **THEN** role C is not asked for rows and the answer's reason is `no_rows: not_asked`
+- **THEN** role C is not asked for rows and the answer's reason is `no_rows: no_blocks`
 
 ### Requirement: Next pages
 Next pages SHALL come from `rel=next`, then the link differing from the page URL in one path segment or query value by

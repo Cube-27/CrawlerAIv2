@@ -20,11 +20,13 @@ from lxml.html import HtmlElement
 # A listing shows at least this many items; resolution takes as many top-level entities for a listing's rows
 # (`resolve.listing.MIN_TOP_LEVEL_ROWS`): fewer is what a detail page's related items look like.
 MIN_ITEMS: Final = 3
-# A site's chrome, not its content: the HTML Standard's navigation, header, footer and aside elements (§4.3, §4.4),
-# the WAI-ARIA 1.2 landmark roles they map to (§5.3.4), and its `menubar` and `menu` roles (§5.3.2, composite widgets
-# "offering a list of choices to the user"): a menu is the site's navigation, not a list of the page's items.
-_CHROME_TAGS: Final = frozenset({"nav", "header", "footer", "aside"})
-_CHROME_ROLES: Final = frozenset({"navigation", "banner", "contentinfo", "complementary", "menubar", "menu"})
+# A site's chrome, not its content: the HTML Standard's navigation, header, footer and aside elements (§4.3, §4.4)
+# and its `search` element, the WAI-ARIA 1.2 landmark roles they map to (§5.3.4; `search` is "a collection of items
+# and objects that, as a whole, combine to create a search facility": its filters and facets, not its results), and
+# its `menubar` and `menu` roles (§5.3.2, composite widgets "offering a list of choices to the user"): a menu is the
+# site's navigation, not a list of the page's items.
+_CHROME_TAGS: Final = frozenset({"nav", "header", "footer", "aside", "search"})
+_CHROME_ROLES: Final = frozenset({"navigation", "banner", "contentinfo", "complementary", "search", "menubar", "menu"})
 # HTML Standard §4.6.1: `a` and `area` elements with an `href` are hyperlinks.
 LINKS: Final = ("a", "area")
 

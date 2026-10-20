@@ -182,7 +182,7 @@ def _enter(item: _Enter, shown: list[str], runs: int) -> list[_Item]:
     attributes = item.node.attributes
     tag = item.node.tag or ""
     style = declarations(attributes)
-    if _hidden(tag, attributes, style):
+    if _hidden_node(item.node, attributes, style):
         return []
     invisible = _invisible(style.get("visibility"), inherited=item.invisible)
     if not invisible:
@@ -298,7 +298,7 @@ def shown(node: LexborNode) -> bool:
     while current is not None and current.is_element_node:
         attributes = current.attributes
         style = declarations(attributes)
-        if _hidden(current.tag or "", attributes, style):
+        if _hidden_node(current, attributes, style):
             return False
         visibility = visibility or style.get("visibility")
         current = current.parent
@@ -321,10 +321,39 @@ def _concealed(attributes: _Attributes, style: dict[str, str]) -> bool:
     return "hidden" in attributes or style.get("display") == "none"
 
 
+def _hidden_node(node: LexborNode, attributes: _Attributes, style: dict[str, str]) -> bool:
+    """`_hidden` for an element of the tree: a concealed element that a script reveals (`_script_revealed`) is
+    rendered."""
+    if not _hidden(node.tag or "", attributes, style):
+        return False
+    return not (
+        _concealed(attributes, style) and not _unrendered(node.tag or "", attributes) and _script_revealed(node)
+    )
+
+
+def _script_revealed(node: LexborNode) -> bool:
+    """Whether a concealed element (`concealed`) is the page's own content that a script shows after load (a
+    content-gating or consent app): it holds the document's one top-level heading (HTML Standard §4.3.6, `h1`: the
+    page's title) and a form (§4.10.3, the item's form). A page does not keep its title for later; a concealed
+    template, modal or variant block holds no `h1` or is beside the page's own."""
+    headings = node.css("h1")
+    if len(headings) != 1 or node.css_first("form") is None:
+        return False
+    root = node
+    while root.parent is not None and root.parent.is_element_node:
+        root = root.parent
+    return len(root.css("h1")) == 1
+
+
 def _hidden(tag: str, attributes: _Attributes, style: dict[str, str]) -> bool:
     """Not rendered at all, with its whole subtree."""
+    return _concealed(attributes, style) or _unrendered(tag, attributes)
+
+
+def _unrendered(tag: str, attributes: _Attributes) -> bool:
+    """Not rendered whatever a script does to its own style: `_hidden` but `concealed`."""
     # HTML Standard, Rendering, "Hidden elements": `[hidden]`, `input[type=hidden i]`, `dialog:not([open])`.
-    if tag in NOT_RENDERED or _concealed(attributes, style):
+    if tag in NOT_RENDERED:
         return True
     if tag == "input" and (attributes.get("type") or "").strip().lower() == "hidden":
         return True

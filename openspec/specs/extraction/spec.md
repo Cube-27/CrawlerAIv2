@@ -22,10 +22,17 @@ The system SHALL render cleaned text in one walk that drops non-rendered and HTM
 per CSS Text 3 (`content/text.py`); an element whose text ends in an ellipsis and whose `title` extends it reads as
 that title; the walk records each shown link (`a[href]`) and image (`img[src]`) with its span, path, target and
 announced name; `visible(value)` is a whole-word match on that text plus shown elements' `alt`, `title`, `value` and
-`content`. (Previously: links and images were not recorded.) Refs: SPEC-05 §4.4, D-0334..D-0339, D-1154, D-1624.
+`content`. An element concealed by the `hidden` attribute or an inline `display: none` that holds the document's one
+`h1` and a form is the page's own content a script reveals after load (a content-gating app), and is shown; any other
+concealed element stays hidden. (Previously: links and images were not recorded; a concealed wrapper around the page's
+title and form hid them.) Refs: SPEC-05 §4.4, D-0334..D-0339, D-1154, D-1624.
 #### Scenario: Price split across inline elements
 - **WHEN** the page shows `$<span>19</span>.99`
 - **THEN** the cleaned text holds `$19.99` and `visible("9.99")` is false
+#### Scenario: Script-revealed product block
+- **WHEN** the page's one `h1` and its product form sit in a `div style="display:none"`, beside a hidden variant block
+  holding another price
+- **THEN** the title and the form's price are in the cleaned text and the variant block's price is not
 
 ### Requirement: Run every cheap collector
 The system SHALL run every collector on every served capture in the order of `collect/run.py`; skipping only ever
