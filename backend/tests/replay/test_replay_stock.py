@@ -88,3 +88,57 @@ def test_each_source_s_one_offer_is_the_item_s_offer() -> None:
 
     assert result.entity is not None
     assert (result.entity["availability"].status, result.entity["availability"].value) == ("published", "PreOrder")
+
+
+def test_the_shown_variant_s_availability_publishes_over_other_variants_sold_out() -> None:
+    # The JSON-LD Product states one Offer, the page's (its availability written as a network-path reference); the
+    # microdata lists every variant's Offer, the shown one by the Product's sku and stating no availability. The other
+    # variant's OutOfStock is its own, not the item's.
+    product = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Synthetic Widget",
+        "url": PAGE_URL,
+        "sku": "W-2",
+        "offers": {"@type": "Offer", "price": "10.00", "priceCurrency": "EUR", "availability": "//schema.org/InStock"},
+    }
+    microdata = "".join(
+        f'<div itemprop="offers" itemscope itemtype="https://schema.org/Offer"><meta itemprop="sku" content="{sku}">'
+        f"{state}</div>"
+        for sku, state in (("W-1", '<link itemprop="availability" href="https://schema.org/OutOfStock">'), ("W-2", ""))
+    )
+    raw = f'<html><head><script type="application/ld+json">{json.dumps(product)}</script></head><body>'
+    raw += '<div itemscope itemtype="https://schema.org/Product"><span itemprop="sku">W-2</span>'
+    raw += f'<link itemprop="url" href="{PAGE_URL}">'
+    raw += f"{microdata}</div></body></html>"
+
+    result = asyncio.run(extract_page(capture(raw.encode()), SCHEMA, None, None, data=DATA))
+
+    assert result.entity is not None
+    availability = result.entity["availability"]
+    assert (availability.status, availability.reason, availability.value) == ("published", "offers_disagree", "InStock")
+
+
+def test_a_lone_offer_naming_another_variant_is_not_the_shown_one() -> None:
+    # The JSON-LD Product's one Offer states sku W-1 and OutOfStock; the microdata Offer of the Product's sku W-2 states
+    # InStock: the lone Offer names another variant, so W-2's availability is the item's.
+    product = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Synthetic Widget",
+        "url": PAGE_URL,
+        "sku": "W-2",
+        "offers": {"@type": "Offer", "sku": "W-1", "availability": "https://schema.org/OutOfStock"},
+    }
+    raw = f'<html><head><script type="application/ld+json">{json.dumps(product)}</script></head><body>'
+    raw += '<div itemscope itemtype="https://schema.org/Product"><span itemprop="sku">W-2</span>'
+    raw += (
+        f'<link itemprop="url" href="{PAGE_URL}"><div itemprop="offers" itemscope itemtype="https://schema.org/Offer">'
+    )
+    raw += '<meta itemprop="sku" content="W-2"><link itemprop="availability" href="https://schema.org/InStock">'
+    raw += "</div></div></body></html>"
+
+    result = asyncio.run(extract_page(capture(raw.encode()), SCHEMA, None, None, data=DATA))
+
+    assert result.entity is not None
+    assert (result.entity["availability"].status, result.entity["availability"].value) == ("published", "InStock")
