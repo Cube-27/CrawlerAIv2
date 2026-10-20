@@ -263,12 +263,13 @@ class _Aligned:
 
     def copies_navigation(self, roles: Mapping[str, Role], chrome: Sequence[tuple[HtmlElement, str]]) -> bool:
         """Whether the group is a copy of the site's navigation (module docstring): it aligns no typed value, and more
-        than half of its blocks lead to documents a hyperlink of the site's chrome outside the group leads to."""
+        than half of its blocks (all of them, those without an item URL counting against it) lead to documents a
+        hyperlink of the site's chrome outside the group leads to."""
         if any(roles[name] == "typed" for name in self.fields):
             return False
         blocks = set(self.group)
         led = {url for anchor, url in chrome if anchor not in blocks and blocks.isdisjoint(anchor.iterancestors())}
-        return 2 * sum(view.link in led for view in self.views) > len(self.views)
+        return 2 * sum(view.link in led for view in self.views) > len(self.group)
 
     def items(self, schema: SchemaContent, ctx: Context, number: int) -> Items:
         """The group's rows, its entities numbered `item_block:<number>:<block>`."""
