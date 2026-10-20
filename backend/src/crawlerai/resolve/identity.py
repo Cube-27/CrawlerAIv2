@@ -12,7 +12,8 @@ a product group (`hasVariant`). Two of them of one most specific type are one it
 The root of an identity-checked data call's answer (`Entity.requested`, acquisition spec "Data calls") states the
 requested item by construction, though it may name it by no identifier the page's markup states (Shopify's product
 JSON holds its sku and barcode on its variants only): it is the page's one root item of its most specific type, when
-the page states exactly one; of none or several, it stays apart.
+the page states exactly one and that root is the page's own (it names no other document than the page's,
+`scope.leads_elsewhere`); of none or several, or another page's item, it stays apart.
 Every pair that agrees joins, so two later entities that agree join even when an earlier one stays apart. Two members
 of product groups never join (two variants sharing a sku are two sizes of one sku, variants spec INV-33), nor does an
 entity join its own ancestor. The merged entity is the group member when there is one, else the first in collector
@@ -33,7 +34,7 @@ from typing import Final
 
 from crawlerai.collect.base import ARRAY_ROW, PAGE, Entity
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.collect.scope import LISTS
+from crawlerai.collect.scope import LISTS, Documents, leads_elsewhere, page_documents
 
 # schema.org `hasVariant`: "Indicates a Product that is a member of this ProductGroup". A variant is part of its group,
 # not another thing the page is about, and its Offer offers the group's product too: it joins the group's Offers under
@@ -68,7 +69,7 @@ def identify(entities: Sequence[Entity], vocabulary: Vocabulary, page_urls: Sequ
         for i, j in combinations(members, 2):
             if prop != _URL or _url_joins(eligible[i], eligible[j]):
                 sets.join(i, j, certain=prop == _IRI)
-    _join_requested(eligible, sets)
+    _join_requested(eligible, sets, page_documents(pages))
     aliases, groups = sets.aliases(), sets.groups()
     merged = [_merged(e, groups.get(e.id, ()), aliases) for e in entities if e.id not in aliases]
     named = {aliases.get(p, p): aliases.get(g, g) for p, g in variant_of.items()}
@@ -126,17 +127,19 @@ def _is_a(entity: Entity, type_: str, vocabulary: Vocabulary) -> bool:
     return any(vocabulary.is_a(t, type_) for t in entity.types)
 
 
-def _join_requested(eligible: Sequence[Entity], sets: "_Sets") -> None:
+def _join_requested(eligible: Sequence[Entity], sets: "_Sets", documents: Documents) -> None:
     """Join each identity-checked data call's root (`Entity.requested`) to the page's one root item of its type, when
-    the page states exactly one (module docstring)."""
+    the page states exactly one and that root is the page's own (module docstring)."""
     for i, e in enumerate(eligible):
         if e.requested and e.parent is None:
-            own = {sets.find(j) for j, o in enumerate(eligible) if _own_root(o, e.types[0])}
-            if len(own) == 1:
-                sets.join(i, own.pop(), certain=True)
+            roots = {sets.find(j): o for j, o in enumerate(eligible) if _root(o, e.types[0])}
+            if len(roots) == 1:
+                (j, root), *_ = roots.items()
+                if not leads_elsewhere(root, documents):
+                    sets.join(i, j, certain=True)
 
 
-def _own_root(entity: Entity, type_: str) -> bool:
+def _root(entity: Entity, type_: str) -> bool:
     return not entity.requested and entity.parent is None and entity.types[0] == type_
 
 

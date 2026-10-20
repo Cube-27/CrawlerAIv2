@@ -135,3 +135,6 @@ def test_a_documented_answer_is_the_page_products_own_entity() -> None:
     assert isinstance(target, Entity)
     owned = {c.field for c in graph.adopt(c for r in reads for c in r.candidates) if graph.owned_by(c, target)}
     assert {"description", "price", "variants.sku"} <= owned
+    # A sole root Product whose URL is another page's is another item: the answer stays apart from it.
+    elsewhere = Entity(id="jsonld:0:$", types=("Product",), urls=(), parent=None, item_urls=(f"{HOST}/products/other",))
+    assert not EntityGraph.of((elsewhere, *reads[1].entities), VOCABULARY, (page,)).aliases
