@@ -32,6 +32,9 @@ whose meaning the HTML Standard defines, for pages whose structured data leaves 
   hyperlinks lead to one other document, illustrates that document (a teaser of another product, a promotion). It
   fills an `image_url` field whose path names schema.org `image`. An image's source is its `src`, unless its `srcset`
   has width descriptors, which leave `src` out of its source set (HTML Standard §4.8.4.3): then its widest candidate.
+  Before it, the first such image (in the main region, else in the body) whose file (`url.resource_key`) is the main
+  image the page's structured data or Open Graph states (`stated_images`): independent evidence of the product's
+  image, which a page without a main landmark (a client-rendered storefront) needs to have a main image at all.
 - **The gallery.** The main image's slides fill a list of images whose path names schema.org `image`: from the main
   image up, the first block with siblings of its tag; each such block's shown image at the main image's tag path, a
   source several blocks give (a placeholder) left out; none when a block links to another document (cards) or fewer
@@ -44,7 +47,7 @@ skipped: a page-level pair says nothing of one row.
 
 import re
 from collections import Counter
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Hashable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
 from pydantic import JsonValue
@@ -60,7 +63,7 @@ from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.content.text import CELLS, declarations, shown
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equality_key
-from crawlerai.normalize.url import canonical_url, media_type
+from crawlerai.normalize.url import canonical_url, media_type, resource_key
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # HTML Standard §4.3: sectioning content of a region that is not its main content (navigation, headers, footers and
@@ -121,9 +124,11 @@ OTHER_ITEMS = ",".join(
 
 
 class DomCollector:
-    def __init__(self, outside: frozenset[int] = frozenset()) -> None:
+    def __init__(self, outside: frozenset[int] = frozenset(), primary: frozenset[Hashable] = frozenset()) -> None:
         # The elements outside the page's product container (`product_apart`).
         self.outside = outside
+        # The files of the main image the page's structured data states (`stated_images`).
+        self.primary = primary
 
     def collect(self, page: ParsedPage, schema: SchemaDef, ctx: Context) -> CollectResult:
         if schema.page_kind != "detail" or page.json_body:
@@ -139,7 +144,7 @@ class DomCollector:
             *_pairs_found(page, pairs, labels, schema, content),
             *_pairs_found(page, listed, field_labels(lists := _list_fields(schema)), lists, content),
             *_typed_found(page, schema, ctx, content, unlabelled),
-            *_image_found(page, schema, ctx, self.outside),
+            *_image_found(page, schema, ctx, self.outside, self.primary),
         ):
             locator = format_locator("dom", xpath)
             found = candidate(name, schema.fields[name], PAGE, "dom", raw, locator, ctx, diagnostics, read=read or None)
@@ -603,22 +608,23 @@ def struck_ids(region: LexborNode) -> frozenset[int]:
     return _inside(e for e in (region, *region.css("*")) if struck(e.tag or "", e.attributes))
 
 
-def _image_found(page: ParsedPage, schema: SchemaDef, ctx: Context, outside: frozenset[int]) -> Iterator[Found]:
-    """The main image for each image field whose path names schema.org `image`, and its gallery for each such list of
-    images, outside the product container's other blocks (`product_apart`)."""
-    named = {n: spec for n, spec in schema.fields.items() if _IMAGE in properties(spec)}
-    fields = [n for n, spec in named.items() if spec.type is FieldType.IMAGE_URL]
-    lists = [n for n, spec in named.items() if spec.item is not None and spec.item.type is FieldType.IMAGE_URL]
-    region = _main_region(page) if fields or lists else None
-    if region is not None:
-        yield from _region_images(region, ctx, fields, lists, outside)
-
-
-def _region_images(
-    region: LexborNode, ctx: Context, fields: Sequence[str], lists: Sequence[str], outside: frozenset[int]
+def _image_found(
+    page: ParsedPage, schema: SchemaDef, ctx: Context, outside: frozenset[int], primary: frozenset[Hashable]
 ) -> Iterator[Found]:
+    """The main image for each image field whose path names schema.org `image`, and its gallery for each such list of
+    images, outside the product container's other blocks (`product_apart`). The main image is the shown image of the
+    `primary` file (`_anchor`), else, in a main region, that region's first image (`_main_image`)."""
+    named = _image_fields(schema)
+    fields = [n for n, spec in named.items() if spec.type is FieldType.IMAGE_URL]
+    lists = [n for n, spec in named.items() if spec.type is FieldType.LIST]
+    landmark = _main_region(page)
+    region = landmark or page.tree.body
+    if not (fields or lists) or region is None:
+        return
     links, apart = _Links.of(region, ctx), _apart_ids(region) | outside
-    found = _main_image(region, links, apart)
+    found = _anchor(region, links, apart, primary, ctx.base_url or ctx.page_url)
+    if found is None and landmark is not None:
+        found = _main_image(region, links, apart)
     if found is None:
         return
     image, source = found
@@ -627,6 +633,43 @@ def _region_images(
     if gallery is not None:
         views: list[JsonValue] = [*gallery[1]]
         yield from ((name, views, node_xpath(gallery[0]), None) for name in lists)
+
+
+def _image_fields(schema: SchemaDef) -> dict[str, FieldSpec]:
+    """The image fields and lists of images whose path names schema.org `image`."""
+    return {
+        name: spec
+        for name, spec in schema.fields.items()
+        if _IMAGE in properties(spec)
+        and FieldType.IMAGE_URL in (spec.type, spec.item.type if spec.item is not None else None)
+    }
+
+
+def stated_images(schema: SchemaDef, stated: Sequence[Candidate]) -> frozenset[Hashable]:
+    """The files (`url.resource_key`) of the main image the page's own structured data and Open Graph state for its
+    product (`stated`): each image field's value and each list of images' first, the representative image a list
+    names first (schema.org `image`; Open Graph's first `og:image`)."""
+    named = _image_fields(schema)
+    values = (c.normalized.value for c in stated if c.field in named and isinstance(c.normalized, Ok))
+    firsts = (value[0] if isinstance(value, list) and value else value for value in values)
+    return frozenset(key for value in firsts if (key := resource_key(value)) is not None)
+
+
+def _anchor(
+    region: LexborNode, links: "_Links", apart: frozenset[int], primary: frozenset[Hashable], base: str | None
+) -> tuple[LexborNode, str] | None:
+    """The region's first shown image of a `primary` file, not a link card's: the product's main image as structured
+    data states it, found by its file (independent evidence of which image is the product's), so a page with no main
+    landmark has one too, and its gallery is read from it."""
+    if not primary:
+        return None
+    for image in region.css("img"):
+        source = _shown_source(image, apart)
+        if source is None or (absolute := canonical_url(source, base)) is None:
+            continue
+        if resource_key(absolute) in primary and not _link_card(image, region, links):
+            return image, source
+    return None
 
 
 def _main_region(page: ParsedPage) -> LexborNode | None:

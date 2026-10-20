@@ -228,8 +228,10 @@ price role its path gives it (schemas spec, "Presets"): struck text (`s`, `del`,
 price; an amount followed by a CLDR per pattern and a CLDR mass, volume, length, area or item unit (`€25/kg`,
 `$0.50 per 100 ml`; `normalize/units.py`, the page's and the root locale's CLDR unit data) only for a unit price; an
 amount per a CLDR duration unit (`$25/mo`) for no money field; a member price from its labels only. The item layer's
-rows read by the same rule (`collect/items/align.py`). It SHALL take the main image of
-the one `main`/`role=main`/`article` outside chrome, decorative images and link cards (`collect/dom.py`), an image's
+rows read by the same rule (`collect/items/align.py`). It SHALL take as the main image the first shown image (in that
+region, else in the body) whose file (`resource_key`) is the main image the page's own structured data or Open Graph
+states (an image field's value, a list's first), else the first image of
+the one `main`/`role=main`/`article`, outside chrome, decorative images and link cards (`collect/dom.py`), an image's
 source being its `src` unless its `srcset` has width descriptors (HTML Standard §4.8.4.3: `src` is then out of the
 source set), when it is the widest candidate; and for a list of images whose path names schema.org `image`, the main
 image's gallery: from the main image up, the first block with siblings of its tag gives, per such block, its shown image
@@ -246,12 +248,16 @@ not hold the title are set apart too. Values MUST be visible.
 (Previously: labels were only names, and other items' content was read; `src` was read before `srcset`; no list of
 images was read; a recommendation card that was not one of two or more sibling cards was read; an other item's
 structured price counted as stated, so its card was read; struck text was `s` and `del` only, and an amount per unit
-or per period was a price candidate.) Refs: Appendix A #42, D-0955,
+or per period was a price candidate; a page without a main landmark had no main image and no gallery.) Refs: Appendix A #42, D-0955,
 D-1096, D-1640, D-1641, D-1642, D-1643.
 #### Scenario: Gallery slides
 - **WHEN** the main image is one of three sibling slides, two of which hold an image whose `src` is a shared placeholder
   and whose `srcset` lists widths
 - **THEN** the list of images is the slides' images, each at its widest `srcset` candidate
+#### Scenario: A storefront without a main landmark
+- **WHEN** a page has no `main`, `role=main` or single `article`, its JSON-LD `Product.image` names one file, and the
+  body shows that file as one of three sibling slides
+- **THEN** `image_url` is that slide's image and the list of images is the three slides' images
 #### Scenario: Label line
 - **WHEN** the main region holds `Brand: <span>Example Brand</span>`
 - **THEN** `brand` has the candidate `Example Brand` located at the span

@@ -192,7 +192,8 @@ def _store_api(scheme: str, netloc: str, path: str, markup: str) -> ProductJson 
 
 
 # Shopify Ajax API, "Product" (shopify.dev/docs/api/ajax/reference/product): the product's `title`, `url` (its route
-# on the shop), `featured_image`, `vendor`, and its `variants`, each with its `title`, `sku`, `barcode` (the GTIN, UPC
+# on the shop), `description` (its HTML body), `images` (every image's URL, the featured one first), `vendor`, and
+# its `variants`, each with its `title`, `sku`, `barcode` (the GTIN, UPC
 # or ISBN), `available` (whether it can be bought) and `price`, an integer in cents for every currency ("prices are
 # in cents").
 _SHOPIFY_VARIANT: Final = Shape(
@@ -210,7 +211,13 @@ _SHOPIFY_VARIANT: Final = Shape(
 )
 _SHOPIFY_PRODUCT_NODE: Final = Shape(
     type="Product",
-    properties={"name": ("title",), "url": ("url",), "image": ("featured_image",), "brand": ("vendor",)},
+    properties={
+        "name": ("title",),
+        "url": ("url",),
+        "description": ("description",),
+        "image": ("images", ALL),
+        "brand": ("vendor",),
+    },
     nodes={"offers": (_SHOPIFY_VARIANT,)},
 )
 # WooCommerce Store API, "Products" (github.com/woocommerce/woocommerce, plugins/woocommerce/src/StoreApi/docs,

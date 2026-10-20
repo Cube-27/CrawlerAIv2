@@ -11,9 +11,11 @@ Two structural properties of the values say a candidate is a fragment of another
   so the rendition keeping more of its lines supersedes it.
 - text: a value that is another kind's value plus a separator (a dash or a vertical bar, between spaces) and more
   text, at either end, is that value with decoration; the other kind's undecorated value supersedes it.
-- a list of images: an Open Graph list (the protocol's `og:image` is an image to represent the object, as its
-  description is a summary) whose files are all among a longer list's of another kind (`resource_key`) is that list's
-  representative part; the longer list supersedes it.
+- a list of images: a list whose files are all among a longer list's of another kind (`resource_key`: the set of
+  files a list names, a strict subset of the other's) is that list's representative part, whatever its kind: an Open
+  Graph `og:image` (an image to represent the object), or a structured `image` stating the main image only while the
+  page's gallery or another source lists every view. The longer list supersedes it; it must name every file the
+  shorter one does, so a list of other images never supersedes it.
 """
 
 import re
@@ -43,13 +45,7 @@ def superseded(spec: FieldSpec, kept: Sequence[Candidate]) -> list[Candidate]:
 
 def _representative(item: FieldSpec, kept: Sequence[Candidate]) -> list[Candidate]:
     files = [(c, _files(c, item)) for c in kept]
-    return [
-        c
-        for c, own in files
-        if c.source_kind == _OPEN_GRAPH
-        and own
-        and any(o.source_kind != _OPEN_GRAPH and own < other for o, other in files)
-    ]
+    return [c for c, own in files if own and any(o.source_kind != c.source_kind and own < other for o, other in files)]
 
 
 def _files(c: Candidate, item: FieldSpec) -> frozenset[Hashable]:

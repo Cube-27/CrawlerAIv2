@@ -14,7 +14,7 @@ The page's detect-and-report signals (`content.signals`) join the diagnostics.
 """
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 
@@ -24,7 +24,7 @@ from crawlerai.adapters.registry import Registry
 from crawlerai.collect.adapter import AdapterCollector
 from crawlerai.collect.admission import AdmittingCollector
 from crawlerai.collect.base import Candidate, Collector, CollectResult, Entity
-from crawlerai.collect.dom import DomCollector, product_apart
+from crawlerai.collect.dom import DomCollector, product_apart, stated_images
 from crawlerai.collect.dom_text import DescriptionCollector
 from crawlerai.collect.items.align import Items, align
 from crawlerai.collect.items.state_rows import StateRows, state_rows
@@ -160,18 +160,20 @@ class _DomPasses:
     the structured data's prices)."""
 
     outside: frozenset[int]
+    # The files of the main image the structured data states (`collect.dom.stated_images`).
+    primary: frozenset[Hashable] = frozenset()
 
     @classmethod
     def of(
         cls, page: ParsedPage, schema: SchemaDef, ctx: Context, structured: Sequence[Candidate], diagnostics: list[str]
     ) -> "_DomPasses":
         outside = _isolated(product_apart, partial(product_apart, page, schema, ctx, structured), diagnostics)
-        return cls(outside or frozenset())
+        return cls(outside or frozenset(), stated_images(schema, structured))
 
     def structural(
         self, page: ParsedPage, schema: SchemaDef, ctx: Context, diagnostics: list[str]
     ) -> list[CollectResult]:
-        dom = DomCollector(self.outside)
+        dom = DomCollector(self.outside, self.primary)
         found = _isolated(dom, partial(dom.collect, page, schema, ctx), diagnostics)
         return [] if found is None else [found]
 
