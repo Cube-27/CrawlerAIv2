@@ -138,8 +138,10 @@ by a colon, and for a number or count also the words right after it ("293 Review
 vocabulary (extraction spec, "Label vocabulary"), name fields of which this one is none. A label that names no field,
 or this one, decides nothing. On a listing, a place claimed for a row from its block's heading (HTML `h1`-`h6`, the
 item's name) is not taken when a line of the block outside the heading states that the job is remote (the location
-normalizer's `type:remote` clause): the block states its place there. A value not taken leaves the field as an
-ungrounded one does. (Previously: any grounded span was taken.) Enforced by: `tests/unit/test_role_c.py`; active.
+normalizer's `type:remote` clause): the block states its place there. A place that starts its line, below a line outside
+the heading holding a `type:remote` phrase (its label, `Remote from`), is taken with that line: the place as the page
+states it. A value not taken leaves the field as an ungrounded one does. (Previously: any grounded span was taken; a
+place under a remote label was taken without it.) Enforced by: `tests/unit/test_role_c.py`; active.
 Refs: §11, INV-12.
 #### Scenario: Label kept with an identifier
 - **WHEN** a product_id claim is `REF.: CLU459_4712_V2`
@@ -147,6 +149,9 @@ Refs: §11, INV-12.
 #### Scenario: Another field's label
 - **WHEN** a product_id claim is a span after `ISBN:` and `ISBN` is a label of gtin only
 - **THEN** it is not taken, and product_id stays `missing` (`unverified`)
+#### Scenario: Place under a remote label
+- **WHEN** a job card shows `Remote from` and on the next line `USA`, and the claim for the row's locations is `USA`
+- **THEN** its candidate is the span `Remote from` to `USA`, text `Remote from USA`
 #### Scenario: Remote card, city in the title
 - **WHEN** a job card's heading is `Sales Rep - Austin, TX` and a line of the card says `Remote`, and the claim for the
   row's locations is `Austin, TX`

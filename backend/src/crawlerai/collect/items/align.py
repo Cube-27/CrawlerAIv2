@@ -24,8 +24,12 @@ C4):
   1.2), kept where the block shows it (WCAG 2.1 SC 2.5.3 Label in Name, over one or several whole lines, a line cut
   short by an ellipsis standing for the rest), its leading and trailing words the block does not show dropped when
   every block states the same ones (the template's `Details of`). Content of several lines is the whole card, not its
-  name. Of the three, the one whose values differ most across the blocks: text every block repeats is the template's
-  (a call to action), not an item's. A block the chosen rule gives no name reads the one line at the tag path the
+  name; so is a stated name whose shown run holds a typed value the block shows (`_View.stated`: a name holds no
+  price). A name read from the item link's content runs on over the block's next whole lines while an image's text
+  alternative goes on with them (`_View.continued`: a model name in the link, its variant on the line below). The
+  item's links are those leading to its URL, or, for a URL without a query, to it refined with one (`_leads_to`).
+  Of the three, the one whose values differ most across the blocks: text every block repeats is the template's (a
+  call to action), not an item's. A block the chosen rule gives no name reads the one line at the tag path the
   rule's names have in a quorum of blocks (DEPTA alignment: a sold-out card's extra heading, a stale `alt`); a child
   element of the name whose text every block repeats is the template's (screen-reader-only helper text) and is left
   out of the name.
@@ -76,7 +80,7 @@ from crawlerai.collect.base import ITEM_BLOCK, Candidate, Entity
 from crawlerai.collect.dom import struck as is_struck
 from crawlerai.collect.dom_images import decorative, image_source, is_image_url
 from crawlerai.collect.items.spot import Spot, is_typed, reads, spots
-from crawlerai.collect.items.stated import Stated, Word, same, words
+from crawlerai.collect.items.stated import Stated, Word, continues, same, words
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate, is_item_url
 from crawlerai.content.dom import tokens
@@ -255,11 +259,7 @@ class _Aligned:
         views = [_View.of(page, block, found, ctx.base_url, sublists) for block, found in links if found is not None]
         if len(views) < needed or sum(shows_more(view.block) for view in views) < MIN_ITEMS:
             return None
-        aligned = cls(group, views)
-        for name, role in roles.items():
-            if (kept := _field(views, role, schema.fields[name], ctx, needed)) is not None:
-                aligned.fields[name] = kept
-        return aligned
+        return cls(group, views, _fields(views, schema, roles, ctx, needed))
 
     def copies_navigation(self, roles: Mapping[str, Role], chrome: Sequence[tuple[HtmlElement, str]]) -> bool:
         """Whether the group is a copy of the site's navigation (module docstring): it aligns no typed value, and more
@@ -298,6 +298,21 @@ class _Aligned:
         return Items(tuple(blocks), tuple(candidates), self.group, tuple(diagnostics), frozenset(self.fields))
 
 
+def _fields(
+    views: Sequence["_View"], schema: SchemaContent, roles: Mapping[str, Role], ctx: Context, needed: int
+) -> dict[str, list[tuple[Spot, ...]]]:
+    """Each aligned field's spots in each block (`_field`), typed values read first: a name holds none of them
+    (`_View.stated`)."""
+    found: dict[str, list[tuple[Spot, ...]]] = {}
+    for name in sorted(roles, key=lambda name: roles[name] == "name"):
+        if (kept := _field(views, roles[name], schema.fields[name], ctx, needed)) is not None:
+            found[name] = kept
+        if kept is not None and roles[name] == "typed":
+            for view, spots_ in zip(views, kept, strict=True):
+                view.note_values(spots_)
+    return {name: found[name] for name in roles if name in found}
+
+
 def _field(
     views: Sequence["_View"], role: Role, spec: FieldSpec, ctx: Context, needed: int
 ) -> list[tuple[Spot, ...]] | None:
@@ -310,7 +325,10 @@ def _field(
     more = _stated_names(views, stated, spec, ctx, needed)
     names = [tuple(s for s in (*a, *b) if not is_absolute(s.raw)) for a, b in zip(own, more, strict=True)]
     kept = _aligned(names, needed, spec, one_place=True)
-    return None if kept is None else _untemplated(views, _filled(views, kept, spec, ctx, needed), spec, ctx)
+    if kept is None:
+        return None
+    named = _untemplated(views, _filled(views, kept, spec, ctx, needed), spec, ctx)
+    return [view.continued(found, spec, ctx) for view, found in zip(views, named, strict=True)]
 
 
 def _completed(found: tuple[Spot, ...], stated: Stated | None, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
@@ -485,13 +503,14 @@ class _View:
     path: str
     href: str
     link: str
-    anchors: list[HtmlElement]  # the hyperlinks leading to the item URL, in document order
+    anchors: list[HtmlElement]  # the hyperlinks leading to the item (`_leads_to`), in document order
     elements: list[HtmlElement] = field(default_factory=list)
     paths: dict[HtmlElement, str] = field(default_factory=dict)
     places: dict[HtmlElement, str] = field(default_factory=dict)
     struck: set[HtmlElement] = field(default_factory=set)
     holding_struck: set[HtmlElement] = field(default_factory=set)
     by_path: dict[str, HtmlElement] = field(default_factory=dict)
+    values: list[tuple[int, int]] = field(default_factory=list)  # where the block's typed values are (`note_values`)
 
     @classmethod
     def of(
@@ -503,9 +522,7 @@ class _View:
         sublists: frozenset[HtmlElement],
     ) -> "_View":
         href, link = found
-        anchors = [
-            a for a in hyperlinks(block) if a not in sublists and canonical_url(a.get("href") or "", base) == link
-        ]
+        anchors = [a for a in hyperlinks(block) if a not in sublists and _leads_to(a, link, base)]
         view = cls(page, block, text_path(block), href, link, anchors)
         view.walk()
         return view
@@ -573,14 +590,49 @@ class _View:
 
     def stated(self) -> Stated | None:
         """The block's attribute-stated name the block shows most words of (the first on a tie), else its first
-        stated name (`Stated`); None when it states none."""
+        stated name (`Stated`); None when it states none. A stated name whose shown run holds a typed value the block
+        shows (`note_values`) is left out: a name holds no price or date, so one running on over the card's price is the
+        whole card's text, as an accessible name computed from a link's content reads it (Accessible Name Computation
+        1.2, step 2F), not the item's name."""
         shown = self._words()
         best: Stated | None = None
         for text, element in self._stated_texts():
             found = Stated.of(text, self.paths[element], shown, self.holding)
+            if found.shown and any(_overlap(found.shown_at, at) for at in self.values):
+                continue
             if best is None or found.covered > best.covered:
                 best = found
         return best
+
+    def note_values(self, found: Iterable[Spot]) -> None:
+        """Note the spans of the cleaned text that typed values of the block were read at."""
+        text = self.page.cleaned_text.text
+        for spot in found:
+            element = self.at(spot.xpath)
+            span = None if element is None else self.page.text_spans.get(self.paths[element])
+            at = -1 if span is None else text.find(spot.raw, *span)
+            if at >= 0:
+                self.values.append((at, at + len(spot.raw)))
+
+    def continued(self, found: tuple[Spot, ...], spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
+        """A name read from an item link's content, run on over the block's next whole lines while an image's text
+        alternative goes on with them (`_pictured`, `stated.continues`; WCAG 2.1 SC 2.5.3: the stated name holds the
+        visible label): a model name in the link and its variant on the line below are the item's name. Unchanged
+        otherwise."""
+        element = self.at(found[0].xpath) if len(found) == 1 and found[0].place == _LINK_NAME else None
+        span = None if element is None else self.page.text_spans.get(self.paths[element])
+        block = self.page.text_spans.get(self.path)
+        stated = self._pictured() if span is not None else []
+        if span is None or block is None or not stated:
+            return found
+        rest = self.page.cleaned_text.text[span[1] : block[1]]
+        name = found[0].raw
+        for line in rest.split("\n")[1:] if rest.startswith("\n") else ():
+            longer = f"{name} {' '.join(line.split())}"
+            if not line.strip() or not any(continues(text, longer) for text in stated):
+                break
+            name = longer
+        return found if name == found[0].raw else spots(name, spec, ctx, found[0].xpath, found[0].place) or found
 
     def _stated_texts(self) -> list[tuple[str, HtmlElement]]:
         """The names the item's attributes state, with their elements: each shown item link's `aria-labelledby`,
@@ -593,6 +645,14 @@ class _View:
         images = (e for e in self.elements if e.tag == "img" and not decorative(dict(e.attrib)))
         texts.extend((text, e) for e in images if (text := _squeezed_text(e.get("alt"))))
         return texts
+
+    def _pictured(self) -> list[str]:
+        """The text alternatives of the block's images (HTML Standard §4.8.4.4: an image's `alt` names what it
+        pictures, here the item), decorative ones aside, hidden ones too: a carousel a script reveals still pictures
+        the item, and its `alt` is read only against the lines the block shows. A link's computed name may join other
+        statements to the name (`aria-labelledby` naming the name and an availability badge), so it is not read."""
+        images = (e for e in self.block.iter("img") if not decorative(dict(e.attrib)))
+        return [text for e in images if (text := _squeezed_text(e.get("alt")))]
 
     def _words(self) -> list[Word]:
         span = self.page.text_spans.get(self.path)
@@ -696,6 +756,10 @@ class _View:
         return texts
 
 
+def _overlap(a: tuple[int, int], b: tuple[int, int]) -> bool:
+    return a[0] < b[1] and b[0] < a[1]
+
+
 def _joins_digits(joins: Sequence[int], span: tuple[int, int]) -> bool:
     """Whether a digit join (`ParsedPage.digit_joins`, sorted) lies inside the span."""
     at = bisect.bisect_right(joins, span[0])
@@ -727,6 +791,14 @@ def _contains(outer: HtmlElement, inner: HtmlElement) -> bool:
             return True
         node = node.getparent()
     return False
+
+
+def _leads_to(anchor: HtmlElement, link: str, base: str | None) -> bool:
+    """Whether the hyperlink leads to the item at `link`: to that URL, or, for a URL without a query, to it refined with
+    one (RFC 3986 §3.4: a query refines the resource the path names, such as a variant a card's picture links to while
+    its button links to the product, as `without_queries` reads a block's links)."""
+    url = canonical_url(anchor.get("href") or "", base)
+    return url is not None and (url == link or (not urlsplit(link).query and url.startswith(f"{link}?")))
 
 
 def _current_page(block: HtmlElement, base: str | None, here: str | None) -> bool:

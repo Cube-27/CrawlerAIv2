@@ -139,8 +139,18 @@ def _telecommute(value: JsonValue) -> bool:
 def _says_remote(text: str, ctx: Context) -> bool:
     # A phrase is stated only as a whole clause ("Lakeside, Remote"): "not remote" has other words in its clause, and
     # no standard lists the words that negate (C4, C7), so it states nothing (INV-37's rule, D-1272).
-    entries = vocab.entries_for(vocab.type_vocabulary("remote") or {}, vocab.context_languages(ctx))
-    return bool(vocab.clause_codes(text, entries))
+    return bool(vocab.clause_codes(text, _remote_entries(ctx)))
+
+
+def mentions_remote(text: str, ctx: Context) -> bool:
+    """Whether a `type:remote` phrase is anywhere in `text`, as a run of its words, whatever else its clause says: the
+    text speaks of remote work, which is not to say it states the job is remote (`_says_remote`)."""
+    words = vocab.tokens(text)
+    return any(entries.find(words) for entries in _remote_entries(ctx))
+
+
+def _remote_entries(ctx: Context) -> list[vocab.Entries]:
+    return vocab.entries_for(vocab.type_vocabulary("remote") or {}, vocab.context_languages(ctx))
 
 
 def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:

@@ -11,17 +11,23 @@ publishes is [resolution](../resolution/spec.md). Rationale: master plan §3.2 (
 
 ### Requirement: Item groups (segment)
 A listing page's repeated item groups SHALL be `MIN_ITEMS` or more sibling blocks of one shape that each are or hold a
-hyperlink, outside chrome (`acquire/items.py`: `nav`, `header`, `footer`, `aside`, `search`, their landmark roles and
+hyperlink, the blocks of one shape in sibling sections of one shape being one group in document order however few each
+section holds, when two or more sections hold them and one holds several (a part each item shows once is no section's
+run), outside chrome (`acquire/items.py`: `nav`, `header`, `footer`, `aside`, `search`, their landmark roles and
 the WAI-ARIA `menubar` and `menu` roles), ranked once per parse (`ParsedPage.item_groups`, `content/segment.py`):
 by the rendered area of their blocks when the browser capture measured it (`CaptureManifest.item_areas`, recorded for
 listing captures), else by blocks showing an image or two or more text runs, then size; a block not rendered (no area,
 or hidden by the HTML rendering rules, unless the element hiding it is content a script reveals, extraction spec
 "Cleaned text and visibility index") is left out. The markdown format, `xhr` and the paging driver read this one
-ranking. (Previously: role C's item text read it too; a `menubar`, `menu` or `search` landmark was content.) Refs:
+ranking. (Previously: role C's item text read it too; a `menubar`, `menu` or `search` landmark was content; a section
+of fewer than `MIN_ITEMS` items was no group, and each larger section a group of its own.) Refs:
 owner #67, master plan §3.2.
 #### Scenario: Tag cloud beside a grid
 - **WHEN** a listing holds 30 bare tag links and 4 cards with an image, a link and a price
 - **THEN** the cards' group ranks first
+#### Scenario: A job board in team sections
+- **WHEN** a board lists its jobs under team labels, one, two and three jobs per team, each team one `div` of one class
+- **THEN** its six jobs are one group, in document order
 #### Scenario: Measured areas
 - **WHEN** a browser capture measured a sidebar's 20 links smaller in area than a grid's 6 cards
 - **THEN** the grid ranks first, and a card with no area is not one of its blocks
@@ -37,7 +43,10 @@ link to, a vendor's, an author's or a category's page, are the template's), the 
 one-line content, the block's heading, or the name the item's attributes state, `aria-labelledby`/`aria-label`/`title`
 or an image's `alt`, kept where the block shows it over one or several whole lines in order, WCAG label in name, a line
 cut by an ellipsis standing for the rest, its unshown leading or trailing words dropped when every block states the
-same; never a URL; text every block repeats is the template's, also a child element of the name every block shows alike;
+same, and none where its shown run holds a price or other typed value the block shows (the whole card's text); a name
+read from the item link's content runs on over the block's next whole lines while an image's `alt`, hidden ones
+included, goes on with them; the item's links are those leading to its URL or, for a URL without a query, to it with
+one; never a URL; text every block repeats is the template's, also a child element of the name every block shows alike;
 a block the chosen rule leaves unnamed reads the one line at the tag path a quorum of its names have), the image, and typed value spotting for money, dates and check-digit identifiers (text in `s`/`del`
 excluded, also from the lines of the elements holding it; an element's line is not read where two text nodes run digits
 together, a token boundary the text does not show; an element holding others is also read in each of its own text
@@ -50,7 +59,8 @@ lying in one block of another group at one tag path in two or more of its blocks
 list alike); the different lists a page's sections hold are no item's. (Previously: a card linking to its item and to
 an author or vendor page gave no item URL unless a heading or most of its text held the item's link; a category or city
 hub listing the page was rows; a section-level group whose sections held different lists made each list an item's own,
-its links no item's.) Refs: owner #67.
+its links no item's; a stated name holding the heading, the price and the colours was the name; a link's line was the
+whole name where the card stated it over that line and the next.) Refs: owner #67.
 #### Scenario: Cards with title, link and price
 - **WHEN** a listing shows cards of varying tags and class tokens, each with a heading link and one price
 - **THEN** each card is a row with its title, URL and price
@@ -58,6 +68,14 @@ its links no item's.) Refs: owner #67.
 - **WHEN** each card has an empty item link with `aria-label="Details of Runner 1 Blue R1"`, shows `Runner 1` and
   `Blue` on two lines, and a size picker linking to the item
 - **THEN** each card's name is `Runner 1 Blue R1`
+#### Scenario: A whole-card label holding the price
+- **WHEN** each card's link is labelled `New Coat 1 10.00 EUR In 3 colours` and the card shows `New`, an `h3` `Coat 1`
+  and `10.00 EUR`
+- **THEN** each card's name is `Coat 1`
+#### Scenario: A name over the link and the line below
+- **WHEN** a card's link shows `Clog 1`, the next lines show `Suede Leather` and `Taupe`, and a hidden image's `alt` is
+  `Clog 1 Suede Leather - main view`
+- **THEN** its name is `Clog 1 Suede Leather`
 #### Scenario: Helper text in the name link
 - **WHEN** every card's name link holds `<span>View product</span>` before the item's name
 - **THEN** the names leave `View product` out

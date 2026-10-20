@@ -40,6 +40,7 @@ from crawlerai.llm.grounding import GroundedSpan, SpanClaim, align, ground_eleme
 from crawlerai.llm.marked import MarkedText, Scoped, marked, scoped
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
+from crawlerai.normalize.location import mentions_remote
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 _PROMPTS = files("crawlerai.llm").joinpath("prompts")
@@ -295,6 +296,7 @@ def _read_claims(
             dropped.append(f"role C: block {index} {name} ungrounded")
             continue
         taken.add((index, name))
+        at = _with_remote_label(block, at, spec, ctx)
         candidates.append(_candidate(name, spec, block.row, at.value, at.locator, ctx))
     return _Read(tuple(candidates), tuple(dropped))
 
@@ -331,6 +333,27 @@ def _heading_place(block: BlockText, at: GroundedSpan, spec: FieldSpec, ctx: Con
             return True
         offset += len(line) + 1
     return False
+
+
+def _with_remote_label(block: BlockText, at: GroundedSpan, spec: FieldSpec, ctx: Context) -> GroundedSpan:
+    """A place claimed for a row that starts its line, with the line before it when that line, outside the block's
+    heading, speaks of remote work (`normalize.location.mentions_remote`): the label the page writes the place under
+    ("Remote from" above "Spain, Portugal") is part of how it states the place, which the location normalizer keeps
+    as the place's text (normalization spec, "location as stated"), so the remote statement is not lost. Unchanged
+    otherwise."""
+    item = spec.item if spec.type is FieldType.LIST else spec
+    offset = at.start - block.start
+    if item is None or item.type is not FieldType.LOCATION or not 0 < offset <= len(block.text):
+        return at
+    before = block.text[:offset]
+    if not before.endswith("\n"):
+        return at
+    label_start = before.rfind("\n", 0, offset - 1) + 1
+    low = block.start + label_start
+    heading = block.heading
+    if (heading is not None and low < heading[1]) or not mentions_remote(before[label_start:], ctx):
+        return at
+    return GroundedSpan(block.text[label_start : at.end - block.start], low, at.end)
 
 
 def _remote(line: str, spec: FieldSpec, ctx: Context) -> bool:
