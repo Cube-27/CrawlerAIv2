@@ -160,27 +160,28 @@ _WORD = re.compile(r"[^\W_]+")
 
 
 def slug_span(title: str, page_url: str | None) -> str:
-    """The longest run of the title's words that a segment of the page URL's path spells as a slug, after words of the
-    title's own, else the title. A slug is a path segment (RFC 3986 §3.3, percent-decoded) of two or more words, one
-    with a letter, joined by separators; it names the document's item, so the words before it are the site's wording
+    """The run of the title's words that the page URL's slug spells, after words of the title's own, else the title.
+    The slug is the last path segment (RFC 3986 §3.3, percent-decoded) of two or more words, one with a letter, joined
+    by separators: a hierarchical path names its item below its categories, so earlier segments are the item's
+    categories, not its name. The slug names the document's item, so the words before it are the site's wording
     ("Buy"), and so are the words after it. A title that starts with the slug's words is read as written: its further
     words may go on naming the item. Words compare folded (`_folded`)."""
-    if page_url is None:
+    slug = _slug(page_url) if page_url is not None else None
+    if slug is None:
         return title
     words = list(_WORD.finditer(title))
     keys = [_folded(w.group()) for w in words]
-    best: tuple[int, int] | None = None
-    for slug in _slugs(page_url):
-        for start in range(1, len(keys) - len(slug) + 1):
-            if keys[start : start + len(slug)] == slug and (best is None or len(slug) > best[1] - best[0]):
-                best = (start, start + len(slug))
-    return title if best is None else title[words[best[0]].start() : words[best[1] - 1].end()]
+    if keys[: len(slug)] == slug:
+        return title
+    start = next((i for i in range(1, len(keys) - len(slug) + 1) if keys[i : i + len(slug)] == slug), None)
+    return title if start is None else title[words[start].start() : words[start + len(slug) - 1].end()]
 
 
-def _slugs(page_url: str) -> list[list[str]]:
-    """The page URL's path segments that read as slugs (`slug_span`), each as its folded words."""
-    segments = (_WORD.findall(_folded(unquote(segment))) for segment in urlsplit(page_url).path.split("/"))
-    return [words for words in segments if len(words) >= 2 and any(not w.isdigit() for w in words)]
+def _slug(page_url: str) -> list[str] | None:
+    """The last path segment of the page URL that reads as a slug (`slug_span`), as its folded words."""
+    segments = [_WORD.findall(_folded(unquote(segment))) for segment in urlsplit(page_url).path.split("/")]
+    slugs = [words for words in segments if len(words) >= 2 and any(not w.isdigit() for w in words)]
+    return slugs[-1] if slugs else None
 
 
 def _folded(text: str) -> str:

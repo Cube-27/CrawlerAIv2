@@ -50,7 +50,7 @@ as the active price (unless `product:sale_price_dates:end` is before the capture
 as the list price, `product:original_price` as the list price,
 `og:availability`, `product:condition`, `product:retailer_item_id` and `product:brand`; no translation, site-default
 blocks skipped, an `og:title` read without trailing segments naming the site and, when words of its own come before a
-run of its words that a page URL path segment spells as a slug, as that run) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
+run of its words that the last slug segment of the page URL path spells, as that run) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
 standing in for that thing; a path through another thing, `Product.offers.seller.url`, has none); a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
 element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. A platform's documented

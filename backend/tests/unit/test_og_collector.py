@@ -215,3 +215,12 @@ def test_an_og_title_holding_the_page_urls_slug_reads_as_the_slugs_words() -> No
 
     (title,) = [c for c in OpenGraphCollector().collect(page, SCHEMA, ctx).candidates if c.field == "title"]
     assert title.normalized == Ok("Crème Kettle 2L")
+    # Only the last slug segment names the item: a category segment earlier in the path is not its name.
+    category = Context(captured_at=CTX.captured_at, page_url="https://shop.example.test/kitchen-tools/acme-kettle")
+    page = _page(("og:title", "Acme Kettle for Kitchen Tools"))
+    (title,) = [c for c in OpenGraphCollector().collect(page, SCHEMA, category).candidates if c.field == "title"]
+    assert title.normalized == Ok("Acme Kettle for Kitchen Tools")
+    # A title that starts with the slug's words is read as written, a later repeat of them aside.
+    page = _page(("og:title", "Acme Kettle Deluxe - Buy Acme Kettle Online"))
+    (title,) = [c for c in OpenGraphCollector().collect(page, SCHEMA, category).candidates if c.field == "title"]
+    assert title.normalized == Ok("Acme Kettle Deluxe - Buy Acme Kettle Online")

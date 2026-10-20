@@ -44,6 +44,7 @@ class Stated:
     end: int = 0
     lead: str = ""
     trail: str = ""
+    cut: bool = False  # the shown run ends in a word an ellipsis cut short: the name goes on past it
 
     @property
     def shown(self) -> bool:
@@ -70,6 +71,7 @@ class Stated:
             end,
             fold(text[:start]),
             fold(text[end:]),
+            words[j + covered - 1].cut,
         )
 
     def trimmed(self, *, lead: bool, trail: bool) -> str:

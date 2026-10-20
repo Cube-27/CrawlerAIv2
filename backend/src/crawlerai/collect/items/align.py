@@ -308,11 +308,14 @@ def _stated_names(
 
 
 def _trimmed(stated: Stated, lead: str, trail: str, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
-    """A shown stated name without the group's common unshown `lead` and `trail`; none for one not shown or whose
+    """A shown stated name without the group's common unshown `lead` and `trail` (the trail kept after a line an
+    ellipsis cut); none for one not shown or whose
     unshown leading words are its own."""
     if not stated.shown or (stated.lead and stated.lead != lead):
         return ()
-    return spots(stated.trimmed(lead=bool(stated.lead), trail=bool(trail)), spec, ctx, stated.xpath, _STATED)
+    # A run an ellipsis cut short goes on in the unshown words, so they stay even when every block states them.
+    keep_trail = not trail or stated.cut
+    return spots(stated.trimmed(lead=bool(stated.lead), trail=not keep_trail), spec, ctx, stated.xpath, _STATED)
 
 
 def _filled(
