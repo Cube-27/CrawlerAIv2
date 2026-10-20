@@ -1,7 +1,8 @@
 """Intent (resolution spec rule 3, §10): the one entity a detail page is about, or `intent_ambiguous`.
 
 The candidates are the entities of the schema's primary types, without those inside a list, inside another
-primary entity's relation properties, a primary entity's variants, or the group it is a variant of. One candidate is
+primary entity's relation properties, a primary entity's variants, the group it is a variant of, or the item a primary
+entity's review or rating names as reviewed (`itemReviewed`, the entity itself). One candidate is
 the target. Of several, the one whose URLs name the request, final or canonical URL is. Failing that, the page's own
 candidates are those that are not another page's item: an entity whose every URL is another document, or one of a
 repeated set of items in the markup (a carousel, a comparison table). One own candidate is the target; of several,
@@ -22,6 +23,9 @@ from crawlerai.resolve.ownership import OFFER, EntityGraph, names_any
 from crawlerai.schemas.paths import parse_paths
 from crawlerai.schemas.types import SchemaDef
 
+# schema.org `itemReviewed` ("the item that is being reviewed/rated") points back at the item its Review or
+# AggregateRating describes: under a primary entity it is that entity restated, not another subject.
+_BACK_REFERENCES = frozenset({"itemReviewed"})
 # A primary entity's variants are members of it (`VARIANT`, schema.org `hasVariant`), not other things the page is
 # about: they often repeat the group's URL, which would leave the page ambiguous. schema.org `isVariantOf`, the inverse
 # of `hasVariant`, holds the group its holder is a variant of: a more general thing than the holder.
@@ -116,13 +120,14 @@ def _has_variants(graph: EntityGraph, entity: Entity) -> bool:
 
 
 def _excluded(graph: EntityGraph, entity: Entity, primary: frozenset[str]) -> bool:
-    """Whether the entity is inside a list, or inside a relation property of a primary entity or one of its
-    variants (§4.6 step 1)."""
-    child = entity
+    """Whether the entity is inside a list, inside a relation property of a primary entity or one of its
+    variants (§4.6 step 1), or a primary entity's back-reference to itself (`itemReviewed` of its rating)."""
+    child, back = entity, False
     for ancestor in graph.ancestors(entity):
         if any(graph.is_a(ancestor, t) for t in LISTS):
             return True
-        if child.via in _NOT_THE_SUBJECT and is_primary(graph, ancestor, primary):
+        back = back or child.via in _BACK_REFERENCES
+        if (back or child.via in _NOT_THE_SUBJECT) and is_primary(graph, ancestor, primary):
             return True
         child = ancestor
     return False

@@ -51,6 +51,9 @@ class Entity(_Model):
     group_ids: tuple[str, ...] = ()
     # schema.org `isVariantOf`: the IRIs (`@id`, `itemid`) of the nodes this product names as what it is a variant of.
     variant_of: tuple[str, ...] = ()
+    # Whether its source already checked that it states the requested item: the root of an identity-checked data
+    # call's answer (acquisition spec "Data calls"). Identity merges it into the page's own item (`resolve.identity`).
+    requested: bool = False
 
 
 class Candidate(_Model):

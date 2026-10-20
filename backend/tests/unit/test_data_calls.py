@@ -13,7 +13,9 @@ from hypothesis import strategies as st
 
 from crawlerai.acquire.identity import NOT_THE_PRODUCT, identified, joined
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.collect.base import Entity
 from crawlerai.collect.currencies import with_page_declarations
+from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.platform_json import PlatformJsonCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.content.page import ParsedPage
@@ -21,6 +23,8 @@ from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context, Ok
+from crawlerai.resolve.intent import primary_types, select_target
+from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, NetworkBody, network_file
@@ -109,3 +113,25 @@ def test_a_documented_answer_joins_only_for_its_product_and_reads_in_major_units
         # A detail API recipe's answer is checked the same way.
         recipe = identified(_capture(f"{HOST}/api/p", "api", _product(other)), page, (key,))
         assert recipe.attempts[-1].error == NOT_THE_PRODUCT
+
+
+def test_a_documented_answer_is_the_page_products_own_entity() -> None:
+    # The answer's Product names its sku and barcode on its variants only, and no IRI: it passed the identity check,
+    # so it is the page's one JSON-LD Product, and the page has one target holding both sources' values.
+    page = f"{HOST}/products/blue-mug"
+    markup = {"@context": "https://schema.org", "@type": "Product", "name": "Blue Mug", "description": "A blue mug."}
+    html = f'<html><script type="application/ld+json">{json.dumps(markup)}</script></html>'.encode()
+    served, _ = joined(
+        _capture(page, "http", html), _capture(f"{page}.js", "api", _product("blue-mug")), "blue-mug", "shopify"
+    )
+    assert served is not None
+    parsed = ParsedPage.of(served.bundle)
+    ctx = Context(captured_at=datetime(2026, 1, 1, tzinfo=UTC), html_lang="en-US", page_url=page, base_url=page)
+    reads = [c.collect(parsed, SCHEMA, ctx) for c in (JsonLdCollector(VOCABULARY), PlatformJsonCollector(VOCABULARY))]
+    graph = EntityGraph.of((e for r in reads for e in r.entities), VOCABULARY, (page,))
+
+    target = select_target(page, page, None, graph, primary_types(SCHEMA, VOCABULARY))
+
+    assert isinstance(target, Entity)
+    owned = {c.field for c in graph.adopt(c for r in reads for c in r.candidates) if graph.owned_by(c, target)}
+    assert {"description", "price", "variants.sku"} <= owned
