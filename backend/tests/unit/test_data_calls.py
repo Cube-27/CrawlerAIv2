@@ -72,7 +72,7 @@ def _capture(url: str, method: CaptureMethod, body: bytes, calls: tuple[tuple[st
 def _product(key: str, cents: int = 2900) -> bytes:
     # Shopify Ajax API product (its documentation, "Product"): one variant, its price in cents for every currency.
     variant = {"id": 1, "title": "Default", "sku": f"{key}-1", "barcode": "4006381333931", "price": cents}
-    product = {"handle": key, "title": "Item", "url": f"/products/{key}", "variants": [{**variant, "available": True}]}
+    product = {"handle": key, "title": "Item", "url": f"/products/{key}", "variants": [{**variant, "available": False}]}
     images = [f"//cdn.example.test/files/{key}-{n}.jpg" for n in (1, 2)]
     return json.dumps({**product, "description": "<p>A <b>mug</b>.</p>", "images": images}).encode()
 
@@ -105,7 +105,8 @@ def test_a_documented_answer_joins_only_for_its_product_and_reads_in_major_units
     row = {c.field: c.normalized for c in read.candidates if c.field.startswith("variants.")}
     assert row["variants.sku"] == Ok(f"{key}-1")
     assert row["variants.gtin"] == Ok("4006381333931")
-    assert row["variants.availability"] == Ok("InStock")
+    # `available: false` is OutOfStock; `true` names no one ItemAvailability (pre-order and back order can be bought).
+    assert row["variants.availability"] == Ok("OutOfStock")
     # The product's every image, the featured one first, and its HTML body read as text.
     files: list[JsonValue] = [f"https://cdn.example.test/files/{key}-{n}.jpg" for n in (1, 2)]
     assert [c.normalized for c in read.candidates if c.field == "additional_images"] == [Ok(files)]

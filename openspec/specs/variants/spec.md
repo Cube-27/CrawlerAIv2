@@ -24,14 +24,19 @@ sub-field candidate in no row's scope is rejected `not_in_row`. Refs: SPEC-13 §
 
 ### Requirement: Key-matched clusters (INV-33)
 Rows SHALL be matched by key, never by position: rows sharing a value of a key sub-field form a cluster unless they
-state different values of a key sub-field listed before it (the preset's `key` runs most to least specific); page and
+state different values of a key sub-field listed before it (the preset's `key` runs most to least specific), or, for
+two entries of one list (one node's values of one property), of any key sub-field: a list names each item once, so
+two of its entries with other SKUs are two variants whatever barcode they repeat; page and
 target URLs are not key values; a cluster with two values of one key sub-field is dropped `row_key_conflict`, a keyless
 row `no_row_key`. Refs: §10, D-0802, D-0963, D-1181.
 Enforced by: property tests (order does not change clusters; different keys never merge; linking equals the pairwise
 rule); active.
 #### Scenario: Joined variants
-- **WHEN** two rows share a gtin but state different skus
+- **WHEN** two rows of different lists or sources share a gtin but state different skus
 - **THEN** their cluster is dropped with reason `row_key_conflict`
+#### Scenario: Siblings repeating a barcode
+- **WHEN** two entries of one list share a gtin but state different skus
+- **THEN** they are two rows
 #### Scenario: Sizes of one sku
 - **WHEN** two rows share a sku but state different gtins
 - **THEN** they are two rows

@@ -223,6 +223,19 @@ def test_a_size_letter_apart_from_the_slash_is_no_unit() -> None:
     assert money.normalize("$40/M", PRICE, _ctx(html_lang="de-DE")) == Invalid("per_period")
 
 
+@given(_amounts)
+def test_a_code_that_is_also_a_cldr_unit_is_a_currency_only_where_the_page_names_it(amount: Decimal) -> None:
+    # `CUP` is ISO 4217 and the CLDR volume unit `cup`: a product name's size is no amount of money; `SEK` is also the
+    # Swedish CLDR abbreviation of `sekund`, and a Swedish page names the krona.
+    text = f"{amount} CUP FOOD PROCESSOR"
+    assert money.normalize(text, MONEY, _ctx(html_lang="en-US", page_currencies=("USD",))) == Invalid("measure")
+    assert money.normalize(f"{amount} CUP", MONEY, _ctx(page_currencies=("CUP",))) == _ok(str(amount), "CUP")
+    assert money.normalize(f"{amount} SEK", MONEY, _ctx(html_lang="sv-SE")) == _ok(str(amount), "SEK")
+    assert money.normalize(f"{amount} USD", MONEY, _ctx(html_lang="en-US", page_currencies=("EUR",))) == _ok(
+        str(amount), "USD"
+    )
+
+
 def test_the_cldr_release_is_the_one_the_manifest_pins() -> None:
     # C4: vocabularies come from versioned data; the CLDR unit data ships in Babel, so its release is pinned.
     manifest = json.loads((Path(__file__).parents[2] / "data" / "manifest.json").read_text(encoding="utf-8"))

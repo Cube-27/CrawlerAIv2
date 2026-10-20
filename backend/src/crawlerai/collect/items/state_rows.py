@@ -145,7 +145,7 @@ class _Reader:
         self.url_field = url_field
         self.names = {name for name, role in field_roles(schema).items() if role == "name"}
         self.row_fields = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}
-        self.links = content_links(page.lxml_tree, ctx.base_url)
+        self.links = content_links(page.lxml_tree, ctx.base_url, page.revealed)
         self._words = {name: _field_words(name, spec) for name, spec in self.row_fields.items()}
 
     def read(self, number: int, document: Document, objects: Sequence[tuple[str, JsonValue]]) -> StateRows | None:

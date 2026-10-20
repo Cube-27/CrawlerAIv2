@@ -8,7 +8,7 @@ appear only in this package (C3). Nothing here interprets values: the adapter co
 """
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final, Protocol, runtime_checkable
 
@@ -36,6 +36,8 @@ ADAPTER_CALL: Final = "adapter"
 # Steps from a JSON object to a value: a member name, `ALL` for every item of an array, or an index for one item of it
 # (RFC 9535 §2.3.3, the index selector).
 Members = tuple[str | int, ...]
+# What a JSON boolean means, for `true` then `false`: a value of the property, or None for no one value (`Shape`).
+Booleans = tuple[str | None, str | None]
 
 
 @dataclass(frozen=True)
@@ -52,10 +54,11 @@ class Shape:
     places of that unit: a constant the documentation states, or the members from the node's object to the value that
     states it. Only a property listed there is scaled, and only an integer amount (written as a number or in digits);
     any other value of it is dropped, since the documentation states no unit for it. `booleans` gives a property the
-    API states as a JSON boolean the values its documentation means by `true` and by `false` (a variant's `available`:
-    schema.org `InStock`, `OutOfStock`). `sections` gives a property the API states as parts of one rich text (a
-    posting's body, its lists, its closing remarks) those parts in the order the platform's page shows them: its one
-    value is the HTML text of them all (`Section`)."""
+    API states as a JSON boolean the values its documentation means by `true` and by `false`, `None` where it means no
+    one value of the property (a variant's `available`: `true`, it can be bought, is any purchasable schema.org
+    ItemAvailability, `InStock` as well as `PreOrder` or `BackOrder`; `false` is `OutOfStock`). `sections` gives a
+    property the API states as parts of one rich text (a posting's body, its lists, its closing remarks) those parts in
+    the order the platform's page shows them: its one value is the HTML text of them all (`Section`)."""
 
     type: str
     at: Members = ()
@@ -65,7 +68,7 @@ class Shape:
     nodes: Mapping[str, tuple["Shape", ...]] = field(default_factory=dict)
     anchor: Members = ()
     minor_units: Mapping[str, int | Members] = field(default_factory=dict)
-    booleans: Mapping[str, tuple[str, str]] = field(default_factory=dict)
+    booleans: Mapping[str, Booleans] = field(default_factory=dict)
     sections: Mapping[str, tuple["Section", ...]] = field(default_factory=dict)
 
 
@@ -143,6 +146,12 @@ class PageScoped(Protocol):
 
     async def fetch_listed(self, url: str, page: PageRefs, policy: FetchPolicy, send: JsonFetcher) -> FetchResult:
         """`fetch` for the page at `url`, the answer holding only the rows the page links to, in the page's order."""
+        ...
+
+    def row_links(self, url: str, links: Sequence[str], /) -> tuple[str, ...]:
+        """Of the page's `links`, those naming the item an answer row names by its item URL `url`: the platform's
+        other routes to one item (the item under the list the page shows), so the row meets the page's own block of
+        it (listings spec, "Stated rows and blocks")."""
         ...
 
 

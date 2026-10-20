@@ -322,20 +322,25 @@ def _concealed(attributes: _Attributes, style: dict[str, str]) -> bool:
 
 
 def _hidden_node(node: LexborNode, attributes: _Attributes, style: dict[str, str]) -> bool:
-    """`_hidden` for an element of the tree: a concealed element that a script reveals (`_script_revealed`) is
+    """`_hidden` for an element of the tree: a concealed element that a script reveals (`script_revealed`) is
     rendered."""
-    if not _hidden(node.tag or "", attributes, style):
-        return False
-    return not (
-        _concealed(attributes, style) and not _unrendered(node.tag or "", attributes) and _script_revealed(node)
-    )
+    return _hidden(node.tag or "", attributes, style) and not script_revealed(node)
 
 
-def _script_revealed(node: LexborNode) -> bool:
+def script_revealed(node: LexborNode) -> bool:
     """Whether a concealed element (`concealed`) is the page's own content that a script shows after load (a
-    content-gating or consent app): it holds the document's one top-level heading (HTML Standard §4.3.6, `h1`: the
-    page's title) and a form (§4.10.3, the item's form). A page does not keep its title for later; a concealed
-    template, modal or variant block holds no `h1` or is beside the page's own."""
+    content-gating or consent app): it holds the document's one top-level heading and a form (`_titled_content`), or
+    it is the main landmark's content (`_main_content`). A concealed template, modal or variant block is neither."""
+    attributes = node.attributes
+    if not concealed(attributes) or _unrendered(node.tag or "", attributes):
+        return False
+    return _titled_content(node) or _main_content(node)
+
+
+def _titled_content(node: LexborNode) -> bool:
+    """It holds the document's one top-level heading (HTML Standard §4.3.6, `h1`: the page's title) and a form
+    (§4.10.3, the item's form). A page does not keep its title for later; a concealed template, modal or variant block
+    holds no `h1` or is beside the page's own."""
     headings = node.css("h1")
     if len(headings) != 1 or node.css_first("form") is None:
         return False
@@ -343,6 +348,22 @@ def _script_revealed(node: LexborNode) -> bool:
     while root.parent is not None and root.parent.is_element_node:
         root = root.parent
     return len(root.css("h1")) == 1
+
+
+def _main_content(node: LexborNode) -> bool:
+    """It is a child of the `main` element (HTML Standard §4.4.14: the dominant contents of the document's body), none
+    of whose children renders, holds a heading (§4.3.6, `h1`-`h6`: content with a title of its own, not a stray value)
+    and more of the element's text than any other concealed child (the gate's own message or form is the smaller one).
+    A document does not keep its dominant content hidden: a script shows it."""
+    parent = node.parent
+    if parent is None or parent.tag != "main" or node.css_first("h1, h2, h3, h4, h5, h6") is None:
+        return False
+    children = [child for child in parent.iter() if child.is_element_node]
+    if any(not _hidden(child.tag or "", child.attributes, declarations(child.attributes)) for child in children):
+        return False
+    size = len(node.text(deep=True))
+    others = (c for c in children if c.mem_id != node.mem_id and not _unrendered(c.tag or "", c.attributes))
+    return all(len(other.text(deep=True)) < size for other in others)
 
 
 def _hidden(tag: str, attributes: _Attributes, style: dict[str, str]) -> bool:
