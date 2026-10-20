@@ -26,7 +26,7 @@ Labels = Mapping[Words, Sequence[str]]
 # none.
 _LABEL_END = re.compile(":\\s+|\N{FULLWIDTH COLON}\\s*")
 _COLONS = (":", "\N{FULLWIDTH COLON}")
-_NUMBER_SIGN = re.compile(r"#\s*")
+_NUMBER_SIGN = re.compile(r"#\s*(?=\d)")  # before a number only: `#SKU-7` is the identifier
 _BREAK = "\n"  # the cleaned text's line break (`content.text`)
 # A label is a short phrase: the longest one looked for, in words.
 _MAX_LABEL_WORDS = 6
@@ -36,15 +36,21 @@ _COUNTED = frozenset({FieldType.NUMBER, FieldType.COUNT})
 def checked(span: GroundedSpan, text: str, name: str, spec: FieldSpec, labels: Labels) -> GroundedSpan | None:
     """The span of `text` that holds the field's value, or None when the page labels it as another field's (module
     docstring)."""
-    if spec.type is FieldType.IDENTIFIER:
+    kind = value_type(spec)
+    if kind is FieldType.IDENTIFIER:
         found = unlabelled(span, text)
         if found is None:
             return None
         span = found
     named = [_label_before(text, span.start, labels)]
-    if spec.type in _COUNTED:
+    if kind in _COUNTED:
         named.append(_label_after(text, span.end, labels))
     return None if any(fields and name not in fields for fields in named) else span
+
+
+def value_type(spec: FieldSpec) -> FieldType | None:
+    """The type of one claimed value of the field: a list's item type (each member is claimed and checked alone)."""
+    return spec.item.type if spec.type is FieldType.LIST and spec.item is not None else spec.type
 
 
 def unlabelled(span: GroundedSpan, text: str) -> GroundedSpan | None:

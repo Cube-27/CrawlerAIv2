@@ -6,9 +6,9 @@ candidates are scored (`resolve.score`: source weight times scope match times ag
 publishes; the candidates of every other value are rejected `outscored`. A field whose kept candidates state more than
 one value publishes with a reason, the disagreement flag (`disagree`, `offers_disagree`, `offer_split`). Where the best
 score is shared by two values the field is a `conflict`. A list of the item's facts (a job's places) publishes every
-member its values state instead (`_union`): two sources stating different members are not rivals. A price is a `conflict` too when amounts differ and no role
-explains it (`_price_winner`: the visible price, the shown variant); amounts that differ only in currency publish, the
-currency unknown (C7: an unclear currency never drops a price).
+member its values state instead (`_union`): two sources stating different members are not rivals. A price is a
+`conflict` too when amounts differ and no role explains it (`_price_winner`: the visible price, the shown variant);
+amounts that differ only in currency publish, the currency unknown (C7: an unclear currency never drops a price).
 
 Offers (INV-15, variants spec): the anchor Offer is the one of the variant the target shows (its own sku or gtin is
 that variant's), else the one holding values for the most offer fields; its values and the target's own have scope 1,

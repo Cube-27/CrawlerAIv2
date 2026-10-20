@@ -105,7 +105,7 @@ def test_a_grounded_value_becomes_an_llm_candidate_owned_by_the_target() -> None
     assert filled.diagnostics == ()
 
 
-CHECKED = "Widget One\nRef.: AB-12\nReleased: 2026\nhttps://cdn.example.test/img/QX9.jpg\nItem 123 / 12"
+CHECKED = "Widget One\nRef.: AB-12\nReleased: 2026\nhttps://cdn.example.test/img/QX9.jpg\nItem 123 / 12\n#SKU-7"
 
 
 @pytest.mark.parametrize(
@@ -115,6 +115,7 @@ CHECKED = "Widget One\nRef.: AB-12\nReleased: 2026\nhttps://cdn.example.test/img
         ("sku", "QX9", 0, None),  # an identifier only in an address is no identifier the page states
         ("title", "2026", 0, None),  # a span the page labels as another field is not this field's
         ("sku", "12", 80, ("12", "text:86-88")),  # the head of `123` is no value: the whole `12` is
+        ("sku", "#SKU-7", 89, ("#SKU-7", "text:89-95")),  # a number sign before no number is the identifier's
     ],
 )
 def test_a_grounded_span_is_checked_for_its_field(field: str, claimed: str, start: int, kept: tuple[str, str]) -> None:

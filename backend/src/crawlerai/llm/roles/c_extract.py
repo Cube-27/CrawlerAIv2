@@ -34,7 +34,7 @@ from crawlerai.collect.items.lines import BlockText
 from crawlerai.collect.locator import format_locator
 from crawlerai.content.text import CleanedText, MarkKind
 from crawlerai.db.models import JobId
-from crawlerai.llm.claim_checks import Labels, checked
+from crawlerai.llm.claim_checks import Labels, checked, value_type
 from crawlerai.llm.client import LLMClient, LLMFailure, LLMRequest, LLMResponse, PromptKind, closed_object
 from crawlerai.llm.grounding import GroundedSpan, SpanClaim, align, ground_element
 from crawlerai.llm.marked import MarkedText, Scoped, marked, scoped
@@ -305,7 +305,9 @@ def _grounded(value: str, block: BlockText, name: str, spec: FieldSpec, labels: 
     for start, text in block.segments:
         breaks = frozenset(at - start for at in block.breaks if start < at < start + len(text))
         claim = SpanClaim(value=value, start=0, end=len(value))
-        span = align(claim, text, money=_money(spec), identifier=spec.type is FieldType.IDENTIFIER, breaks=breaks)
+        span = align(
+            claim, text, money=_money(spec), identifier=value_type(spec) is FieldType.IDENTIFIER, breaks=breaks
+        )
         if span is not None and (span := checked(span, text, name, spec, labels)) is not None:
             return GroundedSpan(span.value, start + span.start, start + span.end)
     return None
@@ -456,7 +458,7 @@ class _Reader:
         span = span.model_copy(update={"start": at(span.start), "end": at(span.end)})
         cleaned = self.text.cleaned
         grounded = align(
-            span, cleaned, money=_money(spec), identifier=spec.type is FieldType.IDENTIFIER, breaks=self.breaks
+            span, cleaned, money=_money(spec), identifier=value_type(spec) is FieldType.IDENTIFIER, breaks=self.breaks
         )
         if grounded is None or (grounded := checked(grounded, cleaned, name, spec, self.labels)) is None:
             return None

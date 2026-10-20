@@ -44,7 +44,7 @@ members the first publishes, for images the `https` ones (else all) and of a sin
 (`url.largest_rendition`). The candidates of every other value are rejected `outscored`, and a field whose kept
 candidates state other values publishes with the disagreement flag as its reason (`disagree`, or `offers_disagree` /
 `offer_split` for an offer field). A list of the item's facts (its items neither lists, objects, urls nor images: a
-job's places) publishes instead every member its scored values state, the best value's first: two sources stating
+job's places) publishes instead every member its values scoring above 0 state, the best value's first: two sources stating
 different members state more of the item, not rival values. A member equal to one already listed is that one, and a
 location the page writes as text alone that names a listed place's locality (its region when it states none: "Austin"
 or "Raleigh; Austin; Denver" for `addressLocality` Austin) stands for it, in its place; no value is outscored and no
