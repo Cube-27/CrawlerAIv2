@@ -168,12 +168,13 @@ read, and only the first page decides the outcome. Refs: D-1300, D-1301.
 An adapter MAY state, from what a fetched page declares about itself (its final URL after redirects, `link
 rel=canonical`, `og:url`) and the targets of its links, the platform page the page stands for (`Referring.referred`);
 a page the adapter did not detect by URL is then served by that adapter, recorded under the platform page, when the
-page is `ok`, the site's rate admits the request and the platform's host is not declined. A page's links alone refer it
+page is `ok` or a `shell` no challenge names (a script-only document states its redirect, canonical link and links),
+the site's rate admits the request and the platform's host is not declined; one URL is asked once per fetch. A page's links alone refer it
 only when the schema's items are the platform's (the fetch policy's `target_types`, the schema.org types of its required row
 fields: JobPosting for a job board): a link leads elsewhere, it is not the page's identity. An HTTP page that would be
-rendered for lacking what the caller reads asks its referral or canonical URL first, and is rendered only when no
-adapter serves it. Only structure decides, never a list of hosts or words. Refs: D-1302, D-1388.
-(Previously: the page was rendered first; links referred a page whatever its schema read.)
+rendered for lacking what the caller reads (that `shell`) asks its referral or canonical URL first, and is rendered only
+when no adapter serves it. Only structure decides, never a list of hosts or words. Refs: D-1302, D-1388.
+(Previously: the page was rendered first, and only an `ok` page was asked; links referred a page whatever its schema read.)
 #### Scenario: Branded careers page
 - **WHEN** a listing page on another host links only to job and sign-in pages of one Workday career site
 - **THEN** that site's list is served by the Workday adapter and the result lists the page attempt then the `api`

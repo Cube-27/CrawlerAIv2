@@ -29,7 +29,7 @@ this client, and keep the browser outcome only when `ok`:
 | 503 that `classify.interstitial` judges to stand in for the page | yes, after the site's pause (`politeness.backoff`) | browser `ok` only |
 | `shell` that a challenge names (`acquire/challenge.py`) | yes | browser `ok` only |
 | `error` whose reason is `network_error` or `timeout` | yes (never the same transport again) | browser `ok` only |
-| `shell` with no challenge (a script-only document) | yes, once per page (owner #72) | browser `ok` only; else the HTTP `shell` |
+| `shell` with no challenge (a script-only document) | yes, once per page (owner #72), after its adapter referral ([adapters](../adapters/spec.md) "Referral from a tenant's own host") serves nothing | browser `ok` only; else the HTTP `shell` |
 | `ok`, whatever it lacks (offer, rows, a requested field) | **no** | HTTP |
 | `auth_wall`, `not_found`, `soft_404`, other `error`, redirect classes | no | HTTP |
 

@@ -9,12 +9,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import get_args
 
+from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.rungs import BROWSER_MIN_S, Rungs, acquire
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
+from crawlerai.adapters.base import AdapterMatch, PageRefs, Shape
+from crawlerai.adapters.registry import Registry
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import FetchMethod
+from crawlerai.db.models import FetchMethod, PageKind
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 
 URL = "https://shop.example.test/item/1"
@@ -49,6 +52,7 @@ class Rung:
     headers: tuple[tuple[str, str], ...] = ()
     retry_after: timedelta | None = None
     error: str | None = None
+    challenge: str | None = None
 
     async def __call__(self, url: str, policy: FetchPolicy) -> FetchResult:
         self.calls.append((url, policy))
@@ -76,6 +80,7 @@ class Rung:
             duration_ms=1,
             retry_after=self.retry_after,
             error=self.error,
+            challenge=self.challenge,
         )
         bundle = CaptureBundle(manifest=manifest, body=body, network=())
         return FetchResult(bundle=bundle, duration_ms=1, attempts=(attempt,))
@@ -209,3 +214,51 @@ def test_no_browser_retry_starts_too_close_to_the_deadline() -> None:
 
 
 # --- D-1263: a 503 interstitial gets one browser attempt after the site's pause ---
+
+
+# --- adapters spec "Referral from a tenant's own host": a shell asks its referral before the render ---------------
+
+PLATFORM = "https://jobs.example.test/board"
+
+
+@dataclass
+class Referrer:
+    """A referring adapter of the platform at `PLATFORM`, which a page refers to by linking to it."""
+
+    answer: Rung = field(default_factory=lambda: Rung("api", "ok"))
+    name: str = "referrer"
+
+    def detect(self, url: str) -> AdapterMatch | None:
+        return AdapterMatch(tenant="board", page_kind="listing") if url == PLATFORM else None
+
+    def serves(self, match: AdapterMatch, endpoint: str) -> bool:
+        return True
+
+    async def fetch(self, url: str, policy: FetchPolicy, send: object) -> FetchResult:
+        return await self.answer(url, policy)
+
+    def shapes(self, match: AdapterMatch, answer: object, /) -> tuple[Shape, ...]:
+        return ()
+
+    def referred(self, refs: PageRefs, kind: PageKind | None, types: tuple[str, ...], /) -> str | None:
+        return PLATFORM if PLATFORM in refs.links else None
+
+
+async def _unsent(request: JsonRequest, policy: FetchPolicy) -> FetchResult:
+    raise AssertionError("the adapter stub sends nothing")
+
+
+def test_a_script_only_shell_asks_its_referral_before_the_render() -> None:
+    for challenge, rendered in ((None, False), ("structural", True)):
+        stubs = web("shell", "ok")
+        stubs.http.body = f"<html><body><div id='app'></div><a href='{PLATFORM}'>Jobs</a></body></html>".encode()
+        stubs.http.challenge = challenge
+        referrer = Referrer()
+        rungs = Rungs(http=stubs.http, browser=stubs.browser, adapters=Registry([referrer]))
+
+        result = asyncio.run(acquire(URL, POLICY, Remembered(), rungs, send=_unsent))
+
+        assert bool(stubs.browser.calls) is rendered, challenge
+        if not rendered:  # the referral serves the page: no render is paid for
+            assert _attempts(result) == [("http", "shell"), ("api", "ok")]
+            assert referrer.answer.calls == [(PLATFORM, POLICY)]
