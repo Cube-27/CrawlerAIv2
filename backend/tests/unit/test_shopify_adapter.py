@@ -1,5 +1,6 @@
 """The Shopify adapter (adapters spec): detect storefront collection URLs, locale-prefixed ones too, ask the
-Storefront API for their collection, page through its cursor, and tell the platform's answer from any other. Product
+Storefront API for their collection, page through its cursor, serve only the products the page lists, and tell the
+platform's answer from any other. Product
 pages take the page path (D-1118).
 
 Shopify is a multi-tenant platform, not a site (C6, C9). Shops and answers are synthetic (`example.test` hosts,
@@ -20,7 +21,7 @@ from pydantic import JsonValue
 from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.adapters.base import NOT_SERVED, AdapterMatch
+from crawlerai.adapters.base import NOT_SERVED, AdapterMatch, PageRefs
 from crawlerai.adapters.shopify import API_VERSION, Shopify
 from tests.stand_in import IMPERSONATE, handler_transport
 
@@ -35,10 +36,10 @@ handles = st.from_regex(r"[a-z0-9][a-z0-9_-]{0,40}", fullmatch=True)
 
 
 @given(handle=handles, scheme=st.sampled_from(["http", "https"]))
-def test_a_collection_url_without_a_query_is_a_listing_of_its_handle(handle: str, scheme: str) -> None:
+def test_a_collection_url_is_a_listing_of_its_handle(handle: str, scheme: str) -> None:
     assert ADAPTER.detect(f"{scheme}://{SHOP}/collections/{handle}") == AdapterMatch(SHOP, "listing", handle)
     assert ADAPTER.detect(f"{scheme}://{SHOP.upper()}/collections/{handle}/") == AdapterMatch(SHOP, "listing", handle)
-    assert ADAPTER.detect(f"https://{SHOP}/collections/{handle}?page=2") is None
+    assert ADAPTER.detect(f"https://{SHOP}/collections/{handle}?page=2") == AdapterMatch(SHOP, "listing", handle)
 
 
 @pytest.mark.parametrize(
@@ -53,7 +54,6 @@ def test_a_collection_url_without_a_query_is_a_listing_of_its_handle(handle: str
         f"https://{SHOP}/english/collections/widgets",  # not a locale subfolder
         f"https://{SHOP}/fr/products/widget",
         f"https://{SHOP}/fr/collections",
-        f"https://{SHOP}/collections/widgets?sort_by=price",
         f"https://{SHOP}/pages/about",
         f"ftp://{SHOP}/collections/widgets",
     ],
@@ -86,14 +86,48 @@ def _platform(answer: JsonValue, status: int = 200) -> Handler:
     return handler
 
 
-def _fetch(url: str, handler: Handler) -> FetchResult:
-    return asyncio.run(ADAPTER.fetch(url, FetchPolicy(), _send(handler)))
+def _fetch(url: str, handler: Handler, links: tuple[str, ...] = (f"https://{SHOP}/products/a",)) -> FetchResult:
+    return asyncio.run(ADAPTER.fetch_listed(url, PageRefs(own=(url,), links=links), FetchPolicy(), _send(handler)))
+
+
+def _product(handle: str) -> JsonValue:
+    price: JsonValue = {"amount": "5.00", "currencyCode": "EUR"}
+    return {
+        "handle": handle,
+        "title": handle.upper(),
+        "priceRange": {"minVariantPrice": price, "maxVariantPrice": price},
+    }
+
+
+def test_a_page_of_a_paged_collection_is_served_with_its_own_products_only() -> None:
+    # The theme shows two products a page; the API pages its four by cursor. The page links its two (and a product
+    # of the shop's menu that is not in the collection): the answer holds those two, in the page's order.
+    pages: dict[str | None, JsonValue] = {
+        None: {"pageInfo": {"hasNextPage": True, "endCursor": "c2"}, "nodes": [_product("a"), _product("b")]},
+        "c2": {"pageInfo": {"hasNextPage": False, "endCursor": "c4"}, "nodes": [_product("c"), _product("d")]},
+    }
+    sent: list[JsonValue] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        after = json.loads(request.content)["variables"].get("after")
+        sent.append(after)
+        answer: JsonValue = {"data": {"shop": ONE_CURRENCY, "collection": {"products": pages[after]}}}
+        return _platform(answer)(request)
+
+    links = tuple(
+        f"https://{SHOP}{path}" for path in ("/products/menu", "/products/d", "/collections/widgets/products/c")
+    )
+    result = _fetch(f"{PAGE}?page=2", handler, links)
+
+    assert (result.block_class, sent) == ("ok", [None, "c2"])
+    nodes = json.loads(result.bundle.body)["data"]["collection"]["products"]["nodes"]
+    assert [node["handle"] for node in nodes] == ["d", "c"]
 
 
 def test_a_page_is_asked_of_the_storefront_api_with_its_handle_as_a_variable() -> None:
     page = PAGE
     sent: list[httpx.Request] = []
-    answer: JsonValue = {"data": {"shop": ONE_CURRENCY, "collection": {"products": {"nodes": []}}}}
+    answer: JsonValue = {"data": {"shop": ONE_CURRENCY, "collection": {"products": {"nodes": [_product("a")]}}}}
 
     def handler(request: httpx.Request) -> httpx.Response:
         sent.append(request)
@@ -121,7 +155,7 @@ def test_a_shop_whose_page_may_show_another_currency_is_left_to_the_page_path(cu
     # The answer prices in the shop's primary market and the page in its visitor's: the page path reads the prices the
     # page shows, where the answer could give none (C7).
     shop: JsonValue = {"paymentSettings": {"enabledPresentmentCurrencies": currencies}}
-    answer: JsonValue = {"data": {"shop": shop, "collection": {"products": {"nodes": []}}}}
+    answer: JsonValue = {"data": {"shop": shop, "collection": {"products": {"nodes": [_product("a")]}}}}
 
     result = _fetch(PAGE, _platform(answer))
 
