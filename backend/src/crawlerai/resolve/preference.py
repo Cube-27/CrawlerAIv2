@@ -335,8 +335,8 @@ class Resolver:
         # The target's own sku and gtin, as they publish, select the variant it shows (variants spec).
         ids = [name for name in _variant_ids(fields) if name in fields]
         stated = {name: self._choose(fields[name], *screened[name], offers=offers, offer_field=False) for name in ids}
-        shown = self._shown_offers(fields, candidates, self._published_ids(fields, stated))
-        shown |= self._lone_offers(frozenset(_source(offer) for offer in shown))
+        shown, other = self._shown_offers(fields, candidates, self._published_ids(fields, stated))
+        shown |= self._lone_offers(frozenset(_source(offer) for offer in shown)) - other
         return _Offers(shown, shown) if shown else offers
 
     def _published_ids(
@@ -363,24 +363,24 @@ class Resolver:
 
     def _shown_offers(
         self, fields: Mapping[str, FieldSpec], candidates: Sequence[Candidate], own: list[tuple[Candidate, FieldSpec]]
-    ) -> frozenset[str]:
+    ) -> tuple[frozenset[str], frozenset[str]]:
         """The Offers of the variant the target shows (variants spec): of the target's Offers and variants, those
         whose sku or gtin (a field's or a row sub-field's) equals one of `own`, at most one per source, with every
         other source's Offer stating the same sku or gtin as one of them (GS1 GTIN and a seller's SKU identify one
-        variant, whichever source states it); none when no unit matches or a source names two."""
+        variant, whichever source states it); none when no unit matches or a source names two. Second, the Offers
+        whose sku or gtin names another variant than those: never the shown one's."""
         ids = _variant_ids(fields)
         stated = [
             (unit, c, ids[c.field])
             for c in candidates
             if c.field in ids and isinstance(c.normalized, Ok) and (unit := self._unit(c)) is not None
         ]
-        matched = {unit for unit, c, spec in stated if _names(c, spec, own)}
-        if not matched or _one_each(matched) != matched:
-            return frozenset()
-        named = {_source(unit) for unit in matched}
-        held = [(c, spec) for unit, c, spec in stated if unit in matched]
-        same = _one_each({unit for unit, c, spec in stated if _source(unit) not in named and _names(c, spec, held)})
-        return frozenset(offer for unit in matched | same for offer in self._unit_offers(unit))
+        matched = _shown_units(stated, own)
+        other = {unit for unit, _, _ in stated if own and unit not in matched}
+        return self._offers_of(matched), self._offers_of(other)
+
+    def _offers_of(self, units: set[str]) -> frozenset[str]:
+        return frozenset(offer for unit in units for offer in self._unit_offers(unit))
 
     def _unit_offers(self, unit: str) -> frozenset[str]:
         """A variant's Offers, or the one Offer `unit` is."""
@@ -654,6 +654,20 @@ def parse_orders(document: object) -> dict[str, tuple[SourceKind, ...]]:
 def _names(candidate: Candidate, spec: FieldSpec, ids: Sequence[tuple[Candidate, FieldSpec]]) -> bool:
     """Whether a sku or gtin candidate states one of `ids` of its own scheme."""
     return any(spec.scheme == o_spec.scheme and same_value(candidate, o, spec) for o, o_spec in ids)
+
+
+_Stated = tuple[str, Candidate, FieldSpec]  # a variant or Offer, one sku or gtin candidate of it, and its field
+
+
+def _shown_units(stated: Sequence[_Stated], own: Sequence[tuple[Candidate, FieldSpec]]) -> set[str]:
+    """The variants and Offers whose sku or gtin is one of `own`, one per source, and the one of each other source
+    stating the same sku or gtin as them; none when a source names two (`_one_each`)."""
+    matched = {unit for unit, c, spec in stated if _names(c, spec, own)}
+    if not matched or _one_each(matched) != matched:
+        return set()
+    named = {_source(unit) for unit in matched}
+    held = [(c, spec) for unit, c, spec in stated if unit in matched]
+    return matched | _one_each({u for u, c, spec in stated if _source(u) not in named and _names(c, spec, held)})
 
 
 def _one_each(units: set[str]) -> set[str]:

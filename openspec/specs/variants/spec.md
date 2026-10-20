@@ -88,7 +88,8 @@ default or selected one, else `conflict`/`offers_disagree`; no other default is 
 The shown variant is the one variant (or Offer of the target) of a source whose sku or gtin, as a field or a row
 sub-field, equals one the target publishes as its own (screened, and publishing at the request's `min_confidence`),
 with every other source's Offer stating that variant's sku or gtin (GS1 GTIN and a seller's SKU identify one variant
-whichever source states it), and a source's one Offer alone (Atomic offers); a source naming two variants names none.
+whichever source states it), and a source's one Offer alone (Atomic offers) unless its sku or gtin names another
+variant; a source naming two variants names none.
 Its Offers are the anchor (Atomic offers), and the one value they state publishes flagged `offers_disagree` when
 every other value is only other variants' Offers'. (Previously: one variant of one source only.) A price follows the same rule: the shown
 variant's, else (Offers stating other amounts) `conflict` `offers_disagree`, unless the visible price explains the
