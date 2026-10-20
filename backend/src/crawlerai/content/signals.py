@@ -43,10 +43,10 @@ SIGNALS: Final[tuple[Signal, ...]] = get_args(Signal)
 # A signal's diagnostic is this prefix and its name.
 PREFIX: Final = "signal:"
 
-# Unicode Private Use Areas: the BMP area and planes 15 and 16.
-_PUA = re.compile("[\ue000-\uf8ff\U000f0000-\U000ffffd\U00100000-\U0010fffd]")
+# Unicode Private Use Areas: the BMP area (U+E000-U+F8FF) and planes 15 and 16 (from U+F0000).
+_PUA_BMP, _PUA_PLANES = range(0xE000, 0xF900), 0xF0000
 # HTML Standard, valid custom element names: a hyphen in the name, and not one of the reserved SVG/MathML names.
-_CUSTOM_TAG = re.compile(r"<[a-z][a-z0-9]*-", re.IGNORECASE)
+_CUSTOM_TAG = re.compile(r"<[a-z][^\s/>]*-", re.IGNORECASE)
 _RESERVED = frozenset(
     {
         "annotation-xml",
@@ -74,9 +74,13 @@ def page_signals(
     found: set[Signal] = set(_resource_signals(page, resources or {}))
     if not page.json_body:
         found.update(_document_signals(page, page.source_html))
-    if any(_PUA.search(text) for text in money_texts):
+    if any(_private_use(text) for text in money_texts):
         found.add("obfuscated_text")
     return tuple(signal for signal in SIGNALS if signal in found)
+
+
+def _private_use(text: str) -> bool:
+    return any(ord(c) in _PUA_BMP or ord(c) >= _PUA_PLANES for c in text)
 
 
 def _resource_signals(page: ParsedPage, resources: Mapping[str, int]) -> Iterable[Signal]:
@@ -132,7 +136,8 @@ def _has_phx_attribute(tree: lexbor.LexborHTMLParser) -> bool:
 
 
 def _declares_root(node: lexbor.LexborNode) -> bool:
-    return node.tag == "template" and "shadowrootmode" in node.attributes
+    mode = node.attributes.get("shadowrootmode") if node.tag == "template" else None
+    return (mode or "").lower() in ("open", "closed")
 
 
 def _closed_root_suspected(tree: lexbor.LexborHTMLParser, source_html: str) -> bool:
