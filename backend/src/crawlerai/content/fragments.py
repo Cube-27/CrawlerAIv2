@@ -4,16 +4,32 @@ A `<turbo-frame id src>` loads `src` as soon as the tag appears, unless its `loa
 when the frame becomes visible (Turbo handbook, Frames). The HTTP rung fetches an eager frame's `src` as a companion
 call (`acquire.rungs`); the answer's element with the frame's `id` then replaces the frame's children
 (`include`), as Turbo renders it. A lazy frame is not fetched.
+
+The other HTML answers a capture holds are the partials the page fetched from its own site (htmx-style swaps, a
+frame's answer the browser fetched; acquisition spec, "Network body capture"). A partial (an answer that is no whole
+document) whose text the page does not show, as after a swap the render no longer holds, is appended to the page's
+body (`append`), so the page's readers read it as they read the page; a whole document (a Turbo Drive visit) is not.
 """
 
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from typing import Final, NamedTuple
 from urllib.parse import urldefrag, urljoin, urlsplit
 
+from selectolax import lexbor
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
-__all__ = ["FRAME_HEADER", "MAX_FRAMES", "Answers", "Frame", "declares_frames", "eager_frames", "include"]
+__all__ = [
+    "FRAME_HEADER",
+    "MAX_FRAMES",
+    "Answers",
+    "Frame",
+    "append",
+    "declares_frames",
+    "eager_frames",
+    "include",
+    "is_partial",
+]
 
 # Turbo handbook (Frames): the request header naming the frame a request is for; a server may answer that frame alone.
 FRAME_HEADER: Final = "Turbo-Frame"
@@ -26,6 +42,11 @@ _LAZY: Final = "lazy"
 # The custom element's tag (HTML Standard §4.13: tag names compare ASCII case-insensitively).
 _MARKER: Final = re.compile(r"<turbo-frame\b", re.IGNORECASE)
 _WEB_SCHEMES: Final = ("http", "https")  # RFC 9110 §4.2
+# HTML Standard §13.1: a whole document starts with its DOCTYPE, or an `html`, `head` or `body` start tag; a partial
+# holds none of them.
+_DOCUMENT: Final = re.compile(r"<(?:!doctype|html|head|body)[\s>]", re.IGNORECASE)
+# The element an appended partial is held in, naming the URL it answered.
+_PARTIAL: Final = "<div data-fragment-src></div>"
 
 
 class Frame(NamedTuple):
@@ -78,3 +99,33 @@ def _frames(tree: LexborHTMLParser, page_url: str) -> Iterator[tuple[LexborNode,
             continue
         if urlsplit(url).scheme.lower() in _WEB_SCHEMES:
             yield node, Frame(frame_id, url)
+
+
+def is_partial(markup: str) -> bool:
+    """Whether `markup` is a partial: no whole document (`_DOCUMENT`)."""
+    return _DOCUMENT.search(markup) is None
+
+
+def append(tree: LexborHTMLParser, partials: Sequence[tuple[str, str]]) -> None:
+    """Append to the body of `tree` each of the `partials` (URL, markup) whose text the document does not already
+    show, in capture order, each in an element naming its URL (`data-fragment-src`); one with no text adds nothing."""
+    body = tree.body
+    if body is None:
+        return
+    shown = _words(body.text(deep=True))
+    for url, markup in partials:
+        holder = LexborHTMLParser(_PARTIAL).css_first("div")
+        if holder is None:
+            return
+        for node in lexbor.parse_fragment(markup):
+            holder.insert_child(node)
+        text = _words(holder.text(deep=True))
+        if not text or text in shown:
+            continue
+        holder.attrs["data-fragment-src"] = url
+        body.insert_child(holder)
+        shown = f"{shown} {text}"
+
+
+def _words(text: str) -> str:
+    return " ".join(text.split())

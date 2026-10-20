@@ -77,7 +77,7 @@ D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-1
 - **THEN** that text is the `description` candidate, ranked behind JSON-LD and microdata
 
 ### Requirement: Source documents
-`ParsedPage` SHALL read the HTML document after three structural pre-passes, applied in this order to the raw document
+`ParsedPage` SHALL read the HTML document after four structural pre-passes, applied in this order to the raw document
 before any text or DOM collector runs (`content/page.py::prepassed`; no script runs, each pass matches its documented
 form only, and a document none applies to is not reparsed):
 - **Declarative shadow DOM** (HTML Standard, `template` `shadowrootmode` `open` or `closed`): the template's content
@@ -89,6 +89,12 @@ form only, and a document none applies to is not reparsed):
 - **Eager fragment inclusion** (Hotwire Turbo, Frames): the children of each eager `<turbo-frame id src>` are replaced
   by those of the element with the same id in the captured 2xx HTML answer to its `src`
   ([acquisition](../acquisition/spec.md), "Eager fragments"); a frame without an answer keeps its own.
+- **Fetched partials** (htmx-style swaps, frames the browser filled): each captured 2xx HTML answer that is no whole
+  document (no DOCTYPE, `html`, `head` or `body` tag) and whose text the document does not already show is appended to
+  the body in an element naming its URL (`data-fragment-src`), in capture order, so the text, DOM and item collectors
+  read its values and rows as the page's and a locate run places them as it places the page's
+  ([acquisition](../acquisition/spec.md), "Network body capture"); a whole document (a Turbo Drive visit) is not.
+  (Previously: a fetched answer was read only as a frame's.) Refs: architecture v3 a.3, a.4 item 5.
 The `NOT_RENDERED` set and the hidden rules of `content/text.py` then apply unchanged. A `template` left after the
 pre-passes is an ordinary one whose content is inert (HTML Standard §4.12.3), so the text and DOM collectors and the
 listing induction still drop it. Refs: architecture v3 a.4 item 1.

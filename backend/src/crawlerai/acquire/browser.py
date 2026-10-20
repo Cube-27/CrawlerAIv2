@@ -1,6 +1,6 @@
 """Browser fetch with Patchright headless Chromium (acquisition spec): one navigation, bounded waits,
-and the JSON and Flight bodies the page loads captured, the network data-source layer's input (Appendix A #59) and
-API discovery's (§7.2 step 1).
+and the JSON and Flight bodies the page loads and the HTML fragments it fetches from its own site captured, the network
+data-source layer's input (Appendix A #59) and API discovery's (§7.2 step 1).
 
 One browser per worker process (`open_browser`), one context per job and site (`_Contexts`), each page in a tab of its
 own. Every connection a context opens goes through its `SocksGuard`, which applies the SSRF guard to every redirect
@@ -56,6 +56,7 @@ from crawlerai.storage.capture_bundle import (
     HeaderList,
     NetworkBody,
     decode_html,
+    is_html,
     network_file,
     network_json,
     sha256_hex,
@@ -92,8 +93,8 @@ _LAUNCH_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
 # `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
 # unless told not to; it is named here so the guard does not rest on a library default.
 _PROXY_ALL_LOOPBACK = "<-loopback>"
-# acquisition spec, "Network body capture": data bodies (JSON and Flight) are captured up to 2 MB each and 50 per page;
-# "Bounded bodies (INV-30)": at most 10 MB of them per page in all.
+# acquisition spec, "Network body capture": data bodies (JSON and Flight) and same-site HTML fragments are captured up
+# to 2 MB each and 50 per page; "Bounded bodies (INV-30)": at most 10 MB of them per page in all.
 _JSON_BODY_MAX_BYTES = 2_000_000
 JSON_BODIES_MAX = 50
 JSON_PAGE_MAX_BYTES = 10_000_000
@@ -486,7 +487,8 @@ class DataCalls:
         # The main frame's navigation responses are the page itself, not data it loaded.
         if request.is_navigation_request() and request.frame == main_frame:
             return
-        if request.resource_type in DATA_REQUESTS and _data_label(response) is not None:
+        data = request.resource_type in DATA_REQUESTS and _data_label(response) is not None
+        if data or _fragment(response, main_frame.url):
             self.responses.append((response, self.actions))
 
 
@@ -956,14 +958,20 @@ def _data_label(response: Response) -> bool | None:
     return False if essence in _SNIFFED_TYPES else None
 
 
+def _fragment(response: Response, page_url: str) -> bool:
+    """Whether `response` answers a fetch or XMLHttpRequest call to the page's own site (`_same_site`) with HTML
+    (`_HTML_TYPES`): an HTML fragment the page fetched."""
+    return response.request.resource_type in _CALLS and _html_label(response) and _same_site(response.url, page_url)
+
+
 def _data_essence(essence: str) -> bool:
     """Whether `essence` names a JSON MIME type or a Flight payload (`FLIGHT_TYPE`), the bodies a capture keeps."""
     return essence in ("application/json", "text/json", FLIGHT_TYPE) or essence.endswith("+json")
 
 
 async def json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[NetworkBody, bytes], ...]:
-    """The JSON and Flight bodies of `responses` (each with the action count it arrived at) a capture keeps, within its
-    caps."""
+    """The JSON, Flight and HTML fragment bodies of `responses` (each with the action count it arrived at;
+    `DataCalls.on_response` admitted them) a capture keeps, within its caps."""
     captured: list[tuple[NetworkBody, bytes]] = []
     total = 0
     for response, action in responses:
@@ -994,8 +1002,8 @@ async def json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[Netw
 
 
 async def _json_body(response: Response) -> bytes | None:
-    """The response's body when it is not empty, within the per-body cap, and data: labelled JSON or Flight, or sniffed
-    as JSON text holding an object or an array (`network_json`)."""
+    """The response's body when it is not empty, within the per-body cap, and data: labelled JSON, Flight or HTML (an
+    admitted fragment, `_fragment`), or sniffed as JSON text holding an object or an array (`network_json`)."""
     if await _json_size(response) > _JSON_BODY_MAX_BYTES:
         return None
     try:
@@ -1004,7 +1012,13 @@ async def _json_body(response: Response) -> bytes | None:
         return None  # no body to read: a redirect, or a request that failed or was evicted
     if not data or len(data) > _JSON_BODY_MAX_BYTES:
         return None  # an empty body (a 204, RFC 9110 §15.3.5) holds no JSON text
-    return data if _data_label(response) or _sniffed(data) else None
+    return data if _data_label(response) or _html_label(response) or _sniffed(data) else None
+
+
+def _html_label(response: Response) -> bool:
+    """Whether the response is labelled HTML (`is_html`): a fetch or XMLHttpRequest call's HTML answer is a fragment
+    the page shows (Turbo frames, htmx-style partials)."""
+    return is_html(response.headers.get("content-type"))
 
 
 def _sniffed(data: bytes) -> bool:
