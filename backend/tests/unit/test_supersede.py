@@ -87,6 +87,8 @@ def test_an_open_graph_image_list_yields_to_a_longer_list_naming_its_first_image
     og, jsonld = _c([f"{cdn}/a.jpg", f"{cdn}/site.png"], "og"), _c([f"{cdn}/a.jpg", f"{cdn}/site.png"], "jsonld")
 
     assert superseded(images, [og, jsonld, gallery]) == [og]
+    # A gallery no longer than the Open Graph list still names a view it does not.
+    assert superseded(images, [og, _c([f"{cdn}/a.jpg", f"{cdn}/b.jpg"], "dom")]) == [og]
 
 
 def test_a_value_stating_the_open_graph_summary_is_a_summary_whatever_its_kind() -> None:

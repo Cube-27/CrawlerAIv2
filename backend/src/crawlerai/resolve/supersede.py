@@ -58,9 +58,11 @@ def _representative(kept: Sequence[Candidate]) -> list[Candidate]:
 
 
 def _part_of(c: Candidate, own: Sequence[str], other: Sequence[str]) -> bool:
-    """Whether the list `own` (of `c`) is the representative part of the longer list `other` (module docstring)."""
+    """Whether the list `own` (of `c`) is the representative part of `other` (module docstring): `other` names the files
+    it must and one more."""
     named = own[:1] if c.source_kind == _OPEN_GRAPH else own
-    return len(other) > len(own) and all(any(same_file(file, image) for image in other) for file in named)
+    extra = any(not any(same_file(image, file) for file in own) for image in other)
+    return extra and all(any(same_file(file, image) for image in other) for file in named)
 
 
 def _files(c: Candidate) -> list[str]:

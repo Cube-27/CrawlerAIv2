@@ -111,7 +111,8 @@ def same_file(a: JsonValue, b: JsonValue) -> bool:
     the path rather than the query: on one authority, both paths hold the same file name (the first segment naming an
     image file by its extension, RFC 6838), anything after it being a rendition below the file
     (`<file>.jpg/renditions/600.jpg`), and the directories before it, read back from the file, are the same, a segment
-    with rendition parameters after a separator standing for the bare one (`/1234-800-auto/` for `/1234/`); further
+    with rendition parameters after a separator standing for the bare one (`/1234-800-auto/` for `/1234/` or
+    `/1234-600-auto/`); further
     leading segments of the longer path are the image service's prefix (`/image/v2/<file's path>`). At least one
     directory must be read alike: a bare file name is no evidence of one file."""
     first, second = resource_key(a), resource_key(b)
@@ -139,10 +140,16 @@ def _file_path(key: Hashable) -> tuple[str, ...] | None:
 
 
 def _rendition_segment(x: str, y: str) -> bool:
-    """Whether two path segments are one, or one is the other followed by a separator (no letter or digit) and
-    rendition parameters."""
-    short, long = sorted((x, y), key=len)
-    return short == long or (bool(short) and long.startswith(short) and not long[len(short)].isalnum())
+    """Whether two path segments are one, or one base each continues with rendition parameters (after a separator, no
+    letter or digit, and holding a digit: a size): `1234-800-auto`, `1234-600-auto` and `1234` name one directory."""
+    if x == y:
+        return True
+    base = min(len(x), len(y))
+    while base and x[:base] != y[:base]:
+        base -= 1
+    while base and not all(len(s) == base or not s[base].isalnum() for s in (x, y)):
+        base -= 1
+    return base > 0 and all(len(s) == base or any(c.isdigit() for c in s[base:]) for s in (x, y))
 
 
 # The query parameter by which an image proxy or optimizer names the file it serves (`/_next/image?url=`, `?url=`).
