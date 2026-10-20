@@ -161,7 +161,10 @@ class Shopify:
             cursor = _next_cursor(answers[-1])
             return None if cursor is None or read.issuperset(listed) else request(cursor)
 
-        result = await fetch_pages(request(None), policy, send, next_page=next_page, merge=_merge, rows=_rows)
+        # The page bounds the rows, not the request's row target (`max_rows` counts the collection's products read,
+        # not the page's): the walk goes on until every product the page links to is read, up to the hard cap.
+        whole = policy.model_copy(update={"max_rows": None})
+        result = await fetch_pages(request(None), whole, send, next_page=next_page, merge=_merge, rows=_rows)
         return _verdict(_shown(result, listed), language)
 
     def shapes(self, _match: AdapterMatch, answer: JsonValue, /) -> tuple[Shape, ...]:
