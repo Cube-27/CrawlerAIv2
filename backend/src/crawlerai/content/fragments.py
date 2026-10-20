@@ -46,9 +46,7 @@ _MARKER: Final = re.compile(r"<turbo-frame\b", re.IGNORECASE)
 _WEB_SCHEMES: Final = ("http", "https")  # RFC 9110 §4.2
 # HTML Standard §13.1: a whole document starts, after a byte order mark, white space and comments, with its DOCTYPE or
 # an `html`, `head` or `body` start tag; a partial starts with none of them (one inside a script or comment counts not).
-_DOCUMENT: Final = re.compile(
-    r"\A\ufeff?\s*(?:<!--.*?-->\s*)*<(?:!doctype|html|head|body)[\s>]", re.IGNORECASE | re.DOTALL
-)
+_DOCUMENT: Final = re.compile(r"<(?:!doctype|html|head|body)[\s>]", re.IGNORECASE)
 # The element an appended partial is held in, naming the URL it answered.
 _PARTIAL: Final = "<div data-fragment-src></div>"
 
@@ -109,8 +107,14 @@ def _frames(tree: LexborHTMLParser, page_url: str) -> Iterator[tuple[LexborNode,
 
 
 def is_partial(markup: str) -> bool:
-    """Whether `markup` is a partial: no whole document (`_DOCUMENT`)."""
-    return _DOCUMENT.match(markup) is None
+    """Whether `markup` is a partial: no whole document (`_DOCUMENT`), its leading comments skipped."""
+    start = markup.lstrip("\ufeff").lstrip()
+    while start.startswith("<!--"):
+        end = start.find("-->", 4)
+        if end < 0:
+            return True
+        start = start[end + 3 :].lstrip()
+    return _DOCUMENT.match(start) is None
 
 
 def append(tree: LexborHTMLParser, partials: Sequence[tuple[str, str]], included: Collection[str] = ()) -> None:
