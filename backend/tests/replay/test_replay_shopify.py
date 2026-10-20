@@ -6,6 +6,7 @@ The answers are synthetic, written to the documented shapes (`example.test` host
 
 import asyncio
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
+from crawlerai.adapters.base import ADAPTER_CALL
 from crawlerai.adapters.registry import Registry
 from crawlerai.adapters.shopify import API_VERSION, Shopify
 from crawlerai.collect.schema_org_map import Vocabulary
@@ -23,6 +25,7 @@ from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.types import ExtractionResult, FieldSet
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import SchemaDef
+from crawlerai.storage.capture_bundle import NetworkBody, sha256_hex
 from tests.replay.captures import capture
 
 VOCABULARY = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
@@ -112,4 +115,41 @@ def test_a_shop_that_may_show_another_currency_lists_its_products_without_the_an
 
     assert [_published(row) for row in result.rows] == [
         {"title": f"Widget {n}", "url": f"{SHOP}/products/widget-{n}"} for n in (0, 1)
+    ]
+
+
+def test_a_card_price_a_gated_collection_page_shows_contests_the_answers_amount() -> None:
+    # A content-gating app conceals the main landmark's content until its script runs; the theme shows tax-inclusive
+    # amounts the API's catalogue amounts exclude. The page's cards link each product under the collection.
+    cards = "".join(
+        f'<div class="card"><a href="/collections/widgets/products/widget-{n}">Widget {n}</a><span>€12.10</span></div>'
+        for n in range(3)
+    )
+    html = (
+        f'<html><body><main><div style="display:none"><h2>Widgets</h2><div class="grid">{cards}</div></div>'
+        '<div style="display:none">Locked</div></main></body></html>'
+    )
+    answer = json.dumps(_collection([("10.00", "10.00")] * 3)).encode()
+    call = NetworkBody(
+        url=ENDPOINT,
+        status=200,
+        content_type="application/json",
+        sha256=sha256_hex(answer),
+        file="network/0001.json",
+        response_headers=(("X-Shopify-API-Version", API_VERSION),),
+        data_call=ADAPTER_CALL,
+    )
+    page = f"{SHOP}/collections/widgets"
+    bundle = capture(html.encode(), url=page, final_url=page, calls=((call, answer),))
+
+    # The page's own values rank too (the dev-fitted order holds every source kind).
+    data = replace(DATA, orders=dict.fromkeys(PRECEDENCE_TYPES, (*ORDER, "dom", "xhr")))
+    result = asyncio.run(extract_page(bundle, LISTING, None, None, data=data))
+
+    # The amount the card shows publishes, flagged; the row's URL is the page's own link to the product.
+    assert [(row["price"].value, row["price"].reason) for row in result.rows] == [
+        ({"amount": "12.10", "currency": "EUR"}, "disagree")
+    ] * 3
+    assert [row["url"].value for row in result.rows] == [
+        f"{SHOP}/collections/widgets/products/widget-{n}" for n in range(3)
     ]

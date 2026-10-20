@@ -194,8 +194,9 @@ def _store_api(scheme: str, netloc: str, path: str, markup: str) -> ProductJson 
 # Shopify Ajax API, "Product" (shopify.dev/docs/api/ajax/reference/product): the product's `title`, `url` (its route
 # on the shop), `description` (its HTML body), `images` (every image's URL, the featured one first), `vendor`, and
 # its `variants`, each with its `title`, `sku`, `barcode` (the GTIN, UPC
-# or ISBN), `available` (whether it can be bought) and `price`, an integer in cents for every currency ("prices are
-# in cents").
+# or ISBN), `available` (whether it can be bought: `true` names no one schema.org ItemAvailability, since a variant on
+# pre-order or back order can be bought too; `false` is `OutOfStock`) and `price`, an integer in cents for every
+# currency ("prices are in cents").
 _SHOPIFY_VARIANT: Final = Shape(
     type="Offer",
     at=("variants", ALL),
@@ -207,7 +208,7 @@ _SHOPIFY_VARIANT: Final = Shape(
         "availability": ("available",),
     },
     minor_units={"price": 2},
-    booleans={"availability": ("https://schema.org/InStock", "https://schema.org/OutOfStock")},
+    booleans={"availability": (None, "https://schema.org/OutOfStock")},
 )
 _SHOPIFY_PRODUCT_NODE: Final = Shape(
     type="Product",

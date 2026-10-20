@@ -151,7 +151,7 @@ class _Reader:
         self.roles = field_roles(schema)
         self.names = {name for name, role in self.roles.items() if role == "name"}
         self.row_fields = {name: spec for name, spec in schema.fields.items() if spec.scope == "row"}
-        self.links = content_links(page.lxml_tree, ctx.base_url)
+        self.links = content_links(page.lxml_tree, ctx.base_url, page.revealed)
         self.chrome = frozenset(url for _, url in chrome_links(page.lxml_tree, ctx.base_url))
         self._words = {name: _field_words(name, spec) for name, spec in self.row_fields.items()}
 

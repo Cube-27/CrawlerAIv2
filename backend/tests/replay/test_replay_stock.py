@@ -62,3 +62,29 @@ def test_an_offer_s_availability_and_inventory_level_publish_as_two_fields(
 @pytest.mark.parametrize("written", ["Not in stock"])
 def test_availability_text_that_qualifies_or_negates_a_member_never_publishes_one(written: str) -> None:
     assert _fields({"availability": written})["availability"] == ("missing", "invalid", None)
+
+
+def test_each_source_s_one_offer_is_the_item_s_offer() -> None:
+    # Two sources state the product and one Offer each: the microdata Offer names more fields, the JSON-LD one alone
+    # states the availability, which is that one offer's, not another variant's.
+    product = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Synthetic Widget",
+        "url": PAGE_URL,
+        "sku": "W-1",
+        "offers": {"@type": "Offer", "price": "10.00", "priceCurrency": "EUR", "availability": "PreOrder"},
+    }
+    microdata = (
+        '<div itemscope itemtype="https://schema.org/Product"><span itemprop="sku">W-1</span>'
+        f'<link itemprop="url" href="{PAGE_URL}"><div itemprop="offers" itemscope itemtype="https://schema.org/Offer">'
+        '<meta itemprop="sku" content="W-1"><meta itemprop="gtin" content="4006381333931">'
+        '<meta itemprop="price" content="10.00"><meta itemprop="priceCurrency" content="EUR"></div></div>'
+    )
+    raw = f'<html><head><script type="application/ld+json">{json.dumps(product)}</script></head>'
+    raw += f"<body>{microdata}</body></html>"
+
+    result = asyncio.run(extract_page(capture(raw.encode()), SCHEMA, None, None, data=DATA))
+
+    assert result.entity is not None
+    assert (result.entity["availability"].status, result.entity["availability"].value) == ("published", "PreOrder")

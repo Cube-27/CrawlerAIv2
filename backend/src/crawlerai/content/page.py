@@ -19,7 +19,7 @@ from crawlerai.acquire.items import Group, item_groups, lxml_root
 from crawlerai.content.attr_json import DOCUMENTED, SELECTOR
 from crawlerai.content.fragments import FRAME_HEADER, Answers, append, declares_frames, include, is_partial
 from crawlerai.content.segment import rank
-from crawlerai.content.text import CleanedText, VisibleIndex, render, xpath_step
+from crawlerai.content.text import CleanedText, VisibleIndex, render, script_revealed, xpath_step
 from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, decode_body, decode_html, is_html
 
 # HTML Standard §4.12.3: a `template` whose `shadowrootmode` is `open` or `closed` is a declarative shadow root.
@@ -133,7 +133,13 @@ class ParsedPage:
     @cached_property
     def item_groups(self) -> tuple[Group, ...]:
         """The page's groups of repeated item blocks, best first (the item layer's segment step, `content.segment`)."""
-        return rank(item_groups(self.lxml_tree), self.item_areas)
+        return rank(item_groups(self.lxml_tree), self.item_areas, self.revealed)
+
+    @cached_property
+    def revealed(self) -> frozenset[str]:
+        """The node paths of the concealed elements a script reveals (`content.text.script_revealed`), which the
+        cleaned text shows."""
+        return frozenset(node_xpath(node) for node in self.tree.css("[hidden], [style]") if script_revealed(node))
 
     @cached_property
     def text_spans(self) -> dict[str, tuple[int, int]]:
