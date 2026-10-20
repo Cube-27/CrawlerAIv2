@@ -308,13 +308,21 @@ class ExtractionConfigIR(_Model):
 
     @model_validator(mode="after")
     def _calls_name_recipes(self) -> Self:
-        listed = self.listing.fields.values() if self.listing is not None else ()
-        named = {steps.call for steps in (*self.fields.values(), *listed) if steps.call is not None}
+        named = self._called()
         if unknown := sorted(named - self.recipes.keys()):
             raise ValueError(f"fields name recipes the config does not hold: {unknown}")
         if unused := sorted(self.recipes.keys() - named):
             raise ValueError(f"recipes no field names: {unused}")
         return self
+
+    def _called(self) -> set[str]:
+        listed = self.listing.fields.values() if self.listing is not None else ()
+        return {steps.call for steps in (*self.fields.values(), *listed) if steps.call is not None}
+
+    def named_recipes(self) -> dict[Name, ApiRecipe]:
+        """The recipes some field still names: a field corrected, removed or re-located drops its call's recipe."""
+        called = self._called()
+        return {name: recipe for name, recipe in self.recipes.items() if name in called}
 
     def needs(self, *, running: bool = True) -> dict[str, Needs]:
         """Each page-level field's `needs`, the suspended ones left out when `running`."""

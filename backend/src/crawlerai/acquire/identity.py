@@ -21,10 +21,11 @@ from pydantic import JsonValue
 
 from crawlerai.acquire.outcome import as_error
 from crawlerai.acquire.types import FetchResult
+from crawlerai.core import json_text
 from crawlerai.core.ids import uuid7
 from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, network_file, network_json
 
-__all__ = ["MIN_KEY", "NOT_THE_PRODUCT", "identifies", "joined", "joined_call", "with_call"]
+__all__ = ["MIN_KEY", "NOT_THE_PRODUCT", "identified", "identifies", "joined", "joined_call", "with_call"]
 
 # The reason of a data call's attempt whose answer does not state the requested product.
 NOT_THE_PRODUCT: Final = "not_the_product"
@@ -139,3 +140,17 @@ def joined_call(
         network=(*page.network, call.body),
         raw_body=page.raw_body,
     )
+
+
+def identified(result: FetchResult, url: str, keys: tuple[str, ...]) -> FetchResult:
+    """A data call's `ok` answer when it states the product of the page at `url` it was requested with `keys` for
+    (`identifies`: a parameter value, or a URL with the page's path); else an `error`, `NOT_THE_PRODUCT`, which is not
+    used: a recipe's page is then served by its configured fetch (§4.10), a companion call joins nothing. An answer
+    that is not JSON is the collector's to report."""
+    if result.block_class != "ok":
+        return result
+    try:
+        answer = json_text.parse(result.bundle.body)
+    except ValueError:
+        return result
+    return result if identifies(answer, url, keys) else as_error(result, NOT_THE_PRODUCT)

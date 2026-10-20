@@ -98,7 +98,10 @@ def _candidates(pages: Sequence[ReplayPage]) -> tuple[list[RecipeHeader], list[s
     names of the captured ones never sent."""
     candidates: list[RecipeHeader] = []
     withheld: list[str] = []
-    seen: set[str] = set()
+    context = pages[0].context if pages else None
+    supplied = context.header_names() if context is not None else frozenset()
+    # A field the request context supplies is a reference, never the captured value (the caller's secret).
+    seen: set[str] = set(supplied)
     for name, _ in pages[0].sample.request.headers if pages else ():
         key = name.lower()
         # RFC 9113 §8.3: a name starting with `:` is an HTTP/2 pseudo-header, not a field.
@@ -110,9 +113,7 @@ def _candidates(pages: Sequence[ReplayPage]) -> tuple[list[RecipeHeader], list[s
             withheld.append(name)
         else:
             candidates.append(HeaderValue(name=name, value=value))
-    context = pages[0].context if pages else None
-    tried = {header.name.lower() for header in candidates}
-    names = sorted(context.header_names() - tried - CLIENT_FIELDS) if context is not None else []
+    names = sorted(supplied - CLIENT_FIELDS)
     return [*candidates, *(ContextHeader(name=name, from_context=True) for name in names)], withheld
 
 

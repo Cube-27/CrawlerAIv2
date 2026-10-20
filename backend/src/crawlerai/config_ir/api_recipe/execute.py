@@ -24,8 +24,8 @@ from typing import Final
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
-from crawlerai.acquire.identity import NOT_THE_PRODUCT, identifies
-from crawlerai.acquire.outcome import Content, as_error, fetch_result
+from crawlerai.acquire.identity import identified
+from crawlerai.acquire.outcome import Content, fetch_result
 from crawlerai.acquire.rungs import Rung, slow_down, with_attempts
 from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.collect import json_doc
@@ -102,7 +102,7 @@ class RecipeRung:
             else await self.fetch_json(request, policy)
         )
         if self.recipe.pagination is None:
-            result = _identified(result, url, keys)
+            result = identified(result, url, keys)
         # A fetch whose policy names the browser falls back to the browser, not to the HTML page fetched to bind.
         return _after(page, result, fallback=policy.method_hint != "browser")
 
@@ -179,20 +179,6 @@ class RecipeRung:
 
     def _unserved(self, url: str, policy: FetchPolicy, reason: str) -> FetchResult:
         return unserved(url, policy, self.engine_version, "error", reason)
-
-
-def _identified(result: FetchResult, url: str, keys: tuple[str, ...]) -> FetchResult:
-    """A detail recipe's `ok` answer when it states the product of the page at `url` it was requested with `keys` for
-    (`acquire.identity.identifies`: a parameter value, or a URL with the page's path); else an `error`,
-    `NOT_THE_PRODUCT`, which the page's configured fetch then serves (§4.10). An answer that is not JSON is the
-    collector's to report."""
-    if result.block_class != "ok":
-        return result
-    try:
-        answer = json_text.parse(result.bundle.body)
-    except ValueError:
-        return result
-    return result if identifies(answer, url, keys) else as_error(result, NOT_THE_PRODUCT)
 
 
 def _done(rows: int, records: int | None, deadline: float | None) -> bool:

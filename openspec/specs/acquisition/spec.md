@@ -136,8 +136,9 @@ such a body as structured evidence of the requested product, as the platform doc
 the page's values. A kept HTTP `ok` page whose surface's active config has running `call` field sources is also
 joined with the answer of each one's recipe ([learning-configs](../learning-configs/spec.md) "Locate run"), bound from
 the page URL and documents, a header it references taken from the caller's request context (sent only to the page's
-own host), sent the same way and marked `data_call: located`; a recipe was identity-checked when its replay was proven,
-so its answer is joined unchecked, and a recipe that binds nothing on the page sends nothing. (Previously: the call was
+own host), sent the same way and marked `data_call: located`; its answer joins only when it states the page's product
+(the identity check, with the values the request was bound with), and a recipe that binds nothing on the page sends
+nothing. (Previously: the call was
 sent only for a page about to be rendered for lacking what the caller reads, and the render was skipped when the joined
 page no longer lacked it; no field source named a call.) Refs: owner plan 2026-10-19 P4 (API replay
 with a product-identity check), owner decision 2026-10-19 on #326, owner #73.

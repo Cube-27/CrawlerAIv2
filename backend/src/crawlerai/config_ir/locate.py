@@ -34,7 +34,7 @@ from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.api_recipe.binding import Sample, page_data
 from crawlerai.config_ir.api_recipe.discovery import DiscoverySample, discover
 from crawlerai.config_ir.api_recipe.learn import prove
-from crawlerai.config_ir.api_recipe.model import ApiRecipe, Proof
+from crawlerai.config_ir.api_recipe.model import ApiRecipe, Proof, RequestSpec
 from crawlerai.config_ir.api_recipe.replay import Replay, ReplayPage
 from crawlerai.config_ir.held_out import StoredPage, read_bundle
 from crawlerai.config_ir.induction import page_level, source_steps
@@ -184,7 +184,23 @@ async def _locate_field(run: _Run, name: str, pages: Sequence[Sampled], located:
     located.fields[name], located.reports[name] = tiers[needs]
     located.validated_on.update(dict.fromkeys(page.stored.held_out.capture_id for page in others))
     if needs == "call" and recipe is not None:
+        _add_recipe(located, name, recipe)
+
+
+def _add_recipe(located: Located, name: str, recipe: ApiRecipe) -> None:
+    """`recipe` named `name`; or, when a field located before calls the same request, that field's recipe reading
+    this field too, so the fetch sends one companion call per endpoint (acquisition spec, "Data calls")."""
+    request = set(RequestSpec.model_fields)
+    shared = next(
+        (n for n, r in located.recipes.items() if r.model_dump(include=request) == recipe.model_dump(include=request)),
+        None,
+    )
+    if shared is None:
         located.recipes[name] = recipe
+        return
+    held = located.recipes[shared]
+    located.recipes[shared] = held.model_copy(update={"map": {**held.map, **recipe.map}})
+    located.fields[name] = located.fields[name].model_copy(update={"call": shared})
 
 
 def _validated(
@@ -288,7 +304,9 @@ def located_config(validated: Validated, base: ExtractionConfigIR, located: Loca
             "provenance": provenance,
         }
     )
-    # `model_copy` skips validation; the round trip runs the IR's validators on the merged document.
+    # A field re-located off its call drops that recipe. `model_copy` skips validation; the round trip runs the
+    # IR's validators on the merged document.
+    merged = merged.model_copy(update={"recipes": merged.named_recipes()})
     checked = ExtractionConfigIR.model_validate(merged.model_dump(by_alias=True))
     fields = {**report.fields, **located.reports}
     return Validated(checked, report.model_copy(update={"fields": fields, "refused": None}))

@@ -27,7 +27,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest, site_relation
 from crawlerai.acquire.browser_tab import ListingRung
 from crawlerai.acquire.challenge import block_class_of
 from crawlerai.acquire.classify import interstitial
-from crawlerai.acquire.identity import joined, with_call
+from crawlerai.acquire.identity import identified, joined, with_call
 from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
@@ -58,7 +58,7 @@ Fetched = tuple[FetchResult, tuple[AttemptRecord, ...], int]
 # the kept HTTP page, bound from the page's URL and documents and the policy's request context; None when it binds
 # nothing there (the field falls back to the generic path on that page). The config IR builds it: it sits above
 # `acquire` (`.importlinter`).
-CallPlan = Callable[[FetchResult, FetchPolicy], JsonRequest | None]
+CallPlan = Callable[[FetchResult, FetchPolicy], tuple[JsonRequest, tuple[str, ...]] | None]
 # The `data_call` mark of a located field source's companion call.
 LOCATED_CALL: Final = "located"
 
@@ -326,17 +326,19 @@ async def _with_calls(
     """The kept HTTP `ok` page with the answers of its located companion calls (`FetchPlan.calls`), each sent with
     `send` (the SSRF-guarded JSON rung, polite to the endpoint's host) once the site's rate admits it (`admit_next`).
     Every attempt is added, marked `LOCATED_CALL`; an `ok` answer joins the capture as a network body at the call's
-    URL, which the field's `xhr` step reads. A call that binds nothing on the page is not sent."""
+    URL, which the field's `xhr` step reads, once it states the page's product (`identified`, with the values the
+    request was bound with). A call that binds nothing on the page is not sent."""
     result, attempts, duration_ms = page
     if not calls or send is None or result.method != "http" or result.block_class != "ok":
         return page
     for call in calls:
-        request = await asyncio.to_thread(call, result, policy)  # binding parses the page: CPU work
-        if request is None:
+        bound = await asyncio.to_thread(call, result, policy)  # binding parses the page: CPU work
+        if bound is None:
             continue
         if not await _admitted(admit_next):
             break
-        sent = await send(request, policy)
+        request, keys = bound
+        sent = identified(await send(request, policy), result.bundle.manifest.url, keys)
         marked = tuple(a.model_copy(update={"data_call": LOCATED_CALL}) for a in sent.attempts)
         attempts, duration_ms = attempts + marked, duration_ms + sent.duration_ms
         if sent.block_class == "ok":

@@ -17,7 +17,7 @@ from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.rungs import FetchPlan
 from crawlerai.acquire.types import CallEndpoint, FetchPolicy, FetchResult
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir.api_recipe.binding import page_data
+from crawlerai.config_ir.api_recipe.binding import page_data, resolve_params
 from crawlerai.config_ir.api_recipe.execute import RecipeExecutor
 from crawlerai.config_ir.api_recipe.model import PLACEHOLDER, ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import request_for
@@ -73,13 +73,17 @@ def _running(ir: ExtractionConfigIR) -> list[FieldSteps]:
     return [steps for steps in (*ir.fields.values(), *listed) if steps.status != "suspended"]
 
 
-def companion_request(recipe: ApiRecipe, page: FetchResult, policy: FetchPolicy) -> JsonRequest | None:
+def companion_request(
+    recipe: ApiRecipe, page: FetchResult, policy: FetchPolicy
+) -> tuple[JsonRequest, tuple[str, ...]] | None:
     """`recipe`'s request for the HTTP `page`, bound from the URL it was requested at and, when a binder reads them,
-    its JSON documents, with the headers it references from the policy's request context; None when it binds
-    nothing."""
+    its JSON documents, with the headers it references from the policy's request context, and the values it was bound
+    with (the identity check's keys); None when it binds nothing."""
     url = page.bundle.manifest.url
     data = page_data(ParsedPage.of(page.bundle)) if recipe.requires_page_fetch else {}
-    return request_for(recipe, url, data, policy.context)
+    request = request_for(recipe, url, data, policy.context)
+    params = resolve_params(recipe, url, data)
+    return None if request is None or params is None else (request, tuple(params.values()))
 
 
 def endpoint(recipe: ApiRecipe) -> CallEndpoint:

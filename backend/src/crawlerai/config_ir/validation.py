@@ -21,11 +21,11 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from crawlerai.acquire.identity import joined_call
+from crawlerai.acquire.identity import identified, joined_call
 from crawlerai.acquire.types import RequestContext
 from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir.api_recipe.binding import page_data
+from crawlerai.config_ir.api_recipe.binding import page_data, resolve_params
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replay, request_for
 from crawlerai.config_ir.executor import EngineExecutor, row_id
@@ -176,11 +176,13 @@ async def replayed(
     """The HTTP held-out `page` (whose capture is `bundle`) with the answer of `recipe`'s call, replayed over HTTP
     without the browser, joined as serving joins it (acquisition spec, "Data calls"), which a `call` field's steps are
     validated on (learning-configs spec, "Locate run" step 4); None when the recipe binds nothing on the page or its
-    answer is not `ok`."""
-    request = request_for(recipe, bundle.manifest.url, page_data(page.page), context)
-    if request is None:
+    answer is not `ok` or does not state the page's product (`identified`)."""
+    url, data = bundle.manifest.url, page_data(page.page)
+    request = request_for(recipe, url, data, context)
+    params = resolve_params(recipe, url, data)
+    if request is None or params is None:
         return None
-    answer = await replay(request)
+    answer = identified(await replay(request), url, tuple(params.values()))
     if answer.block_class != "ok":
         return None
     joined = joined_call(bundle, answer.bundle, request.url, method=request.method, request_body=request.body)

@@ -79,9 +79,9 @@ function api_recipe_request(string $page_url, array $params, array $context = []
 }
 
 // The decoded JSON response, or null when the request fails, the status is not 2xx or the body is not JSON.
-function api_recipe_fetch(string $page_url, array $params): mixed
+function api_recipe_fetch(string $page_url, array $params, array $context = []): mixed
 {
-    $request = api_recipe_request($page_url, $params);
+    $request = api_recipe_request($page_url, $params, $context);
     $curl = curl_init($request['url']);
     curl_setopt_array($curl, [
         CURLOPT_HTTPHEADER => $request['headers'],
