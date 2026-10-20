@@ -19,7 +19,7 @@ from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.config_ir.progressive import LocateRequest
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import SchemaId
+from crawlerai.db.models import JobId, SchemaId
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
@@ -113,7 +113,8 @@ def test_a_drifted_located_field_requeues_a_locate_run_while_the_surface_locates
     rendered = {**_field("//div[@class='price']"), "needs": "browser"}
     ir = _ir(title=_field(), price=rendered)
 
-    assert relocated(ir, ["title", "price"], "locate") == LocateRequest(fields=["price"])
+    job = JobId(uuid7())
+    assert relocated(ir, ["title", "price"], "locate", job) == LocateRequest(job_id=job, fields=["price"])
     assert relocated(ir, ["price"], "off") is None
     assert relocated(ir, ["title"], "always") is None
     by_locate = ir.model_copy(update={"provenance": ir.provenance.model_copy(update={"origin": "located"})})

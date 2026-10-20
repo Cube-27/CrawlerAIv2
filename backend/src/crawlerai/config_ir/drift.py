@@ -155,15 +155,18 @@ def suspend(ir: ExtractionConfigIR, names: Iterable[str]) -> ExtractionConfigIR:
     return ir.model_copy(update={"fields": _suspended(ir.fields), "listing": listing})
 
 
-def relocated(ir: ExtractionConfigIR, names: Iterable[str], mode: RenderMode) -> LocateRequest | None:
-    """The locate run for the located fields among `names`, which drifted (module docstring); None when the surface no
-    longer locates (`mode` `off`) or none was located."""
+def relocated(
+    ir: ExtractionConfigIR, names: Iterable[str], mode: RenderMode, job_id: JobId | None = None
+) -> LocateRequest | None:
+    """The locate run for the located fields among `names`, which drifted (module docstring), replaying with the
+    request context of `job_id`, the job whose page showed the drift; None when the surface no longer locates (`mode`
+    `off`) or none was located."""
     if mode == "off":
         return None
     running = {name: steps for name, steps, _ in _running(ir)}
     by_locate = ir.provenance.origin == "located"
     located = [name for name in names if name in running and (by_locate or running[name].needs != "http")]
-    return LocateRequest(fields=located) if located else None
+    return LocateRequest(job_id=job_id, fields=located) if located else None
 
 
 def _load_window(stored: Mapping[str, object]) -> Window:
@@ -204,17 +207,21 @@ async def record_run(
     for name in stated:
         await record_event(conn, job_id, ABSENT_STATED, {"config_id": str(config_id), "field": name})
     if found or stated:
-        await _relearn(conn, config, ir, [d.field for d in found])
+        await _relearn(conn, config, ir, [d.field for d in found], job_id)
     return found
 
 
 async def _relearn(
-    conn: AsyncConnection, config: Row[ExtractionConfig], ir: ExtractionConfigIR, suspended: Sequence[str]
+    conn: AsyncConnection,
+    config: Row[ExtractionConfig],
+    ir: ExtractionConfigIR,
+    suspended: Sequence[str],
+    job_id: JobId,
 ) -> None:
     """Start a forced learning run for `config`, a locate run for the `suspended` fields a locate run placed while
-    the surface still locates (`relocated`)."""
+    the surface still locates (`relocated`), with `job_id`'s request context."""
     key = StateKey(config.site_id, config.schema_id, config.page_kind)
-    locate = relocated(ir, suspended, await render_mode(conn, key)) if suspended else None
+    locate = relocated(ir, suspended, await render_mode(conn, key), job_id) if suspended else None
     await request_learning(conn, key, force=True, locate=locate)
 
 
