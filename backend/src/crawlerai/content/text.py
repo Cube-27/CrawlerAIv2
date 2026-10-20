@@ -42,7 +42,13 @@ _LINE_BOXES = frozenset(
 # `display: table-cell`: adjacent cells are separate boxes, so their texts are separated (by a tab in `innerText`).
 CELLS = frozenset({"td", "th"})
 # HTML attributes whose values the page shows or announces for a visible element (extraction spec).
-_SHOWN_ATTRIBUTES = ("alt", "title", "value", "content")
+_SHOWN_ATTRIBUTES = ("alt", "title", "content")
+# HTML Standard §4.10.5: an `input` shows its `value` as its text (text-like states) or as its button's label (Submit,
+# Reset, Button); the states below show it as no text (a checkmark, a swatch, a slider, masked characters, a chosen
+# file, an image) and `hidden` renders nothing. `value` on any other element is a form or machine value, not shown:
+# an `option`'s submitted value (§4.10.10, it shows its label or text), a `button`'s, `data` (§4.5.15), `li`'s ordinal,
+# `meter`/`progress` gauges.
+_VALUE_NOT_SHOWN = frozenset({"checkbox", "radio", "file", "image", "password", "range", "color", "hidden"})
 # Namespaces in XML 1.0, NCName: a name without a colon, starting with a letter or `_` (`[^\W\d]`), then letters,
 # digits, `.`, `-` or `_`. Only an NCName can be an XPath 1.0 name test.
 _NCNAME = re.compile(r"[^\W\d][\w.\-]*")
@@ -186,13 +192,21 @@ def _enter(item: _Enter, shown: list[str], runs: int) -> list[_Item]:
         return []
     invisible = _invisible(style.get("visibility"), inherited=item.invisible)
     if not invisible:
-        shown.extend(value for name in _SHOWN_ATTRIBUTES if (value := attributes.get(name)))
+        shown.extend(_shown_values(tag, attributes))
     full = None if invisible else _completed(item.node, attributes.get("title"))
     children: list[_Item] = [_Text(full, item.path)] if full else _children(item.node, item.path, invisible)
     mark = None if invisible else _mark(item.node, tag, item.path, runs)
     children.extend((mark,) if mark else ())
     separator = _separator(tag)
     return [_Separate(separator), *children, _Separate(separator)] if separator else children
+
+
+def _shown_values(tag: str, attributes: _Attributes) -> list[str]:
+    """The values a visible element's attributes show or announce (`_SHOWN_ATTRIBUTES`, an `input`'s shown `value`)."""
+    names = [*_SHOWN_ATTRIBUTES]
+    if tag == "input" and (attributes.get("type") or "").strip().lower() not in _VALUE_NOT_SHOWN:
+        names.append("value")
+    return [value for name in names if (value := attributes.get(name))]
 
 
 def _mark(node: LexborNode, tag: str, path: str, runs: int) -> _Mark | None:

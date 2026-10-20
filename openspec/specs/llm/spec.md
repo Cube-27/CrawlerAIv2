@@ -138,7 +138,8 @@ and two runs side by side (`<span>1234</span> <span>WHT</span>`) are two values 
 a span across two runs was taken); a span the page labels as another field is not taken: the label right before it on its line, ended
 by a colon, and for a number or count also the words right after it ("293 Reviews"), read with the schema's label
 vocabulary (extraction spec, "Label vocabulary"), name fields of which this one is none. A label that names no field,
-or this one, decides nothing. On a listing, a place claimed for a row from its block's heading (HTML `h1`-`h6`, the
+or this one, decides nothing. A number or count written as a percentage (a CLDR percent sign next to it, in the span or
+beside it: `100% (4)`) is a ratio, not the field's value, and is not taken (previously: taken). On a listing, a place claimed for a row from its block's heading (HTML `h1`-`h6`, the
 item's name) is not taken when a line of the block outside the heading states that the job is remote (the location
 normalizer's `type:remote` clause): the block states its place there. A place that starts its line, below a line outside
 the heading holding a `type:remote` phrase (its label, `Remote from`), is taken with that line: the place as the page
@@ -154,6 +155,9 @@ Refs: §11, INV-12.
 #### Scenario: Another field's label
 - **WHEN** a product_id claim is a span after `ISBN:` and `ISBN` is a label of gtin only
 - **THEN** it is not taken, and product_id stays `missing` (`unverified`)
+#### Scenario: Percentage claimed as a rating
+- **WHEN** a rating claim is `100` in a review histogram's `100% (4)`
+- **THEN** it is not taken, and rating stays `missing` (`unverified`)
 #### Scenario: Place under a remote label
 - **WHEN** a job card shows `Remote from` and on the next line `USA`, and the claim for the row's locations is `USA`
 - **THEN** its candidate is the span `Remote from` to `USA`, text `Remote from USA`
@@ -185,7 +189,9 @@ repeat returns the stored draft without a call ([schemas](../schemas/spec.md)). 
 ### Requirement: Role S label synonyms
 Role S SHALL draft, once per schema and never per page, the labels pages write next to each labelled field's value, in
 English and other languages (`llm/roles/s_labels.py`, `prompt_kind` `s_labels`), from the fields' names, types,
-schema.org paths and descriptions; they are stored with the schema (`schema_def.labels`) when a request first uses
+schema.org paths and descriptions, leaving out a label that is also a common word for another thing in another
+language pages are written in (labels carry no language, so a page in that language would read its own word as this
+field's); they are stored with the schema (`schema_def.labels`) when a request first uses
 it (by id, inline, field names or a prompt with `records`). Labels repeating a field's own words or each other's are
 dropped, at most 32 per field. Without a reply (no provider, a failure, the key's draft cap) the schema is used as it
 is and the next use asks again. The call is charged to no job.

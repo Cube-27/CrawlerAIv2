@@ -82,6 +82,18 @@ def stated(raw: str, *, percentages: bool = True) -> Stated | str:
     return Stated(text[start:end], text[:start], text[end:], text)
 
 
+def percentage(before: str, value: str, after: str) -> bool:
+    """Whether the one number of `value`, written between `before` and `after`, is a percentage: a CLDR percent sign
+    is written next to it (`_percentage`), inside `value` or beside it. False when `value` holds no one number."""
+    found = stated(value)
+    if isinstance(found, str):
+        return False
+    left, middle = unicodedata.normalize("NFKC", before), unicodedata.normalize("NFKC", value)
+    start = len(left) + len(middle) - len(middle.lstrip()) + len(found.before)
+    end = start + len(found.written)
+    return _percentage(left + middle + unicodedata.normalize("NFKC", after), start, end)
+
+
 def _percentage(text: str, start: int, end: int) -> bool:
     """Whether a CLDR percent sign is written right after the number (white space between allowed, as `20 %` writes
     it) or right before it (`%20`), bidi marks (Unicode Cf, as some locales write around the sign) aside. A sign
