@@ -23,9 +23,10 @@ its scope match times its value's agreement:
 - Source weight: for `text`, `long_text`, `url` and `image_url` the kind's place in the type's order in
   `backend/data/source_precedence.yaml`, fitted on dev (the first of n kinds weighs 1, each later place 1/n less, a
   kind outside the order 0); a fragment of another of the field's candidates weighs 0 (`resolve/supersede.py`: a
-  `long_text` that is a prefix or ellipsis-cut prefix of a longer one, or an Open Graph description beside a longer
-  one of another kind; a `text` that is another kind's value plus ` - ` or ` | ` and more text; an Open Graph list of
-  images whose files are all among a longer list's of another kind). For `money` the strength of the currency
+  `long_text` that is a prefix or ellipsis-cut prefix of a longer one, an Open Graph description, or a value of
+  another kind stating the same text as it, beside a longer one of a kind other than Open Graph, or one that states
+  another's text with fewer line breaks, white space aside (its paragraphs and line breaks flattened); a `text` that is another kind's value plus ` - ` or ` | ` and more text; a list of
+  images, of any kind, whose files are all among a longer list's of another kind (Previously: an Open Graph list only)). For `money` the strength of the currency
   evidence ([normalization](../normalization/spec.md) `basis`): a stated currency 1, then `page`, `locale`, `url`,
   `unknown` each 1/(number of bases + 1) less. Every other type weighs every kind 1 (no measured order).
 - Scope match: 1 for the target's own values and its anchor Offer's, 0.5 for another Offer of the target or of its
@@ -83,6 +84,9 @@ owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_prefere
 #### Scenario: Gallery array
 - **WHEN** JSON-LD `Product.image` lists three URLs and `og:image` equals the second
 - **THEN** `image_url` publishes the second URL
+#### Scenario: A main image beside the gallery
+- **WHEN** JSON-LD `Product.image` states one image and the page's `dom` gallery lists it and four other views
+- **THEN** the list of images publishes the gallery's five, the JSON-LD list weighing 0
 #### Scenario: Namers disagree
 - **WHEN** `og:image` names the second gallery URL by its file and a `dom` image names the first
 - **THEN** `image_url` publishes the second URL, Open Graph weighing more than `dom`
@@ -112,9 +116,14 @@ The anchor's values score as the target's own and another Offer's at half (Candi
 values an offer field publishes only the shown variant's value, else it is `conflict` `offers_disagree` (a price
 also publishes when the visible price explains the difference, Candidate score). A value only another Offer than the
 anchor states is `conflict` `offer_split`; a field no Offer states publishes from the target's own values (its Open
-Graph, page state or text), and an `AggregateOffer` range never publishes as the price. (Previously: a price whose
-Offers disagreed, or only another Offer stated, published flagged.) Refs: §10, owner #68, owner 2026-10-19; per-row and common-value rules in
+Graph, page state or text), and an `AggregateOffer` range never publishes as the price. An Offer's values are the item's
+it offers through any Offers between them (schema.org `offers`: an AggregateOffer's `offers` offer its item).
+(Previously: a price whose Offers disagreed, or only another Offer stated, published flagged; an Offer inside an
+AggregateOffer was no item's.) Refs: §10, owner #68, owner 2026-10-19; per-row and common-value rules in
 [variants](../variants/spec.md). Enforced by: resolver test; active.
+#### Scenario: Offers inside an AggregateOffer
+- **WHEN** a listed Product's `offers` is an AggregateOffer whose one Offer states 9.50 EUR
+- **THEN** the row's price is 9.50 EUR
 #### Scenario: Price and availability from two Offers
 - **WHEN** Offer A states only price and Offer B states only availability
 - **THEN** `availability`, which the anchor lacks, is `conflict` with reason `offer_split`
@@ -125,12 +134,21 @@ Offers disagreed, or only another Offer stated, published flagged.) Refs: §10, 
 ### Requirement: Derived values (INV-07)
 Derived values SHALL fill only `missing` fields and carry `derived_by`; the only derivations are `absolutize`, then for
 a detail page's `T.url` field (`T.url` in every alternative of its path) `canonical_link` (RFC 6596), then
-`final_url`, each a named function (`resolve/derive.py`). (Previously: a field whose last rank was `T.url`, such as
-`apply_url`, took the page URL too.) Refs: §9, §10, Appendix A #40, D-0442, D-0910, D-1625. Enforced by: resolver
+`final_url`, each a named function (`resolve/derive.py`). Before derivation, when the canonical link and the final URL
+are one URL, a kept candidate of that `T.url` field naming another document (another host, port or path; a query or a
+fragment alone names none) is rejected `other_document`, and preference decides among the rest; a relative reference
+`absolutize` resolves to another document is rejected so too. (Previously: a field
+whose last rank was `T.url`, such as `apply_url`, took the page URL too; a structured `url` built from another id than
+the page's outranked its canonical URL.) Refs: §9, §10, Appendix A #40, D-0442, D-0910, D-1625. Enforced by: resolver
 tests; active.
 #### Scenario: No url candidate
 - **WHEN** a detail page has no url candidate and `<link rel=canonical href="https://example.com/p/1">`
 - **THEN** `url` publishes that URL with `derived_by=canonical_link`, source kind `derived`, evidence `derived`
+#### Scenario: Structured url of another document
+- **WHEN** a detail page's canonical link and final URL are `https://example.com/p-188.html` and its JSON-LD Product
+  `url` is `https://example.com/p-759.html`
+- **THEN** `url` publishes `https://example.com/p-188.html` (`og:url` when it states it, else `derived_by=canonical_link`),
+  the JSON-LD candidate rejected `other_document`
 #### Scenario: No stated apply link
 - **WHEN** a job page states no apply link and role C claims none
 - **THEN** `apply_url` stays `missing`

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import JsonValue
 
 from crawlerai.acquire.identity import NOT_THE_PRODUCT, identified, joined
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
@@ -71,9 +72,9 @@ def _capture(url: str, method: CaptureMethod, body: bytes, calls: tuple[tuple[st
 def _product(key: str, cents: int = 2900) -> bytes:
     # Shopify Ajax API product (its documentation, "Product"): one variant, its price in cents for every currency.
     variant = {"id": 1, "title": "Default", "sku": f"{key}-1", "barcode": "4006381333931", "price": cents}
-    return json.dumps(
-        {"handle": key, "title": "Item", "url": f"/products/{key}", "variants": [{**variant, "available": True}]}
-    ).encode()
+    product = {"handle": key, "title": "Item", "url": f"/products/{key}", "variants": [{**variant, "available": True}]}
+    images = [f"//cdn.example.test/files/{key}-{n}.jpg" for n in (1, 2)]
+    return json.dumps({**product, "description": "<p>A <b>mug</b>.</p>", "images": images}).encode()
 
 
 # An Online Store page: the platform's features script and its presentment currency (`content_for_header`).
@@ -105,6 +106,10 @@ def test_a_documented_answer_joins_only_for_its_product_and_reads_in_major_units
     assert row["variants.sku"] == Ok(f"{key}-1")
     assert row["variants.gtin"] == Ok("4006381333931")
     assert row["variants.availability"] == Ok("InStock")
+    # The product's every image, the featured one first, and its HTML body read as text.
+    files: list[JsonValue] = [f"https://cdn.example.test/files/{key}-{n}.jpg" for n in (1, 2)]
+    assert [c.normalized for c in read.candidates if c.field == "additional_images"] == [Ok(files)]
+    assert [c.normalized for c in read.candidates if c.field == "description"] == [Ok("A mug.")]
     if other != key:
         # Another product's answer (an endpoint that ignores its key) never joins, and says why.
         refused, attempt = joined(http, _capture(f"{page}.js", "api", _product(other)), key, "shopify")

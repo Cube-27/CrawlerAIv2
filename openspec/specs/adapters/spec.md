@@ -54,12 +54,18 @@ listings as `ItemList` rows. A shape may read a property from further members af
 root before each of a property's string values (`prefixes`); an amount the API's documentation states as an integer
 count of the currency's minor unit is scaled to the major unit by the places the documentation states, a constant or
 a member of the node (`minor_units`), and any other value of that property is dropped; an amount no documentation
-gives a unit for is never scaled; a field that reads a whole node whose shape maps
+gives a unit for is never scaled; a property the API splits over members as parts of one rich text (`sections`: a
+body, headed lists, closing remarks) is one HTML text of its non-empty parts in the order the platform's page shows
+them, each part's heading an `h2` before its body; a field that reads a whole node whose shape maps
 properties reads an object of those properties' schema.org names. Each entity carries what identifies its item as a
 JSON-LD entity does (its identifier values and item URLs), so resolution merges it with the page's own statement of the
 item. A body that does not match yields no entities, never an exception. Refs: §8.1, D-0266, D-1087, D-1115, D-1176,
 D-1304, D-1336.
-(Previously: an adapter's entities carried no identity and could not merge with the page's JSON-LD.)
+(Previously: an adapter's entities carried no identity and could not merge with the page's JSON-LD; a split text was
+read from its first member only, and Personio's sections were joined into the recorded answer.)
+#### Scenario: A posting body split over members
+- **WHEN** a Lever posting states `description`, a list `Requirements` with items, and `additional`
+- **THEN** its description is the three in that order, the list under a `Requirements` heading
 #### Scenario: One item in the API and in the page
 - **WHEN** a detail page's JSON-LD `JobPosting` and the adapter's posting state one identifier or one item URL
 - **THEN** they are one entity, with the values of both
@@ -112,12 +118,13 @@ Collection items SHALL read as schema.org products (variants under `hasVariant`,
 [variants](../variants/spec.md)), with prices only when the shop presents exactly one currency, never inferred from
 the URL (C7); a stored answer of a shop of several currencies reads without prices. The Online Store's documented
 product JSON (`/products/{handle}.js`, a data call; `adapters/platforms.py` `answer_shapes`) SHALL read as a Product
-with one Offer per `variants[]` member: `title` as `name`, `sku`, `barcode` as `gtin`, `price` in cents for every
+with `description` (its HTML body) as `description`, every `images[]` URL as `image` (the featured image first), and
+one Offer per `variants[]` member: `title` as `name`, `sku`, `barcode` as `gtin`, `price` in cents for every
 currency (×100), `available` as `InStock`/`OutOfStock` (`Shape.booleans`), so the variants rows fill from it; its
 currency is the page's `Shopify.currency.active`, a platform signature's `currency_members` (Shopware:
 `window.currencyIsoCode`), read only on a page showing the platform's signal. Refs: D-1080, D-1081, D-1085, D-1114,
 D-1118, architecture-v3 d.7. (Previously: the answer's top-level `price` only, read without its Offer when
-`price_varies`; no currency member.)
+`price_varies`; no currency member; the product JSON's `featured_image` only and no `description`.)
 
 ### Requirement: Workday adapter
 It SHALL detect career sites on `{tenant}.{dc}.myworkdayjobs.com/[{locale}/]{site}` and
@@ -161,10 +168,12 @@ read, and only the first page decides the outcome. Refs: D-1300, D-1301.
 An adapter MAY state, from what a fetched page declares about itself (its final URL after redirects, `link
 rel=canonical`, `og:url`) and the targets of its links, the platform page the page stands for (`Referring.referred`);
 a page the adapter did not detect by URL is then served by that adapter, recorded under the platform page, when the
-page is `ok`, the site's rate admits the request and the platform's host is not declined. An HTTP page that would be
+page is `ok`, the site's rate admits the request and the platform's host is not declined. A page's links alone refer it
+only when the schema's items are the platform's (the fetch policy's `target_types`, the schema.org types of its required row
+fields: JobPosting for a job board): a link leads elsewhere, it is not the page's identity. An HTTP page that would be
 rendered for lacking what the caller reads asks its referral or canonical URL first, and is rendered only when no
 adapter serves it. Only structure decides, never a list of hosts or words. Refs: D-1302, D-1388.
-(Previously: the page was rendered first.)
+(Previously: the page was rendered first; links referred a page whatever its schema read.)
 #### Scenario: Branded careers page
 - **WHEN** a listing page on another host links only to job and sign-in pages of one Workday career site
 - **THEN** that site's list is served by the Workday adapter and the result lists the page attempt then the `api`
@@ -172,12 +181,16 @@ adapter serves it. Only structure decides, never a list of hosts or words. Refs:
 #### Scenario: Two sites
 - **WHEN** a listing page links to two Workday career sites
 - **THEN** no site is referred and the page stays as fetched
+#### Scenario: Footer careers link on a store
+- **WHEN** a product listing read with a product schema links, in its footer, only to one Workday career site
+- **THEN** no site is referred and the page stays as fetched
 
 ### Requirement: Ashby, SmartRecruiters, Recruitee, Workable and Rippling adapters
 They SHALL detect only the hosted forms their public APIs name (Ashby boards, SmartRecruiters company and posting
 pages, Recruitee company hosts, Workable account pages, Rippling boards and jobs), fetch the documented JSON
 (SmartRecruiters in pages of 100) and map `JobPosting` title, location(s), date posted, employment type, description,
-identifier and URL, and the salary where the API states an amount, as in `adapters/{ashby,smartrecruiters,recruitee,
+identifier and URL, and the salary where the API states an amount (the description: SmartRecruiters' job ad
+sections `jobDescription`, `qualifications` and `additionalInformation`, Recruitee's `description` and `requirements`), as in `adapters/{ashby,smartrecruiters,recruitee,
 workable,rippling}.py`; pages the API has no endpoint for fall to the page rungs. Refs: D-1303, D-1305, D-1306, D-1308.
 
 ### Requirement: BambooHR, Teamtailor, UKG Pro, Personio and ADP adapters
@@ -187,7 +200,14 @@ by company and center id), fetch the documented JSON, JSON Feed, search API, emb
 pages of 50 by `Top` and `Skip`; a list that holds no row, a redirect to the platform's own site, or a page that embeds
 nothing is `not_served`) and map `JobPosting` title, locations, date posted, employment type, description, identifier,
 URL and the pay where the platform states one, as in `adapters/{bamboohr,teamtailor,ukg,personio,adp}.py`; Teamtailor
-and Personio have no endpoint for one job, so a job page falls to the page rungs. Refs: D-1330, D-1333, D-1334, D-1335.
+and Personio have no endpoint for one job, so a job page falls to the page rungs. A UKG job page's date posted is the
+`ExternalPostedDate` of its opportunity's membership of the board the URL names (`JobBoardMemberships`, by
+`JobBoardId`), else the requisition's `PostedDate`. (Previously: always `PostedDate`.) Refs: D-1330, D-1333, D-1334,
+D-1335.
+#### Scenario: UKG board date
+- **WHEN** a UKG opportunity states `PostedDate` 2026-08-20 and its membership of the page's board
+  `ExternalPostedDate` 2026-10-13
+- **THEN** its date posted is 2026-10-13
 #### Scenario: Board without a careers site
 - **WHEN** a company's careers list endpoint answers a redirect to the platform's own site
 - **THEN** the adapter's answer is `not_served` and the page is fetched by the page rungs

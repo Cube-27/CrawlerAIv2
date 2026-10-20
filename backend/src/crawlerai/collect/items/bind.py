@@ -22,12 +22,15 @@ the row's name. A state or call array row (`array_row`) binds by URL to a listin
 
 **Values.** A bound entity's candidates join its row where the row holds no candidate of the field, or where they equal
 one of the row's (agreement, normalization spec); a value that disagrees with the row's own is dropped, so the row's
-source stays authoritative. One exception: a row a platform adapter's answer states (`adapter` candidates only, an API
-answer, not the page's markup) takes its bound block's one visible amount of a money field as a rival, so that
-resolution weighs the amount the page shows against the answer's (resolution spec, "the visible price"; C1, a theme
-showing a tax-inclusive amount the catalogue price excludes). A block's `ambiguous_in_block` value joins as its one
-option equal to the row's value. A stated row bound by URL takes the block's link as its item URL (the page's own
-spelling of it), its respelled stated URL dropped.
+source stays authoritative. Money is the exception: the amount a card shows is what the page states, so a block bound
+by URL whose one visible amount of a money field differs from its stated row's (structured markup's or a platform
+adapter's) joins the row as a rival, and resolution weighs it (resolution spec, "the visible price": it publishes,
+flagged). The common causes are a stated price that is one variant's while the card shows the "from" price, and a
+theme showing a tax-inclusive amount the catalogue price excludes. A block's `ambiguous_in_block` value joins as its
+one option equal to the row's value; of a money field, when no option equals it, every option joins as a rival, so the
+amounts the card shows contest the stated one and the field is a conflict rather than an unchallenged guess (C7). A
+stated row bound by URL takes the block's link as its item URL (the page's own spelling of it), its respelled stated
+URL dropped.
 
 **Key induction.** Across the array rows bound to rows whose blocks show a field, a key of those rows (a JSON path
 relative to the row) whose value equals the block's on `MIN_ITEMS` rows or more is that field's key on this page
@@ -391,52 +394,50 @@ class _Binder:
             own = self.held.get(row, {})
             for c in moved[source]:
                 joined = self._joined(c, row, own, by_url, replaced)
-                added.extend(() if joined is None else (joined,))
-                dropped += joined is None
+                added.extend(joined)
+                dropped += not joined
         if dropped:
             self.notes.append(f"item layer: {dropped} bound values disagreeing with their row dropped")
         return (*(c for c in kept if id(c) not in replaced), *added)
 
     def _joined(
         self, c: Candidate, row: str, own: Mapping[str, list[Candidate]], by_url: bool, replaced: set[int]
-    ) -> Candidate | None:
+    ) -> tuple[Candidate, ...]:
+        """What of the bound entity's candidate `c` joins its row (module docstring): none, it, or a block's options."""
         spec = self.listing.schema.fields.get(c.field)
         theirs = own.get(c.field, [])
+        moved = (c.model_copy(update={"entity_id": row}),)
         if spec is None or not theirs:
-            return c.model_copy(update={"entity_id": row})
+            return moved
         values = [t.normalized.value for t in theirs if isinstance(t.normalized, Ok)]
         if isinstance(c.normalized, Ok) and any(equal(c.normalized.value, v, spec) for v in values):
-            return c.model_copy(update={"entity_id": row})
-        if by_url and _shown_amount(c, spec, theirs):
-            return c.model_copy(update={"entity_id": row})  # a rival of the adapter's amount (module docstring)
+            return moved
+        if by_url and _shown_amount(c, spec):
+            return moved  # a rival of the stated amount (module docstring)
         if by_url and c.field in self.url_fields and c.source_kind == "dom":
             # The stated URL respells the block's link (a slash, an added query): the page's own spelling replaces it.
             replaced.update(id(t) for t in theirs if t.source_kind != "dom")
-            return c.model_copy(update={"entity_id": row})
+            return moved
         if isinstance(c.normalized, Ambiguous) and c.normalized.reason == AMBIGUOUS_IN_BLOCK:
-            return self._agreeing_option(c, row, values)
-        return None
+            return self._options(c, row, values, contest=by_url and spec.type == FieldType.MONEY)
+        return ()
 
-    def _agreeing_option(self, c: Candidate, row: str, values: Sequence[JsonValue]) -> Candidate | None:
-        """The block's option equal to one of the row's values, as a candidate of its own."""
+    def _options(self, c: Candidate, row: str, values: Sequence[JsonValue], *, contest: bool) -> tuple[Candidate, ...]:
+        """The block's option equal to one of the row's values, as a candidate of its own; with `contest` and no such
+        option, every option, as rivals of the row's value (module docstring)."""
         spec = self.listing.schema.fields[c.field]
         raws = c.raw if isinstance(c.raw, list) else []
-        for raw in raws:
-            normalized = normalize(raw, spec, self.listing.ctx)
-            if isinstance(normalized, Ok) and any(equal(normalized.value, v, spec) for v in values):
-                return c.model_copy(update={"entity_id": row, "raw": raw, "normalized": normalized})
-        return None
+        options = [(raw, normalize(raw, spec, self.listing.ctx)) for raw in raws]
+        read = [c.model_copy(update={"entity_id": row, "raw": raw, "normalized": n}) for raw, n in options]
+        for option in read:
+            if isinstance(option.normalized, Ok) and any(equal(option.normalized.value, v, spec) for v in values):
+                return (option,)
+        return tuple(option for option in read if isinstance(option.normalized, Ok)) if contest else ()
 
 
-def _shown_amount(c: Candidate, spec: FieldSpec, theirs: Sequence[Candidate]) -> bool:
-    """Whether `c` is a block's one visible amount of a money field whose row only a platform adapter states."""
-    return (
-        spec.type == FieldType.MONEY
-        and c.source_kind == "dom"
-        and c.independent
-        and isinstance(c.normalized, Ok)
-        and all(t.source_kind == "adapter" for t in theirs)
-    )
+def _shown_amount(c: Candidate, spec: FieldSpec) -> bool:
+    """Whether `c` is a block's one visible amount of a money field."""
+    return spec.type == FieldType.MONEY and c.source_kind == "dom" and c.independent and isinstance(c.normalized, Ok)
 
 
 @dataclass(frozen=True, slots=True)

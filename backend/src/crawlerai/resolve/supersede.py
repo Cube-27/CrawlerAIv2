@@ -5,12 +5,17 @@ Source precedence ranks by kind, so a kind that states a field as a fragment wou
 Two structural properties of the values say a candidate is a fragment of another, whatever its kind:
 - long_text: a text that is a prefix of a longer candidate, or an ellipsis-cut prefix of it (Unicode U+2026 or
   `...`), is a truncation of it; an Open Graph description (the protocol defines it as a one-to-two sentence summary)
-  is a summary, so a longer description of another kind supersedes it.
+  is a summary, and so is a candidate of another kind stating the same text as it, so a longer description of a kind
+  other than Open Graph supersedes it. A text that is another's with fewer line breaks, white space aside, is that
+  text with its block structure flattened (paragraphs and `br` line breaks, HTML Standard §4.4.1, §4.5.27, dropped),
+  so the rendition keeping more of its lines supersedes it.
 - text: a value that is another kind's value plus a separator (a dash or a vertical bar, between spaces) and more
   text, at either end, is that value with decoration; the other kind's undecorated value supersedes it.
-- a list of images: an Open Graph list (the protocol's `og:image` is an image to represent the object, as its
-  description is a summary) whose files are all among a longer list's of another kind (`resource_key`) is that list's
-  representative part; the longer list supersedes it.
+- a list of images: a list whose files are all among a longer list's of another kind (`resource_key`: the set of
+  files a list names, a strict subset of the other's) is that list's representative part, whatever its kind: an Open
+  Graph `og:image` (an image to represent the object), or a structured `image` stating the main image only while the
+  page's gallery or another source lists every view. The longer list supersedes it; it must name every file the
+  shorter one does, so a list of other images never supersedes it.
 """
 
 import re
@@ -40,13 +45,7 @@ def superseded(spec: FieldSpec, kept: Sequence[Candidate]) -> list[Candidate]:
 
 def _representative(item: FieldSpec, kept: Sequence[Candidate]) -> list[Candidate]:
     files = [(c, _files(c, item)) for c in kept]
-    return [
-        c
-        for c, own in files
-        if c.source_kind == _OPEN_GRAPH
-        and own
-        and any(o.source_kind != _OPEN_GRAPH and own < other for o, other in files)
-    ]
+    return [c for c, own in files if own and any(o.source_kind != c.source_kind and own < other for o, other in files)]
 
 
 def _files(c: Candidate, item: FieldSpec) -> frozenset[Hashable]:
@@ -71,16 +70,35 @@ def _collapsed(value: str) -> str:
 
 def _by_length(kept: Sequence[Candidate]) -> list[Candidate]:
     forms = _forms(kept)
-    return [c for c, form in forms if any(_longer(c, form, other, longer) for other, longer in forms)]
+    summaries = {form for c, form in forms if c.source_kind == _OPEN_GRAPH}
+    return [
+        c
+        for c, form in forms
+        if any(_longer(c, form, other, longer, summaries) for other, longer in forms) or _flattened(c, kept)
+    ]
 
 
-def _longer(c: Candidate, form: str, other: Candidate, longer: str) -> bool:
+def _longer(c: Candidate, form: str, other: Candidate, longer: str, summaries: set[str]) -> bool:
     if len(longer) <= len(form) or other is c:
         return False
     cut = _ELLIPSIS.sub("", form)
     truncation = bool(cut) and longer.startswith(cut)
-    summary = c.source_kind == _OPEN_GRAPH and other.source_kind != _OPEN_GRAPH
+    summary = form in summaries and other.source_kind != _OPEN_GRAPH
     return truncation or summary
+
+
+def _flattened(c: Candidate, kept: Sequence[Candidate]) -> bool:
+    """Whether another kept candidate states `c`'s text, white space aside, on more lines."""
+    value = c.normalized.value if isinstance(c.normalized, Ok) else None
+    if not isinstance(value, str):
+        return False
+    solid = "".join(value.split())
+    return any(
+        isinstance(other := o.normalized.value if isinstance(o.normalized, Ok) else None, str)
+        and other.count("\n") > value.count("\n")
+        and "".join(other.split()) == solid
+        for o in kept
+    )
 
 
 def _decorated(kept: Sequence[Candidate]) -> list[Candidate]:

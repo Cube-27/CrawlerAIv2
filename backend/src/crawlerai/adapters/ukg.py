@@ -51,7 +51,9 @@ _MATCH_CRITERIA: Final = {
 # An opportunity as a schema.org JobPosting: its page is `OpportunityDetail?opportunityId={Id}` on the board (the
 # prefix `shapes` puts before `Id`); `RequisitionNumber` is the company's number for it; its places are the
 # `LocalizedName`s of its `Locations`. A list gives `BriefDescription`, the page `Description`; the page states pay
-# as annual or hourly amounts with a currency, or as a pay range, when the company shows them.
+# as annual or hourly amounts with a currency, or as a pay range, when the company shows them. `PostedDate` is the
+# requisition's; the page also lists the boards it is posted on (`JobBoardMemberships`, each with its `JobBoardId` and
+# `ExternalPostedDate`), and the date the board shows is its own membership's (`_posted_on_board`).
 _COMMON: Final = {
     "title": ("Title",),
     "datePosted": ("PostedDate",),
@@ -87,6 +89,7 @@ _RANGE: Final = Shape(
     anchor=("PayRangeMinimum",),
     properties={"minValue": ("PayRangeMinimum",), "maxValue": ("PayRangeMaximum",)},
 )
+_MEMBERSHIPS: Final = "JobBoardMemberships"
 _DETAIL: Final = Shape(
     type="JobPosting",
     properties={**_COMMON, "description": ("Description",)},
@@ -140,11 +143,26 @@ class UltiPro:
         )
         return serving(result, _rows)
 
-    def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
+    def shapes(self, match: AdapterMatch, answer: JsonValue, /) -> tuple[Shape, ...]:
         if match.page_kind == "detail":
-            return (_DETAIL,)
+            return (_posted_on_board(match.tenant, answer),)
         listed = replace(_LISTED, prefixes={"url": f"{_board(match.tenant)}/OpportunityDetail?opportunityId="})
         return (Shape(type="ItemList", nodes={"itemListElement": (listed,)}),)
+
+
+def _posted_on_board(tenant: str, answer: JsonValue) -> Shape:
+    """The detail shape, its `datePosted` the `ExternalPostedDate` of the membership of the board the page is on (its
+    `JobBoardId`, the board's UUID, RFC 9562 §4: compared case-insensitively) when the opportunity states one, else
+    the requisition's `PostedDate`."""
+    board = tenant.split("/")[2].lower()
+    memberships = answer.get(_MEMBERSHIPS) if isinstance(answer, dict) else None
+    for i, membership in enumerate(memberships if isinstance(memberships, list) else []):
+        if not isinstance(membership, dict) or str(membership.get("JobBoardId", "")).lower() != board:
+            continue
+        if isinstance(membership.get("ExternalPostedDate"), str):
+            dated = {**_DETAIL.properties, "datePosted": (_MEMBERSHIPS, i, "ExternalPostedDate")}
+            return replace(_DETAIL, properties=dated)
+    return _DETAIL
 
 
 def _is_opportunity(name: str, value: str) -> bool:

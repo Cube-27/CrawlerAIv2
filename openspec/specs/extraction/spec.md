@@ -53,13 +53,16 @@ blocks skipped, an `og:title` read without trailing segments naming the site and
 run of its words that the last slug segment of the page URL path spells, as that run) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
 standing in for that thing; a path through another thing, `Product.offers.seller.url`, has none); a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
-element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. A platform's documented
+element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. A url or image field
+whose path ends at a node (schema.org `image`: ImageObject or URL) reads the node's `contentUrl`, else its `url`. A
+platform's documented
 product JSON that a detail page's HTTP fetch joined after its identity check (acquisition spec, "Data calls") is read
 as that platform documents its members (`adapters/platforms.answer_shapes`, `collect/platform_json.py`): `adapter`
 candidates of the requested product, amounts in the minor unit the documentation states, and no Offer when its
 variants are priced differently (the page states the selected one). Refs: §8.1,
 D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-19 on #326, architecture-v3 d.6.
-(Previously: Open Graph read `product:price` alone, whatever the money field's price role.)
+(Previously: Open Graph read `product:price` alone, whatever the money field's price role; an `image` written as an
+ImageObject was an invalid value.)
 #### Scenario: OG sale price
 - **WHEN** a page states `product:price:amount` 100 and `product:sale_price:amount` 80, and the schema has `price` and
   a user-added `list_price`
@@ -73,6 +76,9 @@ D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-1
 #### Scenario: Two types
 - **WHEN** a JSON-LD node is typed `["VideoGame", "Product"]` and states an Offer
 - **THEN** the node is a Product for intent and ownership, and its Offer's price publishes
+#### Scenario: Image objects
+- **WHEN** a Product's `image` is two ImageObjects, one stating `contentUrl` and one only `url`
+- **THEN** the image list candidate holds both files
 #### Scenario: og:description
 - **WHEN** a page states only `og:description` for its product
 - **THEN** that text is the `description` candidate, ranked behind JSON-LD and microdata
@@ -226,8 +232,10 @@ price role its path gives it (schemas spec, "Presets"): struck text (`s`, `del`,
 price; an amount followed by a CLDR per pattern and a CLDR mass, volume, length, area or item unit (`€25/kg`,
 `$0.50 per 100 ml`; `normalize/units.py`, the page's and the root locale's CLDR unit data) only for a unit price; an
 amount per a CLDR duration unit (`$25/mo`) for no money field; a member price from its labels only. The item layer's
-rows read by the same rule (`collect/items/align.py`). It SHALL take the main image of
-the one `main`/`role=main`/`article` outside chrome, decorative images and link cards (`collect/dom.py`), an image's
+rows read by the same rule (`collect/items/align.py`). It SHALL take as the main image the first shown image (in that
+region, else in the body) whose file (`resource_key`) is the main image the page's own structured data or Open Graph
+states (an image field's value, a list's first), else the first image of
+the one `main`/`role=main`/`article`, outside chrome, decorative images and link cards (`collect/dom.py`), an image's
 source being its `src` unless its `srcset` has width descriptors (HTML Standard §4.8.4.3: `src` is then out of the
 source set), when it is the widest candidate; and for a list of images whose path names schema.org `image`, the main
 image's gallery: from the main image up, the first block with siblings of its tag gives, per such block, its shown image
@@ -244,12 +252,16 @@ not hold the title are set apart too. Values MUST be visible.
 (Previously: labels were only names, and other items' content was read; `src` was read before `srcset`; no list of
 images was read; a recommendation card that was not one of two or more sibling cards was read; an other item's
 structured price counted as stated, so its card was read; struck text was `s` and `del` only, and an amount per unit
-or per period was a price candidate.) Refs: Appendix A #42, D-0955,
+or per period was a price candidate; a page without a main landmark had no main image and no gallery.) Refs: Appendix A #42, D-0955,
 D-1096, D-1640, D-1641, D-1642, D-1643.
 #### Scenario: Gallery slides
 - **WHEN** the main image is one of three sibling slides, two of which hold an image whose `src` is a shared placeholder
   and whose `srcset` lists widths
 - **THEN** the list of images is the slides' images, each at its widest `srcset` candidate
+#### Scenario: A storefront without a main landmark
+- **WHEN** a page has no `main`, `role=main` or single `article`, its JSON-LD `Product.image` names one file, and the
+  body shows that file as one of three sibling slides
+- **THEN** `image_url` is that slide's image and the list of images is the three slides' images
 #### Scenario: Label line
 - **WHEN** the main region holds `Brand: <span>Example Brand</span>`
 - **THEN** `brand` has the candidate `Example Brand` located at the span
@@ -336,13 +348,19 @@ On a detail page the system SHALL propose for each `long_text` field the prose b
 (`collect/dom_text.py`; as the structural DOM values, outside chrome, dialogs and media fallback, outside reviews
 and related items marked by schema.org `review`, `isRelatedTo`, `isSimilarTo` or a Review `itemtype`, and outside
 other items' cards) that states it in
-full: the outermost block, with no table, form control, button, image, media or frame, whose text begins with a
-candidate another collector proposed for the field (or its ellipsis-cut form, white space aside), and the block equal
-to a non-Open-Graph value in place of that value's wider blocks; else the section after a heading, or named by
-`aria-label` or `aria-labelledby`, whose words are the field's or its schema.org property's; else, for a field whose
-path names `description` that only Open Graph (or nothing) states, the longest maximal prose block that is not mostly
-links, without its opening heading. Blocks that differ are ambiguous: none. The candidate is `dom`, independent, in
-the `dom` evidence bucket. Refs: C2, C4, D-1700, D-1701, D-1702, D-1703, D-1704. Enforced by: unit and replay tests; active.
+full: the outermost block, with no table, form control, button, media or frame (an `img` or `picture` among its text
+is phrasing content, HTML Standard §3.2.5.2.5), whose text begins with a candidate another collector proposed for
+the field (or its ellipsis-cut form, white space aside), and the block equal to a value that is no summary (neither
+Open Graph's nor one stating the same text) in place of that value's wider blocks; or, where it goes on further, the
+element a microdata or RDFa value is stated on with the prose and headings of its following siblings, up to one that
+is no prose or states another property or item; else the section after a heading, or named by `aria-label` or
+`aria-labelledby`, whose words are the field's or its schema.org property's; else, for a field whose path names
+`description` that only Open Graph (or nothing) states, the longest maximal prose block with no image that is not
+mostly links, without its opening heading, unless it holds the page's title heading (`h1`, or an ARIA heading of level
+1) or a price the structural pass read, or, beside an Open Graph summary, is no longer than it or holds at most half
+of its words other than the title heading's. Blocks that differ are ambiguous: none. The candidate is `dom`, independent, in
+the `dom` evidence bucket. (Previously: any image made a block no prose, an element-valued description was never
+continued, and the main text was the longest block whatever it held.) Refs: C2, C4, D-1700, D-1701, D-1702, D-1703, D-1704. Enforced by: unit and replay tests; active.
 #### Scenario: Summary and full text
 - **WHEN** `og:description` is the first sentence of a paragraph block that goes on, and no other kind states a
   description
@@ -353,3 +371,9 @@ the `dom` evidence bucket. Refs: C2, C4, D-1700, D-1701, D-1702, D-1703, D-1704.
 #### Scenario: Not the item's own text
 - **WHEN** a block that begins with the stated description sits in an `aside`, a dialog or a review
 - **THEN** it is not a candidate
+#### Scenario: Buy box is no main text
+- **WHEN** only `og:description` states a description, and the longest prose block holds the `h1` and the price
+- **THEN** no `dom` candidate is made, and the Open Graph summary publishes
+#### Scenario: Description marked on its first section
+- **WHEN** `itemprop="description"` marks a job's first `section`, and two sibling sections of prose follow in its item
+- **THEN** the `dom` candidate is the three sections' text

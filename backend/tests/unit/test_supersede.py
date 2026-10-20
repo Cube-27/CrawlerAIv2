@@ -61,13 +61,29 @@ def test_a_value_with_a_separator_and_more_text_yields_to_another_kinds_clean_va
     assert superseded(FieldSpec(type=FieldType.TEXT), [dirty, clean]) == [dirty]
 
 
-def test_an_open_graph_image_list_yields_to_a_longer_list_of_another_kind_naming_its_file() -> None:
+@pytest.mark.parametrize("kind", ["og", "jsonld"])
+def test_an_image_list_yields_to_a_longer_list_of_another_kind_naming_its_files(kind: SourceKind) -> None:
     images = FieldSpec.model_validate({"type": "list", "item": {"type": "image_url"}})
     cdn = "https://cdn.example.test/p"
-    og = _c([f"{cdn}/a.jpg"], "og")
+    main = _c([f"{cdn}/a.jpg"], kind)
     gallery = _c([f"{cdn}/a.jpg?w=900", f"{cdn}/b.jpg"], "dom")
     other = _c([f"{cdn}/c.jpg", f"{cdn}/d.jpg"], "dom")
 
-    assert superseded(images, [og, gallery]) == [og]
-    # A longer list that leaves the Open Graph file out is another set of images, not its gallery.
-    assert superseded(images, [og, other]) == []
+    assert superseded(images, [main, gallery]) == [main]
+    # A longer list that leaves the shorter list's file out is another set of images, not its gallery.
+    assert superseded(images, [main, other]) == []
+    # A longer list of the same kind is no other source's account of the images.
+    assert superseded(images, [main, _c([f"{cdn}/a.jpg", f"{cdn}/b.jpg"], kind)]) == []
+
+
+def test_a_value_stating_the_open_graph_summary_is_a_summary_whatever_its_kind() -> None:
+    summary, tagline, full = _c("See all open roles.", "og"), _c("See all open roles.", "jsonld"), _c(LONG, "dom")
+
+    assert superseded(FieldSpec(type=FieldType.LONG_TEXT), [summary, tagline, full]) == [summary, tagline]
+
+
+def test_a_text_with_its_line_breaks_dropped_yields_to_the_rendition_that_keeps_them() -> None:
+    flat, lined = _c("Includes:• 1 lantern• 2 bulbs", "jsonld"), _c("Includes:\n• 1 lantern\n• 2 bulbs", "dom")
+    other = _c("Includes:• 1 lantern• 3 bulbs", "microdata")
+
+    assert superseded(FieldSpec(type=FieldType.LONG_TEXT), [flat, lined, other]) == [flat]

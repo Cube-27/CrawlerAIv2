@@ -58,10 +58,12 @@ class _Page:
     match: AdapterMatch
 
 
+# The schema.org type of the items the platform serves.
+_POSTING: Final = "JobPosting"
 # A listed posting as a schema.org JobPosting: `externalPath` is the job page's path under the site's root (the match's
 # tenant under the page's locale, prefixed in `shapes`); `locationsText` is the location as the list writes it.
 _LISTED: Final = Shape(
-    type="JobPosting",
+    type=_POSTING,
     at=("jobPostings", ALL),
     properties={"title": ("title",), "url": ("externalPath",), "jobLocation": ("locationsText",)},
 )
@@ -71,7 +73,7 @@ _LISTING: Final = Shape(type="ItemList", nodes={"itemListElement": (_LISTED,)})
 # written; the hiring organization is the answer's `hiringOrganization`.
 _INFO: Final = ("jobPostingInfo",)
 _JOB: Final = Shape(
-    type="JobPosting",
+    type=_POSTING,
     properties={
         "title": (*_INFO, "title"),
         "description": (*_INFO, "jobDescription"),
@@ -116,16 +118,18 @@ class Workday:
             rows=_rows,
         )
 
-    def referred(self, refs: PageRefs, kind: PageKind | None, /) -> str | None:
+    def referred(self, refs: PageRefs, kind: PageKind | None, types: tuple[str, ...], /) -> str | None:
         """The Workday page a page on the tenant's own host stands for. Only structure decides (HTML Standard §4.6
         links, RFC 6596 canonical, Open Graph `og:url`, RFC 9110 §15.4 redirects, which end in the final URL): a URL
-        the page names as itself that this adapter detects (of the kind asked), else, for a listing, the one career
-        site every Workday link of the page belongs to: a listing links to its jobs and its site, so links to two
-        sites do not say."""
+        the page names as itself that this adapter detects (of the kind asked), else, for a listing of job postings
+        (`types` names schema.org JobPosting), the one career site every Workday link of the page belongs to: a
+        listing links to its jobs and its site, so links to two sites do not say. A link is not the page's identity
+        (HTML Standard §4.6: it leads elsewhere), so a listing read for other items (a store's footer linking to its
+        careers site) is not referred by its links."""
         for url in refs.own:
             if (match := self.detect(url)) is not None and kind in (None, match.page_kind):
                 return url
-        if kind != "listing":
+        if kind != "listing" or _POSTING not in types:
             return None
         linked = [site for link in refs.links if (site := _linked_site(link)) is not None]
         if len({root for root, _ in linked}) != 1:

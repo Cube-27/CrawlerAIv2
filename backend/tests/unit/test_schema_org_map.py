@@ -20,9 +20,9 @@ from crawlerai.collect.schema_org_map import (
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId
 from crawlerai.normalize.base import Context
-from crawlerai.schemas.paths import parse_paths
+from crawlerai.schemas.paths import parse_paths, target_types
 from crawlerai.schemas.registry import load_presets
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent, SchemaDef
 
 VOCABULARY_FILE = Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld"
 
@@ -68,12 +68,12 @@ PRODUCT = _Node(
 
 def test_a_path_follows_nodes_and_text_stands_for_a_thing_s_name() -> None:
     # schema.org data model: where a Thing is expected, a text value is accepted, and it names that thing.
-    assert select(PRODUCT, parse_paths("Product.brand.name")[0], as_list=False) == [
+    assert select(PRODUCT, parse_paths("Product.brand.name")[0], as_list=False, as_url=False) == [
         Selected("Acme 7", "brand/name/0"),
         Selected("Other 3", "product/brand/1"),
     ]
     # ... and for no other property.
-    assert select(PRODUCT, parse_paths("Product.brand.logo")[0], as_list=False) == []
+    assert select(PRODUCT, parse_paths("Product.brand.logo")[0], as_list=False, as_url=False) == []
 
 
 CTX = Context(captured_at=datetime(2026, 10, 1, tzinfo=UTC), base_url="https://shop.example.test/p/1")
@@ -184,3 +184,10 @@ def test_the_preset_price_reads_a_sale_price_specification_and_never_a_price_com
     assert _found((Typed("offer", ("Offer",), offer),), _schema(price=PRESET_PRICE)) == [
         ("price", "offer", "jsonld:0:$.sale.price[0]")
     ]
+
+
+def test_target_types_count_a_required_group_as_required() -> None:
+    """A schema requiring its row data only through a group still names the type a page is read for (§4.4)."""
+    gtin = FieldSpec(type=FieldType.IDENTIFIER, scheme="gtin", description="d", schema_org="Product.gtin")
+    schema = SchemaContent(page_kind="detail", required_groups=[["sku", "gtin"]], fields={"sku": SKU, "gtin": gtin})
+    assert target_types(schema) == ("Offer", "Product")

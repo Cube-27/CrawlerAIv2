@@ -104,15 +104,16 @@ class Registry:
                 return adapter, match
         return None
 
-    def referred(self, refs: Callable[[], PageRefs], kind: PageKind | None) -> str | None:
-        """The platform page URL the page with `refs` (read only when an active adapter refers) stands for, by the
-        first active adapter whose `referred` names one it has not declined the host of (adapters spec)."""
+    def referred(self, refs: Callable[[], PageRefs], kind: PageKind | None, types: tuple[str, ...]) -> str | None:
+        """The platform page URL the page with `refs` (read only when an active adapter refers) stands for, read for
+        the schema.org `types`, by the first active adapter whose `referred` names one it has not declined the host of
+        (adapters spec)."""
         referring = [adapter for adapter in self._active if isinstance(adapter, Referring)]
         if not referring:
             return None
         page = refs()
         for adapter in referring:
-            url = adapter.referred(page, kind)
+            url = adapter.referred(page, kind, types)
             if url is not None and self.would_serve(url):
                 return url
         return None

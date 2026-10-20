@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 
 from pydantic import JsonValue, ValidationError
 
+from crawlerai.acquire.public_suffix import default_suffixes
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.content.text import fragment_text
 from crawlerai.core.engine_version import engine_data_dir
@@ -276,18 +277,21 @@ class Selected:
     url: bool = False  # `Value.url` of every value selected
 
 
-def select(node: Node, path: MappedPath, *, as_list: bool) -> list[Selected]:
+def select(node: Node, path: MappedPath, *, as_list: bool, as_url: bool) -> list[Selected]:
     """The values `path` (after its root type) reaches from `node`: those on nodes first, then text standing in for a
     named thing, each in document order. Each value is its own selection; for a list field (`as_list`), a node's values
     of the last property are one selection, located at the first value. A step's predicates keep the nodes its values
-    are (`matches`); text standing in for a thing states nothing else, so it is kept only by a step without them."""
+    are (`matches`); text standing in for a thing states nothing else, so it is kept only by a step without them. With
+    `as_url` (a url or image field), a last value that is a node is the URL it states (`_media_url`)."""
     holders: list[Node] = [node]
     named: list[Selected] = []
     for i in range(len(path.steps) - 1):
         holders = list(_step(holders, path, i, named))
     # The last step's value is a scalar: its predicates read the node holding it (`Offer.price{!priceType}`).
     last = path.where(len(path.steps) - 1)
-    selected = [s for holder in holders if matches(holder, last) for s in _last(holder, path, as_list=as_list)]
+    selected = [
+        s for holder in holders if matches(holder, last) for s in _last(holder, path, as_list=as_list, as_url=as_url)
+    ]
     return selected + named
 
 
@@ -326,8 +330,8 @@ def _terms(value: Value) -> tuple[str, ...]:
     return (written,) if term is None else (written, term)
 
 
-def _last(holder: Node, path: MappedPath, *, as_list: bool) -> list[Selected]:
-    values = holder.values(path.steps[-1])
+def _last(holder: Node, path: MappedPath, *, as_list: bool, as_url: bool) -> list[Selected]:
+    values = [_media_url(v) for v in holder.values(path.steps[-1])] if as_url else holder.values(path.steps[-1])
     if not values:
         return []
     if as_list:
@@ -336,6 +340,23 @@ def _last(holder: Node, path: MappedPath, *, as_list: bool) -> list[Selected]:
         return [Selected(v.raw, v.locator, v.url) for v in values]
     extra = _joined(holder, path.joined)
     return [Selected({path.steps[-1]: v.raw} | extra, v.locator) for v in values]
+
+
+# schema.org: `image` (and `logo`, `thumbnail`) ranges over ImageObject and URL, and a MediaObject's `contentUrl` is
+# "actual bytes of the media object"; any Thing's `url` is "URL of the item". So a node where a URL is read names the
+# URL by its `contentUrl`, else its `url`.
+_NODE_URLS: tuple[str, ...] = ("contentUrl", "url")
+
+
+def _media_url(value: Value) -> Value:
+    """`value`, or for a node the first URL it states by `_NODE_URLS` (as a URL, at its own place); a node stating none
+    stays the node."""
+    if value.node is None:
+        return value
+    for prop in _NODE_URLS:
+        if stated := [v for v in value.node.values(prop) if v.node is None and isinstance(v.raw, str)]:
+            return stated[0]
+    return value
 
 
 def _joined(holder: Node, joined: Sequence[str]) -> dict[str, JsonValue]:
@@ -358,6 +379,10 @@ class Typed:
 
 # A URL is not prose: the text types (schemas spec `text`, `long_text`) take no value a source gives as a URL.
 _TEXT_TYPES = frozenset({FieldType.TEXT, FieldType.LONG_TEXT})
+# The types whose values are URLs (schemas spec `url`, `image_url`).
+_URL_TYPES = frozenset({FieldType.URL, FieldType.IMAGE_URL})
+# RFC 9110 §4.2: the http and https URI schemes name resources on the Web.
+_WEB_SCHEMES = frozenset({"http", "https"})
 
 
 def _holds_text(spec: FieldSpec) -> bool:
@@ -376,20 +401,70 @@ def field_candidates(
     diagnostics: list[str],
 ) -> Iterator[Candidate]:
     """A candidate per value each field's path reaches on each entity of its type. A row-mapped field's path names its
-    rows, which resolution finds (variants spec); each of its sub-fields is read as a field of its own."""
+    rows, which resolution finds (variants spec); each of its sub-fields is read as a field of its own. A listing row's
+    item URL field reads, last, an entity's own IRI (`_item_iri`)."""
     for name, spec, mapped in mapped_fields(schema):
-        as_list = spec.type is FieldType.LIST
         entries = schema.page_kind == "listing" and spec.scope == "row"
         paths = _read_paths(spec, mapped, vocabulary, entries=entries)
-        for entity_id, selected in _selections(entities, paths, vocabulary, as_list=as_list, entries=entries):
-            if selected.url and _holds_text(spec):
-                continue
-            read = fragment_read(selected.raw, spec)
-            found = candidate(
-                name, spec, entity_id, source_kind, selected.raw, selected.locator, ctx, diagnostics, read=read
-            )
-            if found is not None:
-                yield found
+        found = list(
+            _path_candidates(name, spec, entities, paths, vocabulary, source_kind, ctx, diagnostics, entries=entries)
+        )
+        yield from found
+        if entries and is_item_url(spec):
+            read_on = {c.entity_id for c in found if isinstance(c.normalized, Ok)}
+            unread = [e for e in entities if e.id not in read_on and any(_reads(e, p, vocabulary, True) for p in paths)]
+            yield from (c for e in unread for c in _item_iri(name, spec, e, source_kind, ctx, diagnostics))
+
+
+def _path_candidates(
+    name: str,
+    spec: FieldSpec,
+    entities: Sequence[Typed],
+    paths: Sequence[MappedPath],
+    vocabulary: Vocabulary,
+    source_kind: SourceKind,
+    ctx: Context,
+    diagnostics: list[str],
+    *,
+    entries: bool,
+) -> Iterator[Candidate]:
+    """A candidate per value the field's `paths` reach on each entity of their types (`_selections`)."""
+    for entity_id, selected in _selections(entities, paths, vocabulary, spec=spec, entries=entries):
+        if selected.url and _holds_text(spec):
+            continue
+        read = fragment_read(selected.raw, spec)
+        found = candidate(
+            name, spec, entity_id, source_kind, selected.raw, selected.locator, ctx, diagnostics, read=read
+        )
+        if found is not None:
+            yield found
+
+
+def _item_iri(
+    name: str, spec: FieldSpec, entity: Typed, source_kind: SourceKind, ctx: Context, diagnostics: list[str]
+) -> Iterator[Candidate]:
+    """The item URL a listing row's node names only as its own IRI (JSON-LD 1.1 §4.1.2 `@id`, microdata `itemid`),
+    read when no `url`, Offer URL or main entity page gave one: an absolute http(s) IRI with no fragment (RFC 3986 §3.5:
+    a fragment names a part of a document, not the item's page), on the page's site (HTML Standard §7.1.1, the same
+    registrable domain), and not the page's own URL, which names the list."""
+    iri = entity.node.node_id
+    page = ctx.page_url
+    if iri is None or page is None:
+        return
+    split = urlsplit(iri)
+    if split.scheme not in _WEB_SCHEMES or not split.hostname or split.fragment or not _same_site(split.hostname, page):
+        return
+    found = candidate(name, spec, entity.id, source_kind, iri, entity.id, ctx, diagnostics)
+    own = normalize(page, _URL, ctx)
+    named = found.normalized if found is not None else None
+    if found is not None and not (isinstance(own, Ok) and isinstance(named, Ok) and own.value == named.value):
+        yield found
+
+
+def _same_site(host: str, page_url: str) -> bool:
+    page_host = urlsplit(page_url).hostname
+    suffixes = default_suffixes()
+    return page_host is not None and suffixes.site(host) == suffixes.site(page_host)
 
 
 def _read_paths(
@@ -504,7 +579,7 @@ def _ending_in(path: MappedPath, prop: str) -> MappedPath:
 
 
 def _selections(
-    entities: Sequence[Typed], paths: Sequence[MappedPath], vocabulary: Vocabulary, *, as_list: bool, entries: bool
+    entities: Sequence[Typed], paths: Sequence[MappedPath], vocabulary: Vocabulary, *, spec: FieldSpec, entries: bool
 ) -> Iterator[tuple[str, Selected]]:
     """What each alternative reaches on each entity of its root type, by entity id, and with `entries` (a listing's
     row field) on each list entry without an item (`ENTRY`). The same value of one entity that two alternatives reach
@@ -515,22 +590,25 @@ def _selections(
     held: set[str] = set()  # the entities a lower rank reached a stated value on
     stated: set[str] = set()
     rank = 0
+    as_list = spec.type is FieldType.LIST
+    item = spec.item if as_list else spec
+    as_url = item is not None and item.type in _URL_TYPES
     for path in paths:
         if path.rank != rank:
             rank, held = path.rank, held | stated
         readable = [e for e in entities if e.id not in held and _reads(e, path, vocabulary, entries)]
-        reached = list(_reached(readable, path, as_list=as_list, earlier=earlier))
+        reached = list(_reached(readable, path, as_list=as_list, as_url=as_url, earlier=earlier))
         earlier |= {(entity_id, selected.locator) for entity_id, selected in reached}
         stated |= {entity_id for entity_id, selected in reached if isinstance(selected.raw, str | int | float)}
         yield from reached
 
 
 def _reached(
-    entities: Sequence[Typed], path: MappedPath, *, as_list: bool, earlier: set[tuple[str, str]]
+    entities: Sequence[Typed], path: MappedPath, *, as_list: bool, as_url: bool, earlier: set[tuple[str, str]]
 ) -> Iterator[tuple[str, Selected]]:
     """What `path` reaches on each entity that no earlier alternative reached."""
     for entity in entities:
-        for selected in select(entity.node, path, as_list=as_list):
+        for selected in select(entity.node, path, as_list=as_list, as_url=as_url):
             if (entity.id, selected.locator) not in earlier:
                 yield entity.id, selected
 

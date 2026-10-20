@@ -20,10 +20,11 @@ from lxml.html import HtmlElement
 # A listing shows at least this many items; resolution takes as many top-level entities for a listing's rows
 # (`resolve.listing.MIN_TOP_LEVEL_ROWS`): fewer is what a detail page's related items look like.
 MIN_ITEMS: Final = 3
-# A site's chrome, not its content: the HTML Standard's navigation, header, footer and aside elements (§4.3, §4.4) and
-# the WAI-ARIA 1.2 landmark roles they map to (§5.3.4).
+# A site's chrome, not its content: the HTML Standard's navigation, header, footer and aside elements (§4.3, §4.4),
+# the WAI-ARIA 1.2 landmark roles they map to (§5.3.4), and its `menubar` and `menu` roles (§5.3.2, composite widgets
+# "offering a list of choices to the user"): a menu is the site's navigation, not a list of the page's items.
 _CHROME_TAGS: Final = frozenset({"nav", "header", "footer", "aside"})
-_CHROME_ROLES: Final = frozenset({"navigation", "banner", "contentinfo", "complementary"})
+_CHROME_ROLES: Final = frozenset({"navigation", "banner", "contentinfo", "complementary", "menubar", "menu"})
 # HTML Standard §4.6.1: `a` and `area` elements with an `href` are hyperlinks.
 LINKS: Final = ("a", "area")
 
@@ -53,7 +54,7 @@ def _tokens(value: str | None) -> tuple[str, ...]:
 def item_groups(root: HtmlElement) -> tuple[Group, ...]:
     """Every group of repeated items in the document `root` (at least `MIN_ITEMS` siblings of one shape, outside the
     chrome), each in document order."""
-    content = _content(root)
+    content = content_root(root)
     # One walk up from each hyperlink gathers the link-holding elements by parent and tag; an element already
     # gathered had its ancestors gathered with it, so each element is gathered once.
     siblings: dict[tuple[HtmlElement, object], list[HtmlElement]] = {}
@@ -83,7 +84,8 @@ def _shapes(nodes: list[HtmlElement]) -> list[list[HtmlElement]]:
     return list(groups.values())
 
 
-def _content(root: HtmlElement) -> HtmlElement:
+def content_root(root: HtmlElement) -> HtmlElement:
+    """Where the page's content is: its main landmark (HTML Standard §4.4.14), else its body."""
     main = next(root.iter("main"), None)
     if main is not None:
         return main

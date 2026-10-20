@@ -20,7 +20,7 @@ from pydantic import JsonValue
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.answer import serving
-from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Shape, apply_action
+from crawlerai.adapters.base import ALL, PATH_SEGMENT, AdapterMatch, Section, Shape, apply_action
 from crawlerai.adapters.paging import fetch_pages
 
 API: Final = "https://api.smartrecruiters.com/v1/companies"
@@ -35,8 +35,11 @@ _POSTING: Final = re.compile(r"(\d+)(?:-.*)?", re.ASCII)
 
 # A posting as a schema.org JobPosting: a listed posting's page is `/{company}/{id}` on the career host (the prefix
 # `shapes` puts before `id`); the posting's own answer gives `postingUrl`, and `applyUrl`, its application form, the
-# `target` of its schema.org ApplyAction (D-1493). `jobDescription` is the posting's own text as HTML. The hiring
-# organization is the posting's `company`.
+# `target` of its schema.org ApplyAction (D-1493). The description is the job ad's sections about the job, as HTML
+# (Posting API documentation, "JobAd": `jobDescription`, `qualifications`, `additionalInformation`, each a `title` and
+# a `text`), in the order the posting's page shows them; `companyDescription` describes the hiring organization, not
+# the job. The hiring organization is the posting's `company`.
+_AD: Final = ("jobAd", "sections")
 _EMPLOYER: Final = Shape(type="Organization", at=("company",), properties={"name": ("name",)})
 _COMMON: Final = {
     "title": ("name",),
@@ -56,7 +59,13 @@ _DETAIL: Final = Shape(
     properties={
         **_COMMON,
         "url": ("postingUrl",),
-        "description": ("jobAd", "sections", "jobDescription", "text"),
+    },
+    sections={
+        "description": (
+            Section(at=_AD, body=("jobDescription", "text")),
+            Section(at=_AD, heading=("qualifications", "title"), body=("qualifications", "text")),
+            Section(at=_AD, heading=("additionalInformation", "title"), body=("additionalInformation", "text")),
+        )
     },
     nodes={
         "hiringOrganization": (_EMPLOYER,),

@@ -46,7 +46,7 @@ from crawlerai.resolve.derive import Derived, fill, is_page_url_field
 from crawlerai.resolve.evidence import Calibration, assess, assess_fields, load_calibration
 from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
 from crawlerai.resolve.listing import listing_rows
-from crawlerai.resolve.ownership import OFFER, EntityGraph
+from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.resolve.page_state import out_of_stock, render_bound, was_rendered
 from crawlerai.resolve.pagination import next_page_candidate, next_page_links
 from crawlerai.resolve.preference import (
@@ -615,10 +615,9 @@ async def _extract_listing(source: _Source, role_c: RoleC | None, mode: Extracti
 
 
 def _holder(graph: EntityGraph, candidate: Candidate) -> str:
-    """The entity whose row fields `candidate` fills: its owner, or the item an Offer it is in offers (schema.org
-    `offers`; atomic offers, resolution spec)."""
-    owner = graph.owner_of(candidate)
-    return owner.parent if owner.parent is not None and graph.is_a(owner, OFFER) else owner.id
+    """The entity whose row fields `candidate` fills: its owner, or the item an Offer it is in offers, through an
+    AggregateOffer's Offers (`EntityGraph.offered`; atomic offers, resolution spec)."""
+    return graph.offered(graph.owner_of(candidate)).id
 
 
 def _published(fields: FieldSet, name: str) -> bool:

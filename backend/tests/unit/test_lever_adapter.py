@@ -5,6 +5,7 @@ written here (C3). Sites and the recorded API responses under `tests/fixtures/le
 """
 
 import asyncio
+import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from crawlerai.acquire.api import JsonFetcher
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.adapters.base import AdapterMatch
 from crawlerai.adapters.lever import JOB_SITE_APIS, Lever
+from tests.unit.adapter_support import candidates
 
 StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
 
@@ -66,3 +68,14 @@ def test_a_posting_page_is_fetched_from_its_instance_get_posting_endpoint(host: 
     manifest = result.bundle.manifest
     assert (manifest.method, manifest.block_class, manifest.url, manifest.final_url) == ("api", "ok", page, endpoint)
     assert result.bundle.body == body
+
+
+def test_a_postings_description_is_its_body_lists_and_closing_in_page_order() -> None:
+    posting = json.loads((FIXTURES / "posting.json").read_text())
+    posting["additional"] = "<p>Closing.</p>"
+    found = candidates(ADAPTER, AdapterMatch(SITE, "detail", item=POSTING), json.dumps(posting))
+
+    assert found[("adapter:lever:$", "description")] == (
+        "<p>Opening of a test fixture.</p><p>Build synthetic systems.</p>\n"
+        "<h2>Requirements</h2><li>Write tests</li>\n<p>Closing.</p>"
+    )

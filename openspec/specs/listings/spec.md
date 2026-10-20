@@ -11,11 +11,12 @@ publishes is [resolution](../resolution/spec.md). Rationale: master plan §3.2 (
 
 ### Requirement: Item groups (segment)
 A listing page's repeated item groups SHALL be `MIN_ITEMS` or more sibling blocks of one shape that each are or hold a
-hyperlink, outside chrome (`acquire/items.py`), ranked once per parse (`ParsedPage.item_groups`, `content/segment.py`):
+hyperlink, outside chrome (`acquire/items.py`: `nav`, `header`, `footer`, `aside`, their landmark roles and the WAI-ARIA
+`menubar` and `menu` roles), ranked once per parse (`ParsedPage.item_groups`, `content/segment.py`):
 by the rendered area of their blocks when the browser capture measured it (`CaptureManifest.item_areas`, recorded for
 listing captures), else by blocks showing an image or two or more text runs, then size; a block not rendered (no area,
 or hidden by the HTML rendering rules) is left out. The markdown format, `xhr` and the paging driver read this one
-ranking. (Previously: role C's item text read it too.) Refs: owner #67, master plan §3.2.
+ranking. (Previously: role C's item text read it too; a `menubar` or `menu` was content.) Refs: owner #67, master plan §3.2.
 #### Scenario: Tag cloud beside a grid
 - **WHEN** a listing holds 30 bare tag links and 4 cards with an image, a link and a price
 - **THEN** the cards' group ranks first
@@ -65,16 +66,22 @@ sections show is one block (D-1776). Stated rows and those blocks bind one to on
 slash and added query parameters aside) or by a name the block shows (`collect/items/bind.py`). With no stated rows or
 only stubs, the blocks are the rows; otherwise stated rows stay and the group's blocks no stated row names extend them.
 A config's rows bind no blocks. A bound entity's values join its row where the row has none for the field or equals
-them; a block's link replaces a respelled stated item URL. A row only a platform adapter's answer states (its money
-field's candidates all `adapter`) takes a block bound by URL's one visible amount of that field as a rival, which the
-resolution spec's visible-price rule weighs (#334: it publishes, flagged `disagree`); a block showing several amounts
-joins only an option equal to the row's (C1, a theme showing a tax-inclusive amount the catalogue price excludes). State and call array rows bind by URL, and a JSON key whose
+them; a block's link replaces a respelled stated item URL. Of a money field, a block bound by URL takes part whatever
+the row's source (structured markup or a platform adapter's answer): its one visible amount that differs from the row's
+joins as a rival, which the resolution spec's visible-price rule weighs (#334: it publishes, flagged `disagree`); a
+block showing several amounts joins its option equal to the row's, else every option, so that the price is a `conflict`
+(C7; a stated price that is one variant's beside a card's "from" price, a theme showing a tax-inclusive amount the
+catalogue price excludes). State and call array rows bind by URL, and a JSON key whose
 values equal a block field on `MIN_ITEMS` bound rows is that field's key for every bound row (`collect/induce.py`).
-(Previously: the blocks of one group only; a bound block's amount that disagreed with an adapter row's was dropped.)
+(Previously: the blocks of one group only; a bound block's amount that disagreed with a row's was dropped unless only
+an adapter stated the row, and a block's several amounts joined only an option equal to the row's.)
 Refs: owner #67, Appendix A #59, D-1776.
 #### Scenario: Visible card price of an adapter row
 - **WHEN** an adapter's answer states a row's price 19.50 EUR and the row's card, bound by URL, shows €23.40
 - **THEN** the row's price publishes 23.40 EUR, flagged `disagree`
+#### Scenario: Card amounts against a structured row
+- **WHEN** an `ItemList` Product states 28.59 EUR, and its card shows 15.58 EUR beside 17.29 EUR
+- **THEN** the row's price is a `conflict` (`disagree`); a card showing 15.58 EUR alone publishes it, flagged
 #### Scenario: Two sections of one shape
 - **WHEN** a listing shows items 1–3 in one section and items 3–6 in another of the same cards
 - **THEN** the listing has six rows
@@ -104,26 +111,36 @@ located no rows.) Refs: §8.1, §8.6, Appendix A #59, D-1603, architecture v3 a.
 On a listing where no structured data, config, call or block gives rows, an array of `MIN_ITEMS` or more objects in the
 page's state JSON SHALL give rows (`collect/items/state_rows.py`): each row field read at the path induced across the
 rows whose own member names the field (its name or schema.org property) and whose value normalizes and is shown in the
-page text (an image: normalizes), the item URL also at a path whose values the page's rendered hyperlinks lead to; a row
-is kept only when its item URL is such a link or its name is shown, an array with fewer such rows gives none, and an item
+page text (an image: normalizes), the item URL also at a path whose values the rendered hyperlinks of the page's content
+lead to (its main landmark, else its body, outside chrome); a row is kept only when its item URL is such a link or its
+name is shown, an array with fewer such rows gives none, and an item
 read once is not read again. Values are `js_state` candidates (bucket `state`). A locate run writes such rows into the
 config as paths (`config_ir/json_rows.py`): a `jsonpath` row step selecting the array that holds `MIN_ITEMS` or more of
 the rendered rows' item URLs in a document the HTML carries (embedded state, JSON-LD, JSON attributes, RSC rows), and
 for each row field the path relative to the item that more than half of the paired items hold
 ([learning-configs](../learning-configs/spec.md), "Locate run"). (Previously: no rows, D-1774; the paths were induced on
-every page only.) Refs: D-1773, D-1775, architecture v3 a.6.
+every page only; any rendered link, the site's menus included, grounded an item URL.) Refs: D-1773, D-1775,
+architecture v3 a.6.
 #### Scenario: Items only in state
 - **WHEN** a script's JSON lists three items whose names and prices the page shows without item links
 - **THEN** the listing has three rows with state evidence, and none when the page shows none of them
+#### Scenario: State menu tree
+- **WHEN** a script's JSON holds the site's menu entries, whose links the page renders only under `role="menubar"`
+- **THEN** those links ground no row
 
 ### Requirement: Row item URL
 A row's item URL field SHALL read schema.org `url`, else the item's `offers.url`, else its `mainEntityOfPage` (a URL or
-a page's `url`), a bound block's link replacing a respelling; published row URLs drop each query parameter that two or
+a page's `url`), else its own IRI (JSON-LD `@id`, microdata `itemid`) when absolute http(s), without a fragment, on the
+page's site and not the page's URL, a bound block's link replacing a respelling; published row URLs drop each query parameter that two or
 more of them carry once with one value and none of the page's own URLs carries (`normalize.url_key`), named in the
 result. Refs: owner #67 decisions 1 and 6.
 #### Scenario: Item named by its offer
 - **WHEN** a listed Product states no `url` and its Offer states `url`
 - **THEN** the row's item URL is the Offer's
+#### Scenario: Item named by its IRI
+- **WHEN** a listed Product states no `url`, Offer URL or main entity page, and its `@id` is `https://example.com/p/7`
+  on a page of `example.com`
+- **THEN** the row's item URL is `https://example.com/p/7`; an `@id` ending in `#product` names none
 #### Scenario: Visit parameter on every row
 - **WHEN** every row URL carries `sid=abc` and its own `v=<n>`, and the page URL carries neither
 - **THEN** the rows publish their URLs with `v=<n>` and without `sid`
