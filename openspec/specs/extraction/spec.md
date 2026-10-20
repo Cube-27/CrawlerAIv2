@@ -21,12 +21,13 @@ Enforced by: a test counting parser constructions in `extract_page` and `scrape`
 The system SHALL render cleaned text in one walk that drops non-rendered and HTML-hidden elements and joins inline text
 per CSS Text 3 (`content/text.py`); an element whose text ends in an ellipsis and whose `title` extends it reads as
 that title; the walk records each shown link (`a[href]`) and image (`img[src]`) with its span, path, target and
-announced name; `visible(value)` is a whole-word match on that text plus shown elements' `alt`, `title`, `value` and
-`content`. An element concealed by the `hidden` attribute or an inline `display: none` that holds the document's one
+announced name; `visible(value)` is a whole-word match on that text plus shown elements' `alt`, `title` and
+`content`, and the `value` of an `input` whose state shows it as text or as its button's label (HTML Standard §4.10.5;
+an `option`'s, `button`'s, `data`'s or `li`'s `value` is a form or machine value, not shown). An element concealed by the `hidden` attribute or an inline `display: none` that holds the document's one
 `h1` and a form, or that is a child of the `main` element none of whose children renders and holds a heading (`h1`-`h6`)
 and more text than any other concealed child, is the page's own content a script reveals after load (a content-gating
 app), and is shown (`content.text.script_revealed`, also for the item groups, listings spec); any other concealed
-element stays hidden. (Previously: links and images were not recorded; a concealed wrapper around the page's
+element stays hidden. (Previously: every element's `value` attribute was visible; links and images were not recorded; a concealed wrapper around the page's
 title and form hid them; a concealed main landmark content without the document's `h1` stayed hidden.) Refs: SPEC-05 §4.4, D-0334..D-0339, D-1154, D-1624.
 #### Scenario: Price split across inline elements
 - **WHEN** the page shows `$<span>19</span>.99`

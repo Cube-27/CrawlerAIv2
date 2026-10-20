@@ -12,6 +12,8 @@ text is, from the page's own structure, never from words listed in code (C4):
   name what it counts ("293 Reviews" for a rating). A label names the fields whose label vocabulary holds its words
   (`collect.labels`: a field's name, schema.org property, description and drafted synonyms); one that names fields,
   none of them this one, rejects the span. A label that names no field, or this one among others, decides nothing.
+- A number or count written as a percentage (a CLDR percent sign next to it, `100% (4)` of a review histogram) is a
+  ratio of two quantities, not a count and not a value on the field's own scale: the span is not taken.
 """
 
 import re
@@ -19,6 +21,7 @@ from collections.abc import Mapping, Sequence
 
 from crawlerai.collect.labels import Words, words
 from crawlerai.llm.grounding import GroundedSpan
+from crawlerai.normalize.numbers import percentage
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # The fields each label's words name (`collect.labels.field_labels`).
@@ -33,6 +36,9 @@ _BREAK = "\n"  # the cleaned text's line break (`content.text`)
 # A label is a short phrase: the longest one looked for, in words.
 _MAX_LABEL_WORDS = 6
 _COUNTED = frozenset({FieldType.NUMBER, FieldType.COUNT})
+# How far beside a span a percent sign is looked for, in characters: a CLDR sign, the white space and the bidi marks
+# (Unicode Cf) some locales write around it.
+_SIGN_REACH = 8
 
 
 def checked(
@@ -48,6 +54,8 @@ def checked(
         span = found
     named = [_label_before(text, span.start, labels)]
     if kind in _COUNTED:
+        if _percentage(text, span):
+            return None
         named.append(_label_after(text, span.end, labels))
     return None if any(fields and name not in fields for fields in named) else span
 
@@ -70,6 +78,15 @@ def unlabelled(span: GroundedSpan, text: str) -> GroundedSpan | None:
         return None
     start = span.start + cut
     return GroundedSpan(text[start : span.end], start, span.end)
+
+
+def _percentage(text: str, span: GroundedSpan) -> bool:
+    """Whether the span's number is written as a percentage, with the sign in the span or beside it on its line."""
+    line_start = text.rfind(_BREAK, 0, span.start) + 1
+    line_end = text.find(_BREAK, span.end)
+    before = text[max(line_start, span.start - _SIGN_REACH) : span.start]
+    after = text[span.end : min(len(text) if line_end == -1 else line_end, span.end + _SIGN_REACH)]
+    return percentage(before, span.value, after)
 
 
 def _label_before(text: str, start: int, labels: Labels) -> Sequence[str]:

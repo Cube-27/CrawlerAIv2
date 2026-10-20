@@ -48,6 +48,7 @@ SCHEMA = SchemaDef(
         "title": FieldSpec(type=FieldType.TEXT, description="Name of the item", required=True),
         "released": FieldSpec(type=FieldType.DATE, description="Release date"),
         "sku": FieldSpec(type=FieldType.IDENTIFIER, scheme="sku", description="Stock keeping unit"),
+        "rating": FieldSpec(type=FieldType.NUMBER, description="Average rating"),
     },
 )
 TEXT = "Widget One\nReleased 2026-09-30\nIn stock"
@@ -110,7 +111,10 @@ def test_a_grounded_value_becomes_an_llm_candidate_owned_by_the_target() -> None
     assert filled.diagnostics == ()
 
 
-CHECKED = "Widget One\nRef.: AB-12\nReleased: 2026\nhttps://cdn.example.test/img/QX9.jpg\nItem 123 / 12\n#SKU-7"
+CHECKED = (
+    "Widget One\nRef.: AB-12\nReleased: 2026\nhttps://cdn.example.test/img/QX9.jpg\nItem 123 / 12\n#SKU-7\n"
+    "5 stars 100% (4)"
+)
 
 
 @pytest.mark.parametrize(
@@ -121,6 +125,9 @@ CHECKED = "Widget One\nRef.: AB-12\nReleased: 2026\nhttps://cdn.example.test/img
         ("title", "2026", 0, None),  # a span the page labels as another field is not this field's
         ("sku", "12", 80, ("12", "text:86-88")),  # the head of `123` is no value: the whole `12` is
         ("sku", "#SKU-7", 89, ("#SKU-7", "text:89-95")),  # a number sign before no number is the identifier's
+        ("rating", "100%", 104, None),  # a percentage is no value on the rating's scale
+        ("rating", "100", 104, None),
+        ("rating", "5", 96, ("5", "text:96-97")),
     ],
 )
 def test_a_grounded_span_is_checked_for_its_field(field: str, claimed: str, start: int, kept: tuple[str, str]) -> None:

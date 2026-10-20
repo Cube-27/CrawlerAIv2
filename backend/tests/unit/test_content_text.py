@@ -71,6 +71,19 @@ def test_hidden_content_is_not_text_and_not_visible(hidden: str) -> None:
         assert not page.visible_values.visible(value)
 
 
+def test_only_an_input_shows_its_value() -> None:
+    # HTML Standard §4.10.5: a text input shows its value; an option shows its label, not its submitted value.
+    page = ParsedPage(
+        "<html><body><input value='Typed'><select><option value='4000000000006'>Navy</option></select>"
+        "<data value='5000000000005'></data></body></html>"
+    )
+
+    assert page.visible_values.visible("Typed")
+    assert page.visible_values.visible("Navy")
+    assert not page.visible_values.visible("4000000000006")
+    assert not page.visible_values.visible("5000000000005")
+
+
 def test_a_concealed_block_holding_the_pages_title_and_form_is_shown_a_lone_concealed_one_is_not() -> None:
     # A script reveals the page's own content (it holds the one `h1` and the item's form); a variant template does not.
     gated = "<div style='display:none'><h1>Kettle</h1><form><span>12.50 EUR</span></form></div>"
