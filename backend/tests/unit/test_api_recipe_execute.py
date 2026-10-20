@@ -27,6 +27,7 @@ from crawlerai.config_ir.api_recipe.execute import RecipeRung, recipe_collector
 from crawlerai.config_ir.api_recipe.model import (
     ApiRecipe,
     CursorPagination,
+    HeaderValue,
     Pagination,
     Proof,
 )
@@ -47,7 +48,7 @@ DETAIL_RECIPE = ApiRecipe(
     method="GET",
     url=f"{ENDPOINT}/products/{{p1}}",
     params_from_url={"p1": "path:1"},
-    headers={"Referer": "{page_url}"},
+    headers=[HeaderValue(name="Referer", value="{page_url}")],
     map={"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"},
     proof=PROOF,
 )

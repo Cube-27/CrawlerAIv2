@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.labels import labelled
 from crawlerai.collect.schema_org_map import pinned_reference_errors
-from crawlerai.config_ir.progressive import relearn_schema
+from crawlerai.config_ir.progressive import locate_added, relearn_schema
 from crawlerai.core.errors import Refusal
 from crawlerai.core.validation import field_error
 from crawlerai.db.models import SchemaId, SchemaStatus
@@ -121,7 +121,8 @@ async def list_all(
 
 async def update(conn: AsyncConnection, schema_id: SchemaId, content: SchemaContent) -> SchemaDef:
     """Replace the schema's document with `content`, in place, and send what was learned for the old document back to
-    learning. A retired schema or a preset is refused."""
+    learning; a field it adds starts the locate run of each surface whose render mode locates (`locate_added`). A
+    retired schema or a preset is refused."""
     current = await _changeable(conn, schema_id)
     if current.status == "retired":
         raise SchemaConflict(f"schema {current.name} is retired")
@@ -132,6 +133,8 @@ async def update(conn: AsyncConnection, schema_id: SchemaId, content: SchemaCont
         raise InvalidSchema.of(e) from e
     if edited != current:
         await relearn_schema(conn, schema_id)
+        if added := [name for name in edited.fields if name not in current.fields]:
+            await locate_added(conn, schema_id, added)
     return edited
 
 

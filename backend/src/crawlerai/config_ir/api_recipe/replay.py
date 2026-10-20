@@ -12,16 +12,17 @@ rows in the same order, each mapped field's raw value equal (Appendix A #59).
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
+from urllib.parse import urlsplit
 
 from pydantic import JsonValue
 
 from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.identity import identifies
-from crawlerai.acquire.types import FetchResult
+from crawlerai.acquire.types import FetchResult, RequestContext
 from crawlerai.collect import json_doc
 from crawlerai.collect.api import read_map
 from crawlerai.config_ir.api_recipe.binding import PageData, Sample, render_body, render_url, resolve_params
-from crawlerai.config_ir.api_recipe.model import PAGE_URL, Pagination, RequestSpec
+from crawlerai.config_ir.api_recipe.model import PAGE_URL, ContextHeader, Pagination, RequestSpec
 from crawlerai.config_ir.api_recipe.pagination import first_request, next_request
 from crawlerai.core import json_text
 from crawlerai.db.models import JobId, PageKind
@@ -47,23 +48,38 @@ REPLAYED_PAGES: Final = 2
 class ReplayPage:
     """A captured page: its URL, endpoint request and JSON documents, its published values (`record.data`) and the
     normalize context of the page; for a listing, the responses of its first captured calls of the endpoint (pages 1
-    and 2, when the page made a second call), which a listing recipe's replay must reproduce."""
+    and 2, when the page made a second call), which a listing recipe's replay must reproduce; and the caller's request
+    context a replay takes referenced headers from (`ContextHeader`), when the run has one."""
 
     sample: Sample
     values: Mapping[str, JsonValue]
     ctx: Context
     listing: tuple[JsonValue, ...] = ()
+    context: RequestContext | None = None
 
 
-def request_for(spec: RequestSpec, page_url: str, page_data: PageData) -> JsonRequest | None:
-    """The request `spec` makes for the page; `None` when a parameter has no value there."""
+def request_for(
+    spec: RequestSpec, page_url: str, page_data: PageData, context: RequestContext | None = None
+) -> JsonRequest | None:
+    """The request `spec` makes for the page, a header it takes from the caller's request context with the value
+    `context` holds; `None` when a parameter, or such a header, has no value there. The context goes only to the page's
+    own host (D-1430), so a recipe that references it on another host makes no request."""
     params = resolve_params(spec, page_url, page_data)
     if params is None:
         return None
-    # `{page_url}` is the one placeholder a header value takes (§4.6).
-    headers = tuple((name, value.replace(f"{{{PAGE_URL}}}", page_url)) for name, value in spec.headers.items())
+    url = render_url(spec.url, params)
+    own_host = urlsplit(url).hostname == urlsplit(page_url).hostname
+    supplied = {} if context is None or not own_host else {name.lower(): value for name, value in context.headers}
+    headers: list[tuple[str, str]] = []
+    for header in spec.headers:
+        if isinstance(header, ContextHeader):
+            if (secret := supplied.get(header.name.lower())) is None:
+                return None
+            headers.append((header.name, secret.get_secret_value()))
+        else:  # `{page_url}` is the one placeholder a header value takes (§4.6)
+            headers.append((header.name, header.value.replace(f"{{{PAGE_URL}}}", page_url)))
     body = None if spec.body is None else render_body(spec.body.template, params)
-    return JsonRequest(render_url(spec.url, params), page_url, spec.method, headers, body)
+    return JsonRequest(url, page_url, spec.method, tuple(headers), body)
 
 
 async def reproduces(
@@ -85,7 +101,7 @@ async def compare(
     if spec.pagination is not None:
         return await _compare_listing(spec, spec.pagination, fields, page, replay)
     compared = {name: path for name, path in fields.items() if page.values.get(name) is not None}
-    request = request_for(spec, page.sample.page_url, page.sample.page_data)
+    request = request_for(spec, page.sample.page_url, page.sample.page_data, page.context)
     if not compared or request is None:
         return dict.fromkeys(compared, False)
     result = await replay(request)
@@ -109,7 +125,7 @@ async def _compare_listing(
     captured = page.listing[:REPLAYED_PAGES]
     wanted = [row_values(pagination.rows, fields, document) for document in captured]
     compared = dict.fromkeys(_valued(fields, wanted), True)
-    bound = request_for(spec, page.sample.page_url, page.sample.page_data)
+    bound = request_for(spec, page.sample.page_url, page.sample.page_data, page.context)
     request = None if bound is None else first_request(pagination, bound)
     for number, want in enumerate(wanted):
         document = None if request is None else await _replayed(request, replay)

@@ -172,7 +172,10 @@ class RecipeRung:
             # Parsing is CPU work: a thread keeps the event loop serving other tasks meanwhile.
             data = await asyncio.to_thread(_page_data, page)
         params = resolve_params(self.recipe, url, data)
-        return request_for(self.recipe, url, data), page, tuple(() if params is None else params.values())
+        # A header the recipe references is the caller's (`ContextHeader`): sent with the value the policy's context
+        # holds, and without one the parameter is unbound.
+        request = request_for(self.recipe, url, data, policy.context)
+        return request, page, tuple(() if params is None else params.values())
 
     def _unserved(self, url: str, policy: FetchPolicy, reason: str) -> FetchResult:
         return unserved(url, policy, self.engine_version, "error", reason)

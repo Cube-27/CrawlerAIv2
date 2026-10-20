@@ -24,6 +24,7 @@ from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.politeness import HostLimiter, backoff, slowed_down
+from crawlerai.acquire.rungs import NO_PLAN
 from crawlerai.acquire.ssrf import SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.config_ir.active import config_by_id, recipe_of
@@ -67,6 +68,7 @@ from crawlerai.services.scrape_steps import (
     EXTRACTION_ERROR,
     FetchOptions,
     PageFormat,
+    RenderOptions,
     SiteRow,
     blocked_reason,
     extract_further,
@@ -78,6 +80,7 @@ from crawlerai.services.scrape_steps import (
     site_row,
     store_further,
     store_page_record,
+    surface_plan,
 )
 from crawlerai.services.stored_captures import NOT_CACHED, recent_capture, reread
 from crawlerai.storage.base import ObjectStore
@@ -100,12 +103,14 @@ _JobRow = Row[dict[str, object], SchemaId | None, dict[str, object] | None]
 @dataclass(frozen=True)
 class Records:
     """What a records task extracts with: the job's schema, the engine data and the config for the task's host its
-    pins give, the config bound to its executor (None: cold), and the drift margins of this worker."""
+    pins give, the config bound to its executor (None: cold), the drift margins of this worker, and the job's pinned
+    `render` (None: the job inherits its surface's, rest-api spec "Render mode")."""
 
     schema: SchemaDef
     data: EngineData
     config: ActiveConfig | None
     margins: DriftMargins | None
+    render: RenderOptions | None = None
 
 
 async def load_job(
@@ -128,7 +133,9 @@ async def load_job(
     )
     config_id = pins.configs.get(urlsplit(task.url).hostname or "")
     config = None if config_id is None else await config_by_id(conn, config_id, pinned.vocabulary)
-    return job.request, Records(pins.schema_, pinned, config, margins)
+    render = job.request.get("render")
+    pinned_render = None if render is None else RenderOptions.model_validate(render)
+    return job.request, Records(pins.schema_, pinned, config, margins, pinned_render)
 
 
 @dataclass(frozen=True)
@@ -171,6 +178,7 @@ async def fetch_page(
     served: Records | None = None,
     listing_pages: int = MAX_PAGES,
     formats: Sequence[PageFormat] = (),
+    planned: Records | None = None,
 ) -> FetchedPage | Ended:
     """Fetch the task's page politely (`fetch_queued`: robots.txt over HTTP, the page through `acquire`) and store
     its capture, or the result the task ends this run with. Neither writes the job's usage. A request the SSRF
@@ -187,7 +195,10 @@ async def fetch_page(
     `listing_pages` pages of it (module docstring).
 
     `formats` are those the task's page is read for: a screenshot or PDF among them is made in the browser
-    (`fetch_policy`)."""
+    (`fetch_policy`).
+
+    With `planned`, the records the task extracts with, the page is fetched by the plan its config's field sources and
+    its surface's render mode dictate (`surface_plan`)."""
     try:
         await fetching.connector.check(task.url)
     except SsrfRejected as e:
@@ -215,7 +226,14 @@ async def fetch_page(
     validators = await stored_validators(conn, site.id, task.canonical_url) if sends_validators else None
     # The task's deadline runs from its claim, a moment before this (`worker.loop`).
     deadline = time.monotonic() + TASK_DEADLINE.total_seconds()
-    plain = PagePlan(rungs, site, policy, [], validators=validators, has_record=bool(standing), deadline=deadline)
+    by_sources = (
+        NO_PLAN
+        if planned is None
+        else await surface_plan(conn, site.id, planned.schema, planned.config, planned.render)
+    )
+    plain = PagePlan(
+        rungs, site, policy, [], validators=validators, has_record=bool(standing), deadline=deadline, fetch=by_sources
+    )
     plan = _plan(served, listing_pages, plain)
     rules = rules_in(conn, fetching.rungs.http, plan.attempts, Turns(fetching.limiter, QUEUED))
     fetch = page_fetch(fetching, plan, rules, QUEUED)
@@ -433,6 +451,7 @@ async def extract_records(
         config=config,
         margins=records.margins,
         caller_supplied=caller_supplied,
+        render=records.render,
     )
     if stored.outcome == "failed":
         return Failed(EXTRACTION_ERROR, transient=False, capture_id=page.capture_id)

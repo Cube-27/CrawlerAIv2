@@ -2,7 +2,8 @@
 from, with its parameters bound from the page, and where each field sits in that document.
 
 A recipe is data that our interpreters run, never code (§18). A document that validates here names a binder for every
-placeholder and uses every binder, keeps the request's scheme and host fixed, carries no credentials, and writes its
+placeholder and uses every binder, keeps the request's scheme and host fixed, holds no credential value (a credential
+header is a reference to the caller's request context, sent with the value the context holds), and writes its
 JSONPaths in the subset the engine reads (`select` of `json_doc`). Site strings (the endpoint URL, a binder regex)
 live in recipe documents only (C3); this module holds none.
 """
@@ -58,8 +59,9 @@ def token_like(value: str) -> bool:
     return any(_BASE64_TOKEN.fullmatch(item) for item in _ITEM_SEPARATORS.split(value))
 
 
-# Fields that carry credentials: RFC 9110 §11.6.2 and §11.7.2, RFC 6265 §5.4. A recipe that needs one is not
-# learnable (§4.6), so a recipe never holds one.
+# Fields that carry credentials: RFC 9110 §11.6.2 and §11.7.2, RFC 6265 §5.4. A recipe never holds a value of one: one
+# it needs is a reference to the header the caller's request context supplies (`ContextHeader`), and without such a
+# context the recipe is not learnable (§4.6).
 CREDENTIAL_FIELDS: Final = frozenset({"authorization", "proxy-authorization", "cookie"})
 # Fields the HTTP client sets for the connection it makes, never part of a recipe: Host (RFC 9110 §7.2), the content
 # length and transfer coding of the body (§8.6, RFC 9112 §6.1), the connection options (RFC 9110 §7.6.1: Connection,
@@ -168,7 +170,7 @@ def _check_header_value(value: str) -> str:
 BinderText = Annotated[str, AfterValidator(_check_binder)]
 UrlTemplate = Annotated[str, AfterValidator(_check_url_template)]
 HeaderName = Annotated[str, StringConstraints(pattern=rf"^{_TOKEN.pattern}$")]
-HeaderValue = Annotated[str, AfterValidator(_check_header_value)]
+HeaderText = Annotated[str, AfterValidator(_check_header_value)]
 EngineJsonPath = Annotated[str, AfterValidator(check_jsonpath)]
 MapPath = Annotated[str, AfterValidator(_check_map_path)]
 
@@ -184,6 +186,24 @@ ParamName = Annotated[Name, AfterValidator(_not_page_url)]
 
 class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class HeaderValue(_Model):
+    """A header the recipe sends with a constant value (`{page_url}` the one placeholder it takes)."""
+
+    name: HeaderName
+    value: HeaderText
+
+
+class ContextHeader(_Model):
+    """A header the recipe sends with the value the caller's request context holds for `name` (D-1430): the recipe
+    stores the name alone, never a value."""
+
+    name: HeaderName
+    from_context: Literal[True]
+
+
+RecipeHeader = HeaderValue | ContextHeader
 
 
 class RequestBody(_Model):
@@ -261,7 +281,7 @@ class RequestSpec(_Model):
     method: Literal["GET", "POST"]
     url: UrlTemplate
     params_from_url: dict[ParamName, BinderText] = {}
-    headers: dict[HeaderName, HeaderValue] = {}
+    headers: list[RecipeHeader] = []
     body: RequestBody | None = None
     pagination: Pagination | None = None
     requires_page_fetch: bool = False
@@ -273,11 +293,12 @@ class RequestSpec(_Model):
         used = set(PLACEHOLDER.findall(self.url + (self.body.template if self.body else "")))
         if used != set(self.params_from_url):
             raise ValueError(f"placeholders {sorted(used)} and binders {sorted(self.params_from_url)} differ")
-        names = [name.lower() for name in self.headers]
+        names = [header.name.lower() for header in self.headers]
         if len(set(names)) != len(names):
             raise ValueError("a header named twice")  # RFC 9110 §5.1: field names are case-insensitive
-        if CREDENTIAL_FIELDS.intersection(names):
-            raise ValueError("a recipe carries no credentials")
+        valued = {header.name.lower() for header in self.headers if isinstance(header, HeaderValue)}
+        if CREDENTIAL_FIELDS.intersection(valued):
+            raise ValueError("a recipe holds no credential value: a credential is a reference to the request context")
         if CLIENT_FIELDS.intersection(names):
             raise ValueError("a recipe carries no field the HTTP client sets itself")
         if self.requires_page_fetch != self.reads_page_data:
@@ -291,6 +312,11 @@ class RequestSpec(_Model):
             if self.body is None:
                 raise ValueError("a pagination value in the body needs a request body")
         return self
+
+    @property
+    def context_headers(self) -> frozenset[str]:
+        """The names, lowercased, of the headers the caller's request context must supply."""
+        return frozenset(header.name.lower() for header in self.headers if isinstance(header, ContextHeader))
 
     @property
     def binders(self) -> dict[str, Binder]:

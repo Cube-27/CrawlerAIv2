@@ -5,9 +5,11 @@ headers the browser sent with the endpoint request are added one at a time, in t
 addition makes the replay pass is kept; the others are dropped. So a kept header is one the replay was shown to need.
 
 Some captured headers are never sent: the ones the client sets itself, credentials, values that look like tokens and
-values that differ between sample pages (a recipe's header is a constant, or the page URL as `{page_url}`). When the
-replay needs one of those, or more than one added header, the recipe is not learnable and the site stays on the
-browser rung (§2: cookie handoff, tokens and signed requests are §22).
+values that differ between sample pages (a recipe's header is a constant, or the page URL as `{page_url}`). After the
+captured ones, each header the caller's request context supplies (D-1430) is tried as a reference (`ContextHeader`): the
+replay sends the context's value, and the recipe keeps the name alone, never the value. When the replay needs anything
+else, or more than one added header, the recipe is not learnable and the field stays on the browser (§2: cookie
+handoff, tokens and signed requests are §22).
 """
 
 from collections.abc import Mapping, Sequence
@@ -16,12 +18,21 @@ from typing import Final
 
 from pydantic import ValidationError
 
-from crawlerai.config_ir.api_recipe.model import CLIENT_FIELDS, CREDENTIAL_FIELDS, PAGE_URL, RequestSpec, token_like
+from crawlerai.config_ir.api_recipe.model import (
+    CLIENT_FIELDS,
+    CREDENTIAL_FIELDS,
+    PAGE_URL,
+    ContextHeader,
+    HeaderValue,
+    RecipeHeader,
+    RequestSpec,
+    token_like,
+)
 from crawlerai.config_ir.api_recipe.replay import Replay, ReplayPage, reproduces
 from crawlerai.schemas.types import SchemaDef
 
 # RFC 8259 §11: the JSON media type, the one header a recipe starts with.
-_ACCEPT: Final = {"Accept": "application/json"}
+_ACCEPT: Final = HeaderValue(name="Accept", value="application/json")
 _NO_SINGLE_HEADER: Final = "no single captured header makes the replay reproduce the sample values"
 
 
@@ -45,14 +56,15 @@ async def minimize(
     spec: RequestSpec, fields: Mapping[str, str], pages: Sequence[ReplayPage], schema: SchemaDef, replay: Replay
 ) -> Proven | NotLearnable:
     """The smallest header set (§4.6) with which replaying `spec` reproduces the `fields` map on every page of
-    `pages`; their captured requests give the headers to try, in the order the first page's request sent them."""
-    base = _with_headers(spec, _ACCEPT)
+    `pages`; their captured requests give the headers to try, in the order the first page's request sent them, then
+    the request context of the pages (`ReplayPage.context`) its header names, each as a reference."""
+    base = _with_headers(spec, [_ACCEPT])
     if base is not None and await _passes(base, fields, pages, schema, replay):
         return Proven(base, 0)
     candidates, withheld = _candidates(pages)
-    for tried, (name, value) in enumerate(candidates, start=1):
+    for tried, header in enumerate(candidates, start=1):
         # RFC 9110 §5.1: field names are case-insensitive; a captured Accept replaces the recipe's.
-        trial = _with_headers(spec, {name: value} if name.lower() == "accept" else {**_ACCEPT, name: value})
+        trial = _with_headers(spec, [header] if header.name.lower() == "accept" else [_ACCEPT, header])
         if trial is not None and await _passes(trial, fields, pages, schema, replay):
             return Proven(trial, tried)
     if withheld:
@@ -73,17 +85,18 @@ async def _passes(
     return True
 
 
-def _with_headers(spec: RequestSpec, headers: dict[str, str]) -> RequestSpec | None:
+def _with_headers(spec: RequestSpec, headers: list[RecipeHeader]) -> RequestSpec | None:
     """`spec` with `headers`; `None` when a captured value is not one a recipe can hold (a brace, RFC 6570)."""
     try:
-        return RequestSpec.model_validate({**spec.model_dump(), "headers": headers})
+        return RequestSpec.model_validate({**spec.model_dump(), "headers": [h.model_dump() for h in headers]})
     except ValidationError:
         return None
 
 
-def _candidates(pages: Sequence[ReplayPage]) -> tuple[list[tuple[str, str]], list[str]]:
-    """The captured headers to try, as (name, recipe value), and the names of those never sent."""
-    candidates: list[tuple[str, str]] = []
+def _candidates(pages: Sequence[ReplayPage]) -> tuple[list[RecipeHeader], list[str]]:
+    """The headers to try: the captured ones as recipe values, then the request context's as references; and the
+    names of the captured ones never sent."""
+    candidates: list[RecipeHeader] = []
     withheld: list[str] = []
     seen: set[str] = set()
     for name, _ in pages[0].sample.request.headers if pages else ():
@@ -96,8 +109,11 @@ def _candidates(pages: Sequence[ReplayPage]) -> tuple[list[tuple[str, str]], lis
         if value is None or key in CREDENTIAL_FIELDS or token_like(value):
             withheld.append(name)
         else:
-            candidates.append((name, value))
-    return candidates, withheld
+            candidates.append(HeaderValue(name=name, value=value))
+    context = pages[0].context if pages else None
+    tried = {header.name.lower() for header in candidates}
+    names = sorted(context.header_names() - tried - CLIENT_FIELDS) if context is not None else []
+    return [*candidates, *(ContextHeader(name=name, from_context=True) for name in names)], withheld
 
 
 def _constant(key: str, pages: Sequence[ReplayPage]) -> str | None:

@@ -182,14 +182,14 @@ stores the record as `partial` and a crawl-discovered URL is `no_match` with no 
 
 ### Requirement: Render-bound fields
 A detail field still `missing` (for any reason but `out_of_stock`) whose source in the site's active config is the
-browser (`ConfigExecutor.browser_fields`: until per-field sources land with architecture v3 PR 5, every field a config
-learned from browser captures runs, `fetch.method` `browser`), on a page no render ran for (the capture is not the
+browser (`ConfigExecutor.browser_fields`: each running field whose `needs` is `browser`, [learning-configs](../learning-configs/spec.md)
+"Locate run"), on a page no render ran for (the capture is not the
 browser's and no browser attempt is among its `fetch_policy.attempts`: the fetch did not render, for budget or
 `method_hint http`), SHALL be `interaction_required` with reason `render_bound`. Every other unpublished field stays
 `missing` with its furthest-stage reason; a page without a config leaves a field it does not carry `missing` with
 `no_candidates`. (Previously: a field `missing/no_candidates` on an unrendered page whose document carried a state
 document of at least `STATE_MIN_VALUES` scalar values, `content/state.holds_state`, was `interaction_required` with
-reason `script_rendered`.) Refs: owner plan 2026-10-19 P3, P9; architecture v3 a.5.
+reason `script_rendered`; then every field of a config whose `fetch.method` was `browser` was browser-bound.) Refs: owner plan 2026-10-19 P3, P9; architecture v3 a.5.
 #### Scenario: Browser field on an HTTP page
 - **WHEN** the site's config reads `size` from rendered pages and an HTTP page with no browser attempt carries no `size`
 - **THEN** `size` is `interaction_required` with reason `render_bound`, and the same page captured in the browser leaves

@@ -4,7 +4,7 @@ The documents are each script's state (`content.state.script_state`), each decod
 (`content.state_decoders.decode`: devalue flat arrays, normalized caches): read by structure only, no variable name
 or key looked up. Values are admitted by `admission`; locators are `js_state:<script_xpath>:<path>`, so the documents
 of one script share its address. The page's Flight stream (`content.state.flight_rows`) is one document more, after
-them: its JSON rows by row id, each decoded, addressed by the first script that pushes a chunk of it.
+them: its JSON rows by row id, each decoded, located as `rsc:<row>:<path in the row>`.
 Each documented JSON attribute's document follows, located as `attr:<element_xpath>@<name>:<path>`.
 """
 
@@ -35,11 +35,18 @@ def state_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document]:
 
 def script_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document]:
     """The page's inline scripts' state documents, decoded, each addressed by its script's XPath, then its Flight
-    stream's."""
+    stream's (`flight_document`)."""
     documents = [Document(decode(data), s.xpath) for s in page.scripts for data in script_state(s, diagnostics)]
-    if (flight := flight_rows(page.scripts, diagnostics)) is not None and (rows := model_rows(flight[1])):
-        documents.append(Document({row_id: decode(value) for row_id, value in rows.items()}, flight[0]))
+    if (flight := flight_document(page, diagnostics)) is not None:
+        documents.append(flight)
     return documents
+
+
+def flight_document(page: ParsedPage, diagnostics: list[str]) -> Document | None:
+    """The page's inline Flight stream as one document of its JSON rows by row id, each decoded; None without one."""
+    if (flight := flight_rows(page.scripts, diagnostics)) is not None and (rows := model_rows(flight[1])):
+        return Document({row_id: decode(value) for row_id, value in rows.items()}, flight[0], "rsc")
+    return None
 
 
 def attribute_documents(page: ParsedPage) -> list[Document]:

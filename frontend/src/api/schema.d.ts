@@ -1000,11 +1000,9 @@ export interface components {
             body?: components["schemas"]["RequestBody"] | null;
             /**
              * Headers
-             * @default {}
+             * @default []
              */
-            headers: {
-                [key: string]: string;
-            };
+            headers: (components["schemas"]["HeaderValue"] | components["schemas"]["ContextHeader"])[];
             /** Map */
             map: {
                 [key: string]: string;
@@ -1323,7 +1321,7 @@ export interface components {
              * Origin
              * @enum {string}
              */
-            origin: "adapter" | "induced" | "llm_synth" | "operator";
+            origin: "adapter" | "induced" | "llm_synth" | "operator" | "located";
             /**
              * Page Kind
              * @enum {string}
@@ -1382,7 +1380,7 @@ export interface components {
              * Origin
              * @enum {string}
              */
-            origin: "adapter" | "induced" | "llm_synth" | "operator";
+            origin: "adapter" | "induced" | "llm_synth" | "operator" | "located";
             /**
              * Page Kind
              * @enum {string}
@@ -1403,6 +1401,20 @@ export interface components {
             validation_report: components["schemas"]["ValidationReport"] | null;
             /** Version */
             version: number;
+        };
+        /**
+         * ContextHeader
+         * @description A header the recipe sends with the value the caller's request context holds for `name` (D-1430): the recipe
+         *     stores the name alone, never a value.
+         */
+        ContextHeader: {
+            /**
+             * From Context
+             * @constant
+             */
+            from_context: true;
+            /** Name */
+            name: string;
         };
         /** CorrectedSteps */
         CorrectedSteps: {
@@ -1835,6 +1847,10 @@ export interface components {
              */
             page_kind: "detail" | "listing";
             provenance: components["schemas"]["Provenance"];
+            /** Recipes */
+            recipes?: {
+                [key: string]: components["schemas"]["ApiRecipe"];
+            };
             schema: components["schemas"]["SchemaRef"];
             /** Site */
             site: string;
@@ -2079,6 +2095,14 @@ export interface components {
          *     (learning-configs spec) once validated.
          */
         FieldSteps: {
+            /** Call */
+            call?: string | null;
+            /**
+             * Needs
+             * @default http
+             * @enum {string}
+             */
+            needs: "http" | "call" | "browser";
             /**
              * Status
              * @enum {string}
@@ -2119,6 +2143,16 @@ export interface components {
             max_blocks?: number | null;
             /** Query */
             query?: string | null;
+        };
+        /**
+         * HeaderValue
+         * @description A header the recipe sends with a constant value (`{page_url}` the one placeholder it takes).
+         */
+        HeaderValue: {
+            /** Name */
+            name: string;
+            /** Value */
+            value: string;
         };
         /** Health */
         Health: {
@@ -2300,7 +2334,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "jsonld" | "js_state" | "attr" | "xhr" | "api";
+            source: "jsonld" | "js_state" | "attr" | "rsc" | "xhr" | "api";
         };
         /** JsonPathStep */
         "JsonPathStep-Output": {
@@ -2315,7 +2349,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "jsonld" | "js_state" | "attr" | "xhr" | "api";
+            source: "jsonld" | "js_state" | "attr" | "rsc" | "xhr" | "api";
         };
         JsonValue: unknown;
         /**
@@ -3111,7 +3145,7 @@ export interface components {
              * Origin
              * @enum {string}
              */
-            origin: "adapter" | "induced" | "llm_synth" | "operator";
+            origin: "adapter" | "induced" | "llm_synth" | "operator" | "located";
             /** Validated On */
             validated_on: string[];
         };

@@ -20,7 +20,19 @@ from crawlerai.schemas.types import NAME_PATTERN
 # (RFC 9110 §15.4). No candidate states them, so their locator names the derivation.
 PageUrlDerivation = Literal["canonical_link", "final_url"]
 Scheme = Literal[
-    "jsonld", "microdata", "dom", "meta", "js_state", "attr", "xhr", "adapter", "api", "config", "text", "derived"
+    "jsonld",
+    "microdata",
+    "dom",
+    "meta",
+    "js_state",
+    "attr",
+    "rsc",
+    "xhr",
+    "adapter",
+    "api",
+    "config",
+    "text",
+    "derived",
 ]
 
 # An index into a list the capture holds (script blocks, network bodies, config steps): ASCII digits without a leading
@@ -48,6 +60,8 @@ _ADDRESS: dict[str, re.Pattern[str]] = {
     # A documented JSON attribute (`content.attr_json`): its element's path, `@` and its name, then a path in its
     # document. The element's path holds no `@` (one positional step per ancestor, `ParsedPage`).
     "attr": re.compile(rf"(/[^@]*@(?:{ATTRIBUTE_NAMES})):{_JSONPATH}", re.DOTALL),
+    # A row of the page's inline RSC Flight stream (`content.rsc`): its row id, then a path in the row.
+    "rsc": _NAMED_JSONPATH,
     # The nth captured network body in the bundle.
     "xhr": _INDEXED_JSONPATH,
     "adapter": _NAMED_JSONPATH,

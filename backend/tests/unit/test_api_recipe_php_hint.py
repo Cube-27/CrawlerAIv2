@@ -17,7 +17,10 @@ def _recipe(**changes: Any) -> ApiRecipe:
         "method": "GET",
         "url": "https://api.example.test/v1/items/{slug}?lang={lang}&fmt=json",
         "params_from_url": {"slug": "path:1", "lang": "query:hl"},
-        "headers": {"X-Requested-With": "XMLHttpRequest", "Referer": "{page_url}"},
+        "headers": [
+            {"name": "X-Requested-With", "value": "XMLHttpRequest"},
+            {"name": "Referer", "value": "{page_url}"},
+        ],
         "map": {"title": "$['data']['name']", "price": "$['data']['price']+$['data']['currency']"},
         "proof": {"validated_on": [str(uuid7())], "headers_tried": 2, "bound_by": "deterministic"},
         **changes,

@@ -15,14 +15,19 @@ held-out pages (§8.3 step 4); a field an operator confirmed or corrected stays 
 """
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from crawlerai.acquire.identity import joined_call
+from crawlerai.acquire.types import RequestContext
 from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.config_ir.api_recipe.binding import page_data
+from crawlerai.config_ir.api_recipe.model import ApiRecipe
+from crawlerai.config_ir.api_recipe.replay import Replay, request_for
 from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR, FieldSteps, ListingSpec, Ratio, Step
 from crawlerai.config_ir.release_executor import Released, ReleasePage, Value, release_run
@@ -33,6 +38,7 @@ from crawlerai.db.models import CaptureId, FieldStatus
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.schemas.types import FieldSpec, SchemaDef
+from crawlerai.storage.capture_bundle import CaptureBundle
 
 # At least three pages are held out, a listing has at least 3 rows, and a field needs at least 3
 # comparable pages to be corroborated; its values must match on every comparable page while there are fewer than 10,
@@ -136,11 +142,17 @@ class Validated:
 
 
 def validate(
-    ir: ExtractionConfigIR, schema: SchemaDef, held_out: Sequence[HeldOutPage], vocabulary: Vocabulary
+    ir: ExtractionConfigIR,
+    schema: SchemaDef,
+    held_out: Sequence[HeldOutPage],
+    vocabulary: Vocabulary,
+    *,
+    min_held_out: int = MIN_HELD_OUT,
 ) -> Validated:
-    """Validate `ir` on `held_out` (§4.7). It activates only with at least `MIN_HELD_OUT` pages and one kept field."""
+    """Validate `ir` on `held_out` (§4.7). It activates only with at least `min_held_out` pages and one kept field: a
+    learning run's `MIN_HELD_OUT`, a locate run's fewer (`locate.MIN_LOCATE_HELD_OUT`)."""
     captures = [page.capture_id for page in held_out]
-    if len(held_out) < MIN_HELD_OUT:
+    if len(held_out) < min_held_out:
         return Validated(None, ValidationReport(held_out=captures, fields={}, listing=None, refused="too_few_held_out"))
     executor = EngineExecutor(ir, vocabulary)
     runs = [_PageRun.of(executor, schema, page) for page in held_out]
@@ -156,6 +168,23 @@ def validate(
     validated = ir.model_copy(update={"fields": fields, "listing": listing, "provenance": provenance})
     # `model_copy` skips validation; the round trip runs the IR's validators on the pruned document.
     return Validated(ExtractionConfigIR.model_validate(validated.model_dump(by_alias=True)), report)
+
+
+async def replayed(
+    page: HeldOutPage, bundle: CaptureBundle, recipe: ApiRecipe, replay: Replay, context: RequestContext | None
+) -> HeldOutPage | None:
+    """The HTTP held-out `page` (whose capture is `bundle`) with the answer of `recipe`'s call, replayed over HTTP
+    without the browser, joined as serving joins it (acquisition spec, "Data calls"), which a `call` field's steps are
+    validated on (learning-configs spec, "Locate run" step 4); None when the recipe binds nothing on the page or its
+    answer is not `ok`."""
+    request = request_for(recipe, bundle.manifest.url, page_data(page.page), context)
+    if request is None:
+        return None
+    answer = await replay(request)
+    if answer.block_class != "ok":
+        return None
+    joined = joined_call(bundle, answer.bundle, request.url, method=request.method, request_body=request.body)
+    return replace(page, page=ParsedPage.of(joined))
 
 
 def with_unlearned(validated: Validated, reasons: Mapping[str, str]) -> Validated:

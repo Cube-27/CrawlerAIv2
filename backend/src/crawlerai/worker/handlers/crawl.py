@@ -119,6 +119,7 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
         served=served,
         listing_pages=pages,
         formats=_formats_of(task, crawl.request),
+        planned=crawl.records,
     )
     if not isinstance(page, Ended):
         await _record_final_url(conn, task, page)

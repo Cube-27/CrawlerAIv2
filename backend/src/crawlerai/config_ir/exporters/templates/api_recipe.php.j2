@@ -31,7 +31,11 @@
 {% endif %}
 {% endif %}
 
-function api_recipe_request(string $page_url, array $params): array
+{% if context_headers %}
+// $context holds the values of the headers the recipe takes from the caller's request context, by name; the recipe
+// stores the names alone.
+{% endif %}
+function api_recipe_request(string $page_url, array $params, array $context = []): array
 {
     $path = [];
     $query = [];
@@ -57,6 +61,9 @@ function api_recipe_request(string $page_url, array $params): array
 {% else %}
             {{ line|php_literal }},
 {% endif %}
+{% endfor %}
+{% for name in context_headers %}
+            {{ (name ~ ": ")|php_literal }} . $context[{{ name|php_literal }}],
 {% endfor %}
 {% if no_content_type %}
             // curl sends a form content type with a POST; an empty value sends none, as CrawlerAI does.

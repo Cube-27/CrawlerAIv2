@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.browser_tab import Tab
 from crawlerai.acquire.politeness import Admit, HostLimiter
-from crawlerai.acquire.rungs import Rung, Rungs, acquire
+from crawlerai.acquire.rungs import NO_PLAN, FetchPlan, Rung, Rungs, acquire
 from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector, SsrfRejected
 from crawlerai.acquire.types import (
     ActionsReport,
@@ -361,6 +361,8 @@ class PagePlan:
     growth: Growth | None = None
     # On `time.monotonic`: when the task's budget runs out; the browser is not started too close to it (`acquire`).
     deadline: float | None = None
+    # What the config's field sources ask of the fetch: the browser, companion calls (`config_ir.active.fetch_plan`).
+    fetch: FetchPlan = NO_PLAN
 
 
 def _uses_recipe(page: PagePlan, url: str) -> bool:
@@ -404,6 +406,7 @@ def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Wa
                 admit_next=admit_next,
                 send=send,
                 deadline=page.deadline,
+                plan=page.fetch,
             )
             page.attempts.extend(result.attempts)
             return result

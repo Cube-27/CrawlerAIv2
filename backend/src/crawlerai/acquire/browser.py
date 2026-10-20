@@ -46,7 +46,7 @@ from crawlerai.acquire.public_suffix import default_suffixes
 from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions, browser_cookies
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
-from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, RequestContext, StepOutcome
+from crawlerai.acquire.types import BlockClass, CallEndpoint, FetchPolicy, FetchResult, RequestContext, StepOutcome
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
 from crawlerai.storage.artifacts import PDF, SCREENSHOT
 from crawlerai.storage.capture_bundle import (
@@ -147,6 +147,28 @@ AREAS_JS: Final = """(elements) => Array.from(elements, ([path, tag]) => {
   const box = node.getBoundingClientRect();
   return box.width * box.height;
 })"""
+# The rendered document with its open shadow roots (HTML Standard, `Element.getHTML` with `serializableShadowRoots` and
+# `shadowRoots`): every open root reachable from the document by walking `shadowRoot` is serialized as a declarative
+# `<template shadowrootmode="open">`, which the HTML reader flattens. Run in Patchright's isolated world with `evaluate`
+# (INV-44: no init script); a closed root is not reachable and stays out. The doctype and the root element's own tag
+# are written around `getHTML`, which serializes the children; a browser without it gives `outerHTML`.
+DOCUMENT_HTML_JS: Final = """() => {
+  const roots = [];
+  const walk = (root) => {
+    for (const element of root.querySelectorAll('*')) {
+      if (element.shadowRoot) { roots.push(element.shadowRoot); walk(element.shadowRoot); }
+    }
+  };
+  walk(document);
+  const html = document.documentElement;
+  const doctype = document.doctype ? `<!DOCTYPE ${document.doctype.name}>` : '';
+  if (html === null) return doctype;
+  if (typeof html.getHTML !== 'function') return doctype + html.outerHTML;
+  const quoted = (value) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const attributes = Array.from(html.attributes, (a) => ` ${a.name}="${quoted(a.value)}"`).join('');
+  const inner = html.getHTML({ serializableShadowRoots: true, shadowRoots: roots });
+  return `${doctype}<html${attributes}>${inner}</html>`;
+}"""
 # The most item blocks a listing capture measures (`_item_areas`): a page's groups seldom hold more, and the walk
 # stays bounded on one that does.
 _MEASURED_BLOCKS_MAX = 2_000
@@ -798,11 +820,24 @@ def _called(calls: DataCalls, answered: int) -> bool:
 
 def _ready(frame: _MainFrame, calls: DataCalls, policy: FetchPolicy) -> bool:
     """Whether the document is ready to read (acquisition spec, "HTTP and browser rungs"), a fixed condition: it has
-    fired `DOMContentLoaded` (HTML Standard §8.4.6), and no data call has been in flight since, for `_STEP_QUIET_S`. A
+    fired `DOMContentLoaded` (HTML Standard §8.4.6), and (a) every endpoint the site's located `call` field sources
+    name (`policy.ready_calls`) has answered, else (b) no data call has been in flight since, for `_STEP_QUIET_S`. A
     listing is read when the wait ends: its item area (`item_areas`) may still be filling in."""
-    if policy.page_kind == "listing" or not frame.parsed or calls.in_flight:
+    if policy.page_kind == "listing" or not frame.parsed:
+        return False
+    if policy.ready_calls:
+        return all(_answered(endpoint, calls) for endpoint in policy.ready_calls)
+    if calls.in_flight:
         return False
     return time.monotonic() - max(frame.parsed_at, calls.idle_since) >= _STEP_QUIET_S
+
+
+def _answered(endpoint: CallEndpoint, calls: DataCalls) -> bool:
+    """Whether a call of `endpoint` has answered with a body the capture reads (`DataCalls.responses`) in full."""
+    return any(
+        endpoint.matches(response.request.method, response.url) and calls.finished(response)
+        for response, _ in calls.responses
+    )
 
 
 def _same_site(url: str, page_url: str) -> bool:
@@ -845,8 +880,9 @@ async def _next_document(page: Page, frame: _MainFrame, deadline: float) -> bool
 
 
 async def _rendered(page: Page, exchange: Exchange) -> bytes:
+    """The rendered document with its open shadow roots (`DOCUMENT_HTML_JS`), read in the isolated world."""
     try:
-        return (await page.content()).encode()
+        return cast(str, await page.evaluate(DOCUMENT_HTML_JS, isolated_context=True)).encode()
     except PlaywrightError as e:
         raise Failed("render_error", exchange) from e
 

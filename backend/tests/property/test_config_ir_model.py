@@ -71,7 +71,7 @@ _RECIPE = {
     "method": "GET",
     "url": "https://api.example.test/v1/products/{p1}",
     "params_from_url": {"p1": "path:1"},
-    "headers": {"Accept": "application/json"},
+    "headers": [{"name": "Accept", "value": "application/json"}],
     "map": {"title": "$['data']['name']"},
     "proof": {
         "validated_on": ["0190b2a0-0000-7000-8000-000000000002"],
@@ -130,7 +130,10 @@ def test_a_step_survives_role_a_wire_form(raw: dict[str, Any]) -> None:
 @pytest.mark.parametrize(
     "recipe",
     [
-        {**_RECIPE, "headers": {"Cookie": "a=b"}},  # a recipe never carries credentials (adapters spec)
+        {
+            **_RECIPE,
+            "headers": [{"name": "Cookie", "value": "a=b"}],
+        },  # a recipe never carries credentials (adapters spec)
         {key: value for key, value in _RECIPE.items() if key != "proof"},  # an IR recipe is a validated one (§4.7)
     ],
 )

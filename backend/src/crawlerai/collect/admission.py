@@ -70,15 +70,33 @@ class AdmittingCollector(Protocol):
 @dataclass(frozen=True, slots=True)
 class Document:
     """One parsed JSON document and the locator part that addresses it (a script's XPath, a body's index, an
-    attribute's `<xpath>@<name>`), under `scheme` when it is not its collector's kind (an attribute's `attr`)."""
+    attribute's `<xpath>@<name>`), under `scheme` when it is not its collector's kind (an attribute's `attr`; the
+    page's inline Flight stream's `rsc`, whose document holds its rows by row id and whose locators address the row:
+    `rsc:<row>:<path in the row>`)."""
 
     data: JsonValue
     address: str
-    scheme: Literal["attr"] | None = None
+    scheme: Literal["attr", "rsc"] | None = None
 
     def locator(self, kind: StateKind, path: str) -> str:
         """The locator of the value at `path` in the document, read by a `kind` collector."""
+        if self.scheme == "rsc":
+            row, rest = _row_and_rest(path)
+            return format_locator("rsc", row, rest)
         return format_locator(self.scheme or kind, self.address, path)
+
+
+# The first segment of a normalized path into a Flight document: its row id (a hex number, Flight's own row ids).
+_ROW = re.compile(r"\$\['([^'\\]+)'\]")
+
+
+def _row_and_rest(path: str) -> tuple[str, str]:
+    """A Flight document's leaf path split into its row id (the first member name; every leaf is in a row) and the path
+    in that row."""
+    found = _ROW.match(path)
+    if found is None:
+        raise ValueError(f"not a path into a Flight row: {path!r}")
+    return found[1], ROOT + path[found.end() :]
 
 
 @dataclass(frozen=True, slots=True)

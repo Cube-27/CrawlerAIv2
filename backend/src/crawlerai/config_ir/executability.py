@@ -26,15 +26,20 @@ def step_class(step: Step, *, has_recipe: bool) -> Executability:
             return "needs-browser"
         case "api":
             return "api-call" if has_recipe else "unexecutable"
-        case "jsonld" | "js_state" | "attr":
+        case "jsonld" | "js_state" | "attr" | "rsc":
             return "static-html"
 
 
 def field_class(steps: FieldSteps, *, has_recipe: bool) -> Executability:
-    """The class of a field: `unexecutable` when it is suspended (no executor runs it), else its steps' most
-    demanding class."""
+    """The class of a field: `unexecutable` when it is suspended (no executor runs it); a located `call` field's is
+    `api-call` (its recipe answers what its `xhr` step reads) and a `browser` one's `needs-browser`; else its steps'
+    most demanding class."""
     if steps.status == "suspended":
         return "unexecutable"
+    if steps.needs == "call":
+        return "api-call"
+    if steps.needs == "browser":
+        return "needs-browser"
     found = {step_class(step, has_recipe=has_recipe) for step in steps.steps}
     return max(found, key=CLASSES.index)
 

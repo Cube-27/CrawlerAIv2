@@ -5,7 +5,8 @@ role C's grounded ones (a verbatim span of the cleaned text, INV-12, or a link's
 For each field, every sample page's published locator proposes candidate steps:
 - `jsonld:<block>:<path>`: a `jsonld` step relative to each schema.org node the value is nested in (nearest first),
   typed by the node's types, with array indices stripped (`[*]`), then with them kept;
-- `js_state:` and `xhr:` paths: a `jsonpath` step over the page's documents of that source, indices stripped, then kept;
+- `js_state:`, `attr:`, `rsc:` and `xhr:` paths: a `jsonpath` step over the page's documents of that source (an RSC
+  path reads every row of the Flight stream), indices stripped, then kept;
 - `meta:<name>`: the `content` of the `meta` element with that `property`, then that `name`;
 - `microdata:<xpath>`, `dom:<xpath>` and `config:` XPaths that select one element, and `text:` spans (the innermost
   element holding the span): for each anchor on the element and its ancestors (nearest first), the path from the
@@ -19,6 +20,11 @@ a candidate is kept only if every sample page proposes it and, on every page, it
 the engine executor normalizes to the published value (`equal`). Of those, the one most pages propose, then the first,
 wins; a field without one goes to synthesis (§4.6). Site strings exist only in the steps produced, which are IR data
 (C3, INV-03). A listing's rows are induced from the item layer's blocks (`listing_induction`).
+
+A locate run (learning-configs spec, "Locate run" step 3) induces a value in every source document of a page that
+holds it, whatever locator its candidate was published with (`source_steps`): a `jsonpath` step in each JSON document
+(JSON-LD, embedded state, JSON attributes, RSC rows, captured calls) where a member normalizes to the value, and the
+anchored paths of each element whose text or attribute does.
 """
 
 import re
@@ -31,11 +37,11 @@ from lxml.html import HtmlElement
 from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect.induce import induced
-from crawlerai.collect.json_doc import ROOT, segments
+from crawlerai.collect.json_doc import ROOT, scalars, segments
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.locator import InvalidLocator, Locator, parse_locator
 from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.config_ir.executor import field_candidate
+from crawlerai.config_ir.executor import documents, field_candidate
 from crawlerai.config_ir.model import (
     AbsolutizeUrlOp,
     FieldSteps,
@@ -50,7 +56,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.content.text import name_test
 from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.dispatch import equal
+from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.schemas.types import NEXT_PAGE_FIELD, FieldSpec, FieldType, SchemaDef
 
 # A class token that reads as a word or kebab-case words is a stable anchor; tokens that build tools hash carry
@@ -65,10 +71,15 @@ _ABSOLUTIZE: Final = AbsolutizeUrlOp.model_validate({"absolutize_url": {}})
 # The schemes whose values come from an adapter's or API recipe's mapping, which the config reuses.
 MAPPED: Final = frozenset({"adapter", "api"})
 # The schemes of values read from a JSON document or a meta element: one step reads a list as well as a value.
-STRUCTURED: Final = frozenset({"jsonld", "meta", "js_state", "attr", "xhr"})
+STRUCTURED: Final = frozenset({"jsonld", "meta", "js_state", "attr", "rsc", "xhr"})
 # The schemes of values read from one element: structured markup, the DOM, a config's step, and role C's grounded
 # claims (a verbatim span of the cleaned text, INV-12, or a link's or image's element).
 ELEMENTS: Final = frozenset({"microdata", "dom", "config", "text"})
+# The JSON documents a located value is searched in, and how many steps each source proposes at most.
+LOCATED_SOURCES: Final[tuple[JsonSource, ...]] = ("jsonld", "js_state", "attr", "rsc", "xhr")
+_STEPS_PER_SOURCE: Final = 3
+# An element whose text is longer holds more than one value; its descendants are searched instead.
+_MAX_ELEMENT_TEXT: Final = 200
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,7 +220,7 @@ def _proposals(locator: Locator, sample: SamplePage, f: _Field) -> list[_Candida
             return list(_jsonld_candidates(sample.page, f.vocabulary, locator))
         case "meta":
             return list(_meta_candidates(locator.parts[0]))
-        case "js_state" | "attr" | "xhr":
+        case "js_state" | "attr" | "rsc" | "xhr":
             return list(_jsonpath_candidates(locator))
         case "text":
             element = span_element(sample.page, int(locator.parts[0]), int(locator.parts[1]))
@@ -305,7 +316,7 @@ def _jsonpath_candidates(locator: Locator) -> Iterator[_Candidate]:
     """A `jsonpath` step over the page's documents of the locator's source (embedded state, JSON attributes, captured
     calls): the path with array indices stripped (`[*]`), then as written; then the same for the object holding the
     value."""
-    source: JsonSource = locator.scheme if locator.scheme in ("js_state", "attr") else "xhr"
+    source: JsonSource = locator.scheme if locator.scheme in ("js_state", "attr", "rsc") else "xhr"
     try:
         written = segments(locator.parts[-1])
     except ValueError:  # a member name the engine's JSONPath reader does not take
@@ -316,6 +327,81 @@ def _jsonpath_candidates(locator: Locator) -> Iterator[_Candidate]:
                 yield _Candidate(JsonPathStep(jsonpath=query, source=source))
             except ValidationError:  # outside the RFC 9535 subset the IR accepts
                 continue
+
+
+# --- every source document (locate run) -------------------------------------------------------------------------------
+
+
+def source_steps(
+    page: ParsedPage, ctx: Context, schema: SchemaDef, vocabulary: Vocabulary, name: str, value: JsonValue
+) -> dict[JsonSource | None, list[Step]]:
+    """The steps that select `value` for the page-level field `name` on `page`, by source document (None: the DOM),
+    each source's first `_STEPS_PER_SOURCE` (module docstring). A step is proposed only when the engine executor reads
+    `value` with it on `page`."""
+    spec = schema.fields[name]
+    f = _Field(name, spec, schema, [SamplePage(page, ctx, {name: Published(value, "")})], vocabulary)
+    found: dict[JsonSource | None, list[Step]] = {}
+    for source in LOCATED_SOURCES:
+        paths = (path for document in documents(source, page) for path in _holding(document, value, spec, ctx))
+        steps = (_first_verified(list(_json_candidates(source, path)), f) for path in paths)
+        found[source] = _distinct(steps)
+    elements = _elements_holding(page.lxml_tree, value, spec, ctx)
+    found[None] = _distinct(_first_verified(list(xpath_candidates(element, spec)), f) for element in elements)
+    return {source: steps for source, steps in found.items() if steps}
+
+
+def _first_verified(candidates: list[_Candidate], f: _Field) -> Step | None:
+    return _induced_step([candidates], f) if candidates else None
+
+
+def _distinct(steps: Iterator[Step | None]) -> list[Step]:
+    """The first `_STEPS_PER_SOURCE` distinct steps."""
+    found: dict[str, Step] = {}
+    for step in steps:
+        if step is not None:
+            found.setdefault(step.model_dump_json(), step)
+            if len(found) == _STEPS_PER_SOURCE:
+                break
+    return list(found.values())
+
+
+def _holding(document: JsonValue, value: JsonValue, spec: FieldSpec, ctx: Context) -> Iterator[str]:
+    """The normalized path of each member of `document` that normalizes to `value`."""
+    for path, scalar in scalars(document):
+        if _normalizes_to(scalar, value, spec, ctx):
+            yield path
+
+
+def _json_candidates(source: JsonSource, path: str) -> Iterator[_Candidate]:
+    """`jsonpath` steps over `source`'s documents reading `path`: indices stripped, then kept; then its holder's."""
+    try:
+        written = segments(path)
+    except ValueError:  # a member name the engine's JSONPath reader does not take
+        return
+    for parts in _and_holder(written):
+        for query in _queries(parts):
+            try:
+                yield _Candidate(JsonPathStep(jsonpath=query, source=source))
+            except ValidationError:  # outside the RFC 9535 subset the IR accepts
+                continue
+
+
+def _elements_holding(tree: HtmlElement, value: JsonValue, spec: FieldSpec, ctx: Context) -> Iterator[HtmlElement]:
+    """Each element, in document order, whose normalized text (an element with at most three children: a larger one
+    holds more than one value) or one of whose attributes normalizes to `value`."""
+    for element in tree.iter():
+        if not isinstance(element.tag, str):
+            continue
+        text = " ".join(element.text_content().split()) if len(element) <= 3 else ""
+        readings = [text] if 0 < len(text) <= _MAX_ELEMENT_TEXT else []
+        readings += [v for v in element.attrib.values() if 0 < len(v) <= _MAX_ELEMENT_TEXT]
+        if any(_normalizes_to(reading, value, spec, ctx) for reading in readings):
+            yield element
+
+
+def _normalizes_to(raw: str | int | float, value: JsonValue, spec: FieldSpec, ctx: Context) -> bool:
+    result = normalize(raw, spec, ctx)
+    return isinstance(result, Ok) and equal(result.value, value, spec)
 
 
 # --- role C's spans ---------------------------------------------------------------------------------------------------

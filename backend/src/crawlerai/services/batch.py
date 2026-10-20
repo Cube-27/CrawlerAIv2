@@ -61,6 +61,7 @@ from crawlerai.services.scrape_steps import (
     check_records,
     check_render,
     named_schema,
+    stored_request,
 )
 from crawlerai.services.webhook_options import WebhookOptions
 
@@ -243,7 +244,7 @@ async def insert_job(
             project_id=DEFAULT_PROJECT,
             kind=kind,
             # The caller's secrets stay in the stored request, which the job's workers read (D-1432).
-            request=request.model_dump(mode="json", by_alias=True, context={KEEP_SECRETS: True}),
+            request=stored_request(request, context={KEEP_SECRETS: True}),
             schema_id=None if schema is None else schema.id,
             webhook_url=request.webhook_url,
             webhook_events=request.webhook_events,

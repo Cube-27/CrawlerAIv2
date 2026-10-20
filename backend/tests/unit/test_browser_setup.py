@@ -131,6 +131,21 @@ def test_inv44_no_source_file_changes_the_browser_identity() -> None:
     assert offenders == []
 
 
+def test_open_shadow_roots_are_serialized_by_get_html_in_the_isolated_world_only() -> None:
+    """Acquisition spec, "Rendered HTML": the render serializes open shadow roots with `getHTML`, called through
+    `evaluate` in Patchright's isolated world, and nowhere else (no init script, user agent or extra headers)."""
+    calls = [
+        (path.relative_to(_SRC).as_posix(), line.strip())
+        for path in sorted(_SRC.rglob("*.py"))
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if "getHTML" in line or "DOCUMENT_HTML_JS" in line
+    ]
+    evaluated = [line for _, line in calls if "evaluate(" in line]
+
+    assert {path for path, _ in calls} == {"acquire/browser.py"}
+    assert evaluated == ["return cast(str, await page.evaluate(DOCUMENT_HTML_JS, isolated_context=True)).encode()"]
+
+
 def test_inv44_a_context_sets_only_the_proxy_downloads_and_the_request_locale(recorder: _Recorder) -> None:
     fetching = _fetch_once("de-DE")
     with pytest.raises(_Stop):

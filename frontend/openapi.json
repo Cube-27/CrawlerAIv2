@@ -89,14 +89,19 @@
             ]
           },
           "headers": {
-            "default": {},
-            "patternProperties": {
-              "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$": {
-                "type": "string"
-              }
+            "default": [],
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HeaderValue"
+                },
+                {
+                  "$ref": "#/components/schemas/ContextHeader"
+                }
+              ]
             },
             "title": "Headers",
-            "type": "object"
+            "type": "array"
           },
           "map": {
             "minProperties": 1,
@@ -922,7 +927,8 @@
               "adapter",
               "induced",
               "llm_synth",
-              "operator"
+              "operator",
+              "located"
             ],
             "title": "Origin",
             "type": "string"
@@ -1064,7 +1070,8 @@
               "adapter",
               "induced",
               "llm_synth",
-              "operator"
+              "operator",
+              "located"
             ],
             "title": "Origin",
             "type": "string"
@@ -1123,6 +1130,28 @@
           "validation_report"
         ],
         "title": "ConfigSummary",
+        "type": "object"
+      },
+      "ContextHeader": {
+        "additionalProperties": false,
+        "description": "A header the recipe sends with the value the caller's request context holds for `name` (D-1430): the recipe\nstores the name alone, never a value.",
+        "properties": {
+          "from_context": {
+            "const": true,
+            "title": "From Context",
+            "type": "boolean"
+          },
+          "name": {
+            "pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "from_context"
+        ],
+        "title": "ContextHeader",
         "type": "object"
       },
       "CorrectedSteps": {
@@ -2227,6 +2256,15 @@
           "provenance": {
             "$ref": "#/components/schemas/Provenance"
           },
+          "recipes": {
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,63}$": {
+                "$ref": "#/components/schemas/ApiRecipe"
+              }
+            },
+            "title": "Recipes",
+            "type": "object"
+          },
           "schema": {
             "$ref": "#/components/schemas/SchemaRef"
           },
@@ -2922,6 +2960,28 @@
         "additionalProperties": false,
         "description": "A field's steps in order (the first valid value wins, \u00a712.1), its status, and its held-out yield and validity\n(learning-configs spec) once validated.",
         "properties": {
+          "call": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call"
+          },
+          "needs": {
+            "default": "http",
+            "enum": [
+              "http",
+              "call",
+              "browser"
+            ],
+            "title": "Needs",
+            "type": "string"
+          },
           "status": {
             "enum": [
               "corroborated",
@@ -3076,6 +3136,27 @@
           }
         },
         "title": "FitOptions",
+        "type": "object"
+      },
+      "HeaderValue": {
+        "additionalProperties": false,
+        "description": "A header the recipe sends with a constant value (`{page_url}` the one placeholder it takes).",
+        "properties": {
+          "name": {
+            "pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$",
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "HeaderValue",
         "type": "object"
       },
       "Health": {
@@ -3579,6 +3660,7 @@
               "jsonld",
               "js_state",
               "attr",
+              "rsc",
               "xhr",
               "api"
             ],
@@ -3627,6 +3709,7 @@
               "jsonld",
               "js_state",
               "attr",
+              "rsc",
               "xhr",
               "api"
             ],
@@ -5560,7 +5643,8 @@
               "adapter",
               "induced",
               "llm_synth",
-              "operator"
+              "operator",
+              "located"
             ],
             "title": "Origin",
             "type": "string"

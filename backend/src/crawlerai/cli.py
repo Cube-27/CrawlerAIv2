@@ -65,7 +65,7 @@ from crawlerai.services.records import MAX_PAGE
 from crawlerai.services.runtime import open_fetching
 from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
 from crawlerai.services.scrape_paging import learning_render
-from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data, site_row
+from crawlerai.services.scrape_steps import learning_extract, load_drift_margins, load_engine_data, site_row
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
 from crawlerai.worker.handlers.table import task_handlers
@@ -120,6 +120,7 @@ async def _work() -> None:
                     max_chars=settings.llm_a_max_chars,
                     replay=learning_replay(engine, fetching),
                     render=learning_render(engine, fetching),
+                    extract=learning_extract(data, llm),
                 )
                 work.append(learner)
             await asyncio.gather(*work)

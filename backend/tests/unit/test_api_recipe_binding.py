@@ -36,7 +36,7 @@ def test_a_page_path_segment_binds_an_endpoint_path_segment_and_constants_stay_l
 
     assert spec.url == f"{_API}/v1/products/{{p1}}?lang=en"
     assert spec.params_from_url == {"p1": "path:1"}
-    assert (spec.method, spec.headers, spec.body, spec.requires_page_fetch) == ("GET", {}, None, False)
+    assert (spec.method, spec.headers, spec.body, spec.requires_page_fetch) == ("GET", [], None, False)
 
 
 def test_a_post_body_binds_string_and_number_values_in_place() -> None:

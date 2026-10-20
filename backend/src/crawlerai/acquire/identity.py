@@ -24,7 +24,7 @@ from crawlerai.acquire.types import FetchResult
 from crawlerai.core.ids import uuid7
 from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, network_file, network_json
 
-__all__ = ["MIN_KEY", "NOT_THE_PRODUCT", "identifies", "joined", "with_call"]
+__all__ = ["MIN_KEY", "NOT_THE_PRODUCT", "identifies", "joined", "joined_call", "with_call"]
 
 # The reason of a data call's attempt whose answer does not state the requested product.
 NOT_THE_PRODUCT: Final = "not_the_product"
@@ -87,33 +87,55 @@ def joined(page: FetchResult, call: FetchResult, key: str, platform: str) -> tup
     return with_call(page, call, call.bundle.manifest.final_url, platform), call
 
 
-def with_call(page: FetchResult, call: FetchResult, url: str, platform: str | None = None) -> FetchResult:
-    """The HTTP `page` with the answer of the companion `call` it made as one more network body at `url`, marked with
-    the `platform` whose documented JSON it is (None for an eager fragment, `content.fragments`), as a capture of its
-    own (a new id)."""
-    sent = call.bundle.manifest
+def with_call(
+    page: FetchResult,
+    call: FetchResult,
+    url: str,
+    platform: str | None = None,
+    *,
+    method: str = "GET",
+    request_body: str | None = None,
+) -> FetchResult:
+    """The HTTP `page` with the answer of the companion `call` it made (a `method` request with `request_body`) as one
+    more network body at `url`, marked with the `platform` whose documented JSON it is (None for an eager fragment,
+    `content.fragments`, or a located field source's call), as a capture of its own (a new id)."""
+    bundle = joined_call(page.bundle, call.bundle, url, platform, method=method, request_body=request_body)
+    return page.model_copy(update={"bundle": bundle})
+
+
+def joined_call(
+    page: CaptureBundle,
+    call: CaptureBundle,
+    url: str,
+    platform: str | None = None,
+    *,
+    method: str = "GET",
+    request_body: str | None = None,
+) -> CaptureBundle:
+    """`with_call`'s capture: `page` with `call`'s answer as one more network body, under a new capture id."""
+    sent = call.manifest
     content_type = next((value for name, value in sent.headers.response if name.lower() == "content-type"), None)
-    manifest = page.bundle.manifest
+    manifest = page.manifest
     entry = NetworkBody(
         url=url,
         status=sent.status_code,
         content_type=content_type,
         sha256=sent.html_sha256,
-        file=network_file(len(page.bundle.network)),
-        method="GET",
+        file=network_file(len(page.network)),
+        method=method,
+        request_body=request_body,
         request_headers=sent.headers.request,
         response_headers=sent.headers.response,
         resource_type="fetch",
         action=0,
         data_call=platform,
     )
-    bundle = CaptureBundle(
+    return CaptureBundle(
         # Another capture than the HTTP page's: a new id, so no parse of the page alone stands for it (INV-26).
         manifest=manifest.model_copy(
             update={"capture_id": uuid7(), "network_bodies": (*manifest.network_bodies, entry)}
         ),
-        body=page.bundle.body,
-        network=(*page.bundle.network, call.bundle.body),
-        raw_body=page.bundle.raw_body,
+        body=page.body,
+        network=(*page.network, call.body),
+        raw_body=page.raw_body,
     )
-    return page.model_copy(update={"bundle": bundle})

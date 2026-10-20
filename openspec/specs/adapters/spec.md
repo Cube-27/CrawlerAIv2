@@ -185,9 +185,12 @@ reader SHALL resolve no entity, load no DTD, reach no network, refuse a DOCTYPE 
 ### Requirement: Recipe model
 An `api_recipe` SHALL be data (`config_ir/api_recipe/`): a request spec, a `map` of JSONPath-subset queries, an
 optional `pagination` of kind `param` (a page number or offset), `cursor`, `next_url` or `link` (RFC 8288), set in the
-query or the JSON body (`model.py`), and a `proof`; it MUST refuse `Authorization`, `Proxy-Authorization`, `Cookie`
-and client-owned headers, and is never executed as code. Refs: §7.2, §12.1, §18, Appendix A #59, D-0493, D-0498,
-D-0560, D-1360.
+query or the JSON body (`model.py`), and a `proof`. Its `headers` are a list of `{name, value}` constants and
+`{name, from_context: true}` references to a header of the caller's request context (D-1430), whose value the recipe
+never holds and serving takes from the request (`replay.request_for`, the page's own host only); it MUST refuse a value
+for `Authorization`, `Proxy-Authorization` or `Cookie` and any client-owned header, and is never executed as code.
+Refs: §7.2, §12.1, §18, Appendix A #59, D-0493, D-0498, D-0560, D-1360, architecture v3 PR 5. (Previously: `headers`
+was a name-to-value map and a credential header was refused outright.)
 
 ### Requirement: Recipe discovery and binding
 Learning SHALL find the endpoint whose network JSON matches a required field on every sample browser capture, then
@@ -209,12 +212,17 @@ D-1407.
 - **THEN** the bound URL has no `key` item, and the stored recipe does not hold the value
 
 ### Requirement: Headers proven by replay
-Replay SHALL start with `Accept: application/json` only and add one captured header at a time until one passes;
-credentials, varying and token-like values are never tried, and when none passes the recipe is `not_learnable`.
-Refs: §7.2, D-0559, D-0560.
+Replay SHALL start with `Accept: application/json` only and add one captured header at a time until one passes, then
+each header the run's request context supplies, as a reference; captured credentials, varying and token-like values
+are never tried, and when none passes the recipe is `not_learnable`. A locate run's context is the stored request of
+the job that started it. Refs: §7.2, D-0559, D-0560, architecture v3 PR 5. (Previously: no context header was tried.)
 #### Scenario: Cookie needed
 - **WHEN** an endpoint answers only with the captured cookie
 - **THEN** the recipe is `not_learnable` and the site stays on its page rungs
+#### Scenario: Authorization from the request context
+- **WHEN** an endpoint answers only with an `Authorization` header and the run's request context supplies one
+- **THEN** the recipe holds `{name: authorization, from_context: true}` and no value; without the context it is
+  `not_learnable`
 
 ### Requirement: Held-out validation
 A recipe SHALL be accepted only for a schema whose HTML config validated, when every map field reproduces on every

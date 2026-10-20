@@ -112,6 +112,8 @@ from crawlerai.services.scrape_steps import (
     site_row,
     store_further,
     store_page_record,
+    stored_request,
+    surface_plan,
 )
 from crawlerai.services.stored_captures import NOT_CACHED, CaptureRow, NotCached, Recent, recent_capture, reread
 from crawlerai.storage.artifacts import Artifact
@@ -241,6 +243,7 @@ class _Work:
     margins: DriftMargins | None
     schema: SchemaDef | None
     deadline: float | None = None  # on `time.monotonic`: when `request.timeout_s` runs out
+    render: RenderOptions | None = None  # the request's; None: its surface's (rest-api spec, "Render mode")
 
 
 @dataclass(frozen=True)
@@ -288,7 +291,8 @@ async def scrape(
     await check_target(fetching.connector, request.url)
     check_proxy_pool(request.fetch, fetching.egresses.pools)
     pinned = None if data is None else data.with_min_confidence(request.min_confidence)
-    work = _Work(llm, pinned, margins, await _named_schema(engine, request, data, llm))
+    render = request.render if "render" in request.model_fields_set else None
+    work = _Work(llm, pinned, margins, await _named_schema(engine, request, data, llm), render=render)
     request, egress = await pin_location(engine, fetching.egresses, request, request.fetch, request.url)
     task = await _start(engine, request, work.schema, egress)
     # The browser's budget is the timeout's, which starts here (`acquire.rungs.BROWSER_MIN_S`).
@@ -341,7 +345,7 @@ async def _start(engine: AsyncEngine, request: ScrapeRequest, schema: SchemaDef 
                 .values(
                     project_id=DEFAULT_PROJECT,
                     kind="scrape",
-                    request=request.model_dump(mode="json", by_alias=True),
+                    request=stored_request(request),
                     schema_id=None if schema is None else schema.id,
                     status="running",
                     started_at=func.now(),
@@ -380,6 +384,7 @@ async def _run(
             all_resources=site.load_all_resources,
         )
         row = await _stored(conn, request, policy, site.id, task.canonical_url, api=recipe is not None)
+        by_sources = await surface_plan(conn, site.id, work.schema, config, work.render)
     recent = await _read_stored(fetching.store, row, request.fetch.cache, request.formats)
     attempts: list[AttemptRecord] = []
     further: tuple[FetchResult, ...] = ()
@@ -395,7 +400,9 @@ async def _run(
     else:
         growth = _growth(request, fetching)
         rungs = site_rungs(fetching, host, site)
-        plan = PagePlan(rungs, site, policy, attempts, recipe=recipe, growth=growth, deadline=work.deadline)
+        plan = PagePlan(
+            rungs, site, policy, attempts, recipe=recipe, growth=growth, deadline=work.deadline, fetch=by_sources
+        )
         page = await fetch_now(engine, fetching, request.url, plan)
         if growth is not None and isinstance(page, FetchResult) and (grew := growth.of(page)) is not None:
             further, report = grew.pages[1:], grew.report
@@ -409,7 +416,7 @@ async def _run(
         if isinstance(page, FetchResult):
             capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page)
             more = partial(_store_more, conn, fetching.store, task, site.id, derived, extra, work.margins)
-            finished = await _finish(conn, task, site.id, page, capture_id, derived, work.margins, more)
+            finished = await _finish(conn, task, site.id, page, capture_id, derived, work, more)
             members = _fetch_members(page, capture_id, fetching.rungs.adapters)
         else:
             finished = _Finished("blocked", reason=page)
@@ -596,7 +603,7 @@ async def _finish(
     result: FetchResult,
     capture_id: CaptureId,
     derived: _Derived,
-    margins: DriftMargins | None,
+    work: _Work,
     more: Callable[[], Awaitable[StoredFurther]] | None = None,
 ) -> _Finished:
     """Settle the task with the page's outcome, after storing its extraction and record when `records` asked, and
@@ -624,7 +631,8 @@ async def _finish(
         site_id=site_id,
         schema=derived.schema,
         config=derived.config,
-        margins=margins,
+        margins=work.margins,
+        render=work.render,
     )
     if stored.outcome == "failed":
         await fail_task(conn, task, EXTRACTION_ERROR, transient=False, capture_id=capture_id)

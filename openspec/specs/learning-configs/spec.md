@@ -11,8 +11,11 @@ validated, drift-checked, corrected and exported here (`backend/src/crawlerai/co
 A config SHALL be an `ExtractionConfigIR` (`config_ir/model.py`) with extra keys refused; it may hold site strings
 because it is per-site data (C3), the package holds none. Its `schema` reference SHALL hold the schema's name and the
 digest of its document at learning; a config whose digest is not the stored document's is neither activated nor
-corrected (a schema is edited in place). Refs: §12.1, D-0462, D-0465, D-0950, D-1375. (Previously: the reference held
-the name only.)
+corrected (a schema is edited in place). Each field's `FieldSteps` SHALL name the source its pages need
+(`needs`: `http`, the HTML or a document the HTTP page carries; `call`, the answer of the recipe it names in `call`,
+one of the config's `recipes`; `browser`, the render), and a config whose fields a locate run located has origin
+`located`. Refs: §12.1, D-0462, D-0465, D-0950, D-1375, architecture v3 a.6. (Previously: the reference held the name
+only; no field named its source.)
 #### Scenario: Config learned before a schema edit
 - **WHEN** a schema's field description is edited after a config was learned for it
 - **THEN** activating that config raises `ConfigMismatch`, and correcting it is a 409
@@ -40,6 +43,26 @@ for another schema or page kind raises `ConfigMismatch`. Refs: §12.1, D-0475, D
 #### Scenario: Description written as markup
 - **WHEN** a long_text field's `jsonld` step selects `<h2>Role</h2><p>We</p>`
 - **THEN** both executors give `Role\nWe`, the value the JSON-LD collector publishes
+
+### Requirement: Locate run
+A learning run on a surface whose `render_mode` is `locate` or `always` (persistence-storage), started by a job's
+`render` (rest-api "Render mode", once per job, when the surface has `LOCATE_SAMPLES` extracted pages) or by a schema
+edit that adds fields to such a surface, SHALL also locate fields (`config_ir/locate.py`): the job's `render.fields`,
+else the page-level fields the config does not read. Up to `LOCATE_SAMPLES=3` of its newest stored pages are rendered
+with network capture and extracted (collectors, resolution, role C); a field no render publishes is reported
+`not_found_in_render`. The first render that published a field gives candidate steps in every source document holding
+its value (`induction.source_steps`: a `jsonpath` step over JSON-LD, embedded state, JSON attributes, RSC rows and
+captured calls, an `xpath` step for a DOM element), and each is validated by both executors on at least
+`MIN_LOCATE_HELD_OUT=2` other sample pages: as `http` on their HTTP captures, as `call` on their HTTP captures joined
+with the answer of the call's API recipe replayed over HTTP (`validation.replayed`; its headers proven by replay,
+[adapters](../adapters/spec.md)), as `browser` on their renders. The cheapest tier that validated wins (`http` <
+`call` < `browser`); the located fields join the run's config, else the config the surface serves, else a config of
+their own, with origin `located`. Refs: architecture v3 a.6, #332.
+#### Scenario: State in the HTTP page wins
+- **WHEN** each render publishes a field whose value its embedded state, a captured call and a DOM element all hold,
+  and the HTTP captures carry the state
+- **THEN** all three steps validate and the field is written with `needs: http`; without the state it is `call` and the
+  config holds the call's recipe; without the call too it is `browser`
 
 ### Requirement: Progressive mode
 Each (site, schema, page kind) SHALL have a `progressive_state` in mode `cold`, `learning` (pages still served cold)

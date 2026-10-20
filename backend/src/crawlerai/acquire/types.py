@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 from pydantic import (
     BaseModel,
@@ -25,6 +26,7 @@ __all__ = [
     "AttemptRecord",
     "BlockClass",
     "BrowserActions",
+    "CallEndpoint",
     "FetchPolicy",
     "FetchResult",
     "PageStep",
@@ -108,6 +110,27 @@ class StepOutcome(_Frozen):
     outcome: StepResult
 
 
+class CallEndpoint(_Frozen):
+    """A data call endpoint a located `call` field source names (acquisition spec, "HTTP and browser rungs"): its
+    request method, origin and path segments, None for a segment its recipe fills from the page. The browser's ready
+    wait ends once each named endpoint has answered."""
+
+    method: str
+    origin: str
+    segments: tuple[str | None, ...]
+
+    def matches(self, method: str, url: str) -> bool:
+        """Whether a request of `method` to `url` is a call of this endpoint (the query is the recipe's to fill)."""
+        parts = urlsplit(url)
+        segments = parts.path[1:].split("/") if parts.path else []
+        return (
+            method.upper() == self.method
+            and f"{parts.scheme}://{parts.netloc}" == self.origin
+            and len(segments) == len(self.segments)
+            and all(want is None or want == got for want, got in zip(self.segments, segments, strict=True))
+        )
+
+
 class FetchPolicy(_Frozen):
     method_hint: Literal["auto", "http", "browser"] = "auto"
     proxy_pool: str | None = None
@@ -132,6 +155,9 @@ class FetchPolicy(_Frozen):
     # The caller's headers and cookies (D-1430), and the page steps the browser runs before it reads the page (D-1436).
     context: RequestContext | None = None
     steps: tuple[PageStep, ...] = ()
+    # Browser only: the data call endpoints the site's located `call` field sources name; the page is ready once each
+    # has answered (acquisition spec, "HTTP and browser rungs"), else once no data call is in flight.
+    ready_calls: tuple[CallEndpoint, ...] = Field(default=(), exclude_if=lambda value: not value)
     # Files the browser makes of the rendered page, stored beside the capture (`storage.artifacts`): a PNG of the
     # viewport or of the whole page, and a PDF print. Either needs the browser rung (`method_hint` `browser`).
     screenshot: Literal["viewport", "full_page"] | None = None

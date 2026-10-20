@@ -57,8 +57,8 @@ class ConfigExecutor(Protocol):
 
     @property
     def browser_fields(self) -> frozenset[str]:
-        """The fields whose source is the browser: a page not rendered cannot carry them, so each one missing from it is
-        `interaction_required` (resolution spec, "Render-bound fields")."""
+        """The fields whose located source is the browser (`needs: browser`): a page not rendered cannot carry them, so
+        each one missing from it is `interaction_required` (resolution spec, "Render-bound fields")."""
         ...
 
     @property

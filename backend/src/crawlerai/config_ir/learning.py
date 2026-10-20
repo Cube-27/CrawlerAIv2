@@ -13,6 +13,12 @@ the worker stopping (`SHUTDOWN`), or an operator's config activated while the ru
 started before it does not replace. A job that cannot start, its request naming no state included, and a run still
 `running` after `LEARN_RUN_TIMEOUT` (its process died; `expire_learn_runs`), end failed too.
 
+A run on a surface whose render mode locates (`locate`, `always`), or one a job's `render` started
+(`progressive.request_locate`), is the surface's locate run too (`locate`): it renders the newest stored pages and
+writes the fields it locates into the config it learned, else the config the surface serves, else a config of those
+fields alone. A recipe it proves may reference a header of the request context of the job that started it (whose
+stored request keeps the caller's secrets, D-1432), never hold its value.
+
 A run takes two transactions: one starts the job, one ends it; the pages are read between them. None is open while
 role A or role D is called or a recipe is replayed: the LLM client commits usage on a connection of its own and must
 not wait on a write to the job's row (D-0346). A worker that stops after the start, during the final transaction too,
@@ -26,26 +32,29 @@ from collections.abc import Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from typing import Final
+from typing import Any, Final
 
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.memory import remembered
+from crawlerai.acquire.types import RequestContext
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.absent import ABSENT, absent_fields
 from crawlerai.config_ir.activation import activate, store_pending
 from crawlerai.config_ir.api_recipe.learn import learn_recipe
 from crawlerai.config_ir.api_recipe.replay import Render, Replays
-from crawlerai.config_ir.api_recipe.validate import attach, refused
+from crawlerai.config_ir.api_recipe.validate import RecipeValidated, attach, refused
 from crawlerai.config_ir.held_out import StoredPage, load_pages
-from crawlerai.config_ir.induction import Induction, SamplePage, induce
+from crawlerai.config_ir.induction import Induction, SamplePage, induce, page_level
 from crawlerai.config_ir.listing_induction import ListingInduction, induce_listing
+from crawlerai.config_ir.locate import LOCATE_SAMPLES, Calls, Extract, Sampled, locate, located_config, sampled
 from crawlerai.config_ir.model import NEXT_PAGE_FIELD, ExtractionConfigIR, Fetch, Provenance, SchemaRef
 from crawlerai.config_ir.progressive import (
     LEARN_AFTER_PAGES,
+    LocateRequest,
     NotLearning,
     StateKey,
     learning_failed,
@@ -54,6 +63,7 @@ from crawlerai.config_ir.progressive import (
 from crawlerai.config_ir.synthesis import synthesize
 from crawlerai.config_ir.validation import HeldOutPage, Validated, ValidationReport, validate, with_unlearned
 from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.redaction import REDACTED
 from crawlerai.db.jobs import JOB_TRANSITIONS, record_event, transition_job
 from crawlerai.db.models import (
     ConfigOrigin,
@@ -114,6 +124,10 @@ class _Run:
     serving: ExtractionConfigId | None
     proxy_pool: str | None = None
     pages: Sequence[StoredPage] = ()
+    # The locate run it is too (module docstring), the config the surface serves, and the starting job's context.
+    locate: LocateRequest | None = None
+    serving_ir: ExtractionConfigIR | None = None
+    context: RequestContext | None = None
 
 
 async def next_learn_job(conn: AsyncConnection) -> JobId | None:
@@ -133,11 +147,13 @@ async def run_learn_job(
     max_chars: int,
     replay: Replays | None,
     render: Render | None = None,
+    extract: Extract | None = None,
 ) -> Learned | None:
     """Run the `learn` job `job_id` to its end and return how it ended; None when it is not queued (another process
     took it). `max_chars` is role A's HTML limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); without `replay`, the run
     learns no API recipe, with it, its recipe replays go through the site's proxy pool (D-1381); `render` renders the
-    pages whose captures hold no calls to learn a recipe from."""
+    pages whose captures hold no calls to learn a recipe from, and a locate run's samples, which `extract` extracts
+    (without both, nothing is located)."""
     try:
         async with engine.begin() as conn:
             run = await _start(conn, job_id)
@@ -151,7 +167,8 @@ async def run_learn_job(
         # The job is running and its row unlocked, so the bundle reads hold no lock anyone waits on.
         async with engine.connect() as conn:
             pages = await load_pages(conn, store, run.key.site_id, run.schema, limit=LEARN_AFTER_PAGES)
-        validated = await _learned(client, replace(run, pages=pages), vocabulary, max_chars, replay, render)
+        hooks = _Hooks(replay, render, extract)
+        validated = await _learned(client, replace(run, pages=pages), vocabulary, max_chars, hooks)
         async with engine.begin() as conn:
             return await _finish(conn, run, validated)
     except LLMFailure as e:
@@ -187,9 +204,44 @@ async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
     schema = await registry.get_by_id(conn, key.schema_id)
     site = (await conn.execute(select(Site.host, Site.proxy_pool).where(Site.id == key.site_id))).one()
     fetch = (await remembered(conn, key.site_id, key.page_kind, blocks=False)).method
-    serving = (await conn.execute(select(ProgressiveState.active_config_id).where(*key.where()))).scalar_one()
+    state = ProgressiveState
+    found = (await conn.execute(select(state.active_config_id, state.render_mode).where(*key.where()))).one()
     await record_event(conn, job_id, LEARNING_STARTED)
-    return _Run(job_id, key, schema, site.host, fetch, serving, site.proxy_pool)
+    run = _Run(job_id, key, schema, site.host, fetch, found.active_config_id, site.proxy_pool)
+    located = StateKey.locate_of(job.request) or (LocateRequest() if found.render_mode != "off" else None)
+    if located is None:
+        return run
+    return replace(
+        run,
+        locate=located,
+        serving_ir=await _config_ir(conn, found.active_config_id),
+        context=await _request_context(conn, located),
+    )
+
+
+async def _config_ir(conn: AsyncConnection, config_id: ExtractionConfigId | None) -> ExtractionConfigIR | None:
+    if config_id is None:
+        return None
+    ir: dict[str, Any] = (
+        await conn.execute(select(ExtractionConfig.ir).where(ExtractionConfig.id == config_id))
+    ).scalar_one()
+    return ExtractionConfigIR.model_validate(ir)
+
+
+async def _request_context(conn: AsyncConnection, located: LocateRequest) -> RequestContext | None:
+    """The headers of the request context of the job that started the locate run, as its stored request keeps them
+    (an asynchronous job's keeps the values, D-1432; a redacted one is none)."""
+    if located.job_id is None:
+        return None
+    request: dict[str, Any] | None = (
+        await conn.execute(select(Job.request).where(Job.id == located.job_id))
+    ).scalar_one_or_none()
+    fetch = (request or {}).get("fetch") or {}
+    headers = fetch.get("headers") or {}
+    kept = tuple(
+        (name, SecretStr(value)) for name, value in headers.items() if isinstance(value, str) and value != REDACTED
+    )
+    return RequestContext(headers=kept) if kept else None
 
 
 async def expire_learn_runs(conn: AsyncConnection, *, batch: int) -> int:
@@ -236,32 +288,44 @@ def split(schema: SchemaDef, pages: Sequence[StoredPage]) -> tuple[list[StoredPa
 REASON_CHARS: Final = 200
 
 
-async def _learned(
-    client: LLMClient,
-    run: _Run,
-    vocabulary: Vocabulary,
-    max_chars: int,
-    replay: Replays | None,
-    render: Render | None,
-) -> Validated:
-    """The config learned from the run's sample and validated on its held-out pages, with its API recipe."""
+@dataclass(frozen=True, slots=True)
+class _Hooks:
+    """What a run sends and renders with: recipe replays, browser renders, and the extraction of a render."""
+
+    replay: Replays | None
+    render: Render | None
+    extract: Extract | None
+
+
+async def _learned(client: LLMClient, run: _Run, vocabulary: Vocabulary, max_chars: int, hooks: _Hooks) -> Validated:
+    """The config learned from the run's sample and validated on its held-out pages, with its API recipe, and the
+    fields a locate run located."""
     sample, held_out = split(run.schema, run.pages)
     target = Target(run.schema, run.host, run.fetch, run.job_id)
     validated = await learn_config(
         client, target, sample, [page.held_out for page in held_out], vocabulary, max_chars, absent_from=run.pages
     )
     # A recipe enters a validated config only (`attach`, D-0583), so nothing is replayed for a refused one.
-    if validated.ir is None or replay is None:
-        return validated
+    if validated.ir is not None and hooks.replay is not None:
+        validated = attach(validated, await _page_recipe(client, run, sample, held_out, hooks.replay, hooks.render))
+    if run.locate is not None and hooks.render is not None and hooks.extract is not None:
+        rendered = await _samples(run, hooks.render, hooks.extract)
+        validated = await _located(client, run, target, validated, vocabulary, rendered, hooks.replay)
+    return validated
+
+
+async def _page_recipe(
+    client: LLMClient,
+    run: _Run,
+    sample: Sequence[StoredPage],
+    held_out: Sequence[StoredPage],
+    replay: Replays,
+    render: Render | None,
+) -> RecipeValidated:
+    """The API recipe that serves the run's pages (adapters spec), or why there is none."""
     try:
-        recipe = await learn_recipe(
-            client,
-            sample,
-            held_out,
-            run.schema,
-            replay(run.job_id, run.proxy_pool),
-            job_id=run.job_id,
-            render=render,
+        return await learn_recipe(
+            client, sample, held_out, run.schema, replay(run.job_id, run.proxy_pool), job_id=run.job_id, render=render
         )
     except LLMFailure:
         raise  # D-0738: role D's failure ends the run as role A's does
@@ -272,8 +336,44 @@ async def _learned(
     except Exception as e:
         # D-1389: the recipe learner's own error refuses the recipe, not the config it would have joined.
         log.exception("learn job %s: recipe learning failed", run.job_id)
-        recipe = refused(f"recipe_error: {type(e).__name__}")
-    return attach(validated, recipe)
+        return refused(f"recipe_error: {type(e).__name__}")
+
+
+async def _samples(run: _Run, render: Render, extract: Extract) -> list[Sampled]:
+    """The run's `LOCATE_SAMPLES` newest pages rendered, each with what its render published."""
+    pages: list[Sampled] = []
+    for page in run.pages[:LOCATE_SAMPLES]:
+        bundles = await render(page.bundle.manifest.url, run.schema.page_kind)
+        if bundles:
+            extraction = await extract(bundles[0], run.schema, run.job_id)
+            pages.append(await asyncio.to_thread(sampled, page, bundles[0], extraction))
+    return pages
+
+
+async def _located(
+    client: LLMClient,
+    run: _Run,
+    target: "Target",
+    validated: Validated,
+    vocabulary: Vocabulary,
+    pages: Sequence[Sampled],
+    replays: Replays | None,
+) -> Validated:
+    """`validated` with the fields the run's locate request asks for (none named: the page-level fields the config
+    does not read) located on the rendered `pages` (`locate`), and why each other one was not."""
+    base = validated.ir or run.serving_ir or _induced(target, Induction(), ListingInduction())[0]
+    asked = run.locate.fields if run.locate is not None else []
+    names = asked or [
+        name
+        for name, spec in run.schema.fields.items()
+        if page_level(run.schema, name) and not spec.row_mapped and name not in base.fields
+    ]
+    if not names:
+        return validated
+    replay = None if replays is None else replays(run.job_id, run.proxy_pool)
+    calls = None if replay is None else Calls(client, replay, run.job_id, run.context)
+    located = await locate(base, run.schema, names, pages, vocabulary, calls)
+    return with_unlearned(located_config(validated, base, located), located.reasons)
 
 
 @dataclass(frozen=True, slots=True)

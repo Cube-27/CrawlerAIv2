@@ -96,10 +96,13 @@ class EngineExecutor:
 
     @property
     def browser_fields(self) -> frozenset[str]:
-        # A config learned from browser captures (`fetch.method`) reads every field it runs from a rendered page.
-        if self.ir.fetch.method != "browser":
-            return frozenset()
-        return frozenset(name for name, status in self.field_status.items() if status != "absent")
+        # The running fields whose located source is the browser's render (`FieldSteps.needs`).
+        listed = self.ir.listing.fields if self.ir.listing is not None else {}
+        return frozenset(
+            name
+            for name, steps in (*self.ir.fields.items(), *listed.items())
+            if steps.needs == "browser" and steps.status != "suspended"
+        )
 
     @property
     def learned_calls(self) -> LearnedCalls | None:
@@ -339,7 +342,10 @@ def documents(source: JsonSource, page: ParsedPage) -> list[JsonValue]:
         case "jsonld":
             return [document for _, document in jsonld.blocks(page, [])]
         case "js_state":
-            return [document.data for document in js_state.script_documents(page, [])]
+            return [document.data for document in js_state.script_documents(page, []) if document.scheme is None]
+        case "rsc":
+            flight = js_state.flight_document(page, [])
+            return [] if flight is None or not isinstance(flight.data, dict) else list(flight.data.values())
         case "attr":
             return [document.data for document in js_state.attribute_documents(page)]
         case "xhr":

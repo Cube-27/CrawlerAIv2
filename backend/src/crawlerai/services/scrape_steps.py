@@ -20,11 +20,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.challenge import LEGAL, vendor_block
 from crawlerai.acquire.memory import Coverage, Remembered, learn_extraction, learn_fetch, remembered
 from crawlerai.acquire.persist import store_capture
+from crawlerai.acquire.rungs import NO_PLAN, FetchPlan
 from crawlerai.acquire.types import AttemptRecord, FetchResult, fetched_as
 from crawlerai.collect.run import Adapters
 from crawlerai.collect.schema_org_map import VocabularyMissing
-from crawlerai.config_ir.active import record_page
+from crawlerai.config_ir.active import fetch_plan, record_page
 from crawlerai.config_ir.drift import MARGINS_FILE, DriftMargins, load_margins
+from crawlerai.config_ir.locate import Extract
+from crawlerai.config_ir.progressive import LocateRequest, StateKey, render_mode, request_locate, set_render_mode
+from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.chunks import Chunk, ChunkOptions, chunks
 from crawlerai.content.fit import FitOptions, markdown_fit
 from crawlerai.content.html import cleaned_html
@@ -41,6 +45,7 @@ from crawlerai.db.models import (
     PageKind,
     ProgressiveState,
     Project,
+    RenderMode,
     SchemaId,
     Site,
     SiteId,
@@ -66,7 +71,7 @@ from crawlerai.services.fetch_options import fetch_policy as fetch_policy
 from crawlerai.services.schemas import NewSchema
 from crawlerai.storage.artifacts import PDF, SCREENSHOT, Artifact, artifact_of
 from crawlerai.storage.base import ObjectStore
-from crawlerai.storage.capture_bundle import CaptureManifest
+from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest
 
 log = logging.getLogger(__name__)
 
@@ -224,7 +229,6 @@ RENDER_DESCRIPTION: Final = (
     "shown, then fetch each page as they need. `always`: render every page."
 )
 MAX_RENDER_FIELDS: Final = 50
-RenderMode = Literal["off", "locate", "always"]
 
 
 class RenderOptions(Input):
@@ -353,6 +357,15 @@ async def _stated_schema(
     return None
 
 
+def stored_request(request: BaseModel, context: dict[str, object] | None = None) -> dict[str, Any]:
+    """`request` as a job row stores it; a `render` member the caller left out is left out, so the job inherits the
+    surface's render mode (rest-api spec, "Render mode")."""
+    stored: dict[str, Any] = request.model_dump(mode="json", by_alias=True, context=context)
+    if "render" in type(request).model_fields and "render" not in request.model_fields_set:
+        stored.pop("render", None)
+    return stored
+
+
 def check_render(render: RenderOptions, schema: SchemaDef | None) -> None:
     """`SchemaUnusable` when `render.fields` names a field the request's schema does not have (rest-api spec, "Render
     mode"): no locate run fills it. Without a resolved schema (a prompt, drafted on the page), none is checked."""
@@ -462,6 +475,7 @@ async def store_page_record(
     margins: DriftMargins | None,
     caller_supplied: bool = True,
     page_url: str | None = None,
+    render: RenderOptions | None = None,
 ) -> Stored:
     """Store the extraction of a page and what it keeps: a caller-supplied page keeps its records, complete or not
     (`partial`), and a crawl-discovered one only complete records (else `no_match`, §23); none when
@@ -469,7 +483,8 @@ async def store_page_record(
     record; a caller-supplied listing without rows is `partial` with none (its page was read, and listed nothing). A
     page with a record counts toward its progressive state, and its coverage freshens the site's contract; a
     caller-supplied page without one counts towards its staleness (`acquire.memory.learn_extraction`). A page `config`
-    ran on joins the config's drift window (learning-configs spec). `page_url` is `store_extraction`'s."""
+    ran on joins the config's drift window (learning-configs spec). `page_url` is `store_extraction`'s. A page with a
+    record applies the job's `render` (None: the job inherits the surface's) to its surface (`render_surface`)."""
     stored = await store_extraction(
         conn,
         task,
@@ -487,6 +502,7 @@ async def store_page_record(
     if stored.records:
         await learn_extraction(conn, site_id, schema.page_kind, coverage(schema, extraction))
         await _count_page(conn, site_id, schema)
+        await render_surface(conn, task.job_id, StateKey(site_id, schema.id, schema.page_kind), render, extraction)
     elif caller_supplied:
         # A caller-supplied page is of the schema's kind by the caller's word, so no record is a quality failure; a
         # crawl-discovered page may be of no kind the schema reads.
@@ -575,6 +591,58 @@ def coverage(schema: SchemaDef, extraction: ExtractionResult) -> Coverage:
 def records_outcome(records: tuple[StoredRecord, ...]) -> Literal["extracted", "partial"]:
     """A caller-supplied page's outcome: `extracted` when it kept records and every one is complete (§10)."""
     return "extracted" if records and all(record.draft.complete for record in records) else "partial"
+
+
+async def surface_plan(
+    conn: AsyncConnection,
+    site_id: SiteId,
+    schema: SchemaDef | None,
+    config: ActiveConfig | None,
+    render: RenderOptions | None,
+) -> FetchPlan:
+    """How a page of the surface is fetched (acquisition spec, "Fetch plan"): by its `config`'s field sources, in the
+    job's `render` mode, else the surface's (rest-api spec, "Render mode"). A page read for no schema has no plan."""
+    if schema is None:
+        return NO_PLAN
+    key = StateKey(site_id, schema.id, schema.page_kind)
+    return fetch_plan(config, render.mode if render is not None else await render_mode(conn, key))
+
+
+async def render_surface(
+    conn: AsyncConnection, job_id: JobId, key: StateKey, render: RenderOptions | None, extraction: ExtractionResult
+) -> RenderMode:
+    """Apply a job's `render` to its surface (rest-api spec, "Render mode"), and return the mode its pages are fetched
+    by: the job's mode is stored as the surface's, and a job without one inherits it. In `locate` or `always` the
+    surface's locate run is started once per job (`request_locate`), for the job's `render.fields`, else the fields
+    `extraction` left unpublished (`always` locates even when none is: the sources of every field the config does not
+    read, so the surface can fall back to HTTP)."""
+    if render is not None:
+        await set_render_mode(conn, key, render.mode)
+    mode = render.mode if render is not None else await render_mode(conn, key)
+    fields = list(render.fields) if render is not None and render.fields else unpublished(extraction)
+    if mode == "always" or (mode == "locate" and fields):
+        await request_locate(conn, key, LocateRequest(job_id=job_id, fields=fields))
+    return mode
+
+
+def learning_extract(data: EngineData, llm: LLMClient) -> Extract:
+    """A locate run's extraction of a render (learning-configs spec, "Locate run" step 2): the page's pipeline, cold,
+    with role C on `llm` charged to the run's job."""
+
+    async def extract(bundle: CaptureBundle, schema: SchemaDef, job_id: JobId) -> ExtractionResult:
+        return await extract_page(bundle, schema, None, role_c(llm, job_id=job_id), data=data)
+
+    return extract
+
+
+def unpublished(extraction: ExtractionResult) -> list[str]:
+    """The fields `extraction` publishes no value of: the entity's, and a listing's row fields no row publishes."""
+    entity = extraction.entity or {}
+    names = [name for name, outcome in entity.items() if outcome.status != "published"]
+    rows = [row for row in extraction.rows]
+    row_names = {name for row in rows for name in row}
+    names += sorted(n for n in row_names if all(row.get(n) is None or row[n].status != "published" for row in rows))
+    return names
 
 
 async def _count_page(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> None:
