@@ -5,14 +5,15 @@ render (or the surface renders every page), and adds the companion calls of its 
 HTTP detail page of a platform that documents its product JSON is joined with that JSON, always (`_joined`).
 
 A URL an active adapter detects goes to that adapter (`crawlerai.adapters`) first, and to the page rungs when the
-adapter does not serve it (adapters spec). A page whose own canonical link is its URL without the query, which an
-adapter detects, or which an adapter says stands for one of its platform's pages, is then served by that adapter
-(adapters spec). A site whose active config has an API recipe is
-served by the recipe's rung (adapters spec), which the caller binds to the recipe: the config IR sits above `acquire`
-(`.importlinter`). The browser rung is `crawlerai.acquire.browser.fetch_browser`. Every rung is a function of
-(url, policy), so `acquire` decides and records only. The one exception is the HTTP rung's conditional form, which
-also takes the validators a page last answered with (jobs spec), and the browser rung's exporting form, which also
-hands the context's cookies to a site session (`acquire.session`, INV-29's exception).
+adapter does not serve it (adapters spec). A fetched page that a page-scoped adapter detects (a storefront collection),
+whose own canonical link is its URL without the query, which an adapter detects, or which an adapter says stands for
+one of its platform's pages, is then served by that adapter, with the rows the fetched page lists (adapters spec). A
+site whose active config has an API recipe is served by the recipe's rung (adapters spec), which the caller binds to
+the recipe: the config IR sits above `acquire` (`.importlinter`). The browser rung is
+`crawlerai.acquire.browser.fetch_browser`. Every rung is a function of (url, policy), so `acquire` decides and records
+only. The one exception is the HTTP rung's conditional form, which also takes the validators a page last answered with
+(jobs spec), and the browser rung's exporting form, which also hands the context's cookies to a site session
+(`acquire.session`, INV-29's exception).
 """
 
 import asyncio
@@ -203,14 +204,16 @@ async def _by_canonical(
     send: JsonFetcher,
     admit_next: Admit | None,
 ) -> Fetched:
-    """The adapter's answer for the page's canonical URL (`_query_dropped`), or for the platform page the page on its
-    own host stands for (`_referred`), when there is one, it is `ok` and the site's rate admits the request; else the
-    page. Either way with every attempt."""
+    """The adapter's answer for the fetched page itself when a page-scoped adapter detects it, for the page's
+    canonical URL (`_query_dropped`), or for the platform page the page on its own host stands for (`_referred`), when
+    there is one, it is `ok` and the site's rate admits the request; else the page. Either way with every attempt. The
+    adapter is given the fetched page's references (`page_refs`): a page-scoped one serves only the rows it lists."""
     kept, attempts, duration_ms = page
-    canonical = _query_dropped(url, kept, rungs.adapters) or _referred(kept, policy, rungs.adapters)
+    canonical = _listed(url, kept, rungs.adapters) or _query_dropped(url, kept, rungs.adapters)
+    canonical = canonical or _referred(kept, policy, rungs.adapters)
     if canonical is None or not await _admitted(admit_next):
         return page
-    served = await rungs.adapters.serve(canonical, policy, send)
+    served = await rungs.adapters.serve(canonical, policy, send, page=lambda: page_refs(kept))
     if served is None:
         return page
     return (
@@ -218,6 +221,12 @@ async def _by_canonical(
         attempts + served.attempts,
         duration_ms + served.duration_ms,
     )
+
+
+def _listed(url: str, page: FetchResult, adapters: Registry) -> str | None:
+    """`url`, when the page is `ok` and only a page-scoped adapter, which serves a fetched page, detects it."""
+    listed = page.block_class == "ok" and adapters.would_serve(url, fetched=True) and not adapters.would_serve(url)
+    return url if listed else None
 
 
 def _query_dropped(url: str, page: FetchResult, adapters: Registry) -> str | None:
@@ -229,7 +238,7 @@ def _query_dropped(url: str, page: FetchResult, adapters: Registry) -> str | Non
         return None
     bare = urlunsplit(parts._replace(query="", fragment=""))
     # A host its adapter declined is not asked again, so the request would take a turn at the site's rate for nothing.
-    if not adapters.would_serve(bare) or (canonical := canonical_link(page)) is None:
+    if not adapters.would_serve(bare, fetched=True) or (canonical := canonical_link(page)) is None:
         return None
     return bare if _same_resource(canonical, bare) else None
 
