@@ -14,10 +14,11 @@ started before it does not replace. A job that cannot start, its request naming 
 `running` after `LEARN_RUN_TIMEOUT` (its process died; `expire_learn_runs`), end failed too.
 
 A run on a surface whose render mode locates (`locate`, `always`), or one a job's `render` started
-(`progressive.request_locate`), is the surface's locate run too (`locate`): it renders the newest stored pages and
-writes the fields it locates into the config it learned, else the config the surface serves, else a config of those
-fields alone. A recipe it proves may reference a header of the request context of the job that started it (whose
-stored request keeps the caller's secrets, jobs spec "Stored request"), never hold its value.
+(`progressive.request_locate`), is the surface's locate run too (`locate`): it renders the newest stored pages (a
+listing's that listed nothing included, `held_out.load_pages`) and writes the fields it locates into the config it
+learned, else the config the surface serves, else a config of those fields alone. A recipe it proves may reference a
+header of the request context of the job that started it (whose stored request keeps the caller's secrets, jobs spec
+"Stored request"), never hold its value.
 
 A run takes two transactions: one starts the job, one ends it; the pages are read between them. None is open while
 role A or role D is called or a recipe is replayed: the LLM client commits usage on a connection of its own and must
@@ -28,13 +29,13 @@ ends the run (`SHUTDOWN`), so its job never waits for `expire_learn_runs`. The j
 
 import asyncio
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
-from pydantic import SecretStr, ValidationError
+from pydantic import JsonValue, SecretStr, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -70,7 +71,7 @@ from crawlerai.config_ir.progressive import (
     lock_state,
 )
 from crawlerai.config_ir.synthesis import synthesize
-from crawlerai.config_ir.validation import HeldOutPage, Validated, ValidationReport, validate, with_unlearned
+from crawlerai.config_ir.validation import Facts, HeldOutPage, Validated, ValidationReport, validate, with_unlearned
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.core.redaction import REDACTED
 from crawlerai.db.jobs import JOB_TRANSITIONS, record_event, transition_job
@@ -133,8 +134,10 @@ class _Run:
     serving: ExtractionConfigId | None
     proxy_pool: str | None = None
     pages: Sequence[StoredPage] = ()
-    # The locate run it is too (module docstring), the config the surface serves, and the starting job's context.
+    # The locate run it is too (module docstring), the surface's stored pages it samples, the config the surface
+    # serves, and the starting job's context.
     locate: LocateRequest | None = None
+    surface: Sequence[StoredPage] = ()
     serving_ir: ExtractionConfigIR | None = None
     context: RequestContext | None = None
 
@@ -176,8 +179,15 @@ async def run_learn_job(
         # The job is running and its row unlocked, so the bundle reads hold no lock anyone waits on.
         async with engine.connect() as conn:
             pages = await load_pages(conn, store, run.key.site_id, run.schema, limit=LEARN_AFTER_PAGES)
+            surface = pages
+            # A listing's pages that listed nothing are the surface's too: a locate run renders them.
+            if run.locate is not None and run.schema.page_kind == "listing":
+                surface = await load_pages(
+                    conn, store, run.key.site_id, run.schema, limit=LEARN_AFTER_PAGES, listed_nothing=True
+                )
         hooks = _Hooks(replay, render, extract)
-        validated = await _learned(client, replace(run, pages=pages), vocabulary, max_chars, hooks)
+        run = replace(run, pages=pages, surface=surface)
+        validated = await _learned(client, run, vocabulary, max_chars, hooks)
         async with engine.begin() as conn:
             return await _finish(conn, run, validated)
     except LLMFailure as e:
@@ -365,9 +375,9 @@ async def _page_recipe(
 
 
 async def _samples(run: _Run, render: Render, extract: Extract) -> list[Sampled]:
-    """The run's `LOCATE_SAMPLES` newest pages rendered, each with what its render published."""
+    """The surface's `LOCATE_SAMPLES` newest stored pages rendered, each with what its render published."""
     pages: list[Sampled] = []
-    for page in run.pages[:LOCATE_SAMPLES]:
+    for page in run.surface[:LOCATE_SAMPLES]:
         bundles = await render(page.bundle.manifest.url, run.schema.page_kind)
         if bundles:
             extraction = await extract(bundles[0], run.schema, run.job_id)
@@ -404,20 +414,36 @@ async def _located(
         return validated
     replay = None if replays is None else replays(run.job_id, run.proxy_pool)
     calls = None if replay is None else Calls(client, replay, run.job_id, run.context)
-    recipe = _listing_recipe(client, run, validated, replays, hooks.render)
+    recipe = _listing_recipe(client, run, validated, replays, hooks.render, pages)
     located = await locate(base, run.schema, names, pages, vocabulary, calls, recipe)
     return with_unlearned(located_config(validated, base, located), located.reasons)
 
 
 def _listing_recipe(
-    client: LLMClient, run: _Run, validated: Validated, replays: Replays | None, render: Render | None
+    client: LLMClient,
+    run: _Run,
+    validated: Validated,
+    replays: Replays | None,
+    render: Render | None,
+    rendered: Sequence[Sampled],
 ) -> ListingRecipe | None:
-    """A listing's `call` tier: its recipe, learned from the run's pages as `_page_recipe` learns one; None when the run
-    already tried (a config validated) or cannot replay."""
+    """A listing's `call` tier: its recipe, learned from the surface's pages as `_page_recipe` learns one, a page that
+    listed nothing with the rows its render published (`rendered`), which the recipe's calls are matched with; None
+    when the run already tried (a config validated) or cannot replay."""
     if validated.ir is not None or replays is None:
         return None
-    sample, held_out = split(run.schema, run.pages)
+    rows = {page.stored.held_out.capture_id: page.rows for page in rendered if not page.stored.held_out.rows}
+    pages = [_with_rows(page, rows.get(page.held_out.capture_id, ())) for page in run.surface]
+    sample, held_out = split(run.schema, pages)
     return lambda: _page_recipe(client, run, sample, held_out, replays, render)
+
+
+def _with_rows(page: StoredPage, rows: Sequence[Mapping[str, JsonValue]]) -> StoredPage:
+    """`page` with `rows` as its published rows, when it has any."""
+    if not rows:
+        return page
+    facts = tuple(Facts(published=dict(row)) for row in rows)
+    return replace(page, held_out=replace(page.held_out, rows=facts))
 
 
 @dataclass(frozen=True, slots=True)

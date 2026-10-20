@@ -50,24 +50,26 @@ another schema or page kind raises `ConfigMismatch`. Refs: §12.1, D-0475, D-048
 A learning run on a surface whose `render_mode` is `locate` or `always` (persistence-storage), started by a job's
 `render` (rest-api "Render mode", once per job, when the surface has `LOCATE_SAMPLES` extracted pages) or by a schema
 edit that adds fields to such a surface, SHALL also locate fields (`config_ir/locate.py`): the job's `render.fields`,
-else the page-level fields the config does not read. Up to `LOCATE_SAMPLES=3` of its newest stored pages are rendered
-with network capture and extracted (collectors, resolution, role C); a field no render publishes is reported
-`not_found_in_render`. The first render that published a field gives candidate steps in every source document holding
-its value (`induction.source_steps`: a `jsonpath` step over JSON-LD, embedded state, JSON attributes, RSC rows and
-captured calls, an `xpath` step for a DOM element), and each is validated by both executors on at least
-`MIN_LOCATE_HELD_OUT=2` other sample pages: as `http` on their HTTP captures, as `call` on their HTTP captures joined
-with the answer of the call's API recipe replayed over HTTP (`validation.replayed`; its headers proven by replay,
-[adapters](../adapters/spec.md)), as `browser` on their renders. The cheapest tier that validated wins (`http` <
-`call` < `browser`); the located fields join the run's config, else the config the surface serves, else a config of
-their own, with origin `located`. A listing whose config reads no rows (no listing, no listing recipe), or whose row
-fields the run is asked for, SHALL have its rows located the same way on the rows the renders published: the first
-render's rows propose a `jsonpath` listing over the JSON document the HTML carries that holds their item URLs
-([listings](../listings/spec.md), "Rows from page state") and the listing induced on its item blocks; one validated
-on the other pages' HTTP captures is `http`, else the listing recipe of the renders' call series with its pagination
-(`api_recipe.learn`, [listings](../listings/spec.md) "Rows from captured calls") is `call`, else one validated on
-their renders is `browser`, its row fields written with that `needs`. An eager fragment's answer is a source document of
-the HTTP page, as the page tree includes it ([extraction](../extraction/spec.md), "Eager fragment inclusion"): a value
-or rows only a fragment holds validate on the HTTP captures and are located as `http`. Refs: architecture v3 a.6, #332.
+else the page-level fields the config does not read. Up to `LOCATE_SAMPLES=3` of its newest stored pages (a listing's
+pages that listed nothing included, `held_out.load_pages`) are rendered with network capture and extracted (collectors,
+resolution, role C); a field no render publishes is reported `not_found_in_render`. The first render that published a
+field gives candidate steps in every source document holding its value (`induction.source_steps`: a `jsonpath` step over
+JSON-LD, embedded state, JSON attributes, RSC rows and captured calls, an `xpath` step for a DOM element), and each is
+validated by both executors on at least `MIN_LOCATE_HELD_OUT=2` other sample pages: as `http` on their HTTP captures, as
+`call` on their HTTP captures joined with the answer of the call's API recipe replayed over HTTP (`validation.replayed`;
+its headers proven by replay, [adapters](../adapters/spec.md)), as `browser` on their renders. The cheapest tier that
+validated wins (`http` < `call` < `browser`); the located fields join the run's config, else the config the surface
+serves, else a config of their own, with origin `located`. A listing whose config reads no rows (no listing, no listing
+recipe), or whose row fields the run is asked for, SHALL have its rows located the same way on the rows the renders
+published: the first render's rows propose a `jsonpath` listing over the JSON document the HTML carries that holds their
+item URLs ([listings](../listings/spec.md), "Rows from page state") and the listing induced on its item blocks; one
+validated on the other pages' HTTP captures is `http`, else the listing recipe of the renders' call series with its
+pagination (`api_recipe.learn`, [listings](../listings/spec.md) "Rows from captured calls") is `call`, else one
+validated on their renders is `browser`, its row fields written with that `needs`. An eager fragment's answer is a
+source document of the HTTP page, as the page tree includes it ([extraction](../extraction/spec.md), "Eager fragment
+inclusion"): a value or rows only a fragment holds validate on the HTTP captures and are located as `http`. (Previously:
+only pages with a record were sampled and counted, so a surface whose every listing page listed nothing never started a
+locate run.) Refs: architecture v3 a.6, #332.
 #### Scenario: State in the HTTP page wins
 - **WHEN** each render publishes a field whose value its embedded state, a captured call and a DOM element all hold,
   and the HTTP captures carry the state
@@ -77,17 +79,22 @@ or rows only a fragment holds validate on the HTTP captures and are located as `
 - **WHEN** the renders of a listing without rows publish four items its HTTP pages' state lists
 - **THEN** the config's listing selects the state's items with `needs: http`, and no recipe is learned; without the
   state, and with no call series, the listing reads the render's item blocks with `needs: browser`
+#### Scenario: Every listing page listed nothing
+- **WHEN** a job with `render: {mode: "locate"}` submits three listing pages whose HTTP captures list nothing
+- **THEN** the third page starts the surface's locate run, which renders those three pages
 
 ### Requirement: Progressive mode
 Each (site, schema, page kind) SHALL have a `progressive_state` in mode `cold`, `learning` (pages still served cold)
 or `active`; a record has `mode=config` exactly when a config executor ran, else `adhoc`. A schema edit suspends its
-active configs and sends its states to `cold`, keeping `pages_extracted`. Refs: §8.4, §5.2, D-0546, D-0614, D-0950.
+active configs and sends its states to `cold`, keeping `pages_extracted`, which counts every `extracted` or `partial`
+page, a caller-supplied listing that listed nothing included. Refs: §8.4, §5.2, D-0546, D-0614, D-0950.
 #### Scenario: Eighth page
 - **WHEN** a cold state's eighth `extracted` or `partial` page is stored
 - **THEN** a `learn` job is created and the mode becomes `learning`
 
 ### Requirement: Learning trigger, sample and job
-Learning SHALL start when 8 pages are extracted (or 8 more after a failed run), or on `POST /v1/sites/{host}/learn`;
+Learning SHALL start when 8 pages are extracted (or 8 more after a failed run; on a listing surface none of whose
+pages kept a record, only as a locate run, `render_mode` not `off`), or on `POST /v1/sites/{host}/learn`;
 5 pages form the sample and the rest (≥ 3) are held out. A run is a `job(kind='learn')` charged for role A; every
 non-activating end (failure, budget, expiry, shutdown, cancel, schema edit) returns the state to cold with a retry.
 Refs: §8.3, D-0030, D-0547, D-0549, D-0622.

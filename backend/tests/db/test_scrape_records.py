@@ -21,6 +21,7 @@ from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.config_ir.held_out import load_pages
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.db.models import (
@@ -241,6 +242,35 @@ async def test_a_listing_without_rows_says_why_and_answers_its_page_fields(
     task = await _row(engine, select(UrlTask.last_error).where(UrlTask.url == url))
     assert task.last_error == "no_rows: no_blocks"
     assert "page" in result.model_dump(by_alias=True)
+
+
+async def test_listing_pages_that_list_nothing_start_a_locate_run_that_samples_them(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, schema_name: str, engine_data: EngineData
+) -> None:
+    urls = [f"{own_origin}/c/{n}" for n in range(3)]
+    for url in urls:
+        web.pages[url] = (200, b"<!doctype html><html><head><title>Shop</title></head><body></body></html>", "ok")
+    document = SchemaDocument.model_validate({"name": schema_name, "page_kind": "listing", "fields": LISTING_FIELDS})
+    async with engine.begin() as conn:
+        schema = await registry.create(conn, document, "user")
+
+    for url in urls:
+        scraped = request(url, "records", schema={"id": str(schema.id)}, page_kind="listing", render={"mode": "locate"})
+        assert (await scrape(engine, fetching, scraped, data=engine_data)).outcome == "partial"
+
+    # The third page gives the surface its `LOCATE_SAMPLES` pages and starts its locate run, for each row field.
+    assert await _pages_extracted(engine, schema.id) == [3]
+    async with engine.connect() as conn:
+        learn = select(Job.request).where(Job.kind == "learn", Job.schema_id == schema.id)
+        located: dict[str, Any] = (await conn.execute(learn)).scalar_one()
+        site_id = (
+            await conn.execute(select(Site.id).where(Site.host == own_origin.removeprefix("https://")))
+        ).scalar_one()
+        recorded = await load_pages(conn, fetching.store, site_id, schema, limit=8)
+        sampled = await load_pages(conn, fetching.store, site_id, schema, limit=8, listed_nothing=True)
+    assert sorted(located["locate"]["fields"]) == sorted(LISTING_FIELDS)
+    assert recorded == []
+    assert [page.bundle.manifest.url for page in sampled] == urls[::-1]
 
 
 async def test_a_scrapes_minimum_confidence_leaves_a_calibrated_bucket_below_it_unpublished(
