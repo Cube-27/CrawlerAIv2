@@ -11,7 +11,6 @@ job, so a job's page is read from the page rungs.
 
 import re
 from dataclasses import replace
-from html import escape
 from typing import Final
 from urllib.parse import urlsplit
 
@@ -21,7 +20,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.outcome import as_error
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.answer import recorded, serving
-from crawlerai.adapters.base import ALL, NOT_SERVED, AdapterMatch, Shape
+from crawlerai.adapters.base import ALL, NOT_SERVED, AdapterMatch, Section, Shape
 from crawlerai.adapters.xml_reader import read_xml
 
 DOMAINS: Final = frozenset({"jobs.personio.de", "jobs.personio.com"})
@@ -34,7 +33,8 @@ _ACCEPT: Final = (("Accept", "application/xml"),)
 # A position as a schema.org JobPosting: `reader` wraps every element's values in arrays, so a member is
 # `(name, ALL)`. The position's page is `/job/{id}` on the company's host (the prefix `shapes` puts before `id`); its
 # `schedule` (full-time, part-time) is the employment type; its offices are the places as written; the hiring
-# organization is its `subcompany`; its `description` is the one HTML text `_described` makes of the ad's sections.
+# organization is its `subcompany`; its description is the ad's `jobDescription` sections in order, each a heading
+# (`name`) and an HTML body (`value`).
 _POSITIONS: Final = ("workzag-jobs", ALL, "position", ALL)
 _EMPLOYER: Final = Shape(type="Organization", properties={"name": ("subcompany", ALL)}, anchor=("subcompany", ALL))
 _POSITION: Final = Shape(
@@ -47,7 +47,11 @@ _POSITION: Final = Shape(
         "datePosted": ("createdAt", ALL),
         "employmentType": ("schedule", ALL),
         "jobLocation": ("office", ALL),
-        "description": ("description", ALL),
+    },
+    sections={
+        "description": (
+            Section(at=("jobDescriptions", ALL, "jobDescription", ALL), heading=("name", ALL), body=("value", ALL)),
+        )
     },
     also={"jobLocation": (("additionalOffices", ALL, "office", ALL),)},
     nodes={"hiringOrganization": (_EMPLOYER,)},
@@ -80,7 +84,7 @@ class Personio:
             answer = read_xml(result.bundle.body)
         except ValueError:  # the platform's own page for a company it does not know
             return as_error(result, NOT_SERVED)
-        return serving(recorded(result, _described(answer)), _rows)
+        return serving(recorded(result, answer), _rows)
 
     def shapes(self, match: AdapterMatch, _answer: JsonValue, /) -> tuple[Shape, ...]:
         listed = replace(_POSITION, prefixes={"url": f"https://{match.tenant}/job/"})
@@ -103,22 +107,3 @@ def _positions(answer: JsonValue) -> list[dict[str, JsonValue]]:
 
 def _rows(answer: JsonValue) -> int:
     return len(_positions(answer))
-
-
-def _described(answer: JsonValue) -> JsonValue:
-    """`answer` with each position's `description`: the ad is its `jobDescription` sections in order, each a heading
-    (`name`) and an HTML body (`value`), so it is one HTML text of them, not one candidate per section."""
-    for position in _positions(answer):
-        sections = [s for wrapper in _members(position, "jobDescriptions") for s in _members(wrapper, "jobDescription")]
-        html = "\n".join(text for section in sections if (text := _section(section)))
-        position["description"] = [html or None]
-    return answer
-
-
-def _section(section: dict[str, JsonValue]) -> str:
-    heading, body = (_first(section.get(member)) for member in ("name", "value"))
-    return "".join((f"<h2>{escape(heading)}</h2>" if heading else "", body))
-
-
-def _first(values: JsonValue) -> str:
-    return values[0] if isinstance(values, list) and values and isinstance(values[0], str) else ""

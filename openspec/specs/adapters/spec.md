@@ -54,12 +54,18 @@ listings as `ItemList` rows. A shape may read a property from further members af
 root before each of a property's string values (`prefixes`); an amount the API's documentation states as an integer
 count of the currency's minor unit is scaled to the major unit by the places the documentation states, a constant or
 a member of the node (`minor_units`), and any other value of that property is dropped; an amount no documentation
-gives a unit for is never scaled; a field that reads a whole node whose shape maps
+gives a unit for is never scaled; a property the API splits over members as parts of one rich text (`sections`: a
+body, headed lists, closing remarks) is one HTML text of its non-empty parts in the order the platform's page shows
+them, each part's heading an `h2` before its body; a field that reads a whole node whose shape maps
 properties reads an object of those properties' schema.org names. Each entity carries what identifies its item as a
 JSON-LD entity does (its identifier values and item URLs), so resolution merges it with the page's own statement of the
 item. A body that does not match yields no entities, never an exception. Refs: §8.1, D-0266, D-1087, D-1115, D-1176,
 D-1304, D-1336.
-(Previously: an adapter's entities carried no identity and could not merge with the page's JSON-LD.)
+(Previously: an adapter's entities carried no identity and could not merge with the page's JSON-LD; a split text was
+read from its first member only, and Personio's sections were joined into the recorded answer.)
+#### Scenario: A posting body split over members
+- **WHEN** a Lever posting states `description`, a list `Requirements` with items, and `additional`
+- **THEN** its description is the three in that order, the list under a `Requirements` heading
 #### Scenario: One item in the API and in the page
 - **WHEN** a detail page's JSON-LD `JobPosting` and the adapter's posting state one identifier or one item URL
 - **THEN** they are one entity, with the values of both
@@ -182,7 +188,8 @@ adapter serves it. Only structure decides, never a list of hosts or words. Refs:
 They SHALL detect only the hosted forms their public APIs name (Ashby boards, SmartRecruiters company and posting
 pages, Recruitee company hosts, Workable account pages, Rippling boards and jobs), fetch the documented JSON
 (SmartRecruiters in pages of 100) and map `JobPosting` title, location(s), date posted, employment type, description,
-identifier and URL, and the salary where the API states an amount, as in `adapters/{ashby,smartrecruiters,recruitee,
+identifier and URL, and the salary where the API states an amount (the description: SmartRecruiters' job ad
+sections `jobDescription`, `qualifications` and `additionalInformation`, Recruitee's `description` and `requirements`), as in `adapters/{ashby,smartrecruiters,recruitee,
 workable,rippling}.py`; pages the API has no endpoint for fall to the page rungs. Refs: D-1303, D-1305, D-1306, D-1308.
 
 ### Requirement: BambooHR, Teamtailor, UKG Pro, Personio and ADP adapters

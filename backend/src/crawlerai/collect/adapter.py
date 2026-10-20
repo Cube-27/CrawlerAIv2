@@ -15,11 +15,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from functools import cache
+from html import escape
 from typing import Final
 
 from pydantic import JsonValue
 
-from crawlerai.adapters.base import ALL, Adapter, AdapterMatch, Members, Shape
+from crawlerai.adapters.base import ALL, Adapter, AdapterMatch, Members, Section, Shape
 from crawlerai.collect.base import CollectResult
 from crawlerai.collect.json_doc import ROOT, member, select
 from crawlerai.collect.locator import format_locator
@@ -98,6 +99,8 @@ class _Node:
         return None  # an API object has no IRI
 
     def values(self, prop: str) -> Sequence[Value]:
+        if (sections := self.shape.sections.get(prop)) is not None:
+            return self._joined(sections)
         if (members := self.shape.properties.get(prop)) is not None:
             prefix = self.shape.prefixes.get(prop, "")
             places = self._places(prop)
@@ -118,9 +121,9 @@ class _Node:
         of those properties and its nodes' (`MonetaryAmount` with `currency`, `minValue`, `maxValue`), the way a JSON-LD
         node holds them, so a field reading the whole node reads schema.org names; any other node is the API's own
         object."""
-        if not (self.shape.properties or self.shape.nodes):
+        if not (self.shape.properties or self.shape.sections or self.shape.nodes):
             return self.data
-        names = (*self.shape.properties, *self.shape.nodes)
+        names = (*self.shape.properties, *self.shape.sections, *self.shape.nodes)
         found = {name: _one([v.raw for v in self.values(name)]) for name in names}
         return {name: raw for name, raw in found.items() if raw is not None}
 
@@ -135,6 +138,21 @@ class _Node:
             # A JSON boolean as the value the documentation means by it (`Shape.booleans`); any other as stated.
             found = [(at, meant[not raw] if isinstance(raw, bool) else raw) for at, raw in found]
         return [Value(_prefixed(prefix, raw), self._locator(at)) for at, raw in found]
+
+    def _joined(self, sections: Sequence[Section]) -> list[Value]:
+        """The one HTML text of a property's parts (`Section`), located at its first part's body; none without a
+        part."""
+        parts: list[tuple[str, str]] = []
+        for section in sections:
+            for at, found in _select(section.at, self.data, self.path):
+                body = _string(section.body, found, at)
+                heading = _string(section.heading, found, at) if section.heading else None
+                if body is not None:
+                    titled = f"<h2>{escape(heading[1], quote=False)}</h2>" if heading is not None else ""
+                    parts.append((body[0], titled + body[1]))
+        if not parts:
+            return []
+        return [Value("\n".join(text for _, text in parts), self._locator(parts[0][0]))]
 
     def _places(self, prop: str) -> int | None:
         """The decimal places of the minor unit the API states `prop` in (`Shape.minor_units`), or None: no scaling.
@@ -170,6 +188,11 @@ def _in_major_units(raw: JsonValue, places: int) -> str | None:
     if digits is None or not digits.isdigit():
         return None
     return format(Decimal(digits).scaleb(-places), "f")
+
+
+def _string(members: Members, data: JsonValue, path: str) -> tuple[str, str] | None:
+    """The first non-empty string at `members` from `data`, with its path; an empty string states nothing."""
+    return next(((at, raw) for at, raw in _select(members, data, path) if isinstance(raw, str) and raw.strip()), None)
 
 
 def _one(values: list[JsonValue]) -> JsonValue:

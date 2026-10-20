@@ -79,3 +79,14 @@ def test_every_listed_posting_is_a_job_whose_page_is_under_its_company() -> None
     assert found[(row.format(0), "identifier")] == "1001"
     assert found[(row.format(0), "company")] == "Example Co"
     assert (row.format(0), "description") not in found  # the list carries no ad
+
+
+def test_a_postings_description_is_its_ads_job_sections_in_page_order() -> None:
+    body = (FIXTURES / "smartrecruiters" / "posting.json").read_text(encoding="utf-8")
+
+    found = candidates(ADAPTER, AdapterMatch(COMPANY, "detail", item="1001"), body)
+
+    # The company's own section describes the hiring organization, not the job.
+    assert found[("adapter:smartrecruiters:$", "description")] == (
+        "<p>Build example platforms.</p>\n<h2>Qualifications</h2><p>Three years.</p>\n<h2>More</h2><p>Extra.</p>"
+    )
