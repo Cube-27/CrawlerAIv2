@@ -166,6 +166,8 @@ def validate(
         return Validated(None, report)
     provenance = ir.provenance.model_copy(update={"validated_on": captures})
     validated = ir.model_copy(update={"fields": fields, "listing": listing, "provenance": provenance})
+    # A `call` field dropped here drops its recipe (`named_recipes`).
+    validated = validated.model_copy(update={"recipes": validated.named_recipes()})
     # `model_copy` skips validation; the round trip runs the IR's validators on the pruned document.
     return Validated(ExtractionConfigIR.model_validate(validated.model_dump(by_alias=True)), report)
 

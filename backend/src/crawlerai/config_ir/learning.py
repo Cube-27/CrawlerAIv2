@@ -17,7 +17,7 @@ A run on a surface whose render mode locates (`locate`, `always`), or one a job'
 (`progressive.request_locate`), is the surface's locate run too (`locate`): it renders the newest stored pages and
 writes the fields it locates into the config it learned, else the config the surface serves, else a config of those
 fields alone. A recipe it proves may reference a header of the request context of the job that started it (whose
-stored request keeps the caller's secrets, D-1432), never hold its value.
+stored request keeps the caller's secrets, jobs spec "Stored request"), never hold its value.
 
 A run takes two transactions: one starts the job, one ends it; the pages are read between them. None is open while
 role A or role D is called or a recipe is replayed: the LLM client commits usage on a connection of its own and must
@@ -230,7 +230,7 @@ async def _config_ir(conn: AsyncConnection, config_id: ExtractionConfigId | None
 
 async def _request_context(conn: AsyncConnection, located: LocateRequest) -> RequestContext | None:
     """The headers of the request context of the job that started the locate run, as its stored request keeps them
-    (an asynchronous job's keeps the values, D-1432; a redacted one is none)."""
+    (an asynchronous job's keeps the values while it runs, jobs spec "Stored request"; a redacted one is none)."""
     if located.job_id is None:
         return None
     request: dict[str, Any] | None = (
@@ -309,9 +309,25 @@ async def _learned(client: LLMClient, run: _Run, vocabulary: Vocabulary, max_cha
     if validated.ir is not None and hooks.replay is not None:
         validated = attach(validated, await _page_recipe(client, run, sample, held_out, hooks.replay, hooks.render))
     if run.locate is not None and hooks.render is not None and hooks.extract is not None:
-        rendered = await _samples(run, hooks.render, hooks.extract)
-        validated = await _located(client, run, target, validated, vocabulary, rendered, hooks.replay)
+        validated = await _locate_step(client, run, target, validated, vocabulary, hooks)
     return validated
+
+
+async def _locate_step(
+    client: LLMClient, run: _Run, target: "Target", validated: Validated, vocabulary: Vocabulary, hooks: _Hooks
+) -> Validated:
+    """`validated` with the fields the locate run located; unchanged when the locate step fails: its error refuses
+    the located fields, not the config learning validated (as a recipe's does)."""
+    if hooks.render is None or hooks.extract is None:
+        return validated
+    try:
+        rendered = await _samples(run, hooks.render, hooks.extract)
+        return await _located(client, run, target, validated, vocabulary, rendered, hooks.replay)
+    except (LLMFailure, SQLAlchemyError):
+        raise  # the run's own failures, as `_page_recipe` re-raises them
+    except Exception:
+        log.exception("learn job %s: locate failed", run.job_id)
+        return validated
 
 
 async def _page_recipe(
