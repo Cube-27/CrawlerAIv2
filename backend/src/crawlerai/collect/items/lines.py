@@ -15,6 +15,7 @@ text before its first inner item (the first block of any repeated group inside i
 text too.
 """
 
+from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -27,6 +28,8 @@ from crawlerai.content.segment import text_path
 
 # The cleaned text's line break (`content.text`: one between two line boxes).
 _BREAK = "\n"
+# HTML Standard §4.3.6: the heading content elements.
+_HEADINGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 # A span of the cleaned text: its start offset and its text.
 Segment = tuple[int, str]
 
@@ -35,7 +38,10 @@ Segment = tuple[int, str]
 class BlockText:
     """One block as role C reads it: its position in the bound group and its item URL (its locator), the row entity
     its values fill, its text (the cleaned text from `start`, verbatim), the row fields its row does not publish, and
-    the text its enclosing item states for it (from `context_start`; empty when none, module docstring)."""
+    the text its enclosing item states for it (from `context_start`; empty when none, module docstring). `breaks` are
+    the offsets in the cleaned text, inside its text or context, where two text runs meet (an element boundary the
+    text shows no space at); `heading` is the span of its first heading (`h1`-`h6`, HTML Standard §4.3.6: the
+    heading of the item it is), None when it has none."""
 
     index: int
     url: str
@@ -45,6 +51,8 @@ class BlockText:
     fields: tuple[str, ...]
     context: str = ""
     context_start: int = 0
+    breaks: frozenset[int] = frozenset()
+    heading: tuple[int, int] | None = None
 
     @property
     def line(self) -> str:
@@ -90,9 +98,32 @@ def _block_text(
     start, end = span
     text = page.cleaned_text.text[start:end]
     context_start, context_text = context if context is not None else (0, "")
+    breaks = _breaks(page, start, end) | _breaks(page, context_start, context_start + len(context_text))
     return BlockText(
-        row_block.index, row_block.block.link, row_block.row, start, text, tuple(fields), context_text, context_start
+        row_block.index,
+        row_block.block.link,
+        row_block.row,
+        start,
+        text,
+        tuple(fields),
+        context_text,
+        context_start,
+        breaks,
+        _heading(page, row_block.block.element),
     )
+
+
+def _breaks(page: ParsedPage, start: int, end: int) -> frozenset[int]:
+    """The offsets inside `[start, end)` where a text run of the cleaned text starts."""
+    starts = page.run_starts
+    return frozenset(starts[bisect_right(starts, start) : bisect_left(starts, end)])
+
+
+def _heading(page: ParsedPage, element: HtmlElement) -> tuple[int, int] | None:
+    """The span of the element's first heading (HTML Standard §4.3.6) in the cleaned text, None when it has none or it
+    renders no text."""
+    heading = next(element.iterdescendants(*_HEADINGS), None)
+    return None if heading is None else page.text_spans.get(text_path(heading))
 
 
 def _contexts(page: ParsedPage, elements: Sequence[HtmlElement]) -> dict[HtmlElement, Segment]:

@@ -5,9 +5,10 @@ is not a value taken from the request URL's query (INV-13); every other one is r
 candidates are scored (`resolve.score`: source weight times scope match times agreement) and the value of the best score
 publishes; the candidates of every other value are rejected `outscored`. A field whose kept candidates state more than
 one value publishes with a reason, the disagreement flag (`disagree`, `offers_disagree`, `offer_split`). Where the best
-score is shared by two values the field is a `conflict`. A price is a `conflict` too when amounts differ and no role
-explains it (`_price_winner`: the visible price, the shown variant); amounts that differ only in currency publish, the
-currency unknown (C7: an unclear currency never drops a price).
+score is shared by two values the field is a `conflict`. A list of the item's facts (a job's places) publishes every
+member its values state instead (`_union`): two sources stating different members are not rivals. A price is a
+`conflict` too when amounts differ and no role explains it (`_price_winner`: the visible price, the shown variant);
+amounts that differ only in currency publish, the currency unknown (C7: an unclear currency never drops a price).
 
 Offers (INV-15, variants spec): the anchor Offer is the one of the variant the target shows (its own sku or gtin is
 that variant's), else the one holding values for the most offer fields; its values and the target's own have scope 1,
@@ -21,7 +22,7 @@ Evidence buckets, confidence and min_confidence are the next stage's (`resolve.e
 
 import json
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from fractions import Fraction
 from itertools import combinations
@@ -37,6 +38,7 @@ from crawlerai.collect.json_doc import scalars
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize import money, url
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
+from crawlerai.normalize.dispatch import with_member
 from crawlerai.normalize.text import text_form
 from crawlerai.resolve.identity import VARIANT
 from crawlerai.resolve.ownership import OFFER, EntityGraph
@@ -203,9 +205,24 @@ class Resolver:
         if not kept:
             return Unpublished("missing", _missing_reason(rejected), tuple(rejected))
         groups = rank(spec, kept, self._scope(offers), self.orders.get(rule_type(spec), ()))
-        top, rivals = groups[0], [g for g in groups[1:] if g.score > 0]
-        if top.score <= 0:  # every kind outside the fitted order, or a fragment (resolve.score)
+        if groups[0].score <= 0:  # every kind outside the fitted order, or a fragment (resolve.score)
             return _all_rejected("missing", "unranked", kept, rejected)
+        if not offer_field and _members(spec):
+            return _union(spec, [g for g in groups if g.score > 0], kept, rejected)
+        return self._settled(spec, groups, kept, rejected, offers=offers, offer_field=offer_field)
+
+    def _settled(
+        self,
+        spec: FieldSpec,
+        groups: list[Group],
+        kept: list[Candidate],
+        rejected: list[Rejection],
+        *,
+        offers: _Offers,
+        offer_field: bool,
+    ) -> Preference:
+        """The value that publishes of the ranked `groups` (a scored best one), or the field's conflict."""
+        top, rivals = groups[0], [g for g in groups[1:] if g.score > 0]
         if rule_type(spec) is FieldType.MONEY:
             won = self._price_winner(top, groups, offers, offer_field=offer_field)
             if isinstance(won, str):
@@ -516,6 +533,36 @@ def _published(
     agreeing = tuple(c for c in top.members if c is not chosen)
     lower = [(c, OUTSCORED) for c in kept if not any(c is m for m in top.members)]
     return Chosen(chosen, agreeing, (*rejected, *lower), tuple(kept), flag)
+
+
+# The item types whose lists hold members rather than one rival value per source (`_members`): a list of lists or of
+# objects (variants) is a value as a whole, a list of images or links is settled by the files it names, and amounts
+# are rival prices (`_price_winner`).
+_WHOLE_ITEMS = frozenset({FieldType.LIST, FieldType.OBJECT, FieldType.URL, FieldType.IMAGE_URL, FieldType.MONEY})
+
+
+def _members(spec: FieldSpec) -> bool:
+    """Whether the field is a list of facts of the item, each one a member (a job's places): two sources stating
+    different ones state more members of the item, not rival values (resolution spec, "Candidate score")."""
+    return spec.type is FieldType.LIST and spec.item is not None and spec.item.type not in _WHOLE_ITEMS
+
+
+def _union(spec: FieldSpec, groups: list[Group], kept: list[Candidate], rejected: list[Rejection]) -> Chosen:
+    """The list of every member the field's ranked values state, best first (`dispatch.with_member`: one member for
+    two statements of it), as the best group's candidate: no other value is outscored. One value publishes as is."""
+    top = groups[0]
+    if len(groups) == 1:
+        return _published(spec, top, kept, rejected, None)
+    item = cast(FieldSpec, spec.item)
+    members: list[JsonValue] = []
+    for group in groups:
+        stated = value_of(group.best[0])
+        for value in stated if isinstance(stated, list) else [stated]:
+            members = with_member(members, value, item)
+    chosen = top.best[0]
+    union = chosen.model_copy(update={"normalized": replace(cast(Ok, chosen.normalized), value=members)})
+    agreeing = tuple(c for c in top.members if c is not chosen)
+    return Chosen(union, agreeing, tuple(rejected), tuple(kept))
 
 
 def _currency_unknown(candidate: Candidate) -> Candidate:

@@ -24,6 +24,7 @@ import re
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from functools import cache
+from typing import TypeGuard
 
 from babel import Locale
 from pydantic import JsonValue
@@ -71,6 +72,31 @@ def equal(a: JsonValue, b: JsonValue, _spec: FieldSpec) -> bool:
         and _either_missing_or(a["region"], b["region"], _casefolded)
         and _either_missing_or(a["text"], b["text"], _tokens)
     )
+
+
+def names(text: JsonValue, place: JsonValue) -> bool:
+    """Whether `text`, a location the page writes as text alone (no part stated), names `place`'s locality, or its
+    region when it states no locality: their words (`vocab.tokens`) run in its text (a locality is the place itself; a
+    region holds other places, as "New York" does "New York City"). Then both state one place of the item, the text
+    as the page shows it ("Austin", "Raleigh; Austin; Denver") and `place` as its structured data does: one member of a
+    list of places, not two (resolution spec, "Candidate score"). Nothing in the text is parsed."""
+    if not (_location(text) and _location(place)) or any(text[part] is not None for part in _PARTS):
+        return False
+    said = text["text"]
+    if not isinstance(said, str):
+        return False
+    part = place["locality"] if place["locality"] is not None else place["region"]
+    named = vocab.tokens(part) if isinstance(part, str) else ()
+    return bool(named) and _runs_in(named, vocab.tokens(said))
+
+
+def _location(value: JsonValue) -> TypeGuard[dict[str, JsonValue]]:
+    return isinstance(value, dict) and value.keys() == _VALUE_KEYS
+
+
+def _runs_in(part: Sequence[str], words: Sequence[str]) -> bool:
+    """Whether `part`'s words occur together, in order, among `words`."""
+    return any(tuple(words[i : i + len(part)]) == tuple(part) for i in range(len(words) - len(part) + 1))
 
 
 def _either_missing_or(a: JsonValue, b: JsonValue, key: Callable[[JsonValue], JsonValue]) -> bool:

@@ -1,12 +1,12 @@
-"""Grounding by alignment (llm spec, INV-12): on generated texts and spans, `align` returns the exact span; a
-value absent from the text is dropped; a repeated value takes the occurrence nearest the model's `start`; an accepted
-claim's locator names its offsets."""
+"""Grounding by alignment (llm spec, INV-12): on generated texts and spans, `align` returns the exact span when it is
+whole words; a value absent from the text is dropped; a repeated value takes the occurrence nearest the model's
+`start`; an occurrence inside a longer word is never grounded; an accepted claim's locator names its offsets."""
 
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from crawlerai.collect.locator import Locator, parse_locator
-from crawlerai.llm.grounding import SpanClaim, align
+from crawlerai.llm.grounding import SpanClaim, align, bounded
 
 _text = st.text(st.characters(codec="utf-8", exclude_categories=["Cs"]), max_size=200)
 _offset = st.integers(min_value=-1_000, max_value=1_000)
@@ -28,6 +28,7 @@ def _text_and_span(draw: st.DrawFn) -> tuple[str, int, int]:
 @given(_text_and_span())
 def test_a_claim_whose_offsets_hold_the_value_is_accepted_as_stated(case: tuple[str, int, int]) -> None:
     text, start, end = case
+    assume(bounded(text, start, end))
 
     grounded = align(SpanClaim(value=text[start:end], start=start, end=end), text)
 
@@ -51,9 +52,19 @@ def test_a_value_absent_from_the_text_is_dropped(text: str, value: str, start: i
 def test_a_repeated_value_takes_the_occurrence_nearest_the_claimed_start(
     value: str, gaps: list[str], hint: int
 ) -> None:
-    text = value.join(gaps)  # `value` occurs len(gaps) - 1 times, separated by letters it doesn't contain
+    # `value` occurs len(gaps) - 1 times, a word of its own between words of letters it doesn't contain
+    text = f" {value} ".join(gaps)
     grounded = align(SpanClaim(value=value, start=hint, end=hint + len(value)), text)
 
     assert grounded is not None
     nearest = min(_occurrences(value, text), key=lambda i: (abs(i - hint), i))
     assert (grounded.start, grounded.end) == (nearest, nearest + len(value))
+
+
+@given(
+    st.text(st.sampled_from("ab1"), min_size=1, max_size=4), st.text(st.sampled_from("xyz9_"), min_size=1, max_size=4)
+)
+def test_an_occurrence_inside_a_longer_word_is_not_grounded(value: str, extra: str) -> None:
+    text = f"{value}{extra} {extra}{value}"  # `value` only as the head and the tail of a longer word
+
+    assert align(SpanClaim(value=value, start=0, end=len(value)), text) is None

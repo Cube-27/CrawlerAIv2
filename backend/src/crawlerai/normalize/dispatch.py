@@ -98,6 +98,28 @@ def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
     return key is not None and key == equality_key(b, spec)
 
 
+def with_member(items: Sequence[JsonValue], value: JsonValue, spec: FieldSpec) -> list[JsonValue]:
+    """`items`, values of `spec`, with `value` among them: a value equal to one of them is that one; a location the
+    page writes as text that names another's place (`location.names`) stands for it, in its place, and is not added
+    beside one that names its own."""
+    kept = list(items)
+    if any(equal(item, value, spec) for item in kept):
+        return kept
+    if spec.type is FieldType.LOCATION:
+        return _with_place(kept, value)
+    return [*kept, value]
+
+
+def _with_place(places: list[JsonValue], value: JsonValue) -> list[JsonValue]:
+    if any(location.names(place, value) for place in places):
+        return places
+    named = [i for i, place in enumerate(places) if location.names(value, place)]
+    if not named:
+        return [*places, value]
+    places[named[0]] = value
+    return [place for i, place in enumerate(places) if i not in named[1:]]
+
+
 def similarity(a: JsonValue, b: JsonValue, spec: FieldSpec) -> float | None:
     """How close two text or long_text values are, from 0 to 1 (`text.word_overlap`); `None` for other types, or for
     values that are not texts with words."""

@@ -10,9 +10,10 @@ label names a field when its words equal one of these, case-folded after NFKC.
 
 import re
 import unicodedata
+from collections.abc import Mapping
 
 from crawlerai.schemas.paths import named_property, parse_paths
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from crawlerai.schemas.types import FieldLabels, FieldSpec, FieldType, SchemaDef
 
 # Words of a label or a name: runs of letters and digits; a lower-case letter or digit followed by a capital starts a
 # new word, as schema.org's lowerCamelCase property names join theirs (schema.org, "Data model": naming conventions).
@@ -33,12 +34,17 @@ def labelled(spec: FieldSpec) -> bool:
 
 def field_labels(schema: SchemaDef) -> dict[Words, list[str]]:
     """The fields each label's words name."""
-    drafted = schema.labels or {}
+    return labels_of(schema.fields, schema.labels)
+
+
+def labels_of(fields: Mapping[str, FieldSpec], drafted: FieldLabels | None) -> dict[Words, list[str]]:
+    """The fields of `fields` each label's words name, with the `drafted` synonyms."""
     labels: dict[Words, list[str]] = {}
-    for name, spec in schema.fields.items():
+    for name, spec in fields.items():
         if not labelled(spec):
             continue
-        texts = [name, *properties(spec), *([spec.description] if spec.description else []), *drafted.get(name, ())]
+        described = [spec.description] if spec.description else []
+        texts = [name, *properties(spec), *described, *(drafted or {}).get(name, ())]
         for form in dict.fromkeys(form for form in map(words, texts) if form):
             labels.setdefault(form, []).append(name)
     return labels
