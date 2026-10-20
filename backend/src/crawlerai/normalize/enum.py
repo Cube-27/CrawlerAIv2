@@ -75,6 +75,8 @@ def _schema_term(name: str) -> str | None:
     (RFC 3986 §5.2), so `//schema.org/InStock` names the term as `https://schema.org/InStock` does."""
     if name.startswith(_COMPACT):
         return name.removeprefix(_COMPACT)
+    if any(char.isspace() for char in name):  # an IRI holds no white space (RFC 3987 §2.2); urlsplit drops tabs
+        return None
     try:
         parts = urlsplit(name)
     except ValueError:  # an invalid IPv6 host (RFC 3986 §3.2.2): no schema.org IRI

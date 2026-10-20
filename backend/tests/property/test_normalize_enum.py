@@ -39,7 +39,15 @@ def test_a_schema_member_matches_by_iri_or_name_or_node_reference(member: str, f
 
 
 @pytest.mark.parametrize(
-    "raw", ["https://schema.org/Product", "https://example.test/InStock", "red", "Not in stock", "5 in stock"]
+    "raw",
+    [
+        "https://schema.org/Product",
+        "https://example.test/InStock",
+        "https://schema.org/In\tStock",
+        "red",
+        "Not in stock",
+        "5 in stock",
+    ],
 )
 def test_a_name_or_phrase_that_is_no_member_is_invalid(raw: str) -> None:
     assert enum.normalize(raw, SCHEMA, CTX) == Invalid("not_a_member")

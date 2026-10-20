@@ -375,10 +375,11 @@ class Resolver:
             if c.field in ids and isinstance(c.normalized, Ok) and (unit := self._unit(c)) is not None
         ]
         matched = {unit for unit, c, spec in stated if _names(c, spec, own)}
-        if not matched or len({_source(unit) for unit in matched}) < len(matched):
+        if not matched or _one_each(matched) != matched:
             return frozenset()
+        named = {_source(unit) for unit in matched}
         held = [(c, spec) for unit, c, spec in stated if unit in matched]
-        same = {unit for unit, c, spec in stated if _names(c, spec, held)}
+        same = _one_each({unit for unit, c, spec in stated if _source(unit) not in named and _names(c, spec, held)})
         return frozenset(offer for unit in matched | same for offer in self._unit_offers(unit))
 
     def _unit_offers(self, unit: str) -> frozenset[str]:
@@ -653,6 +654,12 @@ def parse_orders(document: object) -> dict[str, tuple[SourceKind, ...]]:
 def _names(candidate: Candidate, spec: FieldSpec, ids: Sequence[tuple[Candidate, FieldSpec]]) -> bool:
     """Whether a sku or gtin candidate states one of `ids` of its own scheme."""
     return any(spec.scheme == o_spec.scheme and same_value(candidate, o, spec) for o, o_spec in ids)
+
+
+def _one_each(units: set[str]) -> set[str]:
+    """The units whose source (`_source`) names no other of them: a source naming two variants names none."""
+    sources = [_source(unit) for unit in units]
+    return {unit for unit, source in zip(units, sources, strict=True) if sources.count(source) == 1}
 
 
 def _source(entity_id: str) -> str:
