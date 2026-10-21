@@ -68,6 +68,9 @@ ensure_ui_key() {
 ensure_ui_key
 
 pnpm --dir "$root/frontend" install --frozen-lockfile --prefer-offline --reporter=silent
+# The worker's browser rung launches Patchright's own Chromium build, pinned by the installed Patchright version; a
+# new machine or a Patchright upgrade lacks it. The install does nothing when that build is already present.
+uv --directory "$backend" run patchright install --no-shell chromium
 
 CRAWLERAI_ROLE=api start api uv --directory "$backend" run uvicorn --factory crawlerai.api.app:create_app --reload \
   --port 8000
