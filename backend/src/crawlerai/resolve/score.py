@@ -23,8 +23,10 @@ collector order.
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Final
+from pathlib import Path
+from typing import Final, cast, get_args
 
+import yaml
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate
@@ -44,6 +46,11 @@ OWN: Final = Fraction(1)
 _NONE: Final = Fraction(0)
 
 Scope = Callable[[Candidate], Fraction]
+
+PRECEDENCE_FILE = "source_precedence.yaml"
+# What the fit stamped on the file (frozen 2026-10-18; evaluation spec); every other key names a field type.
+STAMP = frozenset({"source_split", "git_sha"})
+_SOURCE_KINDS: frozenset[str] = frozenset(get_args(SourceKind))
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,3 +174,38 @@ def value_of(candidate: Candidate) -> JsonValue:
     if not isinstance(candidate.normalized, Ok):
         raise TypeError("only kept candidates are scored")
     return candidate.normalized.value
+
+
+def load_precedence(path: Path) -> dict[FieldType, tuple[SourceKind, ...]]:
+    """The orders of a `source_precedence.yaml`: fitted once (frozen engine data, evaluation spec), with one order per
+    precedence type."""
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or document.get("source_split") != "dev":
+        raise ValueError(
+            f"{PRECEDENCE_FILE}: not a mapping stamped `source_split: dev`; the order is fitted on dev only"
+        )
+    orders = parse_orders(document)
+    typed: dict[FieldType, tuple[SourceKind, ...]] = {}
+    for type_ in sorted(PRECEDENCE_TYPES):
+        if type_.value not in orders:
+            raise ValueError(f"{PRECEDENCE_FILE}: no order for {type_.value}")
+        typed[type_] = orders.pop(type_.value)
+    if orders:
+        raise ValueError(f"{PRECEDENCE_FILE}: {sorted(orders)} rank by agreement, not by an order")
+    return typed
+
+
+def parse_orders(document: object) -> dict[str, tuple[SourceKind, ...]]:
+    """Every top-level key but the stamp names a field type and holds its list of source kinds."""
+    if not isinstance(document, dict):
+        raise ValueError(f"{PRECEDENCE_FILE} is not a mapping")
+    orders: dict[str, tuple[SourceKind, ...]] = {}
+    for type_, order in document.items():
+        if type_ in STAMP:
+            continue
+        if not isinstance(order, list) or not all(isinstance(kind, str) for kind in order):
+            raise ValueError(f"{PRECEDENCE_FILE}: {type_} is not a list of source kinds")
+        if unknown := sorted(set(order) - _SOURCE_KINDS):
+            raise ValueError(f"{PRECEDENCE_FILE}: {type_} names an unknown source kind {unknown}")
+        orders[str(type_)] = cast(tuple[SourceKind, ...], tuple(order))
+    return orders

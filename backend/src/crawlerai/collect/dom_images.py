@@ -9,7 +9,7 @@ shares with the other DOM passes: the main region, the elements set apart from i
   it, and neither is a link card's: an image whose nearest block holding a hyperlink holds no other image, and whose
   hyperlinks lead to one other document, illustrates that document (a teaser of another product, a promotion). It
   fills an `image_url` field whose path names schema.org `image`. Before it, the first such image (in the main
-  region, else in the body) of the file (`url.same_file`) the page's structured data or Open Graph states as its
+  region, else in the body) of the file (`images.same_file`) the page's structured data or Open Graph states as its
   main image (`stated_images`): independent evidence of the product's image, which a page without a main landmark (a
   client-rendered storefront) needs to have a main image at all.
 - **The gallery.** The main image's slides fill a list of images whose path names schema.org `image`: from the main
@@ -38,7 +38,8 @@ from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.content.repeats import MIN_REPEATS
 from crawlerai.content.text import shown
 from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.url import canonical_url, media_type, same_file
+from crawlerai.normalize.images import same_file
+from crawlerai.normalize.url import canonical_url, media_type
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # HTML Standard §4.3: sectioning content of a region that is not its main content (navigation, headers, footers and
@@ -154,8 +155,8 @@ def stated_images(schema: SchemaDef, stated: Sequence[Candidate]) -> tuple[str, 
 def _anchor(
     region: LexborNode, links: "Links", apart: frozenset[int], primary: Sequence[str], base: str | None
 ) -> tuple[LexborNode, str] | None:
-    """The region's first shown image of a `primary` file (`url.same_file`: the file, or a rendition of it), not a link
-    card's: the product's main image as structured data states it, found by its file (independent evidence of which
+    """The region's first shown image of a `primary` file (`images.same_file`: the file, or a rendition of it), not a
+    link card's: the product's main image as structured data states it, found by its file (independent evidence of which
     image is the product's), so a page with no main landmark has one too, and its gallery is read from it."""
     if not primary:
         return None

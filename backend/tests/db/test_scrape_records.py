@@ -42,7 +42,7 @@ from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve import pipeline
 from crawlerai.resolve.evidence import Bucket, Calibration
 from crawlerai.resolve.pipeline import EngineData
-from crawlerai.resolve.preference import PRECEDENCE_FILE, load_precedence
+from crawlerai.resolve.score import PRECEDENCE_FILE, load_precedence
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services.fetching import Fetching

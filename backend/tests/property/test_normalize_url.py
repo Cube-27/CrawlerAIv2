@@ -8,7 +8,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
-from crawlerai.normalize import url
+from crawlerai.normalize import images, url
 from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -121,13 +121,13 @@ def test_an_image_url_naming_a_file_of_another_media_type_is_invalid(path: str) 
 
 
 def test_the_resource_key_ignores_only_the_scheme_the_query_and_a_stated_size() -> None:
-    key = url.resource_key("https://cdn.example.test/i/a-300x200.jpg?w=1")
+    key = images.resource_key("https://cdn.example.test/i/a-300x200.jpg?w=1")
 
     assert key is not None
-    assert key == url.resource_key("http://cdn.example.test/i/a_64x64.jpg#zoom")
-    assert key != url.resource_key("https://cdn.example.test/i/b-300x200.jpg")
-    assert key != url.resource_key("https://img.example.test/i/a-300x200.jpg")
-    assert url.resource_key("/i/a.jpg") is None
+    assert key == images.resource_key("http://cdn.example.test/i/a_64x64.jpg#zoom")
+    assert key != images.resource_key("https://cdn.example.test/i/b-300x200.jpg")
+    assert key != images.resource_key("https://img.example.test/i/a-300x200.jpg")
+    assert images.resource_key("/i/a.jpg") is None
 
 
 @pytest.mark.parametrize(
@@ -145,27 +145,29 @@ def test_the_resource_key_ignores_only_the_scheme_the_query_and_a_stated_size() 
 def test_renditions_an_image_server_writes_into_the_path_name_one_file(rendition: str, same: bool) -> None:
     file = "https://cdn.example.test/i/7/a.jpg"
 
-    assert url.same_file(file, rendition) is same
-    assert url.same_file(rendition, file) is same
+    assert images.same_file(file, rendition) is same
+    assert images.same_file(rendition, file) is same
     # Two renditions of one directory; parameters without a size are another directory.
-    assert url.same_file("https://cdn.example.test/i/7-800-auto/a.jpg", "https://cdn.example.test/i/7-600-auto/a.jpg")
-    assert not url.same_file("https://cdn.example.test/i/7-blue/a.jpg", "https://cdn.example.test/i/7-red/a.jpg")
+    assert images.same_file(
+        "https://cdn.example.test/i/7-800-auto/a.jpg", "https://cdn.example.test/i/7-600-auto/a.jpg"
+    )
+    assert not images.same_file("https://cdn.example.test/i/7-blue/a.jpg", "https://cdn.example.test/i/7-red/a.jpg")
     # A query written percent-encoded into the path still ends the file's name.
-    assert url.same_file("https://cdn.example.test/i/7/a.jpg%3Fw%3D785", file)
+    assert images.same_file("https://cdn.example.test/i/7/a.jpg%3Fw%3D785", file)
     # A bare file name is no evidence of one file.
-    assert not url.same_file("https://cdn.example.test/a.jpg", "https://cdn.example.test/i/a.jpg")
+    assert not images.same_file("https://cdn.example.test/a.jpg", "https://cdn.example.test/i/a.jpg")
 
 
 def test_a_proxy_url_names_the_file_its_url_parameter_names() -> None:
-    key = url.resource_key("https://cdn.example.test/i/a.jpg?w=940")
+    key = images.resource_key("https://cdn.example.test/i/a.jpg?w=940")
     proxy = "https://www.example.test/_img?url="
 
-    assert key == url.resource_key(f"{proxy}https%3A%2F%2Fcdn.example.test%2Fi%2Fa.jpg&w=640")
-    assert url.resource_key(f"{proxy}%2Fi%2Fa.jpg") == url.resource_key("https://www.example.test/i/a.jpg")
-    assert url.resource_key(f"{proxy}%2Fi%2Fa.jpg") != url.resource_key(f"{proxy}%2Fi%2Fb.jpg")
+    assert key == images.resource_key(f"{proxy}https%3A%2F%2Fcdn.example.test%2Fi%2Fa.jpg&w=640")
+    assert images.resource_key(f"{proxy}%2Fi%2Fa.jpg") == images.resource_key("https://www.example.test/i/a.jpg")
+    assert images.resource_key(f"{proxy}%2Fi%2Fa.jpg") != images.resource_key(f"{proxy}%2Fi%2Fb.jpg")
     # Another parameter holding a URL (a fallback, a referrer) is no file the URL serves.
     other = "https://img.example.test/i/a.jpg?fallback=https%3A%2F%2Fcdn.example.test%2Fi%2Fz.jpg"
-    assert url.resource_key(other) == ("resource", "img.example.test", "/i/a.jpg")
+    assert images.resource_key(other) == ("resource", "img.example.test", "/i/a.jpg")
 
 
 def _value(result: NormalizeResult) -> JsonValue:

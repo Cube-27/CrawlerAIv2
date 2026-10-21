@@ -21,8 +21,9 @@ from crawlerai.normalize.base import Ok
 from crawlerai.normalize.dispatch import equal, equality_key
 from crawlerai.normalize.url_key import DocumentKey, document_key
 from crawlerai.resolve.evidence import BELOW_MIN_CONFIDENCE, Calibration, assess
+from crawlerai.resolve.offers import source_of
 from crawlerai.resolve.ownership import AGGREGATE_OFFER, EntityGraph
-from crawlerai.resolve.preference import Orders, PageFacts, Resolver, source_of
+from crawlerai.resolve.preference import Orders, PageFacts, Resolver
 from crawlerai.resolve.types import DroppedRow, Evidence, FieldOutcome, FieldStatus, RowOutcome
 from crawlerai.schemas.paths import MappedPath, parse_paths
 from crawlerai.schemas.types import FieldSpec, FieldType

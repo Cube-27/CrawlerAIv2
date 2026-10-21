@@ -34,7 +34,8 @@ from crawlerai.resolve.pipeline import (
     RoleC,
     extract_page,
 )
-from crawlerai.resolve.preference import PRECEDENCE_FILE, PRECEDENCE_TYPES, load_precedence
+from crawlerai.resolve.preference import PRECEDENCE_TYPES
+from crawlerai.resolve.score import PRECEDENCE_FILE, load_precedence
 from crawlerai.resolve.types import ExtractionResult, LLMCallRecord
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import (

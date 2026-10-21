@@ -10,12 +10,12 @@ member its values state instead (`_union`): two sources stating different member
 `conflict` too when amounts differ and no role explains it (`_price_winner`: the visible price, the shown variant);
 amounts that differ only in currency publish, the currency unknown (C7: an unclear currency never drops a price).
 
-Offers (INV-15, variants spec): the anchor Offer is the one of the variant the target shows (its own sku or gtin is
-that variant's), else the one holding values for the most offer fields; its values and the target's own have scope 1,
-another Offer's `OTHER_OFFER`. Availability and the other offer fields but money are a variant's: where the Offers
-disagree, the target takes only the shown variant's value, else the field is `offers_disagree`; a field only another
-Offer than the anchor states is `offer_split`. An identifier field the target states nothing for takes the value every
-variant states alike (variant fill).
+Offers (INV-15, variants spec; `resolve.offers`): the anchor Offer is the one of the variant the target shows (its
+own sku or gtin is that variant's), else the one holding values for the most offer fields; its values and the target's
+own have scope 1, another Offer's `OTHER_OFFER`. Availability and the other offer fields but money are a variant's:
+where the Offers disagree, the target takes only the shown variant's value, else the field is `offers_disagree`; a
+field only another Offer than the anchor states is `offer_split`. An identifier field the target states nothing for
+takes the value every variant states alike (variant fill).
 
 Evidence buckets, confidence and min_confidence are the next stage's (`resolve.evidence`); this module only chooses.
 """
@@ -23,26 +23,24 @@ Evidence buckets, confidence and min_confidence are the next stage's (`resolve.e
 import json
 import re
 from collections.abc import Callable, Hashable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from fractions import Fraction
 from itertools import combinations
-from pathlib import Path
-from typing import Literal, cast, get_args
+from typing import Literal, cast
 from urllib.parse import parse_qsl, urlsplit
 
-import yaml
 from pydantic import JsonValue
 
 from crawlerai.collect.base import PAGE, Candidate, Entity, is_visible_amount
 from crawlerai.collect.json_doc import scalars
 from crawlerai.db.models import SourceKind
-from crawlerai.normalize import money, url
+from crawlerai.normalize import images, money
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw, raw_key
 from crawlerai.normalize.dispatch import with_member
 from crawlerai.normalize.text import text_form
-from crawlerai.resolve.identity import VARIANT
-from crawlerai.resolve.ownership import OFFER, EntityGraph
+from crawlerai.resolve.offers import VARIANT_IDS, PageOffers, TargetOffers, source_of, variant_ids
+from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.resolve.score import (
     OTHER_OFFER,
     OWN,
@@ -54,20 +52,13 @@ from crawlerai.resolve.score import (
     same_value,
     value_of,
 )
-from crawlerai.schemas.paths import parse_paths, price_role
+from crawlerai.schemas.paths import price_role
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 __all__ = ["PRECEDENCE_TYPES", "Chosen", "PageFacts", "Preference", "Resolver", "Unpublished", "rule_type"]
 
-PRECEDENCE_FILE = "source_precedence.yaml"
-# What the fit stamped on the file (frozen 2026-10-18; evaluation spec); every other key names a field type.
-STAMP = frozenset({"source_split", "git_sha"})
-_SOURCE_KINDS: frozenset[str] = frozenset(get_args(SourceKind))
 # The screening stages in the order a candidate meets them; a missing field states the furthest one reached.
 _STAGES = ("invalid", "ambiguous", "not_owned", "url_param", "range_bound")
-# GS1 GTIN and a seller's SKU identify one product, so a variant's identifies the variant (variants spec).
-_VARIANT_IDS = frozenset({"gtin", "sku"})
-_HTTPS = "https"  # RFC 9110 §4.2.2
 # Why a field publishes with a flag, or is a conflict.
 DISAGREE = "disagree"
 OFFERS_DISAGREE = "offers_disagree"
@@ -117,15 +108,6 @@ class PageFacts:
 
 
 @dataclass(frozen=True, slots=True)
-class _Offers:
-    """The page's Offers as preference reads them: `anchor`, the Offers whose values have scope 1 (none: every Offer
-    has), and `shown`, the Offers of the variant the target shows (variants spec)."""
-
-    anchor: frozenset[str] = frozenset()
-    shown: frozenset[str] = frozenset()
-
-
-@dataclass(frozen=True, slots=True)
 class Resolver:
     """Preference for one entity, `target`: a detail page's target (§4.6), a listing's page or one of its rows (§4.7).
     Its fields' candidates are screened, then scored. `page_values`: whether page-level candidates are the target's
@@ -142,6 +124,10 @@ class Resolver:
     detail: bool = False
     owns: Callable[[Candidate], bool] | None = None
     confident: Callable[[str, FieldSpec, "Chosen"], bool] | None = None
+    target_offers: TargetOffers = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "target_offers", TargetOffers(self.graph, self.target))
 
     def prefer(self, schema: SchemaDef, candidates: Sequence[Candidate]) -> dict[str, Preference]:
         return self.prefer_fields(schema.fields, candidates)
@@ -159,7 +145,7 @@ class Resolver:
             for name, found in screened.items()
         }
         # In schema order: the anchor takes the first Offer seen on a tie.
-        offer_fields = [name for name, spec in fields.items() if self._is_offer_field(spec)]
+        offer_fields = [name for name, spec in fields.items() if self.target_offers.is_offer_field(spec)]
         offers = self._page_offers(fields, candidates, screened, offer_fields)
         chosen = {
             name: self._choose(spec, *screened[name], offers=offers, offer_field=name in offer_fields)
@@ -169,7 +155,7 @@ class Resolver:
 
     def prefer_field(self, spec: FieldSpec, candidates: Sequence[Candidate]) -> Preference:
         """One field on its own, outside the page's Offers: for values derived after preference (`derive`)."""
-        return self._choose(spec, *self.screen(candidates), offers=_Offers(), offer_field=False)
+        return self._choose(spec, *self.screen(candidates), offers=PageOffers(), offer_field=False)
 
     def screen(self, candidates: Sequence[Candidate]) -> tuple[list[Candidate], list[Rejection]]:
         """The candidates kept by validity, ownership and the URL-parameter rule, and the others with their reason."""
@@ -201,7 +187,13 @@ class Resolver:
         return self.graph.owned_by(candidate, self.target, page_values=self.page_values)
 
     def _choose(
-        self, spec: FieldSpec, kept: list[Candidate], rejected: list[Rejection], *, offers: _Offers, offer_field: bool
+        self,
+        spec: FieldSpec,
+        kept: list[Candidate],
+        rejected: list[Rejection],
+        *,
+        offers: PageOffers,
+        offer_field: bool,
     ) -> Preference:
         if not kept:
             return Unpublished("missing", _missing_reason(rejected), tuple(rejected))
@@ -219,7 +211,7 @@ class Resolver:
         kept: list[Candidate],
         rejected: list[Rejection],
         *,
-        offers: _Offers,
+        offers: PageOffers,
         offer_field: bool,
     ) -> Preference:
         """The value that publishes of the ranked `groups` (a scored best one), or the field's conflict."""
@@ -230,7 +222,7 @@ class Resolver:
                 return _all_rejected("conflict", won, kept, rejected)
             top = won
         elif offer_field:
-            top = self._shown_value([g for g in groups if g.score > 0], offers) or top
+            top = self.target_offers.shown_value([g for g in groups if g.score > 0], offers) or top
         top, rivals, tied = _contest(spec, groups, top)
         flag = self._flag(top, groups, rivals, offers, offer_field=offer_field)
         if rule_type(spec) is FieldType.MONEY:
@@ -241,7 +233,7 @@ class Resolver:
         return _published(spec, top, kept, rejected, flag)
 
     def _price_winner(
-        self, spec: FieldSpec, top: Group, groups: list[Group], offers: _Offers, *, offer_field: bool
+        self, spec: FieldSpec, top: Group, groups: list[Group], offers: PageOffers, *, offer_field: bool
     ) -> Group | str:
         """The group whose amount publishes as the price, or why none does (`conflict`). Amounts that differ are
         rival prices, and each is explained by its role before the field is refused:
@@ -259,64 +251,45 @@ class Resolver:
         visible = [g for g in contenders if any(is_visible_amount(c, spec) for c in g.members)]
         if len(contenders) > 1 and len(visible) == 1:
             return visible[0]
-        if (shown := self._shown_value(contenders, offers)) is not None:
+        if (shown := self.target_offers.shown_value(contenders, offers)) is not None:
             return shown  # the shown variant's Offer states its own price, however the others score
-        if offer_field and self._split(top, offers):  # only another Offer than the anchor states it (INV-15)
+        if offer_field and self.target_offers.split(
+            top, offers
+        ):  # only another Offer than the anchor states it (INV-15)
             return OFFER_SPLIT
         if len(contenders) == 1:
             return top
-        return OFFERS_DISAGREE if offer_field and self._offers_disagree(groups) else DISAGREE
-
-    def _shown_value(self, contenders: list[Group], offers: _Offers) -> Group | None:
-        """The one value (an amount, an availability) the shown variant's Offers state when every other value is
-        only an Offer outside it (INV-38): the other variants' values are theirs, not the item's."""
-
-        def inside(group: Group) -> bool:
-            return any(self._offer_of(c) in offers.shown for c in group.members)
-
-        def elsewhere(group: Group) -> bool:
-            return all((o := self._offer_of(c)) is not None and o not in offers.shown for c in group.members)
-
-        shown = [g for g in contenders if inside(g)]
-        return shown[0] if len(shown) == 1 and all(elsewhere(g) for g in contenders if g not in shown) else None
+        return OFFERS_DISAGREE if offer_field and self.target_offers.offers_disagree(groups) else DISAGREE
 
     def _refused(
-        self, top: Group, tied: list[Group], groups: list[Group], offers: _Offers, *, offer_field: bool
+        self, top: Group, tied: list[Group], groups: list[Group], offers: PageOffers, *, offer_field: bool
     ) -> str | None:
         """Why the best value of a field other than money does not publish: Offers that disagree on a variant's value
         when it is not the shown variant's (`offers_disagree`), a value only another Offer than the anchor states
         (`offer_split`), or a best score two values share (`disagree`, C7: decline rather than guess)."""
-        if offer_field and self._offers_disagree(groups):
-            return None if self._shown_value([top, *tied], offers) is top else OFFERS_DISAGREE
-        if offer_field and self._split(top, offers):
+        if offer_field and self.target_offers.offers_disagree(groups):
+            return None if self.target_offers.shown_value([top, *tied], offers) is top else OFFERS_DISAGREE
+        if offer_field and self.target_offers.split(top, offers):
             return OFFER_SPLIT
         return DISAGREE if tied else None
 
     def _flag(
-        self, top: Group, groups: list[Group], rivals: list[Group], offers: _Offers, *, offer_field: bool
+        self, top: Group, groups: list[Group], rivals: list[Group], offers: PageOffers, *, offer_field: bool
     ) -> str | None:
         """The flag of a published value: its Offers disagree (the shown variant's value publishes all the same), only
         another Offer than the anchor states it (a price), or its other candidates state other values."""
-        if offer_field and self._offers_disagree(groups):
+        if offer_field and self.target_offers.offers_disagree(groups):
             return OFFERS_DISAGREE
-        if offer_field and self._split(top, offers):
+        if offer_field and self.target_offers.split(top, offers):
             return OFFER_SPLIT
         return DISAGREE if rivals else None
 
-    def _split(self, top: Group, offers: _Offers) -> bool:
-        """Whether only Offers other than the anchor state the value (INV-15)."""
-        return bool(offers.anchor) and all(self._offer_of(c) not in (None, *offers.anchor) for c in top.members)
-
-    def _offers_disagree(self, groups: list[Group]) -> bool:
-        """Whether two of the field's values are stated by Offers (§4.8)."""
-        return sum(any(self._offer_of(c) is not None for c in g.members) for g in groups) > 1
-
-    def _scope(self, offers: _Offers) -> Scope:
+    def _scope(self, offers: PageOffers) -> Scope:
         """Scope match (`resolve.score`): 1 for the target's own values and the anchor Offer's, `OTHER_OFFER` for
         another Offer's."""
 
         def scope(candidate: Candidate) -> Fraction:
-            offer = self._offer_of(candidate)
+            offer = self.target_offers.offer_of(candidate)
             return OWN if not offers.anchor or offer is None or offer in offers.anchor else OTHER_OFFER
 
         return scope
@@ -327,19 +300,19 @@ class Resolver:
         candidates: Sequence[Candidate],
         screened: Mapping[str, tuple[list[Candidate], list[Rejection]]],
         offer_fields: Sequence[str],
-    ) -> _Offers:
+    ) -> PageOffers:
         """The anchor Offer: on a detail page the Offers of the variant the target shows, else the one holding values
         for the most offer fields."""
-        anchor = self._anchor({name: screened[name][0] for name in offer_fields})
-        offers = _Offers(frozenset(() if anchor is None else (anchor,)))
+        anchor = self.target_offers.anchor({name: screened[name][0] for name in offer_fields})
+        offers = PageOffers(frozenset(() if anchor is None else (anchor,)))
         if not self.detail:
             return offers
         # The target's own sku and gtin, as they publish, select the variant it shows (variants spec).
-        ids = [name for name in _variant_ids(fields) if name in fields]
+        ids = [name for name in variant_ids(fields) if name in fields]
         stated = {name: self._choose(fields[name], *screened[name], offers=offers, offer_field=False) for name in ids}
-        shown, other = self._shown_offers(fields, candidates, self._published_ids(fields, stated))
-        shown |= self._lone_offers(frozenset(source_of(offer) for offer in shown)) - other
-        return _Offers(shown, shown) if shown else offers
+        shown, other = self.target_offers.shown_offers(fields, candidates, self._published_ids(fields, stated))
+        shown |= self.target_offers.lone_offers(frozenset(source_of(offer) for offer in shown)) - other
+        return PageOffers(shown, shown) if shown else offers
 
     def _published_ids(
         self, fields: Mapping[str, FieldSpec], stated: Mapping[str, Preference]
@@ -354,58 +327,11 @@ class Resolver:
             and (self.confident is None or self.confident(name, fields[name], decision))
         ]
 
-    def _lone_offers(self, named: frozenset[str]) -> frozenset[str]:
-        """The Offers of the target each of whose sources (`_source`) other than `named` states one alone: a source's
-        one Offer of the item is its offer, the variant the page shows (resolution spec, Atomic offers). A source
-        listing several states which of them each is by its sku or gtin."""
-        by_source: dict[str, list[str]] = {}
-        for offer in self.graph.offers(self.target):
-            by_source.setdefault(source_of(offer.id), []).append(offer.id)
-        return frozenset(o[0] for source, o in by_source.items() if len(o) == 1 and source not in named)
-
-    def _shown_offers(
-        self, fields: Mapping[str, FieldSpec], candidates: Sequence[Candidate], own: list[tuple[Candidate, FieldSpec]]
-    ) -> tuple[frozenset[str], frozenset[str]]:
-        """The Offers of the variant the target shows (variants spec): of the target's Offers and variants, those
-        whose sku or gtin (a field's or a row sub-field's) equals one of `own`, at most one per source, with every
-        other source's Offer stating the same sku or gtin as one of them (GS1 GTIN and a seller's SKU identify one
-        variant, whichever source states it); none when no unit matches or a source names two. Second, the Offers
-        whose sku or gtin names another variant than those: never the shown one's."""
-        ids = _variant_ids(fields)
-        stated = [
-            (unit, c, ids[c.field])
-            for c in candidates
-            if c.field in ids and isinstance(c.normalized, Ok) and (unit := self._unit(c)) is not None
-        ]
-        matched = _shown_units(stated, own)
-        other = {unit for unit, _, _ in stated if own and unit not in matched}
-        return self._offers_of(matched), self._offers_of(other)
-
-    def _offers_of(self, units: set[str]) -> frozenset[str]:
-        return frozenset(offer for unit in units for offer in self._unit_offers(unit))
-
-    def _unit_offers(self, unit: str) -> frozenset[str]:
-        """A variant's Offers, or the one Offer `unit` is."""
-        held = self.graph.entities[unit]
-        return frozenset(o.id for o in self.graph.offers(held)) if held.via == VARIANT else frozenset({held.id})
-
-    def _unit(self, candidate: Candidate) -> str | None:
-        """The variant or Offer of the target that holds the candidate: a `hasVariant` member, or an Offer of the
-        target itself; None for any other owner."""
-        owner = self.graph.owner_of(candidate)
-        if self.graph.is_a(owner, OFFER) and owner.parent is not None:
-            holder = self.graph.entities[owner.parent]
-            return owner.id if holder.id == self.target.id else self._variant_id(holder)
-        return self._variant_id(owner)
-
-    def _variant_id(self, entity: Entity) -> str | None:
-        return entity.id if entity.via == VARIANT and entity.parent == self.target.id else None
-
     def _fill(self, spec: FieldSpec, candidates: Sequence[Candidate], preference: Preference) -> Preference:
         """Variant fill (variants spec): a gtin or sku field the target states nothing for (no candidate is the
         target's) takes its variants' candidates when every variant has one and all agree: the value is common to
         the variants. A value the target states is never replaced, and no other field is filled."""
-        if not self.detail or spec.type is not FieldType.IDENTIFIER or spec.scheme not in _VARIANT_IDS:
+        if not self.detail or spec.type is not FieldType.IDENTIFIER or spec.scheme not in VARIANT_IDS:
             return preference
         if any(self.graph.owned_by(c, self.target, page_values=self.page_values) for c in candidates):
             return preference
@@ -422,37 +348,6 @@ class Resolver:
         """The candidates the variant `member` holds itself that pass screening, as they would for it as a target."""
         own = [c for c in candidates if c.entity_id == member.id]
         return Resolver(self.graph, member, self.page, self.orders, page_values=False).screen(own)[0]
-
-    def _is_offer_field(self, spec: FieldSpec) -> bool:
-        # A field whose `schema_org` path starts at Offer (or a subtype), in every alternative, holds a part of an
-        # offer (§4.8).
-        return spec.schema_org is not None and all(
-            self.graph.vocabulary.is_a(path.root, OFFER) for path in parse_paths(spec.schema_org)
-        )
-
-    def _offer_of(self, candidate: Candidate) -> str | None:
-        owner = self.graph.owner_of(candidate)
-        return owner.id if self.graph.is_a(owner, OFFER) else None
-
-    def _anchor(self, offer_fields: Mapping[str, Sequence[Candidate]]) -> str | None:
-        """The Offer the page's offer fields come from (INV-15): the one holding kept candidates for the most of
-        them, the first seen on a tie; `None` when no Offer holds any."""
-        coverage: dict[str, int] = {}
-        for kept in offer_fields.values():
-            for offer in dict.fromkeys(o for c in kept if (o := self._offer_of(c)) is not None):
-                coverage[offer] = coverage.get(offer, 0) + 1
-        return max(coverage, key=coverage.__getitem__) if coverage else None
-
-
-def _variant_ids(fields: Mapping[str, FieldSpec]) -> dict[str, FieldSpec]:
-    """The sku and gtin fields, a row-mapped field's sub-fields (`<field>.<sub-field>`) included, by candidate field."""
-    specs = dict(fields)
-    for name, spec in fields.items():
-        if spec.item is not None and spec.item.fields is not None:
-            specs.update({f"{name}.{sub}": sub_spec for sub, sub_spec in spec.item.fields.items()})
-    return {
-        name: spec for name, spec in specs.items() if spec.type is FieldType.IDENTIFIER and spec.scheme in _VARIANT_IDS
-    }
 
 
 def intent_ambiguous(schema: SchemaDef, candidates: Sequence[Candidate]) -> dict[str, Preference]:
@@ -541,7 +436,7 @@ def _published(
     spec: FieldSpec, top: Group, kept: list[Candidate], rejected: list[Rejection], flag: str | None
 ) -> Chosen:
     """The best group's best member publishes, the others of its value agree, and every other value is outscored."""
-    chosen = _largest_renditions(top, _secure_first(top.best, spec), spec)
+    chosen = _image_choice(top, spec)
     agreeing = tuple(c for c in top.members if c is not chosen)
     lower = [(c, OUTSCORED) for c in kept if not any(c is m for m in top.members)]
     return Chosen(chosen, agreeing, (*rejected, *lower), tuple(kept), flag)
@@ -585,20 +480,6 @@ def _currency_unknown(candidate: Candidate) -> Candidate:
     return candidate.model_copy(update={"normalized": Ok(value, basis="unknown", checked=checked)})
 
 
-def _secure_first(candidates: Sequence[Candidate], spec: FieldSpec) -> Candidate:
-    """Of candidates that agree or are renditions of one file, those whose URLs all use `https` if any, else all: a
-    rendition over `http` beside its `https` twin names the same file (`resource_key`), and `https` reaches it over
-    TLS (RFC 9110 §4.2.2), so the page's secure statement of it publishes. Of a single image's renditions the largest
-    publishes (`url.largest_rendition`), else the first."""
-    if rule_type(spec) is not FieldType.IMAGE_URL:
-        return candidates[0]
-    secure = [c for c in candidates if _secure(value_of(c))] or list(candidates)
-    values = [value_of(c) for c in secure]
-    if spec.type is FieldType.IMAGE_URL and all(isinstance(v, str) for v in values):
-        return secure[url.largest_rendition([v for v in values if isinstance(v, str)])]
-    return secure[0]
-
-
 # A locator of one item of a list (`…['image'][2]`): the list's own locator, and the item's index.
 _LIST_ITEM = re.compile(r"(.+)\[(\d{1,9})\]")
 
@@ -626,21 +507,27 @@ def _first_listed(spec: FieldSpec, best: Sequence[Group]) -> Group | None:
     return min(found, key=lambda item: item[2])[0]
 
 
-def _largest_renditions(top: Group, chosen: Candidate, spec: FieldSpec) -> Candidate:
-    """The image value of the best group with each file at the largest rendition any member states: the members name
-    the same files (`resource_key`), so the sources' weights settle which files the image is, and the rendition the
-    page also states larger publishes (`url.preferred_rendition`), whichever source states it. A scalar publishes the
-    member stating it; a list the chosen candidate with those renditions. Any other value is `chosen`."""
-    if rule_type(spec) is not FieldType.IMAGE_URL or len(top.members) == 1:
+def _image_choice(top: Group, spec: FieldSpec) -> Candidate:
+    """The member of the best group that publishes. For an image value, of the members of the group's score the secure
+    one (`images.preferred_value`), with each file at the largest rendition any member states
+    (`images.largest_of_each`): the members name the same files (`resource_key`), so the sources' weights settle which
+    files the image is, and the rendition the page also states larger publishes, whichever source states it. A scalar
+    publishes the member stating it; a list the chosen candidate with those renditions. Any other value is the first
+    member of the score."""
+    best = top.best
+    if rule_type(spec) is not FieldType.IMAGE_URL:
+        return best[0]
+    chosen = best[images.preferred_value([value_of(c) for c in best], single=spec.type is FieldType.IMAGE_URL)]
+    if len(top.members) == 1:
         return chosen
     members = [chosen, *(c for c in top.members if c is not chosen)]
-    stated = [_image_list(value_of(c)) for c in members]
-    lists = [images for images in stated if images is not None]
+    stated = [images.image_list(value_of(c)) for c in members]
+    lists = [found for found in stated if found is not None]
     if len(lists) != len(members):
         return chosen
-    largest = _at_largest(lists[0], lists[1:])
+    largest = images.largest_of_each(lists[0], lists[1:])
     if spec.type is FieldType.IMAGE_URL:
-        return next((c for c, images in zip(members, lists, strict=True) if images == largest), chosen)
+        return next((c for c, found in zip(members, lists, strict=True) if found == largest), chosen)
     if largest == lists[0]:
         return chosen
     return _listing(chosen, list(largest), members)
@@ -669,24 +556,6 @@ def _writings(candidate: Candidate) -> list[tuple[JsonValue, JsonValue]]:
     return [(value, published)]
 
 
-def _at_largest(images: list[str], others: Sequence[list[str]]) -> list[str]:
-    """Each of `images`, in its order, at its largest rendition among `others`' renditions of its file
-    (`url.same_file`), whatever position they list it at."""
-    renditions = [[item, *(r for listed in others for r in listed if url.same_file(item, r))] for item in images]
-    return [url.preferred_rendition(found) for found in renditions]
-
-
-def _image_list(value: JsonValue) -> list[str] | None:
-    """An image value as its URLs, a scalar as one; None when an item is no URL string."""
-    items = value if isinstance(value, list) else [value]
-    return [item for item in items if isinstance(item, str)] if all(isinstance(i, str) for i in items) else None
-
-
-def _secure(value: JsonValue) -> bool:
-    items = value if isinstance(value, list) else [value]
-    return all(isinstance(item, str) and urlsplit(item).scheme == _HTTPS for item in items)
-
-
 def _all_rejected(
     status: Literal["missing", "conflict"], reason: str, kept: list[Candidate], rejected: list[Rejection]
 ) -> Unpublished:
@@ -702,76 +571,3 @@ def _missing_reason(rejected: list[Rejection]) -> str:
 def _scalars(raw: Raw) -> Iterator[str]:
     """The raw value's strings and numbers as text: what could have been copied from a query parameter."""
     return (value if isinstance(value, str) else json.dumps(value) for _, value in scalars(raw))
-
-
-def load_precedence(path: Path) -> dict[FieldType, tuple[SourceKind, ...]]:
-    """The orders of a `source_precedence.yaml`: fitted once (frozen engine data, evaluation spec), with one order per
-    precedence type."""
-    document = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(document, dict) or document.get("source_split") != "dev":
-        raise ValueError(
-            f"{PRECEDENCE_FILE}: not a mapping stamped `source_split: dev`; the order is fitted on dev only"
-        )
-    orders = parse_orders(document)
-    typed: dict[FieldType, tuple[SourceKind, ...]] = {}
-    for type_ in sorted(PRECEDENCE_TYPES):
-        if type_.value not in orders:
-            raise ValueError(f"{PRECEDENCE_FILE}: no order for {type_.value}")
-        typed[type_] = orders.pop(type_.value)
-    if orders:
-        raise ValueError(f"{PRECEDENCE_FILE}: {sorted(orders)} rank by agreement, not by an order")
-    return typed
-
-
-def parse_orders(document: object) -> dict[str, tuple[SourceKind, ...]]:
-    """Every top-level key but the stamp names a field type and holds its list of source kinds."""
-    if not isinstance(document, dict):
-        raise ValueError(f"{PRECEDENCE_FILE} is not a mapping")
-    orders: dict[str, tuple[SourceKind, ...]] = {}
-    for type_, order in document.items():
-        if type_ in STAMP:
-            continue
-        if not isinstance(order, list) or not all(isinstance(kind, str) for kind in order):
-            raise ValueError(f"{PRECEDENCE_FILE}: {type_} is not a list of source kinds")
-        if unknown := sorted(set(order) - _SOURCE_KINDS):
-            raise ValueError(f"{PRECEDENCE_FILE}: {type_} names an unknown source kind {unknown}")
-        orders[str(type_)] = cast(tuple[SourceKind, ...], tuple(order))
-    return orders
-
-
-def _names(candidate: Candidate, spec: FieldSpec, ids: Sequence[tuple[Candidate, FieldSpec]]) -> bool:
-    """Whether a sku or gtin candidate states one of `ids` of its own scheme."""
-    return any(spec.scheme == o_spec.scheme and same_value(candidate, o, spec) for o, o_spec in ids)
-
-
-_Stated = tuple[str, Candidate, FieldSpec]  # a variant or Offer, one sku or gtin candidate of it, and its field
-
-
-def _shown_units(stated: Sequence[_Stated], own: Sequence[tuple[Candidate, FieldSpec]]) -> set[str]:
-    """The variants and Offers whose sku or gtin is one of `own`, one per source, and the one of each other source
-    stating the same sku or gtin as them; none when a source names two (`_one_each`)."""
-    matched = {unit for unit, c, spec in stated if _names(c, spec, own)}
-    if not matched or _one_each(matched) != matched:
-        return set()
-    named = {source_of(unit) for unit in matched}
-    held = [(c, spec) for unit, c, spec in stated if unit in matched]
-    return matched | _one_each({u for u, c, spec in stated if source_of(u) not in named and _names(c, spec, held)})
-
-
-def _one_each(units: set[str]) -> set[str]:
-    """The units whose source (`_source`) names no other of them: a source naming two variants names none."""
-    sources = [source_of(unit) for unit in units]
-    return {unit for unit, source in zip(units, sources, strict=True) if sources.count(source) == 1}
-
-
-# The collectors whose entity ids name the document they read after the collector (`<collector>:<document>:<path>`):
-# an adapter's answer (`adapter:<name>:`), and a JSON-LD script block (`jsonld:<block>:`), each a JSON-LD document of
-# its own (JSON-LD 1.1 §7.1: a script element embeds one document), often written by another producer than the page's.
-_DOCUMENTS = frozenset({"adapter", "jsonld"})
-
-
-def source_of(entity_id: str) -> str:
-    """The source an entity id names (`resolve.identity`): its collector, and for an adapter or a JSON-LD block the
-    document it reads (`_DOCUMENTS`), so two adapters' answers, or two blocks, are two sources."""
-    collector, _, rest = entity_id.partition(":")
-    return f"{collector}:{rest.partition(':')[0]}" if collector in _DOCUMENTS else collector

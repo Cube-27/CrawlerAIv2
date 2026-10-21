@@ -11,7 +11,7 @@ from functools import partial
 
 from pydantic import JsonValue
 
-from crawlerai.normalize import count, date, enum, identifier, location, money, number, numbers, text, url
+from crawlerai.normalize import count, date, enum, identifier, images, location, money, number, numbers, text, url
 from crawlerai.normalize import range as range_
 from crawlerai.normalize.base import (
     BASES,
@@ -162,14 +162,14 @@ def equality_key(value: JsonValue, spec: FieldSpec) -> Hashable | None:
 
 
 def resource_key(value: JsonValue, spec: FieldSpec) -> Hashable | None:
-    """The file an image_url value names, its scheme and query aside (`url.resource_key`: a query that varies how an
+    """The file an image_url value names, its scheme and query aside (`images.resource_key`: a query that varies how an
     image is served), and a list of images' files as the set of the files it names: a list is a set of values, in no
     significant order (JSON-LD 1.1 §4.3.1), and two renditions of one file in it name that file once. `None` for other
     types. A page URL's query often names a variant (variants spec), so url has none."""
     if spec.type is FieldType.LIST and isinstance(value, list):
         keys = [resource_key(item, _item(spec)) for item in value]
         return None if not keys or None in keys else ("resources", frozenset(keys))
-    return url.resource_key(value) if spec.type is FieldType.IMAGE_URL else None
+    return images.resource_key(value) if spec.type is FieldType.IMAGE_URL else None
 
 
 def _list_key(items: list[JsonValue], item: FieldSpec) -> Hashable | None:
@@ -200,7 +200,7 @@ def checkable(raw: Raw, spec: FieldSpec) -> bool:
 def _list(raw: Raw, item: FieldSpec, ctx: Context) -> NormalizeResult:
     """normalization spec: `Ok` with the items that normalize, the others dropped and reported; with none, the list
     declines. A single value stands for a list of one (JSON-LD 1.1 §4.3.1: a value and an array of it are the same).
-    A list of images keeps each file once (`url.distinct_files`)."""
+    A list of images keeps each file once (`images.distinct_files`)."""
     items = raw if isinstance(raw, list) else [raw]
     if not items:
         return Invalid("empty")
@@ -217,8 +217,8 @@ def _list(raw: Raw, item: FieldSpec, ctx: Context) -> NormalizeResult:
             reasons.append(f"[{i}]: {result.reason}")
     if kept:
         values = [r.value for r in kept]
-        # One file is one image (`url.resource_key`): a list names each once, by its largest rendition.
-        value = url.distinct_files(values) if item.type is FieldType.IMAGE_URL else values
+        # One file is one image (`images.resource_key`): a list names each once, by its largest rendition.
+        value = images.distinct_files(values) if item.type is FieldType.IMAGE_URL else values
         # A list is as checked as its least checked item, and its currency evidence is its weakest item's (`Ok`).
         return Ok(
             value,

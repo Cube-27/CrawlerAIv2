@@ -28,16 +28,12 @@ from crawlerai.collect.property_values import labelled_values
 from crawlerai.collect.schema_org_map import Typed, Value, entity, field_candidates
 from crawlerai.collect.vocabulary import NAMESPACES, Vocabulary, schema_term
 from crawlerai.content.page import ParsedPage
-from crawlerai.core.json_text import parse
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef
 
 # JSON-LD 1.1 §4.2: the keyword of a value object, which holds a scalar.
 _VALUE: Final = "@value"
 
-# The JSON-LD media type (JSON-LD 1.1, IANA considerations); HTML embeds JSON-LD in a script element of that type
-# (JSON-LD 1.1 §7.3).
-MEDIA_TYPE = "application/ld+json"
 # A context naming schema.org by its namespace, with or without the trailing slash (schema.org's published form).
 _CONTEXTS = frozenset(n.rstrip("/") for n in NAMESPACES)
 _CONTEXT_KEY = "@context"  # JSON-LD 1.1 §3.1
@@ -262,12 +258,13 @@ def _scalars(written: JsonValue) -> Iterator[JsonValue]:
 
 
 def blocks(page: ParsedPage, diagnostics: list[str]) -> Iterator[tuple[int, JsonValue]]:
-    """Each `application/ld+json` block's JSON with its index; an invalid block is skipped with a diagnostic."""
-    for index, script in enumerate(s for s in page.scripts if s.type == MEDIA_TYPE):
-        try:
-            yield index, parse(script.text, lenient=True)
-        except ValueError as e:
-            diagnostics.append(f"jsonld:{index}: invalid JSON ({e})")
+    """Each `application/ld+json` block's JSON with its index (`ParsedPage.json_ld`); an invalid block is skipped with a
+    diagnostic."""
+    for index, block in enumerate(page.json_ld):
+        if block.error is None:
+            yield index, block.document
+        else:
+            diagnostics.append(f"jsonld:{index}: invalid JSON ({block.error})")
 
 
 def _member_via(holder: _Object, key: str, via: str | None) -> str | None:

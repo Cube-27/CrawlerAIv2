@@ -273,7 +273,7 @@ URL published resolved and canonicalized.) Refs: §9, D-0287–D-0290, D-0257–
 ### Requirement: list and object
 A list SHALL be `Ok` when at least one item normalizes, reporting dropped items; an object declines when a required
 sub-field declines (`normalize/dispatch.py`). A list of `image_url` items names each file (`resource_key`) once, at its
-first rendition's place, as its largest rendition over `https` (`url.distinct_files`): the largest number a rendition's
+first rendition's place, as its largest rendition over `https` (`images.distinct_files`): the largest number a rendition's
 size statement holds (the path's size parts, and decimal values of query parameters every rendition states that differ
 between them), ranked only when every rendition states one, else the first. A `%3F` written into the path ends the
 file's name (`same_file`). (Previously: renditions of one file were kept as separate items.)

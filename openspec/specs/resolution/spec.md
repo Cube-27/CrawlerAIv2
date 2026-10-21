@@ -41,7 +41,7 @@ Candidates stating one value (equal after normalization; for images, renditions 
 authority and path without the size, conversion and options the path states, any scheme or query (a `%3F` written
 into the path ends the file's name), an image proxy URL naming the file its `url` parameter names, a list's as the set
 of its files) form a group scored by its best member; of those members the first publishes, for images the `https` ones
-(else all), with each file at the largest rendition any member states (`url.preferred_rendition`): a single image
+(else all), with each file at the largest rendition any member states (`images.preferred_rendition`): a single image
 publishes the member stating it, a list the first member's files, in its order, each at its largest rendition wherever
 another member lists it. Image values that tie for the best score as items of one list of one node publish its first
 item (an array is ordered, RFC 8259 §1). The candidates of every other value are rejected `outscored`, and a field whose

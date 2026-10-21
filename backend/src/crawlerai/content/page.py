@@ -1,9 +1,9 @@
 """One parsed page per capture (INV-26; extraction spec).
 
 The body is decoded once and parsed at most once per parser: selectolax on first use, lxml only when an XPath step or
-trafilatura asks for it. The script blocks, the cleaned text and the visibility index are derived once from the
-selectolax tree; the captured network bodies are kept as the bundle holds them. Every consumer (collectors, content
-formats, pagination, the engine executor) takes a `ParsedPage`, never the raw body.
+trafilatura asks for it. The script blocks, their JSON-LD documents, the cleaned text and the visibility index are
+derived once from the selectolax tree; the captured network bodies are kept as the bundle holds them. Every consumer
+(collectors, content formats, pagination, the engine executor) takes a `ParsedPage`, never the raw body.
 """
 
 import itertools
@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from functools import cached_property
 
 from lxml import html as lxml_html
+from pydantic import JsonValue
 from selectolax import lexbor
 
 from crawlerai.acquire.items import Group, item_groups, lxml_root
@@ -20,6 +21,7 @@ from crawlerai.content.attr_json import DOCUMENTED, SELECTOR
 from crawlerai.content.fragments import FRAME_HEADER, Answers, append, declares_frames, include, is_partial
 from crawlerai.content.segment import rank
 from crawlerai.content.text import CleanedText, VisibleIndex, render, script_revealed, xpath_step
+from crawlerai.core.json_text import parse
 from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, decode_body, decode_html, is_html
 
 # HTML Standard §4.12.3: a `template` whose `shadowrootmode` is `open` or `closed` is a declarative shadow root.
@@ -42,6 +44,19 @@ class ScriptBlock:
     type: str
     text: str
     xpath: str
+
+
+# The JSON-LD media type (JSON-LD 1.1, IANA considerations); HTML embeds JSON-LD in a script element of that type
+# (JSON-LD 1.1 §7.3).
+JSON_LD = "application/ld+json"
+
+
+@dataclass(frozen=True)
+class JsonLdBlock:
+    """An `application/ld+json` block as JSON: its document, or why it is no JSON text (`error`, the document None)."""
+
+    document: JsonValue
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -119,6 +134,20 @@ class ParsedPage:
                 media_type = (attributes.get("type") or "").split(";", 1)[0].strip().lower()
                 blocks.append(ScriptBlock(type=media_type, text=node.text(deep=True), xpath=node_xpath(node)))
         return tuple(blocks)
+
+    @cached_property
+    def json_ld(self) -> tuple[JsonLdBlock, ...]:
+        """The page's JSON-LD blocks in document order, each parsed once for every reader (the JSON-LD collector, the
+        `metadata` format). Raw control characters inside strings and a number with leading zeros are read as
+        `core.json_text.parse` reads them (RFC 8259 §9: a parser may accept extensions)."""
+        found: list[JsonLdBlock] = []
+        for script in self.scripts:
+            if script.type == JSON_LD:
+                try:
+                    found.append(JsonLdBlock(parse(script.text, lenient=True)))
+                except ValueError as e:
+                    found.append(JsonLdBlock(None, str(e)))
+        return tuple(found)
 
     @cached_property
     def json_attributes(self) -> tuple[AttributeBlock, ...]:
