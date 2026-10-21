@@ -18,7 +18,9 @@ one most specific type), and entities of one most specific type that share an id
 intent (`resolve/identity.py`); the merged entity holds every member's types, most specific first. (Previously: an IRI
 joined entities of one most specific type only.) The root
 of an identity-checked data call's answer (acquisition spec "Data calls") SHALL be one entity with the page's single
-root entity of its most specific type, and stay apart when the page states none or several.
+root entity of its most specific type, and stay apart when the page states none or several; one of a repeated set of
+microdata items (three or more sibling elements of one shape: a carousel, a comparison table) is not counted, as intent
+reads it as another page's item.
 `select_target` SHALL pick one primary-type entity (`resolve/intent.py`) or none, which makes every field
 `conflict`/`intent_ambiguous`; a detail page's related items and its product's group do not make intent ambiguous
 (D-1151), nor does the item a primary entity's review or rating names (`itemReviewed`), which is that entity;
@@ -36,6 +38,10 @@ D-1291, D-1379.
 - **WHEN** a detail page's JSON-LD Product has no identifier and its identity-checked Shopify product JSON states the
   sku and price on its variants
 - **THEN** the page has one target, owning the JSON-LD description and the JSON's price and variant sku
+#### Scenario: A comparison table beside the page's product
+- **WHEN** a detail page states a JSON-LD Product, its identity-checked product JSON, and a comparison table of
+  microdata Products, the first of which names the page URL
+- **THEN** the JSON joins the JSON-LD Product, which is the target, and intent is not ambiguous
 #### Scenario: A product group and a product under one IRI
 - **WHEN** a JSON-LD ProductGroup and a separate JSON-LD Product with an `aggregateRating` state one `@id`
 - **THEN** they are one target, which owns the rating; a WebPage, an Organization and a Thing under one `@id` stay apart

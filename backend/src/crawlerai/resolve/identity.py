@@ -17,7 +17,8 @@ The root of an identity-checked data call's answer (`Entity.requested`, acquisit
 requested item by construction, though it may name it by no identifier the page's markup states (Shopify's product
 JSON holds its sku and barcode on its variants only): it is the page's one root item of its most specific type, when
 the page states exactly one and that root is the page's own (it names no other document than the page's,
-`scope.leads_elsewhere`); of none or several, or another page's item, it stays apart.
+`scope.leads_elsewhere`); of none or several, or another page's item, it stays apart. One of a repeated set of items in
+the markup (a carousel, a comparison table: `repeated`) is another page's item, as intent reads it, and is not counted.
 Every pair that agrees joins, so two later entities that agree join even when an earlier one stays apart. Two members
 of product groups never join (two variants sharing a sku are two sizes of one sku, variants spec INV-33), nor does an
 entity join its own ancestor. The merged entity is the group member when there is one, else the first in collector
@@ -31,8 +32,9 @@ holding it: a held group stands beside the Product as a root first, so the Produ
 else becomes a member.
 """
 
-from collections import defaultdict
-from collections.abc import Iterator, Mapping, Sequence
+import re
+from collections import Counter, defaultdict
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from itertools import combinations
 from typing import Final
@@ -53,6 +55,12 @@ _GROUP_ID: Final = "productGroupID"  # `schema_org_map.identity`
 _VARIANT_OF: Final = "isVariantOf"
 _IRI: Final = "@id"
 _URL: Final = "url"
+# Microdata entities are addressed by their element's XPath (`collect.microdata`): items whose paths differ only in
+# their positions (XPath 1.0 §2.4 `[n]` predicates) are sibling elements of one shape, rendered by one template as one
+# list's items, as an ItemList's are. At least this many make a list, as `acquire.items.MIN_ITEMS`.
+_MICRODATA: Final = "microdata:"
+_POSITION: Final = re.compile(r"\[\d+\]")
+_MIN_REPEATED: Final = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,12 +141,22 @@ def _is_a(entity: Entity, type_: str, vocabulary: Vocabulary) -> bool:
     return any(vocabulary.is_a(t, type_) for t in entity.types)
 
 
+def repeated(entities: Iterable[Entity]) -> frozenset[str]:
+    """The ids of the entities that are one of `_MIN_REPEATED` or more microdata items of one shape (`_MICRODATA`)."""
+    shapes = {e.id: _POSITION.sub("", e.id) for e in entities if e.id.startswith(_MICRODATA)}
+    counts = Counter(shapes.values())
+    return frozenset(id_ for id_, shape in shapes.items() if counts[shape] >= _MIN_REPEATED)
+
+
 def _join_requested(eligible: Sequence[Entity], sets: "_Sets", documents: Documents) -> None:
     """Join each identity-checked data call's root (`Entity.requested`) to the page's one root item of its type, when
-    the page states exactly one and that root is the page's own (module docstring)."""
+    the page states exactly one, not counting a repeated set's items, and that root is the page's own (module
+    docstring)."""
     for i, e in enumerate(eligible):
         if e.requested and e.parent is None:
-            roots = {sets.find(j): o for j, o in enumerate(eligible) if _root(o, e.types[0])}
+            typed = [(j, o) for j, o in enumerate(eligible) if _root(o, e.types[0])]
+            apart = repeated(o for _, o in typed)
+            roots = {sets.find(j): o for j, o in typed if o.id not in apart}
             if len(roots) == 1:
                 (j, root), *_ = roots.items()
                 if not leads_elsewhere(root, documents):

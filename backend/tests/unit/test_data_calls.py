@@ -144,3 +144,10 @@ def test_a_documented_answer_is_the_page_products_own_entity() -> None:
     # A sole root Product whose URL is another page's is another item: the answer stays apart from it.
     elsewhere = Entity(id="jsonld:0:$", types=("Product",), urls=(), parent=None, item_urls=(f"{HOST}/products/other",))
     assert not EntityGraph.of((elsewhere, *reads[1].entities), VOCABULARY, (page,)).aliases
+    # A comparison table's microdata Products (one shape, repeated) are other items, not more roots of the page's own.
+    table = (
+        Entity(id=f"microdata:/html[1]/body[1]/table[1]/tr[1]/th[{n}]", types=("Product",), urls=(), parent=None)
+        for n in (1, 2, 3)
+    )
+    beside = EntityGraph.of((*reads[0].entities, *table, *reads[1].entities), VOCABULARY, (page,))
+    assert set(beside.aliases.values()) == {reads[0].entities[0].id}
