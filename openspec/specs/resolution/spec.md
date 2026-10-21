@@ -45,9 +45,8 @@ of its files) form a group scored by its best member; of those members the first
 publishes the member stating it, a list the first member's files, in its order, each at its largest rendition wherever
 another member lists it. Image values that tie for the best score as items of one list of one node publish its first
 item (an array is ordered, RFC 8259 §1). The candidates of every other value are rejected `outscored`, and a field whose
-kept
-candidates state other values publishes with the disagreement flag as its reason (`disagree`, or `offers_disagree` /
-`offer_split` for an offer field). A list of the item's facts (its items neither lists, objects, urls nor images: a
+kept candidates state other values publishes with the disagreement flag as its reason (`disagree`, or `offers_disagree`
+/ `offer_split` for an offer field). A list of the item's facts (its items neither lists, objects, urls nor images: a
 job's places) publishes instead every member its values scoring above 0 state, the best value's first: two sources stating
 different members state more of the item, not rival values. A member equal to one already listed is that one, and a
 location the page writes as text alone that names a listed place's locality (its region when it states none: "Austin"
