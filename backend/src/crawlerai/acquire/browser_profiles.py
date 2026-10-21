@@ -84,13 +84,14 @@ def open_profile(root: Path | None, name: str | None) -> Profile:
     lock = None if root is None or name is None else _locked(root, name)
     if root is not None and name is not None and lock is not None:
         profile = Profile(root / name, lock)
-        for cache in _CACHES:
-            shutil.rmtree(profile.directory / cache, ignore_errors=True)
     else:
         profile = Profile(Path(tempfile.mkdtemp(prefix=_TEMPORARY_PREFIX)), None)
     try:
+        if profile.lock is not None:
+            for cache in _CACHES:
+                shutil.rmtree(profile.directory / cache, ignore_errors=True)
         _set_webrtc_policy(profile.directory)
-    except OSError:
+    except BaseException:  # any failure releases the lock, as no caller holds the profile yet
         profile.close()
         raise
     return profile

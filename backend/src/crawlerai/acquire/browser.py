@@ -306,6 +306,13 @@ class _Profiles:
             self._closing.add(task)
             task.add_done_callback(self._closing.discard)
 
+    def forget(self, context: _Context) -> None:
+        """Drop `context` from the idle profiles: its browser closed unasked, so no page may take it."""
+        for key, idle in tuple(self.idle.items()):
+            if idle is context:
+                del self.idle[key]
+                self._stop_timer(key)
+
     def _stop_timer(self, key: _ContextKey) -> None:
         timer = self._timers.pop(key, None)
         if timer is not None:
@@ -733,6 +740,7 @@ async def _open_context(
 def _closed(session: BrowserSession, held: _Context) -> None:
     """A profile's browser closed: unasked, it crashed or was killed."""
     if not held.closing:
+        session.profiles.forget(held)
         session.profiles.crashed = True
 
 
