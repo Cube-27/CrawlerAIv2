@@ -19,14 +19,19 @@ _TEXT = "line one\nlíne twö — €\n"
 _ROWS = (
     b'0:["$","$L1",null,{"children":"$@2"}]\n'
     b'1:I["chunk-1",["a.js"],"Price"]\n'
-    b'2:{"name":"Lamp","price":"$$19.99","currency":"EUR","desc":"$3"}\n'
+    b'2:{"name":"Lamp","price":"$$19.99","currency":"EUR","desc":"$3","since":"$D2026-01-02T00:00:00.000Z"}\n'
     + f"3:T{len(_TEXT.encode()):x},{_TEXT}".encode()
 )
 _BINARY_ROW = b'a:{"offers":[{"price":12.5}]}\n'
 _EXPECTED: list[tuple[str, str, JsonValue]] = [
-    ("0", "", ["$", "$L1", None, {"children": "$@2"}]),
+    # A reference or special value states no text of the page; a Date's text follows its tag.
+    ("0", "", [None, None, None, {"children": None}]),
     ("1", "I", '["chunk-1",["a.js"],"Price"]'),
-    ("2", "", {"name": "Lamp", "price": "$19.99", "currency": "EUR", "desc": "$3"}),
+    (
+        "2",
+        "",
+        {"name": "Lamp", "price": "$19.99", "currency": "EUR", "desc": None, "since": "2026-01-02T00:00:00.000Z"},
+    ),
     ("3", "T", _TEXT),
     ("a", "", {"offers": [{"price": 12.5}]}),
 ]

@@ -7,8 +7,9 @@ Accepts:
 - a string, from the DOM or an LLM: the one number in it ("In stock (5 available)" is 5), read by the Unicode CLDR
   number symbols of the locales the page and the request state.
 
-Nothing is defaulted (C7): a fraction, a negative number, a range, another unit, a text with no number or two numbers
-is `Invalid`; a number the page's locales read as different values is `Ambiguous`.
+Nothing is defaulted (C7): a fraction, a negative number, a range, another unit, a number written in a CLDR compact
+form (`1K+`, `2,5 Mio.`: a rounded magnitude, not a count), a text with no number or two numbers is `Invalid`; a number
+the page's locales read as different values is `Ambiguous`.
 """
 
 import unicodedata
@@ -108,6 +109,8 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
         return Invalid(found)
     if numbers.negated(found.before):
         return Invalid("negative")
+    if numbers.compact(found.after):
+        return Invalid("compact")  # `1K+ reviews` states a rounded magnitude, not the count (CLDR compact decimals)
     values = numbers.readings(found.written, numbers.locale_set(ctx), ctx.page_convention)
     if not values:
         return Invalid("not_a_count")  # a run no CLDR convention parses strictly ("1,2,3")

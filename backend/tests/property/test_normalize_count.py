@@ -53,6 +53,8 @@ def test_the_one_number_in_a_text_is_its_count(n: int) -> None:
         (2.5, "not_a_whole_number"),
         ("0.5", "not_a_whole_number"),
         ("3 of 10 left", "several_numbers"),
+        ("1K+ reviews", "compact"),
+        ("2,5 Mio.", "compact"),
         ("In stock", "no_number"),
         ("5 \ud800", "surrogate"),
         (True, "not_a_count"),
