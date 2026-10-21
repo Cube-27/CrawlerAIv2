@@ -7,8 +7,8 @@ it fixes a site.
 
 ## Before you start
 
-- What is in progress and what is next: `openspec/design/architecture-v3.md` §(f) (the ordered PR list) and any
-  change folder in `openspec/changes/`.
+- What is built, frozen and still open: `HANDOVER.md`. The last plan and its status: `docs/agents/plan.md`; any
+  in-flight change folder is in `openspec/changes/`.
 - The current behaviour, as requirements: `openspec/specs/<capability>/spec.md`, invariants (`INV-NN`) included.
 - One PR covers a batch of related tasks of one change (`openspec/changes/<change-id>/tasks.md`): one branch, one PR
   (`CLAUDE.md`). New work starts as a change folder (proposal, tasks, spec deltas); a PR that completes a change
@@ -31,7 +31,7 @@ fails if one appears in a workflow, a hook or a tool config.
 
 - Title in Conventional Commits form: `type(scope): subject`, for example
   `feat(normalize): decline ambiguous dollar symbols`.
-- Fill in `.github/pull_request_template.md`: why, what changed, scope, verification, the evaluation report and
+- Fill in `.github/pull_request_template.md`: why, what changed, scope, verification, the e2e report and
   decisions. Behaviour changes come with a spec delta in the change folder.
 - Tests come first: behaviour tests, Hypothesis properties for normalizers, replays of stored captures for
   extraction. No test is named after a site or asserts one site's output (C9). Fixtures are synthetic and use
@@ -46,27 +46,34 @@ Every PR answers these (the template carries them):
   `tools/site_literal_allowlist.txt` is a C3 violation.
 - I did not add a list entry for a single page (C4, C5).
 - No §22 candidate implemented (C13).
-- Aggregate report attached, required if `collect/`, `normalize/`, `resolve/`, `llm/`, `config_ir/` or `acquire/`
-  changed: e2e delta per field type shown, no unexplained precision drop (C10).
+- Aggregate report attached, required if `collect/`, `normalize/`, `resolve/`, `llm/`, `config_ir/`, `acquire/` or
+  `adapters/` changed: e2e delta per field type shown, no unexplained precision drop (C10).
 - Property or replay tests added, no site-named tests (C9).
 - Decisions recorded in the change's `design.md` or `openspec/decisions/log.md` (`openspec/decisions/README.md`).
 
-### Where the evaluation report comes from
+### The e2e report
 
-- **E2e run:** one run of the product over the eval set, which lives outside the repo with its scorer; paste the
-  aggregate per field type before and after, never per-page or per-site numbers.
-- **Generalization claims** come only from a fresh batch's first score, taken before any change is made on it (C1,
-  C10).
+A PR that changes extraction reports one e2e run on its final code (C1, C10). The procedure is in `HANDOVER.md`
+("Running the e2e") and the `evaluation` capability (`openspec/specs/evaluation/spec.md`):
 
-The `evaluation` capability (`openspec/specs/evaluation/spec.md`) defines the
-run, the scorer and the reports.
+1. Start from a fresh database (`docker compose -f infra/docker-compose.yml down -v`, then `make db migrate`;
+   `make migrate` alone keeps the existing data), the API and one worker, with the LLM enabled under a stated call
+   budget.
+2. Send every page of the eval set, which lives outside the repo with its scorer, as a user would, through the API.
+3. Score the run with the one scorer and adjudicate every disagreement against the run's capture: a wrong expected
+   value is corrected in the set, not counted against the engine.
+4. Paste the aggregate per field type (precision, coverage, n, wrong-product) before and after into the PR. Never
+   per-page or per-site numbers, hosts or URLs; a precision drop needs a stated reason, and a gain from fewer than 3
+   hosts is flagged.
+
+Generalization claims come only from a fresh batch's first score, taken before any change is made on it.
 
 ## Decisions and escalation
 
 Implementation choices within a change's scope are decided and logged (the change's `design.md` or
 `openspec/decisions/log.md`; listed in the PR body under `## Decisions`). Changes to `openspec/design/` (the
-former ARCHITECTURE.md), the contract, open owner items (`openspec/project.md`), §22 candidates, evaluation access and secrets
-are escalated to the owner. `CLAUDE.md` has the procedure.
+former ARCHITECTURE.md), the contract, open owner items (`openspec/project.md`), §22 candidates, evaluation access
+and secrets are escalated to the owner. `CLAUDE.md` has the procedure.
 
 ## Licensing and the public repo
 

@@ -3,8 +3,8 @@
 Clean, normalized, typed records from any website, for any schema, plus an executable per-site extraction config
 that a deterministic crawler can run.
 
-> **Status: implemented; accuracy is measured on the golden set only.** Work in progress: the frozen architecture
-> and its ordered PR list, [openspec/design/architecture-v3.md](openspec/design/architecture-v3.md) §(f).
+> **Status: architecture v3 built; handed over 2026-10-21.** Accuracy is measured only by the e2e run over an eval
+> set kept outside the repo. How to run it, what is frozen and what is open: [HANDOVER.md](HANDOVER.md).
 
 **Agents: read CLAUDE.md before changing anything.**
 
@@ -33,7 +33,8 @@ that a deterministic crawler can run.
 
 Two earlier versions did well on the sites they were tuned against and produced garbage on new ones. v2 is built
 around a [generalization contract](openspec/project.md#generalization-contract-c1c13):
-- accuracy is measured on a golden set that grows in fresh batches, each scored once before anyone fixes anything on it;
+- accuracy is measured by one e2e run over an eval set that grows in fresh batches, each scored once before anyone
+  fixes anything on it;
 - generic code may encode only standards, types and HTML structure;
 - site knowledge lives in data;
 - new mechanisms are admitted only when evaluation evidence calls for them.
@@ -45,15 +46,16 @@ capability, in-flight work as change folders (deleted once their deltas are appl
 
 | Document | Purpose |
 |---|---|
+| [HANDOVER.md](HANDOVER.md) | What the system is and is not, how to run it and the e2e, what is frozen, open items |
 | [CLAUDE.md](CLAUDE.md) | Rules for coding agents working in this repo, what to read, and every command |
 | [openspec/project.md](openspec/project.md) | Project context, the generalization contract C1–C13, open owner items |
 | [openspec/specs/](openspec/specs/) | The current behaviour, one `spec.md` of requirements per capability (invariants `INV-NN` included) |
-| [openspec/design/](openspec/design/overview.md) | Design rationale (goals, contract evidence, candidates register), the owner decisions, and [architecture-v3.md](openspec/design/architecture-v3.md): the frozen 2026-10-19 architecture and the current focus (its PR list) |
+| [openspec/design/](openspec/design/overview.md) | Design rationale (goals, contract evidence, candidates register), the owner decisions, and [architecture-v3.md](openspec/design/architecture-v3.md): the architecture as built (frozen 2026-10-19, rewritten in place 2026-10-21) |
 | [openspec/decisions/](openspec/decisions/README.md) | How decisions are logged, and the cross-cutting log |
 | [openspec/archive/](openspec/archive/README.md) | Superseded documents (the former backlog and open questions), kept for history |
 | [openspec/conventions/](openspec/conventions/) | `ENGINEERING.md` (engineering principles), `DESIGN.md` (frontend conventions), `RECURRING.md` (recurring agent mistakes) |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute: checks, pull requests, the evaluation report |
-| [docs/agents/](docs/agents/) | The agent workflow: orchestrator guide, builder protocol, the current plan |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute: checks, pull requests, the e2e report |
+| [docs/agents/](docs/agents/) | The agent workflow: orchestrator guide, builder protocol, the last plan and its status |
 | [.claude/skills/](.claude/skills/) | The `verify-*` checks and `/crawlerai-orchestrator` |
 
 ## Stack
@@ -98,8 +100,8 @@ openspec/               project context, capability specs, design, decisions, co
 ```
 
 The backend packages follow the pipeline: `acquire`, `collect`, `normalize`, `resolve`, `llm`, `config_ir`,
-`content`, `crawl`, `recurring`, `eval`, `api`, `mcp_server`, `worker`, `scheduler`, on top of `core`, `db`,
-`storage` and `schemas`.
+`content`, `crawl`, `recurring`, `search`, `api`, `mcp_server`, `worker`, `scheduler`, on top of `core`, `db`,
+`services`, `storage` and `schemas`; `adapters` holds the platform source adapters.
 
 ## License
 
