@@ -11,8 +11,8 @@ whose meaning the HTML Standard defines, for pages whose structured data leaves 
   when its words are one of the field's labels (`collect.labels`: its name, the schema.org property its path names,
   its description and the synonyms role S drafted for the schema), never words from a list in code (C4). Lines and
   sibling pairs repeat for the items a page lists besides its own (related products, variants, reviews), so a field
-  they give several values, or one value in three or more places, reads none from them; an identifier field that
-  pairs of any kind give two values reads none.
+  they give several values, or one value in each of three or more sibling blocks of one template, reads none from
+  them; an identifier field that pairs of any kind give two values reads none.
 - **Other items.** Values held by other items than the page's own are not read: schema.org microdata's related and
   similar items and reviews, sibling blocks that each link to one other document (a list of cards), and the card of
   any other item whose price the page shows (`product_apart`, also read by the description block). Nor is an
@@ -61,6 +61,8 @@ from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equality_key
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
+# XPath 1.0 §2.4: a step's position predicate (`[n]`).
+_POSITION = re.compile(r"\[\d+\]")
 # A label's end: a colon (U+003A, or the fullwidth U+FF1A that CJK text writes) after optional white space.
 _COLON = re.compile(r"\s*[:\uff1a]")
 
@@ -204,7 +206,7 @@ def _pairs_found(
             if kind in _REPEATING:
                 places.setdefault((name, raw), []).append(value)
     for (name, raw), value in found.items():
-        repeated = _apart_places(places.get((name, raw), ())) >= MIN_ITEMS and raw not in kinds.get((name, _TABLE), ())
+        repeated = _items_repeat(places.get((name, raw), ())) and raw not in kinds.get((name, _TABLE), ())
         if not repeated and _unambiguous(name, raw, kinds, schema.fields[name]):
             yield (
                 name,
@@ -214,20 +216,20 @@ def _pairs_found(
             )
 
 
-def _apart_places(values: Sequence[LexborNode]) -> int:
-    """How many of the elements giving one value hold none of the others: a value's wrappers read it too, so only the
-    innermost element of each place counts. Lines and sibling pairs giving one value in `MIN_ITEMS` or more places
-    repeat it for as many items (each review's `Reviews: 1`, as `acquire.items.MIN_ITEMS` counts a list), not the
-    page's own one value."""
-    holders = {a.mem_id for v in values for a in _ancestors(v)}
-    return len({v.mem_id for v in values if v.mem_id not in holders})
-
-
-def _ancestors(node: LexborNode) -> Iterator[LexborNode]:
-    parent = node.parent
-    while parent is not None:
-        yield parent
-        parent = parent.parent
+def _items_repeat(values: Sequence[LexborNode]) -> bool:
+    """Whether elements giving one value are `MIN_ITEMS` or more sibling items of one template: their XPaths differ only
+    in the position of one step (XPath 1.0 §2.4 `[n]`), so each is at the same place in another sibling block, as
+    `acquire.items.MIN_ITEMS` counts a list (each review's `Reviews: 1`). One value shown in other places of the
+    layout (a responsive copy) is the page's own."""
+    paths = {tuple(node_xpath(v).split("/")) for v in values}
+    if len(paths) < MIN_ITEMS:
+        return False
+    slots: dict[tuple[int, tuple[str, ...]], int] = {}
+    for steps in paths:
+        for depth, step in enumerate(steps):
+            key = (depth, (*steps[:depth], _POSITION.sub("", step), *steps[depth + 1 :]))
+            slots[key] = slots.get(key, 0) + 1
+    return max(slots.values()) >= MIN_ITEMS
 
 
 def _unambiguous(name: str, raw: str, kinds: Mapping[tuple[str, str], set[str]], spec: FieldSpec) -> bool:
