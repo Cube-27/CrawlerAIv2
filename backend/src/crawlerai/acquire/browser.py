@@ -86,11 +86,18 @@ __all__ = [
 ]
 
 # Patchright's documented setup (D-1204, D-1205): the full Chromium build (`chromium`), not the headless shell
-# Playwright picks for `headless=True` by default, run in Chromium's own headless mode, with its own user agent and
-# client hints and no custom headers, so the page, its workers and its requests all show one identity. Each browser runs
-# in a persistent profile with no fixed viewport (`no_viewport`), as Patchright's README sets it up, and no launch
-# argument: WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
+# Playwright picks for `headless=True` by default, run in Chromium's own headless mode, with its own client hints and
+# no custom headers. Each browser runs in a persistent profile with no fixed viewport (`no_viewport`), as Patchright's
+# README sets it up, and no launch argument: WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
 _CHANNEL = "chromium"
+# The one change to the browser's identity (owner #71 as amended 2026-10-21, INV-44): its own user agent, read from the
+# browser, with the token headless mode adds (`HeadlessChrome/`) named as a headed browser names it. Set as the
+# context's user agent, never the `--user-agent` launch switch.
+_HEADLESS_PRODUCT: Final = "HeadlessChrome/"
+_HEADED_PRODUCT: Final = "Chrome/"
+# The browser started only to read its user agent loads no page; anything it requests in the background goes to this
+# closed loopback port and fails, rather than around the guard (INV-16).
+_NOWHERE: Final = "socks5://127.0.0.1:9"
 # Chromium's implicit proxy-bypass rules (`ProxyBypassRules`, net/proxy_resolution) send `localhost`, 127.0.0.0/8,
 # [::1], 169.254.0.0/16 and fe80::/10 around any proxy; 169.254.169.254 is the cloud metadata address. The bypass rule
 # `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
@@ -301,9 +308,11 @@ class _Profiles:
 
 @dataclass(frozen=True)
 class BrowserSession:
-    """A Playwright driver, shared by the fetches of one worker process, and the site profiles it keeps open."""
+    """A Playwright driver, shared by the fetches of one worker process, the user agent its profiles send (the
+    browser's own, its headless token renamed), and the site profiles it keeps open."""
 
     playwright: Playwright
+    agent: str
     profiles: _Profiles = field(default_factory=_Profiles)
 
     @property
@@ -317,11 +326,21 @@ async def open_browser(profiles: Path | None = None) -> AsyncIterator[BrowserSes
     """The driver runs until the block ends; leaving it closes its profiles' browsers and the driver process. Site
     profiles are kept under `profiles` (`CRAWLERAI_BROWSER_PROFILES`); without it, each lasts while it is open."""
     async with async_playwright() as playwright:
-        session = BrowserSession(playwright, _Profiles(profiles))
+        session = BrowserSession(playwright, await _headed_agent(playwright), _Profiles(profiles))
         try:
             yield session
         finally:
             await session.profiles.aclose()
+
+
+async def _headed_agent(playwright: Playwright) -> str:
+    """The browser's own user agent (`Browser.getVersion`), its headless token replaced by the headed one."""
+    browser = await playwright.chromium.launch(channel=_CHANNEL, headless=True, proxy={"server": _NOWHERE})
+    try:
+        version = await (await browser.new_browser_cdp_session()).send("Browser.getVersion")
+    finally:
+        await browser.close()
+    return str(version["userAgent"]).replace(_HEADLESS_PRODUCT, _HEADED_PRODUCT, 1)
 
 
 class Failed(Exception):
@@ -684,6 +703,7 @@ async def _open_context(
             channel=_CHANNEL,
             headless=True,
             no_viewport=True,
+            user_agent=session.agent,
             proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK},
             accept_downloads=False,
             **locale,
