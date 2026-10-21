@@ -94,7 +94,7 @@ def test_a_complete_page_is_extracted_with_its_published_values() -> None:
 def test_a_page_stating_no_needed_field_beyond_its_own_address_has_no_record() -> None:
     """A maintenance or error page served for the URL: prose, and the page's own address, but nothing the record
     needs read from the page."""
-    address = _published(URL).model_copy(update={"derived_by": "final_url", "source_kind": "derived"})
+    address = _published(URL).model_copy(update={"derived_by": "canonical_link", "source_kind": "derived"})
     schema = _schema([["sku", "mpn"]])
     stating = {"sku": _published("A-1"), "gtin": _unpublished(), "mpn": _unpublished()}
 

@@ -963,7 +963,6 @@ class Basis(Enum):
 
 class DerivedBy(Enum):
     canonical_link = "canonical_link"
-    final_url = "final_url"
     absolutize = "absolutize"
 
 

@@ -165,10 +165,10 @@ def test_only_a_missing_field_is_derived(preference: Preference, canonical: str 
     result = fill(URL, preference, (), _resolver(), _CTX, canonical_url=canonical, page_url_field=page_url_field)
 
     missing = isinstance(preference, Unpublished) and preference.status == "missing"
-    if missing and page_url_field:
+    if missing and page_url_field and canonical is not None:
         assert isinstance(result, Derived)
-        assert result.derived_by == ("final_url" if canonical is None else "canonical_link")
-    else:
+        assert result.derived_by == "canonical_link"
+    else:  # the final URL is no page statement: without a canonical link nothing is derived
         assert result == preference
 
 

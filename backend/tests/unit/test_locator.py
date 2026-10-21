@@ -30,7 +30,6 @@ from crawlerai.collect.locator import InvalidLocator, Locator, parse_locator
         ("config:price:1:div.a > span:nth-child(2)", "config", ("price", "1", "div.a > span:nth-child(2)")),
         ("text:10-24", "text", ("10", "24")),
         ("derived:canonical_link", "derived", ("canonical_link",)),
-        ("derived:final_url", "derived", ("final_url",)),
     ],
 )
 def test_parse_reads_scheme_and_address_parts(text: str, scheme: str, parts: tuple[str, ...]) -> None:
@@ -67,7 +66,8 @@ def test_parse_reads_scheme_and_address_parts(text: str, scheme: str, parts: tup
         "text:-3-9",
         "derived:",
         "derived:absolutize",  # an absolutized value keeps its source candidate's locator
-        "derived:final_url:x",
+        "derived:canonical_link:x",
+        "derived:final_url",  # the final URL is no page statement, so no value derives from it
     ],
 )
 def test_parse_refuses_malformed_locators(text: str) -> None:

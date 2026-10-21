@@ -2,6 +2,7 @@
 read from the shared `ParsedPage`."""
 
 from crawlerai.content.markdown import markdown
+from crawlerai.content.metadata import canonical_link
 from crawlerai.content.page import ParsedPage
 
 FINAL_URL = "https://shop.example.test/catalog/chairs?page=2"
@@ -64,6 +65,16 @@ def test_listing_markdown_keeps_every_item_with_its_link_image_and_text() -> Non
     # Buttons are controls, not content (HTML Standard §4.10.6); the site's navigation is not an item.
     assert "basket" not in made
     assert "Section" not in made
+
+
+def test_canonical_links_naming_two_urls_name_none() -> None:
+    # RFC 6596 §3: one canonical link per resource; a page designating two states no preferred URL.
+    link = '<link rel="canonical" href="{}">'
+    one = link.format("/catalog/chairs") + link.format("https://shop.example.test/catalog/chairs")
+    two = link.format("/catalog/chairs?ref=1") + link.format("/catalog/chairs")
+
+    assert canonical_link(ParsedPage(one), FINAL_URL) == "https://shop.example.test/catalog/chairs"
+    assert canonical_link(ParsedPage(two), FINAL_URL) is None
 
 
 # Main content whose source carries layout whitespace (indented blocks, line breaks and blank-line runs, as templates
