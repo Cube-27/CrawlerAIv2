@@ -168,16 +168,21 @@ AggregateOffer was no item's.) Refs: §10, owner #68, owner 2026-10-19; per-row 
 ### Requirement: Derived values (INV-07)
 Derived values SHALL fill only `missing` fields and carry `derived_by`; the only derivations are `absolutize`, then for
 a detail page's `T.url` field (`T.url` in every alternative of its path) `canonical_link` (RFC 6596), then
-`final_url`, each a named function (`resolve/derive.py`). Before derivation, when the canonical link and the final URL
-are one URL, a kept candidate of that `T.url` field naming another document (another host, port or path; a query or a
-fragment alone names none) is rejected `other_document`, and preference decides among the rest; a relative reference
-`absolutize` resolves to another document is rejected so too. (Previously: a field
+`final_url`, each a named function (`resolve/derive.py`). Canonical links naming more than one URL designate none
+(RFC 6596 §3: one per resource), so such a page states no canonical URL. Before derivation, when the canonical link and
+the final URL are one URL, a kept candidate of that `T.url` field naming another document (another host, port or path;
+a query or a fragment alone names none) is rejected `other_document`, and preference decides among the rest; a relative
+reference `absolutize` resolves to another document is rejected so too. (Previously: a field
 whose last rank was `T.url`, such as `apply_url`, took the page URL too; a structured `url` built from another id than
-the page's outranked its canonical URL.) Refs: §9, §10, Appendix A #40, D-0442, D-0910, D-1625. Enforced by: resolver
+the page's outranked its canonical URL; the first of conflicting canonical links named the page.) Refs: §9, §10, Appendix A #40, D-0442, D-0910, D-1625. Enforced by: resolver
 tests; active.
 #### Scenario: No url candidate
 - **WHEN** a detail page has no url candidate and `<link rel=canonical href="https://example.com/p/1">`
 - **THEN** `url` publishes that URL with `derived_by=canonical_link`, source kind `derived`, evidence `derived`
+#### Scenario: Conflicting canonical links
+- **WHEN** a detail page's first canonical link repeats its final URL with a tracking query, its second names another
+  path, and its JSON-LD Product `url` is that path
+- **THEN** the page states no canonical URL, and `url` publishes the JSON-LD `url`, not rejected `other_document`
 #### Scenario: Structured url of another document
 - **WHEN** a detail page's canonical link and final URL are `https://example.com/p-188.html` and its JSON-LD Product
   `url` is `https://example.com/p-759.html`

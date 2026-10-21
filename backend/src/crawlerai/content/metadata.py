@@ -82,11 +82,17 @@ def open_graph(page: ParsedPage) -> dict[str, str]:
 
 
 def canonical_link(page: ParsedPage, final_url: str) -> str | None:
-    # RFC 6596: the canonical link relation.
-    for node in page.tree.css("link[href]"):
-        if "canonical" in tokens((node.attributes.get("rel") or "").lower()):
-            return canonical_url(node.attributes.get("href") or "", document_base_url(page, final_url))
-    return None
+    """RFC 6596: the target of the page's canonical link relation, resolved against the document base URL. RFC 6596 §3
+    asks for one canonical link per resource; links naming more than one URL designate none, an improper declaration an
+    application may ignore, so the page then states no canonical URL."""
+    base = document_base_url(page, final_url)
+    named = {
+        canonical_url(node.attributes.get("href") or "", base)
+        for node in page.tree.css("link[href]")
+        if "canonical" in tokens((node.attributes.get("rel") or "").lower())
+    }
+    named.discard(None)  # a target no URL parser reads names nothing
+    return named.pop() if len(named) == 1 else None
 
 
 def _json_ld_types(page: ParsedPage) -> Iterator[str]:

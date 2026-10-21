@@ -15,8 +15,8 @@ MAX_LINKS = 5000
 
 
 def canonical_link(page: FetchResult) -> str | None:
-    """The page's first `link rel=canonical`, resolved against the document's base URL (HTML Standard §2.4.1: the
-    first `base href`, else the page's URL)."""
+    """The page's `link rel=canonical` target (`_canonical`), resolved against the document's base URL (HTML Standard
+    §2.4.1: the first `base href`, else the page's URL)."""
     tree = LexborHTMLParser(decode_body(page.bundle))
     return _canonical(tree, _base(tree, page))
 
@@ -71,8 +71,13 @@ def _base(tree: LexborHTMLParser, page: FetchResult) -> str:
 
 
 def _canonical(tree: LexborHTMLParser, base: str) -> str | None:
-    for link in tree.css("link[rel][href]"):
+    """The page's canonical URL; links naming more than one URL designate none (RFC 6596 §3: one per resource), as
+    `content.metadata.canonical_link` reads them."""
+    named = {
+        _join(base, link.attributes.get("href") or "")
+        for link in tree.css("link[rel][href]")
         # HTML Standard §4.6.1: `rel` is a set of space-separated, ASCII case-insensitive keywords.
-        if "canonical" in (link.attributes.get("rel") or "").lower().split():
-            return _join(base, link.attributes.get("href") or "")
-    return None
+        if "canonical" in (link.attributes.get("rel") or "").lower().split()
+    }
+    named.discard(None)  # a target no URL parser reads names nothing
+    return named.pop() if len(named) == 1 else None
