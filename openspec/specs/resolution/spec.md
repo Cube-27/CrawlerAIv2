@@ -124,10 +124,11 @@ every rejected candidate keeps its own reason, in `field_meta`. (Previously: a p
 ### Requirement: Atomic offers (INV-15)
 Price, currency and availability SHALL come from one anchor Offer: the Offer of the variant the target shows (Shown
 variant, [variants](../variants/spec.md)), else the one holding values for the most offer fields, the first on a tie.
-On a detail page a source (a collector; each adapter a source of its own) that states one Offer alone for the target
+On a detail page a source (a collector; each adapter and each JSON-LD block a source of its own, a block being one
+document, JSON-LD 1.1 §7.1) that states one Offer alone for the target
 states the item's offer, the shown variant's (Shown variant), unless that source's Offer is already named by the
 target's sku or gtin; a source listing several states which is shown by its sku or gtin. (Previously: only when every
-source stated one Offer each.)
+source stated one Offer each; all JSON-LD blocks were one source.)
 The anchor's values score as the target's own and another Offer's at half (Candidate score). Where Offers state other
 values an offer field publishes only the shown variant's value, else it is `conflict` `offers_disagree` (a price
 also publishes when the visible price explains the difference, Candidate score). A value only another Offer than the

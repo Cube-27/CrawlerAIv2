@@ -336,7 +336,7 @@ class Resolver:
         ids = [name for name in _variant_ids(fields) if name in fields]
         stated = {name: self._choose(fields[name], *screened[name], offers=offers, offer_field=False) for name in ids}
         shown, other = self._shown_offers(fields, candidates, self._published_ids(fields, stated))
-        shown |= self._lone_offers(frozenset(_source(offer) for offer in shown)) - other
+        shown |= self._lone_offers(frozenset(source_of(offer) for offer in shown)) - other
         return _Offers(shown, shown) if shown else offers
 
     def _published_ids(
@@ -358,7 +358,7 @@ class Resolver:
         listing several states which of them each is by its sku or gtin."""
         by_source: dict[str, list[str]] = {}
         for offer in self.graph.offers(self.target):
-            by_source.setdefault(_source(offer.id), []).append(offer.id)
+            by_source.setdefault(source_of(offer.id), []).append(offer.id)
         return frozenset(o[0] for source, o in by_source.items() if len(o) == 1 and source not in named)
 
     def _shown_offers(
@@ -665,19 +665,25 @@ def _shown_units(stated: Sequence[_Stated], own: Sequence[tuple[Candidate, Field
     matched = {unit for unit, c, spec in stated if _names(c, spec, own)}
     if not matched or _one_each(matched) != matched:
         return set()
-    named = {_source(unit) for unit in matched}
+    named = {source_of(unit) for unit in matched}
     held = [(c, spec) for unit, c, spec in stated if unit in matched]
-    return matched | _one_each({u for u, c, spec in stated if _source(u) not in named and _names(c, spec, held)})
+    return matched | _one_each({u for u, c, spec in stated if source_of(u) not in named and _names(c, spec, held)})
 
 
 def _one_each(units: set[str]) -> set[str]:
     """The units whose source (`_source`) names no other of them: a source naming two variants names none."""
-    sources = [_source(unit) for unit in units]
+    sources = [source_of(unit) for unit in units]
     return {unit for unit, source in zip(units, sources, strict=True) if sources.count(source) == 1}
 
 
-def _source(entity_id: str) -> str:
-    """The source an entity id names (`resolve.identity`): its collector, and for an adapter read the adapter it reads
-    for (`adapter:<name>:<path>`), so two adapters' answers are two sources."""
+# The collectors whose entity ids name the document they read after the collector (`<collector>:<document>:<path>`):
+# an adapter's answer (`adapter:<name>:`), and a JSON-LD script block (`jsonld:<block>:`), each a JSON-LD document of
+# its own (JSON-LD 1.1 §7.1: a script element embeds one document), often written by another producer than the page's.
+_DOCUMENTS = frozenset({"adapter", "jsonld"})
+
+
+def source_of(entity_id: str) -> str:
+    """The source an entity id names (`resolve.identity`): its collector, and for an adapter or a JSON-LD block the
+    document it reads (`_DOCUMENTS`), so two adapters' answers, or two blocks, are two sources."""
     collector, _, rest = entity_id.partition(":")
-    return f"{collector}:{rest.partition(':')[0]}" if collector == "adapter" else collector
+    return f"{collector}:{rest.partition(':')[0]}" if collector in _DOCUMENTS else collector

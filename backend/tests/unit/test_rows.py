@@ -122,6 +122,18 @@ def test_entries_of_one_list_with_other_skus_are_two_variants_whatever_barcode_t
     ]
 
 
+def test_one_offer_each_source_states_by_another_key_is_the_item_s_one_offer() -> None:
+    # Two blocks of one Product (one `@id`) each state its one Offer, one by its URL and one by its SKU: one variant,
+    # so no variant list publishes (Appendix A #48), not two half-rows.
+    product = {"@type": "Product", "@id": PAGE_URL + "#product", "name": "Synthetic Widget"}
+    by_url = product | {"offers": {"@type": "Offer", "url": PAGE_URL + "?variant=1", "availability": "InStock"}}
+    by_sku = product | {"offers": _offer("10.00", sku="W-11")}
+
+    outcome = _variants(by_url, by_sku)
+
+    assert (outcome.status, outcome.reason) == ("missing", "single_row")
+
+
 def test_role_c_is_never_asked_for_a_row_mapped_field() -> None:
     # variants spec: a claim is one verbatim span, which cannot hold a row of typed sub-fields.
     fields = {name: _missing() for name in SCHEMA.fields}
