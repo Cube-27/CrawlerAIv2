@@ -367,6 +367,8 @@ def test_lines_giving_a_field_several_values_are_the_listed_items_not_the_pages(
 
 def test_a_colon_line_giving_a_field_one_value_twice_gives_it_once() -> None:
     assert _values("<div><p>SKU: A-1</p></div><p>SKU: A-1</p>") == {"sku": ["A-1"]}
+    # In three places none holds another, a line repeats for as many items (each review's own count).
+    assert _values("<p>SKU: A-1</p>" * 3) == {}
 
 
 def test_pairs_are_read_from_the_main_region_outside_its_tangential_content() -> None:

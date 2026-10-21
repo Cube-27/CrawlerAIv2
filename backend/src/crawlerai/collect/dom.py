@@ -10,8 +10,9 @@ whose meaning the HTML Standard defines, for pages whose structured data leaves 
   containers of one shape (two or more) that each hold a label element then a value element. A label names a field
   when its words are one of the field's labels (`collect.labels`: its name, the schema.org property its path names,
   its description and the synonyms role S drafted for the schema), never words from a list in code (C4). Lines and
-  sibling pairs repeat for the items a page lists besides its own (related products, variants), so a field they give
-  several values reads none from them; an identifier field that pairs of any kind give two values reads none.
+  sibling pairs repeat for the items a page lists besides its own (related products, variants, reviews), so a field
+  they give several values, or one value in three or more places, reads none from them; an identifier field that
+  pairs of any kind give two values reads none.
 - **Other items.** Values held by other items than the page's own are not read: schema.org microdata's related and
   similar items and reviews, sibling blocks that each link to one other document (a list of cards), and the card of
   any other item whose price the page shows (`product_apart`, also read by the description block). Nor is an
@@ -37,6 +38,7 @@ from dataclasses import dataclass
 
 from selectolax.lexbor import LexborNode
 
+from crawlerai.acquire.items import MIN_ITEMS
 from crawlerai.collect.base import PAGE, Candidate, CollectResult
 from crawlerai.collect.dom_images import (
     A_HREF,
@@ -192,20 +194,40 @@ def _pairs_found(
     # order) is its place.
     found: dict[tuple[str, str], LexborNode] = {}
     kinds: dict[tuple[str, str], set[str]] = {}
+    places: dict[tuple[str, str], list[LexborNode]] = {}
     for label, value, raw, kind in pairs:
         for name in labels.get(words(label), ()):
             if schema.fields[name].type is FieldType.IDENTIFIER and content is not None and content.links_out(value):
                 continue
             found[(name, raw)] = value
             kinds.setdefault((name, kind), set()).add(raw)
+            if kind in _REPEATING:
+                places.setdefault((name, raw), []).append(value)
     for (name, raw), value in found.items():
-        if _unambiguous(name, raw, kinds, schema.fields[name]):
+        repeated = _apart_places(places.get((name, raw), ())) >= MIN_ITEMS and raw not in kinds.get((name, _TABLE), ())
+        if not repeated and _unambiguous(name, raw, kinds, schema.fields[name]):
             yield (
                 name,
                 raw,
                 node_xpath(value),
                 [*list_items(value, page)] if schema.fields[name].type is FieldType.LIST else None,
             )
+
+
+def _apart_places(values: Sequence[LexborNode]) -> int:
+    """How many of the elements giving one value hold none of the others: a value's wrappers read it too, so only the
+    innermost element of each place counts. Lines and sibling pairs giving one value in `MIN_ITEMS` or more places
+    repeat it for as many items (each review's `Reviews: 1`, as `acquire.items.MIN_ITEMS` counts a list), not the
+    page's own one value."""
+    holders = {a.mem_id for v in values for a in _ancestors(v)}
+    return len({v.mem_id for v in values if v.mem_id not in holders})
+
+
+def _ancestors(node: LexborNode) -> Iterator[LexborNode]:
+    parent = node.parent
+    while parent is not None:
+        yield parent
+        parent = parent.parent
 
 
 def _unambiguous(name: str, raw: str, kinds: Mapping[tuple[str, str], set[str]], spec: FieldSpec) -> bool:
