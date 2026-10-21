@@ -129,10 +129,13 @@ _ENCODED_QUERY = re.compile(r"%3F", re.IGNORECASE)
 # The query parameter by which an image proxy or optimizer names the file it serves (`/_next/image?url=`, `?url=`).
 _PROXIED: Final = "url"
 # What an image path states about the rendition it serves, not the file: a whole segment `<width>x<height>` or a list
-# of `<letter>_<number>` transform pairs (`w_300,h_200`); a size closing the file's name before its extension
+# of `<letters>_<value>` transform pairs one of which is a number, decimal or not (`w_300,h_200`, `c_fill,w_458`,
+# `dpr_2.0`); a size closing the file's name before its extension
 # (`name-300x200.ext`, `name_1024x.ext`, `name@2x.ext`); a format conversion appended as a second extension
 # (`name.jpg.webp`); a trailing `=<options>` on the last segment.
-_SEGMENT = re.compile(r"\d+x\d+|[a-z]+_\d+(?:,[a-z]+_\d+)*", re.IGNORECASE)
+_SEGMENT = re.compile(
+    r"\d+x\d+|(?=(?:[^/]*,)?[a-z]+_\d+(?:\.\d+)?(?:,|$))[a-z]+_[\w.:]+(?:,[a-z]+_[\w.:]+)*", re.IGNORECASE
+)
 _SIZE_SUFFIX = re.compile(r"(?<=[^/])[-_@](?:\d+x\d*|x\d+)(?=\.[^./]+$)", re.IGNORECASE)
 _CONVERSION = re.compile(r"(\.[a-z0-9]{2,5})\.[a-z0-9]{2,5}$", re.IGNORECASE)
 _OPTIONS = re.compile(r"(?<=[^/=])=[\w,-]+$")
