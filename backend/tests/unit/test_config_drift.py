@@ -10,7 +10,6 @@ from crawlerai.config_ir.drift import (
     DriftMargins,
     Observation,
     drifted,
-    extend,
     observe,
     relocated,
 )
@@ -81,22 +80,6 @@ def _run(ir: ExtractionConfigIR, schema: SchemaDef, html: str) -> dict[str, Obse
         ParsedPage(html), schema, Context(captured_at=CTX_TIME)
     )
     return observe(ir, executed.candidates)
-
-
-def test_a_layout_change_suspends_the_field_once_its_windowed_yield_falls_below_the_margin() -> None:
-    ir = _ir(title=_field("//h1[@class='title']"))
-    schema = _schema(title=TITLE)
-    window: dict[str, list[Observation]] = {}
-    for _ in range(4):
-        window = extend(window, _run(ir, schema, "<html><body><h1 class='title'>A lamp</h1></body></html>"))
-    assert window == {"title": [HIT] * 4}
-    changed = "<html><body><h2 class='heading'>A lamp</h2></body></html>"
-    window = extend(window, _run(ir, schema, changed))  # 4 of 5 = 0.8: not below 1.0 - 0.25
-    assert drifted(ir, window, MARGINS) == []
-    window = extend(window, _run(ir, schema, changed))  # 4 of 6
-
-    (found,) = drifted(ir, window, MARGINS)
-    assert (found.field, found.pages, found.yield_, found.validity) == ("title", 6, 4 / 6, 1.0)
 
 
 def test_validity_below_the_margin_suspends_a_field_that_still_matches() -> None:

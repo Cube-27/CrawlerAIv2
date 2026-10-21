@@ -321,8 +321,8 @@ def test_an_array_whose_root_references_itself_is_no_flat_array() -> None:
 
 
 def test_a_flat_array_whose_references_expand_past_the_bound_stays_as_written() -> None:
-    # Each element references the next twice: the tree it stands for has 2**40 leaves.
-    links: list[JsonValue] = [[i + 2, i + 2] for i in range(40)]
+    # Each element references the next twice: the tree it stands for has 2**20 leaves, past `MAX_NODES`.
+    links: list[JsonValue] = [[i + 2, i + 2] for i in range(20)]
     payload: list[JsonValue] = [{"a": 1}, *links, "leaf"]
 
     assert _documents(_page(json.dumps(payload), script_type="application/json")) == [payload]
