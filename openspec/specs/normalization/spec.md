@@ -190,7 +190,8 @@ monetary range without a period is `Ambiguous`, except a schema.org AggregateOff
 written, and a schema.org `ratingValue` joined to a `reviewCount` of 0 is `Invalid("no_ratings")`. A count with
 `unitCode` `C62` declines a `unitText` that names a CLDR measurement unit, and a count written in a compact form (a
 CLDR compact decimal unit of any locale right after the digits: `1K+ reviews`, `2,5 Mio.`) is `Invalid("compact")`: a
-rounded magnitude, not the count. All numbers (money, count, number) are read by the one path in `numbers.py`: a written number that only one CLDR number
+rounded magnitude, not the count; digits right after a letter (`h1`, Unicode UAX #29 WB9: one word) are
+`Invalid("in_a_word")`. All numbers (money, count, number) are read by the one path in `numbers.py`: a written number that only one CLDR number
 convention can read (`1.234,56`, `12.50`) has that one value whatever the page says; one that conventions read
 differently (`1.234`, `1,234`) takes the value its declared locales give it (none when no declared locale reads it),
 then, of those locales' conventions (every convention when it declares none), the value of the ones whose decimal

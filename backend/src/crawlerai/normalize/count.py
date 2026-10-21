@@ -8,8 +8,8 @@ Accepts:
   number symbols of the locales the page and the request state.
 
 Nothing is defaulted (C7): a fraction, a negative number, a range, another unit, a number written in a CLDR compact
-form (`1K+`, `2,5 Mio.`: a rounded magnitude, not a count), a text with no number or two numbers is `Invalid`; a number
-the page's locales read as different values is `Ambiguous`.
+form (`1K+`, `2,5 Mio.`: a rounded magnitude, not a count), digits right after a letter (`h1`: part of a word), a
+text with no number or two numbers is `Invalid`; a number the page's locales read as different values is `Ambiguous`.
 """
 
 import unicodedata
@@ -109,6 +109,9 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
         return Invalid(found)
     if numbers.negated(found.before):
         return Invalid("negative")
+    if found.before[-1:].isalpha():
+        # Unicode UAX #29 WB9 (no break between ALetter and Numeric): digits after a letter are part of its word (`h1`).
+        return Invalid("in_a_word")
     if numbers.compact(found.after):
         return Invalid("compact")  # `1K+ reviews` states a rounded magnitude, not the count (CLDR compact decimals)
     values = numbers.readings(found.written, numbers.locale_set(ctx), ctx.page_convention)
