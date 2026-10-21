@@ -123,9 +123,9 @@ async def store_extraction(
 ) -> Stored:
     """Store `result`, `extract_page`'s for the task's capture, in `conn`'s transaction. `caller_supplied` is true for
     `scrape`, `batch_scrape` and `extract` URLs: an incomplete page then keeps its record (`partial`), where a
-    crawl-discovered one gets `no_match` and none (§4.10). The caller settles the task with the returned outcome, and
-    extracts before it opens the transaction (`scrape` holds no connection while the page resolves). `config` is the
-    config a `config`-mode result ran; `page_url` the canonical URL of the document it read, when that is not the
+    crawl-discovered one gets `no_match` and none (§4.10). The caller settles the task with the returned outcome.
+    `scrape` extracts before it opens the transaction, so it holds no connection while the page resolves. `config` is
+    the config a `config`-mode result ran; `page_url` the canonical URL of the document it read, when that is not the
     task's (a listing's further page, owner #52)."""
     page_url = page_url or task.canonical_url
     extraction_id: ExtractionId = (
