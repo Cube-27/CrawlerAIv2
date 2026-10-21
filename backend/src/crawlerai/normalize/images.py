@@ -6,7 +6,7 @@ publishes.
 - The rendition: of renditions of one file, the largest one states (`largest_rendition`), of those over `https` if any
   is (`preferred_rendition`: RFC 9110 §4.2.2, the same file reached over TLS).
 - A list of images names each file once (`distinct_files`); values that agree publish the secure one
-  (`preferred_value`), each file at the largest rendition any of them states (`at_largest`).
+  (`preferred_value`), each file at the largest rendition any of them states (`largest_of_each`).
 - A list whose files another list holds, with more, is that list's representative part (`representative_part`).
 """
 
@@ -40,15 +40,18 @@ def resource_key(value: JsonValue) -> tuple[str, str, str] | None:
 # Resolution compares every image of a field with every other one's, so a URL's file is read once.
 @lru_cache(maxsize=8192)
 def _resource(value: str) -> tuple[str, str, str] | None:
-    url = canonical(value, None)
-    if not isinstance(url, Ok) or not isinstance(url.value, str):
-        return None
-    parts = urlsplit(url.value)
-    served = [v for name, v in parse_qsl(parts.query) if name == _PROXIED]
-    if len(served) == 1 and served[0]:  # a file named in the query is shorter than the URL, so this ends
-        file = urljoin(url.value, served[0])
-        return _resource(file) if urlsplit(file).scheme in _SCHEMES else None
-    return ("resource", parts.netloc, _without_dimensions(parts.path))
+    # A loop, not recursion: a proxy URL may name a proxy URL in turn, as deep as its length allows.
+    while True:
+        url = canonical(value, None)
+        if not isinstance(url, Ok) or not isinstance(url.value, str):
+            return None
+        parts = urlsplit(url.value)
+        served = [v for name, v in parse_qsl(parts.query) if name == _PROXIED]
+        if not (len(served) == 1 and served[0]):
+            return ("resource", parts.netloc, _without_dimensions(parts.path))
+        value = urljoin(url.value, served[0])  # a file named in the query is shorter than the URL, so this ends
+        if urlsplit(value).scheme not in _SCHEMES:
+            return None
 
 
 def same_file(a: JsonValue, b: JsonValue) -> bool:
@@ -202,7 +205,7 @@ def image_list(value: JsonValue) -> list[str] | None:
     return [item for item in items if isinstance(item, str)] if all(isinstance(i, str) for i in items) else None
 
 
-def at_largest(images: list[str], others: Sequence[list[str]]) -> list[str]:
+def largest_of_each(images: list[str], others: Sequence[list[str]]) -> list[str]:
     """Each of `images`, in its order, at its largest rendition among `others`' renditions of its file (`same_file`),
     whatever position they list it at."""
     renditions = [[item, *(r for listed in others for r in listed if same_file(item, r))] for item in images]

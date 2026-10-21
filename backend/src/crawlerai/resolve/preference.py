@@ -509,10 +509,11 @@ def _first_listed(spec: FieldSpec, best: Sequence[Group]) -> Group | None:
 
 def _image_choice(top: Group, spec: FieldSpec) -> Candidate:
     """The member of the best group that publishes. For an image value, of the members of the group's score the secure
-    one (`images.preferred_value`), with each file at the largest rendition any member states (`images.at_largest`):
-    the members name the same files (`resource_key`), so the sources' weights settle which files the image is, and the
-    rendition the page also states larger publishes, whichever source states it. A scalar publishes the member stating
-    it; a list the chosen candidate with those renditions. Any other value is the first member of the score."""
+    one (`images.preferred_value`), with each file at the largest rendition any member states
+    (`images.largest_of_each`): the members name the same files (`resource_key`), so the sources' weights settle which
+    files the image is, and the rendition the page also states larger publishes, whichever source states it. A scalar
+    publishes the member stating it; a list the chosen candidate with those renditions. Any other value is the first
+    member of the score."""
     best = top.best
     if rule_type(spec) is not FieldType.IMAGE_URL:
         return best[0]
@@ -524,7 +525,7 @@ def _image_choice(top: Group, spec: FieldSpec) -> Candidate:
     lists = [found for found in stated if found is not None]
     if len(lists) != len(members):
         return chosen
-    largest = images.at_largest(lists[0], lists[1:])
+    largest = images.largest_of_each(lists[0], lists[1:])
     if spec.type is FieldType.IMAGE_URL:
         return next((c for c, found in zip(members, lists, strict=True) if found == largest), chosen)
     if largest == lists[0]:
