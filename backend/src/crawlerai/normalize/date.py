@@ -10,8 +10,9 @@ Any other JSON value is `Invalid("not_a_string")`. Three paths, tried in order:
 3. Anything else goes to `dateparser` in the page's languages, once per allowed order, with `ctx.captured_at` as the
    base of relative dates ("2 days ago").
 
-The locales are `ctx.html_lang` and `ctx.og_locale` (normalization spec); with neither, every order is allowed. A
-datetime needs a time and a numeric UTC offset; a date takes the calendar date the input states, in its own offset.
+The locales are the page's (`locales.page_locales`, normalization spec "Page languages"); with none, every order is
+allowed. A datetime needs a time and a numeric UTC offset; a date takes the calendar date the input states, in its own
+offset.
 """
 
 import re
@@ -27,6 +28,7 @@ from dateparser.data.languages_info import language_order
 from dateparser.date import DateDataParser
 from pydantic import JsonValue
 
+from crawlerai.normalize import locales
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -294,7 +296,7 @@ def _render(value: date | datetime, want_time: bool) -> str:
 
 def _orders(ctx: Context) -> tuple[Order, ...]:
     """The date orders of the page's locales (normalization spec); every order when no locale is known."""
-    found = {order for tag in (ctx.html_lang, ctx.og_locale) if tag for order in _tag_orders(tag)}
+    found = {order for tag in locales.page_locales(ctx, request=True) for order in _tag_orders(tag)}
     return tuple(o for o in _ORDERS if o in found) or _ORDERS
 
 
@@ -336,7 +338,7 @@ def _pattern_order(locale: Locale) -> Order | None:
 
 def _languages(ctx: Context) -> tuple[str, ...]:
     """The languages of the page's locales that `dateparser` reads, as primary language subtags (BCP 47 §2.2.1)."""
-    primary = (re.split(r"[-_]", tag, maxsplit=1)[0].lower() for tag in (ctx.html_lang, ctx.og_locale) if tag)
+    primary = (locales.primary_language(tag) for tag in locales.page_locales(ctx, request=True))
     return tuple(dict.fromkeys(language for language in primary if language in _DATEPARSER_LANGUAGES))
 
 

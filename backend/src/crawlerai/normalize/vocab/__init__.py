@@ -17,8 +17,6 @@ from functools import cache
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 
-from crawlerai.normalize.base import Context
-
 Tokens = tuple[str, ...]
 _JSON = ".json"
 
@@ -185,19 +183,9 @@ def name_entries(members: frozenset[str]) -> Entries:
 
 
 def entries_for(by_language: Mapping[str, Entries], languages: frozenset[str]) -> list[Entries]:
-    """A type vocabulary's entries for the page's `languages` (`context_languages`), or for every language when the
-    page states none; languages without a file have none."""
+    """A type vocabulary's entries for the page's `languages` (`locales.page_languages`), or for every language when
+    the page states none; languages without a file have none."""
     return [by_language[language] for language in sorted(languages or by_language.keys()) if language in by_language]
-
-
-def context_languages(ctx: Context) -> frozenset[str]:
-    """The languages the page states for itself, as lowercase primary language subtags (RFC 5646 §2.2.1).
-
-    `html_lang` is a BCP 47 tag (HTML Standard, the `lang` attribute); `og_locale` is `language_TERRITORY` (Open Graph
-    protocol); `request_locale` is the caller's tag. `hreflang` names alternate pages, not this one, so it is not read.
-    """
-    tags = (ctx.html_lang, ctx.og_locale, ctx.request_locale)
-    return frozenset(tag.strip().replace("_", "-").split("-")[0].lower() for tag in tags if tag and tag.strip())
 
 
 def _load_schema(directory: Traversable) -> dict[str, frozenset[str]]:

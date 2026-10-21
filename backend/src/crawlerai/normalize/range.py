@@ -26,7 +26,7 @@ from functools import lru_cache
 
 from pydantic import JsonValue
 
-from crawlerai.normalize import vocab
+from crawlerai.normalize import locales, numbers, vocab
 from crawlerai.normalize.base import (
     Ambiguous,
     Context,
@@ -64,10 +64,6 @@ _UN_CEFACT_PERIODS = {"ANN": "YEAR", "MON": "MONTH", "WEE": "WEEK", "DAY": "DAY"
 # language; the `type:range_to` vocabulary holds the words, such as `en` "to", for the page's languages.
 _DASHES = r"-|\u2013"
 _SEPARATOR_VOCABULARY = "range_to"
-# A written amount: ASCII digits (`re.ASCII`), with the grouping and decimal marks CLDR number patterns use between
-# them (full stop, comma, apostrophe, space, no-break space U+00A0, narrow no-break space U+202F). Reading the amount
-# is the money rules' job; this only finds where it sits in a bound, to tell the amount from the currency around it.
-_AMOUNT = re.compile(r"\d(?:[\d.,' \u00a0\u202f]*\d)?", re.ASCII)
 
 # The keys of a normalized range (D-0276).
 _VALUE_KEYS = frozenset({"min", "max", "currency", "unit", "period"})
@@ -138,15 +134,10 @@ def _period(written: str | None, ctx: Context) -> str | None:
         return one.group(1).upper()
     if duration := _ISO_DURATION.fullmatch(upper):
         return _ISO_DURATION_UNITS[duration.group(1) or duration.group(2)]
-    found = _period_phrases(vocab.context_languages(ctx))
+    found = _period_phrases(locales.page_languages(ctx, request=True))
     if found is None or (phrase := found[0].fullmatch(written)) is None:
         return None
     return found[1][phrase.lastgroup or ""]
-
-
-# Far past the money rules' 18 digits (persistence-storage spec D-0005); they decline what lies between as out of
-# range.
-_MAX_ADJUSTED = 100
 
 
 def _bounds(quantity: dict[str, JsonValue]) -> tuple[Decimal, Decimal] | Invalid:
@@ -163,15 +154,16 @@ def _bounds(quantity: dict[str, JsonValue]) -> tuple[Decimal, Decimal] | Invalid
 
 
 def _decimal(value: JsonValue) -> Decimal | None:
-    # schema.org Number: a JSON number or its string form. Booleans are JSON literals, not numbers.
-    if isinstance(value, bool) or not isinstance(value, int | float | str):
-        return None
-    try:
-        number = Decimal(str(value).strip())
-    except InvalidOperation:
-        return None
-    # An exponent past any amount (`1e1000000000`) is no bound either: its fixed-point form would not fit in memory.
-    return number if number.is_finite() and abs(number.adjusted()) <= _MAX_ADJUSTED else None
+    """schema.org Number: a JSON number (`numbers.json_decimal`, a boolean is none) or its string form, within money's
+    storage bounds (`numbers.storable`): a bound past them (`1e1000000000`) is none, as its fixed-point form would not
+    fit in memory."""
+    number = numbers.json_decimal(value)
+    if number is None and isinstance(value, str):
+        try:
+            number = Decimal(value.strip())
+        except InvalidOperation:
+            return None
+    return number if number is not None and numbers.storable(number) else None
 
 
 def _string(value: JsonValue) -> str | None:
@@ -183,7 +175,7 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
         return Invalid("surrogate")
     if not raw.strip():
         return Invalid("empty")
-    languages = vocab.context_languages(ctx)
+    languages = locales.page_languages(ctx, request=True)
     text, periods = _strip_periods(raw, languages)
     if len(periods) > 1:
         return Invalid("period_mismatch")
@@ -202,7 +194,7 @@ Parts = tuple[str, str, str]
 def _split_bounds(text: str, separator: re.Pattern[str]) -> tuple[Parts, Parts] | None:
     """The two bounds of `text`, each as (text before, amount, text after), or `None` unless it is one range."""
     # A separator splits two bounds only with an amount on each side; exactly one such separator makes a range.
-    starts = [m.start() for m in _AMOUNT.finditer(text)]
+    starts = [m.start() for m in numbers.AMOUNT_RUN.finditer(text)]
     splits = [m for m in separator.finditer(text) if starts and starts[0] < m.start() and m.end() <= starts[-1]]
     if len(splits) != 1:
         return None
@@ -276,7 +268,7 @@ def _period_phrases(languages: frozenset[str]) -> tuple[re.Pattern[str], dict[st
 
 def _around_amount(bound: str) -> Parts | None:
     """`bound` as (text before, amount, text after), or `None` unless it holds exactly one amount."""
-    amounts = list(_AMOUNT.finditer(bound))
+    amounts = list(numbers.AMOUNT_RUN.finditer(bound))
     if len(amounts) != 1:
         return None
     m = amounts[0]

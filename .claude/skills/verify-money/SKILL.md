@@ -50,7 +50,7 @@ the full CI suite) run the same file with fewer examples.
 | `test_an_explicit_currency_beats_the_url_one_and_currency_fill_never_changes_the_amount` | A URL naming one territory (locale segment, country subdomain, ccTLD; final or requested URL) fills its single CLDR tender currency, basis `url` (else `null`/`unknown`); `priceCurrency`, a single page or declared currency, or an ISO code written with the amount always wins; the amount is identical with and without the URL. |
 
 Bounds: locales `en-US en-GB en-IN de-DE fr-FR fr-CH ja-JP zh-CN ko-KR es-ES pt-BR hi-IN`, amounts 0.01 to
-999 999 999.99 with two places (the grounding and URL properties keep to the minor unit of the currency they write), every CLDR territory with currency data, every ISO 4217 code. Out of scope: ranges,
+999 999 999.99 with two places (the grounding and URL properties keep to the minor unit of the currency they write), every ISO 3166-1 region a URL can name (`locales.iso_3166_alpha2(reserved=True)`), every ISO 4217 code. Out of scope: ranges,
 negative amounts, ambiguous decimal separators (example tests in `tests/property/test_normalize_money.py` cover them),
 and the resolver.
 

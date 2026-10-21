@@ -1,4 +1,4 @@
-"""Numbers as pages write them (normalization spec): the locales a page and its request state, and the values a written
+"""Numbers as pages write them (normalization spec): the page locales (`locales.page_locales`), and the values a written
 number has under their Unicode CLDR number symbols (Babel). Shared by the normalizers that read numbers from text
 (money, count, number), so each reads them one way."""
 
@@ -13,6 +13,7 @@ from babel import Locale, UnknownLocaleError
 from babel.localedata import locale_identifiers
 from babel.numbers import NumberFormatError, parse_decimal
 
+from crawlerai.normalize import locales
 from crawlerai.normalize.base import Context, has_surrogate
 
 # Structural: a written amount is a run of digits (any Unicode decimal digits) joined by single separators (CLDR
@@ -32,6 +33,23 @@ _GROUP_FALLBACKS = {"\u2019": frozenset("'"), "'": frozenset("\u2019")}
 Convention = tuple[str, str, object]
 # Unicode HYPHEN-MINUS and MINUS SIGN (the CLDR `minusSign` symbols, after NFKC) before the amount: a negative value.
 MINUS = ("-", "\u2212")
+
+
+# The persistence-storage spec stores money as `numeric(18,6)`: an amount has at most 12 integer and 6 fraction digits.
+_MAX_INTEGER_DIGITS = 12
+_MAX_EXPONENT = -6
+
+
+def storable(amount: Decimal) -> bool:
+    """Whether a finite `amount` fits money's storage (`numeric(18,6)`): under 10^12 in magnitude, with at most six
+    fraction digits. Trailing zeros are not precision: `12.5000000` fits. Counted from the digits, not by
+    `Decimal.normalize`, which rounds to the context's 28 digits and would pass `1.999…9` (40 digits) as `2`."""
+    _, digits, exponent = amount.as_tuple()
+    if not isinstance(exponent, int):
+        return False
+    exponent += len(digits) - len("".join(map(str, digits)).rstrip("0") or "0")
+    # `adjusted` is the exponent of the leading digit, read without arithmetic that could overflow (`1e1000000000`).
+    return amount.adjusted() < _MAX_INTEGER_DIGITS and exponent >= _MAX_EXPONENT
 
 
 def json_decimal(value: object) -> Decimal | None:
@@ -253,36 +271,28 @@ def _grouped(written: str, group: str) -> str:
 
 
 def locale_set(ctx: Context) -> frozenset[str]:
-    """The CLDR locales whose number symbols the page declares and the request states (normalization spec): `<html
-    lang>`, `og:locale`, JSON-LD `inLanguage`, Content-Language, the page's own `hreflang` and the request's locale. A
+    """The CLDR locales whose number symbols the page declares, else the request states (`locales.page_locales`). A
     tag with a territory is that locale; a tag with a language only is the language's own CLDR locale (`de` writes
     `1.234,5`), or its locale of the ccTLD's territory when the ccTLD names one; the ccTLD alone stands for its
     territory's locales."""
-    return _declared(ctx, whole_language=False)
+    return _cldr_locales(ctx, whole_language=False, request=True)
 
 
 def regional_locales(ctx: Context) -> frozenset[str]:
-    """The CLDR locales the page's declarations leave possible, for what a locale only narrows (a currency symbol shared
-    by several currencies): as `locale_set`, but a tag with a language only stands for every territory its language is
-    used in, so that the language alone settles nothing a territory would."""
-    return _declared(ctx, whole_language=True)
+    """The CLDR locales the page's own declarations leave possible, for what a locale only narrows (a currency symbol
+    shared by several currencies): as `locale_set`, but never the request's locale (the caller's, not the page's), and
+    a tag with a language only stands for every territory its language is used in, so that the language alone settles
+    nothing a territory would."""
+    return _cldr_locales(ctx, whole_language=True, request=False)
 
 
-def _declared(ctx: Context, *, whole_language: bool) -> frozenset[str]:
-    declared = (
-        ctx.html_lang,
-        ctx.og_locale,
-        ctx.request_locale,
-        *ctx.in_language,
-        *ctx.content_language,
-        *ctx.hreflang,
-    )
+def _cldr_locales(ctx: Context, *, whole_language: bool, request: bool) -> frozenset[str]:
     out: set[str] = set()
     known = False
-    for tag in filter(None, declared):
+    for tag in locales.page_locales(ctx, request=request):
         locale = _parse_tag(tag)
         if locale is None:
-            continue  # Not a BCP 47 tag CLDR knows (`x-default`): no evidence.
+            continue  # A language tag CLDR does not know: no evidence.
         known = True
         with_territory = f"{locale.language}_{ctx.cctld_territory}"
         if locale.territory:

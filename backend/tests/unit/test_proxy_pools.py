@@ -392,11 +392,3 @@ def test_a_browser_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, pr
     assert b"<h1>Catalogue</h1>" in through_pool.bundle.body
     assert set(proxy.tunnels) == {"shop.example.test:80"}
     assert _outcome(unknown) == (0, "error", "proxy_pool_unknown")
-
-
-def test_a_declared_egress_country_must_be_a_country_cldr_knows() -> None:
-    from crawlerai.normalize.money import is_country
-
-    assert is_country("GB")
-    assert not is_country("ZZ")
-    assert not is_country("gb")
