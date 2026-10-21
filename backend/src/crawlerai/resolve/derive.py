@@ -4,18 +4,19 @@ stating them, each from a named function with its standard.
 A derivation fills a field only when preference left it missing: a published field keeps its value, and a conflict
 stays a conflict. Each value carries `derived_by`. Adding a derivation is a C2/C13 review item.
 
-The page-URL field's candidates are first held to the page: when its canonical link and its final URL name one URL, a
+The page-URL field's candidates are first held to the page: when it states one canonical link on its own site, a
 candidate naming another document is not the page's URL (`OTHER_DOCUMENT`), and preference decides among the rest.
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Final
+from urllib.parse import urlsplit
 
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate
-from crawlerai.collect.schema_org_map import names_item_url
+from crawlerai.collect.schema_org_map import names_item_url, same_site
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.normalize.url import RELATIVE_WITHOUT_BASE
@@ -88,11 +89,20 @@ def fill(
 
 
 def _own_url(spec: FieldSpec, canonical_url: str | None, ctx: Context) -> str | None:
-    """The page's own URL when its canonical link (RFC 6596) and its final URL (RFC 9110 §15.4) name one, else None:
-    a canonical link to another page (a parent, the home page) says nothing about which document this one is."""
-    found = [normalize(url, spec, ctx) for url in (canonical_url, ctx.page_url) if url is not None]
-    values = [r.value for r in found if isinstance(r, Ok) and isinstance(r.value, str)]
-    return values[0] if len(values) == 2 and values[0] == values[1] else None
+    """The page's own URL: its one canonical link (RFC 6596 §3; `content.metadata.canonical_href` drops conflicting
+    ones) when it names a URL on the site of the final URL (RFC 9110 §15.4; HTML Standard §7.1.1, the same registrable
+    domain), else None. The canonical link is the page's statement of its preferred URL, so `og:url` or a structured
+    `url` naming another document does not name this page (resolution spec, "Derived values")."""
+    if canonical_url is None or ctx.page_url is None:
+        return None
+    own = normalize(canonical_url, spec, ctx)
+    if not isinstance(own, Ok) or not isinstance(own.value, str):
+        return None
+    # RFC 9110 §4.2.4: an http(s) URI with userinfo is invalid, so such a link names no page.
+    parts = urlsplit(own.value)
+    if parts.hostname is None or "@" in parts.netloc:
+        return None
+    return own.value if same_site(parts.hostname, ctx.page_url) else None
 
 
 def _held_to_page(
@@ -100,7 +110,8 @@ def _held_to_page(
 ) -> Preference:
     """`preference` with the kept candidates naming another document than the page's own URL `own` rejected
     `OTHER_DOCUMENT`, preference deciding among the rest: a structured `url` built from another id than the page's
-    (a SKU) names another document, while the page states its own by both its canonical link and its final URL."""
+    (a SKU), or an `og:url` naming another page, names another document, while the page states its own by its
+    canonical link."""
     others = [c for c in preference.kept if own is not None and _elsewhere(_value(c), own)]
     if not others:
         return preference
