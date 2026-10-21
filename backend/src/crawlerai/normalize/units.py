@@ -51,6 +51,10 @@ _OTHER_SLOT = "{1}"
 # A word written as a unit name's leading letters is its abbreviation from two letters on: one letter alone is too
 # short to name one unit.
 _MIN_ABBREVIATION = 2
+# The words of a text after an amount that a per pattern can span: in the CLDR unit data (every locale Babel ships), a
+# per pattern is at most 5 words, a compound's separator 2 and a unit's name 8, which leaves a count of up to 22 digit
+# groups between them.
+_WORDS = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,7 +102,10 @@ def _suffix_starts(text: str, end: int) -> Iterator[int]:
 
 
 def _per(text: str, tables: Iterable["_Table"]) -> frozenset[Per]:
-    written = " ".join(text.split())
+    """What the per pattern at the start of `text` makes the amount a price of. Only its first `_WORDS` words are
+    read, white space collapsed: a pattern, a count and a unit's name span far fewer, and collapsing all of a long
+    text after each of its amounts would read it once per amount."""
+    written = " ".join(text.split(maxsplit=_WORDS)[:_WORDS])
     found: set[Per] = set()
     for table in tables:
         found |= _suffix(written, table) or _compound(written, table)
