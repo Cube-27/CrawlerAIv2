@@ -1681,6 +1681,32 @@ export interface components {
             next_cursor: string | null;
         };
         /**
+         * Delta
+         * @description What a job's record is against the entity's previous record under the same schema (jobs spec, "Page delta"):
+         *     `new`, `changed` with its changed fields in schema order, or `same`.
+         */
+        Delta: {
+            /** Changes */
+            changes?: components["schemas"]["FieldChange"][];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "new" | "changed" | "same";
+        };
+        /**
+         * DeltaCounts
+         * @description How many of a job's records are each delta (jobs spec, "Page delta").
+         */
+        DeltaCounts: {
+            /** Changed */
+            changed: number;
+            /** New */
+            new: number;
+            /** Same */
+            same: number;
+        };
+        /**
          * DistractorKey
          * @description A key value of another product's variant shown on the page (variants spec): an engine row with it is a wrong
          *     product.
@@ -1943,6 +1969,17 @@ export interface components {
             status_code: number | null;
         };
         /**
+         * FieldChange
+         * @description A field whose published value differs from the entity's previous record: both values as published, None for a
+         *     side that published none (INV-27).
+         */
+        FieldChange: {
+            /** Field */
+            field: string;
+            previous: components["schemas"]["JsonValue"];
+            value: components["schemas"]["JsonValue"];
+        };
+        /**
          * FieldCounts
          * @description How many fields of a job's records have each status (resolution spec).
          */
@@ -2201,6 +2238,7 @@ export interface components {
             reasons: {
                 [key: string]: number;
             };
+            records: components["schemas"]["DeltaCounts"];
             /** Signals */
             signals: {
                 [key: string]: number;
@@ -3839,6 +3877,7 @@ export interface components {
             complete: boolean;
             /** Confidence */
             confidence: number | null;
+            delta?: components["schemas"]["Delta"] | null;
             /**
              * Egress Basis
              * @enum {string}

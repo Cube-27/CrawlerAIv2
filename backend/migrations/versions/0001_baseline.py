@@ -647,7 +647,9 @@ def upgrade() -> None:
         "task_record",
         sa.Column("url_task_id", sa.Uuid(), nullable=False),
         sa.Column("record_id", sa.Uuid(), nullable=False),
+        sa.Column("delta", sa.Text(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.CheckConstraint("delta IN ('new', 'changed', 'same')", name=op.f("ck_task_record_delta")),
         sa.ForeignKeyConstraint(
             ["record_id"], ["record.id"], name=op.f("fk_task_record_record_id_record"), ondelete="CASCADE"
         ),

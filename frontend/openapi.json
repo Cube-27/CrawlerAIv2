@@ -1813,6 +1813,57 @@
         "title": "DeliveryPage",
         "type": "object"
       },
+      "Delta": {
+        "additionalProperties": false,
+        "description": "What a job's record is against the entity's previous record under the same schema (jobs spec, \"Page delta\"):\n`new`, `changed` with its changed fields in schema order, or `same`.",
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "new",
+              "changed",
+              "same"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "Delta",
+        "type": "object"
+      },
+      "DeltaCounts": {
+        "description": "How many of a job's records are each delta (jobs spec, \"Page delta\").",
+        "properties": {
+          "changed": {
+            "title": "Changed",
+            "type": "integer"
+          },
+          "new": {
+            "title": "New",
+            "type": "integer"
+          },
+          "same": {
+            "title": "Same",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "new",
+          "changed",
+          "same"
+        ],
+        "title": "DeltaCounts",
+        "type": "object"
+      },
       "DistractorKey": {
         "additionalProperties": false,
         "description": "A key value of another product's variant shown on the page (variants spec): an engine row with it is a wrong\nproduct.",
@@ -2509,6 +2560,29 @@
           "attempts"
         ],
         "title": "FetchSummary",
+        "type": "object"
+      },
+      "FieldChange": {
+        "additionalProperties": false,
+        "description": "A field whose published value differs from the entity's previous record: both values as published, None for a\nside that published none (INV-27).",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "previous": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "value": {
+            "$ref": "#/components/schemas/JsonValue"
+          }
+        },
+        "required": [
+          "field",
+          "previous",
+          "value"
+        ],
+        "title": "FieldChange",
         "type": "object"
       },
       "FieldCounts": {
@@ -3247,6 +3321,9 @@
             "title": "Reasons",
             "type": "object"
           },
+          "records": {
+            "$ref": "#/components/schemas/DeltaCounts"
+          },
           "signals": {
             "additionalProperties": {
               "type": "integer"
@@ -3278,7 +3355,8 @@
           "reasons",
           "missing_unrendered",
           "hint",
-          "signals"
+          "signals",
+          "records"
         ],
         "title": "JobOutcomes",
         "type": "object"
@@ -7536,6 +7614,16 @@
               }
             ],
             "title": "Confidence"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Delta"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "egress_basis": {
             "enum": [

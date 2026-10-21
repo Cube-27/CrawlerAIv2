@@ -215,7 +215,7 @@ class World:
                 "mode": "adhoc",
             }
             made.append((await conn.execute(insert(Record).values(**values).returning(Record.id))).scalar_one())
-        await link_records(conn, task_id, made)
+        await link_records(conn, task_id, [(record_id, "new") for record_id in made])
         return made
 
     async def records(self, job_id: JobId, n: int) -> list[RecordId]:
@@ -315,6 +315,7 @@ async def test_the_outcomes_count_pages_by_outcome_and_fields_by_status_and_reas
     assert outcomes.reasons == {"no candidate": 2, "out_of_stock": 1, "x": 1}
     assert (outcomes.missing_unrendered, outcomes.hint) == ({}, None)
     assert outcomes.signals == {"wasm": 1, "websocket": 2, "amp_alternate": 2}
+    assert outcomes.records.model_dump() == {"new": 3, "changed": 0, "same": 0}
 
 
 @pytest.mark.parametrize(("mode", "hint"), [("off", "render.mode: locate"), ("locate", None)])
@@ -371,11 +372,18 @@ async def test_results_export_the_records_in_the_schemas_columns(world: World) -
     assert isinstance(rest, ExportPage)
     assert isinstance(markdown, ExportPage)
     assert list(csv.reader(io.StringIO(page.content))) == [
-        ["colour", "title", "_status_colour", "_status_title"],
-        ["blue", "Kettle 1", "published", "published"],
+        ["colour", "title", "_status_colour", "_status_title", "_delta", "_previous"],
+        ["blue", "Kettle 1", "published", "published", "new", ""],
     ]
     assert json.loads(rest.content) == [
-        {"colour": None, "title": "Kettle 0", "_status_colour": "missing", "_status_title": "published"}
+        {
+            "colour": None,
+            "title": "Kettle 0",
+            "_status_colour": "missing",
+            "_status_title": "published",
+            "_delta": "new",
+            "_previous": None,
+        }
     ]
     assert rest.next_cursor is None
     assert markdown.content.count("\n") == 4  # header, delimiter, two records
@@ -455,9 +463,9 @@ async def test_a_csv_safe_export_quotes_formula_cells_and_the_default_keeps_them
     plain = await client.get(f"/v1/jobs/{job_id}/results", params={"format": "csv_records"})
     safe = await client.get(f"/v1/jobs/{job_id}/results", params={"format": "csv_records", "csv_safe": "true"})
 
-    header = "colour,title,_status_colour,_status_title\r\n"
-    assert plain.json()["content"] == header + ",=SUM(1),missing,published\r\n"
-    assert safe.json()["content"] == header + ",'=SUM(1),missing,published\r\n"
+    header = "colour,title,_status_colour,_status_title,_delta,_previous\r\n"
+    assert plain.json()["content"] == header + ",=SUM(1),missing,published,new,\r\n"
+    assert safe.json()["content"] == header + ",'=SUM(1),missing,published,new,\r\n"
 
 
 async def test_jobs_need_a_key(client: httpx.AsyncClient, world: World) -> None:

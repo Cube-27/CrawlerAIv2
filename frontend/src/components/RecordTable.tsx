@@ -14,7 +14,7 @@ export function changedFieldsText({ changed_fields: changed }: StoredRecord): st
 
 /** A row of the table: a stored record, or one a page just yielded (no id, version or changed fields). */
 export type TableRecord = ExtractedRecord &
-  Partial<Pick<StoredRecord, "id" | "version" | "changed_fields">>;
+  Partial<Pick<StoredRecord, "id" | "version" | "changed_fields" | "delta">>;
 
 /** A nested value (a list or an object) opened from its cell: which field of which row. */
 interface Nested {
@@ -93,6 +93,8 @@ const RECORD_COLUMNS: Column[] = [
 ];
 
 const STORED_COLUMNS: Column[] = [
+  // A job's record against its entity's previous record (jobs spec, "Page delta"): new, changed or same.
+  { id: "delta", name: "Delta", render: (record) => record.delta?.kind ?? NO_VALUE },
   { id: "version", name: "Version", render: (record) => record.version ?? NO_VALUE },
   {
     id: "changed",
@@ -147,7 +149,7 @@ function NestedDrawer({ nested, onClose }: Readonly<{ nested: Nested; onClose: (
 
 /** Records of one schema as a table (frontend spec): the header row is the schema's field names in its order, and
  * each row is one record. A list or object value shows its count and a button that opens it in a drawer. Stored
- * records (with an id) add their version and changed fields, and a row opens by click or by Enter (`onOpen`). Rows are
+ * records (with an id) add their delta, version and changed fields, and a row opens by click or by Enter (`onOpen`). Rows are
  * the page shown, at most one API page (100 rows), so there is no more to hold or to virtualize. */
 export function RecordTable<R extends TableRecord>({
   label,

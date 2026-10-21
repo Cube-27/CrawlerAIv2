@@ -9,9 +9,7 @@ queue. Its capture is stored, and for `records` it is extracted with what the jo
 not stored: `/v1/jobs/{id}/results` makes them from the capture.
 
 A records task fetches its page whole and extracts it fresh every run, a recurring run's too: no record stored by an
-earlier run stands for it (jobs spec, "Fresh extraction and content fingerprint"). The page's visible words (for a
-listing, its words and links) are fingerprinted into `url_state`, which says whether its content changed since the URL
-was last fetched.
+earlier run stands for it (jobs spec, "Fresh extraction and content fingerprint"; `steps.extract_records`).
 
 Everything is written in the worker's transaction for the task, so a task that raises rolls back alone and fails no
 other (INV-31). A page that was not reached ends with its outcome (`blocked`, `shell`, `not_found`); a fetch error is a
@@ -19,20 +17,12 @@ transient failure, retried by the queue and `failed` once attempts run out; a re
 the task at once (INV-16).
 """
 
-import asyncio
-import logging
-
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.config_ir.drift import DriftMargins
-from crawlerai.content.links import links
-from crawlerai.content.page import ParsedPage
-from crawlerai.db.models import PageKind, SiteId
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
-from crawlerai.recurring.simhash import ContentFingerprint, content_fingerprint
-from crawlerai.recurring.state import record_content
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape_steps import FetchOptions, PageFormat
@@ -48,8 +38,6 @@ from crawlerai.worker.handlers.steps import (
     unreached,
 )
 from crawlerai.worker.loop import Failed, Finished, TaskHandler, TaskResult
-
-log = logging.getLogger(__name__)
 
 
 class _PageFetch(BaseModel):
@@ -109,39 +97,9 @@ async def _settle(
     if records is None:
         return Finished("extracted", capture_id=page.capture_id)
     parsed = page.parsed
-    final_url = page.result.bundle.manifest.final_url
-    await _fingerprint(conn, page.site.id, task.canonical_url, parsed, final_url, records.schema.page_kind)
     result = await extract_records(conn, task, page, records, caller_supplied=True, llm=llm, parsed=parsed)
     if isinstance(result, Finished):
         result = await store_further_pages(
             conn, fetching.store, task, page, records, caller_supplied=True, llm=llm, result=result
         )
     return result
-
-
-async def _fingerprint(
-    conn: AsyncConnection, site_id: SiteId, canonical_url: str, parsed: ParsedPage, final_url: str, kind: PageKind
-) -> None:
-    """Store the page's content fingerprint (`record_content`); a page without one (`page_fingerprint`) stores none,
-    and a fingerprint that fails is logged and skipped: it never fails the task."""
-    try:
-        # Rendering the text is CPU work, as resolution is: a thread keeps the event loop serving other tasks.
-        fingerprint = await asyncio.to_thread(page_fingerprint, parsed, final_url, kind)
-    except Exception:
-        log.exception("the content fingerprint failed")
-        return
-    if fingerprint is not None:
-        await record_content(conn, site_id, canonical_url, fingerprint)
-
-
-def page_fingerprint(parsed: ParsedPage, final_url: str, kind: PageKind) -> ContentFingerprint | None:
-    """The fingerprint of the page's visible words; for a listing, of its words and the URLs it links to, in document
-    order (`content.links`): its rows' links are part of what it lists, so rows that keep their words but link
-    elsewhere (reposted items) are a change, and a listing without words (rows of images, text drawn by script) is
-    fingerprinted by its links alone (jobs spec, "Conditional GET and content fingerprint"). None for a detail page
-    without words, or a listing with neither words nor links."""
-    text = parsed.cleaned_text.text
-    if kind != "listing":
-        return content_fingerprint(text)
-    # A canonical URL holds no whitespace (WHATWG URL Standard percent-encodes it), so each link is one word.
-    return content_fingerprint(" ".join((text, *links(parsed, final_url))))

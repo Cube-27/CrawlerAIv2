@@ -2,7 +2,9 @@
 of the fields of its records have each status, with the reasons the unpublished ones give, and per field how many pages
 fetched over HTTP alone left it `missing/no_candidates`, with the next step when the job did not ask for rendering
 (`render.mode: locate`), also named when a listing page fetched over HTTP alone listed nothing, and per
-detect-and-report signal how many of its pages raised it (`content.signals`; names only, no URLs). All are counted
+detect-and-report signal how many of its pages raised it (`content.signals`; names only, no URLs), and how many of its
+records are `new`, `changed` or `same` against their entities' previous records (jobs spec, "Page delta"). All are
+counted
 from what the job stored (`url_task.outcome`, `record.field_meta`, `capture`, `extraction.diagnostics`): no table of
 its own. `GET /v1/jobs/{id}/outcomes` and
 `crawlerai jobs summary` answer with it; `crawlerai jobs reextract` counts the same fields of the records the current
@@ -15,12 +17,12 @@ from typing import Any, Final, cast, get_args
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Text, column, false, func, select, true
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.content.signals import PREFIX as SIGNAL_PREFIX
 from crawlerai.content.signals import SIGNALS, Signal
-from crawlerai.db.models import Capture, Extraction, Job, JobId, Record, TaskRecord, UrlTask
+from crawlerai.db.models import Capture, Extraction, Job, JobId, Record, RecordDelta, TaskRecord, UrlTask
 from crawlerai.resolve.page_state import NO_CANDIDATES
 from crawlerai.resolve.types import FieldStatus
 from crawlerai.services.jobs import OutcomeCounts, get_job
@@ -70,6 +72,16 @@ class FieldTally(BaseModel):
         return cls.of(Counter((meta["status"], meta.get("reason")) for record in metas for meta in record.values()))
 
 
+class DeltaCounts(BaseModel):
+    """How many of a job's records are each delta (jobs spec, "Page delta")."""
+
+    model_config = ConfigDict(frozen=True)
+
+    new: int
+    changed: int
+    same: int
+
+
 class JobOutcomes(BaseModel):
     """A job's pages by outcome and the fields of its records by status."""
 
@@ -86,6 +98,7 @@ class JobOutcomes(BaseModel):
     hint: str | None
     # Per detect-and-report signal, the job's pages an extraction found it on; a signal no page raised is left out.
     signals: dict[Signal, int]
+    records: DeltaCounts
 
 
 async def job_outcomes(conn: AsyncConnection, job_id: JobId) -> JobOutcomes:
@@ -104,7 +117,24 @@ async def job_outcomes(conn: AsyncConnection, job_id: JobId) -> JobOutcomes:
         missing_unrendered=missing,
         hint=LOCATE_HINT if (missing or unlisted) and mode == "off" else None,
         signals=await _signals(conn, job_id),
+        records=await _deltas(conn, job_id),
     )
+
+
+async def _deltas(conn: AsyncConnection, job_id: JobId) -> DeltaCounts:
+    """The job's records by delta, each once, as the first task of the job that stood for it saw it (as
+    `services.records` lists them)."""
+    first = (
+        select(TaskRecord.record_id, TaskRecord.delta)
+        .join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
+        .where(UrlTask.job_id == job_id)
+        .ext(distinct_on(TaskRecord.record_id))
+        .order_by(TaskRecord.record_id, TaskRecord.created_at, TaskRecord.url_task_id)
+        .subquery()
+    )
+    rows = await conn.execute(select(first.c.delta, func.count()).group_by(first.c.delta))
+    counts = {cast(str, delta): cast(int, n) for delta, n in rows.all()}
+    return DeltaCounts(**{delta: counts.get(delta, 0) for delta in get_args(RecordDelta)})
 
 
 async def _signals(conn: AsyncConnection, job_id: JobId) -> dict[Signal, int]:

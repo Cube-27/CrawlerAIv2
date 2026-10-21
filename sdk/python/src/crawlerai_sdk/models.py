@@ -329,6 +329,18 @@ class DeliveryPage(BaseModel):
     next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
 
 
+class Kind(Enum):
+    new = "new"
+    changed = "changed"
+    same = "same"
+
+
+class DeltaCounts(BaseModel):
+    changed: Annotated[int, Field(title="Changed")]
+    new: Annotated[int, Field(title="New")]
+    same: Annotated[int, Field(title="Same")]
+
+
 class DroppedRowMeta(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -592,7 +604,7 @@ class Health(BaseModel):
     status: Annotated[Literal["ok"], Field(title="Status")] = "ok"
 
 
-class Kind(Enum):
+class Kind1(Enum):
     scrape = "scrape"
     batch_scrape = "batch_scrape"
     map = "map"
@@ -614,7 +626,7 @@ class JobUsage(BaseModel):
     created_at: Annotated[AwareDatetime, Field(title="Created At")]
     estimated_usd: Annotated[float | None, Field(title="Estimated Usd")] = None
     job_id: Annotated[UUID, Field(title="Job Id")]
-    kind: Annotated[Kind, Field(title="Kind")]
+    kind: Annotated[Kind1, Field(title="Kind")]
     tokens_in: Annotated[int, Field(title="Tokens In")]
     tokens_out: Annotated[int, Field(title="Tokens Out")]
     unpriced_tokens: Annotated[int, Field(title="Unpriced Tokens")]
@@ -1067,7 +1079,7 @@ class RunStarted(BaseModel):
     job_id: Annotated[UUID, Field(title="Job Id")]
 
 
-class Kind2(Enum):
+class Kind3(Enum):
     batch_scrape = "batch_scrape"
     crawl = "crawl"
     extract = "extract"
@@ -1078,7 +1090,7 @@ class ScheduleOut(BaseModel):
     cron: Annotated[str | None, Field(title="Cron")] = None
     id: Annotated[UUID, Field(title="Id")]
     interval_s: Annotated[int | None, Field(title="Interval S")] = None
-    kind: Annotated[Kind2, Field(title="Kind")]
+    kind: Annotated[Kind3, Field(title="Kind")]
     last_error: Annotated[str | None, Field(title="Last Error")] = None
     last_job_id: Annotated[UUID | None, Field(title="Last Job Id")] = None
     last_run_at: Annotated[AwareDatetime | None, Field(title="Last Run At")] = None
@@ -1095,7 +1107,7 @@ class SchedulePage(BaseModel):
     next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
 
 
-class Kind3(Enum):
+class Kind4(Enum):
     scrape = "scrape"
     batch_scrape = "batch_scrape"
     crawl = "crawl"
@@ -1112,7 +1124,7 @@ class ScheduleUpdate(BaseModel):
     )
     cron: Annotated[str | None, Field(title="Cron")] = None
     interval_s: Annotated[IntervalS | None, Field(title="Interval S")] = None
-    kind: Annotated[Kind3 | None, Field(title="Kind")] = None
+    kind: Annotated[Kind4 | None, Field(title="Kind")] = None
     name: Annotated[Name | None, Field(title="Name")] = None
     request: Annotated[dict[str, Any] | None, Field(title="Request")] = None
     timezone: Annotated[str | None, Field(title="Timezone")] = None
@@ -1501,6 +1513,15 @@ class FetchSummary(BaseModel):
     status_code: Annotated[int | None, Field(title="Status Code")] = None
 
 
+class FieldChange(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    field: Annotated[str, Field(title="Field")]
+    previous: JsonValue
+    value: JsonValue
+
+
 class FieldLabel(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1555,6 +1576,7 @@ class JobOutcomes(BaseModel):
     missing_unrendered: Annotated[dict[str, int], Field(title="Missing Unrendered")]
     pages: OutcomeCounts
     reasons: Annotated[dict[str, int], Field(title="Reasons")]
+    records: DeltaCounts
     signals: Annotated[dict[str, int], Field(title="Signals")]
 
 
@@ -1565,7 +1587,7 @@ class JobSummary(BaseModel):
     engine_version: Annotated[str, Field(title="Engine Version")]
     finished_at: Annotated[AwareDatetime | None, Field(title="Finished At")] = None
     id: Annotated[UUID, Field(title="Id")]
-    kind: Annotated[Kind, Field(title="Kind")]
+    kind: Annotated[Kind1, Field(title="Kind")]
     llm_cost_usd: Annotated[float | None, Field(title="Llm Cost Usd")] = None
     outcomes: OutcomeCounts
     schedule_id: Annotated[UUID | None, Field(title="Schedule Id")] = None
@@ -1972,6 +1994,14 @@ class CssStepOutput(BaseModel):
     xpath: Annotated[str, Field(title="Xpath")]
 
 
+class Delta(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    changes: Annotated[list[FieldChange] | None, Field(title="Changes")] = None
+    kind: Annotated[Kind, Field(title="Kind")]
+
+
 class ExtractRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2217,6 +2247,7 @@ class StoredRecord(BaseModel):
     changed_fields: Annotated[list[str], Field(title="Changed Fields")]
     complete: Annotated[bool, Field(title="Complete")]
     confidence: Annotated[Confidence | None, Field(title="Confidence")] = None
+    delta: Delta | None = None
     egress_basis: Annotated[EgressBasis, Field(title="Egress Basis")]
     egress_country: Annotated[str | None, Field(title="Egress Country")] = None
     fields: Annotated[dict[str, RecordField], Field(title="Fields")]

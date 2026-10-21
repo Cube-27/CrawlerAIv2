@@ -6,7 +6,9 @@ the highest `version`. A record equal to it in every value (`recurring.record_fp
 completeness, under the same document of the schema, stores nothing and answers with that version, which holds exactly
 what was just extracted; any difference, none stored, or another document (`record.schema_digest`; a schema is edited
 in place) adds the next version, superseding it and naming its changed fields. Either
-way the task stands for the record it answers with (`task_record`, §4.2), so that its job lists it. This is the
+way the task stands for the record it answers with (`task_record`, §4.2), so that its job lists it, with what the record
+is against the entity's previous record (`task_record.delta`, jobs spec "Page delta"): `new` when it had none,
+`changed` when a published value differs, else `same`. This is the
 `resolve.task.RecordWriter` a page task stores its records with.
 
 `url_state` is not written here: it is per URL, and its `last_changed_at` is when the page's content last changed
@@ -23,7 +25,7 @@ from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.db.models import Job, Record, RecordId, SiteId, TaskRecord, UrlTaskId
+from crawlerai.db.models import Job, Record, RecordDelta, RecordId, SiteId, TaskRecord, UrlTaskId
 from crawlerai.recurring.record_fp import changed_fields, record_fingerprint
 from crawlerai.resolve.records import FieldMeta, RecordDraft
 from crawlerai.resolve.task import RecordSource, StoredRecord
@@ -53,10 +55,12 @@ async def store_records(
     latest = await latest_versions(conn, source.site_id, schema, [draft.entity_key for draft in drafts])
     digest = document_digest(schema)
     stored: list[StoredRecord | None] = []
+    deltas: list[RecordDelta] = []
     new: list[_New] = []
     for position, draft in enumerate(drafts):
         fingerprint = record_fingerprint(draft.data, schema)
         previous = latest.get(draft.entity_key)
+        deltas.append(_delta(previous, fingerprint))
         if previous is not None and _same(previous, draft, fingerprint, digest):
             stored.append(StoredRecord(previous["id"], _stored_draft(previous)))
         else:
@@ -64,17 +68,30 @@ async def store_records(
             new.append(_New(position, draft, fingerprint, previous))
     for record, record_id in zip(new, await _insert(conn, schema, digest, source, new), strict=True):
         stored[record.position] = StoredRecord(record_id, record.draft)
-    records = tuple(record for record in stored if record is not None)
-    await link_records(conn, source.task_id, [record.id for record in records])
-    return records
+    links = [(record.id, delta) for record, delta in zip(stored, deltas, strict=True) if record is not None]
+    await link_records(conn, source.task_id, links)
+    return tuple(record for record in stored if record is not None)
 
 
-async def link_records(conn: AsyncConnection, task_id: UrlTaskId, record_ids: Sequence[RecordId]) -> None:
-    """Record that the task's page stands for `record_ids`: those it stored, or the latest versions equal to what it
-    extracted. A listing's rows can name one entity twice, so a link already there is kept."""
-    if record_ids:
-        rows = [{"url_task_id": task_id, "record_id": record_id} for record_id in dict.fromkeys(record_ids)]
+async def link_records(
+    conn: AsyncConnection, task_id: UrlTaskId, links: Sequence[tuple[RecordId, RecordDelta]]
+) -> None:
+    """Record that the task's page stands for each record of `links`, with its delta: those it stored, or the latest
+    versions equal to what it extracted. A listing's rows can name one entity twice, so the first link is kept."""
+    if links:
+        firsts: dict[RecordId, RecordDelta] = {}
+        for record_id, delta in links:
+            firsts.setdefault(record_id, delta)
+        rows = [{"url_task_id": task_id, "record_id": record_id, "delta": delta} for record_id, delta in firsts.items()]
         await conn.execute(pg_insert(TaskRecord).values(rows).on_conflict_do_nothing())
+
+
+def _delta(previous: RowMapping | None, fingerprint: str) -> RecordDelta:
+    """The record against the entity's previous record: its values are a hash of what it published, so equal
+    fingerprints are equal values, whatever the field metadata or the schema document."""
+    if previous is None:
+        return "new"
+    return "same" if previous["fingerprint"] == fingerprint else "changed"
 
 
 async def _lock(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> None:

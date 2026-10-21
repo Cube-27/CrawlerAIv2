@@ -408,7 +408,11 @@ async def job_results(
         return page
     schema = await registry.get_by_id(conn, job.schema_id)
     content = export_records(
-        query.format, schema, [record_content(record) for record in page.items], csv_safe=query.csv_safe
+        query.format,
+        schema,
+        [record_content(record) for record in page.items],
+        csv_safe=query.csv_safe,
+        deltas=[record.delta for record in page.items],
     )
     return ExportPage(format=query.format, content=content, next_cursor=page.next_cursor)
 
