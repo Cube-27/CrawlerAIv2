@@ -15,8 +15,6 @@ CRAWLERAI_OBJECT_STORE := $(or $(CRAWLERAI_OBJECT_STORE),fs:///$(patsubst /%,%,$
 CRAWLERAI_BROWSER_PROFILES := $(or $(CRAWLERAI_BROWSER_PROFILES),$(CURDIR)/.data/browser-profiles)
 export
 
-# `check-sdk` is not part of `check`: it needs `uvx` and the SDK's own `pnpm install`. CI checks only that the SDKs
-# were generated from the current API document (tools/tests/test_sdk_digest.py).
 .PHONY: sdk check-sdk dev up db db-down migrate api api-client check check-data check-tools check-backend \
 	check-frontend check-api-client check-licenses check-size-gates check-complexity check-theme verify-worker-queue
 
@@ -65,7 +63,7 @@ verify-worker-queue:
 ## the backend's database steps and `pnpm install` in frontend/. The fast staged-file hooks are in
 ## .pre-commit-config.yaml.
 check: check-data check-size-gates check-complexity check-theme check-tools check-backend check-frontend \
-	check-api-client check-licenses
+	check-api-client check-sdk check-licenses
 
 check-data:
 	cd backend && $(UV_RUN) python ../tools/data_manifest_check.py
@@ -92,29 +90,34 @@ check-tools:
 	cd backend && $(UV_RUN) python ../tools/site_literal_scan.py --public
 	cd backend && $(UV_RUN) python ../tools/decision_ids.py
 
-# Same steps and order as CI's backend job. The migration round trip and the tests (tests/db needs a live Postgres)
-# run against a scratch database recreated each run, so the dev database keeps its data. 127.0.0.1, not localhost:
-# asyncpg can hang resolving localhost on Windows.
+# Same steps and order as CI's backend-static and backend jobs. The migration round trip and the tests (tests/db needs a
+# live Postgres) run against scratch databases recreated each run, so the dev database keeps its data: the tests run in
+# parallel (`-n auto`), each xdist worker in its own copy of the migrated `crawlerai_check` (`crawlerai_check_gw0`, ...,
+# one per CPU, at least as many as `-n auto` starts). `browser` tests are skipped where Chromium is not installed (`uv
+# run patchright install --no-shell chromium` once). 127.0.0.1, not localhost: asyncpg can hang resolving localhost on
+# Windows.
 CHECK_DATABASE_URL := postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai_check
+CHECK_PSQL = $(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -q -U postgres
 
 check-backend: db
 	cd backend && $(UV_RUN) ruff check
 	cd backend && $(UV_RUN) ruff format --check
 	cd backend && $(UV_RUN) mypy src tests migrations
 	cd backend && $(UV_RUN) lint-imports
-	cd backend && $(UV_RUN) patchright install --no-shell chromium
-	$(COMPOSE) exec -T postgres psql -v ON_ERROR_STOP=1 -q -U postgres \
-		-c 'DROP DATABASE IF EXISTS crawlerai_check' -c 'CREATE DATABASE crawlerai_check OWNER app'
+	$(CHECK_PSQL) -c 'DROP DATABASE IF EXISTS crawlerai_check' -c 'CREATE DATABASE crawlerai_check OWNER app'
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic upgrade head
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic downgrade base
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic upgrade head
-	cd backend && CRAWLERAI_TEST_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) pytest
+	python3 -c "import os; [print(f'DROP DATABASE IF EXISTS crawlerai_check_gw{i};' \
+		f' CREATE DATABASE crawlerai_check_gw{i} TEMPLATE crawlerai_check OWNER app;') for i in range(os.cpu_count() or 1)]" \
+		| $(CHECK_PSQL)
+	cd backend && CRAWLERAI_TEST_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) pytest -n auto
 
 ## Regenerate the Python and TypeScript SDKs' generated files from frontend/openapi.json (run `make api-client` first).
+## `check-sdk` is CI's sdk job: the regenerated files must match the committed ones.
 sdk:
 	sdk/python/generate.sh
 	cd sdk/typescript && pnpm install --frozen-lockfile && pnpm gen
-	python3 tools/sdk_digest.py
 
 check-sdk: sdk
 	git diff --exit-code -- sdk || { echo "SDK out of date: run 'make sdk' and commit the result."; exit 1; }
