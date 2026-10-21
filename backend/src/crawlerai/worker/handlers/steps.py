@@ -20,6 +20,7 @@ import logging
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from http import HTTPStatus
 from typing import Final
 from urllib.parse import urlsplit
 
@@ -27,7 +28,8 @@ from pydantic import TypeAdapter
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.politeness import HostLimiter, backoff, slowed_down
+from crawlerai.acquire.challenge import vendor_block
+from crawlerai.acquire.politeness import Admit, HostLimiter, backoff, slowed_down
 from crawlerai.acquire.rungs import NO_PLAN
 from crawlerai.acquire.ssrf import SsrfRejected
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
@@ -61,6 +63,7 @@ from crawlerai.services.fetching import (
 from crawlerai.services.polite import (
     QUEUED,
     ROBOTS_UNREACHABLE,
+    HostRules,
     Later,
     PageFetch,
     ReadRules,
@@ -99,8 +102,12 @@ log = logging.getLogger(__name__)
 RECIPE_PAGES_SHARE: Final = LEASE / 4
 # The `last_error` of a records task in a worker that has not loaded the engine's data files (D-0492).
 RECORDS_UNAVAILABLE: Final = "records_unavailable"
-# A page a vendor's challenge kept out is fetched at most this many times (master plan 2026-10-18 §3.1).
+# A page a vendor's challenge kept out is fetched at most this many times (master plan 2026-10-18 §3.1), and only once
+# when the browser rung met that challenge itself: a retry sends the same rungs to the same challenge.
 _VENDOR_TRIES: Final = 2
+# A page a 429 kept out (RFC 6585 §4) is fetched at most this many times: one retry after the back-off, from the
+# pool's next address, then `blocked`.
+_TOO_MANY_TRIES: Final = 2
 
 # The request's `min_confidence`, as the job row stores it.
 _MIN_CONFIDENCE: Final = TypeAdapter(Probability)
@@ -298,9 +305,15 @@ async def fetch_queued(
       postponed until it is, or `blocked`;
     - a 429 or 503 to any request of the fetch, unless the outcome kept is `ok` (the page an adapter's endpoint fell
       back to, adapters spec): a transient failure, retried after the back-off (`politeness.backoff`), `blocked` once
-      attempts run out, and at once when the server asks for more than the longest backoff."""
+      attempts run out (a 429's after one retry), and at once when the server asks for more than the longest backoff.
+    The task is logged as running once the site admits its fetch: a postponed task did not run."""
+
+    async def admitted(url: str, admit: Admit, known: HostRules) -> FetchResult:
+        log.info("url_task %s of job %s: running", task.id, task.job_id)
+        return await fetch(url, admit, known)
+
     result = await polite_fetch(
-        task.url, policy, rules, limiter, QUEUED, fetch, by_adapter=by_adapter, tries=task.attempts
+        task.url, policy, rules, limiter, QUEUED, admitted, by_adapter=by_adapter, tries=task.attempts
     )
     match result:
         case Later(wait=wait):
@@ -315,13 +328,13 @@ async def fetch_queued(
 def _backed_off(result: FetchResult, task: ClaimedTask) -> FetchResult | TaskResult:
     """A fetch that kept no `ok` page: the result, or, after a 429 or 503 to any of its requests, the task retried
     after the back-off of its try (`politeness.backoff`), or `blocked` when the server asks for longer than the longest
-    backoff (the polite fetch paused the host)."""
+    backoff (the polite fetch paused the host) or a 429 came on the retry (`_TOO_MANY_TRIES`)."""
     slowed = slowed_down(result.attempts)
     if slowed is None:
         return result
     error = f"http {slowed.status}"
     after = backoff(slowed, task.attempts)
-    if after is None:
+    if after is None or (slowed.status == HTTPStatus.TOO_MANY_REQUESTS and task.attempts >= _TOO_MANY_TRIES):
         return Finished("blocked", reason=error)
     return Failed(error, transient=True, after=after, exhausted="blocked")
 
@@ -384,7 +397,8 @@ async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: FetchedPag
 def unreached(page: FetchedPage, task: ClaimedTask) -> TaskResult | None:
     """The result of a page that was not reached: its outcome (`blocked`, `shell`, `not_found`), or a transient
     failure for a fetch error (D-0632); None for a reached page. A page a vendor's challenge kept out ends `blocked`
-    naming the vendor (`blocked_reason`), after at most one retry, once the back-off of its first try is over."""
+    naming the vendor (`blocked_reason`), after at most one retry, once the back-off of its first try is over, and with
+    none when the browser rung met that vendor's challenge itself."""
     capture_id = page.capture_id
     failure = fetch_failure(page.result)
     if failure is not None:
@@ -395,11 +409,17 @@ def unreached(page: FetchedPage, task: ClaimedTask) -> TaskResult | None:
     if outcome == "extracted":
         return None
     reason = blocked_reason(page.result)
-    if reason is not None and task.attempts < _VENDOR_TRIES:
+    if reason is not None and task.attempts < _VENDOR_TRIES and not _browser_met(page.result):
         return Failed(
             reason, transient=True, after=backoff_delay(task.attempts), exhausted="blocked", capture_id=capture_id
         )
     return Finished(outcome, reason=reason, capture_id=capture_id)
+
+
+def _browser_met(result: FetchResult) -> bool:
+    """Whether a browser attempt of the fetch met the challenge of the vendor that kept the page out."""
+    vendor = vendor_block(result)
+    return any(a.method == "browser" and a.challenge == vendor for a in result.attempts)
 
 
 async def extract_records(

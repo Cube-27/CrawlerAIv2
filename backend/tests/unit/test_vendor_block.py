@@ -92,7 +92,9 @@ def _fetched(result: FetchResult) -> FetchedPage:
 
 
 def test_a_vendor_blocked_task_is_retried_once_after_the_back_off_then_ends_blocked_naming_the_vendor() -> None:
-    page = _fetched(_result("blocked", VENDOR, VENDOR))
+    page = _fetched(_result("blocked", VENDOR))
+    # The browser rung met the same vendor's challenge: a retry would send the same rungs to it.
+    browser_met = _fetched(_result("blocked", VENDOR, VENDOR))
 
     first, second = unreached(page, _task(1)), unreached(page, _task(2))
 
@@ -100,6 +102,8 @@ def test_a_vendor_blocked_task_is_retried_once_after_the_back_off_then_ends_bloc
         f"challenge: {VENDOR}", transient=True, after=FIRST_BACKOFF, exhausted="blocked", capture_id=page.capture_id
     )
     assert second == Finished("blocked", reason=f"challenge: {VENDOR}", capture_id=page.capture_id)
+    blocked = Finished("blocked", reason=f"challenge: {VENDOR}", capture_id=browser_met.capture_id)
+    assert unreached(browser_met, _task(1)) == blocked
 
 
 def test_a_451_is_blocked_for_legal_reasons_and_ends_geo_blocked_without_a_retry() -> None:
