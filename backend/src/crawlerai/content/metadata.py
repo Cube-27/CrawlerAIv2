@@ -103,6 +103,21 @@ def canonical_href(page: ParsedPage, final_url: str) -> str | None:
     return read[0][0] if len({url for _, url in read}) == 1 else None
 
 
+def language_alternates(page: ParsedPage, final_url: str) -> tuple[tuple[str, str], ...]:
+    """HTML Living Standard §4.6.7.1: a `link` whose `rel` has `alternate` and that has an `hreflang` names an alternate
+    version of this document in that language (a translation, a regional version): each (language, target resolved
+    against the document base URL and canonicalized), in document order; a target no URL parser reads names none."""
+    base = document_base_url(page, final_url)
+    found: list[tuple[str, str]] = []
+    for node in page.tree.css("link[hreflang]"):
+        language = strip(node.attributes.get("hreflang"))
+        if not language or "alternate" not in tokens((node.attributes.get("rel") or "").lower()):
+            continue
+        if (url := canonical_url(node.attributes.get("href") or "", base)) is not None:
+            found.append((language, url))
+    return tuple(found)
+
+
 def _json_ld_types(page: ParsedPage) -> Iterator[str]:
     # JSON-LD 1.1 §9.3: a script of type application/ld+json carries JSON-LD; §3.5: `@type` is a string or an array
     # of strings, on any node object, nested ones and `@graph` members included.

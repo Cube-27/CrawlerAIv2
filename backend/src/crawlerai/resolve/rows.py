@@ -58,7 +58,7 @@ class RowField:
     orders: Orders
     calibration: Calibration | None
     min_confidence: float | None
-    page_urls: tuple[str, ...]  # request, final and canonical URLs, canonicalized
+    page_urls: tuple[str, ...]  # the URLs naming the page (`collect.run`'s `page_urls`), canonicalized
     # The query parameters by which the page's platform selects a variant on the product's own URL (`Collected`).
     variant_params: tuple[str, ...] = ()
     # The sub-fields whose stated value the page shows as another (`shown_values`): the stated value, the shown one.
