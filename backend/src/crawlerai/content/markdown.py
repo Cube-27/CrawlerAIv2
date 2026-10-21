@@ -41,6 +41,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.content.text import NOT_RENDERED
 from crawlerai.core import json_text
 from crawlerai.db.models import PageKind
+from crawlerai.normalize.strings import collapse
 
 # Elements whose content is not an item's text: those never rendered (`content.text`), and form controls (HTML
 # Standard §4.10), which a reader of the page uses rather than reads.
@@ -162,7 +163,7 @@ def _wrap(container: HtmlElement, run: _Run) -> None:
 def _item(item: HtmlElement) -> str:
     """One item on one line: its hyperlinks as Markdown links (an image link's image as its text), its other images,
     and its other visible text, in document order, whitespace collapsed (CSS Text Level 3, `white-space: normal`)."""
-    return " ".join("".join(_parts(item)).split())
+    return collapse("".join(_parts(item)))
 
 
 def _parts(element: HtmlElement) -> Iterator[str]:
@@ -179,7 +180,7 @@ def _parts(element: HtmlElement) -> Iterator[str]:
 
 
 def _link(link: HtmlElement) -> str:
-    text = " ".join(link.text_content().split()) or link.get("title", "")
+    text = collapse(link.text_content()) or link.get("title", "")
     label = _escaped(text) if text else " ".join(_image(image) for image in link.iter("img"))
     return f"[{label}]({_target(link.get('href', ''))})"
 

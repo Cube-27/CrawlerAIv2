@@ -53,7 +53,11 @@ currency unknown (`null`) rather than decline, and never with a currency nothing
 
 ### Requirement: One module per type (INV-08)
 Exactly one module SHALL handle each field type (see `normalize/dispatch.py`); shared CLDR number reading lives in
-`normalize/numbers.py`, and only `normalize.*` imports Babel, price-parser and dateparser. Refs: C8, D-0255, D-0922.
+`normalize/numbers.py`, and only `normalize.*` imports Babel, price-parser and dateparser. The text form every layer
+compares in lives in `normalize/strings.py` alone: composition (NFC, non-whitespace control characters removed),
+white space collapsed or set aside, the one ellipsis set (U+2026 and `...`) with its cut test (`is_cut_of`), and word
+folding (`fold_words`: NFKC, case folded, letters and marks with or without digits, diacritics kept or folded). Folding
+is for comparison only; a published value keeps the form the page states. Refs: C8, D-0255, D-0922.
 Enforced by: import-linter contracts in `backend/.importlinter`; active.
 
 ### Requirement: Derived values marked
@@ -177,11 +181,12 @@ D-1371. (Previously: only a numeric offset or `Z`.)
 
 ### Requirement: location as stated
 `normalize/location.py` SHALL publish only what the page states: text as written (never split), structured parts as
-written, a structured place's text being its `name` and `streetAddress` lines then its locality, region, country name
+written (in the text form: composed, control characters removed, white space collapsed), a structured place's text being its `name` and `streetAddress` lines then its locality, region, country name
 and postal code (the HTML Standard's autofill order), each part once and a country code never in it, a country only from an ISO 3166-1 alpha-2 code that the standard assigns (not its user-assigned ranges or
 exceptional reservations such as `EU`), `remote_flag` `true` only when stated (`TELECOMMUTE`, or a `type:remote` phrase
 that is a whole clause of the text) and `null` otherwise; no gazetteer. Refs: §9, D-0920, D-0953, D-1058, D-1272,
-D-1372, D-1373. (Previously: `remote_flag` was `false` when unstated; CLDR's `EU`, `EZ` and `UN` were codes.)
+D-1372, D-1373. (Previously: `remote_flag` was `false` when unstated; CLDR's `EU`, `EZ` and `UN` were codes; a part's
+control characters were kept.)
 #### Scenario: Structured place text
 - **WHEN** a `Place` named "Old Hall" has `streetAddress` "1 Mill Lane, Alderton, UF 12345", `addressLocality`
   "Alderton", `addressRegion` "UF" and `addressCountry` "US"

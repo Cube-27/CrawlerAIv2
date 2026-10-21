@@ -20,8 +20,6 @@ them. Declines: input stating nothing is `Invalid("no_match")`; an `addressCount
 no ISO 3166-1 code is `Invalid("unknown_country")`.
 """
 
-import re
-import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from typing import TypeGuard
 
@@ -29,6 +27,7 @@ from pydantic import JsonValue
 
 from crawlerai.normalize import locales, vocab
 from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
+from crawlerai.normalize.strings import collapse, compose, fold_words
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org `jobLocationType`: "TELECOMMUTE for telecommute jobs"; JSON-LD may write it as a schema.org IRI or a
@@ -41,7 +40,6 @@ _TELECOMMUTE = frozenset(
 _VALUE_KEYS = frozenset({"text", "locality", "region", "country", "remote_flag"})
 _PARTS = ("locality", "region", "country")
 # A word of a part: a run of letters and digits (Unicode categories L and N, as `str.isalnum` reads them).
-_ALNUM = re.compile(r"[^\W_]+")
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
@@ -200,9 +198,9 @@ def _add(
 
 
 def _words(text: str) -> tuple[str, ...]:
-    """A part's words for telling whether the text already writes it: its runs of letters and digits (`str.isalnum`),
-    case-folded after NFKC (UAX #15), so case, punctuation and compatibility forms do not make a part new."""
-    return tuple(_ALNUM.findall(unicodedata.normalize("NFKC", text).casefold()))
+    """A part's words for telling whether the text already writes it (`strings.fold_words`), so case, punctuation and
+    compatibility forms do not make a part new."""
+    return tuple(fold_words(text))
 
 
 def _holds(words: tuple[str, ...], part: tuple[str, ...]) -> bool:
@@ -224,7 +222,8 @@ def _looks_like_a_code(written: str) -> bool:
 
 
 def _part(given: JsonValue) -> str | None:
-    """A stated part as written: NFC, with each run of whitespace (`str.isspace`) one space."""
+    """A stated part as written, in the text form (`strings.compose`, `strings.collapse`): NFC, the non-whitespace
+    control characters removed, each run of white space one space."""
     if not isinstance(given, str):
         return None
-    return " ".join(unicodedata.normalize("NFC", given).split()) or None
+    return collapse(compose(given)) or None

@@ -28,6 +28,7 @@ from crawlerai.content.markdown import markdown
 from crawlerai.content.md_blocks import Block, parse, render
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import PageKind
+from crawlerai.normalize.strings import collapse
 
 # HTML Standard §4.3.4, §4.3.5: `nav` is a section of navigation links, `aside` content tangential to its surroundings.
 _ALWAYS_LANDMARKS = ("nav", "aside")
@@ -102,7 +103,7 @@ def _scope(element: HtmlElement) -> str | None:
 
 def _prune_blocks(tree: HtmlElement) -> None:
     blocks = [
-        (element, " ".join(element.text_content().split()))
+        (element, collapse(element.text_content()))
         for element in tree.iter(*_LEAF_TAGS)
         if not any(True for _ in element.iterdescendants(*_LEAF_TAGS))
     ]
@@ -120,7 +121,7 @@ def _drops(element: HtmlElement, text: str, occurrences: int) -> bool:
         return False
     if occurrences > 1:
         return True
-    links = sum(len(" ".join(link.text_content().split())) for link in element.iter("a"))
+    links = sum(len(collapse(link.text_content())) for link in element.iter("a"))
     link_density = links / len(text)
     markup = sum(2 * len(str(e.tag)) + _TAG_OVERHEAD for e in element.iter() if isinstance(e.tag, str))
     text_density = len(text) / (len(text) + markup)

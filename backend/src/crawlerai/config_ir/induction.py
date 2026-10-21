@@ -56,6 +56,7 @@ from crawlerai.content.text import name_test
 from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
+from crawlerai.normalize.strings import collapse
 from crawlerai.schemas.types import NEXT_PAGE_FIELD, FieldSpec, SchemaDef
 
 # A class token that reads as a word or kebab-case words is a stable anchor; tokens that build tools hash carry
@@ -390,7 +391,7 @@ def _elements_holding(tree: HtmlElement, value: JsonValue, spec: FieldSpec, ctx:
     for element in tree.iter():
         if not isinstance(element.tag, str):
             continue
-        text = " ".join(element.text_content().split()) if len(element) <= 3 else ""
+        text = collapse(element.text_content()) if len(element) <= 3 else ""
         readings = [text] if 0 < len(text) <= _MAX_ELEMENT_TEXT else []
         readings += [v for v in element.attrib.values() if 0 < len(v) <= _MAX_ELEMENT_TEXT]
         if any(_normalizes_to(reading, value, spec, ctx) for reading in readings):

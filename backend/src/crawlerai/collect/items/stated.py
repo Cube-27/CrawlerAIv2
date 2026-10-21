@@ -7,17 +7,15 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from crawlerai.collect.site_names import fold
+from crawlerai.normalize.strings import fold, uncut
 
 _LINE: Final = re.compile(r"[^\n]+")
 _TOKEN: Final = re.compile(r"\S+")
-# Unicode: U+2026 HORIZONTAL ELLIPSIS and the three U+002E FULL STOPs it decomposes to (NFKC): text cut short.
-_ELLIPSES: Final = ("\u2026", "...")
 
 
 @dataclass(frozen=True, slots=True)
 class Word:
-    """A word of a block's shown text: its folded form (`site_names.fold`), its span of the cleaned text, whether it
+    """A word of a block's shown text: its folded form (`strings.fold`), its span of the cleaned text, whether it
     starts or ends its line, and whether its line ends in an ellipsis that cut it short."""
 
     key: str
@@ -32,11 +30,11 @@ class Word:
 class Stated:
     """A name the item's attributes state and the run of its words the block shows: WCAG 2.1 SC 2.5.3 (Label in Name)
     has the accessible name hold the visible label, here one or several whole lines of the block in order, folded
-    (`site_names.fold`: case and punctuation aside), the last of them possibly cut short by an ellipsis (U+2026, or
-    the three full stops it decomposes to under NFKC: a truncated display of the name); leading words the block shows
-    as lines of their own apart from the run are left out of `text` (`_lines_before`). `lead` and `trail` are the
-    folded words before and after the shown run (none shown: the whole name is neither); `xpath` is the shown run's
-    innermost element, else the stating element's; `shown_at` is the shown run's span of the cleaned text."""
+    (`strings.fold`: case and punctuation aside), the last of them possibly cut short by an ellipsis
+    (`strings.ELLIPSES`: a truncated display of the name); leading words the block shows as lines of their own apart
+    from the run are left out of `text` (`_lines_before`). `lead` and `trail` are the folded words before and after
+    the shown run (none shown: the whole name is neither); `xpath` is the shown run's innermost element, else the
+    stating element's; `shown_at` is the shown run's span of the cleaned text."""
 
     text: str
     xpath: str
@@ -119,8 +117,8 @@ def words(text: str, start: int, end: int) -> list[Word]:
     found: list[Word] = []
     for line in _LINE.finditer(text, start, end):
         body = line.group().rstrip()
-        cut = body.endswith(_ELLIPSES)
-        body = body.removesuffix(_ELLIPSES[0]).removesuffix(_ELLIPSES[1]) if cut else body
+        whole, body = body, uncut(body)
+        cut = body != whole
         keyed = [(m, key) for m in _TOKEN.finditer(body) if (key := fold(m.group()))]
         found.extend(
             Word(key, line.start() + m.start(), line.start() + m.end(), i == 0, i == len(keyed) - 1, cut)
@@ -136,7 +134,7 @@ def same(values: Iterable[str]) -> str:
 
 
 def continues(stated: str, name: str) -> bool:
-    """Whether the stated name begins with `name`, word by word, folded (`site_names.fold`)."""
+    """Whether the stated name begins with `name`, word by word, folded (`strings.fold`)."""
     keys, start = _keys(stated), _keys(name)
     return bool(start) and keys[: len(start)] == start
 

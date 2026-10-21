@@ -23,16 +23,15 @@ Two structural properties of the values say a candidate is a fragment of another
   (a site's default image beside the object's) are no views the longer list must hold.
 """
 
-import re
 import unicodedata
 from collections.abc import Sequence
 
 from crawlerai.collect.base import Candidate
 from crawlerai.normalize.base import Ok
+from crawlerai.normalize.strings import collapse, is_cut_of, solid
 from crawlerai.normalize.url import same_file
 from crawlerai.schemas.types import FieldSpec, FieldType
 
-_ELLIPSIS = re.compile(r"\s*(?:…|\.{3})$")
 _OPEN_GRAPH = "og"
 _BAR = "|"  # U+007C
 
@@ -73,15 +72,10 @@ def _files(c: Candidate) -> list[str]:
 
 def _forms(kept: Sequence[Candidate]) -> list[tuple[Candidate, str]]:
     return [
-        (c, _collapsed(c.normalized.value))
+        (c, collapse(c.normalized.value))
         for c in kept
         if isinstance(c.normalized, Ok) and isinstance(c.normalized.value, str)
     ]
-
-
-def _collapsed(value: str) -> str:
-    # A normalized value is already entity-decoded and composed; only whitespace differs between renditions.
-    return " ".join(value.split())
 
 
 def _by_length(kept: Sequence[Candidate]) -> list[Candidate]:
@@ -97,8 +91,7 @@ def _by_length(kept: Sequence[Candidate]) -> list[Candidate]:
 def _longer(c: Candidate, form: str, other: Candidate, longer: str, summaries: set[str]) -> bool:
     if len(longer) <= len(form) or other is c:
         return False
-    cut = _ELLIPSIS.sub("", form)
-    truncation = bool(cut) and longer.startswith(cut)
+    truncation = is_cut_of(form, longer, word_boundary=False)
     summary = form in summaries and other.source_kind != _OPEN_GRAPH
     return truncation or summary or _headed(c, longer)
 
@@ -108,8 +101,7 @@ def _headed(c: Candidate, longer: str) -> bool:
     paragraphs a rendered text separates)."""
     value = c.normalized.value if isinstance(c.normalized, Ok) else None
     _, line_break, rest = value.strip().partition("\n") if isinstance(value, str) else ("", "", "")
-    cut = "".join(_ELLIPSIS.sub("", rest.strip()).split())
-    return bool(line_break) and bool(cut) and "".join(longer.split()).startswith(cut)
+    return bool(line_break) and is_cut_of(rest, longer, word_boundary=False)
 
 
 def _flattened(c: Candidate, kept: Sequence[Candidate]) -> bool:
@@ -117,11 +109,11 @@ def _flattened(c: Candidate, kept: Sequence[Candidate]) -> bool:
     value = c.normalized.value if isinstance(c.normalized, Ok) else None
     if not isinstance(value, str):
         return False
-    solid = "".join(value.split())
+    whole = solid(value)
     return any(
         isinstance(other := o.normalized.value if isinstance(o.normalized, Ok) else None, str)
         and other.count("\n") > value.count("\n")
-        and "".join(other.split()) == solid
+        and solid(other) == whole
         for o in kept
     )
 

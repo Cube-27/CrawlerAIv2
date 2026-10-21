@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from crawlerai.collect.labels import labelled, properties, words
 from crawlerai.db.models import SchemaId
 from crawlerai.llm.client import LLMClient, LLMRequest, closed_object
+from crawlerai.normalize.strings import collapse
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import MAX_LABELS, FieldLabels, FieldSpec, Label, SchemaDef
 
@@ -153,7 +154,7 @@ def _labels(data: dict[str, JsonValue], schema: SchemaDef) -> FieldLabels:
         spec = schema.fields[entry.name]
         seen = {words(text) for text in (entry.name, *properties(spec), spec.description or "")}
         kept: list[Label] = []
-        for text in (" ".join(label.split()) for label in entry.labels):
+        for text in (collapse(label) for label in entry.labels):
             form = words(text)
             if form and form not in seen and len(text) <= _MAX_LABEL_CHARS and len(kept) < MAX_LABELS:
                 seen.add(form)

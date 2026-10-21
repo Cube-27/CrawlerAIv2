@@ -30,6 +30,7 @@ from babel import Locale
 
 from crawlerai.normalize import numbers
 from crawlerai.normalize.base import Context
+from crawlerai.normalize.strings import collapse
 
 Per = Literal["per_unit", "per_period"]
 PER_UNIT: Per = "per_unit"
@@ -170,7 +171,7 @@ def _spaced_letter(char: str) -> bool:
 
 
 def _form(pattern: str) -> str:
-    return " ".join(unicodedata.normalize("NFKC", pattern).split())
+    return collapse(unicodedata.normalize("NFKC", pattern))
 
 
 def _letters(text: str) -> int:

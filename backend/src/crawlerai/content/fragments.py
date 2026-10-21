@@ -20,6 +20,7 @@ from selectolax import lexbor
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from crawlerai.content.text import render
+from crawlerai.normalize.strings import collapse
 
 __all__ = [
     "FRAME_HEADER",
@@ -124,7 +125,7 @@ def append(tree: LexborHTMLParser, partials: Sequence[tuple[str, str]], included
     body = tree.body
     if body is None:
         return
-    shown = _words(render(body)[0].text)
+    shown = collapse(render(body)[0].text)
     for url, markup in partials:
         if url in included:  # a frame's answer, read in its frame (`include`)
             continue
@@ -133,13 +134,9 @@ def append(tree: LexborHTMLParser, partials: Sequence[tuple[str, str]], included
             return
         for node in lexbor.parse_fragment(markup):
             holder.insert_child(node)
-        text = _words(render(holder)[0].text)
+        text = collapse(render(holder)[0].text)
         if not text or text in shown:
             continue
         holder.attrs["data-fragment-src"] = url
         body.insert_child(holder)
         shown = f"{shown} {text}"
-
-
-def _words(text: str) -> str:
-    return " ".join(text.split())

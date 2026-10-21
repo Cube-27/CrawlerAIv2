@@ -12,12 +12,12 @@ import re
 import unicodedata
 from collections.abc import Mapping
 
+from crawlerai.normalize.strings import fold_words
 from crawlerai.schemas.paths import named_property, parse_paths
 from crawlerai.schemas.types import FieldLabels, FieldSpec, FieldType, SchemaDef
 
-# Words of a label or a name: runs of letters and digits; a lower-case letter or digit followed by a capital starts a
-# new word, as schema.org's lowerCamelCase property names join theirs (schema.org, "Data model": naming conventions).
-_WORD = re.compile(r"[^\W_]+")
+# Words of a label or a name (`strings.fold_words`); a lower-case letter or digit followed by a capital starts a new
+# word, as schema.org's lowerCamelCase property names join theirs (schema.org, "Data model": naming conventions).
 _CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 Words = tuple[str, ...]
@@ -58,5 +58,4 @@ def properties(spec: FieldSpec) -> list[str]:
 def words(text: str) -> Words:
     """`text`'s words, case-folded, after Unicode NFKC (UAX #15): "Review count:", `review_count` and `reviewCount`
     are all ("review", "count")."""
-    spaced = _CAMEL.sub(" ", unicodedata.normalize("NFKC", text))
-    return tuple(word.casefold() for word in _WORD.findall(spaced))
+    return tuple(fold_words(_CAMEL.sub(" ", unicodedata.normalize("NFKC", text))))

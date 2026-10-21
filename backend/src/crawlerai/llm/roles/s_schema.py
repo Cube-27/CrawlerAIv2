@@ -31,6 +31,7 @@ from crawlerai.db.models import JobId, PageKind
 from crawlerai.llm.client import LLMClient, LLMRequest, ReplyCheck
 from crawlerai.llm.roles.c_extract import DETAIL_MAX_CHARS
 from crawlerai.llm.roles.s_wire import from_wire, to_wire, wire_schema
+from crawlerai.normalize.strings import collapse
 from crawlerai.schemas import registry
 from crawlerai.schemas.registry import SchemaExists
 from crawlerai.schemas.types import FieldType, Name, SchemaDef, SchemaDocument
@@ -68,7 +69,7 @@ TYPE_DEFINITIONS: Final[dict[FieldType, str]] = {
 def normalize_prompt(prompt: str) -> str:
     """The prompt with each run of whitespace (Unicode White_Space, as `str.split` reads it) made one space, and none
     at the ends: two prompts that differ only in spacing are the same prompt (§4.5)."""
-    return " ".join(prompt.split())
+    return collapse(prompt)
 
 
 def draft_name(prompt: str) -> str:

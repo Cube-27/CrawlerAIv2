@@ -59,6 +59,7 @@ from crawlerai.content.repeats import MIN_REPEATS, template_siblings
 from crawlerai.content.text import CELLS, declarations, shown
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equality_key
+from crawlerai.normalize.strings import collapse
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # A label's end: a colon (U+003A, or the fullwidth U+FF1A that CJK text writes) after optional white space.
@@ -374,11 +375,11 @@ def _holds(outer: LexborNode, inner: LexborNode) -> bool:
 
 def _own_text(node: LexborNode) -> str:
     """The text the element holds itself, not its children's: a struck or hidden child's amount is not the parent's."""
-    return " ".join(node.text(deep=False, separator=" ").split())
+    return collapse(node.text(deep=False, separator=" "))
 
 
 def _text(node: LexborNode) -> str:
-    return " ".join(node.text(deep=True, separator=" ").split())
+    return collapse(node.text(deep=True, separator=" "))
 
 
 # HTML Standard §4.4.5-§4.4.7: the list elements, whose `li` children are their items.

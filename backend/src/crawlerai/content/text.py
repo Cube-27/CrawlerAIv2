@@ -10,14 +10,14 @@ misnested tags). The lxml tree comes from libxml2's own HTML parser, so a path i
 """
 
 import re
-import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal, NamedTuple
 
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
-from crawlerai.normalize.text import compose, text_form
+from crawlerai.normalize.strings import collapse, compose, is_cut_of, solid, uncut
+from crawlerai.normalize.text import text_form
 
 # HTML Standard, Rendering, "Hidden elements": the user-agent style sheet gives these `display: none`. extraction spec
 # also drops `noscript` (its content is for user agents without scripting) and `svg` (graphics, not page text);
@@ -54,9 +54,6 @@ _VALUE_NOT_SHOWN = frozenset({"checkbox", "radio", "file", "image", "password", 
 _NCNAME = re.compile(r"[^\W\d][\w.\-]*")
 
 _Attributes = dict[str, str | None]
-# Unicode: U+2026 HORIZONTAL ELLIPSIS, whose compatibility decomposition (NFKC) is three U+002E FULL STOPs.
-_ELLIPSIS = "..."
-_ELLIPSES = ("\u2026", _ELLIPSIS)
 
 
 class TextRun(NamedTuple):
@@ -249,7 +246,7 @@ def _shown_chain(chain: Iterable[LexborNode]) -> bool:
 
 
 def _collapsed(value: str | None) -> str:
-    return " ".join(compose(value or "").split())
+    return collapse(compose(value or ""))
 
 
 def _completed(node: LexborNode, title: str | None) -> str | None:
@@ -257,17 +254,17 @@ def _completed(node: LexborNode, title: str | None) -> str | None:
 
 
 def completed(text: str, title: str | None) -> str | None:
-    """An element's `title` when its `text` is that title cut short: the text ends in an ellipsis (U+2026, or the
-    three full stops it decomposes to under NFKC) and the title starts with the text before it and goes on. HTML
+    """An element's `title` when its `text` is that title cut short: the text ends in an ellipsis
+    (`strings.ELLIPSES`) and the title starts with the text before it and goes on, white space aside. HTML
     Standard §3.2.6.1: `title` is advisory information for its element, here the full text the element shows cut."""
     if not title:
         return None
-    shown_text = " ".join(compose(text).split())
-    if not shown_text.endswith(_ELLIPSES):
-        return None
-    cut = unicodedata.normalize("NFKC", shown_text).removesuffix(_ELLIPSIS).rstrip()
-    full = " ".join(compose(title).split())
-    return full if cut and full.startswith(cut) and len(full) > len(cut) else None
+    shown = solid(compose(text))
+    full = collapse(compose(title))
+    cut = uncut(shown)
+    return (
+        full if cut != shown and is_cut_of(shown, full, word_boundary=False) and len(solid(full)) > len(cut) else None
+    )
 
 
 def _separator(tag: str) -> str:
