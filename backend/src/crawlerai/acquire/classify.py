@@ -379,8 +379,9 @@ def _media_type(value: str | None) -> str:
 
 
 def _json(text: str) -> object:
+    # Read leniently, as the JSON-LD collector reads blocks (RFC 8259 §9, `core.json_text.parse`).
     try:
-        return json_text.parse(text)
+        return json_text.parse(text, lenient=True)
     except ValueError:  # a block that is not JSON states nothing
         return None
 

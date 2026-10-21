@@ -18,6 +18,7 @@ from crawlerai.collect.base import Entity
 from crawlerai.collect.currencies import with_page_declarations
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.platform_json import PlatformJsonCollector
+from crawlerai.collect.run import page_urls
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import CaptureMethod
@@ -146,6 +147,15 @@ def test_a_documented_answer_is_the_page_products_own_entity() -> None:
     # A sole root Product whose URL is another page's is another item: the answer stays apart from it.
     elsewhere = Entity(id="jsonld:0:$", types=("Product",), urls=(), parent=None, item_urls=(f"{HOST}/products/other",))
     assert not EntityGraph.of((elsewhere, *reads[1].entities), VOCABULARY, (page,)).aliases
+    # Unless the page declares that URL as its version in another language (HTML `link rel=alternate hreflang`).
+    regional = f"{HOST}/en-nz/products/blue-mug"
+    # A feed in that language is another resource, not a version of the page.
+    feed = f'<link rel="alternate" hreflang="en" type="application/rss+xml" href="{HOST}/feed">'
+    linked = f'<html><head><link rel="alternate" hreflang="en-NZ" href="{regional}">{feed}</head></html>'.encode()
+    declared = page_urls(ParsedPage.of(_capture(page, "http", linked).bundle), served.bundle.manifest)
+    assert declared == (page, regional)
+    sold_there = elsewhere.model_copy(update={"item_urls": (regional,)})
+    assert EntityGraph.of((sold_there, *reads[1].entities), VOCABULARY, declared).aliases
     # A comparison table's microdata Products (one shape, repeated) are other items, not more roots of the page's own.
     table = (
         Entity(id=f"microdata:/html[1]/body[1]/table[1]/tr[1]/th[{n}]", types=("Product",), urls=(), parent=None)

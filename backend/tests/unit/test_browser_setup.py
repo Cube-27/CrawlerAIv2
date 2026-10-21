@@ -1,8 +1,8 @@
 """The browser rung runs Patchright's documented setup (INV-42, INV-43, INV-44; owner #50): the full Chromium build in
-headless mode, in a persistent profile with no fixed viewport and no launch argument, the WebRTC policy the guard needs
-in the profile's preferences, the browser's own user agent with only its headless token renamed (owner #71 as amended),
-and no client hints or headers. A fake Playwright records what `open_browser` and `fetch_browser` ask for; no browser
-runs.
+headless mode, in a persistent profile with a fixed 1280x720 viewport and no launch argument, the WebRTC policy the
+guard needs in the profile's preferences, the browser's own user agent with only its headless token renamed (owner #71
+as amended), and no client hints or headers. A fake Playwright records what `open_browser` and `fetch_browser` ask
+for; no browser runs.
 """
 
 import asyncio
@@ -124,7 +124,7 @@ def test_inv42_inv43_full_chromium_headless_in_a_profile_with_the_guards_webrtc_
     assert {k: v for k, v in recorder.launch.items() if k != "proxy"} == {
         "channel": "chromium",
         "headless": True,
-        "no_viewport": True,
+        "viewport": {"width": 1280, "height": 720},
         "user_agent": _OWN_UA.replace("HeadlessChrome/", "Chrome/"),
         "accept_downloads": False,
     }
@@ -184,7 +184,7 @@ def test_inv44_a_profile_sets_only_the_proxy_downloads_viewport_user_agent_and_t
     with pytest.raises(_Stop):
         asyncio.run(fetching)
 
-    # The guard's proxy, no downloads, no fixed viewport, and the request's locale with its region's zone (owner P8);
+    # The guard's proxy, no downloads, the fixed viewport, and the request's locale with its region's zone (owner P8);
     # the browser's own user agent, renamed; no client hints or headers.
     assert {k: v for k, v in recorder.launch.items() if k in ("locale", "timezone_id")} == {
         "locale": "de-DE",
@@ -193,7 +193,7 @@ def test_inv44_a_profile_sets_only_the_proxy_downloads_viewport_user_agent_and_t
     assert set(recorder.launch) == {
         "channel",
         "headless",
-        "no_viewport",
+        "viewport",
         "user_agent",
         "proxy",
         "accept_downloads",
