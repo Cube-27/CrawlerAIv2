@@ -98,8 +98,11 @@ def _own_url(spec: FieldSpec, canonical_url: str | None, ctx: Context) -> str | 
     own = normalize(canonical_url, spec, ctx)
     if not isinstance(own, Ok) or not isinstance(own.value, str):
         return None
-    host = urlsplit(own.value).hostname
-    return own.value if host is not None and same_site(host, ctx.page_url) else None
+    # RFC 9110 §4.2.4: an http(s) URI with userinfo is invalid, so such a link names no page.
+    parts = urlsplit(own.value)
+    if parts.hostname is None or "@" in parts.netloc:
+        return None
+    return own.value if same_site(parts.hostname, ctx.page_url) else None
 
 
 def _held_to_page(

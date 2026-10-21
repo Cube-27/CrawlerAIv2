@@ -113,6 +113,7 @@ def test_a_url_naming_another_document_than_the_canonical_link_is_rejected() -> 
     held = _fill(URL, RESOLVER.prefer_field(URL, [og_other]), og_other)  # final URL differs from the canonical link
     kept = _fill(URL, RESOLVER.prefer_field(URL, [other]), other, canonical_url=None)  # no canonical link: not settled
     elsewhere = _fill(URL, RESOLVER.prefer_field(URL, [other]), other, canonical_url="https://example.org/p/1")
+    credentials = _fill(URL, RESOLVER.prefer_field(URL, [og]), og, canonical_url="https://u@shop.example.test/p/1")
 
     assert isinstance(stated, Chosen)
     assert (stated.candidate, stated.rejected) == (og, ((other, "other_document"),))
@@ -138,3 +139,5 @@ def test_a_url_naming_another_document_than_the_canonical_link_is_rejected() -> 
     assert kept.candidate is other
     assert isinstance(elsewhere, Chosen)  # a canonical link on another site does not name this page
     assert elsewhere.candidate is other
+    assert isinstance(credentials, Chosen)  # RFC 9110 §4.2.4: a link with userinfo names no page
+    assert credentials.candidate is og

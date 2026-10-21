@@ -171,8 +171,8 @@ Derived values SHALL fill only `missing` fields and carry `derived_by`; the only
 a detail page's `T.url` field (`T.url` in every alternative of its path) `canonical_link` (RFC 6596), then
 `final_url`, each a named function (`resolve/derive.py`). Canonical links naming more than one URL designate none
 (RFC 6596 §3: one per resource), so such a page states no canonical URL. Before derivation, when the page states one
-canonical link and it names a URL on the final URL's site (HTML Standard §7.1.1, the same registrable domain), that
-link is the page's own URL (owner #77) and a kept candidate of that `T.url` field naming another document (`normalize/url_key.py` `document_key`:
+canonical link and it names a URL without userinfo (RFC 9110 §4.2.4) on the final URL's site (HTML Standard §7.1.1,
+the same registrable domain), that link is the page's own URL (owner #77) and a kept candidate of that `T.url` field naming another document (`normalize/url_key.py` `document_key`:
 another scheme, authority or path, one trailing slash of the path aside; a query or a fragment alone names none) is
 rejected `other_document`, and preference decides among the rest; a relative
 reference `absolutize` resolves to another document is rejected so too. A derived value publishes as the page states it
