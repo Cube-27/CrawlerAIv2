@@ -98,13 +98,13 @@ def test_a_field_abstains_below_the_requests_minimum_confidence(precision: float
     outcome = _assess(_chosen(chosen), calibration, min_confidence=0.97)
     assert outcome.status == status
     if status == "abstained":
-        assert (outcome.reason, outcome.value, outcome.evidence, outcome.confidence) == (
+        assert (outcome.reason, outcome.value, outcome.evidence, outcome.confidence, outcome.rejected) == (
             "below_min_confidence",
             None,
             "structured",
             precision,
+            ((chosen, "below_min_confidence"),),
         )
-        assert outcome.rejected == ((chosen, "below_min_confidence"),)
 
 
 @pytest.mark.parametrize(
