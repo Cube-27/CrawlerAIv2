@@ -27,6 +27,7 @@ import zstandard
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, ValidationError, model_validator
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
+from crawlerai.core.derived import held
 
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
 Sha256 = Annotated[str, Field(pattern=SHA256_PATTERN)]
@@ -134,6 +135,20 @@ class CaptureBundle(_Frozen):
                 raise ValueError(f"network[{i}] does not match network_bodies[{i}].sha256")
         return self
 
+    @property
+    def text(self) -> str:
+        """The body as text (`decode_html`), decoded once per bundle: every reader of the body reads this text."""
+        return held(self, "_text", self._decoded_from(), lambda: decode_html(*self._decoded_from()))
+
+    def decoded(self, text: str) -> Self:
+        """This bundle, `text` its body as the rung decoded it (`decode_html` of the same body, response headers and
+        method), so no reader decodes it again."""
+        held(self, "_text", self._decoded_from(), lambda: text)
+        return self
+
+    def _decoded_from(self) -> tuple[bytes, HeaderList, CaptureMethod]:
+        return self.body, self.manifest.headers.response, self.manifest.method
+
 
 def encode(bundle: CaptureBundle) -> bytes:
     """Deterministic: equal bundles give equal bytes (tar headers carry no time, owner or mode of their own)."""
@@ -239,20 +254,15 @@ def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def decode_body(bundle: CaptureBundle) -> str:
-    """The bundle's body as text (`decode_html`)."""
-    return decode_html(bundle.body, bundle.manifest.headers.response, bundle.manifest.method)
-
-
 def decode_html(body: bytes, headers: HeaderList, method: CaptureMethod) -> str:
     """A response body as text; undecodable bytes become U+FFFD. Acquisition decodes a body once with it, and every
-    reader of the body reads that text. A browser body is the rendered DOM, which the browser fetcher serializes as
-    UTF-8, whatever the server declared for the bytes it sent. Any other body is decoded as HTML encoding sniffing says
-    (HTML Standard §13.2.3.2): a byte order mark, else the charset its Content-Type names (RFC 9110 §8.3.2), else a
-    `meta` declaration in its first bytes, else UTF-8; a label names its encoding as the Encoding Standard §4.2 says
-    (`iso-8859-1` is windows-1252), and an unknown label is skipped. A JSON body (`_is_json`) is UTF-8 (RFC 8259
-    §8.1; its media type has no charset parameter, §11), whatever charset its label names; the UTF-16 and UTF-32
-    forms are told from its first bytes as `core.json_text` reads them (RFC 4627 §3)."""
+    reader of the body reads that text (`CaptureBundle.text`). A browser body is the rendered DOM, which the browser
+    fetcher serializes as UTF-8, whatever the server declared for the bytes it sent. Any other body is decoded as HTML
+    encoding sniffing says (HTML Standard §13.2.3.2): a byte order mark, else the charset its Content-Type names (RFC
+    9110 §8.3.2), else a `meta` declaration in its first bytes, else UTF-8; a label names its encoding as the Encoding
+    Standard §4.2 says (`iso-8859-1` is windows-1252), and an unknown label is skipped. A JSON body (`_is_json`) is
+    UTF-8 (RFC 8259 §8.1; its media type has no charset parameter, §11), whatever charset its label names; the UTF-16
+    and UTF-32 forms are told from its first bytes as `core.json_text` reads them (RFC 4627 §3)."""
     if method == "browser":
         return body.decode(_UTF8.codec_info.name, errors="replace")
     if _is_json(headers, method):

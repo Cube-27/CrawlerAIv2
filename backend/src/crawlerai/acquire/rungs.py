@@ -29,6 +29,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest, site_relation
 from crawlerai.acquire.browser_tab import ListingRung
 from crawlerai.acquire.challenge import block_class_of
 from crawlerai.acquire.classify import interstitial
+from crawlerai.acquire.fingerprint import platform_shown
 from crawlerai.acquire.identity import identified, joined, with_call
 from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.page_refs import canonical_link, page_refs
@@ -44,9 +45,8 @@ from crawlerai.acquire.types import (
     policy_with_attempts,
 )
 from crawlerai.adapters.base import ADAPTER_CALL
-from crawlerai.adapters.platforms import ProductJson, platform_of, product_json
+from crawlerai.adapters.platforms import ProductJson, product_json
 from crawlerai.adapters.registry import Registry, platform_adapters
-from crawlerai.storage.capture_bundle import decode_body
 
 Rung = Callable[[str, FetchPolicy], Awaitable[FetchResult]]
 # The eager fragments a document at a URL declares, as (id, absolute URL) pairs (`content.fragments.eager_frames`,
@@ -331,7 +331,7 @@ async def _joined(policy: FetchPolicy, page: Fetched, admit_next: Admit | None, 
     result, attempts, duration_ms = page
     if send is None or policy.page_kind != "detail" or result.method != "http" or result.block_class != "ok":
         return page
-    called = _documented(result)
+    called = await asyncio.to_thread(_documented, result)  # scans the page's markup: CPU work
     if called is None or not await _admitted(admit_next):
         return page
     # The page that loaded the product, after its redirects, is the call's referrer.
@@ -388,7 +388,8 @@ async def _with_frames(
     if plan is None or send is None or result.method != "http" or result.block_class != "ok":
         return page
     page_url = result.bundle.manifest.final_url
-    for frame_id, src in plan(decode_body(result.bundle), page_url):
+    frames = await asyncio.to_thread(plan, result.bundle.text, page_url)  # parses the page: CPU work
+    for frame_id, src in frames:
         if site_relation(page_url, src) == "cross-site":
             continue
         if not await _admitted(admit_next):
@@ -403,9 +404,7 @@ async def _with_frames(
 
 def _documented(result: FetchResult) -> ProductJson | None:
     """The documented product JSON request of the page's platform (`adapters.platforms.product_json`), or None."""
-    manifest = result.bundle.manifest
-    markup = decode_body(result.bundle)
-    return product_json(platform_of(markup, manifest.headers.response), manifest.final_url, markup)
+    return product_json(platform_shown(result), result.bundle.manifest.final_url, result.bundle.text)
 
 
 async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: FetchResult) -> FetchResult:
@@ -438,7 +437,7 @@ async def _interstitial_unavailable(result: FetchResult) -> bool:
     manifest = result.bundle.manifest
     if manifest.status_code != _UNAVAILABLE or manifest.method != "http":
         return False
-    text = decode_body(result.bundle)
+    text = result.bundle.text
     return await asyncio.to_thread(
         interstitial, manifest.status_code, manifest.headers.response, text, manifest.final_url
     )
@@ -461,7 +460,7 @@ async def _as_last_page(result: FetchResult) -> FetchResult:
     manifest = result.bundle.manifest
     if result.block_class != "shell" or manifest.method != "http" or fetched_as(manifest.fetch_policy) != "listing":
         return result
-    text = decode_body(result.bundle)
+    text = result.bundle.text
     unlisted = await asyncio.to_thread(block_class_of, manifest.status_code, manifest.headers.response, text)
     if unlisted != "ok":
         return result

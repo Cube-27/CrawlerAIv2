@@ -51,6 +51,9 @@ __all__ = [
 _JSON_BODY_MAX_BYTES = 2_000_000
 JSON_BODIES_MAX = 50
 JSON_PAGE_MAX_BYTES = 10_000_000
+# The bodies read from the browser at once: each read is a round trip to it, and at most this many bodies of at most
+# `_JSON_BODY_MAX_BYTES` are held before the page cap is applied, so the reads stay within INV-30's bound.
+_READS_AT_ONCE = 5
 # Fetch Standard §2.2.5: requests whose destination is the empty string (fetch() and XMLHttpRequest) or `document`
 # carry data or a new document; Playwright names them `fetch`, `xhr` and `document`. Scripts, styles, images and fonts
 # are the page's code and media, not data it loads.
@@ -255,34 +258,48 @@ def _data_essence(essence: str) -> bool:
 
 async def json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[NetworkBody, bytes], ...]:
     """The JSON, Flight and HTML fragment bodies of `responses` (each with the action count it arrived at;
-    `DataCalls.on_response` admitted them) a capture keeps, within its caps."""
+    `DataCalls.on_response` admitted them) a capture keeps, within its caps, in response order. A call whose request
+    body is past the per-body cap is left out before its answer is read; the answers are read `_READS_AT_ONCE` at a
+    time, and none after the capture is full."""
+    sent = [(response, action) for response, action in responses if _request_size(response) <= _JSON_BODY_MAX_BYTES]
     captured: list[tuple[NetworkBody, bytes]] = []
     total = 0
-    for response, action in responses:
-        if len(captured) == JSON_BODIES_MAX:
-            break
-        data = await _json_body(response)
-        if data is None or total + len(data) > JSON_PAGE_MAX_BYTES:
-            continue
-        sent = response.request.post_data_buffer
-        if len(sent or b"") > _JSON_BODY_MAX_BYTES:
-            continue
-        entry = NetworkBody(
-            url=response.url,
-            status=response.status,
-            content_type=response.headers.get("content-type"),
-            sha256=sha256_hex(data),
-            file=network_file(len(captured)),
-            method=response.request.method,
-            request_body=_text_or_none(sent),
-            request_headers=await _headers(response.request.headers_array()),
-            response_headers=await _headers(response.headers_array()),
-            resource_type=response.request.resource_type,
-            action=action,
-        )
-        captured.append((entry, data))
-        total += len(data)
+    for start in range(0, len(sent), _READS_AT_ONCE):
+        batch = sent[start : start + _READS_AT_ONCE]
+        bodies = await asyncio.gather(*(_json_body(response) for response, _ in batch))
+        for (response, action), data in zip(batch, bodies, strict=True):
+            if len(captured) == JSON_BODIES_MAX:
+                return tuple(captured)
+            if data is None or total + len(data) > JSON_PAGE_MAX_BYTES:
+                continue
+            captured.append((await _entry(response, action, data, len(captured)), data))
+            total += len(data)
     return tuple(captured)
+
+
+def _request_size(response: Response) -> int:
+    return len(response.request.post_data_buffer or b"")
+
+
+async def _entry(response: Response, action: int, data: bytes, index: int) -> NetworkBody:
+    """The manifest entry of the `index`th body a capture keeps, `data`, answering `response`'s request."""
+    request = response.request
+    request_headers, response_headers = await asyncio.gather(
+        _headers(request.headers_array()), _headers(response.headers_array())
+    )
+    return NetworkBody(
+        url=response.url,
+        status=response.status,
+        content_type=response.headers.get("content-type"),
+        sha256=sha256_hex(data),
+        file=network_file(index),
+        method=request.method,
+        request_body=_text_or_none(request.post_data_buffer),
+        request_headers=request_headers,
+        response_headers=response_headers,
+        resource_type=request.resource_type,
+        action=action,
+    )
 
 
 async def _json_body(response: Response) -> bytes | None:

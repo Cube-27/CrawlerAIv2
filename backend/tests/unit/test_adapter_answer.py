@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.answer import recorded
-from crawlerai.storage.capture_bundle import decode_body
 
 
 def _answer(content_type: str) -> FetchResult:
@@ -33,5 +32,5 @@ def _answer(content_type: str) -> FetchResult:
 def test_a_recorded_answer_decodes_as_utf8_json_whatever_charset_the_feed_declared() -> None:
     result = recorded(_answer("text/xml; charset=ISO-8859-1"), {"city": "Zürich"})
 
-    assert "Zürich" in decode_body(result.bundle)
+    assert "Zürich" in result.bundle.text
     assert ("ETag", '"v1"') in result.bundle.manifest.headers.response  # the other headers stay as answered

@@ -57,7 +57,7 @@ async def fetch_http(
         redirected=_follow,
         session=session,
     )
-    last, challenge = sent.last, None
+    last, challenge, text = sent.last, None, None
     block_class: BlockClass = "error"
     if sent.error is None and last is not None:
         # The body is decoded once (`decode_html`), and every rule reads that text. Classifying parses HTML
@@ -80,7 +80,7 @@ async def fetch_http(
         fetched_at=fetched_at,
         started=started,
         exchange=None if last is None else last.exchange,
-        content=Content(body=b"" if last is None else last.body),
+        content=Content(body=b"" if last is None else last.body, text=text),
         block_class=block_class,
         error=sent.error,
         challenge=challenge,

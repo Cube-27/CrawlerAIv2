@@ -22,7 +22,7 @@ from crawlerai.content.fragments import FRAME_HEADER, Answers, append, declares_
 from crawlerai.content.segment import rank
 from crawlerai.content.text import CleanedText, VisibleIndex, render, script_revealed, xpath_step
 from crawlerai.core.json_text import parse
-from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, decode_body, decode_html, is_html
+from crawlerai.storage.capture_bundle import CaptureBundle, NetworkBody, decode_html, is_html
 
 # HTML Standard §4.12.3: a `template` whose `shadowrootmode` is `open` or `closed` is a declarative shadow root.
 _SHADOW_ROOT = "template[shadowrootmode]"
@@ -107,7 +107,7 @@ class ParsedPage:
     def of(cls, bundle: CaptureBundle) -> "ParsedPage":
         manifest = bundle.manifest
         return cls(
-            decode_body(bundle),
+            bundle.text,
             bundle.network,
             manifest.network_bodies,
             json_body=manifest.method == "api",
