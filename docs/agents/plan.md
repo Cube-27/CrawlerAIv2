@@ -6,7 +6,7 @@ specs and `openspec/design/architecture-v3.md` govern; this file only orders the
 status table when it opens or merges a PR. Item ids in brackets (A6, B9, C1) name findings of the 2026-10-21 audit,
 kept outside the repo with the eval reports.
 
-Rules for every PR: one slice, 1–3k changed lines (deletes may exceed), deletes what it supersedes, spec delta in the
+Rules for every PR: one slice (sizes are estimates, not gates; C11), deletes what it supersedes, spec delta in the
 same PR, tests for removed code deleted, green CI, bot threads resolved. Sizes: S < 300, M 300–1k, L 1–3k lines.
 
 ## Status
