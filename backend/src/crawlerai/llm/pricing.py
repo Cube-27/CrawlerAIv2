@@ -82,23 +82,6 @@ class Price(_Row):
 
 
 @dataclass(frozen=True)
-class CacheTokens:
-    """A call's prompt tokens read from the provider's prompt cache and written to it."""
-
-    read: int
-    write: int
-
-
-def _call_usd(price: Price, tokens_in: int, tokens_out: int, cache: CacheTokens) -> Decimal | None:
-    cached = [(cache.read, price.cache_read_usd_per_mtok), (cache.write, price.cache_write_usd_per_mtok)]
-    if any(tokens and rate is None for tokens, rate in cached):
-        return None
-    total = tokens_in * price.input_usd_per_mtok + tokens_out * price.output_usd_per_mtok
-    total += sum(tokens * rate for tokens, rate in cached if rate is not None)
-    return total / TOKENS_PER_PRICE_UNIT
-
-
-@dataclass(frozen=True)
 class Pricing:
     """Every known price; at most one applies to any call (`of` refuses lists where two could). The matching rule
     itself is SQL, where the calls are (`crawlerai.services.llm_costs`)."""
@@ -114,24 +97,6 @@ class Pricing:
             if a.overlaps(b):
                 raise OverlappingPrices(f"{a.provider} {a.model}: two prices apply to the same calls")
         return cls(prices)
-
-    def call_usd(
-        self, provider: str, model: str, tokens_in: int, tokens_out: int, on: date, cache: "CacheTokens | None" = None
-    ) -> Decimal | None:
-        """The price of one call made on `on`, by the rule `services.llm_costs` applies in SQL to stored calls: the
-        provider's price for the model in effect that day and, when priced by prompt length, for the prompt's tokens
-        (`tokens_in` and the cache tokens); `None` when none applies, or when cache tokens have no cache price (never
-        guessed). For the eval report, whose replayed calls are not stored."""
-        cache = cache or CacheTokens(0, 0)
-        prompt = tokens_in + cache.read + cache.write
-        for price in self.prices:
-            in_effect = price.effective_from <= on and (price.effective_until is None or on < price.effective_until)
-            in_tier = price.min_prompt_tokens <= prompt and (
-                price.max_prompt_tokens is None or prompt <= price.max_prompt_tokens
-            )
-            if (price.provider, price.model) == (provider, model) and in_effect and in_tier:
-                return _call_usd(price, tokens_in, tokens_out, cache)
-        return None
 
     @classmethod
     def read(cls, directory: Path) -> Self:

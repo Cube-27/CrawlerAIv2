@@ -1,6 +1,6 @@
 """The normalize dispatcher (normalization spec): the entry points that send each field type to its one module (C8).
 
-Callers (the resolver, eval, the API) normalize and compare through `normalize`, `equal` and `equality_key` and never
+Callers (the resolver, the API) normalize and compare through `normalize`, `equal` and `equality_key` and never
 pick a type module themselves. `list` and `object` have no values of their own (§4.1), so all three recurse here into
 their items and sub-fields.
 """

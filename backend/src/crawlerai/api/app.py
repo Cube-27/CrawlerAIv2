@@ -26,7 +26,6 @@ from crawlerai.api.routers import (
     search,
     usage,
 )
-from crawlerai.api.routers import eval as eval_router
 from crawlerai.api.routers import map as map_router
 from crawlerai.core.settings import ApiSettings, Settings
 from crawlerai.services.runtime import open_runtime
@@ -47,12 +46,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
 
 
-def create_app(eval_ui: bool | None = None) -> FastAPI:
-    """`eval_ui` mounts the labeling endpoints (evaluation spec); unset, `CRAWLERAI_EVAL_UI` decides. Settings are
-    read at startup, not here, so `crawlerai openapi` builds the document without a database."""
+def create_app() -> FastAPI:
+    """Settings that need a database are read at startup, not here, so `crawlerai openapi` builds the document
+    without one."""
     app = FastAPI(title="CrawlerAI", lifespan=_lifespan, openapi_url="/v1/openapi.json")  # rest-api spec
     settings = ApiSettings()
-    app.state.eval_ui = settings.eval_ui if eval_ui is None else eval_ui
     app.state.trusted_proxies = settings.trusted_proxies
     app.state.rate_limiter = RateLimiter(settings.api_rate_per_s, settings.api_rate_burst)
     problems.install(app)
@@ -72,7 +70,5 @@ def create_app(eval_ui: bool | None = None) -> FastAPI:
     app.include_router(configs.router)
     app.include_router(usage.router)
     app.include_router(project.router)
-    if app.state.eval_ui:
-        app.include_router(eval_router.router)
     mcp.mount(app)
     return app

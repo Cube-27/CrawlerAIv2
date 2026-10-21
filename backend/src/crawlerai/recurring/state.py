@@ -27,7 +27,7 @@ async def record_content(
         return False
     if stored is not None and stored.content_fingerprint is not None:
         moved = hamming(int(stored.content_fingerprint, 16), fingerprint.simhash)
-        # No URL in the line: protected eval runs redact URLs from what they log (`log_redact_urls`).
+        # No URL in the line: a deployment may redact URLs from what it logs (`log_redact_urls`).
         log.info("content changed: SimHash moved %d of %d bits", moved, BITS)
     values = {
         "content_digest": fingerprint.digest,

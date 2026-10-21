@@ -65,10 +65,8 @@ class AcquireSettings(_Base):
 
 
 class ApiSettings(_Base):
-    """What the app factory reads: which routers to mount, and how to admit requests (rest-api spec)."""
+    """What the app factory reads: how to admit requests (rest-api spec)."""
 
-    # Mounts the labeling endpoints (evaluation spec). They serve the golden set (`dev`).
-    eval_ui: bool = False
     # JSON list of the proxies whose `Forwarded`/`X-Forwarded-For` name the client (RFC 7239 §8.1, INV-32).
     trusted_proxies: tuple[IPvAnyNetwork, ...] = ()
     # The per-key token bucket in front of authentication (D-0027).

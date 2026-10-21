@@ -37,7 +37,7 @@ Every error SHALL be RFC 9457 `application/problem+json` with `instance` the req
 Refs: D-0362, D-0364, D-0397, D-0885, D-1056, Appendix A #44.
 
 ### Requirement: Health and OpenAPI
-`GET /healthz` (unauthenticated) SHALL answer 200 `{status, eval_ui, llm}` after a `SELECT 1` bounded at 5 s, `llm`
+`GET /healthz` (unauthenticated) SHALL answer 200 `{status, llm}` after a `SELECT 1` bounded at 5 s, `llm`
 reporting `unavailable` without failing, and 503 without a database. OpenAPI is served at `/v1/openapi.json` and
 committed as `frontend/openapi.json`. Refs: D-0365, D-0366, D-0935.
 

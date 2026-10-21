@@ -200,11 +200,6 @@ def capture_key(capture_id: UUID, fetched_at: datetime) -> str:
     return f"{CAPTURES_PREFIX}{month:%Y}/{month:%m}/{capture_id}.bundle.zst"
 
 
-def dev_eval_capture_key(capture_id: UUID) -> str:
-    """Eval captures, which never expire (persistence-storage spec)."""
-    return f"eval/dev/{capture_id}.bundle.zst"
-
-
 # HTML Standard §13.2.3.2: the prescan reads at most the first 1024 bytes for a `meta` element's `charset` attribute,
 # or the `charset` parameter of its `content` (§2.6.7 "extracting a character encoding from a meta element"): the
 # value runs to a quote, whitespace, `;` or the tag's end.

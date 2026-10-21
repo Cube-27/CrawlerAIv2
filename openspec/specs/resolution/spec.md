@@ -21,7 +21,7 @@ Every field SHALL publish the value of its best-scored kept candidate (valid, ow
 mechanism for every type (`resolve/score.py`, `resolve/preference.py`). A candidate's score is its source weight times
 its scope match times its value's agreement:
 - Source weight: for `text`, `long_text`, `url` and `image_url` the kind's place in the type's order in
-  `backend/data/source_precedence.yaml`, fitted on dev (the first of n kinds weighs 1, each later place 1/n less, a
+  `backend/data/source_precedence.yaml`, frozen fitted data ([evaluation](../evaluation/spec.md); the first of n kinds weighs 1, each later place 1/n less, a
   kind outside the order 0); a fragment of another of the field's candidates weighs 0 (`resolve/supersede.py`: a
   `long_text` that is a prefix or ellipsis-cut prefix of a longer one, an Open Graph description, or a value of
   another kind stating the same text as it, beside a longer one of a kind other than Open Graph, or one that states
@@ -197,7 +197,7 @@ tests; active.
 ### Requirement: Evidence, confidence and min_confidence
 Each published field SHALL carry one evidence bucket (`resolve/evidence.py`; `agreed` needs two independent kinds;
 `network` for a value of the page's captured calls, Appendix A #59; `state` for a value of the page's state JSON) and
-the fitted dev confidence of its `(type, evidence)` bucket from `calibration.json`, which holds only buckets measured on
+the fitted confidence of its `(type, evidence)` bucket from `calibration.json`, which holds only buckets measured on
 at least 20 labelled values (the others are uncalibrated, `calibrated=false`). A money value whose currency only the
 locale or the URL settles, or nothing settles (`basis` `locale`, `url`, `unknown`), is measured apart, in bucket
 `money|<evidence>|<basis>`, for its lower confidence (owner #68, owner 2026-10-19); every published field notes its `basis` in `field_meta` when it has one. Every

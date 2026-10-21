@@ -48,7 +48,6 @@ source_modules =
     crawlerai.core
     crawlerai.crawl
     crawlerai.db
-    crawlerai.eval
     crawlerai.llm
     crawlerai.mcp_server
     crawlerai.recurring
@@ -76,7 +75,6 @@ source_modules =
     crawlerai.core
     crawlerai.crawl
     crawlerai.db
-    crawlerai.eval
     crawlerai.llm
     crawlerai.mcp_server
     crawlerai.normalize
@@ -104,7 +102,7 @@ layers =
     crawlerai.api
     crawlerai.mcp_server
     crawlerai.services
-    crawlerai.crawl | crawlerai.recurring | crawlerai.eval | crawlerai.search
+    crawlerai.crawl | crawlerai.recurring | crawlerai.search
     crawlerai.config_ir
     crawlerai.resolve | crawlerai.llm
     crawlerai.collect

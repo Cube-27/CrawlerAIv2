@@ -23,8 +23,8 @@ project is open source under AGPL-3.0 (Appendix A #26).
 
 | # | Goal | Measured by |
 |---|---|---|
-| G1 | **Works on sites nobody tuned against.** | Precision and coverage per field type on each **fresh batch** of the golden set, scored once before any fix is made on it (Appendix A #67). The gap between the golden set and the fresh batch. |
-| G2 | **Precision first.** A wrong published value is worse than a missing one. | Required-field precision ≥ 0.97 on the golden set. False publishes on `absent` labels ≈ 0. Wrong-product values = 0. |
+| G1 | **Works on sites nobody tuned against.** | Precision and coverage per field type on each **fresh batch** of the eval set, scored once before any fix is made on it (Appendix A #67). The gap between the eval set and the fresh batch. |
+| G2 | **Precision first.** A wrong published value is worse than a missing one. | Required-field precision ≥ 0.97 in the e2e run. False publishes of values the page does not state ≈ 0. Wrong-product values = 0. |
 | G3 | **Any schema.** Callers define a schema, or describe one in a prompt (§5). | Custom schemas use the same pipeline. Accuracy is claimed per schema only after it has labels. |
 | G4 | **Records and executable configs** from one pipeline. | Every exported config is re-executed on held-out pages before release (§12). |
 | G5 | **Progressive.** The first call on an unknown site works; repeat calls become deterministic and cheap. | Share of pages served by a config. Time from URL to accepted config. |
@@ -61,8 +61,9 @@ estimated LLM cost, from the providers' published prices kept as versioned data,
 - **Acquisition:** listing growth (scroll, next) on by default for single-URL scrapes in `auto`, never for batch or
   crawl; no request blocking in the browser (2026-10-21: Playwright's routing marks every request `no-cache`); a
   vendor-blocked page is a `blocked` outcome, managed access deferred.
-- **Measurement:** the golden set is the only measure, grown in fresh batches; precedence and calibration are fitted
-  on it for buckets with n ≥ 20.
+- **Measurement:** the e2e run is the only measure: one run per round over the one eval set (outside the repo), one
+  scorer, disagreements adjudicated against the capture; the set grows in fresh batches. Precedence, calibration and
+  drift margins are frozen as fitted on 2026-10-18 (buckets with n ≥ 20); a refit needs the owner.
 - **Docs policy:** code cites spec requirements, not decision IDs or frozen sections; an architecture change deletes
   what it supersedes in the same PR.
 
@@ -95,7 +96,7 @@ C1–C13: [../project.md](../project.md#generalization-contract-c1c13).
 The generic layer is small: structured-data standards (§8.1), type normalizers (§9), and grounded per-page LLM
 extraction for whatever those miss (§8.4), and the item layer for repeated structures (Appendix A #67).
 Site-specific knowledge is learned per site at run time, stored as data (§8.3), and measured on fresh batches of the
-golden set that nobody tuned against (Appendix A #67).
+eval set that nobody tuned against (Appendix A #67).
 
 ## 20. Prior versions
 
@@ -119,23 +120,22 @@ re-derived from standards and evidence; nothing is copied.
 
 ## 21. Build order (core only)
 
-Labeling is deferred until the crawler works end to end (Appendix A #29). Layers L0–L4 are built and accepted on
-**functional** criteria: tests, property tests, replays of stored captures, and spec acceptance criteria. Every
-claim about accuracy waits for milestone **M**. The measurement machinery itself is still built first, so M only
-needs labels, not code.
+Layers L0–L4 are built and accepted on **functional** criteria: tests, property tests, replays of stored captures,
+and spec acceptance criteria. Every claim about accuracy waits for milestone **M**, whose e2e run uses the product
+itself and needs no measurement code in the repository.
 
 | Layer | Builds | Done when |
 |---|---|---|
-| **L0 Foundations and measurement machinery** | Repo foundations (SPEC-00); persistence and storage; the eval store; labeling tool; replay; metric report; CI checks; HTTP fetch | Replay is deterministic on stored captures; the labeling tool works |
+| **L0 Foundations** | Repo foundations (SPEC-00); persistence and storage; replay; CI checks; HTTP fetch | Replay is deterministic on stored captures |
 | **L1 Extraction** | Schema registry and presets; type normalizers for preset types; Patchright browser on evidence; Greenhouse + Lever adapters; structured collectors; resolver with evidence buckets; role C cold extraction; role S; `scrape` endpoint with records and markdown | Spec acceptance criteria pass on synthetic fixtures and unlabeled dev captures; every published field carries evidence and `calibrated=false` |
 | **L2 Configs and progressive mode** | Config IR and executors; induction; role A synthesis; validation and corroboration status; progressive state; drift suspension; API-backed pages with role D; `json` and `platform_draft` exporters | A dev-capture site reaches `active` with a validated config; release check passes |
 | **L3 API and MCP** | `map`, `crawl`, `extract`, batch, jobs, SSE, webhooks; MCP server | Every endpoint works through REST and MCP on dev captures; SSRF tests pass |
 | **L4 Recurring** | Conditional GET, content and record fingerprints, listing diff | Unchanged pages skip extraction; record versions carry `changed_fields` |
-| **M Measurement** (owner-led, once the crawler is usable) | The golden set's labels (draft labels imported, Appendix A #65); fresh batches scored once before any fix (Appendix A #67); calibration and `source_precedence` fit on the golden set | Precision and coverage per field type, evidence bucket and config status on the golden set and each fresh batch; wrong-product = 0 |
+| **M Measurement** (owner-led, once the crawler is usable) | The e2e run (evaluation spec): one eval set outside the repo, one scorer, one run per round, verdicts adjudicated against the capture; fresh batches scored once before any fix (Appendix A #67); calibration and `source_precedence` fitted once, frozen 2026-10-18, refit only with the owner | Precision and coverage per field type in the e2e run and each fresh batch's first score; LLM values not on the page = 0; wrong-product = 0 |
 
 **Keeping fresh batches fresh.** A fresh batch's pages come from hosts in no earlier batch and untouched by
 development (the main DB `site` table, dev captures, debugging); its first score is taken before any change is made
-on it, and only that score supports a claim that a change generalizes (C10). After it is scored it joins the golden
+on it, and only that score supports a claim that a change generalizes (C10). After it is scored it joins the eval
 set (Appendix A #67).
 
 **Before M:**
@@ -156,10 +156,10 @@ is measured after it is added.
 
 | Candidate | Would address | Admitted when |
 |---|---|---|
-| **Learned, calibrated ranker** (gradient boosting, Platt/isotonic, conformal routing) | Wrong choices among valid, disagreeing candidates | Precedence or `conflict` decisions cause a material share of golden-set errors or lost coverage. |
-| **LLM adjudication** among conflicting candidates | `conflict` abstentions on resolvable cases | The `conflict` rate on golden-set required fields is material, and labels show one candidate was right. |
-| **Independent verifier** for configs | Wrong selectors that validate against themselves | Golden-set precision of `uncorroborated` config fields is below τ, and they are a material share of fields. |
-| **Self-consistency sampling** for role C | LLM value errors | Golden-set precision of the `llm_grounded` bucket is below τ. |
+| **Learned, calibrated ranker** (gradient boosting, Platt/isotonic, conformal routing) | Wrong choices among valid, disagreeing candidates | Precedence or `conflict` decisions cause a material share of e2e errors or lost coverage. |
+| **LLM adjudication** among conflicting candidates | `conflict` abstentions on resolvable cases | The `conflict` rate on required fields in the e2e run is material, and labels show one candidate was right. |
+| **Independent verifier** for configs | Wrong selectors that validate against themselves | E2e precision of `uncorroborated` config fields is below τ, and they are a material share of fields. |
+| **Self-consistency sampling** for role C | LLM value errors | E2e precision of the `llm_grounded` bucket is below τ. |
 | **Generic structural DOM collectors** (repeated structure, label–value pairs, typed value spotting) | Cold-mode cost or coverage on DOM-only sites | **Admitted.** Label–value pairs and the main image 2026-10-16 (Appendix A #42); repeated structure for row item URLs 2026-10-16 (Appendix A #47); **the item layer 2026-10-18** (Appendix A #67): rows from repeated sibling structures of one shape (segment, align, bind) and typed value spotting, with no hostname, class fragment, phrase list or card selector. |
 | **More platform adapters** (iCIMS, Paycom; Shopify admitted, Appendix A #46; Workday, Oracle Recruiting, Ashby, SmartRecruiters, Recruitee, Workable, Rippling, BambooHR, Teamtailor, UKG Pro, Personio and ADP admitted, #57) | Coverage or cost on those platforms | Results for the platform fall short through the generic path, or volume justifies it (`../archive/OPEN_QUESTIONS.md` #2). |
 | **Variant-matrix handling** | Per-variant price and availability; the multiple-Offer `conflict` | **Admitted 2026-10-15** by the owner ahead of labels (Appendix A #37); designed in SPEC-13. |

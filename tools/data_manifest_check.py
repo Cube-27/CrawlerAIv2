@@ -7,9 +7,9 @@ match the pinned hash. An entry marked `"fetched": true` is downloaded by `crawl
 exits 1, or prints one summary line and exits 0.
 
 Three files are fitted on dev rather than fetched (extraction spec, learning-configs spec; D-0444 and D-0576, owner
-answers 2026-10-14 and 2026-10-16): `source_precedence.yaml`, `calibration.json` and `drift_margins.json`. Fitting
-rewrites them, so no sha256 can be pinned; they are not listed in the manifest, and each must instead carry the
-stamp `source_split: dev` (fitted on the golden set).
+answers 2026-10-14 and 2026-10-16): `source_precedence.yaml`, `calibration.json` and `drift_margins.json`. They are
+frozen as fitted on 2026-10-18 (evaluation spec) and not listed in the manifest; each must instead carry the stamp
+`source_split: dev` (the split they were fitted on).
 """
 
 import argparse

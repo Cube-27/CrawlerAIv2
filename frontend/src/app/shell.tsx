@@ -8,12 +8,10 @@ import {
   ListUl,
   Moon,
   Sun,
-  Tag,
   Thunderbolt,
 } from "@gravity-ui/icons";
 import type { ComponentType, SVGProps } from "react";
 import { matchPath, Outlet, useHref, useLocation, useNavigate } from "react-router";
-import { useEvalUi } from "../api/hooks/health";
 import { MODES } from "../screens/playground/modes";
 import { useTheme } from "./theme";
 
@@ -47,16 +45,9 @@ const DATA: NavGroup = {
   ],
 };
 
-// With evaluation spec's screen, listed only when the backend serves the eval API (frontend spec).
-const EVALUATE: NavGroup = {
-  title: "Evaluate",
-  entries: [{ href: "/labeling", label: "Labeling", icon: Tag }],
-};
-
 const SETTINGS: NavEntry = { href: "/settings", label: "Settings", icon: Gear };
 
-const WITHOUT_LABELING: NavGroup[] = [PLAYGROUND, DATA];
-const WITH_LABELING: NavGroup[] = [...WITHOUT_LABELING, EVALUATE];
+const GROUPS: NavGroup[] = [PLAYGROUND, DATA];
 
 /** Whether `pathname` is in the section `href` opens: the page itself or, except for `/`, a page under it. */
 function isCurrent(href: string, pathname: string): boolean {
@@ -82,7 +73,6 @@ function NavItem({ entry, pathname }: Readonly<{ entry: NavEntry; pathname: stri
 
 function MainNav() {
   const { pathname } = useLocation();
-  const groups = useEvalUi() ? WITH_LABELING : WITHOUT_LABELING;
   return (
     // At phone width the entries wrap in rows above the content (DESIGN.md, Layout); from `sm` they are a column
     // with Settings at the foot.
@@ -90,7 +80,7 @@ function MainNav() {
       aria-label="Main"
       className="flex flex-wrap gap-1 sm:flex-1 sm:flex-col sm:flex-nowrap sm:gap-0"
     >
-      {groups.map((group) => (
+      {GROUPS.map((group) => (
         <div key={group.title} className="contents sm:block">
           <p className="nav-heading hidden sm:block">{group.title}</p>
           <ul className="contents sm:flex sm:flex-col sm:gap-0.5">

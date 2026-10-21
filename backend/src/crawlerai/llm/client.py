@@ -34,9 +34,7 @@ from crawlerai.storage.capture_bundle import sha256_hex
 log = logging.getLogger(__name__)
 
 # The role of each call (llm spec); `usage_event.metadata.prompt_kind` and the replay key carry it.
-PromptKind = Literal[
-    "c_extract_detail", "c_extract_listing", "c_prefill", "a_synth", "a_repair", "d_bind", "s_draft", "s_labels"
-]
+PromptKind = Literal["c_extract_detail", "c_extract_listing", "a_synth", "a_repair", "d_bind", "s_draft", "s_labels"]
 # `fast` for role C, `strong` for A, D and S (§2); settings map each class to a model per provider.
 ModelClass = Literal["fast", "strong"]
 
@@ -63,7 +61,7 @@ class LLMRequest(_Model):
     user: str
     output_schema: dict[str, JsonValue]  # JSON Schema (draft 2020-12) of the response
     max_output_tokens: int
-    job_id: JobId | None  # None only for an eval replay or the labeling pre-fill, which no job pays for
+    job_id: JobId | None  # None only for a call no job pays for: a replay, or a schema drafted before its job
 
     @field_validator("output_schema")
     @classmethod

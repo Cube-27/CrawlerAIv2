@@ -1,6 +1,6 @@
-"""A page a vendor's challenge keeps out is an outcome (master plan 2026-10-18 §3.1): `blocked` naming the vendor, a
-worker task retried at most once after the back-off, and the eval import's fetch of a page not reached retried up to
-three times with the closest capture kept. Results are synthetic (RFC 2606 hosts); nothing goes to the network."""
+"""A page a vendor's challenge keeps out is an outcome (master plan 2026-10-18 §3.1): `blocked` naming the vendor, and a
+worker task retried at most once after the back-off. Results are synthetic (RFC 2606 hosts); nothing goes to the
+network."""
 
 import time
 from datetime import UTC, datetime

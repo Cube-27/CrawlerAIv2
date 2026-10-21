@@ -8,22 +8,19 @@ import signal
 import sys
 import uuid
 from collections.abc import AsyncIterator, Sequence
-from contextlib import aclosing, asynccontextmanager, suppress
-from dataclasses import asdict, replace
+from contextlib import asynccontextmanager, suppress
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
-from typing import Final, get_args
+from typing import Final
 
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from crawlerai.acquire.browser import fetch_browser, open_browser
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
-from crawlerai.acquire.rungs import adapter_registry
 from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.api.app import create_app
 from crawlerai.api.webhooks import poster
 from crawlerai.core.data import fetch_data
@@ -31,41 +28,23 @@ from crawlerai.core.engine_version import ENGINE_VERSION, backend_dir, data_dir
 from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import AcquireSettings, DatabaseSettings, Settings
 from crawlerai.db.keys import create_key, revoke_key
-from crawlerai.db.models import EvalCategory, PageKind, ScheduleId
-from crawlerai.eval import calibrate, label_file, learn_sim, rekey
-from crawlerai.eval.cli import (
-    EvalCliError,
-    PageRequest,
-    active_schemas,
-    check_urls,
-    http_host,
-    parse_site_list,
-    report,
-    run_capture,
-)
-from crawlerai.eval.engine import PipelineEngine
-from crawlerai.eval.git_head import GitUnavailable, head_commit
-from crawlerai.eval.labels import LabelStatus
-from crawlerai.eval.metrics import CHECKED, build_report
-from crawlerai.eval.replay import CappedLLM, replay_split
-from crawlerai.eval.store import EvalNotFound, EvalRunRow, dev_store
+from crawlerai.db.models import ScheduleId
 from crawlerai.job_cli import add_job_commands
-from crawlerai.llm.client import NO_LLM, LLMClient
+from crawlerai.llm.client import NO_LLM
 from crawlerai.llm.providers.from_settings import llm_from_settings
 from crawlerai.normalize.dispatch import warm
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.scheduler.loop import periodic, run_scheduler
 from crawlerai.schemas.registry import PresetConflict
-from crawlerai.schemas.types import SchemaDef
 from crawlerai.services import schedules as schedules_service
 from crawlerai.services import schemas as schemas_service
 from crawlerai.services.fetch_options import FetchOptions, UnknownProxyPool, check_proxy_pool, fetch_policy
-from crawlerai.services.fetching import Fetching, PagePlan, TargetRejected, fetch_now, learning_replay, site_rungs
+from crawlerai.services.fetching import learning_replay
 from crawlerai.services.records import MAX_PAGE
 from crawlerai.services.runtime import open_fetching
 from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
 from crawlerai.services.scrape_paging import learning_render
-from crawlerai.services.scrape_steps import learning_extract, load_drift_margins, load_engine_data, site_row
+from crawlerai.services.scrape_steps import learning_extract, load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
 from crawlerai.worker.handlers.table import task_handlers
@@ -78,9 +57,8 @@ _SCHEDULE_LINE: Final = {"id", "name", "kind", "cron", "interval_s", "timezone",
 
 def _print_openapi() -> None:
     # Sorted keys and LF bytes on every platform keep `frontend/openapi.json` byte-identical across regenerations,
-    # which the CI freshness check relies on. The document includes the labeling endpoints whatever
-    # `CRAWLERAI_EVAL_UI` says, so the generated client has their types for the labeling screen.
-    text = json.dumps(create_app(eval_ui=True).openapi(), indent=2, sort_keys=True) + "\n"
+    # which the CI freshness check relies on.
+    text = json.dumps(create_app().openapi(), indent=2, sort_keys=True) + "\n"
     sys.stdout.buffer.write(text.encode())
 
 
@@ -181,157 +159,6 @@ async def _fetch(
     print(json.dumps(summary))
 
 
-async def _eval_capture(schema_name: str, page_kind: PageKind, category: EvalCategory, urls: Sequence[str]) -> None:
-    check_urls(urls)
-    requests = [PageRequest(n, url, schema_name, category) for n, url in enumerate(urls, start=1)]
-    sys.stdout.write(report(await run_capture(Settings(), requests, page_kind)))
-
-
-async def _eval_import_sites(file: Path, pages_per_site: int) -> None:
-    sites = parse_site_list(file.read_text(encoding="utf-8"), pages_per_site)
-    sys.stdout.write(report([*await run_capture(Settings(), sites.requests), *sites.over_limit]))
-
-
-async def _eval_import_labels(file: Path) -> None:
-    """Capture a label file's pages into dev through the worker's acquisition path, one page at a time, and store
-    their labels as drafts (D-1460)."""
-    settings = Settings()
-    pages = label_file.read_label_file(file.read_text(encoding="utf-8"))
-    database_url = settings.database_url.get_secret_value()
-    schemas = await active_schemas(database_url, label_file.schema_names(pages))
-    labeled = label_file.labeled_pages(pages, schemas)
-    engine = create_async_engine(database_url)
-    try:
-        async with aclosing(dev_store(settings)) as store, open_fetching(settings, database=engine) as fetching:
-            fetch = partial(_polite_page, engine, fetching)
-            outcomes = await label_file.import_pages(store, schemas, labeled, fetch, await store.page_urls())
-    finally:
-        await engine.dispose()
-    sys.stdout.write(label_file.report(outcomes))
-
-
-async def _eval_rekey(file: Path) -> None:
-    """Recompute the draft labels of a label file's pages already in the golden set against their stored captures, and
-    mark the label rows the captures do not show (evaluation spec, "Label re-keying")."""
-    settings = Settings()
-    pages = label_file.read_label_file(file.read_text(encoding="utf-8"))
-    schemas = await active_schemas(settings.database_url.get_secret_value(), label_file.schema_names(pages))
-    labeled = label_file.labeled_pages(pages, schemas)
-    async with aclosing(dev_store(settings)) as store:
-        outcomes = await rekey.rekey_pages(store, schemas, labeled)
-    sys.stdout.write(rekey.report(outcomes))
-
-
-async def _polite_page(engine: AsyncEngine, fetching: Fetching, url: str, schema: SchemaDef) -> FetchResult | str:
-    """The page as a worker fetches it for `schema` (`fetch_now`): robots.txt, the site's rate, its adapters, and the
-    browser on a block; or why it was not fetched."""
-    host = http_host(url)
-    if host is None:  # `labeled_pages` refuses such a URL
-        raise EvalCliError("not an http or https URL with a host")
-    async with engine.begin() as conn:
-        site = await site_row(conn, host, schema.page_kind)
-    policy = FetchPolicy(page_kind=schema.page_kind, proxy_pool=site.proxy_pool)
-    page = PagePlan(site_rungs(fetching, host, site), site, policy, [])
-    try:
-        # A page not reached is fetched again after the back-off, and the closest capture kept (`best_fetch`).
-        return await label_file.best_fetch(lambda: fetch_now(engine, fetching, url, replace(page, attempts=[])))
-    except TargetRejected:
-        return "target_rejected"
-
-
-async def _eval_run(
-    statuses: frozenset[LabelStatus],
-    llm_mode: str,
-    out: Path | None,
-    max_calls: int | None = None,
-    min_confidence: float | None = None,
-) -> None:
-    """Replay the dev split through the pipeline and score it; store the run when it scores checked pages only and
-    asked no minimum confidence (a gated run measures only what the gate let through, so a fit on it would be of its
-    own selection)."""
-    settings = Settings()
-    data = load_engine_data(adapter_registry(settings.disabled_adapters))
-    if data is None:
-        raise EvalCliError("the engine's data files are missing: run `crawlerai data fetch`")
-    database_url = settings.database_url.get_secret_value()
-    pipeline = PipelineEngine(data.with_min_confidence(min_confidence), await active_schemas(database_url))
-    git_sha = head_commit(_data_dir().parent.parent)
-    db = create_async_engine(database_url)
-    try:
-        async with aclosing(dev_store(settings)) as store:
-            cases = await replay_split(
-                store, pipeline, live=_replay_llm(llm_mode, settings, db, max_calls), statuses=statuses
-            )
-            # D-1480: the report scores the engine rows of the labeled page (`rows="labeled"`), and every row too.
-            result = build_report(cases, "dev", pipeline.version, git_sha, statuses, rows="labeled")
-            all_rows = build_report(cases, "dev", pipeline.version, git_sha, statuses)
-            # A stored run is what calibration fits on: drafts never become one (labels spec: two passes). It keeps
-            # every engine row.
-            run = None
-            if statuses == CHECKED and min_confidence is None:
-                metrics = all_rows.model_dump(mode="json")
-                run = await store.put_run(
-                    EvalRunRow(split="dev", engine_version=pipeline.version, git_sha=git_sha, metrics=metrics)
-                )
-    finally:
-        await db.dispose()
-    if out is not None:
-        out.write_text(result.model_dump_json(indent=2) + "\n", encoding="utf-8")
-        all_rows_out = out.with_name(f"{out.stem}.all-rows{out.suffix}")
-        all_rows_out.write_text(all_rows.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    dropped = sum(page.error is not None for page in result.pages or ())
-    summary = {
-        "eval_run_id": None if run is None else str(run),
-        "n_pages": result.n_pages,
-        "dropped": dropped,
-        "label_statuses": list(result.label_statuses),
-        "by_field_type": {k: v.model_dump(mode="json") for k, v in result.by_field_type.items()},
-        "by_field_type_all_rows": {k: v.model_dump(mode="json") for k, v in all_rows.by_field_type.items()},
-    }
-    print(json.dumps(summary))
-
-
-async def _eval_learn_sim(pages: int, llm_mode: str, role_a: str, max_calls: int | None, out: Path | None) -> None:
-    """Simulate learning on each dev host's first `pages` pages and print the aggregates (`eval.learn_sim`)."""
-    settings = Settings()
-    data = load_engine_data(adapter_registry(settings.disabled_adapters))
-    if data is None:
-        raise EvalCliError("the engine's data files are missing: run `crawlerai data fetch`")
-    database_url = settings.database_url.get_secret_value()
-    pipeline = PipelineEngine(data, await active_schemas(database_url))
-    db = create_async_engine(database_url)
-    try:
-        strong = llm_from_settings(settings, db)[0] if role_a == "live" else None
-        async with aclosing(dev_store(settings)) as store:
-            runs = await learn_sim.simulate(
-                store,
-                pipeline,
-                pages=pages,
-                live=_replay_llm(llm_mode, settings, db, max_calls),
-                role_a=None if strong is None else CappedLLM(strong, max_calls or learn_sim.ROLE_A_CALLS),
-                max_chars=settings.llm_a_max_chars,
-            )
-    finally:
-        await db.dispose()
-    if out is not None:
-        out.write_text(json.dumps([asdict(run) for run in runs], indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(learn_sim.summary(runs, learn_sim.usd_per_char(settings.llm_strong_model_anthropic))))
-
-
-def _replay_llm(mode: str, settings: Settings, db: AsyncEngine, max_calls: int | None) -> LLMClient | None:
-    """What answers a call no recording holds (`RecordedLLM`): nothing, so the page is dropped (`recorded`, as in CI);
-    a client that answers none, so its fields stay missing (`unanswered`, D-1464); or the configured providers, whose
-    responses are recorded (`live`), at most `max_calls` of them when given."""
-    match mode:
-        case "unanswered":
-            return NO_LLM
-        case "live":
-            live = llm_from_settings(settings, db)[0]
-            return live if max_calls is None else CappedLLM(live, max_calls)
-        case _:
-            return None
-
-
 @asynccontextmanager
 async def _transaction() -> AsyncIterator[AsyncConnection]:
     """One transaction on the configured database, for a command that writes once; the engine closes with it."""
@@ -397,132 +224,6 @@ async def _schedules_pause(parser: argparse.ArgumentParser, schedule_id: uuid.UU
     print(schedule.model_dump_json(include=_SCHEDULE_LINE))
 
 
-def _data_dir() -> Path:
-    """`backend/data/` of the source tree this package runs from: the pinned data files, and the calibration and
-    precedence that extraction spec reads."""
-    backend = backend_dir(Path(calibrate.__file__))  # any module one package below `crawlerai`
-    if backend is None:
-        raise EvalCliError("no backend source tree: data files are read from and written to backend/data/")
-    return data_dir(backend)
-
-
-def _eval_fit(command: str, report_path: Path) -> None:
-    """`fit-calibration` or `fit-precedence`: fit on the dev report at `report_path` and write the file."""
-    directory = _data_dir()
-    report = calibrate.read_report(report_path)
-    if command == "fit-calibration":
-        path = calibrate.write_calibration(calibrate.fit_calibration(report), directory)
-    else:
-        current = calibrate.read_precedence(directory)
-        path = calibrate.write_precedence(calibrate.fit_precedence(report, current), directory)
-    print(json.dumps({"written": str(path), "git_sha": report.git_sha, "source_split": report.split}))
-
-
-def _add_eval_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    eval_commands = commands.add_parser(
-        "eval", help="evaluation on the golden set: capture, label, replay, fit"
-    ).add_subparsers(dest="eval_command", required=True)
-    # One split, the golden set (evaluation spec); `--split dev` names it on every command.
-    splits, categories, page_kinds = ["dev"], get_args(EvalCategory), get_args(PageKind)
-    capture = eval_commands.add_parser("capture", help="fetch pages and store each as an unlabeled eval page")
-    capture.set_defaults(handler=_run_eval, eval_handler=_run_eval_capture)
-    capture.add_argument("--split", choices=splits, required=True)
-    capture.add_argument("--schema", required=True, help="the name of an active schema")
-    capture.add_argument("--page-kind", choices=page_kinds, required=True)
-    capture.add_argument("--category", choices=categories, required=True)
-    capture.add_argument("urls", nargs="+", metavar="URL")
-    import_sites = eval_commands.add_parser(
-        "import-sites", help="capture the pages of a site list (`<category> <schema> <url>` per line)"
-    )
-    import_sites.set_defaults(handler=_run_eval, eval_handler=_run_eval_import_sites)
-    import_sites.add_argument("--split", choices=splits, required=True)
-    import_sites.add_argument("--file", type=Path, required=True)
-    import_sites.add_argument("--pages-per-site", type=_positive_int, required=True)
-    import_labels = eval_commands.add_parser(
-        "import-labels", help="capture a label file's pages into dev and store their labels as drafts"
-    )
-    import_labels.set_defaults(handler=_run_eval, eval_handler=_run_eval_import_labels)
-    import_labels.add_argument("file", type=Path, help="the label file (JSON), under the working directory")
-    # Imported labels are drafts only: a labeled or checked page takes the two passes of §16.2 (D-1460).
-    import_labels.add_argument("--split", choices=["dev"], required=True)
-    import_labels.add_argument("--status", choices=["draft"], required=True)
-    rekey_command = eval_commands.add_parser(
-        "re-key", help="recompute golden pages' draft labels from a label file and mark rows their captures lack"
-    )
-    rekey_command.set_defaults(handler=_run_eval, eval_handler=_run_eval_rekey)
-    rekey_command.add_argument("file", type=Path, help="the label file (JSON), under the working directory")
-    rekey_command.add_argument("--split", choices=["dev"], required=True)
-    run = eval_commands.add_parser("run", help="replay the dev split through the engine and print its report")
-    run.set_defaults(handler=_run_eval, eval_handler=_run_eval_run)
-    run.add_argument("--split", choices=["dev"], required=True)
-    run.add_argument(
-        "--labels",
-        choices=["checked", "all"],
-        default="checked",
-        help="score checked pages (stored as a run), or drafts and labeled pages too (D-1461; not stored)",
-    )
-    run.add_argument(
-        "--llm",
-        choices=["recorded", "unanswered", "live"],
-        default="recorded",
-        help="for a call no recording holds: drop the page, answer nothing, or call the configured providers",
-    )
-    run.add_argument("--llm-max-calls", type=_positive_int, help="with --llm live: the most provider calls to make")
-    run.add_argument(
-        "--min-confidence",
-        type=_probability,
-        help="leave unpublished a field whose calibrated confidence is below this (0 to 1; the run is not stored)",
-    )
-    run.add_argument(
-        "--out",
-        type=Path,
-        help=(
-            "write the full report (JSON) here, under the working directory, with the engine rows of the labeled page"
-            " (D-1480); the report scoring every row goes beside it as <name>.all-rows.json"
-        ),
-    )
-    _add_learn_sim(eval_commands)
-    for name, help_ in (
-        ("fit-calibration", "write backend/data/calibration.json from a dev eval report"),
-        ("fit-precedence", "write backend/data/source_precedence.yaml from a dev eval report"),
-    ):
-        fit = eval_commands.add_parser(name, help=help_)
-        fit.set_defaults(handler=_run_eval, eval_handler=_run_eval_fit)
-        fit.add_argument("--split", choices=splits, required=True)
-        fit.add_argument("--report", type=Path, required=True, help="the report `eval run --out` wrote, to fit on")
-
-
-def _add_learn_sim(eval_commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    sim = eval_commands.add_parser(
-        "learn-sim", help="simulate learning on each dev host's first pages and print zero-touch aggregates"
-    )
-    sim.set_defaults(handler=_run_eval, eval_handler=_run_eval_learn_sim)
-    sim.add_argument("--split", choices=["dev"], required=True)
-    sim.add_argument("--pages", type=_positive_int, default=3, help="the pages per host learning reads")
-    sim.add_argument("--llm", choices=["recorded", "unanswered", "live"], default="unanswered", help="role C misses")
-    sim.add_argument("--role-a", choices=["abstain", "live"], default="abstain", help="count role A, or call it")
-    sim.add_argument(
-        "--llm-max-calls",
-        type=_positive_int,
-        help="with a live client: the most provider calls each makes in the whole simulation",
-    )
-    sim.add_argument("--out", type=Path, help="write each host's run (JSON, no host names) here")
-
-
-def _positive_int(value: str) -> int:
-    number = int(value)
-    if number < 1:
-        raise argparse.ArgumentTypeError("must be at least 1")
-    return number
-
-
-def _probability(value: str) -> float:
-    number = float(value)
-    if not 0.0 <= number <= 1.0:
-        raise argparse.ArgumentTypeError("must be between 0 and 1")
-    return number
-
-
 def main(argv: Sequence[str] | None = None) -> None:
     parser = _parser()
     args = parser.parse_args(argv)
@@ -573,7 +274,6 @@ def _parser() -> argparse.ArgumentParser:
     revoke.add_argument("id", type=uuid.UUID, help="the key's id, as `apikey create` printed it")
     _add_schedule_commands(commands)
     add_job_commands(commands)
-    _add_eval_commands(commands)
     return parser
 
 
@@ -701,52 +401,19 @@ def _run_schedules_pause(parser: argparse.ArgumentParser, args: argparse.Namespa
     asyncio.run(_schedules_pause(parser, args.id, paused=args.paused))
 
 
+def _data_dir() -> Path | None:
+    """`backend/data/` of the source tree this package runs from, where the pinned data files go; None for an
+    installed package."""
+    backend = backend_dir(Path(schemas_service.__file__))  # any module one package below `crawlerai`
+    return None if backend is None else data_dir(backend)
+
+
 def _run_data(parser: argparse.ArgumentParser, _args: argparse.Namespace) -> None:
-    try:
-        report = fetch_data(_data_dir())
-    except EvalCliError as e:
-        parser.exit(2, f"crawlerai data fetch: {e}\n")
+    directory = _data_dir()
+    if directory is None:
+        parser.exit(2, "crawlerai data fetch: no backend source tree: data files are written to backend/data/\n")
+    report = fetch_data(directory)
     for line in report.written:
         print(line)
     if report.refused:
         parser.exit(2, "".join(f"crawlerai data fetch: {line}\n" for line in report.refused))
-
-
-def _run_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    try:
-        args.eval_handler(parser, args)
-    except (EvalCliError, EvalNotFound, GitUnavailable) as e:
-        parser.exit(2, f"crawlerai eval: {e}\n")
-
-
-def _run_eval_capture(_parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    asyncio.run(_eval_capture(args.schema, args.page_kind, args.category, args.urls))
-
-
-def _run_eval_import_sites(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    # The site list is read only from under the working directory, as `fetch --out` is written there.
-    sites = _under_cwd(parser, "--file", args.file)
-    asyncio.run(_eval_import_sites(sites, args.pages_per_site))
-
-
-def _run_eval_import_labels(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    asyncio.run(_eval_import_labels(_under_cwd(parser, "file", args.file)))
-
-
-def _run_eval_rekey(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    asyncio.run(_eval_rekey(_under_cwd(parser, "file", args.file)))
-
-
-def _run_eval_run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    out = None if args.out is None else _under_cwd(parser, "--out", args.out)
-    statuses: frozenset[LabelStatus] = CHECKED if args.labels == "checked" else frozenset(get_args(LabelStatus))
-    asyncio.run(_eval_run(statuses, args.llm, out, args.llm_max_calls, args.min_confidence))
-
-
-def _run_eval_learn_sim(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    out = None if args.out is None else _under_cwd(parser, "--out", args.out)
-    asyncio.run(_eval_learn_sim(args.pages, args.llm, args.role_a, args.llm_max_calls, out))
-
-
-def _run_eval_fit(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    _eval_fit(args.eval_command, _under_cwd(parser, "--report", args.report))

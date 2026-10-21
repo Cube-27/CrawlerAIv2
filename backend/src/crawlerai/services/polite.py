@@ -1,5 +1,5 @@
 """One polite fetch (acquisition spec): the way every caller sends a request to a site, whether its caller waits for the
-answer (`scrape`, `map`, `extract`, the eval import) or it runs in a worker (`batch_scrape`, `crawl`), for a page, an
+answer (`scrape`, `map`, `extract`) or it runs in a worker (`batch_scrape`, `crawl`), for a page, an
 API endpoint an adapter or recipe asks, or a sitemap.
 
 The steps, in order: the host's rules (its interval setting and robots.txt, `ReadRules`; a robots.txt request takes a

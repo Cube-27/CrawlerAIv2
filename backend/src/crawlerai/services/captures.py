@@ -105,7 +105,7 @@ async def artifact(engine: AsyncEngine, store: ObjectStore, capture_id: CaptureI
         capture = await _capture(conn, capture_id)
     try:
         return await asyncio.to_thread(store.get, artifact_key(capture.object_key, name))
-    except (ObjectNotFound, ValueError) as e:  # a ValueError: the capture is an eval capture, which has none
+    except (ObjectNotFound, ValueError) as e:  # a ValueError: the bundle is outside `captures/`, so has none
         raise CaptureNotFound(f"capture {capture_id} has no artifact {name!r}") from e
 
 

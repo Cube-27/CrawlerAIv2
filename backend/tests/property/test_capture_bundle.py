@@ -24,7 +24,6 @@ from crawlerai.storage.capture_bundle import (
     NetworkBody,
     capture_key,
     decode,
-    dev_eval_capture_key,
     encode,
     network_json,
 )
@@ -243,4 +242,3 @@ def test_capture_keys_follow_the_documented_layout() -> None:
     fetched_at = datetime(2026, 3, 31, 23, 59, tzinfo=UTC)
 
     assert capture_key(_CAPTURE_ID, fetched_at) == f"captures/2026/03/{_CAPTURE_ID}.bundle.zst"
-    assert dev_eval_capture_key(_CAPTURE_ID) == f"eval/dev/{_CAPTURE_ID}.bundle.zst"

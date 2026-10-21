@@ -39,10 +39,11 @@ make check          # every CI check locally (`make check-backend`, ... per job)
 A bug fix repairs the layer whose rule failed, for the whole class of pages. Data the page does not state stays
 unpublished. No site-specific steps, no speculative layers, no second path for existing logic (C8).
 
-- **C1.** The golden set (`dev`) is the only measure. It grows in fresh batches of 20-30 pages on new hosts; a batch
-  is scored once before any change is made on it, and only that first score supports a generalization claim. Then it
-  joins the golden set. Never look at a fresh batch's pages before that score. Fit thresholds, precedence and
-  calibration on the golden set.
+- **C1.** The e2e run is the only measure: one run per round over the one eval set (kept outside the repo), one
+  scorer, disagreements adjudicated against the capture. The set grows in fresh batches of 20-30 pages on new hosts; a
+  batch is scored once before any change is made on it, and only that first score supports a generalization claim.
+  Then it joins the set. Never look at a fresh batch's pages before that score. Calibration, precedence and drift
+  margins are frozen as fitted on 2026-10-18; a refit needs the owner.
 - **C2.** Every generic rule names its standard (schema.org, ISO, CLDR, RFC, HTML) or structural property in a
   comment. "Site X does Y" is never a justification.
 - **C3.** Hostnames, site, retailer and brand names, and strings copied from pages live only in
@@ -51,12 +52,12 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
 - **C4.** Vocabularies come from versioned external data in `backend/data/manifest.json`. No word, selector or regex
   added because one page failed.
 - **C5.** A failing site is fixed by config, a learning re-run or an operator correction; change generic code only for
-  a class of failures, shown with golden-set results.
+  a class of failures, shown with e2e results.
 - **C7.** No defaults; an unclear currency never drops a price, but a price whose amount is contested by an unexplained rival is a conflict (INV-14); currency from page evidence, else the URL
   locale/subdomain/ccTLD (flagged), else null; no host tables, and no other value from URL codes (owner #68, D-1782).
 - **C9.** No test is named after a site or asserts one site's output; write property and replay tests.
-- **C10.** A change that alters extraction must improve the golden set and not drop any field type's precision
-  without a stated reason. The PR's evaluation section gives the golden-set aggregate per field type, before and
+- **C10.** A change that alters extraction must improve the e2e run and not drop any field type's precision
+  without a stated reason. The PR's evaluation section gives the e2e aggregate per field type, before and
   after, with no per-page or per-site numbers; a gain from fewer than 3 hosts is flagged.
 - **C11.** Cognitive complexity at most 15 per function (hard check); files over 800 lines only warn. Add no other
   LOC, complexity, coverage or ratchet gate.

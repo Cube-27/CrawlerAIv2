@@ -10,7 +10,7 @@ Selected and rewritten for this project.
 
 **Prove it works.** Check the real thing, not a proxy. "It compiles", an agent's self-report and a cached result
 are not evidence. The strongest proof is a check anyone can re-run: a test, a replay, or an eval delta. For
-extraction changes, the proof is the dev eval delta (C10). When a check fails, suspect the check before the system.
+extraction changes, the proof is the e2e delta (C10). When a check fails, suspect the check before the system.
 
 **Sequence verifiable units.** Work in small units, each ending in a state you can check. Don't start the next unit
 until the current one is green. In git history, the failing test comes first and the fix sits on top. A break
@@ -97,7 +97,7 @@ the first, is the sign the model is missing.
   Alembic own the DB shape.
 - No `Any`, `cast` or `# type: ignore` without a boundary check that justifies it.
 
-**Make operations idempotent.** Queue tasks, migrations, learning jobs and eval commands must converge to the same
+**Make operations idempotent.** Queue tasks, migrations and learning jobs must converge to the same
 state if they run twice or crash halfway. Ask: what happens if this runs twice? What if the previous run died at
 each step?
 

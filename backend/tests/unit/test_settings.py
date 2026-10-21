@@ -24,7 +24,6 @@ def env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
 def test_reads_crawlerai_prefixed_environment(env: pytest.MonkeyPatch) -> None:
     env.setenv("CRAWLERAI_LOG_REDACT_URLS", "true")
     env.setenv("CRAWLERAI_ROLE", "worker")
-    env.setenv("CRAWLERAI_EVAL_UI", "true")
 
     settings = Settings()
 
@@ -32,7 +31,6 @@ def test_reads_crawlerai_prefixed_environment(env: pytest.MonkeyPatch) -> None:
     assert settings.object_store == "fs:///srv/objects"
     assert settings.log_redact_urls is True
     assert settings.role == "worker"
-    assert settings.eval_ui is True
 
 
 def test_the_database_url_and_llm_api_keys_are_not_shown_in_repr(env: pytest.MonkeyPatch) -> None:

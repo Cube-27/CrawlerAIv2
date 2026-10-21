@@ -47,19 +47,19 @@ Every PR answers these (the template carries them):
 - I did not add a list entry for a single page (C4, C5).
 - No §22 candidate implemented (C13).
 - Aggregate report attached, required if `collect/`, `normalize/`, `resolve/`, `llm/`, `config_ir/` or `acquire/`
-  changed: golden-set delta per field type shown, no unexplained precision drop (C10).
+  changed: e2e delta per field type shown, no unexplained precision drop (C10).
 - Property or replay tests added, no site-named tests (C9).
 - Decisions recorded in the change's `design.md` or `openspec/decisions/log.md` (`openspec/decisions/README.md`).
 
 ### Where the evaluation report comes from
 
-- **Golden set:** `crawlerai eval run --split dev --labels all` replays the golden set's captures; paste the aggregate
-  per field type before and after, never per-page or per-site numbers.
+- **E2e run:** one run of the product over the eval set, which lives outside the repo with its scorer; paste the
+  aggregate per field type before and after, never per-page or per-site numbers.
 - **Generalization claims** come only from a fresh batch's first score, taken before any change is made on it (C1,
   C10).
 
 The `evaluation` capability (`openspec/specs/evaluation/spec.md`) defines the
-replay and the reports.
+run, the scorer and the reports.
 
 ## Decisions and escalation
 
