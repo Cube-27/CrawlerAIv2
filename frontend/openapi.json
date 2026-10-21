@@ -3753,7 +3753,6 @@
                 "enum": [
                   "extracted",
                   "partial",
-                  "unchanged",
                   "links_only",
                   "blocked",
                   "shell",
@@ -4805,10 +4804,6 @@
             "title": "Timeout",
             "type": "integer"
           },
-          "unchanged": {
-            "title": "Unchanged",
-            "type": "integer"
-          },
           "unsupported_media": {
             "title": "Unsupported Media",
             "type": "integer"
@@ -4817,7 +4812,6 @@
         "required": [
           "extracted",
           "partial",
-          "unchanged",
           "links_only",
           "blocked",
           "shell",
@@ -5159,7 +5153,6 @@
                 "enum": [
                   "extracted",
                   "partial",
-                  "unchanged",
                   "links_only",
                   "blocked",
                   "shell",

@@ -479,9 +479,9 @@ def upgrade() -> None:
         sa.Column("final_url", sa.Text(), nullable=True),
         sa.Column("score", sa.Float(), nullable=True),
         sa.CheckConstraint(
-            "outcome IN ('extracted', 'partial', 'unchanged', 'links_only', 'blocked', 'shell', 'not_found',"
-            " 'no_match', 'auth_wall', 'soft_404', 'geo_redirect', 'redirected_to_listing', 'unsupported_media',"
-            " 'geo_blocked', 'timeout', 'failed')",
+            "outcome IN ('extracted', 'partial', 'links_only', 'blocked', 'shell', 'not_found', 'no_match',"
+            " 'auth_wall', 'soft_404', 'geo_redirect', 'redirected_to_listing', 'unsupported_media', 'geo_blocked',"
+            " 'timeout', 'failed')",
             name=op.f("ck_url_task_outcome"),
         ),
         sa.CheckConstraint("page_kind IN ('detail', 'listing')", name=op.f("ck_url_task_page_kind")),
@@ -527,8 +527,6 @@ def upgrade() -> None:
         "url_state",
         sa.Column("site_id", sa.Uuid(), nullable=False),
         sa.Column("canonical_url", sa.Text(), nullable=False),
-        sa.Column("etag", sa.Text(), nullable=True),
-        sa.Column("last_modified", sa.Text(), nullable=True),
         sa.Column("content_digest", sa.Text(), nullable=True),
         sa.Column("content_fingerprint", sa.Text(), nullable=True),
         sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=False),
@@ -536,18 +534,11 @@ def upgrade() -> None:
         sa.Column("missing_runs", sa.Integer(), server_default=sa.text("0"), nullable=False),
         sa.Column("gone_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_seen_job_id", sa.Uuid(), nullable=True),
-        sa.Column("standing_task_id", sa.Uuid(), nullable=True),
         sa.CheckConstraint("missing_runs >= 0", name=op.f("ck_url_state_missing_runs_non_negative")),
         sa.ForeignKeyConstraint(
             ["last_seen_job_id"], ["job.id"], name=op.f("fk_url_state_last_seen_job_id_job"), ondelete="SET NULL"
         ),
         sa.ForeignKeyConstraint(["site_id"], ["site.id"], name=op.f("fk_url_state_site_id_site")),
-        sa.ForeignKeyConstraint(
-            ["standing_task_id"],
-            ["url_task.id"],
-            name=op.f("fk_url_state_standing_task_id_url_task"),
-            ondelete="SET NULL",
-        ),
         sa.PrimaryKeyConstraint("site_id", "canonical_url", name=op.f("pk_url_state")),
     )
     op.create_table(

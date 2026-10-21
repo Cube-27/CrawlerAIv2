@@ -152,7 +152,7 @@ def fetching(server: Server, site: str, tmp_path: Path) -> Fetching:
 
     clock = itertools.count(step=3600)
     limiter = HostLimiter(clock=lambda: float(next(clock)))
-    rungs = Rungs(http=http, browser=browser, conditional=http)
+    rungs = Rungs(http=http, browser=browser)
     return Fetching(rungs, connector, FsStore(tmp_path / "objects"), limiter)
 
 

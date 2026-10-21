@@ -9,7 +9,6 @@ export function jobSummary(overrides: Partial<JobSummary> & Pick<JobSummary, "id
     outcomes: {
       extracted: 2,
       partial: 0,
-      unchanged: 0,
       links_only: 0,
       blocked: 0,
       shell: 0,

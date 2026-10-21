@@ -105,7 +105,6 @@ class OutcomeCounts(BaseModel):
 
     extracted: int
     partial: int
-    unchanged: int
     links_only: int
     blocked: int
     shell: int
@@ -535,7 +534,7 @@ async def _clean_records(
     conn: AsyncConnection, schema_id: SchemaId | None, task_ids: list[UrlTaskId]
 ) -> dict[UrlTaskId, list[dict[str, JsonValue]]]:
     """The clean records each task's page stands for, oldest first: those it stored, or the latest versions of its
-    entities when it found them unchanged (`task_record`, jobs spec)."""
+    entities when its records equalled them (`task_record`, jobs spec)."""
     if schema_id is None or not task_ids:
         return {}
     schema = await registry.get_by_id(conn, schema_id)

@@ -13,8 +13,7 @@ adapter (adapters spec); an HTTP shell that would be rendered for lacking conten
 site whose active config has an API recipe is served by the recipe's rung (adapters spec), which the caller binds to
 the recipe: the config IR sits above `acquire` (`.importlinter`). The browser rung is
 `crawlerai.acquire.browser.fetch_browser`. Every rung is a function of (url, policy), so `acquire` decides and records
-only. The one exception is the HTTP rung's conditional form, which also takes the validators a page last answered with
-(jobs spec), and the browser rung's exporting form, which also hands the context's cookies to a site session
+only. The one exception is the browser rung's exporting form, which also hands the context's cookies to a site session
 (`acquire.session`, INV-29's exception).
 """
 
@@ -41,7 +40,6 @@ from crawlerai.acquire.types import (
     CallEndpoint,
     FetchPolicy,
     FetchResult,
-    Validators,
     fetched_as,
     policy_with_attempts,
 )
@@ -82,12 +80,6 @@ class FetchPlan:
 NO_PLAN: Final = FetchPlan()
 
 
-class ConditionalRung(Protocol):
-    """The HTTP rung sending `validators` (`crawlerai.acquire.http.fetch_http`)."""
-
-    def __call__(self, url: str, policy: FetchPolicy, *, validators: Validators | None) -> Awaitable[FetchResult]: ...
-
-
 class ExportingRung(Protocol):
     """The browser rung filling `export` with the context's cookies (`crawlerai.acquire.browser.fetch_browser`)."""
 
@@ -116,8 +108,6 @@ class Rungs:
     http: Rung
     browser: Rung
     adapters: Registry = field(default_factory=lambda: Registry(()))
-    # The HTTP rung in its conditional form, for fetches given validators; without it they are sent nowhere.
-    conditional: ConditionalRung | None = None
     # JSON over HTTP (`acquire.api.fetch_json`), which an active config's API recipe sends its request with
     # (adapters spec); without it no recipe serves a page.
     json: JsonFetcher | None = None
@@ -149,7 +139,6 @@ async def acquire(
     rungs: Rungs,
     *,
     recipe: Rung | None = None,
-    validators: Validators | None = None,
     admit_next: Admit | None = None,
     send: JsonFetcher | None = None,
     deadline: float | None = None,
@@ -165,14 +154,13 @@ async def acquire(
     is (acquisition spec, "Browser on block or by field source"). Each request after the first (the page after an
     adapter or a recipe, the browser retry, the companion call) waits for `admit_next` to admit it at the site's rate
     (acquisition spec), and is not sent when `admit_next` refuses it: the fetch keeps the outcome it has. The result
-    lists every attempt, in its bundle's manifest too. `validators` go with the HTTP rung only (jobs spec): a 304 is
-    `ok` and ends the fetch. A page no adapter detected whose canonical link is its URL without the query, which an
-    adapter detects, is fetched again by that adapter on its own turn (adapters spec). An HTTP `ok` detail page kept is
-    joined with its platform's documented product JSON (`_joined`, sent with `send`), and any kept HTTP `ok` page with
-    the answers of its eager fragments on its own site (`_with_frames`), and with the answers of the `plan`'s companion
-    calls (`_with_calls`, sent with `send`). A policy that captures the page (`screenshot`, `pdf`) uses neither an
-    adapter, a recipe nor a companion call. No browser retry starts with less than `BROWSER_MIN_S` left before
-    `deadline` (on `time.monotonic`), the task's budget: the HTTP outcome is kept."""
+    lists every attempt, in its bundle's manifest too. A page no adapter detected whose canonical link is its URL
+    without the query, which an adapter detects, is fetched again by that adapter on its own turn (adapters spec). An
+    HTTP `ok` detail page kept is joined with its platform's documented product JSON (`_joined`, sent with `send`), and
+    any kept HTTP `ok` page with the answers of its eager fragments on its own site (`_with_frames`), and with the
+    answers of the `plan`'s companion calls (`_with_calls`, sent with `send`). A policy that captures the page
+    (`screenshot`, `pdf`) uses neither an adapter, a recipe nor a companion call. No browser retry starts with less than
+    `BROWSER_MIN_S` left before `deadline` (on `time.monotonic`), the task's budget: the HTTP outcome is kept."""
     if policy.captures_page:
         send = recipe = None  # a screenshot or PDF is of the page itself, which an adapter's or a recipe's JSON is not
     served = None if send is None else await rungs.adapters.serve(url, policy, send)
@@ -191,7 +179,7 @@ async def acquire(
     refer = (
         None if send is None or not (served is None or by_recipe) else _Referral(url, policy, rungs, send, admit_next)
     )
-    page = await _page(url, ready, planned, rungs, _Retry(validators, admit_next, deadline, refer))
+    page = await _page(url, ready, planned, rungs, _Retry(admit_next, deadline, refer))
     if refer is not None:
         page = await refer(page)
     page = await _joined(policy, page, admit_next, send)
@@ -295,10 +283,9 @@ def _same_resource(a: str, b: str) -> bool:
 
 @dataclass(frozen=True)
 class _Retry:
-    """What decides the page rung's requests (`acquire`): the validators for HTTP, the admission of a further request,
-    the deadline no browser retry starts too close to, and the referral a page asks before its render (`refer`)."""
+    """What decides the page rung's requests (`acquire`): the admission of a further request, the deadline no browser
+    retry starts too close to, and the referral a page asks before its render (`refer`)."""
 
-    validators: Validators | None
     admit_next: Admit | None
     deadline: float | None
     refer: _Referral | None = None
@@ -313,9 +300,7 @@ async def _page(url: str, policy: FetchPolicy, remembered: Remembered, rungs: Ru
     would retry for lacking content (`_referable`) asks its referral first (`retry.refer`), and an `ok` answer is kept
     without the render (adapters spec, "Referral from a tenant's own host")."""
     method = remembered.method if policy.method_hint == "auto" else policy.method_hint
-    if method == "http" and rungs.conditional is not None:
-        result = await rungs.conditional(url, policy, validators=retry.validators)
-    elif method == "http":
+    if method == "http":
         result = await rungs.http(url, policy)
     else:
         result = await rungs.browser(url, policy)

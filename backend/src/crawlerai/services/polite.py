@@ -36,7 +36,6 @@ from crawlerai.acquire.robots import Fetch, Robots, site_robots
 from crawlerai.acquire.rungs import Rung
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.db.queue import TASK_DEADLINE
-from crawlerai.recurring.conditional import Unchanged
 from crawlerai.services.scrape_steps import site_row
 
 __all__ = [
@@ -122,24 +121,23 @@ class NoTurn(Exception):
 
 
 # A page fetch through the polite step: given the URL, the `Admit` each request after its first waits for, and the
-# host's rules (D-1384: what it asks of the same host goes by them), the page or a 304 that stands for it (jobs spec
-# §4.2).
-PageFetch = Callable[[str, Admit, HostRules], Awaitable[FetchResult | Unchanged]]
+# host's rules (D-1384: what it asks of the same host goes by them), the page.
+PageFetch = Callable[[str, Admit, HostRules], Awaitable[FetchResult]]
 
 
-async def polite_fetch[R: (FetchResult, FetchResult | Unchanged)](
+async def polite_fetch(
     url: str,
     policy: FetchPolicy,
     rules: ReadRules,
     limiter: HostLimiter,
     waiting: Waiting,
-    fetch: Callable[[str, Admit, HostRules], Awaitable[R]],
+    fetch: PageFetch,
     *,
     by_adapter: bool = False,
     turn_taken: bool = False,
     endpoint: bool = False,
     tries: int = 1,
-) -> R | Refused | Later:
+) -> FetchResult | Refused | Later:
     """`url` fetched with `fetch` politely (module docstring), or why nothing was sent. `by_adapter`: an active adapter
     serves the URL first (adapters spec) from an API whose own robots.txt its requests go by, so a robots.txt disallow
     of the page admits no fallback to the page rungs, and a fetch that does not keep `ok` is `ROBOTS`. `turn_taken`:
@@ -167,7 +165,7 @@ async def polite_fetch[R: (FetchResult, FetchResult | Unchanged)](
         # Observed, and the host paused, before the hold ends: no other process's turn comes before the back-off.
         attempts = result.attempts if endpoint else page_requests(result.attempts)
         await limiter.observe(host, known.gap, attempts)
-        if isinstance(result, Unchanged) or result.block_class == "ok":
+        if result.block_class == "ok":
             return result
         await pause_host(limiter, host, attempts, tries)
     return Refused(ROBOTS) if disallowed else result
