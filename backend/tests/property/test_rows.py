@@ -202,7 +202,9 @@ def _variants(*nodes: dict[str, Any], body: str = "") -> FieldOutcome:
 def _published(outcome: FieldOutcome) -> list[dict[str, JsonValue]]:
     assert outcome.status == "published", (outcome.status, outcome.reason)
     assert isinstance(outcome.value, list)
-    return [row for row in outcome.value if isinstance(row, dict)]
+    rows = [row for row in outcome.value if isinstance(row, dict)]
+    assert len(rows) == len(outcome.value), outcome.value  # every row is an object
+    return rows
 
 
 def test_a_group_s_variants_with_offers_are_one_row_each() -> None:
