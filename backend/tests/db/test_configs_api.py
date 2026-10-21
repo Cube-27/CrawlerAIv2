@@ -208,7 +208,7 @@ async def client(
     monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
     async with world.engine.begin() as conn:
         key = await create_key(conn, "configs-api-test")
-    app = create_app(eval_ui=False)
+    app = create_app()
     async with (
         app.router.lifespan_context(app),
         httpx.AsyncClient(

@@ -17,8 +17,7 @@ def test_openapi_prints_the_app_schema_as_sorted_json_with_trailing_newline(
     document = json.loads(out)
     assert document["openapi"].startswith("3.")
     assert document["info"]["title"] == "CrawlerAI"
-    # The document includes the eval routes, which `frontend/openapi.json` is generated with.
-    assert {"/healthz", "/v1/scrape", "/v1/eval/pages"} <= set(document["paths"])
+    assert {"/healthz", "/v1/scrape"} <= set(document["paths"])
     assert out == json.dumps(document, indent=2, sort_keys=True) + "\n"
 
 

@@ -1,4 +1,4 @@
-"""The engine version stamped on jobs, extractions, capture manifests and eval runs (persistence-storage spec):
+"""The engine version stamped on jobs, extractions, and capture manifests (persistence-storage spec):
 `<git sha>+cal.<calibration hash>`, so a replay can tell which code and which calibration produced a result.
 
 The build writes the git SHA to `backend/VERSION`; the calibration is `backend/data/calibration.json` (extraction spec).

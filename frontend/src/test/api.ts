@@ -12,19 +12,11 @@ export interface Call {
   body: unknown;
 }
 
-/** A `/healthz` answer: the API is up and, by default, does not serve the labeling API. */
-export function healthReply(evalUi = false): Response {
-  return Response.json({ status: "ok", eval_ui: evalUi });
-}
-
-const HEALTH = "GET /healthz";
-
 /** Every playground mode lists its recent runs (frontend spec). */
 const JOBS = "GET /v1/jobs";
 
-/** Stubs `fetch` with one reply per `METHOD /path`, which may arrive later; records every request. The shell asks
- * `GET /healthz` on every screen, and a playground mode `GET /v1/jobs`: unless `replies` names them, they get
- * `healthReply()` and no jobs, and are not recorded. */
+/** Stubs `fetch` with one reply per `METHOD /path`, which may arrive later; records every request. A playground mode
+ * asks `GET /v1/jobs`: unless `replies` names it, it gets no jobs and is not recorded. */
 export function stubApi(
   replies: Record<string, (call: Call) => Response | Promise<Response>>,
 ): Call[] {
@@ -32,7 +24,6 @@ export function stubApi(
   vi.stubGlobal("fetch", async (request: Request) => {
     const url = new URL(request.url);
     const route = `${request.method} ${url.pathname}`;
-    if (route === HEALTH && !(HEALTH in replies)) return healthReply();
     if (route === JOBS && !(JOBS in replies))
       return Response.json({ items: [], next_cursor: null });
     const text = await request.text();

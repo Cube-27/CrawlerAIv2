@@ -30,7 +30,7 @@ configure({ asyncUtilTimeout: 5000 });
 beforeEach(() => {
   prefersDark(false);
   vi.stubGlobal("ResizeObserver", NoResizeObserver);
-  // Answers the shell's `/healthz` call for tests that stub no API; tests that do replace this `fetch`.
+  // Answers a playground's `/v1/jobs` call for tests that stub no API; tests that do replace this `fetch`.
   stubApi({});
 });
 

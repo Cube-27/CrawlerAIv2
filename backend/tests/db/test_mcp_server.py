@@ -141,7 +141,7 @@ async def key(
 @pytest.fixture
 async def app_client(key: CreatedKey, fetching: Fetching, engine_data: EngineData) -> AsyncIterator[httpx.AsyncClient]:
     """An HTTP client of the app, with the key as its bearer."""
-    app = create_app(eval_ui=False)
+    app = create_app()
     async with (
         app.router.lifespan_context(app),
         httpx.AsyncClient(

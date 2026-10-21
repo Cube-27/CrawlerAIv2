@@ -60,8 +60,8 @@ export function LlmCostSection() {
       </Typography.Heading>
       <Typography.Paragraph size="sm" color="muted">
         Estimated from the providers&apos; list prices, for visibility; it is not a bill. A cost is
-        unknown when its model has no price. Days are UTC. Calls made without a job (the labeling
-        pre-fill, evaluation replays) are not recorded, so they are not included.
+        unknown when its model has no price. Days are UTC. Calls made without a job (a schema
+        drafted before its run) are not recorded, so they are not included.
       </Typography.Paragraph>
       <div className="sm:w-64">
         <OptionSelect

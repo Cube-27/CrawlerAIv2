@@ -1,5 +1,5 @@
 """Retention (persistence-storage spec): production captures go once past `expires_at`, bundle and row;
-candidates go after 30 days; dev eval captures under `eval/` stay."""
+candidates go after 30 days; bundles outside `captures/` stay."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -94,7 +94,7 @@ async def test_production_captures_past_expires_at_lose_bundle_and_row_and_the_r
     ]
 
 
-async def test_a_row_under_an_eval_prefix_is_kept_with_its_bundle_even_past_expires_at(
+async def test_a_row_outside_the_captures_prefix_is_kept_with_its_bundle_even_past_expires_at(
     conn: AsyncConnection, tmp_path: Path
 ) -> None:
     store = FsStore(tmp_path)

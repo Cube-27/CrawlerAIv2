@@ -138,38 +138,6 @@ class Budget(BaseModel):
     llm_calls: Annotated[int, Field(ge=0, title="Llm Calls")]
 
 
-class Category(Enum):
-    platform_store = "platform_store"
-    custom_store = "custom_store"
-    api_backed = "api_backed"
-    job_board = "job_board"
-    mixed = "mixed"
-
-
-class CaptureRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    category: Annotated[Category, Field(title="Category")]
-    page_kind: Annotated[PageKind, Field(title="Page Kind")]
-    schema_: Annotated[str, Field(alias="schema", title="Schema")]
-    split: Annotated[Literal["dev"], Field(title="Split")]
-    urls: Annotated[list[str], Field(max_length=20, min_length=1, title="Urls")]
-
-
-class CapturedOut(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    block_class: Annotated[BlockClass, Field(title="Block Class")]
-    capture_id: Annotated[UUID, Field(title="Capture Id")]
-    error: Annotated[str | None, Field(title="Error")] = None
-    kind: Annotated[Literal["captured"], Field(title="Kind")] = "captured"
-    n: Annotated[int, Field(title="N")]
-    page_id: Annotated[UUID, Field(title="Page Id")]
-    status_code: Annotated[int, Field(title="Status Code")]
-
-
 class Chunk(BaseModel):
     heading_path: Annotated[list[str], Field(title="Heading Path")]
     index: Annotated[int, Field(title="Index")]
@@ -599,7 +567,6 @@ class Health(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    eval_ui: Annotated[bool, Field(title="Eval Ui")]
     llm: Annotated[Llm, Field(title="Llm")]
     status: Annotated[Literal["ok"], Field(title="Status")] = "ok"
 
@@ -673,25 +640,6 @@ class LLMUsage(BaseModel):
     tokens_in: Annotated[int, Field(title="Tokens In")]
     tokens_out: Annotated[int, Field(title="Tokens Out")]
     unpriced_tokens: Annotated[int, Field(title="Unpriced Tokens")]
-
-
-class Checker(RootModel[str]):
-    root: Annotated[str, Field(min_length=1, title="Checker")]
-
-
-class LabelVersion(Enum):
-    integer_1 = 1
-    integer_2 = 2
-
-
-class Labeler(RootModel[str]):
-    root: Annotated[str, Field(min_length=1, title="Labeler")]
-
-
-class Status6(Enum):
-    draft = "draft"
-    labeled = "labeled"
-    checked = "checked"
 
 
 class LearnRequest(BaseModel):
@@ -785,14 +733,6 @@ class NormalizeOpOutput(RootModel[dict[str, dict[str, Any]]]):
     root: dict[str, dict[str, Any]]
 
 
-class NormalizeRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    field: Annotated[str, Field(title="Field")]
-    raw_text: Annotated[str, Field(title="Raw Text")]
-
-
 class OutcomeCounts(BaseModel):
     auth_wall: Annotated[int, Field(title="Auth Wall")]
     blocked: Annotated[int, Field(title="Blocked")]
@@ -828,33 +768,12 @@ class PageMetadata(BaseModel):
     title: Annotated[str | None, Field(title="Title")] = None
 
 
-class Status8(Enum):
+class Status6(Enum):
     queued = "queued"
     claimed = "claimed"
     done = "done"
     failed = "failed"
     cancelled = "cancelled"
-
-
-class Status9(Enum):
-    draft = "draft"
-    labeled = "labeled"
-    checked = "checked"
-
-
-class PageSummary(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    capture_id: Annotated[UUID, Field(title="Capture Id")]
-    category: Annotated[Category, Field(title="Category")]
-    checker: Annotated[str | None, Field(title="Checker")] = None
-    id: Annotated[UUID, Field(title="Id")]
-    labeler: Annotated[str | None, Field(title="Labeler")] = None
-    page_kind: Annotated[PageKind, Field(title="Page Kind")]
-    schema_name: Annotated[str, Field(title="Schema Name")]
-    split: Annotated[Literal["dev"], Field(title="Split")]
-    status: Annotated[Status9 | None, Field(title="Status")] = None
 
 
 class ParamPagination(BaseModel):
@@ -994,7 +913,7 @@ class SourceKind(Enum):
     dom = "dom"
 
 
-class Status10(Enum):
+class Status7(Enum):
     published = "published"
     missing = "missing"
     conflict = "conflict"
@@ -1147,7 +1066,7 @@ class Origin3(Enum):
     prompt_draft = "prompt_draft"
 
 
-class Status11(Enum):
+class Status8(Enum):
     active = "active"
     retired = "retired"
 
@@ -1261,15 +1180,6 @@ class SearchResult(BaseModel):
     ] = 0
 
 
-class SkippedOut(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    kind: Annotated[Literal["skipped"], Field(title="Kind")] = "skipped"
-    n: Annotated[int, Field(title="N")]
-    reason: Annotated[str, Field(title="Reason")]
-
-
 class Action(Enum):
     wait = "wait"
     click = "click"
@@ -1301,7 +1211,7 @@ class EgressBasis(Enum):
     unknown = "unknown"
 
 
-class Status12(Enum):
+class Status9(Enum):
     published = "published"
     missing = "missing"
     conflict = "conflict"
@@ -1320,7 +1230,7 @@ class SubFieldMeta(BaseModel):
     locator: Annotated[str | None, Field(title="Locator")] = None
     reason: Annotated[str | None, Field(title="Reason")] = None
     source_kind: Annotated[SourceKind | None, Field(title="Source Kind")] = None
-    status: Annotated[Status12, Field(title="Status")]
+    status: Annotated[Status9, Field(title="Status")]
 
 
 class TaskCounts(BaseModel):
@@ -1437,17 +1347,6 @@ class AttemptRecord(BaseModel):
     steps: Annotated[list[StepOutcome] | None, Field(title="Steps")] = []
 
 
-class Outcomes(RootModel[CapturedOut | SkippedOut]):
-    root: Annotated[CapturedOut | SkippedOut, Field(discriminator="kind")]
-
-
-class CaptureResponse(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    outcomes: Annotated[list[Outcomes], Field(title="Outcomes")]
-
-
 class ConfigSummary(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1471,14 +1370,6 @@ class CostReport(BaseModel):
     start: Annotated[date, Field(title="Start")]
     top_jobs: Annotated[list[JobUsage], Field(title="Top Jobs")]
     total: LLMUsage
-
-
-class DistractorKey(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    field: Annotated[str, Field(min_length=1, title="Field")]
-    value: JsonValue
 
 
 class Actions(
@@ -1521,16 +1412,6 @@ class FieldChange(BaseModel):
     field: Annotated[str, Field(title="Field")]
     previous: JsonValue
     value: JsonValue
-
-
-class FieldLabel(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    absent: Annotated[bool, Field(title="Absent")]
-    distractors: Annotated[list[JsonValue] | None, Field(title="Distractors")] = []
-    locator: Annotated[str | None, Field(title="Locator")] = None
-    value: JsonValue | None = None
 
 
 class FieldSpecInput(BaseModel):
@@ -1617,25 +1498,6 @@ class JsonValuesPage(BaseModel):
     total: Annotated[int, Field(title="Total")]
 
 
-class LabelRow(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    fields: Annotated[dict[str, FieldLabel], Field(title="Fields")]
-    stale: Annotated[bool | None, Field(title="Stale")] = False
-
-
-class ListLabel(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    absent: Annotated[bool, Field(title="Absent")]
-    distractor_keys: Annotated[
-        list[DistractorKey] | None, Field(title="Distractor Keys")
-    ] = []
-    rows: Annotated[list[LabelRow] | None, Field(title="Rows")] = []
-
-
 class MapResult(BaseModel):
     llms_txt: Annotated[str | None, Field(title="Llms Txt")] = None
     sources: MapSources
@@ -1671,7 +1533,7 @@ class PageOutput(BaseModel):
     pdf: Artifact | None = None
     raw_html: Annotated[str | None, Field(title="Raw Html")] = None
     screenshot: Artifact | None = None
-    status: Annotated[Status8, Field(title="Status")]
+    status: Annotated[Status6, Field(title="Status")]
     task_id: Annotated[UUID, Field(title="Task Id")]
     url: Annotated[str, Field(title="Url")]
 
@@ -1721,7 +1583,7 @@ class SchemaDef(BaseModel):
     required_groups: Annotated[
         list[list[RequiredGroup]] | None, Field(title="Required Groups")
     ] = []
-    status: Annotated[Status11, Field(title="Status")]
+    status: Annotated[Status8, Field(title="Status")]
 
 
 class SchemaInline(BaseModel):
@@ -2098,21 +1960,6 @@ class JsonPathStepOutput(BaseModel):
     source: Annotated[Source1, Field(title="Source")]
 
 
-class Labels(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    checker: Annotated[Checker | None, Field(title="Checker")] = None
-    fields: Annotated[dict[str, FieldLabel] | None, Field(title="Fields")] = {}
-    label_version: Annotated[LabelVersion, Field(title="Label Version")]
-    labeler: Annotated[Labeler | None, Field(title="Labeler")] = None
-    lists: Annotated[dict[str, ListLabel] | None, Field(title="Lists")] = {}
-    notes: Annotated[str | None, Field(title="Notes")] = ""
-    prefill_source: Annotated[str | None, Field(title="Prefill Source")] = None
-    rows: Annotated[list[LabelRow] | None, Field(title="Rows")] = []
-    status: Annotated[Status6, Field(title="Status")]
-
-
 class NewBatchSchedule(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2165,27 +2012,6 @@ class NewScrapeSchedule(BaseModel):
     timezone: Annotated[str | None, Field(title="Timezone")] = "UTC"
 
 
-class PageDetail(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    bundle_html: Annotated[str, Field(title="Bundle Html")]
-    capture_id: Annotated[UUID, Field(title="Capture Id")]
-    category: Annotated[Category, Field(title="Category")]
-    checker: Annotated[str | None, Field(title="Checker")] = None
-    fields: Annotated[dict[str, FieldSpecOutput], Field(title="Fields")]
-    final_url: Annotated[str, Field(title="Final Url")]
-    id: Annotated[UUID, Field(title="Id")]
-    labeler: Annotated[str | None, Field(title="Labeler")] = None
-    labels: Labels | None = None
-    page_kind: Annotated[PageKind, Field(title="Page Kind")]
-    schema_name: Annotated[str, Field(title="Schema Name")]
-    split: Annotated[Literal["dev"], Field(title="Split")]
-    status: Annotated[Status6 | None, Field(title="Status")] = None
-    text: Annotated[str | None, Field(title="Text")] = None
-    url: Annotated[str, Field(title="Url")]
-
-
 class RecordField(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2200,7 +2026,7 @@ class RecordField(BaseModel):
     locator: Annotated[str | None, Field(title="Locator")] = None
     reason: Annotated[str | None, Field(title="Reason")] = None
     source_kind: Annotated[SourceKind | None, Field(title="Source Kind")] = None
-    status: Annotated[Status10, Field(title="Status")]
+    status: Annotated[Status7, Field(title="Status")]
     value: JsonValue
 
 

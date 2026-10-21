@@ -14,8 +14,7 @@ On a listing the model reads the blocks of the item layer's bound group (`collec
 its number (after its enclosing item's context, for a nested row), and replies with claims `{block, field, value}`. A
 claim fills the field of the row that block is or is bound to, when that row does not publish it; its value is grounded
 in that block's text, else its context, only, so a value another block shows is dropped, and the span's locator is its
-offset in the cleaned text. The labeling pre-fill (`c_prefill`,
-evaluation spec) makes either call over every field of the schema.
+offset in the cleaned text.
 
 A call that gives no valid reply is not an error of the page: the fields stay `missing`, with the failure's
 reason. Everything else the client raises, a replay's missing recording among them, propagates.
@@ -56,13 +55,12 @@ LISTING_MAX_BLOCKS: Final = 200
 MAX_OUTPUT_TOKENS: Final = 4_096
 LISTING_MAX_OUTPUT_TOKENS: Final = 16_384
 # The output tokens budgeted for one listing claim, `{"block": n, "field": name, "value": span}`: about twice the
-# tokens per claim measured on the golden set's listings, as a reply's length varies from run to run. A listing's
+# tokens per claim measured on eval listings, as a reply's length varies from run to run. A listing's
 # blocks are read in calls of as many blocks as their claims fit `LISTING_MAX_OUTPUT_TOKENS`: a reply cut at its cap is
 # invalid and fills nothing.
 BLOCK_CLAIM_TOKENS: Final = 80
 PROMPT_KIND: Final[PromptKind] = "c_extract_detail"
 LISTING_PROMPT_KIND: Final[PromptKind] = "c_extract_listing"
-PREFILL_PROMPT_KIND: Final[PromptKind] = "c_prefill"
 
 # A reply holds one claim per requested field, its verbatim span (§4.3), with `shown` saying whether the page shows the
 # field at all; a field it does not show is claimed `shown: false` with an empty span. A closed object of required
@@ -146,8 +144,8 @@ def detail_request(
     kind: PromptKind = PROMPT_KIND,
 ) -> LLMRequest:
     """The role C request for `fields` in `text`, which the caller has cut to `DETAIL_MAX_CHARS`. Fields are listed by
-    name, so the same inputs give the same `request_hash` (INV-10). `job_id` is None only for a replay or the
-    labeling pre-fill, which no job pays for.
+    name, so the same inputs give the same `request_hash` (INV-10). `job_id` is None only for a replay, which no job
+    pays for.
 
     The page text comes first and the fields asked after it, as Anthropic's long-context prompting guidance advises
     (long documents at the top, the query at the end): with the fields first, a fast model answered every field empty

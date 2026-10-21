@@ -18,8 +18,6 @@ import { SitesScreen } from "../screens/sites/SitesScreen";
 import { EditSchemaScreen, NewSchemaScreen } from "../screens/schemas/SchemaEditScreens";
 import { SchemaScreen } from "../screens/schemas/SchemaScreen";
 import { SchemasScreen } from "../screens/schemas/SchemasScreen";
-import { LabelingList } from "../screens/labeling/LabelingList";
-import { LabelingPage } from "../screens/labeling/LabelingPage";
 import { AccessProvider, RequireAccess } from "./auth";
 import { Shell } from "./shell";
 
@@ -57,10 +55,6 @@ export const routes: RouteObject[] = [
           { path: "jobs/:id", element: <JobScreen /> },
           { path: "schedules", element: <SchedulesScreen /> },
           { path: "schedules/:id", element: <ScheduleScreen /> },
-          // evaluation spec: the eval API takes the same API key as everything else. The shell lists these routes
-          // when `/healthz` reports `eval_ui`.
-          { path: "labeling", element: <LabelingList /> },
-          { path: "labeling/:pageId", element: <LabelingPage /> },
           { path: "settings", element: <SettingsScreen /> },
         ],
       },

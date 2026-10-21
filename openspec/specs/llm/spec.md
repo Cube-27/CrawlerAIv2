@@ -38,8 +38,8 @@ stay `missing`, never guessed. Refs: D-0351, D-0371, D-0767, D-1009.
 
 ### Requirement: Per-job budgets
 Before each call and retry the client SHALL check the job's `llm_calls` budget, else the project's `llm_call_cap`
-(none by default), and raise `BudgetExhausted` (`budget_exhausted`) when spent; a call with no job (pre-fill, eval
-recording, field-names draft) skips the budget. Refs: §17, D-0348, D-0723, D-1121.
+(none by default), and raise `BudgetExhausted` (`budget_exhausted`) when spent; a call with no job (a field-names
+draft) skips the budget. Refs: §17, D-0348, D-0723, D-1121.
 
 ### Requirement: Usage event per call (INV-23)
 Every answered LLM call SHALL write a `usage_event` with its `prompt_kind` and tokens, in its own transaction, charged
@@ -51,8 +51,7 @@ Enforced by: `tests/db/test_llm_client.py`; active. Refs: §17, D-0346, D-0768.
 
 ### Requirement: Deterministic request hash
 `request_hash` SHALL be sha256 of canonical JSON of (prompt_kind, model_class, system, user, output_schema and, when the
-request has any, its cached parts), so `RecordedLLM` replays hit their cache (INV-10, owned by
-[evaluation](../evaluation/spec.md)). Refs: D-0350, D-1721.
+request has any, its cached parts), so a call is identified across runs (INV-10). Refs: D-0350, D-1721.
 
 ### Requirement: Estimated cost from versioned prices
 The system SHALL estimate cost for visibility, not billing, from `backend/data/llm/<provider>-pricing.json`
@@ -170,10 +169,7 @@ Refs: §11, INV-12.
 In cold mode role C SHALL be asked on a detail page when any field is `missing`, optional ones included, for every
 missing field in one call; in `active` mode only for fields the config neither runs nor lists as absent.
 A listing asks it as [listings](../listings/spec.md) "Role C rows" states: the blocks' calls, and one call for the page
-fields. Not in captures replay. The `c_prefill` variant stores grounded `Ok` values only as a `draft` label, never
-ground truth ([evaluation](../evaluation/spec.md)); on a listing it asks the first aligned group's blocks for every
-row field but the item URL, and the page fields in their own call. (Previously: a detail page asked it only when a
-required field or group was missing.) Refs: §8.4, D-0520, D-1006, D-0538, D-1341, D-1604, D-1607, D-1620, owner #67.
+fields. Not in captures replay. Refs: §8.4, D-0520, D-1006, D-0538, D-1341, D-1604, D-1607, D-1620, owner #67.
 #### Scenario: Only an optional field missing
 - **WHEN** a detail page publishes every required field and an optional field is `missing`
 - **THEN** role C is asked once, for that field

@@ -11,8 +11,6 @@ SRC = Path(__file__).resolve().parents[2] / "src"
 
 # Builtins that turn a string into running code.
 CODE_BUILTINS = frozenset({"exec", "eval", "compile"})
-# Modules allowed to start processes, each with its reason: `eval.git_head` runs `git` with fixed arguments.
-SUBPROCESS_ALLOWED = frozenset({"crawlerai/eval/git_head.py"})
 
 
 def violations(path: Path, tree: ast.AST) -> list[str]:
@@ -21,7 +19,7 @@ def violations(path: Path, tree: ast.AST) -> list[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in CODE_BUILTINS:
             found.append(f"{relative}:{node.lineno} calls {node.func.id}")
-        if relative not in SUBPROCESS_ALLOWED and _imports_subprocess(node):
+        if _imports_subprocess(node):
             found.append(f"{relative}:{node.lineno} imports subprocess")
     return found
 

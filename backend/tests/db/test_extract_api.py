@@ -77,7 +77,7 @@ async def client(
 
     async with engine.begin() as conn:
         key = await create_key(conn, "extract-api-test")
-    app = create_app(eval_ui=False)
+    app = create_app()
     clock = itertools.count(step=3600)
     async with (
         app.router.lifespan_context(app),

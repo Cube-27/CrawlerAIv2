@@ -60,7 +60,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 __all__ = ["PRECEDENCE_TYPES", "Chosen", "PageFacts", "Preference", "Resolver", "Unpublished", "rule_type"]
 
 PRECEDENCE_FILE = "source_precedence.yaml"
-# What `crawlerai eval fit-precedence` stamps on the file; every other key names a field type.
+# What the fit stamped on the file (frozen 2026-10-18; evaluation spec); every other key names a field type.
 STAMP = frozenset({"source_split", "git_sha"})
 _SOURCE_KINDS: frozenset[str] = frozenset(get_args(SourceKind))
 # The screening stages in the order a candidate meets them; a missing field states the furthest one reached.
@@ -701,7 +701,8 @@ def _scalars(raw: Raw) -> Iterator[str]:
 
 
 def load_precedence(path: Path) -> dict[FieldType, tuple[SourceKind, ...]]:
-    """The orders of a `source_precedence.yaml`: fitted on the golden set, with one order per precedence type."""
+    """The orders of a `source_precedence.yaml`: fitted once (frozen engine data, evaluation spec), with one order per
+    precedence type."""
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(document, dict) or document.get("source_split") != "dev":
         raise ValueError(

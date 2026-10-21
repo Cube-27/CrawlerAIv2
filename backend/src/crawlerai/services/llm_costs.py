@@ -10,8 +10,8 @@ that includes them has no estimate (`estimated_usd` null) rather than a partial 
 
 `usage_event` has no time column; an event's time is its id's, a UUIDv7 whose leading 48 bits are its creation time
 in Unix milliseconds (RFC 9562 §5.7). A range of UTC days is therefore a range of ids, which the primary key serves.
-Calls made without a job (the labeling pre-fill, an eval replay's recording) write no usage event (llm spec), so
-they are not in this history.
+Calls made without a job (a schema drafted before its job, a replay) write no usage event (llm spec), so they are
+not in this history.
 """
 
 import uuid

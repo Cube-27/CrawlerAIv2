@@ -30,7 +30,7 @@ def _app(monkeypatch: pytest.MonkeyPatch, *, burst: int, trusted: str = "[]") ->
     monkeypatch.setenv("CRAWLERAI_API_RATE_PER_S", "0.1")  # one token per 10 s: no refill within a test
     monkeypatch.setenv("CRAWLERAI_API_RATE_BURST", str(burst))
     monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", trusted)
-    app = create_app(eval_ui=False)
+    app = create_app()
     router = APIRouter()
 
     @router.get("/v1/whoami")
@@ -91,11 +91,11 @@ def test_an_untrusted_peer_cannot_take_a_fresh_bucket_by_forwarding_another_addr
 
 
 def test_every_api_operation_but_healthz_refuses_a_request_without_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    # rest-api spec, evaluation spec: every route takes the API key, which also rate-limits it; `/healthz` alone is
-    # public . A router added without the key dependency fails here. The burst covers every operation from
+    # rest-api spec: every route takes the API key, which also rate-limits it; `/healthz` alone is
+    # public. A router added without the key dependency fails here. The burst covers every operation from
     # one client, so the rate limit answers none of them.
     monkeypatch.setenv("CRAWLERAI_API_RATE_BURST", "1000")
-    app = create_app(eval_ui=True)
+    app = create_app()
     operations = [
         (method.upper(), path.replace("{", "").replace("}", ""))
         for path, item in app.openapi()["paths"].items()

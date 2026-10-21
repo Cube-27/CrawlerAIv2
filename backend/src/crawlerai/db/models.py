@@ -15,7 +15,6 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
-    ForeignKeyConstraint,
     Index,
     Integer,
     LargeBinary,
@@ -50,8 +49,6 @@ CandidateId = NewType("CandidateId", uuid.UUID)
 RecordId = NewType("RecordId", uuid.UUID)
 ExtractionConfigId = NewType("ExtractionConfigId", uuid.UUID)
 UsageEventId = NewType("UsageEventId", uuid.UUID)
-EvalPageId = NewType("EvalPageId", uuid.UUID)
-EvalRunId = NewType("EvalRunId", uuid.UUID)
 ScheduleId = NewType("ScheduleId", uuid.UUID)
 WebhookEventId = NewType("WebhookEventId", uuid.UUID)
 WebhookDeliveryId = NewType("WebhookDeliveryId", uuid.UUID)
@@ -108,10 +105,6 @@ RenderMode = Literal["off", "locate", "always"]
 UsageResource = Literal[
     "llm_calls", "llm_tokens_in", "llm_tokens_out", "browser_seconds", "proxy_bytes", "http_requests"
 ]
-# The one evaluation split, the golden set (evaluation spec, "One split, grown in fresh batches"), and the
-# stratification categories.
-Split = Literal["dev"]
-EvalCategory = Literal["platform_store", "custom_store", "api_backed", "job_board", "mixed"]
 WebhookStatus = Literal["pending", "delivered", "failed"]
 # What a job's webhook can be sent (`crawlerai.db.webhook_outbox`): a page its task finished, a record a task stored
 # (and, for a new version, `record_changed`), a URL a recurring crawl no longer finds, and the job's end.
@@ -143,8 +136,6 @@ TYPE_ANNOTATION_MAP: dict[Any, Any] = dict.fromkeys(
         RecordId,
         ExtractionConfigId,
         UsageEventId,
-        EvalPageId,
-        EvalRunId,
         ScheduleId,
         WebhookEventId,
         WebhookDeliveryId,
@@ -311,8 +302,6 @@ class HostTurn(Base):
 class SchemaDef(Base):
     __tablename__ = "schema_def"
     __table_args__ = (
-        # The target of `eval_page`'s (`schema_id`, `schema_name`) foreign key.
-        UniqueConstraint("id", "name"),
         CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
         CheckConstraint(one_of("origin", SchemaOrigin), name="origin"),
         CheckConstraint(one_of("status", SchemaStatus), name="status"),
@@ -333,8 +322,7 @@ class SchemaDef(Base):
 
 
 class Capture(Base):
-    """A fetched page, whose bytes are the bundle at `object_key`: a production or an eval
-    capture."""
+    """A fetched page, whose bytes are the bundle at `object_key`."""
 
     __tablename__ = "capture"
     __table_args__ = (
@@ -342,7 +330,7 @@ class Capture(Base):
         CheckConstraint(one_of("block_class", BlockClass), name="block_class"),
         CheckConstraint("size_bytes >= 0", name="size_bytes_non_negative"),
         CheckConstraint("duration_ms >= 0", name="duration_ms_non_negative"),
-        # `expire_captures` deletes rows past `expires_at`; dev captures never expire and stay out of the index.
+        # `expire_captures` deletes rows past `expires_at`; a capture without expiry stays out of the index.
         Index(None, "expires_at", postgresql_where=text("expires_at IS NOT NULL")),
         # A site's recent captures: `scrape`'s `max_age` reuse (rest-api spec).
         Index(None, "site_id", "fetched_at"),
@@ -755,48 +743,4 @@ class TaskRecord(Base):
     # (a value differs: `record.changed_fields`) or `same` (equal values).
     delta: Mapped[RecordDelta] = mapped_column(Text)
     # When the task stood for the record.
-    created_at: Mapped[datetime] = created_at_column()
-
-
-class EvalPage(Base):
-    """A page of the golden set. `labels` is the label document (`crawlerai.eval.labels`); `labeler`
-    and `checker` are the two passes, which must be different people. `schema_name` names the schema `schema_id` is,
-    so pages are listed by schema name."""
-
-    __tablename__ = "eval_page"
-    __table_args__ = (
-        CheckConstraint("split = 'dev'", name="split"),
-        CheckConstraint(one_of("page_kind", PageKind), name="page_kind"),
-        CheckConstraint(one_of("category", EvalCategory), name="category"),
-        CheckConstraint("checker IS NULL OR (labeler IS NOT NULL AND checker <> labeler)", name="two_people"),
-        ForeignKeyConstraint(["schema_id", "schema_name"], [SchemaDef.id, SchemaDef.name]),
-    )
-
-    id: Mapped[EvalPageId] = mapped_column(primary_key=True, default=uuid7)
-    split: Mapped[Split] = mapped_column(Text)
-    schema_id: Mapped[SchemaId] = mapped_column()
-    schema_name: Mapped[str] = mapped_column(Text)
-    page_kind: Mapped[PageKind] = mapped_column(Text)
-    category: Mapped[EvalCategory] = mapped_column(Text)
-    labels: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=empty_object_default())
-    labeler: Mapped[str | None] = mapped_column(Text)
-    checker: Mapped[str | None] = mapped_column(Text)
-    # The active config of the page's site when it was captured, if any, to measure config fields.
-    config_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    created_at: Mapped[datetime] = created_at_column()
-    # An eval capture never expires (persistence-storage spec); the reference keeps it from being deleted.
-    capture_id: Mapped[CaptureId] = mapped_column(ForeignKey(Capture.id), index=True)
-
-
-class EvalRun(Base):
-    """A stored evaluation run: the report of checked pages that calibration fits on."""
-
-    __tablename__ = "eval_run"
-    __table_args__ = (CheckConstraint("split = 'dev'", name="split"),)
-
-    id: Mapped[EvalRunId] = mapped_column(primary_key=True, default=uuid7)
-    split: Mapped[Split] = mapped_column(Text)
-    engine_version: Mapped[str] = mapped_column(Text)
-    git_sha: Mapped[str] = mapped_column(Text)
-    metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = created_at_column()

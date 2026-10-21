@@ -2,7 +2,6 @@
 `application/problem+json` body with `type`, `title`, `status`, `detail` and `instance`."""
 
 import asyncio
-import uuid
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -12,10 +11,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.api.app import create_app
-from crawlerai.api.auth import require_api_key
 from crawlerai.api.database import database
-from crawlerai.api.routers import eval as eval_router
-from crawlerai.db.models import ApiKeyId
 
 
 async def _send(app: FastAPI, method: str, path: str, body: object = None) -> httpx.Response:
@@ -35,30 +31,8 @@ def _problem(response: httpx.Response) -> dict[str, Any]:
     return body
 
 
-def _labeling_app() -> FastAPI:
-    """The app with the labeling endpoints, whose backend no request below reaches."""
-    app = create_app(eval_ui=True)
-    app.dependency_overrides[eval_router.labeling_backend] = object
-    app.dependency_overrides[require_api_key] = lambda: ApiKeyId(uuid.UUID(int=1))
-    return app
-
-
-def test_a_request_body_that_fails_validation_lists_each_field_and_reason() -> None:
-    app = _labeling_app()
-    body = {"split": "dev", "schema": "s", "page_kind": "detail", "category": "custom_store", "urls": []}
-
-    response = _request(app, "POST", "/v1/eval/capture", body)
-
-    assert response.status_code == 422
-    problem = _problem(response)
-    assert (problem["type"], problem["instance"]) == ("validation", "/v1/eval/capture")
-    assert problem["errors"] == [
-        {"field": "urls", "reason": "List should have at least 1 item after validation, not 0"}
-    ]
-
-
 def test_an_unexpected_error_is_an_internal_problem_without_its_message() -> None:
-    app = create_app(eval_ui=False)
+    app = create_app()
 
     async def broken() -> AsyncEngine:
         raise RuntimeError("secret-bearing internal message")
@@ -87,7 +61,7 @@ def unreachable_database() -> Callable[[], AsyncIterator[AsyncEngine]]:
 def test_healthz_is_a_503_problem_when_the_database_does_not_answer(
     unreachable_database: Callable[[], AsyncIterator[AsyncEngine]],
 ) -> None:
-    app = create_app(eval_ui=False)
+    app = create_app()
     app.dependency_overrides[database] = unreachable_database
 
     response = _request(app, "GET", "/healthz")

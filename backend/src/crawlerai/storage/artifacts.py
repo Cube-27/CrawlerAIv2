@@ -49,8 +49,8 @@ def artifact_of(capture_id: object, name: str) -> Artifact:
 
 
 def stored_names(store: ObjectStore, bundle_key: str) -> frozenset[str]:
-    """The names of the artifacts stored for the capture whose bundle is at `bundle_key`; none for a bundle that cannot
-    have any (an eval capture's)."""
+    """The names of the artifacts stored for the capture whose bundle is at `bundle_key`; none for a bundle outside
+    `captures/`, which cannot have any."""
     if not bundle_key.startswith(CAPTURES_PREFIX):
         return frozenset()
     return frozenset(name for name in ARTIFACT_TYPES if store.exists(artifact_key(bundle_key, name)))

@@ -3,8 +3,8 @@
 The reply is constrained by `output_config.format` (`json_schema`); the client still validates it (§4.2). The SDK's own
 retries are off: a rate limit, a server error or a timeout raises `ProviderError` at once, and the client fails over
 (§4.2); any other error status raises `ProviderRefused`. No sampling parameter is sent: the current Claude models
-reject a non-default `temperature` with a 400, so temperature 0 (§4.2) cannot be asked for here; replays stay
-deterministic through the recorded cache (INV-10).
+reject a non-default `temperature` with a 400, so temperature 0 (§4.2) cannot be asked for here; a replay stays
+deterministic because it calls no LLM (INV-10).
 
 The current Claude models think before they answer unless told otherwise, and thinking tokens are billed as output
 and count against `max_tokens`. A `fast` call (role C copies spans out of a page) asks for `low` effort, the API's

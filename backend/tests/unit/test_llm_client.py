@@ -31,7 +31,7 @@ SCHEMA: dict[str, Any] = {
 }
 
 REQUEST = LLMRequest(
-    prompt_kind="c_prefill",
+    prompt_kind="c_extract_detail",
     model_class="fast",
     system="system prompt",
     user="user prompt",
@@ -63,7 +63,7 @@ def complete_with(providers: list[FakeProvider], req: LLMRequest = REQUEST) -> L
 
 def test_the_hash_is_sha256_of_the_canonical_request() -> None:
     canonical = json.dumps(
-        ["c_prefill", "fast", "system prompt", "user prompt", SCHEMA],
+        ["c_extract_detail", "fast", "system prompt", "user prompt", SCHEMA],
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
@@ -74,7 +74,7 @@ def test_the_hash_is_sha256_of_the_canonical_request() -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("prompt_kind", "c_extract_detail"),
+        ("prompt_kind", "c_extract_listing"),
         ("model_class", "strong"),
         ("system", "system prompt "),
         ("user", "user prompt."),
