@@ -77,7 +77,7 @@ product JSON that a detail page's HTTP fetch joined after its identity check (ac
 as that platform documents its members (`adapters/platforms.answer_shape`, `collect/platform_json.py`): `adapter`
 candidates of the requested product, amounts in the minor unit the documentation states, and no Offer when its
 variants are priced differently (the page states the selected one); where it ties images to variants (Shopify's
-variant `featured_image`), its list of images is the shown variant's and those tied to none. Refs: §8.1,
+variant `featured_image`), its list of images is the shown variant's, first, and those tied to none. Refs: §8.1,
 D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-19 on #326, architecture-v3 d.6.
 #### Scenario: OG sale price
 - **WHEN** a page states `product:price:amount` 100 and `product:sale_price:amount` 80, and the schema has `price` and
@@ -95,7 +95,7 @@ D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-1
 #### Scenario: A variant's images
 - **WHEN** a platform's product JSON features one image per variant and states a third no variant features, and the
   page URL selects the second variant
-- **THEN** the list of images is the second variant's image and the third
+- **THEN** the list of images is the second variant's image, then the third
 #### Scenario: Image objects
 - **WHEN** a Product's `image` is two ImageObjects, one stating `contentUrl` and one only `url`
 - **THEN** the image list candidate holds both files

@@ -167,13 +167,13 @@ def test_a_documented_answer_is_the_page_products_own_entity() -> None:
 
 def test_a_variant_s_page_reads_its_own_images_and_the_product_s() -> None:
     # Each variant features its own image (Shopify Ajax API `featured_image`); the image no variant features is the
-    # product's. The page whose `?variant=` names the second variant shows its image and the product's only.
+    # product's. The page whose `?variant=` names the second variant shows its image first, then the product's.
     page = f"{HOST}/products/mug"
     variants = [
         {"id": n, "sku": f"mug-{n}", "available": True, "featured_image": {"src": f"https://cdn.example.test/{n}.jpg"}}
         for n in (1, 2)
     ]
-    images = ["//cdn.example.test/1.jpg", "//cdn.example.test/2.jpg", "//cdn.example.test/both.jpg"]
+    images = ["//cdn.example.test/both.jpg", "//cdn.example.test/1.jpg", "//cdn.example.test/2.jpg"]
     answer = json.dumps({"handle": "mug", "url": "/products/mug", "variants": variants, "images": images}).encode()
     served, _ = joined(_capture(page, "http", _PAGE), _capture(f"{page}.js", "api", answer), "mug", "shopify")
     assert served is not None
@@ -185,4 +185,4 @@ def test_a_variant_s_page_reads_its_own_images_and_the_product_s() -> None:
 
     lists = [c.normalized for c in read.candidates if c.field == "additional_images"]
     kept: list[JsonValue] = ["https://cdn.example.test/2.jpg", "https://cdn.example.test/both.jpg"]
-    assert lists == [Ok(kept, stated=list[JsonValue](images[1:]))]
+    assert lists == [Ok(kept, stated=[images[2], images[0]])]
