@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 from crawlerai.collect.base import Entity
-from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.collect.scope import LISTS, RELATIONS, leads_elsewhere, page_documents
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.resolve.identity import VARIANT, repeated
 from crawlerai.resolve.ownership import OFFER, EntityGraph, names_any
 from crawlerai.schemas.paths import required_types

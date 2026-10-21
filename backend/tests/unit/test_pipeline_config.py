@@ -15,7 +15,7 @@ from typing import Any
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.core.ids import uuid7

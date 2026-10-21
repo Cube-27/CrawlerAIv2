@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir import step_wire
 from crawlerai.config_ir.induction import Published, SamplePage
 from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, XPathStep

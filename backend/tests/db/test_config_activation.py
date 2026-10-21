@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.activation import activate
 from crawlerai.config_ir.executor import ConfigMismatch
 from crawlerai.config_ir.model import ExtractionConfigIR

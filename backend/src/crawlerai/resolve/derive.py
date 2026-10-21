@@ -11,14 +11,15 @@ candidate naming another document is not the page's URL (`OTHER_DOCUMENT`), and 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Final
-from urllib.parse import urlsplit
 
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate
+from crawlerai.collect.schema_org_map import names_item_url
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.normalize.url import RELATIVE_WITHOUT_BASE
+from crawlerai.normalize.url_key import document_key
 from crawlerai.resolve.preference import Chosen, Preference, Rejection, Resolver, Unpublished
 from crawlerai.resolve.types import Derivation
 from crawlerai.schemas.paths import parse_paths
@@ -49,7 +50,7 @@ def is_page_url_field(schema: SchemaDef, spec: FieldSpec, primary: frozenset[str
     if schema.page_kind != "detail" or spec.type is not FieldType.URL or spec.schema_org is None:
         return False
     paths = parse_paths(spec.schema_org)
-    return all(path.root in primary and path.steps == ("url",) and not path.joined for path in paths)
+    return all(path.root in primary and names_item_url(path) for path in paths)
 
 
 def fill(
@@ -75,7 +76,7 @@ def fill(
     if not (isinstance(preference, Unpublished) and preference.status == "missing"):
         return preference
     derived = absolutize(spec, candidates, resolver, ctx)
-    if derived is not None and derived.source is not None and own is not None and _another_document(derived.value, own):
+    if derived is not None and derived.source is not None and own is not None and _elsewhere(derived.value, own):
         # A relative reference resolves only here, so it is held to the page once resolved.
         source = derived.source
         kept = tuple(r for r in preference.rejected if r[0] is not source)
@@ -100,7 +101,7 @@ def _held_to_page(
     """`preference` with the kept candidates naming another document than the page's own URL `own` rejected
     `OTHER_DOCUMENT`, preference deciding among the rest: a structured `url` built from another id than the page's
     (a SKU) names another document, while the page states its own by both its canonical link and its final URL."""
-    others = [c for c in preference.kept if own is not None and _another_document(_value(c), own)]
+    others = [c for c in preference.kept if own is not None and _elsewhere(_value(c), own)]
     if not others:
         return preference
     rest = [c for c in candidates if not any(c is other for other in others)]
@@ -112,14 +113,11 @@ def _value(candidate: Candidate) -> object:
     return candidate.normalized.value if isinstance(candidate.normalized, Ok) else None
 
 
-def _another_document(value: object, own: str) -> bool:
-    """Whether the URL `value` names another document than `own`: another host, port or path (RFC 3986 §3.2, §3.3),
-    a trailing slash aside (§6.2.4). A query or a fragment the page's URL does not carry may select a view or a part
-    of the same document (a variant, an anchor), so it alone names no other one."""
-    if not isinstance(value, str):
-        return False
-    a, b = urlsplit(value), urlsplit(own)
-    return (a.hostname, a.port, a.path.removesuffix("/")) != (b.hostname, b.port, b.path.removesuffix("/"))
+def _elsewhere(value: object, own: str) -> bool:
+    """Whether the URL `value` names another document than `own` (`normalize.url_key.document_key`: a query or a
+    fragment the page's URL does not carry may select a view or a part of the same document, a variant or an anchor,
+    so it alone names no other one)."""
+    return isinstance(value, str) and document_key(value) != document_key(own)
 
 
 def absolutize(spec: FieldSpec, candidates: Sequence[Candidate], resolver: Resolver, ctx: Context) -> Derived | None:

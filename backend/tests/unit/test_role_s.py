@@ -8,8 +8,8 @@ from typing import cast
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.collect import schema_org_map
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect import vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.db.models import JobId
 from crawlerai.llm.roles import s_schema
 from crawlerai.llm.roles.s_schema import (
@@ -99,7 +99,7 @@ def _vocabulary() -> Vocabulary:
 def test_the_reply_check_refuses_a_draft_naming_a_term_the_pinned_vocabulary_lacks(
     monkeypatch: pytest.MonkeyPatch, path: str, refused: bool
 ) -> None:
-    monkeypatch.setattr(schema_org_map, "default_vocabulary", _vocabulary)
+    monkeypatch.setattr(vocabulary, "default_vocabulary", _vocabulary)
     draft = json.loads(json.dumps(DRAFT))
     draft["fields"]["title"]["schema_org"] = path
 

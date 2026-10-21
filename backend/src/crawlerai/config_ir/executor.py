@@ -26,7 +26,8 @@ from crawlerai.collect.config import ROW_KIND, Executed
 from crawlerai.collect.json_doc import select
 from crawlerai.collect.locator import format_locator
 from crawlerai.collect.network_match import LearnedCalls
-from crawlerai.collect.schema_org_map import Vocabulary, fragment_read
+from crawlerai.collect.schema_org_map import fragment_read
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.model import (
     NEXT_PAGE_FIELD,
     AbsolutizeUrlOp,

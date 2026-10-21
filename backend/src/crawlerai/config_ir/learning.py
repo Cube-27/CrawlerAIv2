@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.memory import remembered
 from crawlerai.acquire.types import RequestContext
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.absent import ABSENT, absent_fields
 from crawlerai.config_ir.activation import activate, store_pending
 from crawlerai.config_ir.api_recipe.learn import learn_recipe

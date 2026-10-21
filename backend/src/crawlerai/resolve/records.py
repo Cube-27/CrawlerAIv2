@@ -16,12 +16,12 @@ from typing import Final, Literal, Protocol, get_args
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from crawlerai.collect.locator import LocatorText, PageUrlDerivation
+from crawlerai.collect.schema_org_map import item_url_fields
 from crawlerai.db.models import RecordDelta, SiteId, SourceKind
 from crawlerai.normalize.base import Basis
 from crawlerai.resolve.evidence import required_fields
 from crawlerai.resolve.types import Derivation, Evidence, FieldOutcome, FieldSet, FieldStatus, Probability
-from crawlerai.schemas.paths import parse_paths
-from crawlerai.schemas.types import FieldType, SchemaDef
+from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.capture_bundle import sha256_hex
 
 PageOutcome = Literal["extracted", "partial", "no_match"]
@@ -225,23 +225,10 @@ def assemble_listing(
     return ("extracted" if complete else "partial"), tuple(records.values())
 
 
-def row_url_fields(schema: SchemaDef) -> list[str]:
-    """The names of the schema's row fields that hold a row's URL, in order: a field of type url whose path is `T.url`
-    in every alternative (schema.org Thing.url, "URL of the item")."""
-    return [
-        name
-        for name, spec in schema.fields.items()
-        if spec.scope == "row"
-        and spec.type is FieldType.URL
-        and spec.schema_org is not None
-        and all(path.steps == ("url",) and not path.joined for path in parse_paths(spec.schema_org))
-    ]
-
-
 def _row_key(schema: SchemaDef, row: FieldSet) -> str | None:
-    """The row's published URL: the first of `row_url_fields` it publishes. Without one, the row's position on the page
-    stands in."""
-    for name in row_url_fields(schema):
+    """The row's published URL: the first of its item URL fields (`collect.schema_org_map.item_url_fields`) it
+    publishes. Without one, the row's position on the page stands in."""
+    for name in item_url_fields(schema):
         outcome = row.get(name)
         if outcome is not None and isinstance(outcome.value, str):
             return outcome.value

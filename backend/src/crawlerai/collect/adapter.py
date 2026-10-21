@@ -24,7 +24,8 @@ from crawlerai.adapters.base import ALL, Adapter, AdapterMatch, Booleans, Member
 from crawlerai.collect.base import CollectResult, Entity
 from crawlerai.collect.json_doc import ROOT, member, select
 from crawlerai.collect.locator import format_locator
-from crawlerai.collect.schema_org_map import Typed, Value, Vocabulary, canonical_urls, entity, field_candidates
+from crawlerai.collect.schema_org_map import Typed, Value, canonical_urls, entity, field_candidates
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.content.links import links
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.json_text import parse

@@ -35,7 +35,8 @@ from crawlerai.collect.items.bind import Listing, RowBlock, bind
 from crawlerai.collect.items.lines import BlockText, block_texts
 from crawlerai.collect.run import Adapters, Collected, collect_page
 from crawlerai.collect.run import page_urls as page_urls_of
-from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canonical_urls, item_url_fields
+from crawlerai.collect.schema_org_map import canonical_urls, item_url_fields
+from crawlerai.collect.vocabulary import VOCABULARY_FILE, Vocabulary
 from crawlerai.content.context import page_context
 from crawlerai.content.metadata import canonical_href, canonical_link
 from crawlerai.content.page import ParsedPage

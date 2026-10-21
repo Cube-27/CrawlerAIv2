@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from crawlerai.acquire.identity import identified, joined_call
 from crawlerai.acquire.types import RequestContext
 from crawlerai.collect.base import PAGE, Candidate
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.api_recipe.binding import page_data, resolve_params
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Replay, request_for

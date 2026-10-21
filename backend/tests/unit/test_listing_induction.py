@@ -5,7 +5,7 @@ steps induced from the item layer's blocks across the sample, verified by the en
 from datetime import UTC, datetime
 from pathlib import Path
 
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.induction import Published, SamplePage
 from crawlerai.config_ir.listing_induction import (

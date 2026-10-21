@@ -12,7 +12,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from crawlerai.collect.base import PAGE
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.config_ir.release_executor import ReleasePage, release_run

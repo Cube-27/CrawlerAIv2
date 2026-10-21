@@ -23,7 +23,7 @@ from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.rungs import NO_PLAN, FetchPlan
 from crawlerai.acquire.types import AttemptRecord, FetchResult, fetched_as
 from crawlerai.collect.run import Adapters
-from crawlerai.collect.schema_org_map import VocabularyMissing
+from crawlerai.collect.vocabulary import VocabularyMissing
 from crawlerai.config_ir.active import fetch_plan, record_page
 from crawlerai.config_ir.drift import MARGINS_FILE, DriftMargins, load_margins
 from crawlerai.config_ir.locate import Extract

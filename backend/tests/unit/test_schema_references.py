@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from crawlerai.collect import schema_org_map
-from crawlerai.collect.schema_org_map import Vocabulary, reference_errors
+from crawlerai.collect import vocabulary
+from crawlerai.collect.vocabulary import Vocabulary, reference_errors
 from crawlerai.core.engine_version import engine_data_dir
 from crawlerai.schemas.registry import load_presets
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -69,7 +69,7 @@ def test_a_path_naming_a_term_the_vocabulary_lacks_is_refused_with_its_reason(pa
 
 
 def test_a_document_is_refused_by_the_service_with_every_error_at_its_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(schema_org_map, "default_vocabulary", lambda: VOCABULARY)
+    monkeypatch.setattr(vocabulary, "default_vocabulary", lambda: VOCABULARY)
     schema = NewSchema.model_validate(
         {
             "name": "synthetic",
