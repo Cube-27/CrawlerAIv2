@@ -6,6 +6,7 @@ The answers are synthetic, written to the documented shapes (`example.test` host
 
 import asyncio
 import json
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
@@ -159,6 +160,24 @@ def _variant(n: int, cents: int, *, available: bool) -> dict[str, JsonValue]:
     return {"id": 100 + n, "title": f"Colour {n}", "sku": f"W-{n}", "price": cents, "available": available}
 
 
+def _product_page(variants: list[dict[str, JsonValue]], *, query: str = "", markup: str = "") -> ExtractionResult:
+    """A product page at `query` with `markup` in its body, and its Ajax product answer listing `variants`."""
+    answer = json.dumps({"title": "Widget", "url": "/products/widget", "variants": variants}).encode()
+    call = NetworkBody(
+        url=f"{SHOP}/products/widget.js",
+        status=200,
+        content_type="application/json",
+        sha256=sha256_hex(answer),
+        file="network/0001.json",
+        data_call="shopify",
+    )
+    head = '<script id="shopify-features"></script><script>Shopify.currency = {"active":"EUR"};</script>'
+    html = f"<html><head>{head}</head><body>{markup}</body></html>".encode()
+    page = f"{SHOP}/products/widget{query}"
+    bundle = capture(html, url=page, final_url=page, calls=((call, answer),))
+    return asyncio.run(extract_page(bundle, _preset("commerce_detail"), None, None, data=DATA))
+
+
 @pytest.mark.parametrize(
     ("query", "shown"),
     [
@@ -176,20 +195,7 @@ def test_a_product_page_shows_the_variant_its_url_selects_else_the_first_availab
         _variant(1, 1200, available=True),
         _variant(2, 1500, available=True),
     ]
-    answer = json.dumps({"title": "Widget", "url": "/products/widget", "variants": variants}).encode()
-    call = NetworkBody(
-        url=f"{SHOP}/products/widget.js",
-        status=200,
-        content_type="application/json",
-        sha256=sha256_hex(answer),
-        file="network/0001.json",
-        data_call="shopify",
-    )
-    html = b'<html><script id="shopify-features"></script><script>Shopify.currency = {"active":"EUR"};</script></html>'
-    page = f"{SHOP}/products/widget{query}"
-    bundle = capture(html, url=page, final_url=page, calls=((call, answer),))
-
-    result = asyncio.run(extract_page(bundle, _preset("commerce_detail"), None, None, data=DATA))
+    result = _product_page(variants, query=query)
 
     assert result.entity is not None
     cents = variants[shown]["price"]
@@ -199,3 +205,36 @@ def test_a_product_page_shows_the_variant_its_url_selects_else_the_first_availab
     # Only the shown variant's availability is the item's: `available: true` names no one value, so another
     # variant's OutOfStock never publishes for it.
     assert result.entity["availability"].value == ("OutOfStock" if shown == 0 else None)
+
+
+def _jsonld(node: Mapping[str, object]) -> str:
+    return f'<script type="application/ld+json">{json.dumps({"@context": "https://schema.org", **node})}</script>'
+
+
+def test_the_shown_variants_identifiers_yield_to_those_the_page_states_for_the_product() -> None:
+    # Variant fill (variants spec): the answer states its sku and barcode on the variant only; the product's own
+    # sku and gtin, as the page states them, publish, and the variant's are no rivals of them.
+    variant = {**_variant(0, 1000, available=True), "barcode": "4006381333931"}
+    product = {"@type": "Product", "name": "Widget", "sku": "STYLE-1", "gtin13": "9780306406157"}
+
+    result = _product_page([variant], markup=_jsonld(product))
+
+    assert result.entity is not None
+    assert (result.entity["sku"].value, result.entity["gtin"].value) == ("STYLE-1", "9780306406157")
+
+
+def test_a_product_answer_is_the_page_groups_item_not_the_shown_variant() -> None:
+    # Identity (resolution spec): the answer states the product with every variant; sharing the shown variant's sku
+    # with one `hasVariant` member does not make it that member, so the page's variants stay two rows.
+    variants = [_variant(0, 1000, available=True), _variant(1, 1000, available=True)]
+    offers = [{"@type": "Offer", "url": f"{SHOP}/products/widget?variant={100 + n}"} for n in range(2)]
+    members = [{"@type": "Product", "sku": f"W-{n}", "offers": offer} for n, offer in enumerate(offers)]
+    group = {"@type": "ProductGroup", "@id": "/products/widget#product", "name": "Widget", "hasVariant": members}
+    product = {"@type": "Product", "@id": "/products/widget#product", "name": "Widget"}
+
+    result = _product_page(variants, markup=_jsonld(group) + _jsonld(product))
+
+    assert result.entity is not None
+    rows = result.entity["variants"].value
+    assert isinstance(rows, list)
+    assert [row["sku"] for row in rows if isinstance(row, dict)] == ["W-0", "W-1"]
