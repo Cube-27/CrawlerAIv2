@@ -80,9 +80,9 @@ Merge and clean up:
 
 ```bash
 gh pr merge $n --squash --delete-branch --match-head-commit <sha>
+herdr pane close <builder pane id>          # from `herdr agent get <id>`; first, so no shell holds the worktree
 bash tools/orchestrator/cleanup_worktree.sh <id> change/<id>   # worktree, branches, its test database
 git pull --ff-only
-herdr pane close <builder pane id>                              # from `herdr agent get <id>`
 ```
 
 Then tick the PR in `plan.md`'s status table (in the next PR that touches `docs/agents/`, or a small docs PR).
