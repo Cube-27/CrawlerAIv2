@@ -34,6 +34,7 @@ from crawlerai.collect.currencies import with_page_declarations
 from crawlerai.collect.items.bind import Listing, RowBlock, bind
 from crawlerai.collect.items.lines import BlockText, block_texts
 from crawlerai.collect.run import Adapters, Collected, collect_page
+from crawlerai.collect.run import page_urls as page_urls_of
 from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canonical_urls, item_url_fields
 from crawlerai.content.context import page_context
 from crawlerai.content.metadata import canonical_href, canonical_link
@@ -304,7 +305,7 @@ class _Page:
     primary: frozenset[str]
     target: Entity | AmbiguousTarget
     facts: PageFacts
-    page_urls: tuple[str, ...]  # the request, final and canonical URLs, canonicalized (variants spec)
+    page_urls: tuple[str, ...]  # the URLs naming the page (`collect.run`'s `page_urls`), canonicalized (variants spec)
 
     @classmethod
     def read(cls, source: _Source) -> "_Page":
@@ -332,7 +333,7 @@ class _Page:
         )
         config = _Config.run(source.config, page, schema, ctx)
         canonical = canonical_link(page, manifest.final_url)
-        page_urls = canonical_urls((manifest.url, manifest.final_url, canonical), ctx)
+        page_urls = canonical_urls(page_urls_of(page, manifest), ctx)
         graph = EntityGraph.of((*collected.entities, *config.rows), data.vocabulary, page_urls)
         # The candidates of an entity merged into another item's are that item's (`resolve.identity`).
         collected = replace(

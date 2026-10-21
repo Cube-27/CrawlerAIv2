@@ -11,8 +11,8 @@ alone read the ccTLD, to narrow a shared currency sign (normalization spec). `pa
 from collections.abc import Sequence
 from datetime import datetime
 
-from crawlerai.content.dom import document_base_url, strip, tokens
-from crawlerai.content.metadata import canonical_link, html_lang, open_graph
+from crawlerai.content.dom import document_base_url, strip
+from crawlerai.content.metadata import canonical_link, html_lang, language_alternates, open_graph
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context
 from crawlerai.normalize.url import canonical_url
@@ -47,16 +47,8 @@ def hreflang(page: ParsedPage, final_url: str) -> tuple[str, ...]:
     `hreflang` of a `link` whose `rel` has `alternate` names the language of the document that link points to. Only a
     link to the page itself (its final URL or its canonical link, RFC 6596), resolved against the document base URL,
     states this page's language; the others name the languages of other pages (D-1482). Each once, in document order."""
-    base = document_base_url(page, final_url)
     own = {url for url in (canonical_url(final_url, None), canonical_link(page, final_url)) if url is not None}
-    found: dict[str, None] = {}
-    for node in page.tree.css("link[hreflang]"):
-        language = strip(node.attributes.get("hreflang"))
-        if not language or "alternate" not in tokens((node.attributes.get("rel") or "").lower()):
-            continue
-        if canonical_url(node.attributes.get("href") or "", base) in own:
-            found.setdefault(language)
-    return tuple(found)
+    return tuple(dict.fromkeys(language for language, url in language_alternates(page, final_url) if url in own))
 
 
 def content_language(page: ParsedPage, headers: Sequence[tuple[str, str]]) -> tuple[str, ...]:

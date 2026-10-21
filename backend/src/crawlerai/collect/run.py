@@ -38,7 +38,7 @@ from crawlerai.collect.platform_json import PlatformJsonCollector
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.collect.scope import other_items
 from crawlerai.collect.xhr import XhrCollector
-from crawlerai.content.metadata import canonical_link
+from crawlerai.content.metadata import canonical_link, language_alternates
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.signals import PREFIX as SIGNAL_PREFIX
 from crawlerai.content.signals import page_signals
@@ -190,7 +190,7 @@ def _stated(
 ) -> list[Candidate]:
     """The structured collectors' candidates of the page's product: an Offer in another item's scope prices that item,
     not the product (`collect.scope`)."""
-    elsewhere = other_items([e for r in results for e in r.entities], vocabulary, _page_urls(page, manifest))
+    elsewhere = other_items([e for r in results for e in r.entities], vocabulary, page_urls(page, manifest))
     return [c for r in results for c in r.candidates if c.entity_id not in elsewhere]
 
 
@@ -200,10 +200,15 @@ def _variant_params(page: ParsedPage, manifest: CaptureManifest) -> tuple[str, .
     return () if signature is None else signature.variant_params
 
 
-def _page_urls(page: ParsedPage, manifest: CaptureManifest) -> tuple[str, ...]:
-    """The request, final and canonical URLs (RFC 6596): the URLs that name the page's own product."""
+def page_urls(page: ParsedPage, manifest: CaptureManifest) -> tuple[str, ...]:
+    """The URLs that name the page's own document: the request, final and canonical URLs (RFC 6596), and the alternate
+    versions of the document the page declares by language (HTML Living Standard §4.6.7.1, `language_alternates`): a
+    translation or regional version of a page is that page in another language, so an item it names is the page's."""
     canonical = canonical_link(page, manifest.final_url)
-    return (manifest.url, manifest.final_url, *(() if canonical is None else (canonical,)))
+    alternates = (url for _, url in language_alternates(page, manifest.final_url))
+    return tuple(
+        dict.fromkeys((manifest.url, manifest.final_url, *(() if canonical is None else (canonical,)), *alternates))
+    )
 
 
 def _adapter_collectors(
