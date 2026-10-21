@@ -129,6 +129,8 @@ Each is a working rule today; the owner may change it (`openspec/design/owner-de
 
 ## Open items (known, not fixed)
 
+- Images a theme groups by colour that the product data ties to no variant still appear on every variant's page (two
+  E2 pages). Only theme conventions (such as a colour named in image alt text) would tell, and reading them is guessing.
 - UI microcopy can become the description on pages whose only description candidate is widget text (pre-existing).
 - On some pages the main image is a smaller rendition of the same file (the https-first rendition choice is kept).
 - Availability is a conflict (unpublished) on pages where offers split after #421.
