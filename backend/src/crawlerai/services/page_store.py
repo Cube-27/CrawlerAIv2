@@ -162,8 +162,7 @@ async def store_page_record(
         if listed_nothing:
             await _count_page(conn, site_id, schema)
             await render_surface(conn, task.job_id, site_id, schema, render, extraction)
-            partial: Stored = replace(stored, outcome="partial")
-            return partial
+            return Stored("partial", stored.extraction_id, stored.records, stored.result)
         # A page that states no entity of the schema (resolution spec, "Incomplete pages") is `no_match`; one whose
         # resolution failed, `failed`.
         return stored if stored.outcome == "no_match" else replace(stored, outcome="failed")

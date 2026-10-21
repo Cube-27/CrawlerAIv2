@@ -386,7 +386,10 @@ async def _run(
     report: ActionsReport | None = None
     if page is None:
         rungs = site_rungs(fetching, host, site)
-        plan = PagePlan(rungs, site, policy, attempts, recipe=recipe, deadline=work.deadline, fetch=by_sources)
+        growth = _growth(request, fetching)
+        plan = PagePlan(
+            rungs, site, policy, attempts, recipe=recipe, growth=growth, deadline=work.deadline, fetch=by_sources
+        )
         page, report = await _fetched(engine, fetching, request, plan)
     # Formats, the draft and the extraction come before the write, so a timeout or an LLM failure while they are made
     # still finds the task claimed. They are made only from a page that was reached (§4.8: no partial formats).
@@ -430,9 +433,8 @@ async def _grown(
     engine: AsyncEngine, fetching: Fetching, request: ScrapeRequest, plan: PagePlan
 ) -> tuple[Page | str, ActionsReport | None]:
     """The page fetched now, a listing grown by the default browser actions where its page is rendered (`_growth`)."""
-    growth = _growth(request, fetching)
-    grown: PagePlan = replace(plan, growth=growth)
-    result = await fetch_now(engine, fetching, request.url, grown)
+    growth = plan.growth
+    result = await fetch_now(engine, fetching, request.url, plan)
     if isinstance(result, str):
         return result, None
     grew = None if growth is None else growth.of(result)
