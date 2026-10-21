@@ -154,13 +154,18 @@ def _join_requested(eligible: Sequence[Entity], sets: "_Sets", documents: Docume
     docstring)."""
     for i, e in enumerate(eligible):
         if e.requested and e.parent is None:
-            typed = [(j, o) for j, o in enumerate(eligible) if _root(o, e.types[0])]
-            apart = repeated(o for _, o in typed)
-            roots = {sets.find(j): o for j, o in typed if o.id not in apart}
-            if len(roots) == 1:
-                (j, root), *_ = roots.items()
-                if not leads_elsewhere(root, documents):
-                    sets.join(i, j, certain=True)
+            j = _one_root(eligible, sets, e.types[0])
+            if j is not None and not leads_elsewhere(eligible[j], documents):
+                sets.join(i, j, certain=True)
+
+
+def _one_root(eligible: Sequence[Entity], sets: "_Sets", type_: str) -> int | None:
+    """The index of the page's one root item of `type_`, one of a repeated set's items not counted; None when the page
+    states none or several."""
+    typed = [(j, o) for j, o in enumerate(eligible) if _root(o, type_)]
+    apart = repeated(o for _, o in typed)
+    roots = {sets.find(j): j for j, o in typed if o.id not in apart}
+    return next(iter(roots.values())) if len(roots) == 1 else None
 
 
 def _root(entity: Entity, type_: str) -> bool:
