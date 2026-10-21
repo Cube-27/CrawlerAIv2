@@ -12,11 +12,11 @@ C4):
   Standard §4.6.1), leaving out the page itself in any state of its query (a pager, a sort; RFC 3986 §3.3), image files
   (RFC 6838 `image/*`: a larger copy of the block's image) and the links of the item's own lists (`_sublist_links`).
   When they lead to several: the one without a query that every other refines with one (RFC 3986 §3.4), else the one
-  the block's headings link to, else the one whose links hold most of the block's text (`links.one_link`). Else, at
-  group level (DEPTA alignment, `links.item_links`): the documents two or more blocks link to are the template's (a
-  vendor's, an author's, a category's page: an item is listed once), and the block's item is the one other document
-  its links lead to at the tag path where a quorum of the blocks link to one such document. A block without one such
-  document is no row.
+  the block's headings link to, else the one whose links hold most of the block's text (`one_link`). Else, at
+  group level (DEPTA alignment, `item_links`; both in `collect/items/links.py`): the documents two or more blocks link
+  to are the template's (a vendor's, an author's, a category's page: an item is listed once), and the block's item is
+  the one other document its links lead to at the tag path where a quorum of the blocks link to one such document. A
+  block without one such document is no row.
 - **name** (a row text field whose path names schema.org `name`, or JobPosting `title`): the shown content of the
   block's first hyperlink to its item when that is one line of text (HTML Standard §4.5.1), the block's one heading
   (HTML Standard §4.3.6, WAI-ARIA role `heading`), or the name the item's attributes state (`Stated`): an item link's

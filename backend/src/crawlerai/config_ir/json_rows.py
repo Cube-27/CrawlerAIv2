@@ -39,9 +39,10 @@ Row = Mapping[str, JsonValue]
 
 def json_listings(page: ParsedPage, ctx: Context, schema: SchemaDef, rows: Sequence[Row]) -> list[ListingSpec]:
     """The row sources of `page` for its published `rows` (module docstring), the array holding most rows first."""
-    # The first item URL field the rows publish identifies them.
-    url = next((name for name in item_url_fields(schema) if any(row.get(name) is not None for row in rows)), None)
-    if url is None or len(rows) < MIN_ITEMS:
+    # The item URL field the most rows publish identifies them, the schema's first of equals.
+    published = {name: sum(row.get(name) is not None for row in rows) for name in item_url_fields(schema)}
+    url = max(published, key=published.__getitem__, default=None)
+    if url is None or not published[url] or len(rows) < MIN_ITEMS:
         return []
     found = [
         found
