@@ -99,8 +99,9 @@ def _url(source_kind: SourceKind, value: str) -> Candidate:
     )
 
 
-def test_a_url_naming_another_document_than_the_canonical_final_url_is_rejected() -> None:
-    # RFC 6596 and RFC 9110 §15.4 agree on the page's URL: a structured `url` with another path names another document.
+def test_a_url_naming_another_document_than_the_canonical_link_is_rejected() -> None:
+    # RFC 6596: the page's one same-site canonical link is its own URL; a structured `url` or `og:url` with another path
+    # names another document, whether or not the final URL (RFC 9110 §15.4) repeats the canonical link.
     own = CTX.model_copy(update={"page_url": CANONICAL})
     other, og = _url("jsonld", "https://shop.example.test/p/75"), _url("og", CANONICAL)
 
@@ -108,7 +109,10 @@ def test_a_url_naming_another_document_than_the_canonical_final_url_is_rejected(
     derived = _fill(URL, RESOLVER.prefer_field(URL, [other]), other, ctx=own)
     relative = _url("jsonld", "/p/75").model_copy(update={"normalized": RELATIVE_WITHOUT_BASE})
     resolved = _fill(URL, RESOLVER.prefer_field(URL, [relative]), relative, ctx=own)  # held once resolved
-    kept = _fill(URL, RESOLVER.prefer_field(URL, [other]), other)  # canonical and final URL differ: not settled
+    og_other = _url("og", "https://shop.example.test/p/75")
+    held = _fill(URL, RESOLVER.prefer_field(URL, [og_other]), og_other)  # final URL differs from the canonical link
+    kept = _fill(URL, RESOLVER.prefer_field(URL, [other]), other, canonical_url=None)  # no canonical link: not settled
+    elsewhere = _fill(URL, RESOLVER.prefer_field(URL, [other]), other, canonical_url="https://example.org/p/1")
 
     assert isinstance(stated, Chosen)
     assert (stated.candidate, stated.rejected) == (og, ((other, "other_document"),))
@@ -124,5 +128,13 @@ def test_a_url_naming_another_document_than_the_canonical_final_url_is_rejected(
         "canonical_link",
         ((relative, "other_document"),),
     )
+    assert isinstance(held, Derived)
+    assert (held.value, held.derived_by, held.rejected) == (
+        CANONICAL,
+        "canonical_link",
+        ((og_other, "other_document"),),
+    )
     assert isinstance(kept, Chosen)
     assert kept.candidate is other
+    assert isinstance(elsewhere, Chosen)  # a canonical link on another site does not name this page
+    assert elsewhere.candidate is other

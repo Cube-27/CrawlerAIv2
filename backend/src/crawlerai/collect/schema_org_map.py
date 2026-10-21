@@ -262,7 +262,7 @@ def _item_iri(
     if iri is None or page is None:
         return
     split = urlsplit(iri)
-    if split.scheme not in _WEB_SCHEMES or not split.hostname or split.fragment or not _same_site(split.hostname, page):
+    if split.scheme not in _WEB_SCHEMES or not split.hostname or split.fragment or not same_site(split.hostname, page):
         return
     found = candidate(name, spec, entity.id, source_kind, iri, entity.id, ctx, diagnostics)
     own = normalize(page, _URL, ctx)
@@ -271,7 +271,8 @@ def _item_iri(
         yield found
 
 
-def _same_site(host: str, page_url: str) -> bool:
+def same_site(host: str, page_url: str) -> bool:
+    """Whether `host` is on the site of `page_url` (HTML Standard §7.1.1, the same registrable domain)."""
     page_host = urlsplit(page_url).hostname
     suffixes = default_suffixes()
     return page_host is not None and suffixes.site(host) == suffixes.site(page_host)

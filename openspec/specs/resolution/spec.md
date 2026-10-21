@@ -170,17 +170,20 @@ AggregateOffer was no item's.) Refs: §10, owner #68, owner 2026-10-19; per-row 
 Derived values SHALL fill only `missing` fields and carry `derived_by`; the only derivations are `absolutize`, then for
 a detail page's `T.url` field (`T.url` in every alternative of its path) `canonical_link` (RFC 6596), then
 `final_url`, each a named function (`resolve/derive.py`). Canonical links naming more than one URL designate none
-(RFC 6596 §3: one per resource), so such a page states no canonical URL. Before derivation, when the canonical link and
-the final URL are one URL, a kept candidate of that `T.url` field naming another document (`normalize/url_key.py` `document_key`:
+(RFC 6596 §3: one per resource), so such a page states no canonical URL. Before derivation, when the page states one
+canonical link and it names a URL on the final URL's site (HTML Standard §7.1.1, the same registrable domain), that
+link is the page's own URL (owner #77) and a kept candidate of that `T.url` field naming another document (`normalize/url_key.py` `document_key`:
 another scheme, authority or path, one trailing slash of the path aside; a query or a fragment alone names none) is
 rejected `other_document`, and preference decides among the rest; a relative
 reference `absolutize` resolves to another document is rejected so too. A derived value publishes as the page states it
 (normalization spec): an absolutized reference as written, the canonical link as its first `href` is written; the final
-URL, which no page statement gives, as fetched. (Previously: a field
+URL, which no page statement gives, as fetched. (Previously: only a canonical link equal to the final URL named the
+page, so an `og:url` or a structured `url` naming another document outranked a canonical link the final URL did not
+repeat; a field
 the page stated on its other scheme or with userinfo was its own document, and `/p` and `/p/` named one document here
 but two in candidate scope (`collect/scope.py`); a field
 whose last rank was `T.url`, such as `apply_url`, took the page URL too; a structured `url` built from another id than
-the page's outranked its canonical URL; the first of conflicting canonical links named the page.) Refs: §9, §10, Appendix A #40, D-0442, D-0910, D-1625. Enforced by: resolver
+the page's outranked its canonical URL; the first of conflicting canonical links named the page.) Refs: §9, §10, Appendix A #40, owner #77, D-0442, D-0910, D-1625. Enforced by: resolver
 tests; active.
 #### Scenario: No url candidate
 - **WHEN** a detail page has no url candidate and `<link rel=canonical href="https://example.com/p/1">`
@@ -194,6 +197,14 @@ tests; active.
   `url` is `https://example.com/p-759.html`
 - **THEN** `url` publishes `https://example.com/p-188.html` (`og:url` when it states it, else `derived_by=canonical_link`),
   the JSON-LD candidate rejected `other_document`
+#### Scenario: Canonical link and og:url disagree
+- **WHEN** a detail page fetched at `https://example.com/p-188.html?ref=x` states one canonical link
+  `https://example.com/p-188.html` and `og:url` `https://example.com/collection`
+- **THEN** `url` publishes the canonical link as written with `derived_by=canonical_link`, the `og:url` candidate
+  rejected `other_document`
+#### Scenario: No canonical link
+- **WHEN** a detail page states no canonical link and `og:url` `https://example.com/collection`
+- **THEN** `url` publishes the `og:url` value as before; no candidate is rejected `other_document`
 #### Scenario: No stated apply link
 - **WHEN** a job page states no apply link and role C claims none
 - **THEN** `apply_url` stays `missing`
