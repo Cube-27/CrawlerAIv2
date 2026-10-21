@@ -142,9 +142,10 @@ def _file_path(key: Hashable) -> tuple[str, ...] | None:
         return None
     segments = [segment for segment in str(key[2]).split("/") if segment]
     for index, segment in enumerate(segments):
-        found = _MEDIA_TYPES.guess_type(segment, strict=True)[0]
+        name = _ENCODED_QUERY.split(segment, maxsplit=1)[0]
+        found = _MEDIA_TYPES.guess_type(name, strict=True)[0]
         if found is not None and found.partition("/")[0] == _IMAGE_TYPE:
-            return (str(key[1]), *segments[: index + 1])
+            return (str(key[1]), *segments[:index], name)
     return None
 
 
@@ -161,6 +162,9 @@ def _rendition_segment(x: str, y: str) -> bool:
     return base > 0 and all(len(s) == base or any(c.isdigit() for c in s[base:]) for s in (x, y))
 
 
+# A query delimiter percent-encoded into the path (`photo.png%3Fwidth%3D785`): the URL was percent-encoded once more
+# than written (RFC 3986 §2.4: a string is encoded once), so the file's name ends before it.
+_ENCODED_QUERY = re.compile(r"%3F", re.IGNORECASE)
 # The query parameter by which an image proxy or optimizer names the file it serves (`/_next/image?url=`, `?url=`).
 _PROXIED: Final = "url"
 # What an image path states about the rendition it serves, not the file: a whole segment `<width>x<height>` or a list
@@ -187,8 +191,9 @@ def largest_rendition(values: Sequence[str]) -> int:
     """The index of the largest of renditions of one file (`resource_key`), or 0 when not every one states its size.
 
     A rendition states its size in what `resource_key` sets aside: the path's dimension segments, size suffix and
-    options, and query parameters (RFC 3986 §3.4) with a decimal value that differ between the renditions (a parameter
-    equal in all, such as a version stamp, says nothing of size). Its size is the largest such number; of equal sizes
+    options, and query parameters (RFC 3986 §3.4) every rendition states with a decimal value that differ between them
+    (a parameter equal in all, such as a version stamp, says nothing of size, and one only some state, such as a scale
+    factor, compares with no other). Its size is the largest such number; of equal sizes
     the first wins. A rendition stating none may be the unresized file or a default one, so nothing is ranked then."""
     sizes = [_stated_size(value, values) for value in values]
     if not sizes or None in sizes:
@@ -204,7 +209,7 @@ def _stated_size(value: str, renditions: Sequence[str]) -> int | None:
     stated += [segment for segment in path.split("/") if _SEGMENT.fullmatch(segment)]
     query = _numeric_query(parts.query)
     others = [_numeric_query(urlsplit(r).query) for r in renditions]
-    varying = [v for name, v in query.items() if any(o.get(name) != v for o in others)]
+    varying = [v for name, v in query.items() if all(name in o for o in others) and any(o[name] != v for o in others)]
     numbers = [int(n) for text in stated for n in _NUMBER.findall(text)] + varying
     return max(numbers) if numbers else None
 

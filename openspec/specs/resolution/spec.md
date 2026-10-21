@@ -38,12 +38,15 @@ its scope match times its value's agreement:
 - Agreement: of the field's independent candidates, per source kind its best weight, summed over the kinds stating
   the value, over the sum for every kind; 1 when no candidate is independent (an admitted state value is not).
 Candidates stating one value (equal after normalization; for images, renditions of one file: `resource_key`, the
-authority and path without the size, conversion and options the path states, any scheme or query, an image proxy URL
-naming the file its `url` parameter names, a list's as the set of its files) form a group scored by its best member; of those
-members the first publishes, for images the `https` ones (else all) and of a single image's renditions the largest
-(`url.largest_rendition`). The candidates of every other value are rejected `outscored`, and a field whose kept
-candidates state other values publishes with the disagreement flag as its reason (`disagree`, or `offers_disagree` /
-`offer_split` for an offer field). A list of the item's facts (its items neither lists, objects, urls nor images: a
+authority and path without the size, conversion and options the path states, any scheme or query (a `%3F` written
+into the path ends the file's name), an image proxy URL naming the file its `url` parameter names, a list's as the set
+of its files) form a group scored by its best member; of those members the first publishes, for images the `https` ones
+(else all), with each file at the largest rendition any member states (`url.preferred_rendition`): a single image
+publishes the member stating it, a list the first member's files, in its order, each at its largest rendition wherever
+another member lists it. Image values that tie for the best score as items of one list of one node publish its first
+item (an array is ordered, RFC 8259 §1). The candidates of every other value are rejected `outscored`, and a field whose
+kept candidates state other values publishes with the disagreement flag as its reason (`disagree`, or `offers_disagree`
+/ `offer_split` for an offer field). A list of the item's facts (its items neither lists, objects, urls nor images: a
 job's places) publishes instead every member its values scoring above 0 state, the best value's first: two sources stating
 different members state more of the item, not rival values. A member equal to one already listed is that one, and a
 location the page writes as text alone that names a listed place's locality (its region when it states none: "Austin"
@@ -102,6 +105,12 @@ owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_prefere
 #### Scenario: Namers disagree
 - **WHEN** `og:image` names the second gallery URL by its file and a `dom` image names the first
 - **THEN** `image_url` publishes the second URL, Open Graph weighing more than `dom`
+#### Scenario: A thumbnail in the markup
+- **WHEN** microdata states an image at `?sw=71`, Open Graph at `?sw=406` and a `dom` image at `?sw=964`
+- **THEN** `image_url` publishes the `?sw=964` URL
+#### Scenario: A data call's image list
+- **WHEN** the only image candidates are the items of one product JSON `images` list, scoring alike
+- **THEN** `image_url` publishes its first item
 #### Scenario: An http twin
 - **WHEN** two merged JSON-LD blocks state one image over `http` and over `https?w=800`
 - **THEN** `image_url` publishes the `https` URL

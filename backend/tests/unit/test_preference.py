@@ -195,6 +195,34 @@ def test_the_best_scored_value_wins_and_a_fragment_weighs_nothing() -> None:
     assert fragment["title"] == Chosen(jsonld, (), ((decorated, "outscored"),), (decorated, jsonld))
 
 
+IMAGE = FieldSpec(type=FieldType.IMAGE_URL, description="d", schema_org="Product.image")
+
+
+def test_an_image_publishes_at_the_largest_rendition_any_source_states() -> None:
+    file = "https://cdn.example.test/i/7/a.jpg?sw="
+    microdata = _candidate("image", file + "71", kind="microdata")
+    og = _candidate("image", file + "406", PAGE, "og", n=1)
+
+    chosen = _prefer(_schema(image=IMAGE), microdata, og)["image"]
+
+    assert isinstance(chosen, Chosen)
+    assert (chosen.candidate, chosen.agreeing) == (og, (microdata,))
+
+
+def test_images_that_tie_as_items_of_one_list_publish_its_first() -> None:
+    first, second = (
+        _candidate("image", f"https://cdn.example.test/i/{n}.jpg", n=n).model_copy(
+            update={"locator": f"{PRODUCT.id}['image'][{n}]"}
+        )
+        for n in (0, 1)
+    )
+
+    chosen = _prefer(_schema(image=IMAGE), second, first)["image"]
+
+    assert isinstance(chosen, Chosen)
+    assert (chosen.candidate, chosen.rejected) == (first, ((second, "outscored"),))
+
+
 DOM_ORDER: tuple[SourceKind, ...] = ("jsonld", "og", "dom")
 
 
