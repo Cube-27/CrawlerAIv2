@@ -29,13 +29,14 @@ reviews, related items and the blocks outside the product container (`collect.do
   block holding
   the page's title heading (an `h1`, or an ARIA heading of level 1) or a price the structural pass read is not text.
 
-Prose is a block that holds no table, form control, button, image, media, frame or other element that is not running
-text (HTML Standard §3.2.5: flow and phrasing content). In the extension, labelled-section and item-continuation paths
-an image (`img`, `picture`) is phrasing content (HTML Standard §3.2.5.2.5), as rich text places one among its
-paragraphs; the main text, which nothing stated names, holds none. A block's text is the cleaned text of its element
-(`content.text`): visible text, one block box per line. Reviews and related items are the elements whose `itemprop`
-is one of schema.org's `review`, `isRelatedTo` or `isSimilarTo`, and Review items (`itemtype`). Several distinct
-blocks that neither contain one another's text nor continue it are ambiguous: nothing is read.
+Prose is a block that holds no table, form control, control group caption (`legend`), button, image, media, frame or
+other element that is not running text (HTML Standard §3.2.5: flow and phrasing content). In the extension,
+labelled-section and item-continuation paths an image (`img`, `picture`) is phrasing content (HTML Standard §3.2.5.2.5),
+as rich text places one among its paragraphs; the main text, which nothing stated names, holds none. A block's text is
+the cleaned text of its element (`content.text`): visible text, one block box per line. Reviews and related items are
+the elements whose `itemprop` is one of schema.org's `review`, `isRelatedTo` or `isSimilarTo`, and Review items
+(`itemtype`). Several distinct blocks that neither contain one another's text nor continue it are ambiguous: nothing is
+read.
 
 Every candidate is the page's, independent, with a `dom:` locator naming the element it came from.
 """
@@ -59,11 +60,12 @@ from crawlerai.schemas.types import FieldType, SchemaDef
 
 # HTML Standard §4.3 (sectioning content tangential to the main content) and §4.11.4 (`dialog`): not the page's prose.
 _TANGENTIAL = ("nav", "header", "footer", "aside", "dialog")
-# HTML Standard §4.8 (embedded content), §4.10 (forms: interactive controls), §4.9 (tabular data), §4.12 (scripting):
-# elements that are no running text.
+# HTML Standard §4.8 (embedded content), §4.10 (forms: interactive controls; §4.10.16 `legend`, the caption of a
+# fieldset's group of controls), §4.9 (tabular data), §4.12 (scripting): elements that are no running text.
 _NOT_PROSE = (
     "table",
     "form",
+    "legend",
     "button",
     "input",
     "select",

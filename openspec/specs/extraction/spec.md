@@ -62,7 +62,9 @@ as the list price, `product:original_price` as the list price,
 `og:availability`, `product:condition`, `product:retailer_item_id` and `product:brand`; no translation, site-default
 blocks skipped, an `og:title` read without trailing segments naming the site and, when words of its own come before a
 run of its words that the document's one `h1` states (two words or more), as that run, else before a run that a slug
-segment of the page URL path spells (the last such segment the title holds), as that run) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
+segment of the page URL path spells (the last such segment the title holds), as that run; an `og:description` holding
+as a run of its words a name of the site, a non-blank `og:site_name` else the title's trailing site segments, that
+the title without those segments does not hold is the site's summary and not read, each repeated one on its own) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
 standing in for that thing; a path through another thing, `Product.offers.seller.url`, has none); a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
 element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text; a text value that is the
@@ -76,7 +78,7 @@ candidates of the requested product, amounts in the minor unit the documentation
 variants are priced differently (the page states the selected one). Refs: §8.1,
 D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-19 on #326, architecture-v3 d.6.
 (Previously: Open Graph read `product:price` alone, whatever the money field's price role; an `image` written as an
-ImageObject was an invalid value.)
+ImageObject was an invalid value; an `og:description` naming the site was the item's description.)
 #### Scenario: OG sale price
 - **WHEN** a page states `product:price:amount` 100 and `product:sale_price:amount` 80, and the schema has `price` and
   a user-added `list_price`
@@ -96,6 +98,11 @@ ImageObject was an invalid value.)
 #### Scenario: og:description
 - **WHEN** a page states only `og:description` for its product
 - **THEN** that text is the `description` candidate, ranked behind JSON-LD and microdata
+#### Scenario: og:description naming the site
+- **WHEN** `og:site_name` is `Example Store`, `og:title` `Steel Kettle` and `og:description` `Shop kettles online at
+  Example Store.`
+- **THEN** `og:description` is no `description` candidate; with `og:site_name` `Acme` and `og:title` `Acme Steel
+  Kettle`, the description `The Acme kettle boils fast.` is one
 #### Scenario: og:title around a slug
 - **WHEN** `og:title` is `Buy Kettle 2L for Kitchens Online` on a page at `/kettle-2l/p/12`
 - **THEN** the title candidate reads `Kettle 2L`, and so it does at `/kettle-2l/12/item-page`, a fixed last segment
@@ -378,7 +385,8 @@ On a detail page the system SHALL propose for each `long_text` field the prose b
 (`collect/dom_text.py`; as the structural DOM values, outside chrome, dialogs and media fallback, outside reviews
 and related items marked by schema.org `review`, `isRelatedTo`, `isSimilarTo` or a Review `itemtype`, and outside
 other items' cards) that states it in
-full: the outermost block, with no table, form control, button, media or frame (an `img` or `picture` among its text
+full: the outermost block, with no table, form control, fieldset caption (`legend`, HTML Standard §4.10.16), button,
+media or frame (an `img` or `picture` among its text
 is phrasing content, HTML Standard §3.2.5.2.5), whose text begins with a candidate another collector proposed for
 the field (or its ellipsis-cut form, white space aside), and the block equal to a value that is no summary (neither
 Open Graph's nor one stating the same text) in place of that value's wider blocks; or, where it goes on further, the
@@ -394,7 +402,7 @@ of its words other than the title heading's (a summary with fewer words of its o
 the item, and asks no words of the block). Blocks that differ are ambiguous: none. The candidate is `dom`, independent, in
 the `dom` evidence bucket. (Previously: any image made a block no prose, an element-valued description was never
 continued, and the main text was the longest block whatever it held; continuation stopped at the element's wrapper,
-and a section panel holding a button gave no text.) Refs: C2, C4, D-1700, D-1701, D-1702, D-1703, D-1704. Enforced by: unit and replay tests; active.
+and a section panel holding a button gave no text; a `legend` was prose.) Refs: C2, C4, D-1700, D-1701, D-1702, D-1703, D-1704. Enforced by: unit and replay tests; active.
 #### Scenario: Summary and full text
 - **WHEN** `og:description` is the first sentence of a paragraph block that goes on, and no other kind states a
   description
