@@ -37,8 +37,8 @@ else:
 __all__ = ["Profile", "discard_profile", "open_profile", "profile_name"]
 
 # Chromium's preference names (chrome/common/pref_names.h: `webrtc.ip_handling_policy`,
-# `webrtc.multiple_routes_enabled`, `webrtc.nonproxied_udp_enabled`), as an enterprise policy or the extension API
-# `privacy.network` sets them.
+# `webrtc.multiple_routes_enabled`, `webrtc.nonproxied_udp_enabled`), as an enterprise policy or the extensions'
+# privacy API sets them.
 _WEBRTC: Final = {
     "ip_handling_policy": "disable_non_proxied_udp",
     "multiple_routes_enabled": False,
