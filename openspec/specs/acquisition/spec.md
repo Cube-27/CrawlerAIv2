@@ -423,11 +423,11 @@ encrypted (Fernet) and rewritten only when the HMAC fingerprint of the plain sta
 none. Only cookies are kept: no other storage; challenge and clearance cookies are kept with the rest (owner #76).
 Before a write and after a load, cookies with an empty value or past their expiry are dropped; cookies are
 de-duplicated by name, domain and path; session cookies stay; a state with nothing left is not written and drops the
-kept one. A direct browser `ok` also refreshes the site's live session with its cookies. A `shell`, `blocked` or
-`error` outcome writes nothing, and a `blocked` browser fetch of the site on a direct route clears its state. The
-state is read only when a temporary profile of the site opens (no profile directory configured, or the site's profile
-held by another process), which starts with its live site session's cookies, else the stored state; never per fetch,
-never by a kept profile, and never by an HTTP or JSON fetch, which takes only the live session. No cookie an HTTP
+kept one. A direct browser `ok` also refreshes the site's live session with its cookies (one holding none of the
+domain's drops it). A `shell`, `blocked` or `error` outcome writes nothing, and a `blocked` browser fetch of the site
+on a direct route clears its state. The state is read only when a temporary profile of the site opens (no profile
+directory configured, or the site's profile held by another process or fetch), which starts with its live site
+session's cookies, else the stored state; never per fetch, never by a kept profile, and never by an HTTP or JSON fetch, which takes only the live session. No cookie an HTTP
 response sets is kept or handed to the browser. The stored state serves and is written by direct fetches only (no
 proxy pool); a fetch with the caller's context neither reads nor writes it. (Previously: keyed by `site.host`,
 challenge and clearance cookies dropped, read by every browser fetch and by HTTP and JSON fetches, written by any

@@ -11,9 +11,9 @@ and no repr shows a cookie value).
 
 The browser's own cookie state is its site profile (`acquire.browser_profiles`). Behind it is the stored cookie state
 (`acquire.cookie_store`, encrypted), which only a temporary profile uses, on a direct route (no proxy pool): one is
-opened when no profile directory is configured or another process holds the site's profile, it starts with the live
-session's cookies, else the stored state (`for_browser`, read once, when it opens), and its `ok` writes the stored
-state (`after_browser`). A kept profile neither reads nor writes it: it holds its own cookies.
+opened when no profile directory is configured or another process or fetch holds the site's profile, it starts with
+the live session's cookies, else the stored state (`for_browser`, read once, when it opens), and its `ok` writes the
+stored state (`after_browser`). A kept profile neither reads nor writes it: it holds its own cookies.
 
 Sessions and the stored state hold the cookies of the site's registrable domain (RFC 6265 §5.1.3 domain matching, the
 Public Suffix List's registrable domain), are keyed by it, and serve requests in that domain. A live session lasts at
@@ -180,8 +180,8 @@ class SiteSessions:
         """Record how a browser fetch of `url` through `pool` went, its context having held `cookies`: `blocked`
         drops the site's live session and, on a direct route, its stored state (as the site's profile is discarded);
         on a direct route an `ok` makes the cookies of the site's registrable domain its live session's (if it has
-        one), and, from a `temporary` profile, its stored state. Any other outcome (a `shell`, an error) writes
-        nothing."""
+        one; a context with none left drops it), and, from a `temporary` profile, its stored state. Any other outcome
+        (a `shell`, an error) writes nothing."""
         domain = self._domain(url)
         session = self._by_domain.get((domain, pool))
         if result.block_class == "blocked":
@@ -193,6 +193,8 @@ class SiteSessions:
             held = _in_domain(cookies, domain)
             if session is not None and held:
                 session.cookies = held
+            elif session is not None:  # the context no longer holds the session's cookies: none go on
+                self.drop(session)
             if temporary and self.store is not None:
                 await self.store.save(domain, ENGINE, held)
 
