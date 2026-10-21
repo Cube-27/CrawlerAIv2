@@ -329,16 +329,16 @@ class DeliveryPage(BaseModel):
     next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
 
 
-class Kind(Enum):
-    new = "new"
-    changed = "changed"
-    same = "same"
-
-
 class DeltaCounts(BaseModel):
     changed: Annotated[int, Field(title="Changed")]
     new: Annotated[int, Field(title="New")]
     same: Annotated[int, Field(title="Same")]
+
+
+class DeltaKind(Enum):
+    new = "new"
+    changed = "changed"
+    same = "same"
 
 
 class DroppedRowMeta(BaseModel):
@@ -604,7 +604,7 @@ class Health(BaseModel):
     status: Annotated[Literal["ok"], Field(title="Status")] = "ok"
 
 
-class Kind1(Enum):
+class Kind(Enum):
     scrape = "scrape"
     batch_scrape = "batch_scrape"
     map = "map"
@@ -626,7 +626,7 @@ class JobUsage(BaseModel):
     created_at: Annotated[AwareDatetime, Field(title="Created At")]
     estimated_usd: Annotated[float | None, Field(title="Estimated Usd")] = None
     job_id: Annotated[UUID, Field(title="Job Id")]
-    kind: Annotated[Kind1, Field(title="Kind")]
+    kind: Annotated[Kind, Field(title="Kind")]
     tokens_in: Annotated[int, Field(title="Tokens In")]
     tokens_out: Annotated[int, Field(title="Tokens Out")]
     unpriced_tokens: Annotated[int, Field(title="Unpriced Tokens")]
@@ -1079,7 +1079,7 @@ class RunStarted(BaseModel):
     job_id: Annotated[UUID, Field(title="Job Id")]
 
 
-class Kind3(Enum):
+class Kind2(Enum):
     batch_scrape = "batch_scrape"
     crawl = "crawl"
     extract = "extract"
@@ -1090,7 +1090,7 @@ class ScheduleOut(BaseModel):
     cron: Annotated[str | None, Field(title="Cron")] = None
     id: Annotated[UUID, Field(title="Id")]
     interval_s: Annotated[int | None, Field(title="Interval S")] = None
-    kind: Annotated[Kind3, Field(title="Kind")]
+    kind: Annotated[Kind2, Field(title="Kind")]
     last_error: Annotated[str | None, Field(title="Last Error")] = None
     last_job_id: Annotated[UUID | None, Field(title="Last Job Id")] = None
     last_run_at: Annotated[AwareDatetime | None, Field(title="Last Run At")] = None
@@ -1107,7 +1107,7 @@ class SchedulePage(BaseModel):
     next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
 
 
-class Kind4(Enum):
+class Kind3(Enum):
     scrape = "scrape"
     batch_scrape = "batch_scrape"
     crawl = "crawl"
@@ -1124,7 +1124,7 @@ class ScheduleUpdate(BaseModel):
     )
     cron: Annotated[str | None, Field(title="Cron")] = None
     interval_s: Annotated[IntervalS | None, Field(title="Interval S")] = None
-    kind: Annotated[Kind4 | None, Field(title="Kind")] = None
+    kind: Annotated[Kind3 | None, Field(title="Kind")] = None
     name: Annotated[Name | None, Field(title="Name")] = None
     request: Annotated[dict[str, Any] | None, Field(title="Request")] = None
     timezone: Annotated[str | None, Field(title="Timezone")] = None
@@ -1587,7 +1587,7 @@ class JobSummary(BaseModel):
     engine_version: Annotated[str, Field(title="Engine Version")]
     finished_at: Annotated[AwareDatetime | None, Field(title="Finished At")] = None
     id: Annotated[UUID, Field(title="Id")]
-    kind: Annotated[Kind1, Field(title="Kind")]
+    kind: Annotated[Kind, Field(title="Kind")]
     llm_cost_usd: Annotated[float | None, Field(title="Llm Cost Usd")] = None
     outcomes: OutcomeCounts
     schedule_id: Annotated[UUID | None, Field(title="Schedule Id")] = None
@@ -1999,7 +1999,7 @@ class Delta(BaseModel):
         extra="forbid",
     )
     changes: Annotated[list[FieldChange] | None, Field(title="Changes")] = None
-    kind: Annotated[Kind, Field(title="Kind")]
+    kind: DeltaKind
 
 
 class ExtractRequest(BaseModel):

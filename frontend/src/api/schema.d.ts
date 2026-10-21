@@ -1688,11 +1688,7 @@ export interface components {
         Delta: {
             /** Changes */
             changes?: components["schemas"]["FieldChange"][];
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "new" | "changed" | "same";
+            kind: components["schemas"]["DeltaKind"];
         };
         /**
          * DeltaCounts
@@ -1706,6 +1702,8 @@ export interface components {
             /** Same */
             same: number;
         };
+        /** @enum {string} */
+        DeltaKind: "new" | "changed" | "same";
         /**
          * DistractorKey
          * @description A key value of another product's variant shown on the page (variants spec): an engine row with it is a wrong

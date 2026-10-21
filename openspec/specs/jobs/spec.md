@@ -210,7 +210,7 @@ returns records committed at or after it, missing none. Refs: §14, D-0666, D-06
 ### Requirement: Page delta
 Each record a records task stands for SHALL carry its delta against the previous record of the same entity under the
 same schema on the site (`task_record.delta`, set as the task stores it): `new` when the entity had none, `changed` when
-a published value differs (its fingerprint), with each changed field's previous and new value as published, else `same`.
+a field of the schema published another value, with each changed field's previous and new value as published, else `same`.
 A job's records answer it as `delta` (`kind`, `changes` of `field`, `previous`, `value`; null when not listed by job),
 the job's outcomes count it (`records`: `new`, `changed`, `same`, each record once, at the first task that stood for
 it), and its exports add `_delta` and `_previous` (the changed fields' previous values by name) after the status

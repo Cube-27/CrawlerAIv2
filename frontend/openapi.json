@@ -1825,13 +1825,7 @@
             "type": "array"
           },
           "kind": {
-            "enum": [
-              "new",
-              "changed",
-              "same"
-            ],
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/DeltaKind"
           }
         },
         "required": [
@@ -1863,6 +1857,14 @@
         ],
         "title": "DeltaCounts",
         "type": "object"
+      },
+      "DeltaKind": {
+        "enum": [
+          "new",
+          "changed",
+          "same"
+        ],
+        "type": "string"
       },
       "DistractorKey": {
         "additionalProperties": false,

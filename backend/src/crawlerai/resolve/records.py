@@ -98,11 +98,15 @@ class FieldChange(_Model):
     value: JsonValue
 
 
+# A named schema (OpenAPI component), so the SDKs' generated enum has a name of its own.
+type DeltaKind = RecordDelta
+
+
 class Delta(_Model):
     """What a job's record is against the entity's previous record under the same schema (jobs spec, "Page delta"):
     `new`, `changed` with its changed fields in schema order, or `same`."""
 
-    kind: RecordDelta
+    kind: DeltaKind
     changes: list[FieldChange] = Field(default_factory=list)
 
 

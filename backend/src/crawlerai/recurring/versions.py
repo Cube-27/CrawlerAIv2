@@ -60,7 +60,7 @@ async def store_records(
     for position, draft in enumerate(drafts):
         fingerprint = record_fingerprint(draft.data, schema)
         previous = latest.get(draft.entity_key)
-        deltas.append(_delta(previous, fingerprint))
+        deltas.append(_delta(previous, draft, schema))
         if previous is not None and _same(previous, draft, fingerprint, digest):
             stored.append(StoredRecord(previous["id"], _stored_draft(previous)))
         else:
@@ -86,12 +86,13 @@ async def link_records(
         await conn.execute(pg_insert(TaskRecord).values(rows).on_conflict_do_nothing())
 
 
-def _delta(previous: RowMapping | None, fingerprint: str) -> RecordDelta:
-    """The record against the entity's previous record: its values are a hash of what it published, so equal
-    fingerprints are equal values, whatever the field metadata or the schema document."""
+def _delta(previous: RowMapping | None, draft: RecordDraft, schema: SchemaDef) -> RecordDelta:
+    """The record against the entity's previous record: `changed` when a field of the schema published another value
+    (`changed_fields`, the changes the delta lists), whatever the field metadata; a field the schema no longer has
+    changes nothing."""
     if previous is None:
         return "new"
-    return "same" if previous["fingerprint"] == fingerprint else "changed"
+    return "changed" if changed_fields(previous["data"], draft.data, schema) else "same"
 
 
 async def _lock(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> None:
