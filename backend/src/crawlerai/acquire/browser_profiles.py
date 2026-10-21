@@ -14,6 +14,9 @@ incognito context, which pages can tell apart (a storage quota a fraction of a p
   (Chromium `prefs::kWebRTCIPHandlingPolicy`, with non-proxied UDP and multiple routes off), so WebRTC sends no UDP
   around the SSRF guard's SOCKS proxy (INV-16). Chromium 153 ignores the `--force-webrtc-ip-handling-policy` switch:
   a STUN request still left the machine directly with it.
+- Before each launch of a kept profile its HTTP cache and service workers (with their caches) are deleted, so no
+  response a page captures is one an earlier job's visit left: a later page reads what the site serves now. Cookies
+  and storage stay.
 - A profile whose page was refused (`blocked`) is deleted (`discard_profile`), as a refusal drops the site's stored
   cookie state (`acquire.session`): its cookies and storage carry the refusal.
 """
@@ -47,6 +50,9 @@ _WEBRTC: Final = {
 # Chromium's profile layout: the first profile of a user data directory, and its preferences file (JSON).
 _PREFERENCES: Final = Path("Default") / "Preferences"
 _TEMPORARY_PREFIX: Final = "crawlerai-profile-"
+# The profile's HTTP disk cache and its service workers (registrations, scripts and their Cache Storage), as Chromium
+# lays them out in a profile directory; a browser recreates them empty, as in a new profile.
+_CACHES: Final = (Path("Default") / "Cache", Path("Default") / "Service Worker")
 
 
 def profile_name(site: str, pool: str | None, proxy: ProxyEndpoint | None) -> str:
@@ -73,10 +79,13 @@ class Profile:
 
 
 def open_profile(root: Path | None, name: str | None) -> Profile:
-    """The named profile under `root` when this process can lock it, else a temporary one; its WebRTC policy set."""
+    """The named profile under `root` when this process can lock it, its caches emptied, else a temporary one; its
+    WebRTC policy set."""
     lock = None if root is None or name is None else _locked(root, name)
     if root is not None and name is not None and lock is not None:
         profile = Profile(root / name, lock)
+        for cache in _CACHES:
+            shutil.rmtree(profile.directory / cache, ignore_errors=True)
     else:
         profile = Profile(Path(tempfile.mkdtemp(prefix=_TEMPORARY_PREFIX)), None)
     try:
