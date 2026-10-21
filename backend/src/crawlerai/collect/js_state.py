@@ -9,6 +9,7 @@ Each documented JSON attribute's document follows, located as `attr:<element_xpa
 """
 
 from collections.abc import Sequence
+from typing import cast
 
 from crawlerai.collect.admission import Admitted, Document, admit
 from crawlerai.collect.base import Candidate
@@ -33,13 +34,25 @@ def state_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document]:
     return script_documents(page, diagnostics) + attribute_documents(page)
 
 
+class _ScriptDocuments:
+    """The key of a page's script documents, and the diagnostics reading them gave, in `ParsedPage.derived`."""
+
+
 def script_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document]:
     """The page's inline scripts' state documents, decoded, each addressed by its script's XPath, then its Flight
-    stream's (`flight_document`)."""
-    documents = [Document(decode(data), s.xpath) for s in page.scripts for data in script_state(s, diagnostics)]
-    if (flight := flight_document(page, diagnostics)) is not None:
-        documents.append(flight)
-    return documents
+    stream's (`flight_document`). They are read once per parse (INV-26): a later caller gets the same documents, and
+    the diagnostics reading them gave."""
+    derived = page.derived.get(_ScriptDocuments)
+    if derived is None:
+        found: list[str] = []
+        documents = [Document(decode(data), s.xpath) for s in page.scripts for data in script_state(s, found)]
+        if (flight := flight_document(page, found)) is not None:
+            documents.append(flight)
+        derived = ((), (documents, found))
+        page.derived[_ScriptDocuments] = derived
+    documents, found = cast(tuple[list[Document], list[str]], derived[1])
+    diagnostics.extend(found)
+    return list(documents)
 
 
 def flight_document(page: ParsedPage, diagnostics: list[str]) -> Document | None:

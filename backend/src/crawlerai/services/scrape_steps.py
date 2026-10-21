@@ -329,11 +329,11 @@ async def named_schema(
     engine: AsyncEngine, schema: SchemaRequest | None, page_kind: PageKind | None, llm: LLMClient
 ) -> SchemaDef | None:
     """The schema a request names by id, stores (or matches) inline, or drafts from field names with `llm`, with its
-    label synonyms (`s_labels.with_labels`); None for a prompt, whose draft needs a page. Raises `SchemaUnusable`, the
-    schemas service's `SchemaConflict` or `InvalidSchema` for an inline schema, and the LLM client's `LLMFailure` for
-    field names it could not draft."""
+    label synonyms when stored, else their draft started (`s_labels.with_labels`); None for a prompt, whose draft needs
+    a page. Raises `SchemaUnusable`, the schemas service's `SchemaConflict` or `InvalidSchema` for an inline schema,
+    and the LLM client's `LLMFailure` for field names it could not draft."""
     found = await _stated_schema(engine, schema, page_kind, llm)
-    return None if found is None else await with_labels(engine, llm, found)
+    return None if found is None else with_labels(engine, llm, found)
 
 
 async def _stated_schema(

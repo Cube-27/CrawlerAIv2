@@ -191,13 +191,21 @@ Role S SHALL draft, once per schema and never per page, the labels pages write n
 English and other languages (`llm/roles/s_labels.py`, `prompt_kind` `s_labels`), from the fields' names, types,
 schema.org paths and descriptions, leaving out a label that is also a common word for another thing in another
 language pages are written in (labels carry no language, so a page in that language would read its own word as this
-field's); they are stored with the schema (`schema_def.labels`) when a request first uses
-it (by id, inline, field names or a prompt with `records`). Labels repeating a field's own words or each other's are
-dropped, at most 32 per field. Without a reply (no provider, a failure, the key's draft cap) the schema is used as it
-is and the next use asks again. The call is charged to no job.
+field's); they are stored with the schema (`schema_def.labels`) after a request first uses
+it (by id, inline, field names or a prompt with `records`). The draft runs off the request path: a request uses the
+stored labels, and when there are none it starts the draft in the background (one per schema at a time in a process)
+and goes on with the schema as it is, never waiting on the model; a job's pages extract with labels stored after the
+job pinned its schema without any, while the schema still holds the pinned document. The labelled fields are asked
+for a few per call, concurrently, so no reply reaches its output cap, and the labels are stored only when every call
+answered. Labels
+repeating a field's own words or each other's are dropped, at most 32 per field. A draft that fails in any way (no
+provider, the key's draft cap, any error) stores nothing and fails no request; the next use asks again. The calls are
+charged to no job.
 #### Scenario: Schema used twice
-- **WHEN** two scrapes use one schema with a configured provider
-- **THEN** one `s_labels` call is made and both extract with the stored synonyms
+- **WHEN** two scrapes use one schema without stored labels with a configured provider, the second after the draft
+  is stored
+- **THEN** the first extracts with the schema's own words without waiting on the draft, and the second makes no
+  `s_labels` call and extracts with the stored synonyms
 
 ### Requirement: LLM output is never executed (INV-17)
 Page text SHALL sit in a delimited data section, the model gets no tools, and prompts hold no site names (INV-03, see
