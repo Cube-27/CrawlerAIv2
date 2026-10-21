@@ -63,8 +63,8 @@ as the list price, `product:original_price` as the list price,
 blocks skipped, an `og:title` read without trailing segments naming the site and, when words of its own come before a
 run of its words that the document's one `h1` states (two words or more), as that run, else before a run that a slug
 segment of the page URL path spells (the last such segment the title holds), as that run; an `og:description` holding
-as a run of its words a name of the site, `og:site_name` else the title's trailing site segments, that the item's
-title reading does not hold is the site's summary and not read) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
+as a run of its words a name of the site, a non-blank `og:site_name` else the title's trailing site segments, that
+the title without those segments does not hold is the site's summary and not read, each repeated one on its own) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
 standing in for that thing; a path through another thing, `Product.offers.seller.url`, has none); a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
 element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text; a text value that is the

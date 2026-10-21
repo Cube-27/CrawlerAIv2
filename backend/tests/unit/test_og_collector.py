@@ -171,16 +171,23 @@ def test_an_og_description_naming_the_site_is_the_sites_summary() -> None:
         return [str(c.raw) for c in result.candidates if c.field == "description"]
 
     summary = ("og:description", "Shop kettles online at Synthetic Tools.")
-    assert description(("og:site_name", "Synthetic Tools"), summary) == []
-    # Without `og:site_name`, the title's trailing segment spelling the host's label names the site.
-    titled = _collect(
-        ("og:title", "Steel Kettle 2L | Example Store"),
-        ("og:description", "Shop kettles online at Example Store."),
-        schema=DESCRIBED,
-    )
-    assert [c.field for c in titled.candidates] == ["title"]
     own = ("og:description", "A steel kettle that boils a litre in two minutes.")
     assert description(("og:site_name", "Synthetic Tools"), own) == [own[1]]
+    assert description(("og:site_name", "Synthetic Tools"), summary) == []
+
+    # Without `og:site_name`, the title's trailing segment spelling the host's label names the site.
+    def titled_metas() -> tuple[tuple[str, str], ...]:
+        return (
+            ("og:title", "Steel Kettle 2L | Example Store"),
+            ("og:description", "Shop kettles online at Example Store."),
+        )
+
+    titled = _collect(*titled_metas(), schema=DESCRIBED)
+    assert [c.field for c in titled.candidates] == ["title"]
+    # A blank `og:site_name` names nothing, so the title's site segment still does.
+    assert [c.field for c in _collect(("og:site_name", " "), *titled_metas(), schema=DESCRIBED).candidates] == ["title"]
+    # Each repeated description is judged on its own: the item's own one after a site summary is read.
+    assert description(("og:site_name", "Synthetic Tools"), summary, own) == [own[1]]
     branded = _collect(
         ("og:site_name", "Acme"),
         ("og:title", "Acme Steel Kettle"),
