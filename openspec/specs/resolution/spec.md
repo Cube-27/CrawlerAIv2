@@ -125,7 +125,7 @@ owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_prefere
 ### Requirement: Missing reasons name the furthest stage
 An unpublished field SHALL state its status and reason (the furthest screening stage reached, or the conflict or
 abstain cause, per `resolve/types.py`), and a published one whose candidates disagree its flag (Candidate score);
-every rejected candidate keeps its own reason, in `field_meta`. Refs: SPEC-05 §4.2, D-0438, D-0533.
+every rejected candidate keeps its own reason, in its `candidate` row's `reject_reason` (`field_meta` holds the field's reason only). Refs: SPEC-05 §4.2, D-0438, D-0533.
 
 ### Requirement: Atomic offers (INV-15)
 Price, currency and availability SHALL come from one anchor Offer: the Offer of the variant the target shows (Shown

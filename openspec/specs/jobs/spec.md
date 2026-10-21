@@ -16,7 +16,7 @@ vendor's challenge once (not when the browser rung met that challenge itself) an
 Politeness is per site, shared by every worker. A worker SHALL run up to `TASK_SLOTS` (4: twice its browser's
 `BROWSER_CONTEXTS`) tasks at once, claiming only for a free slot, and SHALL end a task still running at `TASK_DEADLINE` (3 min, inside the lease): cancelled, recorded `failed`
 with outcome `timeout` (a `timeout` error), not retried, so its job moves on; work that outlives its cancellation has its database session
-ended, and the failure is recorded before the lease expires, so the task is never claimed again beside it. Refs: §6,
+ended, and the failure is recorded before the lease expires, so the task is never claimed again beside it; a database error while recording it leaves the task to its lease's expiry, which treats it like any lost lease, requeued after backoff or failed on its last attempt (the old claim's writes then fail its lease fence). Refs: §6,
 D-0006, D-0632, D-0705, D-0764, owner plan 2026-10-19
 (crawl speed).
 #### Scenario: A page that never finishes
