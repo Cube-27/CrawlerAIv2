@@ -478,15 +478,16 @@ async def store_page_record(
     render: RenderOptions | None = None,
 ) -> Stored:
     """Store the extraction of a page and what it keeps: a caller-supplied page keeps its records, complete or not
-    (`partial`), and a crawl-discovered one only complete records (else `no_match`, §23); none when
-    resolution failed (extraction spec). The outcome is `failed` then, and for a caller-supplied detail page without a
-    record; a caller-supplied listing without rows is `partial` with none (its page was read, and listed nothing). A
-    page with a record, or a caller-supplied listing that listed nothing, counts toward its progressive state (an
-    `extracted` or `partial` page: a locate run renders it) and applies the job's `render` (None: the job inherits the
-    surface's) to its surface (`render_surface`): a listing's rows the HTTP page does not carry are for a locate run to
-    find, as any field's are. A page with a record freshens the site's contract with its coverage; a caller-supplied
-    page without one counts towards its staleness (`acquire.memory.learn_extraction`). A page `config` ran on joins the
-    config's drift window (learning-configs spec). `page_url` is `store_extraction`'s."""
+    (`partial`), and a crawl-discovered one only complete records (else `no_match`, §23); none when resolution failed
+    (extraction spec). The outcome is `failed` then; a caller-supplied detail page that states no entity of the schema
+    is `no_match` (`resolve.records.states_entity`); a caller-supplied listing without rows is `partial` with none (its
+    page was read, and listed nothing). A page with a record, or a caller-supplied listing that listed nothing, counts
+    toward its progressive state (an `extracted` or `partial` page: a locate run renders it) and applies the job's
+    `render` (None: the job inherits the surface's) to its surface (`render_surface`): a listing's rows the HTTP page
+    does not carry are for a locate run to find, as any field's are. A page with a record freshens the site's contract
+    with its coverage; a caller-supplied page without one counts towards its staleness
+    (`acquire.memory.learn_extraction`). A page `config` ran on joins the config's drift window (learning-configs spec).
+    `page_url` is `store_extraction`'s."""
     stored = await store_extraction(
         conn,
         task,
@@ -513,7 +514,11 @@ async def store_page_record(
         if listed_nothing:
             await _count_page(conn, site_id, schema)
             await render_surface(conn, task.job_id, site_id, schema, render, extraction)
-        return replace(stored, outcome="partial" if listed_nothing else "failed")
+        if listed_nothing:
+            return replace(stored, outcome="partial")
+        # A detail page that states no entity of the schema (resolution spec, "Incomplete pages") is `no_match`; one
+        # whose resolution failed, `failed`.
+        return stored if stored.outcome == "no_match" else replace(stored, outcome="failed")
     return stored
 
 

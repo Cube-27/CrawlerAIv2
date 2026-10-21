@@ -91,6 +91,30 @@ def test_a_complete_page_is_extracted_with_its_published_values() -> None:
     assert record.entity_key == hashlib.sha256(f"{SITE}{URL}".encode()).hexdigest()
 
 
+def test_a_page_stating_no_needed_field_beyond_its_own_address_has_no_record() -> None:
+    """A maintenance or error page served for the URL: prose, and the page's own address, but nothing the record
+    needs read from the page."""
+    address = _published(URL).model_copy(update={"derived_by": "final_url", "source_kind": "derived"})
+    schema = _schema([["sku", "mpn"]])
+    stating = {"sku": _published("A-1"), "gtin": _unpublished(), "mpn": _unpublished()}
+
+    assert assemble(schema, {**stating, "sku": address}, site_id=SITE, canonical_url=URL, caller_supplied=True) == (
+        "no_match",
+        None,
+    )
+    assert (
+        assemble(
+            schema,
+            {**stating, "sku": _unpublished(), "gtin": _published()},
+            site_id=SITE,
+            canonical_url=URL,
+            caller_supplied=True,
+        )[0]
+        == "no_match"
+    )
+    assert assemble(schema, stating, site_id=SITE, canonical_url=URL, caller_supplied=True)[0] == "extracted"
+
+
 # Record confidence (§10)
 
 
