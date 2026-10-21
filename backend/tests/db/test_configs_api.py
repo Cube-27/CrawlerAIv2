@@ -11,15 +11,12 @@ from typing import Any, Final
 
 import httpx
 import pytest
-from sqlalchemy import delete, insert, select
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy import insert, select
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchResult
-from crawlerai.api.app import create_app
-from crawlerai.db.keys import create_key
 from crawlerai.db.models import (
-    ApiKey,
     CaptureId,
     ExtractionConfig,
     ExtractionConfigId,
@@ -37,6 +34,7 @@ from crawlerai.resolve.task import store_extraction
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
 from crawlerai.storage.fs import FsStore
+from tests.db.support import api
 
 pytestmark = pytest.mark.anyio
 
@@ -178,17 +176,13 @@ async def world(
     engine_data: EngineData,
     fetch_result: Callable[..., FetchResult],
     tmp_path: Path,
-) -> AsyncIterator[World]:
+) -> World:
     async with engine.begin() as conn:
         project = select(Project.id).where(Project.name == "default").scalar_subquery()
         site = insert(Site).values(project_id=project, host=own_origin.removeprefix("https://"))
         site_id = (await conn.execute(site.returning(Site.id))).scalar_one()
         schema = await registry.create(conn, _document(schema_name), "user")
-    yield World(engine, FsStore(tmp_path / "objects"), own_origin, site_id, schema, engine_data, fetch_result)
-    # The site's configs, which `own_origin` does not know of, go before it deletes the site.
-    async with engine.begin() as conn:
-        await conn.execute(delete(ProgressiveState).where(ProgressiveState.site_id == site_id))
-        await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site_id))
+    return World(engine, FsStore(tmp_path / "objects"), own_origin, site_id, schema, engine_data, fetch_result)
 
 
 @pytest.fixture
@@ -199,30 +193,13 @@ def app_data(world: World) -> EngineData | None:
 
 @pytest.fixture
 async def client(
-    world: World, database_url: str, app_data: EngineData | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    app_env: pytest.MonkeyPatch, world: World, app_data: EngineData | None
 ) -> AsyncIterator[httpx.AsyncClient]:
     """The app against the test database, reading captures from the world's object store."""
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + (tmp_path / "objects").as_posix().lstrip("/"))
-    monkeypatch.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
-    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
-    async with world.engine.begin() as conn:
-        key = await create_key(conn, "configs-api-test")
-    app = create_app()
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url="http://api.test",
-            headers={"authorization": f"Bearer {key.key}"},
-        ) as client,
-    ):
+    app_env.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
+    async with api(world.engine) as (app, client):
         app.state.engine_data = app_data
         yield client
-    keys = create_async_engine(database_url)
-    async with keys.begin() as conn:
-        await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
-    await keys.dispose()
 
 
 async def _pages(world: World, count: int) -> list[CaptureId]:

@@ -1,10 +1,10 @@
 """The block history (acquisition spec, "Acquisition contract and block history"): refused HTTP requests start a
 browser-first window only when the browser then passed, and a browser the site refuses too ends one."""
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 
 import pytest
-from sqlalchemy import delete, insert, select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.memory import learn_fetch, remembered
@@ -21,16 +21,13 @@ _POLICY = FetchPolicy(method_hint="browser")
 
 
 @pytest.fixture
-async def site_id(engine: AsyncEngine) -> AsyncIterator[SiteId]:
-    """A site of its own, deleted with its memory after the test: memory is learned in transactions of its own."""
+async def site_id(engine: AsyncEngine) -> SiteId:
+    """A site of its own: memory is learned in transactions of its own."""
     project = select(Project.id).where(Project.name == "default").scalar_subquery()
     async with engine.begin() as conn:
-        await conn.execute(delete(Site).where(Site.host == _HOST))
         values = {"project_id": project, "host": _HOST}
         site: SiteId = (await conn.execute(insert(Site).values(values).returning(Site.id))).scalar_one()
-    yield site
-    async with engine.begin() as conn:
-        await conn.execute(delete(Site).where(Site.id == site))
+    return site
 
 
 async def _method(engine: AsyncEngine, site_id: SiteId) -> str:

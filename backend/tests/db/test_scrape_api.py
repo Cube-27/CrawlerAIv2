@@ -1,38 +1,25 @@
 """`POST /v1/scrape` over HTTP (rest-api spec): what a client sends and gets back. What a scrape does is the
 service's (`test_scrape_service.py`)."""
 
-import asyncio
 import json
-from collections.abc import AsyncIterator, Callable
-from ipaddress import ip_address
-from pathlib import Path
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.api.app import create_app
-from crawlerai.db.keys import create_key
-from crawlerai.db.models import ApiKey
 from crawlerai.llm.client import MeteredClient, ProviderReply
 from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaDef, SchemaDocument
+from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetching import Fetching
-from crawlerai.storage.fs import FsStore
+from tests.db.support import PRIVATE_HOST, TITLE, Web, api
 from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
 
-PRIVATE_HOST = "intranet.example.test"
 PAGE = b"""<!doctype html><html lang="en"><head><title>Blue kettle</title></head>
 <body><h1>Blue kettle</h1><a href="/kettles/red">Red kettle</a></body></html>"""
 DRAFT_REPLY = ProviderReply(
@@ -51,45 +38,6 @@ DRAFT_REPLY = ProviderReply(
 
 
 @pytest.fixture
-async def database(
-    database_url: str, engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> AsyncIterator[AsyncEngine]:
-    """The app's settings pointed at the test database, with no LLM provider key. `engine` deletes the jobs
-    afterwards; the keys a test added are deleted here."""
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + tmp_path.as_posix().lstrip("/"))
-    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
-    monkeypatch.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
-    keys_engine = create_async_engine(database_url)
-    async with keys_engine.connect() as conn:
-        keys = set((await conn.execute(select(ApiKey.id))).scalars())
-    yield engine
-    async with keys_engine.begin() as conn:
-        await conn.execute(delete(ApiKey).where(ApiKey.id.not_in(keys)))
-    await keys_engine.dispose()
-
-
-@pytest.fixture
-def pages(own_origin: str) -> dict[str, tuple[int, bytes]]:
-    return {f"{own_origin}/robots.txt": (200, b"User-agent: *\nAllow: /\n")}
-
-
-@pytest.fixture
-def fetching(fetch_result: Callable[..., FetchResult], pages: dict[str, tuple[int, bytes]], tmp_path: Path) -> Fetching:
-    async def http(url: str, policy: FetchPolicy) -> FetchResult:
-        if url.endswith("/slow"):
-            await asyncio.sleep(5)
-        status, body = pages.get(url, (404, b""))
-        return fetch_result(url, status, body, block_class="ok" if status == 200 else "not_found", policy=policy)
-
-    async def resolve(host: str) -> list[IPAddress]:
-        return [ip_address("10.0.0.7" if host == PRIVATE_HOST else "93.184.215.14")]
-
-    store = FsStore(tmp_path / "objects")
-    return Fetching(Rungs(http=http, browser=http), SafeConnector(resolve), store, HostLimiter())
-
-
-@pytest.fixture
 def provider() -> FakeProvider | None:
     """The LLM provider the app's client asks: one role S draft, scripted. None keeps the app's own client."""
     return FakeProvider([DRAFT_REPLY])
@@ -103,23 +51,19 @@ def data(engine_data: EngineData) -> EngineData | None:
 
 @pytest.fixture
 async def client(
-    database: AsyncEngine, fetching: Fetching, provider: FakeProvider | None, data: EngineData | None
+    app_env: pytest.MonkeyPatch,
+    engine: AsyncEngine,
+    fetching: Fetching,
+    provider: FakeProvider | None,
+    data: EngineData | None,
 ) -> AsyncIterator[httpx.AsyncClient]:
-    async with database.begin() as conn:
-        key = await create_key(conn, "scrape-api-test")
-    app = create_app()
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url="http://api.test",
-            headers={"authorization": f"Bearer {key.key}"},
-        ) as client,
-    ):
+    """The app with no LLM provider key, fetching `web`, its client asking `provider`."""
+    app_env.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
+    async with api(engine) as (app, client):
         app.state.fetching = fetching
         app.state.engine_data = data
         if provider is not None:
-            app.state.llm = MeteredClient([provider], database)
+            app.state.llm = MeteredClient([provider], engine)
         yield client
 
 
@@ -128,10 +72,10 @@ async def _post(client: httpx.AsyncClient, body: dict[str, Any]) -> httpx.Respon
 
 
 async def test_answers_the_requested_formats_and_only_those(
-    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str
+    client: httpx.AsyncClient, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    pages[url] = (200, PAGE)
+    web.serve(url, PAGE)
 
     response = await _post(client, {"url": url, "formats": ["links", "metadata"]})
 
@@ -189,10 +133,10 @@ async def test_a_private_target_is_an_ssrf_problem(client: httpx.AsyncClient) ->
 
 
 async def test_a_prompt_returns_its_draft_and_reuses_it(
-    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str, prompt: str
+    client: httpx.AsyncClient, web: Web, own_origin: str, prompt: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    pages[url] = (200, PAGE)
+    web.serve(url, PAGE)
     body = {"url": url, "formats": ["links"], "schema": {"prompt": prompt}}
 
     first, second = await _post(client, body), await _post(client, body)
@@ -212,8 +156,6 @@ async def test_a_prompt_returns_its_draft_and_reuses_it(
 
 # --- records (§4.4) ---
 
-TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
-PRICE = {"type": "money", "required": True, "description": "The price", "schema_org": "Offer.price+priceCurrency"}
 # §13.1's six attributes, plus `reason`, `source_kind` and `derived_by` from `field_meta` (§4.4).
 FIELD_MEMBERS = {
     "value",
@@ -239,24 +181,15 @@ def _product_page(url: str) -> bytes:
     return PAGE.replace(b"</head>", f'<script type="application/ld+json">{json.dumps(node)}</script></head>'.encode())
 
 
-@pytest.fixture
-async def kettle_schema(database: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = SchemaDocument.model_validate(
-        {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
-    )
-    async with database.begin() as conn:
-        return await registry.create(conn, document, "user")
-
-
 def _records(url: str, schema: dict[str, Any]) -> dict[str, Any]:
     return {"url": url, "formats": ["markdown", "records"], "schema": schema, "page_kind": "detail"}
 
 
 async def test_records_answer_every_field_with_its_attributes(
-    client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str, kettle_schema: SchemaDef
+    client: httpx.AsyncClient, web: Web, own_origin: str, kettle_schema: SchemaDef
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    pages[url] = (200, _product_page(url))
+    web.serve(url, _product_page(url))
 
     response = await _post(client, _records(url, {"id": str(kettle_schema.id)}))
 

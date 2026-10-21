@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from crawlerai.search.providers import SearchFailed
 from crawlerai.search.results import Hit
-from tests.db.conftest import PRIVATE_HOST
+from tests.db.support import PRIVATE_HOST
 
 pytestmark = pytest.mark.anyio
 

@@ -5,10 +5,8 @@ is not a public address, wherever the target comes from: a URL the request names
 import asyncio
 import functools
 import itertools
-import threading
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
-from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from dataclasses import dataclass
 from ipaddress import IPv4Address, ip_address
 from pathlib import Path
 from typing import Any
@@ -20,18 +18,15 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import TextContent
 from pydantic import SecretStr
-from sqlalchemy import delete, func, select, update
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.http import fetch_http
-from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.api.app import create_app
 from crawlerai.core.settings import IMPERSONATE_DEFAULT, Settings
-from crawlerai.db.keys import create_key
-from crawlerai.db.models import ApiKey, Job, JobId, JobKind, UrlTask
+from crawlerai.db.models import Job, JobId, JobKind, UrlTask
 from crawlerai.llm.client import NO_LLM
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
@@ -41,11 +36,12 @@ from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import TaskHandler, run_worker
+from tests.db.support import TITLE, api, unpaced
+from tests.local_server import Reply, Server, serving
 
 pytestmark = pytest.mark.anyio
 
 NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
-TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
 
 # The stub resolver's names (RFC 2606 `.test`): a name whose first label is `PRIVATE_LABEL` has a private address,
 # and any other name not in `DNS` a public one.
@@ -69,45 +65,17 @@ def html(content: str) -> str:
 # --- the local server and the guard in front of it ----------------------------------------------------------------
 
 
-@dataclass
-class Server:
-    """Answers each path from `routes` with (status, headers, body); anything else is a 404."""
+def page(server: Server, path: str, body: str, content_type: str = "text/html; charset=utf-8") -> None:
+    server.route(path, Reply(200, (("Content-Type", content_type),), body.encode()))
 
-    port: int
-    routes: dict[str, tuple[int, tuple[tuple[str, str], ...], bytes]] = field(default_factory=dict)
 
-    def page(self, path: str, body: str, content_type: str = "text/html; charset=utf-8") -> None:
-        self.routes[path] = (200, (("Content-Type", content_type),), body.encode())
-
-    def redirect(self, path: str, location: str) -> None:
-        self.routes[path] = (302, (("Location", location),), b"")
+def redirect(server: Server, path: str, location: str) -> None:
+    server.route(path, Reply(302, (("Location", location),)))
 
 
 @pytest.fixture
 def server() -> Iterator[Server]:
-    class Handler(BaseHTTPRequestHandler):
-        protocol_version = "HTTP/1.1"
-
-        def do_GET(self) -> None:
-            status, headers, body = srv.routes.get(self.path, (404, (), b"no route"))
-            self.send_response(status)
-            for name, value in headers:
-                self.send_header(name, value)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, format: str, *args: object) -> None:
-            pass
-
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    httpd.daemon_threads = True
-    srv = Server(port=httpd.server_address[1])  # the handler reads it when a request arrives
-    thread = threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
-    thread.start()
-    yield srv
-    httpd.shutdown()
-    httpd.server_close()
+    yield from serving()
 
 
 async def resolve(host: str) -> list[IPAddress]:
@@ -142,18 +110,14 @@ def site(server: Server, own_origin: str) -> str:
 
 @pytest.fixture
 def fetching(server: Server, site: str, tmp_path: Path) -> Fetching:
-    """The real HTTP rung through the guard; the browser is never needed. The limiter's clock jumps ahead on every
-    reading, so the site's rate never makes a test wait."""
+    """The real HTTP rung through the guard, unpaced; the browser is never needed."""
     connector = SiteConnector(urlsplit(site).hostname or "", server.port)
     http = functools.partial(fetch_http, engine_version="test", impersonate=IMPERSONATE_DEFAULT, connector=connector)
 
     async def browser(url: str, policy: FetchPolicy) -> FetchResult:
         raise AssertionError("no page here needs a browser")
 
-    clock = itertools.count(step=3600)
-    limiter = HostLimiter(clock=lambda: float(next(clock)))
-    rungs = Rungs(http=http, browser=browser)
-    return Fetching(rungs, connector, FsStore(tmp_path / "objects"), limiter)
+    return Fetching(Rungs(http=http, browser=browser), connector, FsStore(tmp_path / "objects"), unpaced())
 
 
 @pytest.fixture
@@ -165,37 +129,13 @@ async def schema_id(engine: AsyncEngine, schema_name: str) -> str:
 
 @pytest.fixture
 async def client(
-    database_url: str,
-    engine: AsyncEngine,
-    engine_data: EngineData,
-    fetching: Fetching,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    app_env: pytest.MonkeyPatch, engine: AsyncEngine, engine_data: EngineData, fetching: Fetching
 ) -> AsyncIterator[httpx.AsyncClient]:
-    """The app against the test database, fetching through `fetching`. `engine` deletes the jobs afterwards; the key
-    is deleted here."""
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + tmp_path.as_posix().lstrip("/"))
-    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
-    async with engine.begin() as conn:
-        key = await create_key(conn, "ssrf-matrix-test")
-    app = create_app()
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url="http://api.test",
-            headers={"authorization": f"Bearer {key.key}"},
-        ) as client,
-    ):
+    """The app against the test database, fetching through `fetching`."""
+    async with api(engine) as (app, client):
         app.state.fetching = fetching
         app.state.engine_data = engine_data
         yield client
-    keys_engine = create_async_engine(database_url)
-    async with keys_engine.begin() as conn:
-        await conn.execute(update(Job).where(Job.api_key_id == key.id).values(api_key_id=None))
-        await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
-    await keys_engine.dispose()
 
 
 async def job_count(engine: AsyncEngine) -> int:
@@ -414,7 +354,7 @@ async def test_a_page_redirected_to_a_refused_target_is_a_problem(
     location: str,
     reason: str,
 ) -> None:
-    server.redirect(moved, location)
+    redirect(server, moved, location)
 
     response = await client.post(path, json=body(site))
 
@@ -445,7 +385,7 @@ async def test_a_job_task_redirected_to_a_refused_target_fails_with_the_guards_r
     schema_id: str,
     submit: Callable[[str, str], tuple[str, dict[str, Any]]],
 ) -> None:
-    server.redirect("/moved", "http://intranet.example.test/admin")
+    redirect(server, "/moved", "http://intranet.example.test/admin")
     path, body = submit(site, schema_id)
 
     response = await client.post(path, json=body)
@@ -471,10 +411,10 @@ async def test_a_crawl_takes_private_locations_only_on_its_site_and_the_guard_re
     on_site = [f"http://intranet.{host}/admin", f"http://intranet.{host}:8080/meta"]
     off_site = ["http://intranet.example.test/admin", "http://169.254.169.254/latest/meta-data/"]
     entries = "".join(f"<url><loc>{loc}</loc></url>" for loc in (f"{site}/p/1", on_site[0], off_site[0]))
-    server.page("/robots.txt", f"User-agent: *\nAllow: /\nSitemap: {site}/s.xml\n", "text/plain")
-    server.page("/s.xml", f'<?xml version="1.0"?><urlset xmlns="{NS}">{entries}</urlset>', "application/xml")
-    server.page("/", html("".join(f'<a href="{href}">link</a>' for href in ("/p/1", on_site[1], off_site[1]))))
-    server.page("/p/1", html("<h1>Kettle</h1>"))
+    page(server, "/robots.txt", f"User-agent: *\nAllow: /\nSitemap: {site}/s.xml\n", "text/plain")
+    page(server, "/s.xml", f'<?xml version="1.0"?><urlset xmlns="{NS}">{entries}</urlset>', "application/xml")
+    page(server, "/", html("".join(f'<a href="{href}">link</a>' for href in ("/p/1", on_site[1], off_site[1]))))
+    page(server, "/p/1", html("<h1>Kettle</h1>"))
 
     response = await client.post("/v1/crawl", json={"url": f"{site}/", "formats": ["markdown"], "include": ["*"]})
     assert response.status_code == 202, response.text

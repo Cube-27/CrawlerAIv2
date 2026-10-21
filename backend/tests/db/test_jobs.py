@@ -12,14 +12,11 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import delete, func, insert, select, update
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
+from sqlalchemy import func, insert, select, update
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.api.app import create_app
 from crawlerai.core.ids import uuid7
-from crawlerai.db.keys import create_key
 from crawlerai.db.models import (
-    ApiKey,
     Capture,
     CaptureId,
     Extraction,
@@ -49,6 +46,7 @@ from crawlerai.services.jobs import (
 )
 from crawlerai.services.records import RecordPage
 from crawlerai.storage.fs import FsStore
+from tests.db.support import api
 
 pytestmark = pytest.mark.anyio
 
@@ -393,29 +391,11 @@ async def test_results_export_the_records_in_the_schemas_columns(world: World) -
 
 
 @pytest.fixture
-async def client(
-    world: World, database_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> AsyncIterator[httpx.AsyncClient]:
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + (tmp_path / "objects").as_posix().lstrip("/"))
-    monkeypatch.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
-    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
-    async with world.engine.begin() as conn:
-        key = await create_key(conn, "jobs-api-test")
-    app = create_app()
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url="http://api.test",
-            headers={"authorization": f"Bearer {key.key}"},
-        ) as client,
-    ):
+async def client(app_env: pytest.MonkeyPatch, world: World) -> AsyncIterator[httpx.AsyncClient]:
+    """The app with no LLM provider key."""
+    app_env.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
+    async with api(world.engine) as (_, client):
         yield client
-    keys = create_async_engine(database_url)
-    async with keys.begin() as conn:
-        await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
-    await keys.dispose()
 
 
 async def test_job_problems(client: httpx.AsyncClient, world: World) -> None:

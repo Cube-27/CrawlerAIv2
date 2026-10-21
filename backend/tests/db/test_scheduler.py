@@ -8,33 +8,27 @@ from typing import Any
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.settings import Settings
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.keys import create_key
 from crawlerai.db.models import (
-    ApiKey,
     Job,
-    JobEvent,
     JobId,
     Project,
     UrlTask,
     WebhookDelivery,
-    WebhookEvent,
 )
 from crawlerai.db.queue import claim_tasks
 from crawlerai.llm.client import NO_LLM
 from crawlerai.scheduler.loop import Periodic, periodic, run_scheduler
-from crawlerai.services.fetching import Fetching
 from crawlerai.services.schedules import Submitting
 from crawlerai.storage.fs import FsStore
-from tests.db.conftest import resolve
+from tests.db.support import fetching_from
 
 pytestmark = pytest.mark.anyio
 
@@ -49,7 +43,7 @@ async def _no_fetch(url: str, policy: FetchPolicy) -> FetchResult:
 
 # No schedule is due in these tests but in the one that makes one, which refuses no target and fetches nothing.
 _SUBMITTING = Submitting(
-    Fetching(Rungs(http=_no_fetch, browser=_no_fetch), SafeConnector(resolve), FsStore(Path("unused")), HostLimiter()),
+    fetching_from(Rungs(http=_no_fetch, browser=_no_fetch), Path("unused")),
     None,
     NO_LLM,
 )
@@ -128,13 +122,6 @@ async def test_the_scheduler_delivers_an_ended_jobs_webhook(engine: AsyncEngine,
             status = select(WebhookDelivery.status).where(WebhookDelivery.job_id == job_id)
             return (await conn.execute(status)).scalar_one_or_none() == "delivered"
 
-    try:
-        await _scheduler_until(engine, periodic(FsStore(tmp_path), _no_fetch, post, _SUBMITTING), delivered)
-    finally:
-        async with engine.begin() as conn:
-            for model in (WebhookEvent, WebhookDelivery, JobEvent, UrlTask):
-                await conn.execute(delete(model).where(model.job_id == job_id))
-            await conn.execute(delete(Job).where(Job.id == job_id))
-            await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
+    await _scheduler_until(engine, periodic(FsStore(tmp_path), _no_fetch, post, _SUBMITTING), delivered)
 
     assert sent == [hook]

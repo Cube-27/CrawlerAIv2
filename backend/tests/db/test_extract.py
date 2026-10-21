@@ -6,11 +6,9 @@ fake provider: no network. The limiter's clock jumps ahead on every reading, so 
 """
 
 import asyncio
-import itertools
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -18,12 +16,9 @@ from pydantic import JsonValue, SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.content.page import ParsedPage
-from crawlerai.core.capture import BlockClass
+from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobId, ProgressiveState, Record, UrlTask
 from crawlerai.llm.client import (
@@ -37,34 +32,21 @@ from crawlerai.llm.client import (
 from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaDef, SchemaDocument
+from crawlerai.schemas.types import SchemaDef
 from crawlerai.services import jobs
 from crawlerai.services.extract import DraftTimedOut, ExtractRequest, NoSamplePage, NothingToExtract, submit_extract
 from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.scrape import RecordsUnavailable
 from crawlerai.services.scrape_request import SchemaUnusable
-from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import run_worker
-from tests.db.conftest import PRIVATE_HOST, resolve
+from tests.db import support
+from tests.db.support import PRICE, PRIVATE_HOST, TITLE
 from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
 
 NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
-TITLE: dict[str, JsonValue] = {
-    "type": "text",
-    "required": True,
-    "description": "The product's name",
-    "schema_org": "Product.name",
-}
-PRICE: dict[str, JsonValue] = {
-    "type": "money",
-    "required": True,
-    "description": "The price",
-    "schema_org": "Offer.price+priceCurrency",
-}
 NO_LLM = Unconfigured("no provider")
 
 
@@ -91,53 +73,27 @@ def _urlset(*locs: str) -> bytes:
 
 
 @dataclass
-class Web:
-    """Answers each URL from `pages`; anything else is a 404. Records every URL fetched; `slow` URLs take a minute, and
-    `held` ones answer once their event is set."""
+class Web(support.Web):
+    """`support.Web`, where `slow` URLs take a minute, and `held` ones answer once their event is set."""
 
-    fetch_result: Callable[..., FetchResult]
-    pages: dict[str, tuple[int, bytes, BlockClass]] = field(default_factory=dict)
-    fetched: list[str] = field(default_factory=list)
     slow: set[str] = field(default_factory=set)
     held: dict[str, asyncio.Event] = field(default_factory=dict)
 
-    async def fetch(self, url: str, policy: FetchPolicy) -> FetchResult:
-        self.fetched.append(url)
+    async def fetch(self, method: CaptureMethod, url: str, policy: FetchPolicy) -> FetchResult:
+        self.fetched.append((method, url))
         if url in self.slow:
             await asyncio.sleep(60)
         if url in self.held:
             await self.held[url].wait()
-        status, body, block_class = self.pages.get(url, (404, b"gone", "not_found"))
-        return self.fetch_result(url, status, body, block_class=block_class)
-
-    def serve(self, url: str, body: bytes) -> None:
-        self.pages[url] = (200, body, "ok")
+        return self.answer(url, method, policy)
 
 
 @pytest.fixture
 def web(fetch_result: Callable[..., FetchResult], own_origin: str) -> Web:
     web = Web(fetch_result)
-    web.serve(f"{own_origin}/robots.txt", f"User-agent: *\nAllow: /\nSitemap: {own_origin}/sitemap.xml\n".encode())
+    web.robots(own_origin, f"User-agent: *\nAllow: /\nSitemap: {own_origin}/sitemap.xml\n".encode())
     web.serve(f"{own_origin}/", b'<!doctype html><html><body><a href="/p/4">Four</a></body></html>')
     return web
-
-
-@pytest.fixture
-def fetching(web: Web, tmp_path: Path) -> Fetching:
-    clock = itertools.count(step=3600)
-    return Fetching(
-        Rungs(http=web.fetch, browser=web.fetch),
-        SafeConnector(resolve),
-        FsStore(tmp_path / "objects"),
-        HostLimiter(clock=lambda: float(next(clock))),
-    )
-
-
-@pytest.fixture
-async def kettle_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
-    async with engine.begin() as conn:
-        return await registry.create(conn, SchemaDocument.model_validate(document), "user")
 
 
 def _request(urls: list[str], schema: dict[str, Any], **members: Any) -> ExtractRequest:
@@ -276,7 +232,7 @@ async def test_a_refused_target_queues_nothing_and_fetches_nothing(
         await submit_extract(engine, fetching, request, llm=NO_LLM, data=engine_data)
 
     assert rejected.value.member == refused
-    assert (await _extract_jobs(engine), web.fetched) == ([], [])
+    assert (await _extract_jobs(engine), web.urls()) == ([], [])
 
 
 async def test_records_need_the_engine_data(
@@ -366,7 +322,7 @@ async def test_a_prompt_without_a_draft_fails_its_job_with_no_tasks(
 
     [(job_id, status)] = await _extract_jobs(engine)
     assert (status, await _tasks(engine, job_id)) == ("failed", [])
-    assert urls[3] not in web.fetched
+    assert urls[3] not in web.urls()
 
 
 async def test_a_cache_only_prompt_is_drafted_from_stored_captures_and_fetches_nothing(
@@ -385,7 +341,7 @@ async def test_a_cache_only_prompt_is_drafted_from_stored_captures_and_fetches_n
         engine, fetching, _request(urls[:1], _by_id(kettle_schema)), llm=NO_LLM, data=engine_data
     )
     await _run(engine, fetching, engine_data, stored.job_id)
-    fetched = len(web.fetched)
+    fetched = len(web.urls())
     provider = FakeProvider([_draft_reply()])
     request = _request(urls, {"prompt": prompt}, fetch={"cache": "only"})
 
@@ -396,7 +352,7 @@ async def test_a_cache_only_prompt_is_drafted_from_stored_captures_and_fetches_n
     call = provider.calls[0]  # the draft; its label synonyms (`s_labels`) follow in the background
     assert "Blue kettle boils" in call.user
     assert "Red kettle" not in call.user
-    assert len(web.fetched) == fetched
+    assert len(web.urls()) == fetched
 
 
 async def test_a_cache_only_prompt_without_a_stored_capture_fetches_nothing_and_fails(
@@ -410,7 +366,7 @@ async def test_a_cache_only_prompt_without_a_stored_capture_fetches_nothing_and_
     with pytest.raises(NoSamplePage):
         await submit_extract(engine, fetching, request, llm=llm, data=engine_data)
 
-    assert web.fetched == []
+    assert web.urls() == []
 
 
 async def test_a_draft_past_its_timeout_fails_its_job(
@@ -439,7 +395,7 @@ async def test_a_job_cancelled_during_its_draft_queues_no_task(
         submit_extract(engine, fetching, _request([url], {"prompt": prompt}), llm=llm, data=engine_data)
     )
     async with asyncio.timeout(30):
-        while url not in web.fetched:
+        while url not in web.urls():
             await asyncio.sleep(0.05)
     [(job_id, _)] = await _extract_jobs(engine)
     async with engine.begin() as conn:

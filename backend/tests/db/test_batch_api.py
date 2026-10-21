@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.db.models import Job, UrlTask
-from tests.db.conftest import PRIVATE_HOST
+from tests.db.support import PRIVATE_HOST
 
 pytestmark = pytest.mark.anyio
 

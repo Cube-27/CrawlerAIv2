@@ -3,24 +3,21 @@ D-0731): at the endpoint host's rate, with no robots.txt request (owner decision
 (D-1381)."""
 
 import json
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
-from sqlalchemy import delete, insert, select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import Job, JobId, Project, Site, UsageEvent
+from crawlerai.db.models import Job, JobId, Project, UsageEvent
 from crawlerai.services.fetching import Fetching, learning_replay
-from crawlerai.storage.fs import FsStore
-from tests.db.conftest import resolve
+from tests.db.support import fetching_from
 
 pytestmark = pytest.mark.anyio
 
@@ -52,17 +49,14 @@ class Web:
 
 
 @pytest.fixture
-async def api_host(engine: AsyncEngine) -> AsyncIterator[str]:
-    """An endpoint host no other test uses; the site row the replay creates for it is deleted afterwards."""
-    host = f"api-{uuid7().hex[-12:]}.example.test"
-    yield host
-    async with engine.begin() as conn:
-        await conn.execute(delete(Site).where(Site.host == host))
+def api_host() -> str:
+    """An endpoint host no other test uses."""
+    return f"api-{uuid7().hex[-12:]}.example.test"
 
 
 @pytest.fixture
 async def job_id(engine: AsyncEngine) -> JobId:
-    """A learn job whose usage the replays count as; the `engine` fixture deletes it afterwards."""
+    """A learn job whose usage the replays count as."""
     project = select(Project.id).where(Project.name == "default").scalar_subquery()
     values = {"project_id": project, "kind": "learn", "request": {}, "engine_version": "test"}
     async with engine.begin() as conn:
@@ -71,8 +65,7 @@ async def job_id(engine: AsyncEngine) -> JobId:
 
 
 def _fetching(web: Web, tmp_path: Path) -> Fetching:
-    rungs = Rungs(http=web.http, browser=web.browser, json=web.json)
-    return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
+    return fetching_from(Rungs(http=web.http, browser=web.browser, json=web.json), tmp_path / "objects")
 
 
 async def test_a_replay_counts_as_the_jobs_usage(

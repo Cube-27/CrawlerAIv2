@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.db.models import ApiKey, Job, UrlTask
-from tests.db.conftest import PRIVATE_HOST
+from tests.db.support import KEY_LABEL, PRIVATE_HOST
 
 pytestmark = pytest.mark.anyio
 
@@ -31,7 +31,7 @@ async def test_a_crawl_is_accepted_with_its_start_task_and_key(
     async with engine.connect() as conn:
         task = (await conn.execute(select(UrlTask.url, UrlTask.depth).where(UrlTask.job_id == job_id))).one()
         label = select(ApiKey.label).join(Job, Job.api_key_id == ApiKey.id).where(Job.id == job_id)
-        assert (await conn.execute(label)).scalar_one() == "submit-api-test"  # its secret signs the webhook
+        assert (await conn.execute(label)).scalar_one() == KEY_LABEL  # its secret signs the webhook
     assert tuple(task) == (URL, 0)
     status = await submit_client.get(f"/v1/jobs/{job_id}")
     assert (status.json()["kind"], status.json()["counts"]["queued"]) == ("crawl", 1)

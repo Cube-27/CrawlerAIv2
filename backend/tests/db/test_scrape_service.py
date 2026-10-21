@@ -1,7 +1,6 @@
 """The scrape service without HTTP (rest-api spec): one URL fetched at once, its content formats, and the job,
 task, capture and usage rows it leaves."""
 
-import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from ipaddress import ip_address
@@ -13,17 +12,17 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
+from crawlerai.acquire.ssrf import IPAddress
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.challenges import SIGNATURES
-from crawlerai.core.capture import BlockClass, CaptureMethod
+from crawlerai.core.capture import CaptureMethod
 from crawlerai.db.models import Capture, Job, UrlTask
 from crawlerai.services.fetching import Fetching, TargetRejected
 from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.storage.base import ObjectStore
 from crawlerai.storage.fs import FsStore
+from tests.db.support import Page, Web, fetching_from
 
 pytestmark = pytest.mark.anyio
 
@@ -41,29 +40,6 @@ PAGE = b"""<!doctype html><html lang="en"><head><title>Blue  kettle</title>
 
 
 @dataclass
-class Web:
-    """Answers each URL from `pages` as (status, body, block class, error); anything else is a 404. `delay_s` holds
-    every answer back."""
-
-    fetch_result: Callable[..., FetchResult]
-    pages: dict[str, tuple[int, bytes, BlockClass, str | None]] = field(default_factory=dict)
-    fetched: list[tuple[CaptureMethod, str]] = field(default_factory=list)
-    delay_s: float = 0.0
-
-    def rung(self, method: CaptureMethod) -> Callable[[str, FetchPolicy], Any]:
-        async def fetch(url: str, policy: FetchPolicy) -> FetchResult:
-            self.fetched.append((method, url))
-            await asyncio.sleep(self.delay_s)
-            status, body, block_class, error = self.pages.get(url, (404, b"gone", "not_found", None))
-            return self.fetch_result(url, status, body, block_class=block_class, error=error, method=method)
-
-        return fetch
-
-    def page_fetches(self) -> list[tuple[CaptureMethod, str]]:
-        return [(method, url) for method, url in self.fetched if not url.endswith("/robots.txt")]
-
-
-@dataclass
 class Resolver:
     private_hosts: set[str] = field(default_factory=set)
 
@@ -73,7 +49,9 @@ class Resolver:
 
 @pytest.fixture
 def web(fetch_result: Callable[..., FetchResult], own_origin: str) -> Web:
-    return Web(fetch_result, {f"{own_origin}/robots.txt": (200, b"User-agent: *\nDisallow: /private/\n", "ok", None)})
+    site = Web(fetch_result)
+    site.robots(own_origin, b"User-agent: *\nDisallow: /private/\n")
+    return site
 
 
 @pytest.fixture
@@ -88,12 +66,7 @@ def resolver() -> Resolver:
 
 @pytest.fixture
 def fetching(web: Web, store: ObjectStore, resolver: Resolver) -> Fetching:
-    return Fetching(
-        rungs=Rungs(http=web.rung("http"), browser=web.rung("browser")),
-        connector=SafeConnector(resolver),
-        store=store,
-        limiter=HostLimiter(),
-    )
+    return fetching_from(web, store, resolver=resolver)
 
 
 def request(url: str, *formats: str, **fields: Any) -> ScrapeRequest:
@@ -110,7 +83,7 @@ async def test_a_page_a_vendors_challenge_kept_out_is_blocked_naming_the_vendor_
 ) -> None:
     # Master plan 2026-10-18 §3.1: an outcome, not an engine failure; the caller waits, so nothing is fetched again.
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (403, b"<html><body><script>check()</script></body></html>", "blocked", None)
+    web.serve(url, b"<html><body><script>check()</script></body></html>", 403, "blocked")
     vendor = SIGNATURES[0].vendor  # the adapter package's signature data (C3)
 
     def labelled(method: CaptureMethod) -> Callable[[str, FetchPolicy], Any]:
@@ -124,7 +97,7 @@ async def test_a_page_a_vendors_challenge_kept_out_is_blocked_naming_the_vendor_
         return challenged
 
     rungs = Rungs(http=labelled("http"), browser=labelled("browser"))
-    fetching = Fetching(rungs=rungs, connector=SafeConnector(resolver), store=store, limiter=HostLimiter())
+    fetching = fetching_from(rungs, store, resolver=resolver)
 
     result = await scrape(engine, fetching, request(url, "markdown"))
 
@@ -138,7 +111,7 @@ async def test_a_page_robots_txt_disallows_is_blocked_without_fetching_it(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/private/kettle"
-    web.pages[url] = (200, PAGE, "ok", None)
+    web.serve(url, PAGE)
 
     result = await scrape(engine, fetching, request(url, "markdown", fetch={"respect_robots": True}))
 
@@ -156,7 +129,7 @@ async def test_by_default_robots_txt_is_not_requested_and_its_disallow_does_not_
 ) -> None:
     # Owner decision #75: robots.txt is obeyed only when the request switches it on.
     url = f"{own_origin}/private/kettle"
-    web.pages[url] = (200, PAGE, "ok", None)
+    web.serve(url, PAGE)
 
     result = await scrape(engine, fetching, request(url, "markdown"))
 
@@ -188,7 +161,7 @@ async def test_a_redirect_to_a_private_target_is_rejected_and_fails_the_job(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (302, b"", "error", "ssrf_rejected: private_address")
+    web.pages[url] = Page(302, b"", "error", "ssrf_rejected: private_address")
     scrape_request = request(url, "markdown")
 
     with pytest.raises(TargetRejected) as rejected:

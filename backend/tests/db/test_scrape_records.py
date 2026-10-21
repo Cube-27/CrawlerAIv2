@@ -6,24 +6,20 @@ The web is a stub that answers synthetic pages on RFC 2606 hosts, and the resolv
 
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from datetime import timedelta
-from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import JsonValue
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.acquire.types import FetchResult
 from crawlerai.config_ir.held_out import load_pages
 from crawlerai.content.page import ParsedPage
-from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.db.models import (
     Capture,
     Extraction,
@@ -48,8 +44,8 @@ from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument, do
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.services.scrape_request import SchemaUnusable
-from crawlerai.storage.fs import FsStore
 from tests.db.conftest import LISTING_FIELDS
+from tests.db.support import PRICE, TITLE, Web, fetching_from
 from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
@@ -82,34 +78,10 @@ DRAFT_REPLY = ProviderReply(
 )
 
 
-@dataclass
-class Web:
-    """Answers each URL from `pages` as (status, body, block class) over HTTP; anything else is a 404."""
-
-    fetch_result: Callable[..., FetchResult]
-    pages: dict[str, tuple[int, bytes, BlockClass]] = field(default_factory=dict)
-    fetched: list[tuple[CaptureMethod, str]] = field(default_factory=list)
-
-    async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
-        self.fetched.append(("http", url))
-        status, body, block_class = self.pages.get(url, (404, b"gone", "not_found"))
-        return self.fetch_result(url, status, body, block_class=block_class)
-
-    def page_fetches(self) -> list[tuple[CaptureMethod, str]]:
-        return [(method, url) for method, url in self.fetched if not url.endswith("/robots.txt")]
-
-
-@pytest.fixture
-def web(fetch_result: Callable[..., FetchResult], own_origin: str) -> Web:
-    return Web(fetch_result, {f"{own_origin}/robots.txt": (200, b"User-agent: *\nAllow: /\n", "ok")})
-
-
 @pytest.fixture
 def fetching(web: Web, tmp_path: Path) -> Fetching:
-    async def resolve(_host: str) -> list[IPAddress]:
-        return [ip_address("93.184.215.14")]
-
-    return Fetching(Rungs(http=web.http, browser=web.http), SafeConnector(resolve), FsStore(tmp_path), HostLimiter())
+    """`web` over HTTP, where a browser fetch is one more HTTP fetch."""
+    return fetching_from(Rungs(http=web.rung("http"), browser=web.rung("http")), tmp_path)
 
 
 def request(url: str, *formats: str, **fields: Any) -> ScrapeRequest:
@@ -126,10 +98,6 @@ async def _failed(engine: AsyncEngine, url: str) -> tuple[str, str | None, str]:
         task = (await conn.execute(select(UrlTask).where(UrlTask.url == url))).one()
         job_status = (await conn.execute(select(Job.status).where(Job.id == task.job_id))).scalar_one()
     return task.status, task.last_error, job_status
-
-
-TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
-PRICE = {"type": "money", "required": True, "description": "The price", "schema_org": "Offer.price+priceCurrency"}
 
 
 def _product_page(url: str, *, offers: bool = True) -> bytes:
@@ -175,7 +143,7 @@ async def test_a_record_is_stored_with_its_job_task_and_schema(
 ) -> None:
     # The record's field shape over HTTP is `test_scrape_api.py`'s; here, the rows the scrape leaves.
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, _product_page(url), "ok")
+    web.serve(url, _product_page(url))
 
     result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), data=engine_data)
 
@@ -205,7 +173,7 @@ async def test_a_page_without_a_required_field_is_partial_and_keeps_its_record(
     engine_data: EngineData,
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, _product_page(url, offers=False), "ok")
+    web.serve(url, _product_page(url, offers=False))
 
     result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), data=engine_data)
 
@@ -230,7 +198,7 @@ async def test_a_page_that_states_no_entity_is_no_match_without_records(
     engine_data: EngineData,
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, b"<!doctype html><html><head></head><body><p>Back soon.</p></body></html>", "ok")
+    web.serve(url, b"<!doctype html><html><head></head><body><p>Back soon.</p></body></html>")
 
     result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), data=engine_data)
 
@@ -245,7 +213,7 @@ async def test_a_listing_without_rows_says_why_and_answers_its_page_fields(
     # No structured rows and no item blocks, so role C is not asked for rows; the page states its next page.
     url = f"{own_origin}/c/kettles"
     head = f'<title>Kettles</title><link rel="next" href="{own_origin}/c/kettles?page=2">'
-    web.pages[url] = (200, f"<!doctype html><html><head>{head}</head><body><p>Kettles</p></body></html>".encode(), "ok")
+    web.serve(url, f"<!doctype html><html><head>{head}</head><body><p>Kettles</p></body></html>".encode())
     fields = {
         **LISTING_FIELDS,
         "next_page_url": {"type": "url", "description": "The next page", "scope": "page"},
@@ -274,7 +242,7 @@ async def test_listing_pages_that_list_nothing_start_a_locate_run_that_samples_t
 ) -> None:
     urls = [f"{own_origin}/c/{n}" for n in range(3)]
     for url in urls:
-        web.pages[url] = (200, b"<!doctype html><html><head><title>Shop</title></head><body></body></html>", "ok")
+        web.serve(url, b"<!doctype html><html><head><title>Shop</title></head><body></body></html>")
     document = SchemaDocument.model_validate({"name": schema_name, "page_kind": "listing", "fields": LISTING_FIELDS})
     async with engine.begin() as conn:
         schema = await registry.create(conn, document, "user")
@@ -309,7 +277,7 @@ async def test_a_scrapes_minimum_confidence_leaves_a_calibrated_bucket_below_it_
     calibration = Calibration(git_sha="0" * 40, buckets={"money|structured": Bucket(n=40, precision=0.6)})
     data = replace(engine_data, calibration=calibration)
     url = f"{own_origin}/kettles/1"
-    web.pages[url] = (200, _product_page(url), "ok")
+    web.serve(url, _product_page(url))
     schema = {"id": str(kettle_schema.id)}
 
     free = await scrape(engine, fetching, _records(url, schema), data=data)
@@ -332,7 +300,7 @@ async def test_a_detail_page_answers_no_page_member(
     engine_data: EngineData,
 ) -> None:
     url = f"{own_origin}/kettles/1"
-    web.pages[url] = (200, _product_page(url), "ok")
+    web.serve(url, _product_page(url))
 
     result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), data=engine_data)
 
@@ -352,7 +320,7 @@ async def test_role_c_fills_a_required_field_the_page_has_only_in_its_text(
     # rest-api spec step 3: `records` extracts with role C when required fields are missing (llm spec).
     url = f"{own_origin}/kettles/blue"
     body = _product_page(url, offers=False).replace(b"</main>", b"<aside>19.90 EUR</aside></main>")
-    web.pages[url] = (200, body, "ok")
+    web.serve(url, body)
     text = ParsedPage.of(fetch_result(url, 200, body).bundle).cleaned_text.text
     start = text.index("19.90 EUR")
     price = {"shown": True, "ref": "", "value": "19.90 EUR", "start": start, "end": start + len("19.90 EUR")}
@@ -378,7 +346,7 @@ async def test_a_refused_role_c_call_keeps_the_structured_values_and_answers(
 ) -> None:
     # llm spec: the provider refusing the request (a 400) leaves the asked fields missing with its reason.
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, _product_page(url, offers=False), "ok")
+    web.serve(url, _product_page(url, offers=False))
     provider = FakeProvider([ProviderRefused("fake", "fake-fast", 400, "schema refused")])
 
     result = await scrape(
@@ -406,7 +374,7 @@ async def test_a_role_c_call_that_fails_after_answering_counts_its_calls_as_usag
 ) -> None:
     # F30: two answered, invalid replies (the one retry, llm spec) are charged; the extraction says so too.
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, _product_page(url, offers=False), "ok")
+    web.serve(url, _product_page(url, offers=False))
     invalid = ProviderReply(model="fake-fast", text="not json", tokens_in=7, tokens_out=3)
     provider = FakeProvider([invalid, invalid])
 
@@ -433,8 +401,8 @@ async def test_each_extracted_or_partial_page_counts_toward_progressive_state(
     engine_data: EngineData,
 ) -> None:
     complete, partial, gone = (f"{own_origin}/kettles/{name}" for name in ("blue", "red", "gone"))
-    web.pages[complete] = (200, _product_page(complete), "ok")
-    web.pages[partial] = (200, _product_page(partial, offers=False), "ok")
+    web.serve(complete, _product_page(complete))
+    web.serve(partial, _product_page(partial, offers=False))
     schema = {"id": str(kettle_schema.id)}
 
     outcomes = [
@@ -461,7 +429,7 @@ async def test_formats_and_records_read_one_parse_of_the_page(
     parses: Mapping[str, Any],
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, _product_page(url), "ok")
+    web.serve(url, _product_page(url))
     formats = ("markdown", "html", "raw_html", "links", "metadata")
 
     result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}, *formats), data=engine_data)
@@ -483,7 +451,7 @@ async def test_an_inline_schema_is_stored_once_and_reused(
     engine_data: EngineData,
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, _product_page(url), "ok")
+    web.serve(url, _product_page(url))
     inline = {"inline": _document(schema_name)}
 
     first = await scrape(engine, fetching, _records(url, inline), data=engine_data)
@@ -529,7 +497,7 @@ async def test_a_schema_id_records_cannot_use_is_refused_before_any_job(
     with pytest.raises(SchemaUnusable, match=message):
         await scrape(engine, fetching, scrape_request, data=engine_data)
 
-    assert web.fetched == []
+    assert web.urls() == []
 
 
 async def test_a_page_not_reached_has_no_records(
@@ -541,7 +509,7 @@ async def test_a_page_not_reached_has_no_records(
     engine_data: EngineData,
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (403, b"<html><body>no</body></html>", "blocked")
+    web.serve(url, b"<html><body>no</body></html>", 403, "blocked")
     scrape_request = _records(url, {"id": str(kettle_schema.id)})
 
     result = await scrape(engine, fetching, scrape_request, data=engine_data)
@@ -563,7 +531,7 @@ async def test_a_page_whose_resolution_fails_is_failed_without_formats_or_record
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, _product_page(url), "ok")
+    web.serve(url, _product_page(url))
 
     def broken(*_args: object) -> None:
         raise RuntimeError("resolution bug")
@@ -581,7 +549,7 @@ async def test_a_prompt_draft_is_the_schema_of_the_records(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str, engine_data: EngineData
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, _product_page(url), "ok")
+    web.serve(url, _product_page(url))
     llm = MeteredClient([FakeProvider([DRAFT_REPLY])], engine)
 
     result = await scrape(engine, fetching, _records(url, {"prompt": prompt}), llm=llm, data=engine_data)
@@ -606,7 +574,7 @@ async def test_one_page_is_one_entity_whatever_the_order_of_its_query_pairs(
     # entity key (extraction spec) of a page does not depend on the job kind that fetched it.
     urls = [f"{own_origin}/p?id=5&color=red", f"{own_origin}/p?color=red&id=5"]
     for url in urls:
-        web.pages[url] = (200, _product_page(url), "ok")
+        web.serve(url, _product_page(url))
 
     results = [
         await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), data=engine_data) for url in urls
@@ -623,7 +591,7 @@ async def test_a_prompt_draft_of_another_page_kind_fails_the_job(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, prompt: str, engine_data: EngineData
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, _product_page(url), "ok")
+    web.serve(url, _product_page(url))
     title: dict[str, JsonValue] = {"type": "text", "required": True, "description": "Product name", "scope": "row"}
     listing = ProviderReply(
         model="fake-strong",
@@ -649,7 +617,7 @@ async def test_max_age_reuses_a_recent_capture_without_fetching(
     engine_data: EngineData,
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, _product_page(url), "ok")
+    web.serve(url, _product_page(url))
     first = await scrape(engine, fetching, request(url, "raw_html"))
     scrape_request = _records(url, {"id": str(kettle_schema.id)}, "raw_html", max_age=3600)
 
@@ -671,7 +639,7 @@ async def test_a_capture_outside_max_age_is_fetched_again(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, max_age: int
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, PAGE, "ok")
+    web.serve(url, PAGE)
     first = await scrape(engine, fetching, request(url, "raw_html"))
     async with engine.begin() as conn:
         aged = Capture.fetched_at - timedelta(hours=1)
@@ -687,9 +655,9 @@ async def test_a_capture_that_did_not_reach_the_page_is_not_reused(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (403, b"<html><body>no</body></html>", "blocked")
+    web.serve(url, b"<html><body>no</body></html>", 403, "blocked")
     await scrape(engine, fetching, request(url, "raw_html", fetch={"method_hint": "http"}))
-    web.pages[url] = (200, PAGE, "ok")
+    web.serve(url, PAGE)
 
     second = await scrape(engine, fetching, request(url, "raw_html", max_age=3600))
 
@@ -707,7 +675,7 @@ async def test_a_site_with_an_active_config_is_scraped_in_config_mode_and_the_pa
 ) -> None:
     # learning-configs spec: the site's active config runs on the page, and the page is added to the config's window.
     url = f"{own_origin}/kettles/blue"
-    web.pages[url] = (200, _product_page(url), "ok")
+    web.serve(url, _product_page(url))
     host = own_origin.removeprefix("https://")
     ir = {
         "ir_version": "1",
@@ -739,15 +707,12 @@ async def test_a_site_with_an_active_config_is_scraped_in_config_mode_and_the_pa
             field_status={"title": "corroborated"},
         )
         config_id = (await conn.execute(config.returning(ExtractionConfig.id))).scalar_one()
-    try:
-        result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), data=engine_data)
 
-        assert result.records is not None
-        (record,) = result.records
-        assert (result.outcome, record.mode) == ("extracted", "config")
-        extraction = await _row(engine, select(Extraction.mode, Extraction.config_version))
-        window = await _row(engine, select(ExtractionConfig.drift_window).where(ExtractionConfig.id == config_id))
-        assert (tuple(extraction), window.drift_window) == (("config", 3), {"title": [[True, True]]})
-    finally:
-        async with engine.begin() as conn:
-            await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.id == config_id))
+    result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), data=engine_data)
+
+    assert result.records is not None
+    (record,) = result.records
+    assert (result.outcome, record.mode) == ("extracted", "config")
+    extraction = await _row(engine, select(Extraction.mode, Extraction.config_version))
+    window = await _row(engine, select(ExtractionConfig.drift_window).where(ExtractionConfig.id == config_id))
+    assert (tuple(extraction), window.drift_window) == (("config", 3), {"title": [[True, True]]})
