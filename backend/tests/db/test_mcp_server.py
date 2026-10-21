@@ -50,8 +50,8 @@ from crawlerai.schemas.types import SchemaDef
 from crawlerai.services import schemas
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.runtime import Runtime
-from tests.db import support
-from tests.db.support import PRIVATE_HOST, TITLE
+from tests.db.support import PRIVATE_HOST, TITLE, Page
+from tests.db.support import Web as SharedWeb
 from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
@@ -94,11 +94,11 @@ def _page(title: str, body: str = "") -> bytes:
 
 
 @dataclass
-class Web(support.Web):
-    """`support.Web` serving HTML."""
+class Web(SharedWeb):
+    """`SharedWeb` serving HTML."""
 
     def serve(self, url: str, body: bytes, status: int = 200, block_class: BlockClass = "ok") -> None:
-        self.pages[url] = support.Page(status, body, block_class, headers=(("Content-Type", "text/html"),))
+        self.pages[url] = Page(status, body, block_class, headers=(("Content-Type", "text/html"),))
 
 
 @pytest.fixture

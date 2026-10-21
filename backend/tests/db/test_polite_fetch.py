@@ -18,7 +18,7 @@ from crawlerai.db.queue import ClaimedTask, Failed, Finished, claim_tasks
 from crawlerai.services.polite import QUEUED, HostRules, PageFetch, Turns, rules_of
 from crawlerai.worker.handlers.steps import fetch_queued
 from crawlerai.worker.loop import TaskResult
-from tests.db import support
+from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio
 
@@ -30,8 +30,8 @@ OBEYS = FetchPolicy(respect_robots=True)
 
 
 @dataclass
-class Web(support.Web):
-    """`support.Web`, which is a page fetch too: its `Admit` goes unused, it makes one request."""
+class Web(SharedWeb):
+    """`SharedWeb`, which is a page fetch too: its `Admit` goes unused, it makes one request."""
 
     async def __call__(self, url: str, _admit: Admit | None = None, _known: HostRules | None = None) -> FetchResult:
         return await self.fetch("http", url, FetchPolicy())

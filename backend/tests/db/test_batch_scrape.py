@@ -34,8 +34,8 @@ from crawlerai.worker.handlers import steps
 from crawlerai.worker.handlers.steps import Ended
 from crawlerai.worker.handlers.table import task_handlers
 from crawlerai.worker.loop import run_worker
-from tests.db import support
 from tests.db.support import PRIVATE_HOST
+from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio
 
@@ -57,8 +57,8 @@ class Crash(Exception):
 
 
 @dataclass
-class Web(support.Web):
-    """`support.Web`, where the HTTP rung raises for a URL in `raising`."""
+class Web(SharedWeb):
+    """`SharedWeb`, where the HTTP rung raises for a URL in `raising`."""
 
     raising: set[str] = field(default_factory=set)
 

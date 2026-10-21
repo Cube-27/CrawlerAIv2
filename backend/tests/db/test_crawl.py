@@ -30,8 +30,8 @@ from crawlerai.services.jobs import ResultsQuery
 from crawlerai.services.records import RecordPage
 from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.loop import TaskHandler, run_worker
-from tests.db import support
 from tests.db.support import PRIVATE_HOST, Page
+from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio
 
@@ -60,8 +60,8 @@ def robots(*lines: str) -> Page:
 
 
 @dataclass
-class Web(support.Web):
-    """`support.Web`, where a URL in `refused` redirects to a private address: the rung reports the guard's refusal as
+class Web(SharedWeb):
+    """`SharedWeb`, where a URL in `refused` redirects to a private address: the rung reports the guard's refusal as
     the attempt's error."""
 
     refused: set[str] = field(default_factory=set)

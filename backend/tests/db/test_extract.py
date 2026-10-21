@@ -40,8 +40,8 @@ from crawlerai.services.scrape import RecordsUnavailable
 from crawlerai.services.scrape_request import SchemaUnusable
 from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import run_worker
-from tests.db import support
 from tests.db.support import PRICE, PRIVATE_HOST, TITLE
+from tests.db.support import Web as SharedWeb
 from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
@@ -73,8 +73,8 @@ def _urlset(*locs: str) -> bytes:
 
 
 @dataclass
-class Web(support.Web):
-    """`support.Web`, where `slow` URLs take a minute, and `held` ones answer once their event is set."""
+class Web(SharedWeb):
+    """`SharedWeb`, where `slow` URLs take a minute, and `held` ones answer once their event is set."""
 
     slow: set[str] = field(default_factory=set)
     held: dict[str, asyncio.Event] = field(default_factory=dict)

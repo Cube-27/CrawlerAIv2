@@ -21,8 +21,8 @@ from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
-from tests.db import support
 from tests.db.support import PRICE, TITLE
+from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio
 
@@ -59,8 +59,8 @@ def _answer(own_origin: str) -> dict[str, Any]:
 
 
 @dataclass
-class Web(support.Web):
-    """`support.Web` with the storefront endpoint, which answers with `endpoint` and, when `platform`, the platform's
+class Web(SharedWeb):
+    """`SharedWeb` with the storefront endpoint, which answers with `endpoint` and, when `platform`, the platform's
     version header, or fails with `status`."""
 
     endpoint: dict[str, Any] = field(default_factory=dict)

@@ -25,7 +25,7 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas.types import SchemaDef, document_digest
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
-from tests.db import support
+from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio
 
@@ -38,8 +38,8 @@ PRODUCT = {"data": {"slug": "desk-lamp", "name": "Desk Lamp", "price": 19.5, "cu
 
 
 @dataclass
-class Web(support.Web):
-    """`support.Web` with each endpoint of `endpoints` answering as JSON; any other is a 404."""
+class Web(SharedWeb):
+    """`SharedWeb` with each endpoint of `endpoints` answering as JSON; any other is a 404."""
 
     endpoints: dict[str, object] = field(default_factory=dict)
     requested: list[JsonRequest] = field(default_factory=list)
