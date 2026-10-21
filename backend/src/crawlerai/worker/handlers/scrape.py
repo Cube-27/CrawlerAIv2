@@ -8,15 +8,10 @@ queue. Its capture is stored, and for `records` it is extracted with what the jo
 (`config` mode; the page joins the config's drift window, as a scrape's does). Its record is stored. Page outputs are
 not stored: `/v1/jobs/{id}/results` makes them from the capture.
 
-A records task is how a recurring run sees a page again (jobs spec). When records already stand for the page
-(`standing_record`, or `standing_listing` for a listing, in `crawlerai.recurring.state`), the page is fetched with the
-validators it last answered with, and a 304 ends the task `unchanged` with no capture (`steps.fetch_page`). A page
-fetched whole whose visible words are the same as last time (an equal content digest), for a listing its words and
-links, ends `unchanged` with its capture, and is not extracted (jobs spec, "Conditional GET and content fingerprint").
-Having no extraction, an
-unchanged page joins no drift window (learning-configs spec) and does not count toward `pages_extracted` (counts
-`extracted` and `partial` pages). Only records tasks read or write `url_state`: a fingerprint or validators stored
-without the record made from that content would let a stale record stand.
+A records task fetches its page whole and extracts it fresh every run, a recurring run's too: no record stored by an
+earlier run stands for it (jobs spec, "Fresh extraction and content fingerprint"). The page's visible words (for a
+listing, its words and links) are fingerprinted into `url_state`, which says whether its content changed since the URL
+was last fetched.
 
 Everything is written in the worker's transaction for the task, so a task that raises rolls back alone and fails no
 other (INV-31). A page that was not reached ends with its outcome (`blocked`, `shell`, `not_found`); a fetch error is a
@@ -37,8 +32,7 @@ from crawlerai.db.models import PageKind, SiteId
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.llm.client import LLMClient
 from crawlerai.recurring.simhash import ContentFingerprint, content_fingerprint
-from crawlerai.recurring.state import record_content, record_fetch, stand_for_listing
-from crawlerai.recurring.versions import link_records
+from crawlerai.recurring.state import record_content
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape_steps import FetchOptions, PageFormat
@@ -87,7 +81,6 @@ def scrape_handler(
             task,
             request.fetch,
             request.locale,
-            recurring=records,
             served=records,
             formats=request.formats,
             planned=records,
@@ -117,39 +110,28 @@ async def _settle(
         return Finished("extracted", capture_id=page.capture_id)
     parsed = page.parsed
     final_url = page.result.bundle.manifest.final_url
-    kind = records.schema.page_kind
-    changed = await _content_changed(conn, page.site.id, task.canonical_url, parsed, final_url, kind)
-    # Only the first page is fingerprinted: a listing recipe's further pages may have changed under it, so they are
-    # extracted again.
-    if not changed and page.standing and not page.further:
-        await record_fetch(conn, page.site.id, task.canonical_url, page.result)
-        await link_records(conn, task.id, page.standing)
-        return Finished("unchanged", capture_id=page.capture_id)
+    await _fingerprint(conn, page.site.id, task.canonical_url, parsed, final_url, records.schema.page_kind)
     result = await extract_records(conn, task, page, records, caller_supplied=True, llm=llm, parsed=parsed)
     if isinstance(result, Finished):
         result = await store_further_pages(
             conn, fetching.store, task, page, records, caller_supplied=True, llm=llm, result=result
         )
-        # The validators are stored with the record made from the content they describe, never without it.
-        await record_fetch(conn, page.site.id, task.canonical_url, page.result)
-        if records.schema.page_kind == "listing":
-            await stand_for_listing(conn, page.site.id, task.canonical_url, task.id)
     return result
 
 
-async def _content_changed(
+async def _fingerprint(
     conn: AsyncConnection, site_id: SiteId, canonical_url: str, parsed: ParsedPage, final_url: str, kind: PageKind
-) -> bool:
-    """Whether the page's content changed since it was last fingerprinted (`record_content`). A page without a
-    fingerprint (`page_fingerprint`), or one whose fingerprint fails, counts as changed and is extracted: an error
-    never skips extraction (§4.6)."""
+) -> None:
+    """Store the page's content fingerprint (`record_content`); a page without one (`page_fingerprint`) stores none,
+    and a fingerprint that fails is logged and skipped: it never fails the task."""
     try:
         # Rendering the text is CPU work, as resolution is: a thread keeps the event loop serving other tasks.
         fingerprint = await asyncio.to_thread(page_fingerprint, parsed, final_url, kind)
     except Exception:
-        log.exception("the content fingerprint failed; the page is extracted")
-        return True
-    return fingerprint is None or await record_content(conn, site_id, canonical_url, fingerprint)
+        log.exception("the content fingerprint failed")
+        return
+    if fingerprint is not None:
+        await record_content(conn, site_id, canonical_url, fingerprint)
 
 
 def page_fingerprint(parsed: ParsedPage, final_url: str, kind: PageKind) -> ContentFingerprint | None:

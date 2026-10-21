@@ -26,7 +26,6 @@ from crawlerai.acquire.types import (
     FetchPolicy,
     FetchResult,
     PagedFetch,
-    Validators,
 )
 from crawlerai.config_ir.api_recipe.execute import MAX_PAGES, RecipeRung, unserved
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
@@ -37,7 +36,6 @@ from crawlerai.core.errors import Refusal
 from crawlerai.crawl.paging import collect
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
 from crawlerai.db.models import JobId, Site
-from crawlerai.recurring.conditional import Unchanged, fetch_unless_unchanged
 from crawlerai.services.polite import (
     IN_PLACE,
     SLOW_DOWN,
@@ -345,9 +343,8 @@ class Growth:
 @dataclass(frozen=True)
 class PagePlan:
     """How a page is fetched: the site's rungs (`site_rungs`), its row, the policy, the attempts every request of the
-    fetch is added to, the site's active API `recipe` (with `pages` when it serves a listing in pages), and the
-    validators the page last answered with when a record stands for it (jobs spec); `growth`, a single-URL listing
-    scrape's browser actions in `auto` (`Growth`)."""
+    fetch is added to, the site's active API `recipe` (with `pages` when it serves a listing in pages); `growth`, a
+    single-URL listing scrape's browser actions in `auto` (`Growth`)."""
 
     rungs: Rungs
     site: SiteRow
@@ -355,8 +352,6 @@ class PagePlan:
     attempts: list[AttemptRecord]
     recipe: ApiRecipe | None = None
     pages: RecipePages | None = None
-    validators: Validators | None = None
-    has_record: bool = False
     growth: Growth | None = None
     # On `time.monotonic`: when the task's budget runs out; the browser is not started too close to it (`acquire`).
     deadline: float | None = None
@@ -375,7 +370,7 @@ def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Wa
     config's API recipe ask their endpoints politely (`adapter_send`, `recipe_rung`; endpoints on the page's host by the
     rules the polite fetch read, D-1384, others by `rules`), and every attempt is added to the request's attempts."""
 
-    async def fetch(url: str, admit_next: Admit, known: HostRules) -> FetchResult | Unchanged:
+    async def fetch(url: str, admit_next: Admit, known: HostRules) -> FetchResult:
         host = urlsplit(url).hostname or ""
         here = page_first(host, known, rules)
         send = adapter_send(fetching, host, here, waiting)
@@ -394,23 +389,19 @@ def page_fetch(fetching: Fetching, page: PagePlan, rules: ReadRules, waiting: Wa
             # session (INV-29's exception), whose cookies serve later HTTP fetches only.
             rungs = replace(rungs, browser=page.growth.rung(fetching, admit_next, known), exporting=None)
 
-        async def once(validators: Validators | None) -> FetchResult:
-            result = await acquire(
-                url,
-                page.policy,
-                page.site.remembered,
-                rungs,
-                recipe=rung,
-                validators=validators,
-                admit_next=admit_next,
-                send=send,
-                deadline=page.deadline,
-                plan=page.fetch,
-            )
-            page.attempts.extend(result.attempts)
-            return result
-
-        return await fetch_unless_unchanged(once, page.validators, has_record=page.has_record)
+        result = await acquire(
+            url,
+            page.policy,
+            page.site.remembered,
+            rungs,
+            recipe=rung,
+            admit_next=admit_next,
+            send=send,
+            deadline=page.deadline,
+            plan=page.fetch,
+        )
+        page.attempts.extend(result.attempts)
+        return result
 
     return fetch
 
@@ -432,7 +423,7 @@ async def fetch_now(
         await store_declines(conn, page.site, host, page.rungs)
     if isinstance(result, Refused):
         return result.reason
-    if not isinstance(result, FetchResult):  # no validators are sent and nothing is postponed while the caller waits
+    if not isinstance(result, FetchResult):  # nothing is postponed while the caller waits
         raise TypeError(f"a fetch the caller waits for answered {type(result).__name__}")
     if (refused := refusal(result)) is not None:
         raise TargetRejected(refused)

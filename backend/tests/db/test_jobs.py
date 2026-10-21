@@ -56,7 +56,6 @@ pytestmark = pytest.mark.anyio
 OUTCOMES = {
     "extracted",
     "partial",
-    "unchanged",
     "links_only",
     "blocked",
     "shell",

@@ -68,7 +68,7 @@ D-0681, D-0684, D-1044, D-1121, D-1286.
 
 ### Requirement: Page outcomes
 A task SHALL end with one outcome, from evidence the fetch and the resolution already hold (no per-site rule): the data
-outcomes `extracted`, `partial`, `no_match`, `unchanged` and `links_only`; the outcomes of a page not served, which are
+outcomes `extracted`, `partial`, `no_match` and `links_only`; the outcomes of a page not served, which are
 the capture's block class (`blocked`, with reason `challenge: <vendor>` when a vendor's challenge says so; `shell`;
 `not_found`; `auth_wall`; `soft_404` and `geo_redirect`, from the final URL against the one asked
 ([acquisition](../acquisition/spec.md)); `redirected_to_listing`; `unsupported_media`, a 2xx answer that is no HTML
@@ -76,7 +76,8 @@ document), and `geo_blocked`, a `blocked` page whose kept attempt is a 451 (chal
 is not retried as a vendor's block; and, for a `failed` task, `timeout` when the fetch's
 kept attempt got no answer in time or the task ran past `TASK_DEADLINE`, else `failed`. A served page that states its
 item is not for sale and gives no price is `partial` with `price` `missing`, reason `out_of_stock`
-([resolution](../resolution/spec.md)). Refs: owner plan 2026-10-19 P9.
+([resolution](../resolution/spec.md)). (Previously: `unchanged`, a page a stored record stood for.) Refs: owner plan
+2026-10-19 P9.
 #### Scenario: Fetch that timed out
 - **WHEN** a fetch's kept attempt is an `error` with reason `timeout`
 - **THEN** the task ends `failed` with outcome `timeout`, not `failed`
@@ -180,30 +181,27 @@ Refs: §13.2, §23, D-0672, D-0674, D-0677, D-1285, D-1382, D-1441.
   found later links to
 - **THEN** no task is added for `https://example.com/p/new`
 
-### Requirement: Conditional GET and content fingerprint
-Only records tasks of `batch_scrape` and `extract` SHALL use `url_state`, and only with a standing record: the HTTP rung
-sends stored validators, and a 304 or an equal content digest (BLAKE2b of the visible words, nonce-like tokens left out,
-`recurring/simhash.py`; for a listing, of its words and the URLs it links to, in order; the SimHash stored beside it
-only reports how far a change moved) ends the task `unchanged`, linking the standing records, with no extraction or LLM
-call; a listing its recipe served in further pages is extracted again, since only its first page is fingerprinted. A
-detail page's standing record is the newest of its entity; a listing page's are the latest versions of the entities the
-task named by `url_state.standing_task_id` stood for, valid while that task extracted the page the way it would be now.
-Replay never reads `url_state` (INV-10). (Previously: a listing without words was always extracted; a listing with words
-was fingerprinted by its words alone.)
-Refs: §14, D-0637, D-0662, D-0663, D-0952, D-1283, D-1340, D-1383, D-1599.
-#### Scenario: Unchanged listing
-- **WHEN** a listing page whose text and links are unchanged is scraped again in a records batch
-- **THEN** its task ends `unchanged` with no extraction, and the job lists the rows' records the first run stored
+### Requirement: Fresh extraction and content fingerprint
+Every records task SHALL fetch its page whole and extract it, a recurring run's too: no conditional request is sent and
+no record stored by an earlier task stands for the page (owner 2026-10-21: learning keeps selectors, recipes and
+cookies, never values). Records tasks of `batch_scrape` and `extract` store the page's content fingerprint in
+`url_state` (BLAKE2b of the visible words, nonce-like tokens left out, `recurring/simhash.py`; for a listing, of its
+words and the URLs it links to, in order), with `last_changed_at` moved when the digest differs; the SimHash stored
+beside it reports how far a change moved. Replay never reads `url_state` (INV-10). (Previously: an HTTP 304 to stored
+validators, or an equal content digest, ended the task `unchanged` with no extraction, linking the records an earlier
+task stored.) Refs: §14, D-0637, D-0662, D-0663, D-0952, D-1340.
+#### Scenario: Re-run of an unchanged page
+- **WHEN** a page whose text is unchanged is scraped again in a records batch
+- **THEN** it is fetched whole and extracted, and its record holds what this extraction published
 #### Scenario: One-word edit
 - **WHEN** a page's visible text changes by one word and its SimHash stays equal
-- **THEN** its content digest differs and the page is extracted again
-#### Scenario: Listing without words
-- **WHEN** a listing of image links with no visible words is scraped again with the same links, then with one more
-- **THEN** the second run is `unchanged` and the third is extracted
+- **THEN** its content digest differs and `last_changed_at` moves
 
 ### Requirement: Record versions and change feed
-A record's fingerprint SHALL hash its published required fields; an equal fingerprint and schema digest stores no row,
-otherwise a new `version` is stored with `changed_fields`. `GET /v1/records?changed_since` (RFC 3339 offset required)
+A record's fingerprint SHALL hash its published values; a record equal to its entity's latest version in fingerprint,
+field metadata, completeness and schema digest stores no row and the task links that version, otherwise a new `version`
+is stored with `changed_fields`. (Previously: the fingerprint hashed the required fields only, so a changed optional
+value kept the earlier version.) `GET /v1/records?changed_since` (RFC 3339 offset required)
 returns records committed at or after it, missing none. Refs: §14, D-0666, D-0668, D-0671, D-0872.
 #### Scenario: Price change
 - **WHEN** a re-run publishes a new price for an entity
@@ -221,7 +219,7 @@ Batch, crawl and extract jobs SHALL fetch every page with the request's `fetch` 
 (D-1439); the job keeps the secret values in `job.request` for its workers while it runs, and when it ends its header
 and cookie values are replaced by `**********`, names kept (D-1510); `GET /v1/jobs/{id}/request` answers them as
 `**********`. `fetch.cache` `only` serves each task from the latest `ok` capture of its URL made with the same actions
-and context names, or fails the task `not_cached`; `bypass` sends no validators. (Previously: the values stayed in
+and context names, or fails the task `not_cached`. (Previously: the values stayed in
 `job.request` after the job ended.) Refs: owner delegation 2026-10-17, D-1432, D-1435, D-1439, D-1510.
 #### Scenario: Stored request
 - **WHEN** a batch is submitted with cookie `sid` and its request is read back

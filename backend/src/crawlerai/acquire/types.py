@@ -34,7 +34,6 @@ __all__ = [
     "RequestContext",
     "StepOutcome",
     "StopReason",
-    "Validators",
     "policy_with_attempts",
 ]
 
@@ -167,14 +166,6 @@ class FetchPolicy(_Frozen):
     def captures_page(self) -> bool:
         """Whether the fetch must end on the rendered page itself, for a file the browser makes of it."""
         return self.screenshot is not None or self.pdf
-
-
-class Validators(_Frozen):
-    """What a page last answered with, sent back so that an unchanged page answers 304 with no body (RFC 9110 §13.1).
-    Each value is kept as received: an entity tag is opaque, and If-Modified-Since repeats the date exactly."""
-
-    etag: str | None
-    last_modified: str | None
 
 
 class AttemptRecord(_Frozen):
