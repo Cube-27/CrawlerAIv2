@@ -49,3 +49,10 @@ documents_with_controls = st.recursive(
 def test_raw_control_characters_inside_strings_parse_leniently_as_the_same_document(document: JsonValue) -> None:
     text = _CONTROL_ESCAPE.sub(_raw_controls, json.dumps(document))
     assert parse(text, lenient=True) == document
+
+
+def test_a_number_with_leading_zeros_parses_leniently_as_its_written_digits() -> None:
+    text = '{"gtin13": 0745114652584, "note": "0, 07", "n": [0, -012.5]}'
+    assert parse(text, lenient=True) == {"gtin13": "0745114652584", "note": "0, 07", "n": [0, "-012.5"]}
+    with pytest.raises(ValueError, match="delimiter"):
+        parse(text)
