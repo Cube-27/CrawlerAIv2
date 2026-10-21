@@ -42,7 +42,7 @@ class PlatformJsonCollector:
         diagnostics: list[str] = []
         for platform, answer in _answers(page, diagnostics):
             read = read_shapes(
-                f"{platform}_json", answer_shapes(platform, answer), answer, schema, ctx, self._vocabulary
+                f"{platform}_json", answer_shapes(platform, answer, ctx.page_url), answer, schema, ctx, self._vocabulary
             )
             entities.extend(_requested(e) for e in read.entities)
             candidates.extend(read.candidates)

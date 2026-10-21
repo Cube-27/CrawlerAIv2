@@ -123,10 +123,13 @@ with `description` (its HTML body) as `description`, every `images[]` URL as `im
 one Offer per `variants[]` member: `title` as `name`, `sku`, `barcode` as `gtin`, `price` in cents for every
 currency (×100), `available: false` as `OutOfStock` (`Shape.booleans`; `true`, it can be bought, names no one schema.org
 ItemAvailability: a variant on pre-order or back order can be bought too, so the page states which), so the variants
-rows fill from it; its
+rows fill from it; the variant the page shows (Liquid `product.selected_or_first_available_variant`: the one whose `id`
+the page URL's `?variant=` names, else, when it names none or an id the product lacks, the first `available` one, else
+the first) gives the Product its `sku` and `barcode`, so resolution reads that variant's Offer as the shown one; its
 currency is the page's `Shopify.currency.active`, a platform signature's `currency_members` (Shopware:
 `window.currencyIsoCode`), read only on a page showing the platform's signal. Refs: D-1080, D-1081, D-1085, D-1114,
-D-1118, architecture-v3 d.7. (Previously: the answer's top-level `price` only, read without its Offer when
+D-1118, architecture-v3 d.7. (Previously: no shown variant, so an unknown `?variant=` id left the variants' Offers
+contending; the answer's top-level `price` only, read without its Offer when
 `price_varies`; no currency member; the product JSON's `featured_image` only and no `description`; `available: true` read as `InStock`.)
 
 ### Requirement: Workday adapter

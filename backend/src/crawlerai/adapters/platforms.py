@@ -22,15 +22,18 @@ declaration (normalization spec, "money", `collect.currencies`).
 
 Shopify's product answer states one Offer per variant, each with the variant's own identifiers and price, as a page's
 per-variant Offers do: resolution weighs them as it weighs those (resolution spec, price), and they fill the `variants`
-rows when the page states none (variants spec). WooCommerce's answer states one price for the product: a product whose
-variations are priced differently has none for the page, which shows the selected variation's, so its answer is read
-without its Offer and never stands against the price the page shows (INV-14; adapters spec "merge, don't override").
+rows when the page states none (variants spec). Of them, the page shows one variant (Liquid
+`product.selected_or_first_available_variant`), whose `sku` and `barcode` are read as the product's own, so resolution
+reads its Offer as the variant the page shows (variants spec). WooCommerce's answer states one price for the product:
+a product whose variations are priced differently has none for the page, which shows the selected variation's, so its
+answer is read without its Offer and never stands against the price the page shows (INV-14; adapters spec "merge,
+don't override").
 """
 
 import re
 from dataclasses import dataclass, replace
 from typing import Final
-from urllib.parse import quote, urljoin, urlsplit
+from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
 from pydantic import JsonValue
 
@@ -72,6 +75,8 @@ class PlatformSignature:
 # The global the Online Store's theme layout defines (`content_for_header`); a headless storefront has none, nor the
 # Online Store's Ajax API.
 _ONLINE_STORE: Final = "Shopify.shop"
+# shopify.dev Liquid `variant.url`: the product URL with `?variant=<id>` selects that variant.
+_SHOPIFY_VARIANT_PARAM: Final = "variant"
 
 SIGNATURES: Final[tuple[PlatformSignature, ...]] = (
     # Shopify: the Online Store's `Shopify.shop` global (`content_for_header`) and the platform's asset CDN, which a
@@ -80,8 +85,7 @@ SIGNATURES: Final[tuple[PlatformSignature, ...]] = (
         "shopify",
         markers=(_ONLINE_STORE, "cdn.shopify.com/", "shopify-features"),
         header_names=frozenset({"x-shopid", "x-shopify-stage"}),
-        # shopify.dev Liquid `variant.url`: the product URL with `?variant=<id>` selects that variant.
-        variant_params=("variant",),
+        variant_params=(_SHOPIFY_VARIANT_PARAM,),
         # shopify.dev Liquid / `content_for_header`: `Shopify.currency = {"active": <presentment currency>, "rate": …}`.
         currency_members=(CurrencyMember("Shopify.currency", ("active",)),),
     ),
@@ -221,6 +225,23 @@ _SHOPIFY_PRODUCT_NODE: Final = Shape(
     },
     nodes={"offers": (_SHOPIFY_VARIANT,)},
 )
+
+
+def _shown_variant(answer: dict[str, JsonValue], page_url: str | None) -> int | None:
+    """The index of the variant a Shopify product page shows (shopify.dev Liquid, `product.selected_variant` and
+    `product.selected_or_first_available_variant`): the one whose `id` the page URL's `?variant=` names, else, when the
+    URL names none or an id the product lacks, the first `available` one, else the first; None without variants."""
+    variants = answer.get("variants")
+    if not isinstance(variants, list) or not variants:
+        return None
+    members = [v if isinstance(v, dict) else {} for v in variants]
+    selected = parse_qs(urlsplit(page_url or "").query).get(_SHOPIFY_VARIANT_PARAM, [])
+    ids = [None if (i := m.get("id")) is None else str(i) for m in members]
+    if len(selected) == 1 and selected[0] in ids:
+        return ids.index(selected[0])
+    return next((n for n, m in enumerate(members) if m.get("available") is True), 0)
+
+
 # WooCommerce Store API, "Products" (github.com/woocommerce/woocommerce, plugins/woocommerce/src/StoreApi/docs,
 # products.md): a list of products, each with `name`, `permalink`, `sku`, `images[].src`, and `prices`, whose `price`
 # is a string of the amount in the currency's minor unit, `currency_minor_unit` its decimal places and `currency_code`
@@ -238,11 +259,16 @@ _WOO_OFFER: Final = Shape(
 )
 
 
-def answer_shapes(platform: str, answer: JsonValue) -> tuple[Shape, ...]:
-    """The schema.org nodes the documented product JSON `answer` of `platform` holds (module docstring); none for a
-    platform with no documented product JSON, or an answer not of its documented form."""
+def answer_shapes(platform: str, answer: JsonValue, page_url: str | None) -> tuple[Shape, ...]:
+    """The schema.org nodes the documented product JSON `answer` of `platform` holds (module docstring), for the
+    product page served at `page_url`; none for a platform with no documented product JSON, or an answer not of its
+    documented form."""
     if platform == "shopify" and isinstance(answer, dict):
-        return (_SHOPIFY_PRODUCT_NODE,)
+        shown = _shown_variant(answer, page_url)
+        if shown is None:
+            return (_SHOPIFY_PRODUCT_NODE,)
+        own = {"sku": ("variants", shown, "sku"), "gtin": ("variants", shown, "barcode")}
+        return (replace(_SHOPIFY_PRODUCT_NODE, properties={**_SHOPIFY_PRODUCT_NODE.properties, **own}),)
     if platform == "woocommerce" and isinstance(answer, list) and len(answer) == 1 and isinstance(answer[0], dict):
         prices = answer[0].get("prices")
         varies = not isinstance(prices, dict) or prices.get("price_range") is not None

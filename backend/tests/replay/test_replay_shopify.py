@@ -153,3 +153,49 @@ def test_a_card_price_a_gated_collection_page_shows_contests_the_answers_amount(
     assert [row["url"].value for row in result.rows] == [
         f"{SHOP}/collections/widgets/products/widget-{n}" for n in range(3)
     ]
+
+
+def _variant(n: int, cents: int, *, available: bool) -> dict[str, JsonValue]:
+    return {"id": 100 + n, "title": f"Colour {n}", "sku": f"W-{n}", "price": cents, "available": available}
+
+
+@pytest.mark.parametrize(
+    ("query", "shown"),
+    [
+        ("?variant=102", 2),  # the variant the URL selects, available or not
+        ("?variant=100", 0),
+        ("?variant=999", 1),  # an id the product lacks: the first available variant
+        ("", 1),  # none selected: the first available variant
+    ],
+)
+def test_a_product_page_shows_the_variant_its_url_selects_else_the_first_available(query: str, shown: int) -> None:
+    # Shopify Liquid `product.selected_or_first_available_variant`: the Ajax product answer lists every variant; the
+    # page shows the one `?variant=` names, else the first available one.
+    variants = [
+        _variant(0, 1000, available=False),
+        _variant(1, 1200, available=True),
+        _variant(2, 1500, available=True),
+    ]
+    answer = json.dumps({"title": "Widget", "url": "/products/widget", "variants": variants}).encode()
+    call = NetworkBody(
+        url=f"{SHOP}/products/widget.js",
+        status=200,
+        content_type="application/json",
+        sha256=sha256_hex(answer),
+        file="network/0001.json",
+        data_call="shopify",
+    )
+    html = b'<html><script id="shopify-features"></script><script>Shopify.currency = {"active":"EUR"};</script></html>'
+    page = f"{SHOP}/products/widget{query}"
+    bundle = capture(html, url=page, final_url=page, calls=((call, answer),))
+
+    result = asyncio.run(extract_page(bundle, _preset("commerce_detail"), None, None, data=DATA))
+
+    assert result.entity is not None
+    cents = variants[shown]["price"]
+    assert isinstance(cents, int)
+    assert result.entity["price"].value == {"amount": f"{cents // 100}.00", "currency": "EUR"}
+    assert result.entity["sku"].value == f"W-{shown}"
+    # Only the shown variant's availability is the item's: `available: true` names no one value, so another
+    # variant's OutOfStock never publishes for it.
+    assert result.entity["availability"].value == ("OutOfStock" if shown == 0 else None)

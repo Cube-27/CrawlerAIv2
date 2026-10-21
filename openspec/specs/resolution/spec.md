@@ -56,7 +56,8 @@ it the field is a `conflict` (`disagree`, C7: decline rather than guess). Money 
 currency never drops a price (tied values stating one amount in different currencies publish that amount with its
 currency `null`, basis `unknown`), but amounts that differ are rival prices, each explained by its role before the
 field is refused: the one amount a rendered `dom` value states on its own evidence is the visible price and beats
-structured, meta and data-call amounts (the disagreement is the flag `disagree`; it is the page offer's, never a
+structured, meta and data-call amounts (a structured amount equal to one the page shows struck, HTML `s`/`del`, is
+a stale was-price; the disagreement is the flag `disagree`; it is the page offer's, never a
 variant row's, variants spec); the shown variant's Offer beats the Offers of other
 variants and sellers (INV-38); a price a single Offer states that is not the anchor's is `offer_split`. List, was,
 member and unit prices are not rivals: a money field's path predicates give it its price role (schemas spec,
