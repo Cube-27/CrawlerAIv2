@@ -1,9 +1,9 @@
 // Cognitive complexity per function (C11, INV-18), as SonarSource defines it (G. Ann Campbell, "Cognitive
 // Complexity", 2017; SonarCloud rule S3776). oxlint-plugin-complexity measures it; its own rule always gates
 // cyclomatic complexity as well, and C11 allows one complexity check only, so this rule reports the cognitive
-// score alone. The threshold lives in vite.config.ts.
+// score alone (the combined visitor computes both; only `cognitive` is read). The threshold lives in vite.config.ts.
 import { definePlugin, defineRule } from "vite-plus/lint/plugins";
-import { createCognitiveVisitor } from "oxlint-plugin-complexity";
+import { createCombinedComplexityVisitor } from "oxlint-plugin-complexity";
 
 const cognitiveComplexity = defineRule({
   meta: {
@@ -24,11 +24,11 @@ const cognitiveComplexity = defineRule({
       before() {
         max = context.options[0].max;
       },
-      ...createCognitiveVisitor(context, ({ total }, node) => {
-        if (total > max) {
+      ...createCombinedComplexityVisitor(context, ({ cognitive }, node) => {
+        if (cognitive > max) {
           context.report({
             node,
-            message: `Cognitive complexity is ${total}; at most ${max} is allowed. Extract named steps.`,
+            message: `Cognitive complexity is ${cognitive}; at most ${max} is allowed. Extract named steps.`,
           });
         }
       }),
