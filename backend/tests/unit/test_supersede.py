@@ -104,6 +104,14 @@ def test_a_text_with_its_line_breaks_dropped_yields_to_the_rendition_that_keeps_
     assert superseded(FieldSpec(type=FieldType.LONG_TEXT), [flat, lined, other]) == [flat]
 
 
+def test_renditions_equal_but_for_white_space_keep_one_and_a_cut_still_yields() -> None:
+    # The lined rendition is shorter collapsed (fewer spaces), so it is no cut of the spaced one, only its equal.
+    lined, spaced = _c("Includes:\n•1 lantern\n•2 bulbs", "jsonld"), _c("Includes: • 1 lantern • 2 bulbs", "dom")
+    cut = _c("Includes:\n•1 lantern", "microdata")
+
+    assert superseded(FieldSpec(type=FieldType.LONG_TEXT), [lined, spaced, cut]) == [spaced, cut]
+
+
 def test_a_text_led_by_its_heading_yields_to_the_longer_text_without_it() -> None:
     # HTML Standard §4.3.6: a heading names its section; text content runs the paragraphs together.
     headed = _c("About this role\n\nThe role owns the example service end to end.  It\nreviews", "microdata")
