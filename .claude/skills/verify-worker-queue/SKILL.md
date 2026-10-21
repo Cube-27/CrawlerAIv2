@@ -99,7 +99,7 @@ taken and the variables it changed (`run[w1,1]` is worker w1's first slot record
 | Action | Code |
 | --- | --- |
 | `Claim(w)` | `run_worker`: `free`, `claim_tasks` transaction (FOR UPDATE SKIP LOCKED, lease, `attempts + 1`, `start_jobs`), `create_task(run(task))` |
-| `Turn` | `polite_fetch` -> `holding`, then `rules_in`'s robots.txt request (stale snapshot) or `_first_turn` -> `HostLimiter.admit` -> `HostTurns.take` (turn and hold in one upsert); not due, or the host held by another task of any worker -> `Later` -> `Postpone`; or the task ends with no request (robots.txt disallow, stored capture reread) |
+| `Turn` | `polite_fetch` -> `holding`, then `rules_of`'s robots.txt request (stale snapshot) or `_first_turn` -> `HostLimiter.admit` -> `HostTurns.take` (turn and hold in one upsert); not due, or the host held by another task of any worker -> `Later` -> `Postpone`; or the task ends with no request (robots.txt disallow, stored capture reread) |
 | `RobotsDone`, `PageTurn` | robots.txt answers (snapshot stored, or unreachable -> `Failed`); the page's turn waited for in place (`_first_turn(sent=True)`), postponed past `QUEUED.bound` |
 | `HttpDone` | the HTTP rung answers: ok, 429/503 (`pause_host`, `Failed(transient)`), or escalate to the browser; an answer the handler ends with is extracted and counted (`count_fetch` updates `job.usage`: job row locked until commit) |
 | `AdmitNext` | the browser retry's `admit_next` = `HostLimiter.wait(host, gap, QUEUED.bound)`; in work being cancelled, `admit` raises and the work ends |

@@ -39,6 +39,8 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.memory import learn_fetch
+from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import ActionsReport, AttemptRecord, BrowserActions, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.collect.run import Adapters
 from crawlerai.config_ir.active import active_config, recipe_of
@@ -105,7 +107,6 @@ from crawlerai.services.scrape_steps import (
     fetch_summary,
     format_member,
     named_schema,
-    new_capture,
     page_formats,
     reached_outcome,
     record_fetch_usage,
@@ -413,11 +414,12 @@ async def _run(
     derived = await _derive_reached(engine, work, request, task, page, recent, config)
     extra = await _extract_more(work, task, derived, config, further)
     members, finished = _NOT_FETCHED, _Finished("blocked")
+    await _learn(engine, site.id, page, recent)
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
-            capture_id = recent.capture_id if recent else await new_capture(conn, fetching.store, site.id, page)
-            more = partial(_store_more, conn, fetching.store, task, site.id, derived, extra, work.margins)
-            finished = await _finish(conn, task, site.id, page, capture_id, derived, work, more)
+            capture_id = recent.capture_id if recent else await store_capture(conn, fetching.store, page, site.id)
+            more = partial(_store_more, conn, engine, fetching.store, task, site.id, derived, extra, work.margins)
+            finished = await _finish(conn, engine, task, site.id, page, capture_id, derived, work, more)
             members = _fetch_members(page, capture_id, fetching.rungs.adapters)
         else:
             finished = _Finished("blocked", reason=page)
@@ -439,6 +441,13 @@ async def _run(
         **members,
         **derived.formats,
     )
+
+
+async def _learn(engine: AsyncEngine, site_id: SiteId, page: FetchResult | str, recent: Recent | None) -> None:
+    """Remember on the site what a fetch taught (`acquire.memory.learn_fetch`, in a transaction of its own); a stored
+    capture read instead of fetching taught nothing new."""
+    if isinstance(page, FetchResult) and recent is None:
+        await learn_fetch(engine, site_id, page)
 
 
 async def _stored(
@@ -513,6 +522,7 @@ async def _extract_more(
 
 async def _store_more(
     conn: AsyncConnection,
+    engine: AsyncEngine,
     store: ObjectStore,
     task: ClaimedTask,
     site_id: SiteId,
@@ -523,7 +533,7 @@ async def _store_more(
     """Store each further kept state under the scrape's task (`store_further`)."""
     if derived.schema is None:
         return StoredFurther()
-    return await store_further(conn, store, task, site_id, derived.schema, extracted, margins)
+    return await store_further(conn, engine, store, task, site_id, derived.schema, extracted, margins)
 
 
 async def _config(conn: AsyncConnection, site_id: SiteId, work: _Work) -> ActiveConfig | None:
@@ -600,6 +610,7 @@ class _Finished(NamedTuple):
 
 async def _finish(
     conn: AsyncConnection,
+    engine: AsyncEngine,
     task: ClaimedTask,
     site_id: SiteId,
     result: FetchResult,
@@ -627,6 +638,7 @@ async def _finish(
     extraction = derived.extraction
     stored = await store_page_record(
         conn,
+        engine,
         task,
         extraction,
         capture_id=capture_id,

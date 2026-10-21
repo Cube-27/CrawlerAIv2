@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import cast, update
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.api import JsonFetcher, JsonRequest
 from crawlerai.acquire.browser_tab import Tab
@@ -119,12 +119,12 @@ def site_rungs(fetching: Fetching, host: str, site: SiteRow) -> Rungs:
     return replace(fetching.rungs, adapters=fetching.rungs.adapters.for_host(host, site.adapter_declined))
 
 
-async def store_declines(conn: AsyncConnection, site: SiteRow, host: str, rungs: Rungs) -> None:
-    """Store on the site of `host` the adapter declines `rungs` made for it (`site_rungs`): those that differ from what
-    its row held (adapters spec, "Fallback to the page rungs (INV-40)"). They are merged into the stored ones in one
-    statement (a JSONB concatenation), so fetches that read the row before either stored keep each other's declines. One
-    that ran out stays stored, and holds back nothing (`Registry.for_host` reads its time): the row holds at most one
-    per adapter."""
+async def store_declines(engine: AsyncEngine, site: SiteRow, host: str, rungs: Rungs) -> None:
+    """Store on the site of `host`, in a transaction of its own, the adapter declines `rungs` made for it
+    (`site_rungs`): those that differ from what its row held (adapters spec, "Fallback to the page rungs (INV-40)").
+    They are merged into the stored ones in one statement (a JSONB concatenation), so fetches that read the row before
+    either stored keep each other's declines. One that ran out stays stored, and holds back nothing (`Registry.for_host`
+    reads its time): the row holds at most one per adapter."""
     made = {
         name: until
         for name, until in rungs.adapters.declined_for(host).items()
@@ -132,7 +132,8 @@ async def store_declines(conn: AsyncConnection, site: SiteRow, host: str, rungs:
     }
     if made:
         merged = Site.adapter_declined.op("||")(cast(made, JSONB))
-        await conn.execute(update(Site).where(Site.id == site.id).values(adapter_declined=merged))
+        async with engine.begin() as conn:
+            await conn.execute(update(Site).where(Site.id == site.id).values(adapter_declined=merged))
 
 
 @dataclass
@@ -419,8 +420,7 @@ async def fetch_now(
     result = await polite_fetch(
         url, page.policy, rules, fetching.limiter, IN_PLACE, fetch, by_adapter=by_adapter, tries=tries
     )
-    async with engine.begin() as conn:
-        await store_declines(conn, page.site, host, page.rungs)
+    await store_declines(engine, page.site, host, page.rungs)
     if isinstance(result, Refused):
         return result.reason
     if not isinstance(result, FetchResult):  # nothing is postponed while the caller waits

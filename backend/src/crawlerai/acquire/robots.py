@@ -14,7 +14,7 @@ from urllib.parse import urlsplit, urlunsplit
 from protego import Protego
 from pydantic import AwareDatetime, BaseModel, ConfigDict, TypeAdapter, ValidationError
 from sqlalchemy import update
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.types import FetchResult
 from crawlerai.db.models import Site, SiteId
@@ -92,11 +92,11 @@ def snapshot_of(result: FetchResult) -> RobotsSnapshot | None:
 
 
 async def site_robots(
-    conn: AsyncConnection, site_id: SiteId, stored: str | None, url: str, fetch: Fetch
+    engine: AsyncEngine, site_id: SiteId, stored: str | None, url: str, fetch: Fetch
 ) -> Robots | None:
     """The robots rules for `url` on its site, from the snapshot of its origin's robots.txt in the site's `stored`
-    snapshots while it is fresh; otherwise fetched and stored beside the site's other fresh snapshots. `None` when
-    robots.txt is unreachable; nothing is stored then."""
+    snapshots while it is fresh; otherwise fetched, outside any transaction, and stored beside the site's other fresh
+    snapshots in a transaction of its own. `None` when robots.txt is unreachable; nothing is stored then."""
     now = datetime.now(UTC)
     target = robots_url(url)
     fresh = {
@@ -108,7 +108,8 @@ async def site_robots(
     if fetched is None:
         return None
     kept = _SNAPSHOTS.dump_json({**fresh, target: fetched}).decode()
-    await conn.execute(update(Site).where(Site.id == site_id).values(robots_snapshot=kept))
+    async with engine.begin() as conn:
+        await conn.execute(update(Site).where(Site.id == site_id).values(robots_snapshot=kept))
     return Robots(fetched.body)
 
 

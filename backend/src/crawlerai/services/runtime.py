@@ -59,8 +59,8 @@ async def open_fetching(
     """What a process fetches pages with (acquisition spec): HTTP, the process's one shared browser (launched when a
     fetch first needs it), the adapters and the process's site sessions, all through one SSRF guard; the browser
     closes with the block. With a `database`, hosts' turns and holds are shared with every process through it
-    (`acquire/host_turns.py`), and with a cookie key too, the site sessions keep the stored cookie state in it. The
-    cookie key also keys the digest of request contexts (`core.context_digest`)."""
+    (`acquire/host_turns.py`), and with a cookie key too, the site sessions keep the stored cookie state of temporary
+    browser profiles in it. The cookie key also keys the digest of request contexts (`core.context_digest`)."""
     connector = connector or SafeConnector()
     pools = settings.proxy_pools
     key = settings.cookie_key

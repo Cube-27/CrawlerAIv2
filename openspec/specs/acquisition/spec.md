@@ -67,15 +67,16 @@ D-1261, D-1263, D-1472, owner #70, owner #72, architecture v3 a.3.
 
 ### Requirement: Acquisition contract and block history
 The system SHALL keep a two-tier domain memory (`acquire/memory.py`), apart because a durable strategy and a
-short-lived safety bias age differently, both in Postgres so every process reads the same memory:
+short-lived safety bias age differently, both in Postgres so every process reads the same memory. Memory is advisory
+and is learned in short transactions of its own, never in a task's (D-1786):
 - An acquisition contract per site and page kind (`site_contract`; a fetch with no page kind is the detail pages'):
   the method the pages start with, the browser engine that taught it, `handoff`, and the field coverage (`found`,
   `missing`) of the last extraction with a record; the site's platform is `site.platform` ("Platform fingerprints").
   It is learned only from an `auto` fetch that tried HTTP and kept an `ok`: an HTTP `ok` teaches the default (and
   leaves a contract on HTTP as it is); a browser `ok` teaches `browser`, unless HTTP was refused, the render ran no
   browser steps, and its cookies went on to HTTP (a site session, D-1353): then it was needed only to pass the block,
-  `handoff` is set and the pages stay on `http`, their later fetches carrying the stored cookie state (challenge
-  cookies stripped, browser to HTTP only). A site's API is replayed by its learned config's API recipe alone
+  `handoff` is set and the pages stay on `http`, their later fetches carrying the site session's cookies (browser to
+  HTTP only). A site's API is replayed by its learned config's API recipe alone
   ([adapters](../adapters/spec.md), "Recipe execution and fallback"), never by the contract. An unchanged contract is
   not rewritten. A contract is stale after `STALE_FAILURES` (2) consecutive caller-supplied pages extracted without a
   record, and a block (never extracted) is never one; a stale contract is kept but not used, and an extraction with a
@@ -98,7 +99,8 @@ D-1260, D-1353, D-1380, owner plan 2026-10-19 P4 (domain memory), architecture v
 - **WHEN** an `auto` fetch's HTTP attempt is `blocked`, the browser's `ok` opens a site session, and its document has
   the offer
 - **THEN** the contract says `http` with `handoff`, and the site's next fetch goes over HTTP with the site session's
-  cookies, in another process too when the cookie store is configured (`CRAWLERAI_COOKIE_KEY`)
+  cookies; in another process, an HTTP fetch the site refuses is retried in the browser, whose profile holds the
+  site's cookies, and that `ok` opens the process's session
 #### Scenario: Two blocks
 - **WHEN** two HTTP requests to a site are refused within 15 min
 - **THEN** when the browser then keeps an `ok`, its pages start in the browser until 15 min after the second, unless an
@@ -390,46 +392,55 @@ browser rungs", profiles), which keeps the cookies and storage the browser itsel
 that site's later pages through the same pool endpoint, in any job and process, never for a fetch with the caller's
 cookies; a profile is the browser's own state, never handed to the HTTP rung except as a site session. A site session is the cookies of the
 site's registrable domain that a browser `ok` held after a `blocked` or `shell` HTTP attempt, challenge and clearance
-cookies left out, read without change; it seeds later HTTP and JSON fetches of that site
-(`site.host`) in that domain through the same pool endpoint, and its browser contexts on a direct route (a pooled
-context picks its own endpoint), in process memory, for at most 30 min and 200 fetches; `blocked` drops it, as does a
+cookies included (owner #76), read without change; keyed by that registrable domain and pool, it seeds later HTTP and
+JSON fetches of the site in that domain through the same pool endpoint, and the site's temporary profiles on a direct
+route (a pooled context picks its own endpoint; a kept profile holds its own cookies), in process memory, for at most
+30 min and 200 fetches; `blocked` drops it, as does a
 `shell` before any `ok`; a site whose sessions keep being refused starts in the browser (block history, above). The
 HTTP and JSON rungs send a session's cookies with their own identity headers (the impersonation's user agent and
 client hints), never the browser's: those would pair a browser's user agent with curl's TLS and HTTP/2 fingerprint.
-No cookie is logged or captured. (Previously: a vendor's clearance cookies were replayed when its signature
-called them portable; every browser fetch had a fresh context; then a job's pages of a site shared an incognito
+No cookie is logged or captured. (Previously: challenge and clearance cookies were never kept nor replayed, sessions
+were keyed by host, and the stored state seeded every browser context and HTTP fetch; before that, a vendor's
+clearance cookies were replayed when its signature called them portable; every browser fetch had a fresh context; then a job's pages of a site shared an incognito
 context in one process; a session carried the browser's user agent and client
 hints onto the HTTP and JSON rungs' requests.) Enforced by: cross-fetch, cross-site, cross-domain,
 cross-proxy, expiry, no-persistence and caller-cookie tests; active. Refs: §7.1, D-0321, D-0884, D-0902, owner #58,
-D-1350–D-1353, D-1433, owner plan 2026-10-19 P2.
+D-1350–D-1353, D-1433, owner plan 2026-10-19 P2, owner #76.
 #### Scenario: Next fetch to the same host
 - **WHEN** fetch A receives `Set-Cookie` from `example.com` and fetch B then requests `example.com`, with no site session
   and no stored cookie state
 - **THEN** fetch B sends no cookie
 #### Scenario: Site session on another site
-- **WHEN** `shop.example.com` has a site session and a fetch requests `www.example.com`
+- **WHEN** `shop.example.com` has a site session and a fetch requests `www.example.org`
 - **THEN** the fetch sends none of the session's cookies
 
 ### Requirement: Stored cookie state
-With `CRAWLERAI_COOKIE_KEY` set, the system SHALL keep per site (`site.host`) and browser engine (`patchright`) the
-cookies of the site's registrable domain that a browser context held after an `ok` page with no challenge label, in
-`site_cookie_state`, encrypted (Fernet) and rewritten only when the HMAC fingerprint of the plain state changes. Only
-cookies are kept: no other storage. Before a write and after a load, challenge and clearance cookies (every vendor
-signature's cookie names and cookie value markers, `adapters/challenges.py`) are dropped, as are cookies with an empty value or past their expiry;
-cookies are de-duplicated by name, domain and path; session cookies stay; a state with nothing left is not written
-and drops the kept one. A direct browser `ok` also refreshes the site's live session with its cookies.
-A `shell`, `blocked` or `error` outcome writes nothing, and any `blocked` fetch of the site on a direct route clears
-its state. A browser context of the site starts with its live site session's cookies, else the stored state; HTTP and
-JSON fetches of the site take the live session, else the stored state's cookies (with their own identity). The flow is
-browser to HTTP only: no cookie an HTTP response sets is kept or handed to the browser. The stored state serves and is
-written by direct fetches only (no proxy pool); a fetch with the caller's context neither reads nor writes it. Refs:
-owner 2026-10-19 (acquisition plan P2).
-#### Scenario: Next job loads the state
-- **WHEN** a browser fetch of `shop.example.com` ends `ok` holding `session=1` and `cf_clearance=x`, and a later job
-  fetches `shop.example.com` over HTTP
-- **THEN** the HTTP request carries `session=1` and not `cf_clearance`
+The on-disk site profile is the browser's cookie state ("HTTP and browser rungs", profiles); its directory holds
+Chromium's cookies in plaintext, under the operator-managed `CRAWLERAI_BROWSER_PROFILES`. With `CRAWLERAI_COOKIE_KEY`
+set, the system SHALL also keep, per registrable domain and browser engine (`patchright`), the cookies of that domain
+that a temporary profile's browser context held after an `ok` page on a direct route, in `site_cookie_state`,
+encrypted (Fernet) and rewritten only when the HMAC fingerprint of the plain state changes; a kept profile writes
+none. Only cookies are kept: no other storage; challenge and clearance cookies are kept with the rest (owner #76).
+Before a write and after a load, cookies with an empty value or past their expiry are dropped; cookies are
+de-duplicated by name, domain and path; session cookies stay; a state with nothing left is not written and drops the
+kept one. A direct browser `ok` also refreshes the site's live session with its cookies (one holding none of the
+domain's drops it). A `shell`, `blocked` or `error` outcome writes nothing, and a `blocked` browser fetch of the site
+on a direct route clears its state. The state is read only when a temporary profile of the site opens (no profile
+directory configured, or the site's profile held by another process or fetch), which starts with its live site
+session's cookies, else the stored state; never per fetch, never by a kept profile, and never by an HTTP or JSON fetch, which takes only the live session. No cookie an HTTP
+response sets is kept or handed to the browser. The stored state serves and is written by direct fetches only (no
+proxy pool); a fetch with the caller's context neither reads nor writes it. (Previously: keyed by `site.host`,
+challenge and clearance cookies dropped, read by every browser fetch and by HTTP and JSON fetches, written by any
+browser `ok`, and cleared by any `blocked` fetch.) Refs: owner 2026-10-19 (acquisition plan P2), owner #76.
+#### Scenario: A temporary profile loads the state
+- **WHEN** a browser fetch of `shop.example.com` in a temporary profile ends `ok` holding `session=1` and
+  `cf_clearance=x`, and a later job's temporary profile of `www.example.com` opens
+- **THEN** it starts with `session=1` and `cf_clearance=x`
+#### Scenario: A kept profile leaves the state alone
+- **WHEN** a browser fetch of a site in its kept profile ends `ok`
+- **THEN** the stored state is neither read nor written
 #### Scenario: Block clears the state
-- **WHEN** a fetch of a site with stored state ends `blocked`
+- **WHEN** a browser fetch of a site with stored state ends `blocked` on a direct route
 - **THEN** the site has no stored state, and nothing is written
 
 ### Requirement: robots.txt

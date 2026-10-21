@@ -81,3 +81,8 @@ def test_the_registrable_domain_is_the_public_suffix_and_one_label(host: str, re
 
 def test_a_cookie_for_a_public_suffix_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _fetch_with(SUFFIXES, "track=1; Domain=shared.test", monkeypatch) is None
+
+
+@pytest.mark.parametrize(("host", "site"), [("192.0.2.1", "192.0.2.1"), ("::1", "::1"), ("www.site.test", "site.test")])
+def test_the_site_of_an_ip_address_is_the_address_itself(host: str, site: str) -> None:
+    assert SUFFIXES.site(host) == site

@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from pydantic import SecretStr
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
@@ -28,7 +28,7 @@ from crawlerai.db.models import (
     JobId,
     UrlTask,
 )
-from crawlerai.db.queue import MAX_ATTEMPTS
+from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask
 from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
@@ -38,6 +38,9 @@ from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.jobs import PageOutputPage, ResultsQuery
 from crawlerai.storage.fs import FsStore
+from crawlerai.worker.handlers import scrape as scrape_handler
+from crawlerai.worker.handlers import steps
+from crawlerai.worker.handlers.steps import Ended, FetchedPage
 from crawlerai.worker.handlers.table import task_handlers
 from crawlerai.worker.loop import run_worker
 
@@ -282,6 +285,37 @@ async def test_a_task_that_raises_fails_alone(
         urls[2]: ("done", None),
     }
     assert (await _summary(engine, submitted.job_id)).status == "completed"
+
+
+@pytest.mark.usefixtures("site")
+async def test_tasks_of_one_site_hold_none_of_its_rows_across_their_transactions(
+    engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Each task waits in its transaction, after its fetch, until the other is in its own: a row of the site's memory
+    # that a task's transaction held (the contract its fetch taught) would keep the other out until it timed out.
+    urls = [f"{own_origin}/kettles/{name}" for name in ("blue", "red")]
+    for url in urls:
+        web.pages[url] = (200, _page("Kettle"))
+    both, timed_out = asyncio.Barrier(2), []
+    count_fetch = steps.count_fetch
+
+    async def count_side_by_side(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage | Ended) -> None:
+        if isinstance(page, FetchedPage):  # a task postponed for its host's turn fetched nothing yet
+            try:
+                async with asyncio.timeout(10):
+                    await both.wait()
+            except TimeoutError:
+                timed_out.append(task.url)
+                raise
+        await count_fetch(conn, task, page)
+
+    monkeypatch.setattr(scrape_handler, "count_fetch", count_side_by_side)
+    submitted = await submit_batch(engine, fetching.connector, _batch(urls, "markdown"), data=None)
+
+    await _run(engine, fetching, None, submitted.job_id)
+
+    summary = await _summary(engine, submitted.job_id)
+    assert (timed_out, summary.status, summary.outcomes.extracted) == ([], "completed", 2)
 
 
 # The request context and cache modes per page (D-1432, D-1435, D-1439).

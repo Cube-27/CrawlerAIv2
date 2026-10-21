@@ -18,6 +18,10 @@ durable strategy and a short-lived safety bias age differently.
 Precedence (`remembered`): a job's own setting (`FetchPolicy.method_hint` other than `auto`) beats memory, which the
 caller applies; the block history's browser-first beats the contract's method; a fresh contract beats the default
 (HTTP). Both tiers are rows, so every process reads the same memory.
+
+Memory is advisory, and is learned in short transactions of its own (`learn_fetch`, `learn_extraction`), never in a
+task's: an upsert locks its row until commit, so a contract row a task's transaction held would make every other task
+of the site and page kind wait for that task to end.
 """
 
 from dataclasses import dataclass
@@ -26,7 +30,7 @@ from typing import Final
 
 from sqlalchemy import case, delete, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.politeness import SLOW_DOWN
 from crawlerai.acquire.session import ENGINE
@@ -138,11 +142,16 @@ def lesson(result: FetchResult) -> Lesson | None:
     return Lesson(method="http" if handoff else "browser", engine=ENGINE, handoff=handoff)
 
 
-async def learn_fetch(conn: AsyncConnection, site_id: SiteId, result: FetchResult) -> None:
-    """Remember what the fetch `result` of a site's page taught: its block or HTTP success in the block history, and
-    its `lesson` in the contract of the kind it was fetched as. A plain HTTP `ok` leaves a contract on HTTP as it is (a
-    handoff's HTTP `ok` is the handoff working); a contract the lesson would not change is not rewritten. The platform
-    an `ok` page shows (`adapters.platforms`) is the site's (`site.platform`)."""
+async def learn_fetch(engine: AsyncEngine, site_id: SiteId, result: FetchResult) -> None:
+    """Remember what the fetch `result` of a site's page taught, in a transaction of its own: its block or HTTP
+    success in the block history, and its `lesson` in the contract of the kind it was fetched as. A plain HTTP `ok`
+    leaves a contract on HTTP as it is (a handoff's HTTP `ok` is the handoff working); a contract the lesson would not
+    change is not rewritten. The platform an `ok` page shows (`adapters.platforms`) is the site's (`site.platform`)."""
+    async with engine.begin() as conn:
+        await _learn_fetch(conn, site_id, result)
+
+
+async def _learn_fetch(conn: AsyncConnection, site_id: SiteId, result: FetchResult) -> None:
     await _record_block(conn, site_id, result)
     await _record_platform(conn, site_id, result)
     learned = lesson(result)
@@ -220,10 +229,15 @@ async def _record_block(conn: AsyncConnection, site_id: SiteId, result: FetchRes
     )
 
 
-async def learn_extraction(conn: AsyncConnection, site_id: SiteId, kind: PageKind, coverage: Coverage | None) -> None:
-    """Remember how an extraction of a reached page of the site's `kind` went: with a record, its `coverage`, which
-    makes the contract fresh (a row with the defaults when there is none); without one (None), one more consecutive
-    failure towards `STALE_FAILURES`. An unchanged contract is not rewritten."""
+async def learn_extraction(engine: AsyncEngine, site_id: SiteId, kind: PageKind, coverage: Coverage | None) -> None:
+    """Remember how an extraction of a reached page of the site's `kind` went, in a transaction of its own: with a
+    record, its `coverage`, which makes the contract fresh (a row with the defaults when there is none); without one
+    (None), one more consecutive failure towards `STALE_FAILURES`. An unchanged contract is not rewritten."""
+    async with engine.begin() as conn:
+        await _learn_extraction(conn, site_id, kind, coverage)
+
+
+async def _learn_extraction(conn: AsyncConnection, site_id: SiteId, kind: PageKind, coverage: Coverage | None) -> None:
     key = (SiteContract.site_id == site_id, SiteContract.page_kind == kind)
     if coverage is None:
         await conn.execute(update(SiteContract).where(*key).values(failures=SiteContract.failures + 1))
