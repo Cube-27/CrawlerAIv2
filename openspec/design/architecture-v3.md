@@ -179,9 +179,11 @@ site string (C3). The full list with scope is in (b); the readers in scope now:
    exclusions added in (d).
 8. **Config steps** (`collect/config.py`): the active config's `FieldSteps` (xpath/css/jsonld/jsonpath/regex/attr)
    read directly, as today; a `jsonpath` step's `source` gains `attr`, `rsc` and `fragment:<n>` addresses (PR 5).
-9. **Role C** (`llm/roles/c_extract.py`): after resolution, once per page, for every missing field on a detail page,
-   optional ones included (owner #67 (3)), and for a listing as the listings spec states; grounded (INV-12); never
-   the default extractor; product-scoped (PR 2c). Unchanged place in the pipeline.
+9. **Role C** (`llm/roles/c_extract.py`): after resolution, once per page, for the missing fields the llm spec's "When
+   role C is asked" names (on a detail page optional ones included, owner #67 (3); in `active` mode only fields the
+   config neither runs nor lists as absent; never an object or a list of objects, whose sub-fields one span cannot
+   hold), and for a listing as the listings spec states; grounded (INV-12); never the default extractor;
+   product-scoped (PR 2c). Unchanged place in the pipeline.
 
 ### a.5 Field resolution and output
 
