@@ -33,7 +33,7 @@ else becomes a member.
 """
 
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from itertools import combinations
@@ -56,8 +56,8 @@ _VARIANT_OF: Final = "isVariantOf"
 _IRI: Final = "@id"
 _URL: Final = "url"
 # Microdata entities are addressed by their element's XPath (`collect.microdata`): items whose paths differ only in
-# their positions (XPath 1.0 §2.4 `[n]` predicates) are sibling elements of one shape, rendered by one template as one
-# list's items, as an ItemList's are. At least this many make a list, as `acquire.items.MIN_ITEMS`.
+# the position of one step (XPath 1.0 §2.4 `[n]` predicates) are sibling elements of one shape, rendered by one
+# template as one list's items, as an ItemList's are. At least this many make a list, as `acquire.items.MIN_ITEMS`.
 _MICRODATA: Final = "microdata:"
 _POSITION: Final = re.compile(r"\[\d+\]")
 _MIN_REPEATED: Final = 3
@@ -142,30 +142,38 @@ def _is_a(entity: Entity, type_: str, vocabulary: Vocabulary) -> bool:
 
 
 def repeated(entities: Iterable[Entity]) -> frozenset[str]:
-    """The ids of the entities that are one of `_MIN_REPEATED` or more microdata items of one shape (`_MICRODATA`)."""
-    shapes = {e.id: _POSITION.sub("", e.id) for e in entities if e.id.startswith(_MICRODATA)}
-    counts = Counter(shapes.values())
-    return frozenset(id_ for id_, shape in shapes.items() if counts[shape] >= _MIN_REPEATED)
+    """The ids of the entities that are one of `_MIN_REPEATED` or more microdata items of one template: their element
+    XPaths differ only in the position of one step (`_MICRODATA`), each at the same place in another sibling block."""
+    slots: defaultdict[tuple[int, tuple[str, ...]], set[str]] = defaultdict(set)
+    for e in entities:
+        if e.id.startswith(_MICRODATA):
+            steps = tuple(e.id.split("/"))
+            for depth, step in enumerate(steps):
+                slots[depth, (*steps[:depth], _POSITION.sub("", step), *steps[depth + 1 :])].add(e.id)
+    return frozenset(id_ for ids in slots.values() if len(ids) >= _MIN_REPEATED for id_ in ids)
 
 
 def _join_requested(eligible: Sequence[Entity], sets: "_Sets", documents: Documents) -> None:
     """Join each identity-checked data call's root (`Entity.requested`) to the page's one root item of its type, when
-    the page states exactly one, not counting a repeated set's items, and that root is the page's own (module
-    docstring)."""
+    the page states exactly one, not counting a repeated set's items, and that root is the page's own: a member of it
+    names the page, or none names another document (module docstring)."""
     for i, e in enumerate(eligible):
         if e.requested and e.parent is None:
-            j = _one_root(eligible, sets, e.types[0])
-            if j is not None and not leads_elsewhere(eligible[j], documents):
-                sets.join(i, j, certain=True)
+            members = _one_root(eligible, sets, e.types[0])
+            if members and not all(leads_elsewhere(eligible[j], documents) for j in members):
+                sets.join(i, members[0], certain=True)
 
 
-def _one_root(eligible: Sequence[Entity], sets: "_Sets", type_: str) -> int | None:
-    """The index of the page's one root item of `type_`, one of a repeated set's items not counted; None when the page
-    states none or several."""
+def _one_root(eligible: Sequence[Entity], sets: "_Sets", type_: str) -> list[int]:
+    """The indexes of the members of the page's one root item of `type_`, one of a repeated set's items not counted;
+    empty when the page states none or several."""
     typed = [(j, o) for j, o in enumerate(eligible) if _root(o, type_)]
     apart = repeated(o for _, o in typed)
-    roots = {sets.find(j): j for j, o in typed if o.id not in apart}
-    return next(iter(roots.values())) if len(roots) == 1 else None
+    roots: defaultdict[int, list[int]] = defaultdict(list)
+    for j, o in typed:
+        if o.id not in apart:
+            roots[sets.find(j)].append(j)
+    return next(iter(roots.values())) if len(roots) == 1 else []
 
 
 def _root(entity: Entity, type_: str) -> bool:

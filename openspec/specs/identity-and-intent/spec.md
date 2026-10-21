@@ -19,8 +19,9 @@ intent (`resolve/identity.py`); the merged entity holds every member's types, mo
 joined entities of one most specific type only.) The root
 of an identity-checked data call's answer (acquisition spec "Data calls") SHALL be one entity with the page's single
 root entity of its most specific type, and stay apart when the page states none or several; one of a repeated set of
-microdata items (three or more sibling elements of one shape: a carousel, a comparison table) is not counted, as intent
-reads it as another page's item.
+microdata items (three or more elements whose XPaths differ only in one step's position: a carousel, a comparison
+table) is not counted, as intent reads it as another page's item, and the root is the page's own when one of its
+merged members names the page or none names another document.
 `select_target` SHALL pick one primary-type entity (`resolve/intent.py`) or none, which makes every field
 `conflict`/`intent_ambiguous`; a detail page's related items and its product's group do not make intent ambiguous
 (D-1151), nor does the item a primary entity's review or rating names (`itemReviewed`), which is that entity;
