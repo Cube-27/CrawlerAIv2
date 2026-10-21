@@ -1,13 +1,17 @@
 """URL and image_url normalizer (normalization spec): an absolute, canonical http(s) URL.
 
 Accepts a string, from the DOM, an LLM or a structured source (JSON-LD `url` and `image` values are strings). Any
-other JSON value is `Invalid("not_a_string")`. A relative reference resolves against `ctx.base_url`.
+other JSON value is `Invalid("not_a_string")`. A relative reference resolves against `ctx.base_url`. The reference as
+the page writes it (WHATWG URL Standard: without the leading and trailing C0 controls and spaces and the tabs and
+newlines the parser removes) is the value's stated form (`Ok.stated`), the one that publishes: a relative reference
+stays relative, and the canonical form is for equality and identity only.
 """
 
 import mimetypes
 import re
 import string
 from collections.abc import Hashable, Sequence
+from dataclasses import replace
 from typing import Final
 from urllib.parse import SplitResult, parse_qsl, quote, unquote, urljoin, urlsplit
 
@@ -73,6 +77,8 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
         return Invalid("page_url")
     if spec.type is FieldType.IMAGE_URL and isinstance(result, Ok) and _other_media(result.value):
         return Invalid("not_an_image")
+    if isinstance(result, Ok) and (written := _reference(raw)) != result.value:
+        return replace(result, stated=written)
     return result
 
 
@@ -256,15 +262,21 @@ def canonical_url(raw: str, base: str | None) -> str | None:
     return result.value if isinstance(result, Ok) and isinstance(result.value, str) else None
 
 
+def _reference(raw: str) -> str:
+    """The reference as the page writes it: a URL written into HTML or a script HTML-escaped (`?a=1&amp;b=2`) read as
+    the page's parser reads an attribute value, its character references decoded (HTML Standard §13.1.4), so the query
+    keeps its delimiters; then, as the WHATWG URL Standard's basic URL parser reads input, without its leading and
+    trailing C0 controls and spaces and without its ASCII tabs and newlines."""
+    return _TAB_OR_NEWLINE.sub("", decoded_references(raw).strip(_C0_AND_SPACE))
+
+
 def canonical(raw: str, base: str | None) -> NormalizeResult:
     """The url type's canonical form of `raw`, resolved against `base` when relative (normalization spec). Other modules
     that canonicalize URLs outside a field (the `links` content format) call this, so there is one set of rules."""
     # A URL is percent-encoded as UTF-8 (WHATWG URL Standard), and a lone surrogate has no UTF-8 encoding.
     if has_surrogate(raw):
         return Invalid("surrogate")
-    # A URL written into HTML or a script HTML-escaped (`?a=1&amp;b=2`) is read as the page's parser reads an
-    # attribute value: its character references decoded (HTML Standard §13.1.4), so the query keeps its delimiters.
-    reference = _TAB_OR_NEWLINE.sub("", decoded_references(raw).strip(_C0_AND_SPACE))
+    reference = _reference(raw)
     # INV-06: a blank reference is empty whatever the base (it would otherwise resolve to the base).
     if _BLANK.fullmatch(reference):
         return Invalid("empty")

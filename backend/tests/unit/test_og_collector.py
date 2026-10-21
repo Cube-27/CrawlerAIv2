@@ -90,7 +90,12 @@ def test_each_ogp_property_maps_to_the_field_of_its_role() -> None:
             ),
             _og("availability", "InStock", Ok("InStock"), "meta:product:availability"),
             _og("url", "https://shop.example.test/p/1?ref=x", Ok("https://shop.example.test/p/1?ref=x"), "meta:og:url"),
-            _og("image_url", "/img/widget.png", Ok("https://shop.example.test/img/widget.png"), "meta:og:image"),
+            _og(
+                "image_url",
+                "/img/widget.png",
+                Ok("https://shop.example.test/img/widget.png", stated="/img/widget.png"),
+                "meta:og:image",
+            ),
         ),
     )
 

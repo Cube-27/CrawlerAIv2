@@ -234,11 +234,19 @@ canonicalizes and declines non-http(s) or hostless URLs, never repairing; both r
 (HTML Standard §13.1.4) decoded, again while decoding leaves one closed by `;` (`&amp;amp;` is text its producer
 escaped twice, and the page shows `&`), a URL only those closed by `;` (`?w=1&amp;h=2` is `?w=1&h=2`); an `image_url` whose path names a file of a
 registered media type other than an image by its extension (RFC 6838: an HTML page, a video, a script) is
-`Invalid("not_an_image")`, and a path with no registered extension says nothing. (Previously: any http(s) URL but the
-page's was an image.) Refs: §9, D-0287–D-0290, D-0257–D-0263, D-1022, D-1209.
+`Invalid("not_an_image")`, and a path with no registered extension says nothing. The canonical absolute form is the
+value equality, identity and resolution compare; a URL publishes in its stated form (`Ok.stated`): the reference as
+the page writes it, its character references decoded as above and without the leading and trailing C0 controls and
+spaces and the tabs and newlines the WHATWG parser removes, so a relative reference publishes relative. A list or
+object publishes its items' and sub-fields' stated forms. Of sources stating one value, the writing in full (an absolute
+URL in canonical form) publishes when one of them writes it so; no value is resolved to publish. (Previously: any http(s) URL but the page's was an image; a
+URL published resolved and canonicalized.) Refs: §9, D-0287–D-0290, D-0257–D-0263, D-1022, D-1209.
 #### Scenario: Escaped twice
 - **WHEN** a structured description states `cool &amp;amp; dry` and an image URL `i.jpg?w=1&amp;h=2`
 - **THEN** the text is `cool & dry` and the URL's query is `?w=1&h=2`
+#### Scenario: Relative link
+- **WHEN** an `apply_url` reads `/jobs/7/apply` on a page whose base URL is `https://example.com/jobs/7`
+- **THEN** it normalizes to `https://example.com/jobs/7/apply` and publishes `/jobs/7/apply`
 #### Scenario: Check digit fails
 - **WHEN** one digit of a valid GTIN-13 is changed
 - **THEN** the result is `Invalid("check_digit")`

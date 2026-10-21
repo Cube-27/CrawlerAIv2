@@ -31,13 +31,21 @@ class Ok:
     `<path>: <reason>` (`[2]: empty`, `address.locality: no_match`); a scalar has none. `basis` is the weaker evidence
     a part of the value rests on (`Basis`), `None` when the raw value states it all. `checked` is whether the raw value
     shows the type's checked syntax, so that its normalizing is evidence of the type (extraction spec): money text
-    without a currency sign is only a number.
+    without a currency sign is only a number. `stated` is the value as the page states it, when that differs from
+    `value` (a URL as written, relative or not in canonical form): the published form (normalization spec, "Stated
+    form"), while `value` is what equality, identity and resolution read; `None` when `value` is as stated.
     """
 
     value: JsonValue
     reasons: tuple[str, ...] = ()
     basis: Basis | None = None
     checked: bool = True
+    stated: JsonValue = None
+
+    @property
+    def published(self) -> JsonValue:
+        """The value as it publishes: `stated` when the page states it otherwise, else `value`."""
+        return self.value if self.stated is None else self.stated
 
 
 @dataclass(frozen=True, slots=True)

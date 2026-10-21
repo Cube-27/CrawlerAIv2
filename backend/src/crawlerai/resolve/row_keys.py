@@ -34,5 +34,8 @@ def _published_url(outcome: FieldOutcome | None) -> str | None:
 
 
 def _without(outcome: FieldOutcome, names: Collection[str]) -> FieldOutcome:
+    """The outcome keyed without `names`; it publishes as the page states it (`FieldOutcome.stated`)."""
     url = _published_url(outcome)
-    return outcome if url is None else outcome.model_copy(update={"value": without_parameters(url, names)})
+    if url is None:
+        return outcome
+    return outcome.model_copy(update={"value": without_parameters(url, names), "stated": outcome.published})

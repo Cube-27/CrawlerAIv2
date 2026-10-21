@@ -36,7 +36,7 @@ from crawlerai.collect.items.lines import BlockText, block_texts
 from crawlerai.collect.run import Adapters, Collected, collect_page
 from crawlerai.collect.schema_org_map import VOCABULARY_FILE, Vocabulary, canonical_urls, item_url_fields
 from crawlerai.content.context import page_context
-from crawlerai.content.metadata import canonical_link
+from crawlerai.content.metadata import canonical_href, canonical_link
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import CALIBRATION_FILE
@@ -297,6 +297,7 @@ class _Page:
     schema: SchemaDef
     data: EngineData
     canonical_url: str | None
+    canonical_href: str | None  # the canonical link's href as the page writes it (`content.metadata.canonical_href`)
     collected: Collected
     config: _Config
     graph: EntityGraph
@@ -342,7 +343,10 @@ class _Page:
         primary = primary_types(schema, data.vocabulary)
         target = select_target(manifest.url, manifest.final_url, canonical, graph, primary)
         facts = PageFacts.of(manifest.url, page.visible_values.visible)
-        return cls(page, ctx, schema, data, canonical, collected, config, graph, primary, target, facts, page_urls)
+        href = canonical_href(page, manifest.final_url)
+        return cls(
+            page, ctx, schema, data, canonical, href, collected, config, graph, primary, target, facts, page_urls
+        )
 
     @property
     def candidates(self) -> tuple[Candidate, ...]:
@@ -397,6 +401,7 @@ class _Page:
                     resolver,
                     self.ctx,
                     canonical_url=self.canonical_url,
+                    canonical_href=self.canonical_href,
                     page_url_field=is_page_url_field(schema, spec, self.primary),
                 )
                 for name, spec in schema.fields.items()

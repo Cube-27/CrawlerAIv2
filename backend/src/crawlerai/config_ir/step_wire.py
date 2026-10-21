@@ -27,7 +27,8 @@ SELECTORS: Final = ("xpath", "css", "jsonld", "jsonpath", "regex", "attr")
 # The sources role A may name; `api` belongs to API recipes (adapters spec), not to steps the model writes.
 _SOURCES: Final = ("jsonld", "js_state", "attr", "rsc", "xhr")
 _REGEX_REPLACE: Final = "regex_replace"
-_PARAMETERLESS: Final = ("trim", "absolutize_url")
+_ABSOLUTIZE: Final = "absolutize_url"
+_PARAMETERLESS: Final = ("trim", _ABSOLUTIZE)
 # schemas spec: `list` and `object` have no normalizer of their own, so no post op names them.
 _NORMALIZERS: Final = tuple(t.value for t in FieldType if t not in (FieldType.LIST, FieldType.OBJECT))
 
@@ -52,6 +53,11 @@ STEP_SCHEMA: Final = closed_object(
         "post": {"type": "array", "items": POST_OP_SCHEMA},
     }
 )
+
+
+def absolutizes(step: Mapping[str, JsonValue]) -> bool:
+    """Whether a wire step resolves its value against the page (`absolutize_url`)."""
+    return any(cast(dict[str, JsonValue], op)["op"] == _ABSOLUTIZE for op in cast(list[JsonValue], step["post"]))
 
 
 def from_wire(step: Mapping[str, JsonValue]) -> dict[str, JsonValue]:

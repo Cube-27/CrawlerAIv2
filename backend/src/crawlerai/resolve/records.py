@@ -122,7 +122,8 @@ class RecordContent(_Model):
         if fields.keys() != schema.fields.keys():
             raise ValueError(f"field outcomes {sorted(fields)} do not match the schema's {sorted(schema.fields)}")
         return cls(
-            data={name: outcome.value for name, outcome in fields.items() if outcome.status == "published"},
+            # The values as the page states them (`FieldOutcome.published`), never a canonical rewrite of them.
+            data={name: outcome.published for name, outcome in fields.items() if outcome.status == "published"},
             field_meta={name: FieldMeta.of(outcome) for name, outcome in fields.items()},
             complete=is_complete(schema, fields),
         )

@@ -10,7 +10,7 @@ always publishes, with `calibrated=false`.
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Literal
+from typing import Final, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -169,6 +169,7 @@ def assess(
         status="published",
         reason=published.flag,
         value=published.value,
+        stated=published.stated,
         evidence=published.evidence,
         confidence=confidence,
         calibrated=calibrated,
@@ -200,13 +201,41 @@ class _Published:
     kept: tuple[Candidate, ...]
     rejected: tuple[tuple[Candidate, str], ...]
     flag: str | None = None  # why the field's kept candidates did not all agree (`Chosen.flag`)
+    stated: JsonValue = None  # the value as the page states it, when it differs (`Ok.stated`)
 
 
 def _page_url(decision: Derived) -> _Published:
     # D-0355: no candidate states a page-URL derivation, so it carries the `derived` source kind and bucket and a
     # `derived:` locator naming the derivation.
     locator = format_locator("derived", decision.derived_by)
-    return _Published(decision.value, "derived", "derived", locator, decision.derived_by, None, (), decision.rejected)
+    return _Published(
+        decision.value,
+        "derived",
+        "derived",
+        locator,
+        decision.derived_by,
+        None,
+        (),
+        decision.rejected,
+        stated=decision.stated,
+    )
+
+
+def _written(decision: Chosen) -> JsonValue:
+    """The chosen value's stated form (`Ok.stated`), None when the page states it as it is: of equal statements of the
+    value, the one the page writes in full (an absolute URL in canonical form) publishes, the chosen candidate's or an
+    agreeing one's; else the chosen candidate's own writing, relative or not, never resolved."""
+    chosen = cast(Ok, decision.candidate.normalized)
+    if chosen.stated is None:
+        return None
+    for other in decision.agreeing:
+        if (
+            isinstance(other.normalized, Ok)
+            and other.normalized.stated is None
+            and other.normalized.value == chosen.value
+        ):
+            return None
+    return chosen.stated
 
 
 def _candidate_value(decision: Preference | Derived, *, corroborated: bool) -> _Published | FieldOutcome:
@@ -216,11 +245,12 @@ def _candidate_value(decision: Preference | Derived, *, corroborated: bool) -> _
     if isinstance(decision, Derived):
         if decision.source is None:
             raise TypeError("a page-URL derivation has no candidate")
-        value, derived_by = decision.value, decision.derived_by
+        value, derived_by, stated = decision.value, decision.derived_by, decision.stated
         # The source is another field's candidate: none of this field's passed screening.
         decision = Chosen(decision.source, (), (), kept=())
     elif isinstance(decision, Chosen):
         value = _value(decision.candidate)
+        stated = _written(decision)
     else:
         return _unpublished(decision.status, decision.reason, decision.rejected, kept=decision.kept)
     chosen, rejected = decision.candidate, decision.rejected
@@ -228,7 +258,16 @@ def _candidate_value(decision: Preference | Derived, *, corroborated: bool) -> _
     if evidence is None:
         return _unpublished("abstained", "no_bucket", (*rejected, (chosen, "no_bucket")), kept=decision.kept)
     return _Published(
-        value, evidence, chosen.source_kind, chosen.locator, derived_by, chosen, decision.kept, rejected, decision.flag
+        value,
+        evidence,
+        chosen.source_kind,
+        chosen.locator,
+        derived_by,
+        chosen,
+        decision.kept,
+        rejected,
+        decision.flag,
+        stated,
     )
 
 

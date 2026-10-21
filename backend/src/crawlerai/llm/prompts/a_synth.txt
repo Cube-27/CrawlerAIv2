@@ -19,8 +19,9 @@ its kind and `expression` is the selector itself:
   only when no other selector reaches the value.
 - `attr`: an attribute of the listing row node.
 Give `""` for `when_type` and `source` when the step has none. `post` is a list of operations applied in order, each
-{"op", "pattern", "repl"}: `trim`, `absolutize_url`, `regex_replace` (with its `pattern` and `repl`), or a field type
-to check the value is valid for that type; give `""` for `pattern` and `repl` when the op has none.
+{"op", "pattern", "repl"}: `trim`, `absolutize_url` (only for the next page's URL: a field's URL is kept as the page
+writes it, relative or not), `regex_replace` (with its `pattern` and `repl`), or a field type to check the value is
+valid for that type; give `""` for `pattern` and `repl` when the op has none.
 
 Rules:
 - A single-valued field's step must select exactly one value on a page; more than one is rejected. A list field's

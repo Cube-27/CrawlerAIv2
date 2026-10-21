@@ -172,7 +172,9 @@ a detail page's `T.url` field (`T.url` in every alternative of its path) `canoni
 (RFC 6596 §3: one per resource), so such a page states no canonical URL. Before derivation, when the canonical link and
 the final URL are one URL, a kept candidate of that `T.url` field naming another document (another host, port or path;
 a query or a fragment alone names none) is rejected `other_document`, and preference decides among the rest; a relative
-reference `absolutize` resolves to another document is rejected so too. (Previously: a field
+reference `absolutize` resolves to another document is rejected so too. A derived value publishes as the page states it
+(normalization spec): an absolutized reference as written, the canonical link as its first `href` is written; the final
+URL, which no page statement gives, as fetched. (Previously: a field
 whose last rank was `T.url`, such as `apply_url`, took the page URL too; a structured `url` built from another id than
 the page's outranked its canonical URL; the first of conflicting canonical links named the page.) Refs: §9, §10, Appendix A #40, D-0442, D-0910, D-1625. Enforced by: resolver
 tests; active.

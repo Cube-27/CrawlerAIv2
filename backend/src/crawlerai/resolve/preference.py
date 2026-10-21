@@ -22,7 +22,7 @@ Evidence buckets, confidence and min_confidence are the next stage's (`resolve.e
 
 import json
 import re
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from fractions import Fraction
@@ -38,7 +38,7 @@ from crawlerai.collect.base import PAGE, Candidate, Entity
 from crawlerai.collect.json_doc import scalars
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize import money, url
-from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw
+from crawlerai.normalize.base import Ambiguous, Invalid, Ok, Raw, raw_key
 from crawlerai.normalize.dispatch import with_member
 from crawlerai.normalize.text import text_form
 from crawlerai.resolve.identity import VARIANT
@@ -568,7 +568,7 @@ def _union(spec: FieldSpec, groups: list[Group], kept: list[Candidate], rejected
         for value in stated if isinstance(stated, list) else [stated]:
             members = with_member(members, value, item)
     chosen = top.best[0]
-    union = chosen.model_copy(update={"normalized": replace(cast(Ok, chosen.normalized), value=members)})
+    union = _listing(chosen, members, [c for g in groups for c in g.best[:1]])
     agreeing = tuple(c for c in top.members if c is not chosen)
     return Chosen(union, agreeing, tuple(rejected), tuple(kept))
 
@@ -639,7 +639,30 @@ def _largest_renditions(top: Group, chosen: Candidate, spec: FieldSpec) -> Candi
         return next((c for c, images in zip(members, lists, strict=True) if images == largest), chosen)
     if largest == lists[0]:
         return chosen
-    return chosen.model_copy(update={"normalized": replace(cast(Ok, chosen.normalized), value=list(largest))})
+    return _listing(chosen, list(largest), members)
+
+
+def _listing(chosen: Candidate, items: list[JsonValue], sources: Sequence[Candidate]) -> Candidate:
+    """`chosen` holding the list `items`, gathered from `sources`' values, each item published as one of them writes it
+    (`Ok.stated`: a URL as the page writes it, never its resolved form): one writing it in full, else the first."""
+    written: dict[Hashable, JsonValue] = {}
+    for value, as_written in (pair for source in sources for pair in _writings(source)):
+        # Of two writings of one item, the one in full (an absolute URL in canonical form) publishes.
+        if as_written == value or raw_key(value) not in written:
+            written[raw_key(value)] = as_written
+    stated = [written.get(raw_key(item), item) for item in items]
+    normalized = replace(cast(Ok, chosen.normalized), value=items, stated=None if stated == items else stated)
+    return chosen.model_copy(update={"normalized": normalized})
+
+
+def _writings(candidate: Candidate) -> list[tuple[JsonValue, JsonValue]]:
+    """Each value the candidate states, an item of its list or its scalar, with its writing (`Ok.published`)."""
+    if not isinstance(candidate.normalized, Ok):
+        return []
+    value, published = candidate.normalized.value, candidate.normalized.published
+    if isinstance(value, list) and isinstance(published, list):
+        return list(zip(value, published, strict=True))
+    return [(value, published)]
 
 
 def _at_largest(images: list[str], others: Sequence[list[str]]) -> list[str]:

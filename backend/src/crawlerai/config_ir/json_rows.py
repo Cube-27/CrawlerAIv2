@@ -22,17 +22,16 @@ from crawlerai.collect.json_doc import ROOT, segments, select
 from crawlerai.config_ir.executor import documents
 from crawlerai.config_ir.induction import LOCATED_SOURCES, holding
 from crawlerai.config_ir.listing_induction import row_fields
-from crawlerai.config_ir.model import AbsolutizeUrlOp, FieldSteps, JsonPathStep, JsonSource, ListingSpec, PostOp
+from crawlerai.config_ir.model import FieldSteps, JsonPathStep, JsonSource, ListingSpec
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context
 from crawlerai.resolve.records import row_url_fields
-from crawlerai.schemas.types import FieldType, SchemaDef
+from crawlerai.schemas.types import SchemaDef
 
 __all__ = ["json_listings"]
 
 # The sources a row array is read from: documents the HTML carries, not captured calls.
 ROW_SOURCES: Final[tuple[JsonSource, ...]] = tuple(source for source in LOCATED_SOURCES if source != "xhr")
-_ABSOLUTIZE: Final[PostOp] = AbsolutizeUrlOp.model_validate({"absolutize_url": {}})
 _MAX_LISTINGS: Final = 3
 
 Row = Mapping[str, JsonValue]
@@ -102,10 +101,10 @@ def _listing(
     """The listing of the array, whose items hold the item URL field `url` at `relative` (`found`)."""
     array, relative, url = found
     pairs = list(_pairs(document, array, relative, rows, url, schema, ctx))
-    fields = {url: _steps(source, relative, schema.fields[url].type)}
+    fields = {url: _steps(source, relative)}
     for name in row_fields(schema):
         if name != url and (path := _row_path(pairs, name, schema, ctx)) is not None:
-            fields[name] = _steps(source, path, schema.fields[name].type)
+            fields[name] = _steps(source, path)
     try:
         return ListingSpec(row=JsonPathStep(jsonpath=array, source=source), fields=fields)
     except ValidationError:  # a member name outside the RFC 9535 subset the IR accepts
@@ -136,7 +135,6 @@ def _pairs(
                 break
 
 
-def _steps(source: JsonSource, path: str, type_: FieldType) -> FieldSteps:
-    # A URL a state document holds may be relative: RFC 3986 §5 resolves it against the page.
-    post = [_ABSOLUTIZE] if type_ is FieldType.URL else []
-    return FieldSteps(steps=[JsonPathStep(jsonpath=path, source=source, post=post)], status="uncorroborated")
+def _steps(source: JsonSource, path: str) -> FieldSteps:
+    # A URL a state document holds publishes as written, relative or not; the url normalizer resolves it to compare.
+    return FieldSteps(steps=[JsonPathStep(jsonpath=path, source=source, post=[])], status="uncorroborated")

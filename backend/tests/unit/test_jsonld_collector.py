@@ -105,7 +105,10 @@ def test_a_product_with_a_nested_offer() -> None:
             "images",
             product.id,
             ["https://shop.example.test/a.png", "/b.png"],
-            Ok(["https://shop.example.test/a.png", "https://shop.example.test/b.png"]),
+            Ok(
+                ["https://shop.example.test/a.png", "https://shop.example.test/b.png"],
+                stated=["https://shop.example.test/a.png", "/b.png"],
+            ),
             "jsonld:0:$['image'][0]",
         ),
     )
@@ -472,7 +475,7 @@ def test_an_image_object_is_the_url_it_states() -> None:
 
     found = next(c for c in result.candidates if c.field == "images")
     expected: list[JsonValue] = [f"https://shop.example.test/{name}.png" for name in "abc"]
-    assert found.normalized == Ok(expected)
+    assert found.normalized == Ok(expected, stated=["/a.png", expected[1], "/c.png"])
 
 
 def test_a_listed_product_named_only_by_its_iri_has_that_item_url() -> None:

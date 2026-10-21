@@ -184,3 +184,15 @@ def test_each_row_is_a_record_keyed_by_its_url_with_the_page_fields() -> None:
         ),
     ]
     assert set(records[0].field_meta) == {"title", "url", "heading"}
+
+
+def test_a_url_publishes_as_the_page_states_it_and_keys_its_record_canonically() -> None:
+    row = {
+        "title": _published("Widget 3"),
+        "url": _published("https://shop.example.test/p/3").model_copy(update={"stated": "/p/3"}),
+    }
+
+    _, records = _assemble_listing(row)
+
+    assert records[0].entity_key == entity_key(SITE, "https://shop.example.test/p/3")
+    assert records[0].data["url"] == "/p/3"

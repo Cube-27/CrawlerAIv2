@@ -83,6 +83,9 @@ class FieldOutcome(_Model):
     # disagreement flag, resolution spec "Candidate score"); None on a published field they all agree on.
     reason: str | None
     value: JsonValue
+    # The published value as the page states it, when that differs from `value` (`normalize.base.Ok.stated`: a URL as
+    # written); None when `value` is as stated. `value` is what resolution, identity and evaluation compare.
+    stated: JsonValue = None
     evidence: Evidence | None
     confidence: Probability | None
     calibrated: bool
@@ -115,8 +118,16 @@ class FieldOutcome(_Model):
             if getattr(self, name) is None:
                 raise ValueError(f"a published field carries {name} (INV-22)")
 
+    @property
+    def published(self) -> JsonValue:
+        """The value as it publishes: `stated` when the page states it otherwise, a row-mapped field's rows each as
+        they publish, else `value`."""
+        if self.items is not None:
+            return [{n: o.published for n, o in row.fields.items() if o.status == "published"} for row in self.items]
+        return self.value if self.stated is None else self.stated
+
     def _check_unpublished(self) -> None:
-        if self.value is not None:
+        if self.value is not None or self.stated is not None:
             raise ValueError(f"a {self.status} field holds no value")
         if self.reason is None:
             raise ValueError(f"a {self.status} field states its reason")
