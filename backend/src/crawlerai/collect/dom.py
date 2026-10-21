@@ -38,11 +38,9 @@ from dataclasses import dataclass
 
 from selectolax.lexbor import LexborNode
 
-from crawlerai.acquire.items import MIN_ITEMS
 from crawlerai.collect.base import PAGE, Candidate, CollectResult
 from crawlerai.collect.dom_images import (
     A_HREF,
-    MIN_REPEATS,
     Found,
     Links,
     apart_ids,
@@ -57,13 +55,12 @@ from crawlerai.collect.locator import format_locator
 from crawlerai.collect.schema_org_map import candidate
 from crawlerai.collect.vocabulary import NAMESPACES, schema_term
 from crawlerai.content.page import ParsedPage, node_xpath
+from crawlerai.content.repeats import MIN_REPEATS, template_siblings
 from crawlerai.content.text import CELLS, declarations, shown
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equality_key
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
-# XPath 1.0 §2.4: a step's position predicate (`[n]`).
-_POSITION = re.compile(r"\[\d+\]")
 # A label's end: a colon (U+003A, or the fullwidth U+FF1A that CJK text writes) after optional white space.
 _COLON = re.compile(r"\s*[:\uff1a]")
 
@@ -197,7 +194,7 @@ def _pairs_found(
     # order) is its place.
     found: dict[tuple[str, str], LexborNode] = {}
     kinds: dict[tuple[str, str], set[str]] = {}
-    places: dict[tuple[str, str], list[LexborNode]] = {}
+    places: dict[tuple[str, str], list[str]] = {}  # the XPaths of the elements giving a field one value
     for label, value, raw, kind in pairs:
         for name in labels.get(words(label), ()):
             if schema.fields[name].type is FieldType.IDENTIFIER and content is not None and content.links_out(value):
@@ -205,9 +202,11 @@ def _pairs_found(
             found[(name, raw)] = value
             kinds.setdefault((name, kind), set()).add(raw)
             if kind in _REPEATING:
-                places.setdefault((name, raw), []).append(value)
+                places.setdefault((name, raw), []).append(node_xpath(value))
     for (name, raw), value in found.items():
-        repeated = _items_repeat(places.get((name, raw), ())) and raw not in kinds.get((name, _TABLE), ())
+        # A value given in sibling items of one template is theirs (each review's `Reviews: 1`, `content.repeats`); one
+        # shown in other places of the layout (a responsive copy) is the page's own.
+        repeated = bool(template_siblings(places.get((name, raw), ()))) and raw not in kinds.get((name, _TABLE), ())
         if not repeated and _unambiguous(name, raw, kinds, schema.fields[name]):
             yield (
                 name,
@@ -215,22 +214,6 @@ def _pairs_found(
                 node_xpath(value),
                 [*list_items(value, page)] if schema.fields[name].type is FieldType.LIST else None,
             )
-
-
-def _items_repeat(values: Sequence[LexborNode]) -> bool:
-    """Whether elements giving one value are `MIN_ITEMS` or more sibling items of one template: their XPaths differ only
-    in the position of one step (XPath 1.0 §2.4 `[n]`), so each is at the same place in another sibling block, as
-    `acquire.items.MIN_ITEMS` counts a list (each review's `Reviews: 1`). One value shown in other places of the
-    layout (a responsive copy) is the page's own."""
-    paths = {tuple(node_xpath(v).split("/")) for v in values}
-    if len(paths) < MIN_ITEMS:
-        return False
-    slots: dict[tuple[int, tuple[str, ...]], int] = {}
-    for steps in paths:
-        for depth, step in enumerate(steps):
-            key = (depth, (*steps[:depth], _POSITION.sub("", step), *steps[depth + 1 :]))
-            slots[key] = slots.get(key, 0) + 1
-    return max(slots.values()) >= MIN_ITEMS
 
 
 def _unambiguous(name: str, raw: str, kinds: Mapping[tuple[str, str], set[str]], spec: FieldSpec) -> bool:

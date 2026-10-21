@@ -34,7 +34,7 @@ from urllib.parse import parse_qsl, urlsplit
 import yaml
 from pydantic import JsonValue
 
-from crawlerai.collect.base import PAGE, Candidate, Entity
+from crawlerai.collect.base import PAGE, Candidate, Entity, is_visible_amount
 from crawlerai.collect.json_doc import scalars
 from crawlerai.db.models import SourceKind
 from crawlerai.normalize import money, url
@@ -155,7 +155,7 @@ class Resolver:
         screened = {name: self.screen(by_field[name]) for name in fields}
         bounds = _range_bounds(fields, screened)
         screened = {
-            name: _without_bounds(*found, bounds) if price_role(fields[name]) == "price" else found
+            name: _without_bounds(*found, bounds, fields[name]) if price_role(fields[name]) == "price" else found
             for name, found in screened.items()
         }
         # In schema order: the anchor takes the first Offer seen on a tie.
@@ -225,7 +225,7 @@ class Resolver:
         """The value that publishes of the ranked `groups` (a scored best one), or the field's conflict."""
         top = groups[0]
         if rule_type(spec) is FieldType.MONEY:
-            won = self._price_winner(top, groups, offers, offer_field=offer_field)
+            won = self._price_winner(spec, top, groups, offers, offer_field=offer_field)
             if isinstance(won, str):
                 return _all_rejected("conflict", won, kept, rejected)
             top = won
@@ -240,7 +240,9 @@ class Resolver:
             return _all_rejected("conflict", refused, kept, rejected)
         return _published(spec, top, kept, rejected, flag)
 
-    def _price_winner(self, top: Group, groups: list[Group], offers: _Offers, *, offer_field: bool) -> Group | str:
+    def _price_winner(
+        self, spec: FieldSpec, top: Group, groups: list[Group], offers: _Offers, *, offer_field: bool
+    ) -> Group | str:
         """The group whose amount publishes as the price, or why none does (`conflict`). Amounts that differ are
         rival prices, and each is explained by its role before the field is refused:
         - the visible price: the one amount a rendered `dom` value states beats the structured, meta or data-call
@@ -254,7 +256,7 @@ class Resolver:
         product's price by no evidence: `conflict` (owner: accuracy before coverage). Amounts that differ only in
         currency are not rivals (C7: the currency is unknown, not the price)."""
         contenders = [top, *(g for g in groups[1:] if g.score > 0 and not _same_amount(top, g))]
-        visible = [g for g in contenders if any(c.source_kind == "dom" and c.independent for c in g.members)]
+        visible = [g for g in contenders if any(is_visible_amount(c, spec) for c in g.members)]
         if len(contenders) > 1 and len(visible) == 1:
             return visible[0]
         if (shown := self._shown_value(contenders, offers)) is not None:
@@ -501,12 +503,14 @@ def _stated_bounds(candidate: Candidate) -> tuple[_Bound, ...]:
 
 
 def _without_bounds(
-    kept: list[Candidate], rejected: list[Rejection], bounds: frozenset[_Bound]
+    kept: list[Candidate], rejected: list[Rejection], bounds: frozenset[_Bound], spec: FieldSpec
 ) -> tuple[list[Candidate], list[Rejection]]:
     """The price's candidates with the visible amounts that are a stated range's bound (`_range_bounds`) rejected
     `range_bound` (resolution spec, "Candidate score"): "From $80" beside `lowPrice` 80 states the range, not the
     price. An amount in another currency than the range's is no bound; a currency either leaves unknown may be."""
-    bound = [c for c in kept if c.source_kind == "dom" and _bounds_it(money.amount_and_currency(value_of(c)), bounds)]
+    bound = [
+        c for c in kept if is_visible_amount(c, spec) and _bounds_it(money.amount_and_currency(value_of(c)), bounds)
+    ]
     return [c for c in kept if c not in bound], [*rejected, *((c, RANGE_BOUND) for c in bound)]
 
 

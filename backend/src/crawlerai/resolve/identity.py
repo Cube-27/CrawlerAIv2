@@ -32,7 +32,6 @@ holding it: a held group stands beside the Product as a root first, so the Produ
 else becomes a member.
 """
 
-import re
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -42,6 +41,7 @@ from typing import Final
 from crawlerai.collect.base import ARRAY_ROW, PAGE, Entity
 from crawlerai.collect.scope import LISTS, Documents, leads_elsewhere, page_documents
 from crawlerai.collect.vocabulary import Vocabulary
+from crawlerai.content.repeats import template_siblings
 
 # schema.org `hasVariant`: "Indicates a Product that is a member of this ProductGroup". A variant is part of its group,
 # not another thing the page is about, and its Offer offers the group's product too: it joins the group's Offers under
@@ -55,12 +55,9 @@ _GROUP_ID: Final = "productGroupID"  # `schema_org_map.identity`
 _VARIANT_OF: Final = "isVariantOf"
 _IRI: Final = "@id"
 _URL: Final = "url"
-# Microdata entities are addressed by their element's XPath (`collect.microdata`): items whose paths differ only in
-# the position of one step (XPath 1.0 §2.4 `[n]` predicates) are sibling elements of one shape, rendered by one
-# template as one list's items, as an ItemList's are. At least this many make a list, as `acquire.items.MIN_ITEMS`.
+# Microdata entities are addressed by their element's XPath (`collect.microdata`): items of one template are one
+# list's items, as an ItemList's are (`content.repeats`).
 _MICRODATA: Final = "microdata:"
-_POSITION: Final = re.compile(r"\[\d+\]")
-_MIN_REPEATED: Final = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,15 +139,8 @@ def _is_a(entity: Entity, type_: str, vocabulary: Vocabulary) -> bool:
 
 
 def repeated(entities: Iterable[Entity]) -> frozenset[str]:
-    """The ids of the entities that are one of `_MIN_REPEATED` or more microdata items of one template: their element
-    XPaths differ only in the position of one step (`_MICRODATA`), each at the same place in another sibling block."""
-    slots: defaultdict[tuple[int, tuple[str, ...]], set[str]] = defaultdict(set)
-    for e in entities:
-        if e.id.startswith(_MICRODATA):
-            steps = tuple(e.id.split("/"))
-            for depth, step in enumerate(steps):
-                slots[depth, (*steps[:depth], _POSITION.sub("", step), *steps[depth + 1 :])].add(e.id)
-    return frozenset(id_ for ids in slots.values() if len(ids) >= _MIN_REPEATED for id_ in ids)
+    """The ids of the entities that are microdata items of one repeated template (`content.repeats`)."""
+    return template_siblings(e.id for e in entities if e.id.startswith(_MICRODATA))
 
 
 def _join_requested(eligible: Sequence[Entity], sets: "_Sets", documents: Documents) -> None:

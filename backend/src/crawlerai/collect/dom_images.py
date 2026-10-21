@@ -35,6 +35,7 @@ from crawlerai.collect.base import Candidate
 from crawlerai.collect.labels import properties
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage, node_xpath
+from crawlerai.content.repeats import MIN_REPEATS
 from crawlerai.content.text import shown
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.url import canonical_url, media_type, same_file
@@ -66,8 +67,6 @@ _SRCSET, _SRC = "srcset", "src"
 _LAZY = "data-"
 # A hyperlink (HTML Standard §4.6.1: an `a` element with an `href` attribute).
 A_HREF = "a[href]"
-# Sibling containers repeat from two on.
-MIN_REPEATS = 2
 
 # A field, the raw value, the XPath of the element it came from, and what the field reads of it when that is not the
 # raw value (a list field's items).
