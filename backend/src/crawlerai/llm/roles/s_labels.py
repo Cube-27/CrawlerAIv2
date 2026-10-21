@@ -1,17 +1,25 @@
 """Role S's label synonyms (extraction spec, "Label vocabulary"; llm spec, "Role S label synonyms"): the labels pages
 write next to each field's value, drafted once per schema and stored with it (`SchemaDef.labels`), never per page.
 
-The request is the schema's labelled fields (`collect.labels.labelled`), each with its type, schema.org path and the
-caller's description; the reply is the labels per field, in any language. The reply check refuses a field the
-schema does not have, or one given twice; labels that are empty or too long, repeat another's words, or pass the
-per-field bound are dropped. The stored labels are the caller's to edit (`PUT /v1/schemas/{id}/labels`), and an edit
-of the schema's document clears them, so the next use drafts them again.
+A request names some of the schema's labelled fields (`collect.labels.labelled`), each with its type, schema.org path
+and the caller's description; the reply is the labels per field, in any language. The reply check refuses a field the
+request did not name, one it lacks, or one given twice; labels that are empty or too long, repeat another's words, or
+pass the per-field bound are dropped. The stored labels are the caller's to edit (`PUT /v1/schemas/{id}/labels`), and
+an edit of the schema's document clears them, so the next use drafts them again.
 
-No job exists when a schema is first used, so the call is charged to none, as a field-names draft (`KeyCapped`
-counts it against the caller's key). Without a model (no provider, a failure, the key's cap) the schema is used as
-it is: the vocabulary is then the schema's own words, and the next use asks again.
+Drafting is off the request path: a request uses the labels stored with its schema, and when there are none it starts
+the draft in the background and goes on with the schema as it is (its own words are the vocabulary), so no request
+waits on the model; one draft per schema runs at a time in a process, and of drafts in two processes the first stored
+stays. The labelled fields are asked for in chunks of `CHUNK_FIELDS`, concurrently, so each reply (the model's thinking
+included) stays well under its output cap however many fields the schema has; the labels are stored only when every
+chunk answered.
+
+No job exists when a schema is first used, so the calls are charged to none, as a field-names draft (`KeyCapped`
+counts them against the caller's key). Without a model (no provider, a failure of any kind, the key's cap) nothing is
+stored, and the next use asks again.
 """
 
+import asyncio
 import logging
 from functools import cache, partial
 from importlib.resources import files
@@ -21,7 +29,8 @@ from pydantic import BaseModel, JsonValue
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.collect.labels import labelled, properties, words
-from crawlerai.llm.client import LLMClient, LLMFailure, LLMRequest, closed_object
+from crawlerai.db.models import SchemaId
+from crawlerai.llm.client import LLMClient, LLMRequest, closed_object
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import MAX_LABELS, FieldLabels, FieldSpec, Label, SchemaDef
 
@@ -29,6 +38,9 @@ log = logging.getLogger(__name__)
 
 SYSTEM: Final = files("crawlerai.llm").joinpath("prompts/s_labels.txt").read_text(encoding="utf-8")
 MAX_OUTPUT_TOKENS: Final = 8_192
+# The most labelled fields one call asks for: at 32 labels a field, a reply of this many fits its cap with room for the
+# model's thinking, which counts against it.
+CHUNK_FIELDS: Final = 4
 # `schemas.types.Label`: the longest label kept, in characters.
 _MAX_LABEL_CHARS: Final = 80
 
@@ -41,9 +53,10 @@ def output_schema() -> dict[str, JsonValue]:
     return closed_object({"fields": {"type": "array", "items": entry}})
 
 
-def labels_request(schema: SchemaDef) -> LLMRequest:
-    """The request for `schema`'s labelled fields, in the schema's order; no job pays for it (module doc)."""
-    lines = "\n".join(_line(name, spec) for name, spec in _labelled_fields(schema).items())
+def labels_request(schema: SchemaDef, names: list[str]) -> LLMRequest:
+    """The request for the labelled fields `names` of `schema`, in the schema's order; no job pays for it (module
+    doc)."""
+    lines = "\n".join(_line(name, schema.fields[name]) for name in names)
     user = f'<schema page_kind="{schema.page_kind}">\n{lines}\n</schema>'
     return LLMRequest(
         prompt_kind="s_labels",
@@ -56,21 +69,40 @@ def labels_request(schema: SchemaDef) -> LLMRequest:
     )
 
 
-async def with_labels(engine: AsyncEngine, client: LLMClient, schema: SchemaDef) -> SchemaDef:
-    """`schema` with its label synonyms: as stored when drafted (or edited) before, else drafted now and stored. Without
-    a model's reply, `schema` as it is (module doc)."""
-    names = frozenset(_labelled_fields(schema))
-    if schema.labels is not None or not names:
-        return schema
+# The drafts running in this process, by schema; the reference also keeps each task alive until it ends.
+_DRAFTING: dict[SchemaId, "asyncio.Task[SchemaDef | None]"] = {}
+
+
+def with_labels(engine: AsyncEngine, client: LLMClient, schema: SchemaDef) -> SchemaDef:
+    """`schema` as it is: with its stored labels when drafted (or edited) before; else its draft starts in the
+    background, unless one runs already, and a later use finds the labels stored (module doc)."""
+    if schema.labels is None and _labelled_fields(schema) and schema.id not in _DRAFTING:
+        task = asyncio.get_running_loop().create_task(draft_labels(engine, client, schema))
+        _DRAFTING[schema.id] = task
+        task.add_done_callback(lambda _: _DRAFTING.pop(schema.id, None))
+    return schema
+
+
+async def draft_labels(engine: AsyncEngine, client: LLMClient, schema: SchemaDef) -> SchemaDef | None:
+    """Draft `schema`'s label synonyms and store them; the stored schema, or None when nothing was stored: a failure of
+    any kind (logged), or another draft or an edit of the schema came first."""
+    names = list(_labelled_fields(schema))
+    chunks = [names[i : i + CHUNK_FIELDS] for i in range(0, len(names), CHUNK_FIELDS)]
     try:
-        response = await client.complete_json(labels_request(schema), check=partial(_invalid, names=names))
-    except LLMFailure as error:
-        log.info("label synonyms of schema %s not drafted: %s", schema.name, type(error).__name__)
-        return schema
-    async with engine.begin() as conn:
-        stored = await registry.store_labels(conn, schema, _labels(response.data, schema), drafted=True)
-    # Another request drafted them meanwhile, or the schema was edited: `schema` stays as the caller validated it.
-    return schema if stored is None else schema.model_copy(update={"labels": stored.labels})
+        async with asyncio.TaskGroup() as group:
+            replies = [group.create_task(_draft_chunk(client, schema, chunk)) for chunk in chunks]
+        labels = {name: kept for reply in replies for name, kept in reply.result().items()}
+        async with engine.begin() as conn:
+            return await registry.store_labels(conn, schema, labels, drafted=True)
+    except Exception as error:  # a draft never fails a request, whatever went wrong (module doc)
+        log.warning("label synonyms of schema %s not drafted: %r", schema.name, error)
+        return None
+
+
+async def _draft_chunk(client: LLMClient, schema: SchemaDef, names: list[str]) -> FieldLabels:
+    check = partial(_invalid, names=frozenset(names))
+    response = await client.complete_json(labels_request(schema, names), check=check)
+    return _labels(response.data, schema)
 
 
 def _labelled_fields(schema: SchemaDef) -> dict[str, FieldSpec]:
