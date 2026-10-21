@@ -122,8 +122,8 @@ sdk:
 check-sdk: sdk
 	git diff --exit-code -- sdk || { echo "SDK out of date: run 'make sdk' and commit the result."; exit 1; }
 	cd sdk/typescript && pnpm check && pnpm test
-	cd sdk/python && uv sync --frozen --no-build --extra dev -q && .venv/bin/ruff check src tests \
-		&& .venv/bin/mypy src tests && .venv/bin/pytest -q
+	cd sdk/python && uv sync --frozen --no-build --no-binary-package crawlerai-sdk --extra dev -q \
+		&& .venv/bin/ruff check src tests && .venv/bin/mypy src tests && .venv/bin/pytest -q
 
 check-frontend:
 	cd frontend && pnpm check
