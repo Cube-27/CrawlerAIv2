@@ -52,7 +52,6 @@ from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.resolve.page_state import out_of_stock, render_bound, was_rendered
 from crawlerai.resolve.pagination import next_page_candidate, next_page_links
 from crawlerai.resolve.preference import (
-    PRECEDENCE_FILE,
     PRECEDENCE_TYPES,
     Chosen,
     Orders,
@@ -60,11 +59,11 @@ from crawlerai.resolve.preference import (
     Preference,
     Resolver,
     intent_ambiguous,
-    load_precedence,
 )
 from crawlerai.resolve.records import is_complete, record_confidence
 from crawlerai.resolve.row_keys import keyed_rows
 from crawlerai.resolve.rows import RowField, resolve_rows
+from crawlerai.resolve.score import PRECEDENCE_FILE, load_precedence
 from crawlerai.resolve.types import ExtractionResult, FieldSet, LLMCallRecord, Outcome, Probability
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, Scope
 from crawlerai.storage.capture_bundle import CaptureBundle

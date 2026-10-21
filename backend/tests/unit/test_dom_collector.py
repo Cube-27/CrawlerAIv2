@@ -227,7 +227,7 @@ def test_the_shown_image_of_the_stated_main_file_anchors_the_main_image_and_its_
     assert collect(f"<main>{body}</main>", primary)["image_url"] == "https://shop.example.test/p/b.jpg?w=200"
     # Without a stated file the page has no main region image.
     assert collect(body, ()) == {}
-    # A rendition the image server writes into the path is the stated file too (`url.same_file`).
+    # A rendition the image server writes into the path is the stated file too (`images.same_file`).
     served = body.replace("/p/b.jpg", "/cdn/v2/p/b.jpg/renditions/600.jpg")
     assert collect(served, primary)["image_url"] == "https://shop.example.test/cdn/v2/p/b.jpg/renditions/600.jpg?w=200"
 

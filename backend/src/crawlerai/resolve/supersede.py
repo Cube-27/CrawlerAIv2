@@ -14,7 +14,7 @@ Two structural properties of the values say a candidate is a fragment of another
   same, white space aside.
 - text: a value that is another kind's value plus a separator (a dash or a vertical bar, between spaces) and more
   text, at either end, is that value with decoration; the other kind's undecorated value supersedes it.
-- a list of images: a list whose files are all among a longer list's of another kind (`url.same_file`: a file or a
+- a list of images: a list whose files are all among a longer list's of another kind (`images.same_file`: a file or a
   rendition of it, and the other list names more files) is that list's representative part, whatever its kind: a
   structured `image` stating the main image only while the page's gallery or another source lists every view. The
   longer list supersedes it; it must name every file the shorter one does, so a list of other images never supersedes
@@ -28,8 +28,8 @@ from collections.abc import Sequence
 
 from crawlerai.collect.base import Candidate
 from crawlerai.normalize.base import Ok
+from crawlerai.normalize.images import representative_part
 from crawlerai.normalize.strings import collapse, is_cut_of, solid
-from crawlerai.normalize.url import same_file
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 _OPEN_GRAPH = "og"
@@ -52,16 +52,12 @@ def _representative(kept: Sequence[Candidate]) -> list[Candidate]:
     return [
         c
         for c, own in files
-        if own and any(o.source_kind != c.source_kind and _part_of(c, own, other) for o, other in files)
+        if own
+        and any(
+            o.source_kind != c.source_kind and representative_part(own, other, first_only=c.source_kind == _OPEN_GRAPH)
+            for o, other in files
+        )
     ]
-
-
-def _part_of(c: Candidate, own: Sequence[str], other: Sequence[str]) -> bool:
-    """Whether the list `own` (of `c`) is the representative part of `other` (module docstring): `other` names the files
-    it must and one more."""
-    named = own[:1] if c.source_kind == _OPEN_GRAPH else own
-    extra = any(not any(same_file(image, file) for file in own) for image in other)
-    return extra and all(any(same_file(file, image) for image in other) for file in named)
 
 
 def _files(c: Candidate) -> list[str]:
@@ -81,10 +77,11 @@ def _forms(kept: Sequence[Candidate]) -> list[tuple[Candidate, str]]:
 def _by_length(kept: Sequence[Candidate]) -> list[Candidate]:
     forms = _forms(kept)
     summaries = {form for c, form in forms if c.source_kind == _OPEN_GRAPH}
+    lines = _most_lines(kept)
     return [
         c
         for c, form in forms
-        if any(_longer(c, form, other, longer, summaries) for other, longer in forms) or _flattened(c, kept)
+        if any(_longer(c, form, other, longer, summaries) for other, longer in forms) or _flattened(c, lines)
     ]
 
 
@@ -104,18 +101,20 @@ def _headed(c: Candidate, longer: str) -> bool:
     return bool(line_break) and is_cut_of(rest, longer, word_boundary=False)
 
 
-def _flattened(c: Candidate, kept: Sequence[Candidate]) -> bool:
-    """Whether another kept candidate states `c`'s text, white space aside, on more lines."""
+def _most_lines(kept: Sequence[Candidate]) -> dict[str, int]:
+    """Of each text the kept candidates state, white space aside (`solid`), the most lines a candidate states it on."""
+    lines: dict[str, int] = {}
+    for c in kept:
+        if isinstance(c.normalized, Ok) and isinstance(value := c.normalized.value, str):
+            whole = solid(value)
+            lines[whole] = max(lines.get(whole, 0), value.count("\n"))
+    return lines
+
+
+def _flattened(c: Candidate, lines: dict[str, int]) -> bool:
+    """Whether another kept candidate states `c`'s text, white space aside, on more lines (`_most_lines`)."""
     value = c.normalized.value if isinstance(c.normalized, Ok) else None
-    if not isinstance(value, str):
-        return False
-    whole = solid(value)
-    return any(
-        isinstance(other := o.normalized.value if isinstance(o.normalized, Ok) else None, str)
-        and other.count("\n") > value.count("\n")
-        and solid(other) == whole
-        for o in kept
-    )
+    return isinstance(value, str) and lines[solid(value)] > value.count("\n")
 
 
 def _decorated(kept: Sequence[Candidate]) -> list[Candidate]:

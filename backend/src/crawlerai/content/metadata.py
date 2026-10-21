@@ -11,7 +11,6 @@ from pydantic import ConfigDict, JsonValue, with_config
 
 from crawlerai.content.dom import document_base_url, strip, tokens
 from crawlerai.content.page import ParsedPage
-from crawlerai.core import json_text
 from crawlerai.normalize.url import canonical_url
 
 # The Open Graph protocol: `og:` properties, and the `product:` namespace of its `product` object type.
@@ -125,17 +124,11 @@ def language_alternates(page: ParsedPage, final_url: str) -> tuple[tuple[str, st
 
 
 def _json_ld_types(page: ParsedPage) -> Iterator[str]:
-    # JSON-LD 1.1 §9.3: a script of type application/ld+json carries JSON-LD; §3.5: `@type` is a string or an array
-    # of strings, on any node object, nested ones and `@graph` members included.
-    for block in page.scripts:
-        if block.type != "application/ld+json":
-            continue
-        try:
-            # Raw control characters inside strings are accepted, as the JSON-LD collector reads blocks (RFC 8259 §9).
-            document = json_text.parse(block.text, lenient=True)
-        except ValueError:
-            continue
-        yield from map(_type_name, _type_values(document))
+    # JSON-LD 1.1 §9.3: a script of type application/ld+json carries JSON-LD (`ParsedPage.json_ld`); §3.5: `@type` is a
+    # string or an array of strings, on any node object, nested ones and `@graph` members included.
+    for block in page.json_ld:
+        if block.error is None:
+            yield from map(_type_name, _type_values(block.document))
 
 
 def _type_values(document: JsonValue) -> Iterator[str]:

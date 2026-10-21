@@ -62,10 +62,19 @@ def flight_document(page: ParsedPage, diagnostics: list[str]) -> Document | None
     return None
 
 
+class _AttributeDocuments:
+    """The key of a page's attribute documents in `ParsedPage.derived`."""
+
+
 def attribute_documents(page: ParsedPage) -> list[Document]:
-    """The page's documented JSON attributes' documents, in document order."""
-    return [
-        Document(decode(data), f"{a.xpath}@{a.name}", "attr")
-        for a in page.json_attributes
-        if (data := attribute_document(a.tag, a.name, a.value)) is not None
-    ]
+    """The page's documented JSON attributes' documents, in document order, decoded once per parse (INV-26)."""
+    derived = page.derived.get(_AttributeDocuments)
+    if derived is None:
+        documents = [
+            Document(decode(data), f"{a.xpath}@{a.name}", "attr")
+            for a in page.json_attributes
+            if (data := attribute_document(a.tag, a.name, a.value)) is not None
+        ]
+        derived = ((), documents)
+        page.derived[_AttributeDocuments] = derived
+    return list(cast(list[Document], derived[1]))

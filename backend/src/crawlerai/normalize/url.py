@@ -10,10 +10,10 @@ stays relative, and the canonical form is for equality and identity only.
 import mimetypes
 import re
 import string
-from collections.abc import Hashable, Sequence
+from collections.abc import Hashable
 from dataclasses import replace
-from typing import Final
-from urllib.parse import SplitResult, parse_qsl, quote, unquote, urljoin, urlsplit
+from functools import lru_cache
+from urllib.parse import SplitResult, quote, unquote, urljoin, urlsplit
 
 from pydantic import JsonValue
 
@@ -84,7 +84,17 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
 
 def media_type(url: str) -> str | None:
     """The registered media type the URL's path names by its file extension (RFC 6838), or `None` when it names none."""
-    return _MEDIA_TYPES.guess_type(urlsplit(url).path, strict=True)[0]
+    return name_media_type(urlsplit(url).path)
+
+
+def name_media_type(name: str) -> str | None:
+    """The registered media type a file name or path names by its extension (RFC 6838), or `None`."""
+    return _MEDIA_TYPES.guess_type(name, strict=True)[0]
+
+
+def is_image_type(media: str | None) -> bool:
+    """Whether a media type is of the top-level type `image` (RFC 6838 §4.2.2)."""
+    return media is not None and media.partition("/")[0] == _IMAGE_TYPE
 
 
 def _other_media(value: JsonValue) -> bool:
@@ -100,154 +110,6 @@ def key(value: JsonValue, _spec: FieldSpec) -> Hashable:
     without its base."""
     url = canonical(value, None) if isinstance(value, str) else None
     return ("url", url.value, url.reasons) if isinstance(url, Ok) else raw_key(value)
-
-
-def resource_key(value: JsonValue) -> Hashable | None:
-    """The stored resource an absolute URL names: its canonical authority and path (RFC 3986 §3.2, §3.3: the path
-    identifies the resource within the authority), without the scheme, which only says how the authority is reached
-    (http or https), and without the query (§3.4), which may vary only how it is served, such as an image's size or
-    crop. Not an equality (two queries can name two resources): it only tells which of one entity's own values
-    another source names, and which values are renditions of one file (extraction spec). `None` for anything that is no
-    absolute URL. An image proxy's URL, whose query names the file it serves in one `url` parameter (an image
-    optimizer's `?url=<file>&w=640`), names that file's resource, resolved against the proxy URL (RFC 3986 §5)."""
-    url = canonical(value, None) if isinstance(value, str) else None
-    if not isinstance(url, Ok) or not isinstance(url.value, str):
-        return None
-    parts = urlsplit(url.value)
-    served = [v for name, v in parse_qsl(parts.query) if name == _PROXIED]
-    if len(served) == 1 and served[0]:  # a file named in the query is shorter than the URL, so this ends
-        file = urljoin(url.value, served[0])
-        return resource_key(file) if urlsplit(file).scheme in _DEFAULT_PORT else None
-    return ("resource", parts.netloc, _without_dimensions(parts.path))
-
-
-def same_file(a: JsonValue, b: JsonValue) -> bool:
-    """Whether two image URLs name one file (`resource_key`), or two renditions of it that an image server writes into
-    the path rather than the query: on one authority, both paths hold the same file name (the first segment naming an
-    image file by its extension, RFC 6838), anything after it being a rendition below the file
-    (`<file>.jpg/renditions/600.jpg`), and the directories before it, read back from the file, are the same, a segment
-    with rendition parameters after a separator standing for the bare one (`/1234-800-auto/` for `/1234/` or
-    `/1234-600-auto/`); further
-    leading segments of the longer path are the image service's prefix (`/image/v2/<file's path>`). At least one
-    directory must be read alike: a bare file name is no evidence of one file."""
-    first, second = resource_key(a), resource_key(b)
-    if first is None or second is None:
-        return False
-    if first == second:
-        return True
-    one, other = _file_path(first), _file_path(second)
-    if one is None or other is None or one[0] != other[0] or one[-1] != other[-1]:
-        return False
-    directories = list(zip(reversed(one[1:-1]), reversed(other[1:-1]), strict=False))
-    return bool(directories) and all(_rendition_segment(x, y) for x, y in directories)
-
-
-def _file_path(key: Hashable) -> tuple[str, ...] | None:
-    """The authority, then the path's segments up to the first that names an image file (`same_file`)."""
-    if not isinstance(key, tuple) or len(key) != 3:
-        return None
-    segments = [segment for segment in str(key[2]).split("/") if segment]
-    for index, segment in enumerate(segments):
-        name = _ENCODED_QUERY.split(segment, maxsplit=1)[0]
-        found = _MEDIA_TYPES.guess_type(name, strict=True)[0]
-        if found is not None and found.partition("/")[0] == _IMAGE_TYPE:
-            return (str(key[1]), *segments[:index], name)
-    return None
-
-
-def _rendition_segment(x: str, y: str) -> bool:
-    """Whether two path segments are one, or one base each continues with rendition parameters (after a separator, no
-    letter or digit, and holding a digit: a size): `1234-800-auto`, `1234-600-auto` and `1234` name one directory."""
-    if x == y:
-        return True
-    base = min(len(x), len(y))
-    while base and x[:base] != y[:base]:
-        base -= 1
-    while base and not all(len(s) == base or not s[base].isalnum() for s in (x, y)):
-        base -= 1
-    return base > 0 and all(len(s) == base or any(c.isdigit() for c in s[base:]) for s in (x, y))
-
-
-# A query delimiter percent-encoded into the path (`photo.png%3Fwidth%3D785`): the URL was percent-encoded once more
-# than written (RFC 3986 §2.4: a string is encoded once), so the file's name ends before it.
-_ENCODED_QUERY = re.compile(r"%3F", re.IGNORECASE)
-# The query parameter by which an image proxy or optimizer names the file it serves (`/_next/image?url=`, `?url=`).
-_PROXIED: Final = "url"
-# What an image path states about the rendition it serves, not the file: a whole segment `<width>x<height>` or a list
-# of `<letter>_<number>` transform pairs (`w_300,h_200`); a size closing the file's name before its extension
-# (`name-300x200.ext`, `name_1024x.ext`, `name@2x.ext`); a format conversion appended as a second extension
-# (`name.jpg.webp`); a trailing `=<options>` on the last segment.
-_SEGMENT = re.compile(r"\d+x\d+|[a-z]+_\d+(?:,[a-z]+_\d+)*", re.IGNORECASE)
-_SIZE_SUFFIX = re.compile(r"(?<=[^/])[-_@](?:\d+x\d*|x\d+)(?=\.[^./]+$)", re.IGNORECASE)
-_CONVERSION = re.compile(r"(\.[a-z0-9]{2,5})\.[a-z0-9]{2,5}$", re.IGNORECASE)
-_OPTIONS = re.compile(r"(?<=[^/=])=[\w,-]+$")
-
-
-def _without_dimensions(path: str) -> str:
-    kept = [segment for segment in path.split("/") if not _SEGMENT.fullmatch(segment)]
-    stripped = _OPTIONS.sub("", "/".join(kept))
-    return _CONVERSION.sub(r"\1", _SIZE_SUFFIX.sub("", stripped))
-
-
-# A size has a few digits; a longer run (an id or a stamp) is no size, and stays clear of `int`'s digit limit.
-_NUMBER = re.compile(r"(?<!\d)\d{1,9}(?!\d)")
-
-
-def largest_rendition(values: Sequence[str]) -> int:
-    """The index of the largest of renditions of one file (`resource_key`), or 0 when not every one states its size.
-
-    A rendition states its size in what `resource_key` sets aside: the path's dimension segments, size suffix and
-    options, and query parameters (RFC 3986 §3.4) every rendition states with a decimal value that differ between them
-    (a parameter equal in all, such as a version stamp, says nothing of size, and one only some state, such as a scale
-    factor, compares with no other). Its size is the largest such number; of equal sizes
-    the first wins. A rendition stating none may be the unresized file or a default one, so nothing is ranked then."""
-    sizes = [_stated_size(value, values) for value in values]
-    if not sizes or None in sizes:
-        return 0
-    known = [size for size in sizes if size is not None]
-    return known.index(max(known))
-
-
-def _stated_size(value: str, renditions: Sequence[str]) -> int | None:
-    parts = urlsplit(value)
-    path = parts.path
-    stated = [m.group() for m in (_SIZE_SUFFIX.search(path), _OPTIONS.search(path)) if m is not None]
-    stated += [segment for segment in path.split("/") if _SEGMENT.fullmatch(segment)]
-    query = _numeric_query(parts.query)
-    others = [_numeric_query(urlsplit(r).query) for r in renditions]
-    varying = [v for name, v in query.items() if all(name in o for o in others) and any(o[name] != v for o in others)]
-    numbers = [int(n) for text in stated for n in _NUMBER.findall(text)] + varying
-    return max(numbers) if numbers else None
-
-
-def _numeric_query(query: str) -> dict[str, int]:
-    return {name: int(v) for name, v in parse_qsl(query) if _NUMBER.fullmatch(v)}
-
-
-def distinct_files(values: Sequence[JsonValue]) -> list[JsonValue]:
-    """Image values with each file once (`resource_key`), at the place of the file's first rendition: of its
-    renditions the largest (`largest_rendition`) of those over `https` if any is (RFC 9110 §4.2.2: the same file
-    reached over TLS). Values that are no absolute URL are kept as they are."""
-    groups: dict[Hashable, list[str]] = {}
-    for value in values:
-        key = resource_key(value)
-        if key is not None and isinstance(value, str):
-            groups.setdefault(key, []).append(value)
-    kept: list[JsonValue] = []
-    for value in values:
-        key = resource_key(value)
-        group = groups.pop(key, None) if key is not None else None
-        if group is not None:
-            kept.append(preferred_rendition(group))
-        elif key is None:
-            kept.append(value)
-    return kept
-
-
-def preferred_rendition(renditions: Sequence[str]) -> str:
-    """Of renditions of one file, the largest (`largest_rendition`) of those over `https`, else of all."""
-    secure = [r for r in renditions if urlsplit(r).scheme == "https"] or list(renditions)
-    return secure[largest_rendition(secure)]
 
 
 def is_absolute(raw: Raw) -> bool:
@@ -270,6 +132,9 @@ def _reference(raw: str) -> str:
     return _TAB_OR_NEWLINE.sub("", decoded_references(raw).strip(_C0_AND_SPACE))
 
 
+# A pure function of its two strings, called for one URL by every reader of it (normalization, equality, image files),
+# so its results are kept; the results are frozen dataclasses, safe to share.
+@lru_cache(maxsize=8192)
 def canonical(raw: str, base: str | None) -> NormalizeResult:
     """The url type's canonical form of `raw`, resolved against `base` when relative (normalization spec). Other modules
     that canonicalize URLs outside a field (the `links` content format) call this, so there is one set of rules."""

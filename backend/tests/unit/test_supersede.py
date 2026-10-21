@@ -74,7 +74,7 @@ def test_an_image_list_yields_to_a_longer_list_of_another_kind_naming_its_files(
     assert superseded(images, [main, other]) == []
     # A longer list of the same kind is no other source's account of the images.
     assert superseded(images, [main, _c([f"{cdn}/a.jpg", f"{cdn}/b.jpg"], kind)]) == []
-    # A rendition an image server writes into the path names the file too (`url.same_file`).
+    # A rendition an image server writes into the path names the file too (`images.same_file`).
     served = _c([f"{cdn}/v2/p/a.jpg/renditions/600.jpg", f"{cdn}/b.jpg"], "dom")
     assert superseded(images, [main, served]) == [main]
 
