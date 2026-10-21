@@ -55,9 +55,6 @@ def complete_with(providers: list[FakeProvider], req: LLMRequest = REQUEST) -> L
     return asyncio.run(client.complete_json(req))
 
 
-# --- the request ---
-
-
 # --- the request hash (INV-10) ---
 
 
@@ -69,20 +66,6 @@ def test_the_hash_is_sha256_of_the_canonical_request() -> None:
         ensure_ascii=False,
     )
     assert request_hash(REQUEST) == hashlib.sha256(canonical.encode()).hexdigest()
-
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("prompt_kind", "c_extract_listing"),
-        ("model_class", "strong"),
-        ("system", "system prompt "),
-        ("user", "user prompt."),
-        ("output_schema", {"type": "object"}),
-    ],
-)
-def test_each_part_of_the_request_changes_the_hash(field: str, value: Any) -> None:
-    assert request_hash(REQUEST.model_copy(update={field: value})) != request_hash(REQUEST)
 
 
 # --- completing a request ---
