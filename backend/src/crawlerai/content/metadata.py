@@ -91,6 +91,7 @@ def canonical_link(page: ParsedPage, final_url: str) -> str | None:
         for node in page.tree.css("link[href]")
         if "canonical" in tokens((node.attributes.get("rel") or "").lower())
     }
+    named.discard(None)  # a target no URL parser reads names nothing
     return named.pop() if len(named) == 1 else None
 
 
