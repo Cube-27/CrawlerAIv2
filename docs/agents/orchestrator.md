@@ -58,7 +58,8 @@ The machine needs Docker, `uv`, `pnpm`, GNU make, `gh` (logged in) and herdr; ev
    value, `herdr agent read <id> --source recent-unwrapped --lines 60` and look for the end-of-turn line (`read`
    fails while the agent is `working`). A single long event wait (`herdr agent wait`) misses turns that end between
    waits; don't rely on it alone. `blocked` means a permission or question dialog: read it, and ask the owner
-   before answering anything that isn't routine. A builder that went idle while waiting for CI or a bot review is told to keep waiting in the background, not to hand back.
+   before answering anything that isn't routine. A builder that went idle while waiting for CI or a bot review is
+   told to keep waiting in the background, not to hand back.
 5. Every later prompt to a builder (send-back, rebase, "continue") ends with the standing line: "builder-protocol.md
    HARD RULES apply; end with READY TO MERGE #<n> <sha> or BLOCKED #<n>: <reason>." Rules stated once in a brief
    fade over a long session.
