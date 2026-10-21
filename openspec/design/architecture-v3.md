@@ -103,9 +103,9 @@ Browser rung (`acquire/browser.py`, Patchright headless Chromium, INV-42..44): o
   `NetworkBody` with `resource_type` and `content_type`; caps unchanged (`JSON_BODIES_MAX`, `JSON_PAGE_MAX_BYTES`
   apply to all captured bodies together).
 - locale: the job's locality (`#333`) sets the context's `locale` and `timezone_id` (Playwright context options the
-  owner's P8 asks for; INV-44 is amended to name them as allowed, see (h)). No user agent, client hints or extra headers
-  are set (owner #50 and INV-44, reaffirmed as decision 1 in (g): Patchright's documented best practice is to add no
-  custom headers and no user agent).
+  owner's P8 asks for; INV-44 is amended to name them as allowed, see (h)). No client hints or extra headers are set
+  (owner #50 and INV-44); the user agent is the browser's own with `HeadlessChrome/` renamed `Chrome/` (owner #71 as
+  amended 2026-10-21, which supersedes decision 1 in (g)).
 
 ### a.4 Sources: readers over the capture
 
@@ -654,7 +654,8 @@ resource types seen, counts only), `services/job_outcomes.py` (per-signal counts
 spec delta, `tests/unit/test_signals.py` over fixtures (one per signal).
 Acceptance: each fixture raises exactly its signal; a plain page raises none; the summary shape is in the OpenAPI.
 
-No browser-identity PR: decision 1 keeps owner #50 and INV-44 (no user-agent or header override).
+No browser-identity PR: decision 1 keeps owner #50 and INV-44 (no user-agent or header override). Superseded
+2026-10-21: owner #71 as amended renames the user agent's headless token.
 
 Order: 1 → 2a → 2b → 2c → 3a → 3b → 3c → 4 → 5 → 6 → 7 → 8. PRs 2c/3a/3b/3c/4 are independent of each other and
 may run in parallel after 2b; 5 depends on 2a/2b/2c/3c; 6 and 7 depend on nothing after 1 and may run in parallel
@@ -672,7 +673,9 @@ owner decisions #71–#74 (the framework itself is #70). No question is open.
 documentation, whose best-practice setup says not to add custom browser headers or a user agent (patchright 1.63.0,
 the pinned version). Owner #50 and INV-44 stand unchanged. The measured header-level block share (Gundelach et al.
 2026, Table 6) is accepted as a cost: a page blocked by a header-checking vendor stays `blocked` with its label, and
-the owner's residential proxies and customer-supplied access are the way through. No PR.
+the owner's residential proxies and customer-supplied access are the way through. No PR. Superseded 2026-10-21 by owner #71 as amended:
+the context's user agent is the browser's own with `HeadlessChrome/` renamed `Chrome/`; client hints and headers
+stay unset.
 
 **Decision 2 — a challenge-free JavaScript shell renders once automatically** (owner #72). An HTTP 200 document with
 no text and no links and no vendor or structural challenge is retried in the browser once per page (a.3 table); the

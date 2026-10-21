@@ -1,7 +1,8 @@
 """The browser rung runs Patchright's documented setup (INV-42, INV-43, INV-44; owner #50): the full Chromium build in
 headless mode, in a persistent profile with a fixed 1280x720 viewport and no launch argument, the WebRTC policy the
-guard needs in the profile's preferences, and no custom user agent, client hints or headers. A fake Playwright records
-what `open_browser` and `fetch_browser` ask for; no browser runs.
+guard needs in the profile's preferences, the browser's own user agent with only its headless token renamed (owner #71
+as amended), and no client hints or headers. A fake Playwright records what `open_browser` and `fetch_browser` ask
+for; no browser runs.
 """
 
 import asyncio
@@ -27,6 +28,7 @@ _SRC = Path(crawlerai.__file__).parent
 class _Recorder:
     def __init__(self) -> None:
         self.launch: dict[str, Any] = {}
+        self.probe: dict[str, Any] = {}
         self.preferences: dict[str, Any] = {}
 
 
@@ -45,9 +47,32 @@ class _Context:
         return None
 
 
+_OWN_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36"
+)
+
+
+class _CdpSession:
+    async def send(self, method: str) -> dict[str, str]:
+        assert method == "Browser.getVersion"
+        return {"userAgent": _OWN_UA}
+
+
+class _Browser:
+    async def new_browser_cdp_session(self) -> _CdpSession:
+        return _CdpSession()
+
+    async def close(self) -> None:
+        return None
+
+
 class _Chromium:
     def __init__(self, recorder: _Recorder) -> None:
         self._recorder = recorder
+
+    async def launch(self, **options: Any) -> _Browser:
+        self._recorder.probe = options
+        return _Browser()
 
     async def launch_persistent_context(self, user_data_dir: Path, **options: Any) -> _Context:
         self._recorder.launch = options
@@ -100,8 +125,11 @@ def test_inv42_inv43_full_chromium_headless_in_a_profile_with_the_guards_webrtc_
         "channel": "chromium",
         "headless": True,
         "viewport": {"width": 1280, "height": 720},
+        "user_agent": _OWN_UA.replace("HeadlessChrome/", "Chrome/"),
         "accept_downloads": False,
     }
+    # The browser started to read its user agent is the same build, and sends nothing around the guard.
+    assert recorder.probe == {"channel": "chromium", "headless": True, "proxy": {"server": "socks5://127.0.0.1:9"}}
     assert recorder.preferences["webrtc"] == {
         "ip_handling_policy": "disable_non_proxied_udp",
         "multiple_routes_enabled": False,
@@ -110,7 +138,8 @@ def test_inv42_inv43_full_chromium_headless_in_a_profile_with_the_guards_webrtc_
 
 
 # Calls that change the browser's identity or run code in the page's main world (Patchright README: no custom
-# user agent or headers; evaluate runs in an isolated world). Matched in source, so a new call site fails here.
+# user agent or headers; evaluate runs in an isolated world). Matched in source, so a new call site fails here; the one
+# allowed is the profile's own user agent with its headless token renamed (owner #71 as amended).
 _IDENTITY_CALLS = re.compile(
     r"user_agent|extra_http_headers|setUserAgentOverride|add_init_script"
     r"|new_cdp_session|isolated_context=False|--enable-automation|--disable-blink-features"
@@ -125,7 +154,12 @@ def test_inv44_no_source_file_changes_the_browser_identity() -> None:
         if _IDENTITY_CALLS.search(line)
     ]
 
-    assert offenders == []
+    assert offenders == ["acquire/browser.py:" + str(_line_of("user_agent=session.agent,"))]
+
+
+def _line_of(text: str) -> int:
+    lines = (_SRC / "acquire" / "browser.py").read_text(encoding="utf-8").splitlines()
+    return next(number for number, line in enumerate(lines, 1) if line.strip() == text)
 
 
 def test_open_shadow_roots_are_serialized_by_get_html_in_the_isolated_world_only() -> None:
@@ -143,13 +177,15 @@ def test_open_shadow_roots_are_serialized_by_get_html_in_the_isolated_world_only
     assert evaluated == ["return cast(str, await page.evaluate(DOCUMENT_HTML_JS, isolated_context=True)).encode()"]
 
 
-def test_inv44_a_profile_sets_only_the_proxy_downloads_viewport_and_the_request_locale(recorder: _Recorder) -> None:
+def test_inv44_a_profile_sets_only_the_proxy_downloads_viewport_user_agent_and_the_request_locale(
+    recorder: _Recorder,
+) -> None:
     fetching = _fetch_once("de-DE")
     with pytest.raises(_Stop):
         asyncio.run(fetching)
 
     # The guard's proxy, no downloads, the fixed viewport, and the request's locale with its region's zone (owner P8);
-    # no user agent, client hints or headers.
+    # the browser's own user agent, renamed; no client hints or headers.
     assert {k: v for k, v in recorder.launch.items() if k in ("locale", "timezone_id")} == {
         "locale": "de-DE",
         "timezone_id": "Europe/Berlin",
@@ -158,6 +194,7 @@ def test_inv44_a_profile_sets_only_the_proxy_downloads_viewport_and_the_request_
         "channel",
         "headless",
         "viewport",
+        "user_agent",
         "proxy",
         "accept_downloads",
         "locale",

@@ -487,12 +487,20 @@ The browser rung SHALL follow the Patchright README's setup (owner #50): INV-42,
 Chromium build (`channel="chromium"`, installed with `patchright install --no-shell chromium`), never the headless
 shell; INV-43, it runs in a persistent profile (`launch_persistent_context`) with Playwright's fixed
 1280x720 viewport (owner #50 as amended 2026-10-21; the README's `no_viewport` leaves headless Chromium's 800x600
-window) and no launch argument (no flag Patchright removes, none that changes the fingerprint; the guard's
-WebRTC policy is a profile preference, "HTTP and browser rungs", profiles); INV-44, no context, page or CDP call sets a user agent, client hints, extra headers or init scripts,
-and `evaluate` runs only in Patchright's isolated world (owner #71: no user-agent override). The context's `locale` and
+window) and no launch argument (no flag Patchright removes, none that changes the fingerprint, never
+`--user-agent`; the guard's WebRTC policy is a profile preference, "HTTP and browser rungs", profiles); INV-44, no
+context, page or CDP call sets client hints, extra headers or init scripts, and `evaluate` runs only in Patchright's
+isolated world. The one identity change is the context's `user_agent` (owner #71 as amended 2026-10-21): the
+browser's own user agent, read once per driver from a browser started with no page (`Browser.getVersion`, its
+background requests sent to a closed loopback port), with only the `HeadlessChrome/` token replaced by `Chrome/`. The
+page's and dedicated workers' `navigator.userAgent` and the request header then name `Chrome`, and the client hints
+stay the browser's own (brands, `fullVersionList`, platform). Service and shared workers keep `HeadlessChrome` in
+`navigator.userAgent`, and a service worker's `navigator.userAgentData` reports no brands or full versions, because
+Playwright applies the override to a service worker's requests only; that is a known gap, not a goal. The context's `locale` and
 `timezone_id` are the request's (`FetchPolicy.locale_hint`, `acquire/locality.py`): the locale as a BCP 47 tag, and
 the IANA tz database's zone of its region (`zone1970.tab`) when the region has one, else none. Refs: owner #50, owner
-#71, D-1204, D-1205, owner plan 2026-10-19 P8, architecture v3 a.3.
+#71 as amended 2026-10-21, D-1204, D-1205, owner plan 2026-10-19 P8, architecture v3 a.3. (Previously: no
+user-agent override at all, so every scope sent `HeadlessChrome`.)
 Enforced by: `tests/unit/test_browser_setup.py` (launch and context options, source scan); active.
 
 ### Requirement: Listing browser actions
