@@ -645,7 +645,7 @@ async def _finish(
     records = tuple(record for record, _ in kept.values())
     # A page that states no entity of the schema keeps no record (resolution spec, "Incomplete pages").
     no_match = stored.outcome == "no_match" and not records
-    kept_outcome = "no_match" if no_match else "partial" if further.failed else records_outcome(records)
+    kept_outcome = "partial" if further.failed else "no_match" if no_match else records_outcome(records)
     reason, page = _unlisted(derived.schema, extraction) if not kept else (None, None)
     await complete_task(conn, task, kept_outcome, reason=reason, capture_id=capture_id)
     return _Finished(kept_outcome, [_scraped(record, of) for record, of in kept.values()], reason, page)
