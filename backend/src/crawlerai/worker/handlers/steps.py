@@ -46,7 +46,8 @@ from crawlerai.recurring.state import record_content
 from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.resolve.types import Probability
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.schemas import registry
+from crawlerai.schemas.types import SchemaDef, document_digest
 from crawlerai.services.batch import JobPins
 from crawlerai.services.fetching import (
     Fetching,
@@ -141,7 +142,20 @@ async def load_job(
     config = None if config_id is None else await config_by_id(conn, config_id, pinned.vocabulary)
     render = job.request.get("render")
     pinned_render = None if render is None else RenderOptions.model_validate(render)
-    return job.request, Records(pins.schema_, pinned, config, margins, pinned_render)
+    schema = await _with_drafted_labels(conn, job.schema_id, pins.schema_)
+    return job.request, Records(schema, pinned, config, margins, pinned_render)
+
+
+async def _with_drafted_labels(conn: AsyncConnection, schema_id: SchemaId, pinned: SchemaDef) -> SchemaDef:
+    """The pinned schema, with the label synonyms stored since the job was submitted when it was pinned without: they
+    are drafted off the request path (`s_labels.with_labels`), and are no part of the document the job pins (schemas
+    spec, "Label synonyms"), so they apply while the row still holds that document."""
+    if pinned.labels is not None:
+        return pinned
+    stored = await registry.get_by_id(conn, schema_id)
+    if stored.labels is None or document_digest(stored) != document_digest(pinned):
+        return pinned
+    return pinned.model_copy(update={"labels": stored.labels})
 
 
 @dataclass(frozen=True)

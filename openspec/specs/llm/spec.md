@@ -194,8 +194,10 @@ language pages are written in (labels carry no language, so a page in that langu
 field's); they are stored with the schema (`schema_def.labels`) after a request first uses
 it (by id, inline, field names or a prompt with `records`). The draft runs off the request path: a request uses the
 stored labels, and when there are none it starts the draft in the background (one per schema at a time in a process)
-and goes on with the schema as it is, never waiting on the model. The labelled fields are asked for a few per call,
-concurrently, so no reply reaches its output cap, and the labels are stored only when every call answered. Labels
+and goes on with the schema as it is, never waiting on the model; a job's pages extract with labels stored after the
+job pinned its schema without any, while the schema still holds the pinned document. The labelled fields are asked
+for a few per call, concurrently, so no reply reaches its output cap, and the labels are stored only when every call
+answered. Labels
 repeating a field's own words or each other's are dropped, at most 32 per field. A draft that fails in any way (no
 provider, the key's draft cap, any error) stores nothing and fails no request; the next use asks again. The calls are
 charged to no job.
