@@ -12,7 +12,7 @@
 (*                         turns and holds every process shares, a hold a   *)
 (*                         lease renewed while its holder runs              *)
 (*   services/polite.py    rules_in -> recording: the robots.txt request    *)
-(*   acquire/shared_browser.py SharedBrowser.fetch, BROWSER_CONTEXTS        *)
+(*   acquire/shared_browser.py SharedBrowser.render, BROWSER_CONTEXTS       *)
 (*                                                                         *)
 (* One TLA+ step is one indivisible step of the code: a committed database *)
 (* transaction, or the code between two awaits. A task's own transaction  *)
@@ -81,7 +81,7 @@ Records == Workers \X (1 .. (Slots + MaxLeftBehind + (IF Bug = "claim_slots_not_
 \*              QUEUED.bound), and postpones past it
 \*   "http"     the first request of the page in flight (the HTTP rung)
 \*   "admit"    the browser retry waiting in place for its turn (admit_next = HostLimiter.wait, up to QUEUED.bound)
-\*   "ctx"      SharedBrowser.fetch waiting for a context (`async with self._contexts`)
+\*   "ctx"      SharedBrowser.render (a page or a listing render) waiting for a context (`async with self._contexts`)
 \*   "render"   the browser request in flight, holding a context
 \*   "update"   the handler returned; _execute calls complete_task / fail_task / release_task: the fenced UPDATE.
 \*              A run that sent a request holds its job's row lock already: the handler's count_fetch (steps.py)
@@ -90,7 +90,7 @@ Records == Workers \X (1 .. (Slots + MaxLeftBehind + (IF Bug = "claim_slots_not_
 \*   "settling" both locks held; settle_job reads the open tasks, `ending`, commit
 \*   "behind"   work left behind after its cancellation (cancelled): past the request the cancellation aborted, in
 \*              cleanup that does not end (a `finally`, an `async with` exit); it sends nothing and holds no host
-\*   "behindctx" the same inside SharedBrowser.fetch's `async with self._contexts`: it still holds a browser context
+\*   "behindctx" the same inside SharedBrowser.render's `async with self._contexts`: it still holds a browser context
 \* The host is held (HostLimiter.holding, polite_fetch) from the admitted turn until the fetch returns: HeldPcs. The
 \* hold is in host_turn, every process's (HostTurns.take: the turn and the hold in one upsert).
 HeldPcs == {"robots", "pageturn", "http", "admit", "ctx", "render"}
@@ -289,7 +289,7 @@ AdmitNext(r) ==
               /\ UNCHANGED hostNext
     /\ UNCHANGED <<status, attempts, leaseLeft, backoff, holder, job, stale, fresh, deaths, hangs, lefts>>
 
-(* SharedBrowser.fetch: `async with self._contexts` (asyncio.Semaphore(BROWSER_CONTEXTS)), then the render.      *)
+(* SharedBrowser.render: `async with self._contexts` (asyncio.Semaphore(BROWSER_CONTEXTS)), then the render.     *)
 AcquireContext(r) ==
     /\ run[r].pc = "ctx" /\ ~run[r].stuck
     /\ Bug = "no_context_cap" \/ Cardinality(BrowserContexts(r[1])) < Contexts
@@ -345,7 +345,7 @@ Commit(r) ==
 (* _run_within_deadline: asyncio.wait(timeout=TASK_DEADLINE) returns with the work not done: work.cancel(), then  *)
 (* asyncio.wait(timeout=CANCEL_GRACE). The cancelled work either ends (its transaction rolls back: row and job     *)
 (* locks, browser context and request released) or is left behind (_LEFT_BEHIND). Left behind, the request it    *)
-(* awaited is aborted (CancelledError at that await), and it is in cleanup ("behind", inside SharedBrowser.fetch   *)
+(* awaited is aborted (CancelledError at that await), and it is in cleanup ("behind", inside SharedBrowser.render  *)
 (* still holding a context), or it swallowed the cancellation and goes on to its next admission ("admit"); in its  *)
 (* transaction ("update", "locked", "settling") it keeps its locks until the deadline failure ends its session.   *)
 DeadlineFires(r) ==

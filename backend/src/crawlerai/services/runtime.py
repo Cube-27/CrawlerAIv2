@@ -10,7 +10,8 @@ from functools import partial
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from crawlerai.acquire.api import fetch_json
-from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
+from crawlerai.acquire.browser import fetch_browser
+from crawlerai.acquire.browser_session import BrowserSession, open_browser
 from crawlerai.acquire.browser_tab import Drive, fetch_listing
 from crawlerai.acquire.cookie_store import CookieStore
 from crawlerai.acquire.host_turns import HostTurns
@@ -57,10 +58,11 @@ async def open_fetching(
     settings: Settings, connector: SafeConnector | None = None, database: AsyncEngine | None = None
 ) -> AsyncIterator[Fetching]:
     """What a process fetches pages with (acquisition spec): HTTP, the process's one shared browser (launched when a
-    fetch first needs it), the adapters and the process's site sessions, all through one SSRF guard; the browser
-    closes with the block. With a `database`, hosts' turns and holds are shared with every process through it
-    (`acquire/host_turns.py`), and with a cookie key too, the site sessions keep the stored cookie state of temporary
-    browser profiles in it. The cookie key also keys the digest of request contexts (`core.context_digest`)."""
+    render first needs it; the page rung's and the listing rung's alike), the adapters and the process's site sessions,
+    all through one SSRF guard; the browser closes with the block. With a `database`, hosts' turns and holds are shared
+    with every process through it (`acquire/host_turns.py`), and with a cookie key too, the site sessions keep the
+    stored cookie state of temporary browser profiles in it. The cookie key also keys the digest of request contexts
+    (`core.context_digest`)."""
     connector = connector or SafeConnector()
     pools = settings.proxy_pools
     key = settings.cookie_key
@@ -83,13 +85,6 @@ async def open_fetching(
             sessions=sessions,
         )
 
-    async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
-        # A render with browser actions (owner #52, `learning_render`) is rare, so a browser is launched for each.
-        async with open_browser(settings.browser_profiles) as session:
-            return await fetch_listing(
-                url, policy, drive, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools
-            )
-
     impersonate = rung_impersonation(settings)
     http = partial(
         fetch_http,
@@ -110,6 +105,22 @@ async def open_fetching(
     async with aclosing(
         SharedBrowser(partial(open_browser, settings.browser_profiles), fetch_in, lambda session: session.alive)
     ) as browser:
+
+        async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
+            # A listing with browser actions (owner #52) renders in the shared session too, holding one of its slots.
+            return await browser.render(
+                lambda session: fetch_listing(
+                    url,
+                    policy,
+                    drive,
+                    session=session,
+                    engine_version=ENGINE_VERSION,
+                    connector=connector,
+                    pools=pools,
+                    sessions=sessions,
+                )
+            )
+
         rungs = Rungs(
             http=http,
             browser=browser.fetch,

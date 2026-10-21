@@ -1,7 +1,7 @@
 """The repeated item structure of a page, as the document's structure shows it (C2, C4; item layer, owner #67): the
 groups of sibling blocks a listing shows its items in. This is the structural walk only; which group is the page's
 items is the segment step's (`content.segment`). Acquisition reads the walk before any page is parsed: its shell rule
-(`acquire.classify`) and the browser rung's item geometry (`acquire.browser`).
+(`acquire.classify`) and the browser rung's item geometry (`acquire.browser_capture`).
 
 Items are at least `MIN_ITEMS` sibling elements of one shape that each are or hold a hyperlink (HTML Standard §4.6).
 One template renders them all, so siblings of one tag share the class tokens the template writes; a template may add a

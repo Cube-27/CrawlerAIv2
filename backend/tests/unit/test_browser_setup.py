@@ -16,8 +16,9 @@ from typing import Any
 import pytest
 
 import crawlerai
-from crawlerai.acquire import browser as browser_module
-from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
+from crawlerai.acquire import browser_session
+from crawlerai.acquire.browser import fetch_browser
+from crawlerai.acquire.browser_session import BrowserSession, open_browser
 from crawlerai.acquire.ssrf import SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy
 from crawlerai.core.engine_version import ENGINE_VERSION
@@ -29,6 +30,7 @@ class _Recorder:
     def __init__(self) -> None:
         self.launch: dict[str, Any] = {}
         self.probe: dict[str, Any] = {}
+        self.probes = 0
         self.preferences: dict[str, Any] = {}
 
 
@@ -72,6 +74,7 @@ class _Chromium:
 
     async def launch(self, **options: Any) -> _Browser:
         self._recorder.probe = options
+        self._recorder.probes += 1
         return _Browser()
 
     async def launch_persistent_context(self, user_data_dir: Path, **options: Any) -> _Context:
@@ -98,7 +101,8 @@ def recorder(monkeypatch: pytest.MonkeyPatch) -> _Recorder:
     async def fake_playwright() -> Any:
         yield _Playwright(recorded)
 
-    monkeypatch.setattr(browser_module, "async_playwright", fake_playwright)
+    monkeypatch.setattr(browser_session, "async_playwright", fake_playwright)
+    monkeypatch.setattr(browser_session, "_AGENT", {})  # the user agent is read once per process
     return recorded
 
 
@@ -130,6 +134,10 @@ def test_inv42_inv43_full_chromium_headless_in_a_profile_with_the_guards_webrtc_
     }
     # The browser started to read its user agent is the same build, and sends nothing around the guard.
     assert recorder.probe == {"channel": "chromium", "headless": True, "proxy": {"server": "socks5://127.0.0.1:9"}}
+    # Read once per process: a session opened again (a restart) starts no second probe.
+    with pytest.raises(_Stop):
+        asyncio.run(_fetch_once())
+    assert recorder.probes == 1
     assert recorder.preferences["webrtc"] == {
         "ip_handling_policy": "disable_non_proxied_udp",
         "multiple_routes_enabled": False,
@@ -154,11 +162,11 @@ def test_inv44_no_source_file_changes_the_browser_identity() -> None:
         if _IDENTITY_CALLS.search(line)
     ]
 
-    assert offenders == ["acquire/browser.py:" + str(_line_of("user_agent=session.agent,"))]
+    assert offenders == ["acquire/browser_session.py:" + str(_line_of("user_agent=session.agent,"))]
 
 
 def _line_of(text: str) -> int:
-    lines = (_SRC / "acquire" / "browser.py").read_text(encoding="utf-8").splitlines()
+    lines = (_SRC / "acquire" / "browser_session.py").read_text(encoding="utf-8").splitlines()
     return next(number for number, line in enumerate(lines, 1) if line.strip() == text)
 
 

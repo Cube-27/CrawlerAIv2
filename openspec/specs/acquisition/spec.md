@@ -176,7 +176,10 @@ installed Patchright Chromium major, checked at startup by `acquire/impersonate.
 record headers without cookies or proxy credentials, within `timeout_s` (10 s by default). The browser rung SHALL use Patchright's full Chromium build in
 headless mode, one Playwright driver per process shared by its page fetches (worker, API, scheduler) with at
 most `BROWSER_CONTEXTS` (2) of them rendering at once (`acquire/shared_browser.py`; a listing scrape with browser actions
-launches its own), each site profile's browser a process of its own, recycled once worn (after 200 pages or 30 min, by the next fetch that finds no page rendering in it), each page in a tab of its own, one navigation, no scripted
+renders in it too, holding one of them, and its render ends as a page's does: classified with the redirect rules, its
+challenge labelled, its `blocked` profile deleted, the site's sessions and the pool endpoint told), the browser's user
+agent read once per process, each site profile's browser a process of its own (one that crashes ends only its own page;
+the driver is restarted only when it disconnects), each page in a tab of its own, one navigation, no scripted
 actions (a listing scrape's browser actions and the caller's page steps excepted, below), capped by `browser_timeout_s`
 (plus the steps' own timeouts).
 
@@ -216,8 +219,9 @@ first given up to 40% of `browser_timeout_s`, and at most 10 s, to navigate on, 
 next commit, with nothing clicked or typed. The browser reads a body's wire size before the body. The JSON rung
 (`fetch_json`, method `api`) SHALL send through the HTTP rung's client (`acquire/curl_client.py`: impersonation, guard,
 caps, cookie jar, proxy pools, reasons) the headers a page's `fetch()` sends: Fetch Metadata of a CORS request,
-`Referer`, `Origin`, in a `fetch()`'s order. (Previously: every resource loaded, and the interstitial wait had no
-absolute bound; the settle wait had none but the fetch's budget, a browser was launched per fetch outside the worker,
+`Referer`, `Origin`, in a `fetch()`'s order. (Previously: a listing scrape with browser actions launched a driver and browser of
+its own outside the cap, and one profile's crash or 200 pages or 30 min restarted the whole session; every resource
+loaded, and the interstitial wait had no absolute bound; the settle wait had none but the fetch's budget, a browser was launched per fetch outside the worker,
 and the HTTP timeout was 30 s; every fetch had a fresh context, only images, fonts and media were blocked, and a page
 was read after `load` once its DOM was unchanged for 2 s or the network idle, at most 5 s later, up to 3 s more while a
 data call was in flight; then by a learned wait condition, `settle_on`, a detail page's DOM stating its offer
@@ -264,7 +268,7 @@ not at all, whose bytes are an RFC 8259 object or array (a guard prefix of at mo
 `storage.capture_bundle.network_json`), and the 2xx HTML answers (`text/html`, `application/xhtml+xml`) of fetch and
 XMLHttpRequest calls to the page's own site (HTML §7.1.1): the fragments the page fetches (Turbo frames, htmx-style
 partials), which the page tree reads ([extraction](../extraction/spec.md), "Source documents"); each with its request's method, body and cookie-free headers, the cookie-free
-response headers, the resource type and the count of browser actions before it, within the caps in `acquire/browser.py`,
+response headers, the resource type and the count of browser actions before it, within the caps in `acquire/browser_capture.py`,
 which apply to all captured bodies together. A data call, which the ready wait ("HTTP and browser rungs") waits for, is a fetch or
 XMLHttpRequest call to the page's own site (HTML §7.1.1) or one whose `Accept` names a JSON MIME type or
 `text/x-component`, so another site's beacons and pings hold no read. (Previously: every fetch and XMLHttpRequest call
@@ -337,7 +341,7 @@ never containing the URL; it stores no body but keeps the last status and header
 ### Requirement: Bounded bodies (INV-30)
 The system SHALL bound untrusted bodies by `max_body_bytes` (compressed) and `max_decompressed_bytes` while streaming,
 on every rung, before anything is kept; an oversize body MUST be `error`/`body_cap` with no capture body. A browser
-capture keeps at most 10 MB of network bodies in all (`acquire/browser.py`), each read only once its request is done:
+capture keeps at most 10 MB of network bodies in all (`acquire/browser_capture.py`), each read only once its request is done:
 a body that never ends (a stream, a beacon held open) is left out, never waited for past the fetch's budget.
 Enforced by: oversize and over-decompressing body tests, the per-page network cap test and the unending-body test;
 active.

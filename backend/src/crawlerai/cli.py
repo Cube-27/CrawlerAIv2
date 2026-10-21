@@ -17,7 +17,8 @@ from typing import Final
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
-from crawlerai.acquire.browser import fetch_browser, open_browser
+from crawlerai.acquire.browser import fetch_browser
+from crawlerai.acquire.browser_session import open_browser
 from crawlerai.acquire.http import fetch_http
 from crawlerai.acquire.impersonate import rung_impersonation
 from crawlerai.acquire.ssrf import SafeConnector

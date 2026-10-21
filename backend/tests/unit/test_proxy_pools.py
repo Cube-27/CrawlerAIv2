@@ -364,7 +364,8 @@ def _fetch_json(url: str, pools: dict[str, ProxyPool], pool: str | None = "dc") 
 def test_a_browser_fetch_naming_a_pool_goes_through_its_proxy(origin: Origin, proxy: StubProxy) -> None:
     from patchright.async_api import Error as PlaywrightError
 
-    from crawlerai.acquire.browser import fetch_browser, open_browser
+    from crawlerai.acquire.browser import fetch_browser
+    from crawlerai.acquire.browser_session import open_browser
 
     async def run() -> tuple[FetchResult, FetchResult]:
         async with open_browser() as session:

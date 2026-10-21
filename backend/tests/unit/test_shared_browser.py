@@ -1,8 +1,7 @@
 """The worker's shared browser (acquisition spec, INV-31): launched once and shared, restarted at most once per task
-when it crashes, and recycled once worn, only while no page renders in it. The browser is a stub whose fetches can
-kill the session they run in; no Chromium."""
+when a render raises with its session disconnected. The browser is a stub whose fetches can kill the session they run
+in; no Chromium."""
 
-import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -11,7 +10,7 @@ from typing import cast
 import pytest
 
 from crawlerai.acquire.session import CookieExport
-from crawlerai.acquire.shared_browser import RECYCLE_AGE, RECYCLE_CONTEXTS, SharedBrowser
+from crawlerai.acquire.shared_browser import SharedBrowser
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 
 pytestmark = pytest.mark.anyio
@@ -81,15 +80,15 @@ async def test_one_browser_is_launched_on_first_use_and_shared() -> None:
     assert [session.closed for session in chromium.sessions] == [True]
 
 
-async def test_a_crashed_browser_is_restarted_once_and_the_page_fetched_again() -> None:
+async def test_a_render_that_returns_keeps_its_result_and_the_dead_session_is_replaced_for_the_next() -> None:
     chromium = Chromium(kills={URL: 1})
     browser = chromium.browser()
 
     result = await browser.fetch(URL, FetchPolicy())
     await browser.fetch(OTHER, FetchPolicy())
 
-    assert chromium.origin(result) == (2, URL)
-    assert chromium.fetched == [(1, URL), (2, URL), (2, OTHER)]
+    assert chromium.origin(result) == (1, URL)  # its work was done: not rendered (its requests sent) again
+    assert chromium.fetched == [(1, URL), (2, OTHER)]
     assert [(s.closed, s.connected) for s in chromium.sessions] == [(True, False), (False, True)]
 
 
@@ -102,34 +101,4 @@ async def test_a_fetch_that_raises_with_the_browser_gone_is_fetched_again_in_a_n
     assert chromium.origin(result) == (2, URL)
     assert chromium.fetched == [(1, URL), (2, URL)]
     assert chromium.sessions[0].closed
-    await browser.aclose()
-
-
-async def test_a_worn_browser_is_replaced_by_the_next_fetch_that_finds_it_idle_never_under_a_render() -> None:
-    chromium = Chromium()
-    now = [0.0]
-    rendering, release = asyncio.Event(), asyncio.Event()
-
-    async def fetch(session: Session, url: str, policy: FetchPolicy, export: CookieExport | None) -> FetchResult:
-        if url == SLOW:  # a render held open while the browser wears out
-            rendering.set()
-            await release.wait()
-        return await chromium.fetch(session, url, policy, export)
-
-    browser = SharedBrowser(chromium.launch, fetch, lambda s: s.connected, clock=lambda: now[0])
-    for _ in range(RECYCLE_CONTEXTS):
-        await browser.fetch(URL, FetchPolicy())
-    assert len(chromium.sessions) == 1
-    await browser.fetch(URL, FetchPolicy())  # one page past the limit: a fresh browser
-    assert [s.closed for s in chromium.sessions] == [True, False]
-
-    held = asyncio.create_task(browser.fetch(SLOW, FetchPolicy()))
-    await rendering.wait()
-    now[0] += RECYCLE_AGE.total_seconds()
-    await browser.fetch(OTHER, FetchPolicy())  # worn, but a page renders in it: kept
-    release.set()
-    await held
-    assert len(chromium.sessions) == 2
-    await browser.fetch(OTHER, FetchPolicy())  # worn and idle: replaced
-    assert [s.closed for s in chromium.sessions] == [True, True, False]
     await browser.aclose()

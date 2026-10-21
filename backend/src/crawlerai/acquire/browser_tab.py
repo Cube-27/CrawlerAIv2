@@ -1,11 +1,12 @@
 """A listing's browser actions on the browser rung (owner #52): the rendered page as a `Tab` that a
 paging driver reads and acts on, and the document states it keeps, each a fetch result of its own.
 
-The page is opened, navigated and settled exactly as `fetch_browser` does it (`browser.rendered`), so the launch, the
-context and the identity the page sees are the same (INV-42 to INV-44). Everything the tab reads or does runs in
-Patchright's isolated world, which shares the document but not the page's globals, and it writes nothing into the
-page's DOM: elements are named by element-index XPath paths into the serialized document (`/*[1]/*[2]`), which the
-driver computes from its own parse. Nothing is typed and no form is filled; a click is a pointer click on an element
+The page is opened, navigated, settled and read exactly as `fetch_browser` does it (`browser.rendered`,
+`browser.Render`), in the process's shared browser session, so the launch, the profile and the identity the page sees
+are the same (INV-42 to INV-44), and the render ends as a page's does (`Render.finish`). Everything the tab reads or
+does runs in Patchright's isolated world, which shares the document but not the page's globals, and it writes nothing
+into the page's DOM: elements are named by element-index XPath paths into the serialized document (`/*[1]/*[2]`), which
+the driver computes from its own parse. Nothing is typed and no form is filled; a click is a pointer click on an element
 the driver chose, and one an overlay intercepts is reported, not worked around.
 
 What to do is the driver's (`crawl.paging`, above `acquire` in the layering): `fetch_listing` hands it the tab.
@@ -16,7 +17,6 @@ import contextlib
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AsyncExitStack
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Final, Literal, Protocol, cast
 
@@ -24,29 +24,15 @@ from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import Request
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
-from crawlerai.acquire.browser import (
-    AREAS_JS,
-    DATA_REQUESTS,
-    JSON_BODIES_MAX,
-    JSON_PAGE_MAX_BYTES,
-    BrowserSession,
-    Failed,
-    Rendered,
-    challenge_of,
-    classified,
-    context_cookies,
-    json_bodies,
-    markup,
-    read_state,
-    rendered,
-    stepped,
-)
-from crawlerai.acquire.challenge import count
-from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
+from crawlerai.acquire.browser import Render, Rendered, classified, markup, read_state, rendered
+from crawlerai.acquire.browser_capture import AREAS_JS, DATA_REQUESTS, JSON_BODIES_MAX, JSON_PAGE_MAX_BYTES, json_bodies
+from crawlerai.acquire.browser_session import BrowserSession, Failed, context_cookies
+from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.page_steps import steps_budget_s
+from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import ActionsReport, BlockClass, FetchPolicy, FetchResult, PagedFetch, StepOutcome
-from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
+from crawlerai.core.proxy import ProxyPool
 from crawlerai.storage.capture_bundle import NetworkBody
 
 __all__ = ["Click", "Drive", "ListingRung", "Ref", "Tab", "fetch_listing"]
@@ -149,7 +135,8 @@ class Tab(Protocol):
 
 # The driver: what to do with the tab, answering what it did. The caller binds the request's settings to it.
 Drive = Callable[[Tab], Awaitable[ActionsReport]]
-# `fetch_listing` bound to a process's browser, guard and proxy pools: a listing's URL, its policy and the driver.
+# `fetch_listing` bound to a process's shared browser, guard, proxy pools and site sessions: a listing's URL, its
+# policy and the driver.
 ListingRung = Callable[[str, FetchPolicy, Drive], Awaitable[PagedFetch]]
 
 
@@ -327,77 +314,65 @@ async def fetch_listing(
     engine_version: str,
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
+    sessions: SiteSessions | None = None,
 ) -> PagedFetch:
     """Render the listing at `url` as `fetch_browser` does and, when it is reached (`ok`), let `drive` act on it; the
     answer holds the document states the driver kept (at least one) and its report. A page not reached is the one
     page, with no report, labelled with the challenge it presents. The navigation is bounded by
-    `policy.browser_timeout_s`; the driver bounds its own actions. The pool endpoint is told how the navigation went,
-    and the navigation's attempt (the first page's) carries the bytes the whole run moved (`Traffic`)."""
-    fetched_at = datetime.now(UTC)
-    started = time.monotonic()
-    try:
-        pool = proxy_pool(policy.proxy_pool, pools)
-    except UnknownProxyPool as unknown:
-        return _failed(url, policy, engine_version, fetched_at, started, str(unknown), None)
-    proxy = pool_endpoint(pool, url)
-    traffic = Traffic()
-    paged = await _listing(url, policy, drive, session, engine_version, connector or SafeConnector(), proxy, traffic)
-    first = paged.pages[0]
-    navigation = first.attempts[0].model_copy(update={"transferred": traffic.bytes})
-    carried = first.model_copy(update={"attempts": (navigation, *first.attempts[1:])})
-    report_proxy(pool, proxy, carried)
-    return paged.model_copy(update={"pages": (carried, *paged.pages[1:])})
+    `policy.browser_timeout_s`; the driver bounds its own actions. The render ends as `fetch_browser`'s does
+    (`Render.finish`, with `sessions` unless the caller's own context is used), and the navigation's attempt (the first
+    page's) carries the bytes the whole run moved (`Traffic`)."""
+    if policy.context is not None:
+        sessions = None
+    run = Render(url, policy, engine_version)
+    paged = await _listing(run, drive, session, connector or SafeConnector(), pools, sessions)
+    if paged is None:
+        first = run.result()
+        paged = PagedFetch(pages=(first,), report=None)
+    else:
+        first = paged.pages[0]
+        navigation = first.attempts[0].model_copy(update={"transferred": run.traffic.bytes})
+        first = first.model_copy(update={"attempts": (navigation, *first.attempts[1:])})
+        paged = paged.model_copy(update={"pages": (first, *paged.pages[1:])})
+    await run.finish(first, session, sessions)
+    return paged
 
 
 async def _listing(
-    url: str,
-    policy: FetchPolicy,
+    run: Render,
     drive: Drive,
     session: BrowserSession,
-    engine_version: str,
     connector: SafeConnector,
-    proxy: ProxyEndpoint | None,
-    traffic: Traffic,
-) -> PagedFetch:
-    fetched_at = datetime.now(UTC)
-    started = time.monotonic()
-    exchange: Exchange | None = None
-    steps: tuple[StepOutcome, ...] = ()  # kept by a failure after the steps ran too
+    pools: Mapping[str, ProxyPool] | None,
+    sessions: SiteSessions | None,
+) -> PagedFetch | None:
+    """The document states the driver kept and its report; None when the page was not reached or not kept, `run`
+    then holding its one outcome."""
+    url, policy = run.url, run.policy
+    if not run.route(pools):
+        return None
     try:
         async with AsyncExitStack() as stack:
             async with asyncio.timeout(policy.browser_timeout_s + steps_budget_s(policy.steps)):
-                page = await stack.enter_async_context(
-                    rendered(url, policy, session, connector, proxy, started, {}, traffic)
-                )
+                page = await stack.enter_async_context(rendered(url, policy, session, connector, run, sessions))
                 landed = page.page.url
-                steps = await stepped(page)  # the caller's steps first (D-1513), then the paging driver reads the page
-                exchange, content = await read_state(page)
-                text = markup(content)
-                block_class = await classified(exchange, text)
-            if block_class != "ok":
-                cookies = await context_cookies(page.page.context)
-                challenge = await challenge_of(block_class, exchange, text, cookies)
-                count(challenge, "browser")
-                one = _Outcome(exchange, content, block_class, None, challenge, steps)
-                return _one(url, policy, engine_version, fetched_at, started, one)
+                await run.read(page)  # the caller's steps first (D-1513), then the paging driver reads the page
+            if run.block_class != "ok":
+                return None
             tab = _PatchrightTab(
-                page, url=url, engine_version=engine_version, started=started, steps=steps, landed=landed
+                page, url=url, engine_version=run.engine_version, started=run.started, steps=run.steps, landed=landed
             )
             report = await _driven(drive, tab)
+            # The driver's actions may have set cookies: the site's sessions are told those the context holds now.
+            run.cookies = await context_cookies(page.page.context)
             if not tab.kept and not await tab.keep():
-                return _one(
-                    url,
-                    policy,
-                    engine_version,
-                    fetched_at,
-                    started,
-                    _Outcome(exchange, content, block_class, steps=steps),
-                )
+                return None
             return PagedFetch(pages=tuple(tab.kept), report=report.model_copy(update={"pages": len(tab.kept)}))
     except Failed as failed:
-        return _failed(url, policy, engine_version, fetched_at, started, failed.error, failed.exchange, steps)
+        run.failed(failed.error, failed.exchange)
     except TimeoutError:
-        return _failed(url, policy, engine_version, fetched_at, started, "timeout", exchange, steps)
+        run.failed("timeout")
+    return None
 
 
 async def _driven(drive: Drive, tab: _PatchrightTab) -> ActionsReport:
@@ -407,48 +382,3 @@ async def _driven(drive: Drive, tab: _PatchrightTab) -> ActionsReport:
         return await drive(tab)
     except PlaywrightError:
         return ActionsReport(mechanism=None, stop="error", actions=0, pages=len(tab.kept), items=0)
-
-
-@dataclass(frozen=True)
-class _Outcome:
-    exchange: Exchange
-    content: Content
-    block_class: BlockClass
-    error: str | None = None
-    challenge: str | None = None
-    steps: tuple[StepOutcome, ...] = ()
-
-
-def _one(
-    url: str, policy: FetchPolicy, engine_version: str, fetched_at: datetime, started: float, outcome: _Outcome
-) -> PagedFetch:
-    result = fetch_result(
-        url=url,
-        method="browser",
-        policy=policy,
-        engine_version=engine_version,
-        fetched_at=fetched_at,
-        started=started,
-        exchange=outcome.exchange,
-        content=outcome.content,
-        block_class=outcome.block_class,
-        error=outcome.error,
-        challenge=outcome.challenge,
-        steps=outcome.steps,
-    )
-    return PagedFetch(pages=(result,), report=None)
-
-
-def _failed(
-    url: str,
-    policy: FetchPolicy,
-    engine_version: str,
-    fetched_at: datetime,
-    started: float,
-    error: str,
-    exchange: Exchange | None,
-    steps: tuple[StepOutcome, ...] = (),
-) -> PagedFetch:
-    empty = exchange or Exchange(url=url, status=0, request_headers=(), response_headers=())
-    failure = _Outcome(empty, Content(body=b""), "error", error, steps=steps)
-    return _one(url, policy, engine_version, fetched_at, started, failure)
