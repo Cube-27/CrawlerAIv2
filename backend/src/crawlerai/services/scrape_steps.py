@@ -510,14 +510,15 @@ async def store_page_record(
         # A caller-supplied page is of the schema's kind by the caller's word, so no record is a quality failure; a
         # crawl-discovered page may be of no kind the schema reads.
         await learn_extraction(conn, site_id, schema.page_kind, None)
-        listed_nothing = schema.page_kind == "listing" and stored.outcome != "failed"
+        # A listing read whole that held no row; one whose rows state no item is `no_match` as a detail page is.
+        read = stored.outcome != "failed" and extraction.entity is not None
+        listed_nothing = schema.page_kind == "listing" and read and not extraction.rows
         if listed_nothing:
             await _count_page(conn, site_id, schema)
             await render_surface(conn, task.job_id, site_id, schema, render, extraction)
-        if listed_nothing:
             return replace(stored, outcome="partial")
-        # A detail page that states no entity of the schema (resolution spec, "Incomplete pages") is `no_match`; one
-        # whose resolution failed, `failed`.
+        # A page that states no entity of the schema (resolution spec, "Incomplete pages") is `no_match`; one whose
+        # resolution failed, `failed`.
         return stored if stored.outcome == "no_match" else replace(stored, outcome="failed")
     return stored
 

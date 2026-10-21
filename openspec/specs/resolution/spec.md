@@ -221,7 +221,8 @@ stores the record as `partial` and a crawl-discovered URL is `no_match` with no 
 required fields or group members (any field, for a schema that requires none) publishes a value read from the page,
 beyond its own address (the `canonical_link` and `final_url` derivations), states no entity of the schema and is
 `no_match` with no record: a maintenance or error page served for the URL publishes prose, never what identifies the
-item. (Previously: a caller-supplied URL kept such a record, even an empty one.) Refs: §10, §23, D-0513, D-0930.
+item. A listing's row states its item only by a row field (the needed row fields, else any row field), never by the
+page fields every row shares. (Previously: a caller-supplied URL kept such a record, even an empty one.) Refs: §10, §23, D-0513, D-0930.
 #### Scenario: Crawl page missing price
 - **WHEN** a crawl-discovered detail page leaves the required `price` missing
 - **THEN** the outcome is `no_match` and no record is stored

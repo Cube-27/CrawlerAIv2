@@ -154,6 +154,20 @@ def _assemble_listing(*rows: dict[str, FieldOutcome], caller_supplied: bool = Tr
     )
 
 
+def test_a_row_stating_no_row_value_keeps_no_record_though_the_page_fields_publish() -> None:
+    schema = _listing_schema()
+    heading = schema.fields["heading"].model_copy(update={"required": True})
+    schema = schema.model_copy(update={"fields": {**schema.fields, "heading": heading}})
+    rows = (_row(1), _row(None, title=False))
+
+    outcome, records = assemble_listing(
+        schema, PAGE_FIELDS, rows, site_id=SITE, page_url=LISTING_URL, caller_supplied=True
+    )
+
+    assert outcome == "partial"
+    assert [r.data["title"] for r in records] == ["Widget 1"]
+
+
 def test_each_row_is_a_record_keyed_by_its_url_with_the_page_fields() -> None:
     outcome, records = _assemble_listing(_row(1), _row(2))
     assert outcome == "extracted"

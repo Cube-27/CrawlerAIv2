@@ -159,12 +159,14 @@ def assemble(
     return ("extracted" if content.complete else "partial"), record
 
 
-def states_entity(schema: SchemaDef, fields: Mapping[str, FieldOutcome]) -> bool:
+def states_entity(schema: SchemaDef, fields: Mapping[str, FieldOutcome], *, row: bool = False) -> bool:
     """Whether the page states the schema's entity: a field it needs (`required_fields`; any field of a schema that
     needs none) publishes a value read from the page, not derived from its own address (`_PAGE_ADDRESS`). A page that
     is not the entity asked for (a maintenance or error page served for it) may still publish prose as a description;
-    it publishes none of what identifies the item, so it gets no record."""
-    needed = required_fields(schema) or frozenset(schema.fields)
+    it publishes none of what identifies the item, so it gets no record. With `row`, a listing's row states its item
+    by a row field only: the needed row fields, else any row field (the page's fields are every row's)."""
+    in_scope = frozenset(name for name, spec in schema.fields.items() if not row or spec.scope == "row")
+    needed = (required_fields(schema) & in_scope) or in_scope
     return any(
         outcome.status == "published" and outcome.derived_by not in _PAGE_ADDRESS
         for name, outcome in fields.items()
@@ -191,6 +193,8 @@ def assemble_listing(
         fields = {**page_fields, **row}
         key = _row_key(schema, row) or f"{page_url}#{position}"
         outcome, record = assemble(schema, fields, site_id=site_id, canonical_url=key, caller_supplied=caller_supplied)
+        if not states_entity(schema, row, row=True):
+            outcome, record = "no_match", None
         complete = complete and outcome == "extracted"
         if record is not None:
             records.setdefault(record.entity_key, record)
