@@ -218,21 +218,21 @@ def _polite_send(
 def learning_replay(engine: AsyncEngine, fetching: Fetching) -> Replays | None:
     """A learning run's recipe replays (adapters spec) over this process's JSON rung, as politely as a served
     recipe's request: at the endpoint host's rate (D-0731). A `learn` job names no fetch policy, so replays go with
-    the default one, which does not read robots.txt (owner decision #75), through the site's proxy pool, as its pages
-    are fetched; their requests count as the job's usage (D-1381). None without the JSON rung."""
+    the default one, which does not read robots.txt (owner decision #75) and goes direct; their requests count as the
+    job's usage (D-1381). None without the JSON rung."""
     json = fetching.rungs.json
     if json is None:
         return None
 
-    def replays(job_id: JobId, proxy_pool: str | None) -> Replay:
-        policy = FetchPolicy(proxy_pool=proxy_pool)
+    def replays(job_id: JobId) -> Replay:
+        policy = FetchPolicy()
 
         async def replay(request: JsonRequest) -> FetchResult:
             attempts: list[AttemptRecord] = []
             rules = rules_of(engine, fetching.rungs.http, attempts, Turns(fetching.limiter, IN_PLACE))
             result = await _polite_send(fetching, json, rules, _Turn(None))(request, policy)
             async with engine.begin() as conn:
-                await record_fetch_usage(conn, job_id, [*attempts, *result.attempts], proxy_pool)
+                await record_fetch_usage(conn, job_id, [*attempts, *result.attempts], None)
             return result
 
         return replay

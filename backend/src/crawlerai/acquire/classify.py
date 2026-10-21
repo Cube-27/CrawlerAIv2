@@ -176,11 +176,6 @@ def usable_content(text: str, page_kind: PageKind | None = None) -> bool:
     return _describes_product(tree, documents) or (page_kind == "listing" and _structured_rows(tree, documents))
 
 
-def describes_product(tree: LexborHTMLParser) -> bool:
-    """Whether the document's structured data states a product's offer (`_describes_product`)."""
-    return _describes_product(tree, _json_ld(tree))
-
-
 def _describes_product(tree: LexborHTMLParser, documents: list[object]) -> bool:
     """A JSON-LD node typed as a schema.org Product (or subtype) with `offers`, at any depth; an OGP product price with
     content; or a microdata Product item holding an `offers` property."""
@@ -255,18 +250,12 @@ def _rest(url: SplitResult) -> str:
     return "/".join(segments)
 
 
-def lacks_site_structure(text: str) -> bool:
-    """Whether an HTML document is no site page by its structure alone, whatever its status: a shell, or a document
-    that links nowhere (the rules `classify` applies to a 2xx page)."""
-    return _no_site_page(LexborHTMLParser(text)) is not None
-
-
 def interstitial(status: int, headers: HeaderList, text: str, url: str) -> bool:
     """Whether a refusal at `url` is a document standing in for the page until it navigates on (D-1206, D-1262): its
     status is one a page's own script may lift (`INTERSTITIAL_STATUS`), it can navigate itself (a refresh, or a
-    script) and it is no page of the site by structure: it declares a refresh, it lacks site structure
-    (`lacks_site_structure`), or no hyperlink leads to another page of its own host. A document with neither a refresh
-    nor a script can never replace itself, so waiting on it is time lost."""
+    script) and it is no page of the site by structure: it declares a refresh, it is a shell or links nowhere (the
+    rules `classify` applies to a 2xx page), or no hyperlink leads to another page of its own host. A document with
+    neither a refresh nor a script can never replace itself, so waiting on it is time lost."""
     if status not in INTERSTITIAL_STATUS or not is_html(headers):
         return False
     tree = LexborHTMLParser(text)
@@ -350,28 +339,10 @@ def _structured_rows(tree: LexborHTMLParser, documents: list[object]) -> bool:
     )
 
 
-def structured_entries(tree: LexborHTMLParser) -> int:
-    """How many items the page's structured data lists: its top-level microdata items when they are as many as a
-    grid's (`MIN_ITEMS`; fewer are the page's own, such as its organization), or the entries of its longest JSON-LD
-    ItemList (schema.org `itemListElement`), whichever is more; 0 when it lists none."""
-    microdata = len(tree.css(_MICRODATA))
-    return max(microdata if microdata >= MIN_ITEMS else 0, *_item_lists(_json_ld(tree)), 0)
-
-
 def _json_ld(tree: LexborHTMLParser) -> list[object]:
     """The page's JSON-LD script data blocks, parsed (a block that is not JSON states nothing)."""
     blocks = (s.text() for s in tree.css("script[type]") if _media_type(s.attributes.get("type")) == _JSON_LD)
     return [_json(block) for block in blocks]
-
-
-def _item_lists(documents: list[object]) -> list[int]:
-    """The entry count (`itemListElement`, one node or an array of them) of each schema.org ItemList node in the
-    page's JSON-LD documents, at any depth."""
-    counts: list[int] = []
-    for node in _typed(documents, frozenset({_ITEM_LIST})):
-        entries = node.get(_ENTRIES)
-        counts.append(len(entries) if isinstance(entries, list) else int(entries is not None))
-    return counts
 
 
 def _media_type(value: str | None) -> str:

@@ -187,9 +187,7 @@ def test_a_listing_whose_tab_left_its_host_is_not_driven(tmp_path: Path) -> None
     )
     actions = BrowserActions(records=10_000, hint="scroll")
 
-    paged = asyncio.run(
-        grown(fetching, _URL, FetchPolicy(), actions, time.monotonic() + 60, admit, HostRules(crawl_delay_ms=None))
-    )
+    paged = asyncio.run(grown(fetching, _URL, FetchPolicy(), actions, time.monotonic() + 60, admit, HostRules()))
 
     # The listing's host's robots.txt and rate say nothing of another host's (RFC 9309 §2.3: rules are per origin).
     assert paged.report is not None

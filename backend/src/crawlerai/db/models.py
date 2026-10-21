@@ -220,18 +220,13 @@ class ApiKey(Base):
 
 class Site(Base):
     __tablename__ = "site"
-    __table_args__ = (
-        CheckConstraint("host = lower(host)", name="host_lowercase"),
-        CheckConstraint("crawl_delay_ms >= 0", name="crawl_delay_ms_non_negative"),
-    )
+    __table_args__ = (CheckConstraint("host = lower(host)", name="host_lowercase"),)
 
     id: Mapped[SiteId] = mapped_column(primary_key=True, default=uuid7)
     project_id: Mapped[ProjectId] = mapped_column(ForeignKey(Project.id))
     host: Mapped[str] = mapped_column(Text, unique=True)
     platform: Mapped[str | None] = mapped_column(Text)
-    proxy_pool: Mapped[str | None] = mapped_column(Text)
     robots_snapshot: Mapped[str | None] = mapped_column(Text)
-    crawl_delay_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = created_at_column()
     # The adapters that declined the host (`adapters.registry`, adapters spec), each with the time (ISO 8601, UTC) until
     # which it is not asked again (D-1384).
@@ -440,12 +435,7 @@ class UrlState(Base):
 
     site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id), primary_key=True)
     canonical_url: Mapped[str] = mapped_column(Text, primary_key=True)
-    # The page's visible text (`recurring.simhash`): the exact digest of its words, which alone decides whether the
-    # content changed (D-1340), and their SimHash as 16 hex digits, which says how far a change moved.
-    content_digest: Mapped[str | None] = mapped_column(Text)
-    content_fingerprint: Mapped[str | None] = mapped_column(Text)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    last_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     missing_runs: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     gone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # The crawl whose listing last held the URL (jobs spec); NULL while no listing has.

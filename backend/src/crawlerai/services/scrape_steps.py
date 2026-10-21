@@ -386,15 +386,12 @@ def check_usable(schema: SchemaDef, page_kind: PageKind | None) -> None:
 
 @dataclass(frozen=True, slots=True)
 class SiteRow:
-    """A site as a fetch reads it: its id, what its memory says of the page kind fetched (`acquire.memory`), its proxy
-    pool, robots.txt snapshot and interval setting, the adapters that declined its host (`Registry.for_host`), and
-    whether the browser loads all its resources."""
+    """A site as a fetch reads it: its id, what its memory says of the page kind fetched (`acquire.memory`), its
+    robots.txt snapshot, and the adapters that declined its host (`Registry.for_host`)."""
 
     id: SiteId
     remembered: Remembered
-    proxy_pool: str | None
     robots_snapshot: str | None
-    crawl_delay_ms: int | None
     adapter_declined: dict[str, str] = field(default_factory=dict)
 
 
@@ -404,22 +401,9 @@ async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None 
     await conn.execute(
         pg_insert(Site).values(project_id=DEFAULT_PROJECT, host=host).on_conflict_do_nothing(index_elements=[Site.host])
     )
-    columns = (
-        Site.id,
-        Site.proxy_pool,
-        Site.robots_snapshot,
-        Site.crawl_delay_ms,
-        Site.adapter_declined,
-    )
+    columns = (Site.id, Site.robots_snapshot, Site.adapter_declined)
     row = (await conn.execute(select(*columns).where(Site.host == host))).one()
-    return SiteRow(
-        row.id,
-        await remembered(conn, row.id, page_kind),
-        row.proxy_pool,
-        row.robots_snapshot,
-        row.crawl_delay_ms,
-        row.adapter_declined,
-    )
+    return SiteRow(row.id, await remembered(conn, row.id, page_kind), row.robots_snapshot, row.adapter_declined)
 
 
 async def new_capture(conn: AsyncConnection, store: ObjectStore, site_id: SiteId, page: FetchResult) -> CaptureId:

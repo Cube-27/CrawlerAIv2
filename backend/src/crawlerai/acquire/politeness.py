@@ -108,11 +108,10 @@ def page_requests(attempts: Iterable[AttemptRecord]) -> tuple[AttemptRecord, ...
     return tuple(attempt for attempt in attempts if attempt.method != "api")
 
 
-def interval(crawl_delay_ms: int | None, robots_delay: timedelta | None) -> timedelta:
-    """The time between two requests to a site: the site's own setting, else the default, and never shorter than the
-    `Crawl-delay` its robots.txt asks for (`None` when robots are not consulted)."""
-    configured = DEFAULT_INTERVAL if crawl_delay_ms is None else timedelta(milliseconds=crawl_delay_ms)
-    return configured if robots_delay is None else max(configured, robots_delay)
+def interval(robots_delay: timedelta | None) -> timedelta:
+    """The time between two requests to a site: the default, and never shorter than the `Crawl-delay` its robots.txt
+    asks for (`None` when robots are not consulted)."""
+    return DEFAULT_INTERVAL if robots_delay is None else max(DEFAULT_INTERVAL, robots_delay)
 
 
 def retry_after(headers: HeaderList, now: datetime) -> timedelta | None:

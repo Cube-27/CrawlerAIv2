@@ -17,8 +17,6 @@ from crawlerai.core.proxy import ProxyPool
 OBJECT_STORE_URL_PATTERN = r"^(fs:///.+|s3://[^/]+(/.*)?)$"
 ObjectStoreUrl = Annotated[str, Field(pattern=OBJECT_STORE_URL_PATTERN)]
 
-Role = Literal["api", "worker", "scheduler"]
-
 # The newest Chrome profile curl_cffi supports at lock time (acquisition spec).
 IMPERSONATE_DEFAULT: BrowserTypeLiteral = "chrome150"
 
@@ -126,4 +124,3 @@ class Settings(DatabaseSettings, AcquireSettings, ApiSettings, LLMSettings, Sear
     # state is encrypted with (`acquire.cookie_store`). Without it no cookie state is stored.
     cookie_key: SecretStr | None = None
     log_redact_urls: bool = False
-    role: Role | None = None

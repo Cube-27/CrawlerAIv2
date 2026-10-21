@@ -38,8 +38,8 @@ Scalar = str | int | float
 # the document states kept, none when the page was not reached or may not be fetched. Learning renders the pages whose
 # captures hold no calls to learn from.
 Render = Callable[[str, PageKind], Awaitable[Sequence[CaptureBundle]]]
-# A learning run's `Replay`, for its job (whose usage the requests count as) and the site's proxy pool (D-1381).
-Replays = Callable[[JobId, str | None], Replay]
+# A learning run's `Replay`, for its job, whose usage the requests count as (D-1381).
+Replays = Callable[[JobId], Replay]
 # Appendix A #59: a listing recipe is validated on its first two pages, the one the page loaded and the next.
 REPLAYED_PAGES: Final = 2
 

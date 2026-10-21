@@ -1,6 +1,6 @@
 """A learning run's recipe replays (adapters spec) go out as politely as a served recipe's request (acquisition spec,
-D-0731): at the endpoint host's rate, with no robots.txt request (owner decision #75); through the site's proxy pool,
-counted as the learn job's usage (D-1381)."""
+D-0731): at the endpoint host's rate, with no robots.txt request (owner decision #75); counted as the learn job's usage
+(D-1381)."""
 
 import json
 from collections.abc import AsyncIterator, Callable
@@ -75,19 +75,19 @@ def _fetching(web: Web, tmp_path: Path) -> Fetching:
     return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
 
 
-async def test_a_replay_goes_through_the_sites_proxy_pool_and_counts_its_bytes_as_the_jobs_usage(
+async def test_a_replay_counts_as_the_jobs_usage(
     engine: AsyncEngine, fetch_result: Callable[..., FetchResult], api_host: str, tmp_path: Path, job_id: JobId
 ) -> None:
     web = Web(fetch_result, transferred=700)
     replays = learning_replay(engine, _fetching(web, tmp_path))
     assert replays is not None
 
-    result = await replays(job_id, "dc")(JsonRequest(f"https://{api_host}/v1/p/a", "https://shop.example.test/p/a"))
+    result = await replays(job_id)(JsonRequest(f"https://{api_host}/v1/p/a", "https://shop.example.test/p/a"))
 
     assert result.block_class == "ok"
-    assert web.pools == ["dc"]
+    assert web.pools == [None]
     async with engine.connect() as conn:
         usage: dict[str, int] = (await conn.execute(select(Job.usage).where(Job.id == job_id))).scalar_one()
         pools = set((await conn.execute(select(UsageEvent.model_or_pool).where(UsageEvent.job_id == job_id))).scalars())
-    assert usage == {"http_requests": 1, "proxy_bytes": 700}
-    assert pools == {"dc"}
+    assert usage == {"http_requests": 1}
+    assert pools == {None}

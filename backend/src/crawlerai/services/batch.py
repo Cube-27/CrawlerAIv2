@@ -45,7 +45,7 @@ from crawlerai.resolve.types import Probability
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.fetch_options import KEEP_SECRETS, check_proxy_pool
 from crawlerai.services.fetching import check_targets
-from crawlerai.services.location import pin_location
+from crawlerai.services.location import job_egress
 from crawlerai.services.scrape import Budget, RecordsUnavailable
 from crawlerai.services.scrape_steps import (
     DEFAULT_PROJECT,
@@ -159,7 +159,7 @@ async def submit_batch(
 ) -> BatchSubmitted:
     """Store `request` as a queued job with its tasks, where `placement` says; `api_key_id`, the key that submitted
     it, signs its webhook (jobs spec); `egresses`, the configured pools, one of which `fetch.proxy_pool` must name
-    (D-1434), and the countries they go out from. The job's location is pinned here (`pin_location`). Raises, storing
+    (D-1434), and the countries they go out from. The job's egress is its pool's (`job_egress`). Raises, storing
     nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target, `RecordsUnavailable` for
     `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use (or field names `llm` could
     not draft)."""
@@ -171,7 +171,7 @@ async def submit_batch(
     schema = await records_schema(
         engine, request.formats, request.schema_, request.page_kind, data, llm, request.render
     )
-    request, egress = await pin_location(engine, egresses, request, request.fetch, request.urls[0])
+    egress = job_egress(egresses, request.fetch)
     async with placement.transaction(engine) as conn:
         job_id = await insert_job(
             conn,
@@ -235,7 +235,7 @@ async def insert_job(
     egress: Egress = UNKNOWN,
 ) -> JobId:
     """Insert `request` as a queued job of `kind`, with its webhook options; `schedule_id` names the schedule that
-    submitted it, `egress` the country its fetches go out from (`pin_location`). A records job (`schema`) pins its
+    submitted it, `egress` the country its fetches go out from (`job_egress`). A records job (`schema`) pins its
     engine data and the configs active for the hosts of `urls` (INV-28, `JobPins`)."""
     pinned = None if schema is None or data is None else await job_pins(conn, data, urls, schema)
     statement = (

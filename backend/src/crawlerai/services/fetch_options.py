@@ -186,7 +186,7 @@ def fetch_policy(
     formats: Iterable[str] = (),
 ) -> FetchPolicy:
     """The fetch policy of a page task, through the proxy pool `options` names: for a job's pages, the one pool its
-    submit pinned (`services.location`), never a site's own. A screenshot or PDF among its `formats` is made in the
+    request names (`services.location`). A screenshot or PDF among its `formats` is made in the
     browser, which then fetches the page whatever the site's remembered method (`FetchPolicy.screenshot`, `pdf`).
     `schema`, the one the page is read with, names the types of the items it is read for (the policy's
     `target_types`)."""

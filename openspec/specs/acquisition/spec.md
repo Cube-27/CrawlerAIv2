@@ -255,7 +255,7 @@ plan 2026-10-19 (crawl speed, P2 browser wait and blocking).
   and no `Sec-Fetch-User`
 
 ### Requirement: Network body capture
-When `capture_network_json` is set, the browser rung SHALL save, from any origin and in arrival order, the bodies of
+The browser rung SHALL save, from any origin and in arrival order, the bodies of
 fetch, XMLHttpRequest and document responses (not the main frame's navigation) that are JSON by media type, React
 Server Components Flight payloads (`text/x-component`, `storage.capture_bundle.is_flight`) or, labelled `text/plain` or
 not at all, whose bytes are an RFC 8259 object or array (a guard prefix of at most 16 characters stripped,
@@ -361,13 +361,13 @@ resolver and pool tests over every endpoint; active. Refs: §7.1, §18, D-0115, 
 - **THEN** the hop is rejected with `ssrf_rejected` and nothing is fetched from it
 
 ### Requirement: Proxy pools
-A site's `proxy_pool` SHALL be used from `CRAWLERAI_PROXY_POOLS` (a proxy URL, or endpoints with mode `rotate` or
-`sticky`) over a CONNECT tunnel by every rung, which reports each fetch's endpoint health; an endpoint failing 3 times
-in a row SHALL be left out for a quarantine doubling from 1 to 30 min (`core/proxy_health.py`), and a pool never sends
+A request's `fetch.proxy_pool` SHALL be used from `CRAWLERAI_PROXY_POOLS` (a proxy URL, or endpoints with mode
+`rotate` or `sticky`) over a CONNECT tunnel by every rung, which reports each fetch's endpoint health; an endpoint
+failing 3 times in a row SHALL be left out for a quarantine doubling from 1 to 30 min (`core/proxy_health.py`), and a pool never sends
 direct. An unknown pool MUST end `error`/`proxy_pool_unknown` sending nothing, and credentials never appear in errors.
 Each attempt records the bytes it moved (the HTTP and JSON rungs' HTTP messages, CONNECT included; the bytes the
-browser's guard relayed), counted as `proxy_bytes` usage of the pool for a fetch through one, a learning run's recipe
-replays included. (Previously: no rung recorded `proxy_bytes`.) Refs: §7.1, D-0282, D-0286, D-1264, D-1323, D-1324,
+browser's guard relayed), counted as `proxy_bytes` usage of the pool for a fetch through one. A learning run's recipe
+replays go direct. (Previously: no rung recorded `proxy_bytes`.) Refs: §7.1, D-0282, D-0286, D-1264, D-1323, D-1324,
 D-1355, D-1381.
 
 ### Requirement: Egress country
@@ -450,7 +450,7 @@ The system SHALL fetch every page and JSON request through one polite fetch (`se
 the host's rate, then the fetch, then the observation and the back-off; a robots.txt request takes a turn and holds the
 host as a page's does (a worker postpones a fetch that has sent nothing, and once robots.txt was requested waits in place
 for the page's turn up to its bound). It SHALL space requests to a host by
-`crawl_delay_ms`, else 1 req/s, never below robots `Crawl-delay` when robots.txt is obeyed, postponing a worker task rather than sleeping (a
+1 req/s, never below robots `Crawl-delay` when robots.txt is obeyed, postponing a worker task rather than sleeping (a
 caller that waits waits in place up to one minute, a turn further off answering `blocked`, reason `slow_down`, with
 nothing sent); SHALL hold the host from a fetch's turn until the fetch ends and its answers are observed (a back-off stored), browser navigations included, so no two
 fetches are in flight to one host (a navigation and the resources its page loads are one fetch) (owner plan 2026-10-19, P1), and admit no request for work being

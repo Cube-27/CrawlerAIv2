@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import insert, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.politeness import HostLimiter
@@ -22,13 +22,12 @@ from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.egress import Egresses
 from crawlerai.core.proxy import ProxyPool
 from crawlerai.core.redaction import REDACTED
-from crawlerai.db.models import Capture, Job, Site
+from crawlerai.db.models import Capture, Job
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetch_options import UnknownProxyPool
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.jobs import job_request
 from crawlerai.services.scrape import ScrapeRequest, scrape
-from crawlerai.services.scrape_steps import DEFAULT_PROJECT
 from crawlerai.services.stored_captures import NotCached
 from crawlerai.storage.artifacts import SCREENSHOT
 from crawlerai.storage.fs import FsStore
@@ -166,8 +165,6 @@ async def test_a_proxy_pool_not_configured_is_refused_before_any_job(
 async def test_a_job_pins_one_pool_and_its_egress_at_submit(engine: AsyncEngine) -> None:
     pool = ProxyPool.parse({"endpoints": ["http://p.test:3128"], "mode": "rotate", "country": "DE"})
     egresses = Egresses({"eu": pool, "other": ProxyPool.parse("http://q.test:3128")}, "US")
-    async with engine.begin() as conn:
-        await conn.execute(insert(Site).values(project_id=DEFAULT_PROJECT, host="pooled.example.test", proxy_pool="eu"))
 
     async def pinned(url: str, **fetch: Any) -> tuple[str | None, str | None, str]:
         request = BatchScrapeRequest.model_validate({"urls": [url], "formats": ["markdown"], "fetch": fetch})
@@ -177,12 +174,8 @@ async def test_a_job_pins_one_pool_and_its_egress_at_submit(engine: AsyncEngine)
             row = (await conn.execute(select(*columns).where(Job.id == job.job_id))).one()
         return row.request["fetch"]["proxy_pool"], row.egress_country, row.egress_basis
 
-    # The first URL's site names the pool, the request's own pool wins, a pool without a declared country is unknown
-    # (never the machine's), and a job with no pool goes out from the machine.
-    assert await pinned("https://pooled.example.test/a") == ("eu", "DE", "pool")
+    # The request's pool gives its declared country, a pool without one is unknown (never the machine's), and a job
+    # with no pool goes out from the machine.
+    assert await pinned("https://pooled.example.test/a", proxy_pool="eu") == ("eu", "DE", "pool")
     assert await pinned("https://pooled.example.test/a", proxy_pool="other") == ("other", None, "unknown")
     assert await pinned("https://plain.example.test/a") == (None, "US", "machine")
-    # A site's stored pool this deployment no longer configures is not pinned: the job fetches directly.
-    async with engine.begin() as conn:
-        await conn.execute(insert(Site).values(project_id=DEFAULT_PROJECT, host="gone.example.test", proxy_pool="old"))
-    assert await pinned("https://gone.example.test/a") == (None, "US", "machine")
