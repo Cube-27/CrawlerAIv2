@@ -119,6 +119,17 @@ def test_a_field_maps_only_when_its_type_matches_the_role() -> None:
     assert result.candidates == (_og("title", "Synthetic Widget", Ok("Synthetic Widget"), "meta:og:title"),)
 
 
+def test_one_stated_image_is_no_list_of_images() -> None:
+    # OGP "Arrays": a list reads a repeated property; one image (written as `og:image` and `og:image:url`) is not one.
+    schema = _schema(images=_field(FieldType.LIST, "Product.image", item={"type": "image_url"}))
+
+    def images(*files: tuple[str, str]) -> list[JsonValue]:
+        return [c.raw for c in _collect(*files, schema=schema).candidates]
+
+    assert images(("og:image", "/a.jpg"), ("og:image:url", "/a.jpg")) == []
+    assert images(("og:image", "/a.jpg"), ("og:image", "/b.jpg")) == [["/a.jpg", "/b.jpg"]]
+
+
 def test_a_price_without_a_currency_publishes_its_amount_with_the_currency_unknown() -> None:
     # Normalization spec, money: a grounded amount publishes; no currency is filled in (C7).
     result = _collect(("product:price:amount", "19.99"))

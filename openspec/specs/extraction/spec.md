@@ -64,7 +64,9 @@ blocks skipped, an `og:title` read without trailing segments naming the site and
 run of its words that the document's one `h1` states (two words or more), as that run, else before a run that a slug
 segment of the page URL path spells (the last such segment the title holds), as that run; an `og:description` holding
 as a run of its words a name of the site, a non-blank `og:site_name` else the title's trailing site segments, that
-the title without those segments does not hold is the site's summary and not read, each repeated one on its own) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
+the title without those segments does not hold is the site's summary and not read, each repeated one on its own; a
+list field reads a property only when it states several values, OGP "Arrays": one `og:image` is the object's image,
+not a list of images) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
 standing in for that thing; a path through another thing, `Product.offers.seller.url`, has none); a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
 element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text; a text value that is the
@@ -78,7 +80,8 @@ candidates of the requested product, amounts in the minor unit the documentation
 variants are priced differently (the page states the selected one). Refs: §8.1,
 D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-19 on #326, architecture-v3 d.6.
 (Previously: Open Graph read `product:price` alone, whatever the money field's price role; an `image` written as an
-ImageObject was an invalid value; an `og:description` naming the site was the item's description.)
+ImageObject was an invalid value; an `og:description` naming the site was the item's description; one `og:image` was a
+list of images.)
 #### Scenario: OG sale price
 - **WHEN** a page states `product:price:amount` 100 and `product:sale_price:amount` 80, and the schema has `price` and
   a user-added `list_price`
@@ -266,15 +269,23 @@ amount per a CLDR duration unit (`$25/mo`) for no money field; a member price fr
 rows read by the same rule (`collect/items/align.py`). It SHALL take as the main image the first shown image (in that
 region, else in the body) whose file (`same_file`: the file, or a rendition an image server writes into the path,
 under a prefix, below the file or with parameters after a directory) is the main image the page's own structured data
-or Open Graph states (an image field's value, a list's first), else the first image of
+or Open Graph states (an image field's value, a list's first), else the first image of that file outside dialogs,
+media fallback and link cards, shown or not and decorative or not (the stated file is the evidence: the tangential
+section, the `noscript` fallback or the empty-`alt` image holding it holds the product's images, and its gallery is
+read beside it, the region's other tangential sections still set apart),
+else the first image of
 the one `main`/`role=main`/`article`, outside chrome, decorative images and link cards (`collect/dom_images.py`), an
 image's source being its `src` unless its `srcset` has width descriptors or a candidate of pixel density 1 (one without
 a descriptor too; HTML Standard §4.8.4.3: `src` is then out of the source set), when it is the widest candidate, else
 the first; a lazy loader's `data-srcset` and `data-src` (custom data attributes named after the standard ones, §3.2.6.6)
 stand for `srcset` and `src`; and for a list of images whose path names schema.org `image`, the main
-image's gallery: from the main image up, the first block with siblings of its tag gives, per such block, its image at
-the main image's tag path, shown or not (a carousel hides the slides but the current one), a source several blocks give
-left out; none when a block links to another document or fewer than two remain. Both DOM passes (these values and the DOM description block) leave out the cards of other
+image's gallery: from the main image up, the first block with siblings of its tag that hold an image (siblings without
+one are the slide's caption, not slides) gives, per such block, its image at
+the main image's tag path, shown or not (a carousel hides the slides but the current one), else its first image named
+after the main image's file (`same_family`: on its authority and in its directory, the file's name continued after a
+separator, `name_d1` beside `name`), wherever it sits in the block, shown or not, decorative or not; a source several
+blocks give left out; none when a block links to another document (a link whose query names an image file addresses
+that image, not another document) or fewer than two remain. Both DOM passes (these values and the DOM description block) leave out the cards of other
 items (`collect/dom.py` `product_apart`): a shown price that is none of the prices structured data states for the
 schema's money fields (only the page product's: not those of an item in another item's scope, `collect/scope.py`: a
 value of `isRelatedTo` or `isSimilarTo`, an `ItemList` or `ListItem` and what it holds, or a root item naming only other
@@ -286,12 +297,18 @@ not hold the title are set apart too. Values MUST be visible.
 (Previously: labels were only names, and other items' content was read; `src` was read before `srcset`, and beside a `1x` candidate; lazy sources, hidden slides and renditions in the path were not read; no list of
 images was read; a recommendation card that was not one of two or more sibling cards was read; an other item's
 structured price counted as stated, so its card was read; struck text was `s` and `del` only, and an amount per unit
-or per period was a price candidate; a page without a main landmark had no main image and no gallery.) Refs: Appendix A #42, D-0955,
+or per period was a price candidate; a page without a main landmark had no main image and no gallery; a stated file in
+tangential content, a `noscript` fallback or an empty-`alt` image was no main image, slides beside a caption block or
+outside the main image's tag path, or linking to a page about their image, were no gallery.) Refs: Appendix A #42, D-0955,
 D-1096, D-1640, D-1641, D-1642, D-1643.
 #### Scenario: Gallery slides
 - **WHEN** the main image is one of three sibling slides, two of which hold an image whose `src` is a shared placeholder
   and whose `srcset` lists widths
 - **THEN** the list of images is the slides' images, each at its widest `srcset` candidate
+#### Scenario: Slides named after the main file
+- **WHEN** the stated file is only a lazy slide's `noscript` fallback, every slide's image has an empty `alt`, and the
+  first slides show `name_m` and `name_d1` outside the main image's tag path
+- **THEN** the list of images is the slides' images in slide order, the stated file included
 #### Scenario: A storefront without a main landmark
 - **WHEN** a page has no `main`, `role=main` or single `article`, its JSON-LD `Product.image` names one file, and the
   body shows that file as one of three sibling slides
