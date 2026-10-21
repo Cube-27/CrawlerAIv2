@@ -631,15 +631,22 @@ def _largest_renditions(top: Group, chosen: Candidate, spec: FieldSpec) -> Candi
         return chosen
     members = [chosen, *(c for c in top.members if c is not chosen)]
     stated = [_image_list(value_of(c)) for c in members]
-    lists = [images for images in stated if images is not None and len(images) == len(stated[0] or ())]
+    lists = [images for images in stated if images is not None]
     if len(lists) != len(members):
         return chosen
-    largest = [url.preferred_rendition(renditions) for renditions in zip(*lists, strict=True)]
+    largest = _at_largest(lists[0], lists[1:])
     if spec.type is FieldType.IMAGE_URL:
-        return next(c for c, images in zip(members, lists, strict=True) if images == largest)
+        return next((c for c, images in zip(members, lists, strict=True) if images == largest), chosen)
     if largest == lists[0]:
         return chosen
     return chosen.model_copy(update={"normalized": replace(cast(Ok, chosen.normalized), value=list(largest))})
+
+
+def _at_largest(images: list[str], others: Sequence[list[str]]) -> list[str]:
+    """Each of `images`, in its order, at its largest rendition among `others`' renditions of its file
+    (`url.same_file`), whatever position they list it at."""
+    renditions = [[item, *(r for listed in others for r in listed if url.same_file(item, r))] for item in images]
+    return [url.preferred_rendition(found) for found in renditions]
 
 
 def _image_list(value: JsonValue) -> list[str] | None:

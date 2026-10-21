@@ -42,8 +42,10 @@ authority and path without the size, conversion and options the path states, any
 into the path ends the file's name), an image proxy URL naming the file its `url` parameter names, a list's as the set
 of its files) form a group scored by its best member; of those members the first publishes, for images the `https` ones
 (else all), with each file at the largest rendition any member states (`url.preferred_rendition`): a single image
-publishes the member stating it, a list the first member's with those renditions. Image values that tie for the best
-score as items of one list of one node publish its first item (an array is ordered, RFC 8259 §1). The candidates of every other value are rejected `outscored`, and a field whose kept
+publishes the member stating it, a list the first member's files, in its order, each at its largest rendition wherever
+another member lists it. Image values that tie for the best score as items of one list of one node publish its first
+item (an array is ordered, RFC 8259 §1). The candidates of every other value are rejected `outscored`, and a field whose
+kept
 candidates state other values publishes with the disagreement flag as its reason (`disagree`, or `offers_disagree` /
 `offer_split` for an offer field). A list of the item's facts (its items neither lists, objects, urls nor images: a
 job's places) publishes instead every member its values scoring above 0 state, the best value's first: two sources stating
