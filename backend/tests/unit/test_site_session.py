@@ -72,7 +72,7 @@ def outcome(block_class: BlockClass, *, status: int = 200, method: CaptureMethod
 # --- the store ------------------------------------------------------------------------------------------------------
 
 
-def test_a_session_keeps_only_the_cookies_of_the_sites_registrable_domain() -> None:
+def test_a_session_keeps_the_cookies_of_the_sites_registrable_domain_clearance_cookies_too() -> None:
     sessions = SiteSessions()
     export = CookieExport(
         (
@@ -87,13 +87,13 @@ def test_a_session_keeps_only_the_cookies_of_the_sites_registrable_domain() -> N
     session = sessions.open(f"https://{SITE}/p", None, export)
 
     assert session is not None
-    assert (session.site, session.registrable_domain) == (SITE, "example.test")
-    assert [c.name for c in session.cookies] == ["clearance", "seen"]
+    assert session.registrable_domain == "example.test"
+    assert [c.name for c in session.cookies] == ["clearance", "cf_clearance", "seen"]
 
 
 def test_inv29_no_repr_shows_a_cookie_value() -> None:
     sessions = sessions_with(f"https://{SITE}/", (cookie("c", "example.test"),))
-    session = asyncio.run(sessions.take(f"https://{SITE}/", f"https://{SITE}/", None))
+    session = sessions.take(f"https://{SITE}/", f"https://{SITE}/", None)
 
     assert COOKIE_VALUE not in repr(session)
     assert COOKIE_VALUE not in repr(sessions)
@@ -149,22 +149,19 @@ class Stored:
 
     states: dict[tuple[str, str], tuple[SessionCookie, ...]] = field(default_factory=dict)
 
-    async def load(self, host: str, engine: BrowserEngine) -> tuple[SessionCookie, ...]:
-        return self.states.get((host, engine), ())
+    async def load(self, domain: str, engine: BrowserEngine) -> tuple[SessionCookie, ...]:
+        return self.states.get((domain, engine), ())
 
-    async def save(self, host: str, engine: BrowserEngine, cookies: Iterable[SessionCookie]) -> bool:
-        self.states[host, engine] = tuple(cookies)
+    async def save(self, domain: str, engine: BrowserEngine, cookies: Iterable[SessionCookie]) -> bool:
+        self.states[domain, engine] = tuple(cookies)
         return True
 
-    async def clear(self, host: str, engine: BrowserEngine) -> None:
-        self.states.pop((host, engine), None)
+    async def clear(self, domain: str, engine: BrowserEngine) -> None:
+        self.states.pop((domain, engine), None)
 
 
-def test_a_browser_ok_is_stored_without_challenge_cookies_and_goes_with_the_next_direct_http_fetch(
-    server: Server,
-) -> None:
+def test_only_a_temporary_profile_reads_and_writes_the_stored_state_and_http_never_does(server: Server) -> None:
     server.route("/p", Reply(200, (("Content-Type", "text/html"),), _PAGE))
-    host = server.url("/").split("/")[2].split(":")[0]
     store = Stored()
     sessions = SiteSessions(store=store)
     held = (
@@ -173,30 +170,22 @@ def test_a_browser_ok_is_stored_without_challenge_cookies_and_goes_with_the_next
         cookie("x", "other.test"),
     )
 
-    asyncio.run(sessions.after_browser(server.url("/p"), None, held, outcome("shell", method="browser")))
+    def browser(block_class: BlockClass, pool: str | None = None, *, temporary: bool = True) -> None:
+        result = outcome(block_class, method="browser")
+        asyncio.run(sessions.after_browser(server.url("/p"), pool, held, result, temporary=temporary))
+
+    browser("shell")
+    browser("ok", "dc")
+    browser("ok", temporary=False)
     assert store.states == {}
-    asyncio.run(sessions.after_browser(server.url("/p"), "dc", held, outcome("ok", method="browser")))
-    assert store.states == {}
-    asyncio.run(sessions.after_browser(server.url("/p"), None, held, outcome("ok", method="browser")))
-    assert [c.name for c in store.states[host, ENGINE]] == ["session"]
-    assert [c.name for c in asyncio.run(sessions.for_browser(server.url("/q"), None))] == ["session"]
-    assert asyncio.run(sessions.for_browser(server.url("/q"), "dc")) == ()
+    browser("ok")
+    assert [c.name for c in store.states["example.test", ENGINE]] == ["session", "datadome"]
+    other_host = server.url("/q", host="www.example.test")
+    assert [c.name for c in asyncio.run(sessions.for_browser(other_host, None))] == ["session", "datadome"]
+    assert asyncio.run(sessions.for_browser(other_host, "dc")) == ()
 
     http(server, server.url("/p"), sessions)
+    assert sent(server, 0, "cookie") is None
 
-    assert sent(server, 0, "cookie") == "session=s1"
-
-
-def test_a_blocked_fetch_clears_the_stored_state_and_writes_nothing(server: Server) -> None:
-    server.route("/p", Reply(403, (("Content-Type", "text/html"),), b"<html><body>Access denied</body></html>"))
-    host = server.url("/").split("/")[2].split(":")[0]
-    store = Stored({(host, ENGINE): (cookie("session", "example.test", value="s1"),)})
-    sessions = SiteSessions(store=store)
-
-    result = http(server, server.url("/p"), sessions)
-
-    assert result.block_class == "blocked"
-    assert sent(server, 0, "cookie") == "session=s1"
-    assert store.states == {}
-    asyncio.run(sessions.after_browser(server.url("/p"), None, (cookie("s", "example.test"),), result))
+    browser("blocked", temporary=False)
     assert store.states == {}

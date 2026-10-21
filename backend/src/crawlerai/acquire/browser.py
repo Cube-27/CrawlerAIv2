@@ -378,12 +378,11 @@ async def fetch_browser(
 ) -> FetchResult:
     """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every connection. `export`,
     when given, receives the context's cookies and the endpoint, whatever the outcome; the caller decides whether a
-    session opens. `sessions` are this process's site sessions: the context starts with the site's cookies, and the
-    outcome is recorded with them (`SiteSessions.after_browser`); a fetch with the caller's own context neither reads
-    nor writes them (D-1432)."""
+    session opens. `sessions` are this process's site sessions: a temporary profile starts with the site's cookies
+    (`SiteSessions.for_browser`), and the outcome is recorded with them (`SiteSessions.after_browser`); a fetch with the
+    caller's own context neither reads nor writes them (D-1432)."""
     if policy.context is not None:
         sessions = None
-    seeded = () if sessions is None else await sessions.for_browser(url, policy.proxy_pool)
     fetched_at = datetime.now(UTC)
     started = time.monotonic()
     timings: dict[str, int] = {}
@@ -396,15 +395,17 @@ async def fetch_browser(
     traffic = Traffic()
     steps: tuple[StepOutcome, ...] = ()
     cookies: tuple[SessionCookie, ...] = ()
+    temporary = False
     try:
         pool = proxy_pool(policy.proxy_pool, pools)
         proxy = pool_endpoint(pool, url)
         extra_s = steps_budget_s(policy.steps) + (_ARTIFACT_TIMEOUT_S if policy.captures_page else 0)
         async with asyncio.timeout(policy.browser_timeout_s + extra_s):
             guarded = rendered(
-                url, policy, session, connector or SafeConnector(), proxy, started, timings, traffic, seeded
+                url, policy, session, connector or SafeConnector(), proxy, started, timings, traffic, sessions
             )
             async with guarded as page:
+                temporary = page.temporary
                 steps = await stepped(page)
                 exchange, content = await read_state(page)
                 cookies = await context_cookies(page.page.context)
@@ -443,7 +444,7 @@ async def fetch_browser(
     if block_class == "blocked" and (key := _context_key(url, policy, proxy)) is not None:
         await session.profiles.discard(key)
     if sessions is not None:
-        await sessions.after_browser(url, policy.proxy_pool, cookies, result)
+        await sessions.after_browser(url, policy.proxy_pool, cookies, result, temporary=temporary)
     return result
 
 
@@ -633,6 +634,7 @@ class Rendered:
     policy: FetchPolicy
     calls: DataCalls = field(default_factory=DataCalls)
     resources: Resources = field(default_factory=Resources)
+    temporary: bool = False  # its profile is a temporary one (`acquire.browser_profiles`)
 
 
 @asynccontextmanager
@@ -645,12 +647,13 @@ async def rendered(
     started: float,
     timings: dict[str, int],
     traffic: Traffic,
-    seeded: Sequence[SessionCookie] = (),
+    sessions: SiteSessions | None = None,
 ) -> AsyncIterator[Rendered]:
     """The page at `url`, once it is ready to read (`_settle`), in a new tab of the site's profile: the open one its
-    last page left (`_Profiles`), else the profile opened, holding the `seeded` cookies. The tab closes when the block
-    ends, and the profile's browser with it unless it is kept for the site's next page; the tab's wall time is
-    `timings["context"]`. The bytes the guard relays for the page are added to `traffic`. Raises `Failed`."""
+    last page left (`_Profiles`), else the profile opened (a temporary one starting with the cookies `sessions`
+    give). The tab closes when the block ends, and the profile's browser with it unless it is kept for the site's next
+    page; the tab's wall time is `timings["context"]`. The bytes the guard relays for the page are added to
+    `traffic`. Raises `Failed`."""
     try:
         first = await connector.check(url)  # also refuses `file:`, `data:` and other non-web schemes
     except SsrfRejected as e:
@@ -661,7 +664,7 @@ async def rendered(
     if held is None:
         await session.profiles.room()
         try:
-            held = await _open_context(url, policy, session, connector, first, proxy, seeded, key)
+            held = await _open_context(url, policy, session, connector, first, proxy, sessions, key)
         except BaseException:
             session.profiles.busy -= 1
             raise
@@ -672,6 +675,7 @@ async def rendered(
         page = await held.context.new_page()
         try:
             shown = await _navigate(page, url, first, policy, held.guard, started)
+            shown.temporary = held.profile.lock is None
             yield shown
             latest = shown.frame.latest or shown.response
             kept = key is not None and latest.status < _ERROR_STATUS and _context_key(latest.url, policy, proxy) == key
@@ -694,11 +698,12 @@ async def _open_context(
     connector: SafeConnector,
     first: Target,
     proxy: ProxyEndpoint | None,
-    seeded: Sequence[SessionCookie],
+    sessions: SiteSessions | None,
     key: _ContextKey | None,
 ) -> _Context:
     """The site profile of `key` (a temporary one without a key, `acquire.browser_profiles`), launched as a persistent
-    context behind a guard of its own, holding the `seeded` and the caller's cookies, with the request locale's
+    context behind a guard of its own, holding the caller's cookies, or, in a temporary profile of the site, the cookies
+    `sessions` give (`SiteSessions.for_browser`; a kept profile holds its own), with the request locale's
     `locale` and `timezone_id` (`acquire.locality`). Nothing intercepts its requests: Playwright's request routing
     turns the HTTP cache off, so every request carries `Cache-Control: no-cache` and `Pragma: no-cache`, which no
     user's browser sends on a first load (acquisition spec, "HTTP and browser rungs")."""
@@ -724,7 +729,8 @@ async def _open_context(
         held = _Context(context, guard, connector, traffic, stack, locale, profile)
         stack.push_async_callback(context.close)
         context.on("close", lambda _: _closed(session, held))
-        if seeded:
+        temporary = profile.lock is None and key is not None
+        if temporary and sessions is not None and (seeded := await sessions.for_browser(url, policy.proxy_pool)):
             await context.add_cookies(seeded_cookies(seeded))
         if policy.context is not None and policy.context.cookies:
             await context.add_cookies(caller_cookies(url, policy.context))

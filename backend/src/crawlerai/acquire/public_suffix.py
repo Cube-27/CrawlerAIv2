@@ -6,6 +6,7 @@ fetched by `crawlerai data fetch`; C4), matched by the list's own "Formal Algori
 empty, and only the list's implicit `*` rule (a single label) applies.
 """
 
+import ipaddress
 import logging
 from dataclasses import dataclass
 from functools import cache
@@ -73,8 +74,14 @@ class PublicSuffixes:
 
     def site(self, host: str) -> str:
         """The site of `host` (HTML Standard §7.1.1 "obtain a site", less the scheme): its registrable domain, or the
-        host itself where it has none (an IP address, a public suffix)."""
-        return self.registrable_domain(host) or host.strip(".").lower()
+        host itself where it has none (an IP address, a public suffix). An IP address (RFC 3986 §3.2.2 IP-literal or
+        IPv4address) is never split into labels: `192.0.2.1` and `198.0.2.1` are two sites."""
+        name = host.strip(".").lower()
+        try:
+            ipaddress.ip_address(name.strip("[]"))
+        except ValueError:
+            return self.registrable_domain(name) or name
+        return name
 
 
 def _ascii(name: str) -> str:

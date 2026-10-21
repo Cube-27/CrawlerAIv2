@@ -270,14 +270,14 @@ class SiteBlock(Base):
 
 
 class SiteCookieState(Base):
-    """The cookies a browser engine's context held after an `ok` page of the site (acquisition spec, "Stored cookie
-    state"), challenge cookies left out, encrypted (`acquire.cookie_store`); `fingerprint` (an HMAC of the plain
+    """The cookies a temporary profile's browser context held after an `ok` page of a site, per registrable domain
+    (acquisition spec, "Stored cookie state"), encrypted (`acquire.cookie_store`); `fingerprint` (an HMAC of the plain
     state) says whether a new state differs. No row: none is kept."""
 
     __tablename__ = "site_cookie_state"
     __table_args__ = (CheckConstraint(one_of("engine", BrowserEngine), name="engine"),)
 
-    site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id, ondelete="CASCADE"), primary_key=True)
+    domain: Mapped[str] = mapped_column(Text, primary_key=True)
     engine: Mapped[BrowserEngine] = mapped_column(Text, primary_key=True)
     state: Mapped[bytes] = mapped_column(LargeBinary)
     fingerprint: Mapped[str] = mapped_column(Text)
