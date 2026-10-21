@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
-from crawlerai.acquire import browser
+from crawlerai.acquire import browser_capture
 from crawlerai.collect.xhr import network_documents
 from crawlerai.content.fragments import is_partial
 from crawlerai.content.page import ParsedPage, prepassed
@@ -26,7 +26,7 @@ def _response(url: str, content_type: str, resource_type: str = "fetch", status:
 
 
 def test_the_browser_keeps_same_site_html_answers_of_fetch_and_xhr_calls() -> None:
-    calls = browser.DataCalls()
+    calls = browser_capture.DataCalls()
     frame: Any = SimpleNamespace(url=URL)
     kept = _response("https://shop.example.test/f/1", "text/html; charset=utf-8")
     other_site = _response("https://ads.example.org/f/1", "text/html")

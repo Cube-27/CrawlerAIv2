@@ -19,7 +19,8 @@ import pytest
 from patchright.async_api import Error as PlaywrightError
 from pydantic import SecretStr, TypeAdapter
 
-from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
+from crawlerai.acquire.browser import fetch_browser
+from crawlerai.acquire.browser_session import BrowserSession, open_browser
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult, RequestContext
 from crawlerai.config_ir.page_actions import Action, WaitFor, to_steps

@@ -7,7 +7,7 @@ from typing import cast
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import Page
 
-from crawlerai.acquire.browser import AREAS_JS, item_areas
+from crawlerai.acquire.browser_capture import AREAS_JS, item_areas
 from crawlerai.acquire.items import element_path, item_groups, lxml_root
 
 BODY = (

@@ -24,7 +24,8 @@ from urllib.parse import urlsplit
 import pytest
 from patchright.async_api import Error as PlaywrightError
 
-from crawlerai.acquire.browser import BrowserSession, fetch_browser, open_browser
+from crawlerai.acquire.browser import fetch_browser
+from crawlerai.acquire.browser_session import BrowserSession, open_browser
 from crawlerai.acquire.session import CookieExport
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector, SsrfRejected, Target
 from crawlerai.acquire.types import FetchPolicy, FetchResult

@@ -1,171 +1,67 @@
-"""Browser fetch with Patchright headless Chromium (acquisition spec): one navigation, bounded waits,
-and the JSON and Flight bodies the page loads and the HTML fragments it fetches from its own site captured, the network
-data-source layer's input (Appendix A #59) and API discovery's (§7.2 step 1).
+"""Browser fetch with Patchright headless Chromium (acquisition spec, "HTTP and browser rungs"): one navigation, the one
+bounded wait (`acquire.browser_wait`), and what the render captures besides its document (`acquire.browser_capture`),
+in a tab of the site's profile (`acquire.browser_session`).
 
-One Playwright driver per worker process (`open_browser`), one browser per open site profile (`_Profiles`,
-`acquire.browser_profiles`: a persistent context of the site's own, not an incognito one), each page in a tab of its
-own. Every connection a profile's browser opens goes through its `SocksGuard`, which applies the SSRF guard to every
-redirect hop, frame and worker (§4.5). As in
-`fetch_http`, every failure becomes an `error` outcome with a short reason that never contains the URL (D-0128). A
-`blocked` or `shell` document is labelled with the challenge it presents (`acquire.challenge`), and the pool endpoint
-it went through is told how it went (`core.proxy_health`), as the HTTP rung does. Asked to export (`CookieExport`), the
-fetch reads the context's cookies before the context closes, without changing them, for a site session (INV-29's
-exception). Given the process's site sessions, the context starts with the site's live session's or stored cookies,
-and its cookies after an `ok` are kept as the site's stored state (`acquire.session`, browser to HTTP only). The
-caller's cookies (`RequestContext`) are added to the context before the navigation, as host-only
-cookies of the URL's host; the caller's headers are never set in the browser (INV-44). A page is read once it is
-ready (`_settle`); every request the page makes loads, as in a user's browser (no request interception). The
-caller's page steps run after that wait and before the read (`run_steps`), within the browser's time cap plus their
-own timeouts.
+As in `fetch_http`, every failure becomes an `error` outcome with a short reason that never contains the URL (D-0128).
+A page is read once it is ready (`settle`); every request the page makes loads, as in a user's browser (no request
+interception). The caller's page steps run after that wait and before the read (`run_steps`), within the browser's
+time cap plus their own timeouts. Both browser rungs, the page (`fetch_browser`) and the listing with browser actions
+(`acquire.browser_tab.fetch_listing`), render through `rendered` and end through `Render`: the first document is
+classified with the redirect rules, a `blocked` or `shell` one labelled with the challenge it presents
+(`acquire.challenge`), the pool endpoint it went through told how it went (`core.proxy_health`), a `blocked` profile
+deleted, and the outcome recorded with the process's site sessions (`acquire.session`, browser to HTTP only). Asked to
+export (`CookieExport`), the fetch reads the context's cookies before the context closes, without changing them, for a
+site session (INV-29's exception).
 """
 
 import asyncio
 import contextlib
 import re
 import time
-from collections import Counter, OrderedDict
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
-from contextlib import AsyncExitStack, asynccontextmanager
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Final, cast
-from urllib.parse import urlsplit
 
-from patchright._impl._api_structures import SetCookieParam, ViewportSize
-from patchright.async_api import BrowserContext, Frame, Page, Playwright, Request, Response, async_playwright
 from patchright.async_api import Error as PlaywrightError
+from patchright.async_api import Page, Response
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
-from crawlerai.acquire.browser_profiles import Profile, discard_profile, open_profile, profile_name
+from crawlerai.acquire.browser_capture import (
+    ARTIFACT_TIMEOUT_S,
+    DataCalls,
+    Resources,
+    capture_artifacts,
+    header_list,
+    item_areas,
+    json_bodies,
+)
+from crawlerai.acquire.browser_session import (
+    BrowserSession,
+    Failed,
+    context_cookies,
+    context_key,
+    open_context,
+)
+from crawlerai.acquire.browser_wait import STEP_QUIET_S, MainFrame, called, ms_until, settle, until
 from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
-from crawlerai.acquire.classify import INTERSTITIAL_STATUS, Redirect, interstitial
+from crawlerai.acquire.classify import Redirect
 from crawlerai.acquire.headers import recorded
-from crawlerai.acquire.items import element_path, item_groups, lxml_root
-from crawlerai.acquire.locality import Locality, locality
+from crawlerai.acquire.locality import locality
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
 from crawlerai.acquire.page_steps import run_steps, steps_budget_s
-from crawlerai.acquire.public_suffix import default_suffixes
-from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions, browser_cookies
+from crawlerai.acquire.session import CookieExport, SessionCookie, SiteSessions
 from crawlerai.acquire.socks_guard import SocksGuard
 from crawlerai.acquire.ssrf import RejectReason, SafeConnector, SsrfRejected, Target
-from crawlerai.acquire.types import BlockClass, CallEndpoint, FetchPolicy, FetchResult, RequestContext, StepOutcome
+from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, StepOutcome
 from crawlerai.core.proxy import ProxyEndpoint, ProxyPool, UnknownProxyPool, pool_endpoint, proxy_pool
-from crawlerai.storage.artifacts import PDF, SCREENSHOT
-from crawlerai.storage.capture_bundle import (
-    FLIGHT_TYPE,
-    GRPC_WEB_TYPE,
-    WASM_TYPE,
-    HeaderList,
-    NetworkBody,
-    decode_html,
-    is_html,
-    network_file,
-    network_json,
-    sha256_hex,
-)
+from crawlerai.storage.capture_bundle import decode_html
 
-__all__ = [
-    "DATA_REQUESTS",
-    "JSON_BODIES_MAX",
-    "JSON_PAGE_MAX_BYTES",
-    "BrowserSession",
-    "DataCalls",
-    "Failed",
-    "Rendered",
-    "capture_artifacts",
-    "challenge_of",
-    "classified",
-    "context_cookies",
-    "fetch_browser",
-    "json_bodies",
-    "markup",
-    "open_browser",
-    "read_state",
-    "rendered",
-]
+__all__ = ["Render", "Rendered", "classified", "fetch_browser", "markup", "read_state", "rendered", "stepped"]
 
-# Patchright's documented setup (D-1204, D-1205): the full Chromium build (`chromium`), not the headless shell
-# Playwright picks for `headless=True` by default, run in Chromium's own headless mode, with its own client hints and
-# no custom headers. Each browser runs in a persistent profile with Playwright's fixed 1280x720 viewport (owner #50 as
-# amended 2026-10-21: not the README's `no_viewport`, whose headless window is 800x600), and no launch argument:
-# WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
-_CHANNEL = "chromium"
-_VIEWPORT: Final = ViewportSize(width=1280, height=720)
-# The one change to the browser's identity (owner #71 as amended 2026-10-21, INV-44): its own user agent, read from the
-# browser, with the token headless mode adds (`HeadlessChrome/`) named as a headed browser names it. Set as the
-# context's user agent, never the `--user-agent` launch switch.
-_HEADLESS_PRODUCT: Final = "HeadlessChrome/"
-_HEADED_PRODUCT: Final = "Chrome/"
-# The browser started only to read its user agent loads no page; anything it requests in the background goes to this
-# closed loopback port and fails, rather than around the guard (INV-16).
-_NOWHERE: Final = "socks5://127.0.0.1:9"
-# Chromium's implicit proxy-bypass rules (`ProxyBypassRules`, net/proxy_resolution) send `localhost`, 127.0.0.0/8,
-# [::1], 169.254.0.0/16 and fe80::/10 around any proxy; 169.254.169.254 is the cloud metadata address. The bypass rule
-# `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
-# unless told not to; it is named here so the guard does not rest on a library default.
-_PROXY_ALL_LOOPBACK = "<-loopback>"
-# acquisition spec, "Network body capture": data bodies (JSON and Flight) and same-site HTML fragments are captured up
-# to 2 MB each and 50 per page; "Bounded bodies (INV-30)": at most 10 MB of them per page in all.
-_JSON_BODY_MAX_BYTES = 2_000_000
-JSON_BODIES_MAX = 50
-JSON_PAGE_MAX_BYTES = 10_000_000
-# Fetch Standard §2.2.5: requests whose destination is the empty string (fetch() and XMLHttpRequest) or `document`
-# carry data or a new document; Playwright names them `fetch`, `xhr` and `document`. Scripts, styles, images and fonts
-# are the page's code and media, not data it loads.
-DATA_REQUESTS = frozenset({"fetch", "xhr", "document"})
-# WHATWG MIME Sniffing §4.6: the JSON MIME types are `application/json`, `text/json` and any type with the `+json`
-# structured syntax suffix (RFC 6839 §3.1). A body labelled `text/plain`, or not labelled, may still be JSON: it is
-# kept only when its bytes are (`network_json`, RFC 8259).
-_SNIFFED_TYPES = frozenset({"text/plain", ""})
-# The wait for the page to be ready ends at this share of `browser_timeout_s` whatever navigations the page makes; the
-# rest is for reading the DOM and the bodies.
-_SETTLE_SHARE = 0.9
-# The one wait (`_settle`, acquisition spec "HTTP and browser rungs"): from `DOMContentLoaded` (HTML Standard
-# §8.4.6), a document is read as soon as it is ready (`_ready`), and at most this long after it fired `load`, ready or
-# not: what is there then is read. Before `load`, only the wait's deadline bounds it. An unmeasured starting point
-# within 3 to 4 s.
-READY_MAX_S: Final = 3.5
-_POLL_S = 0.25
-# A document, or a page step that starts no data call, has settled once no data call has been in flight this long:
-# Playwright's `networkidle` quiet period (500 ms).
-_STEP_QUIET_S: Final = 0.5
-# A data call is a fetch or XMLHttpRequest call (Fetch Standard §2.2.5 destinations) that can carry the page's data: one
-# to the page's own site (HTML Standard §7.1.1, its registrable domain), or one that asks for JSON (an `Accept` naming
-# a JSON MIME type, RFC 9110 §12.5.1). Calls to other sites that ask for no JSON (analytics beacons, ad and tag-manager
-# pings) are always in flight on some pages and carry nothing the page shows.
-_CALLS = frozenset({"fetch", "xhr"})
-_WEBSOCKET = "websocket"
-# Site profiles a process keeps open (`_Profiles`), rendering or idle: as many as it renders at once
-# (`BROWSER_CONTEXTS`), each a browser process of its own. An idle one closes after `_PROFILE_IDLE_S`, an unmeasured
-# starting point: the next page of a site in a job usually comes within seconds.
-_OPEN_PROFILES = 2
-_PROFILE_IDLE_S = 60.0
-# RFC 9110 §15.4: a 3xx document answer is a redirect hop (or a validator's 304), never the document the frame shows.
-_REDIRECTION = range(300, 400)
 # RFC 9110 §15.5, §15.6: a 4xx or 5xx document; the profile that rendered one is not reused (`_Profiles`).
 _ERROR_STATUS = 400
-# D-1206, D-1262: for a document `interstitial` judges to stand in for the page, the wait for the main frame to navigate
-# on lasts up to this share of `browser_timeout_s`, and at most `_INTERSTITIAL_MAX_S`, not the ready wait, and ends
-# as soon as a navigation commits. Nothing is clicked or typed. The bound is an unmeasured starting point (master plan
-# 2026-10-18 §6): a challenge that does not clear headless held each fetch for the whole share (backlog, #244).
-_INTERSTITIAL_SHARE = 0.4
-_INTERSTITIAL_MAX_S = 10.0
-# A screenshot or PDF past this size is dropped rather than stored: the capture is kept without it.
-_ARTIFACT_MAX_BYTES = 25_000_000
-# Seconds the files of a page may take beyond the fetch's own budget (Playwright's default per-operation timeout): a
-# slow file is left out, it never turns a page that loaded into a timeout.
-_ARTIFACT_TIMEOUT_S = 30
-# The rendered area of each named element in CSS pixels (CSSOM View `getBoundingClientRect`); 0 when the element is not
-# rendered visible (CSS 2.1 §11.2 `visibility`, `display: none` has no box), -1 when the path names no element of that
-# tag (the live document no longer is the one the path was read from).
-AREAS_JS: Final = """(elements) => Array.from(elements, ([path, tag]) => {
-  const node = document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-  if (node === null || node.nodeType !== Node.ELEMENT_NODE || node.localName !== tag) return -1;
-  if (getComputedStyle(node).visibility !== 'visible') return 0;
-  const box = node.getBoundingClientRect();
-  return box.width * box.height;
-})"""
 # The rendered document with its open shadow roots (HTML Standard, `Element.getHTML` with `serializableShadowRoots` and
 # `shadowRoots`): every open root reachable from the document by walking `shadowRoot` is serialized as a declarative
 # `<template shadowrootmode="open">`, which the HTML reader flattens. Run in Patchright's isolated world with `evaluate`
@@ -189,180 +85,94 @@ DOCUMENT_HTML_JS: Final = """() => {
   const inner = html.getHTML({ serializableShadowRoots: true, shadowRoots: roots });
   return `${doctype}<html${attributes}>${inner}</html>`;
 }"""
-# The most item blocks a listing capture measures (`_item_areas`): a page's groups seldom hold more, and the walk
-# stays bounded on one that does.
-_MEASURED_BLOCKS_MAX = 2_000
 # Chromium's network error names (net/base/net_error_list.h) carry no URL.
 _NET_ERROR = re.compile(r"net::ERR_[A-Z0-9_]+")
 
 
 @dataclass
-class _Context:
-    """A site profile's browser (a persistent context), the guard every connection it opens goes through and the
-    connector that guard checks with, the bytes the guard has relayed, the locale it was opened with, and what closes
-    them and releases the profile."""
+class Render:
+    """One render of a page by either browser rung, as its result is made: the route it went through (`route`), and
+    what its first document came to (`read`, else `failed`). `finish` ends it."""
 
-    context: BrowserContext
-    guard: SocksGuard
-    connector: SafeConnector
-    traffic: Traffic
-    stack: AsyncExitStack
-    locale: Locality
-    profile: Profile
-    closing: bool = False
+    url: str
+    policy: FetchPolicy
+    engine_version: str
+    fetched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    started: float = field(default_factory=time.monotonic)
+    timings: dict[str, int] = field(default_factory=dict)
+    traffic: Traffic = field(default_factory=Traffic)
+    pool: ProxyPool | None = None
+    proxy: ProxyEndpoint | None = None
+    exchange: Exchange | None = None
+    content: Content = field(default_factory=lambda: Content(body=b""))
+    block_class: BlockClass = "error"
+    error: str | None = None
+    challenge: str | None = None
+    cookies: tuple[SessionCookie, ...] = ()
+    steps: tuple[StepOutcome, ...] = ()
+    artifacts: dict[str, bytes] = field(default_factory=dict)
+    temporary: bool = False  # it rendered in a temporary profile (`acquire.browser_profiles`)
 
-    async def close(self) -> None:
-        self.closing = True
-        with contextlib.suppress(PlaywrightError):
-            await self.stack.aclose()
-
-
-# What a profile is (`_context_key`): the site, the proxy pool and endpoint.
-type _ContextKey = tuple[str, str | None, ProxyEndpoint | None]
-
-
-@dataclass
-class _Profiles:
-    """The site profiles open in this process (owner #50 as amended 2026-10-21): a site's next page, in any job, opens
-    in the profile its earlier pages left, so its cookies, storage and passed challenges carry on, as in one user's
-    browser. A profile is taken while a page renders in it, so no two pages share one at once (a second page of the
-    site gets a temporary profile, `acquire.browser_profiles`); at most `_OPEN_PROFILES` are open, the least recently
-    used idle one closed first, an idle one closes after `_PROFILE_IDLE_S`, and all close with the session.
-    `crashed` is set when a profile's browser closes unasked."""
-
-    root: Path | None = None
-    idle: OrderedDict[_ContextKey, _Context] = field(default_factory=OrderedDict)
-    busy: int = 0
-    crashed: bool = False
-    _timers: dict[_ContextKey, asyncio.TimerHandle] = field(default_factory=dict)
-    _closing: set[asyncio.Task[None]] = field(default_factory=set)
-
-    async def take(self, key: _ContextKey, locale: Locality, connector: SafeConnector) -> _Context | None:
-        """The idle profile of `key`, now rendering; None when there is none, or it has another locale or guard
-        connector (then it is closed)."""
-        self._stop_timer(key)
-        held = self.idle.pop(key, None)
-        if held is not None and (held.locale != locale or held.connector is not connector):
-            await held.close()
-            held = None
-        if held is not None:
-            self.busy += 1
-        return held
-
-    async def room(self) -> None:
-        """Make room for a profile about to open: idle ones are closed, least recently used first, down to the cap."""
-        while self.idle and len(self.idle) + self.busy >= _OPEN_PROFILES:
-            key, oldest = self.idle.popitem(last=False)
-            self._stop_timer(key)
-            await oldest.close()
-        self.busy += 1
-
-    async def keep(self, key: _ContextKey, context: _Context) -> None:
-        """`context` stops rendering and is kept idle for the site's next page; a temporary profile opened because the
-        site's own was held is closed instead, so it never stands in for the site's profile."""
-        if self.root is not None and context.profile.lock is None:
-            await self.release(context)
-            return
-        self.busy -= 1
-        previous = self.idle.pop(key, None)
-        if previous is not None:  # two pages of a site rendered at once: the one kept first is closed, never dropped
-            self._stop_timer(key)
-            await previous.close()
-        self.idle[key] = context
-        loop = asyncio.get_running_loop()
-        self._timers[key] = loop.call_later(_PROFILE_IDLE_S, self._expire, key, context)
-
-    async def discard(self, key: _ContextKey) -> None:
-        """Delete the profile of `key` (`acquire.browser_profiles.discard_profile`), closing it first when it is idle
-        here; one rendering a page stays."""
-        self._stop_timer(key)
-        held = self.idle.pop(key, None)
-        if held is None:
-            discard_profile(self.root, profile_name(*key))
-            return
-        held.profile.discarded = True
-        await held.close()
-
-    async def release(self, context: _Context) -> None:
-        """`context` stops rendering and closes."""
-        self.busy -= 1
-        await context.close()
-
-    async def aclose(self) -> None:
-        for timer in self._timers.values():
-            timer.cancel()
-        self._timers.clear()
-        while self.idle:
-            _, context = self.idle.popitem()
-            await context.close()
-        if self._closing:
-            await asyncio.gather(*self._closing, return_exceptions=True)
-
-    def _expire(self, key: _ContextKey, context: _Context) -> None:
-        self._timers.pop(key, None)
-        if self.idle.get(key) is context:
-            del self.idle[key]
-            task = asyncio.get_running_loop().create_task(context.close())
-            self._closing.add(task)
-            task.add_done_callback(self._closing.discard)
-
-    def forget(self, context: _Context) -> None:
-        """Drop `context` from the idle profiles: its browser closed unasked, so no page may take it."""
-        for key, idle in tuple(self.idle.items()):
-            if idle is context:
-                del self.idle[key]
-                self._stop_timer(key)
-
-    def _stop_timer(self, key: _ContextKey) -> None:
-        timer = self._timers.pop(key, None)
-        if timer is not None:
-            timer.cancel()
-
-
-@dataclass(frozen=True)
-class BrowserSession:
-    """A Playwright driver, shared by the fetches of one worker process, the user agent its profiles send (the
-    browser's own, its headless token renamed), and the site profiles it keeps open."""
-
-    playwright: Playwright
-    agent: str
-    profiles: _Profiles = field(default_factory=_Profiles)
-
-    @property
-    def alive(self) -> bool:
-        """Whether every profile's browser this session opened is still running (`SharedBrowser` restarts it if not)."""
-        return not self.profiles.crashed
-
-
-@asynccontextmanager
-async def open_browser(profiles: Path | None = None) -> AsyncIterator[BrowserSession]:
-    """The driver runs until the block ends; leaving it closes its profiles' browsers and the driver process. Site
-    profiles are kept under `profiles` (`CRAWLERAI_BROWSER_PROFILES`); without it, each lasts while it is open."""
-    async with async_playwright() as playwright:
-        session = BrowserSession(playwright, await _headed_agent(playwright), _Profiles(profiles))
+    def route(self, pools: Mapping[str, ProxyPool] | None) -> bool:
+        """The proxy pool `policy.proxy_pool` names and its endpoint for the URL; False (a failure) for an unknown
+        pool."""
         try:
-            yield session
-        finally:
-            await session.profiles.aclose()
+            self.pool = proxy_pool(self.policy.proxy_pool, pools)
+        except UnknownProxyPool as unknown:
+            self.failed(str(unknown))
+            return False
+        self.proxy = pool_endpoint(self.pool, self.url)
+        return True
 
+    async def read(self, page: "Rendered") -> None:
+        """Run the caller's page steps on the ready page, then read its document, the context's cookies, and classify
+        it with the redirect rules of where its navigation led (`classified`), labelled with its challenge."""
+        self.temporary = page.temporary
+        self.steps = await stepped(page)  # kept by a failure after the steps ran too
+        self.exchange, self.content = await read_state(page)
+        self.cookies = await context_cookies(page.page.context)
+        text = markup(self.content)
+        redirect = Redirect(self.url, self.exchange.url, self.policy.page_kind)
+        self.block_class = await classified(self.exchange, text, redirect)
+        self.challenge = await challenge_of(self.block_class, self.exchange, text, self.cookies)
 
-async def _headed_agent(playwright: Playwright) -> str:
-    """The browser's own user agent (`Browser.getVersion`), its headless token replaced by the headed one."""
-    browser = await playwright.chromium.launch(channel=_CHANNEL, headless=True, proxy={"server": _NOWHERE})
-    try:
-        version = await (await browser.new_browser_cdp_session()).send("Browser.getVersion")
-    finally:
-        await browser.close()
-    return str(version["userAgent"]).replace(_HEADLESS_PRODUCT, _HEADED_PRODUCT, 1)
+    def failed(self, error: str, exchange: Exchange | None = None) -> None:
+        self.block_class, self.error, self.challenge = "error", error, None
+        if exchange is not None:
+            self.exchange = exchange
 
+    def result(self) -> FetchResult:
+        return fetch_result(
+            url=self.url,
+            method="browser",
+            policy=self.policy,
+            engine_version=self.engine_version,
+            fetched_at=self.fetched_at,
+            started=self.started,
+            exchange=self.exchange,
+            content=self.content,
+            block_class=self.block_class,
+            error=self.error,
+            # `context` is the browser context's wall time, which `browser_seconds` usage counts (§4.8).
+            timings=self.timings,
+            challenge=self.challenge,
+            transferred=self.traffic.bytes,
+            steps=self.steps,
+            artifacts=self.artifacts,
+        )
 
-class Failed(Exception):
-    """A browser fetch that ends as an `error` outcome: the short reason, and the exchange when a response arrived."""
-
-    def __init__(self, error: str, exchange: Exchange | None) -> None:
-        super().__init__(error)
-        self.error = error
-        self.exchange = exchange
+    async def finish(self, first: FetchResult, session: BrowserSession, sessions: SiteSessions | None) -> None:
+        """Record how the render went, `first` being the result of its first document: its challenge label is counted,
+        the pool endpoint told, a `blocked` profile deleted, and with `sessions`, the site's sessions updated
+        (`SiteSessions.after_browser`)."""
+        count(self.challenge, "browser")
+        report_proxy(self.pool, self.proxy, first)
+        if first.block_class == "blocked" and (key := context_key(self.url, self.policy, self.proxy)) is not None:
+            await session.profiles.discard(key)
+        if sessions is not None:
+            await sessions.after_browser(
+                self.url, self.policy.proxy_pool, self.cookies, first, temporary=self.temporary
+            )
 
 
 async def fetch_browser(
@@ -383,151 +193,44 @@ async def fetch_browser(
     caller's own context neither reads nor writes them (D-1432)."""
     if policy.context is not None:
         sessions = None
-    fetched_at = datetime.now(UTC)
-    started = time.monotonic()
-    timings: dict[str, int] = {}
-    error: str | None = None
-    exchange: Exchange | None = None
-    content = Content(body=b"")
-    artifacts: dict[str, bytes] = {}
-    pool = proxy = None
-    challenge: str | None = None
-    traffic = Traffic()
-    steps: tuple[StepOutcome, ...] = ()
-    cookies: tuple[SessionCookie, ...] = ()
-    temporary = False
-    try:
-        pool = proxy_pool(policy.proxy_pool, pools)
-        proxy = pool_endpoint(pool, url)
-        extra_s = steps_budget_s(policy.steps) + (_ARTIFACT_TIMEOUT_S if policy.captures_page else 0)
-        async with asyncio.timeout(policy.browser_timeout_s + extra_s):
-            guarded = rendered(
-                url, policy, session, connector or SafeConnector(), proxy, started, timings, traffic, sessions
-            )
-            async with guarded as page:
-                temporary = page.temporary
-                steps = await stepped(page)
-                exchange, content = await read_state(page)
-                cookies = await context_cookies(page.page.context)
-                artifacts = await capture_artifacts(page.page, policy)
-        text = markup(content)
-        block_class = await classified(exchange, text, Redirect(url, exchange.url, policy.page_kind))
-        challenge = await challenge_of(block_class, exchange, text, cookies)
-        if export is not None:
-            export.cookies, export.proxy = cookies, proxy
-    except Failed as failed:
-        error, block_class, exchange = failed.error, "error", failed.exchange
-    except UnknownProxyPool as unknown:
-        error, block_class = str(unknown), "error"
-    except TimeoutError:
-        error, block_class = "timeout", "error"
-    count(challenge, "browser")
-    result = fetch_result(
-        url=url,
-        method="browser",
-        policy=policy,
-        engine_version=engine_version,
-        fetched_at=fetched_at,
-        started=started,
-        exchange=exchange,
-        content=content,
-        block_class=block_class,
-        error=error,
-        # `context` is the browser context's wall time, which `browser_seconds` usage counts (§4.8).
-        timings=timings,
-        challenge=challenge,
-        transferred=traffic.bytes,
-        steps=steps,
-        artifacts=artifacts,
-    )
-    report_proxy(pool, proxy, result)
-    if block_class == "blocked" and (key := _context_key(url, policy, proxy)) is not None:
-        await session.profiles.discard(key)
-    if sessions is not None:
-        await sessions.after_browser(url, policy.proxy_pool, cookies, result, temporary=temporary)
+    run = Render(url, policy, engine_version)
+    if run.route(pools):
+        try:
+            extra_s = steps_budget_s(policy.steps) + (ARTIFACT_TIMEOUT_S if policy.captures_page else 0)
+            async with asyncio.timeout(policy.browser_timeout_s + extra_s):
+                async with rendered(url, policy, session, connector or SafeConnector(), run, sessions) as page:
+                    await run.read(page)
+                    run.artifacts = await capture_artifacts(page.page, policy)
+            if export is not None:
+                export.cookies, export.proxy = run.cookies, run.proxy
+        except Failed as failed:
+            run.failed(failed.error, failed.exchange)
+        except TimeoutError:
+            run.failed("timeout")
+    result = run.result()
+    await run.finish(result, session, sessions)
     return result
 
 
 async def stepped(page: "Rendered") -> tuple[StepOutcome, ...]:
     """Run the policy's page steps on the ready page, each change followed by the wait for the data calls it started
-    (`_called`), within the step's settle bound."""
+    (`called`), within the step's settle bound."""
     if not page.policy.steps:
         return ()
 
-    async def settle(within_s: float) -> None:
+    async def step_settle(within_s: float) -> None:
         answered = page.calls.answered
         begun = time.monotonic()
         deadline = begun + within_s
 
-        def called() -> bool:
+        def done() -> bool:
             # A step that starts no data call (a click that only shows what was loaded) is settled once quiet.
-            quiet = not page.calls.in_flight and time.monotonic() - begun >= _STEP_QUIET_S
-            return quiet or _called(page.calls, answered)
+            quiet = not page.calls.in_flight and time.monotonic() - begun >= STEP_QUIET_S
+            return quiet or called(page.calls, answered)
 
-        await _until(page.frame, called, within_s, deadline)
+        await until(page.frame, done, within_s, deadline)
 
-    return await run_steps(page.page, page.policy.steps, settle, lambda: len(page.calls.in_flight))
-
-
-def caller_cookies(url: str, context: RequestContext) -> list[SetCookieParam]:
-    """The caller's cookies as `BrowserContext.add_cookies` takes them: given with `url`, each is a host-only cookie
-    of its host for every path (RFC 6265 §5.3 step 6, path `/` from the URL's root)."""
-    parts = urlsplit(url)
-    root = f"{parts.scheme}://{parts.netloc}/"
-    return [SetCookieParam(name=name, value=value.get_secret_value(), url=root) for name, value in context.cookies]
-
-
-def seeded_cookies(cookies: Sequence[SessionCookie]) -> list[SetCookieParam]:
-    """Session cookies as `BrowserContext.add_cookies` takes them, each with its own path: a host-only cookie with its
-    host as the domain (RFC 6265 §5.3 step 6; as Playwright sets a cookie given with a URL), a `Domain` cookie with its
-    domain led by a dot (§5.2.3); a session cookie with no expiry."""
-    params: list[SetCookieParam] = []
-    for cookie in cookies:
-        domain = cookie.domain if cookie.host_only else f".{cookie.domain}"
-        param = SetCookieParam(
-            name=cookie.name, value=cookie.value, domain=domain, path=cookie.path, secure=cookie.secure
-        )
-        if cookie.expires is not None:
-            param["expires"] = cookie.expires
-        params.append(param)
-    return params
-
-
-async def capture_artifacts(page: Page, policy: FetchPolicy) -> dict[str, bytes]:
-    """The files `policy` asks of the rendered page, by artifact name: a PNG of the viewport or the whole page, and a
-    PDF print (HTML Standard §6.6 print media). Reading changes nothing in the page (INV-42). A file the browser could
-    not make in `_ARTIFACT_TIMEOUT_S`, or one past `_ARTIFACT_MAX_BYTES`, is left out: the fetch still reached its
-    page."""
-    asked: list[tuple[str, Callable[[], Awaitable[bytes]]]] = []
-    if (screenshot := policy.screenshot) is not None:
-        asked.append((SCREENSHOT, lambda: page.screenshot(type="png", full_page=screenshot == "full_page")))
-    if policy.pdf:
-        asked.append((PDF, lambda: page.pdf(print_background=True)))
-    # One budget for all the files; each is made on its own, so one the browser fails to make leaves out only itself.
-    deadline = asyncio.get_running_loop().time() + _ARTIFACT_TIMEOUT_S
-    files: dict[str, bytes] = {}
-    for name, make in asked:
-        data = await _made(make, deadline)
-        if data is not None and len(data) <= _ARTIFACT_MAX_BYTES:
-            files[name] = data
-    return files
-
-
-async def _made(make: Callable[[], Awaitable[bytes]], deadline: float) -> bytes | None:
-    try:
-        async with asyncio.timeout_at(deadline):
-            return await make()
-    except (PlaywrightError, TimeoutError):
-        return None
-
-
-async def context_cookies(context: BrowserContext) -> tuple[SessionCookie, ...]:
-    """Every cookie the context holds, read without changing any (INV-42: nothing is set in the browser); none when
-    the context is gone."""
-    try:
-        return browser_cookies(cast(list[Mapping[str, object]], await context.cookies()))
-    except PlaywrightError:
-        return ()
+    return await run_steps(page.page, page.policy.steps, step_settle, lambda: len(page.calls.in_flight))
 
 
 def markup(content: Content) -> str:
@@ -558,78 +261,12 @@ async def classified(exchange: Exchange, text: str, redirect: Redirect | None = 
 
 
 @dataclass
-class DataCalls:
-    """The data responses a page has received so far (when the policy captures them), in arrival order, each with how
-    many browser actions the page had performed when it arrived; `actions` is that count now, which a listing's
-    browser actions raise (`browser_tab`)."""
-
-    responses: list[tuple[Response, int]] = field(default_factory=list)
-    actions: int = 0
-    in_flight: set[Request] = field(default_factory=set)  # the data calls (`_CALLS`) not answered yet
-    answered: int = 0  # the data calls that have ended, answered or failed
-    idle_since: float = 0.0  # on `time.monotonic`: when the last data call in flight ended
-    # The data requests whose body arrived in full or failed (`requestfinished`, `requestfailed`). A body is read only
-    # once its request is done: reading one still arriving waits for its end, which a body that never ends (a stream,
-    # a keepalive beacon held open) never reaches, and the read would outlast the fetch's budget.
-    done: set[Request] = field(default_factory=set)
-
-    def on_request(self, request: Request, page_url: str) -> None:
-        """Count `request` in flight when it is a data call of the page at `page_url` (`_CALLS`)."""
-        if request.resource_type in _CALLS and (_same_site(request.url, page_url) or _asks_json(request)):
-            self.in_flight.add(request)
-
-    def on_done(self, request: Request) -> None:
-        if request in self.in_flight:
-            self.in_flight.discard(request)
-            self.answered += 1
-            if not self.in_flight:
-                self.idle_since = time.monotonic()
-        if request.resource_type in DATA_REQUESTS:
-            self.done.add(request)
-
-    def finished(self, response: Response) -> bool:
-        """Whether `response`'s body can be read without waiting: its request is done."""
-        return response.request in self.done
-
-    def on_response(self, response: Response, main_frame: Frame) -> None:
-        request = response.request
-        # The main frame's navigation responses are the page itself, not data it loaded.
-        if request.is_navigation_request() and request.frame == main_frame:
-            return
-        data = request.resource_type in DATA_REQUESTS and _data_label(response) is not None
-        if data or _fragment(response, main_frame.url):
-            self.responses.append((response, self.actions))
-
-
-@dataclass
-class Resources:
-    """The resources a page has loaded, counted (`CaptureManifest.resources`): per Fetch resource type, and per media
-    type the signals read (`content.signals`). A WebSocket is counted from the page's `websocket` event, its own."""
-
-    counts: Counter[str] = field(default_factory=Counter)
-
-    def on_request(self, request: Request) -> None:
-        if request.resource_type != _WEBSOCKET:
-            self.counts[request.resource_type] += 1
-
-    def on_websocket(self) -> None:
-        self.counts[_WEBSOCKET] += 1
-
-    def on_response(self, response: Response) -> None:
-        media_type = (response.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
-        if media_type == WASM_TYPE:
-            self.counts[WASM_TYPE] += 1
-        elif media_type.startswith(GRPC_WEB_TYPE):
-            self.counts[GRPC_WEB_TYPE] += 1
-
-
-@dataclass
 class Rendered:
     """A page whose navigation has settled: the tab, its main frame's navigations, the first document's response, the
     policy it was fetched with, and the data responses it has loaded so far."""
 
     page: Page
-    frame: "_MainFrame"
+    frame: MainFrame
     response: Response
     policy: FetchPolicy
     calls: DataCalls = field(default_factory=DataCalls)
@@ -643,28 +280,25 @@ async def rendered(
     policy: FetchPolicy,
     session: BrowserSession,
     connector: SafeConnector,
-    proxy: ProxyEndpoint | None,
-    started: float,
-    timings: dict[str, int],
-    traffic: Traffic,
+    run: Render,
     sessions: SiteSessions | None = None,
 ) -> AsyncIterator[Rendered]:
-    """The page at `url`, once it is ready to read (`_settle`), in a new tab of the site's profile: the open one its
+    """The page at `url`, once it is ready to read (`settle`), in a new tab of the site's profile: the open one its
     last page left (`_Profiles`), else the profile opened (a temporary one starting with the cookies `sessions`
-    give). The tab closes when the block ends, and the profile's browser with it unless it is kept for the site's next
-    page; the tab's wall time is `timings["context"]`. The bytes the guard relays for the page are added to
-    `traffic`. Raises `Failed`."""
+    give), through `run`'s proxy endpoint. The tab closes when the block ends, and the profile's browser with it unless
+    it is kept for the site's next page; the tab's wall time is `run.timings["context"]`, and the bytes the guard relays
+    for the page are added to `run.traffic`. Raises `Failed`."""
     try:
         first = await connector.check(url)  # also refuses `file:`, `data:` and other non-web schemes
     except SsrfRejected as e:
         raise Failed(str(e), None) from e
-    key = _context_key(url, policy, proxy)
+    key = context_key(url, policy, run.proxy)
     locale = locality(policy.locale_hint)
     held = None if key is None else await session.profiles.take(key, locale, connector)
     if held is None:
         await session.profiles.room()
         try:
-            held = await _open_context(url, policy, session, connector, first, proxy, sessions, key)
+            held = await open_context(url, policy, session, connector, first, run.proxy, sessions, key)
         except BaseException:
             session.profiles.busy -= 1
             raise
@@ -674,149 +308,29 @@ async def rendered(
     try:
         page = await held.context.new_page()
         try:
-            shown = await _navigate(page, url, first, policy, held.guard, started)
+            shown = await _navigate(page, url, first, policy, held.guard, run.started)
             shown.temporary = held.profile.lock is None
             yield shown
             latest = shown.frame.latest or shown.response
-            kept = key is not None and latest.status < _ERROR_STATUS and _context_key(latest.url, policy, proxy) == key
+            kept = (
+                key is not None and latest.status < _ERROR_STATUS and context_key(latest.url, policy, run.proxy) == key
+            )
         finally:
             with contextlib.suppress(PlaywrightError):
                 await page.close()
     finally:
-        traffic.bytes += held.traffic.bytes - relayed
-        timings["context"] = round((time.monotonic() - opened) * 1000)
+        run.traffic.bytes += held.traffic.bytes - relayed
+        run.timings["context"] = round((time.monotonic() - opened) * 1000)
         if kept and key is not None:
             await session.profiles.keep(key, held)
         else:
             await session.profiles.release(held)
 
 
-async def _open_context(
-    url: str,
-    policy: FetchPolicy,
-    session: BrowserSession,
-    connector: SafeConnector,
-    first: Target,
-    proxy: ProxyEndpoint | None,
-    sessions: SiteSessions | None,
-    key: _ContextKey | None,
-) -> _Context:
-    """The site profile of `key` (a temporary one without a key, `acquire.browser_profiles`), launched as a persistent
-    context behind a guard of its own, holding the caller's cookies, or, in a temporary profile of the site, the cookies
-    `sessions` give (`SiteSessions.for_browser`; a kept profile holds its own), with the request locale's
-    `locale` and `timezone_id` (`acquire.locality`). Nothing intercepts its requests: Playwright's request routing
-    turns the HTTP cache off, so every request carries `Cache-Control: no-cache` and `Pragma: no-cache`, which no
-    user's browser sends on a first load (acquisition spec, "HTTP and browser rungs")."""
-    stack = AsyncExitStack()
-    traffic = Traffic()
-    locale = locality(policy.locale_hint)
-    try:
-        profile = open_profile(session.profiles.root, None if key is None else profile_name(*key))
-        stack.callback(profile.close)  # after the browser has closed, so its last writes are in the profile
-        guard = await stack.enter_async_context(
-            SocksGuard(connector, checked=(first,), upstream=proxy, traffic=traffic)
-        )
-        context = await session.playwright.chromium.launch_persistent_context(
-            profile.directory,
-            channel=_CHANNEL,
-            headless=True,
-            viewport=_VIEWPORT,
-            user_agent=session.agent,
-            proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK},
-            accept_downloads=False,
-            **locale,
-        )
-        held = _Context(context, guard, connector, traffic, stack, locale, profile)
-        stack.push_async_callback(context.close)
-        context.on("close", lambda _: _closed(session, held))
-        temporary = profile.lock is None and key is not None
-        if temporary and sessions is not None and (seeded := await sessions.for_browser(url, policy.proxy_pool)):
-            await context.add_cookies(seeded_cookies(seeded))
-        if policy.context is not None and policy.context.cookies:
-            await context.add_cookies(caller_cookies(url, policy.context))
-    except BaseException as e:
-        await stack.aclose()
-        # A profile the browser could not open is this fetch's error, not a crashed browser.
-        if isinstance(e, PlaywrightError | OSError):
-            raise Failed("render_error", None) from e
-        raise
-    return held
-
-
-def _closed(session: BrowserSession, held: _Context) -> None:
-    """A profile's browser closed: unasked, it crashed or was killed."""
-    if not held.closing:
-        session.profiles.forget(held)
-        session.profiles.crashed = True
-
-
-def _context_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> _ContextKey | None:
-    """The profile a page renders in (`acquire.browser_profiles`): the page's site (HTML Standard §7.1.1) and the
-    proxy pool and endpoint its guard goes through. None for a fetch with the caller's own cookies, which are no
-    site's state (acquisition spec, "Cookies stay inside one fetch"): it gets a temporary profile, never kept."""
-    host = urlsplit(url).hostname
-    if policy.context is not None or host is None:
-        return None
-    return (default_suffixes().site(host), policy.proxy_pool, proxy)
-
-
-class _MainFrame:
-    """The main frame's document navigations (D-1201): the latest request (one per redirect hop), whether one is in
-    flight, the response of the latest document, which the frame shows once the navigation commits, how many
-    navigations have committed, and when the latest document fired `DOMContentLoaded` and `load` (HTML Standard
-    §8.4.6)."""
-
-    def __init__(self, page: Page, first_url: str) -> None:
-        self._page = page
-        self.last_hop = first_url
-        self.pending = False
-        self.latest: Response | None = None
-        self.commits = 0
-        self.loaded = False
-        self.loaded_at = 0.0  # on `time.monotonic`: when the latest document fired `load`
-        self.parsed = False
-        self.parsed_at = 0.0  # on `time.monotonic`: when the latest document fired `DOMContentLoaded`
-        self._committed = asyncio.Event()
-
-    def on_load(self) -> None:
-        self.loaded, self.loaded_at = True, time.monotonic()
-
-    def on_parsed(self) -> None:
-        self.parsed, self.parsed_at = True, time.monotonic()
-
-    def _ours(self, request: Request) -> bool:
-        return request.is_navigation_request() and request.frame == self._page.main_frame
-
-    def on_request(self, request: Request) -> None:
-        if self._ours(request):
-            self.last_hop, self.pending = request.url, True
-
-    def on_response(self, response: Response) -> None:
-        if self._ours(response.request) and response.status not in _REDIRECTION:
-            self.latest, self.pending, self.loaded, self.parsed = response, False, False, False
-
-    def on_failed(self, request: Request) -> None:
-        if self._ours(request):
-            self.pending = False
-
-    def on_navigated(self, frame: Frame) -> None:
-        if frame == self._page.main_frame:
-            self.commits += 1
-            self._committed.set()
-
-    async def next_commit(self) -> None:
-        """Returns once the main frame commits a navigation after this call."""
-        shown = self.commits
-        self._committed.clear()  # no callback runs before the wait: the event loop is not yielded to in between
-        while self.commits == shown:
-            await self._committed.wait()
-            self._committed.clear()
-
-
 async def _navigate(
     page: Page, url: str, first: Target, policy: FetchPolicy, guard: SocksGuard, started: float
 ) -> Rendered:
-    frame = _MainFrame(page, first.url)
+    frame = MainFrame(page, first.url)
     calls, resources = DataCalls(), Resources()
     page.on("request", resources.on_request)
     page.on("response", resources.on_response)
@@ -832,22 +346,16 @@ async def _navigate(
     page.on("requestfailed", calls.on_done)
     page.on("response", lambda response: calls.on_response(response, page.main_frame))
 
-    budget_end = started + policy.browser_timeout_s
     try:
-        response = await page.goto(url, wait_until="domcontentloaded", timeout=_ms_until(budget_end))
+        response = await page.goto(
+            url, wait_until="domcontentloaded", timeout=ms_until(started + policy.browser_timeout_s)
+        )
     except PlaywrightError as e:
         raise Failed(_navigation_error(e, guard.rejection_for(frame.last_hop)), None) from e
     if response is None:  # only a same-document navigation has none, and a new page has no document yet
         raise Failed("no_response", None)
     # A page that never becomes ready is read as it is when the wait ends.
-    await _settle(
-        page,
-        frame,
-        calls,
-        policy,
-        started + _SETTLE_SHARE * policy.browser_timeout_s,
-        interstitial_deadline=started + min(_INTERSTITIAL_SHARE * policy.browser_timeout_s, _INTERSTITIAL_MAX_S),
-    )
+    await settle(page, frame, calls, policy, started)
     return Rendered(page, frame, response, policy, calls, resources)
 
 
@@ -867,8 +375,8 @@ async def read_state(
     exchange = Exchange(
         url=url or response.url,
         status=response.status,
-        request_headers=recorded(_header_list(sent)),
-        response_headers=recorded(_header_list(received)),
+        request_headers=recorded(header_list(sent)),
+        response_headers=recorded(header_list(received)),
     )
     # D-1265: the size the body arrived with is read before any body, so a body over `max_body_bytes` never enters
     # this process. The browser hands over bodies after content decoding, in full (Playwright has no streaming read):
@@ -885,137 +393,6 @@ async def read_state(
     areas = await item_areas(rendered.page, body) if policy.page_kind == "listing" else None
     resources = dict(sorted(rendered.resources.counts.items()))
     return exchange, Content(body=body, raw_body=raw_body, network=network, item_areas=areas, resources=resources)
-
-
-async def item_areas(page: Page, body: bytes) -> dict[str, float] | None:
-    """The rendered area of each block of the document's repeated item groups (`acquire.items.item_groups`), by
-    element path: the segment step ranks a browser capture's groups by it (`content.segment`). The blocks are found in
-    the serialized document the capture keeps, so their paths name the same elements when it is parsed again; None
-    when the document has no group or the page can no longer be read."""
-    # Parsing is CPU work: a thread keeps the event loop serving other pages meanwhile.
-    refs = await asyncio.to_thread(_block_refs, body)
-    if not refs:
-        return None
-    try:
-        areas = cast(list[float], await page.evaluate(AREAS_JS, [list(ref) for ref in refs]))
-    except PlaywrightError:
-        return None
-    if any(area < 0 for area in areas):  # the live document changed since it was kept: rank by structure instead
-        return None
-    return {path: round(area, 1) for (path, _), area in zip(refs, areas, strict=True)}
-
-
-def _block_refs(body: bytes) -> list[tuple[str, str]]:
-    """The element path and tag of each block of the document's repeated item groups, at most `_MEASURED_BLOCKS_MAX`
-    (the browser serializes the DOM as UTF-8)."""
-    blocks = [block for group in item_groups(lxml_root(body.decode("utf-8", errors="replace"))) for block in group]
-    return [(element_path(block), str(block.tag)) for block in blocks[:_MEASURED_BLOCKS_MAX]]
-
-
-async def _settle(
-    page: Page,
-    frame: _MainFrame,
-    calls: DataCalls,
-    policy: FetchPolicy,
-    deadline: float,
-    *,
-    interstitial_deadline: float,
-) -> None:
-    """While the document is an interstitial, wait for the next one (until `interstitial_deadline`); then wait until
-    the document is ready to read (`_ready`), at most `READY_MAX_S` after it fired `load`, a document the main frame
-    navigates to meanwhile starting that wait over (`_until`); at most until `deadline`."""
-    while time.monotonic() < interstitial_deadline and await _interstitial(page, frame):
-        if not await _next_document(page, frame, interstitial_deadline):
-            break
-    await _until(frame, lambda: _ready(frame, calls, policy), READY_MAX_S, deadline, after_load=True)
-
-
-async def _until(
-    frame: _MainFrame, ready: Callable[[], bool], within_s: float, deadline: float, *, after_load: bool = False
-) -> None:
-    """Returns once `ready` holds with no navigation in flight, or `within_s` after the wait began, or after the last
-    document the main frame navigated to meanwhile (a script's `location.replace`, a refresh: what was shown was an
-    interim document; a same-document navigation, `history.pushState`, is none), at most at `deadline`. With
-    `after_load`, the wait ends `within_s` after the document fired `load`, and before that only at `deadline`."""
-    shown, begun = frame.latest, time.monotonic()
-    while time.monotonic() < _wait_end(frame, begun, within_s, deadline, after_load=after_load):
-        if frame.latest is not shown:
-            shown, begun = frame.latest, time.monotonic()
-        elif not frame.pending and ready():
-            return
-        await asyncio.sleep(_POLL_S)
-
-
-def _wait_end(frame: _MainFrame, begun: float, within_s: float, deadline: float, *, after_load: bool) -> float:
-    if not after_load:
-        return min(deadline, begun + within_s)
-    return min(deadline, frame.loaded_at + within_s) if frame.loaded else deadline
-
-
-def _called(calls: DataCalls, answered: int) -> bool:
-    """Whether a data call has ended since `answered` had, and none is in flight."""
-    return calls.answered > answered and not calls.in_flight
-
-
-def _ready(frame: _MainFrame, calls: DataCalls, policy: FetchPolicy) -> bool:
-    """Whether the document is ready to read (acquisition spec, "HTTP and browser rungs"), a fixed condition: it has
-    fired `DOMContentLoaded` (HTML Standard §8.4.6), and (a) every endpoint the site's located `call` field sources
-    name (`policy.ready_calls`) has answered, else (b) no data call has been in flight since, for `_STEP_QUIET_S`. A
-    listing is read when the wait ends: its item area (`item_areas`) may still be filling in."""
-    if policy.page_kind == "listing" or not frame.parsed:
-        return False
-    if policy.ready_calls:
-        return all(_answered(endpoint, calls) for endpoint in policy.ready_calls)
-    if calls.in_flight:
-        return False
-    return time.monotonic() - max(frame.parsed_at, calls.idle_since) >= _STEP_QUIET_S
-
-
-def _answered(endpoint: CallEndpoint, calls: DataCalls) -> bool:
-    """Whether a call of `endpoint` has answered with a body the capture reads (`DataCalls.responses`) in full."""
-    return any(
-        endpoint.matches(response.request.method, response.url) and calls.finished(response)
-        for response, _ in calls.responses
-    )
-
-
-def _same_site(url: str, page_url: str) -> bool:
-    """Whether `url` is on the same site as `page_url` (HTML Standard §7.1.1: the same registrable domain)."""
-    suffixes = default_suffixes()
-    host, page_host = urlsplit(url).hostname, urlsplit(page_url).hostname
-    return host is not None and page_host is not None and suffixes.site(host) == suffixes.site(page_host)
-
-
-def _asks_json(request: Request) -> bool:
-    """Whether the request's `Accept` names a JSON MIME type or a Flight payload (`_data_label`'s rule: RFC 6839 §3.1
-    `+json` included)."""
-    accept = request.headers.get("accept", "")
-    return any(_data_essence(part.split(";", 1)[0].strip().lower()) for part in accept.split(","))
-
-
-async def _interstitial(page: Page, frame: _MainFrame) -> bool:
-    shown = frame.latest
-    if shown is None or shown.status not in INTERSTITIAL_STATUS:
-        return False
-    try:
-        text = await page.content()
-    except PlaywrightError:
-        return False  # the document is being replaced: the waits that follow see the next one
-    # classify's rules parse HTML synchronously; a thread keeps the event loop free.
-    return await asyncio.to_thread(interstitial, shown.status, tuple(shown.headers.items()), text, shown.url)
-
-
-async def _next_document(page: Page, frame: _MainFrame, deadline: float) -> bool:
-    """Whether the main frame committed another navigation and its document was parsed (`DOMContentLoaded`) before
-    `deadline`. The commit, not the response: until then the frame still shows the interstitial."""
-    try:
-        async with asyncio.timeout(max(0.0, deadline - time.monotonic())):
-            await frame.next_commit()
-    except TimeoutError:
-        return False
-    with contextlib.suppress(PlaywrightTimeout):
-        await page.wait_for_load_state("domcontentloaded", timeout=_ms_until(deadline))
-    return True
 
 
 async def _rendered(page: Page, exchange: Exchange) -> bytes:
@@ -1042,116 +419,6 @@ async def _wire_size(response: Response, exchange: Exchange) -> int:
         raise Failed("network_error", exchange) from e
 
 
-async def _json_size(response: Response) -> int:
-    """A JSON body's size before it is read: its `Content-Length` (RFC 9110 §8.6), else its size on the wire (D-1265);
-    0 when the browser no longer holds the request, whose body then can't be read either."""
-    declared = response.headers.get("content-length", "")
-    if declared.isdigit():
-        return int(declared)
-    try:
-        return (await response.request.sizes())["responseBodySize"]
-    except PlaywrightError:
-        return 0
-
-
-def _data_label(response: Response) -> bool | None:
-    """True when the response is labelled with a JSON MIME type or as a Flight payload, False when its label leaves its
-    body to be sniffed, None when it names another kind of body (`_SNIFFED_TYPES`). The essence is compared,
-    lower-cased, parameters dropped (WHATWG MIME Sniffing §2.1)."""
-    essence = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    if _data_essence(essence):
-        return True
-    return False if essence in _SNIFFED_TYPES else None
-
-
-def _fragment(response: Response, page_url: str) -> bool:
-    """Whether `response` is a success (RFC 9110 §15.3) answering a fetch or XMLHttpRequest call to the page's own site
-    (`_same_site`) with HTML (`_html_label`): an HTML fragment the page fetched and shows."""
-    request = response.request
-    success = 200 <= response.status < 300
-    return success and request.resource_type in _CALLS and _html_label(response) and _same_site(response.url, page_url)
-
-
-def _data_essence(essence: str) -> bool:
-    """Whether `essence` names a JSON MIME type or a Flight payload (`FLIGHT_TYPE`), the bodies a capture keeps."""
-    return essence in ("application/json", "text/json", FLIGHT_TYPE) or essence.endswith("+json")
-
-
-async def json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[NetworkBody, bytes], ...]:
-    """The JSON, Flight and HTML fragment bodies of `responses` (each with the action count it arrived at;
-    `DataCalls.on_response` admitted them) a capture keeps, within its caps."""
-    captured: list[tuple[NetworkBody, bytes]] = []
-    total = 0
-    for response, action in responses:
-        if len(captured) == JSON_BODIES_MAX:
-            break
-        data = await _json_body(response)
-        if data is None or total + len(data) > JSON_PAGE_MAX_BYTES:
-            continue
-        sent = response.request.post_data_buffer
-        if len(sent or b"") > _JSON_BODY_MAX_BYTES:
-            continue
-        entry = NetworkBody(
-            url=response.url,
-            status=response.status,
-            content_type=response.headers.get("content-type"),
-            sha256=sha256_hex(data),
-            file=network_file(len(captured)),
-            method=response.request.method,
-            request_body=_text_or_none(sent),
-            request_headers=await _headers(response.request.headers_array()),
-            response_headers=await _headers(response.headers_array()),
-            resource_type=response.request.resource_type,
-            action=action,
-        )
-        captured.append((entry, data))
-        total += len(data)
-    return tuple(captured)
-
-
-async def _json_body(response: Response) -> bytes | None:
-    """The response's body when it is not empty, within the per-body cap, and data: labelled JSON, Flight or HTML (an
-    admitted fragment, `_fragment`), or sniffed as JSON text holding an object or an array (`network_json`)."""
-    if await _json_size(response) > _JSON_BODY_MAX_BYTES:
-        return None
-    try:
-        data = await response.body()
-    except PlaywrightError:
-        return None  # no body to read: a redirect, or a request that failed or was evicted
-    if not data or len(data) > _JSON_BODY_MAX_BYTES:
-        return None  # an empty body (a 204, RFC 9110 §15.3.5) holds no JSON text
-    return data if _data_label(response) or _html_label(response) or _sniffed(data) else None
-
-
-def _html_label(response: Response) -> bool:
-    """Whether the response is labelled HTML (`is_html`): a fetch or XMLHttpRequest call's HTML answer is a fragment
-    the page shows (Turbo frames, htmx-style partials)."""
-    return is_html(response.headers.get("content-type"))
-
-
-def _sniffed(data: bytes) -> bool:
-    try:
-        return isinstance(network_json(data), (dict, list))
-    except ValueError:
-        return False
-
-
-async def _headers(read: Awaitable[Sequence[Mapping[str, object]]]) -> HeaderList | None:
-    """A request's or response's headers as a capture records them (no credentials); None when the browser no longer
-    holds them."""
-    try:
-        return recorded(_header_list(await read))
-    except PlaywrightError:
-        return None
-
-
-def _text_or_none(data: bytes | None) -> str | None:
-    try:
-        return None if data is None else data.decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-
-
 def _navigation_error(error: PlaywrightError, rejected: RejectReason | None) -> str:
     if isinstance(error, PlaywrightTimeout):
         return "timeout"
@@ -1159,13 +426,3 @@ def _navigation_error(error: PlaywrightError, rejected: RejectReason | None) -> 
         return str(SsrfRejected(rejected))
     match = _NET_ERROR.search(error.message)
     return f"network_error: {match.group()}" if match else "network_error"
-
-
-def _header_list(headers: Sequence[Mapping[str, object]]) -> HeaderList:
-    # Playwright's header arrays keep repeated names in order (RFC 9110 §5.3), as the bundle does.
-    return tuple((str(h["name"]), str(h["value"])) for h in headers)
-
-
-def _ms_until(deadline: float) -> float:
-    # Playwright reads a timeout of 0 as "no timeout": a spent budget becomes the smallest positive one instead.
-    return max(1.0, (deadline - time.monotonic()) * 1000)
