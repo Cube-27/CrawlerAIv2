@@ -18,10 +18,10 @@ __all__ = ["changed_fields", "record_fingerprint"]
 
 
 def record_fingerprint(record_data: Mapping[str, JsonValue], schema: SchemaDocument) -> str:
-    """`sha256(canonical_json(...))`, hex, over the published values of the schema's required fields and the members of
-    its required groups: the fields that make a record complete. A field that did not publish is
-    left out, so it differs from one that published `null`."""
-    keyed = {name: record_data[name] for name in _fingerprinted(schema) if name in record_data}
+    """`sha256(canonical_json(...))`, hex, over the published values of the schema's fields: every value the record
+    holds, so a record whose any value differs is another version. A field that did not publish is left out, so it
+    differs from one that published `null`."""
+    keyed = {name: record_data[name] for name in schema.fields if name in record_data}
     return sha256_hex(_canonical(keyed).encode())
 
 
@@ -32,11 +32,6 @@ def changed_fields(
     that published a different value, or published in only one of them (it became published, or abstained or went
     missing)."""
     return [name for name in schema.fields if _published(previous, name) != _published(current, name)]
-
-
-def _fingerprinted(schema: SchemaDocument) -> set[str]:
-    required = {name for name, spec in schema.fields.items() if spec.required}
-    return required.union(*schema.required_groups)
 
 
 def _published(data: Mapping[str, JsonValue], name: str) -> str | None:

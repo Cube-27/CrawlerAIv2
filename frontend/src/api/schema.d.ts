@@ -2366,7 +2366,7 @@ export interface components {
             fetch?: components["schemas"]["FetchSummary"];
             metadata?: components["schemas"]["PageMetadata"];
             /** Outcome */
-            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media" | "geo_blocked" | "failed" | "timeout") | null;
+            outcome: ("extracted" | "partial" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media" | "geo_blocked" | "failed" | "timeout") | null;
             pdf?: components["schemas"]["Artifact"];
             /** Records */
             records: {
@@ -2827,8 +2827,6 @@ export interface components {
             soft_404: number;
             /** Timeout */
             timeout: number;
-            /** Unchanged */
-            unchanged: number;
             /** Unsupported Media */
             unsupported_media: number;
         };
@@ -2943,7 +2941,7 @@ export interface components {
             markdown_fit?: string;
             metadata?: components["schemas"]["PageMetadata"];
             /** Outcome */
-            outcome: ("extracted" | "partial" | "unchanged" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media" | "geo_blocked" | "failed" | "timeout") | null;
+            outcome: ("extracted" | "partial" | "links_only" | "blocked" | "shell" | "not_found" | "no_match" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media" | "geo_blocked" | "failed" | "timeout") | null;
             pdf?: components["schemas"]["Artifact"];
             /** Raw Html */
             raw_html?: string;

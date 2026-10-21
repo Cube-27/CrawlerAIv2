@@ -91,6 +91,30 @@ def test_a_complete_page_is_extracted_with_its_published_values() -> None:
     assert record.entity_key == hashlib.sha256(f"{SITE}{URL}".encode()).hexdigest()
 
 
+def test_a_page_stating_no_needed_field_beyond_its_own_address_has_no_record() -> None:
+    """A maintenance or error page served for the URL: prose, and the page's own address, but nothing the record
+    needs read from the page."""
+    address = _published(URL).model_copy(update={"derived_by": "final_url", "source_kind": "derived"})
+    schema = _schema([["sku", "mpn"]])
+    stating = {"sku": _published("A-1"), "gtin": _unpublished(), "mpn": _unpublished()}
+
+    assert assemble(schema, {**stating, "sku": address}, site_id=SITE, canonical_url=URL, caller_supplied=True) == (
+        "no_match",
+        None,
+    )
+    assert (
+        assemble(
+            schema,
+            {**stating, "sku": _unpublished(), "gtin": _published()},
+            site_id=SITE,
+            canonical_url=URL,
+            caller_supplied=True,
+        )[0]
+        == "no_match"
+    )
+    assert assemble(schema, stating, site_id=SITE, canonical_url=URL, caller_supplied=True)[0] == "extracted"
+
+
 # Record confidence (§10)
 
 
@@ -128,6 +152,20 @@ def _assemble_listing(*rows: dict[str, FieldOutcome], caller_supplied: bool = Tr
     return assemble_listing(
         _listing_schema(), PAGE_FIELDS, rows, site_id=SITE, page_url=LISTING_URL, caller_supplied=caller_supplied
     )
+
+
+def test_a_row_stating_no_row_value_keeps_no_record_though_the_page_fields_publish() -> None:
+    schema = _listing_schema()
+    heading = schema.fields["heading"].model_copy(update={"required": True})
+    schema = schema.model_copy(update={"fields": {**schema.fields, "heading": heading}})
+    rows = (_row(1), _row(None, title=False))
+
+    outcome, records = assemble_listing(
+        schema, PAGE_FIELDS, rows, site_id=SITE, page_url=LISTING_URL, caller_supplied=True
+    )
+
+    assert outcome == "partial"
+    assert [r.data["title"] for r in records] == ["Widget 1"]
 
 
 def test_each_row_is_a_record_keyed_by_its_url_with_the_page_fields() -> None:

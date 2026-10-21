@@ -88,7 +88,7 @@ def _task(attempts: int) -> ClaimedTask:
 
 def _fetched(result: FetchResult) -> FetchedPage:
     site = SiteRow(SiteId(uuid7()), Remembered(), None, None, None)
-    return FetchedPage(site, result, CaptureId(uuid7()), (), result.attempts, None)
+    return FetchedPage(site, result, CaptureId(uuid7()), result.attempts, None)
 
 
 def test_a_vendor_blocked_task_is_retried_once_after_the_back_off_then_ends_blocked_naming_the_vendor() -> None:

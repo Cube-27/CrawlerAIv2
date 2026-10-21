@@ -217,9 +217,18 @@ published values only. Refs: §6, §13.1, D-0354. Enforced by: Pydantic models a
 
 ### Requirement: Incomplete pages
 A page whose required fields and groups all publish SHALL be `extracted` and complete; otherwise a caller-supplied URL
-stores the record as `partial` and a crawl-discovered URL is `no_match` with no record. Refs: §10, §23, D-0513, D-0930.
+stores the record as `partial` and a crawl-discovered URL is `no_match` with no record. Either way, a page none of whose
+required fields or group members (any field, for a schema that requires none) publishes a value read from the page,
+beyond its own address (the `canonical_link` and `final_url` derivations), states no entity of the schema and is
+`no_match` with no record: a maintenance or error page served for the URL publishes prose, never what identifies the
+item. A listing's row states its item only by a row field (the needed row fields, else any row field), never by the
+page fields every row shares. (Previously: a caller-supplied URL kept such a record, even an empty one.) Refs: §10, §23, D-0513, D-0930.
 #### Scenario: Crawl page missing price
 - **WHEN** a crawl-discovered detail page leaves the required `price` missing
+- **THEN** the outcome is `no_match` and no record is stored
+#### Scenario: Maintenance page for a caller-supplied URL
+- **WHEN** a batch URL redirects to a maintenance page whose only published values are its prose as `description` and
+  its final URL as `url`
 - **THEN** the outcome is `no_match` and no record is stored
 
 ### Requirement: Render-bound fields
