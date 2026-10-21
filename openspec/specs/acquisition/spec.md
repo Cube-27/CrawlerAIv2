@@ -522,10 +522,18 @@ A fetch policy MAY carry the caller's headers and cookies (`acquire/types.py` `R
 SHALL send the headers only on requests to the fetched URL's host and seed the fetch's jar with the cookies as
 host-only cookies of that host; the browser rung SHALL add the cookies to its context before the navigation and set no
 header (INV-44). A fetch with a caller context neither takes nor opens a site session, and its values are never
-captured or logged (manifests and recorded headers show `**********`). Refs: owner delegation 2026-10-17, D-1430–D-1434.
+captured or logged (manifests and recorded headers show `**********`). The policy a capture keeps SHALL carry, beside
+the names, the HMAC-SHA256 digest of the names and values (`core/context_digest.py`, keyed by a key derived from
+`CRAWLERAI_COOKIE_KEY`, else a random key of the process), and a stored capture SHALL stand for a fetch only when that
+digest is equal: a capture fetched with other values under the same names, or with no context, never serves a fetch
+with one, nor the reverse. (Previously: captures matched by context names alone.) Refs: owner delegation 2026-10-17,
+owner 2026-10-21, D-1430–D-1434.
 #### Scenario: Header to another host
 - **WHEN** a fetch with header `Authorization` is redirected from `https://a.example/` to `https://b.example/`
 - **THEN** the request to `b.example` carries no `Authorization`, and the capture records none of its value
+#### Scenario: Another cookie value
+- **WHEN** a page was captured with cookie `sid=alice` and a `fetch.cache` `only` request sends `sid=bob`
+- **THEN** that capture does not serve it, and the request fails `not_cached`
 
 ### Requirement: Page actions
 A browser fetch policy MAY carry at most 20 steps (`acquire/page_steps.py`: wait for milliseconds, an element or no

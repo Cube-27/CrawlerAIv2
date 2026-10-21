@@ -12,10 +12,12 @@ from pydantic import (
     PositiveFloat,
     PositiveInt,
     SecretStr,
+    computed_field,
     field_serializer,
 )
 
 from crawlerai.core.capture import BlockClass, CaptureMethod
+from crawlerai.core.context_digest import context_digest
 from crawlerai.core.redaction import REDACTED
 from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import CaptureBundle
@@ -49,7 +51,8 @@ SecretPair = tuple[str, SecretStr]
 class RequestContext(_Frozen):
     """The caller's own request context (D-1430): headers the HTTP and JSON rungs send to the fetched URL's host, and
     cookies seeded as host-only cookies of that host (INV-29 amended). The values are secrets: every serialization
-    shows them redacted, so neither a capture's manifest nor a log line holds one (D-1432)."""
+    shows them redacted, so neither a capture's manifest nor a log line holds one (D-1432), beside their keyed digest
+    (`core.context_digest`), so that a stored capture stands only for a fetch with the same values."""
 
     headers: tuple[SecretPair, ...] = ()
     cookies: tuple[SecretPair, ...] = ()
@@ -64,6 +67,13 @@ class RequestContext(_Frozen):
     @field_serializer("cookies")
     def _redacted_cookies(self, pairs: tuple[SecretPair, ...]) -> list[tuple[str, str]]:
         return [(name, REDACTED) for name in sorted(name for name, _ in pairs)]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def digest(self) -> str:
+        """The keyed digest of the names and values (`core.context_digest`)."""
+        values = [(name, value.get_secret_value()) for name, value in self.headers]
+        return context_digest(values, [(name, value.get_secret_value()) for name, value in self.cookies])
 
     def header_names(self) -> frozenset[str]:
         return frozenset(name.lower() for name, _ in self.headers)
