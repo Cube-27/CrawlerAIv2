@@ -109,7 +109,9 @@ def test_a_documented_answer_joins_only_for_its_product_and_reads_in_major_units
     assert row["variants.availability"] == Ok("OutOfStock")
     # The product's every image, the featured one first, and its HTML body read as text.
     files: list[JsonValue] = [f"https://cdn.example.test/files/{key}-{n}.jpg" for n in (1, 2)]
-    assert [c.normalized for c in read.candidates if c.field == "additional_images"] == [Ok(files)]
+    # Each publishes as the answer writes it, scheme-relative.
+    written: list[JsonValue] = [f"//cdn.example.test/files/{key}-{n}.jpg" for n in (1, 2)]
+    assert [c.normalized for c in read.candidates if c.field == "additional_images"] == [Ok(files, stated=written)]
     assert [c.normalized for c in read.candidates if c.field == "description"] == [Ok("A mug.")]
     if other != key:
         # Another product's answer (an endpoint that ignores its key) never joins, and says why.

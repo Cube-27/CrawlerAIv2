@@ -140,13 +140,16 @@ async def _row_urls(conn: AsyncConnection, job_id: JobId, schema: SchemaDef) -> 
         return []
     row_url = func.coalesce(*(Record.data[name].astext for name in fields))
     of_job = (
-        select(row_url)
+        select(row_url, func.coalesce(UrlTask.final_url, UrlTask.canonical_url))
         .join(TaskRecord, TaskRecord.record_id == Record.id)
         .join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
         .where(UrlTask.job_id == job_id, row_url.is_not(None))
         .distinct()
     )
-    return [url for url in map(canonicalize, (await conn.execute(of_job)).scalars()) if url is not None]
+    # A record publishes its row URL as the page writes it, maybe relative: RFC 3986 §5.2 resolves it against the URL
+    # of the listing page it was read from.
+    found = (canonicalize(url, page) for url, page in (await conn.execute(of_job)).tuples())
+    return sorted({url for url in found if url is not None})
 
 
 async def _sitemaps_timed_out(conn: AsyncConnection, job_id: JobId) -> bool:

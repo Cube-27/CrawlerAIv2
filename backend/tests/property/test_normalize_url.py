@@ -6,9 +6,10 @@ from datetime import UTC, datetime
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import JsonValue
 
 from crawlerai.normalize import url
-from crawlerai.normalize.base import Context, Invalid, Ok
+from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 AT = datetime(2026, 1, 1, tzinfo=UTC)
@@ -40,7 +41,9 @@ def test_output_is_absolute_http_without_a_fragment_and_normalizes_to_itself(spe
     assert isinstance(result.value, str)
     assert result.value.startswith(("http://", "https://"))
     assert "#" not in result.value
-    assert url.normalize(result.value, spec, CTX) == result
+    assert url.normalize(result.value, spec, CTX) == Ok(result.value)
+    # The stated form is the reference as written, and it normalizes to the same value.
+    assert _value(url.normalize(result.published, spec, CTX)) == result.value
 
 
 @pytest.mark.parametrize(
@@ -80,7 +83,7 @@ def test_input_that_is_no_http_url_is_invalid(raw: str, reason: str) -> None:
     ],
 )
 def test_absolute_urls_are_canonicalized(raw: str, expected: str) -> None:
-    assert url.normalize(raw, URL, CTX) == Ok(expected)
+    assert _value(url.normalize(raw, URL, CTX)) == (expected)
 
 
 @pytest.mark.parametrize(
@@ -95,7 +98,7 @@ def test_absolute_urls_are_canonicalized(raw: str, expected: str) -> None:
 def test_relative_urls_resolve_against_the_document_base_and_need_one(raw: str, expected: str) -> None:
     ctx = Context(captured_at=AT, base_url="https://example.test/a/b", page_url="https://example.test/other")
 
-    assert url.normalize(raw, URL, ctx) == Ok(expected)
+    assert url.normalize(raw, URL, ctx) == Ok(expected, stated=raw)  # it publishes as the page writes it
     assert url.normalize(raw, URL, CTX) == Invalid("relative_without_base")
 
 
@@ -103,8 +106,8 @@ def test_an_image_url_that_is_the_page_url_is_invalid() -> None:
     ctx = Context(captured_at=AT, page_url="https://example.test/p?id=1#reviews")
 
     assert url.normalize("HTTPS://example.test:443/p?id=1", IMAGE, ctx) == Invalid("page_url")
-    assert url.normalize("HTTPS://example.test:443/p?id=1", URL, ctx) == Ok("https://example.test/p?id=1")
-    assert url.normalize("https://example.test/p.png", IMAGE, ctx) == Ok("https://example.test/p.png")
+    assert _value(url.normalize("HTTPS://example.test:443/p?id=1", URL, ctx)) == ("https://example.test/p?id=1")
+    assert _value(url.normalize("https://example.test/p.png", IMAGE, ctx)) == ("https://example.test/p.png")
 
 
 @pytest.mark.parametrize("path", ["/player/index.html?videoId=1", "/v/clip.mp4", "/app.js"])
@@ -163,3 +166,9 @@ def test_a_proxy_url_names_the_file_its_url_parameter_names() -> None:
     # Another parameter holding a URL (a fallback, a referrer) is no file the URL serves.
     other = "https://img.example.test/i/a.jpg?fallback=https%3A%2F%2Fcdn.example.test%2Fi%2Fz.jpg"
     assert url.resource_key(other) == ("resource", "img.example.test", "/i/a.jpg")
+
+
+def _value(result: NormalizeResult) -> JsonValue:
+    """The normalized value (the stated form aside, which only publishes)."""
+    assert isinstance(result, Ok)
+    return result.value

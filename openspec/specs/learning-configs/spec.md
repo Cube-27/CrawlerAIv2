@@ -108,7 +108,10 @@ induction leaves a required field, or a whole required group, that some sample p
 every field left, returns selectors only, verified on the sample with up to 3 repair rounds; a field still failing gets
 no steps. Role A's requests SHALL share one system prompt and cache the field definitions and sample pages; a repair
 SHALL send the first sample page only, in the first request's output schema, and a sample page's input SHALL be at most
-60,000 characters. Refs: §8.3, D-0031, D-0551, D-0585, D-1680, D-1683, D-1720, D-1722, D-1723.
+60,000 characters. A published URL is the page's reference as written (normalization spec), so learning compares the
+published values with their URLs resolved against the page's base URL (`normalize.dispatch.compared_form`), and an
+induced URL step reads the attribute or member as written, with no `absolutize_url` op (kept for a listing's `next`,
+which is fetched, not published). (Previously: induced URL steps resolved their reference.) Refs: §8.3, D-0031, D-0551, D-0585, D-1680, D-1683, D-1720, D-1722, D-1723.
 
 ### Requirement: Held-out validation and corroboration
 On ≥ 3 held-out pages a field SHALL be kept only when its values are `Ok` and both the engine and release executors

@@ -195,6 +195,11 @@ def _add(proposal: _Proposal, target: str, written: JsonValue, *, one: bool = Fa
         if one and n > 0:
             invalid.append(f"step {n}: invalid_step({target} takes one step)")
             continue
+        if not one and step_wire.absolutizes(raw):
+            # A field's URL publishes as the page writes it (normalization spec); only `next`, which is fetched,
+            # resolves.
+            invalid.append(f"step {n}: invalid_step(absolutize_url is for the next page's URL only)")
+            continue
         try:
             steps.append(_OneStep.model_validate({"step": step_wire.from_wire(raw)}).step)
         except ValidationError as error:

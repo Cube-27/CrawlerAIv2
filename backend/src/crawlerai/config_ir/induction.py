@@ -43,7 +43,6 @@ from crawlerai.collect.locator import InvalidLocator, Locator, parse_locator
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.config_ir.executor import documents, field_candidate
 from crawlerai.config_ir.model import (
-    AbsolutizeUrlOp,
     FieldSteps,
     JsonLdStep,
     JsonPathStep,
@@ -57,7 +56,7 @@ from crawlerai.content.text import name_test
 from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
-from crawlerai.schemas.types import NEXT_PAGE_FIELD, FieldSpec, FieldType, SchemaDef
+from crawlerai.schemas.types import NEXT_PAGE_FIELD, FieldSpec, SchemaDef
 
 # A class token that reads as a word or kebab-case words is a stable anchor; tokens that build tools hash carry
 # uppercase letters, underscores or long digit runs. A structural property of the token (learning-configs spec, D-0031),
@@ -67,7 +66,6 @@ _DIGIT_RUN = re.compile(r"\d{3}", re.ASCII)
 # RFC 9535 §2.3.3: an index segment.
 _INDEX = re.compile(r"\[\d+\]", re.ASCII)
 _STATUS: FieldStatus = "uncorroborated"  # until validation (§4.7) records corroboration
-_ABSOLUTIZE: Final = AbsolutizeUrlOp.model_validate({"absolutize_url": {}})
 # The schemes whose values come from an adapter's or API recipe's mapping, which the config reuses.
 MAPPED: Final = frozenset({"adapter", "api"})
 # The schemes of values read from a JSON document or a meta element: one step reads a list as well as a value.
@@ -488,19 +486,16 @@ def readings(nodes: str, element: HtmlElement, spec: FieldSpec) -> Iterator[Step
         yield from reading(nodes, attribute, spec)
 
 
-def reading(nodes: str, attribute: str | None, spec: FieldSpec) -> Iterator[Step]:
-    """The node's normalized text, or its `attribute`; a URL field's attribute resolved against the document base URL
-    first (RFC 3986 §5: an `href` or `src` may be relative)."""
+def reading(nodes: str, attribute: str | None, _spec: FieldSpec) -> Iterator[Step]:
+    """The node's normalized text, or its `attribute` as the page writes it: a relative `href` or `src` stays as
+    written, the published form, and the url normalizer resolves it for comparison (normalization spec)."""
     xpath = f"normalize-space({nodes})" if attribute is None else f"{nodes}/@{attribute}"
-    urls = spec.type in (FieldType.URL, FieldType.IMAGE_URL)
-    if urls and attribute is not None and (step := _xpath_step(xpath, absolutize=True)) is not None:
-        yield step
     if (step := _xpath_step(xpath)) is not None:
         yield step
 
 
-def _xpath_step(xpath: str, *, absolutize: bool = False) -> XPathStep | None:
+def _xpath_step(xpath: str) -> XPathStep | None:
     try:
-        return XPathStep(xpath=xpath, post=[_ABSOLUTIZE] if absolutize else [])
+        return XPathStep(xpath=xpath, post=[])
     except ValidationError:  # outside XPath 1.0 as the IR accepts it (an attribute name with a prefix)
         return None

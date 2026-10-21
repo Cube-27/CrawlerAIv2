@@ -269,7 +269,7 @@ async def _stored(engine: PipelineEngine, schema: SchemaDef, page: _Page, llm: L
     except (RecordingMissing, RecordingUnreadable):
         return None
     parsed, ctx = await asyncio.to_thread(read_bundle, page.bundle)
-    records = _records(schema, result)
+    records = [record.compared(schema, ctx) for record in _records(schema, result)]
     candidates = [_stored_candidate(c, result) for c in result.candidates if isinstance(c.normalized, Ok)]
     facts, rows = facts_of(schema, [r.data for r in records], candidates)
     published, published_rows = published_of(schema, records)

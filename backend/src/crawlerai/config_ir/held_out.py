@@ -49,6 +49,7 @@ from crawlerai.db.models import (
     UrlTask,
 )
 from crawlerai.normalize.base import Context
+from crawlerai.normalize.dispatch import compared_form
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import CaptureBundle, decode
@@ -105,6 +106,15 @@ class StoredRecord:
 
     data: Mapping[str, JsonValue]
     locators: Mapping[str, str]
+
+    def compared(self, schema: SchemaDef, ctx: Context) -> "StoredRecord":
+        """The record with each value in the form learning compares (`normalize.dispatch.compared_form`): a URL is
+        published as the page writes it, maybe relative, and compared resolved against the page's base URL."""
+        data = {
+            name: compared_form(value, spec, ctx) if (spec := schema.fields.get(name)) is not None else value
+            for name, value in self.data.items()
+        }
+        return StoredRecord(data, self.locators)
 
 
 def published_of(
@@ -193,7 +203,7 @@ async def _pages(
         if parsed is None:
             continue
         bundle, page, ctx = parsed
-        stored = records[extraction_id]
+        stored = [record.compared(schema, ctx) for record in records[extraction_id]]
         facts, rows = facts_of(schema, [record.data for record in stored], candidates[extraction_id])
         published, published_rows = published_of(schema, stored)
         pages.append(

@@ -37,6 +37,7 @@ class Derived:
     derived_by: Derivation
     source: Candidate | None
     rejected: tuple[Rejection, ...] = ()
+    stated: JsonValue = None  # the value as the page states it, when it differs (`Ok.stated`)
 
 
 def is_page_url_field(schema: SchemaDef, spec: FieldSpec, primary: frozenset[str]) -> bool:
@@ -59,6 +60,7 @@ def fill(
     ctx: Context,
     *,
     canonical_url: str | None,
+    canonical_href: str | None = None,
     page_url_field: bool,
 ) -> Preference | Derived:
     """The field's derived value when preference left it missing (INV-07), else `preference`, the page-URL field's
@@ -81,7 +83,7 @@ def fill(
         preference = replace(preference, rejected=(*kept, (source, OTHER_DOCUMENT)))
         derived = None
     if derived is None and page_url_field:
-        derived = canonical_link(spec, canonical_url, ctx)
+        derived = canonical_link(spec, canonical_url, ctx, canonical_href)
     return preference if derived is None else replace(derived, rejected=preference.rejected)
 
 
@@ -135,13 +137,18 @@ def absolutize(spec: FieldSpec, candidates: Sequence[Candidate], resolver: Resol
     if not isinstance(preference, Chosen) or not isinstance(preference.candidate.normalized, Ok):
         return None
     source = next(original for resolved, original in pairs if resolved is preference.candidate)
-    return Derived(preference.candidate.normalized.value, "absolutize", source)
+    resolved = preference.candidate.normalized
+    return Derived(resolved.value, "absolutize", source, stated=resolved.stated)
 
 
-def canonical_link(spec: FieldSpec, canonical_url: str | None, ctx: Context) -> Derived | None:
+def canonical_link(spec: FieldSpec, canonical_url: str | None, ctx: Context, href: str | None = None) -> Derived | None:
     """RFC 6596: the canonical link relation names the page's preferred URL. `canonical_url` is the `<link
-    rel=canonical>` href resolved against the document base URL."""
+    rel=canonical>` href resolved against the document base URL; `href` is that href as the page writes it, the
+    form that publishes (`Ok.stated`)."""
     if canonical_url is None:
         return None
     result = normalize(canonical_url, spec, ctx)
-    return Derived(result.value, "canonical_link", None) if isinstance(result, Ok) else None
+    if not isinstance(result, Ok):
+        return None
+    written = None if href is None else normalize(href, spec, ctx)
+    return Derived(result.value, "canonical_link", None, stated=written.published if isinstance(written, Ok) else None)

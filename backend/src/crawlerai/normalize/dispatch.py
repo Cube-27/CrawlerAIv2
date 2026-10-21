@@ -77,6 +77,21 @@ def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
     return registered[0](raw, spec, ctx)
 
 
+def compared_form(value: JsonValue, spec: FieldSpec, ctx: Context) -> JsonValue:
+    """A published value of `spec` in the form values are compared in: its URLs, which publish as the page writes
+    them (`Ok.stated`), canonical and resolved against `ctx`'s base URL, in lists and objects too; any other value,
+    and a URL that does not normalize, as it is."""
+    if spec.type in (FieldType.URL, FieldType.IMAGE_URL):
+        result = normalize(value, spec, ctx)
+        return result.value if isinstance(result, Ok) else value
+    if spec.type is FieldType.LIST and isinstance(value, list):
+        return [compared_form(item, _item(spec), ctx) for item in value]
+    if spec.type is FieldType.OBJECT and isinstance(value, dict):
+        fields = _fields(spec)
+        return {k: compared_form(v, fields[k], ctx) if k in fields else v for k, v in value.items()}
+    return value
+
+
 def equal(a: JsonValue, b: JsonValue, spec: FieldSpec) -> bool:
     """Whether two normalized values of `spec`'s type are the same value (normalization spec). Reflexive and symmetric
     for every JSON value; values of another shape are equal only when identical."""
@@ -189,26 +204,41 @@ def _list(raw: Raw, item: FieldSpec, ctx: Context) -> NormalizeResult:
     items = raw if isinstance(raw, list) else [raw]
     if not items:
         return Invalid("empty")
-    values: list[JsonValue] = []
     reasons: list[str] = []
     kept: list[Ok] = []
     ambiguous = False
     for i, entry in enumerate(items):
         result = normalize(entry, item, ctx)
         if isinstance(result, Ok):
-            values.append(result.value)
             kept.append(result)
             reasons.extend(_nested(f"[{i}]", result.reasons))
         else:
             ambiguous = ambiguous or isinstance(result, Ambiguous)
             reasons.append(f"[{i}]: {result.reason}")
-    if values:
+    if kept:
+        values = [r.value for r in kept]
         # One file is one image (`url.resource_key`): a list names each once, by its largest rendition.
         value = url.distinct_files(values) if item.type is FieldType.IMAGE_URL else values
         # A list is as checked as its least checked item, and its currency evidence is its weakest item's (`Ok`).
-        return Ok(value, tuple(reasons), basis=_weakest(r.basis for r in kept), checked=all(r.checked for r in kept))
+        return Ok(
+            value,
+            tuple(reasons),
+            basis=_weakest(r.basis for r in kept),
+            checked=all(r.checked for r in kept),
+            stated=_stated_items(value, kept),
+        )
     # No item normalized; an ambiguous one might, once the context settles it.
     return Ambiguous("no_item", ()) if ambiguous else Invalid("no_item")
+
+
+def _stated_items(value: list[JsonValue], kept: Sequence[Ok]) -> list[JsonValue] | None:
+    """The list's stated form (`Ok.stated`): each kept item as its page states it; None when every one is as stated."""
+    if all(r.stated is None for r in kept):
+        return None
+    stated: dict[Hashable, JsonValue] = {}
+    for r in kept:
+        stated.setdefault(raw_key(r.value), r.published)
+    return [stated.get(raw_key(v), v) for v in value]
 
 
 def _weakest(bases: Iterable[Basis | None]) -> Basis | None:
@@ -222,12 +252,13 @@ def _object(raw: Raw, fields: dict[str, FieldSpec], ctx: Context) -> NormalizeRe
     if not isinstance(raw, dict):
         return Invalid("not_an_object")
     value: dict[str, JsonValue] = {}
+    stated: dict[str, JsonValue] = {}
     reasons: list[str] = []
     for name, sub in fields.items():
         entry = raw.get(name)
         result = Invalid("missing") if entry is None else normalize(entry, sub, ctx)
         if isinstance(result, Ok):
-            value[name] = result.value
+            value[name], stated[name] = result.value, result.published
             reasons.extend(_nested(name, result.reasons))
         elif sub.required:
             reason = f"{name}: {result.reason}"
@@ -236,7 +267,7 @@ def _object(raw: Raw, fields: dict[str, FieldSpec], ctx: Context) -> NormalizeRe
             reasons.append(f"{name}: {result.reason}")
     if not value:
         return Invalid("empty")
-    return Ok(value, tuple(reasons))
+    return Ok(value, tuple(reasons), stated=None if stated == value else stated)
 
 
 def _nested(path: str, reasons: tuple[str, ...]) -> Iterator[str]:

@@ -129,3 +129,12 @@ def test_a_price_on_weak_currency_evidence_is_noted_and_measured_apart(
 
 
 # The calibration file
+
+
+def test_a_url_publishes_as_written_and_in_full_when_an_agreeing_source_writes_it_so() -> None:
+    url = "https://shop.example.test/p/1"
+    relative = _candidate("adapter").model_copy(update={"raw": "/p/1", "normalized": Ok(url, stated="/p/1")})
+    full = _candidate("og").model_copy(update={"raw": url, "normalized": Ok(url)})
+
+    assert _assess(_chosen(relative), type_=FieldType.URL).published == "/p/1"  # never resolved
+    assert _assess(_chosen(relative, full), type_=FieldType.URL).published == url

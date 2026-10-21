@@ -249,7 +249,7 @@ def page_fields(schema: SchemaDef, fields: FieldSet) -> dict[str, RecordField]:
     """A listing's page-scope fields (persistence-storage spec `scope: page`) in the record field shape: what a listing
     that kept no record still resolved, such as its next page."""
     scoped = {name: outcome for name, outcome in fields.items() if schema.fields[name].scope == "page"}
-    data = {name: outcome.value for name, outcome in scoped.items() if outcome.status == "published"}
+    data = {name: outcome.published for name, outcome in scoped.items() if outcome.status == "published"}
     return _fields(data, {name: FieldMeta.of(outcome) for name, outcome in scoped.items()})
 
 

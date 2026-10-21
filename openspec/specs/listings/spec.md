@@ -200,9 +200,10 @@ architecture v3 a.6.
 ### Requirement: Row item URL
 A row's item URL field SHALL read schema.org `url`, else the item's `offers.url`, else its `mainEntityOfPage` (a URL or
 a page's `url`), else its own IRI (JSON-LD `@id`, microdata `itemid`) when absolute http(s), without a fragment, on the
-page's site and not the page's URL, a bound block's link replacing a respelling; published row URLs drop each query parameter that two or
-more of them carry once with one value and none of the page's own URLs carries (`normalize.url_key`), named in the
-result. Refs: owner #67 decisions 1 and 6.
+page's site and not the page's URL, a bound block's link replacing a respelling; row keys drop each query parameter that two or
+more row URLs carry once with one value and none of the page's own URLs carries (`normalize.url_key`), named in the
+result, while each row URL publishes as the page writes it (normalization spec). (Previously: the published row URLs
+dropped them too.) Refs: owner #67 decisions 1 and 6.
 #### Scenario: Item named by its offer
 - **WHEN** a listed Product states no `url` and its Offer states `url`
 - **THEN** the row's item URL is the Offer's
@@ -212,7 +213,7 @@ result. Refs: owner #67 decisions 1 and 6.
 - **THEN** the row's item URL is `https://example.com/p/7`; an `@id` ending in `#product` names none
 #### Scenario: Visit parameter on every row
 - **WHEN** every row URL carries `sid=abc` and its own `v=<n>`, and the page URL carries neither
-- **THEN** the rows publish their URLs with `v=<n>` and without `sid`
+- **THEN** the rows are keyed by their URLs with `v=<n>` and without `sid`, and publish them as written
 
 ### Requirement: Role C rows
 Role C SHALL be asked for the blocks whose bound rows lack a row field, each for the fields its row lacks but the item

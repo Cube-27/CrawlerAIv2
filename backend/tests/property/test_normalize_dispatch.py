@@ -44,7 +44,10 @@ def test_each_field_type_goes_to_its_module() -> None:
 
     assert normalize("a &amp;\n\nb", _spec(FieldType.TEXT), CTX) == Ok("a & b")
     assert normalize("a &amp;\n\nb", _spec(FieldType.LONG_TEXT), CTX) == Ok("a &\n\nb")
-    assert normalize("HTTPS://example.test/p#x", _spec(FieldType.URL), ctx) == Ok("https://example.test/p")
+    assert normalize("HTTPS://example.test/p#x", _spec(FieldType.URL), ctx) == Ok(
+        "https://example.test/p",
+        stated="HTTPS://example.test/p#x",  # it publishes as the page writes it
+    )
     assert normalize("HTTPS://example.test/p#x", _spec(FieldType.IMAGE_URL), ctx) == Invalid("page_url")
     assert normalize("2026-03-04T23:30:00-02:00", _spec(FieldType.DATE), CTX) == Ok("2026-03-04")
     assert normalize("2026-03-04T23:30:00-02:00", _spec(FieldType.DATETIME), CTX) == Ok("2026-03-05T01:30:00Z")
@@ -68,7 +71,10 @@ PERSON = FieldSpec.model_validate(
 def test_an_object_normalizes_its_sub_fields_and_ignores_other_keys() -> None:
     raw: JsonValue = {"@type": "Person", "name": " A &amp; B ", "home": "HTTPS://example.test/a#x"}
 
-    assert normalize(raw, PERSON, CTX) == Ok({"name": "A & B", "home": "https://example.test/a"})
+    assert normalize(raw, PERSON, CTX) == Ok(
+        {"name": "A & B", "home": "https://example.test/a"},
+        stated={"name": "A & B", "home": "HTTPS://example.test/a#x"},
+    )
 
 
 _bounds = st.tuples(*[st.decimals(min_value=1, max_value=999, places=2)] * 2).map(sorted)
