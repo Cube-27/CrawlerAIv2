@@ -53,12 +53,12 @@ The machine needs Docker, `uv`, `pnpm`, GNU make, `gh` (logged in) and herdr; ev
    `blocked` or a timeout, read the screen again and clear what it shows. Only once the agent is idle, send the brief:
    `herdr agent prompt <id> "$(cat ../briefs/<id>.txt)"`.
 4. Watch it in the background by polling, once a minute: `herdr agent list` gives each agent's `agent_status`
-   (`working`, `idle`, `done` = turn finished, `blocked`) and `completion_seq`. When the status is `idle` or `done`
-   and `completion_seq` moved since the watch began, `herdr agent read <id> --source recent-unwrapped --lines 60`
-   and look for the end-of-turn line (`read` fails while the agent is `working`). A single long event wait
-   (`herdr agent wait`) misses turns that end between waits; don't rely on it alone. `blocked` means a
-   permission or question dialog: read it, and ask the owner before answering anything that isn't routine. A builder
-   that went idle while waiting for CI or a bot review is told to keep waiting in the background, not to hand back.
+   (`working`, `idle`, `done` = turn finished, `blocked`) and `completion_seq`. Record `completion_seq` right before
+   you send the prompt the watch is for; when the status is `idle` or `done` and `completion_seq` differs from that
+   value, `herdr agent read <id> --source recent-unwrapped --lines 60` and look for the end-of-turn line (`read`
+   fails while the agent is `working`). A single long event wait (`herdr agent wait`) misses turns that end between
+   waits; don't rely on it alone. `blocked` means a permission or question dialog: read it, and ask the owner
+   before answering anything that isn't routine. A builder that went idle while waiting for CI or a bot review is told to keep waiting in the background, not to hand back.
 5. Every later prompt to a builder (send-back, rebase, "continue") ends with the standing line: "builder-protocol.md
    HARD RULES apply; end with READY TO MERGE #<n> <sha> or BLOCKED #<n>: <reason>." Rules stated once in a brief
    fade over a long session.
@@ -96,8 +96,9 @@ Then tick the PR in `plan.md`'s status table (in the next PR that touches `docs/
 ### Rebases
 
 Only the PR **next in line** rebases, its own builder does it, and only when it must: the PR conflicts with main
-(`mergeStateStatus` not CLEAN), or main changed code the patch calls, a dependency it uses, or which CI jobs run for
-it. Otherwise merge it as is; each rebase costs a full CI and bot round. When a rebase is needed, tell that builder:
+(`mergeStateStatus` is `DIRTY`; `BEHIND` alone is no reason, as `main` doesn't require an up-to-date branch), or
+main changed code the patch calls, a dependency it uses, or which CI jobs run for it. Otherwise merge it as is;
+each rebase costs a full CI and bot round. When a rebase is needed, tell that builder:
 `herdr agent prompt <id> "You're next to merge. Merge origin/main (<sha>) into your branch, resolve every conflict and
 any CI, Sonar or bot fallout, and report READY TO MERGE again."` The others keep working on their stale base.
 
