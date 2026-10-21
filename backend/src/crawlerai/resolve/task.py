@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from crawlerai.collect.base import Candidate
 from crawlerai.collect.config import ConfigExecutor
 from crawlerai.collect.run import Adapters
+from crawlerai.content.signals import unreadable
 from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.models import Candidate as CandidateRow
 from crawlerai.db.models import (
@@ -154,6 +155,7 @@ async def store_extraction(
         site_id=site_id,
         page_url=page_url,
         caller_supplied=caller_supplied,
+        diagnostics=result.diagnostics,
     )
     if not drafts:
         return Stored(outcome, extraction_id, (), result)
@@ -170,13 +172,23 @@ def page_records(
     site_id: SiteId,
     page_url: str,
     caller_supplied: bool,
+    diagnostics: Sequence[str],
 ) -> tuple[FinishedOutcome, tuple[RecordDraft, ...]]:
-    """The page's outcome and the records it keeps: a detail page's one, or a listing's one per row (§4.10)."""
+    """The page's outcome and the records it keeps: a detail page's one, or a listing's one per row (§4.10).
+    `diagnostics` are the extraction's; an unreadable-content signal among them keeps a detail page's record
+    (`content.signals.unreadable`)."""
     if schema.page_kind == "listing":
         return assemble_listing(
             schema, fields, rows, site_id=site_id, page_url=page_url, caller_supplied=caller_supplied
         )
-    outcome, draft = assemble(schema, fields, site_id=site_id, canonical_url=page_url, caller_supplied=caller_supplied)
+    outcome, draft = assemble(
+        schema,
+        fields,
+        site_id=site_id,
+        canonical_url=page_url,
+        caller_supplied=caller_supplied,
+        unreadable=unreadable(diagnostics),
+    )
     return outcome, (draft,) if draft is not None else ()
 
 

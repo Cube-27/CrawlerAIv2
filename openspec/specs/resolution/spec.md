@@ -239,11 +239,18 @@ published values only. Refs: §6, §13.1, D-0354. Enforced by: Pydantic models a
 ### Requirement: Incomplete pages
 A page whose required fields and groups all publish SHALL be `extracted` and complete; otherwise a caller-supplied URL
 stores the record as `partial` and a crawl-discovered URL is `no_match` with no record. Either way, a page none of whose
-required fields or group members (any field, for a schema that requires none) publishes a value read from the page,
-beyond its own address (the `canonical_link` and `final_url` derivations), states no entity of the schema and is
-`no_match` with no record: a maintenance or error page served for the URL publishes prose, never what identifies the
-item. A listing's row states its item only by a row field (the needed row fields, else any row field), never by the
-page fields every row shares. (Previously: a caller-supplied URL kept such a record, even an empty one.) Refs: §10, §23, D-0513, D-0930.
+required fields or group members (any field, for a schema that requires none) has a candidate read from the page,
+published or rejected by resolution (not as another entity's, `not_owned`, or the request URL's, `url_param`), beyond
+its own address (a field whose value is the `canonical_link` or
+`final_url` derivation), states no entity of the schema and is `no_match` with no record: a maintenance or error page
+served for the URL states prose, never what identifies the item. An extraction miss is never `no_match`: a needed
+field's candidate that resolution rejected, or a page whose content the engine cannot read (its extraction raises the
+`closed_shadow_root` or `obfuscated_text` signal, [jobs](../jobs/spec.md) "Job outcome summary"), keeps a
+caller-supplied page's record, `partial`, its fields' reasons as they resolved (`no_candidates` on an HTTP capture is
+the summary's render hint). A listing's row states its item only by a row field (the needed row fields, else any row
+field), never by the page fields every row shares. (Previously: a caller-supplied URL kept such a record, even an
+empty one; then a page with no published needed field was `no_match`, its rejected candidates and unreadable content
+included.) Refs: §10, §23, D-0513, D-0930.
 #### Scenario: Crawl page missing price
 - **WHEN** a crawl-discovered detail page leaves the required `price` missing
 - **THEN** the outcome is `no_match` and no record is stored
@@ -251,6 +258,9 @@ page fields every row shares. (Previously: a caller-supplied URL kept such a rec
 - **WHEN** a batch or scrape URL redirects to a maintenance page whose only published values are its prose as `description` and
   its final URL as `url`
 - **THEN** the outcome is `no_match` and no record is stored
+#### Scenario: Content in a closed shadow root
+- **WHEN** a scrape URL's page holds a custom element with no light DOM and no needed field has a candidate
+- **THEN** the outcome is `partial` with a record whose fields are `missing` with `no_candidates`
 
 ### Requirement: Render-bound fields
 A detail field still `missing` (for any reason but `out_of_stock`) whose source in the site's active config is the

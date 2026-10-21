@@ -82,7 +82,9 @@ def _schema(groups: list[list[str]] | None = None) -> SchemaDef:
 def test_a_complete_page_is_extracted_with_its_published_values() -> None:
     fields = {"sku": _published("A-1"), "gtin": _published("4006381333931"), "mpn": _unpublished()}
 
-    outcome, record = assemble(_schema(), fields, site_id=SITE, canonical_url=URL, caller_supplied=False)
+    outcome, record = assemble(
+        _schema(), fields, site_id=SITE, canonical_url=URL, caller_supplied=False, unreadable=False
+    )
 
     assert outcome == "extracted"
     assert record is not None
@@ -91,28 +93,29 @@ def test_a_complete_page_is_extracted_with_its_published_values() -> None:
     assert record.entity_key == hashlib.sha256(f"{SITE}{URL}".encode()).hexdigest()
 
 
-def test_a_page_stating_no_needed_field_beyond_its_own_address_has_no_record() -> None:
-    """A maintenance or error page served for the URL: prose, and the page's own address, but nothing the record
-    needs read from the page."""
+def test_a_page_with_no_candidate_for_a_needed_field_beyond_its_own_address_has_no_record() -> None:
+    """A maintenance or error page served for the URL: prose, and the page's own address, but no candidate the record
+    needs read from the page. A needed field's candidate resolution rejected is an extraction miss, `partial`, unless
+    it is no evidence about the item (another entity's value)."""
     address = _published(URL).model_copy(update={"derived_by": "final_url", "source_kind": "derived"})
     schema = _schema([["sku", "mpn"]])
     stating = {"sku": _published("A-1"), "gtin": _unpublished(), "mpn": _unpublished()}
+    candidate = _published().chosen
+    assert candidate is not None
 
-    assert assemble(schema, {**stating, "sku": address}, site_id=SITE, canonical_url=URL, caller_supplied=True) == (
-        "no_match",
-        None,
-    )
-    assert (
-        assemble(
-            schema,
-            {**stating, "sku": _unpublished(), "gtin": _published()},
-            site_id=SITE,
-            canonical_url=URL,
-            caller_supplied=True,
-        )[0]
-        == "no_match"
-    )
-    assert assemble(schema, stating, site_id=SITE, canonical_url=URL, caller_supplied=True)[0] == "extracted"
+    def rejected(reason: str) -> FieldOutcome:
+        return _unpublished(reason=reason).model_copy(update={"rejected": ((candidate, reason),)})
+
+    def outcome(fields: dict[str, FieldOutcome]) -> str:
+        return assemble(schema, fields, site_id=SITE, canonical_url=URL, caller_supplied=True, unreadable=False)[0]
+
+    assert assemble(
+        schema, {**stating, "sku": address}, site_id=SITE, canonical_url=URL, caller_supplied=True, unreadable=False
+    ) == ("no_match", None)
+    assert outcome({**stating, "sku": _unpublished(), "gtin": _published()}) == "no_match"
+    assert outcome({**stating, "sku": rejected("invalid")}) == "partial"
+    assert outcome({**stating, "sku": rejected("not_owned")}) == "no_match"  # another entity's value (§8.2 rule 3)
+    assert outcome(stating) == "extracted"
 
 
 # Record confidence (§10)

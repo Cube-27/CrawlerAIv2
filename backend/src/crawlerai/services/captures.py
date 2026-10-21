@@ -135,7 +135,13 @@ async def _replay(
     # The records a page task would store: a listing's rows are deduplicated by their URLs (§4.10). Their entity keys
     # are not returned, so the capture's URL stands in for the task's canonical one.
     _, drafts = page_records(
-        schema, result.entity, result.rows, site_id=capture.site_id, page_url=capture.url, caller_supplied=True
+        schema,
+        result.entity,
+        result.rows,
+        site_id=capture.site_id,
+        page_url=capture.url,
+        caller_supplied=True,
+        diagnostics=result.diagnostics,
     )
     return [
         ExtractedRecord.of_content(draft, mode=result.mode, confidence=record_confidence(schema, draft.field_meta))
