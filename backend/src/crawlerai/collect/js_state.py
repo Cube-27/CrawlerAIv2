@@ -28,31 +28,31 @@ class JsStateCollector:
         return admit("js_state", state_documents(page, diagnostics), diagnostics, page, schema, ctx, others)
 
 
-class _StateDocuments:
-    """The key of a page's state documents, and the diagnostics reading them gave, in `ParsedPage.derived`."""
-
-
 def state_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document]:
     """The page's state documents, decoded: its scripts' (`script_documents`), then its documented JSON attributes'
-    (`content.attr_json`), each addressed as `<element xpath>@<name>` under the `attr` scheme. They are read once per
-    parse (INV-26): a later caller gets the same documents, and the diagnostics reading them gave."""
-    derived = page.derived.get(_StateDocuments)
-    if derived is None:
-        found: list[str] = []
-        derived = ((), (script_documents(page, found) + attribute_documents(page), found))
-        page.derived[_StateDocuments] = derived
-    documents, found = cast(tuple[list[Document], list[str]], derived[1])
-    diagnostics.extend(found)
-    return list(documents)
+    (`content.attr_json`), each addressed as `<element xpath>@<name>` under the `attr` scheme."""
+    return script_documents(page, diagnostics) + attribute_documents(page)
+
+
+class _ScriptDocuments:
+    """The key of a page's script documents, and the diagnostics reading them gave, in `ParsedPage.derived`."""
 
 
 def script_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document]:
     """The page's inline scripts' state documents, decoded, each addressed by its script's XPath, then its Flight
-    stream's (`flight_document`)."""
-    documents = [Document(decode(data), s.xpath) for s in page.scripts for data in script_state(s, diagnostics)]
-    if (flight := flight_document(page, diagnostics)) is not None:
-        documents.append(flight)
-    return documents
+    stream's (`flight_document`). They are read once per parse (INV-26): a later caller gets the same documents, and
+    the diagnostics reading them gave."""
+    derived = page.derived.get(_ScriptDocuments)
+    if derived is None:
+        found: list[str] = []
+        documents = [Document(decode(data), s.xpath) for s in page.scripts for data in script_state(s, found)]
+        if (flight := flight_document(page, found)) is not None:
+            documents.append(flight)
+        derived = ((), (documents, found))
+        page.derived[_ScriptDocuments] = derived
+    documents, found = cast(tuple[list[Document], list[str]], derived[1])
+    diagnostics.extend(found)
+    return list(documents)
 
 
 def flight_document(page: ParsedPage, diagnostics: list[str]) -> Document | None:
