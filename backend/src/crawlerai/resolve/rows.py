@@ -21,7 +21,7 @@ from crawlerai.normalize.base import Ok
 from crawlerai.normalize.dispatch import equal, equality_key
 from crawlerai.resolve.evidence import BELOW_MIN_CONFIDENCE, Calibration, assess
 from crawlerai.resolve.ownership import AGGREGATE_OFFER, EntityGraph
-from crawlerai.resolve.preference import Orders, PageFacts, Resolver
+from crawlerai.resolve.preference import OUTSCORED, Chosen, Orders, PageFacts, Preference, Resolver, source_of
 from crawlerai.resolve.types import DroppedRow, Evidence, FieldOutcome, FieldStatus, RowOutcome
 from crawlerai.schemas.paths import MappedPath, parse_paths
 from crawlerai.schemas.types import FieldSpec, FieldType
@@ -42,6 +42,8 @@ _URL = FieldSpec(type=FieldType.URL)
 # Owner, 2026-10-16 (Appendix A #48): a product without variants has no variant list; the list is published only for
 # two or more variants, and one row's values publish at the top level by the common-value rule (INV-38).
 _MIN_ROWS = 2
+# A rendered DOM value: what the page shows (`Resolver._price_winner`).
+_VISIBLE: Final = "dom"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +61,8 @@ class RowField:
     page_urls: tuple[str, ...]  # request, final and canonical URLs, canonicalized
     # The query parameters by which the page's platform selects a variant on the product's own URL (`Collected`).
     variant_params: tuple[str, ...] = ()
+    # The sub-fields whose stated value the page shows as another (`shown_values`): the stated value, the shown one.
+    shown: Mapping[str, tuple[JsonValue, Candidate]] = field(default_factory=dict)
 
     @property
     def sub_fields(self) -> Mapping[str, FieldSpec]:
@@ -146,7 +150,7 @@ class _Resolved:
     def add(self, row_field: RowField, variant: "_Variant", candidates: Sequence[Candidate], row_of: RowOf) -> None:
         ids = {row.id for row in variant.rows}
         own = [c for c in candidates if row_of(c) in ids]
-        outcome = _resolve_variant(row_field, own, ids, row_of)
+        outcome = _as_shown(row_field, _resolve_variant(row_field, own, ids, row_of))
         keys = [outcome.fields[sub].status for sub in row_field.key]
         # §4.5: a row publishes when at least one key sub-field publishes, and it is the target's own variant.
         reason = _not_own(row_field, outcome) if "published" in keys else "key_unpublished"
@@ -157,6 +161,57 @@ class _Resolved:
         self.reasons.append(reason)
         self.dropped.append(DroppedRow(locators=tuple(row.id for row in variant.rows), reason=reason))
         self.rejected.extend((c, reason) for c in own)
+
+
+def shown_values(
+    fields: Mapping[str, FieldSpec], row_spec: FieldSpec, preferences: Mapping[str, Preference]
+) -> dict[str, tuple[JsonValue, Candidate]]:
+    """The money sub-fields of a row-mapped field whose stated amount the page shows as another: the target's field of
+    the same name and type published the page's visible amount (a rendered `dom` value) over rivals that all state one
+    other amount (`Resolver._price_winner`, the visible price). The page renders that stated amount as the visible one
+    (its tax or unit convention), so a variant stating it shows that price (variants spec); a variant stating any other
+    amount keeps it, since the page shows no rendering of it."""
+    subs = (row_spec.item.fields or {}) if row_spec.item is not None else {}
+    shown: dict[str, tuple[JsonValue, Candidate]] = {}
+    for name, spec in subs.items():
+        top = fields.get(name)
+        same = spec.type is FieldType.MONEY and top is not None and top.type is FieldType.MONEY
+        if same and (pair := _shown_value(preferences.get(name), spec)) is not None:
+            shown[name] = pair
+    return shown
+
+
+def _shown_value(decision: Preference | None, spec: FieldSpec) -> tuple[JsonValue, Candidate] | None:
+    """The one amount the visible value of `decision` outscored, with that value; None unless it is a visible value
+    over rivals of one amount."""
+    if not isinstance(decision, Chosen) or decision.candidate.source_kind != _VISIBLE:
+        return None
+    rivals = [
+        c.normalized.value for c, reason in decision.rejected if reason == OUTSCORED and isinstance(c.normalized, Ok)
+    ]
+    if rivals and all(equal(rival, rivals[0], spec) for rival in rivals[1:]):
+        return rivals[0], decision.candidate
+    return None
+
+
+def _as_shown(row_field: RowField, outcome: RowOutcome) -> RowOutcome:
+    """The row with the page's shown value in place of the stated value it renders (`shown_values`)."""
+    fields = dict(outcome.fields)
+    for sub, (stated, shown) in row_field.shown.items():
+        found = fields.get(sub)
+        if found is None or found.status != "published" or not equal(found.value, stated, row_field.sub_fields[sub]):
+            continue
+        normalized = shown.normalized
+        if not isinstance(normalized, Ok):
+            continue
+        update = {
+            "value": normalized.value,
+            "source_kind": shown.source_kind,
+            "locator": shown.locator,
+            "chosen": shown,
+        }
+        fields[sub] = found.model_copy(update=update | {"basis": normalized.basis})
+    return RowOutcome(fields=fields)
 
 
 def _not_own(row_field: RowField, outcome: RowOutcome) -> str | None:
@@ -258,7 +313,7 @@ def _variants(
     reasons = ["no_row_key"] * len(dropped)
     variants: list[_Variant] = []
     key_fields = {sub: row_field.sub_fields[sub] for sub in row_field.key}
-    for group in linked(key_fields, keyed, keys):
+    for group in _lone_rows(row_field, keyed, keys, linked(key_fields, keyed, keys)):
         variant = _Variant(group, _merged_keys(group, keys))
         if _conflicting(row_field, variant):
             dropped.append(DroppedRow(locators=tuple(row.id for row in group), reason="row_key_conflict"))
@@ -266,6 +321,19 @@ def _variants(
         else:
             variants.append(variant)
     return variants, dropped, reasons
+
+
+def _lone_rows(
+    row_field: RowField, keyed: list[Entity], keys: Mapping[str, _Keys], groups: list[list[Entity]]
+) -> list[list[Entity]]:
+    """The rows as one variant when every source (`source_of`) states one keyed row of the target and their keys do
+    not conflict: a source's one offer of the item is the item's one offer (resolution spec, atomic offers), whatever
+    key each source happens to state it by (one a URL, another a SKU); else `groups`."""
+    sources = {source_of(row.id) for row in keyed}
+    if len(groups) < 2 or len(sources) != len(keyed):
+        return groups
+    merged = _Variant(list(keyed), _merged_keys(keyed, keys))
+    return groups if _conflicting(row_field, merged) else [list(keyed)]
 
 
 def _key_values(

@@ -28,12 +28,23 @@ state different values of a key sub-field listed before it (the preset's `key` r
 two entries of one list (one node's values of one property), of any key sub-field: a list names each item once, so
 two of its entries with other SKUs are two variants whatever barcode they repeat; page and
 target URLs are not key values; a cluster with two values of one key sub-field is dropped `row_key_conflict`, a keyless
-row `no_row_key`. Refs: §10, D-0802, D-0963, D-1181.
+row `no_row_key`. Where every source (resolution spec, Atomic offers) states one keyed row of the target and their keys
+do not conflict, the rows are one cluster whatever key each states: a source's one offer of the item is the item's one
+offer. A published row's money sub-field equal to the one amount the target's visible price outscored publishes that
+visible price instead (the page renders that stated amount as the price it shows, as with tax included); a row stating
+another amount keeps it. Refs: §10, D-0802, D-0963, D-1181.
 Enforced by: property tests (order does not change clusters; different keys never merge; linking equals the pairwise
 rule); active.
 #### Scenario: Joined variants
 - **WHEN** two rows of different lists or sources share a gtin but state different skus
 - **THEN** their cluster is dropped with reason `row_key_conflict`
+#### Scenario: One offer stated by two keys
+- **WHEN** one JSON-LD block states the Product's one Offer by its URL and the product's data call its one variant by
+  its sku
+- **THEN** they are one row, so `variants` is `missing` (`single_row`)
+#### Scenario: A price shown with tax
+- **WHEN** both variants state 100.00 EUR and the visible price 118.00 EUR outscored that amount at top level
+- **THEN** both rows publish 118.00 EUR
 #### Scenario: Siblings repeating a barcode
 - **WHEN** two entries of one list share a gtin but state different skus
 - **THEN** they are two rows
