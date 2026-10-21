@@ -17,8 +17,10 @@ The root of an identity-checked data call's answer (`Entity.requested`, acquisit
 requested item by construction, though it may name it by no identifier the page's markup states (Shopify's product
 JSON holds its sku and barcode on its variants only): it is the page's one root item of its most specific type, when
 the page states exactly one and that root is the page's own (it names no other document than the page's,
-`scope.leads_elsewhere`); of none or several, or another page's item, it stays apart. One of a repeated set of items in
-the markup (a carousel, a comparison table: `repeated`) is another page's item, as intent reads it, and is not counted.
+`scope.leads_elsewhere`); of none or several, or another page's item, it stays apart. It states the product with
+every variant it has, so it never joins a product group's member, whichever variant's identifiers it states as the one
+the page shows. One of a repeated set of items in the markup (a carousel, a comparison table: `repeated`) is another
+page's item, as intent reads it, and is not counted.
 Every pair that agrees joins, so two later entities that agree join even when an earlier one stays apart. Two members
 of product groups never join (two variants sharing a sku are two sizes of one sku, variants spec INV-33), nor does an
 entity join its own ancestor. The merged entity is the group member when there is one, else the first in collector
@@ -213,8 +215,8 @@ def _keyed(eligible: Sequence[Entity], page_urls: frozenset[str]) -> dict[tuple[
 @dataclass
 class _Sets:
     """Disjoint sets of the eligible entities (union-find), each with its head (the entity the others merge into), its
-    members' item URLs and their ids, the ids of their ancestors, and whether a member is a
-    group's variant."""
+    members' item URLs and their ids, the ids of their ancestors, whether a member is a group's variant, and whether
+    one is an identity-checked data call's root (`Entity.requested`)."""
 
     entities: Sequence[Entity]
     ancestors: list[set[str]]
@@ -224,6 +226,7 @@ class _Sets:
     urls: list[set[str]] = field(init=False)
     members: list[list[int]] = field(init=False)
     variant: list[bool] = field(init=False)
+    requested: list[bool] = field(init=False)
 
     @classmethod
     def of(cls, entities: Sequence[Entity], by_id: Mapping[str, Entity], page_urls: frozenset[str]) -> "_Sets":
@@ -236,6 +239,7 @@ class _Sets:
         self.urls = [set(e.item_urls) for e in self.entities]
         self.members = [[i] for i in range(n)]
         self.variant = [e.via == VARIANT for e in self.entities]
+        self.requested = [e.requested for e in self.entities]
 
     def find(self, i: int) -> int:
         while self.parent[i] != i:
@@ -255,9 +259,14 @@ class _Sets:
         self.members[keep] += self.members[drop]
         self.ancestors[keep] |= self.ancestors[drop]
         self.variant[keep] = self.variant[keep] or self.variant[drop]
+        self.requested[keep] = self.requested[keep] or self.requested[drop]
 
     def _joinable(self, a: int, b: int, *, certain: bool) -> bool:
         if self.variant[a] and self.variant[b]:
+            return False
+        # A product data call's answer states the product with every variant it has: not one of a group's variants,
+        # whichever variant's identifiers it states as the one the page shows (`adapters.platforms`).
+        if (self.variant[a] and self.requested[b]) or (self.variant[b] and self.requested[a]):
             return False
         ids_a, ids_b = self._ids(a), self._ids(b)
         if ids_a & self.ancestors[b] or ids_b & self.ancestors[a]:
