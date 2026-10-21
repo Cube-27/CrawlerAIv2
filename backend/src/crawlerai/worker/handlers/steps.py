@@ -295,7 +295,7 @@ async def _learned(engine: AsyncEngine, plan: PagePlan, fetched: FetchResult | T
 
 
 async def keep_page(conn: AsyncConnection, store: ObjectStore, page: Fetched | Ended) -> FetchedPage | Ended:
-    """The fetched page with its capture stored in the task's transaction (`acquire.persist.store_capture`), unless it
+    """The fetched page with its capture stored in the task's transaction (`store_capture`), unless it
     was read from a stored one; a task that ends without a page, as it ends."""
     if isinstance(page, Ended):
         return page

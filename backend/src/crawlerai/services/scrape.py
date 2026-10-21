@@ -414,8 +414,7 @@ async def _run(
     derived = await _derive_reached(engine, work, request, task, page, recent, config)
     extra = await _extract_more(work, task, derived, config, further)
     members, finished = _NOT_FETCHED, _Finished("blocked")
-    if isinstance(page, FetchResult) and recent is None:
-        await learn_fetch(engine, site.id, page)  # site memory, in a transaction of its own (`acquire.memory`)
+    await _learn(engine, site.id, page, recent)
     async with engine.begin() as conn:
         if isinstance(page, FetchResult):
             capture_id = recent.capture_id if recent else await store_capture(conn, fetching.store, page, site.id)
@@ -442,6 +441,13 @@ async def _run(
         **members,
         **derived.formats,
     )
+
+
+async def _learn(engine: AsyncEngine, site_id: SiteId, page: FetchResult | str, recent: Recent | None) -> None:
+    """Remember on the site what a fetch taught (`acquire.memory.learn_fetch`, in a transaction of its own); a stored
+    capture read instead of fetching taught nothing new."""
+    if isinstance(page, FetchResult) and recent is None:
+        await learn_fetch(engine, site_id, page)
 
 
 async def _stored(

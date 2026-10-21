@@ -2,8 +2,10 @@
 (`batch_scrape`, jobs spec): the request members both take, the task's site and fetch policy, its capture and the
 usage its fetches count, the content formats of its page, and the outcome its extraction settles it with.
 
-These steps write in the caller's transaction and never settle the task themselves: a scrape settles it through the
-queue, a worker handler returns the result for the worker loop to settle.
+These steps write in the caller's transaction, but for site memory (`acquire.memory`), which they learn through the
+engine in short transactions of their own, so a rolled-back task leaves what its pages taught. They never settle the
+task themselves: a scrape settles it through the queue, a worker handler returns the result for the worker loop to
+settle.
 """
 
 import logging
