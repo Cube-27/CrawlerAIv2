@@ -12,7 +12,8 @@ site's own defaults there: an `og:title` that names the site (`site_names`) says
 `og:title`, `og:image` and `og:description` are not the entity's. A title that ends in separator segments naming the
 site is read without them, and a title that holds, after words of its own, the words of the page's one top-level
 heading or of a slug in the page URL's path is read as those words: the heading and the slug name the item, the words
-around them are the site's wording ("Buy ... Online").
+around them are the site's wording ("Buy ... Online"). An `og:description` naming the site (its `og:site_name`, else
+the title's site segments) where the item's name does not is the site's summary, not the item's description.
 """
 
 import re
@@ -90,6 +91,7 @@ _READ = (
     }
 )
 _SITE_TITLE = "og: og:title names the site, so og:title, og:image and og:description are not read"
+_SITE_SUMMARY = "og: og:description names the site, so it is not read"
 # The values a site-default block holds about the site rather than the object.
 _SITE_DEFAULTS = (_TITLE, *_IMAGES, _DESCRIPTION)
 
@@ -144,19 +146,48 @@ def _metas(page: ParsedPage) -> list[_Meta]:
 def _without_site_values(metas: list[_Meta], ctx: Context, heading: str | None) -> tuple[list[_Meta], tuple[str, ...]]:
     """The metas the fields read: without `og:title`, `og:image` and `og:description` when the (first) title names the
     site, else with each title read without its trailing site segments, and as the item's name it holds
-    (`named_span`)."""
+    (`named_span`), and without `og:description` when it names the site (`_site_summary`)."""
     title = next((m.content for m in metas if m.property == _TITLE), None)
+    stated = [m.content for m in metas if m.property == _SITE_NAME]
+    site = SiteNames.of(stated, ctx.page_url)
     if title is None:
-        return metas, ()
-    site = SiteNames.of([m.content for m in metas if m.property == _SITE_NAME], ctx.page_url)
+        return _without_site_summary(metas, stated, None)
     if site.names(title):
         return [m for m in metas if m.property not in _SITE_DEFAULTS], (_SITE_TITLE,)
-    return [
-        replace(m, reading=named_span(site.without_site(m.content), heading, ctx.page_url))
-        if m.property == _TITLE
-        else m
-        for m in metas
-    ], ()
+
+    def item(text: str) -> str:
+        return named_span(site.without_site(text), heading, ctx.page_url)
+
+    read = [replace(m, reading=item(m.content)) if m.property == _TITLE else m for m in metas]
+    return _without_site_summary(read, stated or site.site_segments(title), item(title))
+
+
+def _without_site_summary(
+    metas: list[_Meta], names: Sequence[str], item: str | None
+) -> tuple[list[_Meta], tuple[str, ...]]:
+    if _site_summary(metas, names, item):
+        return [m for m in metas if m.property != _DESCRIPTION], (_SITE_SUMMARY,)
+    return metas, ()
+
+
+def _site_summary(metas: Sequence[_Meta], names: Sequence[str], item: str | None) -> bool:
+    """Whether the (first) `og:description` holds, as a run of its words, a name of the site (`og:site_name`, else the
+    title's trailing site segments) that the item's own name does not hold. OGP: `og:description` describes the object
+    and `og:site_name` names the overall site, so a description naming the site is the site's summary ("Shop ... at
+    Example"), which a site writes into every page's default block; a name the item's title holds as well is the item's
+    own word (a maker's store named for its brand)."""
+    description = next((m.content for m in metas if m.property == _DESCRIPTION), None)
+    if description is None:
+        return False
+    words, own = fold_words(description), fold_words(item) if item is not None else []
+    return any(
+        named and _holds(words, named) and not _holds(own, named) for named in (fold_words(name) for name in names)
+    )
+
+
+def _holds(words: Sequence[str], run: Sequence[str]) -> bool:
+    """Whether `run` occurs in `words` as consecutive words."""
+    return any(list(words[i : i + len(run)]) == list(run) for i in range(len(words) - len(run) + 1))
 
 
 # A word: a run of letters and digits (Unicode categories L* and N*).

@@ -163,6 +163,33 @@ def test_an_og_title_naming_the_site_is_no_entity_value() -> None:
         )
 
 
+def test_an_og_description_naming_the_site_is_the_sites_summary() -> None:
+    # OGP: `og:description` describes the object and `og:site_name` names the overall site; a description naming the
+    # site (its `og:site_name`, else the title's site segment) is the site's summary, unless the item's name holds it.
+    def description(*metas: tuple[str, str]) -> list[str]:
+        result = _collect(("og:title", "Steel Kettle 2L | Synthetic Tools"), *metas, schema=DESCRIBED)
+        return [str(c.raw) for c in result.candidates if c.field == "description"]
+
+    summary = ("og:description", "Shop kettles online at Synthetic Tools.")
+    assert description(("og:site_name", "Synthetic Tools"), summary) == []
+    # Without `og:site_name`, the title's trailing segment spelling the host's label names the site.
+    titled = _collect(
+        ("og:title", "Steel Kettle 2L | Example Store"),
+        ("og:description", "Shop kettles online at Example Store."),
+        schema=DESCRIBED,
+    )
+    assert [c.field for c in titled.candidates] == ["title"]
+    own = ("og:description", "A steel kettle that boils a litre in two minutes.")
+    assert description(("og:site_name", "Synthetic Tools"), own) == [own[1]]
+    branded = _collect(
+        ("og:site_name", "Acme"),
+        ("og:title", "Acme Steel Kettle"),
+        ("og:description", "The Acme kettle boils a litre fast."),
+        schema=DESCRIBED,
+    )
+    assert [c.field for c in branded.candidates] == ["title", "description"]
+
+
 def test_a_sale_price_is_the_price_and_the_price_beside_it_the_list_price() -> None:
     # The `product:` namespace: the sale price is the price paid, `product:price` the price it was reduced from.
     list_price = "Offer.priceSpecification{priceType=StrikethroughPrice}.price+priceCurrency"

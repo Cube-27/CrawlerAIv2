@@ -43,11 +43,20 @@ class SiteNames:
     def without_site(self, title: str) -> str:
         """`title` without its trailing separator segments that name the site (`_names_segment`). The first segment
         always stays."""
+        return self._split(title)[0]
+
+    def site_segments(self, title: str) -> list[str]:
+        """The trailing separator segments of `title` that name the site, in title order (`without_site` drops them)."""
+        return self._split(title)[1]
+
+    def _split(self, title: str) -> tuple[str, list[str]]:
         separators = list(_SEPARATOR.finditer(title))
         end = len(title)
+        segments: list[str] = []
         while separators and self._names_segment(title[separators[-1].end() : end]):
+            segments.insert(0, title[separators[-1].end() : end])
             end = separators.pop().start()
-        return title[:end]
+        return title[:end], segments
 
     def _names_segment(self, segment: str) -> bool:
         """A site name, or a segment whose first whole words (runs of word characters) spell the host's label

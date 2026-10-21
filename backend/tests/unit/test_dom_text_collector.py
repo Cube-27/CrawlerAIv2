@@ -94,6 +94,16 @@ def test_main_text_stands_for_a_description_only_an_og_summary_states() -> None:
     assert found["description"] == f"{FIRST}\n{SECOND}"
 
 
+def test_a_legend_is_no_main_text() -> None:
+    # HTML Standard §4.10.16: a `legend` captions a fieldset's group of controls, however long; it is no prose.
+    legend = "Choose the size and the colour of your kettle before adding it to the basket, then pick a delivery day."
+    body = (
+        f"<main><h1>Kettle</h1><fieldset><legend>{legend}</legend><input type=radio name=s></fieldset>"
+        f"<div><p>{FIRST}</p></div></main>"
+    )
+    assert _read(body) == {"description": FIRST}
+
+
 def test_a_section_panel_holding_a_control_gives_its_prose() -> None:
     # A disclosure panel's "more" button beside the prose: the section's text is the panel's prose.
     body = (
