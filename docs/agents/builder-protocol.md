@@ -75,8 +75,9 @@ orchestrator made for your PR (`orchestrator.md`), beside the main clone in `../
 
 ## Merge (orchestrator only)
 
-When your PR is ready (CI green, Sonar gate OK, 0 unresolved threads), report it. Don't merge main on your own unless
-your PR conflicts with it. When the orchestrator says you are next in line and must rebase:
+When your PR is ready (CI green, Sonar gate OK, 0 unresolved threads), report it (a PR that conflicts with `main`
+gets no CI: report the conflict, don't merge `main` yourself; rule 5). When the orchestrator says you are next in line
+and must rebase:
 `git fetch origin && git merge origin/main`, resolve every conflict, rerun the touched tests, push, wait for CI, and
 report `READY TO MERGE #<n> <sha>` again. The orchestrator merges, removes the worktree and closes your tab.
 
