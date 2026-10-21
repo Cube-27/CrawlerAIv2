@@ -5,7 +5,7 @@ import json
 import os
 import uuid
 from collections.abc import AsyncIterator, Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
@@ -19,6 +19,7 @@ from sqlalchemy import delete, insert, select, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
+from crawlerai.acquire import politeness
 from crawlerai.acquire.politeness import HostLimiter, retry_after
 from crawlerai.acquire.rungs import Rungs
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
@@ -234,12 +235,13 @@ def fetch_result() -> Callable[..., FetchResult]:
 
 
 @pytest.fixture
-async def site(engine: AsyncEngine, own_origin: str) -> SiteId:
-    """The site of `own_origin` with a short interval, so a job of its pages, or a page and its API endpoint, run
-    without waiting a second per request."""
+async def site(engine: AsyncEngine, own_origin: str, monkeypatch: pytest.MonkeyPatch) -> SiteId:
+    """The site of `own_origin`, with a short request interval for the test, so a job of its pages, or a page and its
+    API endpoint, run without waiting a second per request."""
+    monkeypatch.setattr(politeness, "DEFAULT_INTERVAL", timedelta(milliseconds=1))
     async with engine.begin() as conn:
         project = select(Project.id).where(Project.name == "default").scalar_subquery()
-        values = {"project_id": project, "host": own_origin.removeprefix("https://"), "crawl_delay_ms": 1}
+        values = {"project_id": project, "host": own_origin.removeprefix("https://")}
         site_id: SiteId = (await conn.execute(insert(Site).values(values).returning(Site.id))).scalar_one()
     return site_id
 

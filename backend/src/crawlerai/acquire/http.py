@@ -1,4 +1,5 @@
-"""HTTP fetch with curl_cffi and Chrome TLS impersonation (acquisition spec), over the shared client (`curl_client`).
+"""HTTP fetch with curl_cffi and Chrome TLS impersonation (acquisition spec), through `curl_client`, with a
+new curl session per fetch.
 
 Redirects are followed by hand so the SSRF guard checks every hop (§4.5), and each request connects only to the
 address the guard checked. Through a proxy pool, which resolves names itself, the guard still checks each hop's host

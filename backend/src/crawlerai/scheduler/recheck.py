@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.acquire.rungs import Rung
 from crawlerai.acquire.types import FetchPolicy
-from crawlerai.db.models import Capture, FetchMethod, PageKind, Site, SiteContract, SiteId
+from crawlerai.db.models import Capture, FetchMethod, PageKind, SiteContract, SiteId
 
 # A contract set back to `http` forgets the browser engine that taught it and its handoff (`acquire.memory`).
 _HTTP: Final = {"engine": None, "handoff": False}
@@ -33,8 +33,7 @@ async def recheck_fetch_method(conn: AsyncConnection, fetch: Rung, *, batch: int
     """Re-check up to `batch` due (site, page kind) memories over HTTP, the longest unchecked first, and return how
     many. `fetch` is the HTTP rung."""
     due = (
-        select(SiteContract.site_id, SiteContract.page_kind, Site.proxy_pool)
-        .join(Site, Site.id == SiteContract.site_id)
+        select(SiteContract.site_id, SiteContract.page_kind)
         .where(SiteContract.method == "browser", SiteContract.checked_at < func.now() - RECHECK_AFTER)
         .order_by(SiteContract.checked_at.asc())
         .limit(batch)
@@ -42,7 +41,7 @@ async def recheck_fetch_method(conn: AsyncConnection, fetch: Rung, *, batch: int
     )
     memories = (await conn.execute(due)).all()
     for memory in memories:
-        method = await _method(conn, memory.site_id, memory.page_kind, memory.proxy_pool, fetch)
+        method = await _method(conn, memory.site_id, memory.page_kind, fetch)
         await conn.execute(
             update(SiteContract)
             .where(SiteContract.site_id == memory.site_id, SiteContract.page_kind == memory.page_kind)
@@ -61,7 +60,6 @@ async def _method(
     conn: AsyncConnection,
     site_id: SiteId,
     kind: PageKind,
-    proxy_pool: str | None,
     rung: Rung,
 ) -> FetchMethod:
     latest_ok = (
@@ -74,6 +72,6 @@ async def _method(
     if url is None:
         return "browser"
     # The page kind `classify` reads: a listing without repeated items is a shell (acquisition spec).
-    policy = FetchPolicy(proxy_pool=proxy_pool, page_kind=kind)
+    policy = FetchPolicy(page_kind=kind)
     # `ok` excludes `shell` and `blocked`: the outcomes that sent the site to the browser (§7.1).
     return "http" if (await rung(url, policy)).block_class == "ok" else "browser"

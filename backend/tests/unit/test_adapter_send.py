@@ -81,14 +81,14 @@ def _request(host: str) -> JsonRequest:
 
 
 async def _allowed(_url: str, _policy: FetchPolicy) -> HostRules:
-    return HostRules(None)
+    return HostRules()
 
 
 def test_a_request_robots_txt_disallows_is_not_sent_and_is_blocked(tmp_path: Path) -> None:
     sent: list[str] = []
 
     async def disallowed(_url: str, _policy: FetchPolicy) -> HostRules:
-        return HostRules(None, Robots("User-agent: *\nDisallow: /\n"))
+        return HostRules(Robots("User-agent: *\nDisallow: /\n"))
 
     send = adapter_send(_fetching(tmp_path, sent, CountingLimiter()), PAGE_HOST, disallowed)
     assert send is not None

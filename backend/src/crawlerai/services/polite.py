@@ -65,15 +65,13 @@ SLOW_DOWN: Final = "slow_down"
 
 @dataclass(frozen=True)
 class HostRules:
-    """The rules a request to a host goes by: the site's interval setting and its robots.txt (None when the policy does
-    not respect it)."""
+    """The rules a request to a host goes by: its robots.txt (None when the policy does not respect it)."""
 
-    crawl_delay_ms: int | None
     robots: Robots | None = None
 
     @property
     def gap(self) -> timedelta:
-        return interval(self.crawl_delay_ms, None if self.robots is None else self.robots.crawl_delay)
+        return interval(None if self.robots is None else self.robots.crawl_delay)
 
     def allows(self, url: str) -> bool:
         return self.robots is None or self.robots.allows(url)
@@ -210,10 +208,10 @@ def rules_in(conn: AsyncConnection, http: Rung, attempts: list[AttemptRecord], t
     async def read(url: str, policy: FetchPolicy) -> HostRules | None:
         site = await site_row(conn, urlsplit(url).hostname or "")
         if not policy.respect_robots:
-            return HostRules(site.crawl_delay_ms)
-        fetch = recording(http, policy, attempts, turns, HostRules(site.crawl_delay_ms).gap)
+            return HostRules()
+        fetch = recording(http, policy, attempts, turns, HostRules().gap)
         robots = await site_robots(conn, site.id, site.robots_snapshot, url, fetch)
-        return None if robots is None else HostRules(site.crawl_delay_ms, robots)
+        return None if robots is None else HostRules(robots)
 
     return read
 

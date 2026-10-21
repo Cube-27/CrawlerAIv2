@@ -25,7 +25,7 @@ from crawlerai.storage.capture_bundle import HeaderList
 
 HOST = "shop.example.test"
 URL = f"https://{HOST}/item/1"
-ONE_SECOND = HostRules(1000)
+ONE_SECOND = HostRules()
 
 
 class Site:
@@ -66,7 +66,7 @@ def _fetch(
 
 def test_robots_txt_that_disallows_the_url_or_cannot_be_read_sends_nothing() -> None:
     site = Site()
-    disallowing = HostRules(None, Robots("User-agent: *\nDisallow: /item/\n"))
+    disallowing = HostRules(Robots("User-agent: *\nDisallow: /item/\n"))
 
     assert _fetch(site, HostLimiter(), disallowing) == Refused(ROBOTS)
     assert _fetch(site, HostLimiter(), None) == Refused(ROBOTS_UNREACHABLE)

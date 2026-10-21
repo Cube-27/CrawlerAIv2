@@ -24,14 +24,14 @@ tasks and ran them one at a time with no deadline.) Refs: §6, D-0006, D-0632, D
 - **THEN** it is recorded `failed` with outcome `timeout` and the job's other tasks complete
 
 ### Requirement: Crawl location pinned per job
-A job SHALL fetch every page from one location, chosen at submit: the request's `fetch.proxy_pool`, else the proxy pool
-of the site of the job's first URL (a crawl's start URL), else none (direct). It is stored in the job's request, which
-its workers read, so no page of the job falls back to its own site's pool, and the job's egress country and basis
-(`job.egress_country`, `egress_basis`, [acquisition](../acquisition/spec.md)) are pinned with it and copied to each
-record the job stores; a site that prices by the visitor's country (a `/en-in/` path) is then read from one place
-throughout. A scrape pins the same way for its one URL. Refs: owner plan 2026-10-19 P8.
+A job SHALL fetch every page from one location: the request's `fetch.proxy_pool`, else none (direct). It is stored in
+the job's request, which its workers read, and the job's egress country and basis (`job.egress_country`,
+`egress_basis`, [acquisition](../acquisition/spec.md)) are pinned with it at submit and copied to each record the job
+stores; a site that prices by the visitor's country (a `/en-in/` path) is then read from one place throughout. A scrape
+pins the same way for its one URL. (Previously: a request without a pool took the `site.proxy_pool` of its first URL's
+site, a column nothing wrote; it is removed.) Refs: owner plan 2026-10-19 P8.
 #### Scenario: Batch over two sites
-- **WHEN** a batch's first URL is on a site with proxy pool `a` and another URL on a site with pool `b`
+- **WHEN** a batch names proxy pool `a` and its URLs are on two sites
 - **THEN** every page of the job is fetched through `a`
 
 ### Requirement: Worker and scheduler roles
@@ -181,21 +181,17 @@ Refs: §13.2, §23, D-0672, D-0674, D-0677, D-1285, D-1382, D-1441.
   found later links to
 - **THEN** no task is added for `https://example.com/p/new`
 
-### Requirement: Fresh extraction and content fingerprint
+### Requirement: Fresh extraction
 Every records task SHALL fetch its page whole and extract it, a recurring run's too: no conditional request is sent and
 no record stored by an earlier task stands for the page (owner 2026-10-21: learning keeps selectors, recipes and
-cookies, never values). Records tasks of `batch_scrape`, `extract` and `crawl` store the page's content fingerprint in
-`url_state` (BLAKE2b of the visible words, nonce-like tokens left out, `recurring/simhash.py`; for a listing, of its
-words and the URLs it links to, in order), with `last_changed_at` moved when the digest differs; the SimHash stored
-beside it reports how far a change moved. Replay never reads `url_state` (INV-10). (Previously: an HTTP 304 to stored
-validators, or an equal content digest, ended the task `unchanged` with no extraction, linking the records an earlier
-task stored; crawl tasks stored no fingerprint.) Refs: §14, D-0637, D-0662, D-0663, D-0952, D-1340.
+cookies, never values). What changed is told per record ("Record versions and change feed", "Page delta"). Replay
+never reads `url_state` (INV-10). (Previously: an HTTP 304 to stored validators, or an equal content digest, ended the
+task `unchanged` with no extraction, linking the records an earlier task stored; then records tasks stored a content
+fingerprint of the page's visible words in `url_state` (`content_digest`, `content_fingerprint`, `last_changed_at`)
+that nothing read; they are removed.) Refs: §14, D-0637, D-0662, D-0663, D-0952, D-1340.
 #### Scenario: Re-run of an unchanged page
 - **WHEN** a page whose text is unchanged is scraped again in a records batch
 - **THEN** it is fetched whole and extracted, and its record holds what this extraction published
-#### Scenario: One-word edit
-- **WHEN** a page's visible text changes by one word and its SimHash stays equal
-- **THEN** its content digest differs and `last_changed_at` moves
 
 ### Requirement: Record versions and change feed
 A record's fingerprint SHALL hash its published values; a record equal to its entity's latest version in fingerprint,

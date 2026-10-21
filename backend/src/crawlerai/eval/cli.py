@@ -204,7 +204,7 @@ async def capture_pages(
             outcomes.append(Skipped(request.n, "robots"))
             continue
         host = urlsplit(request.url).hostname or ""
-        while (wait := await limiter.admit(host, interval(None, rules.crawl_delay))).total_seconds() > 0:
+        while (wait := await limiter.admit(host, interval(rules.crawl_delay))).total_seconds() > 0:
             await sleep(wait.total_seconds())
         result = await fetch(request.url)
         outcomes.append(await store_page(store, schemas[request.schema_name], request, result))

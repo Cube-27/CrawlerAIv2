@@ -23,7 +23,6 @@ def env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
 
 def test_reads_crawlerai_prefixed_environment(env: pytest.MonkeyPatch) -> None:
     env.setenv("CRAWLERAI_LOG_REDACT_URLS", "true")
-    env.setenv("CRAWLERAI_ROLE", "worker")
     env.setenv("CRAWLERAI_EVAL_UI", "true")
 
     settings = Settings()
@@ -31,7 +30,6 @@ def test_reads_crawlerai_prefixed_environment(env: pytest.MonkeyPatch) -> None:
     assert settings.database_url.get_secret_value() == "postgresql+asyncpg://app:pw@localhost:5432/crawlerai"
     assert settings.object_store == "fs:///srv/objects"
     assert settings.log_redact_urls is True
-    assert settings.role == "worker"
     assert settings.eval_ui is True
 
 

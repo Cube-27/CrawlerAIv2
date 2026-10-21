@@ -9,7 +9,7 @@ queue. Its capture is stored, and for `records` it is extracted with what the jo
 not stored: `/v1/jobs/{id}/results` makes them from the capture.
 
 A records task fetches its page whole and extracts it fresh every run, a recurring run's too: no record stored by an
-earlier run stands for it (jobs spec, "Fresh extraction and content fingerprint"; `steps.extract_records`).
+earlier run stands for it (jobs spec, "Fresh extraction"; `steps.extract_records`).
 
 Everything is written in the worker's transaction for the task, so a task that raises rolls back alone and fails no
 other (INV-31). A page that was not reached ends with its outcome (`blocked`, `shell`, `not_found`); a fetch error is a

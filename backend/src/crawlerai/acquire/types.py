@@ -142,7 +142,6 @@ class FetchPolicy(_Frozen):
     browser_timeout_s: PositiveFloat = 45.0
     max_body_bytes: PositiveInt = 10_000_000
     max_decompressed_bytes: PositiveInt = 50_000_000
-    capture_network_json: bool = True  # browser only
     # The request's locale (BCP 47), for the normalizers' context and the browser context's `locale` and `timezone_id`.
     locale_hint: str | None = None
     page_kind: PageKind | None = None  # the kind the task fetches the page as, which `classify` reads
