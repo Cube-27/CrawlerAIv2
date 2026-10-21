@@ -1,8 +1,8 @@
 # CrawlerAIv2 architecture v3: every delivery technology, HTTP by default, browser on block or by selection
 
-**FROZEN 2026-10-19.** The owner's answers to the four open questions are applied in section (g). This text is
-implemented as written, without trial and error; only verification follows implementation. Baseline: `main` at
-`519805d` (#333 and #334 merged; #332 closed unmerged, its commits kept as `pull/332/head`).
+**FROZEN 2026-10-19; rewritten in place 2026-10-21.** The owner's answers to the four open questions are in section
+(g). Every PR in (f) has landed, and the text describes the system on `main`: where an owner decision changed a point
+after the freeze, the point states the current rule and names its row in `owner-decisions.md`.
 Inputs: the owner's research notes, kept outside the repo (the technology inventory; the verification of every
 inventory claim, where every former [U] claim this design rests on is CONFIRMED unless marked **[UNCONFIRMED]**
 below; the mapping notes 1–3), and the former acquisition plan, which this document supersedes.
@@ -84,14 +84,16 @@ which are "blocked" in the owner's sense (the server did not give the page to th
 | `ok` lacking the offer / rows / a requested field | **no** (deleted: `content/render_need.py`) | HTTP |
 | `auth_wall`, `not_found`, redirect classes, `unsupported_media` | no | HTTP |
 
-The `BROWSER_MIN_S=20` budget guard, the site-session handoff (browser cookies to HTTP, challenge cookies stripped,
-one way), block history and the 7-day re-check of `browser` contracts stay as specified.
+The `BROWSER_MIN_S=20` budget guard, the site-session handoff (browser cookies to HTTP, one way, challenge and
+clearance cookies included: owner #76), block history and the 7-day re-check of `browser` contracts stay as specified.
 
-Browser rung (`acquire/browser.py`, Patchright headless Chromium, INV-42..44): one navigation, no request blocking
-(amended 2026-10-21: request routing sends `no-cache` headers no user's browser sends), network capture, caller steps. The ready condition becomes fixed and source-driven:
+Browser rung (`acquire/browser.py`, Patchright headless Chromium, INV-42..44): a persistent profile per site (owner
+#50), one navigation, no request interception (owner #67 (12), removed: request routing sends `no-cache` headers no
+user's browser sends), network capture, caller steps. The ready condition is fixed and source-driven
+(`acquire/browser_wait.py`):
 
 - ready when `DOMContentLoaded` has fired and (a) every `call` endpoint the surface's field sources name has answered,
-  else (b) no data call has been in flight for `_STEP_QUIET_S` (0.5 s); capped at `READY_MAX_S` (3.5 s) after
+  else (b) no data call has been in flight for `STEP_QUIET_S` (0.5 s); capped at `READY_MAX_S` (3.5 s) after
   `load`, whatever is still in flight; listings keep the item-area read. `_ready`'s "DOM states the offer"
   (`usable_content`) test is deleted; `usable_content` stays for classification.
 - the rendered document is serialized **with open shadow roots**: `Element.getHTML({serializableShadowRoots: true,
@@ -104,8 +106,8 @@ Browser rung (`acquire/browser.py`, Patchright headless Chromium, INV-42..44): o
   apply to all captured bodies together).
 - locale: the job's locality (`#333`) sets the context's `locale` and `timezone_id` (Playwright context options the
   owner's P8 asks for; INV-44 is amended to name them as allowed, see (h)). No client hints or extra headers are set
-  (owner #50 and INV-44); the user agent is the browser's own with `HeadlessChrome/` renamed `Chrome/` (owner #71 as
-  amended 2026-10-21, which supersedes decision 1 in (g)).
+  (owner #50 and INV-44); the user agent is the browser's own with `HeadlessChrome/` renamed `Chrome/` (owner #71,
+  decision 1 in (g)).
 
 ### a.4 Sources: readers over the capture
 
@@ -177,8 +179,11 @@ site string (C3). The full list with scope is in (b); the readers in scope now:
    exclusions added in (d).
 8. **Config steps** (`collect/config.py`): the active config's `FieldSteps` (xpath/css/jsonld/jsonpath/regex/attr)
    read directly, as today; a `jsonpath` step's `source` gains `attr`, `rsc` and `fragment:<n>` addresses (PR 5).
-9. **Role C** (`llm/roles/c_extract.py`): after resolution, once, for missing required fields only, grounded
-   (INV-12); never the default extractor; product-scoped (#332). Unchanged place in the pipeline.
+9. **Role C** (`llm/roles/c_extract.py`): after resolution, once per page, for the missing fields the llm spec's "When
+   role C is asked" names (on a detail page optional ones included, owner #67 (3); in `active` mode only fields the
+   config neither runs nor lists as absent; never an object or a list of objects, whose sub-fields one span cannot
+   hold), and for a listing as the listings spec states; grounded (INV-12); never the default extractor;
+   product-scoped (PR 2c). Unchanged place in the pipeline.
 
 ### a.5 Field resolution and output
 
@@ -278,7 +283,7 @@ reason; **report** = detected and named in page diagnostics and the job summary 
 | 4a | XHR/fetch JSON, GraphQL incl. persisted queries | capture (exists) + locate `call` recipes | now (PR 5) | auth/CSRF headers: recipe only with a caller-supplied header by reference; otherwise `browser`-bound |
 | 4a | gRPC-web | — | report | binary framing, protobuf schema unknown; `application/grpc-web*` content type reported |
 | 4b | WebSocket / SSE | — | report | browser notes an opened socket/EventSource; fields are `browser`-bound; no protocol client |
-| 4c | Service-worker cache | fresh context per job+site (exists); since 2026-10-21 a persistent profile per site (owner #50 amended), whose HTTP cache and service workers are deleted before each launch | now (exists) | first-visit fetch bypasses an existing cache (CONFIRMED); within one launch (idle up to 60 s) a later page may be served by the site's service worker |
+| 4c | Service-worker cache | a persistent profile per site (owner #50), whose HTTP cache and service workers are deleted before each launch | now (exists) | first-visit fetch bypasses an existing cache (CONFIRMED); within one launch (idle up to 60 s) a later page may be served by the site's service worker |
 | 5 | Declarative shadow DOM | DSD flatten pre-pass | now (PR 4) | CONFIRMED |
 | 5 | Open imperative shadow roots | `getHTML` serialization in the render | now (PR 5) | CONFIRMED; 0.186% of page loads |
 | 5 | Closed shadow roots | — | report | needs an `attachShadow` hook before page scripts (init script, INV-44); 0.059% of loads |
@@ -295,8 +300,8 @@ reason; **report** = detected and named in page diagnostics and the job summary 
 | 12 | Consent walls | nothing over HTTP (content is in the HTML); overlays affect only browser steps (`click_intercepted`) | now (exists) | no CMP cookie setting, no clicking (principles) |
 | 12 | Paywall / age gate / login | `auth_wall` (401) exists | report | structural gate detection is a heuristic; the caller's own cookies (exist) are the way through |
 | 12 | 451 region block | `blocked` with challenge label `legal`, outcome `geo_blocked` | now (PR 4) | RFC 7725 |
-| 12 | Anti-bot vendors | impersonated TLS/HTTP (exists), structural + signature labels (exist), block history (exists), residential pools as configured proxy pools (exist, untestable now), customer keys/cookies/proxies (exist) | now | no user-agent override (decision 1) |
-| 13 | Customer-supplied access | request context (exists); recipe credential **references** (PR 5); `proxy_pool` per site (exists) | now | product feeds / Merchant feeds **later** (a feed is another surface) |
+| 12 | Anti-bot vendors | impersonated TLS/HTTP (exists), structural + signature labels (exist), block history (exists), residential pools as configured proxy pools (exist, untestable now), customer keys/cookies/proxies (exist) | now | the user agent is the browser's own with its headless token renamed (owner #71); no other header is set |
+| 13 | Customer-supplied access | request context (exists); recipe credential **references** (PR 5); the request's `fetch.proxy_pool`, pinned per job (exists; no per-site pool) | now | product feeds / Merchant feeds **later** (a feed is another surface) |
 | 13 | Sitemaps | `crawl/sitemaps.py` (exists) | now | — |
 
 Platform data endpoints (verification §1b): only Shopify Ajax product and WooCommerce Store API are public and
@@ -476,7 +481,7 @@ code are deleted with it; no shim, alias or compatibility branch remains.
 | `acquire/memory`: `needs_render`, `needs_xhr`, `needs_traversal`, `settle_on`, `Coverage` learning from lacking renders, `lesson` for `forced`; `db/models.SettleOn`; `site_contract` columns `settle_on`, `needs_render`, `needs_xhr`, `needs_traversal` (edit `0001_baseline`) | contract = method + handoff + platform; block history unchanged | 2a |
 | `acquire/browser._ready`'s `usable_content` branch and `FetchPolicy.settle_on` | fixed ready condition with located endpoints | 2a / 5 |
 | `resolve/page_state.render_could_show`, `SCRIPT_RENDERED`; `resolve/types.FieldStatus` reason `script_rendered` | `interaction_required/render_bound` from field sources | 2b |
-| `render_fields` in `services/scrape.py`, `batch.py`, `crawl.py`, `schedules._BATCH_MEMBERS`, `worker/handlers/steps._RENDER_FIELDS`, `RENDER_FIELDS_DESCRIPTION`, `MAX_RENDER_FIELDS`, OpenAPI, `sdk/python`, `sdk/typescript`, `frontend/src/api/field.ts` picker | `render` member | 2b |
+| `render_fields` in `services/scrape.py`, `batch.py`, `crawl.py`, `schedules._BATCH_MEMBERS`, `worker/handlers/steps._RENDER_FIELDS`, `RENDER_FIELDS_DESCRIPTION`, OpenAPI, `sdk/python`, `sdk/typescript`, `frontend/src/api/field.ts` picker | `render` member | 2b |
 | `resolve/preference._price` always-publish-best tie rule (main) | #334 `_price_winner` | merge #334 |
 | `config_ir/finds.py` as a role-C-only write-back (#332 closed unmerged, `pull/332/head`) | `config_ir/locate.py` for every source | 2c / 5 |
 | `config_ir/api_recipe/model.CREDENTIAL_FIELDS` refusal as absolute | credential **references** to caller-context headers | 5 |
@@ -484,6 +489,28 @@ code are deleted with it; no shim, alias or compatibility branch remains.
 | Owner-decision rows #49 (render on no offer data) and #54 (render on no rows) as operative rules | the 2026-10-19 framework; rows marked superseded in `owner-decisions.md` | 1 |
 | the former acquisition plan's P3 "absent signals → browser", P2 "target wait condition", P4 "needs" (owner's notes) | this document | 1 (notes archived) |
 | `openspec/backlog.md` phases 1–5 text; `OPEN_QUESTIONS.md` row 10 (proxy pools) as open | (h) | 1 |
+
+Deleted by the handover plan (2026-10-21), each in the PR named:
+
+| Deleted | Superseded by | PR |
+|---|---|---|
+| conditional GET (`recurring/conditional.py`, `Validators`, the HTTP rung's conditional form), standing-record reuse (`standing_record`, `standing_listing`, `stand_for_listing`, `stored_validators`, `record_fetch`), the `unchanged` task outcome, `url_state` columns `etag`, `last_modified`, `standing_task_id` | every records task fetches and extracts its page whole (jobs "Fresh extraction"; owner #40, #60 as superseded) | #376 |
+| the browser rung's request routing and blocking, its lists and the per-site opt-out `load_all_resources`; the browser's user agent and client hints on a site session's HTTP and JSON requests | no request interception (owner #67 (12) removed); the HTTP rungs keep their own identity | #393 |
+| the `url_state` content fingerprint (`recurring/state.py`, `recurring/simhash.py`, its columns), `FetchPolicy.capture_network_json`, the `CRAWLERAI_ROLE` setting, the site row's `proxy_pool` and `crawl_delay_ms`, classify helpers without a caller | nothing read them; a job's pool is the request's `fetch.proxy_pool` | D2 #396 |
+| the in-repo golden-set machinery: the eval package, router, CLI commands and labeling screens, `eval_page` and `eval_run`, `resolve/calibrate.py`, the eval UI setting, the `c_prefill` prompt kind | the e2e run over the eval set kept outside the repo (owner #79); fitted files stay frozen | D1 #397 |
+| test-only code under `src/` (the fake LLM provider, the schema subset checker, `extract_task`), the agent-tooling script tests | `tests/support/`; the scripts stay | D3 #398 |
+| each module's own document and item URL comparisons, `row_url_fields` | `normalize/url_key.py` (`document_key`, `item_key`), the one item-URL predicate `is_item_url` | B1 #399 |
+| a worker task's one transaction from fetch to commit | site memory in short transactions of its own; the fetch before the task transaction | A3 #400 |
+| each normalizer's own page-locale reads (`context_languages`, money's page languages and territories, location's country table) | `normalize/locales.py` | B2 #401 |
+| a variant row's visible amount (`RowField.shown`, `shown_values`), four copies of the visible-amount test, two repeat helpers | a row keeps its stated amount (owner #78); `is_visible_amount`; `content/repeats.py` | B3 #402 |
+| the challenge-cookie filter (`challenge_cookie`, `cookie_value_markers`), the per-fetch decrypt of the stored state, the seeding of kept profiles | one cookie rule (owner #76) | A1 #403 |
+| the text helpers' copies (cut, summary, whitespace, word folding) | `normalize/strings.py` | B4 #404 |
+| the listing rung's own browser per call, the session-wide context recycle, each rung's own render finish | listing renders through the shared browser; one render finish | A2 #405 |
+| the image policy's copies across URL, preference and supersede code | `normalize/images.py` | B5 #408 |
+| the scrape's and the worker's duplicate cache reads, failure mappings and record steps; `services/scrape_steps.py` | `services/page_run.py`; `scrape_request.py`, `page_store.py`, `page_formats.py` | A4 #409 |
+| repeated body decodes (`decode_body`) | the capture bundle's decoded text, one platform fingerprint per fetch | A5 #410 |
+| the per-file DB test stand-ins and cleanups | `tests/db/support.py`, one engine per worker | T1 #413 |
+| the SDK digest check (`tools/sdk_digest.py`, `sdk/openapi.sha256`) | the `sdk` job regenerates both SDKs and compares | T3 #419 |
 
 Kept deliberately: block history and browser-first-after-2-blocks (it is "browser when blocked" with memory),
 `BROWSER_MIN_S`, site-session handoff, platform fingerprints, identity check, admission rule, item layer, calibration,
@@ -499,7 +526,8 @@ any site, C3/C9); CI only; no live fetches, no browser in tests except where an 
 extended; property tests via Hypothesis where the check is an invariant. Sizes are net lines of code excluding specs
 and generated SDK files.
 
-Already on `main` (519805d): #334 price accuracy (d.3) and #333 locale normalize (declared-locale readings,
+Every PR below has landed on `main`; the files each names are those it changed, and later refactors moved some of them
+((e), second table). Before PR 1: #334 price accuracy (d.3) and #333 locale normalize (declared-locale readings,
 `in_language`, egress country, per-job locality). Browser `locale`/`timezone_id` from the job locality is not in #333
 and lands in PR 2a. #332 is closed unmerged; PR 2c re-lands its kept parts from `git fetch origin pull/332/head`.
 
@@ -654,13 +682,14 @@ resource types seen, counts only), `services/job_outcomes.py` (per-signal counts
 spec delta, `tests/unit/test_signals.py` over fixtures (one per signal).
 Acceptance: each fixture raises exactly its signal; a plain page raises none; the summary shape is in the OpenAPI.
 
-No browser-identity PR: decision 1 keeps owner #50 and INV-44 (no user-agent or header override). Superseded
-2026-10-21: owner #71 as amended renames the user agent's headless token.
+No browser-identity PR: the user agent is the browser's own with `HeadlessChrome/` renamed `Chrome/` in the context
+(owner #71); INV-44 sets no other header.
 
 Order: 1 → 2a → 2b → 2c → 3a → 3b → 3c → 4 → 5 → 6 → 7 → 8. PRs 2c/3a/3b/3c/4 are independent of each other and
 may run in parallel after 2b; 5 depends on 2a/2b/2c/3c; 6 and 7 depend on nothing after 1 and may run in parallel
 with 2–5.
-Verification after everything: the owner's fixed URL list run once (C1 first score), then fresh batch 3.
+Verification: the e2e run over the eval set (C1); a claim that a change generalizes rests only on a fresh batch's
+first score.
 
 ---
 
@@ -669,13 +698,11 @@ Verification after everything: the owner's fixed URL list run once (C1 first sco
 The four questions the principles and the code did not settle, answered by the owner on 2026-10-19 and recorded as
 owner decisions #71–#74 (the framework itself is #70). No question is open.
 
-**Decision 1 — browser identity: no user-agent override** (owner #71). The owner's answer: follow the Patchright
-documentation, whose best-practice setup says not to add custom browser headers or a user agent (patchright 1.63.0,
-the pinned version). Owner #50 and INV-44 stand unchanged. The measured header-level block share (Gundelach et al.
-2026, Table 6) is accepted as a cost: a page blocked by a header-checking vendor stays `blocked` with its label, and
-the owner's residential proxies and customer-supplied access are the way through. No PR. Superseded 2026-10-21 by owner #71 as amended:
-the context's user agent is the browser's own with `HeadlessChrome/` renamed `Chrome/`; client hints and headers
-stay unset.
+**Decision 1 — browser identity: the browser's own user agent, headless token renamed** (owner #71). The context's
+`user_agent` is the browser's own with only `HeadlessChrome/` replaced by `Chrome/`, never the `--user-agent` launch
+switch; client hints and every other header stay the browser's own (owner #50, INV-44). A page blocked by a
+header-checking vendor stays `blocked` with its label; the owner's residential proxies and customer-supplied access
+are the way through.
 
 **Decision 2 — a challenge-free JavaScript shell renders once automatically** (owner #72). An HTTP 200 document with
 no text and no links and no vendor or structural challenge is retried in the browser once per page (a.3 table); the
@@ -699,8 +726,8 @@ the documented `schema_org` path works; the schemas spec lists those paths as th
 
 PR 1 (docs freeze) adds this document to `openspec/design/`, moves the whole documents marked *archived* below to
 `openspec/archive/`, records the owner's decisions and updates pointers. Every spec section below is rewritten by the
-PR named in (f) that implements it (spec delta in the same PR; "previously" sentences kept per the specs' convention);
-until that PR lands, this document governs where the spec differs.
+PR named in (f) that implements it (spec delta in the same PR; the specs state only current behaviour, and what
+they used to state is kept in a dated section of `openspec/decisions/log.md`).
 
 | Document | Section | Change |
 |---|---|---|
@@ -709,7 +736,7 @@ until that PR lands, this document governs where the spec differs.
 | | "Data calls" | companion call always for fingerprinted documented platforms (decision 3); `call` field sources; eager fragment calls; credential references |
 | | "HTTP and browser rungs" | fixed ready condition; open-shadow serialization; captured body types |
 | | "Network JSON capture" | → "Network body capture": JSON, `text/x-component`, same-site `text/html` fragments |
-| | "Patchright's documented browser setup (INV-42..44)" | allow context `locale`/`timezone_id` (owner P8); no user-agent clause (decision 1) |
+| | "Patchright's documented browser setup (INV-42..44)" | allow context `locale`/`timezone_id` (owner P8); the user-agent rule of owner #71 (decision 1) |
 | | "Structural outcome classification" | `unsupported_media`; 451 label `legal` |
 | | "Acquisition candidates stay unbuilt" | unchanged list (residential proxies remain unbuilt beyond pool config) |
 | `openspec/specs/extraction/spec.md` | "Structured-data collectors" | OG commerce tags; platform answer members; preset predicates |
@@ -735,7 +762,8 @@ until that PR lands, this document governs where the spec differs.
 | `.claude/skills/verify-money` | model | minor-unit property; per-unit/per-period never `price` |
 | the former acquisition plan (owner's notes, outside the repo) | whole | superseded; archived beside the other notes |
 
-Kept as is: `openspec/decisions/log.md` (archive, append-only, closed since 2026-10-19), `openspec/decisions/README.md`,
+Kept as is: `openspec/decisions/log.md` (archive, closed to new entries since 2026-10-19; it holds the specs'
+superseded text in dated sections), `openspec/decisions/README.md`,
 `openspec/conventions/ENGINEERING.md` and `DESIGN.md`, `openspec/specs/variants`, `evaluation`, `identity-and-intent`,
 `llm` (role C's place is unchanged; the locate run uses it as learning does), `frontend` (except the render picker
 copy), `.claude/skills/verify-worker-queue`. The PR procedure is `docs/agents/builder-protocol.md`.

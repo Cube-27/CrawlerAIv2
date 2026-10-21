@@ -1303,3 +1303,293 @@ archived ARCHITECTURE.md.
   C included).
 - Why: memory is advisory and need not be atomic with the task; the tasks of one crawl run side by side.
 - Reversible: yes
+
+## Superseded spec text (moved 2026-10-21)
+
+The "(Previously …)" clauses the capability specs carried until 2026-10-21, moved here so each spec states only the
+current behaviour (handover plan X1). Each item names the spec and the requirement it stood in, and says what that
+requirement used to state.
+
+### acquisition
+
+- "Pure fetch, separate persistence": `site.fetch_method`, one per site.
+- "Browser on block or by field source": an HTTP `ok` page was also rendered when a cheap render check,
+  `services/scrape_steps.RenderNeed` and `content/render_need.py`, found no sign of a required `money` field's offer, a
+  listing's items fewer, hidden or under-listed, or the request named `render_fields`; a detail page was rendered when a
+  full collector pass found no Offer; a listing when its extraction gave no rows; an HTTP timeout was not retried in the
+  browser.
+- "Acquisition contract and block history": `site_fetch_method` held only `http` or `browser`; a site session refused
+  before any `ok` kept its site from opening another for 30 min, in process memory only; two refused HTTP requests
+  started browser-first whether or not the browser passed; the contract also held a learned wait condition `settle_on`,
+  what the browser was needed for `needs_render`, `needs_xhr` and `needs_traversal`, and a render forced by
+  `render_fields` taught nothing.
+- "Data calls": the call was sent only for a page about to be rendered for lacking what the caller reads, and the render
+  was skipped when the joined page no longer lacked it; no field source named a call.
+- "HTTP and browser rungs": a listing scrape with browser actions launched a driver and browser of its own outside the
+  cap, and one profile's crash or 200 pages or 30 min restarted the whole session; every resource loaded, and the
+  interstitial wait had no absolute bound; the settle wait had none but the fetch's budget, a browser was launched per
+  fetch outside the worker, and the HTTP timeout was 30 s; every fetch had a fresh context, only images, fonts and media
+  were blocked, and a page was read after `load` once its DOM was unchanged for 2 s or the network idle, at most 5 s
+  later, up to 3 s more while a data call was in flight; then by a learned wait condition, `settle_on`, a detail page's
+  DOM stating its offer (`classify.usable_content`) or a data call ended, a listing at the wait's end; no endpoint was
+  named, and the document was read as `page.content()`, without shadow roots; images, fonts, media, pings and the
+  EasyList and EasyPrivacy servers were blocked through Playwright's request routing, unless a site loaded every
+  resource; one browser per process rendered in incognito contexts, a job's pages of a site sharing one, with a 1280x720
+  viewport and the WebRTC policy as a launch switch Chromium 153 ignores.
+- "Network body capture": every fetch and XMLHttpRequest call held the read; only JSON and Flight bodies were kept.
+- "Structural outcome classification (INV-24)": the rules parsed the raw bytes, and a non-UTF-8 attribute raised.
+- "Public targets only (INV-16)": a pool had one endpoint.
+- "Proxy pools": no rung recorded `proxy_bytes`.
+- "Cookies stay inside one fetch (INV-29)": challenge and clearance cookies were never kept nor replayed, sessions were
+  keyed by host, and the stored state seeded every browser context and HTTP fetch; before that, a vendor's clearance
+  cookies were replayed when its signature called them portable; every browser fetch had a fresh context; then a job's
+  pages of a site shared an incognito context in one process; a session carried the browser's user agent and client
+  hints onto the HTTP and JSON rungs' requests.
+- "Stored cookie state": keyed by `site.host`, challenge and clearance cookies dropped, read by every browser fetch and
+  by HTTP and JSON fetches, written by any browser `ok`, and cleared by any `blocked` fetch.
+- "robots.txt": honoured by default, unless the job recorded a `respect_robots=false` override with a
+  `robots_override_reason`.
+- "Per-site rate and backoff": four front-ends, with three back-off rules; the rate and the hold per process, robots.txt
+  unpaced.
+- "Capture contents and the fetch CLI": no item areas.
+- "Acquisition candidates stay unbuilt": no authenticated crawl, no browser action typed, and only a listing scrape's
+  existed.
+- "Patchright's documented browser setup (INV-42, INV-43, INV-44)": no user-agent override at all, so every scope sent
+  `HeadlessChrome`.
+- "Listing browser actions": only a scrape that asked for them.
+- "Challenge labels": no stand-in markers.
+- "Caller request context": captures matched by context names alone.
+
+### adapters
+
+- "Fallback to the page rungs (INV-40)": declined in each process's memory.
+- "Polite adapter requests": the page host's rules were read again.
+- "Shapes read as schema.org nodes": an adapter's entities carried no identity and could not merge with the page's
+  JSON-LD; a split text was read from its first member only, and Personio's sections were joined into the recorded
+  answer.
+- "Greenhouse and Lever adapters": apply links were not mapped.
+- "Shopify adapter": the first 250 products, and no locale-prefixed URL; a shop of several currencies was served without
+  prices; an answer with zero prices was served; the adapter served a collection before its page was fetched, with every
+  product of the collection up to the row cap, whatever page the URL asked, and declined a URL with a query; the answer
+  then replaced the fetched page as the capture, and a redirect to the `www` host was not served.
+- "Shopify values": no shown variant, so an unknown `?variant=` id left the variants' Offers contending; the answer's
+  top-level `price` only, read without its Offer when `price_varies`; no currency member; the product JSON's
+  `featured_image` only and no `description`; `available: true` read as `InStock`.
+- "Workday adapter": the first page of 20 only, and career sites on the platform's hosts only; row URLs without the
+  page's locale.
+- "Oracle Recruiting Cloud adapter": the first page of 25 only.
+- "Referral from a tenant's own host": the page was rendered first, and only an `ok` page was asked; links referred a
+  page whatever its schema read.
+- "BambooHR, Teamtailor, UKG Pro, Personio and ADP adapters": always `PostedDate`.
+- "Recipe model": `headers` was a name-to-value map and a credential header was refused outright.
+- "Recipe discovery and binding": a constant query value was always a literal.
+- "Headers proven by replay": no context header was tried.
+- "Held-out validation": such an error failed the learning run.
+- "Recipe politeness and pagination": the worker's tasks served a listing recipe's first page only.
+
+### extraction
+
+- "Cleaned text and visibility index": every element's `value` attribute was visible; links and images were not
+  recorded; a concealed wrapper around the page's title and form hid them; a concealed main landmark content without the
+  document's `h1` stayed hidden.
+- "Structured-data collectors": Open Graph read `product:price` alone, whatever the money field's price role; an `image`
+  written as an ImageObject was an invalid value; an `og:description` naming the site was the item's description; one
+  `og:image` was a list of images.
+- "Source documents": a fetched answer was read only as a frame's.
+- "Source documents": references were kept as written.
+- "Embedded JSON state and XHR admission": only a row owning a value was an entity.
+- "Label vocabulary": a label matched only the field's name or schema.org property; a list field had no labels.
+- "Structural DOM values": one value repeated in many places was read.
+- "Structural DOM values": labels were only names, and other items' content was read; `src` was read before `srcset`,
+  and beside a `1x` candidate; lazy sources, hidden slides and renditions in the path were not read; no list of images
+  was read; a recommendation card that was not one of two or more sibling cards was read; an other item's structured
+  price counted as stated, so its card was read; struck text was `s` and `del` only, and an amount per unit or per
+  period was a price candidate; a page without a main landmark had no main image and no gallery; a stated file in
+  tangential content, a `noscript` fallback or an empty-`alt` image was no main image, slides beside a caption block or
+  outside the main image's tag path, or linking to a page about their image, were no gallery.
+- "No generic DOM heuristics": typed value spotting was read only by the item layer.
+- "Page content formats": the group with the most structural evidence was chosen by the format itself.
+- "DOM description block": any image made a block no prose, an element-valued description was never continued, and the
+  main text was the longest block whatever it held; continuation stopped at the element's wrapper, and a section panel
+  holding a button gave no text; a `legend` was prose.
+
+### frontend
+
+- "Showing extraction results (INV-22, UI side)": an uncalibrated badge on every field.
+- "Layout never shifts on interaction": Schema's error line only.
+- "Playground modes and command bar": five modes, no Search.
+- "Inputs and settings mirror the request DTOs": no Max rows.
+- "Data screens": no reject, and no draft limit field.
+- "Schedules screen and Schedule this": no Edit, no Schedule this run.
+- "A listing's page fields and why it has no rows": each `no_rows: <cause>` had a sentence; the reason was `no_rows:
+  not_asked`.
+
+### identity-and-intent
+
+- "Entity identity, intent and ownership": an IRI joined entities of one most specific type only.
+- "Entity identity, intent and ownership": alternates by language named other documents.
+
+### jobs
+
+- "Queue, leases and retries": a vendor block was retried once even after the browser met it, a 429 to 3 attempts; a
+  vendor block was terminal; a worker claimed 10 tasks and ran them one at a time with no deadline.
+- "Crawl location pinned per job": a request without a pool took the `site.proxy_pool` of its first URL's site, a column
+  nothing wrote; it is removed.
+- "Worker and scheduler roles": it created no jobs; schedules were §22.
+- "Settings pinned at submit (INV-28)": "Not built yet: LLM settings are not pinned, D-0631."
+- "Task failure isolation (INV-31)": the whole task, fetch and extraction included, ran in its transaction, which held
+  the site's contract row from the fetch to the commit.
+- "Batch scrape, extract and budgets": a crawl took no `budget` of its own.
+- "Page outcomes": `unchanged`, a page a stored record stood for.
+- "Job outcome summary": no per-field counts or hint; no signal counts; no hint for a listing that listed nothing.
+- "Job endpoints": `include` took only `metadata`; no `fetch` member.
+- "Event stream and webhooks": only the job's summary, when it ended, in 3 attempts; ended rows were never deleted.
+- "Crawl frontier and page-kind rules": only the start page's redirect target was kept out; subdomains needed an
+  `include`.
+- "Fresh extraction": an HTTP 304 to stored validators, or an equal content digest, ended the task `unchanged` with no
+  extraction, linking the records an earlier task stored; then records tasks stored a content fingerprint of the page's
+  visible words in `url_state` (`content_digest`, `content_fingerprint`, `last_changed_at`) that nothing read; they are
+  removed.
+- "Record versions and change feed": the fingerprint hashed the required fields only, so a changed optional value kept
+  the earlier version.
+- "Listing diff and gone URLs": page URLs only, on the start URL's host.
+- "Request context and actions per page": the values stayed in `job.request` after the job ended; captures matched by
+  context names alone; a task read its stored capture apart from a scrape.
+- "Crawl strategy and best-first scoring": by priority, then score across all jobs.
+- "Recurring schedules (INV-46)": such a request was stored with its values as `**********`, which a run then sent.
+
+### learning-configs
+
+- "Config IR": the reference held the name only; no field named its source.
+- "Portable steps": any JSONPath starting with `$`.
+- "Engine executor": a structured value was taken as written; a row step selected elements only.
+- "Locate run": only pages with a record were sampled and counted, so a surface whose every listing page listed nothing
+  never started a locate run.
+- "Induction, then role A synthesis": induced URL steps resolved their reference.
+- "Held-out validation and corroboration": rows were compared by position and only when the counts were equal.
+- "Activation and active-mode extraction": no reject.
+
+### listings
+
+- "Item groups (segment)": role C's item text read it too; a `menubar`, `menu` or `search` landmark was content; a
+  section of fewer than `MIN_ITEMS` items was no group, and each larger section a group of its own.
+- "Rows from blocks (align)": a card linking to its item and to an author or vendor page gave no item URL unless a
+  heading or most of its text held the item's link; a category or city hub listing the page was rows; a section-level
+  group whose sections held different lists made each list an item's own, its links no item's; a stated name holding the
+  heading, the price and the colours was the name; a link's line was the whole name where the card stated it over that
+  line and the next; a stated name whose leading words stood as a line apart from the rest named nothing.
+- "Stated rows and blocks (bind)": the blocks of one group only; a bound block's amount that disagreed with a row's was
+  dropped unless only an adapter stated the row, and a block's several amounts joined only an option equal to the row's;
+  a featured copy or a strip after the pager was read as a section; every structured list gave rows.
+- "Rows from captured calls": role C's rows replaced them; a locate run located no rows.
+- "Rows from page state": no rows, D-1774; the paths were induced on every page only; any rendered link, the site's
+  menus included, grounded an item URL; every array read gave rows; a menu tree whose entries a footer outside the
+  chrome repeated gave rows.
+- "Row item URL": the published row URLs dropped them too.
+- "Row item URL": the record row key and the listing diff took a field as the item URL only when every alternative was
+  `url`, so such a row was keyed by its position; and the align, bind, state-row, scope, row and derive steps each
+  compared URLs by their own rule: all trailing slashes or one, scheme or not, raw or canonical query.
+- "Role C rows": role C was asked for rows when the listing had none, and its rows were placed on blocks by their links
+  or replaced rows read from blocks alone; a nested row was read without its enclosing item's text.
+
+### llm
+
+- "Grounded values (INV-12)": a money claim spaced otherwise than the text was dropped.
+- "Grounded values (INV-12)": any occurrence grounded, a part of a word or an address included.
+- "Grounded values (INV-12)": only text spans.
+- "Role C input, claims and candidates": a detail page's text carried no ids, and its claims were spans only; it read
+  the whole page's text, other items' cards included, and an ungrounded field's reason was `no_candidates`.
+- "Role C value checks": a span across two runs was taken
+- "Role C value checks": taken
+- "Role C value checks": any grounded span was taken; a place under a remote label was taken without it.
+
+### normalization
+
+- "Context is page and request evidence only": every alternate link's `hreflang`.
+- "Context is page and request evidence only": each normalizer read its own subset of these, the request's locale beside
+  the page's, and two country tables.
+- "Decline rather than guess (INV-06)": an ambiguous currency sign declined.
+- "money": a sign several currencies share was `Ambiguous`, no sign was `Invalid`, a page currency never supplied a
+  missing sign, the locale settled a sign at full confidence, and a sign with a full stop denoted only its own symbol's
+  currencies, and the URL never supplied a currency; an amount per unit or per period read as the price; a symbol
+  written without CLDR's bidi controls was not that symbol, no platform global declared a currency, and a reading was
+  kept whatever its currency's minor unit; a code that is also a unit name read as a currency, and a CLDR symbol that is
+  also a unit symbol, `L`, still did.
+- "enum and the first-clause rule (INV-37)": only `https://schema.org/`, `http://schema.org/` and `schema:` exactly, the
+  member name exactly.
+- "date and datetime": only a numeric offset or `Z`.
+- "location as stated": `remote_flag` was `false` when unstated; CLDR's `EU`, `EZ` and `UN` were codes; a part's control
+  characters were kept.
+- "range, count and number": only a unit word or a `type:period` phrase; an AggregateOffer was not a range value; only
+  `latn` symbols and digits, the CLDR group symbol only as written, and no page convention.
+- "identifier, text and url": any http(s) URL but the page's was an image; a URL published resolved and canonicalized.
+- "list and object": renditions of one file were kept as separate items.
+
+### persistence-storage
+
+- "Main data model tables": also `settle_on`, `needs_render`, `needs_xhr` and `needs_traversal`; no render mode was
+  stored.
+- "One baseline migration (greenfield)": a private `p0001` too.
+- "Object stores and key layout": hidden and fresh bundles under a private root.
+
+### resolution
+
+- "Missing reasons name the furthest stage": a published field had no reason.
+- "Derived values (INV-07)": only a canonical link equal to the final URL named the page, so an `og:url` or a structured
+  `url` naming another document outranked a canonical link the final URL did not repeat; a field the page stated on its
+  other scheme or with userinfo was its own document, and `/p` and `/p/` named one document here but two in candidate
+  scope (`collect/scope.py`); a field whose last rank was `T.url`, such as `apply_url`, took the page URL too; a
+  structured `url` built from another id than the page's outranked its canonical URL; the first of conflicting canonical
+  links named the page.
+- "Evidence, confidence and min_confidence": a calibrated bucket below τ, 0.97 required and 0.95 otherwise, abstained
+  `below_tau`; a lone `js_state` value had no bucket.
+- "Incomplete pages": a caller-supplied URL kept such a record, even an empty one; then a page with no published needed
+  field was `no_match`, its rejected candidates and unreadable content included.
+- "Render-bound fields": a field `missing/no_candidates` on an unrendered page whose document carried a state document
+  of at least `STATE_MIN_VALUES` scalar values, `content/state.holds_state`, was `interaction_required` with reason
+  `script_rendered`; then every field of a config whose `fetch.method` was `browser` was browser-bound.
+- "LLM gap hook": only missing required fields and groups were asked, and an ungrounded field's reason was
+  `no_candidates`.
+- "Candidate score (INV-14)": an Open Graph list only; files compared by `resource_key`, every Open Graph file.
+- "Candidate score (INV-14)": a list was one value, and different lists were rivals.
+- "Candidate score (INV-14)": collectors read an Offer's own `price` only, never a `priceSpecification`, and a visible
+  range bound was a price candidate; a price always published, owner #68 as then read; exact-match types published only
+  when every kept candidate agreed, else `conflict`; money ranked by currency evidence then needed agreement, a weaker
+  one rejected `weaker_currency`; text, url and image published from the first source kind in the order, a disagreement
+  within it settled only by the first other kind naming one value; each rule had its own tie-breaks.
+- "Candidate score (INV-14)": `conflict` with no value.
+- "Candidate score (INV-14)": `weaker_currency`.
+- "Atomic offers (INV-15)": only when every source stated one Offer each; all JSON-LD blocks were one source.
+- "Atomic offers (INV-15)": a price whose Offers disagreed, or only another Offer stated, published flagged; an Offer
+  inside an AggregateOffer was no item's.
+
+### rest-api
+
+- "Synchronous scrape": no `cache`.
+- "Scrape outcomes, not errors, for page failures": the no-rows cause was also role C's failure reason or `none_listed`,
+  then `not_asked`; a scrape of a page that states no entity answered `partial` with no record.
+- "Schema, config, record and replay endpoints": no reject endpoint.
+- "Project settings": the two caps only.
+- "MCP tools": twenty tools, no `webhook_deliveries`.
+- "Scrape browser actions": only a request naming `browser_actions` grew its list.
+- "Request context and page actions members": `respect_robots` defaulted to `true`, `false` needing a
+  `robots_override_reason`.
+- "Schedule endpoints": no refusal of caller headers or cookies.
+- "Render mode": `render_fields`, a list of schema field names stored with the request with no effect on the fetch; a
+  listing that listed nothing started no locate run.
+
+### schemas
+
+- "schema.org paths": `apply_url` was `JobPosting.potentialAction.target>JobPosting.url`; a path joined one property at
+  most and had no predicates.
+- "Presets": `job_listing` had one `location`; the commerce presets' prices were `Offer.price+priceCurrency`.
+
+### variants
+
+- "Atomic offers per row (INV-35)": it published the anchor Offer's, flagged.
+- "Own variants": every row with a published key sub-field published; a row of URLs only was always dropped.
+- "Shown variant; common values otherwise (INV-38)": one variant of one source only.
+- "Shown variant; common values otherwise (INV-38)": the price published the best-scored Offer's, flagged; availability
+  took the shown variant's only after resolution, from a published row agreeing with the target's published price, sku
+  and gtin, `resolve/shown_variant.py`.
+- "Standalone variants": `isVariantOf` left the group the Product's child.

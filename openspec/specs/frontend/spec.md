@@ -28,7 +28,7 @@ The shell SHALL have a sidebar with groups Playground (from `screens/playground/
 - **THEN** the Schemas entry, and no other, carries `aria-current="page"`
 
 ### Requirement: Showing extraction results (INV-22, UI side)
-Screens SHALL show a field only through `FieldValue`, `FieldStatusBadge`, `ConfidenceCell`, `EvidenceText`, `SourceKindText` and `LocatorText`, and a record's badge only through `UncalibratedBadge` (`frontend/src/components/`): a non-published value renders "—" with its reason, a money value whose currency is `null` renders its amount with "(currency unknown)" (owner #68), status is text plus icon, confidence a two-decimal number, and one "uncalibrated" badge per record, never per field, when a published field has `calibrated=false`; evidence and source kind read in words with the server's code on hover. INV-22 is owned by [resolution](../resolution/spec.md). Enforced by: component tests; active. (Previously: an uncalibrated badge on every field.) Refs: D-0368, D-0369, D-1390, D-1396.
+Screens SHALL show a field only through `FieldValue`, `FieldStatusBadge`, `ConfidenceCell`, `EvidenceText`, `SourceKindText` and `LocatorText`, and a record's badge only through `UncalibratedBadge` (`frontend/src/components/`): a non-published value renders "—" with its reason, a money value whose currency is `null` renders its amount with "(currency unknown)" (owner #68), status is text plus icon, confidence a two-decimal number, and one "uncalibrated" badge per record, never per field, when a published field has `calibrated=false`; evidence and source kind read in words with the server's code on hover. INV-22 is owned by [resolution](../resolution/spec.md). Enforced by: component tests; active. Refs: D-0368, D-0369, D-1390, D-1396.
 #### Scenario: Conflict field
 - **WHEN** a record field has status `conflict` and reason `disagree`
 - **THEN** it renders "—", the status text "conflict" and the reason, with no value
@@ -40,7 +40,7 @@ Every results view (scrape, batch, crawl, extract, jobs, records) SHALL show rec
 - **THEN** the table shows rows 1–50 of 1,200 and Next reads the page after `next_cursor`
 
 ### Requirement: Layout never shifts on interaction
-Paging, tabs, filters, toggles, popovers, drawers and run-state changes SHALL move nothing around them: `PagedTable` pages by 20 in a fixed-height box with fixed column widths and truncation, and loading, empty and error states (including the playground output box) keep the content's footprint, and a toolbar select's error line hangs under it. (Previously: Schema's error line only.) Refs: D-1214, D-0751, D-0833, D-0985, DESIGN.md.
+Paging, tabs, filters, toggles, popovers, drawers and run-state changes SHALL move nothing around them: `PagedTable` pages by 20 in a fixed-height box with fixed column widths and truncation, and loading, empty and error states (including the playground output box) keep the content's footprint, and a toolbar select's error line hangs under it. Refs: D-1214, D-0751, D-0833, D-0985, DESIGN.md.
 #### Scenario: Short last page
 - **WHEN** the last page holds fewer than 20 rows
 - **THEN** the table box and pager keep their size and place
@@ -53,13 +53,13 @@ Job events SHALL be read with `fetch` streaming, resumed with `Last-Event-ID`, r
 
 ### Requirement: Playground modes and command bar
 The playground SHALL serve Scrape `/`, Batch `/batch`, Crawl `/crawl`, Map `/map`, Extract `/extract` and Search
-`/search` behind a link-tab mode switch without visible group captions, with one centred command bar (input row, then Options, Format, Schema, Get code and the primary button) that does not move between the single-URL modes at desktop width, and at phone width puts Get code and the primary button on the row under the input; Batch's URL box shows ten lines and scrolls inside (`frontend/src/screens/playground/`). Search takes a query, shows Format and Schema only with Scrape results on, lists its results on the page and links to the batch run; Crawl's options include Strategy, Query, Keywords, Include subdomains and Follow external links (the query and keywords are sent only for Best first, and a stored crawl's keywords are restored, D-1596). (Previously: five modes, no Search.) Refs: Appendix A #38, #45, #51, #61, D-0817, D-1043, D-1213, D-1216, D-1447.
+`/search` behind a link-tab mode switch without visible group captions, with one centred command bar (input row, then Options, Format, Schema, Get code and the primary button) that does not move between the single-URL modes at desktop width, and at phone width puts Get code and the primary button on the row under the input; Batch's URL box shows ten lines and scrolls inside (`frontend/src/screens/playground/`). Search takes a query, shows Format and Schema only with Scrape results on, lists its results on the page and links to the batch run; Crawl's options include Strategy, Query, Keywords, Include subdomains and Follow external links (the query and keywords are sent only for Best first, and a stored crawl's keywords are restored, D-1596). Refs: Appendix A #38, #45, #51, #61, D-0817, D-1043, D-1213, D-1216, D-1447.
 #### Scenario: Back and forward
 - **WHEN** a user switches from Scrape to Crawl and presses back
 - **THEN** the URL returns to `/` and Scrape mode shows
 
 ### Requirement: Inputs and settings mirror the request DTOs
-A URL without a scheme SHALL be sent with `https://` prepended (RFC 3986 §3); Batch takes one URL per line or a CSV (`url` column else first, RFC 4180), each line checked with the WHATWG URL parser. Scrape, Batch, Crawl and Extract take Max rows as `fetch.max_rows`. Each Options setting MUST map to a request member (except Metadata in JSON), empty limits are omitted, and an empty LLM call limit omits `budget`, so the project's cap applies. (Previously: no Max rows.) Refs: D-1395, D-0408, D-0819, D-0982, D-1006, D-1044, D-1121.
+A URL without a scheme SHALL be sent with `https://` prepended (RFC 3986 §3); Batch takes one URL per line or a CSV (`url` column else first, RFC 4180), each line checked with the WHATWG URL parser. Scrape, Batch, Crawl and Extract take Max rows as `fetch.max_rows`. Each Options setting MUST map to a request member (except Metadata in JSON), empty limits are omitted, and an empty LLM call limit omits `budget`, so the project's cap applies. Refs: D-1395, D-0408, D-0819, D-0982, D-1006, D-1044, D-1121.
 #### Scenario: Host and port typed
 - **WHEN** the user types `example.com:8080/p`
 - **THEN** the request's `url` is `https://example.com:8080/p`
@@ -89,7 +89,7 @@ Get code SHALL show the endpoint (checked against `openapi.json` by a test), cUR
 - **THEN** each tab shows "Complete the request above to see its code." and Copy code is off
 
 ### Requirement: Data screens
-Jobs (`/jobs`, run history, filters in the URL), Records (one schema, drawer inspector with Replay), Schemas (one form for create, adopt and edit; edit only on active non-preset), Sites and configs (host lookup, learn with `force`, correction via `PUT /v1/configs/{id}` with changed fields only, Approve and Reject (`POST /v1/configs/{id}/reject`) on a `pending_approval` config, absent fields named) and Settings (the project's "LLM call limit per run", "Draft call limit per key" and "Approve learned configs" via `/v1/project/settings`; LLM usage tables from `GET /v1/usage/llm`, unknown cost never guessed) SHALL live under `frontend/src/screens/`. (Previously: no reject, and no draft limit field.) Refs: D-0433, D-0656, D-0700, D-0978, D-0983, D-1342, D-1391, D-1394.
+Jobs (`/jobs`, run history, filters in the URL), Records (one schema, drawer inspector with Replay), Schemas (one form for create, adopt and edit; edit only on active non-preset), Sites and configs (host lookup, learn with `force`, correction via `PUT /v1/configs/{id}` with changed fields only, Approve and Reject (`POST /v1/configs/{id}/reject`) on a `pending_approval` config, absent fields named) and Settings (the project's "LLM call limit per run", "Draft call limit per key" and "Approve learned configs" via `/v1/project/settings`; LLM usage tables from `GET /v1/usage/llm`, unknown cost never guessed) SHALL live under `frontend/src/screens/`. Refs: D-0433, D-0656, D-0700, D-0978, D-0983, D-1342, D-1391, D-1394.
 #### Scenario: Correction round-trip
 - **WHEN** an operator edits a field's steps and submits
 - **THEN** `PUT /v1/configs/{id}` carries only changed and confirmed fields and the validation report shows inline
@@ -138,7 +138,7 @@ menu SHALL save JSON Lines, Excel, Parquet, `llms.txt` and `llms-full.txt` of a 
 Resume, Run now and Delete, and a schedule's page its jobs from `GET /v1/jobs?schedule_id=`; Edit changes the name,
 cadence and request (JSON) and sends only what changed (`PATCH /v1/schedules/{id}`); Scrape, Batch, Crawl and Extract
 offer "Schedule this", and a run of Batch, Crawl or Extract "Schedule this run" (its stored request), which create a
-schedule (`frontend/src/screens/schedules/`). (Previously: no Edit, no Schedule this run.) Refs: D-1418, D-1514.
+schedule (`frontend/src/screens/schedules/`). Refs: D-1418, D-1514.
 #### Scenario: Schedule a crawl
 - **WHEN** a user fills Crawl, chooses "Schedule this" and an interval of 60 minutes
 - **THEN** `POST /v1/schedules` carries `kind: "crawl"`, that crawl's request and `interval_s: 3600`
@@ -162,8 +162,7 @@ error, created, next attempt), read again every 5 s while a delivery is pending;
 ### Requirement: A listing's page fields and why it has no rows
 The scrape output SHALL show the answer's `page` fields (a listing that kept no record) as a Page fields table under
 the records in Table and as `page` beside `data` in JSON, and the `no_rows: no_blocks` reason as a sentence with the
-server's reason as its tooltip (`screens/playground/output/`). (Previously: each `no_rows: <cause>` had a sentence; the
-reason was `no_rows: not_asked`.)
+server's reason as its tooltip (`screens/playground/output/`).
 Refs: D-1475, D-1476, D-1515, D-1605.
 #### Scenario: Next page of an empty listing
 - **WHEN** a scrape answers `records: []`, `page.next_page_url` and reason `no_rows: no_blocks`

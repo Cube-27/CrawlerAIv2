@@ -19,8 +19,7 @@ by the rendered area of their blocks when the browser capture measured it (`Capt
 listing captures), else by blocks showing an image or two or more text runs, then size; a block not rendered (no area,
 or hidden by the HTML rendering rules, unless the element hiding it is content a script reveals, extraction spec
 "Cleaned text and visibility index") is left out. The markdown format, `xhr` and the paging driver read this one
-ranking. (Previously: role C's item text read it too; a `menubar`, `menu` or `search` landmark was content; a section
-of fewer than `MIN_ITEMS` items was no group, and each larger section a group of its own.) Refs:
+ranking. Refs:
 owner #67, master plan §3.2.
 #### Scenario: Tag cloud beside a grid
 - **WHEN** a listing holds 30 bare tag links and 4 cards with an image, a link and a price
@@ -57,12 +56,7 @@ navigation and gives no rows; so is a group that aligns no typed value and more 
 documents a hyperlink of the site's chrome (as "Item groups" names it) outside the group leads to: the site's sections
 repeated in the content (a category carousel, a menu's tiles), not the page's items. An item's own list is a group
 lying in one block of another group at one tag path in two or more of its blocks (one template renders every item's
-list alike); the different lists a page's sections hold are no item's. (Previously: a card linking to its item and to
-an author or vendor page gave no item URL unless a heading or most of its text held the item's link; a category or city
-hub listing the page was rows; a section-level group whose sections held different lists made each list an item's own,
-its links no item's; a stated name holding the heading, the price and the colours was the name; a link's line was the
-whole name where the card stated it over that line and the next; a stated name whose leading words stood as a line
-apart from the rest named nothing.) Refs: owner #67.
+list alike); the different lists a page's sections hold are no item's. Refs: owner #67.
 #### Scenario: Cards with title, link and price
 - **WHEN** a listing shows cards of varying tags and class tokens, each with a heading link and one price
 - **THEN** each card is a row with its title, URL and price
@@ -129,9 +123,6 @@ block showing several amounts joins its option equal to the row's, else every op
 (C7; a stated price that is one variant's beside a card's "from" price, a theme showing a tax-inclusive amount the
 catalogue price excludes). State and call array rows bind by URL, and a JSON key whose
 values equal a block field on `MIN_ITEMS` bound rows is that field's key for every bound row (`collect/induce.py`).
-(Previously: the blocks of one group only; a bound block's amount that disagreed with a row's was dropped unless only
-an adapter stated the row, and a block's several amounts joined only an option equal to the row's; a featured copy or a
-strip after the pager was read as a section; every structured list gave rows.)
 Refs: owner #67, Appendix A #59, D-1776.
 #### Scenario: Visible card price of an adapter row
 - **WHEN** an adapter's answer states a row's price 19.50 EUR and the row's card, bound by URL, shows €23.40
@@ -165,8 +156,8 @@ show is part of the page tree ([extraction](../extraction/spec.md), "Source docu
 the page's do. They are the stated rows where structured data and the config give
 none; when they leave a record incomplete role C fills, through their bound blocks, the fields they lack. A locate run
 on a listing without rows learns the renders' call series as the config's listing recipe, with its pagination
-([learning-configs](../learning-configs/spec.md), "Locate run"). (Previously: role C's rows replaced them; a locate run
-located no rows.) Refs: §8.1, §8.6, Appendix A #59, D-1603, architecture v3 a.6.
+([learning-configs](../learning-configs/spec.md), "Locate run"). Refs: §8.1, §8.6, Appendix A #59, D-1603, architecture
+v3 a.6.
 #### Scenario: Complete rows of a call
 - **WHEN** the rows of a call publish every required field
 - **THEN** role C is not asked
@@ -185,9 +176,7 @@ first item group links to give rows (all, when none does). Values are `js_state`
 config as paths (`config_ir/json_rows.py`): a `jsonpath` row step selecting the array that holds `MIN_ITEMS` or more of
 the rendered rows' item URLs in a document the HTML carries (embedded state, JSON-LD, JSON attributes, RSC rows), and
 for each row field the path relative to the item that more than half of the paired items hold
-([learning-configs](../learning-configs/spec.md), "Locate run"). (Previously: no rows, D-1774; the paths were induced on
-every page only; any rendered link, the site's menus included, grounded an item URL; every array read gave rows; a menu
-tree whose entries a footer outside the chrome repeated gave rows.) Refs: D-1773, D-1775,
+([learning-configs](../learning-configs/spec.md), "Locate run"). Refs: D-1773, D-1775,
 architecture v3 a.6.
 #### Scenario: Items only in state
 - **WHEN** a script's JSON lists three items whose names and prices the page shows without item links
@@ -202,16 +191,14 @@ A row's item URL field SHALL read schema.org `url`, else the item's `offers.url`
 a page's `url`), else its own IRI (JSON-LD `@id`, microdata `itemid`) when absolute http(s), without a fragment, on the
 page's site and not the page's URL, a bound block's link replacing a respelling; row keys drop each query parameter that two or
 more row URLs carry once with one value and none of the page's own URLs carries (`normalize.url_key`), named in the
-result, while each row URL publishes as the page writes it (normalization spec). (Previously: the published row URLs
-dropped them too.) A row url field is the item URL field (`collect/schema_org_map.py` `is_item_url`) when any
+result, while each row URL publishes as the page writes it (normalization spec). A row url field is the item URL field
+(`collect/schema_org_map.py` `is_item_url`) when any
 alternative of its path is the row type's own `url` (`Product.url|Offer.url` is one): one predicate for alignment,
 binding, the row key of a listing's records (the first item URL a row publishes, else its position on the page) and
 the recurring listing diff. Two URLs name one document by `normalize/url_key.py` `document_key` (the canonical form's
 scheme, authority and path, one trailing slash of the path aside: RFC 3986 §6.2.4, `/a//` is another path) and one
 item by `item_key` (that and the query's decoded pairs as a multiset, in any order); the keys compare URLs and are never
-published. (Previously: the record row key and the listing diff took a field as the item URL only when every
-alternative was `url`, so such a row was keyed by its position; and the align, bind, state-row, scope, row and derive
-steps each compared URLs by their own rule: all trailing slashes or one, scheme or not, raw or canonical query.)
+published.
 Refs: owner #67 decisions 1 and 6, D-1785.
 #### Scenario: Item named by its offer
 - **WHEN** a listed Product states no `url` and its Offer states `url`
@@ -240,8 +227,7 @@ A block of a nested listing is read with its enclosing item's context (`collect/
 inside a block of another repeated group, and two or more blocks of that group hold rows, the enclosing block's text
 before the first block of the inner group (what a building states for its units: its name, its address, column
 headings) comes with the block, as the block's own text does not show it.
-(Previously: role C was asked for rows when the listing had none, and its rows were placed on blocks by their links or
-replaced rows read from blocks alone; a nested row was read without its enclosing item's text.) Refs: §8.6, owner #67,
+Refs: §8.6, owner #67,
 D-1603, D-1604, D-1605.
 #### Scenario: Only rows lacking a required field
 - **WHEN** one of five bound rows lacks a required row field and every row field is published on some row

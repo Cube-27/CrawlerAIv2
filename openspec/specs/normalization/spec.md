@@ -19,7 +19,7 @@ never raising on bad input; every rule names its standard or structural property
 `Context` (`normalize/base.py`) SHALL hold only evidence from the page and the request; `None` means no evidence,
 never a default. Its `hreflang` holds the languages of the alternate links to the page itself (its final URL or
 canonical link, HTML §4.6.7.1, RFC 6596; `content/context.py`); `page_url` and `request_url` are the final and the
-requested URL. (Previously: every alternate link's `hreflang`.)
+requested URL.
 Page languages: every normalizer that reads a language or locale (vocabularies, date, number, count, money, range)
 SHALL take it from the one derivation in `normalize/locales.py`. The page's own declarations count together: `<html
 lang>`, `og:locale`, JSON-LD `inLanguage` (`Context.in_language`), Content-Language (RFC 9110 §8.5, its HTML pragma)
@@ -28,8 +28,7 @@ currency evidence (the caller's, not the page's). A tag counts only when its pri
 §2.2.1: two or three letters, not `und`), so `x-default` declares nothing. The locale only guides how a value is read;
 the value stays as the page states it. One ISO 3166-1 alpha-2 table (`locales.iso_3166_alpha2`) serves location
 countries and declared egress countries; the money rules' URL territories also take the exceptional reservations CLDR
-names a region by (`.eu`). (Previously: each normalizer read its own subset of these, the request's locale beside the
-page's, and two country tables.)
+names a region by (`.eu`).
 Refs: §9, D-0256, D-0773, D-1482.
 #### Scenario: No context
 - **WHEN** a context carries only `captured_at`
@@ -46,7 +45,7 @@ A normalizer SHALL NOT return `Ok` for empty or whitespace-only input, map an am
 a host table, or apply a default (C7). Money is the one exception to declining: a grounded amount publishes with its
 currency unknown (`null`) rather than decline, and never with a currency nothing on the page or its URL names (owner
 #68, owner 2026-10-19).
-(Previously: an ambiguous currency sign declined.) Enforced by: Hypothesis property tests per type; active.
+Enforced by: Hypothesis property tests per type; active.
 #### Scenario: Empty input
 - **WHEN** any type's normalizer gets `"   "`
 - **THEN** the result is `Invalid`
@@ -114,12 +113,6 @@ and a symbol of the lempira and the leu; a one-letter sign in either case, CLDR 
 locale) is a currency only where the page names a currency it denotes (its structured, declared or URL currency, or
 the tender currency of a territory its own locales, not the request's, leave possible); else the text states a
 measure, not an amount: `Invalid("measure")` (`3.5 CUP FOOD CHOPPER`, `Kettle 1,7 L`). Refs: §9, owner #68, owner 2026-10-19, D-1240, D-1370, D-1782, architecture-v3 d.2, d.4, d.7.
-(Previously: a sign several currencies share was `Ambiguous`, no sign was `Invalid`, a page currency never supplied a
-missing sign, the locale settled a sign at full confidence, and a sign with a full stop denoted only its own symbol's
-currencies, and the URL never supplied a currency; an amount per unit or per period read as the price; a symbol
-written without CLDR's bidi controls was not that symbol, no platform global declared a currency, and a reading was
-kept whatever its currency's minor unit; a code that is also a unit name read as a currency, and a CLDR symbol that is
-also a unit symbol, `L`, still did.)
 #### Scenario: Per unit and per period
 - **WHEN** the text is `€25/kg` or `$25/mo` for the `commerce_detail` `price` with `html_lang="en"`
 - **THEN** the results are `Invalid("per_unit")` and `Invalid("per_period")`; for a `unit_price` field mapped to
@@ -160,8 +153,7 @@ also a unit symbol, `L`, still did.)
 clause, which must equal a member phrase as a whole; extra words decline, never substring match. An IRI on the
 schema.org host names its term also as a network-path reference (`//schema.org/InStock`, RFC 3986 §4.2) and with its
 scheme or host in any case (RFC 3986 §3.1, §3.2.2); its term names a member in another case (`instock`) when exactly one
-member has that name. (Previously: only `https://schema.org/`, `http://schema.org/` and `schema:` exactly, the member
-name exactly.) Refs: §9, D-0271–D-0274, D-0882, D-0920.
+member has that name. Refs: §9, D-0271–D-0274, D-0882, D-0920.
 Enforced by: `tests/property/test_normalize_enum.py` and `tests/replay/test_replay_stock.py`; active.
 #### Scenario: Qualified phrase
 - **WHEN** availability text is "Not in stock", "In stock soon" or "5 in stock"
@@ -171,7 +163,7 @@ Enforced by: `tests/property/test_normalize_enum.py` and `tests/replay/test_repl
 `normalize/date.py` SHALL read ISO 8601 directly and other dates in every order the page locales allow, returning
 `Ambiguous` when readings differ; a `datetime` needs a time and offset and outputs UTC. A zone named `UTC` or `GMT`
 after the time, with or without a space, is zero offset; no other abbreviation is an offset. Refs: §9, D-0293–D-0299,
-D-1371. (Previously: only a numeric offset or `Z`.)
+D-1371.
 #### Scenario: Day-month order unknown
 - **WHEN** the text is `03/04/2026` with `html_lang="en"`
 - **THEN** the result is `Ambiguous`
@@ -185,8 +177,7 @@ written (in the text form: composed, control characters removed, white space col
 and postal code (the HTML Standard's autofill order), each part once and a country code never in it, a country only from an ISO 3166-1 alpha-2 code that the standard assigns (not its user-assigned ranges or
 exceptional reservations such as `EU`), `remote_flag` `true` only when stated (`TELECOMMUTE`, or a `type:remote` phrase
 that is a whole clause of the text) and `null` otherwise; no gazetteer. Refs: §9, D-0920, D-0953, D-1058, D-1272,
-D-1372, D-1373. (Previously: `remote_flag` was `false` when unstated; CLDR's `EU`, `EZ` and `UN` were codes; a part's
-control characters were kept.)
+D-1372, D-1373.
 #### Scenario: Structured place text
 - **WHEN** a `Place` named "Old Hall" has `streetAddress` "1 Mill Lane, Alderton, UF 12345", `addressLocality`
   "Alderton", `addressRegion` "UF" and `addressCountry` "US"
@@ -224,9 +215,7 @@ separators) and holds a structured bound to money's storage bounds.
 A minus negates a money or count text only when it touches the number. A monetary range's period is read from
 `unitText`, else `unitCode`: a unit word, an interval of one unit (`1 YEAR`), an ISO 8601 duration of one unit (`P1Y`), a
 UN/CEFACT code (`ANN`) or a `type:period` phrase. Refs: §9, D-0275–D-0279, D-0302, D-0921, D-0922, D-0960, D-1184,
-D-1270, D-1271, D-1371, architecture-v3 d.1, d.4. (Previously: only a unit word or a `type:period` phrase; an
-AggregateOffer was not a range value; only `latn` symbols and digits, the CLDR group symbol only as written, and no
-page convention.)
+D-1270, D-1271, D-1371, architecture-v3 d.1, d.4.
 #### Scenario: Page convention
 - **WHEN** a page's JSON-LD writes `price` `"19.99"` and its text writes `1.234` with no declared locale
 - **THEN** the text reads 1.234; with the JSON-LD prices `"19.99"` and `"1.234,56"` it is `Ambiguous`
@@ -258,8 +247,8 @@ value equality, identity and resolution compare; a URL publishes in its stated f
 the page writes it, its character references decoded as above and without the leading and trailing C0 controls and
 spaces and the tabs and newlines the WHATWG parser removes, so a relative reference publishes relative. A list or
 object publishes its items' and sub-fields' stated forms. Of sources stating one value, the writing in full (an absolute
-URL in canonical form) publishes when one of them writes it so; no value is resolved to publish. (Previously: any http(s) URL but the page's was an image; a
-URL published resolved and canonicalized.) Refs: §9, D-0287–D-0290, D-0257–D-0263, D-1022, D-1209.
+URL in canonical form) publishes when one of them writes it so; no value is resolved to publish. Refs: §9,
+D-0287–D-0290, D-0257–D-0263, D-1022, D-1209.
 #### Scenario: Escaped twice
 - **WHEN** a structured description states `cool &amp;amp; dry` and an image URL `i.jpg?w=1&amp;h=2`
 - **THEN** the text is `cool & dry` and the URL's query is `?w=1&h=2`
@@ -276,7 +265,7 @@ sub-field declines (`normalize/dispatch.py`). A list of `image_url` items names 
 first rendition's place, as its largest rendition over `https` (`images.distinct_files`): the largest number a rendition's
 size statement holds (the path's size parts, and decimal values of query parameters every rendition states that differ
 between them), ranked only when every rendition states one, else the first. A `%3F` written into the path ends the
-file's name (`same_file`). (Previously: renditions of one file were kept as separate items.)
+file's name (`same_file`).
 Refs: D-0325, D-0326, D-1665.
 #### Scenario: One image in four widths
 - **WHEN** a list states one image file at widths 100, 300, 600 and 900
