@@ -133,9 +133,10 @@ def _file_path(key: Hashable) -> tuple[str, ...] | None:
         return None
     segments = [segment for segment in str(key[2]).split("/") if segment]
     for index, segment in enumerate(segments):
-        found = _MEDIA_TYPES.guess_type(segment, strict=True)[0]
+        name = _ENCODED_QUERY.split(segment, maxsplit=1)[0]
+        found = _MEDIA_TYPES.guess_type(name, strict=True)[0]
         if found is not None and found.partition("/")[0] == _IMAGE_TYPE:
-            return (str(key[1]), *segments[: index + 1])
+            return (str(key[1]), *segments[:index], name)
     return None
 
 
@@ -152,6 +153,9 @@ def _rendition_segment(x: str, y: str) -> bool:
     return base > 0 and all(len(s) == base or any(c.isdigit() for c in s[base:]) for s in (x, y))
 
 
+# A query delimiter percent-encoded into the path (`photo.png%3Fwidth%3D785`): the URL was percent-encoded once more
+# than written (RFC 3986 §2.4: a string is encoded once), so the file's name ends before it.
+_ENCODED_QUERY = re.compile(r"%3F", re.IGNORECASE)
 # The query parameter by which an image proxy or optimizer names the file it serves (`/_next/image?url=`, `?url=`).
 _PROXIED: Final = "url"
 # What an image path states about the rendition it serves, not the file: a whole segment `<width>x<height>` or a list

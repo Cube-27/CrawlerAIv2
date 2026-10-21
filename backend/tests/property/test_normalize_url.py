@@ -146,6 +146,8 @@ def test_renditions_an_image_server_writes_into_the_path_name_one_file(rendition
     # Two renditions of one directory; parameters without a size are another directory.
     assert url.same_file("https://cdn.example.test/i/7-800-auto/a.jpg", "https://cdn.example.test/i/7-600-auto/a.jpg")
     assert not url.same_file("https://cdn.example.test/i/7-blue/a.jpg", "https://cdn.example.test/i/7-red/a.jpg")
+    # A query written percent-encoded into the path still ends the file's name.
+    assert url.same_file("https://cdn.example.test/i/7/a.jpg%3Fw%3D785", file)
     # A bare file name is no evidence of one file.
     assert not url.same_file("https://cdn.example.test/a.jpg", "https://cdn.example.test/i/a.jpg")
 

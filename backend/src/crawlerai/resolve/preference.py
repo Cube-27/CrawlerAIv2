@@ -21,6 +21,7 @@ Evidence buckets, confidence and min_confidence are the next stage's (`resolve.e
 """
 
 import json
+import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
@@ -230,8 +231,7 @@ class Resolver:
             top = won
         elif offer_field:
             top = self._shown_value([g for g in groups if g.score > 0], offers) or top
-        rivals = [g for g in groups if g is not top and g.score > 0]
-        tied = [g for g in rivals if g.score == top.score]
+        top, rivals, tied = _contest(spec, groups, top)
         flag = self._flag(top, groups, rivals, offers, offer_field=offer_field)
         if rule_type(spec) is FieldType.MONEY:
             return _price(spec, top, tied, kept, rejected, flag)
@@ -537,7 +537,7 @@ def _published(
     spec: FieldSpec, top: Group, kept: list[Candidate], rejected: list[Rejection], flag: str | None
 ) -> Chosen:
     """The best group's best member publishes, the others of its value agree, and every other value is outscored."""
-    chosen = _secure_first(top.best, spec)
+    chosen = _largest_renditions(top, _secure_first(top.best, spec), spec)
     agreeing = tuple(c for c in top.members if c is not chosen)
     lower = [(c, OUTSCORED) for c in kept if not any(c is m for m in top.members)]
     return Chosen(chosen, agreeing, (*rejected, *lower), tuple(kept), flag)
@@ -593,6 +593,59 @@ def _secure_first(candidates: Sequence[Candidate], spec: FieldSpec) -> Candidate
     if spec.type is FieldType.IMAGE_URL and all(isinstance(v, str) for v in values):
         return secure[url.largest_rendition([v for v in values if isinstance(v, str)])]
     return secure[0]
+
+
+# A locator of one item of a list (`…['image'][2]`): the list's own locator, and the item's index.
+_LIST_ITEM = re.compile(r"(.+)\[(\d{1,9})\]")
+
+
+def _contest(spec: FieldSpec, groups: list[Group], top: Group) -> tuple[Group, list[Group], list[Group]]:
+    """The best group, the other scored groups (its rivals), and those that tie with it (`_first_listed`)."""
+    rivals = [g for g in groups if g is not top and g.score > 0]
+    tied = [g for g in rivals if g.score == top.score]
+    first = _first_listed(spec, [top, *tied])
+    if first is None:
+        return top, rivals, tied
+    return first, [g for g in groups if g is not first and g.score > 0], []
+
+
+def _first_listed(spec: FieldSpec, best: Sequence[Group]) -> Group | None:
+    """Of image values that tie for the best score, the group holding the first item when all are items of one list of
+    one node: a source listing a thing's images in order (RFC 8259 §1: an array is an ordered sequence) states its main
+    image first, as Open Graph prefers the first of a repeated `og:image` (Open Graph protocol, "Arrays")."""
+    if spec.type is not FieldType.IMAGE_URL or len(best) < 2:
+        return None
+    items = [(g, c, _LIST_ITEM.fullmatch(c.locator)) for g in best for c in g.best]
+    found = [(g, (c.entity_id, c.source_kind, m.group(1)), int(m.group(2))) for g, c, m in items if m]
+    if len(found) != len(items) or len({key for _, key, _ in found}) != 1:
+        return None
+    return min(found, key=lambda item: item[2])[0]
+
+
+def _largest_renditions(top: Group, chosen: Candidate, spec: FieldSpec) -> Candidate:
+    """The image value of the best group with each file at the largest rendition any member states: the members name
+    the same files (`resource_key`), so the sources' weights settle which files the image is, and the rendition the
+    page also states larger publishes (`url.preferred_rendition`), whichever source states it. A scalar publishes the
+    member stating it; a list the chosen candidate with those renditions. Any other value is `chosen`."""
+    if rule_type(spec) is not FieldType.IMAGE_URL or len(top.members) == 1:
+        return chosen
+    members = [chosen, *(c for c in top.members if c is not chosen)]
+    stated = [_image_list(value_of(c)) for c in members]
+    lists = [images for images in stated if images is not None and len(images) == len(stated[0] or ())]
+    if len(lists) != len(members):
+        return chosen
+    largest = [url.preferred_rendition(renditions) for renditions in zip(*lists, strict=True)]
+    if spec.type is FieldType.IMAGE_URL:
+        return next(c for c, images in zip(members, lists, strict=True) if images == largest)
+    if largest == lists[0]:
+        return chosen
+    return chosen.model_copy(update={"normalized": replace(cast(Ok, chosen.normalized), value=list(largest))})
+
+
+def _image_list(value: JsonValue) -> list[str] | None:
+    """An image value as its URLs, a scalar as one; None when an item is no URL string."""
+    items = value if isinstance(value, list) else [value]
+    return [item for item in items if isinstance(item, str)] if all(isinstance(i, str) for i in items) else None
 
 
 def _secure(value: JsonValue) -> bool:
