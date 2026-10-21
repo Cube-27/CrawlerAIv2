@@ -19,16 +19,17 @@ same PR, tests for removed code deleted, green CI, bot threads resolved. Sizes: 
 | A1 | One cookie rule; the profile is the browser's cookie store | #403 | merged |
 | A2 | Listing renders through the shared browser | #405 | merged |
 | A3 | Site memory in its own short transactions | #400 | merged |
-| A4 | One page run for scrape and the worker | | next |
-| A5 | Decode and fingerprint a body once | | next |
+| A4 | One page run for scrape and the worker | #409 | merged |
+| A5 | Decode and fingerprint a body once | #410 | merged |
 | B1 | One document key, one item key | #399 | merged |
 | B2 | One page-locale derivation | #401 | merged |
 | B3 | Variant rows keep their stated amount | #402 | merged |
 | B4 | One text module | #404 | merged |
-| B5 | Image policy in one module; cached canonical | | next |
-| E1 | Mid-point e2e (orchestrator) | | after A4, A5, B5 |
-| T1 | DB tests: one engine per worker, shared fixtures | | after E1 |
-| T2 | Slow tests trimmed, pairs merged | | after E1 |
+| B5 | Image policy in one module; cached canonical | #408 | merged |
+| E1 | Mid-point e2e (orchestrator) | | done: one engine regression (#404) |
+| E1-fix | A text equal but for white space is no cut | #411 | merged |
+| T1 | DB tests: one engine per worker, shared fixtures | #413 | open |
+| T2 | Slow tests trimmed, pairs merged | #412 | open |
 | T3 | Path-gated sdk job; aligned pins | | after T1, T2 |
 | F1–F6 | Bug and accuracy classes | | after E1 |
 | X1 | architecture-v3 rewritten in place | | after F1–F6 |
