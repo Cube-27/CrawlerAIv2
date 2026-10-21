@@ -89,7 +89,7 @@ def canonical_link(page: ParsedPage, final_url: str) -> str | None:
 
 
 def canonical_href(page: ParsedPage, final_url: str) -> str | None:
-    """RFC 6596: the `href` of the page's first canonical link as the page writes it. RFC 6596 §3 asks for one
+    """RFC 6596: the `href` of the page's first readable canonical link as the page writes it. RFC 6596 §3 asks for one
     canonical link per resource; links naming more than one URL designate none, an improper declaration an application
     may ignore, so the page then states no canonical URL."""
     base = document_base_url(page, final_url)
@@ -98,7 +98,9 @@ def canonical_href(page: ParsedPage, final_url: str) -> str | None:
         for node in page.tree.css("link[href]")
         if "canonical" in tokens((node.attributes.get("rel") or "").lower())
     ]
-    return hrefs[0] if len({canonical_url(href, base) for href in hrefs}) == 1 else None
+    # A target no URL parser reads names nothing.
+    read = [(href, url) for href in hrefs if (url := canonical_url(href, base)) is not None]
+    return read[0][0] if len({url for _, url in read}) == 1 else None
 
 
 def _json_ld_types(page: ParsedPage) -> Iterator[str]:

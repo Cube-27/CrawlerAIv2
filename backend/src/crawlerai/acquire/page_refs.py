@@ -79,4 +79,5 @@ def _canonical(tree: LexborHTMLParser, base: str) -> str | None:
         # HTML Standard §4.6.1: `rel` is a set of space-separated, ASCII case-insensitive keywords.
         if "canonical" in (link.attributes.get("rel") or "").lower().split()
     }
+    named.discard(None)  # a target no URL parser reads names nothing
     return named.pop() if len(named) == 1 else None
