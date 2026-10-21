@@ -29,6 +29,9 @@ PageOutcome = Literal["extracted", "partial", "no_match"]
 # The derivations that publish the page's own address (RFC 6596 canonical link, RFC 9110 §15.4 final URL): every page,
 # a maintenance or error page a request was redirected to included, has one, so it states no entity.
 _PAGE_ADDRESS: Final = frozenset(get_args(PageUrlDerivation))
+# The screening rejections of a value that is no evidence about the page's own item (`resolve.preference`, §8.2 rules 3
+# and 4): another entity owns it, or the request URL carries it and the page does not show it.
+_NOT_THE_ITEMS: Final = frozenset({"not_owned", "url_param"})
 
 
 class _Model(BaseModel):
@@ -203,12 +206,13 @@ def states_entity(schema: SchemaDef, fields: Mapping[str, FieldOutcome], *, row:
 
 
 def _read_from_page(outcome: FieldOutcome) -> bool:
-    """Whether the field has a candidate from the page: a published value, or one resolution kept or rejected. A field
-    whose value is the page's own address (`_PAGE_ADDRESS`) has none: its other candidates named another document or
-    lost to that address."""
+    """Whether the field has a candidate from the page: a published value, or one resolution kept or rejected for a
+    reason other than its being no evidence about the item (`_NOT_THE_ITEMS`). A field whose value is the page's own
+    address (`_PAGE_ADDRESS`) has none: its other candidates named another document or lost to that address."""
     if outcome.derived_by in _PAGE_ADDRESS:
         return False
-    return outcome.status == "published" or bool(outcome.kept or outcome.rejected)
+    rejected = any(reason not in _NOT_THE_ITEMS for _, reason in outcome.rejected)
+    return outcome.status == "published" or bool(outcome.kept) or rejected
 
 
 def assemble_listing(

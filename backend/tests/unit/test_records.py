@@ -95,13 +95,16 @@ def test_a_complete_page_is_extracted_with_its_published_values() -> None:
 
 def test_a_page_with_no_candidate_for_a_needed_field_beyond_its_own_address_has_no_record() -> None:
     """A maintenance or error page served for the URL: prose, and the page's own address, but no candidate the record
-    needs read from the page. A needed field's candidate resolution rejected is an extraction miss: `partial`."""
+    needs read from the page. A needed field's candidate resolution rejected is an extraction miss, `partial`, unless
+    it is no evidence about the item (another entity's value)."""
     address = _published(URL).model_copy(update={"derived_by": "final_url", "source_kind": "derived"})
     schema = _schema([["sku", "mpn"]])
     stating = {"sku": _published("A-1"), "gtin": _unpublished(), "mpn": _unpublished()}
     candidate = _published().chosen
     assert candidate is not None
-    rejected = _unpublished(reason="invalid").model_copy(update={"rejected": ((candidate, "invalid"),)})
+
+    def rejected(reason: str) -> FieldOutcome:
+        return _unpublished(reason=reason).model_copy(update={"rejected": ((candidate, reason),)})
 
     def outcome(fields: dict[str, FieldOutcome]) -> str:
         return assemble(schema, fields, site_id=SITE, canonical_url=URL, caller_supplied=True, unreadable=False)[0]
@@ -110,7 +113,8 @@ def test_a_page_with_no_candidate_for_a_needed_field_beyond_its_own_address_has_
         schema, {**stating, "sku": address}, site_id=SITE, canonical_url=URL, caller_supplied=True, unreadable=False
     ) == ("no_match", None)
     assert outcome({**stating, "sku": _unpublished(), "gtin": _published()}) == "no_match"
-    assert outcome({**stating, "sku": rejected}) == "partial"
+    assert outcome({**stating, "sku": rejected("invalid")}) == "partial"
+    assert outcome({**stating, "sku": rejected("not_owned")}) == "no_match"  # another entity's value (§8.2 rule 3)
     assert outcome(stating) == "extracted"
 
 

@@ -240,7 +240,8 @@ published values only. Refs: §6, §13.1, D-0354. Enforced by: Pydantic models a
 A page whose required fields and groups all publish SHALL be `extracted` and complete; otherwise a caller-supplied URL
 stores the record as `partial` and a crawl-discovered URL is `no_match` with no record. Either way, a page none of whose
 required fields or group members (any field, for a schema that requires none) has a candidate read from the page,
-published or rejected by resolution, beyond its own address (a field whose value is the `canonical_link` or
+published or rejected by resolution (not as another entity's, `not_owned`, or the request URL's, `url_param`), beyond
+its own address (a field whose value is the `canonical_link` or
 `final_url` derivation), states no entity of the schema and is `no_match` with no record: a maintenance or error page
 served for the URL states prose, never what identifies the item. An extraction miss is never `no_match`: a needed
 field's candidate that resolution rejected, or a page whose content the engine cannot read (its extraction raises the
