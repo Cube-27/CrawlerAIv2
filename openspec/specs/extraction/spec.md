@@ -149,7 +149,10 @@ UTF-8) and base64 chunks (segment 3) of its `self.__next_f.push([<segment>, <chu
 whatever row they split, read as rows `<hex id>:<tag?><payload>`, where tags `T A O o b U S s L l G g M m V` take a
 `<hex byte length>,` prefix and that many bytes (`T` UTF-8 text, which may hold line ends) and every other row ends at
 a line end; untagged rows are the JSON model, decoded as above and keyed by row id in the document (addressed by the
-first pushing script). `$`-prefixed reference strings (`$L`, `$@`, `$<id>`) are kept as written and `$$` reads as `$`.
+first pushing script). A `$`-prefixed string is read by its tag (`parseModelString`): `$$` reads as `$`, a Date
+(`$D`) and a BigInt (`$n`) as the text after the tag, `$-0` as the number zero, and any other (a reference `$L`, `$@`, `$<id>`, or a special value
+such as `$undefined`) as null, as it states no text of the page (`"$1"` is no count). (Previously: references were kept
+as written.)
 A captured `text/x-component` body is read by the same reader, one document per body. A malformed row adds a
 diagnostic and the other rows are read; a stream over 10^7 bytes is not read.
 A `<script type="text/x-magento-init">` (Adobe Commerce) is read as a JSON script. After the scripts and the Flight
@@ -174,7 +177,7 @@ documents as source `attr`.
 #### Scenario: Flight rows split across chunks
 - **WHEN** `self.__next_f.push([1, …])` chunks split a JSON row and a `T` text row, and a `[3, …]` chunk holds another
   row
-- **THEN** the document holds each JSON row's value under its row id, `"$$19.99"` read as `"$19.99"` and `"$L1"` kept
+- **THEN** the document holds each JSON row's value under its row id, `"$$19.99"` read as `"$19.99"` and `"$L1"` as null
 #### Scenario: Code in a value
 - **WHEN** an assigned object holds `f: function () { return 1; }` or `at: stamp()`
 - **THEN** it gives no document and no error

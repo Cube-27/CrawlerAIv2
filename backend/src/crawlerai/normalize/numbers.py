@@ -122,10 +122,11 @@ def _unmarked(text: str, index: int, step: int, count: int, *, skip_space: bool)
 
 
 def warm() -> None:
-    """Build the tables read across every CLDR locale (number conventions, percent signs) now, so that the first page
-    a process reads does not wait for them."""
+    """Build the tables read across every CLDR locale (number conventions, percent signs, compact units) now, so that
+    the first page a process reads does not wait for them."""
     _number_conventions()
     _percent_signs()
+    _every_compact_unit()
 
 
 @cache
@@ -156,6 +157,18 @@ def compact_unit(after: str, locales: frozenset[str]) -> tuple[int, int] | None:
     unit = max(found, key=len)
     powers = found[unit]
     return (powers.pop(), len(unit)) if len(powers) == 1 else None
+
+
+def compact(after: str) -> bool:
+    """Whether a CLDR compact decimal unit (`compact_unit`) of any locale is written right after a number, whatever
+    power it stands for: the number is a rounded magnitude (`1K+`). Every locale is asked, as pages write the compact
+    forms of other languages than their own."""
+    return any(after.startswith(u) and not _word_letter(after[len(u) : len(u) + 1]) for u in _every_compact_unit())
+
+
+@cache
+def _every_compact_unit() -> frozenset[str]:
+    return frozenset(unit for identifier in identifiers() for unit, _ in _compact_units(identifier))
 
 
 def _word_letter(char: str) -> bool:

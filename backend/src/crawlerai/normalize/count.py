@@ -7,8 +7,9 @@ Accepts:
 - a string, from the DOM or an LLM: the one number in it ("In stock (5 available)" is 5), read by the Unicode CLDR
   number symbols of the locales the page and the request state.
 
-Nothing is defaulted (C7): a fraction, a negative number, a range, another unit, a text with no number or two numbers
-is `Invalid`; a number the page's locales read as different values is `Ambiguous`.
+Nothing is defaulted (C7): a fraction, a negative number, a range, another unit, a number written in a CLDR compact
+form (`1K+`, `2,5 Mio.`: a rounded magnitude, not a count), digits right after a letter (`h1`: part of a word), a
+text with no number or two numbers is `Invalid`; a number the page's locales read as different values is `Ambiguous`.
 """
 
 import unicodedata
@@ -30,6 +31,8 @@ _ONE = "C62"
 _RANGE_KEYS = ("minValue", "maxValue")
 # CLDR unit id of "item": the one measurement unit of the CLDR unit data that is a count, so it does not contradict C62.
 _CLDR_COUNT_UNIT = "concentr-item"
+# Unicode UAX #29 WB4: Extend (combining marks) and Format characters are ignored inside a word.
+_IGNORED = frozenset({"Mn", "Mc", "Me", "Cf"})
 
 
 def normalize(raw: Raw, spec: FieldSpec, ctx: Context) -> NormalizeResult:
@@ -108,6 +111,10 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
         return Invalid(found)
     if numbers.negated(found.before):
         return Invalid("negative")
+    if _ends_a_word(found.before):
+        return Invalid("in_a_word")
+    if numbers.compact(found.after):
+        return Invalid("compact")  # `1K+ reviews` states a rounded magnitude, not the count (CLDR compact decimals)
     values = numbers.readings(found.written, numbers.locale_set(ctx), ctx.page_convention)
     if not values:
         return Invalid("not_a_count")  # a run no CLDR convention parses strictly ("1,2,3")
@@ -115,6 +122,15 @@ def _text(raw: str, ctx: Context) -> NormalizeResult:
         return _count(values[0])
     whole = tuple(int(v) for v in values if v == v.to_integral_value())
     return Ambiguous("decimal_separator", whole) if whole else Invalid("not_a_whole_number")
+
+
+def _ends_a_word(before: str) -> bool:
+    """Whether the text before a number ends with a letter, its combining marks and format characters aside (Unicode
+    UAX #29 WB4 ignores Extend and Format): the digits are part of that word (WB9, ALetter then Numeric: `h1`)."""
+    stripped = before
+    while stripped and unicodedata.category(stripped[-1]) in _IGNORED:
+        stripped = stripped[:-1]
+    return stripped[-1:].isalpha()
 
 
 def _count(value: Decimal) -> NormalizeResult:

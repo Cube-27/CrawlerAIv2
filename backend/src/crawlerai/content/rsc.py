@@ -5,8 +5,11 @@ The payload is a byte stream of rows `<hex id>:<tag?><payload>`. After the `:`, 
 tag and is followed by `<hex length>,` and that many bytes (no line end): `T` is UTF-8 text, the others typed arrays,
 which hold no document and are skipped. Any other uppercase letter, `#`, `r` or `x` is a tag whose payload runs to the
 next `\\n` (module, hint, error, debug and stream rows), kept as text. Any other byte starts the JSON model, which runs
-to the next `\\n`: the rows the engine reads as documents. Inside it, a string starting with `$` is a reference (`$L`
-lazy, `$@` promise, `$<hex id>` another row, ...), kept as written; `$$` is an escaped `$` and reads as one.
+to the next `\\n`: the rows the engine reads as documents. Inside it, a string starting with `$` is no text the page
+states (`parseModelString`): `$$` is an escaped `$` and reads as one, `$D<ISO 8601>` a Date and `$n<digits>` a BigInt
+read as the text after the tag, `$-0` as the number zero, and any other (`$L` lazy, `$@` promise, `$<hex id>` another
+row, `$undefined`, ...) a reference or special value, which reads as null: the value is elsewhere or none, and its tag
+is no value of the page (`"$1"` is no count of one).
 
 A row that does not follow the grammar, or whose JSON or text does not decode, adds a diagnostic and the rows after it
 are still read; a length past the end of the stream ends it. A stream over `MAX_BYTES` is not read.
@@ -26,6 +29,12 @@ _LINE_TAGS = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ#rx")
 _ROW_ID = re.compile(rb"([0-9a-fA-F]+):")
 _LENGTH = re.compile(rb"([0-9a-fA-F]+),")
 _TEXT = "T"
+# ReactFlightClient.js `parseModelString`: the escape of a string starting with `$`, and the tags of a Date and a
+# BigInt, whose text follows the tag.
+_ESCAPE = "$$"
+_TEXT_VALUES = ("$D", "$n")
+# `$-0`: the number negative zero, which JSON cannot write (`$NaN` and `$Infinity` are no JSON numbers: null).
+_NEGATIVE_ZERO = "$-0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,11 +120,21 @@ def _line_end(data: bytes, pos: int) -> int:
 
 
 def _unescaped(value: JsonValue) -> JsonValue:
-    """`value` with each `$$`-escaped string value read as the string it escapes (object keys are not escaped)."""
+    """`value` with each string value read by its `$` tag (module docstring; object keys are not tagged)."""
     if isinstance(value, str):
-        return value[1:] if value.startswith("$$") else value
+        return _model_string(value)
     if isinstance(value, list):
         return [_unescaped(item) for item in value]
     if isinstance(value, dict):
         return {key: _unescaped(member) for key, member in value.items()}
     return value
+
+
+def _model_string(value: str) -> JsonValue:
+    if not value.startswith("$"):
+        return value
+    if value.startswith(_ESCAPE):
+        return value[1:]
+    if value == _NEGATIVE_ZERO:
+        return -0.0
+    return value[2:] if value.startswith(_TEXT_VALUES) else None
