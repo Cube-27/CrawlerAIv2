@@ -8,8 +8,8 @@ CrawlerAI v2 is a schema-driven web extraction engine; see `README.md`.
   `tools/` (repo checks and `tools/orchestrator/` worktree/CI scripts).
 - `openspec/project.md`: the contract C1–C13 and repo checks. `openspec/specs/<capability>/spec.md`: current
   behaviour, the source of truth; a behaviour change edits the spec it touches. `openspec/design/`: goals, owner
-  decisions, candidates register, and `architecture-v3.md` (frozen 2026-10-19: the architecture being implemented
-  and its ordered PR list, the current focus; where a spec differs, it governs until the PR that rewrites the spec).
+  decisions, candidates register, and `architecture-v3.md` (frozen 2026-10-19, rewritten in place 2026-10-21: the
+  architecture as built). `HANDOVER.md`: how to run it, the e2e procedure, what is frozen, open items.
   `openspec/conventions/ENGINEERING.md` (code), `DESIGN.md` (frontend).
 - Read only what your change needs. Where a spec, the design and the contract disagree, stop and ask the owner.
 - Work on a branch `change/<id>` in a worktree made by `tools/orchestrator/new_worktree.sh <id> change/<id>`, never
@@ -46,11 +46,13 @@ make check          # every CI check locally (`make check-backend`, ... per job)
 A bug fix repairs the layer whose rule failed, for the whole class of pages. Data the page does not state stays
 unpublished. No site-specific steps, no speculative layers, no second path for existing logic (C8).
 
-- **C1.** The e2e run is the only measure: one run per round over the one eval set (kept outside the repo), one
-  scorer, disagreements adjudicated against the capture. The set grows in fresh batches of 20-30 pages on new hosts; a
-  batch is scored once before any change is made on it, and only that first score supports a generalization claim.
-  Then it joins the set. Never look at a fresh batch's pages before that score. Calibration, precedence and drift
-  margins are frozen as fitted on 2026-10-18; a refit needs the owner.
+- **C1.** Claims rest on pages nobody fitted on. The measure is the e2e run: one run of the product per round over
+  the one eval set, kept outside the repo, scored by one scorer, each disagreement adjudicated against the capture.
+  The set grows in fresh batches (20–30 pages, one per host not in it before, stratified by schema, language,
+  platform and render mode); a batch is scored once, before any change is made on it, and that first score is the
+  only generalization number; then it joins the set. Never look at a fresh batch's pages before that score.
+  Calibration, precedence and drift margins are frozen as fitted on 2026-10-18; a refit needs the owner. The set, its
+  URLs, values and captures stay out of the repo (C3).
 - **C2.** Every generic rule names its standard (schema.org, ISO, CLDR, RFC, HTML) or structural property in a
   comment. "Site X does Y" is never a justification.
 - **C3.** Hostnames, site, retailer and brand names, and strings copied from pages live only in
@@ -60,12 +62,14 @@ unpublished. No site-specific steps, no speculative layers, no second path for e
   added because one page failed.
 - **C5.** A failing site is fixed by config, a learning re-run or an operator correction; change generic code only for
   a class of failures, shown with e2e results.
-- **C7.** No defaults; an unclear currency never drops a price, but a price whose amount is contested by an unexplained rival is a conflict (INV-14); currency from page evidence, else the URL
-  locale/subdomain/ccTLD (flagged), else null; no host tables, and no other value from URL codes (owner #68, D-1782).
+- **C7.** No defaults; an unclear currency never drops a price, but a price whose amount is contested by an
+  unexplained rival is a conflict (INV-14); currency from page evidence, else the URL locale/subdomain/ccTLD
+  (flagged), else null; no host tables, and no other value from URL codes (owner #68, D-1782).
 - **C9.** No test is named after a site or asserts one site's output; write property and replay tests.
-- **C10.** A change that alters extraction must improve the e2e run and not drop any field type's precision
-  without a stated reason. The PR's evaluation section gives the e2e aggregate per field type, before and
-  after, with no per-page or per-site numbers; a gain from fewer than 3 hosts is flagged.
+- **C10.** A change that alters extraction is accepted when it improves the e2e run and drops no field type's
+  precision without a stated reason (a scoring fix, an adjudicated correction of the set). The PR reports the e2e
+  aggregate per field type before and after, never per-page or per-site numbers, and a gain from fewer than 3 hosts
+  is flagged. Claims that the engine generalizes come only from a fresh batch's first score.
 - **C11.** Cognitive complexity at most 15 per function (hard check); files over 800 lines only warn. Add no other
   LOC, complexity, coverage or ratchet gate.
 - **C12.** Never read, copy or port from the `Invoro` or CrawlerAI v1 repositories.

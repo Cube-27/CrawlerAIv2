@@ -113,7 +113,7 @@ amended. Verify: `tools/decision_ids.py`.
 Scope: README status line and docs table; CONTRIBUTING "evaluation report" → the e2e procedure; CLAUDE.md contract
 lines C1/C10 matching `project.md`; `HANDOVER.md` at the repo root: what the system is and is not, how to run it (make
 targets, env, profiles directory), how to run the e2e (eval set and scorer live outside the repo; the matcher caveat
-for query-keyed item URLs), what is frozen (fitted data), open owner decisions, "Not done" below, machine constraints.
+for query-keyed item URLs), what is frozen (fitted data), open owner decisions, "Not done", machine constraints.
 
 **E2 final e2e (orchestrator)** — Deps: F1–F6; runs beside X1. One run over the eval set with LLM (bounded LLM
 budget, robots off, profiles directory set, fresh DB), compared page by page with the previous rounds: outcome deltas,
@@ -122,15 +122,4 @@ handover or listed in HANDOVER.
 
 ## Not done, and why
 
-- JSON-LD `mainEntity` naming another product than the page's title: one-site exception, no class rule.
-- `url` derived from the final address when the page states none: owner #40 specifies it.
-- Hub/SPA listings, card price ranges, variant-dependent prices, og lead text from entity-escaped JSON-LD, galleries
-  whose names exist only in state: no bounded class fix found; listed in HANDOVER.
-- Client-rendered product data over HTTP: owner #70, no render for a lacking field; `render.mode: locate` is the
-  design.
-- LLM run-to-run variance in span choice: accepted; verbatim and grounding checks hold.
-- Vendor bot blocks and 429s: out of scope (no proxies, no CAPTCHA).
-- curl session pool per host (A12): SSRF pinning makes pooling non-trivial; gain unmeasured.
-- Browser profile pruning (A9): the operator deletes the directory; a retention job is deferred.
-- Role S label language tags: changes the public labels API; deferred.
-- The e2e scorer stays outside the repo with the eval set.
+Moved to `HANDOVER.md` ("Not done, and why" and "Open items").
