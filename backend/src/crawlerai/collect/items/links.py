@@ -36,14 +36,15 @@ def leads_to(anchor: HtmlElement, link: str, base: str | None) -> bool:
 
 def current_page(block: HtmlElement, base: str | None, here: str | None) -> bool:
     """Whether the block stands for the page itself in a set of pages: a hyperlink of it is marked as the current page
-    (WAI-ARIA 1.2 `aria-current="page"`), or every one of its hyperlinks leads to this very URL, query included (a
-    same-document `#` reference aside: HTML Standard, navigating to a fragment). A listing's items never include the
-    listing, so a group holding such a block lists documents of the page's own kind: the other categories, cities or
-    sorts of a link hub, the site's navigation rather than the page's items."""
+    (WAI-ARIA 1.2 `aria-current="page"`), or every one of its hyperlinks leads to this very item, query included
+    (`normalize.url_key.item_key`; a same-document `#` reference aside: HTML Standard, navigating to a fragment). A
+    listing's items never include the listing, so a group holding such a block lists documents of the page's own kind:
+    the other categories, cities or sorts of a link hub, the site's navigation rather than the page's items."""
     anchors = [a for a in hyperlinks(block) if not (a.get("href") or "").strip().startswith("#")]
     if any((a.get("aria-current") or "").strip().lower() == _CURRENT_PAGE for a in anchors):
         return True
-    return here is not None and bool(anchors) and all(canonical_url(a.get("href") or "", base) == here for a in anchors)
+    page = item_key(here) if here is not None else None
+    return page is not None and bool(anchors) and all(item_key(a.get("href") or "", base) == page for a in anchors)
 
 
 def _heading_links(block: HtmlElement, sublists: frozenset[HtmlElement]) -> list[HtmlElement]:
