@@ -237,7 +237,7 @@ whose calibrated confidence is below it is `abstained` with reason `below_min_co
 
 ### Requirement: Render mode
 `POST /v1/scrape`, `/v1/batch/scrape` and `/v1/crawl` (and the MCP tools that take their bodies) SHALL accept an
-optional `render: {mode, fields}` (`services.scrape_steps.RenderOptions`): `mode` is `off` (the default: HTTP, the
+optional `render: {mode, fields}` (`services.scrape_request.RenderOptions`): `mode` is `off` (the default: HTTP, the
 browser only when HTTP is refused, [acquisition](../acquisition/spec.md) "Browser on block or by field source"),
 `locate` (the surface's locate run finds where the fields the HTTP pages leave missing, or `fields`, live) or `always`
 (every page rendered); `fields` holds at most `MAX_RENDER_FIELDS` names of the request's schema's fields (another name

@@ -40,16 +40,10 @@ from crawlerai.services.batch import BatchScrapeRequest, Placement, records_sche
 from crawlerai.services.crawl import CrawlRequest, submit_crawl
 from crawlerai.services.extract import ExtractRequest, submit_extract
 from crawlerai.services.fetching import Fetching, check_targets
+from crawlerai.services.page_store import DEFAULT_PROJECT
 from crawlerai.services.records import MAX_PAGE
 from crawlerai.services.scrape import RecordsUnavailable, ScrapeRequest
-from crawlerai.services.scrape_steps import (
-    DEFAULT_PROJECT,
-    Input,
-    SchemaById,
-    SchemaPrompt,
-    named_schema,
-    stored_request,
-)
+from crawlerai.services.scrape_request import Input, SchemaById, SchemaPrompt, named_schema, stored_request
 
 MAX_NAME: Final = 200
 # Due schedules one scheduler run submits; a full batch runs again at once (`scheduler.loop`). One at a time: a run's

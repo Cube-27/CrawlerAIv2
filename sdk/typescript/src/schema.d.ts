@@ -3284,8 +3284,8 @@ export interface components {
          *     does (acquisition spec): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
          *     9309 §2.3.1.4), `slow_down` for a host whose turn at its rate was more than a minute off; for a fetched page a
          *     vendor's challenge kept out, `challenge: <vendor>`; for a fetched listing whose extraction gave no rows,
-         *     `no_rows: <cause>` (`no_rows` in `resolve.pipeline`, D-1475); None for any other page that was fetched. `schema`
-         *     is the draft of a `schema.prompt`.
+         *     `no_rows: <cause>` (`no_rows` in `resolve.pipeline`; rest-api spec, "Scrape outcomes, not errors, for page
+         *     failures"); None for any other page that was fetched. `schema` is the draft of a `schema.prompt`.
          */
         ScrapeResult: {
             browser_actions?: components["schemas"]["ActionsReport"];

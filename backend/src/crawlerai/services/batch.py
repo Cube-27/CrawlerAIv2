@@ -43,15 +43,14 @@ from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData, PinnedData
 from crawlerai.resolve.types import Probability
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.services.fetch_options import KEEP_SECRETS, check_proxy_pool
+from crawlerai.services.fetch_options import KEEP_SECRETS, FetchOptions, check_proxy_pool
 from crawlerai.services.fetching import check_targets
 from crawlerai.services.location import job_egress
+from crawlerai.services.page_store import DEFAULT_PROJECT
 from crawlerai.services.scrape import Budget, RecordsUnavailable
-from crawlerai.services.scrape_steps import (
-    DEFAULT_PROJECT,
+from crawlerai.services.scrape_request import (
     MIN_CONFIDENCE_DESCRIPTION,
     RENDER_DESCRIPTION,
-    FetchOptions,
     PageFormat,
     RenderOptions,
     SchemaById,

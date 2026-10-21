@@ -7,7 +7,7 @@ from pydantic import Field, field_validator, model_validator
 
 from crawlerai.db.models import WebhookEventType
 from crawlerai.db.webhook_outbox import ALL_EVENTS, JOB_END_EVENTS, WebhookBatch
-from crawlerai.services.scrape_steps import Input, absolute_http_url
+from crawlerai.services.scrape_request import Input, absolute_http_url
 
 
 class WebhookOptions(Input):

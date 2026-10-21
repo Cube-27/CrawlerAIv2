@@ -25,7 +25,7 @@ from crawlerai.normalize.base import Context
 from crawlerai.resolve.pipeline import EngineData, extract_page
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
-from crawlerai.services.scrape_steps import FetchFailure, fetch_failure
+from crawlerai.services.page_run import FetchFailure, fetch_failure
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 
 URL = "https://shop.example.test/p/1"

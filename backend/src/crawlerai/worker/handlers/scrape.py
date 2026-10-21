@@ -1,5 +1,5 @@
-"""The handler of `batch_scrape` and `extract` tasks (jobs spec): a scrape's steps
-(`crawlerai.services.scrape_steps`), run by a worker instead of while a caller waits. An `extract` job is a records job
+"""The handler of `batch_scrape` and `extract` tasks (jobs spec): a scrape's page run (`page_run`),
+run by a worker instead of while a caller waits. An `extract` job is a records job
 whose URLs are all caller-supplied, as a batch's are, so its tasks run as a records batch's do.
 
 The page is fetched politely (`crawlerai.services.polite`): robots.txt over HTTP, the site's rate, backoff through the
@@ -9,37 +9,29 @@ queue. Its capture is stored, and for `records` it is extracted with what the jo
 not stored: `/v1/jobs/{id}/results` makes them from the capture.
 
 A records task fetches its page whole and extracts it fresh every run, a recurring run's too: no record stored by an
-earlier run stands for it (jobs spec, "Fresh extraction"; `steps.extract_records`).
+earlier run stands for it (jobs spec, "Fresh extraction"; `page_run.extract_run`).
 
 The page is fetched before the worker's transaction for the task opens, site memory learned in short transactions of its
-own (`steps.fetch_page`); everything else is written in that transaction, so a task that raises rolls back alone and
-fails no other (INV-31). A page that was not reached ends with its outcome (`blocked`, `shell`, `not_found`); a fetch
-error is a transient failure, retried by the queue and `failed` once attempts run out; a redirect the SSRF guard refused
-fails the task at once (INV-16).
+own (`steps.fetch_page`), and extracted before it opens; everything else is written in that transaction, so a task that
+raises rolls back alone and fails no other (INV-31). A page that was not reached ends with its outcome (`blocked`,
+`shell`, `not_found`); a fetch error is a transient failure, retried by the queue and `failed` once attempts run out; a
+redirect the SSRF guard refused fails the task at once (INV-16).
 """
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.config_ir.drift import DriftMargins
-from crawlerai.db.queue import ClaimedTask
+from crawlerai.config_ir.role_c import role_c
+from crawlerai.db.queue import ClaimedTask, Failed
 from crawlerai.llm.client import LLMClient
 from crawlerai.resolve.pipeline import EngineData
+from crawlerai.services.fetch_options import FetchOptions
 from crawlerai.services.fetching import Fetching
-from crawlerai.services.scrape_steps import FetchOptions, PageFormat
-from crawlerai.worker.handlers.steps import (
-    Ended,
-    FetchedPage,
-    Records,
-    count_fetch,
-    extract_records,
-    fetch_page,
-    keep_page,
-    load_job,
-    store_further_pages,
-    unreached,
-)
-from crawlerai.worker.loop import Failed, Finished, Settle, TaskHandler, TaskResult
+from crawlerai.services.page_run import extract_run, page_run
+from crawlerai.services.scrape_request import PageFormat
+from crawlerai.worker.handlers.steps import Ended, count_fetch, fetch_page, load_job
+from crawlerai.worker.loop import Settle, TaskHandler, TaskResult
 
 
 class _PageFetch(BaseModel):
@@ -77,40 +69,25 @@ def scrape_handler(
             planned=records,
         )
 
+        if isinstance(fetched, Ended):
+            ended = fetched
+
+            async def end(conn: AsyncConnection) -> TaskResult:
+                await count_fetch(conn, task, ended)
+                return ended.task_result
+
+            return end
+        page = fetched
+        # The page resolves before the task's transaction opens (`page_run`).
+        extracted = await extract_run(page, records, role_c(llm, job_id=task.job_id))
+
         async def settle(conn: AsyncConnection) -> TaskResult:
-            page = await keep_page(conn, fetching.store, fetched)
-            result = (
-                page.task_result
-                if isinstance(page, Ended)
-                else await _settle(conn, engine, fetching, task, page, records, llm)
+            run = await page_run(
+                conn, engine, fetching.store, task, page, extracted, retryable=True, caller_supplied=True
             )
             await count_fetch(conn, task, page)
-            return result
+            return run.result
 
         return settle
 
     return handle
-
-
-async def _settle(
-    conn: AsyncConnection,
-    engine: AsyncEngine,
-    fetching: Fetching,
-    task: ClaimedTask,
-    page: FetchedPage,
-    records: Records | None,
-    llm: LLMClient,
-) -> TaskResult:
-    """The fetched page's result: its outcome when it was not reached or the job has no records, else its record's."""
-    ended = unreached(page, task)
-    if ended is not None:
-        return ended
-    if records is None:
-        return Finished("extracted", capture_id=page.capture_id)
-    parsed = page.parsed
-    result = await extract_records(conn, engine, task, page, records, caller_supplied=True, llm=llm, parsed=parsed)
-    if isinstance(result, Finished):
-        result = await store_further_pages(
-            conn, engine, fetching.store, task, page, records, caller_supplied=True, llm=llm, result=result
-        )
-    return result

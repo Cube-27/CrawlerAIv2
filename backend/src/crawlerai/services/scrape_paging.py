@@ -25,9 +25,9 @@ from crawlerai.acquire.types import AttemptRecord, BrowserActions, FetchPolicy, 
 from crawlerai.config_ir.api_recipe.model import ApiRecipe
 from crawlerai.config_ir.api_recipe.replay import Render
 from crawlerai.db.models import PageKind
+from crawlerai.services.fetch_options import FetchOptions
 from crawlerai.services.fetching import Fetching, TargetRejected, grown, recipe_rung, refusal
 from crawlerai.services.polite import IN_PLACE, HostRules, ReadRules, Refused, Turns, polite_fetch, rules_of
-from crawlerai.services.scrape_steps import FetchOptions
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 # D-1222: the actions' time cap; the probe's slowest passing listing took under 50 s.

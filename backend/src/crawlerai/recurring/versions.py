@@ -95,7 +95,7 @@ def _delta(previous: RowMapping | None, draft: RecordDraft, schema: SchemaDef) -
 async def _lock(conn: AsyncConnection, site_id: SiteId, schema: SchemaDef) -> None:
     """Hold the site's record versions for the schema until the transaction ends, so that two tasks storing the same
     entity at once cannot both add the same version. A task's transaction already waits on the same site and schema
-    for its progressive state row (`services.scrape_steps`), so this adds no wait of its own to speak of."""
+    for its progressive state row (`page_store`), so this adds no wait of its own to speak of."""
     digest = hashlib.blake2b(f"record_versions:{site_id}:{schema.id}".encode(), digest_size=8).digest()
     # pg_advisory_xact_lock takes a bigint key (PostgreSQL §9.28.10): the digest's 8 bytes, signed.
     await conn.execute(select(func.pg_advisory_xact_lock(int.from_bytes(digest, "big", signed=True))))

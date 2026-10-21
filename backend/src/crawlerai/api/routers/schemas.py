@@ -20,7 +20,7 @@ from crawlerai.schemas.registry import SchemaNotFound
 from crawlerai.schemas.types import FieldLabels, Name, SchemaContent, SchemaDef
 from crawlerai.services import schemas
 from crawlerai.services.schemas import InvalidSchema, NewSchema, SchemaConflict
-from crawlerai.services.scrape_steps import SchemaFields, fields_schema
+from crawlerai.services.scrape_request import SchemaFields, fields_schema
 
 router = APIRouter(
     prefix="/v1/schemas",
