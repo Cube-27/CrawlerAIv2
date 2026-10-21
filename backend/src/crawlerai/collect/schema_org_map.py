@@ -433,7 +433,9 @@ def _path_candidates(
     for entity_id, selected in _selections(entities, paths, vocabulary, spec=spec, entries=entries):
         if selected.url and _holds_text(spec):
             continue
-        read = fragment_read(selected.raw, spec) or _member_read(selected.raw, spec, vocabulary)
+        read = fragment_read(selected.raw, spec)
+        if read is None:
+            read = _member_read(selected.raw, spec, vocabulary)
         found = candidate(
             name, spec, entity_id, source_kind, selected.raw, selected.locator, ctx, diagnostics, read=read
         )

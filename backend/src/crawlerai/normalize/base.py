@@ -72,18 +72,19 @@ def has_surrogate(s: str) -> bool:
     return _SURROGATE.search(s) is not None
 
 
-# HTML Standard §13.1.4 character references, each closed by `;`: named, decimal and hexadecimal.
-_REFERENCE = re.compile(r"&(?:[A-Za-z][A-Za-z0-9]{1,31}|#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6});")
+# HTML Standard §13.1.4 character references, each closed by `;`: named, decimal and hexadecimal (any leading zeros),
+# its `&` itself written escaped any number of times (`&amp;amp;`, `&#38;#39;`).
+_REFERENCE = re.compile(
+    r"&(?:amp;|#0*38;|#[xX]0*26;)*([A-Za-z][A-Za-z0-9]{1,31};|#0*[0-9]{1,7};|#[xX]0*[0-9A-Fa-f]{1,6};)"
+)
 
 
 def decoded_references(s: str) -> str:
-    """`s` with its character references (HTML Standard §13.1.4) decoded, then again while decoding leaves one: a
-    reference whose `&` is itself escaped (`&amp;amp;`, `&amp;#39;`) is text its producer HTML-escaped twice (once
+    """`s` with its character references (HTML Standard §13.1.4) decoded, a reference whose `&` is itself escaped
+    (`&amp;amp;`, `&amp;#39;`) as the character it finally names: that is text its producer HTML-escaped twice (once
     more as it wrote the value into a script or an attribute), and the page shows it decoded. Only references closed by
-    `;` are read, so a URL's query (`?a=1&reg=2`) is never taken for one. Each pass shortens the text, so it ends."""
-    while (decoded := _REFERENCE.sub(lambda m: html.unescape(m.group()), s)) != s:
-        s = decoded
-    return s
+    `;` are read, so a URL's query (`?a=1&reg=2`) is never taken for one. One pass over `s`."""
+    return _REFERENCE.sub(lambda m: html.unescape("&" + m.group(1)), s)
 
 
 class Context(BaseModel):
