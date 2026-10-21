@@ -30,7 +30,7 @@ its scope match times its value's agreement:
   another kind's value plus ` - ` or ` | ` and more text; a list of
   images, of any kind, whose files (`same_file`: a file or a rendition of it) are all among a longer list's of another
   kind, for an Open Graph list its first file only (Open Graph "Arrays": the first is preferred; a site default after it
-  is no view) (Previously: an Open Graph list only; files compared by `resource_key`, every Open Graph file)). For `money` the strength of the currency
+  is no view)). For `money` the strength of the currency
   evidence ([normalization](../normalization/spec.md) `basis`): a stated currency 1, then `page`, `locale`, `url`,
   `unknown` each 1/(number of bases + 1) less. Every other type weighs every kind 1 (no measured order).
 - Scope match: 1 for the target's own values and its anchor Offer's, 0.5 for another Offer of the target or of its
@@ -51,7 +51,7 @@ job's places) publishes instead every member its values scoring above 0 state, t
 different members state more of the item, not rival values. A member equal to one already listed is that one, and a
 location the page writes as text alone that names a listed place's locality (its region when it states none: "Austin"
 or "Raleigh; Austin; Denver" for `addressLocality` Austin) stands for it, in its place; no value is outscored and no
-flag is set. (Previously: a list was one value, and different lists were rivals.) When the best score is 0 the field is `missing` (`unranked`); when two values share
+flag is set. When the best score is 0 the field is `missing` (`unranked`); when two values share
 it the field is a `conflict` (`disagree`, C7: decline rather than guess). Money differs in one way: an unclear
 currency never drops a price (tied values stating one amount in different currencies publish that amount with its
 currency `null`, basis `unknown`), but amounts that differ are rival prices, each explained by its role before the
@@ -67,12 +67,8 @@ fields of those roles (extraction spec, "Structural DOM values"). A `dom` amount
 bound of a stated price range (an AggregateOffer's `lowPrice` or `highPrice`, the two bounds differing; in the range's
 currency, or either currency unknown) is that range's bound, rejected `range_bound`; a user-added `price_range` publishes the range. An amount of the same role for the same variant that nothing explains leaves the field a
 `conflict` (`disagree`, `offers_disagree` or `offer_split`): accuracy before coverage, and a price range is no price
-unless the page states one amount for the product (a low bound is never derived from disagreeing Offers). (Previously:
-collectors read an Offer's own `price` only, never a `priceSpecification`, and a visible range bound was a price
-candidate; a price always published, owner #68 as then read; exact-match types published only when every kept
-candidate agreed, else `conflict`; money ranked by currency evidence then needed agreement, a weaker one rejected
-`weaker_currency`; text, url and image published from the first source kind in the order, a disagreement within it
-settled only by the first other kind naming one value; each rule had its own tie-breaks.) Refs: §10, owner #68,
+unless the page states one amount for the product (a low bound is never derived from disagreeing Offers). Refs: §10,
+owner #68,
 owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_preference.py`,
 `tests/unit/test_preference.py`; active.
 #### Scenario: A visible range bound
@@ -85,13 +81,12 @@ owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_prefere
 #### Scenario: Two prices disagree
 - **WHEN** JSON-LD says 19.90 EUR and microdata says 21.00 EUR for the target
 - **THEN** `price` publishes 19.90 EUR with reason `disagree` and the microdata candidate is rejected `outscored`
-  (Previously: `conflict` with no value.)
 #### Scenario: Two sources against one
 - **WHEN** JSON-LD and microdata say 19.90 EUR and a DOM text says 21.00 EUR
 - **THEN** `price` publishes 19.90 EUR with reason `disagree`
 #### Scenario: Unknown currency beside a stated one
 - **WHEN** JSON-LD says 19.90 USD and a DOM text says `$21.00` that no evidence settles
-- **THEN** `price` publishes 19.90 USD and the DOM candidate is rejected `outscored` (Previously: `weaker_currency`.)
+- **THEN** `price` publishes 19.90 USD and the DOM candidate is rejected `outscored`
 #### Scenario: One amount in two currencies
 - **WHEN** JSON-LD says 19.90 EUR and a DOM text says `19.90 USD`
 - **THEN** `price` publishes 19.90 with currency `null` and basis `unknown`
@@ -138,16 +133,14 @@ variant, [variants](../variants/spec.md)), else the one holding values for the m
 On a detail page a source (a collector; each adapter and each JSON-LD block a source of its own, a block being one
 document, JSON-LD 1.1 §7.1) that states one Offer alone for the target
 states the item's offer, the shown variant's (Shown variant), unless that source's Offer is already named by the
-target's sku or gtin; a source listing several states which is shown by its sku or gtin. (Previously: only when every
-source stated one Offer each; all JSON-LD blocks were one source.)
+target's sku or gtin; a source listing several states which is shown by its sku or gtin.
 The anchor's values score as the target's own and another Offer's at half (Candidate score). Where Offers state other
 values an offer field publishes only the shown variant's value, else it is `conflict` `offers_disagree` (a price
 also publishes when the visible price explains the difference, Candidate score). A value only another Offer than the
 anchor states is `conflict` `offer_split`; a field no Offer states publishes from the target's own values (its Open
 Graph, page state or text), and an `AggregateOffer` range never publishes as the price. An Offer's values are the item's
 it offers through any Offers between them (schema.org `offers`: an AggregateOffer's `offers` offer its item).
-(Previously: a price whose Offers disagreed, or only another Offer stated, published flagged; an Offer inside an
-AggregateOffer was no item's.) Refs: §10, owner #68, owner 2026-10-19; per-row and common-value rules in
+Refs: §10, owner #68, owner 2026-10-19; per-row and common-value rules in
 [variants](../variants/spec.md). Enforced by: resolver test; active.
 #### Scenario: Offers inside an AggregateOffer
 - **WHEN** a listed Product's `offers` is an AggregateOffer whose one Offer states 9.50 EUR

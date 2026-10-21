@@ -1308,8 +1308,7 @@ archived ARCHITECTURE.md.
 
 The "(Previously …)" clauses the capability specs carried until 2026-10-21, moved here so each spec states only the
 current behaviour (handover plan X1). Each item names the spec and the requirement it stood in, and says what that
-requirement used to state. The adapters spec and the resolution price rule (Candidate score, Atomic offers) keep
-theirs until the change that edits them next.
+requirement used to state.
 
 ### acquisition
 
@@ -1360,6 +1359,33 @@ theirs until the change that edits them next.
 - "Listing browser actions": only a scrape that asked for them.
 - "Challenge labels": no stand-in markers.
 - "Caller request context": captures matched by context names alone.
+
+### adapters
+
+- "Fallback to the page rungs (INV-40)": declined in each process's memory.
+- "Polite adapter requests": the page host's rules were read again.
+- "Shapes read as schema.org nodes": an adapter's entities carried no identity and could not merge with the page's
+  JSON-LD; a split text was read from its first member only, and Personio's sections were joined into the recorded
+  answer.
+- "Greenhouse and Lever adapters": apply links were not mapped.
+- "Shopify adapter": the first 250 products, and no locale-prefixed URL; a shop of several currencies was served without
+  prices; an answer with zero prices was served; the adapter served a collection before its page was fetched, with every
+  product of the collection up to the row cap, whatever page the URL asked, and declined a URL with a query; the answer
+  then replaced the fetched page as the capture, and a redirect to the `www` host was not served.
+- "Shopify values": no shown variant, so an unknown `?variant=` id left the variants' Offers contending; the answer's
+  top-level `price` only, read without its Offer when `price_varies`; no currency member; the product JSON's
+  `featured_image` only and no `description`; `available: true` read as `InStock`.
+- "Workday adapter": the first page of 20 only, and career sites on the platform's hosts only; row URLs without the
+  page's locale.
+- "Oracle Recruiting Cloud adapter": the first page of 25 only.
+- "Referral from a tenant's own host": the page was rendered first, and only an `ok` page was asked; links referred a
+  page whatever its schema read.
+- "BambooHR, Teamtailor, UKG Pro, Personio and ADP adapters": always `PostedDate`.
+- "Recipe model": `headers` was a name-to-value map and a credential header was refused outright.
+- "Recipe discovery and binding": a constant query value was always a literal.
+- "Headers proven by replay": no context header was tried.
+- "Held-out validation": such an error failed the learning run.
+- "Recipe politeness and pagination": the worker's tasks served a listing recipe's first page only.
 
 ### extraction
 
@@ -1524,6 +1550,18 @@ theirs until the change that edits them next.
   `script_rendered`; then every field of a config whose `fetch.method` was `browser` was browser-bound.
 - "LLM gap hook": only missing required fields and groups were asked, and an ungrounded field's reason was
   `no_candidates`.
+- "Candidate score (INV-14)": an Open Graph list only; files compared by `resource_key`, every Open Graph file.
+- "Candidate score (INV-14)": a list was one value, and different lists were rivals.
+- "Candidate score (INV-14)": collectors read an Offer's own `price` only, never a `priceSpecification`, and a visible
+  range bound was a price candidate; a price always published, owner #68 as then read; exact-match types published only
+  when every kept candidate agreed, else `conflict`; money ranked by currency evidence then needed agreement, a weaker
+  one rejected `weaker_currency`; text, url and image published from the first source kind in the order, a disagreement
+  within it settled only by the first other kind naming one value; each rule had its own tie-breaks.
+- "Candidate score (INV-14)": `conflict` with no value.
+- "Candidate score (INV-14)": `weaker_currency`.
+- "Atomic offers (INV-15)": only when every source stated one Offer each; all JSON-LD blocks were one source.
+- "Atomic offers (INV-15)": a price whose Offers disagreed, or only another Offer stated, published flagged; an Offer
+  inside an AggregateOffer was no item's.
 
 ### rest-api
 

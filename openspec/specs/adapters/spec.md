@@ -27,7 +27,6 @@ A host answering without the platform signal is declined for 24 h, stored on its
 and read by every process; `not_served` and 429/5xx never decline.
 Enforced by: `tests/unit/test_adapter_registry.py`, `tests/db/test_adapter_serving.py`; active.
 Refs: §7.1, D-1078, D-1082, D-1111, D-1384.
-(Previously: declined in each process's memory.)
 #### Scenario: Unserved collection page
 - **WHEN** the adapter's answer for `https://shop.example/collections/mugs` is `not_served`
 - **THEN** the page is fetched over HTTP on its turn and the result lists the `api` attempt then the `http` attempt
@@ -37,7 +36,6 @@ Adapter requests SHALL go through `services.fetching.adapter_send`: only where t
 at that host's rate; a refused request is a `blocked` result that sent nothing, and the page falls back. A request on
 the page's own host goes by the robots.txt and interval the caller read for the page, without reading them again.
 Refs: D-1084, D-1384.
-(Previously: the page host's rules were read again.)
 
 ### Requirement: Capture attribution (INV-39)
 An `api` capture SHALL be read by an adapter only when it detects the page URL and the final URL is one of its
@@ -61,8 +59,6 @@ properties reads an object of those properties' schema.org names. Each entity ca
 JSON-LD entity does (its identifier values and item URLs), so resolution merges it with the page's own statement of the
 item. A body that does not match yields no entities, never an exception. Refs: §8.1, D-0266, D-1087, D-1115, D-1176,
 D-1304, D-1336.
-(Previously: an adapter's entities carried no identity and could not merge with the page's JSON-LD; a split text was
-read from its first member only, and Personio's sections were joined into the recorded answer.)
 #### Scenario: A posting body split over members
 - **WHEN** a Lever posting states `description`, a list `Requirements` with items, and `additional`
 - **THEN** its description is the three in that order, the list under a `Requirements` heading
@@ -76,7 +72,7 @@ fields as in `adapters/greenhouse.py` and `adapters/lever.py`; filtered Lever li
 regional hosts fall through to the page rungs. A job read for a hosted Greenhouse board page SHALL have the board's job
 route on the page's host as its URL; one read for an embedded board keeps the API's `absolute_url`. A posting answer's
 documented apply link (Lever and SmartRecruiters `applyUrl`) is its ApplyAction's `target` (`adapters.base.apply_action`).
-(Previously: apply links were not mapped.) Refs: D-0267, D-0307, D-0310, D-1483, D-1493.
+Refs: D-0267, D-0307, D-0310, D-1483, D-1493.
 
 ### Requirement: Shopify adapter
 It SHALL detect collection paths only, with any query, also under a locale subfolder
@@ -100,10 +96,6 @@ next page is the crawl's to follow from the page's own link (pagination), never 
 page whose URL has a query is served by an adapter, not page-scoped, that detects it without the query when the page's
 canonical link is that URL (RFC 6596, D-1120). Refs: Appendix A #46, #47, D-1077, D-1078, D-1114, D-1118, D-1120, D-1385,
 D-1386.
-(Previously: the first 250 products, and no locale-prefixed URL; a shop of several currencies was served without
-prices; an answer with zero prices was served; the adapter served a collection before its page was fetched, with every
-product of the collection up to the row cap, whatever page the URL asked, and declined a URL with a query; the
-answer then replaced the fetched page as the capture, and a redirect to the `www` host was not served.)
 #### Scenario: One page of a paged collection
 - **WHEN** a collection of four products shows two a page, the API answers two a page, and `?page=2` links the third
   and fourth
@@ -128,9 +120,7 @@ the page URL's `?variant=` names, else, when it names none or an id the product 
 the first) gives the Product its `sku` and `barcode`, so resolution reads that variant's Offer as the shown one; its
 currency is the page's `Shopify.currency.active`, a platform signature's `currency_members` (Shopware:
 `window.currencyIsoCode`), read only on a page showing the platform's signal. Refs: D-1080, D-1081, D-1085, D-1114,
-D-1118, architecture-v3 d.7. (Previously: no shown variant, so an unknown `?variant=` id left the variants' Offers
-contending; the answer's top-level `price` only, read without its Offer when
-`price_varies`; no currency member; the product JSON's `featured_image` only and no `description`; `available: true` read as `InStock`.)
+D-1118, architecture-v3 d.7.
 
 ### Requirement: Workday adapter
 It SHALL detect career sites on `{tenant}.{dc}.myworkdayjobs.com/[{locale}/]{site}` and
@@ -141,7 +131,6 @@ title, description, locations as written, date posted, employment type, hiring o
 `adapters/workday.py`. It SHALL refer a page on another host to the career site it names as itself or, for a listing,
 the one site all its Workday links belong to (in the locale those links all state, when they agree). A list URL with a query falls through to the page rungs. Refs: D-1177,
 D-1300, D-1302.
-(Previously: the first page of 20 only, and career sites on the platform's hosts only; row URLs without the page's locale.)
 #### Scenario: Listing row URL
 - **WHEN** a listing answer row has `externalPath` `/job/Northtown/Engineer_R-1` for the site `https://t.wd1.myworkdayjobs.com/External`
 - **THEN** the row's URL is `https://t.wd1.myworkdayjobs.com/External/job/Northtown/Engineer_R-1`
@@ -155,7 +144,6 @@ It SHALL detect Candidate Experience sites on `{pod}.fa[.{dc}].oraclecloud.com/h
 documented `recruitingCEJobRequisitions` (pages of 100 by `offset` until the first item's `TotalJobsCount`) and
 `recruitingCEJobRequisitionDetails` resources on the page's host, map rows with their job URL (site URL + `/job/{Id}`),
 and class an answer without items `not_served`, as in `adapters/oracle_recruiting.py`. Refs: D-1178, D-1300, D-1307.
-(Previously: the first page of 25 only.)
 
 ### Requirement: Paged adapter lists
 An adapter whose API serves a list in pages SHALL fetch the pages through the caller's `send` (so robots.txt and the
@@ -180,7 +168,6 @@ only when the schema's items are the platform's (the fetch policy's `target_type
 fields: JobPosting for a job board): a link leads elsewhere, it is not the page's identity. An HTTP page that would be
 rendered for lacking what the caller reads (that `shell`) asks its referral or canonical URL first, and is rendered only
 when no adapter serves it. Only structure decides, never a list of hosts or words. Refs: D-1302, D-1388.
-(Previously: the page was rendered first, and only an `ok` page was asked; links referred a page whatever its schema read.)
 #### Scenario: Branded careers page
 - **WHEN** a listing page on another host links only to job and sign-in pages of one Workday career site
 - **THEN** that site's list is served by the Workday adapter and the result lists the page attempt then the `api`
@@ -209,7 +196,7 @@ nothing is `not_served`) and map `JobPosting` title, locations, date posted, emp
 URL and the pay where the platform states one, as in `adapters/{bamboohr,teamtailor,ukg,personio,adp}.py`; Teamtailor
 and Personio have no endpoint for one job, so a job page falls to the page rungs. A UKG job page's date posted is the
 `ExternalPostedDate` of its opportunity's membership of the board the URL names (`JobBoardMemberships`, by
-`JobBoardId`), else the requisition's `PostedDate`. (Previously: always `PostedDate`.) Refs: D-1330, D-1333, D-1334,
+`JobBoardId`), else the requisition's `PostedDate`. Refs: D-1330, D-1333, D-1334,
 D-1335.
 #### Scenario: UKG board date
 - **WHEN** a UKG opportunity states `PostedDate` 2026-08-20 and its membership of the page's board
@@ -238,8 +225,7 @@ query or the JSON body (`model.py`), and a `proof`. Its `headers` are a list of 
 `{name, from_context: true}` references to a header of the caller's request context (D-1430), whose value the recipe
 never holds and serving takes from the request (`replay.request_for`, the page's own host only); it MUST refuse a value
 for `Authorization`, `Proxy-Authorization` or `Cookie` and any client-owned header, and is never executed as code.
-Refs: §7.2, §12.1, §18, Appendix A #59, D-0493, D-0498, D-0560, D-1360, architecture v3 PR 5. (Previously: `headers`
-was a name-to-value map and a credential header was refused outright.)
+Refs: §7.2, §12.1, §18, Appendix A #59, D-0493, D-0498, D-0560, D-1360, architecture v3 PR 5.
 
 ### Requirement: Recipe discovery and binding
 Learning SHALL find the endpoint whose network JSON matches a required field on every sample browser capture, then
@@ -250,8 +236,8 @@ endpoint URL before binding and role D (`binding.withhold_tokens`), so no recipe
 listing's endpoint is the call series whose rows match published row values on every sample capture with calls, its
 pagination inferred from a series of two or more calls (`pagination.py`), bound from two listing URLs at least
 (`listing.py`). A page whose capture holds no calls (for a listing, no second call) is rendered in the browser with
-capture, a listing with its browser actions: at most 3 sample and 3 held-out pages per run. (Previously: a constant
-query value was always a literal.) Refs: §7.2, §11, Appendix A #59, D-0541, D-0494, D-0611, D-1361, D-1364, D-1366,
+capture, a listing with its browser actions: at most 3 sample and 3 held-out pages per run. Refs: §7.2, §11, Appendix A
+#59, D-0541, D-0494, D-0611, D-1361, D-1364, D-1366,
 D-1407.
 #### Scenario: Paged calls of a listing
 - **WHEN** listing pages loaded their rows from `/search?cat=<category>&page=1` and `&page=2`
@@ -264,7 +250,7 @@ D-1407.
 Replay SHALL start with `Accept: application/json` only and add one captured header at a time until one passes, then
 each header the run's request context supplies, as a reference; captured credentials, varying and token-like values
 are never tried, and when none passes the recipe is `not_learnable`. A locate run's context is the stored request of
-the job that started it. Refs: §7.2, D-0559, D-0560, architecture v3 PR 5. (Previously: no context header was tried.)
+the job that started it. Refs: §7.2, D-0559, D-0560, architecture v3 PR 5.
 #### Scenario: Cookie needed
 - **WHEN** an endpoint answers only with the captured cookie
 - **THEN** the recipe is `not_learnable` and the site stays on its page rungs
@@ -281,7 +267,6 @@ page's captured calls, in order, each mapped raw value equal); `validation_repor
 the refusal reason either way, and an error of the recipe learner that is neither an LLM failure nor a database
 error (a replay's usage not stored fails the run) refuses the recipe (`recipe_error: <type>`) without failing the run.
 Refs: §7.2, Appendix A #59, D-0581, D-0583, D-0735, D-1365, D-1389, D-1584.
-(Previously: such an error failed the learning run.)
 #### Scenario: Second page changed
 - **WHEN** a held-out listing's replayed second page answers other rows than its captured second call
 - **THEN** the recipe is refused `not_reproduced`
@@ -300,7 +285,7 @@ recipe has pagination SHALL be served by it over HTTP (`RecipeRung.pages`), each
 the task, until a page has no rows, the pagination names no new next page (or one on another origin), the scrape's
 `records` target, 50 pages (for a crawl, its `limit` when lower) or the actions' time cap, each request at its host's
 rate; when the first page is not served the browser actions run, or the task's page is fetched by the page rungs.
-(Previously: the worker's tasks served a listing recipe's first page only.) Refs: Appendix A #59, D-0731, D-0603,
+Refs: Appendix A #59, D-0731, D-0603,
 D-1363, D-1368, D-1406.
 #### Scenario: Records target
 - **WHEN** a cursor-paged recipe answers three rows a page and the scrape asks for 5 records
