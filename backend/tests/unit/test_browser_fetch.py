@@ -290,11 +290,11 @@ def browser(server: Server) -> Iterator[Browser]:
             pytest.skip("Chromium is not installed: run `uv run patchright install --no-shell chromium`")
         try:
             yield Browser(runner, session, server.port)
-            # Each fetch closes its own context, so none is left open between tests.
-            assert session.browser.contexts == []
+            # Each fetch hands its profile back, so none is left rendering between tests.
+            assert session.profiles.busy == 0
         finally:
             runner.run(opened.__aexit__(None, None, None))
-        assert not session.browser.is_connected()
+        assert not session.profiles.idle
 
 
 def test_js_only_page_is_rendered_and_its_json_and_flight_captured(browser: Browser, server: Server) -> None:

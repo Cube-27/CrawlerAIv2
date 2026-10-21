@@ -278,7 +278,7 @@ reason; **report** = detected and named in page diagnostics and the job summary 
 | 4a | XHR/fetch JSON, GraphQL incl. persisted queries | capture (exists) + locate `call` recipes | now (PR 5) | auth/CSRF headers: recipe only with a caller-supplied header by reference; otherwise `browser`-bound |
 | 4a | gRPC-web | — | report | binary framing, protobuf schema unknown; `application/grpc-web*` content type reported |
 | 4b | WebSocket / SSE | — | report | browser notes an opened socket/EventSource; fields are `browser`-bound; no protocol client |
-| 4c | Service-worker cache | fresh context per job+site (exists) | now (exists) | first-visit fetch bypasses an existing cache (CONFIRMED); no change |
+| 4c | Service-worker cache | fresh context per job+site (exists); since 2026-10-21 a persistent profile per site (owner #50 amended), whose HTTP cache and service workers are deleted before each launch | now (exists) | first-visit fetch bypasses an existing cache (CONFIRMED); within one launch (idle up to 60 s) a later page may be served by the site's service worker |
 | 5 | Declarative shadow DOM | DSD flatten pre-pass | now (PR 4) | CONFIRMED |
 | 5 | Open imperative shadow roots | `getHTML` serialization in the render | now (PR 5) | CONFIRMED; 0.186% of page loads |
 | 5 | Closed shadow roots | — | report | needs an `attachShadow` hook before page scripts (init script, INV-44); 0.059% of loads |

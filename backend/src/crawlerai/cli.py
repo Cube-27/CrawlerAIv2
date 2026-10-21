@@ -149,7 +149,7 @@ async def _fetch(
     options = options or FetchOptions()
     policy = fetch_policy(options, None)
     if options.in_browser:
-        async with open_browser() as session:
+        async with open_browser(settings.browser_profiles) as session:
             result = await fetch_browser(
                 url,
                 policy,

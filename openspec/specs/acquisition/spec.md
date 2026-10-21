@@ -172,17 +172,26 @@ answer joins the HTTP capture as one more network body at the frame's URL, which
 The HTTP rung SHALL use `curl_cffi` impersonating Chrome (`CRAWLERAI_IMPERSONATE`, else the profile nearest the
 installed Patchright Chromium major, checked at startup by `acquire/impersonate.py`), at most 5 manual redirects, and
 record headers without cookies or proxy credentials, within `timeout_s` (10 s by default). The browser rung SHALL use Patchright's full Chromium build in
-headless mode, one browser per process shared by its page fetches (worker, API, scheduler, eval) with at most
-`BROWSER_CONTEXTS` (2) of them rendering at once (`acquire/shared_browser.py`; a listing scrape with browser actions
-launches its own), recycled once worn (after 200 pages or 30 min, by the next fetch that finds no page rendering in it), each page in a tab of its own, one navigation, no scripted
+headless mode, one Playwright driver per process shared by its page fetches (worker, API, scheduler, eval) with at
+most `BROWSER_CONTEXTS` (2) of them rendering at once (`acquire/shared_browser.py`; a listing scrape with browser actions
+launches its own), each site profile's browser a process of its own, recycled once worn (after 200 pages or 30 min, by the next fetch that finds no page rendering in it), each page in a tab of its own, one navigation, no scripted
 actions (a listing scrape's browser actions and the caller's page steps excepted, below), capped by `browser_timeout_s`
 (plus the steps' own timeouts).
 
-Contexts: a job's pages of one site render in one context (`FetchPolicy.scope`, the job; keyed also by the proxy pool
-and endpoint), kept between them, so the site's cookies, storage and passed challenges
-carry on; a context renders one page at a time, at most 2 idle ones are kept (least recently used closed first), all
-close with the browser, and one whose page ended with an error or a 4xx/5xx document is closed. A fetch outside a job,
-or with the caller's cookies (added before it navigates), gets a context of its own.
+Profiles (owner #50 as amended 2026-10-21, `acquire/browser_profiles.py`): a site's pages render in a persistent
+Chromium profile of the site's own (`launch_persistent_context`, no incognito context), one per registrable domain,
+proxy pool and endpoint, kept under `CRAWLERAI_BROWSER_PROFILES` across jobs and processes (unset: a profile lasts
+while its browser is open; deleting the directory resets every profile), its directory named by a digest, never by
+the host. A profile renders one page at a time and is opened by one process at a time (an OS file lock); a page whose
+profile is held elsewhere, and a fetch with the caller's cookies (added before it navigates), get a temporary profile,
+deleted when it closes. At most `_OPEN_PROFILES` (2) are open in a process, rendering or idle (the least recently used
+idle one closed first); an idle one closes after 60 s, all close with the session, one whose page ended with an
+error or a 4xx/5xx document closes, and a profile whose page was `blocked` is deleted; a temporary profile is never
+kept in a site profile's place. Before each launch a kept profile's HTTP cache and service workers (with their Cache
+Storage) are deleted, so no capture is served from an earlier job's visit; cookies and storage stay. The
+profile's preferences get Chromium's WebRTC IP handling policy `disable_non_proxied_udp` (non-proxied UDP and
+multiple routes off), so WebRTC sends no UDP around the guard (INV-16). Every connection of the profile's browser,
+its own background requests included, goes through the guard.
 
 No request interception: the browser rung SHALL NOT route, abort or block a page's requests (no `route`, no CDP
 `Network.setBlockedURLs`), so every request the page makes loads as in a user's browser. Playwright's request routing
@@ -212,7 +221,9 @@ was read after `load` once its DOM was unchanged for 2 s or the network idle, at
 data call was in flight; then by a learned wait condition, `settle_on`, a detail page's DOM stating its offer
 (`classify.usable_content`) or a data call ended, a listing at the wait's end; no endpoint was named, and the document
 was read as `page.content()`, without shadow roots; images, fonts, media, pings and the EasyList and EasyPrivacy
-servers were blocked through Playwright's request routing, unless a site loaded every resource.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
+servers were blocked through Playwright's request routing, unless a site loaded every resource; one browser per
+process rendered in incognito contexts, a job's pages of a site sharing one, with a 1280x720 viewport and the WebRTC
+policy as a launch switch Chromium 153 ignores.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
 D-1264, D-1265, owner #58, D-1320–D-1322, D-1325, D-1433, D-1437, master plan 2026-10-18 recommendation 12, owner
 plan 2026-10-19 (crawl speed, P2 browser wait and blocking).
 #### Scenario: Interstitial that navigates on
@@ -374,9 +385,10 @@ Refs: owner plan 2026-10-19 P8.
 Each fetch SHALL have its own HTTP session or browser context; cookies live in a per-fetch jar matched per RFC 6265
 (public-suffix `Domain` ignored), are sent only on matching hops and are discarded at the end; the caller's cookies
 (`RequestContext`) seed only that fetch's jar or context, for the fetched URL's host; the exceptions are the site
-session and the stored cookie state (`acquire/session.py`, next requirement), and a job's browser context of one site
-("HTTP and browser rungs", contexts), which its later pages of that site in the same process render in, never another
-job's nor a fetch with the caller's cookies. A site session is the cookies of the
+session and the stored cookie state (`acquire/session.py`, next requirement), and a site's browser profile ("HTTP and
+browser rungs", profiles), which keeps the cookies and storage the browser itself was given by the site's pages, for
+that site's later pages through the same pool endpoint, in any job and process, never for a fetch with the caller's
+cookies; a profile is the browser's own state, never handed to the HTTP rung except as a site session. A site session is the cookies of the
 site's registrable domain that a browser `ok` held after a `blocked` or `shell` HTTP attempt, challenge and clearance
 cookies left out, read without change; it seeds later HTTP and JSON fetches of that site
 (`site.host`) in that domain through the same pool endpoint, and its browser contexts on a direct route (a pooled
@@ -385,7 +397,8 @@ context picks its own endpoint), in process memory, for at most 30 min and 200 f
 HTTP and JSON rungs send a session's cookies with their own identity headers (the impersonation's user agent and
 client hints), never the browser's: those would pair a browser's user agent with curl's TLS and HTTP/2 fingerprint.
 No cookie is logged or captured. (Previously: a vendor's clearance cookies were replayed when its signature
-called them portable; every browser fetch had a fresh context; a session carried the browser's user agent and client
+called them portable; every browser fetch had a fresh context; then a job's pages of a site shared an incognito
+context in one process; a session carried the browser's user agent and client
 hints onto the HTTP and JSON rungs' requests.) Enforced by: cross-fetch, cross-site, cross-domain,
 cross-proxy, expiry, no-persistence and caller-cookie tests; active. Refs: §7.1, D-0321, D-0884, D-0902, owner #58,
 D-1350–D-1353, D-1433, owner plan 2026-10-19 P2.
@@ -472,8 +485,10 @@ browser action typed, and only a listing scrape's existed.) Refs: §7.2, §22, o
 ### Requirement: Patchright's documented browser setup (INV-42, INV-43, INV-44)
 The browser rung SHALL follow the Patchright README's setup (owner #50): INV-42, it launches Patchright's full
 Chromium build (`channel="chromium"`, installed with `patchright install --no-shell chromium`), never the headless
-shell; INV-43, its only launch argument is the guard's WebRTC policy (no flag Patchright removes, none that changes
-the fingerprint); INV-44, no context, page or CDP call sets a user agent, client hints, extra headers or init scripts,
+shell; INV-43, it runs in a persistent profile (`launch_persistent_context`) with Playwright's fixed
+1280x720 viewport (owner #50 as amended 2026-10-21; the README's `no_viewport` leaves headless Chromium's 800x600
+window) and no launch argument (no flag Patchright removes, none that changes the fingerprint; the guard's
+WebRTC policy is a profile preference, "HTTP and browser rungs", profiles); INV-44, no context, page or CDP call sets a user agent, client hints, extra headers or init scripts,
 and `evaluate` runs only in Patchright's isolated world (owner #71: no user-agent override). The context's `locale` and
 `timezone_id` are the request's (`FetchPolicy.locale_hint`, `acquire/locality.py`): the locale as a BCP 47 tag, and
 the IANA tz database's zone of its region (`zone1970.tab`) when the region has one, else none. Refs: owner #50, owner

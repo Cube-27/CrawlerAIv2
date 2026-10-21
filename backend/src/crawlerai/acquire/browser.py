@@ -2,9 +2,10 @@
 and the JSON and Flight bodies the page loads and the HTML fragments it fetches from its own site captured, the network
 data-source layer's input (Appendix A #59) and API discovery's (§7.2 step 1).
 
-One browser per worker process (`open_browser`), one context per job and site (`_Contexts`), each page in a tab of its
-own. Every connection a context opens goes through its `SocksGuard`, which applies the SSRF guard to every redirect
-hop, frame and worker (§4.5). As in
+One Playwright driver per worker process (`open_browser`), one browser per open site profile (`_Profiles`,
+`acquire.browser_profiles`: a persistent context of the site's own, not an incognito one), each page in a tab of its
+own. Every connection a profile's browser opens goes through its `SocksGuard`, which applies the SSRF guard to every
+redirect hop, frame and worker (§4.5). As in
 `fetch_http`, every failure becomes an `error` outcome with a short reason that never contains the URL (D-0128). A
 `blocked` or `shell` document is labelled with the challenge it presents (`acquire.challenge`), and the pool endpoint
 it went through is told how it went (`core.proxy_health`), as the HTTP rung does. Asked to export (`CookieExport`), the
@@ -27,19 +28,21 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequenc
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Final, cast
 from urllib.parse import urlsplit
 
-from patchright._impl._api_structures import SetCookieParam
-from patchright.async_api import Browser, BrowserContext, Frame, Page, Request, Response, async_playwright
+from patchright._impl._api_structures import SetCookieParam, ViewportSize
+from patchright.async_api import BrowserContext, Frame, Page, Playwright, Request, Response, async_playwright
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
+from crawlerai.acquire.browser_profiles import Profile, discard_profile, open_profile, profile_name
 from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
 from crawlerai.acquire.classify import INTERSTITIAL_STATUS, Redirect, interstitial
 from crawlerai.acquire.headers import recorded
 from crawlerai.acquire.items import element_path, item_groups, lxml_root
-from crawlerai.acquire.locality import locality
+from crawlerai.acquire.locality import Locality, locality
 from crawlerai.acquire.outcome import Content, Exchange, Traffic, fetch_result, report_proxy
 from crawlerai.acquire.page_steps import run_steps, steps_budget_s
 from crawlerai.acquire.public_suffix import default_suffixes
@@ -84,10 +87,12 @@ __all__ = [
 
 # Patchright's documented setup (D-1204, D-1205): the full Chromium build (`chromium`), not the headless shell
 # Playwright picks for `headless=True` by default, run in Chromium's own headless mode, with its own user agent and
-# client hints and no custom headers, so the page, its workers and its requests all show one identity.
+# client hints and no custom headers, so the page, its workers and its requests all show one identity. Each browser runs
+# in a persistent profile with Playwright's fixed 1280x720 viewport (owner #50 as amended 2026-10-21: not the README's
+# `no_viewport`, whose headless window is 800x600), and no launch argument: WebRTC's proxy policy is a profile
+# preference (`acquire.browser_profiles`).
 _CHANNEL = "chromium"
-# WebRTC sends UDP outside any proxy; Chromium's policy `disable_non_proxied_udp` keeps it inside the guard.
-_LAUNCH_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
+_VIEWPORT: Final = ViewportSize(width=1280, height=720)
 # Chromium's implicit proxy-bypass rules (`ProxyBypassRules`, net/proxy_resolution) send `localhost`, 127.0.0.0/8,
 # [::1], 169.254.0.0/16 and fe80::/10 around any proxy; 169.254.169.254 is the cloud metadata address. The bypass rule
 # `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
@@ -124,8 +129,11 @@ _STEP_QUIET_S: Final = 0.5
 # pings) are always in flight on some pages and carry nothing the page shows.
 _CALLS = frozenset({"fetch", "xhr"})
 _WEBSOCKET = "websocket"
-# Idle site contexts a browser keeps for reuse (`_Contexts`): as many as it renders at once (`BROWSER_CONTEXTS`).
-_KEPT_CONTEXTS = 2
+# Site profiles a process keeps open (`_Profiles`), rendering or idle: as many as it renders at once
+# (`BROWSER_CONTEXTS`), each a browser process of its own. An idle one closes after `_PROFILE_IDLE_S`, an unmeasured
+# starting point: the next page of a site in a job usually comes within seconds.
+_OPEN_PROFILES = 2
+_PROFILE_IDLE_S = 60.0
 # RFC 9110 §15.4: a 3xx document answer is a redirect hop (or a validator's 304), never the document the frame shows.
 _REDIRECTION = range(300, 400)
 # RFC 9110 §15.5, §15.6: a 4xx or 5xx document; the context that rendered one is not reused (`_Contexts`).
@@ -183,71 +191,150 @@ _NET_ERROR = re.compile(r"net::ERR_[A-Z0-9_]+")
 
 @dataclass
 class _Context:
-    """A browser context, the guard every connection it opens goes through, the bytes the guard has relayed, and what
-    closes both."""
+    """A site profile's browser (a persistent context), the guard every connection it opens goes through and the
+    connector that guard checks with, the bytes the guard has relayed, the locale it was opened with, and what closes
+    them and releases the profile."""
 
     context: BrowserContext
     guard: SocksGuard
+    connector: SafeConnector
     traffic: Traffic
     stack: AsyncExitStack
+    locale: Locality
+    profile: Profile
+    closing: bool = False
 
     async def close(self) -> None:
+        self.closing = True
         with contextlib.suppress(PlaywrightError):
             await self.stack.aclose()
 
 
-# What a context may be reused for (`_context_key`): the job, the site, the proxy pool and endpoint.
-type _ContextKey = tuple[str, str, str | None, ProxyEndpoint | None]
+# What a profile is (`_context_key`): the site, the proxy pool and endpoint.
+type _ContextKey = tuple[str, str | None, ProxyEndpoint | None]
 
 
 @dataclass
-class _Contexts:
-    """The idle contexts a browser keeps, one per job and site (owner plan 2026-10-19 P2): the site's next page in the
-    job opens in it, so the cookies, storage and passed challenges of its earlier pages carry on, as in one user's
-    browser. A context is taken while a page renders in it, so no two pages share one at once; at most
-    `_KEPT_CONTEXTS` are kept, the least recently used closed first, and all of them close with the browser (which
-    `SharedBrowser` recycles)."""
+class _Profiles:
+    """The site profiles open in this process (owner #50 as amended 2026-10-21): a site's next page, in any job, opens
+    in the profile its earlier pages left, so its cookies, storage and passed challenges carry on, as in one user's
+    browser. A profile is taken while a page renders in it, so no two pages share one at once (a second page of the
+    site gets a temporary profile, `acquire.browser_profiles`); at most `_OPEN_PROFILES` are open, the least recently
+    used idle one closed first, an idle one closes after `_PROFILE_IDLE_S`, and all close with the session.
+    `crashed` is set when a profile's browser closes unasked."""
 
+    root: Path | None = None
     idle: OrderedDict[_ContextKey, _Context] = field(default_factory=OrderedDict)
+    busy: int = 0
+    crashed: bool = False
+    _timers: dict[_ContextKey, asyncio.TimerHandle] = field(default_factory=dict)
+    _closing: set[asyncio.Task[None]] = field(default_factory=set)
 
-    def take(self, key: _ContextKey) -> _Context | None:
-        return self.idle.pop(key, None)
+    async def take(self, key: _ContextKey, locale: Locality, connector: SafeConnector) -> _Context | None:
+        """The idle profile of `key`, now rendering; None when there is none, or it has another locale or guard
+        connector (then it is closed)."""
+        self._stop_timer(key)
+        held = self.idle.pop(key, None)
+        if held is not None and (held.locale != locale or held.connector is not connector):
+            await held.close()
+            held = None
+        if held is not None:
+            self.busy += 1
+        return held
+
+    async def room(self) -> None:
+        """Make room for a profile about to open: idle ones are closed, least recently used first, down to the cap."""
+        while self.idle and len(self.idle) + self.busy >= _OPEN_PROFILES:
+            key, oldest = self.idle.popitem(last=False)
+            self._stop_timer(key)
+            await oldest.close()
+        self.busy += 1
 
     async def keep(self, key: _ContextKey, context: _Context) -> None:
-        # Two pages of a site rendered at once each had a context: the one kept first is closed, never dropped open.
+        """`context` stops rendering and is kept idle for the site's next page; a temporary profile opened because the
+        site's own was held is closed instead, so it never stands in for the site's profile."""
+        if self.root is not None and context.profile.lock is None:
+            await self.release(context)
+            return
+        self.busy -= 1
         previous = self.idle.pop(key, None)
-        if previous is not None:
+        if previous is not None:  # two pages of a site rendered at once: the one kept first is closed, never dropped
+            self._stop_timer(key)
             await previous.close()
         self.idle[key] = context
-        while len(self.idle) > _KEPT_CONTEXTS:
-            _, oldest = self.idle.popitem(last=False)
-            await oldest.close()
+        loop = asyncio.get_running_loop()
+        self._timers[key] = loop.call_later(_PROFILE_IDLE_S, self._expire, key, context)
+
+    async def discard(self, key: _ContextKey) -> None:
+        """Delete the profile of `key` (`acquire.browser_profiles.discard_profile`), closing it first when it is idle
+        here; one rendering a page stays."""
+        self._stop_timer(key)
+        held = self.idle.pop(key, None)
+        if held is None:
+            discard_profile(self.root, profile_name(*key))
+            return
+        held.profile.discarded = True
+        await held.close()
+
+    async def release(self, context: _Context) -> None:
+        """`context` stops rendering and closes."""
+        self.busy -= 1
+        await context.close()
 
     async def aclose(self) -> None:
+        for timer in self._timers.values():
+            timer.cancel()
+        self._timers.clear()
         while self.idle:
             _, context = self.idle.popitem()
             await context.close()
+        if self._closing:
+            await asyncio.gather(*self._closing, return_exceptions=True)
+
+    def _expire(self, key: _ContextKey, context: _Context) -> None:
+        self._timers.pop(key, None)
+        if self.idle.get(key) is context:
+            del self.idle[key]
+            task = asyncio.get_running_loop().create_task(context.close())
+            self._closing.add(task)
+            task.add_done_callback(self._closing.discard)
+
+    def forget(self, context: _Context) -> None:
+        """Drop `context` from the idle profiles: its browser closed unasked, so no page may take it."""
+        for key, idle in tuple(self.idle.items()):
+            if idle is context:
+                del self.idle[key]
+                self._stop_timer(key)
+
+    def _stop_timer(self, key: _ContextKey) -> None:
+        timer = self._timers.pop(key, None)
+        if timer is not None:
+            timer.cancel()
 
 
 @dataclass(frozen=True)
 class BrowserSession:
-    """A launched browser, shared by the fetches of one worker process, and the site contexts it keeps."""
+    """A Playwright driver, shared by the fetches of one worker process, and the site profiles it keeps open."""
 
-    browser: Browser
-    contexts: _Contexts = field(default_factory=_Contexts)
+    playwright: Playwright
+    profiles: _Profiles = field(default_factory=_Profiles)
+
+    @property
+    def alive(self) -> bool:
+        """Whether every profile's browser this session opened is still running (`SharedBrowser` restarts it if not)."""
+        return not self.profiles.crashed
 
 
 @asynccontextmanager
-async def open_browser() -> AsyncIterator[BrowserSession]:
-    """The browser runs until the block ends; leaving it ends its kept contexts, the browser and driver processes."""
+async def open_browser(profiles: Path | None = None) -> AsyncIterator[BrowserSession]:
+    """The driver runs until the block ends; leaving it closes its profiles' browsers and the driver process. Site
+    profiles are kept under `profiles` (`CRAWLERAI_BROWSER_PROFILES`); without it, each lasts while it is open."""
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(channel=_CHANNEL, headless=True, args=_LAUNCH_ARGS)
-        session = BrowserSession(browser)
+        session = BrowserSession(playwright, _Profiles(profiles))
         try:
             yield session
         finally:
-            await session.contexts.aclose()
-            await browser.close()
+            await session.profiles.aclose()
 
 
 class Failed(Exception):
@@ -334,6 +421,8 @@ async def fetch_browser(
         artifacts=artifacts,
     )
     report_proxy(pool, proxy, result)
+    if block_class == "blocked" and (key := _context_key(url, policy, proxy)) is not None:
+        await session.profiles.discard(key)
     if sessions is not None:
         await sessions.after_browser(url, policy.proxy_pool, cookies, result)
     return result
@@ -539,18 +628,24 @@ async def rendered(
     traffic: Traffic,
     seeded: Sequence[SessionCookie] = (),
 ) -> AsyncIterator[Rendered]:
-    """The page at `url`, once it is ready to read (`_settle`), in a new tab of the site's context: the one the job's
-    last page of the site left (`_Contexts`), else a new context holding the `seeded` cookies. The tab closes when the
-    block ends, and the context with it unless it is kept for the site's next page; the tab's wall time is
+    """The page at `url`, once it is ready to read (`_settle`), in a new tab of the site's profile: the open one its
+    last page left (`_Profiles`), else the profile opened, holding the `seeded` cookies. The tab closes when the block
+    ends, and the profile's browser with it unless it is kept for the site's next page; the tab's wall time is
     `timings["context"]`. The bytes the guard relays for the page are added to `traffic`. Raises `Failed`."""
     try:
         first = await connector.check(url)  # also refuses `file:`, `data:` and other non-web schemes
     except SsrfRejected as e:
         raise Failed(str(e), None) from e
     key = _context_key(url, policy, proxy)
-    held = None if key is None else session.contexts.take(key)
+    locale = locality(policy.locale_hint)
+    held = None if key is None else await session.profiles.take(key, locale, connector)
     if held is None:
-        held = await _open_context(url, policy, session, connector, first, proxy, seeded)
+        await session.profiles.room()
+        try:
+            held = await _open_context(url, policy, session, connector, first, proxy, seeded, key)
+        except BaseException:
+            session.profiles.busy -= 1
+            raise
     relayed = held.traffic.bytes
     opened = time.monotonic()
     kept = False
@@ -568,9 +663,9 @@ async def rendered(
         traffic.bytes += held.traffic.bytes - relayed
         timings["context"] = round((time.monotonic() - opened) * 1000)
         if kept and key is not None:
-            await session.contexts.keep(key, held)
+            await session.profiles.keep(key, held)
         else:
-            await held.close()
+            await session.profiles.release(held)
 
 
 async def _open_context(
@@ -581,45 +676,62 @@ async def _open_context(
     first: Target,
     proxy: ProxyEndpoint | None,
     seeded: Sequence[SessionCookie],
-) -> "_Context":
-    """A new context behind a guard of its own, holding the `seeded` and the caller's cookies, with the request locale's
+    key: _ContextKey | None,
+) -> _Context:
+    """The site profile of `key` (a temporary one without a key, `acquire.browser_profiles`), launched as a persistent
+    context behind a guard of its own, holding the `seeded` and the caller's cookies, with the request locale's
     `locale` and `timezone_id` (`acquire.locality`). Nothing intercepts its requests: Playwright's request routing
     turns the HTTP cache off, so every request carries `Cache-Control: no-cache` and `Pragma: no-cache`, which no
     user's browser sends on a first load (acquisition spec, "HTTP and browser rungs")."""
     stack = AsyncExitStack()
     traffic = Traffic()
+    locale = locality(policy.locale_hint)
     try:
+        profile = open_profile(session.profiles.root, None if key is None else profile_name(*key))
+        stack.callback(profile.close)  # after the browser has closed, so its last writes are in the profile
         guard = await stack.enter_async_context(
             SocksGuard(connector, checked=(first,), upstream=proxy, traffic=traffic)
         )
-        context = await session.browser.new_context(
+        context = await session.playwright.chromium.launch_persistent_context(
+            profile.directory,
+            channel=_CHANNEL,
+            headless=True,
+            viewport=_VIEWPORT,
             proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK},
             accept_downloads=False,
-            **locality(policy.locale_hint),
+            **locale,
         )
+        held = _Context(context, guard, connector, traffic, stack, locale, profile)
         stack.push_async_callback(context.close)
+        context.on("close", lambda _: _closed(session, held))
         if seeded:
             await context.add_cookies(seeded_cookies(seeded))
         if policy.context is not None and policy.context.cookies:
             await context.add_cookies(caller_cookies(url, policy.context))
     except BaseException as e:
         await stack.aclose()
-        # A context the browser refused while it still runs is this fetch's error, not a crashed browser.
-        if isinstance(e, PlaywrightError) and session.browser.is_connected():
+        # A profile the browser could not open is this fetch's error, not a crashed browser.
+        if isinstance(e, PlaywrightError | OSError):
             raise Failed("render_error", None) from e
         raise
-    return _Context(context, guard, traffic, stack)
+    return held
+
+
+def _closed(session: BrowserSession, held: _Context) -> None:
+    """A profile's browser closed: unasked, it crashed or was killed."""
+    if not held.closing:
+        session.profiles.forget(held)
+        session.profiles.crashed = True
 
 
 def _context_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> _ContextKey | None:
-    """What a context may be reused for (`_Contexts`): the job (`FetchPolicy.scope`), the page's site (HTML Standard
-    §7.1.1), and the proxy pool and endpoint its guard goes through. None when it is not
-    reused: a fetch outside a job, or with the caller's own cookies, which are no site's state (acquisition spec,
-    "Cookies stay inside one fetch")."""
+    """The profile a page renders in (`acquire.browser_profiles`): the page's site (HTML Standard §7.1.1) and the
+    proxy pool and endpoint its guard goes through. None for a fetch with the caller's own cookies, which are no
+    site's state (acquisition spec, "Cookies stay inside one fetch"): it gets a temporary profile, never kept."""
     host = urlsplit(url).hostname
-    if policy.scope is None or policy.context is not None or host is None:
+    if policy.context is not None or host is None:
         return None
-    return (policy.scope, default_suffixes().site(host), policy.proxy_pool, proxy)
+    return (default_suffixes().site(host), policy.proxy_pool, proxy)
 
 
 class _MainFrame:

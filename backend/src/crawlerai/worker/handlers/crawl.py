@@ -219,7 +219,7 @@ async def _sitemap_seeds(
     """The URLs of the sitemaps of the site the start page is on, `site_url` there, that the crawl takes, in the order
     read, up to its capacity, with the priorities the sitemaps state for them. The fetches count as the job's usage."""
     task = crawl.task
-    policy = fetch_policy(crawl.request.fetch, crawl.request.locale, scope=str(task.job_id))
+    policy = fetch_policy(crawl.request.fetch, crawl.request.locale)
     attempts: list[AttemptRecord] = []
     # The page's fetch has just stored a fresh snapshot, so this reads it rather than fetching, unless the page
     # redirected to another host.

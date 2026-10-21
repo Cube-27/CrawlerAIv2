@@ -234,7 +234,6 @@ async def fetch_page(
         page_kind=task.page_kind,
         schema=None if read_with is None else read_with.schema,
         formats=formats,
-        scope=str(task.job_id),
     )
     if options.cache == "only":
         # A page the config's API recipe serves was stored as its JSON, as a scrape reads it.

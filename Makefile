@@ -12,6 +12,7 @@ UV_RUN ?= uv run
 -include .env
 # `fs:///` then the path without its leading slash: `/home/x` and Windows' `C:/x` both give an absolute path URL.
 CRAWLERAI_OBJECT_STORE := $(or $(CRAWLERAI_OBJECT_STORE),fs:///$(patsubst /%,%,$(CURDIR))/.data/objects)
+CRAWLERAI_BROWSER_PROFILES := $(or $(CRAWLERAI_BROWSER_PROFILES),$(CURDIR)/.data/browser-profiles)
 export
 
 # `check-sdk` is not part of `check`: it needs `uvx` and the SDK's own `pnpm install`. CI checks only that the SDKs
