@@ -124,7 +124,8 @@ variant has one and all agree; no other field is filled. A sku or gtin the targe
 of its Offers or variants (a platform answer stating the shown variant's identifiers as the product's, adapters spec)
 is that variant's: where another candidate the target owns states the field on its own evidence, the variant's other
 value and a page state value admitted only by equality to it are `outscored`, never its rivals (GS1 GTIN and a
-seller's SKU identify one variant; the product's own statement is the product's). Refs: §10, D-0794, D-0795.
+seller's SKU identify one variant; the product's own statement is the product's); it still names the variant the
+target shows (Shown variant). Refs: §10, D-0794, D-0795.
 
 ### Requirement: Scope and sources of rows
 Variant rules SHALL apply to a detail page's target only. Rows come only from JSON-LD, microdata/RDFa Lite and adapters'

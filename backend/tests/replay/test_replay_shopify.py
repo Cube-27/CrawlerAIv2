@@ -212,15 +212,17 @@ def _jsonld(node: Mapping[str, object]) -> str:
 
 
 def test_the_shown_variants_identifiers_yield_to_those_the_page_states_for_the_product() -> None:
-    # Variant fill (variants spec): the answer states its sku and barcode on the variant only; the product's own
-    # sku and gtin, as the page states them, publish, and the variant's are no rivals of them.
-    variant = {**_variant(0, 1000, available=True), "barcode": "4006381333931"}
+    # Variant fill (variants spec): the answer states its sku and barcode on the variants only; the product's own
+    # sku and gtin, as the page states them, publish, and the shown variant's are no rivals of them. They still name
+    # the variant the page shows, whose price is the item's.
+    variants = [_variant(0, 1000, available=True), {**_variant(1, 1200, available=True), "barcode": "4006381333931"}]
     product = {"@type": "Product", "name": "Widget", "sku": "STYLE-1", "gtin13": "9780306406157"}
 
-    result = _product_page([variant], markup=_jsonld(product))
+    result = _product_page(variants, query="?variant=101", markup=_jsonld(product))
 
     assert result.entity is not None
     assert (result.entity["sku"].value, result.entity["gtin"].value) == ("STYLE-1", "9780306406157")
+    assert result.entity["price"].value == {"amount": "12.00", "currency": "EUR"}
 
 
 def test_a_product_answer_is_the_page_groups_item_not_the_shown_variant() -> None:

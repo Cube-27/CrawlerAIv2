@@ -308,10 +308,13 @@ class Resolver:
         offers = PageOffers(frozenset(() if anchor is None else (anchor,)))
         if not self.detail:
             return offers
-        # The target's own sku and gtin, as they publish, select the variant it shows (variants spec).
+        # The target's own sku and gtin, as they publish, select the variant it shows (variants spec), and so does the
+        # shown variant's that yielded to the product's own (`_variants_yield`): it still names that variant.
         ids = [name for name in variant_ids(fields) if name in fields]
         stated = {name: self._choose(fields[name], *screened[name], offers=offers, offer_field=False) for name in ids}
-        shown, other = self.target_offers.shown_offers(fields, candidates, self._published_ids(fields, stated))
+        yielded = [(c, fields[name]) for name in ids for c, why in screened[name][1] if why == OUTSCORED]
+        own = [*self._published_ids(fields, stated), *yielded]
+        shown, other = self.target_offers.shown_offers(fields, candidates, own)
         shown |= self.target_offers.lone_offers(frozenset(source_of(offer) for offer in shown)) - other
         return PageOffers(shown, shown) if shown else offers
 
