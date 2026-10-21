@@ -1,6 +1,7 @@
 """Tests against a real Postgres, in a database of their own: `CRAWLERAI_TEST_DATABASE_URL`. CI provides one, and
 `make check` recreates one each run. Without it these tests are skipped."""
 
+import asyncio
 import json
 import os
 import uuid
@@ -69,6 +70,12 @@ def _test_database_url(variable: str) -> str:
 
 
 @pytest.fixture(scope="session")
+def anyio_backend() -> str:
+    """One event loop for the session, so the worker's one engine (`shared_engine`) serves every test."""
+    return "asyncio"
+
+
+@pytest.fixture(scope="session")
 def database_url() -> str:
     url = _test_database_url(TEST_DATABASE_URL)
     config = Config(ALEMBIC_INI)
@@ -77,19 +84,34 @@ def database_url() -> str:
     return url
 
 
-@pytest.fixture
-async def fresh_engine(database_url: str) -> AsyncIterator[AsyncEngine]:
-    """The test's engine, against its xdist worker's own database. One per test: an engine's connections belong to
-    one event loop, and each test runs in a loop of its own, so a cancellation one test leaves cannot reach another."""
+@pytest.fixture(scope="session")
+async def shared_engine(database_url: str) -> AsyncIterator[AsyncEngine]:
+    """The one engine of this xdist worker, against its own database; its pool serves every test."""
     engine = create_async_engine(database_url)
     yield engine
     await engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+async def uncancelled(anyio_backend: str) -> AsyncIterator[None]:
+    """Every test starts and ends with no cancellation counted on the session's one task. Python 3.12's
+    `asyncio.TaskGroup` leaves one counted on its parent for each child that fails (3.13 no longer does), and in a
+    task that outlives the test, that count makes a later test's task group raise `CancelledError`."""
+    _uncancel()
+    yield
+    _uncancel()
+
+
+def _uncancel() -> None:
+    task = asyncio.current_task()
+    while task is not None and task.cancelling():
+        task.uncancel()
+
+
 @pytest.fixture
-async def conn(fresh_engine: AsyncEngine) -> AsyncIterator[AsyncConnection]:
+async def conn(shared_engine: AsyncEngine) -> AsyncIterator[AsyncConnection]:
     """A connection in a transaction rolled back after the test."""
-    async with fresh_engine.connect() as connection:
+    async with shared_engine.connect() as connection:
         transaction = await connection.begin()
         yield connection
         await transaction.rollback()
@@ -101,12 +123,12 @@ _TABLES = tuple(reversed(Base.metadata.sorted_tables))
 
 
 @pytest.fixture
-async def engine(fresh_engine: AsyncEngine) -> AsyncIterator[AsyncEngine]:
+async def engine(shared_engine: AsyncEngine) -> AsyncIterator[AsyncEngine]:
     """The database for a test that commits (through it, the app, the CLI or a worker): every table is emptied
     afterwards but for the default project, which the baseline migration seeds. A test that commits requests it,
     directly or through a fixture."""
-    yield fresh_engine
-    async with fresh_engine.begin() as connection:
+    yield shared_engine
+    async with shared_engine.begin() as connection:
         for table in _TABLES:
             rows = table.delete()
             if table is Project.__table__:
@@ -336,8 +358,8 @@ async def kettle_schema(engine: AsyncEngine, schema_name: str) -> schema_types.S
 
 @pytest.fixture(scope="session")
 def warmed() -> None:
-    """The normalizers' CLDR tables, built once for the session rather than by the first app's startup, on a thread
-    (`services.runtime`)."""
+    """The normalizers' CLDR tables, built once for the session: every app's startup builds them on a thread
+    (`services.runtime`), and apps of tests sharing one event loop would otherwise build them side by side."""
     warm()
 
 
