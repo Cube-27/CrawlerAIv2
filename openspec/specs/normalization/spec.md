@@ -263,7 +263,8 @@ D-0287–D-0290, D-0257–D-0263, D-1022, D-1209.
 A list SHALL be `Ok` when at least one item normalizes, reporting dropped items; an object declines when a required
 sub-field declines (`normalize/dispatch.py`). A list of `image_url` items names each file (`resource_key`) once, at its
 first rendition's place, as its largest rendition over `https` (`images.distinct_files`): the largest number a rendition's
-size statement holds (the path's size parts, and decimal values of query parameters every rendition states that differ
+size statement holds (the path's size parts: a `<width>x<height>` segment, a segment of `<letters>_<value>` transform
+pairs one of which is a number, `c_fill,w_458` or `dpr_2.0`, a size closing the file's name; and decimal values of query parameters every rendition states that differ
 between them), ranked only when every rendition states one, else the first. A `%3F` written into the path ends the
 file's name (`same_file`).
 Refs: D-0325, D-0326, D-1665.

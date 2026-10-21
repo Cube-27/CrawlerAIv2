@@ -163,3 +163,26 @@ def test_a_documented_answer_is_the_page_products_own_entity() -> None:
     )
     beside = EntityGraph.of((*reads[0].entities, *table, *reads[1].entities), VOCABULARY, (page,))
     assert set(beside.aliases.values()) == {reads[0].entities[0].id}
+
+
+def test_a_variant_s_page_reads_its_own_images_and_the_product_s() -> None:
+    # Each variant features its own image (Shopify Ajax API `featured_image`); the image no variant features is the
+    # product's. The page whose `?variant=` names the second variant shows its image first, then the product's.
+    page = f"{HOST}/products/mug"
+    variants = [
+        {"id": n, "sku": f"mug-{n}", "available": True, "featured_image": {"src": f"https://cdn.example.test/{n}.jpg"}}
+        for n in (1, 2)
+    ]
+    images = ["//cdn.example.test/both.jpg", "//cdn.example.test/1.jpg", "//cdn.example.test/2.jpg"]
+    answer = json.dumps({"handle": "mug", "url": "/products/mug", "variants": variants, "images": images}).encode()
+    served, _ = joined(_capture(page, "http", _PAGE), _capture(f"{page}.js", "api", answer), "mug", "shopify")
+    assert served is not None
+    parsed = ParsedPage.of(served.bundle)
+    shown = f"{page}?variant=2"
+    ctx = Context(captured_at=datetime(2026, 1, 1, tzinfo=UTC), html_lang="en-US", page_url=shown, base_url=shown)
+
+    read = PlatformJsonCollector(VOCABULARY).collect(parsed, SCHEMA, ctx)
+
+    lists = [c.normalized for c in read.candidates if c.field == "additional_images"]
+    kept: list[JsonValue] = ["https://cdn.example.test/2.jpg", "https://cdn.example.test/both.jpg"]
+    assert lists == [Ok(kept, stated=[images[2], images[0]])]

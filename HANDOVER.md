@@ -104,7 +104,7 @@ matches, so listing recall on such pages is read against the capture before it i
 | Listing recall, commerce / job | 81.1% / 90.5%; the drops are live drift (collections changed, postings closed) |
 
 Fixed after E2: #424, a variant's own ids no longer override the sku and GTIN the page states, and variant rows
-are restored.
+are restored. #426, a platform image list holds only the shown variant's images and those no variant features.
 
 ## What is frozen
 
@@ -129,8 +129,8 @@ Each is a working rule today; the owner may change it (`openspec/design/owner-de
 
 ## Open items (known, not fixed)
 
-- A platform image list can hold other colourways' images. A fix by builder r2 was in flight at handover; check
-  `git log` on `main` for it before relying on image lists from platform data.
+- Images a theme groups by colour that the product data ties to no variant still appear on every variant's page (two
+  E2 pages). Only theme conventions (such as a colour named in image alt text) would tell, and reading them is guessing.
 - UI microcopy can become the description on pages whose only description candidate is widget text (pre-existing).
 - On some pages the main image is a smaller rendition of the same file (the https-first rendition choice is kept).
 - Availability is a conflict (unpublished) on pages where offers split after #421.

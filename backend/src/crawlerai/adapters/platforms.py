@@ -25,10 +25,11 @@ per-variant Offers do: resolution weighs them as it weighs those (resolution spe
 rows when the page states none (variants spec). Of them, the page shows one variant (Liquid
 `product.selected_or_first_available_variant`), whose `sku` and `barcode` are read as the product's own, so resolution
 reads its Offer as the variant the page shows (variants spec); held from the variant's node, they stay that variant's,
-and publish for the product only where the page states none of its own (variants spec, Variant fill). WooCommerce's
-answer states one price for the product: a product whose variations are priced differently has none for the page,
-which shows the selected variation's, so its answer is read without its Offer and never stands against the price the
-page shows (INV-14; adapters spec "merge, don't override").
+and publish for the product only where the page states none of its own (variants spec, Variant fill). An image a variant
+features (its `featured_image`) is that variant's, so the page's images are the shown variant's, first, and those no
+variant features. WooCommerce's answer states one price for the product: a product whose variations are priced
+differently has none for the page, which shows the selected variation's, so its answer is read without its Offer and
+never stands against the price the page shows (INV-14; adapters spec "merge, don't override").
 """
 
 import re
@@ -198,7 +199,8 @@ def _store_api(scheme: str, netloc: str, path: str, markup: str) -> ProductJson 
 
 # Shopify Ajax API, "Product" (shopify.dev/docs/api/ajax/reference/product): the product's `title`, `url` (its route
 # on the shop), `description` (its HTML body), `images` (every image's URL, the featured one first), `vendor`, and
-# its `variants`, each with its `title`, `sku`, `barcode` (the GTIN, UPC
+# its `variants`, each with its `featured_image` (the image tied to the variant, its `src`), `title`, `sku`, `barcode`
+# (the GTIN, UPC
 # or ISBN), `available` (whether it can be bought: `true` names no one schema.org ItemAvailability, since a variant on
 # pre-order or back order can be bought too; `false` is `OutOfStock`) and `price`, an integer in cents for every
 # currency ("prices are in cents").
@@ -219,14 +221,56 @@ _SHOPIFY_PRODUCT_MEMBERS: Final[dict[str, Members]] = {
     "name": ("title",),
     "url": ("url",),
     "description": ("description",),
-    "image": ("images", ALL),
     "brand": ("vendor",),
 }
+_SHOPIFY_IMAGES: Final[Members] = ("images", ALL)
+# The key of no file: an image whose URL names none is tied to no variant.
+_NO_FILE: Final = ("", "")
 
 
-def _shopify_product(own: dict[str, Members]) -> Shape:
-    """The product's node, with `own`, the members of the shown variant's identifiers (`_shown_variant`)."""
-    return Shape(type="Product", properties={**_SHOPIFY_PRODUCT_MEMBERS, **own}, nodes={"offers": (_SHOPIFY_VARIANT,)})
+def _shopify_product(own: dict[str, Members], images: tuple[Members, ...] = (_SHOPIFY_IMAGES,)) -> Shape:
+    """The product's node, with `own`, the members of the shown variant's identifiers (`_shown_variant`), and
+    `images`, the members of the images its page shows (`_shown_images`)."""
+    properties = {**_SHOPIFY_PRODUCT_MEMBERS, **own}
+    if images:
+        properties["image"] = images[0]
+    return Shape(
+        type="Product", properties=properties, also={"image": images[1:]}, nodes={"offers": (_SHOPIFY_VARIANT,)}
+    )
+
+
+def _shown_images(answer: dict[str, JsonValue], shown: int, page_url: str | None) -> tuple[Members, ...]:
+    """The members of the product's images the page of its shown variant shows: an image a variant's `featured_image`
+    names (the same file: `_file`) is that variant's, shown only on its page and first there (Liquid
+    `selected_or_first_available_variant.featured_image`, the image the page shows for it); an image no variant
+    features is the product's, shown on every variant's page after it."""
+    images, variants = answer.get("images"), answer.get("variants")
+    if not isinstance(images, list) or not isinstance(variants, list):
+        return (_SHOPIFY_IMAGES,)
+    tied: dict[tuple[str, str], set[int]] = {}
+    for index, variant in enumerate(variants):
+        featured = variant.get("featured_image") if isinstance(variant, dict) else None
+        if isinstance(featured, dict) and (key := _file(featured.get("src"), page_url)) is not None:
+            tied.setdefault(key, set()).add(index)
+    owners = [tied.get(_file(image, page_url) or _NO_FILE) for image in images]
+    own = [n for n, tied_to in enumerate(owners) if tied_to is not None and shown in tied_to]
+    kept = own + [n for n, tied_to in enumerate(owners) if tied_to is None]
+    if kept == list(range(len(images))):
+        return (_SHOPIFY_IMAGES,)
+    return tuple(("images", n) for n in kept)
+
+
+def _file(src: JsonValue, page_url: str | None) -> tuple[str, str] | None:
+    """The file an image URL of the answer names: its authority and path (RFC 3986 §3.3: the path identifies the
+    resource; the query, `?v=`, only versions it), its protocol-relative URL (`//cdn…`) resolved against the page's
+    (§5.2); None for no URL."""
+    if not isinstance(src, str):
+        return None
+    try:
+        parts = urlsplit(urljoin(page_url or "", src))
+    except ValueError:  # RFC 3986 §3.2.2: an authority no URL has (an unclosed IPv6 bracket) names no file
+        return None
+    return (parts.netloc.lower(), parts.path) if parts.netloc and parts.path else None
 
 
 def _shown_variant(answer: dict[str, JsonValue], page_url: str | None) -> int | None:
@@ -273,7 +317,8 @@ def answer_shape(platform: str, answer: JsonValue, page_url: str | None) -> Shap
         shown = _shown_variant(answer, page_url)
         if shown is None:
             return _shopify_product({})
-        return _shopify_product({"sku": ("variants", shown, "sku"), "gtin": ("variants", shown, "barcode")})
+        own: dict[str, Members] = {"sku": ("variants", shown, "sku"), "gtin": ("variants", shown, "barcode")}
+        return _shopify_product(own, _shown_images(answer, shown, page_url))
     if platform == "woocommerce" and isinstance(answer, list) and len(answer) == 1 and isinstance(answer[0], dict):
         prices = answer[0].get("prices")
         varies = not isinstance(prices, dict) or prices.get("price_range") is not None
