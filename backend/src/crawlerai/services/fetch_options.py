@@ -184,13 +184,12 @@ def fetch_policy(
     page_kind: PageKind | None = None,
     schema: SchemaContent | None = None,
     formats: Iterable[str] = (),
-    scope: str | None = None,
 ) -> FetchPolicy:
     """The fetch policy of a page task, through the proxy pool `options` names: for a job's pages, the one pool its
     submit pinned (`services.location`), never a site's own. A screenshot or PDF among its `formats` is made in the
     browser, which then fetches the page whatever the site's remembered method (`FetchPolicy.screenshot`, `pdf`).
-    `scope` is the task's job, whose pages of one site share a browser context (`FetchPolicy.scope`). `schema`, the one
-    the page is read with, names the types of the items it is read for (the policy's `target_types`)."""
+    `schema`, the one the page is read with, names the types of the items it is read for (the policy's
+    `target_types`)."""
     wanted = set(formats)
     return FetchPolicy(
         page_kind=page_kind,
@@ -204,5 +203,4 @@ def fetch_policy(
         max_rows=options.max_rows,
         context=options.context(),
         steps=to_steps(options.actions, options.wait_for),
-        scope=scope,
     )

@@ -85,7 +85,7 @@ async def open_fetching(
 
     async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
         # A render with browser actions (owner #52, `learning_render`) is rare, so a browser is launched for each.
-        async with open_browser() as session:
+        async with open_browser(settings.browser_profiles) as session:
             return await fetch_listing(
                 url, policy, drive, session=session, engine_version=ENGINE_VERSION, connector=connector, pools=pools
             )
@@ -108,7 +108,7 @@ async def open_fetching(
         sessions=sessions,
     )
     async with aclosing(
-        SharedBrowser(open_browser, fetch_in, lambda session: session.browser.is_connected())
+        SharedBrowser(partial(open_browser, settings.browser_profiles), fetch_in, lambda session: session.alive)
     ) as browser:
         rungs = Rungs(
             http=http,

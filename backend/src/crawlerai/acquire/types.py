@@ -162,10 +162,6 @@ class FetchPolicy(_Frozen):
     # viewport or of the whole page, and a PDF print. Either needs the browser rung (`method_hint` `browser`).
     screenshot: Literal["viewport", "full_page"] | None = None
     pdf: bool = False
-    # Browser only: the job whose fetches of one site render in one browser context, kept between them, so the
-    # cookies, storage and passed challenges of the site's earlier pages carry on (`acquire.browser`). None: a context
-    # of the fetch's own. Not part of the capture's policy.
-    scope: str | None = Field(default=None, exclude=True)
 
     @property
     def captures_page(self) -> bool:

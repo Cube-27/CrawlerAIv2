@@ -175,7 +175,7 @@ def browser(server: Server) -> Iterator[Browser]:
             pytest.skip("Chromium is not installed: run `uv run patchright install --no-shell chromium`")
         try:
             yield Browser(runner, session, server)
-            assert session.browser.contexts == []
+            assert session.profiles.busy == 0
         finally:
             runner.run(opened.__aexit__(None, None, None))
 

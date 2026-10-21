@@ -1,5 +1,6 @@
-"""A process's browser (acquisition spec, INV-31): one per process, launched when a fetch first needs it and shared by
-the fetches after it, at most `BROWSER_CONTEXTS` of them at once (each renders in a context of its own).
+"""A process's browser session (acquisition spec, INV-31): one per process, launched when a fetch first needs it and
+shared by the fetches after it, at most `BROWSER_CONTEXTS` of them at once (each renders in a site profile of its own,
+`acquire.browser`).
 
 A fetch that leaves the browser disconnected (Chromium crashed, or was killed), whether it returns or raises, restarts
 it once and fetches again. If the restarted browser dies too, that second fetch's result (or error) stands, so the
@@ -22,8 +23,8 @@ from typing import Final
 from crawlerai.acquire.session import CookieExport
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 
-# Pages one browser renders at once: each context is a renderer process of a few hundred MB, and a page's scripts
-# compete for the same cores.
+# Pages one session renders at once: each site profile is a browser of a few hundred MB, and a page's scripts compete
+# for the same cores.
 BROWSER_CONTEXTS: Final = 2
 # When a browser is worn (module docstring): unmeasured starting points.
 RECYCLE_CONTEXTS: Final = 200

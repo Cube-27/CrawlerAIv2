@@ -287,7 +287,6 @@ async def _samples(
             request.fetch,
             request.locale,
             page_kind=request.page_kind,
-            scope=str(job_id),
         )
         page: FetchResult | str | None
         if request.fetch.cache == "only":

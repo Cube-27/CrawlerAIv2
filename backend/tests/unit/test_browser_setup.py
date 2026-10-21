@@ -1,9 +1,11 @@
 """The browser rung runs Patchright's documented setup (INV-42, INV-43, INV-44; owner #50): the full Chromium build in
-headless mode, launch arguments limited to the guard's own, and contexts with no custom user agent, client hints or
-headers. A fake Playwright records what `open_browser` and `fetch_browser` ask for; no browser runs.
+headless mode, in a persistent profile with no fixed viewport and no launch argument, the WebRTC policy the guard needs
+in the profile's preferences, and no custom user agent, client hints or headers. A fake Playwright records what
+`open_browser` and `fetch_browser` ask for; no browser runs.
 """
 
 import asyncio
+import json
 import re
 from contextlib import asynccontextmanager
 from ipaddress import IPv4Address
@@ -25,7 +27,7 @@ _SRC = Path(crawlerai.__file__).parent
 class _Recorder:
     def __init__(self) -> None:
         self.launch: dict[str, Any] = {}
-        self.context: dict[str, Any] = {}
+        self.preferences: dict[str, Any] = {}
 
 
 class _Stop(Exception):
@@ -33,20 +35,11 @@ class _Stop(Exception):
 
 
 class _Context:
-    async def new_page(self) -> object:
-        raise _Stop
-
-    async def close(self) -> None:
+    def on(self, _event: str, _handler: object) -> None:
         return None
 
-
-class _Browser:
-    def __init__(self, recorder: _Recorder) -> None:
-        self._recorder = recorder
-
-    async def new_context(self, **options: Any) -> _Context:
-        self._recorder.context = options
-        return _Context()
+    async def new_page(self) -> object:
+        raise _Stop
 
     async def close(self) -> None:
         return None
@@ -56,9 +49,10 @@ class _Chromium:
     def __init__(self, recorder: _Recorder) -> None:
         self._recorder = recorder
 
-    async def launch(self, **options: Any) -> _Browser:
+    async def launch_persistent_context(self, user_data_dir: Path, **options: Any) -> _Context:
         self._recorder.launch = options
-        return _Browser(self._recorder)
+        self._recorder.preferences = json.loads((user_data_dir / "Default" / "Preferences").read_text())
+        return _Context()
 
 
 class _Playwright:
@@ -95,17 +89,23 @@ async def _fetch_once(locale: str | None = None) -> None:
         )
 
 
-def test_inv42_inv43_full_chromium_headless_with_only_the_guard_launch_argument(recorder: _Recorder) -> None:
+def test_inv42_inv43_full_chromium_headless_in_a_profile_with_the_guards_webrtc_policy(recorder: _Recorder) -> None:
     fetching = _fetch_once()
     with pytest.raises(_Stop):
         asyncio.run(fetching)
 
     # `chromium` is Patchright's full Chromium build (`patchright install --no-shell chromium`), not the headless
-    # shell; the one argument is the WebRTC proxy policy the SSRF guard needs (INV-16).
-    assert recorder.launch == {
+    # shell; no launch argument; WebRTC's proxy policy, which the SSRF guard needs (INV-16), is a profile preference.
+    assert {k: v for k, v in recorder.launch.items() if k != "proxy"} == {
         "channel": "chromium",
         "headless": True,
-        "args": ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"],
+        "no_viewport": True,
+        "accept_downloads": False,
+    }
+    assert recorder.preferences["webrtc"] == {
+        "ip_handling_policy": "disable_non_proxied_udp",
+        "multiple_routes_enabled": False,
+        "nonproxied_udp_enabled": False,
     }
 
 
@@ -143,15 +143,23 @@ def test_open_shadow_roots_are_serialized_by_get_html_in_the_isolated_world_only
     assert evaluated == ["return cast(str, await page.evaluate(DOCUMENT_HTML_JS, isolated_context=True)).encode()"]
 
 
-def test_inv44_a_context_sets_only_the_proxy_downloads_and_the_request_locale(recorder: _Recorder) -> None:
+def test_inv44_a_profile_sets_only_the_proxy_downloads_viewport_and_the_request_locale(recorder: _Recorder) -> None:
     fetching = _fetch_once("de-DE")
     with pytest.raises(_Stop):
         asyncio.run(fetching)
 
-    # The guard's proxy, no downloads, and the request's locale with its region's zone (owner P8); no user agent,
-    # client hints or headers.
-    assert {k: v for k, v in recorder.context.items() if k in ("locale", "timezone_id")} == {
+    # The guard's proxy, no downloads, no fixed viewport, and the request's locale with its region's zone (owner P8);
+    # no user agent, client hints or headers.
+    assert {k: v for k, v in recorder.launch.items() if k in ("locale", "timezone_id")} == {
         "locale": "de-DE",
         "timezone_id": "Europe/Berlin",
     }
-    assert set(recorder.context) == {"proxy", "accept_downloads", "locale", "timezone_id"}
+    assert set(recorder.launch) == {
+        "channel",
+        "headless",
+        "no_viewport",
+        "proxy",
+        "accept_downloads",
+        "locale",
+        "timezone_id",
+    }

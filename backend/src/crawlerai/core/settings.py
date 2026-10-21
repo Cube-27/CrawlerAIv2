@@ -4,6 +4,7 @@ The variable names are the contract; later specs add settings here.
 An empty value counts as unset, so unset CI secrets (which arrive as "") behave like absent variables.
 """
 
+from pathlib import Path
 from typing import Annotated, Literal
 
 from curl_cffi.requests import BrowserTypeLiteral
@@ -58,6 +59,9 @@ class AcquireSettings(_Base):
     # `CRAWLERAI_DISABLED_ADAPTERS`, comma-separated: the platform adapters that do not run (adapters spec). Every
     # registered adapter runs unless named here (owner, 2026-10-16).
     disabled_adapters: Annotated[tuple[str, ...], NoDecode, BeforeValidator(_comma_separated)] = ()
+    # `CRAWLERAI_BROWSER_PROFILES`: the directory the browser rung keeps its site profiles in, across jobs and processes
+    # (`acquire.browser_profiles`); deleting it resets them. Unset: each profile lasts only while its browser is open.
+    browser_profiles: Path | None = None
 
 
 class ApiSettings(_Base):
