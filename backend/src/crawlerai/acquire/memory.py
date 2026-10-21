@@ -32,10 +32,10 @@ from sqlalchemy import case, delete, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from crawlerai.acquire.fingerprint import platform_shown
 from crawlerai.acquire.politeness import SLOW_DOWN
 from crawlerai.acquire.session import ENGINE
 from crawlerai.acquire.types import AttemptRecord, FetchResult, fetched_as
-from crawlerai.adapters.platforms import platform_of
 from crawlerai.db.models import (
     BrowserEngine,
     FetchMethod,
@@ -45,7 +45,6 @@ from crawlerai.db.models import (
     SiteContract,
     SiteId,
 )
-from crawlerai.storage.capture_bundle import decode_body
 
 __all__ = [
     "BLOCK_TTL",
@@ -178,8 +177,7 @@ async def _record_platform(conn: AsyncConnection, site_id: SiteId, result: Fetch
     """Set the site's platform to the one its `ok` page shows; a page that shows none leaves it."""
     if result.block_class != "ok" or result.method == "api":
         return
-    manifest = result.bundle.manifest
-    platform = platform_of(decode_body(result.bundle), manifest.headers.response)
+    platform = platform_shown(result)
     if platform is not None:
         query = update(Site).where(Site.id == site_id, Site.platform.is_distinct_from(platform))
         await conn.execute(query.values(platform=platform))

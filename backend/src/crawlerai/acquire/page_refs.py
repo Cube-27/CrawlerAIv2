@@ -7,7 +7,7 @@ from selectolax.lexbor import LexborHTMLParser
 
 from crawlerai.acquire.types import FetchResult
 from crawlerai.adapters.base import PageRefs
-from crawlerai.storage.capture_bundle import decode_body
+from crawlerai.core.derived import held
 
 # The most links a page's references keep: a page with more is a listing of a size no single platform site is judged
 # by, so it keeps none.
@@ -17,16 +17,21 @@ MAX_LINKS = 5000
 def canonical_link(page: FetchResult) -> str | None:
     """The page's `link rel=canonical` target (`_canonical`), resolved against the document's base URL (HTML Standard
     §2.4.1: the first `base href`, else the page's URL)."""
-    tree = LexborHTMLParser(decode_body(page.bundle))
+    tree = LexborHTMLParser(page.bundle.text)
     return _canonical(tree, _base(tree, page))
 
 
 def page_refs(page: FetchResult) -> PageRefs:
+    """`_page_refs`, read once per fetched page: a referral asks it before its adapter answers and again as it does."""
+    return held(page, "_refs", (page.bundle.body, page.bundle.manifest.final_url), lambda: _page_refs(page))
+
+
+def _page_refs(page: FetchResult) -> PageRefs:
     """The URLs that name the page itself, strongest first: its final URL (after the redirects of its fetch), its
     canonical link (RFC 6596) and its `og:url` (Open Graph protocol, "og:url": the object's canonical URL); and the
     absolute `http` and `https` targets of its links (HTML Standard §4.6 `a href`), in document order, each once, none
     on a page with more than `MAX_LINKS`. A reference no URL parser reads is skipped."""
-    tree = LexborHTMLParser(decode_body(page.bundle))
+    tree = LexborHTMLParser(page.bundle.text)
     base = _base(tree, page)
     own = [page.bundle.manifest.final_url]
     if (canonical := _canonical(tree, base)) is not None:

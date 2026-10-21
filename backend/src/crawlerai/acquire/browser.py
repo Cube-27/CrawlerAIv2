@@ -20,7 +20,7 @@ import re
 import time
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Final, cast
 
@@ -129,9 +129,10 @@ class Render:
         it with the redirect rules of where its navigation led (`classified`), labelled with its challenge."""
         self.temporary = page.temporary
         self.steps = await stepped(page)  # kept by a failure after the steps ran too
-        self.exchange, self.content = await read_state(page)
+        self.exchange, content = await read_state(page)
         self.cookies = await context_cookies(page.page.context)
-        text = markup(self.content)
+        text = markup(content)
+        self.content = replace(content, text=text)
         redirect = Redirect(self.url, self.exchange.url, self.policy.page_kind)
         self.block_class = await classified(self.exchange, text, redirect)
         self.challenge = await challenge_of(self.block_class, self.exchange, text, self.cookies)

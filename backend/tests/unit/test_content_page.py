@@ -12,7 +12,6 @@ from crawlerai.storage.capture_bundle import (
     CaptureManifest,
     Headers,
     NetworkBody,
-    decode_body,
     network_file,
     sha256_hex,
 )
@@ -74,7 +73,7 @@ def test_a_json_body_decodes_as_utf8_whatever_charset_it_is_labelled_with(method
     plain = _bundle('{"name": "café \u2013 b"}'.encode(), headers)
     manifest = plain.manifest.model_copy(update={"method": method})
 
-    text = decode_body(CaptureBundle(manifest=manifest, body=plain.body, network=()))
+    text = CaptureBundle(manifest=manifest, body=plain.body, network=()).text
 
     assert text == '{"name": "café \u2013 b"}'
 

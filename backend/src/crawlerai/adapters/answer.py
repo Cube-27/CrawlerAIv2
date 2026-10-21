@@ -25,7 +25,7 @@ def recorded(result: FetchResult, answer: JsonValue) -> FetchResult:
 def with_body(kept: FetchResult, first: FetchResult, body: bytes) -> FetchResult:
     """`kept` (the attempts of every request), its capture that of `first` with `body`: the one answer of a list.
     The body is JSON text in UTF-8 (RFC 8259 §8.1), so its Content-Type says so in place of the answer's own, whose
-    charset would decode it wrongly (`decode_body`)."""
+    charset would decode it wrongly (`CaptureBundle.text`)."""
     original = first.bundle.manifest
     response = (*((n, v) for n, v in original.headers.response if n.lower() != "content-type"), _JSON_TYPE)
     manifest = original.model_copy(

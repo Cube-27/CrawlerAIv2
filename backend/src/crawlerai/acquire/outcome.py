@@ -51,6 +51,7 @@ class Content:
         None  # browser listings only: rendered area of item blocks (`CaptureManifest`)
     )
     resources: dict[str, int] | None = None  # browser only: the page's resources counted (`CaptureManifest`)
+    text: str | None = None  # the body as the rung decoded it (`decode_html`), which the capture keeps (`decoded`)
 
 
 def fetch_result(
@@ -114,6 +115,8 @@ def fetch_result(
     bundle = CaptureBundle(
         manifest=manifest, body=content.body, network=tuple(data for _, data in content.network), raw_body=raw_body
     )
+    if content.text is not None:
+        bundle = bundle.decoded(content.text)
     kept = artifacts if artifacts and error is None and block_class == "ok" else {}
     return FetchResult(bundle=bundle, duration_ms=duration_ms, attempts=(attempt,), artifacts=kept)
 

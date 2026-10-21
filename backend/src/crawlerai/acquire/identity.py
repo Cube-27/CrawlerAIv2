@@ -139,7 +139,7 @@ def joined_call(
         body=page.body,
         network=(*page.network, call.body),
         raw_body=page.raw_body,
-    )
+    ).decoded(page.text)  # the page's body, read as the page's
 
 
 def identified(result: FetchResult, url: str, keys: tuple[str, ...]) -> FetchResult:
