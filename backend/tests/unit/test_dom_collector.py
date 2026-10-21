@@ -232,6 +232,44 @@ def test_the_shown_image_of_the_stated_main_file_anchors_the_main_image_and_its_
     assert collect(served, primary)["image_url"] == "https://shop.example.test/cdn/v2/p/b.jpg/renditions/600.jpg?w=200"
 
 
+def test_the_stated_file_in_tangential_content_anchors_its_gallery() -> None:
+    # The page keeps the product's slides in an `aside` of `main`, each image beside a caption whose link addresses the
+    # image itself (its query names the file, RFC 3986 §3.4); a swatch row comes first in the region.
+    swatches = "".join(f'<li><button><img src="/s/{n}.jpg" alt="{n}"></button></li>' for n in "xy")
+    slides = "".join(
+        f'<div><div><img src="/p/{n}.jpg?w=600" alt="P"></div><div><a href="/look?image=/p/{n}.jpg">L</a></div></div>'
+        for n in "abc"
+    )
+    body = f"<main><ul>{swatches}</ul><aside><div>{slides}</div></aside></main>"
+    page = ParsedPage(f"<html><body>{body}</body></html>")
+    found = DomCollector(primary=("https://shop.example.test/p/a.jpg",)).collect(page, SCHEMA, CTX).candidates
+    values = {c.field: c.normalized.value for c in found if isinstance(c.normalized, Ok)}
+
+    assert values["image_url"] == "https://shop.example.test/p/a.jpg?w=600"
+    assert values["images"] == [f"https://shop.example.test/p/{n}.jpg?w=600" for n in "abc"]
+
+
+def test_slides_named_after_the_main_file_are_its_gallery_wherever_the_block_holds_them() -> None:
+    # The stated file is only in a lazy slide's `noscript` fallback; every slide's image has an empty `alt`; the first
+    # slides show their image outside the main image's tag path. A swatch named after the file is no slide.
+    def slide(name: str, *, lazy: bool) -> str:
+        image = f'<img src="/i/{name}?h=900" alt="">'
+        return (
+            f'<div><span><img src="" alt=""><noscript>{image}</noscript></span></div>'
+            if lazy
+            else f"<div><span>{image}</span></div>"
+        )
+
+    slides = slide("P1_m", lazy=False) + slide("P1_d1", lazy=False) + slide("P1_d2", lazy=True) + slide("P1", lazy=True)
+    body = f'<main><div>{slides}</div><div><img src="/i/P1_sw" alt="Red"></div></main>'
+    page = ParsedPage(f"<html><body>{body}</body></html>")
+    found = DomCollector(primary=("https://shop.example.test/i/P1?crop=1",)).collect(page, SCHEMA, CTX).candidates
+    values = {c.field: c.normalized.value for c in found if isinstance(c.normalized, Ok)}
+
+    assert values["image_url"] == "https://shop.example.test/i/P1?h=900"
+    assert values["images"] == [f"https://shop.example.test/i/{n}?h=900" for n in ("P1_m", "P1_d1", "P1_d2", "P1")]
+
+
 def test_a_lazy_or_hidden_slide_gives_its_source_to_the_gallery() -> None:
     # HTML Standard §4.8.4.3: a srcset candidate without a descriptor is 1x, which leaves the placeholder `src` out; a
     # lazy loader keeps the sources in `data-srcset`/`data-src`; a carousel hides the slides but the current one.

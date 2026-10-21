@@ -11,11 +11,14 @@ shares with the other DOM passes: the main region, the elements set apart from i
   fills an `image_url` field whose path names schema.org `image`. Before it, the first such image (in the main
   region, else in the body) of the file (`images.same_file`) the page's structured data or Open Graph states as its
   main image (`stated_images`): independent evidence of the product's image, which a page without a main landmark (a
-  client-rendered storefront) needs to have a main image at all.
+  client-rendered storefront) needs to have a main image at all; without one, the first image of that file outside
+  dialogs and media fallback only, shown or not, decorative or not, its tangential section then holding the product's
+  images.
 - **The gallery.** The main image's slides fill a list of images whose path names schema.org `image`: from the main
-  image up, the first block with siblings of its tag; each such block's image at the main image's tag path, a source
-  several blocks give (a placeholder) left out; none when a block links to another document (cards) or fewer than two
-  images remain (`_gallery`). A slide need not be shown: a carousel hides its slides but the current one.
+  image up, the first block with siblings of its tag holding an image; each such block's image at the main image's tag
+  path, else its first image named after the main image's file (`images.same_family`), a source several blocks give (a
+  placeholder) left out; none when a block links to another document (cards) or fewer than two images remain
+  (`_gallery`). A slide need not be shown: a carousel hides its slides but the current one.
 - **An image's source.** Its `src`, unless its `srcset` leaves `src` out of its source set (HTML Standard §4.8.4.3:
   width descriptors, or a candidate of pixel density 1, which a candidate without a descriptor is): then the widest
   candidate, else the first. A lazy loader keeps an image's sources in the custom data attributes named after the
@@ -25,8 +28,9 @@ shares with the other DOM passes: the main region, the elements set apart from i
 
 import re
 from collections import Counter
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from urllib.parse import parse_qsl, urlsplit
 
 from pydantic import JsonValue
 from selectolax.lexbor import LexborNode
@@ -38,7 +42,7 @@ from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.content.repeats import MIN_REPEATS
 from crawlerai.content.text import shown
 from crawlerai.normalize.base import Context, Ok
-from crawlerai.normalize.images import same_file
+from crawlerai.normalize.images import same_family, same_file
 from crawlerai.normalize.url import canonical_url, media_type
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
@@ -69,6 +73,9 @@ _LAZY = "data-"
 # A hyperlink (HTML Standard §4.6.1: an `a` element with an `href` attribute).
 A_HREF = "a[href]"
 
+# Whether an image source is named after the main image's file (`images.same_family`).
+_Named = Callable[[str], bool]
+
 # A field, the raw value, the XPath of the element it came from, and what the field reads of it when that is not the
 # raw value (a list field's items).
 Found = tuple[str, JsonValue, str, JsonValue]
@@ -83,9 +90,11 @@ def main_region(page: ParsedPage) -> LexborNode | None:
     return None
 
 
-def apart_ids(region: LexborNode) -> frozenset[int]:
-    """The elements in the region's tangential content, in a dialog or a media element's fallback."""
-    selector = ",".join((*_TANGENTIAL, *_MEDIA, "dialog", *(f'[role~="{role}"]' for role in sorted(_DIALOG_ROLES))))
+def apart_ids(region: LexborNode, *, tangential: bool = True) -> frozenset[int]:
+    """The elements in the region's tangential content (unless not `tangential`), in a dialog or a media element's
+    fallback."""
+    roles = (f'[role~="{role}"]' for role in sorted(_DIALOG_ROLES))
+    selector = ",".join((*(_TANGENTIAL if tangential else ()), *_MEDIA, "dialog", *roles))
     return frozenset(inside.mem_id for root in region.css(selector) for inside in (root, *root.css("*")))
 
 
@@ -114,15 +123,13 @@ def image_found(
     region = landmark or page.tree.body
     if not (fields or lists) or region is None:
         return
-    links, apart = Links.of(region, ctx), apart_ids(region) | outside
-    found = _anchor(region, links, apart, primary, ctx.base_url or ctx.page_url)
-    if found is None and landmark is not None:
-        found = _main_image(region, links, apart)
+    links, base = Links.of(region, ctx), ctx.base_url or ctx.page_url
+    found = _main(region, landmark is not None, links, outside, primary, base)
     if found is None:
         return
-    image, source = found
+    image, source, apart = found
     yield from ((name, source, node_xpath(image), None) for name in fields)
-    gallery = _gallery(image, region, links, apart) if lists else None
+    gallery = _gallery(image, region, links, apart, base) if lists else None
     if gallery is not None:
         views: list[JsonValue] = [*gallery[1]]
         yield from ((name, views, node_xpath(gallery[0]), None) for name in lists)
@@ -152,16 +159,51 @@ def stated_images(schema: SchemaDef, stated: Sequence[Candidate]) -> tuple[str, 
     return tuple(dict.fromkeys(value for value in values if isinstance(value, str)))
 
 
+def _main(
+    region: LexborNode,
+    landmark: bool,
+    links: "Links",
+    outside: frozenset[int],
+    primary: Sequence[str],
+    base: str | None,
+) -> tuple[LexborNode, str, frozenset[int]] | None:
+    """The main image, its source and the elements set apart from its gallery (module docstring): the shown image of a
+    `primary` file outside the region's tangential content (`_anchor`); else the first image of such a file outside
+    dialogs and fallback content only, shown or not and decorative or not: the stated file is the evidence, so the
+    tangential section holding it holds the product's images (a carousel hides its slides, a `noscript` fallback holds
+    a lazy one, an empty `alt` says the text tells what the image shows, HTML Standard §4.8.4.4); else, in a main
+    landmark, its first image (`_main_image`)."""
+    apart = apart_ids(region) | outside
+    found = _anchor(region, links, primary, base, lambda image: _shown_source(image, apart))
+    if found is not None:
+        return (*found, apart)
+    near = apart_ids(region, tangential=False) | outside
+    found = _anchor(region, links, primary, base, lambda image: _stated_source(image, near))
+    if found is not None:
+        return (*found, near)
+    found = _main_image(region, links, apart) if landmark else None
+    return None if found is None else (*found, apart)
+
+
+def _stated_source(image: LexborNode, apart: frozenset[int]) -> str | None:
+    return None if image.mem_id in apart else image_source(image.attributes)
+
+
 def _anchor(
-    region: LexborNode, links: "Links", apart: frozenset[int], primary: Sequence[str], base: str | None
+    region: LexborNode,
+    links: "Links",
+    primary: Sequence[str],
+    base: str | None,
+    read: Callable[[LexborNode], str | None],
 ) -> tuple[LexborNode, str] | None:
-    """The region's first shown image of a `primary` file (`images.same_file`: the file, or a rendition of it), not a
-    link card's: the product's main image as structured data states it, found by its file (independent evidence of which
-    image is the product's), so a page with no main landmark has one too, and its gallery is read from it."""
+    """The region's first image of a `primary` file (`images.same_file`: the file, or a rendition of it) whose source
+    `read` gives, not a link card's: the product's main image as structured data states it, found by its file
+    (independent evidence of which image is the product's), so a page with no main landmark has one too, and its
+    gallery is read from it."""
     if not primary:
         return None
     for image in region.css("img"):
-        source = _shown_source(image, apart)
+        source = read(image)
         if source is None or (absolute := canonical_url(source, base)) is None:
             continue
         if any(same_file(absolute, file) for file in primary) and not _link_card(image, region, links):
@@ -190,32 +232,51 @@ def _source(image: LexborNode, apart: frozenset[int]) -> str | None:
 
 
 def _gallery(
-    image: LexborNode, region: LexborNode, links: "Links", apart: frozenset[int]
+    image: LexborNode, region: LexborNode, links: "Links", apart: frozenset[int], base: str | None
 ) -> tuple[LexborNode, list[str]] | None:
     """The main image's gallery: the holder and the image sources of the blocks of one repeated structure around it.
 
     From the main image up, the first block that has siblings of its tag (two or more blocks of one tag, the repetition
-    `collect.dom` reads sibling pairs from) is a slide among slides: each block holding an image at the main image's
+    `collect.dom` reads sibling pairs from) and whose other blocks hold an image (else they are parts of one slide, the
+    image beside its caption) is a slide among slides: each block holding an image at the main image's
     tag path within its block gives that image, in document order, shown or not (a carousel hides the slides but the
-    current one, WAI-ARIA Authoring Practices, carousel pattern). A block linking to another document makes the blocks
+    current one, WAI-ARIA Authoring Practices, carousel pattern); a block without one there gives its first image named
+    after the main image's file (`images.same_family`: a view or rendition the image server names after it, whatever
+    its place in the block, shown or not, decorative or not). A block linking to another document makes the blocks
     cards of other items, not views of this one, so they are no gallery. A source several blocks give is the
     template's, as the align step reads a place every block repeats (a lazy loader's placeholder), not a view. Fewer
     than two distinct sources are no gallery."""
+    main = canonical_url(image_source(image.attributes) or "", base)
+
+    def named(source: str) -> bool:
+        absolute = canonical_url(source, base)
+        return main is not None and absolute is not None and same_family(main, absolute)
+
     node = image
     while node is not region and (parent := node.parent) is not None:
         blocks = [child for child in children(parent) if child.tag == node.tag]
-        if len(blocks) >= MIN_REPEATS:
-            views = _views(blocks, _tag_path(image, node), links, apart)
+        if len(blocks) >= MIN_REPEATS and not _parts(blocks, node):
+            views = _views(blocks, _tag_path(image, node), links, (apart, named))
             return (parent, views) if len(views) >= MIN_REPEATS else None
         node = parent
     return None
 
 
-def _views(blocks: Sequence[LexborNode], path: tuple[str, ...], links: "Links", apart: frozenset[int]) -> list[str]:
-    """The sources the blocks show once each at `path` (`_gallery`); none when a block links to another document."""
+def _parts(blocks: Sequence[LexborNode], own: LexborNode) -> bool:
+    """Whether the blocks beside `own` hold no image: they are the parts of one slide (its image and its caption), not
+    slides."""
+    return not any(
+        block.tag == "img" or block.css_first("img") is not None for block in blocks if block.mem_id != own.mem_id
+    )
+
+
+def _views(
+    blocks: Sequence[LexborNode], path: tuple[str, ...], links: "Links", rule: tuple[frozenset[int], "_Named"]
+) -> list[str]:
+    """The sources the blocks show once each (`_gallery`); none when a block links to another document."""
     if any(links.of_block(block) for block in blocks):
         return []
-    sources = [s for block in blocks if (s := _block_source(block, path, apart)) is not None]
+    sources = [s for block in blocks if (s := _block_source(block, path, *rule)) is not None]
     counts = Counter(sources)
     return [source for source in dict.fromkeys(sources) if counts[source] == 1]
 
@@ -227,13 +288,13 @@ def _tag_path(element: LexborNode, block: LexborNode) -> tuple[str, ...]:
     return tuple(reversed(tags))
 
 
-def _block_source(block: LexborNode, path: tuple[str, ...], apart: frozenset[int]) -> str | None:
-    """The source of a block's first image at the tag path `path` from the block."""
+def _block_source(block: LexborNode, path: tuple[str, ...], apart: frozenset[int], named: "_Named") -> str | None:
+    """The source of a block's first image at the tag path `path` from the block, else of its first image outside
+    `apart` whose source is `named` after the main image's file."""
     images = [block] if block.tag == "img" else block.css("img")
-    for image in images:
-        if _tag_path(image, block) == path and (source := _source(image, apart)) is not None:
-            return source
-    return None
+    at_path = (s for image in images if _tag_path(image, block) == path and (s := _source(image, apart)) is not None)
+    elsewhere = (s for image in images if (s := _stated_source(image, apart)) is not None and named(s))
+    return next(at_path, None) or next(elsewhere, None)
 
 
 def image_source(attributes: Mapping[str, str | None]) -> str | None:
@@ -327,7 +388,8 @@ def _link_card(image: LexborNode, region: LexborNode, links: "Links") -> bool:
 class Links:
     """The other document each hyperlink of a region leads to (HTML Standard §4.6.1: an `a` with `href`), by element:
     canonical (`canonical_url`: http(s), without the fragment), other than the page itself and other than images (a
-    larger copy)."""
+    larger copy) or a document about one: a query (RFC 3986 §3.4) whose parameter names an image file addresses that
+    image (its zoom, its share, the items it shows), not another item."""
 
     targets: Mapping[int, str]
 
@@ -336,11 +398,16 @@ class Links:
         here = canonical_url(ctx.page_url, None) if ctx.page_url is not None else None
         base = ctx.base_url or ctx.page_url
         found = {a.mem_id: canonical_url(a.attributes.get("href") or "", base) for a in region.css(A_HREF)}
-        return cls({key: t for key, t in found.items() if t is not None and t != here and not is_image_url(t)})
+        return cls({key: t for key, t in found.items() if t is not None and t != here and not _about_image(t)})
 
     def of_block(self, block: LexborNode) -> set[str]:
         """The other documents the block's hyperlinks lead to, the block's own included when it is one."""
         return {self.targets[a.mem_id] for a in (block, *block.css(A_HREF)) if a.mem_id in self.targets}
+
+
+def _about_image(url: str) -> bool:
+    """Whether the URL names an image (`is_image_url`) or its query names one in a parameter (`Links`)."""
+    return is_image_url(url) or any(is_image_url(value) for _, value in parse_qsl(urlsplit(url).query))
 
 
 def is_image_url(url: str) -> bool:

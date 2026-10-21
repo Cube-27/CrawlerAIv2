@@ -2,7 +2,8 @@
 publishes.
 
 - The file: an absolute URL's canonical authority and path, scheme, query and stated size aside (`resource_key`), or a
-  rendition an image server writes into the path (`same_file`).
+  rendition an image server writes into the path (`same_file`); its family, the images a server names after it
+  (`same_family`).
 - The rendition: of renditions of one file, the largest one states (`largest_rendition`), of those over `https` if any
   is (`preferred_rendition`: RFC 9110 §4.2.2, the same file reached over TLS).
 - A list of images names each file once (`distinct_files`); values that agree publish the secure one
@@ -10,6 +11,7 @@ publishes.
 - A list whose files another list holds, with more, is that list's representative part (`representative_part`).
 """
 
+import posixpath
 import re
 from collections.abc import Hashable, Sequence
 from functools import lru_cache
@@ -73,6 +75,28 @@ def same_file(a: JsonValue, b: JsonValue) -> bool:
         return False
     directories = list(zip(reversed(one[1:-1]), reversed(other[1:-1]), strict=False))
     return bool(directories) and all(_rendition_segment(x, y) for x, y in directories)
+
+
+def same_family(file: JsonValue, other: JsonValue) -> bool:
+    """Whether `other` names `file` (`same_file`) or another image an image server names after it: on one authority
+    and in one directory (`resource_key`), a file name that is `file`'s, its extension aside, continued after a
+    separator (no letter or digit) with more (`name_m`, `name_d1.jpg` beside `name.jpg`). A structural property of how
+    a server names the views and renditions of one file; it says the images are related, not which one is a view."""
+    if same_file(file, other):
+        return True
+    first, second = resource_key(file), resource_key(other)
+    if first is None or second is None or first[1] != second[1]:
+        return False
+    directory, _, name = first[2].rpartition("/")
+    other_directory, _, other_name = second[2].rpartition("/")
+    stem, other_stem = posixpath.splitext(name)[0], posixpath.splitext(other_name)[0]
+    return (
+        directory == other_directory
+        and bool(stem)
+        and len(other_stem) > len(stem) + 1
+        and other_stem.startswith(stem)
+        and not other_stem[len(stem)].isalnum()
+    )
 
 
 @lru_cache(maxsize=8192)

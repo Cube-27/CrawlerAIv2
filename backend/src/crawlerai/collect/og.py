@@ -80,6 +80,8 @@ _SALE_END = "product:sale_price_dates:end"
 # passed everywhere only this long after it has passed in UTC.
 _LATEST_OFFSET = timedelta(hours=12)
 _DAY = timedelta(days=1)
+# Open Graph protocol, "Arrays": a property stated more than once is an array of values.
+_SEVERAL = 2
 # OGP "Optional Metadata": `og:site_name` is "the name of the overall site" the object is part of.
 _SITE_NAME = "og:site_name"
 _READ = (
@@ -287,9 +289,10 @@ def _root_property(path: MappedPath) -> str | None:
 
 def _first_or_all(found: Sequence[_Meta], *, as_list: bool) -> _Value | None:
     """Open Graph protocol, "Arrays": a property may repeat, and the first tag, top to bottom, is preferred in a
-    conflict. A scalar field takes that first value; a list field takes them all, in document order. The locator names
-    the first."""
-    if not found:
+    conflict. A scalar field takes that first value; a list field takes them all, in document order, when they are
+    several: one value (`og:image` and `og:image:url` stating one file are one) is the object's one image, not a list of
+    images, which the views the page's markup or structured data list fill. The locator names the first."""
+    if not found or (as_list and len({m.content for m in found}) < _SEVERAL):
         return None
     raw: JsonValue = [m.content for m in found] if as_list else found[0].content
     reading: JsonValue = [m.reading for m in found] if as_list else found[0].reading
