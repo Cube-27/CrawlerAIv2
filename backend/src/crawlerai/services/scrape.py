@@ -193,8 +193,8 @@ class ScrapeResult(BaseModel):
     does (acquisition spec): `robots` for a disallow, `robots_unreachable` for a robots.txt that could not be read (RFC
     9309 §2.3.1.4), `slow_down` for a host whose turn at its rate was more than a minute off; for a fetched page a
     vendor's challenge kept out, `challenge: <vendor>`; for a fetched listing whose extraction gave no rows,
-    `no_rows: <cause>` (`no_rows` in `resolve.pipeline`, D-1475); None for any other page that was fetched. `schema`
-    is the draft of a `schema.prompt`."""
+    `no_rows: <cause>` (`no_rows` in `resolve.pipeline`; rest-api spec, "Scrape outcomes, not errors, for page
+    failures"); None for any other page that was fetched. `schema` is the draft of a `schema.prompt`."""
 
     model_config = ConfigDict(validate_by_name=True, serialize_by_alias=True)
 
@@ -217,7 +217,8 @@ class ScrapeResult(BaseModel):
     pdf: Artifact | None = format_member()
     schema_: SchemaDef | None = format_member(alias="schema")
     records: list[ScrapedRecord] | None = format_member()
-    # A listing that kept no record: its page-scope fields (`next_page_url`), in the record field shape (D-1476).
+    # A listing that kept no record: its page-scope fields (`next_page_url`), in the record field shape (rest-api
+    # spec, "Scrape outcomes, not errors, for page failures").
     page: dict[str, RecordField] | None = format_member()
     browser_actions: ActionsReport | None = format_member()
     usage: Usage

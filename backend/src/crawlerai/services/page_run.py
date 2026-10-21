@@ -169,7 +169,8 @@ async def read_stored(
     api: bool,
 ) -> Page | None:
     """The page, a site and canonical URL, read from its latest stored capture made with `policy`'s steps and context
-    instead of fetching (D-1435, `recent_capture`), with the files `formats` ask of it; an API recipe's too with `api`.
+    instead of fetching (rest-api spec, "Synchronous scrape": `max_age`, `fetch.cache`; `recent_capture`), with the
+    files `formats` ask of it; an API recipe's too with `api`.
     `cache: default` reads one made within `max_age` seconds, none when it is 0; `bypass` none; `only` one within
     `max_age`, of any age when it is 0, and raises `NotCached` when there is none. A worker's job has no `max_age`."""
     if cache == "bypass" or (cache == "default" and not max_age):
@@ -190,9 +191,10 @@ def unreached(
     result: FetchResult, capture_id: CaptureId, task: ClaimedTask, *, retryable: bool
 ) -> Finished | Failed | None:
     """The result of a page that was not reached, None for a reached one: its outcome (`blocked`, `shell`,
-    `not_found`), or a failure for a fetch error, transient when `retryable` (D-0632). A page a vendor's challenge kept
-    out ends `blocked` naming the vendor (`blocked_reason`); a `retryable` one after at most one retry, once the
-    back-off of its first try is over, and with none when the browser rung met that vendor's challenge itself."""
+    `not_found`), or a failure for a fetch error, transient when `retryable` (jobs spec, "Queue, leases and retries").
+    A page a vendor's challenge kept out ends `blocked` naming the vendor (`blocked_reason`); a `retryable` one after
+    at most one retry, once the back-off of its first try is over, and with none when the browser rung met that
+    vendor's challenge itself."""
     failure = fetch_failure(result)
     if failure is not None:
         error = result.attempts[-1].error or failure
@@ -245,7 +247,7 @@ Kept = tuple[StoredRecord, ExtractionResult]
 @dataclass(frozen=True)
 class PageEnd:
     """How a page's run ends: the task's result, its capture, the records it kept (None when it extracted none), and a
-    listing's page fields when it kept no record (D-1476)."""
+    listing's page fields when it kept no record (rest-api spec, "Scrape outcomes, not errors, for page failures")."""
 
     result: Finished | Failed
     capture_id: CaptureId
@@ -296,7 +298,7 @@ async def store_kept(
     """Store the page's extraction and record (`store_page_record`), then, unless its resolution failed, its further
     pages' under the task (`store_further`). A caller-supplied page keeps every record, complete or not; a
     crawl-discovered one only complete ones (§23). The outcome is the page's own (`_outcome`); a listing that kept no
-    record says why in the task's `last_error` (D-1475)."""
+    record says why in the task's `last_error` (rest-api spec, "Scrape outcomes, not errors, for page failures")."""
     site, capture_id = page
     records, extraction = extracted.records, extracted.extraction
     stored = await store_page_record(

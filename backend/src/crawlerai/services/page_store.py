@@ -83,8 +83,8 @@ async def record_fetch_usage(
     conn: AsyncConnection, job_id: JobId, attempts: Iterable[AttemptRecord], proxy_pool: str | None
 ) -> None:
     """Count the fetch `attempts` as the job's usage: a request or the browser's seconds per attempt, and, for a fetch
-    through `proxy_pool`, the bytes each attempt moved through it (`proxy_bytes`, D-1381). Attempts, not fetch results,
-    so that a caller keeps no page body only to count it."""
+    through `proxy_pool`, the bytes each attempt moved through it (`proxy_bytes`, acquisition spec, "Proxy pools").
+    Attempts, not fetch results, so that a caller keeps no page body only to count it."""
     for attempt in attempts:
         resource: UsageResource
         if attempt.method in _REQUEST_METHODS:
