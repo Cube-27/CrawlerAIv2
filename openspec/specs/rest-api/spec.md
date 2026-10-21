@@ -47,7 +47,7 @@ requested format (unrequested ones omitted); past `timeout_s` (≤ 120) it is 50
 `budget` is optional, with no default ([jobs](../jobs/spec.md)). With `max_age > 0` and `fetch.cache` `default` it
 reuses the latest `ok`, unexpired capture of the canonical URL that recent and made with the same actions, context
 names (in any order, header names in any case) and, for a `screenshot`, the same area, with no fetch, robots.txt check or usage; `bypass` always fetches; `only` serves such a capture (any age when
-`max_age` is 0) or is 404 `not_cached` with the job `failed`. (Previously: no `cache`.) Refs: §13.1, D-0028, D-0427,
+`max_age` is 0) or is 404 `not_cached` with the job `failed`. Refs: §13.1, D-0028, D-0427,
 D-0431, D-0503, D-1435.
 #### Scenario: Cache only, nothing stored
 - **WHEN** a scrape with `fetch.cache` `only` names a URL with no stored capture
@@ -65,8 +65,7 @@ spec, "Incomplete pages") answers `no_match` with no record, as a batch task doe
 `not_found`, `shell` and the others of [jobs](../jobs/spec.md) "Page outcomes") are never `extracted` or `partial`.
 Request-level failures are problems: an SSRF refusal (DNS failure
 included) is 422 `ssrf_rejected` before any job is created; the guard is in [acquisition](../acquisition/spec.md)
-(INV-16). (Previously: the no-rows cause was also role C's failure reason or `none_listed`, then `not_asked`; a scrape
-of a page that states no entity answered `partial` with no record.) Refs: owner 2026-10-21, §18, D-0423, D-0426,
+(INV-16). Refs: owner 2026-10-21, §18, D-0423, D-0426,
 D-0504, D-1451, D-1475, D-1476, D-1605.
 #### Scenario: Robots disallow
 - **WHEN** robots.txt disallows the URL
@@ -96,13 +95,13 @@ values serialized unchanged (INV-22, INV-27), and `usage` SHALL count every fetc
 and `pending_approval`); `GET /v1/records` pages newest first by
 keyset cursor (≤ 200) with `changed_since` (see [jobs](../jobs/spec.md)), and with `job_id` by the job's tasks, newest
 task first, a record once; every paged answer (records, jobs, a job's results) carries `total`, the matching rows in all; `POST /v1/captures/{id}/replay` runs the current engine cold and persists nothing.
-(Previously: no reject endpoint.) Refs: §13.1, §15, D-0396, D-0523, D-0950, D-1280, D-1342, D-1391.
+Refs: §13.1, §15, D-0396, D-0523, D-0950, D-1280, D-1342, D-1391.
 
 ### Requirement: Project settings
 `GET/PATCH /v1/project/settings` SHALL read and set `llm_call_cap`, the LLM calls a job may make when its request sets
 no `budget.llm_calls`, `draft_call_cap`, the uncharged role S calls one API key may make (null: no cap), and
-`require_config_approval`, whether a learned config waits for approval (off until set). (Previously: the two caps
-only.) Refs: §13.1, Appendix A #47, D-1121, D-1282, D-1342, D-1346.
+`require_config_approval`, whether a learned config waits for approval (off until set). Refs: §13.1, Appendix A #47,
+D-1121, D-1282, D-1342, D-1346.
 
 ### Requirement: LLM usage endpoints
 `GET /v1/usage/llm?start&end` SHALL report estimated LLM cost per UTC day, provider, model and prompt kind with the 10
@@ -114,7 +113,7 @@ The MCP server SHALL use the official `mcp` SDK and expose exactly `scrape`, `ma
 `crawl_status`, `extract`, `extract_status`, `list_schemas`, `create_schema`, `get_site_config`, `export_config`,
 `reject_config`, `llms_txt`, `create_schedule`, `list_schedules`, `schedule_jobs`, `pause_schedule`, `resume_schedule`,
 `run_schedule`, `delete_schedule` and `webhook_deliveries`, each one service call; long jobs return a `job_id` at once
-and status tools page 10 results. No jobs-list or usage tool. (Previously: twenty tools, no `webhook_deliveries`.)
+and status tools page 10 results. No jobs-list or usage tool.
 Refs: §13.3, D-0698, D-1391, D-1417, D-1442, D-1511.
 #### Scenario: Tool list
 - **WHEN** a client lists the tools
@@ -141,8 +140,8 @@ it grows its list with the default `browser_actions` when its page is rendered (
 2026-10-18). The request's `fetch.actions` and `wait_for` run first on the settled page. With `records` asked, each
 further kept document state is a capture with its own extraction under its own URL, stored once the first state's did
 not fail; the answer lists records once each (a failed further state makes it `partial`), `capture_id` and formats are
-the first state's, and `browser_actions` reports the mechanism, stop reason, actions, pages and items. (Previously: only
-a request naming `browser_actions` grew its list.) Refs: owner #52, D-1218, D-1222, D-1223, D-1513.
+the first state's, and `browser_actions` reports the mechanism, stop reason, actions, pages and items. Refs: owner #52,
+D-1218, D-1222, D-1223, D-1513.
 #### Scenario: Detail page
 - **WHEN** a scrape with `page_kind` `detail` sets `browser_actions`
 - **THEN** the answer is a 422 problem naming `browser_actions` and no job is created
@@ -166,7 +165,7 @@ is neither requested nor obeyed; `true` obeys it, [acquisition](../acquisition/s
 #75; map takes it as a member of its own); `wait_for` and `actions` run in the browser
 (422 with `method_hint` `http`), and `headers` go over HTTP only (422 with them). Answers and stored scrape requests
 show every value as `**********`. The scrape answer's `fetch.attempts` carry each step's outcome. MCP tools take the
-same members. (Previously: `respect_robots` defaulted to `true`, `false` needing a `robots_override_reason`.) Refs:
+same members. Refs:
 owner delegation 2026-10-17, D-1430–D-1437, owner decision #75.
 A stored record answers `egress_country` and `egress_basis` ([acquisition](../acquisition/spec.md), "Egress country").
 #### Scenario: Forbidden header
@@ -208,7 +207,7 @@ block; a further tool, `llms_txt`, answers the file. Refs: D-1424, D-1425, D-142
 as at creation), delete (204, its jobs kept with `schedule_id` null), pause, resume and run now (202 with `job_id`)
 schedules; a request the submission would refuse, a schema prompt, a scrape's browser actions or caller headers or
 cookies is a 422, and `GET /v1/jobs?schedule_id=` lists a schedule's jobs; `crawlerai schedules list|pause|resume` does
-the same from the command line. (Previously: no refusal of caller headers or cookies.) Refs: §22, D-1411, D-1412,
+the same from the command line. Refs: §22, D-1411, D-1412,
 D-1417, D-1510.
 
 ### Requirement: Webhook payloads
@@ -253,8 +252,7 @@ with reason `render_bound` ([resolution](../resolution/spec.md)). A task outcome
 `auth_wall`, `soft_404`, `geo_redirect`, `redirected_to_listing`, `unsupported_media`, `geo_blocked` or `timeout`
 (the capture's block class,
 `fetch.block_class`, is the transport outcome; the task outcome is the data outcome; the model is in
-[jobs](../jobs/spec.md), "Page outcomes"). (Previously: `render_fields`, a list of schema field names stored with the
-request with no effect on the fetch; a listing that listed nothing started no locate run.) Refs: owner plan 2026-10-19 P3, P9; architecture v3 a.1.
+[jobs](../jobs/spec.md), "Page outcomes"). Refs: owner plan 2026-10-19 P3, P9; architecture v3 a.1.
 #### Scenario: A list of render fields
 - **WHEN** a batch body names `render_fields: ["size"]`
 - **THEN** the answer is 422 naming `render_fields`

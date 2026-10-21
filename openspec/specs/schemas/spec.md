@@ -48,9 +48,7 @@ each step, predicate name and joined name a property of the pinned schema.org vo
 its enumeration members or types, and a `schema:` `vocab`
 reference an enumeration of it; a schema a caller creates or edits that names others is refused with the error at the
 field (a process without the vocabulary file checks syntax only). `job_detail.apply_url` is
-`JobPosting.potentialAction.target`. Refs: §5.2, D-0240, D-1374, D-1493, D-1626, architecture-v3 d.1. (Previously:
-`apply_url` was `JobPosting.potentialAction.target>JobPosting.url`; a path joined one property at most and had no
-predicates.)
+`JobPosting.potentialAction.target`. Refs: §5.2, D-0240, D-1374, D-1493, D-1626, architecture-v3 d.1.
 #### Scenario: Price roles from predicates
 - **WHEN** an Offer states its price and a `priceSpecification` with `priceType` `StrikethroughPrice`, and a schema
   maps `list_price` to `Offer.priceSpecification{priceType=StrikethroughPrice}.price+priceCurrency`
@@ -95,7 +93,7 @@ roles are fields a user adds to the schema, not preset fields; their recommended
 | `price_range` | range | `AggregateOffer.lowPrice+highPrice+priceCurrency` |
 | `seller` | text | `Offer.seller.name\|Offer.offeredBy.name` |
 
-(Previously: `job_listing` had one `location`; the commerce presets' prices were `Offer.price+priceCurrency`.) Refs: §5.3,
+Refs: §5.3,
 D-0015, D-0245, D-0961, D-0967, D-1477, owner decision #74.
 
 ### Requirement: Preset sync

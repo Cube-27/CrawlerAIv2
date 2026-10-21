@@ -30,7 +30,7 @@ its scope match times its value's agreement:
   another kind's value plus ` - ` or ` | ` and more text; a list of
   images, of any kind, whose files (`same_file`: a file or a rendition of it) are all among a longer list's of another
   kind, for an Open Graph list its first file only (Open Graph "Arrays": the first is preferred; a site default after it
-  is no view) (Previously: an Open Graph list only; files compared by `resource_key`, every Open Graph file)). For `money` the strength of the currency
+  is no view)). For `money` the strength of the currency
   evidence ([normalization](../normalization/spec.md) `basis`): a stated currency 1, then `page`, `locale`, `url`,
   `unknown` each 1/(number of bases + 1) less. Every other type weighs every kind 1 (no measured order).
 - Scope match: 1 for the target's own values and its anchor Offer's, 0.5 for another Offer of the target or of its
@@ -51,7 +51,7 @@ job's places) publishes instead every member its values scoring above 0 state, t
 different members state more of the item, not rival values. A member equal to one already listed is that one, and a
 location the page writes as text alone that names a listed place's locality (its region when it states none: "Austin"
 or "Raleigh; Austin; Denver" for `addressLocality` Austin) stands for it, in its place; no value is outscored and no
-flag is set. (Previously: a list was one value, and different lists were rivals.) When the best score is 0 the field is `missing` (`unranked`); when two values share
+flag is set. When the best score is 0 the field is `missing` (`unranked`); when two values share
 it the field is a `conflict` (`disagree`, C7: decline rather than guess). Money differs in one way: an unclear
 currency never drops a price (tied values stating one amount in different currencies publish that amount with its
 currency `null`, basis `unknown`), but amounts that differ are rival prices, each explained by its role before the
@@ -67,12 +67,8 @@ fields of those roles (extraction spec, "Structural DOM values"). A `dom` amount
 bound of a stated price range (an AggregateOffer's `lowPrice` or `highPrice`, the two bounds differing; in the range's
 currency, or either currency unknown) is that range's bound, rejected `range_bound`; a user-added `price_range` publishes the range. An amount of the same role for the same variant that nothing explains leaves the field a
 `conflict` (`disagree`, `offers_disagree` or `offer_split`): accuracy before coverage, and a price range is no price
-unless the page states one amount for the product (a low bound is never derived from disagreeing Offers). (Previously:
-collectors read an Offer's own `price` only, never a `priceSpecification`, and a visible range bound was a price
-candidate; a price always published, owner #68 as then read; exact-match types published only when every kept
-candidate agreed, else `conflict`; money ranked by currency evidence then needed agreement, a weaker one rejected
-`weaker_currency`; text, url and image published from the first source kind in the order, a disagreement within it
-settled only by the first other kind naming one value; each rule had its own tie-breaks.) Refs: §10, owner #68,
+unless the page states one amount for the product (a low bound is never derived from disagreeing Offers). Refs: §10,
+owner #68,
 owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_preference.py`,
 `tests/unit/test_preference.py`; active.
 #### Scenario: A visible range bound
@@ -85,13 +81,12 @@ owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_prefere
 #### Scenario: Two prices disagree
 - **WHEN** JSON-LD says 19.90 EUR and microdata says 21.00 EUR for the target
 - **THEN** `price` publishes 19.90 EUR with reason `disagree` and the microdata candidate is rejected `outscored`
-  (Previously: `conflict` with no value.)
 #### Scenario: Two sources against one
 - **WHEN** JSON-LD and microdata say 19.90 EUR and a DOM text says 21.00 EUR
 - **THEN** `price` publishes 19.90 EUR with reason `disagree`
 #### Scenario: Unknown currency beside a stated one
 - **WHEN** JSON-LD says 19.90 USD and a DOM text says `$21.00` that no evidence settles
-- **THEN** `price` publishes 19.90 USD and the DOM candidate is rejected `outscored` (Previously: `weaker_currency`.)
+- **THEN** `price` publishes 19.90 USD and the DOM candidate is rejected `outscored`
 #### Scenario: One amount in two currencies
 - **WHEN** JSON-LD says 19.90 EUR and a DOM text says `19.90 USD`
 - **THEN** `price` publishes 19.90 with currency `null` and basis `unknown`
@@ -130,7 +125,7 @@ owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_prefere
 ### Requirement: Missing reasons name the furthest stage
 An unpublished field SHALL state its status and reason (the furthest screening stage reached, or the conflict or
 abstain cause, per `resolve/types.py`), and a published one whose candidates disagree its flag (Candidate score);
-every rejected candidate keeps its own reason, in its `candidate` row's `reject_reason` (`field_meta` holds the field's reason only). (Previously: a published field had no reason.) Refs: SPEC-05 §4.2, D-0438, D-0533.
+every rejected candidate keeps its own reason, in its `candidate` row's `reject_reason` (`field_meta` holds the field's reason only). Refs: SPEC-05 §4.2, D-0438, D-0533.
 
 ### Requirement: Atomic offers (INV-15)
 Price, currency and availability SHALL come from one anchor Offer: the Offer of the variant the target shows (Shown
@@ -138,16 +133,14 @@ variant, [variants](../variants/spec.md)), else the one holding values for the m
 On a detail page a source (a collector; each adapter and each JSON-LD block a source of its own, a block being one
 document, JSON-LD 1.1 §7.1) that states one Offer alone for the target
 states the item's offer, the shown variant's (Shown variant), unless that source's Offer is already named by the
-target's sku or gtin; a source listing several states which is shown by its sku or gtin. (Previously: only when every
-source stated one Offer each; all JSON-LD blocks were one source.)
+target's sku or gtin; a source listing several states which is shown by its sku or gtin.
 The anchor's values score as the target's own and another Offer's at half (Candidate score). Where Offers state other
 values an offer field publishes only the shown variant's value, else it is `conflict` `offers_disagree` (a price
 also publishes when the visible price explains the difference, Candidate score). A value only another Offer than the
 anchor states is `conflict` `offer_split`; a field no Offer states publishes from the target's own values (its Open
 Graph, page state or text), and an `AggregateOffer` range never publishes as the price. An Offer's values are the item's
 it offers through any Offers between them (schema.org `offers`: an AggregateOffer's `offers` offer its item).
-(Previously: a price whose Offers disagreed, or only another Offer stated, published flagged; an Offer inside an
-AggregateOffer was no item's.) Refs: §10, owner #68, owner 2026-10-19; per-row and common-value rules in
+Refs: §10, owner #68, owner 2026-10-19; per-row and common-value rules in
 [variants](../variants/spec.md). Enforced by: resolver test; active.
 #### Scenario: Offers inside an AggregateOffer
 - **WHEN** a listed Product's `offers` is an AggregateOffer whose one Offer states 9.50 EUR
@@ -178,13 +171,8 @@ another scheme, authority or path, one trailing slash of the path aside; a query
 rejected `other_document`, and preference decides among the rest; a relative
 reference `absolutize` resolves to another document is rejected so too. A derived value publishes as the page states it
 (normalization spec): an absolutized reference as written, the canonical link as its first `href` is written; the final
-URL, which no page statement gives, as fetched. (Previously: only a canonical link equal to the final URL named the
-page, so an `og:url` or a structured `url` naming another document outranked a canonical link the final URL did not
-repeat; a field
-the page stated on its other scheme or with userinfo was its own document, and `/p` and `/p/` named one document here
-but two in candidate scope (`collect/scope.py`); a field
-whose last rank was `T.url`, such as `apply_url`, took the page URL too; a structured `url` built from another id than
-the page's outranked its canonical URL; the first of conflicting canonical links named the page.) Refs: §9, §10, Appendix A #40, owner #77, D-0442, D-0910, D-1625. Enforced by: resolver
+URL, which no page statement gives, as fetched. Refs: §9, §10, Appendix A #40, owner #77, D-0442, D-0910, D-1625.
+Enforced by: resolver
 tests; active.
 #### Scenario: No url candidate
 - **WHEN** a detail page has no url candidate and `<link rel=canonical href="https://example.com/p/1">`
@@ -219,8 +207,7 @@ locale or the URL settles, or nothing settles (`basis` `locale`, `url`, `unknown
 `money|<evidence>|<basis>`, for its lower confidence (owner #68, owner 2026-10-19); every published field notes its `basis` in `field_meta` when it has one. Every
 chosen value publishes with that
 confidence unless the request sets `min_confidence` and the bucket is calibrated below it: the field is then
-`abstained` with reason `below_min_confidence`. An uncalibrated bucket never abstains. (Previously: a calibrated bucket
-below τ, 0.97 required and 0.95 otherwise, abstained `below_tau`; a lone `js_state` value had no bucket.)
+`abstained` with reason `below_min_confidence`. An uncalibrated bucket never abstains.
 Refs: §10, §16.3, D-0455, D-0456, D-1316, D-1740, D-1770, D-1771, D-1773.
 #### Scenario: Calibrated bucket below the minimum
 - **WHEN** a money bucket has n=40 and precision 0.9 and the request sets `min_confidence` 0.95
@@ -260,9 +247,7 @@ field's candidate that resolution rejected, or a page whose content the engine c
 `closed_shadow_root` or `obfuscated_text` signal, [jobs](../jobs/spec.md) "Job outcome summary"), keeps a
 caller-supplied page's record, `partial`, its fields' reasons as they resolved (`no_candidates` on an HTTP capture is
 the summary's render hint). A listing's row states its item only by a row field (the needed row fields, else any row
-field), never by the page fields every row shares. (Previously: a caller-supplied URL kept such a record, even an
-empty one; then a page with no published needed field was `no_match`, its rejected candidates and unreadable content
-included.) Refs: §10, §23, D-0513, D-0930.
+field), never by the page fields every row shares. Refs: §10, §23, D-0513, D-0930.
 #### Scenario: Crawl page missing price
 - **WHEN** a crawl-discovered detail page leaves the required `price` missing
 - **THEN** the outcome is `no_match` and no record is stored
@@ -281,9 +266,7 @@ browser (`ConfigExecutor.browser_fields`: each running field whose `needs` is `b
 browser's and no browser attempt is among its `fetch_policy.attempts`: the fetch did not render, for budget or
 `method_hint http`), SHALL be `interaction_required` with reason `render_bound`. Every other unpublished field stays
 `missing` with its furthest-stage reason; a page without a config leaves a field it does not carry `missing` with
-`no_candidates`. (Previously: a field `missing/no_candidates` on an unrendered page whose document carried a state
-document of at least `STATE_MIN_VALUES` scalar values, `content/state.holds_state`, was `interaction_required` with
-reason `script_rendered`; then every field of a config whose `fetch.method` was `browser` was browser-bound.) Refs: owner plan 2026-10-19 P3, P9; architecture v3 a.5.
+`no_candidates`. Refs: owner plan 2026-10-19 P3, P9; architecture v3 a.5.
 #### Scenario: Browser field on an HTTP page
 - **WHEN** the site's config reads `size` from rendered pages and an HTTP page with no browser attempt carries no `size`
 - **THEN** `size` is `interaction_required` with reason `render_bound`, and the same page captured in the browser leaves
@@ -307,8 +290,7 @@ deterministic resolution, optional ones included (in `active` mode only those th
 absent, which stay `missing` with reason `absent`), reading the product's own evidence only ([llm](../llm/spec.md)
 "Role C input, claims and candidates"); `conflict`, `abstained`, `object` and `list<object>` fields are never sent, and
 its candidates pass the same stages as `llm_grounded`. A field whose claimed value the evidence does not hold (INV-12)
-stays `missing` with reason `unverified`, never published. (Previously: only missing required fields and groups were
-asked, and an ungrounded field's reason was `no_candidates`.) Refs: §8.4, D-0489, D-0797, D-1341.
+stays `missing` with reason `unverified`, never published. Refs: §8.4, D-0489, D-0797, D-1341.
 #### Scenario: Value the page does not hold
 - **WHEN** role C claims `price` `$19` and the product's text holds no `$19`
 - **THEN** `price` stays `missing` with reason `unverified`

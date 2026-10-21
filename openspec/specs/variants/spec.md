@@ -65,8 +65,7 @@ Atomic offers in [resolution](../resolution/spec.md)). Refs: §10, Appendix A #3
 resolver test; active.
 #### Scenario: Two sellers in one row
 - **WHEN** one row's scope holds two Offers with different prices
-- **THEN** that row's `price` is `conflict` with reason `offers_disagree`: nothing says which Offer is the row's (Previously: it
-  published the anchor Offer's, flagged.)
+- **THEN** that row's `price` is `conflict` with reason `offers_disagree`: nothing says which Offer is the row's.
 
 ### Requirement: Own variants
 A published row SHALL be the target's own variant: a size or option chosen on the page is a variant, a colourway at
@@ -74,8 +73,8 @@ another URL a sibling. A row whose only published sub-fields are URLs is dropped
 elsewhere), unless each names the page's resource with a query parameter by which the page's platform selects a
 variant (the platform's fingerprint states it, `adapters/platforms.py`: a variant addressed by its URL), and a row whose published URL names another resource than the page and the
 target (RFC 3986 authority and path, a trailing `/` aside; its query may select the variant) is dropped `other_page` (another product's
-page, such as a sibling colourway). Rows of one variant are already one by their shared key (INV-33). (Previously:
-every row with a published key sub-field published; a row of URLs only was always dropped.) Refs: owner 2026-10-18,
+page, such as a sibling colourway). Rows of one variant are already one by their shared key (INV-33). Refs: owner
+2026-10-18,
 owner 2026-10-19.
 #### Scenario: Sibling products listed as members
 - **WHEN** a ProductGroup's `hasVariant` lists two variants at the page's URL with a `size` query, Products stating only
@@ -105,12 +104,10 @@ with every other source's Offer stating that variant's sku or gtin (GS1 GTIN and
 whichever source states it), and a source's one Offer alone (Atomic offers) unless its sku or gtin names another
 variant; a source naming two variants names none.
 Its Offers are the anchor (Atomic offers), and the one value they state publishes flagged `offers_disagree` when
-every other value is only other variants' Offers'. (Previously: one variant of one source only.) A price follows the same rule: the shown
+every other value is only other variants' Offers'. A price follows the same rule: the shown
 variant's, else (Offers stating other amounts) `conflict` `offers_disagree`, unless the visible price explains the
-difference (Candidate score). Varying values publish per variant in the row-mapped field. (Previously: the price
-published the best-scored Offer's, flagged; availability took the shown variant's only after
-resolution, from a published row agreeing with the target's published price, sku and gtin,
-`resolve/shown_variant.py`.) Refs: Appendix A #37, #44, D-1057, D-1059, owner #68, owner 2026-10-19.
+difference (Candidate score). Varying values publish per variant in the row-mapped field. Refs: Appendix A #37, #44,
+D-1057, D-1059, owner #68, owner 2026-10-19.
 Enforced by: `tests/unit/test_common_variant_fields.py` and `tests/unit/test_pipeline.py`; active.
 #### Scenario: URL names one variant
 - **WHEN** the request URL is a variant's own URL and the variants' prices differ
@@ -137,7 +134,7 @@ schema.org shapes; learning, drift and role C skip row-mapped fields. Refs: SPEC
 A root Product whose `inProductGroupWithID` is the `productGroupID` of exactly one standalone ProductGroup, or whose
 `isVariantOf` holds a ProductGroup or names one by its IRI, SHALL be that group's `hasVariant` member; a standalone
 Product sharing an identifier or item URL with a group's member is that member (`resolve/identity.py`). Neither
-`variesBy` nor identifier prefixes relate them. (Previously: `isVariantOf` left the group the Product's child.)
+`variesBy` nor identifier prefixes relate them.
 Refs: SPEC-13 §9, D-0966, D-1293, D-1344.
 #### Scenario: Variants naming their group
 - **WHEN** a ProductGroup with `productGroupID` G-1 and `color` Blue sits beside two Products stating

@@ -65,16 +65,15 @@ match at the claim, else the single or nearest exact occurrence, else dropped; n
 A money claim grounds only on whole numbers, never the head or tail of a longer, grouped or decimal one (`$4` in
 `$4,000`). One the text does not hold verbatim is found with any spacing between its currency sign and its one amount
 (CLDR `currencySpacing`: that space is the locale's presentation), and its value is the
-text's span, never the model's spelling. (Previously: a money claim spaced otherwise than the text was dropped.)
+text's span, never the model's spelling.
 A span SHALL be whole words (Unicode UAX #29: letters, marks, digits and connector punctuation continue a word, except
 in scripts written without spaces, UAX #11 wide and fullwidth characters and UAX #14 class SA); where two text runs of
 the page meet, a word ends. An occurrence inside a longer word holds no value (`0` inside `9781400215522`). An
 identifier claim SHALL NOT ground inside an address: a URL or path reference (RFC 3986) or a media file's name (a
 registered image, audio or video media type's extension) is a resource the page names, not an identifier it states.
-(Previously: any occurrence grounded, a part of a word or an address included.)
 A claimed link or image SHALL be an element the page has, of the kind its field takes, and its value that element's
 `href` or `src` as the DOM states it, never text of the model's. Enforced by: `tests/property/test_grounding.py`,
-`tests/unit/test_grounding.py`, `tests/unit/test_role_c.py`; active. (Previously: only text spans.) Refs: §11,
+`tests/unit/test_grounding.py`, `tests/unit/test_role_c.py`; active. Refs: §11,
 D-0024, D-0379, D-1623.
 #### Scenario: Wrong offsets or not in text
 - **WHEN** a claimed value occurs once at other offsets, or not at all
@@ -110,9 +109,8 @@ field wins, its value is grounded in that block's text, else in its context, onl
 the cleaned text. A listing reads at most 200 blocks across its calls, each call within 80,000 characters and as many
 blocks as their claims fit the reply. Grounded values are normalized into
 `Candidate(source_kind='llm', independent=True)`; a field whose claimed value the evidence does not hold stays
-`missing` with reason `unverified` (resolution spec "LLM gap hook"). (Previously: a detail page's text carried no ids,
-and its claims were spans only; it read the whole page's text, other items' cards included, and an ungrounded field's
-reason was `no_candidates`.) Refs: §8.4, D-0521, D-1097, D-1600, D-1601, D-1602, D-1606, D-1621, D-1622, D-1623, D-1627.
+`missing` with reason `unverified` (resolution spec "LLM gap hook"). Refs: §8.4, D-0521, D-1097, D-1600, D-1601, D-1602,
+D-1606, D-1621, D-1622, D-1623, D-1627.
 #### Scenario: Field not shown
 - **WHEN** a claim is `{shown: false, value: "x"}`
 - **THEN** no candidate is made and the field stays `missing`
@@ -133,17 +131,18 @@ reason was `no_candidates`.) Refs: §8.4, D-0521, D-1097, D-1600, D-1601, D-1602
 A grounded role C span SHALL be the field's own fact, as the page's structure states it (`llm/claim_checks.py`): an
 identifier's span starts past a label written before it with a colon (`REF.: CLU-1` is `CLU-1`) and past a number sign
 (`#123` is `123`), and what remains SHALL lie within one text run, the text of one node: an identifier is one token,
-and two runs side by side (`<span>1234</span> <span>WHT</span>`) are two values the page states apart (previously:
-a span across two runs was taken); a span the page labels as another field is not taken: the label right before it on its line, ended
+and two runs side by side (`<span>1234</span> <span>WHT</span>`) are two values the page states apart; a span the page
+labels as another field is not taken: the label right before it on its line, ended
 by a colon, and for a number or count also the words right after it ("293 Reviews"), read with the schema's label
 vocabulary (extraction spec, "Label vocabulary"), name fields of which this one is none. A label that names no field,
 or this one, decides nothing. A number or count written as a percentage (a CLDR percent sign next to it, in the span or
-beside it: `100% (4)`) is a ratio, not the field's value, and is not taken (previously: taken). On a listing, a place claimed for a row from its block's heading (HTML `h1`-`h6`, the
+beside it: `100% (4)`) is a ratio, not the field's value, and is not taken. On a listing, a place claimed for a row from
+its block's heading (HTML `h1`-`h6`, the
 item's name) is not taken when a line of the block outside the heading states that the job is remote (the location
 normalizer's `type:remote` clause): the block states its place there. A place that starts its line, below a line outside
 the heading holding a `type:remote` phrase (its label, `Remote from`), is taken with that line: the place as the page
-states it. A value not taken leaves the field as an ungrounded one does. (Previously: any grounded span was taken; a
-place under a remote label was taken without it.) Enforced by: `tests/unit/test_role_c.py`; active.
+states it. A value not taken leaves the field as an ungrounded one does. Enforced by: `tests/unit/test_role_c.py`;
+active.
 Refs: §11, INV-12.
 #### Scenario: Label kept with an identifier
 - **WHEN** a product_id claim is `REF.: CLU459_4712_V2`

@@ -19,8 +19,7 @@ and UNIQUE (no public-suffix logic), `schema_def.name` and `project.name` UNIQUE
 `checked_at`. The surface's render mode (`site_surface.render_mode` of architecture v3) is
 `progressive_state.render_mode`, on the config's key scope (site, schema, page kind): `off` (the default), `locate` or
 `always`, the last `render.mode` a job set for it (rest-api spec, "Render mode"); `extraction_config.origin` may be
-`located`. (Previously: also `settle_on`, `needs_render`, `needs_xhr` and `needs_traversal`; no render mode was
-stored.) Refs: §6, D-0089, D-0091, D-0138, architecture v3 (e), PR 5.
+`located`. Refs: §6, D-0089, D-0091, D-0138, architecture v3 (e), PR 5.
 #### Scenario: Second active config refused
 - **WHEN** a second `active` `extraction_config` is written for the same site, schema and page kind
 - **THEN** the insert fails on `uq_extraction_config_active`
@@ -32,7 +31,7 @@ Every §6 enumeration SHALL be a `text` column with a CHECK constraint. IDs SHAL
 
 ### Requirement: One baseline migration (greenfield)
 The database SHALL have exactly one Alembic baseline revision (`0001_baseline`); a model change edits it and
-databases are recreated, never migrated with data steps or compatibility shims. (Previously: a private `p0001` too.)
+databases are recreated, never migrated with data steps or compatibility shims.
 Refs: Appendix A #43, D-0954.
 #### Scenario: Migration round trip
 - **WHEN** CI runs upgrade head, downgrade base, upgrade head on an empty database
@@ -51,7 +50,7 @@ Replay reads only the bundle, never the `capture` row. Refs: §15, Appendix A #5
 
 ### Requirement: Object stores and key layout
 Bundles SHALL go through the `ObjectStore` protocol (`fs` and `s3` backends, S3 via boto3's environment chain, no
-MinIO); escaping or malformed keys raise `ValueError`. (Previously: hidden and fresh bundles under a private root.)
+MinIO); escaping or malformed keys raise `ValueError`.
 Refs: §15, D-0094, D-0095, D-0096.
 #### Scenario: Escaping key refused
 - **WHEN** `put("../x", data)` is called on either backend

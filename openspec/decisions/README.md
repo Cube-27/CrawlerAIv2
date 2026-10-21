@@ -2,7 +2,8 @@
 
 `log.md` is the archive of decisions up to 2026-10-19 and takes no new entries. Since then, decisions within a
 change's scope are written in its PR body only, and owner decisions go in
-[../design/owner-decisions.md](../design/owner-decisions.md). What to decide yourself and when to escalate: `CLAUDE.md`.
+[../design/owner-decisions.md](../design/owner-decisions.md). Its dated "Superseded spec text" sections hold what the
+capability specs used to state, so the specs state only the current behaviour. What to decide yourself and when to escalate: `CLAUDE.md`.
 The rest of this file describes the archive.
 
 **Where archived entries went** (archive only; new decisions follow the paragraph above):

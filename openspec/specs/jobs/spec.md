@@ -16,8 +16,8 @@ vendor's challenge once (not when the browser rung met that challenge itself) an
 Politeness is per site, shared by every worker. A worker SHALL run up to `TASK_SLOTS` (4: twice its browser's
 `BROWSER_CONTEXTS`) tasks at once, claiming only for a free slot, and SHALL end a task still running at `TASK_DEADLINE` (3 min, inside the lease): cancelled, recorded `failed`
 with outcome `timeout` (a `timeout` error), not retried, so its job moves on; work that outlives its cancellation has its database session
-ended, and the failure is recorded before the lease expires, so the task is never claimed again beside it; a database error while recording it leaves the task to its lease's expiry, which treats it like any lost lease, requeued after backoff or failed on its last attempt (the old claim's writes then fail its lease fence). (Previously: a vendor block was retried once even after the browser met it, a 429 to 3 attempts; a vendor block was terminal; a worker claimed 10
-tasks and ran them one at a time with no deadline.) Refs: §6, D-0006, D-0632, D-0705, D-0764, owner plan 2026-10-19
+ended, and the failure is recorded before the lease expires, so the task is never claimed again beside it; a database error while recording it leaves the task to its lease's expiry, which treats it like any lost lease, requeued after backoff or failed on its last attempt (the old claim's writes then fail its lease fence). Refs: §6,
+D-0006, D-0632, D-0705, D-0764, owner plan 2026-10-19
 (crawl speed).
 #### Scenario: A page that never finishes
 - **WHEN** a task's work is still running at its deadline
@@ -28,8 +28,7 @@ A job SHALL fetch every page from one location: the request's `fetch.proxy_pool`
 the job's request, which its workers read, and the job's egress country and basis (`job.egress_country`,
 `egress_basis`, [acquisition](../acquisition/spec.md)) are pinned with it at submit and copied to each record the job
 stores; a site that prices by the visitor's country (a `/en-in/` path) is then read from one place throughout. A scrape
-pins the same way for its one URL. (Previously: a request without a pool took the `site.proxy_pool` of its first URL's
-site, a column nothing wrote; it is removed.) Refs: owner plan 2026-10-19 P8.
+pins the same way for its one URL. Refs: owner plan 2026-10-19 P8.
 #### Scenario: Batch over two sites
 - **WHEN** a batch names proxy pool `a` and its URLs are on two sites
 - **THEN** every page of the job is fetched through `a`
@@ -37,7 +36,7 @@ site, a column nothing wrote; it is removed.) Refs: owner plan 2026-10-19 P8.
 ### Requirement: Worker and scheduler roles
 `api`, `worker` and `scheduler` SHALL run from one image; the scheduler runs the periodic entries in its table (lease
 release, stalled `map`/`extract` jobs failed, due schedules run, webhook deliveries formed and sent, retention,
-learning) and creates jobs only for due schedules. (Previously: it created no jobs; schedules were §22.) Refs: §19,
+learning) and creates jobs only for due schedules. Refs: §19,
 §22, D-0714, D-0837, D-1006, D-1410.
 
 ### Requirement: Settings pinned at submit (INV-28)
@@ -45,7 +44,6 @@ A job SHALL run with the schema document, per-host config versions, calibration 
 later changes apply only to later jobs, and a pinned config runs even if suspended. LLM providers, model ids and
 limits are the worker process's settings, not pinned: each usage row records the provider and model of its call.
 Refs: §17, D-0678, D-0951, D-1377. Enforced by: mid-job calibration and config change test; active.
-(Previously: "Not built yet: LLM settings are not pinned, D-0631.")
 #### Scenario: Schema edited mid-job
 - **WHEN** a schema is edited while a job that uses it runs
 - **THEN** remaining tasks use the pinned document and a later job uses the new one
@@ -56,8 +54,7 @@ browser is relaunched at most once per task. The task's fetch runs before its tr
 robots.txt snapshot, its adapter declines and its domain memory are read and written there, and the memory learned from
 the extraction beside the transaction, each in a short transaction of its own, so no task holds a site's rows while it
 fetches or extracts and the tasks of one site run side by side. Everything else the task writes, its capture, records
-and usage included, commits with its result in its transaction. (Previously: the whole task, fetch and extraction
-included, ran in its transaction, which held the site's contract row from the fetch to the commit.) Refs: §17, D-0633,
+and usage included, commits with its result in its transaction. Refs: §17, D-0633,
 D-0715, D-1786. Enforced by: batch, killed-browser and same-site tests; active.
 #### Scenario: Killed browser
 - **WHEN** the shared browser is killed during one task
@@ -69,7 +66,7 @@ role C. Extract globs expand by one map per origin, `limit` ≤ 1000 counts ever
 Extract alone takes `schema.prompt`, drafted from the first three reached URLs while the caller waits (none reached is
 422, past 120 s 504). No request kind has a default budget: a job whose request sets no `budget.llm_calls` is bounded
 by `project.llm_call_cap`, read when the job checks, null meaning no cap (see [llm](../llm/spec.md)); a crawl takes the
-same optional `budget` as a batch. (Previously: a crawl took no `budget` of its own.) Refs: §13.1, D-0628, D-0676,
+same optional `budget` as a batch. Refs: §13.1, D-0628, D-0676,
 D-0681, D-0684, D-1044, D-1121, D-1286.
 
 ### Requirement: Page outcomes
@@ -84,7 +81,7 @@ kept attempt got no answer in time or the task ran past `TASK_DEADLINE`, else `f
 item is not for sale and gives no price is `partial` with `price` `missing`, reason `out_of_stock`
 ([resolution](../resolution/spec.md)). `no_match` is a page that states no entity of the schema (no needed field has a
 candidate from the page) or, crawl-discovered, an incomplete one; an extraction miss on a caller-supplied page (a
-rejected candidate, an unreadable-content signal) is `partial` (resolution, "Incomplete pages"). (Previously: `unchanged`, a page a stored record stood for.) Refs: owner plan
+rejected candidate, an unreadable-content signal) is `partial` (resolution, "Incomplete pages"). Refs: owner plan
 2026-10-19 P9.
 #### Scenario: Fetch that timed out
 - **WHEN** a fetch's kept attempt is an `error` with reason `timeout`
@@ -108,7 +105,7 @@ from stored results (`url_task.outcome`, `record.field_meta`, `capture`, `extrac
 its own. `crawlerai jobs reextract <id>` SHALL extract the job's stored captures again with the current engine and each site's active config,
 reading only the object store and the database (no network, no LLM, nothing stored; `services.captures.replay`, whose
 `extract_page` the worker and the evaluation harness run), and print those field counts beside the stored ones.
-(Previously: no per-field counts or hint; no signal counts; no hint for a listing that listed nothing.) Refs: owner plan 2026-10-19 P9; architecture v3 a.5, (b)
+Refs: owner plan 2026-10-19 P9; architecture v3 a.5, (b)
 "report" rows, PR 8.
 #### Scenario: Summary of a job
 - **WHEN** a job's pages ended `extracted`, `soft_404` and `timeout`, and its records hold fields in three statuses
@@ -135,7 +132,6 @@ attempt with its challenge label, from the capture), and a `json_values` item ca
 given; `include` repeats (`metadata`, `fetch`), and a capture without attempts has none (D-1392).
 `csv_safe=true` prefixes `'` to cells starting with `=`, `+`, `-`, `@`, tab or CR. Refs: §12.2, §13.1, Appendix A #40,
 #51, D-0577, D-0700, D-0745, D-0813, D-0816, D-1210, D-1392.
-(Previously: `include` took only `metadata`; no `fetch` member.)
 #### Scenario: Formula cell
 - **WHEN** a value `=1+1` is exported with `csv_safe=true`
 - **THEN** the cell reads `'=1+1`
@@ -147,8 +143,8 @@ when none), each written to `webhook_event` in the transaction that causes it (`
 deliveries by `webhook_batch`, and POSTed signed HMAC-SHA256 with the key's `webhook_secret`, in at most 5 attempts
 with backoff, through the SSRF guard, no redirects; failure never fails the job. A delivery keeps its attempts, its last
 error and the receiver's last HTTP status; the scheduler deletes ended deliveries (`delivered`, `failed`) and their
-events 30 days after creation, never a pending one (`scheduler/retention.py`). (Previously: only the job's summary,
-when it ended, in 3 attempts; ended rows were never deleted.) Refs: §17, D-0639, D-0642, D-0644, D-0760, D-1414,
+events 30 days after creation, never a pending one (`scheduler/retention.py`). Refs: §17, D-0639, D-0642, D-0644,
+D-0760, D-1414,
 D-1415, D-1416, D-1511.
 #### Scenario: Batched page events
 - **WHEN** a job whose webhook asks for `page` with `webhook_batch` `{max_events: 2, max_seconds: 3600}` finishes two
@@ -179,7 +175,7 @@ host of the same site), which gives every later task its scope host; once a task
 redirected to is not added as a task (one queued before then stays a task). A task takes its first matching page-kind rule; one with no match is fetched for links only (`links_only`); a
 matched page missing a required field is `no_match` with no record. No automatic page-type gate (§22). The scope is the
 start host, plus its subdomains with `allow_subdomains` and any host with `allow_external`, less `exclude` and within
-`include` when given. (Previously: only the start page's redirect target was kept out; subdomains needed an `include`.)
+`include` when given.
 Refs: §13.2, §23, D-0672, D-0674, D-0677, D-1285, D-1382, D-1441.
 #### Scenario: Unmatched page
 - **WHEN** a crawl with a `detail` rule for `https://example.com/p/*` reaches `https://example.com/about`
@@ -193,10 +189,7 @@ Refs: §13.2, §23, D-0672, D-0674, D-0677, D-1285, D-1382, D-1441.
 Every records task SHALL fetch its page whole and extract it, a recurring run's too: no conditional request is sent and
 no record stored by an earlier task stands for the page (owner 2026-10-21: learning keeps selectors, recipes and
 cookies, never values). What changed is told per record ("Record versions and change feed", "Page delta"). Replay
-never reads `url_state` (INV-10). (Previously: an HTTP 304 to stored validators, or an equal content digest, ended the
-task `unchanged` with no extraction, linking the records an earlier task stored; then records tasks stored a content
-fingerprint of the page's visible words in `url_state` (`content_digest`, `content_fingerprint`, `last_changed_at`)
-that nothing read; they are removed.) Refs: §14, D-0637, D-0662, D-0663, D-0952, D-1340.
+never reads `url_state` (INV-10). Refs: §14, D-0637, D-0662, D-0663, D-0952, D-1340.
 #### Scenario: Re-run of an unchanged page
 - **WHEN** a page whose text is unchanged is scraped again in a records batch
 - **THEN** it is fetched whole and extracted, and its record holds what this extraction published
@@ -204,8 +197,7 @@ that nothing read; they are removed.) Refs: §14, D-0637, D-0662, D-0663, D-0952
 ### Requirement: Record versions and change feed
 A record's fingerprint SHALL hash its published values; a record equal to its entity's latest version in fingerprint,
 field metadata, completeness and schema digest stores no row and the task links that version, otherwise a new `version`
-is stored with `changed_fields`. (Previously: the fingerprint hashed the required fields only, so a changed optional
-value kept the earlier version.) `GET /v1/records?changed_since` (RFC 3339 offset required)
+is stored with `changed_fields`. `GET /v1/records?changed_since` (RFC 3339 offset required)
 returns records committed at or after it, missing none. Refs: §14, D-0666, D-0668, D-0671, D-0872.
 #### Scenario: Price change
 - **WHEN** a re-run publishes a new price for an entity
@@ -228,8 +220,8 @@ columns. Refs: owner 2026-10-21 (page delta after fresh extraction).
 Each `completed` records crawl SHALL mark its rule-matched URLs, and for a listing schema its row URLs
 (`collect.schema_org_map.item_url_fields`), seen in `url_state`; a URL missing from two consecutive runs of the same crawl gets
 `gone_at` and a `url_gone` event, cleared when seen again. The listing is on the host the start page is on. A partial
-run (limit hit, empty listing, unreached navigation page, sitemap time cap) counts no misses. (Previously: page URLs
-only, on the start URL's host.) Refs: §14, D-0689, D-0691, D-0692, D-0693, D-1284.
+run (limit hit, empty listing, unreached navigation page, sitemap time cap) counts no misses. Refs: §14, D-0689, D-0691,
+D-0692, D-0693, D-1284.
 
 ### Requirement: Request context and actions per page
 Batch, crawl and extract jobs SHALL fetch every page with the request's `fetch` context, `wait_for` and `actions`
@@ -239,8 +231,7 @@ and cookie values are replaced by `**********`, names kept (D-1510); `GET /v1/jo
 with `max_age` 0, since a job has no `max_age`: one page run serves both (`services/page_run.py`). `default` and
 `bypass` fetch; `only` serves each task from the latest `ok` capture of its URL made with the same actions and context,
 names and value digest ([acquisition](../acquisition/spec.md), "Caller request context"), or fails the task
-`not_cached`. (Previously: the values stayed in `job.request` after the job ended; captures matched by context names
-alone; a task read its stored capture apart from a scrape.) Refs: owner delegation 2026-10-17, D-1432, D-1435, D-1439,
+`not_cached`. Refs: owner delegation 2026-10-17, D-1432, D-1435, D-1439,
 D-1510.
 #### Scenario: Stored request
 - **WHEN** a batch is submitted with cookie `sid` and its request is read back
@@ -253,8 +244,8 @@ D-1510.
 A crawl SHALL take `strategy` `bfs` (default), `dfs` or `best_first`; `query` and `keywords` are accepted only with
 `best_first`. A scored crawl stores each task's score (`url_task.score`, 0 to 1) and `claim_tasks` SHALL lease by
 `priority`, then round robin between jobs (each job's best task first, jobs with fewer leased tasks first), then id; score (descending, none last) orders only
-within a job, so a scored crawl does not lease ahead of other jobs' tasks. (Previously: by priority, then score across all
-jobs.) Best first scores a link by BM25 of its anchor text and URL path
+within a job, so a scored crawl does not lease ahead of other jobs' tasks. Best first scores a link by BM25 of its
+anchor text and URL path
 against the query, the holding page's relevance, the sitemap `priority` and depth (`crawl/scoring.py`), with no
 vocabulary list. A scored crawl SHALL fetch at most `limit` pages: it queues up to five times as many candidates,
 keeps the best when full, skips a leased task once the finished and higher-ranked leased pages reach `limit`, and
@@ -279,8 +270,7 @@ A schedule SHALL hold the request of a batch scrape, crawl or extract (a scrape 
 in an IANA zone or every `interval_s` of 60 s to 2³¹−1 s (`core/cadence.py`, `services/schedules.py`). A due run's job is stored in
 the transaction that holds its row (`FOR UPDATE SKIP LOCKED`) and moves it on, so it is submitted exactly once; a
 schedule that missed runs runs once; a refused run stores no job and sets `last_error`; resuming makes up no runs. A
-schedule keeps no secret value: a request with `fetch.headers` or `fetch.cookies` is refused. (Previously: such a
-request was stored with its values as `**********`, which a run then sent.)
+schedule keeps no secret value: a request with `fetch.headers` or `fetch.cookies` is refused.
 Enforced by: concurrent scheduler test; active. Refs: §22, D-1410, D-1411, D-1412, D-1413, D-1510.
 #### Scenario: Two schedulers
 - **WHEN** two scheduler runs read one due schedule at once
