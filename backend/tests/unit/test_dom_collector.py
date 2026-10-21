@@ -367,6 +367,10 @@ def test_lines_giving_a_field_several_values_are_the_listed_items_not_the_pages(
 
 def test_a_colon_line_giving_a_field_one_value_twice_gives_it_once() -> None:
     assert _values("<div><p>SKU: A-1</p></div><p>SKU: A-1</p>") == {"sku": ["A-1"]}
+    # In three sibling blocks of one template, a line repeats for as many items (each review's own count).
+    assert _values("<div>" + "<div><p>SKU: A-1</p></div>" * 3 + "</div>") == {}
+    # One value shown in other places of the layout (responsive copies) is the page's own.
+    assert _values("<div><p>SKU: A-1</p></div><section><p>SKU: A-1</p></section><p>SKU: A-1</p>") == {"sku": ["A-1"]}
 
 
 def test_pairs_are_read_from_the_main_region_outside_its_tangential_content() -> None:

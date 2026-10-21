@@ -10,8 +10,9 @@ whose meaning the HTML Standard defines, for pages whose structured data leaves 
   containers of one shape (two or more) that each hold a label element then a value element. A label names a field
   when its words are one of the field's labels (`collect.labels`: its name, the schema.org property its path names,
   its description and the synonyms role S drafted for the schema), never words from a list in code (C4). Lines and
-  sibling pairs repeat for the items a page lists besides its own (related products, variants), so a field they give
-  several values reads none from them; an identifier field that pairs of any kind give two values reads none.
+  sibling pairs repeat for the items a page lists besides its own (related products, variants, reviews), so a field
+  they give several values, or one value in each of three or more sibling blocks of one template, reads none from
+  them; an identifier field that pairs of any kind give two values reads none.
 - **Other items.** Values held by other items than the page's own are not read: schema.org microdata's related and
   similar items and reviews, sibling blocks that each link to one other document (a list of cards), and the card of
   any other item whose price the page shows (`product_apart`, also read by the description block). Nor is an
@@ -37,6 +38,7 @@ from dataclasses import dataclass
 
 from selectolax.lexbor import LexborNode
 
+from crawlerai.acquire.items import MIN_ITEMS
 from crawlerai.collect.base import PAGE, Candidate, CollectResult
 from crawlerai.collect.dom_images import (
     A_HREF,
@@ -59,6 +61,8 @@ from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equality_key
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
+# XPath 1.0 §2.4: a step's position predicate (`[n]`).
+_POSITION = re.compile(r"\[\d+\]")
 # A label's end: a colon (U+003A, or the fullwidth U+FF1A that CJK text writes) after optional white space.
 _COLON = re.compile(r"\s*[:\uff1a]")
 
@@ -192,20 +196,40 @@ def _pairs_found(
     # order) is its place.
     found: dict[tuple[str, str], LexborNode] = {}
     kinds: dict[tuple[str, str], set[str]] = {}
+    places: dict[tuple[str, str], list[LexborNode]] = {}
     for label, value, raw, kind in pairs:
         for name in labels.get(words(label), ()):
             if schema.fields[name].type is FieldType.IDENTIFIER and content is not None and content.links_out(value):
                 continue
             found[(name, raw)] = value
             kinds.setdefault((name, kind), set()).add(raw)
+            if kind in _REPEATING:
+                places.setdefault((name, raw), []).append(value)
     for (name, raw), value in found.items():
-        if _unambiguous(name, raw, kinds, schema.fields[name]):
+        repeated = _items_repeat(places.get((name, raw), ())) and raw not in kinds.get((name, _TABLE), ())
+        if not repeated and _unambiguous(name, raw, kinds, schema.fields[name]):
             yield (
                 name,
                 raw,
                 node_xpath(value),
                 [*list_items(value, page)] if schema.fields[name].type is FieldType.LIST else None,
             )
+
+
+def _items_repeat(values: Sequence[LexborNode]) -> bool:
+    """Whether elements giving one value are `MIN_ITEMS` or more sibling items of one template: their XPaths differ only
+    in the position of one step (XPath 1.0 §2.4 `[n]`), so each is at the same place in another sibling block, as
+    `acquire.items.MIN_ITEMS` counts a list (each review's `Reviews: 1`). One value shown in other places of the
+    layout (a responsive copy) is the page's own."""
+    paths = {tuple(node_xpath(v).split("/")) for v in values}
+    if len(paths) < MIN_ITEMS:
+        return False
+    slots: dict[tuple[int, tuple[str, ...]], int] = {}
+    for steps in paths:
+        for depth, step in enumerate(steps):
+            key = (depth, (*steps[:depth], _POSITION.sub("", step), *steps[depth + 1 :]))
+            slots[key] = slots.get(key, 0) + 1
+    return max(slots.values()) >= MIN_ITEMS
 
 
 def _unambiguous(name: str, raw: str, kinds: Mapping[tuple[str, str], set[str]], spec: FieldSpec) -> bool:

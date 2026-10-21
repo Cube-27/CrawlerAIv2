@@ -242,7 +242,10 @@ On a detail page the system SHALL take label–value pairs from the page's main 
 other items' cards, below):
 two-cell `tr` rows, `dl` groups, elements starting with `Label:` and sibling containers of one shape (two or more)
 holding a label element and a value element, whose label is one of the field's labels; lines and sibling pairs that
-give a field several values are dropped, and an identifier field given two values by any pairs reads none. It SHALL
+give a field several values, or one value at the same place in each of three or more sibling blocks of one
+template (XPaths differing only in one step's position: each review's `Reviews: 1`; a responsive copy elsewhere in the
+layout is not one), are dropped, and an identifier field given two values by any pairs reads none. (Previously: one value
+repeated in many places was read.) It SHALL
 also take a money or check-digit identifier field's one shown value in the main region (`collect/items/spot.py`, which
 spots only text showing the type's checked syntax, `Ok.checked`: a number without a currency sign is not money; for
 an identifier also an unlabelled pair's value, never inside a hyperlink to another document; none when several
@@ -291,6 +294,9 @@ D-1096, D-1640, D-1641, D-1642, D-1643.
 #### Scenario: Lines of listed items
 - **WHEN** the page holds `SKU: A-1` and `SKU: A-2` lines
 - **THEN** `sku` has no candidate from them
+#### Scenario: One line in each of three reviews
+- **WHEN** three review blocks each hold a `Reviews: 1` line
+- **THEN** `review_count` has no candidate from them
 #### Scenario: One price
 - **WHEN** the main region shows one amount and a struck amount
 - **THEN** `price` has the shown amount as a candidate; with two shown amounts, none
