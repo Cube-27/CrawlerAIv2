@@ -268,9 +268,11 @@ def answer_shape(platform: str, answer: JsonValue, page_url: str | None) -> Shap
         if shown is None:
             return _SHOPIFY_PRODUCT_NODE
         own = {"sku": ("variants", shown, "sku"), "gtin": ("variants", shown, "barcode")}
-        return replace(_SHOPIFY_PRODUCT_NODE, properties={**_SHOPIFY_PRODUCT_NODE.properties, **own})
+        product: Shape = replace(_SHOPIFY_PRODUCT_NODE, properties={**_SHOPIFY_PRODUCT_NODE.properties, **own})
+        return product
     if platform == "woocommerce" and isinstance(answer, list) and len(answer) == 1 and isinstance(answer[0], dict):
         prices = answer[0].get("prices")
         varies = not isinstance(prices, dict) or prices.get("price_range") is not None
-        return _WOO_PRODUCT_NODE if varies else replace(_WOO_PRODUCT_NODE, nodes={"offers": (_WOO_OFFER,)})
+        priced: Shape = replace(_WOO_PRODUCT_NODE, nodes={"offers": (_WOO_OFFER,)})
+        return _WOO_PRODUCT_NODE if varies else priced
     return None
