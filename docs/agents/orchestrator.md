@@ -45,12 +45,12 @@ The machine needs Docker, `uv`, `pnpm`, GNU make, `gh` (logged in) and herdr; ev
    rm -f "$wt/.env"                     # builders never read secrets; keep it only when the brief needs the LLM key
    herdr tab create --cwd "$wt" --label <id> --no-focus              # note .result.root_pane.pane_id
    herdr agent start <id> --kind claude --pane <pane id> -- --permission-mode auto
-   herdr agent prompt <id> "$(cat ../briefs/<id>.txt)"
    ```
 
    The first start in a new folder stops at Claude's folder-trust prompt (`agent_not_ready`): check it with
    `herdr agent read <id> --source visible`, answer with `herdr agent send-keys <id> down`, then
-   `herdr agent send-keys <id> enter`, and wait for `herdr agent wait <id> --until idle` before sending the brief.
+   `herdr agent send-keys <id> enter`. Only once `herdr agent wait <id> --until idle` returns, send the brief:
+   `herdr agent prompt <id> "$(cat ../briefs/<id>.txt)"`.
 4. Watch it in the background:
    `herdr agent wait <id> --until idle --until done --until blocked --timeout 10800000`, then
    `herdr agent read <id> --source recent-unwrapped --lines 60` and look for the end-of-turn line. `blocked` means a
