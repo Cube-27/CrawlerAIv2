@@ -1,6 +1,8 @@
 """What the handlers of page tasks (`batch_scrape`, `crawl`) do the same way: the task's job, and the records the task
 extracts with as the job pinned them (INV-28); fetching its page politely and storing the capture; the result a page
-that was not reached ends with; and extracting and storing a reached page's record.
+that was not reached ends with; and extracting and storing a reached page's record, with the page's content
+fingerprint (`url_state`, jobs spec "Fresh extraction and content fingerprint"): its visible words, for a listing its
+words and links, which say whether its content changed since the URL was last extracted.
 
 A listing whose records the job reads, on a site whose pinned config has a listing recipe (one with pagination,
 Appendix A #59), is served by the recipe page after page (`RecipeRung.pages`) up to the job's page bound
@@ -13,6 +15,8 @@ task's fetch attempts are counted as the job's usage at its end (`count_fetch`):
 the task commits.
 """
 
+import asyncio
+import logging
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
@@ -31,11 +35,14 @@ from crawlerai.config_ir.active import config_by_id, recipe_of
 from crawlerai.config_ir.api_recipe.execute import MAX_PAGES
 from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
+from crawlerai.content.links import links
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.retry import backoff_delay
-from crawlerai.db.models import CaptureId, Job, SchemaId
+from crawlerai.db.models import CaptureId, Job, PageKind, SchemaId
 from crawlerai.db.queue import LEASE, TASK_DEADLINE, ClaimedTask
 from crawlerai.llm.client import LLMClient
+from crawlerai.recurring.simhash import ContentFingerprint, content_fingerprint
+from crawlerai.recurring.state import record_content
 from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.resolve.types import Probability
@@ -82,6 +89,8 @@ from crawlerai.services.scrape_steps import (
 from crawlerai.services.stored_captures import NOT_CACHED, recent_capture, reread
 from crawlerai.storage.base import ObjectStore
 from crawlerai.worker.loop import Failed, Finished, Postpone, TaskResult
+
+log = logging.getLogger(__name__)
 
 # A listing recipe's page requests start within this share of the task's lease (`LEASE`): each waits in place for its
 # turn at most `QUEUED.bound` (half the lease), so the last one ends inside the lease, its timeout and the extraction
@@ -394,6 +403,8 @@ async def extract_records(
     `parsed` is the page's parse when the handler already has one (INV-26). A crawl-discovered page may end
     `no_match`. A listing without rows ends with the reason (`ExtractionResult.reason`)."""
     schema = records.schema
+    parsed = page.parsed if parsed is None else parsed
+    await _fingerprint(conn, task, page, parsed, schema.page_kind)
     config = None
     if records.config is not None:
         config = records.config.for_capture(page.result.bundle.manifest, records.data.adapters)
@@ -416,6 +427,35 @@ async def extract_records(
         return Failed(EXTRACTION_ERROR, transient=False, capture_id=page.capture_id)
     # A listing without rows says why in the task's `last_error` (D-1475).
     return Finished(stored.outcome, reason=extraction.reason, capture_id=page.capture_id)
+
+
+async def _fingerprint(
+    conn: AsyncConnection, task: ClaimedTask, page: FetchedPage, parsed: ParsedPage, kind: PageKind
+) -> None:
+    """Store the page's content fingerprint (`record_content`); a page without one (`page_fingerprint`) stores none,
+    and a fingerprint that fails is logged and skipped: it never fails the task."""
+    final_url = page.result.bundle.manifest.final_url
+    try:
+        # Rendering the text is CPU work, as resolution is: a thread keeps the event loop serving other tasks.
+        fingerprint = await asyncio.to_thread(page_fingerprint, parsed, final_url, kind)
+    except Exception:
+        log.exception("the content fingerprint failed")
+        return
+    if fingerprint is not None:
+        await record_content(conn, page.site.id, task.canonical_url, fingerprint)
+
+
+def page_fingerprint(parsed: ParsedPage, final_url: str, kind: PageKind) -> ContentFingerprint | None:
+    """The fingerprint of the page's visible words; for a listing, of its words and the URLs it links to, in document
+    order (`content.links`): its rows' links are part of what it lists, so rows that keep their words but link
+    elsewhere (reposted items) are a change, and a listing without words (rows of images, text drawn by script) is
+    fingerprinted by its links alone. None for a detail page without words, or a listing with neither words nor
+    links."""
+    text = parsed.cleaned_text.text
+    if kind != "listing":
+        return content_fingerprint(text)
+    # A canonical URL holds no whitespace (WHATWG URL Standard percent-encodes it), so each link is one word.
+    return content_fingerprint(" ".join((text, *links(parsed, final_url))))
 
 
 def _role_c(task: ClaimedTask, llm: LLMClient) -> RoleC:

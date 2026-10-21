@@ -62,7 +62,7 @@ class Jobs:
         for title in records:
             if title not in self.stored:
                 self.stored[title] = await self._record(job_id, extraction_id, title, schema_id or self.schema_id)
-            link = {"url_task_id": task_id, "record_id": self.stored[title]}
+            link = {"url_task_id": task_id, "record_id": self.stored[title], "delta": "new"}
             await self.conn.execute(insert(TaskRecord).values(link))
         return task_id
 

@@ -106,7 +106,7 @@ async def _page(conn: AsyncConnection, job_id: JobId, *, stored: bool = True) ->
         "mode": "config",
     }
     record_id = (await conn.execute(insert(Record).values(**record).returning(Record.id))).scalar_one()
-    await conn.execute(insert(TaskRecord).values(url_task_id=task.id, record_id=record_id))
+    await conn.execute(insert(TaskRecord).values(url_task_id=task.id, record_id=record_id, delta="new"))
     return task, capture_id
 
 

@@ -21,7 +21,7 @@ from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from pydantic import JsonValue
 
 from crawlerai.config_ir.exporters.records import table
-from crawlerai.resolve.records import RecordContent
+from crawlerai.resolve.records import Delta, RecordContent
 from crawlerai.schemas.types import SchemaDocument
 
 FileFormat = Literal["xlsx", "parquet"]
@@ -37,10 +37,16 @@ class FormatUnavailable(Exception):
     """The format's library is not installed (`parquet` needs the `parquet` extra)."""
 
 
-def export_file(fmt: FileFormat, schema: SchemaDocument, records: Sequence[RecordContent]) -> bytes:
-    """`records`, all of `schema`, as the bytes of a file in `fmt`. Raises `FormatUnavailable` for `parquet` without
-    pyarrow, and `ValueError` for a record whose fields are not the schema's."""
-    columns, rows = table(schema, records)
+def export_file(
+    fmt: FileFormat,
+    schema: SchemaDocument,
+    records: Sequence[RecordContent],
+    deltas: Sequence[Delta | None] | None = None,
+) -> bytes:
+    """`records`, all of `schema`, as the bytes of a file in `fmt`, with their `deltas` when given (`records.table`).
+    Raises `FormatUnavailable` for `parquet` without pyarrow, and `ValueError` for a record whose fields are not the
+    schema's."""
+    columns, rows = table(schema, records, deltas)
     return _xlsx(columns, rows) if fmt == "xlsx" else _parquet(columns, rows)
 
 

@@ -5,7 +5,9 @@ endpoint). The binary formats, `xlsx` and `parquet`, read the same table (`files
 The formats share one table (`table`): a column per schema field, holding the published value or nothing, then a
 `_status_<field>` column per field. Columns are in field-name order, so they depend on the schema alone and not on
 the order its fields were declared or stored in (JSONB does not keep key order). Schema names start with a
-lowercase letter (`NAME_PATTERN`), so a status column never collides with a field. Values are serialized as
+lowercase letter (`NAME_PATTERN`), so a status column never collides with a field. A job's export adds its records'
+delta (jobs spec, "Page delta"): `_delta` (`new`, `changed`, `same`) and `_previous`, the previous published value of
+each changed field by name. Values are serialized as
 published and never fixed (INV-27); a `csv_safe` CSV (D-0879) only marks formula-like cells for spreadsheets.
 
 A clean record (`json_values`, frontend spec) is a record's published values alone, with no status: the schema's
@@ -24,12 +26,13 @@ from typing import Literal
 
 from pydantic import JsonValue
 
-from crawlerai.resolve.records import RecordContent
+from crawlerai.resolve.records import Delta, RecordContent
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDocument
 
 RecordFormat = Literal["json_records", "csv_records", "markdown", "jsonl"]
 
 _STATUS_PREFIX = "_status_"
+_DELTA_COLUMNS = ("_delta", "_previous")
 # CommonMark 0.31 §2.4: any ASCII punctuation character may be backslash-escaped, and then renders literally.
 _MD_PUNCTUATION = re.compile(r"""([!"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])""")
 # CommonMark 0.31 §2.6 line endings; a GFM table cell holds no line ending, so one becomes an HTML line break.
@@ -42,11 +45,17 @@ _Row = dict[str, JsonValue]
 
 
 def export_records(
-    fmt: RecordFormat, schema: SchemaDocument, records: Sequence[RecordContent], *, csv_safe: bool = False
+    fmt: RecordFormat,
+    schema: SchemaDocument,
+    records: Sequence[RecordContent],
+    *,
+    csv_safe: bool = False,
+    deltas: Sequence[Delta | None] | None = None,
 ) -> str:
-    """`records`, all of `schema`, in `fmt`. A record whose fields are not the schema's is refused (`ValueError`).
-    `csv_safe` (`csv_records` only, D-0879): a cell a spreadsheet would read as a formula starts with `'`."""
-    columns, rows = table(schema, records)
+    """`records`, all of `schema`, in `fmt`, with each record's delta when `deltas` is given (`table`). A record whose
+    fields are not the schema's is refused (`ValueError`). `csv_safe` (`csv_records` only, D-0879): a cell a
+    spreadsheet would read as a formula starts with `'`."""
+    columns, rows = table(schema, records, deltas)
     if fmt == "json_records":
         return _json(rows)
     if fmt == "jsonl":
@@ -56,13 +65,25 @@ def export_records(
     return _markdown(columns, rows)
 
 
-def table(schema: SchemaDocument, records: Sequence[RecordContent]) -> tuple[list[str], list[dict[str, JsonValue]]]:
+def table(
+    schema: SchemaDocument, records: Sequence[RecordContent], deltas: Sequence[Delta | None] | None = None
+) -> tuple[list[str], list[dict[str, JsonValue]]]:
     """The columns and rows every export shares: a column per field of `schema` in name order, then a status column
-    each; one row per record, a column's value being the published value or None. A record whose fields are not the
-    schema's is refused (`ValueError`)."""
+    each, then with `deltas` (one per record) `_delta` and `_previous`; one row per record, a column's value being the
+    published value or None. A record whose fields are not the schema's is refused (`ValueError`)."""
     fields = sorted(schema.fields)
     columns = [*fields, *(_STATUS_PREFIX + name for name in fields)]
-    return columns, [_row(fields, record) for record in records]
+    rows = [_row(fields, record) for record in records]
+    if deltas is None:
+        return columns, rows
+    return [*columns, *_DELTA_COLUMNS], [row | _delta_cells(delta) for row, delta in zip(rows, deltas, strict=True)]
+
+
+def _delta_cells(delta: Delta | None) -> _Row:
+    if delta is None:
+        return dict.fromkeys(_DELTA_COLUMNS)
+    previous: _Row = {change.field: change.previous for change in delta.changes}
+    return {"_delta": delta.kind, "_previous": previous or None}
 
 
 def clean_record(schema: SchemaDocument, data: Mapping[str, JsonValue]) -> _Row:

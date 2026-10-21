@@ -16,7 +16,7 @@ from typing import Final, Literal, Protocol, get_args
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from crawlerai.collect.locator import LocatorText, PageUrlDerivation
-from crawlerai.db.models import SiteId, SourceKind
+from crawlerai.db.models import RecordDelta, SiteId, SourceKind
 from crawlerai.normalize.base import Basis
 from crawlerai.resolve.evidence import required_fields
 from crawlerai.resolve.types import Derivation, Evidence, FieldOutcome, FieldSet, FieldStatus, Probability
@@ -87,6 +87,27 @@ class FieldMeta(SubFieldMeta):
         if outcome.dropped is not None:
             dropped = [DroppedRowMeta(locators=list(row.locators), reason=row.reason) for row in outcome.dropped]
         return cls(**dict(SubFieldMeta.of(outcome)), derived_by=outcome.derived_by, items=items, dropped=dropped)
+
+
+class FieldChange(_Model):
+    """A field whose published value differs from the entity's previous record: both values as published, None for a
+    side that published none (INV-27)."""
+
+    field: str
+    previous: JsonValue
+    value: JsonValue
+
+
+# A named schema (OpenAPI component), so the SDKs' generated enum has a name of its own.
+type DeltaKind = RecordDelta
+
+
+class Delta(_Model):
+    """What a job's record is against the entity's previous record under the same schema (jobs spec, "Page delta"):
+    `new`, `changed` with its changed fields in schema order, or `same`."""
+
+    kind: DeltaKind
+    changes: list[FieldChange] = Field(default_factory=list)
 
 
 class RecordContent(_Model):

@@ -184,12 +184,12 @@ Refs: §13.2, §23, D-0672, D-0674, D-0677, D-1285, D-1382, D-1441.
 ### Requirement: Fresh extraction and content fingerprint
 Every records task SHALL fetch its page whole and extract it, a recurring run's too: no conditional request is sent and
 no record stored by an earlier task stands for the page (owner 2026-10-21: learning keeps selectors, recipes and
-cookies, never values). Records tasks of `batch_scrape` and `extract` store the page's content fingerprint in
+cookies, never values). Records tasks of `batch_scrape`, `extract` and `crawl` store the page's content fingerprint in
 `url_state` (BLAKE2b of the visible words, nonce-like tokens left out, `recurring/simhash.py`; for a listing, of its
 words and the URLs it links to, in order), with `last_changed_at` moved when the digest differs; the SimHash stored
 beside it reports how far a change moved. Replay never reads `url_state` (INV-10). (Previously: an HTTP 304 to stored
 validators, or an equal content digest, ended the task `unchanged` with no extraction, linking the records an earlier
-task stored.) Refs: §14, D-0637, D-0662, D-0663, D-0952, D-1340.
+task stored; crawl tasks stored no fingerprint.) Refs: §14, D-0637, D-0662, D-0663, D-0952, D-1340.
 #### Scenario: Re-run of an unchanged page
 - **WHEN** a page whose text is unchanged is scraped again in a records batch
 - **THEN** it is fetched whole and extracted, and its record holds what this extraction published
@@ -206,6 +206,19 @@ returns records committed at or after it, missing none. Refs: §14, D-0666, D-06
 #### Scenario: Price change
 - **WHEN** a re-run publishes a new price for an entity
 - **THEN** version 2 is stored with `changed_fields: ["price"]`; equal values store no new row
+
+### Requirement: Page delta
+Each record a records task stands for SHALL carry its delta against the previous record of the same entity under the
+same schema on the site (`task_record.delta`, set as the task stores it): `new` when the entity had none, `changed` when
+a field of the schema published another value, with each changed field's previous and new value as published, else `same`.
+A job's records answer it as `delta` (`kind`, `changes` of `field`, `previous`, `value`; null when not listed by job),
+the job's outcomes count it (`records`: `new`, `changed`, `same`, each record once, at the first task that stood for
+it), and its exports add `_delta` and `_previous` (the changed fields' previous values by name) after the status
+columns. Refs: owner 2026-10-21 (page delta after fresh extraction).
+#### Scenario: Re-run with a new price
+- **WHEN** an entity was stored at price 10 and a later job extracts it at 12, its other values equal
+- **THEN** that job's record has delta `changed` with `{"field": "price", "previous": 10, "value": 12}`, and a third
+  run that still reads 12 answers `same`
 
 ### Requirement: Listing diff and gone URLs
 Each `completed` records crawl SHALL mark its rule-matched URLs, and for a listing schema its row URLs

@@ -2,10 +2,10 @@
 `parquet`, and its pages as `llms.txt` and `llms-full.txt`. `GET /v1/jobs/{id}/results?format=xlsx|parquet` and
 `GET /v1/jobs/{id}/llms.txt` answer with these; so does the MCP `llms_txt` tool.
 
-A file holds every record of the job, newest first, up to `MAX_RECORDS`; the exporters write the table the text exports
-do (`config_ir.exporters`). The `llms` files are made from the job's reached pages, one per final URL, in task order,
-from their captures: the title and description of a page, and for the full file its Markdown. They cover at most
-`MAX_PAGES` (`llms.txt`) or `MAX_FULL_PAGES` (`llms-full.txt`) pages.
+A file holds every record of the job, newest first, up to `MAX_RECORDS`, with its delta; the exporters write the table
+the text exports do (`config_ir.exporters`). The `llms` files are made from the job's reached pages, one per final URL,
+in task order, from their captures: the title and description of a page, and for the full file its Markdown. They cover
+at most `MAX_PAGES` (`llms.txt`) or `MAX_FULL_PAGES` (`llms-full.txt`) pages.
 """
 
 import asyncio
@@ -22,7 +22,7 @@ from crawlerai.content.markdown import markdown
 from crawlerai.content.metadata import metadata
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import Capture, Job, JobId, RecordId, UrlTask
-from crawlerai.resolve.records import RecordContent
+from crawlerai.resolve.records import Delta, RecordContent
 from crawlerai.schemas import registry
 from crawlerai.services.jobs import JobNotFound, NotExportable, record_content
 from crawlerai.services.records import MAX_PAGE, RecordFilter, list_records
@@ -52,14 +52,16 @@ async def export_job_file(conn: AsyncConnection, job_id: JobId, fmt: FileFormat)
         raise NotExportable(f"job {job_id} has no schema, so it has no records to export")
     schema = await registry.get_by_id(conn, schema_id[0])
     contents: list[RecordContent] = []
+    deltas: list[Delta | None] = []
     cursor: RecordId | None = None
     while len(contents) < MAX_RECORDS:
         page = await list_records(conn, RecordFilter(job_id=job_id, cursor=cursor, limit=MAX_PAGE), counted=False)
         contents += [record_content(record) for record in page.items]
+        deltas += [record.delta for record in page.items]
         if page.next_cursor is None:
             break
         cursor = page.next_cursor
-    data = await asyncio.to_thread(export_file, fmt, schema, contents[:MAX_RECORDS])
+    data = await asyncio.to_thread(export_file, fmt, schema, contents[:MAX_RECORDS], deltas[:MAX_RECORDS])
     return ExportFile(data, MEDIA_TYPES[fmt], f"job-{job_id}.{fmt}")
 
 

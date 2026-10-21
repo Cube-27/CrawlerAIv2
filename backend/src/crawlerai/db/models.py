@@ -88,6 +88,8 @@ FinishedOutcome = Literal[
 # else `failed`.
 TaskOutcome = Literal[FinishedOutcome, "failed", "timeout"]
 ExtractionMode = Literal["adhoc", "config"]
+# What a task's record is against the previous record of its entity under its schema (jobs spec, "Page delta").
+RecordDelta = Literal["new", "changed", "same"]
 NormalizeStatus = Literal["ok", "ambiguous", "invalid"]
 # `derived`: a page-URL derivation (extraction spec, D-0355), which no candidate states; no candidate row carries it.
 SourceKind = Literal[
@@ -757,10 +759,14 @@ class TaskRecord(Base):
     Plumbing for §4.2's `url_task.record_id`, as a table because a listing page stands for one record per row."""
 
     __tablename__ = "task_record"
+    __table_args__ = (CheckConstraint(one_of("delta", RecordDelta), name="delta"),)
 
     url_task_id: Mapped[UrlTaskId] = mapped_column(ForeignKey(UrlTask.id, ondelete="CASCADE"), primary_key=True)
     # Indexed for the records a job lists, which join on it, and for a record's delete.
     record_id: Mapped[RecordId] = mapped_column(ForeignKey(Record.id, ondelete="CASCADE"), primary_key=True, index=True)
+    # What the record is against the entity's previous record when the task stood for it: `new` (none before), `changed`
+    # (a value differs: `record.changed_fields`) or `same` (equal values).
+    delta: Mapped[RecordDelta] = mapped_column(Text)
     # When the task stood for the record.
     created_at: Mapped[datetime] = created_at_column()
 

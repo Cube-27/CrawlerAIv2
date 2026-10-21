@@ -30,7 +30,7 @@ from crawlerai.db.models import (
     UrlTaskId,
 )
 from crawlerai.db.paging import keyset_page, total_rows
-from crawlerai.resolve.records import FieldMeta, RecordContent, record_confidence
+from crawlerai.resolve.records import Delta, FieldChange, FieldMeta, RecordContent, record_confidence
 from crawlerai.resolve.types import FieldSet, Probability
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef
@@ -100,6 +100,8 @@ class StoredRecord(ScrapedRecord):
     changed_fields: list[str]
     egress_country: str | None
     egress_basis: EgressBasis
+    # Listed by job: what the record is against the entity's previous record (jobs spec, "Page delta"); null otherwise.
+    delta: Delta | None = None
 
 
 class RecordPage(BaseModel):
@@ -144,7 +146,12 @@ async def list_records(conn: AsyncConnection, query: RecordFilter, *, counted: b
         await _committed(conn)
         statement = statement.where(Record.created_at >= query.changed_since)
     if query.job_id is not None:
-        statement = _job_statement(statement, query.job_id)
+        previous = aliased(Record)
+        statement = (
+            _job_statement(statement, query.job_id)
+            .outerjoin(previous, previous.id == Record.supersedes_record_id)
+            .add_columns(TaskRecord.delta, previous.data.label("previous_data"))
+        )
     total = await total_rows(conn, statement) if counted else 0
     if query.job_id is None:
         rows, next_cursor = await keyset_page(
@@ -223,7 +230,19 @@ def _stored(row: RowMapping, schema: SchemaDef) -> StoredRecord:
         "egress_basis",
     )
     columns = {name: row[name] for name in names}
-    return StoredRecord(**columns, confidence=record_confidence(schema, fields), fields=fields)
+    delta = _delta(row) if "delta" in row else None
+    return StoredRecord(**columns, confidence=record_confidence(schema, fields), fields=fields, delta=delta)
+
+
+def _delta(row: RowMapping) -> Delta:
+    """The record's delta, with each changed field's previous value from the version it superseded."""
+    if row["delta"] != "changed":
+        return Delta(kind=row["delta"])
+    data, previous = row["data"], row["previous_data"] or {}
+    changes = [
+        FieldChange(field=name, previous=previous.get(name), value=data.get(name)) for name in row["changed_fields"]
+    ]
+    return Delta(kind="changed", changes=changes)
 
 
 def page_fields(schema: SchemaDef, fields: FieldSet) -> dict[str, RecordField]:

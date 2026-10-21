@@ -15,10 +15,11 @@ from crawlerai.db.models import Extraction, Job, JobId, Project, Record, Site, S
 from crawlerai.db.queue import insert_claimed
 from crawlerai.recurring.record_fp import record_fingerprint
 from crawlerai.recurring.versions import store_records
-from crawlerai.resolve.records import FieldMeta, RecordDraft, entity_key
+from crawlerai.resolve.records import Delta, FieldChange, FieldMeta, RecordDraft, entity_key
 from crawlerai.resolve.task import RecordSource, StoredRecord
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
+from crawlerai.services.records import RecordFilter, list_records
 
 pytestmark = pytest.mark.anyio
 
@@ -49,6 +50,7 @@ META = FieldMeta(
 class _Site:
     def __init__(self, conn: AsyncConnection) -> None:
         self.conn = conn
+        self.jobs: list[JobId] = []
 
     async def prepare(self, document: SchemaDocument = DOCUMENT) -> None:
         project = select(Project.id).where(Project.name == "default").scalar_subquery()
@@ -74,6 +76,7 @@ class _Site:
             egress_basis=egress.basis,
         )
         job_id: JobId = (await self.conn.execute(job.returning(Job.id))).scalar_one()
+        self.jobs.append(job_id)
         task = await insert_claimed(self.conn, job_id, PAGE_URL, PAGE_URL, self.schema.page_kind, "test-worker")
         extraction = insert(Extraction).values(url_task_id=task.id, engine_version="e", mode="adhoc")
         extraction_id = (await self.conn.execute(extraction.returning(Extraction.id))).scalar_one()
@@ -160,3 +163,12 @@ async def test_a_record_states_the_egress_its_job_pinned(site: _Site) -> None:
     query = select(Record.id, Record.egress_country, Record.egress_basis).where(Record.site_id == site.site_id)
     found = {row.id: (row.egress_country, row.egress_basis) for row in await site.conn.execute(query)}
     assert found == {stored.id: ("GB", "pool"), unknown.id: (None, "unknown")}
+
+
+async def test_each_jobs_record_carries_its_delta_against_the_previous_record(site: _Site) -> None:
+    for data in (KETTLE, KETTLE, CHEAPER, CHEAPER):
+        await site.run(site.draft(data))
+
+    deltas = [(await list_records(site.conn, RecordFilter(job_id=job))).items[0].delta for job in site.jobs]
+    price = FieldChange(field="price", previous=KETTLE["price"], value=CHEAPER["price"])
+    assert deltas == [Delta(kind="new"), Delta(kind="same"), Delta(kind="changed", changes=[price]), Delta(kind="same")]

@@ -329,6 +329,18 @@ class DeliveryPage(BaseModel):
     next_cursor: Annotated[UUID | None, Field(title="Next Cursor")] = None
 
 
+class DeltaCounts(BaseModel):
+    changed: Annotated[int, Field(title="Changed")]
+    new: Annotated[int, Field(title="New")]
+    same: Annotated[int, Field(title="Same")]
+
+
+class DeltaKind(Enum):
+    new = "new"
+    changed = "changed"
+    same = "same"
+
+
 class DroppedRowMeta(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1501,6 +1513,15 @@ class FetchSummary(BaseModel):
     status_code: Annotated[int | None, Field(title="Status Code")] = None
 
 
+class FieldChange(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    field: Annotated[str, Field(title="Field")]
+    previous: JsonValue
+    value: JsonValue
+
+
 class FieldLabel(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1555,6 +1576,7 @@ class JobOutcomes(BaseModel):
     missing_unrendered: Annotated[dict[str, int], Field(title="Missing Unrendered")]
     pages: OutcomeCounts
     reasons: Annotated[dict[str, int], Field(title="Reasons")]
+    records: DeltaCounts
     signals: Annotated[dict[str, int], Field(title="Signals")]
 
 
@@ -1972,6 +1994,14 @@ class CssStepOutput(BaseModel):
     xpath: Annotated[str, Field(title="Xpath")]
 
 
+class Delta(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    changes: Annotated[list[FieldChange] | None, Field(title="Changes")] = None
+    kind: DeltaKind
+
+
 class ExtractRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2217,6 +2247,7 @@ class StoredRecord(BaseModel):
     changed_fields: Annotated[list[str], Field(title="Changed Fields")]
     complete: Annotated[bool, Field(title="Complete")]
     confidence: Annotated[Confidence | None, Field(title="Confidence")] = None
+    delta: Delta | None = None
     egress_basis: Annotated[EgressBasis, Field(title="Egress Basis")]
     egress_country: Annotated[str | None, Field(title="Egress Country")] = None
     fields: Annotated[dict[str, RecordField], Field(title="Fields")]
