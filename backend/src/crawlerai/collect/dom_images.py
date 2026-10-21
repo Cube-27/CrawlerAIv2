@@ -12,8 +12,8 @@ shares with the other DOM passes: the main region, the elements set apart from i
   region, else in the body) of the file (`images.same_file`) the page's structured data or Open Graph states as its
   main image (`stated_images`): independent evidence of the product's image, which a page without a main landmark (a
   client-rendered storefront) needs to have a main image at all; without one, the first image of that file outside
-  dialogs and media fallback only, shown or not, decorative or not, its tangential section then holding the product's
-  images.
+  dialogs and media fallback only, shown or not, decorative or not, its tangential section (not the region's others)
+  then holding the product's images.
 - **The gallery.** The main image's slides fill a list of images whose path names schema.org `image`: from the main
   image up, the first block with siblings of its tag holding an image; each such block's image at the main image's tag
   path, else its first image named after the main image's file (`images.same_family`), a source several blocks give (a
@@ -180,9 +180,15 @@ def _main(
     near = apart_ids(region, tangential=False) | outside
     found = _anchor(region, links, primary, base, lambda image: _stated_source(image, near))
     if found is not None:
-        return (*found, near)
+        return (*found, near | (apart - _sections(found[0], region)))
     found = _main_image(region, links, apart) if landmark else None
     return None if found is None else (*found, apart)
+
+
+def _sections(image: LexborNode, region: LexborNode) -> frozenset[int]:
+    """The elements of the tangential sections holding the image: they hold its slides, the region's others do not."""
+    roots = [node for node in up_to(image, region) if node.tag in _TANGENTIAL]
+    return frozenset(inside.mem_id for root in roots for inside in (root, *root.css("*")))
 
 
 def _stated_source(image: LexborNode, apart: frozenset[int]) -> str | None:

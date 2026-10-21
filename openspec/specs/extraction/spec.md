@@ -269,9 +269,10 @@ amount per a CLDR duration unit (`$25/mo`) for no money field; a member price fr
 rows read by the same rule (`collect/items/align.py`). It SHALL take as the main image the first shown image (in that
 region, else in the body) whose file (`same_file`: the file, or a rendition an image server writes into the path,
 under a prefix, below the file or with parameters after a directory) is the main image the page's own structured data
-or Open Graph states (an image field's value, a list's first), else the first image of that file outside dialogs and
-media fallback only, shown or not and decorative or not (the stated file is the evidence: the tangential section, the
-`noscript` fallback or the empty-`alt` image holding it holds the product's images, and its gallery is read beside it),
+or Open Graph states (an image field's value, a list's first), else the first image of that file outside dialogs,
+media fallback and link cards, shown or not and decorative or not (the stated file is the evidence: the tangential
+section, the `noscript` fallback or the empty-`alt` image holding it holds the product's images, and its gallery is
+read beside it, the region's other tangential sections still set apart),
 else the first image of
 the one `main`/`role=main`/`article`, outside chrome, decorative images and link cards (`collect/dom_images.py`), an
 image's source being its `src` unless its `srcset` has width descriptors or a candidate of pixel density 1 (one without
