@@ -9,6 +9,7 @@ Each documented JSON attribute's document follows, located as `attr:<element_xpa
 """
 
 from collections.abc import Sequence
+from typing import cast
 
 from crawlerai.collect.admission import Admitted, Document, admit
 from crawlerai.collect.base import Candidate
@@ -27,10 +28,22 @@ class JsStateCollector:
         return admit("js_state", state_documents(page, diagnostics), diagnostics, page, schema, ctx, others)
 
 
+class _StateDocuments:
+    """The key of a page's state documents, and the diagnostics reading them gave, in `ParsedPage.derived`."""
+
+
 def state_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document]:
     """The page's state documents, decoded: its scripts' (`script_documents`), then its documented JSON attributes'
-    (`content.attr_json`), each addressed as `<element xpath>@<name>` under the `attr` scheme."""
-    return script_documents(page, diagnostics) + attribute_documents(page)
+    (`content.attr_json`), each addressed as `<element xpath>@<name>` under the `attr` scheme. They are read once per
+    parse (INV-26): a later caller gets the same documents, and the diagnostics reading them gave."""
+    derived = page.derived.get(_StateDocuments)
+    if derived is None:
+        found: list[str] = []
+        derived = ((), (script_documents(page, found) + attribute_documents(page), found))
+        page.derived[_StateDocuments] = derived
+    documents, found = cast(tuple[list[Document], list[str]], derived[1])
+    diagnostics.extend(found)
+    return list(documents)
 
 
 def script_documents(page: ParsedPage, diagnostics: list[str]) -> list[Document]:
