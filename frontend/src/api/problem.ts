@@ -44,12 +44,6 @@ export function problemOf(response: Response, body: unknown): Problem | null {
   };
 }
 
-/** The problem in `response`, or null when the body is not a problem with a title. Consumes the body. */
-export async function readProblem(response: Response): Promise<Problem | null> {
-  if (!isProblemJson(response)) return null;
-  return problemOf(response, await response.json().catch(() => null));
-}
-
 /** A problem's per-field errors keyed by request member, as a React Aria `Form`'s `validationErrors` takes them. */
 export function fieldErrors(problem: Problem): Readonly<Record<string, string>> {
   return Object.fromEntries(problem.errors.map(({ field, reason }) => [field, reason]));

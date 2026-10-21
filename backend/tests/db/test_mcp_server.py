@@ -43,7 +43,6 @@ from crawlerai.db.models import (
     WebhookDelivery,
 )
 from crawlerai.llm.client import LLMRequest, MeteredClient, ProviderError, ProviderUnavailable, Unconfigured
-from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.setup import LLMSetup
 from crawlerai.mcp_server.output import MARKDOWN_PAGE_CHARS
 from crawlerai.mcp_server.server import UNTRUSTED, AnyContext, build_server
@@ -56,6 +55,7 @@ from crawlerai.services.fetching import Fetching
 from crawlerai.services.runtime import Runtime
 from crawlerai.storage.fs import FsStore
 from tests.db.conftest import PRIVATE_HOST, resolve
+from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
 

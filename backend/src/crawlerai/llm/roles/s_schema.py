@@ -26,7 +26,7 @@ from typing import Final
 from pydantic import JsonValue, ValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.collect.schema_org_map import pinned_reference_errors
+from crawlerai.collect.vocabulary import pinned_reference_errors
 from crawlerai.db.models import JobId, PageKind
 from crawlerai.llm.client import LLMClient, LLMRequest, ReplyCheck
 from crawlerai.llm.roles.c_extract import DETAIL_MAX_CHARS

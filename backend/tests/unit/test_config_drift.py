@@ -5,7 +5,7 @@ no longer runs."""
 from datetime import UTC, datetime
 from typing import Any
 
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.drift import (
     DriftMargins,
     Observation,

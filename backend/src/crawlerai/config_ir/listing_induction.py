@@ -31,7 +31,8 @@ from pydantic import JsonValue, ValidationError
 
 from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import Items, align
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.schema_org_map import item_url_fields
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.induction import Published, SamplePage, anchored_paths, anchors, reading
 from crawlerai.config_ir.model import (
@@ -52,7 +53,6 @@ from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.normalize.url import canonical_url
-from crawlerai.resolve.records import row_url_fields
 from crawlerai.schemas.types import FieldSpec, SchemaDef, document_digest
 
 _STATUS: Final[FieldStatus] = "uncorroborated"  # until validation (§4.7) records corroboration
@@ -128,7 +128,7 @@ def _page(schema: SchemaDef, sample: SamplePage) -> _Page | None:
 
 
 def _row_url(schema: SchemaDef, row: Mapping[str, Published], ctx: Context) -> str | None:
-    for name in row_url_fields(schema):
+    for name in item_url_fields(schema):
         published = row.get(name)
         if published is not None and isinstance(published.value, str):
             return canonical_url(published.value, ctx.base_url)

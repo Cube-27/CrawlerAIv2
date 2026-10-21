@@ -21,7 +21,7 @@ from babel import Locale
 from babel.localedata import locale_identifiers
 from pydantic import JsonValue
 
-from crawlerai.normalize import numbers, vocab
+from crawlerai.normalize import locales, numbers
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -68,7 +68,7 @@ def _names_a_measure(unit_text: str, ctx: Context) -> bool:
     """Whether `unitText` is the name or symbol of a CLDR measurement unit other than a count (D-1271): "one" and
     "kg" cannot both be right. Text that names no CLDR unit ("items", "pieces") does not contradict "one"."""
     label = unicodedata.normalize("NFKC", unit_text).strip().casefold()
-    languages = vocab.context_languages(ctx) & _cldr_languages()
+    languages = locales.page_languages(ctx, request=True) & _cldr_languages()
     return label in _measure_labels(languages)
 
 

@@ -65,9 +65,9 @@ LISTING_PROMPT_KIND: Final[PromptKind] = "c_extract_listing"
 # A reply holds one claim per requested field, its verbatim span (§4.3), with `shown` saying whether the page shows the
 # field at all; a field it does not show is claimed `shown: false` with an empty span. A closed object of required
 # claims, rather than a list of claims or `span | null` per field, keeps the schema inside every provider's
-# structured-output subset (`llm.schema_subset`: no unions, no optional properties) and bounds the reply by the fields
-# asked (F29): Anthropic's subset has no `maxItems` to cap a list of claims, and neither subset has `maxLength`, so a
-# value's length is bounded only by the call's token cap.
+# structured-output subset (`tests.support.schema_subset`: no unions, no optional properties) and bounds the reply by
+# the fields asked (F29): Anthropic's subset has no `maxItems` to cap a list of claims, and neither subset has
+# `maxLength`, so a value's length is bounded only by the call's token cap.
 #
 # `shown` comes first, so the model states absence before it writes a span. Without it, the empty span was every
 # field's easiest valid claim, and a fast model gave it for fields the page shows, varying from run to run (D-1097:

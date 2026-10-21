@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir import step_wire
 from crawlerai.config_ir.induction import Published, SamplePage
 from crawlerai.config_ir.model import CssStep, ExtractionConfigIR, XPathStep
@@ -15,9 +15,9 @@ from crawlerai.config_ir.synthesis import Synthesis, synthesize
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId, SchemaId
-from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from tests.support.fake_llm import ScriptedClient
 
 JOB = JobId(uuid7())
 PAGE_URL = "https://shop.example.test/p/1"

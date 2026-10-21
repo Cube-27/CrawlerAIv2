@@ -16,7 +16,7 @@ from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Entity
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId, SourceKind
 from crawlerai.resolve.pipeline import EngineData, extract_page

@@ -20,6 +20,16 @@ never raising on bad input; every rule names its standard or structural property
 never a default. Its `hreflang` holds the languages of the alternate links to the page itself (its final URL or
 canonical link, HTML §4.6.7.1, RFC 6596; `content/context.py`); `page_url` and `request_url` are the final and the
 requested URL. (Previously: every alternate link's `hreflang`.)
+Page languages: every normalizer that reads a language or locale (vocabularies, date, number, count, money, range)
+SHALL take it from the one derivation in `normalize/locales.py`. The page's own declarations count together: `<html
+lang>`, `og:locale`, JSON-LD `inLanguage` (`Context.in_language`), Content-Language (RFC 9110 §8.5, its HTML pragma)
+and the page's own `hreflang`; the request's locale counts only when the page declares none, and never for money's
+currency evidence (the caller's, not the page's). A tag counts only when its primary language subtag is one (RFC 5646
+§2.2.1: two or three letters, not `und`), so `x-default` declares nothing. The locale only guides how a value is read;
+the value stays as the page states it. One ISO 3166-1 alpha-2 table (`locales.iso_3166_alpha2`) serves location
+countries and declared egress countries; the money rules' URL territories also take the exceptional reservations CLDR
+names a region by (`.eu`). (Previously: each normalizer read its own subset of these, the request's locale beside the
+page's, and two country tables.)
 Refs: §9, D-0256, D-0773, D-1482.
 #### Scenario: No context
 - **WHEN** a context carries only `captured_at`
@@ -193,7 +203,7 @@ CLDR compact decimal unit of any locale right after the digits: `1K+ reviews`, `
 rounded magnitude, not the count; digits right after a letter, its combining marks and format characters aside
 (`h1`, Unicode UAX #29 WB4 and WB9: one word), are `Invalid("in_a_word")`. All numbers (money, count, number) are read by the one path in `numbers.py`: a written number that only one CLDR number
 convention can read (`1.234,56`, `12.50`) has that one value whatever the page says; one that conventions read
-differently (`1.234`, `1,234`) takes the value its declared locales give it (none when no declared locale reads it),
+differently (`1.234`, `1,234`) takes the value its page locales (Context, "Page languages") give it (none when no declared locale reads it),
 then, of those locales' conventions (every convention when it declares none), the value of the ones whose decimal
 symbol is the page's own (`Context.page_convention`: the one decimal symbol every structured `price` the page
 writes with a fraction uses where one CLDR convention alone reads it, a JSON number's being `.`;
@@ -201,10 +211,11 @@ writes with a fraction uses where one CLDR convention alone reads it, a JSON num
 locale's conventions are its `latn` symbols and, when its default or native CLDR numbering system is `arab` or
 `arabext`, that system's (U+066B decimal, U+066C group separator); any Unicode decimal digits read as their values
 (`١٬٢٣٤٫٥٠` in `ar-EG` is 1234.50). A group symbol is also read in the forms pages write for it: U+2019 and the ASCII
-apostrophe for each other (`1'234.50` in `de-CH`), any space separator for a space symbol (U+00A0, U+202F). The declared locales are `<html lang>`, `og:locale`, JSON-LD `inLanguage`
-(`Context.in_language`), Content-Language (RFC 9110 §8.5, its HTML pragma), the page's own `hreflang` and the request's
-locale; a tag with a territory is that CLDR locale, a tag with a language only is the language's own CLDR locale (`de`
-writes `1.234,5`), and the ccTLD narrows a language-only tag only where money reads it (the currency step 4).
+apostrophe for each other (`1'234.50` in `de-CH`), any space separator for a space symbol (U+00A0, U+202F). Of the
+page locales, a tag with a territory is that CLDR locale, a tag with a language only is the language's own CLDR locale
+(`de` writes `1.234,5`), and the ccTLD narrows a language-only tag only where money reads it (the currency step 4). A
+text range finds each bound's amount with the same structural run as money (any Unicode decimal digits, the `arab`
+separators) and holds a structured bound to money's storage bounds.
 A minus negates a money or count text only when it touches the number. A monetary range's period is read from
 `unitText`, else `unitCode`: a unit word, an interval of one unit (`1 YEAR`), an ISO 8601 duration of one unit (`P1Y`), a
 UN/CEFACT code (`ANN`) or a `type:period` phrase. Refs: §9, D-0275–D-0279, D-0302, D-0921, D-0922, D-0960, D-1184,

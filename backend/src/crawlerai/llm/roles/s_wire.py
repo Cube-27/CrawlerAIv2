@@ -2,7 +2,8 @@
 
 `SchemaDocument`'s own JSON Schema can't be a provider's output schema: its field specs nest recursively
 (`FieldSpec -> FieldSpec`), its fields are an object keyed by name (`patternProperties`, so not a closed object), and
-its optional parameters are nullable unions (`llm.schema_subset`). The wire form says the same without any of them:
+its optional parameters are nullable unions (`tests.support.schema_subset`). The wire form says the same without any
+of them:
 - fields are a list of entries, each with its `name`;
 - every parameter is present: `""` stands for a parameter the field does not have, and `item`, `fields` and `key`
   are lists, empty when the field has none (`item` holds at most one entry);

@@ -3,10 +3,10 @@ another thing than the product a page is about, whatever page it is.
 
 A thing that is the value of a relation property of another (schema.org `isRelatedTo`, `isSimilarTo`) is another thing
 than its holder, and a thing in a list (an `ItemList` and its `ListItem`s) is one of many; whatever such a thing holds
-(its Offers, their prices) is in its scope. So is a root item every one of whose URLs names another document than the
-page (RFC 3986 §3: scheme, authority and path; a query may select within the page) while another root item of its
-kind (one of their types is the other's or a subtype of it) names the page: an item described here and sold
-elsewhere, as recommendations and bundles are. A root of another kind naming the page (its WebPage, a breadcrumb)
+(its Offers, their prices) is in its scope. So is a root item every one of whose URLs names another document than
+the page (`normalize.url_key.document_key`: scheme, authority and path; a query selects within it) while another root
+item of its kind (one of their types is the other's or a subtype of it) names the page: an item described here and
+sold elsewhere, as recommendations and bundles are. A root of another kind naming the page (its WebPage, a breadcrumb)
 says nothing of which product is the page's, and where no root of its kind names the page, an item is not set apart
 by its URLs (the page's own may state only a URL the request did not use). Collection reads it
 to know the page product's stated prices (`collect.dom.product_apart`); resolution's ownership and intent apply the same
@@ -15,11 +15,10 @@ relations.
 
 from collections.abc import Iterable, Sequence
 from typing import Final
-from urllib.parse import urlsplit
 
 from crawlerai.collect.base import Entity
-from crawlerai.collect.schema_org_map import Vocabulary
-from crawlerai.normalize.url import canonical_url
+from crawlerai.collect.vocabulary import Vocabulary
+from crawlerai.normalize.url_key import DocumentKey, document_key
 
 # schema.org relation properties of a Product: a thing that is the value of one is another thing than its holder.
 RELATIONS: Final = frozenset({"isRelatedTo", "isSimilarTo"})
@@ -31,25 +30,25 @@ def other_items(entities: Sequence[Entity], vocabulary: Vocabulary, page_urls: I
     """The ids of the entities in another item's scope (module docstring)."""
     by_id = {e.id: e for e in entities}
     documents = page_documents(page_urls)
-    namers = [e for e in entities if e.parent is None and not documents.isdisjoint(map(document, _own_urls(e)))]
+    namers = [e for e in entities if e.parent is None and not documents.isdisjoint(map(document_key, _own_urls(e)))]
     return frozenset(
         e.id for e in entities if any(_another(n, vocabulary, documents, namers) for n in _chain(e, by_id))
     )
 
 
-Documents = frozenset[tuple[str, str, str]]
+Documents = frozenset[DocumentKey]
 
 
 def page_documents(page_urls: Iterable[str]) -> Documents:
-    """The documents the page's URLs name (`document`)."""
-    return frozenset(d for url in page_urls if (d := document(url)) is not None)
+    """The documents the page's URLs name (`normalize.url_key.document_key`)."""
+    return frozenset(d for url in page_urls if (d := document_key(url)) is not None)
 
 
 def leads_elsewhere(entity: Entity, documents: Documents) -> bool:
     """Whether the entity states URLs of its own (its item URLs, else every URL it holds) and none names one of the
     page's `documents`: a thing described here whose page is another."""
     urls = _own_urls(entity)
-    return bool(urls) and documents.isdisjoint(map(document, urls))
+    return bool(urls) and documents.isdisjoint(map(document_key, urls))
 
 
 def _own_urls(entity: Entity) -> tuple[str, ...]:
@@ -76,13 +75,3 @@ def _another(entity: Entity, vocabulary: Vocabulary, documents: Documents, namer
 
 def _kin(a: Entity, b: Entity, vocabulary: Vocabulary) -> bool:
     return any(vocabulary.is_a(s, t) or vocabulary.is_a(t, s) for s in a.types for t in b.types)
-
-
-def document(url: str) -> tuple[str, str, str] | None:
-    """The document a URL names: RFC 3986 §3 scheme, authority and path. The query may select within it (a variant of
-    the same page), so it is left out: two URLs differing only there are not taken for other documents."""
-    canonical = canonical_url(url, None)
-    if canonical is None:
-        return None
-    parts = urlsplit(canonical)
-    return parts.scheme, parts.netloc, parts.path

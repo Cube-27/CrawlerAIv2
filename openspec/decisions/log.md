@@ -1278,7 +1278,21 @@ archived ARCHITECTURE.md.
 - Why: a wrong price is worse than none; a price the page's own roles explain is not a disagreement.
 - Reversible: yes — `Resolver._price_winner`.
 
-### D-1785 — Site memory in its own short transactions; the worker fetches outside the task transaction
+### D-1785 — One document key, one item key, one item-URL predicate
+- Date: 2026-10-21 · Change/PR: refactor/one-url-key · Status: decided (owner rule: published URLs stay verbatim)
+- Decision: `normalize/url_key.py` `document_key` = the canonical URL's scheme, authority (netloc) and path minus one
+  trailing slash; `item_key` = that plus the query's decoded pairs as a sorted multiset. Every "same document / same
+  item" comparison (scope, derive, rows, align, links, bind, state rows) uses them; the keys compare and never publish.
+  The item-URL field is `is_item_url` (any alternative `T.url`) everywhere, records and the recurring diff included;
+  `derive.is_page_url_field` keeps "every alternative" for a detail page's own URL with the same path check.
+- Alternatives: strip every trailing slash (folds `/a//` into `/a`, against RFC 3986 §6.2.4); ignore the scheme
+  (the majority of callers, scope and identity, already kept it; RFC 3986 §3 names a resource by it); keep the
+  all-of item-URL rule (a `Product.url|Offer.url` row was keyed by its position, so recurring diffs churned).
+- Why: the copies contradicted each other (`/p/` one document in derive, two in scope); one rule, the one that the
+  canonical form and RFC 3986 give.
+- Reversible: yes — `normalize/url_key.py`.
+
+### D-1786 — Site memory in its own short transactions; the worker fetches outside the task transaction
 - Date: 2026-10-21 · Change/PR: refactor/site-memory-txn · Status: decided
 - Decision: a worker task runs in two parts: its fetch (site row, robots.txt, adapter declines, `learn_fetch`, each in
   a short transaction of its own) before the task transaction opens, then its writes in it. `learn_fetch`,

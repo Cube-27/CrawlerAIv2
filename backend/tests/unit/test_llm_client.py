@@ -21,7 +21,7 @@ from crawlerai.llm.client import (
     redacted,
     request_hash,
 )
-from crawlerai.llm.providers.fake import FakeProvider
+from tests.support.fake_llm import FakeProvider
 
 SCHEMA: dict[str, Any] = {
     "type": "object",

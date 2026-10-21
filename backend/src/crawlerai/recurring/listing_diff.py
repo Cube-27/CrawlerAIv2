@@ -5,8 +5,8 @@ A run is a records crawl that completed. A recurring crawl is the caller re-subm
 runs of one crawl are the records crawls with the same scope: start URL, globs, depth, limit, page-kind rules and
 schema. A run's listing is the URLs its frontier gave a page kind, on the host the start page is on
 (`job.start_location`): every URL of the catalog the crawl found, whether or not its page was then reached; and, for a
-listing schema, the row URLs of the records its pages stand for (`resolve.records.row_url_fields`), which no task
-fetches. The row URL fields are the schema's as the job pinned it at submit (INV-28, `job.pinned`), so an edit made
+listing schema, the row URLs of the records its pages stand for (`collect.schema_org_map.item_url_fields`), which no
+task fetches. The row URL fields are the schema's as the job pinned it at submit (INV-28, `job.pinned`), so an edit made
 while the job ran never changes which of its records' fields are read.
 
 `close_run` diffs a run as its job ends (the queue's `ending` hook), in that transaction and before the end event:
@@ -37,6 +37,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from crawlerai.collect.schema_org_map import item_url_fields
 from crawlerai.db.jobs import record_event
 from crawlerai.db.models import (
     Job,
@@ -53,7 +54,6 @@ from crawlerai.db.models import (
     UrlTask,
 )
 from crawlerai.normalize.url_key import canonicalize
-from crawlerai.resolve.records import row_url_fields
 from crawlerai.schemas.types import SchemaDef
 
 __all__ = ["GONE_AFTER_RUNS", "SITEMAPS_TIMED_OUT", "URL_GONE", "close_run"]
@@ -133,9 +133,9 @@ async def _listing(conn: AsyncConnection, job_id: JobId, host: str | None, pinne
 
 async def _row_urls(conn: AsyncConnection, job_id: JobId, schema: SchemaDef) -> list[str]:
     """The canonical row URLs of the records the job's tasks stand for, stored or found equal: the first
-    `row_url_fields` value of `schema` a record publishes; a record that publishes none names no row URL. None for a
+    `item_url_fields` value of `schema` a record publishes; a record that publishes none names no row URL. None for a
     schema that is no listing or names no row URL."""
-    fields = row_url_fields(schema)
+    fields = item_url_fields(schema)
     if schema.page_kind != "listing" or not fields:
         return []
     row_url = func.coalesce(*(Record.data[name].astext for name in fields))

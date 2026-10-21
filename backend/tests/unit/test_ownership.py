@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, Entity
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.ownership import EntityGraph
 

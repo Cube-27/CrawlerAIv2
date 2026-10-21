@@ -19,7 +19,7 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import AdapterMatch, Shape
 from crawlerai.adapters.registry import Registry
 from crawlerai.collect.base import Candidate
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId, SourceKind

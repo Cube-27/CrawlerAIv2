@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from crawlerai.collect.base import Candidate, Entity
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import PageKind, SchemaId, SourceKind
 from crawlerai.normalize.base import Context, Ok

@@ -6,7 +6,7 @@ from lxml import html
 
 from crawlerai.acquire.items import element_path, item_groups
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.segment import shown_blocks
+from crawlerai.content.segment import shows_more
 
 
 def _page(content: str) -> ParsedPage:
@@ -15,6 +15,11 @@ def _page(content: str) -> ParsedPage:
 
 def _first(page: ParsedPage) -> tuple[html.HtmlElement, ...]:
     return page.item_groups[0] if page.item_groups else ()
+
+
+def _shown(group: tuple[html.HtmlElement, ...]) -> int:
+    """How many of the group's blocks show more than their link."""
+    return sum(1 for block in group if shows_more(block))
 
 
 def _hrefs(page: ParsedPage) -> list[str | None]:
@@ -83,8 +88,8 @@ def test_script_style_and_template_text_is_not_a_run_of_visible_text() -> None:
     )
     cards = "".join(f'<li><a href="/p/{i}">Kettle {i}</a><span>{i}9.90 EUR</span></li>' for i in range(4))
 
-    assert shown_blocks(_first(_page(f"<ul>{links}</ul>"))) == 0
-    assert shown_blocks(_first(_page(f"<ul>{cards}</ul>"))) == 4
+    assert _shown(_first(_page(f"<ul>{links}</ul>"))) == 0
+    assert _shown(_first(_page(f"<ul>{cards}</ul>"))) == 4
 
 
 def test_measured_areas_rank_a_grid_of_large_cards_over_a_sidebar_of_more_links() -> None:

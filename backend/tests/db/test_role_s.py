@@ -23,12 +23,12 @@ from crawlerai.llm.client import (
     ProviderReply,
     ReplyCheck,
 )
-from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_labels import draft_labels, with_labels
 from crawlerai.llm.roles.s_schema import draft_name, draft_schema
 from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument
+from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
 

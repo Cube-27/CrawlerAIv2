@@ -21,7 +21,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
 from crawlerai.acquire.rungs import FetchPlan
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import CallEndpoint, FetchPolicy, FetchResult, RequestContext
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.active import fetch_plan
 from crawlerai.config_ir.api_recipe.model import ContextHeader
 from crawlerai.config_ir.executor import EngineExecutor
@@ -33,11 +33,11 @@ from crawlerai.config_ir.validation import Facts, HeldOutPage, Validated, Valida
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, ExtractionConfigId, JobId
-from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, document_digest
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, NetworkBody, sha256_hex
 from tests.stand_in import IMPERSONATE, handler_transport
+from tests.support.fake_llm import ScriptedClient
 
 SCHEMA_ORG = Vocabulary.read(Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld")
 SITE = "https://shop.example.test"

@@ -58,7 +58,7 @@ the extraction beside the transaction, each in a short transaction of its own, s
 fetches or extracts and the tasks of one site run side by side. Everything else the task writes, its capture, records
 and usage included, commits with its result in its transaction. (Previously: the whole task, fetch and extraction
 included, ran in its transaction, which held the site's contract row from the fetch to the commit.) Refs: §17, D-0633,
-D-0715, D-1785. Enforced by: batch, killed-browser and same-site tests; active.
+D-0715, D-1786. Enforced by: batch, killed-browser and same-site tests; active.
 #### Scenario: Killed browser
 - **WHEN** the shared browser is killed during one task
 - **THEN** only that task fails, the others complete, and the browser was restarted at most once for it
@@ -224,7 +224,7 @@ columns. Refs: owner 2026-10-21 (page delta after fresh extraction).
 
 ### Requirement: Listing diff and gone URLs
 Each `completed` records crawl SHALL mark its rule-matched URLs, and for a listing schema its row URLs
-(`resolve.records.row_url_fields`), seen in `url_state`; a URL missing from two consecutive runs of the same crawl gets
+(`collect.schema_org_map.item_url_fields`), seen in `url_state`; a URL missing from two consecutive runs of the same crawl gets
 `gone_at` and a `url_gone` event, cleared when seen again. The listing is on the host the start page is on. A partial
 run (limit hit, empty listing, unreached navigation page, sitemap time cap) counts no misses. (Previously: page URLs
 only, on the start URL's host.) Refs: §14, D-0689, D-0691, D-0692, D-0693, D-1284.

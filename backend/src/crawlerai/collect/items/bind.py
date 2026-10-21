@@ -17,8 +17,9 @@ listing's end (a "you may also like" strip): neither is a section, so none of it
 
 **Binding.** A row and a block are one item when the row names the block's item URL, and neither names another's (one
 to one, else neither binds: C7). URLs are compared as the page's links name items: without the page's session
-parameters (`normalize.url_key.session_parameters`, from the blocks' links), the path's trailing slash aside (RFC 3986
-§6.2.4), and with one URL's query parameters all among the other's (a variant or tracking parameter one spelling adds,
+parameters (`normalize.url_key.session_parameters`, from the blocks' links), by their document
+(`normalize.url_key.item_key`: one trailing slash of the path aside), and with one URL's query pairs all among the
+other's (a variant or tracking parameter one spelling adds,
 §3.4). A stated row naming no item URL binds by its visible text instead: the one unbound block whose shown text holds
 the row's name. A state or call array row (`array_row`) binds by URL to a listing row the same way.
 
@@ -44,7 +45,7 @@ and the resolution spec's evidence rules (a call's value is `network` evidence; 
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import urlsplit
 
 from lxml.html import HtmlElement
 from pydantic import JsonValue
@@ -64,7 +65,7 @@ from crawlerai.content.segment import text_path
 from crawlerai.normalize.base import Ambiguous, Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.normalize.text import compose
-from crawlerai.normalize.url_key import session_parameters, without_parameters
+from crawlerai.normalize.url_key import DocumentKey, item_key, session_parameters, without_parameters
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # The entity whose row fields a candidate fills: its owner, or the item an Offer it is in offers.
@@ -565,13 +566,13 @@ class _Index:
 
     def __init__(self, named: Iterable[tuple[str, str]], session: frozenset[str]) -> None:
         self._session = session
-        self._by_path: dict[str, list[tuple[str, Counter[tuple[str, str]]]]] = defaultdict(list)
+        self._by_path: dict[DocumentKey, list[tuple[str, Counter[tuple[str, str]]]]] = defaultdict(list)
         for entity, url in named:
             self.add(entity, url)
 
     def add(self, entity: str, url: str) -> None:
-        path, query = _parts(without_parameters(url, self._session))
-        self._by_path[path].append((entity, query))
+        if (key := item_key(without_parameters(url, self._session))) is not None:
+            self._by_path[key[0]].append((entity, Counter(key[1])))
 
     def find(self, urls: Iterable[str]) -> set[str]:
         """The entities naming one of `urls`, each URL matching one entity only."""
@@ -586,8 +587,11 @@ class _Index:
         return {entity for url in urls for entity in self._matches(url)}
 
     def _matches(self, url: str) -> set[str]:
-        path, query = _parts(without_parameters(url, self._session))
-        return {e for e, theirs in self._by_path.get(path, ()) if query <= theirs or theirs <= query}
+        key = item_key(without_parameters(url, self._session))
+        if key is None:
+            return set()
+        query = Counter(key[1])
+        return {e for e, theirs in self._by_path.get(key[0], ()) if query <= theirs or theirs <= query}
 
 
 def _one_to_one(pairs: Iterable[tuple[str, str]]) -> dict[str, str]:
@@ -599,14 +603,6 @@ def _one_to_one(pairs: Iterable[tuple[str, str]]) -> dict[str, str]:
         lefts[left] += 1
         rights[right] += 1
     return {left: right for left, right in listed if lefts[left] == 1 and rights[right] == 1}
-
-
-def _parts(url: str) -> tuple[str, Counter[tuple[str, str]]]:
-    """The URL without its query, one trailing slash of its path aside (RFC 3986 §6.2.4: `/a/` and `/a` may name one
-    resource; `/a//` is another path), and its query parameters as a multiset (a repeated parameter is two values)."""
-    split = urlsplit(url)
-    path = split.path.removesuffix("/")
-    return f"{split.scheme}://{split.netloc}{path}", Counter(parse_qsl(split.query, keep_blank_values=True))
 
 
 def _squeezed(text: object) -> str:

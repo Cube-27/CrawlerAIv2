@@ -34,7 +34,6 @@ from crawlerai.llm.client import (
     ProviderReply,
     Unconfigured,
 )
-from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_schema import draft_name
 from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve.pipeline import EngineData
@@ -49,6 +48,7 @@ from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import run_worker
 from tests.db.conftest import PRIVATE_HOST, resolve
+from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
 

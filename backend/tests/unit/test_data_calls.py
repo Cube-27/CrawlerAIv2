@@ -19,7 +19,7 @@ from crawlerai.collect.currencies import with_page_declarations
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.platform_json import PlatformJsonCollector
 from crawlerai.collect.run import page_urls
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from itertools import takewhile
 
 from crawlerai.collect.base import ARRAY_ROW, PAGE, Candidate, CollectResult, Entity
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.normalize.dispatch import equal
 from crawlerai.resolve.identity import VARIANT, identify
 from crawlerai.schemas.types import FieldSpec, FieldType

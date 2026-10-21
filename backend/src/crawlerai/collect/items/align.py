@@ -12,11 +12,11 @@ C4):
   Standard §4.6.1), leaving out the page itself in any state of its query (a pager, a sort; RFC 3986 §3.3), image files
   (RFC 6838 `image/*`: a larger copy of the block's image) and the links of the item's own lists (`_sublist_links`).
   When they lead to several: the one without a query that every other refines with one (RFC 3986 §3.4), else the one
-  the block's headings link to, else the one whose links hold most of the block's text (`one_link`). Else, at group
-  level (DEPTA alignment, `item_links`): the documents two or more blocks link to are the template's (a vendor's, an
-  author's, a category's page: an item is listed once), and the block's item is the one other document its links lead
-  to at the tag path where a quorum of the blocks link to one such document. A block without one such document is no
-  row.
+  the block's headings link to, else the one whose links hold most of the block's text (`one_link`). Else, at
+  group level (DEPTA alignment, `item_links`; both in `collect/items/links.py`): the documents two or more blocks link
+  to are the template's (a vendor's, an author's, a category's page: an item is listed once), and the block's item is
+  the one other document its links lead to at the tag path where a quorum of the blocks link to one such document. A
+  block without one such document is no row.
 - **name** (a row text field whose path names schema.org `name`, or JobPosting `title`): the shown content of the
   block's first hyperlink to its item when that is one line of text (HTML Standard §4.5.1), the block's one heading
   (HTML Standard §4.3.6, WAI-ARIA role `heading`), or the name the item's attributes state (`Stated`): an item link's
@@ -27,7 +27,7 @@ C4):
   name; so is a stated name whose shown run holds a typed value the block shows (`_View.stated`: a name holds no
   price). A name read from the item link's content runs on over the block's next whole lines while an image's text
   alternative goes on with them (`_View.continued`: a model name in the link, its variant on the line below). The
-  item's links are those leading to its URL, or, for a URL without a query, to it refined with one (`_leads_to`).
+  item's links are those leading to its URL, or, for a URL without a query, to it refined with one (`leads_to`).
   Of the three, the one whose values differ most across the blocks: text every block repeats is the template's (a
   call to action), not an item's. A block the chosen rule gives no name reads the one line at the tag path the
   rule's names have in a quorum of blocks (DEPTA alignment: a sold-out card's extra heading, a stale `alt`); a child
@@ -49,7 +49,7 @@ C4):
   candidate, which publishes nothing unless a structured row bound to the block agrees with one of them
   (`collect.items.bind`).
 
-A group one of whose blocks stands for the page itself (`_current_page`: `aria-current="page"`, or links to this very
+A group one of whose blocks stands for the page itself (`current_page`: `aria-current="page"`, or links to this very
 URL only) is the site's navigation (a category or city hub listing the page among its documents) and gives no rows. So
 is a group that aligns no typed value and more than half of whose blocks lead to documents the site's chrome links to
 outside the group (`copies_navigation`; chrome as `in_chrome` of `acquire.items` reads it: the HTML Standard's `nav`,
@@ -70,15 +70,15 @@ from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final, Literal
-from urllib.parse import urlsplit
 
 from lxml.html import HtmlElement
 from pydantic import ValidationError
 
-from crawlerai.acquire.items import MIN_ITEMS, Group, is_hyperlink
+from crawlerai.acquire.items import MIN_ITEMS, Group
 from crawlerai.collect.base import ITEM_BLOCK, Candidate, Entity
 from crawlerai.collect.dom import struck as is_struck
-from crawlerai.collect.dom_images import decorative, image_source, is_image_url
+from crawlerai.collect.dom_images import decorative, image_source
+from crawlerai.collect.items.links import current_page, is_heading, item_links, leads_to, tag_path
 from crawlerai.collect.items.spot import Spot, is_typed, reads, spots
 from crawlerai.collect.items.stated import Stated, Word, continues, same, words
 from crawlerai.collect.locator import format_locator
@@ -102,11 +102,6 @@ AMBIGUOUS_IN_BLOCK: Final = "ambiguous_in_block"
 # schema.org Thing's `name` ("The name of the item"), JobPosting's `title` ("The title of the job"), Thing's `image`.
 _NAMES: Final = frozenset({"name", "title"})
 _IMAGE: Final = "image"
-# HTML Standard §4.3.6: heading content; WAI-ARIA 1.2 role `heading`.
-_HEADINGS: Final = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
-_HEADING_ROLE: Final = "heading"
-# WAI-ARIA 1.2 `aria-current` token: "represents the current page within a set of pages".
-_CURRENT_PAGE: Final = "page"
 # The places of the rules that read one value per block.
 _LINK, _LINK_NAME, _HEADING, _STATED, _PICTURE = "@link", "@link-name", "@heading", "@stated-name", "@image"
 
@@ -178,7 +173,7 @@ def _sublist_links(groups: Sequence[Group]) -> frozenset[HtmlElement]:
     for number, group in enumerate(groups):
         if (found := _item_list(group, number, owner_of)) is not None:
             owner, _ = found
-            nested.setdefault((owner_of[owner], _tag_path(owner, group[0])), []).append(found)
+            nested.setdefault((owner_of[owner], tag_path(owner, group[0])), []).append(found)
     repeated = (lists for lists in nested.values() if len({owner for owner, _ in lists}) >= 2)
     return frozenset(anchor for lists in repeated for _, inner in lists for anchor in inner)
 
@@ -246,16 +241,16 @@ class _Aligned:
         ctx: Context,
         sublists: frozenset[HtmlElement],
     ) -> "_Aligned | None":
-        """The group's alignment; None when a block of it is the current page (`_current_page`: the group is the
+        """The group's alignment; None when a block of it is the current page (`current_page`: the group is the
         site's navigation), when fewer than a quorum of its blocks lead to one item, or fewer than
         `MIN_ITEMS` show more than their link (an image, or text in two or more runs: a pager, a tag cloud or a list of
         related searches shows a link and its label only, while a grid whose later cards a script fills still shows
         its first ones)."""
         here = canonical_url(ctx.page_url, None) if ctx.page_url is not None else None
-        if any(_current_page(block, ctx.base_url, here) for block in group):
+        if any(current_page(block, ctx.base_url, here) for block in group):
             return None
         needed = quorum(len(group))
-        links = item_links(group, ctx.base_url, here, sublists, page.text_spans)
+        links = item_links(group, ctx.base_url, here, sublists, page.text_spans, needed)
         views = [_View.of(page, block, found, ctx.base_url, sublists) for block, found in links if found is not None]
         if len(views) < needed or sum(shows_more(view.block) for view in views) < MIN_ITEMS:
             return None
@@ -503,7 +498,7 @@ class _View:
     path: str
     href: str
     link: str
-    anchors: list[HtmlElement]  # the hyperlinks leading to the item (`_leads_to`), in document order
+    anchors: list[HtmlElement]  # the hyperlinks leading to the item (`leads_to`), in document order
     elements: list[HtmlElement] = field(default_factory=list)
     paths: dict[HtmlElement, str] = field(default_factory=dict)
     places: dict[HtmlElement, str] = field(default_factory=dict)
@@ -522,7 +517,7 @@ class _View:
         sublists: frozenset[HtmlElement],
     ) -> "_View":
         href, link = found
-        anchors = [a for a in hyperlinks(block) if a not in sublists and _leads_to(a, link, base)]
+        anchors = [a for a in hyperlinks(block) if a not in sublists and leads_to(a, link, base)]
         view = cls(page, block, text_path(block), href, link, anchors)
         view.walk()
         return view
@@ -582,7 +577,7 @@ class _View:
         return next(((a, text) for a in self.anchors if a in self.paths and (text := self.line(a)) is not None), None)
 
     def _heading(self, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
-        headings = [(e, text) for e in self.elements if _is_heading(e) and (text := self.line(e)) is not None]
+        headings = [(e, text) for e in self.elements if is_heading(e) and (text := self.line(e)) is not None]
         if not headings or len({text for _, text in headings}) != 1:
             return ()
         element, text = headings[0]
@@ -793,211 +788,5 @@ def _contains(outer: HtmlElement, inner: HtmlElement) -> bool:
     return False
 
 
-def _leads_to(anchor: HtmlElement, link: str, base: str | None) -> bool:
-    """Whether the hyperlink leads to the item at `link`: to that URL, or, for a URL without a query, to it refined with
-    one (RFC 3986 §3.4: a query refines the resource the path names, such as a variant a card's picture links to while
-    its button links to the product, as `without_queries` reads a block's links)."""
-    url = canonical_url(anchor.get("href") or "", base)
-    return url is not None and (url == link or (not urlsplit(link).query and url.startswith(f"{link}?")))
-
-
-def _current_page(block: HtmlElement, base: str | None, here: str | None) -> bool:
-    """Whether the block stands for the page itself in a set of pages: a hyperlink of it is marked as the current page
-    (WAI-ARIA 1.2 `aria-current="page"`), or every one of its hyperlinks leads to this very URL, query included (a
-    same-document `#` reference aside: HTML Standard, navigating to a fragment). A listing's items never include the
-    listing, so a group holding such a block lists documents of the page's own kind: the other categories, cities or
-    sorts of a link hub, the site's navigation rather than the page's items."""
-    anchors = [a for a in hyperlinks(block) if not (a.get("href") or "").strip().startswith("#")]
-    if any((a.get("aria-current") or "").strip().lower() == _CURRENT_PAGE for a in anchors):
-        return True
-    return here is not None and bool(anchors) and all(canonical_url(a.get("href") or "", base) == here for a in anchors)
-
-
-def _heading_links(block: HtmlElement, sublists: frozenset[HtmlElement]) -> list[HtmlElement]:
-    """The block's hyperlinks inside its headings: a heading labels the content it heads (HTML Standard §4.3.6), so
-    its link is the item's, not the other documents the block links to (its seller, its employer)."""
-    headings = [element for element in block.iter() if isinstance(element.tag, str) and _is_heading(element)]
-    return [a for heading in headings for a in hyperlinks(heading) if a not in sublists]
-
-
-def _content_links(
-    block: HtmlElement, anchors: Sequence[HtmlElement], base: str | None, spans: Mapping[str, tuple[int, int]]
-) -> list[HtmlElement]:
-    """The block's hyperlinks to the one document whose hyperlinks hold more than half of the block's shown text (by
-    their spans of the cleaned text); none when no document's do."""
-    block_span = spans.get(text_path(block))
-    if block_span is None:
-        return []
-    held: Counter[str] = Counter()
-    for anchor in anchors:
-        target = canonical_url(anchor.get("href") or "", base)
-        if target is not None and (span := spans.get(text_path(anchor))) is not None:
-            held[target] += span[1] - span[0]
-    top = held.most_common(1)
-    if not top or 2 * top[0][1] <= block_span[1] - block_span[0]:
-        return []
-    return [anchor for anchor in anchors if canonical_url(anchor.get("href") or "", base) == top[0][0]]
-
-
 def _squeezed_text(text: str | None) -> str:
     return " ".join((text or "").split())
-
-
-def _is_heading(element: HtmlElement) -> bool:
-    return element.tag in _HEADINGS or _HEADING_ROLE in tokens(element.get("role"))
-
-
-def one_link(
-    block: HtmlElement,
-    base: str | None,
-    here: str | None,
-    sublists: frozenset[HtmlElement] = frozenset(),
-    spans: Mapping[str, tuple[int, int]] | None = None,
-) -> tuple[str, str] | None:
-    """The `href` and canonical URL of the one document the block's hyperlinks lead to, those of its
-    own lists (`sublists`) aside (module docstring). When they lead to several: the one without a query the others
-    refine, else the one its headings link to, else, with the cleaned text's `spans`, the one whose hyperlinks hold
-    more than half of the block's shown text (HTML Standard §4.5.1: an `a` element's content labels its link, so the
-    link the block's content labels is the block's; a logo's link to the seller labels little). None when there is no
-    such one document."""
-    anchors = [a for a in hyperlinks(block) if a not in sublists]
-    targets = link_targets(anchors, base, here)
-    if len(targets) > 1:
-        targets = without_queries(targets) or link_targets(_heading_links(block, sublists), base, here)
-    if len(targets) != 1 and spans is not None:
-        targets = link_targets(_content_links(block, anchors, base, spans), base, here)
-    if len(targets) != 1:
-        return None
-    ((url, (href, _)),) = targets.items()
-    return href, url
-
-
-def item_links(
-    group: Group,
-    base: str | None,
-    here: str | None,
-    sublists: frozenset[HtmlElement],
-    spans: Mapping[str, tuple[int, int]],
-) -> list[tuple[HtmlElement, tuple[str, str] | None]]:
-    """Each block of the group with the `href` and canonical URL of its item (`one_link`), else of the document its
-    links at the group's item link place lead to (`_group_place`); None for a block with neither."""
-    found = [one_link(block, base, here, sublists, spans) for block in group]
-    if all(found):
-        return list(zip(group, found, strict=True))
-    placed = [_placed_targets(block, base, here, sublists) for block in group]
-    shared = _shared_targets(placed)
-    own = [_without(block, shared) for block in placed]
-    pictured = [_pictured_places(block, sublists) for block in group]
-    place = _group_place(own, pictured, quorum(len(group)))
-    for i, targets in enumerate(own):
-        at = targets.get(place) if place is not None and found[i] is None else None
-        if at is not None and len(at) == 1:
-            ((url, href),) = at.items()
-            found[i] = href, url
-    return list(zip(group, found, strict=True))
-
-
-def _placed_targets(
-    block: HtmlElement, base: str | None, here: str | None, sublists: frozenset[HtmlElement]
-) -> dict[str, dict[str, str]]:
-    """The documents the block's hyperlinks lead to (`link_targets`) by the links' tag paths from the block, each with
-    its first `href`, places in document order."""
-    placed: dict[str, dict[str, str]] = {}
-    for anchor in hyperlinks(block):
-        if anchor in sublists:
-            continue
-        for url, (href, _) in link_targets((anchor,), base, here).items():
-            placed.setdefault(_tag_path(block, anchor), {}).setdefault(url, href)
-    return placed
-
-
-def _shared_targets(placed: Sequence[Mapping[str, Mapping[str, str]]]) -> frozenset[str]:
-    """The documents two or more blocks link to: the template's (a vendor's, an author's, a category's page), as an
-    item is listed once (DEPTA: what repeats across records is the template, not a record's data)."""
-    counts = Counter(url for block in placed for url in {u for targets in block.values() for u in targets})
-    return frozenset(url for url, count in counts.items() if count >= 2)
-
-
-def _without(placed: Mapping[str, Mapping[str, str]], shared: frozenset[str]) -> dict[str, dict[str, str]]:
-    """The block's placed targets without the `shared` ones, places left with none dropped."""
-    kept = {
-        place: {url: href for url, href in targets.items() if url not in shared} for place, targets in placed.items()
-    }
-    return {place: targets for place, targets in kept.items() if targets}
-
-
-def _group_place(
-    own: Sequence[Mapping[str, Mapping[str, str]]], pictured: Sequence[set[str]], needed: int
-) -> str | None:
-    """The tag path at which a quorum of the blocks link to one document no other block links to: the group's item
-    link place, where the template puts each item's link (DEPTA alignment). Of several, the one that comes first in
-    the most blocks, a place whose link holds an image before the others (HTML Standard §4.8.4: an `img` in a
-    hyperlink is the link's content; a card pictures its item, not its author or seller); None when no place does."""
-    counts = Counter(place for block in own for place, targets in block.items() if len(targets) == 1)
-    qualified = {place for place, count in counts.items() if count >= needed}
-    firsts = Counter(_first_place(block, held, qualified) for block, held in zip(own, pictured, strict=True))
-    firsts.pop(None, None)
-    return firsts.most_common(1)[0][0] if firsts else None
-
-
-def _first_place(places: Iterable[str], pictured: set[str], qualified: set[str]) -> str | None:
-    """The block's first qualified place, those whose link holds an image first."""
-    return next(
-        (place for place in sorted(places, key=lambda place: place not in pictured) if place in qualified), None
-    )
-
-
-def _pictured_places(block: HtmlElement, sublists: frozenset[HtmlElement]) -> set[str]:
-    """The tag paths of the block's hyperlinks that hold an image."""
-    return {
-        _tag_path(block, anchor)
-        for anchor in hyperlinks(block)
-        if anchor not in sublists and next(anchor.iter("img"), None) is not None
-    }
-
-
-def _tag_path(block: HtmlElement, element: HtmlElement) -> str:
-    """The tag path from `block` down to `element` (the align step's place: positions aside)."""
-    tags: list[str] = []
-    node: HtmlElement | None = element
-    while node is not None and node is not block:
-        tags.append(str(node.tag))
-        node = node.getparent()
-    return "/".join(reversed(tags))
-
-
-def link_targets(
-    anchors: Iterable[HtmlElement], base: str | None, here: str | None
-) -> dict[str, tuple[str, HtmlElement]]:
-    """The documents `anchors` lead to other than this page (in any state of its query: RFC 3986 §3.3, the path names
-    the resource, so a pager's or a sort's link is the page again) and image files, each with its first anchor's
-    `href` and that anchor."""
-    page = _resource(here) if here is not None else None
-    targets: dict[str, tuple[str, HtmlElement]] = {}
-    for anchor in anchors:
-        if not is_hyperlink(anchor):
-            continue
-        href = anchor.get("href") or ""
-        target = canonical_url(href, base)
-        if target is not None and _resource(target) != page and not is_image_url(target):
-            targets.setdefault(target, (href, anchor))
-    return targets
-
-
-def _resource(url: str) -> tuple[str, str, str]:
-    """The scheme, authority and path of a URL, the path's trailing slash aside (RFC 3986 §6.2.4)."""
-    split = urlsplit(url)
-    return split.scheme, split.netloc, split.path.rstrip("/")
-
-
-def without_queries(targets: dict[str, tuple[str, HtmlElement]]) -> dict[str, tuple[str, HtmlElement]]:
-    """The one target without a query when every other target is that document's URL with a query added: the block
-    links to one path (RFC 3986 §3.3: the path names the resource within its authority), which some of its links
-    refine with a query (§3.4), such as a variant chosen by a swatch; else empty."""
-    bare = [url for url in targets if not urlsplit(url).query]
-    if len(bare) != 1:
-        return {}
-    (one,) = bare
-    if all(url == one or url.startswith(f"{one}?") for url in targets):
-        return {one: targets[one]}
-    return {}

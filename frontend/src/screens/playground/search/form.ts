@@ -2,7 +2,6 @@ import type { SearchRequest } from "../../../api/jobs";
 import type { SchemaPageKind } from "../../../api/schemas";
 import type { PageFormat } from "../FormatSelect";
 import { NO_ERRORS, optionalNumber, requestFormats, schemaPageKindErrors } from "../pageRequest";
-import { count, flag, pageFormats, schemaId, text, type StoredRequest } from "../run/storedRequest";
 
 /** Search's options panel (D-1442): `limit`, and whether the results are scraped by a batch job (`scrape`), with the
  * Metadata in JSON view option. An empty limit (NaN) is left out, so the server's default applies. */
@@ -74,21 +73,4 @@ export function buildSearch(form: SearchFormState): SearchRequest | null {
         }
       : {}),
   } as SearchRequest;
-}
-
-/** The form that shows a stored search request (kept for completeness of Edit and re-run: a search makes no job of
- * its own, so only a scrape's batch carries one). */
-export function searchForm(request: StoredRequest): SearchFormState {
-  const { formats, metadataInJson } = pageFormats(request);
-  return {
-    query: text(request, "query"),
-    formats,
-    schemaId: schemaId(request),
-    schemaPageKind: null,
-    options: {
-      limit: count(request, "limit"),
-      scrape: flag(request, "scrape", false),
-      metadataInJson,
-    },
-  };
 }

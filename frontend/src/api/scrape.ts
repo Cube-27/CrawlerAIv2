@@ -91,7 +91,6 @@ export type ScrapeRecord = Schemas["ScrapedRecord"];
  * was used; `records` holds the page's record when they were asked for. */
 export type ScrapeResponse = Schemas["ScrapeResult"];
 
-export type ScrapeOutcome = ScrapeResponse["outcome"];
 export type FetchAttempt = Schemas["AttemptRecord"];
 /** How a page was fetched: the kept attempt, the platform adapter that read it, and every attempt. */
 export type FetchSummary = Schemas["FetchSummary"];

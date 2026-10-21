@@ -36,17 +36,13 @@ from babel.numbers import get_currency_precision, get_territory_currencies, list
 from price_parser import Price
 from pydantic import JsonValue
 
-from crawlerai.normalize import numbers, units
+from crawlerai.normalize import locales, numbers, units
 from crawlerai.normalize.base import Ambiguous, Basis, Context, Invalid, NormalizeResult, Ok, Raw, raw_key
 from crawlerai.schemas.paths import price_role
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # schema.org `price`: ASCII digits with `.` (U+002E) as the decimal point and no grouping symbols.
 _SCHEMA_ORG_PRICE = re.compile(r"\d+(?:\.\d+)?", re.ASCII)
-# persistence-storage spec D-0005: money is stored as `numeric(18,6)`, so an amount has at most 12 integer and 6
-# fraction digits.
-_MAX_AMOUNT = Decimal(10) ** 12
-_MAX_EXPONENT = -6
 # A URL path segment naming a locale, language then region (BCP 47 order, `-` or `_`): `/en-gb/`, `/fr_CA/`.
 _LOCALE_SEGMENT = re.compile(r"([a-z]{2,3})[-_]([a-z]{2})", re.ASCII | re.IGNORECASE)
 # Unicode bidi controls CLDR writes inside currency symbols (`ر.س.\u200f`): LEFT-TO-RIGHT MARK, RIGHT-TO-LEFT MARK and
@@ -193,8 +189,7 @@ def _page_currencies(ctx: Context) -> frozenset[str]:
     """The currencies the page names: its structured and declared currencies, its URL's, and the tender currencies
     of the territories of the CLDR locales its declarations leave possible (`numbers.regional_locales`), the locale a
     request asked for aside: that is the caller's, not the page's (as `_regional`)."""
-    page = ctx.model_copy(update={"request_locale": None})
-    territories = {Locale.parse(loc).territory for loc in numbers.regional_locales(page)}
+    territories = {Locale.parse(loc).territory for loc in numbers.regional_locales(ctx)}
     tender = {code for t in territories if t and (code := _tender_currency(t, ctx)) is not None}
     return frozenset({*ctx.page_currencies, *ctx.declared_currencies, *filter(None, (url_currency(ctx),)), *tender})
 
@@ -238,8 +233,7 @@ def _regional(signs: Sequence[str], ctx: Context) -> frozenset[str]:
     declares (`numbers.regional_locales`: a language alone stands for every territory it is used in, so it settles
     no shared sign) and the territory its ccTLD names."""
     territory = ctx.cctld_territory or cctld_territory(ctx.page_url)
-    # The page's own signals only: the locale a request asked for (`request_locale`) is the caller's, not the page's.
-    page = ctx.model_copy(update={"cctld_territory": territory, "request_locale": None})
+    page = ctx.model_copy(update={"cctld_territory": territory})
     locales = numbers.regional_locales(page)
     symbols = [form for sign in signs for form in _sign_forms(unicodedata.normalize("NFKC", sign))]
     return frozenset(code for loc in locales for sign in symbols for code in _locale_symbols(loc).get(sign, ()))
@@ -258,10 +252,11 @@ def _territory(code: str) -> str | None:
     label = code.upper()
     if len(label) != 2:
         return None
-    if label in _territories():
+    regions = locales.iso_3166_alpha2(reserved=True)
+    if label in regions:
         return label
     alias = get_global("territory_aliases").get(label, ())
-    return alias[0] if len(alias) == 1 and alias[0] in _territories() else None
+    return alias[0] if len(alias) == 1 and alias[0] in regions else None
 
 
 def url_currency(ctx: Context) -> str | None:
@@ -272,7 +267,7 @@ def url_currency(ctx: Context) -> str | None:
     The first URL and step that names a territory decides: several territories, one that none of the page's stated
     languages is used in, or one with no single tender currency name none (`None`), as does a generic TLD. No host
     table (C7)."""
-    languages = _page_languages(ctx)
+    languages = locales.page_languages(ctx, request=False)
     for url in dict.fromkeys(u for u in (ctx.page_url, ctx.request_url) if u):
         parts = urlsplit(url)
         host = (parts.hostname or "").rstrip(".").lower().split(".")
@@ -307,15 +302,6 @@ def _subdomain_territories(labels: Sequence[str]) -> set[str]:
 def _cctld_territories(url: str) -> set[str]:
     territory = cctld_territory(url)
     return set() if territory is None else {territory}
-
-
-def _page_languages(ctx: Context) -> frozenset[str]:
-    """The primary language subtags (BCP 47) the page states: `<html lang>`, `og:locale`, JSON-LD `inLanguage`, its
-    Content-Language and its own `hreflang`. Only a language subtag counts (RFC 5646 §2.2.1: two or three letters, not
-    `und`), so `x-default` (a hreflang fallback marker) or a private-use tag names none."""
-    tags = (ctx.html_lang, ctx.og_locale, *ctx.in_language, *ctx.content_language, *ctx.hreflang)
-    primary = (tag.replace("_", "-").split("-")[0].lower() for tag in tags if tag)
-    return frozenset(p for p in primary if 2 <= len(p) <= 3 and p.isascii() and p.isalpha() and p != "und")
 
 
 def _speaks(territory: str, languages: Set[str]) -> bool:
@@ -394,18 +380,13 @@ def _is_letter(char: str) -> bool:
 
 
 def _money(amount: Decimal, currency: _Currency) -> NormalizeResult:
-    # Trailing zeros are not precision: `12.5000000` fits six fraction digits. Counted from the digits, not by
-    # `Decimal.normalize`, which rounds to the context's 28 digits and would pass `1.999…9` (40 digits) as `2`.
-    _, digits, exponent = amount.as_tuple()
-    if isinstance(exponent, int):
-        exponent += len(digits) - len("".join(map(str, digits)).rstrip("0") or "0")
     # A JSON number is finite (RFC 8259 §6); a NaN or infinity reaching here is no amount.
-    if not isinstance(exponent, int):
+    if not amount.is_finite():
         return Invalid("unparsable_amount")
     # A price that is not positive is not a price.
     if amount <= 0:
         return Invalid("not_positive")
-    if amount >= _MAX_AMOUNT or exponent < _MAX_EXPONENT:
+    if not numbers.storable(amount):
         return Invalid("out_of_range")
     return Ok(_value(amount, currency.code), basis=currency.basis, checked=currency.written)
 
@@ -452,17 +433,6 @@ def warm() -> None:
 @cache
 def _currencies() -> frozenset[str]:
     return frozenset(list_currencies())
-
-
-def is_country(code: str) -> bool:
-    """Whether `code` is an ISO 3166-1 alpha-2 country CLDR has currency data for (`ZZ`, its unknown region, is not)."""
-    return code != "ZZ" and code in _territories()
-
-
-@cache
-def _territories() -> frozenset[str]:
-    """The CLDR territories with currency data: the ISO 3166-1 regions a ccTLD can name."""
-    return frozenset(get_global("territory_currencies"))
 
 
 @cache

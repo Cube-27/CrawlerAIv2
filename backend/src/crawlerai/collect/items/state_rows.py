@@ -33,7 +33,6 @@ import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
-from urllib.parse import urlsplit
 
 from pydantic import JsonValue
 
@@ -49,6 +48,7 @@ from crawlerai.content.segment import block_links, chrome_links, content_links
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
 from crawlerai.normalize.url import canonical_url
+from crawlerai.normalize.url_key import ItemKey, item_key
 from crawlerai.schemas.paths import named_property, parse_paths
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
@@ -106,7 +106,7 @@ def _grid_sources(page: ParsedPage, ctx: Context, url_field: str, read: list[Sta
 def _once(read: list[StateRows], url_field: str) -> list[StateRows]:
     """The arrays with each item read once, in order: a row whose item an earlier array's row names is not read again,
     and an array left with fewer than `MIN_ITEMS` rows gives none (module docstring)."""
-    seen: set[str] = set()
+    seen: set[ItemKey] = set()
     kept: list[StateRows] = []
     for found in read:
         keys = _row_keys(found, url_field)
@@ -120,10 +120,11 @@ def _once(read: list[StateRows], url_field: str) -> list[StateRows]:
     return kept
 
 
-def _row_keys(found: StateRows, url_field: str) -> dict[str, str]:
-    """Each row's item key (`_item_key`), by row entity."""
+def _row_keys(found: StateRows, url_field: str) -> dict[str, ItemKey]:
+    """Each row's item key (`normalize.url_key.item_key`), by row entity."""
     urls = ((c.entity_id, c.normalized) for c in found.candidates if c.field == url_field)
-    return {row: _item_key(url.value) for row, url in urls if isinstance(url, Ok) and isinstance(url.value, str)}
+    keys = {row: item_key(url.value) for row, url in urls if isinstance(url, Ok) and isinstance(url.value, str)}
+    return {row: key for row, key in keys.items() if key is not None}
 
 
 def _sources(reader: "_Reader", number: int, document: Document) -> Iterator[StateRows]:
@@ -246,24 +247,16 @@ class _Reader:
 
     def _fresh(
         self, made: Sequence[tuple[Entity, list[Candidate]]]
-    ) -> list[tuple[str, tuple[Entity, list[Candidate]]]]:
-        """The rows each naming their item once in the array, with its item's key (`_item_key`)."""
-        fresh: dict[str, tuple[Entity, list[Candidate]]] = {}
+    ) -> list[tuple[ItemKey, tuple[Entity, list[Candidate]]]]:
+        """The rows each naming their item once in the array, with its item's key (`normalize.url_key.item_key`)."""
+        fresh: dict[ItemKey, tuple[Entity, list[Candidate]]] = {}
         for entity, values in made:
             url = next(
                 (c.normalized.value for c in values if c.field == self.url_field and isinstance(c.normalized, Ok)), None
             )
-            if isinstance(url, str):
-                fresh.setdefault(_item_key(url), (entity, values))
+            if isinstance(url, str) and (key := item_key(url)) is not None:
+                fresh.setdefault(key, (entity, values))
         return list(fresh.items())
-
-
-def _item_key(url: str) -> str:
-    """The item a URL names, one trailing slash of its path aside (RFC 3986 §6.2.4) and its query parameters in any
-    order (§3.4)."""
-    split = urlsplit(url)
-    query = "&".join(sorted(split.query.split("&"))) if split.query else ""
-    return f"{split.scheme}://{split.netloc}{split.path.removesuffix('/')}?{query}"
 
 
 def _field_words(name: str, spec: FieldSpec) -> frozenset[str]:

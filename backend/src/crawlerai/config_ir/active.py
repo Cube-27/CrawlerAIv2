@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.rungs import FetchPlan
 from crawlerai.acquire.types import CallEndpoint, FetchPolicy, FetchResult
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.api_recipe.binding import page_data, resolve_params
 from crawlerai.config_ir.api_recipe.execute import RecipeExecutor
 from crawlerai.config_ir.api_recipe.model import PLACEHOLDER, ApiRecipe

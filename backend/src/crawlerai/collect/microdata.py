@@ -26,15 +26,8 @@ from selectolax.lexbor import LexborNode
 
 from crawlerai.collect.base import CollectResult, descends
 from crawlerai.collect.property_values import labelled_values
-from crawlerai.collect.schema_org_map import (
-    NAMESPACES,
-    Typed,
-    Value,
-    Vocabulary,
-    entity,
-    field_candidates,
-    schema_term,
-)
+from crawlerai.collect.schema_org_map import Typed, Value, entity, field_candidates
+from crawlerai.collect.vocabulary import NAMESPACES, Vocabulary, schema_term
 from crawlerai.content.page import ParsedPage
 from crawlerai.content.text import xpath_step
 from crawlerai.normalize.base import Context
