@@ -5858,6 +5858,7 @@
               {
                 "enum": [
                   "canonical_link",
+                  "final_url",
                   "absolutize"
                 ],
                 "type": "string"

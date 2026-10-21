@@ -167,23 +167,22 @@ AggregateOffer was no item's.) Refs: §10, owner #68, owner 2026-10-19; per-row 
 
 ### Requirement: Derived values (INV-07)
 Derived values SHALL fill only `missing` fields and carry `derived_by`; the only derivations are `absolutize`, then for
-a detail page's `T.url` field (`T.url` in every alternative of its path) `canonical_link` (RFC 6596), each a named
-function (`resolve/derive.py`). The final URL is where the fetch ended, which the page does not state, so no value
-derives from it: a page stating no URL of its entity publishes none. Canonical links naming more than one URL designate
-none (RFC 6596 §3: one per resource), so such a page states no canonical URL. Before derivation, when the canonical
-link and the final URL are one URL, a kept candidate of that `T.url` field naming another document (another host, port
-or path; a query or a fragment alone names none) is rejected `other_document`, and preference decides among the rest; a
-relative reference `absolutize` resolves to another document is rejected so too. (Previously: a field
+a detail page's `T.url` field (`T.url` in every alternative of its path) `canonical_link` (RFC 6596), then
+`final_url`, each a named function (`resolve/derive.py`). Canonical links naming more than one URL designate none
+(RFC 6596 §3: one per resource), so such a page states no canonical URL. Before derivation, when the canonical link and
+the final URL are one URL, a kept candidate of that `T.url` field naming another document (another host, port or path;
+a query or a fragment alone names none) is rejected `other_document`, and preference decides among the rest; a relative
+reference `absolutize` resolves to another document is rejected so too. (Previously: a field
 whose last rank was `T.url`, such as `apply_url`, took the page URL too; a structured `url` built from another id than
-the page's outranked its canonical URL; the final URL was derived after the canonical link; the first of conflicting
-canonical links named the page.) Refs: §9, §10, Appendix A #40, D-0442, D-0910, D-1625. Enforced by: resolver
+the page's outranked its canonical URL; the first of conflicting canonical links named the page.) Refs: §9, §10, Appendix A #40, D-0442, D-0910, D-1625. Enforced by: resolver
 tests; active.
 #### Scenario: No url candidate
 - **WHEN** a detail page has no url candidate and `<link rel=canonical href="https://example.com/p/1">`
 - **THEN** `url` publishes that URL with `derived_by=canonical_link`, source kind `derived`, evidence `derived`
-#### Scenario: No stated page URL
-- **WHEN** a detail page has no url candidate, and either no canonical link or two naming different URLs
-- **THEN** `url` stays `missing`; the final URL never publishes
+#### Scenario: Conflicting canonical links
+- **WHEN** a detail page's first canonical link repeats its final URL with a tracking query, its second names another
+  path, and its JSON-LD Product `url` is that path
+- **THEN** the page states no canonical URL, and `url` publishes the JSON-LD `url`, not rejected `other_document`
 #### Scenario: Structured url of another document
 - **WHEN** a detail page's canonical link and final URL are `https://example.com/p-188.html` and its JSON-LD Product
   `url` is `https://example.com/p-759.html`
@@ -235,7 +234,7 @@ published values only. Refs: §6, §13.1, D-0354. Enforced by: Pydantic models a
 A page whose required fields and groups all publish SHALL be `extracted` and complete; otherwise a caller-supplied URL
 stores the record as `partial` and a crawl-discovered URL is `no_match` with no record. Either way, a page none of whose
 required fields or group members (any field, for a schema that requires none) publishes a value read from the page,
-beyond its own address (the `canonical_link` derivation), states no entity of the schema and is
+beyond its own address (the `canonical_link` and `final_url` derivations), states no entity of the schema and is
 `no_match` with no record: a maintenance or error page served for the URL publishes prose, never what identifies the
 item. A listing's row states its item only by a row field (the needed row fields, else any row field), never by the
 page fields every row shares. (Previously: a caller-supplied URL kept such a record, even an empty one.) Refs: §10, §23, D-0513, D-0930.
@@ -244,7 +243,7 @@ page fields every row shares. (Previously: a caller-supplied URL kept such a rec
 - **THEN** the outcome is `no_match` and no record is stored
 #### Scenario: Maintenance page for a caller-supplied URL
 - **WHEN** a batch or scrape URL redirects to a maintenance page whose only published values are its prose as `description` and
-  its canonical link as `url`
+  its final URL as `url`
 - **THEN** the outcome is `no_match` and no record is stored
 
 ### Requirement: Render-bound fields

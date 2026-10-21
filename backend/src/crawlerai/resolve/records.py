@@ -25,8 +25,8 @@ from crawlerai.schemas.types import FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import sha256_hex
 
 PageOutcome = Literal["extracted", "partial", "no_match"]
-# The derivation that publishes the page's own address (RFC 6596 canonical link): any page, a maintenance or error page
-# a request was redirected to included, may state one, so it states no entity.
+# The derivations that publish the page's own address (RFC 6596 canonical link, RFC 9110 §15.4 final URL): every page,
+# a maintenance or error page a request was redirected to included, has one, so it states no entity.
 _PAGE_ADDRESS: Final = frozenset(get_args(PageUrlDerivation))
 
 

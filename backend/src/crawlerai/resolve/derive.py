@@ -65,8 +65,7 @@ def fill(
     held to the page first (`_held_to_page`).
 
     A value from the field's own candidate comes first; the page URL only when the field is the page's
-    (`is_page_url_field`), and only as the page states it: its canonical link. The final URL is where the fetch ended,
-    which the page does not state, so it never publishes.
+    (`is_page_url_field`): the canonical link, then the final URL.
     """
     own = _own_url(spec, canonical_url, ctx) if page_url_field else None
     if page_url_field:
@@ -81,7 +80,7 @@ def fill(
         preference = replace(preference, rejected=(*kept, (source, OTHER_DOCUMENT)))
         derived = None
     if derived is None and page_url_field:
-        derived = canonical_link(spec, canonical_url, ctx)
+        derived = canonical_link(spec, canonical_url, ctx) or final_url(spec, ctx)
     return preference if derived is None else replace(derived, rejected=preference.rejected)
 
 
@@ -141,7 +140,16 @@ def absolutize(spec: FieldSpec, candidates: Sequence[Candidate], resolver: Resol
 def canonical_link(spec: FieldSpec, canonical_url: str | None, ctx: Context) -> Derived | None:
     """RFC 6596: the canonical link relation names the page's preferred URL. `canonical_url` is the `<link
     rel=canonical>` href resolved against the document base URL."""
-    if canonical_url is None:
+    return _page_url(spec, canonical_url, ctx, "canonical_link")
+
+
+def final_url(spec: FieldSpec, ctx: Context) -> Derived | None:
+    """RFC 9110 §15.4: the URL the request ended at after redirects, which is the page's own: the context's page URL."""
+    return _page_url(spec, ctx.page_url, ctx, "final_url")
+
+
+def _page_url(spec: FieldSpec, url: str | None, ctx: Context, derived_by: Derivation) -> Derived | None:
+    if url is None:
         return None
-    result = normalize(canonical_url, spec, ctx)
-    return Derived(result.value, "canonical_link", None) if isinstance(result, Ok) else None
+    result = normalize(url, spec, ctx)
+    return Derived(result.value, derived_by, None) if isinstance(result, Ok) else None
