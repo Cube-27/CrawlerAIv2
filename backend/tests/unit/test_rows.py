@@ -46,6 +46,12 @@ def _group(*variants: dict[str, Any], **values: Any) -> dict[str, Any]:
 def _variants(
     *nodes: dict[str, Any], body: str = "", data: EngineData = DATA, schema: SchemaDef = SCHEMA
 ) -> FieldOutcome:
+    return _entity(*nodes, body=body, data=data, schema=schema)["variants"]
+
+
+def _entity(
+    *nodes: dict[str, Any], body: str = "", data: EngineData = DATA, schema: SchemaDef = SCHEMA
+) -> dict[str, FieldOutcome]:
     blocks = "".join(
         f'<script type="application/ld+json">{json.dumps({"@context": "https://schema.org", **n})}</script>'
         for n in nodes
@@ -70,7 +76,7 @@ def _variants(
         extract_page(CaptureBundle(manifest=manifest, body=raw, network=()), schema, None, None, data=data)
     )
     assert result.entity is not None
-    return result.entity["variants"]
+    return dict(result.entity)
 
 
 def _rows(outcome: FieldOutcome) -> list[dict[str, JsonValue]]:
@@ -132,6 +138,20 @@ def test_one_offer_each_source_states_by_another_key_is_the_item_s_one_offer() -
     outcome = _variants(by_url, by_sku)
 
     assert (outcome.status, outcome.reason) == ("missing", "single_row")
+
+
+def test_each_variant_row_publishes_its_stated_price_and_only_a_one_offer_page_publishes_the_visible_one() -> None:
+    # Variants spec: a row publishes the amount its variant states, whatever amount the page shows at the top; the
+    # visible price is the page offer's, and a page is one offer only when it states one variant.
+    shown = "<main><h1>Synthetic Widget</h1><p><span>€12.10</span></p></main>"
+
+    for prices in (("10.00", "10.00"), ("10.00", "11.00")):
+        rows = _rows(_variants(_group(*(_variant(f"W-1{i}", p) for i, p in enumerate(prices))), body=shown))
+        assert [row["price"] for row in rows] == [{"amount": p, "currency": "EUR"} for p in prices]
+
+    one = _entity(_group(_variant("W-10", "10.00")), body=shown)
+    assert (one["variants"].status, one["variants"].reason) == ("missing", "single_row")
+    assert one["price"].value == {"amount": "12.10", "currency": "EUR"}
 
 
 def test_role_c_is_never_asked_for_a_row_mapped_field() -> None:

@@ -64,7 +64,7 @@ from crawlerai.resolve.preference import (
 )
 from crawlerai.resolve.records import is_complete, record_confidence
 from crawlerai.resolve.row_keys import keyed_rows
-from crawlerai.resolve.rows import RowField, resolve_rows, shown_values
+from crawlerai.resolve.rows import RowField, resolve_rows
 from crawlerai.resolve.types import ExtractionResult, FieldSet, LLMCallRecord, Outcome, Probability
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, Scope
 from crawlerai.storage.capture_bundle import CaptureBundle
@@ -409,7 +409,7 @@ class _Page:
                 for name, spec in schema.fields.items()
             }
             if detail:
-                rows = self._rows(target, candidates, preferences)
+                rows = self._rows(target, candidates)
         return self._assess(decisions) | rows
 
     def _confident(self, name: str, spec: FieldSpec, chosen: Chosen) -> bool:
@@ -432,7 +432,7 @@ class _Page:
             min_confidence=self.data.min_confidence,
         )
 
-    def _rows(self, target: Entity, candidates: Sequence[Candidate], preferences: Mapping[str, Preference]) -> FieldSet:
+    def _rows(self, target: Entity, candidates: Sequence[Candidate]) -> FieldSet:
         """A detail target's row-mapped fields, resolved row by row (variants spec)."""
         return {
             name: resolve_rows(
@@ -447,7 +447,6 @@ class _Page:
                     min_confidence=self.data.min_confidence,
                     page_urls=self.page_urls,
                     variant_params=self.collected.variant_params,
-                    shown=shown_values(self.schema.fields, spec, preferences),
                 ),
                 candidates,
             )

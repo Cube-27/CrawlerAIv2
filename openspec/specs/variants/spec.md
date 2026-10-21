@@ -30,9 +30,9 @@ two of its entries with other SKUs are two variants whatever barcode they repeat
 target URLs are not key values; a cluster with two values of one key sub-field is dropped `row_key_conflict`, a keyless
 row `no_row_key`. Where every source (resolution spec, Atomic offers) states one row of the target and the keyed ones'
 keys do not conflict, the keyed rows are one cluster whatever key each states: a source's one offer of the item is the item's one
-offer. A published row's money sub-field equal to the one amount the target's visible price outscored publishes that
-visible price instead (the page renders that stated amount as the price it shows, as with tax included); a row stating
-another amount keeps it. Refs: §10, D-0802, D-0963, D-1181.
+offer. A published row's money sub-field publishes the amount its variant states: the visible price (resolution spec,
+"Candidate score") is the page offer's, so it publishes only at the top level, where a page stating one variant shows
+that variant's offer (`single_row`); it never replaces a row's stated amount. Refs: §10, D-0802, D-0963, D-1181.
 Enforced by: property tests (order does not change clusters; different keys never merge; linking equals the pairwise
 rule); active.
 #### Scenario: Joined variants
@@ -43,8 +43,11 @@ rule); active.
   its sku
 - **THEN** they are one row, so `variants` is `missing` (`single_row`)
 #### Scenario: A price shown with tax
-- **WHEN** both variants state 100.00 EUR and the visible price 118.00 EUR outscored that amount at top level
-- **THEN** both rows publish 118.00 EUR
+- **WHEN** both variants state 100.00 EUR and the page shows 118.00 EUR
+- **THEN** both rows publish 100.00 EUR
+#### Scenario: One offer shown with tax
+- **WHEN** the page states one variant at 100.00 EUR and shows 118.00 EUR
+- **THEN** `variants` is `missing` (`single_row`) and `price` publishes 118.00 EUR
 #### Scenario: Siblings repeating a barcode
 - **WHEN** two entries of one list share a gtin but state different skus
 - **THEN** they are two rows

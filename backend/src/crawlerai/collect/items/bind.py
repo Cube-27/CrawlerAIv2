@@ -53,7 +53,7 @@ from pydantic import JsonValue
 from crawlerai.acquire.items import MIN_ITEMS
 from crawlerai.collect import json_doc
 from crawlerai.collect.admission import Document, StateKind
-from crawlerai.collect.base import Candidate, Entity
+from crawlerai.collect.base import Candidate, Entity, is_visible_amount
 from crawlerai.collect.induce import induced
 from crawlerai.collect.items.align import AMBIGUOUS_IN_BLOCK, Block, Items, field_roles, quorum
 from crawlerai.collect.items.spot import Spot
@@ -66,7 +66,7 @@ from crawlerai.normalize.base import Ambiguous, Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
 from crawlerai.normalize.text import compose
 from crawlerai.normalize.url_key import DocumentKey, item_key, session_parameters, without_parameters
-from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from crawlerai.schemas.types import FieldType, SchemaDef
 
 # The entity whose row fields a candidate fills: its owner, or the item an Offer it is in offers.
 Holder = Callable[[Candidate], str]
@@ -484,7 +484,7 @@ class _Binder:
         values = [t.normalized.value for t in theirs if isinstance(t.normalized, Ok)]
         if isinstance(c.normalized, Ok) and any(equal(c.normalized.value, v, spec) for v in values):
             return moved
-        if by_url and _shown_amount(c, spec):
+        if by_url and is_visible_amount(c, spec):
             return moved  # a rival of the stated amount (module docstring)
         if by_url and c.field in self.url_fields and c.source_kind == "dom":
             # The stated URL respells the block's link (a slash, an added query): the page's own spelling replaces it.
@@ -505,11 +505,6 @@ class _Binder:
             if isinstance(option.normalized, Ok) and any(equal(option.normalized.value, v, spec) for v in values):
                 return (option,)
         return tuple(option for option in read if isinstance(option.normalized, Ok)) if contest else ()
-
-
-def _shown_amount(c: Candidate, spec: FieldSpec) -> bool:
-    """Whether `c` is a block's one visible amount of a money field."""
-    return spec.type == FieldType.MONEY and c.source_kind == "dom" and c.independent and isinstance(c.normalized, Ok)
 
 
 @dataclass(frozen=True, slots=True)
