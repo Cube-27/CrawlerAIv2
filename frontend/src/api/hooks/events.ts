@@ -46,6 +46,27 @@ export interface JobEvents {
   problem: Problem | null;
 }
 
+interface EventSinks {
+  refresh: ReturnType<typeof throttled>;
+  readAgain: (queryKey: readonly unknown[]) => void;
+  id: string;
+  append: (event: StreamEvent) => void;
+}
+
+/** One stored or progress event: a task's end reads the results again (throttled); progress and the end read the
+ * summary again; the end reads the results at once, cancelling a refresh still waiting that would read them again. */
+function handleEvent(event: StreamEvent, { refresh, readAgain, id, append }: EventSinks) {
+  if (TASK_ENDS.has(event.kind)) refresh.call();
+  const ended = ENDS.has(event.kind);
+  if (event.kind === PROGRESS || ended) readAgain(jobKey(id));
+  if (event.kind === PROGRESS) return;
+  append(event);
+  if (ended) {
+    refresh.cancel();
+    readAgain(jobResultsKey(id));
+  }
+}
+
 /** Follows `GET /v1/jobs/{id}/events` while mounted. A `progress` event reads the job's summary again; a task's end
  * reads its results again, at most once per `REFRESH_MS`; the end event reads its summary and results again. A reconnect reads the summary again too: the stream resumes after the last
  * event, but `progress` is not stored, so the counts come only from the summary. */
@@ -65,19 +86,18 @@ export function useJobEvents(
     const refresh = throttled(() => {
       if (!signal.aborted) void queryClient.invalidateQueries({ queryKey: jobResultsKey(id) });
     }, REFRESH_MS);
+    const readAgain = (queryKey: readonly unknown[]) =>
+      void queryClient.invalidateQueries({ queryKey });
     const onEvent = (event: StreamEvent) => {
-      if (signal.aborted) return;
-      if (TASK_ENDS.has(event.kind)) refresh.call();
-      const ended = ENDS.has(event.kind);
-      if (event.kind === PROGRESS || ended) {
-        void queryClient.invalidateQueries({ queryKey: jobKey(id) });
-      }
-      if (event.kind === PROGRESS) return;
-      setEvents((previous) => [...previous, event]);
-      if (ended) {
-        // The end reads the results at once; a refresh still waiting would read them again.
-        refresh.cancel();
-        void queryClient.invalidateQueries({ queryKey: jobResultsKey(id) });
+      if (!signal.aborted) {
+        handleEvent(event, {
+          refresh,
+          readAgain,
+          id,
+          append: (e) => {
+            setEvents((previous) => [...previous, e]);
+          },
+        });
       }
     };
     let previous: StreamState = "connecting";
