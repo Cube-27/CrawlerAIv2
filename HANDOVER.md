@@ -74,7 +74,8 @@ The e2e run is the only measure (C1, `openspec/specs/evaluation/spec.md`). The e
 page per site and page type) and its scorer live outside this repo, with the run reports; ask the owner for them.
 Never commit them, their URLs, values or captures.
 
-1. Final code, fresh database: `make db`, then `make migrate` on an empty database.
+1. Final code, fresh database: `docker compose -f infra/docker-compose.yml down -v` (drops the Postgres volume and
+   all local data), then `make db migrate`. `make migrate` alone keeps the existing data.
 2. Start the API (`make api`, or `make dev`) and one worker (`cd backend && uv run crawlerai worker`), with the
    profiles directory set and an LLM key.
 3. Send every page of the set through the API as a user would (`POST /v1/scrape` or `POST /v1/batch/scrape`, with
