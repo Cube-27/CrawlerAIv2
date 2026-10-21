@@ -7,9 +7,9 @@ which hold no document and are skipped. Any other uppercase letter, `#`, `r` or 
 next `\\n` (module, hint, error, debug and stream rows), kept as text. Any other byte starts the JSON model, which runs
 to the next `\\n`: the rows the engine reads as documents. Inside it, a string starting with `$` is no text the page
 states (`parseModelString`): `$$` is an escaped `$` and reads as one, `$D<ISO 8601>` a Date and `$n<digits>` a BigInt
-read as the text after the tag, and any other (`$L` lazy, `$@` promise, `$<hex id>` another row, `$undefined`, ...) a
-reference or special value, which reads as null: the value is elsewhere or none, and its tag is no value of the page
-(`"$1"` is no count of one).
+read as the text after the tag, `$-0` as the number zero, and any other (`$L` lazy, `$@` promise, `$<hex id>` another
+row, `$undefined`, ...) a reference or special value, which reads as null: the value is elsewhere or none, and its tag
+is no value of the page (`"$1"` is no count of one).
 
 A row that does not follow the grammar, or whose JSON or text does not decode, adds a diagnostic and the rows after it
 are still read; a length past the end of the stream ends it. A stream over `MAX_BYTES` is not read.
@@ -33,6 +33,8 @@ _TEXT = "T"
 # BigInt, whose text follows the tag.
 _ESCAPE = "$$"
 _TEXT_VALUES = ("$D", "$n")
+# `$-0`: the number negative zero, which JSON cannot write (`$NaN` and `$Infinity` are no JSON numbers: null).
+_NEGATIVE_ZERO = "$-0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,9 +130,11 @@ def _unescaped(value: JsonValue) -> JsonValue:
     return value
 
 
-def _model_string(value: str) -> str | None:
+def _model_string(value: str) -> JsonValue:
     if not value.startswith("$"):
         return value
     if value.startswith(_ESCAPE):
         return value[1:]
+    if value == _NEGATIVE_ZERO:
+        return -0.0
     return value[2:] if value.startswith(_TEXT_VALUES) else None

@@ -19,8 +19,8 @@ _TEXT = "line one\nlíne twö — €\n"
 _ROWS = (
     b'0:["$","$L1",null,{"children":"$@2"}]\n'
     b'1:I["chunk-1",["a.js"],"Price"]\n'
-    b'2:{"name":"Lamp","price":"$$19.99","currency":"EUR","desc":"$3","since":"$D2026-01-02T00:00:00.000Z"}\n'
-    + f"3:T{len(_TEXT.encode()):x},{_TEXT}".encode()
+    b'2:{"name":"Lamp","price":"$$19.99","currency":"EUR","desc":"$3",'
+    b'"since":"$D2026-01-02T00:00:00.000Z","left":"$-0"}\n' + f"3:T{len(_TEXT.encode()):x},{_TEXT}".encode()
 )
 _BINARY_ROW = b'a:{"offers":[{"price":12.5}]}\n'
 _EXPECTED: list[tuple[str, str, JsonValue]] = [
@@ -30,7 +30,14 @@ _EXPECTED: list[tuple[str, str, JsonValue]] = [
     (
         "2",
         "",
-        {"name": "Lamp", "price": "$19.99", "currency": "EUR", "desc": None, "since": "2026-01-02T00:00:00.000Z"},
+        {
+            "name": "Lamp",
+            "price": "$19.99",
+            "currency": "EUR",
+            "desc": None,
+            "since": "2026-01-02T00:00:00.000Z",
+            "left": -0.0,
+        },
     ),
     ("3", "T", _TEXT),
     ("a", "", {"offers": [{"price": 12.5}]}),

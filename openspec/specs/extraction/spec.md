@@ -150,7 +150,7 @@ whatever row they split, read as rows `<hex id>:<tag?><payload>`, where tags `T 
 `<hex byte length>,` prefix and that many bytes (`T` UTF-8 text, which may hold line ends) and every other row ends at
 a line end; untagged rows are the JSON model, decoded as above and keyed by row id in the document (addressed by the
 first pushing script). A `$`-prefixed string is read by its tag (`parseModelString`): `$$` reads as `$`, a Date
-(`$D`) and a BigInt (`$n`) as the text after the tag, and any other (a reference `$L`, `$@`, `$<id>`, or a special value
+(`$D`) and a BigInt (`$n`) as the text after the tag, `$-0` as the number zero, and any other (a reference `$L`, `$@`, `$<id>`, or a special value
 such as `$undefined`) as null, as it states no text of the page (`"$1"` is no count). (Previously: references were kept
 as written.)
 A captured `text/x-component` body is read by the same reader, one document per body. A malformed row adds a
