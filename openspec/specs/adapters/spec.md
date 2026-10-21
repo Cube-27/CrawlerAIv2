@@ -118,7 +118,7 @@ answer then replaced the fetched page as the capture, and a redirect to the `www
 Collection items SHALL read as schema.org products (variants under `hasVariant`, no default variant; see
 [variants](../variants/spec.md)), with prices only when the shop presents exactly one currency, never inferred from
 the URL (C7); a stored answer of a shop of several currencies reads without prices. The Online Store's documented
-product JSON (`/products/{handle}.js`, a data call; `adapters/platforms.py` `answer_shapes`) SHALL read as a Product
+product JSON (`/products/{handle}.js`, a data call; `adapters/platforms.py` `answer_shape`) SHALL read as a Product
 with `description` (its HTML body) as `description`, every `images[]` URL as `image` (the featured image first), and
 one Offer per `variants[]` member: `title` as `name`, `sku`, `barcode` as `gtin`, `price` in cents for every
 currency (×100), `available: false` as `OutOfStock` (`Shape.booleans`; `true`, it can be bought, names no one schema.org

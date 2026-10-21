@@ -11,7 +11,7 @@ URL), `variant_params` names the parameters, so that resolution knows a link to 
 them for a variant of the page, not a link to a thing described elsewhere (variants spec, "Own variants").
 
 Where a platform documents a public, tokenless product JSON endpoint on the shop's own host, `product_json` names the
-request for a product page and `answer_shapes` the schema.org nodes its answer holds, as the platform documents its
+request for a product page and `answer_shape` the schema.org node its answer holds, as the platform documents its
 members (adapters spec `Shape`, C2), amounts in the minor unit the documentation states; a platform whose product API
 needs a credential (SFCC's OCAPI client id, BigCommerce's storefront token, Magento's REST token) or that has none
 (Next.js) is recorded only.
@@ -45,7 +45,7 @@ __all__ = [
     "CurrencyMember",
     "PlatformSignature",
     "ProductJson",
-    "answer_shapes",
+    "answer_shape",
     "platform_of",
     "product_json",
     "signature_of",
@@ -259,18 +259,18 @@ _WOO_OFFER: Final = Shape(
 )
 
 
-def answer_shapes(platform: str, answer: JsonValue, page_url: str | None) -> tuple[Shape, ...]:
-    """The schema.org nodes the documented product JSON `answer` of `platform` holds (module docstring), for the
-    product page served at `page_url`; none for a platform with no documented product JSON, or an answer not of its
+def answer_shape(platform: str, answer: JsonValue, page_url: str | None) -> Shape | None:
+    """The schema.org node the documented product JSON `answer` of `platform` holds (module docstring), for the
+    product page served at `page_url`; None for a platform with no documented product JSON, or an answer not of its
     documented form."""
     if platform == "shopify" and isinstance(answer, dict):
         shown = _shown_variant(answer, page_url)
         if shown is None:
-            return (_SHOPIFY_PRODUCT_NODE,)
+            return _SHOPIFY_PRODUCT_NODE
         own = {"sku": ("variants", shown, "sku"), "gtin": ("variants", shown, "barcode")}
-        return (replace(_SHOPIFY_PRODUCT_NODE, properties={**_SHOPIFY_PRODUCT_NODE.properties, **own}),)
+        return replace(_SHOPIFY_PRODUCT_NODE, properties={**_SHOPIFY_PRODUCT_NODE.properties, **own})
     if platform == "woocommerce" and isinstance(answer, list) and len(answer) == 1 and isinstance(answer[0], dict):
         prices = answer[0].get("prices")
         varies = not isinstance(prices, dict) or prices.get("price_range") is not None
-        return (_WOO_PRODUCT_NODE if varies else replace(_WOO_PRODUCT_NODE, nodes={"offers": (_WOO_OFFER,)}),)
-    return ()
+        return _WOO_PRODUCT_NODE if varies else replace(_WOO_PRODUCT_NODE, nodes={"offers": (_WOO_OFFER,)})
+    return None
