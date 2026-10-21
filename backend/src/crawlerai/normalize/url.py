@@ -182,8 +182,9 @@ def largest_rendition(values: Sequence[str]) -> int:
     """The index of the largest of renditions of one file (`resource_key`), or 0 when not every one states its size.
 
     A rendition states its size in what `resource_key` sets aside: the path's dimension segments, size suffix and
-    options, and query parameters (RFC 3986 §3.4) with a decimal value that differ between the renditions (a parameter
-    equal in all, such as a version stamp, says nothing of size). Its size is the largest such number; of equal sizes
+    options, and query parameters (RFC 3986 §3.4) every rendition states with a decimal value that differ between them
+    (a parameter equal in all, such as a version stamp, says nothing of size, and one only some state, such as a scale
+    factor, compares with no other). Its size is the largest such number; of equal sizes
     the first wins. A rendition stating none may be the unresized file or a default one, so nothing is ranked then."""
     sizes = [_stated_size(value, values) for value in values]
     if not sizes or None in sizes:
@@ -199,7 +200,7 @@ def _stated_size(value: str, renditions: Sequence[str]) -> int | None:
     stated += [segment for segment in path.split("/") if _SEGMENT.fullmatch(segment)]
     query = _numeric_query(parts.query)
     others = [_numeric_query(urlsplit(r).query) for r in renditions]
-    varying = [v for name, v in query.items() if any(o.get(name) != v for o in others)]
+    varying = [v for name, v in query.items() if all(name in o for o in others) and any(o[name] != v for o in others)]
     numbers = [int(n) for text in stated for n in _NUMBER.findall(text)] + varying
     return max(numbers) if numbers else None
 

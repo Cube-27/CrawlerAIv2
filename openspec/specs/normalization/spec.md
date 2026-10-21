@@ -242,8 +242,9 @@ page's was an image.) Refs: §9, D-0287–D-0290, D-0257–D-0263, D-1022, D-120
 A list SHALL be `Ok` when at least one item normalizes, reporting dropped items; an object declines when a required
 sub-field declines (`normalize/dispatch.py`). A list of `image_url` items names each file (`resource_key`) once, at its
 first rendition's place, as its largest rendition over `https` (`url.distinct_files`): the largest number a rendition's
-size statement holds (the path's size parts, and decimal query values that differ between the renditions), ranked only
-when every rendition states one, else the first. (Previously: renditions of one file were kept as separate items.)
+size statement holds (the path's size parts, and decimal values of query parameters every rendition states that differ
+between them), ranked only when every rendition states one, else the first. A `%3F` written into the path ends the
+file's name (`same_file`). (Previously: renditions of one file were kept as separate items.)
 Refs: D-0325, D-0326, D-1665.
 #### Scenario: One image in four widths
 - **WHEN** a list states one image file at widths 100, 300, 600 and 900
