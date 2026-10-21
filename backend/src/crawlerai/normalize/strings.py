@@ -17,9 +17,10 @@ _CONTROLS = dict.fromkeys(c for c in [*range(0x20), *range(0x7F, 0xA0)] if not c
 
 
 def compose(s: str) -> str:
-    """Unicode NFC (UAX #15), so one text has one form, with the non-whitespace control characters removed. Text a
-    parser has already decoded (DOM text) takes this step without the entity decoding."""
-    return unicodedata.normalize("NFC", s).translate(_CONTROLS)
+    """The non-whitespace control characters removed, then Unicode NFC (UAX #15), so one text has one form (a removed
+    control between a letter and its combining mark leaves them composed). Text a parser has already decoded (DOM
+    text) takes this step without the entity decoding."""
+    return unicodedata.normalize("NFC", s.translate(_CONTROLS))
 
 
 def collapse(s: str) -> str:

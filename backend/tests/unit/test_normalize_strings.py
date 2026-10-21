@@ -39,7 +39,7 @@ def test_fold_words(text: str, kwargs: dict[str, bool], expected: list[str]) -> 
 
 @pytest.mark.parametrize(
     ("text", "expected"),
-    [(" a \t b\n", "a b"), ("a\x00b\u0085c", "ab c"), ("Café", "Café")],
+    [(" a \t b\n", "a b"), ("a\x00b\u0085c", "ab c"), ("Cafe\u0301", "Caf\u00e9"), ("Cafe\x00\u0301", "Caf\u00e9")],
 )
 def test_collapse_of_compose(text: str, expected: str) -> None:
     assert collapse(compose(text)) == expected
