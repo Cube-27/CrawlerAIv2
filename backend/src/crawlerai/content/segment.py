@@ -79,12 +79,6 @@ def shows_more(block: HtmlElement) -> bool:
     return holds_image(block) or _holds_several_texts(block)
 
 
-def shown_blocks(group: Group) -> int:
-    """How many of the group's blocks show more than their link (`shows_more`): a list of bare links (a tag cloud,
-    related posts, a pager) shows a link and its label only."""
-    return sum(1 for block in group if shows_more(block))
-
-
 def hyperlinks(block: HtmlElement) -> Iterator[HtmlElement]:
     """The block's hyperlinks (HTML Standard §4.6.1), the block itself first when it is one."""
     return (element for element in block.iter(*LINKS) if is_hyperlink(element))

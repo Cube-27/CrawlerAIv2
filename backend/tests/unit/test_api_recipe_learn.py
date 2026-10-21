@@ -27,10 +27,10 @@ from crawlerai.config_ir.validation import Facts, HeldOutPage, RecipeFieldReport
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import CaptureId, JobId
-from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, NetworkBody, sha256_hex
+from tests.support.fake_llm import ScriptedClient
 
 StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
 JOB = JobId(uuid7())

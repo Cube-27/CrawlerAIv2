@@ -14,8 +14,8 @@ from crawlerai.config_ir import synthesis
 from crawlerai.config_ir.api_recipe import role_d
 from crawlerai.llm.client import closed_object
 from crawlerai.llm.roles import c_extract, s_schema
-from crawlerai.llm.schema_subset import SUBSET_FILES, SchemaSubset, violations
 from crawlerai.schemas.types import NAME_PATTERN
+from tests.support.schema_subset import SUBSET_FILES, SchemaSubset, violations
 
 _DATA = Path(__file__).parents[2] / "data"
 SUBSETS = {

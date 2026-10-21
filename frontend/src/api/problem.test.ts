@@ -1,23 +1,23 @@
 import { describe, expect, it } from "vite-plus/test";
-import { readProblem } from "./problem";
+import { problemOf } from "./problem";
 
-function problemResponse(body: unknown, contentType = "application/problem+json"): Response {
-  return new Response(JSON.stringify(body), {
+function problemResponse(contentType = "application/problem+json"): Response {
+  return new Response(null, {
     status: 401,
     headers: { "content-type": contentType },
   });
 }
 
-describe("readProblem", () => {
-  it("reads title and detail from an RFC 9457 body", async () => {
-    const response = problemResponse({
+describe("problemOf", () => {
+  it("reads title and detail from an RFC 9457 body", () => {
+    const body = {
       type: "unauthorized",
       title: "Unauthorized",
       status: 401,
       detail: "The API key is revoked.",
-    });
+    };
 
-    expect(await readProblem(response)).toEqual({
+    expect(problemOf(problemResponse(), body)).toEqual({
       title: "Unauthorized",
       detail: "The API key is revoked.",
       errors: [],
@@ -25,15 +25,15 @@ describe("readProblem", () => {
     });
   });
 
-  it("reads the per-field errors and skips malformed entries", async () => {
-    const response = problemResponse({
+  it("reads the per-field errors and skips malformed entries", () => {
+    const body = {
       type: "validation",
       title: "Invalid request",
       status: 422,
       errors: [{ field: "url", reason: "not an absolute URL" }, { field: 3 }, "page_kind"],
-    });
+    };
 
-    expect(await readProblem(response)).toEqual({
+    expect(problemOf(problemResponse(), body)).toEqual({
       title: "Invalid request",
       detail: null,
       errors: [{ field: "url", reason: "not an absolute URL" }],
@@ -41,9 +41,9 @@ describe("readProblem", () => {
     });
   });
 
-  it("returns null for a body that is not a problem", async () => {
-    expect(await readProblem(problemResponse({ detail: "x" }, "application/json"))).toBeNull();
-    expect(await readProblem(problemResponse({ detail: "no title" }))).toBeNull();
-    expect(await readProblem(new Response("not json", { status: 401 }))).toBeNull();
+  it("returns null for a body that is not a problem", () => {
+    expect(problemOf(problemResponse("application/json"), { title: "x" })).toBeNull();
+    expect(problemOf(problemResponse(), { detail: "no title" })).toBeNull();
+    expect(problemOf(problemResponse(), null)).toBeNull();
   });
 });

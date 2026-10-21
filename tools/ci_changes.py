@@ -15,9 +15,10 @@ WORKFLOW = ".github/workflows/ci.yml"
 
 # The path prefixes each gated job reads. Directory prefixes end in "/".
 JOB_INPUTS: dict[str, tuple[str, ...]] = {
-    # Lint, types, migrations and tests of backend/; complexipy also covers ../tools; the job runs
-    # infra/postgres/init.sql; `make` targets live in the Makefile.
-    "backend": ("backend/", "tools/", "infra/", "Makefile", WORKFLOW),
+    # Migrations and tests of backend/; the job runs infra/postgres/init.sql.
+    "backend": ("backend/", "infra/", WORKFLOW),
+    # Lint, types, import contracts and complexity of backend/; complexipy also covers ../tools.
+    "backend_static": ("backend/", "tools/", WORKFLOW),
     # The frontend checks.
     "frontend": ("frontend/", "tools/theme_only_check.py", WORKFLOW),
     # The API client freshness check: regenerates the client from backend/ with the frontend's generator, through the

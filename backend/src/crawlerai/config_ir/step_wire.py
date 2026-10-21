@@ -2,8 +2,8 @@
 
 An IR step is an object with one selector key and optional parameters, and a post op is an object keyed by its op
 (`model.Step`, `model.PostOp`); neither is a closed object with every property required, which a provider's strict
-output needs (`llm.schema_subset`: no optional properties, every object closed). The wire form says the same with
-fixed keys:
+output needs (`tests.support.schema_subset`: no optional properties, every object closed). The wire form says the
+same with fixed keys:
 - a step is `{selector, expression, when_type, source, post}`, `selector` naming the IR's selector key;
 - a post op is `{op, pattern, repl}`, `op` being `trim`, `absolutize_url`, `regex_replace` or a field type;
 - `""` stands for a parameter the step or op does not have.

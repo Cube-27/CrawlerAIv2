@@ -47,8 +47,15 @@ from crawlerai.db.queue import complete_task, insert_claimed
 from crawlerai.llm.client import LLMRequest, LLMResponse, ReplyCheck, request_hash
 from crawlerai.normalize.base import Ok
 from crawlerai.recurring.versions import store_records
-from crawlerai.resolve.pipeline import EngineData, GapReply, GapRequest, ListingGapReply, ListingGapRequest
-from crawlerai.resolve.task import Stored, extract_task
+from crawlerai.resolve.pipeline import (
+    EngineData,
+    GapReply,
+    GapRequest,
+    ListingGapReply,
+    ListingGapRequest,
+    extract_page,
+)
+from crawlerai.resolve.task import Stored, store_extraction
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services import configs as configs_service
@@ -190,17 +197,18 @@ class LearnSite:
             capture_id = await store_capture(conn, self.store, fetched, self.site_id)
             task = await insert_claimed(conn, job_id, url, url, "detail", "test-worker")
             config = await active_config(conn, self.site_id, self.schema, self.data.vocabulary)
-            stored = await extract_task(
+            result = await extract_page(
+                fetched.bundle, self.schema, None if config is None else config.executor, role_c, data=self.data
+            )
+            stored = await store_extraction(
                 conn,
                 task,
+                result,
                 capture_id=capture_id,
                 site_id=self.site_id,
-                bundle=fetched.bundle,
                 schema=self.schema,
-                data=self.data,
-                role_c=role_c,
-                config=config,
                 caller_supplied=True,
+                config=config,
                 write_records=store_records,
             )
             assert stored.outcome != "failed"

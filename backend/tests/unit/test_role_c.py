@@ -25,7 +25,6 @@ from crawlerai.llm.client import (
     ProviderUnavailable,
     request_hash,
 )
-from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.llm.roles.c_extract import (
     Filled,
     extract_detail,
@@ -34,6 +33,7 @@ from crawlerai.llm.roles.c_extract import (
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.resolve.pipeline import GapReply, GapRequest, ListingGapReply, ListingGapRequest
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from tests.support.fake_llm import ScriptedClient
 
 JOB = JobId(uuid7())
 PAGE_URL = "https://shop.example.test/p/1"

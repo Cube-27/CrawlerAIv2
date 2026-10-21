@@ -28,9 +28,9 @@ from crawlerai.eval.store import (
     Labels,
     LabelsChanged,
 )
-from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.schemas.types import FieldSpec, FieldType
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
+from tests.support.fake_llm import ScriptedClient
 
 PAGE_URL = "https://store.test/items/1"
 FINAL_URL = "https://store.test/items/1?ref=a"

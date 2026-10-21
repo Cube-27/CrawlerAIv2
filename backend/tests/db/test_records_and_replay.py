@@ -29,8 +29,8 @@ from crawlerai.db.models import (
 )
 from crawlerai.db.queue import insert_claimed
 from crawlerai.recurring.versions import store_records
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.resolve.task import extract_task
+from crawlerai.resolve.pipeline import EngineData, extract_page
+from crawlerai.resolve.task import store_extraction
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
 from crawlerai.services import captures, records
@@ -111,16 +111,14 @@ class World:
             if not extract:
                 return Made(job_id, capture_id, None)
             task = await insert_claimed(conn, job_id, url, url, "detail", "test-worker")
-            stored = await extract_task(
+            result = await extract_page(fetched.bundle, self.schema, None, None, data=self.data)
+            stored = await store_extraction(
                 conn,
                 task,
+                result,
                 capture_id=capture_id,
                 site_id=self.site_id,
-                bundle=fetched.bundle,
                 schema=self.schema,
-                data=self.data,
-                role_c=None,
-                config=None,
                 caller_supplied=True,
                 write_records=store_records,
             )
