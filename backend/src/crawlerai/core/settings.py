@@ -58,7 +58,8 @@ class AcquireSettings(_Base):
     # registered adapter runs unless named here (owner, 2026-10-16).
     disabled_adapters: Annotated[tuple[str, ...], NoDecode, BeforeValidator(_comma_separated)] = ()
     # `CRAWLERAI_BROWSER_PROFILES`: the directory the browser rung keeps its site profiles in, across jobs and processes
-    # (`acquire.browser_profiles`); deleting it resets them. Unset: each profile lasts only while its browser is open.
+    # (`acquire.browser_profiles`); deleting it resets them. Each profile holds its site's cookies in plaintext, so
+    # the directory is the operator's to protect. Unset: each profile lasts only while its browser is open.
     browser_profiles: Path | None = None
 
 
@@ -119,6 +120,6 @@ class LLMSettings(_Base):
 class Settings(DatabaseSettings, AcquireSettings, ApiSettings, LLMSettings, SearchSettings):
     object_store: ObjectStoreUrl
     # `CRAWLERAI_COOKIE_KEY`, from the secret store: the Fernet key (urlsafe base64 of 32 bytes) the stored cookie
-    # state is encrypted with (`acquire.cookie_store`). Without it no cookie state is stored.
+    # state of temporary browser profiles is encrypted with (`acquire.cookie_store`). Without it none is stored.
     cookie_key: SecretStr | None = None
     log_redact_urls: bool = False

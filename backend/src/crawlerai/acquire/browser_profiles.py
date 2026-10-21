@@ -10,6 +10,10 @@ incognito context, which pages can tell apart (a storage quota a fraction of a p
   process ends. A profile another process or fetch holds, a fetch with the caller's own cookies (which are no site's
   state), and every fetch when no directory is configured, get a fresh profile in a temporary directory, deleted when
   it closes.
+- A kept profile is the browser's cookie store for its site (owner #76): its cookies, challenge and clearance cookies
+  included, are Chromium's own, in plaintext under the operator-managed `CRAWLERAI_BROWSER_PROFILES`, and nothing
+  else writes them. Only a temporary profile of a site starts with the site's live session or encrypted stored cookie
+  state, and only its `ok` writes that state (`acquire.session`).
 - Before each launch the profile's preferences get Chromium's WebRTC IP handling policy `disable_non_proxied_udp`
   (Chromium `prefs::kWebRTCIPHandlingPolicy`, with non-proxied UDP and multiple routes off), so WebRTC sends no UDP
   around the SSRF guard's SOCKS proxy (INV-16). Chromium 153 ignores the `--force-webrtc-ip-handling-policy` switch:
@@ -17,8 +21,8 @@ incognito context, which pages can tell apart (a storage quota a fraction of a p
 - Before each launch of a kept profile its HTTP cache and service workers (with their caches) are deleted, so no
   response a page captures is one an earlier job's visit left: a later page reads what the site serves now. Cookies
   and storage stay.
-- A profile whose page was refused (`blocked`) is deleted (`discard_profile`), as a refusal drops the site's stored
-  cookie state (`acquire.session`): its cookies and storage carry the refusal.
+- A profile whose page was refused (`blocked`) is deleted (`discard_profile`), and the refusal drops the site's stored
+  cookie state (`acquire.session`): their cookies and storage carry the refusal.
 """
 
 import hashlib

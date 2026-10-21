@@ -410,8 +410,8 @@ def _documented(result: FetchResult) -> ProductJson | None:
 
 async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: FetchResult) -> FetchResult:
     """The browser attempt after the HTTP `result`. When HTTP was refused (`shell` or `blocked`) and the process keeps
-    site sessions, the browser's `ok` opens the site's session with the context's cookies, challenge and clearance
-    cookies left out (INV-29's exception), and its attempt says so (`site_session`)."""
+    site sessions, the browser's `ok` opens the site's session with the context's cookies (INV-29's exception), and
+    its attempt says so (`site_session`)."""
     sessions, exporting = rungs.sessions, rungs.exporting
     # A fetch with the caller's own context opens no session (D-1432): its cookies are the caller's, not the site's.
     handoff = policy.context is None and result.block_class in _BROWSER_EVIDENCE

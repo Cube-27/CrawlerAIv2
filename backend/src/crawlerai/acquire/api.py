@@ -105,7 +105,7 @@ async def fetch_json(
     # A fetch with the caller's own context takes no site session (D-1432).
     if policy.context is not None:
         sessions = None
-    session = None if sessions is None else await sessions.take(request.page_url, request.url, policy.proxy_pool)
+    session = None if sessions is None else sessions.take(request.page_url, request.url, policy.proxy_pool)
     sent = await send(
         request.url,
         _first_hop(request),
@@ -143,7 +143,7 @@ async def fetch_json(
     )
     report_proxy(sent.pool, sent.proxy, result)
     if sessions is not None:
-        await sessions.settle(sent.session, result)
+        sessions.settle(sent.session, result)
     return result
 
 
