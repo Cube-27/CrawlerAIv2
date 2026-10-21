@@ -89,6 +89,7 @@ from crawlerai.content.segment import chrome_links, hyperlinks, shows_more, text
 from crawlerai.content.text import completed, hidden, xpath_step
 from crawlerai.normalize.base import Ambiguous, Context, raw_key
 from crawlerai.normalize.dispatch import equality_key
+from crawlerai.normalize.strings import collapse
 from crawlerai.normalize.url import canonical_url, is_absolute
 from crawlerai.schemas.paths import named_property, parse_paths
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaContent
@@ -552,7 +553,7 @@ class _View:
         if span is None:
             return None
         text = self.page.cleaned_text.text[span[0] : span[1]]
-        return None if "\n" in text else " ".join(text.split()) or None
+        return None if "\n" in text else collapse(text) or None
 
     def read(self, role: Role, spec: FieldSpec, ctx: Context) -> tuple[Spot, ...]:
         """The field's values in the block, at every place its rule reads."""
@@ -687,7 +688,7 @@ class _View:
         for child in element.iterdescendants():
             span = self.page.text_spans.get(self.paths[child]) if child in self.paths else None
             if span is not None:
-                text = " ".join(self.page.cleaned_text.text[span[0] : span[1]].split())
+                text = collapse(self.page.cleaned_text.text[span[0] : span[1]])
                 found.setdefault(self.places[child][depth:], []).append((text, *span))
         return {rel: texts[0] for rel, texts in found.items() if len(texts) == 1 and texts[0][0]}
 
@@ -702,7 +703,7 @@ class _View:
             parts.append(text[at : max(at, start)])
             at = max(at, end)
         parts.append(text[at : span[1]])
-        return " ".join(" ".join(parts).split())
+        return collapse(" ".join(parts))
 
     def _labelled_by(self, anchor: HtmlElement) -> str | None:
         """WAI-ARIA `aria-labelledby`: the text of the elements its ID references name, joined with spaces."""
@@ -710,7 +711,7 @@ class _View:
         texts: list[str] = []
         for ref in tokens(anchor.get("aria-labelledby")):
             element = root.get_element_by_id(ref, None)
-            text = None if element is None else " ".join(element.text_content().split())
+            text = None if element is None else collapse(element.text_content())
             texts.extend((text,) if text else ())
         return " ".join(texts) or None
 
@@ -743,10 +744,10 @@ class _View:
             texts.append((line, self.places[element]))
         if len(element):
             text = self.page.cleaned_text.text
-            own = (" ".join(text[start:end].split()) for start, end in self.page.own_runs.get(path, ()))
+            own = (collapse(text[start:end]) for start, end in self.page.own_runs.get(path, ()))
             # The runs are keyed by the selectolax tree's paths; a run is this element's only if its lxml text holds it
             # (the two parsers repair malformed markup differently).
-            written = " ".join(" ".join(t for t in (element.text, *(c.tail for c in element)) if t).split())
+            written = collapse(" ".join(t for t in (element.text, *(c.tail for c in element)) if t))
             texts.extend((run, f"{self.places[element]}/text()") for run in own if run and run in written)
         return texts
 
@@ -789,4 +790,4 @@ def _contains(outer: HtmlElement, inner: HtmlElement) -> bool:
 
 
 def _squeezed_text(text: str | None) -> str:
-    return " ".join((text or "").split())
+    return collapse(text or "")

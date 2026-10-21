@@ -17,6 +17,7 @@ from selectolax.lexbor import LexborNode
 from crawlerai.content.dom import document_base_url, tokens
 from crawlerai.content.page import ParsedPage
 from crawlerai.core import json_text
+from crawlerai.normalize.strings import collapse
 from crawlerai.normalize.url import canonical_url
 
 # HTML Living Standard §4.6.7, link types: the types of `link` that name another URL of the same document or of its
@@ -39,7 +40,7 @@ def anchor_texts(page: ParsedPage, final_url: str) -> dict[str, str]:
         if node.tag != "a":
             continue
         parts = (node.text(separator=" "), node.attributes.get("title"), node.attributes.get("aria-label"))
-        described.setdefault(url, []).extend(" ".join((part or "").split()) for part in parts)
+        described.setdefault(url, []).extend(collapse(part or "") for part in parts)
     return {url: " ".join(filter(None, parts)) for url, parts in described.items()}
 
 

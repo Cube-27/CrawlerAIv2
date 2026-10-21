@@ -2,20 +2,20 @@
 `og:site_name` ("the name of the overall site"), each separator run of it, and the label of the page host's
 registrable domain (Public Suffix List, "Formal Algorithm": the public suffix plus one label).
 
-Names compare folded (`fold`): letters and digits only, after NFKC and Unicode default case folding, so that case,
-spacing and punctuation do not tell two writings of one name apart. A title separator is one punctuation or symbol
-character (Unicode general categories P* and S*) standing alone between white space, as in "Item | Site" or
-"Item - Site"; a hyphen or colon written against a word is part of the text.
+Names compare folded (`strings.fold`): letters, marks and digits only, after NFKC and Unicode default case folding,
+so that case, spacing and punctuation do not tell two writings of one name apart. A title separator is one
+punctuation or symbol character (Unicode general categories P* and S*) standing alone between white space, as in
+"Item | Site" or "Item - Site"; a hyphen or colon written against a word is part of the text.
 """
 
 import ipaddress
 import re
-import unicodedata
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from crawlerai.acquire.public_suffix import default_suffixes
+from crawlerai.normalize.strings import fold
 
 _SEPARATOR = re.compile(r"(?<!\s)\s+[^\w\s]\s+")
 _WORD = re.compile(r"\w+")
@@ -57,10 +57,6 @@ class SiteNames:
             return True
         words = _WORD.findall(segment)
         return self.host is not None and any(fold("".join(words[:k])) == self.host for k in range(1, len(words) + 1))
-
-
-def fold(text: str) -> str:
-    return "".join(c for c in unicodedata.normalize("NFKC", text).casefold() if c.isalnum())
 
 
 def _runs(name: str) -> Iterator[str]:

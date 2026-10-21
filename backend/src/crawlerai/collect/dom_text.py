@@ -54,6 +54,7 @@ from crawlerai.collect.schema_org_map import candidate
 from crawlerai.content.dom import tokens
 from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.normalize.base import Context, Ok
+from crawlerai.normalize.strings import collapse, is_cut_of, solid
 from crawlerai.schemas.types import FieldType, SchemaDef
 
 # HTML Standard §4.3 (sectioning content tangential to the main content) and §4.11.4 (`dialog`): not the page's prose.
@@ -94,7 +95,6 @@ _ITEM_SCOPES = frozenset({"itemscope", "typeof"})  # the attributes that open an
 _ELEMENT_VALUED = "microdata"  # the collector of microdata and RDFa: a value states the element its locator names
 _OPEN_GRAPH = "og"  # the protocol defines og:description as a one-to-two sentence summary
 _DESCRIPTION = "description"  # schema.org `Thing.description`
-_ELLIPSES = ("…", "...")  # Unicode U+2026, and its NFKC form: how a cut text ends
 
 
 class _Block(NamedTuple):
@@ -135,7 +135,7 @@ class _Blocks:
             span = spans.get(node_xpath(node))
             raw = text[span[0] : span[1]].strip() if span else ""
             if raw:
-                self.blocks[node.mem_id] = _untitled(_Block(node, raw, " ".join(raw.split())))
+                self.blocks[node.mem_id] = _untitled(_Block(node, raw, collapse(raw)))
 
     def prose(self, node: LexborNode) -> _Block | None:
         return self.blocks.get(node.mem_id)
@@ -165,7 +165,7 @@ def _heading(node: LexborNode) -> bool:
 
 def _stated(candidate_: Candidate) -> str | None:
     value = candidate_.normalized.value if isinstance(candidate_.normalized, Ok) else None
-    return " ".join(value.split()) if isinstance(value, str) else None
+    return collapse(value) if isinstance(value, str) else None
 
 
 class DescriptionCollector:
@@ -210,7 +210,7 @@ def _described(
 
 
 def _goes_on(block: _Block, other: _Block) -> bool:
-    return len(block.form) > len(other.form) and _solid(block.form).startswith(_solid(other.form))
+    return len(block.form) > len(other.form) and solid(block.form).startswith(solid(other.form))
 
 
 def _continued(blocks: _Blocks, stated: Candidate) -> _Block | None:
@@ -221,7 +221,7 @@ def _continued(blocks: _Blocks, stated: Candidate) -> _Block | None:
     if element is None or start is None:
         return None
     raws = [start.raw, *_going_on(blocks, element)]
-    return _Block(element, "\n".join(raws), " ".join(" ".join(r.split()) for r in raws)) if len(raws) > 1 else None
+    return _Block(element, "\n".join(raws), " ".join(collapse(r) for r in raws)) if len(raws) > 1 else None
 
 
 def _going_on(blocks: _Blocks, element: LexborNode) -> Iterator[str]:
@@ -282,7 +282,7 @@ def _listed(blocks: _Blocks, labels: dict[tuple[str, ...], list[str]], name: str
         listed
         for heading in blocks.region.css(_HEADING)
         if node_xpath(heading) in blocks.page.text_spans
-        and words(" ".join(heading.text(deep=True, separator=" ").split())) in named
+        and words(collapse(heading.text(deep=True, separator=" "))) in named
         and (listed := _section_items(blocks, heading)) is not None
     ]
     return found[0] if found and all(items == found[0][1] for _, items in found) else None
@@ -354,38 +354,20 @@ def _extending(blocks: _Blocks, stated: Sequence[tuple[str, str]]) -> _Block | N
     is that value in full, and nothing beyond it. White space is not compared: a meta description joins the paragraphs
     a page's blocks separate."""
     solids = _full(stated)
-    cuts = [(cut, _solid(form) != cut) for _, form in stated if (cut := _uncut(_solid(form)))]
-    matching = {b.node.mem_id: b for b in blocks.blocks.values() if any(_begins(b.form, *cut) for cut in cuts)}
-    equal = [b for b in matching.values() if _solid(b.form) in solids]
+    matching = {
+        b.node.mem_id: b
+        for b in blocks.blocks.values()
+        if any(is_cut_of(form, b.form, word_boundary=True) for _, form in stated)
+    }
+    equal = [b for b in matching.values() if solid(b.form) in solids]
     outer = [b for b in matching.values() if not any(a.mem_id in matching for a in _ancestors(b.node, blocks.region))]
     return _only(equal) or _only(outer)
 
 
 def _full(stated: Sequence[tuple[str, str]]) -> list[str]:
     """The stated values, white space aside, that are no summary: neither Open Graph's nor one stating its text."""
-    summaries = {_solid(form) for kind, form in stated if kind == _OPEN_GRAPH}
-    return [solid for _, form in stated if (solid := _solid(form)) not in summaries]
-
-
-def _uncut(solid: str) -> str:
-    """A text without the ellipsis that ends it."""
-    return solid.removesuffix(_ELLIPSES[0]) if solid.endswith(_ELLIPSES[0]) else solid.removesuffix(_ELLIPSES[1])
-
-
-def _begins(form: str, cut: str, ellipsis: bool) -> bool:
-    """Whether the collapsed `form` begins with `cut`, white space aside, without splitting a word (UAX #29
-    approximated by letters and digits) unless an ellipsis marked the cut."""
-    if not _solid(form).startswith(cut):
-        return False
-    left, end = len(cut), 0
-    while left:
-        left -= not form[end].isspace()
-        end += 1
-    return ellipsis or not (end < len(form) and cut[-1].isalnum() and form[end].isalnum())
-
-
-def _solid(text: str) -> str:
-    return "".join(text.split())
+    summaries = {solid(form) for kind, form in stated if kind == _OPEN_GRAPH}
+    return [whole for _, form in stated if (whole := solid(form)) not in summaries]
 
 
 def _only(found: Sequence[_Block]) -> _Block | None:
@@ -401,7 +383,7 @@ def _labelled(blocks: _Blocks, labels: dict[tuple[str, ...], list[str]], name: s
     named = [form for form, fields in labels.items() if name in fields]
     found: list[_Block] = []
     for heading in region.css(_HEADING):
-        if words(" ".join(heading.text(deep=True, separator=" ").split())) in named:
+        if words(collapse(heading.text(deep=True, separator=" "))) in named:
             found.extend(_section(blocks, heading))
     for element in region.css("[aria-label],[aria-labelledby]"):
         found.extend(_labelled_by(blocks, element, named))
@@ -470,7 +452,7 @@ def _labelled_by(blocks: _Blocks, element: LexborNode, named: list[tuple[str, ..
     block = blocks.prose(element)
     if block is None or label is None or words(label) not in named:
         return []
-    lead = " ".join(label.split())
+    lead = collapse(label)
     form = block.form[len(lead) :].strip() if block.form.startswith(lead) else block.form
     if not form:
         return []
@@ -488,7 +470,7 @@ def _label(blocks: _Blocks, element: LexborNode) -> str | None:
         for ident in (element.attributes.get("aria-labelledby") or "").split()
         if '"' not in ident
     ]
-    texts = [" ".join(t.text(deep=True, separator=" ").split()) for t in targets if t is not None]
+    texts = [collapse(t.text(deep=True, separator=" ")) for t in targets if t is not None]
     return " ".join(texts) or None
 
 
@@ -504,14 +486,14 @@ def _largest(blocks: _Blocks) -> _Block | None:
 
 def _linked(block: _Block) -> bool:
     """Whether most of the block's text is link text: a list of links is navigation or related items, not prose."""
-    links = sum(len(" ".join(a.text(deep=True, separator=" ").split())) for a in block.node.css("a[href]"))
+    links = sum(len(collapse(a.text(deep=True, separator=" "))) for a in block.node.css("a[href]"))
     return 2 * links > len(block.form)
 
 
 def _untitled(block: _Block) -> _Block:
     heading = block.node.css_first(_HEADING)
     lines = block.raw.split("\n")
-    if heading is None or " ".join(lines[0].split()) != " ".join(heading.text(deep=True, separator=" ").split()):
+    if heading is None or collapse(lines[0]) != collapse(heading.text(deep=True, separator=" ")):
         return block
     raw = "\n".join(lines[1:]).strip()
-    return _Block(block.node, raw, " ".join(raw.split()))
+    return _Block(block.node, raw, collapse(raw))

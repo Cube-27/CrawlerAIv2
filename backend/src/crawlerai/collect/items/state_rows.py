@@ -47,6 +47,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.content.segment import block_links, chrome_links, content_links
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
+from crawlerai.normalize.strings import fold
 from crawlerai.normalize.url import canonical_url
 from crawlerai.normalize.url_key import ItemKey, item_key
 from crawlerai.schemas.paths import named_property, parse_paths
@@ -55,7 +56,6 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 Scalar = str | int | float
 _KIND: Final = "js_state"
 # A member name's letters and digits: `product_url`, `productUrl` and `ProductURL` name one thing.
-_SEPARATORS = re.compile(r"[\W_]+")
 _FIRST_MEMBER = re.compile(r"\['([^'\\]+)'\]")
 
 
@@ -216,7 +216,7 @@ class _Reader:
 
     def _named(self, name: str, path: str) -> bool:
         first = _FIRST_MEMBER.match(path, len(json_doc.ROOT))
-        return first is not None and _word(first.group(1)) in self._words[name]
+        return first is not None and fold(first.group(1)) in self._words[name]
 
     def _row(
         self,
@@ -262,8 +262,4 @@ class _Reader:
 def _field_words(name: str, spec: FieldSpec) -> frozenset[str]:
     """The words naming a field: its own name and the schema.org properties its path reaches."""
     properties = [named_property(path) for path in parse_paths(spec.schema_org)] if spec.schema_org else []
-    return frozenset(_word(word) for word in (name, *properties))
-
-
-def _word(name: str) -> str:
-    return _SEPARATORS.sub("", name).casefold()
+    return frozenset(fold(word) for word in (name, *properties))

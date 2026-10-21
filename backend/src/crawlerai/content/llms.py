@@ -15,6 +15,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from urllib.parse import unquote, urlsplit
 
+from crawlerai.normalize.strings import collapse
+
 _ROOT_SECTION = "Pages"
 _SEPARATORS = re.compile(r"[-_]+")
 # CommonMark §6.3: brackets in link text are escaped with a backslash.
@@ -53,9 +55,9 @@ def llms_full_txt(pages: Sequence[LlmsPage], markdown: Sequence[str]) -> str:
 
 def _opening(first: LlmsPage | None) -> list[str]:
     host = urlsplit(first.url).hostname if first else None
-    lines = [f"# {_line(first.title if first and first.title else host or 'Site')}"]
+    lines = [f"# {collapse(first.title if first and first.title else host or 'Site')}"]
     if first and first.description:
-        lines += ["", f"> {_line(first.description)}"]
+        lines += ["", f"> {collapse(first.description)}"]
     return lines
 
 
@@ -90,16 +92,11 @@ def _sections(pages: Sequence[LlmsPage]) -> dict[str, list[LlmsPage]]:
 
 def _name(page: LlmsPage) -> str:
     if page.title:
-        return _line(page.title)
+        return collapse(page.title)
     segments = _segments(page.url)
-    return _line(unquote(segments[-1])) if segments else page.url
+    return collapse(unquote(segments[-1])) if segments else page.url
 
 
 def _entry(page: LlmsPage) -> str:
     entry = f"- [{_BRACKETS.sub(r'\\\1', _name(page))}]({page.url.replace(' ', '%20').replace(')', '%29')})"
-    return f"{entry}: {_line(page.description)}" if page.description else entry
-
-
-def _line(text: str) -> str:
-    """`text` on one line, its whitespace collapsed."""
-    return " ".join(text.split())
+    return f"{entry}: {collapse(page.description)}" if page.description else entry

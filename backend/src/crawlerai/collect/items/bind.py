@@ -64,7 +64,7 @@ from crawlerai.content.page import ParsedPage
 from crawlerai.content.segment import text_path
 from crawlerai.normalize.base import Ambiguous, Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
-from crawlerai.normalize.text import compose
+from crawlerai.normalize.strings import compose, solid
 from crawlerai.normalize.url_key import DocumentKey, item_key, session_parameters, without_parameters
 from crawlerai.schemas.types import FieldType, SchemaDef
 
@@ -603,4 +603,4 @@ def _one_to_one(pairs: Iterable[tuple[str, str]]) -> dict[str, str]:
 def _squeezed(text: object) -> str:
     """`text` without white space, in NFC (`compose`): the cleaned text and a structured value space words alike only
     after this."""
-    return "".join(compose(str(text)).split())
+    return solid(compose(str(text)))

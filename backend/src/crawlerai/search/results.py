@@ -17,6 +17,7 @@ from urllib.parse import parse_qsl, urljoin, urlsplit
 from selectolax.lexbor import LexborHTMLParser
 
 from crawlerai.core import json_text
+from crawlerai.normalize.strings import collapse
 from crawlerai.normalize.url_key import canonicalize
 
 _SCHEMES = frozenset({"http", "https"})  # RFC 9110 §4.2: the URI schemes a result is fetched over
@@ -104,7 +105,7 @@ def from_html(body: str, answered_from: str) -> list[Hit]:
     for node in LexborHTMLParser(body).css("a[href]"):
         url = _outbound((node.attributes.get("href") or "").strip(), answered_from)
         if url is not None:
-            hits.append(Hit(url, " ".join(node.text(separator=" ").split()), ""))
+            hits.append(Hit(url, collapse(node.text(separator=" ")), ""))
     return hits
 
 

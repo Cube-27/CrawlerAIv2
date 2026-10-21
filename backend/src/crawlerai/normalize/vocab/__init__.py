@@ -17,29 +17,16 @@ from functools import cache
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 
+from crawlerai.normalize.strings import fold_words
+
 Tokens = tuple[str, ...]
 _JSON = ".json"
 
 
 def tokens(text: str) -> Tokens:
-    """`text` as a sequence of words (normalization spec): NFKC, casefold, split on every character that is not a
-    letter.
-
-    A word is a run of Unicode letters (general category L) and marks (M): marks continue a word in scripts that write
-    vowels as combining characters (UAX #29 treats them as part of the preceding letter). NFKC (UAX #15) folds
-    compatibility forms such as fullwidth letters; `casefold` is Unicode default case folding.
-    """
-    words: list[str] = []
-    word: list[str] = []
-    for char in unicodedata.normalize("NFKC", text).casefold():
-        if unicodedata.category(char)[0] in "LM":
-            word.append(char)
-        elif word:
-            words.append("".join(word))
-            word = []
-    if word:
-        words.append("".join(word))
-    return tuple(words)
+    """`text` as a sequence of words (normalization spec): `strings.fold_words` without digits, so a word is a run of
+    Unicode letters and marks after NFKC and case folding."""
+    return tuple(fold_words(text, digits=False))
 
 
 @dataclass(frozen=True, slots=True)

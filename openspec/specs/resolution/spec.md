@@ -23,7 +23,7 @@ its scope match times its value's agreement:
 - Source weight: for `text`, `long_text`, `url` and `image_url` the kind's place in the type's order in
   `backend/data/source_precedence.yaml`, frozen fitted data ([evaluation](../evaluation/spec.md); the first of n kinds weighs 1, each later place 1/n less, a
   kind outside the order 0); a fragment of another of the field's candidates weighs 0 (`resolve/supersede.py`: a
-  `long_text` that is a prefix or ellipsis-cut prefix of a longer one, an Open Graph description, or a value of
+  `long_text` that is a prefix or ellipsis-cut prefix of a longer one (white space aside), an Open Graph description, or a value of
   another kind stating the same text as it, beside a longer one of a kind other than Open Graph, or one that states
   another's text with fewer line breaks, white space aside (its paragraphs and line breaks flattened), or that is a
   first line, then the start of a longer one, white space aside (a section's heading kept as text); a `text` that is

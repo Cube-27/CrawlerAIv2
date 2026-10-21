@@ -16,7 +16,6 @@ around them are the site's wording ("Buy ... Online").
 """
 
 import re
-import unicodedata
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -29,6 +28,7 @@ from crawlerai.collect.site_names import SiteNames
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import normalize
+from crawlerai.normalize.strings import collapse, fold, fold_words
 from crawlerai.schemas.paths import NAME, MappedPath, PriceRole, parse_paths, price_role
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
@@ -171,14 +171,14 @@ def _heading(page: ParsedPage) -> str | None:
     headings = page.tree.css("h1")
     if len(headings) != 1:
         return None
-    return " ".join(headings[0].text(deep=True, separator=" ").split()) or None
+    return collapse(headings[0].text(deep=True, separator=" ")) or None
 
 
 def named_span(title: str, heading: str | None, page_url: str | None) -> str:
     """The run of the title's words that the page's top-level heading states, after words of the title's own, else the
     run a slug of the page URL's path spells (`slug_span`), else the title. The heading is the document's title as the
     page shows it, so a title holding it among other words is the heading wrapped in the site's wording."""
-    named = [_folded(w) for w in _WORD.findall(heading)] if heading is not None else []
+    named = [fold(w, marks=False) for w in _WORD.findall(heading)] if heading is not None else []
     span = _span(title, named) if len(named) >= _MIN_WORDS else None
     return span if span is not None else slug_span(title, page_url)
 
@@ -190,7 +190,7 @@ def slug_span(title: str, page_url: str | None) -> str:
     names the item, and the earlier are its categories; a slug the title does not hold (a fixed segment naming the
     page's kind) says nothing. The slug names the document's item, so the words before it are the site's wording
     ("Buy"), and so are the words after it. A title that starts with the slug's words is read as written: its further
-    words may go on naming the item. Words compare folded (`_folded`)."""
+    words may go on naming the item. Words compare folded (`strings.fold` with diacritics folded)."""
     for slug in reversed(_slugs(page_url) if page_url is not None else []):
         span = _span(title, slug)
         if span is not None:
@@ -201,7 +201,7 @@ def slug_span(title: str, page_url: str | None) -> str:
 def _span(title: str, named: list[str]) -> str | None:
     """The title when it starts with the `named` words, else the run of its words they are, else none."""
     words = list(_WORD.finditer(title))
-    keys = [_folded(w.group()) for w in words]
+    keys = [fold(w.group(), marks=False) for w in words]
     if keys[: len(named)] == named:
         return title
     start = next((i for i in range(1, len(keys) - len(named) + 1) if keys[i : i + len(named)] == named), None)
@@ -210,15 +210,8 @@ def _span(title: str, named: list[str]) -> str | None:
 
 def _slugs(page_url: str) -> list[list[str]]:
     """The path segments of the page URL that read as slugs (`slug_span`), as their folded words, in path order."""
-    segments = [_WORD.findall(_folded(unquote(segment))) for segment in urlsplit(page_url).path.split("/")]
+    segments = [fold_words(unquote(segment), marks=False) for segment in urlsplit(page_url).path.split("/")]
     return [words for words in segments if len(words) >= _MIN_WORDS and any(not w.isdigit() for w in words)]
-
-
-def _folded(text: str) -> str:
-    """NFKD with the combining marks dropped, case folded (Unicode default case folding): a slug writes `Café` as
-    `cafe`."""
-    decomposed = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
 
 
 def _candidates(metas: Sequence[_Meta], schema: SchemaDef, ctx: Context) -> Iterator[Candidate]:

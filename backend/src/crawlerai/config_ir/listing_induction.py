@@ -52,6 +52,7 @@ from crawlerai.core.engine_version import ENGINE_VERSION
 from crawlerai.db.models import FieldStatus
 from crawlerai.normalize.base import Context, Ok
 from crawlerai.normalize.dispatch import equal, normalize
+from crawlerai.normalize.strings import collapse
 from crawlerai.normalize.url import canonical_url
 from crawlerai.schemas.types import FieldSpec, SchemaDef, document_digest
 
@@ -275,7 +276,7 @@ def _holding(
     for element in block.iter():
         if not isinstance(element.tag, str) or element.tag in _UNREAD:
             continue
-        if _gives(" ".join(element.text_content().split()), value, spec, ctx):
+        if _gives(collapse(element.text_content()), value, spec, ctx):
             yield element, None
         for attribute, raw in element.attrib.items():
             if _gives(raw, value, spec, ctx) or _gives(_absolute(raw, ctx), value, spec, ctx):
