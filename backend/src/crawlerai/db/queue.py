@@ -228,6 +228,47 @@ async def fail_task(
         await _finish(conn, task, "done", ending, outcome=exhausted, **values)
 
 
+@dataclass(frozen=True)
+class Finished:
+    """A task that ran to an outcome (`complete_task`)."""
+
+    outcome: FinishedOutcome
+    reason: str | None = None  # why, when the outcome alone does not say: a `blocked` task's `robots`
+    capture_id: CaptureId | None = None  # the page the task fetched, if it fetched one
+
+
+@dataclass(frozen=True)
+class Failed:
+    """A failure (`fail_task`). `after` is the delay the target asked for before a retry (a `Retry-After`, acquisition
+    spec §4.6); `exhausted` the outcome once no attempt is left; `capture_id` the page the attempt fetched, if any."""
+
+    error: str
+    transient: bool
+    after: timedelta | None = None
+    exhausted: TaskOutcome = "failed"
+    capture_id: CaptureId | None = None
+
+
+async def settle_task(
+    conn: AsyncConnection, task: ClaimedTask, result: Finished | Failed, *, ending: JobEnding | None = None
+) -> None:
+    """Record `result` on the task: `complete_task` for an outcome, `fail_task` for a failure."""
+    match result:
+        case Finished(outcome, reason, capture_id):
+            await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id, ending=ending)
+        case Failed(error, transient, after, exhausted, capture_id):
+            await fail_task(
+                conn,
+                task,
+                error,
+                transient=transient,
+                after=after,
+                exhausted=exhausted,
+                capture_id=capture_id,
+                ending=ending,
+            )
+
+
 async def cancel_task(conn: AsyncConnection, task: ClaimedTask, *, ending: JobEnding | None = None) -> None:
     """End a claimed task without running it: one of a job whose cancel was requested (§4.3), or one its handler
     skipped. `ending` runs if this ends the job (`settle_job`)."""

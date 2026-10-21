@@ -43,7 +43,7 @@ from crawlerai.services import jobs
 from crawlerai.services.extract import DraftTimedOut, ExtractRequest, NoSamplePage, NothingToExtract, submit_extract
 from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.scrape import RecordsUnavailable
-from crawlerai.services.scrape_steps import SchemaUnusable
+from crawlerai.services.scrape_request import SchemaUnusable
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import run_worker

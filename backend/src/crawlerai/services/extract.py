@@ -37,7 +37,7 @@ from crawlerai.core.egress import Egress
 from crawlerai.core.errors import Refusal
 from crawlerai.crawl.rules import MAX_PATTERNS, UrlGlob, is_glob, url_glob
 from crawlerai.db.jobs import transition_job
-from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind, ScheduleId, SiteId
+from crawlerai.db.models import ApiKeyId, Job, JobId, PageKind, ScheduleId
 from crawlerai.llm.client import LLMClient
 from crawlerai.llm.roles.s_labels import with_labels
 from crawlerai.llm.roles.s_schema import MAX_SAMPLES, draft_schema
@@ -46,24 +46,22 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.types import Probability
 from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import MAX_URLS, OWN_TRANSACTION, Placement, insert_job, insert_tasks, job_pins
-from crawlerai.services.fetch_options import check_proxy_pool
+from crawlerai.services.fetch_options import FetchOptions, check_proxy_pool, fetch_policy
 from crawlerai.services.fetching import Fetching, PagePlan, check_targets, fetch_now, site_rungs
 from crawlerai.services.location import job_egress
 from crawlerai.services.map import MapRequest, map_urls
+from crawlerai.services.page_run import read_stored
+from crawlerai.services.page_store import SiteRow, record_fetch_usage, site_row
 from crawlerai.services.scrape import MAX_TIMEOUT_S, Budget, RecordsUnavailable
-from crawlerai.services.scrape_steps import (
+from crawlerai.services.scrape_request import (
     MIN_CONFIDENCE_DESCRIPTION,
-    FetchOptions,
     SchemaPrompt,
     SchemaRequest,
     check_records,
     check_usable,
-    fetch_policy,
     named_schema,
-    record_fetch_usage,
-    site_row,
 )
-from crawlerai.services.stored_captures import recent_capture, reread
+from crawlerai.services.stored_captures import NotCached
 from crawlerai.services.webhook_options import WebhookOptions
 
 # The bound on a prompt's draft, its sample fetches included: the longest a scrape may wait (D-0028).
@@ -288,10 +286,8 @@ async def _samples(
             request.locale,
             page_kind=request.page_kind,
         )
-        page: FetchResult | str | None
-        if request.fetch.cache == "only":
-            page = await _stored_sample(engine, fetching, site.id, url, policy)
-        else:
+        page: FetchResult | str | None = await _stored_sample(engine, fetching, site, url, request, policy)
+        if page is None and request.fetch.cache != "only":
             page = await _fetched_sample(
                 engine, fetching, job_id, url, PagePlan(site_rungs(fetching, host, site), site, policy, [])
             )
@@ -316,14 +312,24 @@ async def _fetched_sample(
 
 
 async def _stored_sample(
-    engine: AsyncEngine, fetching: Fetching, site_id: SiteId, url: str, policy: FetchPolicy
+    engine: AsyncEngine, fetching: Fetching, site: SiteRow, url: str, request: ExtractRequest, policy: FetchPolicy
 ) -> FetchResult | None:
-    """The latest stored capture of `url` made with `policy`'s steps and context, of any age (`recent_capture`), or None
-    without one."""
-    async with engine.connect() as conn:
-        row = await recent_capture(conn, site_id, canonicalize(url) or url, policy, max_age=None)
-    recent = None if row is None else await reread(fetching.store, row)
-    return None if recent is None else recent.result
+    """With `fetch.cache` `only`, the latest stored capture of `url` made with `policy`'s steps and context, of any age,
+    as a task reads it (`read_stored`); None without one, and for any other `cache`, which fetches."""
+    try:
+        stored = await read_stored(
+            engine,
+            fetching.store,
+            (site, canonicalize(url) or url),
+            policy,
+            request.fetch.cache,
+            max_age=0,
+            formats=(),
+            api=False,
+        )
+    except NotCached:
+        return None
+    return None if stored is None else stored.result
 
 
 def _pairs(urls: dict[str, str]) -> list[tuple[str, str]]:

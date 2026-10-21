@@ -10,7 +10,7 @@ from crawlerai.services.fetch_options import UnknownProxyPool
 from crawlerai.services.fetching import TargetsRejected
 from crawlerai.services.schemas import InvalidSchema, SchemaConflict
 from crawlerai.services.scrape import RecordsUnavailable
-from crawlerai.services.scrape_steps import SchemaUnusable
+from crawlerai.services.scrape_request import SchemaUnusable
 
 
 @contextmanager

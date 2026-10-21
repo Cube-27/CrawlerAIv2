@@ -53,16 +53,16 @@ from crawlerai.llm.pricing import default_pricing
 from crawlerai.resolve.records import FieldMeta, RecordContent
 from crawlerai.schemas import registry
 from crawlerai.services.llm_costs import costs_of_jobs
-from crawlerai.services.records import MAX_PAGE, RecordFilter, RecordPage, StoredRecord, list_records
-from crawlerai.services.scrape_steps import (
+from crawlerai.services.page_formats import (
     FetchSummary,
     FormatOptions,
     Formats,
-    PageFormat,
     fetch_summary,
     format_member,
     page_formats,
 )
+from crawlerai.services.records import MAX_PAGE, RecordFilter, RecordPage, StoredRecord, list_records
+from crawlerai.services.scrape_request import PageFormat
 from crawlerai.storage.artifacts import PDF, SCREENSHOT, Artifact, artifact_of, stored_names
 from crawlerai.storage.base import ObjectNotFound, ObjectStore
 from crawlerai.storage.capture_bundle import decode

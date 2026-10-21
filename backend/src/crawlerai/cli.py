@@ -41,11 +41,11 @@ from crawlerai.services import schedules as schedules_service
 from crawlerai.services import schemas as schemas_service
 from crawlerai.services.fetch_options import FetchOptions, UnknownProxyPool, check_proxy_pool, fetch_policy
 from crawlerai.services.fetching import learning_replay
+from crawlerai.services.page_store import learning_extract
 from crawlerai.services.records import MAX_PAGE
-from crawlerai.services.runtime import open_fetching
+from crawlerai.services.runtime import load_drift_margins, load_engine_data, open_fetching
 from crawlerai.services.schedules import ScheduleListQuery, ScheduleNotFound, Submitting
 from crawlerai.services.scrape_paging import learning_render
-from crawlerai.services.scrape_steps import learning_extract, load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
 from crawlerai.storage.capture_bundle import encode
 from crawlerai.worker.handlers.table import task_handlers

@@ -16,8 +16,9 @@ from crawlerai.resolve.types import ExtractionResult
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.services.batch import BatchScrapeRequest
 from crawlerai.services.crawl import CrawlRequest
+from crawlerai.services.page_store import unpublished
 from crawlerai.services.scrape import ScrapeRequest
-from crawlerai.services.scrape_steps import RenderOptions, SchemaUnusable, check_render, unpublished
+from crawlerai.services.scrape_request import RenderOptions, SchemaUnusable, check_render
 
 URL = "https://shop.example.test/p/1"
 BODY = {"urls": [URL], "formats": ["records"], "schema": {"id": str(uuid.UUID(int=1))}, "page_kind": "detail"}

@@ -21,9 +21,9 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.search.providers import SearchProvider
 from crawlerai.services import batch
 from crawlerai.services.batch import MAX_URLS, BatchScrapeRequest
+from crawlerai.services.fetch_options import FetchOptions
 from crawlerai.services.scrape import Budget
-from crawlerai.services.scrape_steps import (
-    FetchOptions,
+from crawlerai.services.scrape_request import (
     Input,
     PageFormat,
     SchemaById,

@@ -36,7 +36,7 @@ from crawlerai.acquire.robots import Fetch, Robots, site_robots
 from crawlerai.acquire.rungs import Rung
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.db.queue import TASK_DEADLINE
-from crawlerai.services.scrape_steps import site_row
+from crawlerai.services.page_store import site_row
 
 __all__ = [
     "IN_PLACE",

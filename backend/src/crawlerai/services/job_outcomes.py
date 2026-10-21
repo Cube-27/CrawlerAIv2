@@ -179,7 +179,7 @@ async def _missing_unrendered(conn: AsyncConnection, job_id: JobId) -> dict[str,
 
 async def _listed_nothing_unrendered(conn: AsyncConnection, job_id: JobId) -> int:
     """The job's listing pages fetched over HTTP with no browser attempt that listed nothing (`partial` with no record,
-    `services.scrape_steps`): a render may show their rows."""
+    `store_page_record`): a render may show their rows."""
     browser_tried = Capture.fetch_policy["attempts"].contains([{"method": "browser"}])
     kept = select(TaskRecord.url_task_id).where(TaskRecord.url_task_id == UrlTask.id).exists()
     found = await conn.execute(

@@ -37,10 +37,11 @@ from crawlerai.services import jobs
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.jobs import PageOutputPage, ResultsQuery
+from crawlerai.services.page_run import Page
 from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers import scrape as scrape_handler
 from crawlerai.worker.handlers import steps
-from crawlerai.worker.handlers.steps import Ended, FetchedPage
+from crawlerai.worker.handlers.steps import Ended
 from crawlerai.worker.handlers.table import task_handlers
 from crawlerai.worker.loop import run_worker
 
@@ -299,8 +300,8 @@ async def test_tasks_of_one_site_hold_none_of_its_rows_across_their_transactions
     both, timed_out = asyncio.Barrier(2), []
     count_fetch = steps.count_fetch
 
-    async def count_side_by_side(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage | Ended) -> None:
-        if isinstance(page, FetchedPage):  # a task postponed for its host's turn fetched nothing yet
+    async def count_side_by_side(conn: AsyncConnection, task: ClaimedTask, page: Page | Ended) -> None:
+        if isinstance(page, Page):  # a task postponed for its host's turn fetched nothing yet
             try:
                 async with asyncio.timeout(10):
                     await both.wait()

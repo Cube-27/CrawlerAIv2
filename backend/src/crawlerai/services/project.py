@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.core.validation import PG_INTEGER_MAX
 from crawlerai.db.models import Project
-from crawlerai.services.scrape_steps import Input
+from crawlerai.services.scrape_request import Input
 
 # A cap is stored in an `integer` column.
 _Cap = Annotated[int, Field(ge=0, le=PG_INTEGER_MAX)]
