@@ -115,7 +115,6 @@ class _Run:
     host: str
     fetch: FetchMethod
     serving: ExtractionConfigId | None
-    proxy_pool: str | None = None
     pages: Sequence[StoredPage] = ()
     # The locate run it is too (module docstring), the surface's stored pages it samples, the config the surface
     # serves, and the starting job's context.
@@ -146,7 +145,7 @@ async def run_learn_job(
 ) -> Learned | None:
     """Run the `learn` job `job_id` to its end and return how it ended; None when it is not queued (another process
     took it). `max_chars` is role A's HTML limit per page (`CRAWLERAI_LLM_A_MAX_CHARS`); without `replay`, the run
-    learns no API recipe, with it, its recipe replays go through the site's proxy pool (D-1381); `render` renders the
+    learns no API recipe, with it, its recipe replays count as its usage (D-1381); `render` renders the
     pages whose captures hold no calls to learn a recipe from, and a locate run's samples, which `extract` extracts
     (without both, nothing is located)."""
     try:
@@ -204,12 +203,12 @@ async def _start(conn: AsyncConnection, job_id: JobId) -> _Run | Learned | None:
         return Learned(None, "cancelled")
     await transition_job(conn, job_id, "running")
     schema = await registry.get_by_id(conn, key.schema_id)
-    site = (await conn.execute(select(Site.host, Site.proxy_pool).where(Site.id == key.site_id))).one()
+    host = (await conn.execute(select(Site.host).where(Site.id == key.site_id))).scalar_one()
     fetch = (await remembered(conn, key.site_id, key.page_kind, blocks=False)).method
     state = ProgressiveState
     found = (await conn.execute(select(state.active_config_id, state.render_mode).where(*key.where()))).one()
     await record_event(conn, job_id, LEARNING_STARTED)
-    run = _Run(job_id, key, schema, site.host, fetch, found.active_config_id, site.proxy_pool)
+    run = _Run(job_id, key, schema, host, fetch, found.active_config_id)
     located = StateKey.locate_of(job.request) or (LocateRequest() if found.render_mode != "off" else None)
     if located is None:
         return run
@@ -344,7 +343,7 @@ async def _page_recipe(
     """The API recipe that serves the run's pages (adapters spec), or why there is none."""
     try:
         return await learn_recipe(
-            client, sample, held_out, run.schema, replay(run.job_id, run.proxy_pool), job_id=run.job_id, render=render
+            client, sample, held_out, run.schema, replay(run.job_id), job_id=run.job_id, render=render
         )
     except (LLMFailure, SQLAlchemyError):
         # The run's own failures: role D's ends the run as role A's does (D-0738), and a database error would leave a
@@ -394,7 +393,7 @@ async def _located(
     ]
     if not names:
         return validated
-    replay = None if replays is None else replays(run.job_id, run.proxy_pool)
+    replay = None if replays is None else replays(run.job_id)
     calls = None if replay is None else Calls(client, replay, run.job_id, run.context)
     recipe = _listing_recipe(client, run, validated, replays, hooks.render, pages)
     located = await locate(base, run.schema, names, pages, vocabulary, calls, recipe)

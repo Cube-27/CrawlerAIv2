@@ -48,7 +48,7 @@ from crawlerai.schemas.types import SchemaDef
 from crawlerai.services.batch import MAX_URLS, OWN_TRANSACTION, Placement, insert_job, insert_tasks, job_pins
 from crawlerai.services.fetch_options import check_proxy_pool
 from crawlerai.services.fetching import Fetching, PagePlan, check_targets, fetch_now, site_rungs
-from crawlerai.services.location import pin_location
+from crawlerai.services.location import job_egress
 from crawlerai.services.map import MapRequest, map_urls
 from crawlerai.services.scrape import MAX_TIMEOUT_S, Budget, RecordsUnavailable
 from crawlerai.services.scrape_steps import (
@@ -167,7 +167,7 @@ async def submit_extract(
     urls = await _task_urls(engine, fetching, request)
     if not urls:
         raise NothingToExtract("the request's globs matched no URL")
-    request, egress = await pin_location(engine, fetching.egresses, request, request.fetch, next(iter(urls.values())))
+    egress = job_egress(fetching.egresses, request.fetch)
     if schema is None:
         # `named_schema` returns the schema of every request but a prompt's.
         prompt = cast(SchemaPrompt, request.schema_).prompt

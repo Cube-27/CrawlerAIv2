@@ -34,7 +34,7 @@ from crawlerai.resolve.types import Probability
 from crawlerai.services.batch import OWN_TRANSACTION, Placement, insert_job, records_schema
 from crawlerai.services.fetch_options import check_proxy_pool
 from crawlerai.services.fetching import check_targets
-from crawlerai.services.location import pin_location
+from crawlerai.services.location import job_egress
 from crawlerai.services.map import MAX_LIMIT  # a crawl enqueues at most what a map of the site returns
 from crawlerai.services.scrape import Budget
 from crawlerai.services.scrape_steps import (
@@ -162,7 +162,7 @@ async def submit_crawl(
 ) -> CrawlSubmitted:
     """Store `request` as a queued job with the start URL's task, where `placement` says; `api_key_id`, the key that
     submitted it, signs its webhook (§4.2); `egresses`, the configured pools, one of which `fetch.proxy_pool` must name
-    (D-1434), and the countries they go out from. The job's location is pinned here (`pin_location`). Raises, storing
+    (D-1434), and the countries they go out from. The job's egress is its pool's (`job_egress`). Raises, storing
     nothing: `UnknownProxyPool` for another pool, `TargetsRejected` for a refused target, `RecordsUnavailable` for
     `records` without `data`, and `named_schema`'s errors for a schema `records` cannot use."""
     if egresses is not None:
@@ -172,7 +172,7 @@ async def submit_crawl(
     page_kind = request.page_kind_rules[0].page_kind if request.page_kind_rules else None
     schema = await records_schema(engine, request.formats, request.schema_, page_kind, data, llm, request.render)
     frontier = request.frontier()
-    request, egress = await pin_location(engine, egresses, request, request.fetch, request.start)
+    egress = job_egress(egresses, request.fetch)
     async with placement.transaction(engine) as conn:
         job_id = await insert_job(
             conn,

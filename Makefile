@@ -48,7 +48,7 @@ migrate:
 	cd backend && uv run crawlerai schemas sync
 
 api:
-	cd backend && CRAWLERAI_ROLE=api uv run uvicorn --factory crawlerai.api.app:create_app --reload --port 8000
+	cd backend && uv run uvicorn --factory crawlerai.api.app:create_app --reload --port 8000
 
 ## Regenerate frontend/openapi.json and the TS client types from the backend (SPEC-00 §4.5). CI fails when the
 ## committed files differ from a fresh run.

@@ -10,9 +10,6 @@ way the task stands for the record it answers with (`task_record`, §4.2), so th
 is against the entity's previous record (`task_record.delta`, jobs spec "Page delta"): `new` when it had none,
 `changed` when a published value differs, else `same`. This is the
 `resolve.task.RecordWriter` a page task stores its records with.
-
-`url_state` is not written here: it is per URL, and its `last_changed_at` is when the page's content last changed
-(`recurring.state.record_content`), which a record of one schema must not move for the others.
 """
 
 import hashlib

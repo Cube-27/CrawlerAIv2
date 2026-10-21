@@ -147,9 +147,9 @@ async def map_urls(
     except TimeoutError:
         found.cut = True
     except TargetRejected:
-        await _finish(engine, job_id, "failed", attempts, site.proxy_pool)
+        await _finish(engine, job_id, "failed", attempts)
         raise
-    await _finish(engine, job_id, "completed", attempts, site.proxy_pool)
+    await _finish(engine, job_id, "completed", attempts)
     result = found.result()
     if request.llms_txt:
         listed = llms_txt([LlmsPage(url) for url in result.urls], found.start_page)
@@ -224,7 +224,7 @@ async def _polite(
 ) -> SiteHttp | None:
     """Fetches from `site`, under the robots.txt of `url` there when `request` obeys it; `None` when that robots.txt is
     unreachable, or its request's turn is further off than a caller waits."""
-    policy = FetchPolicy(method_hint="http", proxy_pool=site.proxy_pool, respect_robots=request.respect_robots)
+    policy = FetchPolicy(method_hint="http", respect_robots=request.respect_robots)
     try:
         rules = await _rules(engine, fetching, attempts)(url, policy)
     except NoTurn:
@@ -260,8 +260,7 @@ async def _finish(
     job_id: JobId,
     status: Literal["completed", "failed"],
     attempts: list[AttemptRecord],
-    proxy_pool: str | None,
 ) -> None:
     async with engine.begin() as conn:
-        await record_fetch_usage(conn, job_id, attempts, proxy_pool)
+        await record_fetch_usage(conn, job_id, attempts, None)
         await transition_job(conn, job_id, status)

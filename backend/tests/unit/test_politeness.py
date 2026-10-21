@@ -33,20 +33,17 @@ class Clock:
 
 
 @pytest.mark.parametrize(
-    ("crawl_delay_ms", "robots_delay", "expected"),
+    ("robots_delay", "expected"),
     [
-        (None, None, timedelta(seconds=1)),
-        (250, None, timedelta(milliseconds=250)),
-        (0, None, timedelta(0)),
-        (None, timedelta(seconds=10), timedelta(seconds=10)),
-        (5000, timedelta(seconds=2), timedelta(seconds=5)),
-        (250, timedelta(seconds=2), timedelta(seconds=2)),
+        (None, timedelta(seconds=1)),
+        (timedelta(milliseconds=250), timedelta(seconds=1)),
+        (timedelta(seconds=10), timedelta(seconds=10)),
     ],
 )
-def test_the_interval_is_the_site_setting_or_1s_never_below_the_robots_crawl_delay(
-    crawl_delay_ms: int | None, robots_delay: timedelta | None, expected: timedelta
+def test_the_interval_is_1s_never_below_the_robots_crawl_delay(
+    robots_delay: timedelta | None, expected: timedelta
 ) -> None:
-    assert interval(crawl_delay_ms, robots_delay) == expected
+    assert interval(robots_delay) == expected
 
 
 @pytest.mark.parametrize(

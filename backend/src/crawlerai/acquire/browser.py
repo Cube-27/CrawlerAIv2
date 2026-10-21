@@ -143,7 +143,7 @@ _OPEN_PROFILES = 2
 _PROFILE_IDLE_S = 60.0
 # RFC 9110 §15.4: a 3xx document answer is a redirect hop (or a validator's 304), never the document the frame shows.
 _REDIRECTION = range(300, 400)
-# RFC 9110 §15.5, §15.6: a 4xx or 5xx document; the context that rendered one is not reused (`_Contexts`).
+# RFC 9110 §15.5, §15.6: a 4xx or 5xx document; the profile that rendered one is not reused (`_Profiles`).
 _ERROR_STATUS = 400
 # D-1206, D-1262: for a document `interstitial` judges to stand in for the page, the wait for the main frame to navigate
 # on lasts up to this share of `browser_timeout_s`, and at most `_INTERSTITIAL_MAX_S`, not the ready wait, and ends
@@ -824,8 +824,7 @@ async def _navigate(
     page.on("request", lambda request: calls.on_request(request, page.url))
     page.on("requestfinished", calls.on_done)
     page.on("requestfailed", calls.on_done)
-    if policy.capture_network_json:
-        page.on("response", lambda response: calls.on_response(response, page.main_frame))
+    page.on("response", lambda response: calls.on_response(response, page.main_frame))
 
     budget_end = started + policy.browser_timeout_s
     try:

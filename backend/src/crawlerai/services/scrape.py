@@ -71,7 +71,7 @@ from crawlerai.services.fetching import (
     fetch_now,
     site_rungs,
 )
-from crawlerai.services.location import pin_location
+from crawlerai.services.location import job_egress
 from crawlerai.services.records import RecordField, ScrapedRecord, page_fields
 from crawlerai.services.scrape_paging import actions_deadline, check_browser_actions, paged_fetch, record_states
 from crawlerai.services.scrape_steps import (
@@ -294,7 +294,7 @@ async def scrape(
     pinned = None if data is None else data.with_min_confidence(request.min_confidence)
     render = request.render if "render" in request.model_fields_set else None
     work = _Work(llm, pinned, margins, await _named_schema(engine, request, data, llm), render=render)
-    request, egress = await pin_location(engine, fetching.egresses, request, request.fetch, request.url)
+    egress = job_egress(fetching.egresses, request.fetch)
     task = await _start(engine, request, work.schema, egress)
     # The browser's budget is the timeout's, which starts here (`acquire.rungs.BROWSER_MIN_S`).
     work = replace(work, deadline=time.monotonic() + request.timeout_s)

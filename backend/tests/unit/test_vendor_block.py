@@ -87,7 +87,7 @@ def _task(attempts: int) -> ClaimedTask:
 
 
 def _fetched(result: FetchResult) -> FetchedPage:
-    site = SiteRow(SiteId(uuid7()), Remembered(), None, None, None)
+    site = SiteRow(SiteId(uuid7()), Remembered(), None)
     return FetchedPage(site, result, CaptureId(uuid7()), result.attempts, None)
 
 

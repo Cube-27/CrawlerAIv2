@@ -72,10 +72,10 @@ pnpm --dir "$root/frontend" install --frozen-lockfile --prefer-offline --reporte
 # new machine or a Patchright upgrade lacks it. The install does nothing when that build is already present.
 uv --directory "$backend" run patchright install --no-shell chromium
 
-CRAWLERAI_ROLE=api start api uv --directory "$backend" run uvicorn --factory crawlerai.api.app:create_app --reload \
+start api uv --directory "$backend" run uvicorn --factory crawlerai.api.app:create_app --reload \
   --port 8000
-CRAWLERAI_ROLE=worker start worker uv --directory "$backend" run crawlerai worker
-CRAWLERAI_ROLE=scheduler start scheduler uv --directory "$backend" run crawlerai scheduler
+start worker uv --directory "$backend" run crawlerai worker
+start scheduler uv --directory "$backend" run crawlerai scheduler
 start web pnpm --dir "$root/frontend" dev
 
 echo "[dev-up] app: http://localhost:5173 (API http://localhost:8000). Ctrl+C stops everything."
