@@ -108,7 +108,7 @@ async def open_fetching(
 
         async def listing(url: str, policy: FetchPolicy, drive: Drive) -> PagedFetch:
             # A listing with browser actions (owner #52) renders in the shared session too, holding one of its slots.
-            return await browser.run(
+            return await browser.render(
                 lambda session: fetch_listing(
                     url,
                     policy,

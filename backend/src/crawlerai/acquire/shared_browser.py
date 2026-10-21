@@ -2,12 +2,13 @@
 shared by the renders after it, the page rung's and the listing rung's alike, at most `BROWSER_CONTEXTS` of them at
 once (each renders in a site profile of its own, `acquire.browser_session`).
 
-A render that leaves the session disconnected (its Playwright driver died, or was killed), whether it returns or
-raises, restarts it once and renders again. If the restarted session dies too, that second render's result (or error)
-stands, so the crash ends only the render that was using the session, and the next render that needs one launches a
-new one: at most one restart per render. Renders running at once share one restart: a render restarts the session only
-while the dead session it used is still the current one. A site profile's browser that crashes ends only its own page
-(`browser_session._Profiles`): the session stays connected.
+A render that raises with the session disconnected (its Playwright driver died, or was killed) restarts it once and
+renders again. If the restarted session dies too, that second render's error stands, so the crash ends only the render
+that was using the session, and the next render that needs one launches a new one: at most one restart per render. A
+render that returns has done its work (its requests were sent, a listing's actions taken): its result stands even when
+the session died after it, and the dead session is closed for the next render to launch a new one. Renders running at
+once share one restart: a render restarts the session only while the dead session it used is still the current one.
+A site profile's browser that crashes ends only its own page (`browser_session._Profiles`): the session stays connected.
 """
 
 import asyncio
@@ -48,25 +49,24 @@ class SharedBrowser[S]:
     async def fetch(self, url: str, policy: FetchPolicy, *, export: CookieExport | None = None) -> FetchResult:
         """The browser rung (`crawlerai.acquire.rungs.Rungs.browser`), and with `export` its exporting form
         (`Rungs.exporting`)."""
-        return await self.run(lambda session: self._fetch(session, url, policy, export))
+        return await self.render(lambda session: self._fetch(session, url, policy, export))
 
-    async def run[T](self, render: Callable[[S], Awaitable[T]]) -> T:
-        """`render` in the shared session, holding one of its `BROWSER_CONTEXTS` slots: a page's fetch (`fetch`), or a
+    async def render[T](self, work: Callable[[S], Awaitable[T]]) -> T:
+        """`work` in the shared session, holding one of its `BROWSER_CONTEXTS` slots: a page's fetch (`fetch`), or a
         listing with browser actions (`acquire.browser_tab.fetch_listing`)."""
         async with self._contexts:
             session = await self._session()
             try:
-                result = await render(session)
+                return await work(session)
             except Exception:
                 if self._alive(session):
                     raise
-            else:
-                if self._alive(session):
-                    return result
-            await self._close(session)
+            finally:
+                if not self._alive(session):
+                    await self._close(session)
             session = await self._session()
             try:
-                return await render(session)
+                return await work(session)
             finally:
                 if not self._alive(session):
                     await self._close(session)

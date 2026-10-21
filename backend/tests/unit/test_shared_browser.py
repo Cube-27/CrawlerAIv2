@@ -1,5 +1,6 @@
 """The worker's shared browser (acquisition spec, INV-31): launched once and shared, restarted at most once per task
-when its session disconnects. The browser is a stub whose fetches can kill the session they run in; no Chromium."""
+when a render raises with its session disconnected. The browser is a stub whose fetches can kill the session they run
+in; no Chromium."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -79,15 +80,15 @@ async def test_one_browser_is_launched_on_first_use_and_shared() -> None:
     assert [session.closed for session in chromium.sessions] == [True]
 
 
-async def test_a_crashed_browser_is_restarted_once_and_the_page_fetched_again() -> None:
+async def test_a_render_that_returns_keeps_its_result_and_the_dead_session_is_replaced_for_the_next() -> None:
     chromium = Chromium(kills={URL: 1})
     browser = chromium.browser()
 
     result = await browser.fetch(URL, FetchPolicy())
     await browser.fetch(OTHER, FetchPolicy())
 
-    assert chromium.origin(result) == (2, URL)
-    assert chromium.fetched == [(1, URL), (2, URL), (2, OTHER)]
+    assert chromium.origin(result) == (1, URL)  # its work was done: not rendered (its requests sent) again
+    assert chromium.fetched == [(1, URL), (2, OTHER)]
     assert [(s.closed, s.connected) for s in chromium.sessions] == [(True, False), (False, True)]
 
 

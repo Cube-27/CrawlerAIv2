@@ -26,7 +26,7 @@ from patchright.async_api import TimeoutError as PlaywrightTimeout
 
 from crawlerai.acquire.browser import Render, Rendered, classified, markup, read_state, rendered
 from crawlerai.acquire.browser_capture import AREAS_JS, DATA_REQUESTS, JSON_BODIES_MAX, JSON_PAGE_MAX_BYTES, json_bodies
-from crawlerai.acquire.browser_session import BrowserSession, Failed
+from crawlerai.acquire.browser_session import BrowserSession, Failed, context_cookies
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.page_steps import steps_budget_s
 from crawlerai.acquire.session import SiteSessions
@@ -363,6 +363,8 @@ async def _listing(
                 page, url=url, engine_version=run.engine_version, started=run.started, steps=run.steps, landed=landed
             )
             report = await _driven(drive, tab)
+            # The driver's actions may have set cookies: the site's sessions are told those the context holds now.
+            run.cookies = await context_cookies(page.page.context)
             if not tab.kept and not await tab.keep():
                 return None
             return PagedFetch(pages=tuple(tab.kept), report=report.model_copy(update={"pages": len(tab.kept)}))

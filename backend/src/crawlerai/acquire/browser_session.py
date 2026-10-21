@@ -179,18 +179,23 @@ class _Profiles:
         self._timers.pop(key, None)
         if self.idle.get(key) is context:
             del self.idle[key]
-            task = asyncio.get_running_loop().create_task(context.close())
-            self._closing.add(task)
-            task.add_done_callback(self._closing.discard)
+            self._close_soon(context)
 
     def forget(self, context: _Context) -> None:
-        """`context`'s browser closed unasked: no page may take it again (a rendering one is released when its page
-        ends, `keep`)."""
+        """`context`'s browser closed unasked: no page may take it again. An idle one is closed now, so its guard
+        stops and its profile is released; a rendering one is released when its page ends (`keep`)."""
         context.gone = True
         for key, idle in tuple(self.idle.items()):
             if idle is context:
                 del self.idle[key]
                 self._stop_timer(key)
+                self._close_soon(context)
+
+    def _close_soon(self, context: _Context) -> None:
+        """Close `context` from a callback (no await there); `aclose` waits for it."""
+        task = asyncio.get_running_loop().create_task(context.close())
+        self._closing.add(task)
+        task.add_done_callback(self._closing.discard)
 
     def _stop_timer(self, key: ContextKey) -> None:
         timer = self._timers.pop(key, None)

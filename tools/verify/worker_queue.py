@@ -261,7 +261,7 @@ MUTANTS = [
         [],
         expect="BrowserCap",
         bug="no_context_cap",
-        why="SharedBrowser.run without `async with self._contexts`",
+        why="SharedBrowser.render without `async with self._contexts`",
     ),
     Check(
         "mutant-admit-without-turn",
