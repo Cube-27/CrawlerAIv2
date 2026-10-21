@@ -652,7 +652,8 @@ async def rendered(
     """The page at `url`, once it is ready to read (`_settle`), in a new tab of the site's profile: the open one its
     last page left (`_Profiles`), else the profile opened (a temporary one starting with the cookies `sessions`
     give). The tab closes when the block ends, and the profile's browser with it unless it is kept for the site's next
-    page; the tab's wall time is `timings["context"]`. The bytes the guard relays for the page are added to `traffic`. Raises `Failed`."""
+    page; the tab's wall time is `timings["context"]`. The bytes the guard relays for the page are added to
+    `traffic`. Raises `Failed`."""
     try:
         first = await connector.check(url)  # also refuses `file:`, `data:` and other non-web schemes
     except SsrfRejected as e:
