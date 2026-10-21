@@ -20,7 +20,7 @@ from functools import partial
 from typing import Final, NamedTuple
 from urllib.parse import urlsplit
 
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.politeness import (
     BACKOFF_MAX,
@@ -52,7 +52,6 @@ __all__ = [
     "page_first",
     "polite_fetch",
     "recording",
-    "rules_in",
     "rules_of",
 ]
 
@@ -200,28 +199,21 @@ class Turns:
     waiting: Waiting
 
 
-def rules_in(conn: AsyncConnection, http: Rung, attempts: list[AttemptRecord], turns: Turns) -> ReadRules:
-    """`ReadRules` read in `conn`: the host's site, created on first use as a page's is, and its robots.txt, fetched
-    over `http` when the site's snapshot is stale, at the host's rate (`turns`; `NoTurn` when its turn is further off
-    than the caller waits), with the attempts of that fetch added to `attempts`."""
-
-    async def read(url: str, policy: FetchPolicy) -> HostRules | None:
-        site = await site_row(conn, urlsplit(url).hostname or "")
-        if not policy.respect_robots:
-            return HostRules()
-        fetch = recording(http, policy, attempts, turns, HostRules().gap)
-        robots = await site_robots(conn, site.id, site.robots_snapshot, url, fetch)
-        return None if robots is None else HostRules(robots)
-
-    return read
-
-
 def rules_of(engine: AsyncEngine, http: Rung, attempts: list[AttemptRecord], turns: Turns) -> ReadRules:
-    """`rules_in`, each read in a transaction of its own: for a caller that holds no connection while it fetches."""
+    """`ReadRules` for a caller that holds no transaction while it fetches: the host's site, created on first use as a
+    page's is, in a short transaction of its own (a new host's row is committed at once, so no other fetch of the host
+    waits on it), and its robots.txt, fetched over `http` when the site's snapshot is stale (`site_robots`), at the
+    host's rate (`turns`; `NoTurn` when its turn is further off than the caller waits), with the attempts of that fetch
+    added to `attempts`."""
 
     async def read(url: str, policy: FetchPolicy) -> HostRules | None:
         async with engine.begin() as conn:
-            return await rules_in(conn, http, attempts, turns)(url, policy)
+            site = await site_row(conn, urlsplit(url).hostname or "")
+        if not policy.respect_robots:
+            return HostRules()
+        fetch = recording(http, policy, attempts, turns, HostRules().gap)
+        robots = await site_robots(engine, site.id, site.robots_snapshot, url, fetch)
+        return None if robots is None else HostRules(robots)
 
     return read
 

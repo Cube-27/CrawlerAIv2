@@ -18,8 +18,9 @@ seeds read so far are kept and the job records `sitemaps_timed_out`, so that the
 
 A page whose URL matched a page-kind rule (`url_task.page_kind`) is extracted: its formats, or its record, as a
 crawl-discovered page (`no_match` when incomplete). A page no rule matched, in a crawl with rules,
-ends `links_only` and is never extracted (§13.2, §23). URLs are added after the page is settled, so the job's row is
-locked (`Frontier.enqueue`) only for the rest of the task's transaction.
+ends `links_only` and is never extracted (§13.2, §23). The page is fetched before the worker's transaction for the
+task opens (`steps.fetch_page`). URLs are added after the page is settled, so the job's row is locked
+(`Frontier.enqueue`) only for the rest of the task's transaction.
 """
 
 import asyncio
@@ -28,10 +29,11 @@ from collections.abc import Sequence
 from contextlib import aclosing
 from dataclasses import dataclass, replace
 from datetime import timedelta
+from functools import partial
 from typing import Final
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.types import AttemptRecord
 from crawlerai.config_ir.api_recipe.execute import MAX_PAGES
@@ -49,21 +51,23 @@ from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.crawl import CrawlRequest
 from crawlerai.services.fetching import Fetching, SiteHttp, TargetRejected
 from crawlerai.services.map import TIMEOUT_S
-from crawlerai.services.polite import QUEUED, NoTurn, Turns, listed_sitemaps, rules_in
+from crawlerai.services.polite import QUEUED, NoTurn, Turns, listed_sitemaps, rules_of
 from crawlerai.services.scrape_steps import PageFormat, fetch_policy, record_fetch_usage
 from crawlerai.storage.base import ObjectStore
 from crawlerai.worker.handlers.steps import (
     Ended,
+    Fetched,
     FetchedPage,
     Records,
     count_fetch,
     extract_records,
     fetch_page,
+    keep_page,
     load_job,
     store_further_pages,
     unreached,
 )
-from crawlerai.worker.loop import Failed, Finished, Postpone, Skipped, TaskHandler, TaskResult, ends_task
+from crawlerai.worker.loop import Failed, Finished, Postpone, Settle, Skipped, TaskHandler, TaskResult, ends_task
 
 log = logging.getLogger(__name__)
 
@@ -88,30 +92,32 @@ def crawl_handler(
     data files, whose records tasks then fail. `margins` decide drift suspensions (learning-configs spec); role C
     runs on `llm`."""
 
-    async def handle(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        job = await load_job(conn, task, data, margins)
+    async def handle(task: ClaimedTask, engine: AsyncEngine) -> Settle | TaskResult:
+        async with engine.connect() as conn:
+            job = await load_job(conn, task, data, margins)
         if isinstance(job, Failed):
             return job
         request, records = CrawlRequest.model_validate(job[0]), job[1]
-        return await _run(conn, fetching, _Crawl(task, request, records, llm))
+        return await _run(engine, fetching, _Crawl(task, request, records, llm))
 
     return handle
 
 
-async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> TaskResult:
+async def _run(engine: AsyncEngine, fetching: Fetching, crawl: _Crawl) -> Settle | TaskResult:
     task = crawl.task
     own = crawl.request.frontier()
-    if own.strategy != "bfs" and await own.over_limit(conn, task):
-        return Skipped()  # leased with the candidates before the pages that spent the limit settled
-    if own.strategy == "best_first" and await own.outranked(conn, task):
-        return Postpone(timedelta(0))  # a page fetched since it was leased found a better candidate
+    async with engine.connect() as conn:
+        if own.strategy != "bfs" and await own.over_limit(conn, task):
+            return Skipped()  # leased with the candidates before the pages that spent the limit settled
+        if own.strategy == "best_first" and await own.outranked(conn, task):
+            return Postpone(timedelta(0))  # a page fetched since it was leased found a better candidate
     # A page whose links the crawl reads is fetched itself: an API recipe's JSON has none (adapters spec).
     reads_links = task.depth < crawl.request.max_depth or task.page_kind is None
     served = None if reads_links else crawl.records
     # A listing recipe's pages count toward the crawl's page bound as its tasks do.
     pages = min(MAX_PAGES, crawl.request.limit)
-    page = await fetch_page(
-        conn,
+    fetched = await fetch_page(
+        engine,
         fetching,
         task,
         crawl.request.fetch,
@@ -122,10 +128,21 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
         # A page read for its links only is no page of the records surface: its fetch plan is not the surface's.
         planned=crawl.records if _extracted(task, crawl.request) else None,
     )
+    return partial(_settle, engine, fetching, crawl, fetched)
+
+
+async def _settle(
+    engine: AsyncEngine, fetching: Fetching, crawl: _Crawl, fetched: Fetched | Ended, conn: AsyncConnection
+) -> TaskResult:
+    """The task's writes, in its transaction: the fetched page settled, and the URLs it leads to added."""
+    task = crawl.task
+    page = await keep_page(conn, fetching.store, fetched)
     if not isinstance(page, Ended):
         await _record_final_url(conn, task, page)
     result, links = (
-        (page.task_result, Links()) if isinstance(page, Ended) else await _visit(conn, fetching.store, crawl, page)
+        (page.task_result, Links())
+        if isinstance(page, Ended)
+        else await _visit(conn, engine, fetching.store, crawl, page)
     )
     is_start = task.canonical_url == crawl.request.start
     # The sitemaps are read before the task writes its job's row (usage, the frontier), which stays locked until the
@@ -135,7 +152,9 @@ async def _run(conn: AsyncConnection, fetching: Fetching, crawl: _Crawl) -> Task
     adds_urls = bool(links.urls) or reads_sitemaps
     site_url = await _site_url(conn, crawl, page) if adds_urls else crawl.request.start
     frontier = crawl.request.frontier(site_url)
-    seeds, priorities = await _sitemap_seeds(conn, fetching, crawl, frontier, site_url) if reads_sitemaps else ([], {})
+    seeds, priorities = (
+        await _sitemap_seeds(conn, engine, fetching, crawl, frontier, site_url) if reads_sitemaps else ([], {})
+    )
     if is_start and adds_urls:
         await conn.execute(update(Job).where(Job.id == task.job_id).values(start_location=site_url))
     await count_fetch(conn, task, page)  # after the extraction, as role C needs (D-0346)
@@ -185,7 +204,7 @@ async def _site_url(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage | En
 
 
 async def _visit(
-    conn: AsyncConnection, store: ObjectStore, crawl: _Crawl, page: FetchedPage
+    conn: AsyncConnection, engine: AsyncEngine, store: ObjectStore, crawl: _Crawl, page: FetchedPage
 ) -> tuple[TaskResult, Links]:
     """The result of the fetched page and the links it contributes (none when it was not reached)."""
     ended = unreached(page, crawl.task)
@@ -204,17 +223,17 @@ async def _visit(
     if crawl.records is None:
         return Finished("extracted", capture_id=page.capture_id), links
     result = await extract_records(
-        conn, crawl.task, page, crawl.records, caller_supplied=False, llm=crawl.llm, parsed=parsed
+        conn, engine, crawl.task, page, crawl.records, caller_supplied=False, llm=crawl.llm, parsed=parsed
     )
     if isinstance(result, Finished):
         result = await store_further_pages(
-            conn, store, crawl.task, page, crawl.records, caller_supplied=False, llm=crawl.llm, result=result
+            conn, engine, store, crawl.task, page, crawl.records, caller_supplied=False, llm=crawl.llm, result=result
         )
     return result, links
 
 
 async def _sitemap_seeds(
-    conn: AsyncConnection, fetching: Fetching, crawl: _Crawl, frontier: Frontier, site_url: str
+    conn: AsyncConnection, engine: AsyncEngine, fetching: Fetching, crawl: _Crawl, frontier: Frontier, site_url: str
 ) -> tuple[list[str], dict[str, float]]:
     """The URLs of the sitemaps of the site the start page is on, `site_url` there, that the crawl takes, in the order
     read, up to its capacity, with the priorities the sitemaps state for them. The fetches count as the job's usage."""
@@ -225,7 +244,7 @@ async def _sitemap_seeds(
     # redirected to another host.
     # The reading waits in place for the host's turns, as a further request of a task does.
     waiting = replace(QUEUED, postpone=False)
-    read = rules_in(conn, fetching.rungs.http, attempts, Turns(fetching.limiter, waiting))
+    read = rules_of(engine, fetching.rungs.http, attempts, Turns(fetching.limiter, waiting))
     try:
         rules = await read(site_url, policy)
     except NoTurn:

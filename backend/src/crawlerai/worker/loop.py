@@ -1,18 +1,20 @@
 """The worker process (persistence-storage spec): claim tasks, run each with the handler of its job's kind, record the
 result. Handlers are registered by later specs.
 
-A worker runs up to `TASK_SLOTS` tasks at once, each on its own connection, and claims only as many as it has free
-slots, so a claimed task never waits behind others while its lease runs. Pages of one host still go at the host's
-rate: every task fetches through the process's one `HostLimiter`, whose turns and holds every process shares through
-the database, and which postpones a task whose turn is far off.
+A worker runs up to `TASK_SLOTS` tasks at once, and claims only as many as it has free slots, so a claimed task never
+waits behind others while its lease runs. Pages of one host still go at the host's rate: every task fetches through the
+process's one `HostLimiter`, whose turns and holds every process shares through the database, and which postpones a task
+whose turn is far off.
 
-Each task runs in one transaction: the handler's writes and the task's result commit together, or not at all (a lost
-lease, an exception). An exception is recorded on the task as a transient failure, and the loop continues. A task
-still running at `TASK_DEADLINE` is cancelled and recorded as failed (`DEADLINE`), so no page holds its job open;
-one whose cancellation does not end within `CANCEL_GRACE` is left behind, its database session ended (PostgreSQL rolls
-its transaction back, releasing its row locks), and its failure recorded all the same, before its lease can expire:
-the task is never claimed again while work left behind runs, and that work sends no further request
-(`HostLimiter.admit`).
+A task runs in two parts (`TaskHandler`). Its fetch, and what it reads and learns around it, run first, outside any
+transaction of the task: each read or write there, site memory's included (`acquire.memory`), commits in a short
+transaction of its own, so no task holds a site's rows while it fetches or extracts. Then its writes run in one
+transaction: they and the task's result commit together, or not at all (a lost lease, an exception). An exception is
+recorded on the task as a transient failure, and the loop continues. A task still running at `TASK_DEADLINE` is
+cancelled and recorded as failed (`DEADLINE`), so no page holds its job open; one whose cancellation does not end within
+`CANCEL_GRACE` is left behind, the session of its transaction, if one is open, ended (PostgreSQL rolls it back,
+releasing its row locks), and its failure recorded all the same, before its lease can expire: the task is never claimed
+again while work left behind runs, and that work sends no further request (`HostLimiter.admit`).
 
 Database errors outside a handler propagate (§4.8), including one raised while recording a handler's exception, which
 usually means the connection is gone: `run_worker` raises and the process exits. Nothing is lost: the tasks it still
@@ -26,8 +28,8 @@ import os
 import re
 import secrets
 import socket
-from collections.abc import Awaitable, Callable, Mapping
-from contextlib import suppress
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import partial
@@ -104,7 +106,12 @@ class Skipped:
 
 
 TaskResult = Finished | Failed | Postpone | Skipped
-TaskHandler = Callable[[ClaimedTask, AsyncConnection], Awaitable[TaskResult]]
+# A task's writes, run in its transaction: they return the result it ends this run with.
+Settle = Callable[[AsyncConnection], Awaitable[TaskResult]]
+# A job kind's handler: runs the task up to its writes outside any transaction of the task, through the engine (its
+# fetch; every read and write there in a short transaction of its own), and returns its writes, or the result it ends
+# with when it has none.
+TaskHandler = Callable[[ClaimedTask, AsyncEngine], Awaitable[Settle | TaskResult]]
 
 
 def ends_task(task: ClaimedTask, result: TaskResult) -> bool:
@@ -128,8 +135,9 @@ async def run_worker(
     """Work until `stop` is set; the tasks in progress then finish (each within its deadline). `ending` runs as a
     task's result ends its job (`settle_job`)."""
     worker = f"{socket.gethostname()}:{os.getpid()}:{secrets.token_hex(4)}"
-    # A connection per slot, one for claiming, and one to record a result beside a task left behind.
-    engine = create_async_engine(settings.database_url.get_secret_value(), pool_size=TASK_SLOTS + 2)
+    # Two connections per slot (a task's transaction, and a short one of site memory's beside it), one for claiming,
+    # and one to record a result beside a task left behind.
+    engine = create_async_engine(settings.database_url.get_secret_value(), pool_size=2 * TASK_SLOTS + 2)
     log.info("worker %s: started; job kinds %s", worker, ", ".join(sorted(handlers)))
     running: set[asyncio.Task[None]] = set()
     stopping = asyncio.ensure_future(stop.wait())
@@ -169,13 +177,8 @@ async def _run_within_deadline(
     ending: JobEnding | None,
     redact_urls: bool,
 ) -> None:
-    """Run `task` on a connection of its own; at `TASK_DEADLINE`, cancel it and record it as failed (`DEADLINE`)."""
-
-    async def run() -> None:
-        async with engine.connect() as conn:
-            await _run(conn, task, handlers, ending, redact_urls=redact_urls)
-
-    work = asyncio.create_task(run())
+    """Run `task`; at `TASK_DEADLINE`, cancel it and record it as failed (`DEADLINE`)."""
+    work = asyncio.create_task(_run(engine, task, handlers, ending, redact_urls=redact_urls))
     try:
         done, _ = await asyncio.wait({work}, timeout=TASK_DEADLINE.total_seconds())
     except asyncio.CancelledError:  # the worker is stopping at once: the task goes with it
@@ -195,7 +198,8 @@ async def _run_within_deadline(
     try:
         async with engine.begin() as conn:
             if not done:
-                # Its transaction, if one is open, rolls back as its session ends; its next database call fails.
+                # Its transaction, if one is open, rolls back as its session ends, and its next database call fails;
+                # work not yet in its transaction finds the task failed as it records a result, and rolls back.
                 await conn.execute(_END_SESSION, {"name": _session_name(task)})
             # A lock another task's transaction holds is waited for only so long (`_LOCK_WAIT`); past it, the task is
             # left to its lease's expiry.
@@ -221,7 +225,7 @@ def _session_name(task: ClaimedTask) -> str:
 
 
 async def _run(
-    conn: AsyncConnection,
+    engine: AsyncEngine,
     task: ClaimedTask,
     handlers: Mapping[JobKind, TaskHandler],
     ending: JobEnding | None,
@@ -229,41 +233,63 @@ async def _run(
     redact_urls: bool,
 ) -> None:
     try:
-        async with conn.begin():
-            await conn.execute(select(func.set_config("application_name", _session_name(task), True)))
-            await _execute(conn, task, handlers, ending, redact_urls=redact_urls)
+        kind, settle = await _prepare(engine, task, handlers)
+        async with _transaction(engine, task) as conn:
+            await _record(conn, task, kind, await settle(conn), ending, redact_urls=redact_urls)
     except LeaseLost:
         log.warning("url_task %s: lease lost; its work was rolled back", task.id)
     except Exception as error:
         message = _error_text(f"{type(error).__name__}: {error}", redact_urls=redact_urls)
         log.warning("url_task %s: %s", task.id, message)
         with suppress(LeaseLost):
-            async with conn.begin():
-                await conn.execute(select(func.set_config("application_name", _session_name(task), True)))
+            async with _transaction(engine, task) as conn:
                 await fail_task(conn, task, message, transient=True, ending=ending)
 
 
-async def _execute(
+@asynccontextmanager
+async def _transaction(engine: AsyncEngine, task: ClaimedTask) -> AsyncIterator[AsyncConnection]:
+    """A transaction of the task's, under its session name (`_session_name`)."""
+    async with engine.connect() as conn, conn.begin():
+        await conn.execute(select(func.set_config("application_name", _session_name(task), True)))
+        yield conn
+
+
+async def _prepare(
+    engine: AsyncEngine, task: ClaimedTask, handlers: Mapping[JobKind, TaskHandler]
+) -> tuple[JobKind, Settle]:
+    """The task's job kind and its writes: its handler's, run up to them; none of a cancelled job's task (`Skipped`)."""
+    async with engine.connect() as conn:
+        job = (await conn.execute(select(Job.kind, Job.cancel_requested).where(Job.id == task.job_id))).one()
+    handler = handlers.get(job.kind)
+    prepared: Settle | TaskResult
+    if job.cancel_requested:
+        prepared = Skipped()
+    elif handler is None:
+        prepared = Failed(f"no handler for job kind {job.kind!r}", transient=False)
+    else:
+        prepared = await handler(task, engine)
+    return job.kind, prepared if callable(prepared) else partial(_ended, prepared)
+
+
+async def _ended(result: TaskResult, _conn: AsyncConnection) -> TaskResult:
+    return result
+
+
+async def _record(
     conn: AsyncConnection,
     task: ClaimedTask,
-    handlers: Mapping[JobKind, TaskHandler],
+    kind: JobKind,
+    result: TaskResult,
     ending: JobEnding | None,
     *,
     redact_urls: bool,
 ) -> None:
-    job = (await conn.execute(select(Job.kind, Job.cancel_requested).where(Job.id == task.job_id))).one()
-    if job.cancel_requested:
-        await cancel_task(conn, task, ending=ending)
-        return
-    handler = handlers.get(job.kind)
-    if handler is None:
-        await fail_task(conn, task, f"no handler for job kind {job.kind!r}", transient=False, ending=ending)
-        return
-    match await handler(task, conn):
+    """Record the task's `result`."""
+    match result:
         case Finished(outcome, reason, capture_id):
             await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id, ending=ending)
             # The task's id and job, never its URL, which `CRAWLERAI_LOG_REDACT_URLS` may keep out of the logs.
-            log.info("url_task %s: %s task of job %s: %s", task.id, job.kind, task.job_id, outcome)
+            log.info("url_task %s: %s task of job %s: %s", task.id, kind, task.job_id, outcome)
         case Failed(error, transient, after, exhausted, capture_id):
             text = _error_text(error, redact_urls=redact_urls)
             await fail_task(
@@ -276,7 +302,7 @@ async def _execute(
                 capture_id=capture_id,
                 ending=ending,
             )
-            log.warning("url_task %s: %s task of job %s: failed: %s", task.id, job.kind, task.job_id, text)
+            log.warning("url_task %s: %s task of job %s: failed: %s", task.id, kind, task.job_id, text)
         case Postpone(after):
             await release_task(conn, task, after=after)
         case Skipped():

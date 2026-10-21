@@ -15,7 +15,7 @@ from crawlerai.core.settings import Settings
 from crawlerai.db.models import Job, JobEvent, JobId, JobKind, JobStatus, Project, UrlTask, UrlTaskId
 from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask, claim_tasks
 from crawlerai.worker import loop
-from crawlerai.worker.loop import Failed, Finished, TaskHandler, TaskResult, run_worker
+from crawlerai.worker.loop import Failed, Finished, Settle, TaskHandler, TaskResult, run_worker
 
 pytestmark = pytest.mark.anyio
 
@@ -118,7 +118,7 @@ async def test_tasks_of_a_cancelled_job_are_not_run(engine: AsyncEngine) -> None
     job_id, _ = await _job(engine, 3, status="running", cancel_requested=True)
     runs: list[UrlTaskId] = []
 
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
+    async def handler(task: ClaimedTask, engine: AsyncEngine) -> Settle | TaskResult:
         runs.append(task.id)
         return Finished("extracted")
 
@@ -133,7 +133,7 @@ async def test_tasks_of_a_cancelled_job_are_not_run(engine: AsyncEngine) -> None
 async def test_a_retry_result_requeues_the_task_until_its_attempts_run_out(engine: AsyncEngine) -> None:
     job_id, _ = await _job(engine, 1)
 
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
+    async def handler(task: ClaimedTask, engine: AsyncEngine) -> Settle | TaskResult:
         return Failed("http 429", transient=True, after=timedelta(0), exhausted="blocked")
 
     await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))
@@ -155,7 +155,7 @@ async def test_a_handler_exception_is_recorded_and_the_task_retried(
     await _job(engine, 1)
     stop_after_one = asyncio.Event()
 
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
+    async def handler(task: ClaimedTask, engine: AsyncEngine) -> Settle | TaskResult:
         stop_after_one.set()
         raise RuntimeError(f"fetching {task.url}?q=1 timed out")
 
@@ -172,12 +172,15 @@ async def test_work_of_a_task_whose_lease_was_lost_is_rolled_back(engine: AsyncE
     job_id, [task_id] = await _job(engine, 1)
     ran = asyncio.Event()
 
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        await conn.execute(insert(JobEvent).values(job_id=task.job_id, kind="handler_wrote"))
-        async with engine.begin() as other:
-            await other.execute(update(UrlTask).values(claimed_by="another-worker"))
-        ran.set()
-        return Finished("extracted")
+    async def handler(task: ClaimedTask, engine: AsyncEngine) -> Settle | TaskResult:
+        async def settle(conn: AsyncConnection) -> TaskResult:
+            await conn.execute(insert(JobEvent).values(job_id=task.job_id, kind="handler_wrote"))
+            async with engine.begin() as other:
+                await other.execute(update(UrlTask).values(claimed_by="another-worker"))
+            ran.set()
+            return Finished("extracted")
+
+        return settle
 
     async def handled() -> bool:
         return ran.is_set()
@@ -199,14 +202,17 @@ async def test_work_left_behind_holding_its_row_has_its_session_ended_and_its_ta
     job_id, _ = await _job(engine, 1)
     release = asyncio.Event()
 
-    async def handler(task: ClaimedTask, conn: AsyncConnection) -> TaskResult:
-        # Its row locked in its open transaction, the work ignores its cancellation until released.
-        await conn.execute(update(UrlTask).where(UrlTask.id == task.id).values(priority=UrlTask.priority))
-        try:
-            await asyncio.sleep(3600)
-        except asyncio.CancelledError:
-            await release.wait()
-        return Finished("extracted")
+    async def handler(task: ClaimedTask, engine: AsyncEngine) -> Settle | TaskResult:
+        async def settle(conn: AsyncConnection) -> TaskResult:
+            # Its row locked in its open transaction, the work ignores its cancellation until released.
+            await conn.execute(update(UrlTask).where(UrlTask.id == task.id).values(priority=UrlTask.priority))
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                await release.wait()
+            return Finished("extracted")
+
+        return settle
 
     async with asyncio.timeout(30):
         await _run_until(engine, {"crawl": handler}, _job_ended(engine, job_id))

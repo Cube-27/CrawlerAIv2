@@ -67,7 +67,8 @@ D-1261, D-1263, D-1472, owner #70, owner #72, architecture v3 a.3.
 
 ### Requirement: Acquisition contract and block history
 The system SHALL keep a two-tier domain memory (`acquire/memory.py`), apart because a durable strategy and a
-short-lived safety bias age differently, both in Postgres so every process reads the same memory:
+short-lived safety bias age differently, both in Postgres so every process reads the same memory. Memory is advisory
+and is learned in short transactions of its own, never in a task's (D-1786):
 - An acquisition contract per site and page kind (`site_contract`; a fetch with no page kind is the detail pages'):
   the method the pages start with, the browser engine that taught it, `handoff`, and the field coverage (`found`,
   `missing`) of the last extraction with a record; the site's platform is `site.platform` ("Platform fingerprints").

@@ -1291,3 +1291,15 @@ archived ARCHITECTURE.md.
 - Why: the copies contradicted each other (`/p/` one document in derive, two in scope); one rule, the one that the
   canonical form and RFC 3986 give.
 - Reversible: yes — `normalize/url_key.py`.
+
+### D-1786 — Site memory in its own short transactions; the worker fetches outside the task transaction
+- Date: 2026-10-21 · Change/PR: refactor/site-memory-txn · Status: decided
+- Decision: a worker task runs in two parts: its fetch (site row, robots.txt, adapter declines, `learn_fetch`, each in
+  a short transaction of its own) before the task transaction opens, then its writes in it. `learn_fetch`,
+  `learn_extraction`, `store_declines` and the robots snapshot write through the engine in transactions of their own,
+  in the worker and the scrape alike. Captures, records and usage still commit with the task's result (INV-31).
+- Alternatives: keep the one transaction per task (an `ON CONFLICT DO UPDATE` locks the contract row even when its
+  `WHERE` is false, so every task of a site and page kind waited for the one before it to commit, extraction and role
+  C included).
+- Why: memory is advisory and need not be atomic with the task; the tasks of one crawl run side by side.
+- Reversible: yes
