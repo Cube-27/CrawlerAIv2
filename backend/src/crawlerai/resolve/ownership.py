@@ -36,7 +36,8 @@ class EntityGraph:
 
     entities: Mapping[str, Entity]
     vocabulary: Vocabulary
-    page_urls: tuple[str, ...] = ()  # the request, final and canonical URLs: what a row names to be the page's subject
+    # The URLs naming the page (`collect.run`'s `page_urls`): what a row names to be the page's subject.
+    page_urls: tuple[str, ...] = ()
     aliases: Mapping[str, str] = field(default_factory=dict)  # a merged entity's id -> the entity it is part of
 
     @classmethod

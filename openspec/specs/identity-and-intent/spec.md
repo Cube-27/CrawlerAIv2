@@ -21,7 +21,10 @@ of an identity-checked data call's answer (acquisition spec "Data calls") SHALL 
 root entity of its most specific type, and stay apart when the page states none or several; one of a repeated set of
 microdata items (three or more elements whose XPaths differ only in one step's position: a carousel, a comparison
 table) is not counted, as intent reads it as another page's item, and the root is the page's own when one of its
-merged members names the page or none names another document.
+merged members names the page or none names another document. A page URL, by which an entity names the page, is
+the request, final or canonical URL (RFC 6596) or an alternate version the page declares by language (HTML Living
+Standard §4.6.7.1, `link rel="alternate"` with `hreflang`): a translation or regional version of the page is the
+same document. (Previously: alternates by language named other documents.)
 `select_target` SHALL pick one primary-type entity (`resolve/intent.py`) or none, which makes every field
 `conflict`/`intent_ambiguous`; a detail page's related items and its product's group do not make intent ambiguous
 (D-1151), nor does the item a primary entity's review or rating names (`itemReviewed`), which is that entity;
@@ -39,6 +42,10 @@ D-1291, D-1379.
 - **WHEN** a detail page's JSON-LD Product has no identifier and its identity-checked Shopify product JSON states the
   sku and price on its variants
 - **THEN** the page has one target, owning the JSON-LD description and the JSON's price and variant sku
+#### Scenario: Product markup naming the page's regional version
+- **WHEN** a detail page's only JSON-LD Product states its `url` on another host, which the page declares as its
+  alternate by `hreflang`, and an identity-checked product JSON names the page
+- **THEN** the two are one target, and the JSON-LD Offer's availability publishes
 #### Scenario: A comparison table beside the page's product
 - **WHEN** a detail page states a JSON-LD Product, its identity-checked product JSON, and a comparison table of
   microdata Products, the first of which names the page URL

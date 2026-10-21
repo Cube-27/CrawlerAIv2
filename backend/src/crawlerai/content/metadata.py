@@ -16,6 +16,9 @@ from crawlerai.normalize.url import canonical_url
 
 # The Open Graph protocol: `og:` properties, and the `product:` namespace of its `product` object type.
 _OG_PREFIXES = ("og:", "product:")
+# HTML Living Standard §4.6.2: a link's `type` is the MIME type of the resource it references; without one, or as
+# an HTML document (`text/html`, `application/xhtml+xml`, RFC 9110 §8.3.1: before parameters, any case), it is a page.
+_DOCUMENT_TYPES = frozenset({"", "text/html", "application/xhtml+xml"})
 # RFC 3987 §2.2 and RFC 3986 §3: an IRI's last path segment or its fragment follows the last `/` or `#`.
 _IRI_SEPARATOR = re.compile(r"[/#]")
 
@@ -103,6 +106,24 @@ def canonical_href(page: ParsedPage, final_url: str) -> str | None:
     return read[0][0] if len({url for _, url in read}) == 1 else None
 
 
+def language_alternates(page: ParsedPage, final_url: str) -> tuple[tuple[str, str], ...]:
+    """HTML Living Standard §4.6.7.1: a `link` whose `rel` has `alternate` and that has an `hreflang` names an alternate
+    version of this document in that language (a translation, a regional version): each (language, target resolved
+    against the document base URL and canonicalized), in document order; a target no URL parser reads names none.
+    A link whose `type` names another format than an HTML document (a feed) is another resource, not a version."""
+    base = document_base_url(page, final_url)
+    found: list[tuple[str, str]] = []
+    for node in page.tree.css("link[hreflang]"):
+        language = strip(node.attributes.get("hreflang"))
+        if not language or "alternate" not in tokens((node.attributes.get("rel") or "").lower()):
+            continue
+        if _media_type(node.attributes.get("type")) not in _DOCUMENT_TYPES:
+            continue
+        if (url := canonical_url(node.attributes.get("href") or "", base)) is not None:
+            found.append((language, url))
+    return tuple(found)
+
+
 def _json_ld_types(page: ParsedPage) -> Iterator[str]:
     # JSON-LD 1.1 §9.3: a script of type application/ld+json carries JSON-LD; §3.5: `@type` is a string or an array
     # of strings, on any node object, nested ones and `@graph` members included.
@@ -143,3 +164,7 @@ def _type_name(value: str) -> str:
     """A type IRI's name, its last path segment or fragment (`https://schema.org/Product` → `Product`); a JSON-LD
     term (`Product`) is already a name."""
     return _IRI_SEPARATOR.split(value)[-1]
+
+
+def _media_type(value: str | None) -> str:
+    return (value or "").split(";", 1)[0].strip().lower()

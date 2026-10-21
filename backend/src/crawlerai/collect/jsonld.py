@@ -1,7 +1,8 @@
 """The JSON-LD collector (extraction spec): schema.org nodes in `application/ld+json` blocks.
 
-Each block is parsed as JSON, accepting raw control characters inside strings (RFC 8259 §9; `core.json_text.parse`); a
-block that is still invalid is skipped with a diagnostic, never repaired. Every JSON object in it
+Each block is parsed as JSON, accepting raw control characters inside strings and a number written with leading
+zeros, read as its digits (RFC 8259 §9; `core.json_text.parse`); a block that is still invalid is skipped with a
+diagnostic, never repaired. Every JSON object in it
 is a node; `@graph` and nesting need no special case, since the walk visits every object in document order. A node
 whose `@type` is a schema.org type in the vocabulary is an entity. A node reference (an object holding only `@id`,
 JSON-LD 1.1 §9.5) stands for the node defined with that `@id` anywhere on the page.

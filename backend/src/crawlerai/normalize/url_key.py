@@ -40,7 +40,7 @@ def _name(pair: str) -> bytes:
 
 def session_parameters(row_urls: Collection[str], page_urls: Iterable[str]) -> frozenset[str]:
     """The names of the query parameters that carry no item identity on a listing page: each of two or more row URLs
-    carries the parameter once and with one same value, and none of the page's own URLs (request, final, canonical)
+    carries the parameter once and with one same value, and none of the page's own URLs (`collect.run`'s `page_urls`)
     carries it. One distinct value per row is identity and is kept; a single row shows nothing to compare."""
     if len(row_urls) < 2:
         return frozenset()
