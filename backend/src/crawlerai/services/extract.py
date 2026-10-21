@@ -254,7 +254,7 @@ async def _drafted(
             samples = await _samples(engine, fetching, request, job_id, list(urls.values())[:MAX_SAMPLES])
             drafted = await draft_schema(engine, llm, prompt=prompt, samples=samples, job_id=job_id)
         check_usable(drafted, request.page_kind)
-        drafted = await with_labels(engine, llm, drafted)
+        drafted = with_labels(engine, llm, drafted)
     except Exception as e:
         async with engine.begin() as conn:
             await transition_job(conn, job_id, "failed")

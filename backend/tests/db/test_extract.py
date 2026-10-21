@@ -74,15 +74,6 @@ def _draft_reply(page_kind: str = "detail") -> ProviderReply:
     return ProviderReply(model="fake-strong", text=json.dumps(to_wire(document)), tokens_in=900, tokens_out=80)
 
 
-# A role S reply of label synonyms (`s_labels`): none for either field.
-LABELS_REPLY = ProviderReply(
-    model="fake-strong",
-    text=json.dumps({"fields": [{"name": "title", "labels": []}, {"name": "price", "labels": []}]}),
-    tokens_in=90,
-    tokens_out=8,
-)
-
-
 def _page(name: str, *, offers: bool = True) -> bytes:
     node: dict[str, Any] = {"@context": "https://schema.org", "@type": "Product", "name": name}
     if offers:
@@ -307,7 +298,7 @@ async def test_a_prompt_is_drafted_from_the_first_pages_reached_and_returned(
     web.serve(urls[0], _page("Blue kettle"))
     web.serve(urls[2], _page("Red kettle"))
     web.serve(urls[3], _page("Green kettle"))
-    provider = FakeProvider([_draft_reply(), LABELS_REPLY])
+    provider = FakeProvider([_draft_reply()])
 
     submitted = await submit_extract(
         engine, fetching, _request(urls, {"prompt": prompt}), llm=MeteredClient([provider], engine), data=engine_data
@@ -315,7 +306,7 @@ async def test_a_prompt_is_drafted_from_the_first_pages_reached_and_returned(
 
     assert (submitted.schema_.name, submitted.schema_.origin) == (draft_name(prompt), "prompt_draft")
     # The first three URLs are fetched for samples; the two reached are the samples (llm spec: cleaned text).
-    call, _ = provider.calls  # the draft, then its label synonyms (`s_labels`)
+    call = provider.calls[0]  # the draft; its label synonyms (`s_labels`) follow in the background
     assert "Blue kettle boils" in call.user
     assert "Red kettle boils" in call.user
     assert "Green kettle" not in call.user
@@ -395,14 +386,14 @@ async def test_a_cache_only_prompt_is_drafted_from_stored_captures_and_fetches_n
     )
     await _run(engine, fetching, engine_data, stored.job_id)
     fetched = len(web.fetched)
-    provider = FakeProvider([_draft_reply(), LABELS_REPLY])
+    provider = FakeProvider([_draft_reply()])
     request = _request(urls, {"prompt": prompt}, fetch={"cache": "only"})
 
     await submit_extract(engine, fetching, request, llm=MeteredClient([provider], engine), data=engine_data)
 
     # `cache: only` never fetches (jobs spec, "Request context and actions per page"): the sample is the stored page;
     # the page with no capture is none.
-    call, _ = provider.calls  # the draft, then its label synonyms (`s_labels`)
+    call = provider.calls[0]  # the draft; its label synonyms (`s_labels`) follow in the background
     assert "Blue kettle boils" in call.user
     assert "Red kettle" not in call.user
     assert len(web.fetched) == fetched

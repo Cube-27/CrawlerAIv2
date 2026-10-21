@@ -1,6 +1,6 @@
 """Role S against Postgres (llm spec): a prompt's draft is stored once as `prompt_draft`, a repeat of the
 prompt reuses it without a call, and an invalid document is retried once, then refused. A schema's label synonyms are
-drafted once and stored with it."""
+drafted off the request path, once, and stored with it."""
 
 import asyncio
 import json
@@ -14,9 +14,17 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.db.models import Job, JobId, Project, UsageEvent
 from crawlerai.db.models import SchemaDef as SchemaRow
-from crawlerai.llm.client import NO_LLM, MeteredClient, OutputInvalid, ProviderReply
+from crawlerai.llm.client import (
+    NO_LLM,
+    LLMRequest,
+    LLMResponse,
+    MeteredClient,
+    OutputInvalid,
+    ProviderReply,
+    ReplyCheck,
+)
 from crawlerai.llm.providers.fake import FakeProvider
-from crawlerai.llm.roles.s_labels import with_labels
+from crawlerai.llm.roles.s_labels import draft_labels, with_labels
 from crawlerai.llm.roles.s_schema import draft_name, draft_schema
 from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.schemas import registry
@@ -153,21 +161,31 @@ async def test_label_synonyms_are_drafted_once_stored_with_the_schema_and_cleare
     provider = FakeProvider([_labels_reply(labels)])
     client = MeteredClient([provider], drafts)
 
-    drafted = await with_labels(drafts, client, schema)
-    async with drafts.connect() as conn:
-        stored = await registry.get_by_id(conn, schema.id)
-    again = await with_labels(drafts, client, stored)
+    drafted = await draft_labels(drafts, client, schema)
+    assert drafted is not None
+    again = with_labels(drafts, client, drafted)
 
     # A label repeating another's words, or the field's own name, is dropped.
     assert drafted.labels == {"title": ["Event", "Veranstaltung"], "starts": ["Begins", "Beginn"]}
     assert again == drafted
     assert len(provider.calls) == 1
     async with drafts.begin() as conn:
-        edited = await registry.update_schema(conn, stored, SchemaChanges(required_groups=[["starts"]]))
+        edited = await registry.update_schema(conn, drafted, SchemaChanges(required_groups=[["starts"]]))
     assert edited.labels is None
 
 
-async def test_without_a_model_the_schema_keeps_its_own_words(drafts: AsyncEngine) -> None:
+class _Broken:
+    """A client failing with an error that is no `LLMFailure`."""
+
+    async def complete_json(self, req: LLMRequest, check: ReplyCheck | None = None) -> LLMResponse:
+        raise RuntimeError("broken")
+
+
+async def test_a_failed_draft_stores_nothing_and_fails_no_request(drafts: AsyncEngine) -> None:
     schema = await _stored_draft(drafts)
 
-    assert await with_labels(drafts, NO_LLM, schema) == schema
+    assert with_labels(drafts, _Broken(), schema) == schema
+    assert await draft_labels(drafts, _Broken(), schema) is None
+    assert await draft_labels(drafts, NO_LLM, schema) is None
+    async with drafts.connect() as conn:
+        assert (await registry.get_by_id(conn, schema.id)).labels is None
