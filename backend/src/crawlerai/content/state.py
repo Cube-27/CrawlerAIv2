@@ -87,13 +87,17 @@ def script_state(script: ScriptBlock, diagnostics: list[str]) -> Iterator[JsonVa
 
 def _next_code(pattern: re.Pattern[str], text: str, start: int) -> re.Match[str] | None:
     """The next match of `pattern` (an assignment or a call) at or after `start` that is not inside a comment or a
-    string or template literal."""
-    while (match := pattern.search(text, start)) is not None:
+    string or template literal. The pattern is searched again only when a skipped literal or comment passes the
+    match's start: a match is the same from any start at or before it, so the text is read once."""
+    match = pattern.search(text, start)
+    while match is not None:
         opener = _SKIP_START.search(text, start, match.start())
         if opener is None:
             return match
         skipped = _SKIPPED[opener.group()].match(text, opener.start())
         start = opener.end() if skipped is None else skipped.end()  # an unterminated quote (`/'/`) is skipped alone
+        if start > match.start():
+            match = pattern.search(text, start)
     return None
 
 
