@@ -8,9 +8,12 @@ Appendix A #59), is served by the recipe page after page (`RecipeRung.pages`) up
 listing's further kept state is (`store_further`). When the recipe does not serve the first page, the page
 is fetched by the rungs as any page is.
 
-Every step writes in the worker's transaction for the task, so a task that raises rolls back alone (INV-31). The
-task's fetch attempts are counted as the job's usage at its end (`count_fetch`): that write locks the job's row until
-the task commits.
+The task's page is fetched before the worker's transaction for the task opens (`fetch_page`): the site's row, its
+robots.txt, its adapter declines and what the fetch taught its memory (`acquire.memory`) are each read or written in a
+short transaction of their own, so no task holds a site's rows while it fetches or extracts, and the tasks of one site
+run side by side. Every later step (`keep_page`, the extraction) writes in the worker's transaction for the task, so a
+task that raises rolls back alone (INV-31); site memory only is learned beside it. The task's fetch attempts are
+counted as the job's usage at its end (`count_fetch`): that write locks the job's row until the task commits.
 """
 
 import logging
@@ -23,9 +26,11 @@ from urllib.parse import urlsplit
 
 from pydantic import TypeAdapter
 from sqlalchemy import Row, select
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.challenge import vendor_block
+from crawlerai.acquire.memory import learn_fetch
+from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.politeness import Admit, HostLimiter, backoff, slowed_down
 from crawlerai.acquire.rungs import NO_PLAN
 from crawlerai.acquire.ssrf import SsrfRejected
@@ -64,7 +69,7 @@ from crawlerai.services.polite import (
     Refused,
     Turns,
     polite_fetch,
-    rules_in,
+    rules_of,
 )
 from crawlerai.services.scrape_steps import (
     EXTRACTION_ERROR,
@@ -76,7 +81,6 @@ from crawlerai.services.scrape_steps import (
     extract_further,
     fetch_failure,
     fetch_policy,
-    new_capture,
     reached_outcome,
     record_fetch_usage,
     site_row,
@@ -160,6 +164,19 @@ async def _with_drafted_labels(conn: AsyncConnection, schema_id: SchemaId, pinne
 
 
 @dataclass(frozen=True)
+class Fetched:
+    """The task's page as fetched, before the task's transaction: its site, the fetch, its stored capture when it was
+    read from one (`cache: only`), else None until `keep_page` stores it, and the fetch attempts."""
+
+    site: SiteRow
+    result: FetchResult
+    capture_id: CaptureId | None
+    attempts: tuple[AttemptRecord, ...]
+    proxy_pool: str | None
+    further: tuple[FetchResult, ...] = ()  # a listing recipe's further pages, in order
+
+
+@dataclass(frozen=True)
 class FetchedPage:
     """The task's page as fetched, its site, its stored capture, and the fetch attempts, which `count_fetch` counts as
     the job's usage."""
@@ -188,7 +205,7 @@ class Ended:
 
 
 async def fetch_page(
-    conn: AsyncConnection,
+    engine: AsyncEngine,
     fetching: Fetching,
     task: ClaimedTask,
     options: FetchOptions,
@@ -198,9 +215,10 @@ async def fetch_page(
     listing_pages: int = MAX_PAGES,
     formats: Sequence[PageFormat] = (),
     planned: Records | None = None,
-) -> FetchedPage | Ended:
-    """Fetch the task's page politely (`fetch_queued`: robots.txt over HTTP, the page through `acquire`) and store
-    its capture, or the result the task ends this run with. Neither writes the job's usage. A request the SSRF
+) -> Fetched | Ended:
+    """Fetch the task's page politely (`fetch_queued`: robots.txt over HTTP, the page through `acquire`), outside any
+    transaction of the task, each read and write through `engine` in a short transaction of its own (module
+    docstring), or the result the task ends this run with. Neither writes the job's usage. A request the SSRF
     guard refused fails the task at once (INV-16): the task's URL is checked before anything, as the services that
     fetch while the caller waits check theirs (`check_target`), since a crawl's URLs were never checked at submit.
 
@@ -219,8 +237,6 @@ async def fetch_page(
     except SsrfRejected as e:
         return Ended(Failed(str(e), transient=False))
     host = urlsplit(task.url).hostname or ""
-    site = await site_row(conn, host, task.page_kind)
-    rungs = site_rungs(fetching, host, site)
     read_with = planned or served
     policy = fetch_policy(
         options,
@@ -229,25 +245,28 @@ async def fetch_page(
         schema=None if read_with is None else read_with.schema,
         formats=formats,
     )
+    # A new host's site row is committed at once, so the other tasks of the host do not wait on it.
+    async with engine.begin() as conn:
+        site = await site_row(conn, host, task.page_kind)
     if options.cache == "only":
         # A page the config's API recipe serves was stored as its JSON, as a scrape reads it.
         api = served is not None and served.config is not None and recipe_of(served.config) is not None
-        return await _stored_page(conn, fetching, task, site, policy, formats, api=api)
+        return await _stored_page(engine, fetching, task, site, policy, formats, api=api)
     # The task's deadline runs from its claim, a moment before this (`worker.loop`).
     deadline = time.monotonic() + TASK_DEADLINE.total_seconds()
-    by_sources = (
-        NO_PLAN
-        if planned is None
-        else await surface_plan(conn, site.id, planned.schema, planned.config, planned.render)
-    )
+    by_sources = NO_PLAN
+    if planned is not None:
+        async with engine.connect() as conn:
+            by_sources = await surface_plan(conn, site.id, planned.schema, planned.config, planned.render)
+    rungs = site_rungs(fetching, host, site)
     plain = PagePlan(rungs, site, policy, [], deadline=deadline, fetch=by_sources)
     plan = _plan(served, listing_pages, plain)
-    rules = rules_in(conn, fetching.rungs.http, plan.attempts, Turns(fetching.limiter, QUEUED))
+    rules = rules_of(engine, fetching.rungs.http, plan.attempts, Turns(fetching.limiter, QUEUED))
     fetch = page_fetch(fetching, plan, rules, QUEUED)
     by_adapter = rungs.adapters.would_serve(task.url)
     fetched = await fetch_queued(task, policy, rules, fetch, fetching.limiter, by_adapter=by_adapter)
-    await store_declines(conn, site, host, rungs)
-    return await _kept(conn, fetching, plan, fetched)
+    await store_declines(engine, site, host, rungs)
+    return await _learned(engine, plan, fetched)
 
 
 def _plan(served: Records | None, listing_pages: int, plan: PagePlan) -> PagePlan:
@@ -261,20 +280,29 @@ def _plan(served: Records | None, listing_pages: int, plan: PagePlan) -> PagePla
     return replace(plan, recipe=recipe, pages=pages)
 
 
-async def _kept(
-    conn: AsyncConnection, fetching: Fetching, plan: PagePlan, fetched: FetchResult | TaskResult
-) -> FetchedPage | Ended:
-    """The fetched page with its capture stored, or how the task ends: a refused request, a listing recipe's further
-    page's too, fails it (INV-16)."""
+async def _learned(engine: AsyncEngine, plan: PagePlan, fetched: FetchResult | TaskResult) -> Fetched | Ended:
+    """The fetched page, with what its fetch taught remembered on its site (`acquire.memory.learn_fetch`), or how the
+    task ends: a refused request, a listing recipe's further page's too, fails it (INV-16)."""
     site, attempts, pool = plan.site, tuple(plan.attempts), plan.policy.proxy_pool
     if isinstance(fetched, FetchResult):
         further_refused = None if plan.pages is None else plan.pages.refused
         if (refused := refusal(fetched) or further_refused) is None:
-            capture_id = await new_capture(conn, fetching.store, site.id, fetched)
+            await learn_fetch(engine, site.id, fetched)
             further = () if plan.pages is None else tuple(plan.pages.further)
-            return FetchedPage(site, fetched, capture_id, attempts, pool, further)
+            return Fetched(site, fetched, None, attempts, pool, further)
         fetched = Failed(refused, transient=False)
     return Ended(fetched, attempts, pool)
+
+
+async def keep_page(conn: AsyncConnection, store: ObjectStore, page: Fetched | Ended) -> FetchedPage | Ended:
+    """The fetched page with its capture stored in the task's transaction (`acquire.persist.store_capture`), unless it
+    was read from a stored one; a task that ends without a page, as it ends."""
+    if isinstance(page, Ended):
+        return page
+    capture_id = page.capture_id
+    if capture_id is None:
+        capture_id = await store_capture(conn, store, page.result, page.site.id)
+    return FetchedPage(page.site, page.result, capture_id, page.attempts, page.proxy_pool, page.further)
 
 
 async def fetch_queued(
@@ -331,7 +359,7 @@ def _backed_off(result: FetchResult, task: ClaimedTask) -> FetchResult | TaskRes
 
 
 async def _stored_page(
-    conn: AsyncConnection,
+    engine: AsyncEngine,
     fetching: Fetching,
     task: ClaimedTask,
     site: SiteRow,
@@ -339,18 +367,20 @@ async def _stored_page(
     formats: Sequence[PageFormat],
     *,
     api: bool,
-) -> FetchedPage | Ended:
+) -> Fetched | Ended:
     """The task's page from the latest stored capture made with `policy`'s steps and context (`cache: only`, D-1435),
     an API recipe's too with `api` (`recent_capture`), with no fetch; without one the task fails `not_cached`."""
-    row = await recent_capture(conn, site.id, task.canonical_url, policy, max_age=None, api=api)
+    async with engine.connect() as conn:
+        row = await recent_capture(conn, site.id, task.canonical_url, policy, max_age=None, api=api)
     recent = None if row is None else await reread(fetching.store, row, formats)
     if recent is None:
         return Ended(Failed(NOT_CACHED, transient=False))
-    return FetchedPage(site, recent.result, recent.capture_id, (), policy.proxy_pool)
+    return Fetched(site, recent.result, recent.capture_id, (), policy.proxy_pool)
 
 
 async def store_further_pages(
     conn: AsyncConnection,
+    engine: AsyncEngine,
     store: ObjectStore,
     task: ClaimedTask,
     page: FetchedPage,
@@ -367,6 +397,7 @@ async def store_further_pages(
     extracted = await extract_further(page.further, records.schema, records.config, records.data, _role_c(task, llm))
     stored = await store_further(
         conn,
+        engine,
         store,
         task,
         page.site.id,
@@ -415,6 +446,7 @@ def _browser_met(result: FetchResult) -> bool:
 
 async def extract_records(
     conn: AsyncConnection,
+    engine: AsyncEngine,
     task: ClaimedTask,
     page: FetchedPage,
     records: Records,
@@ -437,6 +469,7 @@ async def extract_records(
     extraction = await extract_page(bundle, schema, executor, gap_fill, data=records.data, parsed=parsed)
     stored = await store_page_record(
         conn,
+        engine,
         task,
         extraction,
         capture_id=page.capture_id,

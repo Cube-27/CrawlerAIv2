@@ -186,7 +186,7 @@ MUTANTS = [
         [],
         expect="HostOneInFlight",
         bug="robots_unpaced",
-        why="rules_in requests robots.txt before any turn, outside the hold",
+        why="rules_of requests robots.txt before any turn, outside the hold",
     ),
     Check(
         "mutant-cancelled-admits",

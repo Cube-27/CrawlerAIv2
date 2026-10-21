@@ -52,7 +52,13 @@ Refs: §17, D-0678, D-0951, D-1377. Enforced by: mid-job calibration and config 
 
 ### Requirement: Task failure isolation (INV-31)
 One task's failure SHALL never fail another: each task has its own DB session and transaction, and the worker's shared
-browser is relaunched at most once per task. Refs: §17, D-0633, D-0715. Enforced by: batch and killed-browser tests; active.
+browser is relaunched at most once per task. The task's fetch runs before its transaction opens; the site's row, its
+robots.txt snapshot, its adapter declines and its domain memory are read and written there, and the memory learned from
+the extraction beside the transaction, each in a short transaction of its own, so no task holds a site's rows while it
+fetches or extracts and the tasks of one site run side by side. Everything else the task writes, its capture, records
+and usage included, commits with its result in its transaction. (Previously: the whole task, fetch and extraction
+included, ran in its transaction, which held the site's contract row from the fetch to the commit.) Refs: §17, D-0633,
+D-0715, D-1785. Enforced by: batch, killed-browser and same-site tests; active.
 #### Scenario: Killed browser
 - **WHEN** the shared browser is killed during one task
 - **THEN** only that task fails, the others complete, and the browser was restarted at most once for it

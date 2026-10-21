@@ -406,13 +406,6 @@ async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None 
     return SiteRow(row.id, await remembered(conn, row.id, page_kind), row.robots_snapshot, row.adapter_declined)
 
 
-async def new_capture(conn: AsyncConnection, store: ObjectStore, site_id: SiteId, page: FetchResult) -> CaptureId:
-    """Store the fetched page's capture, and remember on its site what the fetch learned
-    (`acquire.memory.learn_fetch`)."""
-    await learn_fetch(conn, site_id, page)
-    return await store_capture(conn, store, page, site_id)
-
-
 async def record_fetch_usage(
     conn: AsyncConnection, job_id: JobId, attempts: Iterable[AttemptRecord], proxy_pool: str | None
 ) -> None:
@@ -447,6 +440,7 @@ EXTRACTION_ERROR: Final = "extraction_error"
 
 async def store_page_record(
     conn: AsyncConnection,
+    engine: AsyncEngine,
     task: ClaimedTask,
     extraction: ExtractionResult,
     *,
@@ -468,7 +462,8 @@ async def store_page_record(
     `render` (None: the job inherits the surface's) to its surface (`render_surface`): a listing's rows the HTTP page
     does not carry are for a locate run to find, as any field's are. A page with a record freshens the site's contract
     with its coverage; a caller-supplied page without one counts towards its staleness
-    (`acquire.memory.learn_extraction`). A page `config` ran on joins the config's drift window (learning-configs spec).
+    (`acquire.memory.learn_extraction`, through `engine`, in a transaction of its own). A page `config` ran on joins
+    the config's drift window (learning-configs spec).
     `page_url` is `store_extraction`'s."""
     stored = await store_extraction(
         conn,
@@ -485,13 +480,13 @@ async def store_page_record(
     if config is not None:
         await record_page(conn, config, extraction, margins=margins, job_id=task.job_id)
     if stored.records:
-        await learn_extraction(conn, site_id, schema.page_kind, coverage(schema, extraction))
+        await learn_extraction(engine, site_id, schema.page_kind, coverage(schema, extraction))
         await _count_page(conn, site_id, schema)
         await render_surface(conn, task.job_id, site_id, schema, render, extraction)
     elif caller_supplied:
         # A caller-supplied page is of the schema's kind by the caller's word, so no record is a quality failure; a
         # crawl-discovered page may be of no kind the schema reads.
-        await learn_extraction(conn, site_id, schema.page_kind, None)
+        await learn_extraction(engine, site_id, schema.page_kind, None)
         # A listing read whole that held no row; one whose rows state no item is `no_match` as a detail page is.
         read = stored.outcome != "failed" and extraction.entity is not None
         listed_nothing = schema.page_kind == "listing" and read and not extraction.rows
@@ -542,6 +537,7 @@ async def extract_further(
 
 async def store_further(
     conn: AsyncConnection,
+    engine: AsyncEngine,
     store: ObjectStore,
     task: ClaimedTask,
     site_id: SiteId,
@@ -552,13 +548,16 @@ async def store_further(
     caller_supplied: bool = True,
 ) -> StoredFurther:
     """Store each further page: its capture, its extraction and its records, under the listing's task, each under the
-    canonical URL of the document it read (a row without its own URL is keyed by its page and position)."""
+    canonical URL of the document it read (a row without its own URL is keyed by its page and position). What each
+    fetch taught is remembered on the site through `engine` (`acquire.memory.learn_fetch`)."""
     records: list[tuple[StoredRecord, ExtractionResult]] = []
     failed = False
     for page, extraction, config in extracted:
-        capture_id = await new_capture(conn, store, site_id, page)
+        await learn_fetch(engine, site_id, page)
+        capture_id = await store_capture(conn, store, page, site_id)
         kept = await store_page_record(
             conn,
+            engine,
             task,
             extraction,
             capture_id=capture_id,
