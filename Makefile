@@ -33,8 +33,17 @@ db:
 db-down:
 	$(COMPOSE) down
 
+# A model change edits the one baseline migration (greenfield, no migration chain), so a local database created from
+# an older baseline is already "at head" but lacks the new columns. `alembic check` compares it with the models; on
+# any difference the local database is recreated from the current baseline (its data is dropped).
 migrate:
 	cd backend && uv run alembic upgrade head
+	@if ! (cd backend && uv run alembic check >/dev/null 2>&1); then \
+		echo "[migrate] the local database predates the baseline migration; recreating it (local data is dropped)"; \
+		$(COMPOSE) exec -T postgres psql -U postgres -d postgres -q \
+			-c "DROP DATABASE crawlerai WITH (FORCE)" -c "CREATE DATABASE crawlerai OWNER app"; \
+		cd backend && uv run alembic upgrade head; \
+	fi
 	cd backend && uv run crawlerai schemas sync
 
 api:
