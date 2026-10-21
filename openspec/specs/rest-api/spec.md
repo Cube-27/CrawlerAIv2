@@ -187,8 +187,8 @@ counted in `skipped` (INV-16). Refs: §22, D-1442, D-1443.
 
 ### Requirement: SDKs
 `sdk/python` and `sdk/typescript` SHALL wrap the API with typed requests and answers generated from
-`frontend/openapi.json`, job polling, the event stream and webhook signature verification; `sdk/openapi.sha256` MUST
-name the current document, which `tools/tests/test_sdk_digest.py` checks. Refs: D-1444.
+`frontend/openapi.json`, job polling, the event stream and webhook signature verification; the generated files MUST be
+the ones the current document generates, which CI's `sdk` job (`make check-sdk`) checks. Refs: D-1444.
 
 ### Requirement: Output format members and artifacts endpoint
 Scrape, batch and crawl SHALL accept the formats `markdown_fit`, `chunks`, `screenshot` and `pdf`, with `fit`,

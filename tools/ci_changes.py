@@ -65,6 +65,8 @@ JOB_INPUTS: dict[str, tuple[str, ...]] = {
         ".claude/skills/verify-money/",
         WORKFLOW,
     ),
+    # The SDKs (`make check-sdk`): regenerated from the API document and checked, through the Makefile.
+    "sdk": ("sdk/", "frontend/openapi.json", "Makefile", WORKFLOW),
 }
 
 
