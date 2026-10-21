@@ -110,7 +110,6 @@ async def open_fetching(
             http=http,
             browser=browser.fetch,
             adapters=adapter_registry(settings.disabled_adapters),
-            conditional=http,
             json=json,
             sessions=sessions,
             exporting=browser.fetch,

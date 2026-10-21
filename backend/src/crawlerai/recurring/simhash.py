@@ -1,8 +1,7 @@
-"""The content fingerprint of a page (jobs spec): the exact digest of its visible words, so that a
-page whose text did not change between runs is `unchanged` and is not extracted again, and a 64-bit SimHash of them,
-which says how far a changed page moved.
+"""The content fingerprint of a page (jobs spec): the exact digest of its visible words, which says whether a page's
+text changed between runs, and a 64-bit SimHash of them, which says how far a changed page moved.
 
-Only an equal digest is unchanged (owner #40, D-1340): SimHash flips a bit only where a vote total was near zero, so an
+Only an equal digest is no change (owner #40, D-1340): SimHash flips a bit only where a vote total was near zero, so an
 equal SimHash does not bound the change (a one-word edit of a 500-word text keeps it on about 1 in 10 texts, D-0915).
 Both read the same words (`words`), so both ignore what changes on every load without the page changing: nonce-like
 tokens and whitespace.

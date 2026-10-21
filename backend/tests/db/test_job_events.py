@@ -156,7 +156,6 @@ PROGRESS = {
     "outcomes": {
         "extracted": 1,
         "partial": 0,
-        "unchanged": 0,
         "links_only": 0,
         "blocked": 0,
         "shell": 0,

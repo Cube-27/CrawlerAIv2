@@ -33,12 +33,9 @@ from crawlerai.config_ir.drift import DriftMargins
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.retry import backoff_delay
-from crawlerai.db.models import CaptureId, Job, RecordId, SchemaId, SiteId
+from crawlerai.db.models import CaptureId, Job, SchemaId
 from crawlerai.db.queue import LEASE, TASK_DEADLINE, ClaimedTask
 from crawlerai.llm.client import LLMClient
-from crawlerai.recurring.conditional import Unchanged
-from crawlerai.recurring.state import record_fetch, standing_listing, standing_record, stored_validators
-from crawlerai.recurring.versions import link_records
 from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.task import ActiveConfig
 from crawlerai.resolve.types import Probability
@@ -140,13 +137,12 @@ async def load_job(
 
 @dataclass(frozen=True)
 class FetchedPage:
-    """The task's page as fetched, its site, its stored capture, the record that stands for it while it is unchanged
-    (`fetch_page`'s `recurring`), and the fetch attempts, which `count_fetch` counts as the job's usage."""
+    """The task's page as fetched, its site, its stored capture, and the fetch attempts, which `count_fetch` counts as
+    the job's usage."""
 
     site: SiteRow
     result: FetchResult
     capture_id: CaptureId
-    standing: tuple[RecordId, ...]
     attempts: tuple[AttemptRecord, ...]
     proxy_pool: str | None
     further: tuple[FetchResult, ...] = ()  # a listing recipe's further pages, in order
@@ -174,7 +170,6 @@ async def fetch_page(
     options: FetchOptions,
     locale: str | None,
     *,
-    recurring: Records | None = None,
     served: Records | None = None,
     listing_pages: int = MAX_PAGES,
     formats: Sequence[PageFormat] = (),
@@ -184,10 +179,6 @@ async def fetch_page(
     its capture, or the result the task ends this run with. Neither writes the job's usage. A request the SSRF
     guard refused fails the task at once (INV-16): the task's URL is checked before anything, as the services that
     fetch while the caller waits check theirs (`check_target`), since a crawl's URLs were never checked at submit.
-
-    With `recurring`, the records the task extracts with, a page records already stand for (`_standing`) is
-    fetched with the validators it last answered with, and a 304 ends the task `unchanged` with no capture (jobs spec
-    §4.2).
 
     With `served`, the records the task extracts with when they are all it reads of the page, the config they name
     serves the page through its API recipe when it has one (adapters spec, `recipe_rung`). A listing's recipe with
@@ -207,7 +198,7 @@ async def fetch_page(
     site = await site_row(conn, host, task.page_kind)
     rungs = site_rungs(fetching, host, site)
     all_resources = site.load_all_resources
-    read_with = planned or served or recurring
+    read_with = planned or served
     policy = fetch_policy(
         options,
         locale,
@@ -221,11 +212,6 @@ async def fetch_page(
         # A page the config's API recipe serves was stored as its JSON, as a scrape reads it.
         api = served is not None and served.config is not None and recipe_of(served.config) is not None
         return await _stored_page(conn, fetching, task, site, policy, formats, api=api)
-    standing = () if recurring is None else await _standing(conn, task, site.id, recurring)
-    # Validators go only where a record stands for a 304; without one, a 304 is fetched again whole (§4.6). A fetch
-    # that bypasses what is stored sends none (D-1435).
-    sends_validators = bool(standing) and options.cache != "bypass"
-    validators = await stored_validators(conn, site.id, task.canonical_url) if sends_validators else None
     # The task's deadline runs from its claim, a moment before this (`worker.loop`).
     deadline = time.monotonic() + TASK_DEADLINE.total_seconds()
     by_sources = (
@@ -233,16 +219,14 @@ async def fetch_page(
         if planned is None
         else await surface_plan(conn, site.id, planned.schema, planned.config, planned.render)
     )
-    plain = PagePlan(
-        rungs, site, policy, [], validators=validators, has_record=bool(standing), deadline=deadline, fetch=by_sources
-    )
+    plain = PagePlan(rungs, site, policy, [], deadline=deadline, fetch=by_sources)
     plan = _plan(served, listing_pages, plain)
     rules = rules_in(conn, fetching.rungs.http, plan.attempts, Turns(fetching.limiter, QUEUED))
     fetch = page_fetch(fetching, plan, rules, QUEUED)
     by_adapter = rungs.adapters.would_serve(task.url)
     fetched = await fetch_queued(task, policy, rules, fetch, fetching.limiter, by_adapter=by_adapter)
     await store_declines(conn, site, host, rungs)
-    return await _kept(conn, fetching, task, plan, fetched, standing)
+    return await _kept(conn, fetching, plan, fetched)
 
 
 def _plan(served: Records | None, listing_pages: int, plan: PagePlan) -> PagePlan:
@@ -257,28 +241,18 @@ def _plan(served: Records | None, listing_pages: int, plan: PagePlan) -> PagePla
 
 
 async def _kept(
-    conn: AsyncConnection,
-    fetching: Fetching,
-    task: ClaimedTask,
-    plan: PagePlan,
-    fetched: FetchResult | Unchanged | TaskResult,
-    standing: tuple[RecordId, ...],
+    conn: AsyncConnection, fetching: Fetching, plan: PagePlan, fetched: FetchResult | TaskResult
 ) -> FetchedPage | Ended:
     """The fetched page with its capture stored, or how the task ends: a refused request, a listing recipe's further
-    page's too, fails it (INV-16), and a 304 that a record stands for ends it `unchanged`, linked to those records."""
+    page's too, fails it (INV-16)."""
     site, attempts, pool = plan.site, tuple(plan.attempts), plan.policy.proxy_pool
     if isinstance(fetched, FetchResult):
         further_refused = None if plan.pages is None else plan.pages.refused
         if (refused := refusal(fetched) or further_refused) is None:
             capture_id = await new_capture(conn, fetching.store, site.id, fetched)
             further = () if plan.pages is None else tuple(plan.pages.further)
-            return FetchedPage(site, fetched, capture_id, standing, attempts, pool, further)
+            return FetchedPage(site, fetched, capture_id, attempts, pool, further)
         fetched = Failed(refused, transient=False)
-    if isinstance(fetched, Unchanged):
-        await record_fetch(conn, site.id, task.canonical_url, fetched)
-        # The task stands for the records that stood for the 304 (`fetch_unless_unchanged` takes none without one).
-        await link_records(conn, task.id, standing)
-        fetched = Finished("unchanged")
     return Ended(fetched, attempts, pool)
 
 
@@ -290,7 +264,7 @@ async def fetch_queued(
     limiter: HostLimiter,
     *,
     by_adapter: bool = False,
-) -> FetchResult | Unchanged | TaskResult:
+) -> FetchResult | TaskResult:
     """The task's page through the polite fetch (`polite_fetch`, `QUEUED`), or the result the task ends this run with:
     - a robots.txt disallow: `blocked`, reason `robots`, without fetching the page; or, `by_adapter` (an active adapter
       serves the URL first, adapters spec, from an API whose own robots.txt its requests go by), its answer when it is
@@ -312,8 +286,6 @@ async def fetch_queued(
             return Failed(reason, transient=True, exhausted="blocked")
         case Refused(reason=reason):
             return Finished("blocked", reason=reason)
-        case Unchanged():
-            return result
     return result if result.block_class == "ok" else _backed_off(result, task)
 
 
@@ -347,7 +319,7 @@ async def _stored_page(
     recent = None if row is None else await reread(fetching.store, row, formats)
     if recent is None:
         return Ended(Failed(NOT_CACHED, transient=False))
-    return FetchedPage(site, recent.result, recent.capture_id, (), (), policy.proxy_pool)
+    return FetchedPage(site, recent.result, recent.capture_id, (), policy.proxy_pool)
 
 
 async def store_further_pages(
@@ -384,21 +356,6 @@ async def count_fetch(conn: AsyncConnection, task: ClaimedTask, page: FetchedPag
     but the frontier's: the job's row stays locked from this write until the task commits, and role C's client, which
     updates the job's usage on a connection of its own, would wait on it (D-0346), as would a cancel."""
     await record_fetch_usage(conn, task.job_id, page.attempts, page.proxy_pool)
-
-
-async def _standing(
-    conn: AsyncConnection, task: ClaimedTask, site_id: SiteId, records: Records
-) -> tuple[RecordId, ...]:
-    """The records that stand for the page while it is unchanged, for the config the job pinned (None: `adhoc`): a
-    listing's (`standing_listing`), or its detail page's one (`standing_record`). None stand for a job with a
-    `min_confidence`: the minimum changes which values a record holds, so another job's record is not its answer."""
-    if records.data.min_confidence is not None:
-        return ()
-    version = None if records.config is None else records.config.version
-    if records.schema.page_kind == "listing":
-        return await standing_listing(conn, site_id, task.canonical_url, records.schema, version)
-    record = await standing_record(conn, site_id, task.canonical_url, records.schema, version)
-    return () if record is None else (record,)
 
 
 def unreached(page: FetchedPage, task: ClaimedTask) -> TaskResult | None:

@@ -1,7 +1,7 @@
 """The run events of a finished task (jobs spec), recorded from what the task left in its rows,
 in the transaction that finishes it: `task_fetched` for the page it fetched, `task_extracted` for its extraction,
-`task_abstained` for the fields the records it stands for abstained on (those it stored, or an unchanged entity's
-latest version, jobs spec: `task_record`), and `task_failed`, with its `last_error`, when it failed for
+`task_abstained` for the fields the records it stands for abstained on (those it stored, or the equal
+latest version of an entity, jobs spec: `task_record`), and `task_failed`, with its `last_error`, when it failed for
 good (D-0745). Handlers write nothing for them.
 
 The same transaction owes the job's webhook its task events (`db.webhook_outbox`), when the request asked for them:
@@ -88,7 +88,7 @@ async def _emit_records(
     conn: AsyncConnection, job_id: JobId, task_id: UrlTaskId, url: str, extraction_id: ExtractionId
 ) -> None:
     """`record` for each record the task's last extraction stored, and `record_changed` for each new version among
-    them; an unchanged record stores nothing, so it owes nothing."""
+    them; a record equal to its latest version stores nothing, so it owes nothing."""
     columns = (
         Record.id,
         Record.schema_id,

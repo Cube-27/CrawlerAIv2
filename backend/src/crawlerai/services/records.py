@@ -114,10 +114,10 @@ class RecordPage(BaseModel):
 
 
 class RecordFilter(BaseModel):
-    """The records to list: those of a job, of a site (its host), of a schema, stored at or after a time, or
-    any combination. A job's are those its pages stand for, stored by it or found unchanged (jobs spec).
-    Stored from `changed_since` on, a record is a new entity or a new version of one: the change feed of recurring
-    runs (§4.4). An entity re-extracted unchanged stores no record, so `changed_since` does not list it again."""
+    """The records to list: those of a job, of a site (its host), of a schema, stored at or after a time, or any
+    combination. A job's are those its pages stand for, stored by it or found equal to the latest version (jobs spec).
+    Stored from `changed_since` on, a record is a new entity or a new version of one: the change feed of recurring runs
+    (§4.4). An entity re-extracted equal stores no record, so `changed_since` does not list it again."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -167,7 +167,7 @@ def _first_task(link: Any, owner: Any, job_id: JobId, record: Any) -> ScalarSele
 
 
 def _job_statement(statement: Select[Any], job_id: JobId) -> Select[Any]:
-    """`statement` narrowed to the job's records (jobs spec): those its tasks stand for, stored or found unchanged,
+    """`statement` narrowed to the job's records (jobs spec): those its tasks stand for, stored or found equal,
     each once, at the first task of the job that stood for it."""
     link, owner = aliased(TaskRecord), aliased(UrlTask)
     return (

@@ -8,7 +8,6 @@ const STATUSES: readonly TaskStatus[] = ["queued", "claimed", "done", "failed", 
 const OUTCOMES: readonly TaskOutcome[] = [
   "extracted",
   "partial",
-  "unchanged",
   "links_only",
   "blocked",
   "shell",

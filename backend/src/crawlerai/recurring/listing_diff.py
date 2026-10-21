@@ -132,7 +132,7 @@ async def _listing(conn: AsyncConnection, job_id: JobId, host: str | None, pinne
 
 
 async def _row_urls(conn: AsyncConnection, job_id: JobId, schema: SchemaDef) -> list[str]:
-    """The canonical row URLs of the records the job's tasks stand for, found unchanged or stored: the first
+    """The canonical row URLs of the records the job's tasks stand for, stored or found equal: the first
     `row_url_fields` value of `schema` a record publishes; a record that publishes none names no row URL. None for a
     schema that is no listing or names no row URL."""
     fields = row_url_fields(schema)

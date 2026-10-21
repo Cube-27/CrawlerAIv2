@@ -3,8 +3,7 @@
 Redirects are followed by hand so the SSRF guard checks every hop (§4.5), and each request connects only to the
 address the guard checked. Through a proxy pool, which resolves names itself, the guard still checks each hop's host
 before it is requested. Every failure becomes an `error` outcome with a short reason that never
-contains the URL. Given the validators a page last answered with, its request is conditional (jobs spec): an
-unchanged page answers 304 with no body. The request is a navigation, sent with the impersonation's own headers, or
+contains the URL. The request is a navigation, sent with the impersonation's own headers, or
 with a site session's cookies and identity where the site has one (`acquire.session`, INV-29's exception).
 """
 
@@ -24,7 +23,7 @@ from crawlerai.acquire.curl_client import Hop, pinned, reason, send
 from crawlerai.acquire.outcome import Content, fetch_result, report_proxy
 from crawlerai.acquire.session import SiteSessions
 from crawlerai.acquire.ssrf import SafeConnector, Target
-from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult, Validators
+from crawlerai.acquire.types import BlockClass, FetchPolicy, FetchResult
 from crawlerai.core.proxy import ProxyPool
 from crawlerai.storage.capture_bundle import decode_html
 
@@ -37,7 +36,6 @@ async def fetch_http(
     impersonate: BrowserTypeLiteral,
     connector: SafeConnector | None = None,
     pools: Mapping[str, ProxyPool] | None = None,
-    validators: Validators | None = None,
     sessions: SiteSessions | None = None,
 ) -> FetchResult:
     """`pools` are the configured proxy pools; the one `policy.proxy_pool` names carries every request. `sessions`
@@ -50,12 +48,12 @@ async def fetch_http(
     session = None if sessions is None else await sessions.take(url, url, policy.proxy_pool)
     sent = await send(
         url,
-        Hop("GET", _conditional(validators)),
+        Hop("GET", {}),
         policy,
         impersonate=impersonate,
         connector=connector or SafeConnector(),
         pools=pools,
-        redirected=_unconditional,
+        redirected=_follow,
         session=session,
     )
     last, challenge = sent.last, None
@@ -93,17 +91,8 @@ async def fetch_http(
     return result
 
 
-def _conditional(validators: Validators | None) -> dict[str, str | None]:
-    """The request headers that make a GET conditional: If-None-Match carries the entity tag (RFC 9110 §13.1.2),
-    If-Modified-Since the Last-Modified date (§13.1.3). A server that has both decides on the entity tag."""
-    if validators is None:
-        return {}
-    headers = {"If-None-Match": validators.etag, "If-Modified-Since": validators.last_modified}
-    return {name: value for name, value in headers.items() if value is not None}
-
-
-def _unconditional(_hop: Hop, _status: int, _target: Target) -> Hop:
-    """The validators describe the URL asked for: sent past a redirect, another resource's 304 would stand for it."""
+def _follow(_hop: Hop, _status: int, _target: Target) -> Hop:
+    """A navigation's redirect is followed with a plain GET (RFC 9110 §15.4)."""
     return Hop("GET", {})
 
 

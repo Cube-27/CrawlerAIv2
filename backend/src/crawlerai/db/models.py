@@ -72,7 +72,6 @@ TaskStatus = Literal["queued", "claimed", "done", "failed", "cancelled"]
 FinishedOutcome = Literal[
     "extracted",
     "partial",
-    "unchanged",
     "links_only",
     "blocked",
     "shell",
@@ -442,11 +441,8 @@ class UrlState(Base):
 
     site_id: Mapped[SiteId] = mapped_column(ForeignKey(Site.id), primary_key=True)
     canonical_url: Mapped[str] = mapped_column(Text, primary_key=True)
-    etag: Mapped[str | None] = mapped_column(Text)
-    # The header value as received: If-Modified-Since sends it back unchanged (RFC 9110 §13.1.3).
-    last_modified: Mapped[str | None] = mapped_column(Text)
-    # The page's visible text (`recurring.simhash`): the exact digest of its words, which alone decides `unchanged`
-    # (D-1340), and their SimHash as 16 hex digits, which says how far a change moved.
+    # The page's visible text (`recurring.simhash`): the exact digest of its words, which alone decides whether the
+    # content changed (D-1340), and their SimHash as 16 hex digits, which says how far a change moved.
     content_digest: Mapped[str | None] = mapped_column(Text)
     content_fingerprint: Mapped[str | None] = mapped_column(Text)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -455,9 +451,6 @@ class UrlState(Base):
     gone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # The crawl whose listing last held the URL (jobs spec); NULL while no listing has.
     last_seen_job_id: Mapped[JobId | None] = mapped_column(ForeignKey("job.id", ondelete=_SET_NULL))
-    # The task whose records a listing page last stood for after extracting it (`recurring.state.standing_listing`):
-    # the page's standing record, as that task's `task_record` rows. NULL for a detail page, found by its entity.
-    standing_task_id: Mapped[UrlTaskId | None] = mapped_column(ForeignKey("url_task.id", ondelete=_SET_NULL))
 
 
 class Schedule(Base):
@@ -723,8 +716,8 @@ class Record(Base):
         CheckConstraint(one_of("mode", ExtractionMode), name="mode"),
         CheckConstraint(one_of("egress_basis", EgressBasis), name="egress_basis"),
         version_positive(),
-        # Recurring runs compare fingerprints per (site, entity, schema) (jobs spec), and find the newest record that
-        # stands for a page, by id (`recurring.state.standing_record`).
+        # A record is compared with the latest version of its entity per (site, entity, schema) (jobs spec,
+        # `recurring.versions.latest_versions`).
         Index(None, "site_id", "entity_key", "schema_id", "id"),
         # The change feed (`changed_since`), and the commit stamp of the baseline migration's trigger.
         Index(None, "created_at"),
@@ -760,7 +753,7 @@ class Record(Base):
 
 class TaskRecord(Base):
     """A record a task's page stands for (jobs spec): one it stored, or the entity's latest version when the
-    page's record was unchanged and stored nothing. A job's records are those of its tasks (jobs spec results).
+    page's record equalled it and stored nothing. A job's records are those of its tasks (jobs spec results).
     Plumbing for §4.2's `url_task.record_id`, as a table because a listing page stands for one record per row."""
 
     __tablename__ = "task_record"
@@ -768,7 +761,7 @@ class TaskRecord(Base):
     url_task_id: Mapped[UrlTaskId] = mapped_column(ForeignKey(UrlTask.id, ondelete="CASCADE"), primary_key=True)
     # Indexed for the records a job lists, which join on it, and for a record's delete.
     record_id: Mapped[RecordId] = mapped_column(ForeignKey(Record.id, ondelete="CASCADE"), primary_key=True, index=True)
-    # When the task stood for the record (`recurring.state.standing_record`).
+    # When the task stood for the record.
     created_at: Mapped[datetime] = created_at_column()
 
 
