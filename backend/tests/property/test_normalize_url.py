@@ -76,6 +76,7 @@ def test_input_that_is_no_http_url_is_invalid(raw: str, reason: str) -> None:
         ("http://example.test/a b/é?x=é y", "http://example.test/a%20b/%C3%A9?x=%C3%A9%20y"),
         ("  http://exam\tple.test/a\nb\r  ", "http://example.test/ab"),
         ("http://EX%41MPLE.test/", "http://example.test/"),
+        ("http://example.test/i.jpg?w=1&amp;h=2&reg=3", "http://example.test/i.jpg?w=1&h=2&reg=3"),
     ],
 )
 def test_absolute_urls_are_canonicalized(raw: str, expected: str) -> None:

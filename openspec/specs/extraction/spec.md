@@ -64,7 +64,9 @@ run of its words that the document's one `h1` states (two words or more), as tha
 segment of the page URL path spells (the last such segment the title holds), as that run) through the field's role, the property of its root type its `schema_org` path reads (a final `.name`
 standing in for that thing; a path through another thing, `Product.offers.seller.url`, has none); a property no published standard defines is left to learned configs (owner, Appendix A #48). A
 node is an entity of every type it declares (JSON-LD 1.1 §3.5, a microdata `itemtype` list), and a text value holding
-element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text. A url or image field
+element markup, also written escaped (`&lt;p&gt;`), is read as the fragment's rendered text; a text value that is the
+IRI of a schema.org enumeration member (`suggestedGender`: `https://schema.org/Male`) is read as the member's name
+(`Male`), as an enum field publishes it. A url or image field
 whose path ends at a node (schema.org `image`: ImageObject or URL) reads the node's `contentUrl`, else its `url`. A
 platform's documented
 product JSON that a detail page's HTTP fetch joined after its identity check (acquisition spec, "Data calls") is read

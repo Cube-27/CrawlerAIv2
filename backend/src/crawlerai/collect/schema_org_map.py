@@ -433,12 +433,23 @@ def _path_candidates(
     for entity_id, selected in _selections(entities, paths, vocabulary, spec=spec, entries=entries):
         if selected.url and _holds_text(spec):
             continue
-        read = fragment_read(selected.raw, spec)
+        read = fragment_read(selected.raw, spec) or _member_read(selected.raw, spec, vocabulary)
         found = candidate(
             name, spec, entity_id, source_kind, selected.raw, selected.locator, ctx, diagnostics, read=read
         )
         if found is not None:
             yield found
+
+
+def _member_read(raw: JsonValue, spec: FieldSpec, vocabulary: Vocabulary) -> str | None:
+    """What a text field reads of a value that is the IRI of a schema.org enumeration member (a property whose range
+    is an enumeration or Text, `suggestedGender`: `https://schema.org/Male`): the member's name, as an enum field
+    publishes it (normalization spec, enum). The IRI names the member; it is not text the page states. `None` for any
+    other value."""
+    if spec.type not in _TEXT_TYPES or not isinstance(raw, str):
+        return None
+    term = schema_term(raw.strip())
+    return term if term is not None and term in vocabulary.members else None
 
 
 def _item_iri(
@@ -480,7 +491,7 @@ def _read_paths(
 def fragment_read(raw: JsonValue, spec: FieldSpec) -> str | None:
     """What a text field reads of a structured-data value holding element markup: the fragment's rendered text
     (`fragment_text`), its references already decoded once, so they are escaped again for the text normalizer, which
-    decodes them (a literal `&amp;` stays text). A value whose markup is written escaped (`&lt;p&gt;…&lt;/p&gt;`, a
+    decodes them. A value whose markup is written escaped (`&lt;p&gt;…&lt;/p&gt;`, a
     fragment serialized with its `<` and `>` as character references, as an API that documents its text as escaped
     HTML writes it) is that fragment: its references decoded once (HTML Standard, character references) give elements,
     and their rendered text is what the value says. `None` for any other value: one that decodes to no element

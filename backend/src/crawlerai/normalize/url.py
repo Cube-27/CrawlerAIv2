@@ -13,7 +13,16 @@ from urllib.parse import SplitResult, parse_qsl, quote, unquote, urljoin, urlspl
 
 from pydantic import JsonValue
 
-from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
+from crawlerai.normalize.base import (
+    Context,
+    Invalid,
+    NormalizeResult,
+    Ok,
+    Raw,
+    decoded_references,
+    has_surrogate,
+    raw_key,
+)
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # WHATWG URL Standard, basic URL parser: strip leading and trailing C0 controls and spaces, and remove every ASCII
@@ -248,7 +257,9 @@ def canonical(raw: str, base: str | None) -> NormalizeResult:
     # A URL is percent-encoded as UTF-8 (WHATWG URL Standard), and a lone surrogate has no UTF-8 encoding.
     if has_surrogate(raw):
         return Invalid("surrogate")
-    reference = _TAB_OR_NEWLINE.sub("", raw.strip(_C0_AND_SPACE))
+    # A URL written into HTML or a script HTML-escaped (`?a=1&amp;b=2`) is read as the page's parser reads an
+    # attribute value: its character references decoded (HTML Standard §13.1.4), so the query keeps its delimiters.
+    reference = _TAB_OR_NEWLINE.sub("", decoded_references(raw).strip(_C0_AND_SPACE))
     # INV-06: a blank reference is empty whatever the base (it would otherwise resolve to the base).
     if _BLANK.fullmatch(reference):
         return Invalid("empty")

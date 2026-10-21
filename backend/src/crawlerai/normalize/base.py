@@ -5,6 +5,7 @@ The type modules import this module and nothing else from `crawlerai.normalize`;
 (`crawlerai.normalize.dispatch`) imports the type modules. `.importlinter` keeps both directions.
 """
 
+import html
 import re
 from collections.abc import Hashable
 from dataclasses import dataclass
@@ -69,6 +70,20 @@ _SURROGATE = re.compile(r"[\ud800-\udfff]")
 def has_surrogate(s: str) -> bool:
     """Whether `s` holds a lone surrogate; such a string is not text, and a normalizer declines it."""
     return _SURROGATE.search(s) is not None
+
+
+# HTML Standard §13.1.4 character references, each closed by `;`: named, decimal and hexadecimal.
+_REFERENCE = re.compile(r"&(?:[A-Za-z][A-Za-z0-9]{1,31}|#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6});")
+
+
+def decoded_references(s: str) -> str:
+    """`s` with its character references (HTML Standard §13.1.4) decoded, then again while decoding leaves one: a
+    reference whose `&` is itself escaped (`&amp;amp;`, `&amp;#39;`) is text its producer HTML-escaped twice (once
+    more as it wrote the value into a script or an attribute), and the page shows it decoded. Only references closed by
+    `;` are read, so a URL's query (`?a=1&reg=2`) is never taken for one. Each pass shortens the text, so it ends."""
+    while (decoded := _REFERENCE.sub(lambda m: html.unescape(m.group()), s)) != s:
+        s = decoded
+    return s
 
 
 class Context(BaseModel):

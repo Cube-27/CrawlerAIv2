@@ -408,9 +408,9 @@ DESCRIBED = _schema(
             "Soft cotton.\nMachine wash\nTumble dry",
             id="block-markup",
         ),
-        # References decode once: a fragment's `&amp;amp;` is the text `&amp;`, as in a value without markup.
-        pytest.param("<b>Fish</b> &amp;amp; chips", "Fish &amp; chips", "Fish &amp; chips", id="fragment-reference"),
-        pytest.param("Fish &amp;amp; chips", "Fish &amp; chips", "Fish &amp; chips", id="text-reference"),
+        # A reference escaped twice is text escaped twice: `&amp;amp;` is `&`, in a fragment as in plain text.
+        pytest.param("<b>Fish</b> &amp;amp; chips", "Fish & chips", "Fish & chips", id="fragment-reference"),
+        pytest.param("Fish &amp;amp; chips", "Fish & chips", "Fish & chips", id="text-reference"),
         pytest.param("Sizes 1 < 2 & more", "Sizes 1 < 2 & more", "Sizes 1 < 2 & more", id="no-element"),
         # D-1486: markup written escaped is the fragment; an escaped `<` that makes no element stays text.
         pytest.param(
@@ -430,6 +430,18 @@ def test_a_text_value_holding_element_markup_is_read_as_its_rendered_text(
     assert [(c.field, c.raw, c.normalized) for c in result.candidates] == [
         ("title", raw, Ok(title)),
         ("description", raw, Ok(description)),
+    ]
+
+
+def test_a_text_value_naming_an_enumeration_member_by_its_iri_reads_as_the_member_name() -> None:
+    raw = "http://schema.org/InStock"
+    result = _collect(
+        {"@context": SCHEMA_ORG, "@type": "Product", "name": raw, "brand": {"name": "https://example.test/x"}}
+    )
+
+    assert [(c.field, c.normalized) for c in result.candidates] == [
+        ("title", Ok("InStock")),
+        ("brand", Ok("https://example.test/x")),  # an IRI that names no member stays the text it is
     ]
 
 

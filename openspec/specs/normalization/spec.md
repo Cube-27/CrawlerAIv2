@@ -230,10 +230,15 @@ page convention.)
 ### Requirement: identifier, text and url
 `normalize/identifier.py` SHALL check GTIN and ISBN check digits and publish the identifier as a string, the scheme being
 the field's (D-1209); `text.py` cleans text and declines templates; `url.py` parses per WHATWG, absolutizes,
-canonicalizes and declines non-http(s) or hostless URLs, never repairing; an `image_url` whose path names a file of a
+canonicalizes and declines non-http(s) or hostless URLs, never repairing; both read a value's character references
+(HTML Standard §13.1.4) decoded, again while decoding leaves one closed by `;` (`&amp;amp;` is text its producer
+escaped twice, and the page shows `&`), a URL only those closed by `;` (`?w=1&amp;h=2` is `?w=1&h=2`); an `image_url` whose path names a file of a
 registered media type other than an image by its extension (RFC 6838: an HTML page, a video, a script) is
 `Invalid("not_an_image")`, and a path with no registered extension says nothing. (Previously: any http(s) URL but the
 page's was an image.) Refs: §9, D-0287–D-0290, D-0257–D-0263, D-1022, D-1209.
+#### Scenario: Escaped twice
+- **WHEN** a structured description states `cool &amp;amp; dry` and an image URL `i.jpg?w=1&amp;h=2`
+- **THEN** the text is `cool & dry` and the URL's query is `?w=1&h=2`
 #### Scenario: Check digit fails
 - **WHEN** one digit of a valid GTIN-13 is changed
 - **THEN** the result is `Invalid("check_digit")`

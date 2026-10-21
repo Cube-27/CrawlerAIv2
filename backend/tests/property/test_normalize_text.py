@@ -19,6 +19,7 @@ LONG = FieldSpec(type=FieldType.LONG_TEXT)
     ("raw", "expected"),
     [
         ("Fish &amp; chips", "Fish & chips"),
+        ("Fish &amp;amp; chips &amp;#39;n&amp;#39; &amp;co", "Fish & chips 'n' &co"),  # escaped twice
         ("caf&eacute; &#8212; &#x2603;", "café — ☃"),
         ("cafe\u0301", "caf\u00e9"),  # NFD to NFC
         ("a\u00a0\u2003b", "a b"),

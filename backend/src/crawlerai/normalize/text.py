@@ -13,7 +13,16 @@ from collections.abc import Hashable
 
 from pydantic import JsonValue
 
-from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
+from crawlerai.normalize.base import (
+    Context,
+    Invalid,
+    NormalizeResult,
+    Ok,
+    Raw,
+    decoded_references,
+    has_surrogate,
+    raw_key,
+)
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 # normalization spec and D-0017: length bounds after normalization, in characters.
@@ -91,8 +100,8 @@ def _text(raw: Raw, type_: FieldType) -> NormalizeResult:
         return Invalid("not_a_string")
     if has_surrogate(raw):
         return Invalid("surrogate")
-    # HTML Standard, named and numeric character references; then the composed form.
-    decoded = compose(html.unescape(raw))
+    # HTML Standard, named and numeric character references, those escaped twice too; then the composed form.
+    decoded = compose(decoded_references(html.unescape(raw)))
     value = _collapse_lines(decoded) if type_ is FieldType.LONG_TEXT else _collapse(decoded)
     if not value:
         return Invalid("empty")
