@@ -133,16 +133,24 @@ _PROXIED: Final = "url"
 # `dpr_2.0`); a size closing the file's name before its extension
 # (`name-300x200.ext`, `name_1024x.ext`, `name@2x.ext`); a format conversion appended as a second extension
 # (`name.jpg.webp`); a trailing `=<options>` on the last segment.
-_SEGMENT = re.compile(
-    r"\d+x\d+|(?=(?:[^/]*,)?[a-z]+_\d+(?:\.\d+)?(?:,|$))[a-z]+_[\w.:]+(?:,[a-z]+_[\w.:]+)*", re.IGNORECASE
-)
+_SIZE_SEGMENT = re.compile(r"\d+x\d+")
+_PAIR = re.compile(r"[a-z]+_[\w.:]+", re.IGNORECASE)
+_NUMERIC_PAIR = re.compile(r"[a-z]+_\d+(?:\.\d+)?", re.IGNORECASE)
 _SIZE_SUFFIX = re.compile(r"(?<=[^/])[-_@](?:\d+x\d*|x\d+)(?=\.[^./]+$)", re.IGNORECASE)
 _CONVERSION = re.compile(r"(\.[a-z0-9]{2,5})\.[a-z0-9]{2,5}$", re.IGNORECASE)
 _OPTIONS = re.compile(r"(?<=[^/=])=[\w,-]+$")
 
 
+def _rendition(segment: str) -> bool:
+    """Whether a whole path segment states a rendition (`_PAIR`): `<width>x<height>`, or pairs one of them a number."""
+    if _SIZE_SEGMENT.fullmatch(segment):
+        return True
+    pairs = segment.split(",")
+    return all(_PAIR.fullmatch(p) for p in pairs) and any(_NUMERIC_PAIR.fullmatch(p) for p in pairs)
+
+
 def _without_dimensions(path: str) -> str:
-    kept = [segment for segment in path.split("/") if not _SEGMENT.fullmatch(segment)]
+    kept = [segment for segment in path.split("/") if not _rendition(segment)]
     stripped = _OPTIONS.sub("", "/".join(kept))
     return _CONVERSION.sub(r"\1", _SIZE_SUFFIX.sub("", stripped))
 
@@ -170,7 +178,7 @@ def _stated_size(value: str, renditions: Sequence[str]) -> int | None:
     parts = urlsplit(value)
     path = parts.path
     stated = [m.group() for m in (_SIZE_SUFFIX.search(path), _OPTIONS.search(path)) if m is not None]
-    stated += [segment for segment in path.split("/") if _SEGMENT.fullmatch(segment)]
+    stated += [segment for segment in path.split("/") if _rendition(segment)]
     query = _numeric_query(parts.query)
     others = [_numeric_query(urlsplit(r).query) for r in renditions]
     varying = [v for name, v in query.items() if all(name in o for o in others) and any(o[name] != v for o in others)]

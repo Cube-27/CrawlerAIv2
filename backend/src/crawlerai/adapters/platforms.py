@@ -27,9 +27,9 @@ rows when the page states none (variants spec). Of them, the page shows one vari
 reads its Offer as the variant the page shows (variants spec); held from the variant's node, they stay that variant's,
 and publish for the product only where the page states none of its own (variants spec, Variant fill). An image a variant
 features (its `featured_image`) is that variant's, so the page's images are the shown variant's, first, and those no
-variant features. WooCommerce's answer states one price for the product: a product whose variations are priced differently has
-none for the page, which shows the selected variation's, so its answer is read without its Offer and never stands
-against the price the page shows (INV-14; adapters spec "merge, don't override").
+variant features. WooCommerce's answer states one price for the product: a product whose variations are priced
+differently has none for the page, which shows the selected variation's, so its answer is read without its Offer and
+never stands against the price the page shows (INV-14; adapters spec "merge, don't override").
 """
 
 import re
