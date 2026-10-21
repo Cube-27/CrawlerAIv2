@@ -12,8 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from crawlerai.collect.locator import LocatorText
 from crawlerai.content.page import ParsedPage
 from crawlerai.db.models import SourceKind
-from crawlerai.normalize.base import Context, NormalizeResult, Raw
-from crawlerai.schemas.types import SchemaDef
+from crawlerai.normalize.base import Context, NormalizeResult, Ok, Raw
+from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 
 # The page itself, as an entity: what page-level values (Open Graph, meta, cleaned text) belong to (§4.6).
 PAGE = "page"
@@ -66,6 +66,13 @@ class Candidate(_Model):
     normalized: NormalizeResult
     locator: LocatorText
     independent: bool  # False for js_state/xhr values admitted only by equality to another candidate (§8.1)
+
+
+def is_visible_amount(c: Candidate, spec: FieldSpec) -> bool:
+    """Whether `c` is an amount the page shows of a money field (resolution spec, "the visible price"): a rendered `dom`
+    value read as an amount, on its own evidence (not admitted by equality to another candidate, §8.1)."""
+    item = spec.item.type if spec.type is FieldType.LIST and spec.item is not None else spec.type
+    return item is FieldType.MONEY and c.source_kind == "dom" and c.independent and isinstance(c.normalized, Ok)
 
 
 class CollectResult(_Model):
