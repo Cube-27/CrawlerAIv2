@@ -27,8 +27,7 @@ an `option`'s, `button`'s, `data`'s or `li`'s `value` is a form or machine value
 `h1` and a form, or that is a child of the `main` element none of whose children renders and holds a heading (`h1`-`h6`)
 and more text than any other concealed child, is the page's own content a script reveals after load (a content-gating
 app), and is shown (`content.text.script_revealed`, also for the item groups, listings spec); any other concealed
-element stays hidden. (Previously: every element's `value` attribute was visible; links and images were not recorded; a concealed wrapper around the page's
-title and form hid them; a concealed main landmark content without the document's `h1` stayed hidden.) Refs: SPEC-05 §4.4, D-0334..D-0339, D-1154, D-1624.
+element stays hidden. Refs: SPEC-05 §4.4, D-0334..D-0339, D-1154, D-1624.
 #### Scenario: Price split across inline elements
 - **WHEN** the page shows `$<span>19</span>.99`
 - **THEN** the cleaned text holds `$19.99` and `visible("9.99")` is false
@@ -79,9 +78,6 @@ as that platform documents its members (`adapters/platforms.answer_shapes`, `col
 candidates of the requested product, amounts in the minor unit the documentation states, and no Offer when its
 variants are priced differently (the page states the selected one). Refs: §8.1,
 D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-19 on #326, architecture-v3 d.6.
-(Previously: Open Graph read `product:price` alone, whatever the money field's price role; an `image` written as an
-ImageObject was an invalid value; an `og:description` naming the site was the item's description; one `og:image` was a
-list of images.)
 #### Scenario: OG sale price
 - **WHEN** a page states `product:price:amount` 100 and `product:sale_price:amount` 80, and the schema has `price` and
   a user-added `list_price`
@@ -133,7 +129,7 @@ form only, and a document none applies to is not reparsed):
   the body in an element naming its URL (`data-fragment-src`), in capture order, so the text, DOM and item collectors
   read its values and rows as the page's and a locate run places them as it places the page's
   ([acquisition](../acquisition/spec.md), "Network body capture"); a whole document (a Turbo Drive visit) is not.
-  (Previously: a fetched answer was read only as a frame's.) Refs: architecture v3 a.3, a.4 item 5.
+  Refs: architecture v3 a.3, a.4 item 5.
 The `NOT_RENDERED` set and the hidden rules of `content/text.py` then apply unchanged. A `template` left after the
 pre-passes is an ordinary one whose content is inert (HTML Standard §4.12.3), so the text and DOM collectors and the
 listing induction still drop it. Refs: architecture v3 a.4 item 1.
@@ -162,8 +158,7 @@ whatever row they split, read as rows `<hex id>:<tag?><payload>`, where tags `T 
 a line end; untagged rows are the JSON model, decoded as above and keyed by row id in the document (addressed by the
 first pushing script). A `$`-prefixed string is read by its tag (`parseModelString`): `$$` reads as `$`, a Date
 (`$D`) and a BigInt (`$n`) as the text after the tag, `$-0` as the number zero, and any other (a reference `$L`, `$@`, `$<id>`, or a special value
-such as `$undefined`) as null, as it states no text of the page (`"$1"` is no count). (Previously: references were kept
-as written.)
+such as `$undefined`) as null, as it states no text of the page (`"$1"` is no count).
 A captured `text/x-component` body is read by the same reader, one document per body. A malformed row adds a
 diagnostic and the other rows are read; a stream over 10^7 bytes is not read.
 A `<script type="text/x-magento-init">` (Adobe Commerce) is read as a JSON script. After the scripts and the Flight
@@ -211,8 +206,8 @@ visibility inside an array row (an object item of an array holding two or more o
 its own scope writes a URL that names a document, not a media file) is owned by that row's `array_row` entity, whose
 `urls` are the URLs in its scope up to nested rows; elsewhere it is owned by `page`. An array row writing a URL is an
 `array_row` entity even when it owns no value, so a listing's rows bind to it ([listings](../listings/spec.md)). Each
-field, normalized value and owner is one candidate, the one with the shortest locator. (Previously: only a row owning a
-value was an entity.) Refs: §8.1, Appendix A #34, #55, D-0418, D-0943, D-1250–D-1252, D-1254, D-1343, D-1345.
+field, normalized value and owner is one candidate, the one with the shortest locator. Refs: §8.1, Appendix A #34, #55,
+D-0418, D-0943, D-1250–D-1252, D-1254, D-1343, D-1345.
 #### Scenario: Visible text in state
 - **WHEN** a visible state string is the only candidate for a `text` field
 - **THEN** it is not admitted
@@ -233,8 +228,7 @@ words. A schema.org `PropertyValue` under an entity's `additionalProperty` or `i
 (`collect/property_values.py`). A list of values (not of lists or objects) has labels too: a label-value pair naming
 it gives the items of the lists its value holds (HTML Standard §4.4.5-§4.4.8 `li`), each shown, else its one value;
 on a detail page, a shown heading naming it gives the shown items of the lists in its section (`collect/dom_text.py`), and sections
-listing different items give none. (Previously: a label matched only the field's name or schema.org property; a list
-field had no labels.)
+listing different items give none.
 #### Scenario: Drafted synonym
 - **WHEN** a schema's `sku` has the synonym `Item no.` and a row reads `Item no. | W-100`
 - **THEN** `sku` has the candidate `W-100`; without the synonym, none
@@ -255,8 +249,7 @@ two-cell `tr` rows, `dl` groups, elements starting with `Label:` and sibling con
 holding a label element and a value element, whose label is one of the field's labels; lines and sibling pairs that
 give a field several values, or one value at the same place in each of three or more sibling blocks of one
 template (XPaths differing only in one step's position: each review's `Reviews: 1`; a responsive copy elsewhere in the
-layout is not one), are dropped, and an identifier field given two values by any pairs reads none. (Previously: one value
-repeated in many places was read.) It SHALL
+layout is not one), are dropped, and an identifier field given two values by any pairs reads none. It SHALL
 also take a money or check-digit identifier field's one shown value in the main region (`collect/items/spot.py`, which
 spots only text showing the type's checked syntax, `Ok.checked`: a number without a currency sign is not money; for
 an identifier also an unlabelled pair's value, never inside a hyperlink to another document; none when several
@@ -294,12 +287,7 @@ documents while another root item of its kind names the page) belongs to the one
 price or holds the page's title (the main content's first shown `h1`); a block whose hyperlinks lead to several
 documents is no card, and without a stated price no card is set apart. Product microdata items, nested or not, that do
 not hold the title are set apart too. Values MUST be visible.
-(Previously: labels were only names, and other items' content was read; `src` was read before `srcset`, and beside a `1x` candidate; lazy sources, hidden slides and renditions in the path were not read; no list of
-images was read; a recommendation card that was not one of two or more sibling cards was read; an other item's
-structured price counted as stated, so its card was read; struck text was `s` and `del` only, and an amount per unit
-or per period was a price candidate; a page without a main landmark had no main image and no gallery; a stated file in
-tangential content, a `noscript` fallback or an empty-`alt` image was no main image, slides beside a caption block or
-outside the main image's tag path, or linking to a page about their image, were no gallery.) Refs: Appendix A #42, D-0955,
+Refs: Appendix A #42, D-0955,
 D-1096, D-1640, D-1641, D-1642, D-1643.
 #### Scenario: Gallery slides
 - **WHEN** the main image is one of three sibling slides, two of which hold an image whose `src` is a shared placeholder
@@ -341,7 +329,7 @@ Collectors SHALL contain no hostname, class fragment, phrase list or card select
 configs. Repeated-structure rows are read only by the item layer ([listings](../listings/spec.md)), from structure,
 field types and named standards; the DOM collector reads a typed value only when the main region shows one. Price-role
 exclusions are HTML Standard, CSS and CLDR rules (struck text, CLDR per patterns and units), never a phrase list.
-(Previously: typed value spotting was read only by the item layer.) Refs: C2, C3, C13, owner #67, D-1643,
+Refs: C2, C3, C13, owner #67, D-1643,
 architecture-v3 d.2.
 #### Scenario: Site literal in a collector
 - **WHEN** a change adds a hostname or class fragment under `collect/`
@@ -373,8 +361,8 @@ cleaning (`content/`); `markdown` is `""` when there is no main content, keeps t
 (`ParsedPage.item_groups`, [listings](../listings/spec.md)) as a list, a listing without one being read in recall
 mode. A JSON body (an `api` capture's) is never read as HTML: its `links` are its absolute http(s) URL string values
 in document order, never markup inside a value; its `markdown` (and `markdown_fit`) is the answer pretty-printed in
-one fenced `json` code block; its `html` is `""`. (Previously: the group with the most structural evidence was chosen
-by the format itself.) Refs: §8.5, SPEC-07 §4.5, D-0401, D-0993, D-1275, D-1276, D-1277, D-1450, D-1473, D-1474;
+one fenced `json` code block; its `html` is `""`. Refs: §8.5, SPEC-07 §4.5, D-0401, D-0993, D-1275, D-1276, D-1277,
+D-1450, D-1473, D-1474;
 endpoint in [rest-api](../rest-api/spec.md).
 #### Scenario: No main content
 - **WHEN** trafilatura finds no main content
@@ -417,9 +405,8 @@ mostly links, without its opening heading, unless it holds the page's title head
 1) or a price the structural pass read, or, beside an Open Graph summary, is no longer than it or holds at most half
 of its words other than the title heading's (a summary with fewer words of its own than of the title heading only names
 the item, and asks no words of the block). Blocks that differ are ambiguous: none. The candidate is `dom`, independent, in
-the `dom` evidence bucket. (Previously: any image made a block no prose, an element-valued description was never
-continued, and the main text was the longest block whatever it held; continuation stopped at the element's wrapper,
-and a section panel holding a button gave no text; a `legend` was prose.) Refs: C2, C4, D-1700, D-1701, D-1702, D-1703, D-1704. Enforced by: unit and replay tests; active.
+the `dom` evidence bucket. Refs: C2, C4, D-1700, D-1701, D-1702, D-1703, D-1704. Enforced by: unit and replay tests;
+active.
 #### Scenario: Summary and full text
 - **WHEN** `og:description` is the first sentence of a paragraph block that goes on, and no other kind states a
   description

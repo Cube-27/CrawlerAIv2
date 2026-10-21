@@ -15,8 +15,7 @@ Entities that share an IRI, when the most specific types of all entities stating
 one another (JSON-LD 1.1 node map generation merges node objects with one `@id`; with one unrelated pair, only those of
 one most specific type), and entities of one most specific type that share an identifier value
 (unless their item URLs differ) or, across collectors, an item URL other than a page URL SHALL be one entity before
-intent (`resolve/identity.py`); the merged entity holds every member's types, most specific first. (Previously: an IRI
-joined entities of one most specific type only.) The root
+intent (`resolve/identity.py`); the merged entity holds every member's types, most specific first. The root
 of an identity-checked data call's answer (acquisition spec "Data calls") SHALL be one entity with the page's single
 root entity of its most specific type, and stay apart when the page states none or several; one of a repeated set of
 microdata items (three or more elements whose XPaths differ only in one step's position: a carousel, a comparison
@@ -24,7 +23,7 @@ table) is not counted, as intent reads it as another page's item, and the root i
 merged members names the page or none names another document. A page URL, by which an entity names the page, is
 the request, final or canonical URL (RFC 6596) or an alternate version the page declares by language (HTML Living
 Standard §4.6.7.1, `link rel="alternate"` with `hreflang`): a translation or regional version of the page is the
-same document. (Previously: alternates by language named other documents.)
+same document.
 `select_target` SHALL pick one primary-type entity (`resolve/intent.py`) or none, which makes every field
 `conflict`/`intent_ambiguous`; a detail page's related items and its product's group do not make intent ambiguous
 (D-1151), nor does the item a primary entity's review or rating names (`itemReviewed`), which is that entity;

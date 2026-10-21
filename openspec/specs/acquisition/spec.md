@@ -12,7 +12,6 @@ The system SHALL fetch through a pure `acquire(...)` that returns a `FetchResult
 attempt) and writes nothing; `store_capture` writes the bundle object before its `capture` row, and only
  `acquire/memory.py` and the re-check write the domain memory (`site_contract`, `site_block`).
 Refs: §7.1, D-0144, D-0206, D-1380.
-(Previously: `site.fetch_method`, one per site.)
 
 ### Requirement: Rung order
 The system SHALL try the detecting active adapter (only when the caller passes `send`), else the active config's API
@@ -40,11 +39,7 @@ The browser MUST NOT be the default: it is also used when `method_hint` is `brow
 browser-first, the site's contract says `browser`, or the page's fetch plan does (`acquire/rungs.FetchPlan`, from the
 surface's active config alone, `config_ir/active.fetch_plan`): a running field of the config needs the render
 (`needs: browser`, [learning-configs](../learning-configs/spec.md) "Locate run"), or the surface's `render_mode` is
-`always`. Role C runs once, on the kept capture. (Previously: an HTTP `ok`
-page was also rendered when a cheap render check, `services/scrape_steps.RenderNeed` and `content/render_need.py`,
-found no sign of a required `money` field's offer, a listing's items fewer, hidden or under-listed, or the request named
-`render_fields`; a detail page was rendered when a full collector pass found no Offer; a listing when its extraction
-gave no rows; an HTTP timeout was not retried in the browser.) Refs: §7.1, D-0009, D-0203, D-0865, D-0900, D-1202,
+`always`. Role C runs once, on the kept capture. Refs: §7.1, D-0009, D-0203, D-0865, D-0900, D-1202,
 D-1261, D-1263, D-1472, owner #70, owner #72, architecture v3 a.3.
 #### Scenario: Script-rendered offer over HTTP
 - **WHEN** an `auto` fetch of a detail page answers HTTP `ok` with no JSON-LD, Open Graph tag or price
@@ -90,10 +85,7 @@ and is learned in short transactions of its own, never in a task's (D-1786):
 Precedence: a job's own `method_hint` beats memory; the block history's browser-first beats the contract's method; a
 fresh contract beats the default (`http`). A learned config's fetch method is the contract's
 alone: a block bias it kept would outlive the block history. An `ok` page's platform
-("Platform fingerprints") is recorded on `site.platform`. (Previously: `site_fetch_method` held only `http` or
-`browser`; a site session refused before any `ok` kept its site from opening another for 30 min, in process memory
-only; two refused HTTP requests started browser-first whether or not the browser passed; the contract also held a learned wait condition `settle_on`, what the browser was needed for `needs_render`,
-`needs_xhr` and `needs_traversal`, and a render forced by `render_fields` taught nothing.) Refs: §7.1, D-0204, D-0205,
+("Platform fingerprints") is recorded on `site.platform`. Refs: §7.1, D-0204, D-0205,
 D-1260, D-1353, D-1380, owner plan 2026-10-19 P4 (domain memory), architecture v3 (e).
 #### Scenario: Browser needed only to pass a block
 - **WHEN** an `auto` fetch's HTTP attempt is `blocked`, the browser's `ok` opens a site session, and its document has
@@ -143,9 +135,7 @@ joined with the answer of each one's recipe ([learning-configs](../learning-conf
 the page URL and documents, a header it references taken from the caller's request context (sent only to the page's
 own host), sent the same way and marked `data_call: located`; its answer joins only when it states the page's product
 (the identity check, with the values the request was bound with), and a recipe that binds nothing on the page sends
-nothing. (Previously: the call was
-sent only for a page about to be rendered for lacking what the caller reads, and the render was skipped when the joined
-page no longer lacked it; no field source named a call.) Refs: owner plan 2026-10-19 P4 (API replay
+nothing. Refs: owner plan 2026-10-19 P4 (API replay
 with a product-identity check), owner decision 2026-10-19 on #326, owner #73.
 #### Scenario: Another product's answer
 - **WHEN** a data call answers JSON that names neither the requested key nor the page's path
@@ -219,17 +209,8 @@ first given up to 40% of `browser_timeout_s`, and at most 10 s, to navigate on, 
 next commit, with nothing clicked or typed. The browser reads a body's wire size before the body. The JSON rung
 (`fetch_json`, method `api`) SHALL send through the HTTP rung's client (`acquire/curl_client.py`: impersonation, guard,
 caps, cookie jar, proxy pools, reasons) the headers a page's `fetch()` sends: Fetch Metadata of a CORS request,
-`Referer`, `Origin`, in a `fetch()`'s order. (Previously: a listing scrape with browser actions launched a driver and browser of
-its own outside the cap, and one profile's crash or 200 pages or 30 min restarted the whole session; every resource
-loaded, and the interstitial wait had no absolute bound; the settle wait had none but the fetch's budget, a browser was launched per fetch outside the worker,
-and the HTTP timeout was 30 s; every fetch had a fresh context, only images, fonts and media were blocked, and a page
-was read after `load` once its DOM was unchanged for 2 s or the network idle, at most 5 s later, up to 3 s more while a
-data call was in flight; then by a learned wait condition, `settle_on`, a detail page's DOM stating its offer
-(`classify.usable_content`) or a data call ended, a listing at the wait's end; no endpoint was named, and the document
-was read as `page.content()`, without shadow roots; images, fonts, media, pings and the EasyList and EasyPrivacy
-servers were blocked through Playwright's request routing, unless a site loaded every resource; one browser per
-process rendered in incognito contexts, a job's pages of a site sharing one, with a 1280x720 viewport and the WebRTC
-policy as a launch switch Chromium 153 ignores.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
+`Referer`, `Origin`, in a `fetch()`'s order. Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50,
+D-1206, owner #52, D-1262,
 D-1264, D-1265, owner #58, D-1320–D-1322, D-1325, D-1433, D-1437, master plan 2026-10-18 recommendation 12, owner
 plan 2026-10-19 (crawl speed, P2 browser wait and blocking).
 #### Scenario: Interstitial that navigates on
@@ -271,8 +252,8 @@ partials), which the page tree reads ([extraction](../extraction/spec.md), "Sour
 response headers, the resource type and the count of browser actions before it, within the caps in `acquire/browser_capture.py`,
 which apply to all captured bodies together. A data call, which the ready wait ("HTTP and browser rungs") waits for, is a fetch or
 XMLHttpRequest call to the page's own site (HTML §7.1.1) or one whose `Accept` names a JSON MIME type or
-`text/x-component`, so another site's beacons and pings hold no read. (Previously: every fetch and XMLHttpRequest call
-held the read; only JSON and Flight bodies were kept.) Refs: architecture v3 a.3, §7.2, Appendix A #59, D-0010, D-0540, D-1311, D-1312, D-1369, owner plan 2026-10-19 (crawl speed).
+`text/x-component`, so another site's beacons and pings hold no read. Refs: architecture v3 a.3, §7.2, Appendix A #59,
+D-0010, D-0540, D-1311, D-1312, D-1369, owner plan 2026-10-19 (crawl speed).
 #### Scenario: JSON under another label
 - **WHEN** a page fetches `)]}'` and a JSON object labelled `text/plain`, and a text/plain body that is no JSON
 - **THEN** the first is kept as received and the second is not
@@ -308,7 +289,7 @@ Generic code and the remembered fetch method MUST NOT use vendor or challenge-pa
 end with zero records. A body is decoded once at acquisition by HTML encoding sniffing
 (`storage/capture_bundle.decode_html`, D-1152; a JSON body as UTF-8, RFC 8259 §8.1, whatever charset it is labelled
 with), and every rule reads that text.
-(Previously: the rules parsed the raw bytes, and a non-UTF-8 attribute raised.) Refs: §7.1, C2, C3, D-0114, D-0932,
+Refs: §7.1, C2, C3, D-0114, D-0932,
 D-0993, D-1157, D-1158, D-1326, D-1380, D-1470, D-1471.
 Enforced by: the site-literal scan (INV-03), classify and challenge tests and review; active.
 #### Scenario: Status classes
@@ -360,7 +341,7 @@ Refs: §7.1, §18, Appendix A #59, D-0320, D-1311.
 Every outbound connection target SHALL be a public IP: the guard in `acquire/ssrf.py` resolves once, rejects
 non-global addresses, odd schemes, ports and IPv4 forms, connects to the checked IP and re-checks every redirect hop
 (also through each endpoint of a proxy pool); the browser does the same through a per-fetch SOCKS5 guard. A rejection
-is `error`/`ssrf_rejected`, never retried. (Previously: a pool had one endpoint.) Enforced by: SSRF tests with a stub
+is `error`/`ssrf_rejected`, never retried. Enforced by: SSRF tests with a stub
 resolver and pool tests over every endpoint; active. Refs: §7.1, §18, D-0115, D-0249, D-1323.
 #### Scenario: Redirect to a private address
 - **WHEN** `https://example.com/` answers 302 to a host resolving to 10.0.0.5
@@ -373,7 +354,7 @@ failing 3 times in a row SHALL be left out for a quarantine doubling from 1 to 3
 direct. An unknown pool MUST end `error`/`proxy_pool_unknown` sending nothing, and credentials never appear in errors.
 Each attempt records the bytes it moved (the HTTP and JSON rungs' HTTP messages, CONNECT included; the bytes the
 browser's guard relayed), counted as `proxy_bytes` usage of the pool for a fetch through one. A learning run's recipe
-replays go direct. (Previously: no rung recorded `proxy_bytes`.) Refs: §7.1, D-0282, D-0286, D-1264, D-1323, D-1324,
+replays go direct. Refs: §7.1, D-0282, D-0286, D-1264, D-1323, D-1324,
 D-1355, D-1381.
 
 ### Requirement: Egress country
@@ -390,26 +371,22 @@ Refs: owner plan 2026-10-19 P8.
 ### Requirement: Cookies stay inside one fetch (INV-29)
 Each fetch SHALL have its own HTTP session or browser context; cookies live in a per-fetch jar matched per RFC 6265
 (public-suffix `Domain` ignored), are sent only on matching hops and are discarded at the end; the caller's cookies
-(`RequestContext`) seed only that fetch's jar or context, for the fetched URL's host; the exceptions are the site
-session and the stored cookie state (`acquire/session.py`, next requirement), and a site's browser profile ("HTTP and
-browser rungs", profiles), which keeps the cookies and storage the browser itself was given by the site's pages, for
-that site's later pages through the same pool endpoint, in any job and process, never for a fetch with the caller's
-cookies; a profile is the browser's own state, never handed to the HTTP rung except as a site session. A site session is the cookies of the
+(`RequestContext`) seed only that fetch's jar or context, for the fetched URL's host. Three cookie stores outlive a
+fetch, under one cookie rule (owner #76: challenge and clearance cookies are kept and replayed like any other): a site's
+browser profile ("HTTP and browser rungs", profiles), the browser's own cookie store, which keeps the cookies and
+storage the site's pages gave the browser for that site's later pages through the same pool endpoint, in any job and
+process, never for a fetch with the caller's cookies, and is handed to the HTTP rung only as a site session; the site
+session (`acquire/session.py`); and the stored cookie state (next requirement). A site session is the cookies of the
 site's registrable domain that a browser `ok` held after a `blocked` or `shell` HTTP attempt, challenge and clearance
 cookies included (owner #76), read without change; keyed by that registrable domain and pool, it seeds later HTTP and
 JSON fetches of the site in that domain through the same pool endpoint, and the site's temporary profiles on a direct
-route (a pooled context picks its own endpoint; a kept profile holds its own cookies), in process memory, for at most
-30 min and 200 fetches; `blocked` drops it, as does a
-`shell` before any `ok`; a site whose sessions keep being refused starts in the browser (block history, above). The
-HTTP and JSON rungs send a session's cookies with their own identity headers (the impersonation's user agent and
-client hints), never the browser's: those would pair a browser's user agent with curl's TLS and HTTP/2 fingerprint.
-No cookie is logged or captured. (Previously: challenge and clearance cookies were never kept nor replayed, sessions
-were keyed by host, and the stored state seeded every browser context and HTTP fetch; before that, a vendor's
-clearance cookies were replayed when its signature called them portable; every browser fetch had a fresh context; then a job's pages of a site shared an incognito
-context in one process; a session carried the browser's user agent and client
-hints onto the HTTP and JSON rungs' requests.) Enforced by: cross-fetch, cross-site, cross-domain,
-cross-proxy, expiry, no-persistence and caller-cookie tests; active. Refs: §7.1, D-0321, D-0884, D-0902, owner #58,
-D-1350–D-1353, D-1433, owner plan 2026-10-19 P2, owner #76.
+route (a pooled context picks its own endpoint; a kept profile holds its own cookies), in process memory, for at most 30
+min and 200 fetches; `blocked` drops it, as does a `shell` before any `ok`; a site whose sessions keep being refused
+starts in the browser (block history, above). The HTTP and JSON rungs send a session's cookies with their own identity
+headers (the impersonation's user agent and client hints), never the browser's: those would pair a browser's user agent
+with curl's TLS and HTTP/2 fingerprint. No cookie is logged or captured. Enforced by: cross-fetch, cross-site,
+cross-domain, cross-proxy, expiry, no-persistence and caller-cookie tests; active. Refs: §7.1, D-0321, D-0884, D-0902,
+owner #58, D-1350–D-1353, D-1433, owner plan 2026-10-19 P2, owner #76.
 #### Scenario: Next fetch to the same host
 - **WHEN** fetch A receives `Set-Cookie` from `example.com` and fetch B then requests `example.com`, with no site session
   and no stored cookie state
@@ -433,9 +410,8 @@ on a direct route clears its state. The state is read only when a temporary prof
 directory configured, or the site's profile held by another process or fetch), which starts with its live site
 session's cookies, else the stored state; never per fetch, never by a kept profile, and never by an HTTP or JSON fetch, which takes only the live session. No cookie an HTTP
 response sets is kept or handed to the browser. The stored state serves and is written by direct fetches only (no
-proxy pool); a fetch with the caller's context neither reads nor writes it. (Previously: keyed by `site.host`,
-challenge and clearance cookies dropped, read by every browser fetch and by HTTP and JSON fetches, written by any
-browser `ok`, and cleared by any `blocked` fetch.) Refs: owner 2026-10-19 (acquisition plan P2), owner #76.
+proxy pool); a fetch with the caller's context neither reads nor writes it. Refs: owner 2026-10-19 (acquisition plan
+P2), owner #76.
 #### Scenario: A temporary profile loads the state
 - **WHEN** a browser fetch of `shop.example.com` in a temporary profile ends `ok` holding `session=1` and
   `cf_clearance=x`, and a later job's temporary profile of `www.example.com` opens
@@ -457,8 +433,7 @@ RFC 9309 for user agent `*`, cached per origin for 24 h in `site.robots_snapshot
 `Crawl-delay` feeds the host's rate. A page an adapter would serve is not held back by its own robots.txt: the
 adapter's request obeys its host's robots.txt, the page rungs are not admitted, and an adapter answer that is not `ok`
 ends `robots`. Either way, a crawl or map that reads sitemaps reads robots.txt for its `Sitemap:` lines alone
-(`crawl/sitemaps.py`). (Previously: honoured by default, unless the job recorded a `respect_robots=false`
-override with a `robots_override_reason`.) Refs: §7.1, D-0159, D-0866, D-1155, D-1156, owner decision #75.
+(`crawl/sitemaps.py`). Refs: §7.1, D-0159, D-0866, D-1155, D-1156, owner decision #75.
 
 ### Requirement: Per-site rate and backoff
 The system SHALL fetch every page and JSON request through one polite fetch (`services/polite.py`): robots.txt, then
@@ -476,8 +451,8 @@ shrinking it by 10% after 20 `ok` answers in a row, never below that interval. O
 one rule (`acquire/politeness.backoff`): the `Retry-After`, else 30 s doubling per try, at most 15 min, a `Retry-After`
 past 15 min ending the fetch `blocked`; each answer spends an attempt; a further request of a fetch (the 503
 interstitial's one browser attempt) waits out that pause within the caller's bound for waiting in place (the worker's
-`QUEUED` bound, a third of the task deadline; a service's one minute), and is not sent past it. (Previously: four front-ends, with three back-off
-rules; the rate and the hold per process, robots.txt unpaced.) Refs: §7.1, D-0163, D-0165, D-0901, D-1263, D-1327, master plan 2026-10-18 §4 item 5.
+`QUEUED` bound, a third of the task deadline; a service's one minute), and is not sent past it. Refs: §7.1, D-0163,
+D-0165, D-0901, D-1263, D-1327, master plan 2026-10-18 §4 item 5.
 #### Scenario: Spacing after a slow-down
 - **WHEN** a host with a 1 s interval answers 429 with `Retry-After: 5`, then `ok`
 - **THEN** the next request goes no sooner than 5 s after the 429, and the one after it 2 s later
@@ -486,15 +461,15 @@ rules; the rate and the hold per process, robots.txt unpaced.) Refs: §7.1, D-01
 A capture SHALL hold the body, network JSON bodies and a manifest (headers, timings, block class, attempts,
 `page_kind`, and for a browser capture of a listing the rendered area of each block of its repeated item groups by
 element path, `item_areas`, at most 2,000 blocks), with usage counted per attempt; `crawlerai fetch URL --out` writes a
-bundle and exits 0 whenever one is written. (Previously: no item areas.)
+bundle and exits 0 whenever one is written.
 Refs: §15, D-0146, D-0250, owner #67.
 
 ### Requirement: Acquisition candidates stay unbuilt
 The system SHALL NOT include residential proxies, unblockers, CAPTCHA solving, challenge clicking, behaviour emulation,
 fingerprint spoofing or real Chrome until the owner admits one (C13); an authenticated crawl runs only on the caller's
 own cookies or headers (above), and browser actions are a single-URL listing scrape's (owner #52) and the caller's page
-actions (above); no action logs in, enters a credential or answers a CAPTCHA. (Previously: no authenticated crawl, no
-browser action typed, and only a listing scrape's existed.) Refs: §7.2, §22, owner #52, owner #58, owner delegation
+actions (above); no action logs in, enters a credential or answers a CAPTCHA. Refs: §7.2, §22, owner #52, owner #58,
+owner delegation
 2026-10-17, D-1432, D-1438.
 
 ### Requirement: Patchright's documented browser setup (INV-42, INV-43, INV-44)
@@ -514,8 +489,7 @@ stay the browser's own (brands, `fullVersionList`, platform). Service and shared
 Playwright applies the override to a service worker's requests only; that is a known gap, not a goal. The context's `locale` and
 `timezone_id` are the request's (`FetchPolicy.locale_hint`, `acquire/locality.py`): the locale as a BCP 47 tag, and
 the IANA tz database's zone of its region (`zone1970.tab`) when the region has one, else none. Refs: owner #50, owner
-#71 as amended 2026-10-21, D-1204, D-1205, owner plan 2026-10-19 P8, architecture v3 a.3. (Previously: no
-user-agent override at all, so every scope sent `HeadlessChrome`.)
+#71 as amended 2026-10-21, D-1204, D-1205, owner plan 2026-10-19 P8, architecture v3 a.3.
 Enforced by: `tests/unit/test_browser_setup.py` (launch and context options, source scan); active.
 
 ### Requirement: Listing browser actions
@@ -528,8 +502,8 @@ hinted mechanism, else next or numbered links, a numbered pager's integer contro
 visible control after the last item; it waits up to 5 s per action for new items or a new first item, keeps a document
 state before each page turn, and before each scroll or control click a state it drops again when the state after still
 shows all its items, and stops at `records` distinct items (100 by default), at the list's end, at 40 actions or at its
-time cap, with the reason. A control click that changes the URL is undone and not taken as load-more. (Previously:
-only a scrape that asked for them.) Refs: owner #52, D-1218–D-1225, D-1404, D-1405, D-1513, master plan 2026-10-18
+time cap, with the reason. A control click that changes the URL is undone and not taken as load-more. Refs: owner #52,
+D-1218–D-1225, D-1404, D-1405, D-1513, master plan 2026-10-18
 recommendation 11.
 Enforced by: `tests/unit/test_paging_browser.py` (synthetic pages per mechanism) and `tests/property/test_paging.py`;
 active.
@@ -554,7 +528,7 @@ active.
 A `blocked` or `shell` attempt of any rung SHALL carry `challenge`: the vendor whose signature (`adapters/challenges.py`:
 response header names, cookie names, also those a browser context holds, challenge resource paths, stand-in markers)
 the response shows, else `structural` when `classify.interstitial` holds, else none; the label is counted per label and
-rung and slows the host's rate. (Previously: no stand-in markers.) Refs: owner #58, D-1326, D-1355, D-1470.
+rung and slows the host's rate. Refs: owner #58, D-1326, D-1355, D-1470.
 #### Scenario: Structural challenge
 - **WHEN** HTTP answers 403 with a script-only document that matches no vendor signature
 - **THEN** the attempt is `blocked` with `challenge: structural`
@@ -568,7 +542,7 @@ captured or logged (manifests and recorded headers show `**********`). The polic
 the names, the HMAC-SHA256 digest of the names and values (`core/context_digest.py`, keyed by a key derived from
 `CRAWLERAI_COOKIE_KEY`, else a random key of the process), and a stored capture SHALL stand for a fetch only when that
 digest is equal: a capture fetched with other values under the same names, or with no context, never serves a fetch
-with one, nor the reverse. (Previously: captures matched by context names alone.) Refs: owner delegation 2026-10-17,
+with one, nor the reverse. Refs: owner delegation 2026-10-17,
 owner 2026-10-21, D-1430–D-1434.
 #### Scenario: Header to another host
 - **WHEN** a fetch with header `Authorization` is redirected from `https://a.example/` to `https://b.example/`

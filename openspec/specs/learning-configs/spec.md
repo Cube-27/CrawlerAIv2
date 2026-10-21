@@ -14,8 +14,7 @@ digest of its document at learning; a config whose digest is not the stored docu
 corrected (a schema is edited in place). Each field's `FieldSteps` SHALL name the source its pages need
 (`needs`: `http`, the HTML or a document the HTTP page carries; `call`, the answer of the recipe it names in `call`,
 one of the config's `recipes`; `browser`, the render), and a config whose fields a locate run located has origin
-`located`. Refs: §12.1, D-0462, D-0465, D-0950, D-1375, architecture v3 a.6. (Previously: the reference held the name
-only; no field named its source.)
+`located`. Refs: §12.1, D-0462, D-0465, D-0950, D-1375, architecture v3 a.6.
 #### Scenario: Config learned before a schema edit
 - **WHEN** a schema's field description is edited after a config was learned for it
 - **THEN** activating that config raises `ConfigMismatch`, and correcting it is a 409
@@ -25,7 +24,6 @@ Each step SHALL have exactly one selector key, limited to forms both executors r
 stored with its pinned cssselect translation, a regex subset Python and PCRE both accept (`portable_regex.py`),
 JSONPath of RFC 9535 name, wildcard and index segments only (`json_doc.select`), and the post ops in `model.py`. LLM
 output is never executed (INV-17, [llm](../llm/spec.md)). Refs: §12.1, D-0034, D-0460, D-1501.
-(Previously: any JSONPath starting with `$`.)
 #### Scenario: Non-portable selector
 - **WHEN** a step uses `matches()` in its `xpath` or `$.name` as its JSONPath, or a bump changes a pinned translation in
   `css_translations.json`
@@ -38,7 +36,6 @@ step's value is read as the structured collectors read it (`schema_org_map.fragm
 listing's `jsonpath` row step SHALL select one row per JSON object in its source's documents, and the row's fields,
 `jsonpath` steps of that source only, read from the row (`$` is the row object), in both executors. A config for
 another schema or page kind raises `ConfigMismatch`. Refs: §12.1, D-0475, D-0480, D-1502, architecture v3 a.6.
-(Previously: a structured value was taken as written; a row step selected elements only.)
 #### Scenario: First step fails, second valid
 - **WHEN** step 0's value is declined and step 1 gives an `Ok` value
 - **THEN** the candidate is step 1's value
@@ -67,9 +64,8 @@ validated on the other pages' HTTP captures is `http`, else the listing recipe o
 pagination (`api_recipe.learn`, [listings](../listings/spec.md) "Rows from captured calls") is `call`, else one
 validated on their renders is `browser`, its row fields written with that `needs`. An eager fragment's answer is a
 source document of the HTTP page, as the page tree includes it ([extraction](../extraction/spec.md), "Eager fragment
-inclusion"): a value or rows only a fragment holds validate on the HTTP captures and are located as `http`. (Previously:
-only pages with a record were sampled and counted, so a surface whose every listing page listed nothing never started a
-locate run.) Refs: architecture v3 a.6, #332.
+inclusion"): a value or rows only a fragment holds validate on the HTTP captures and are located as `http`. Refs:
+architecture v3 a.6, #332.
 #### Scenario: State in the HTTP page wins
 - **WHEN** each render publishes a field whose value its embedded state, a captured call and a DOM element all hold,
   and the HTTP captures carry the state
@@ -111,7 +107,7 @@ SHALL send the first sample page only, in the first request's output schema, and
 60,000 characters. A published URL is the page's reference as written (normalization spec), so learning compares the
 published values with their URLs resolved against the page's base URL (`normalize.dispatch.compared_form`), and an
 induced URL step reads the attribute or member as written, with no `absolutize_url` op (kept for a listing's `next`,
-which is fetched, not published). (Previously: induced URL steps resolved their reference.) Refs: §8.3, D-0031, D-0551, D-0585, D-1680, D-1683, D-1720, D-1722, D-1723.
+which is fetched, not published). Refs: §8.3, D-0031, D-0551, D-0585, D-1680, D-1683, D-1720, D-1722, D-1723.
 
 ### Requirement: Held-out validation and corroboration
 On ≥ 3 held-out pages a field SHALL be kept only when its values are `Ok` and both the engine and release executors
@@ -120,7 +116,6 @@ rows are aligned with the config's in document order as a subsequence (`row_alig
 check: an engine row aligned with none is not reproduced. A kept field is `corroborated` when it matches every
 structured or adapter reference on ≥ 3 comparable pages (≥ 90% from 10 on), else `uncorroborated`; operator fields are
 `operator`. Refs: §8.3, §10, D-0563, D-0565, D-0567, D-1500.
-(Previously: rows were compared by position and only when the counts were equal.)
 #### Scenario: Release executor disagrees
 - **WHEN** the engine executor reproduces a value and the release executor does not
 - **THEN** the field is dropped from the config
@@ -134,7 +129,7 @@ A validated config with at least one field SHALL become version max+1 and the on
 before goes on serving, no run starts while it waits (a forced run may, and replaces it), `POST /v1/configs/{id}/approve`
 activates it and `POST /v1/configs/{id}/reject` suspends it, the state then waiting for 8 more pages before it learns
 again. In `active` mode a field the config runs SHALL NOT be asked of role C, even when its step misses.
-(Previously: no reject.) Refs: §8.3, §8.4, D-0569, D-0615, D-0783, D-1342, D-1391.
+Refs: §8.3, §8.4, D-0569, D-0615, D-0783, D-1342, D-1391.
 #### Scenario: Covered field missing
 - **WHEN** a covered field's steps match nothing on a page
 - **THEN** it stays `missing` and no LLM call is made for it

@@ -129,7 +129,7 @@ owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_prefere
 ### Requirement: Missing reasons name the furthest stage
 An unpublished field SHALL state its status and reason (the furthest screening stage reached, or the conflict or
 abstain cause, per `resolve/types.py`), and a published one whose candidates disagree its flag (Candidate score);
-every rejected candidate keeps its own reason, in `field_meta`. (Previously: a published field had no reason.) Refs: SPEC-05 §4.2, D-0438, D-0533.
+every rejected candidate keeps its own reason, in `field_meta`. Refs: SPEC-05 §4.2, D-0438, D-0533.
 
 ### Requirement: Atomic offers (INV-15)
 Price, currency and availability SHALL come from one anchor Offer: the Offer of the variant the target shows (Shown
@@ -177,13 +177,8 @@ another scheme, authority or path, one trailing slash of the path aside; a query
 rejected `other_document`, and preference decides among the rest; a relative
 reference `absolutize` resolves to another document is rejected so too. A derived value publishes as the page states it
 (normalization spec): an absolutized reference as written, the canonical link as its first `href` is written; the final
-URL, which no page statement gives, as fetched. (Previously: only a canonical link equal to the final URL named the
-page, so an `og:url` or a structured `url` naming another document outranked a canonical link the final URL did not
-repeat; a field
-the page stated on its other scheme or with userinfo was its own document, and `/p` and `/p/` named one document here
-but two in candidate scope (`collect/scope.py`); a field
-whose last rank was `T.url`, such as `apply_url`, took the page URL too; a structured `url` built from another id than
-the page's outranked its canonical URL; the first of conflicting canonical links named the page.) Refs: §9, §10, Appendix A #40, owner #77, D-0442, D-0910, D-1625. Enforced by: resolver
+URL, which no page statement gives, as fetched. Refs: §9, §10, Appendix A #40, owner #77, D-0442, D-0910, D-1625.
+Enforced by: resolver
 tests; active.
 #### Scenario: No url candidate
 - **WHEN** a detail page has no url candidate and `<link rel=canonical href="https://example.com/p/1">`
@@ -218,8 +213,7 @@ locale or the URL settles, or nothing settles (`basis` `locale`, `url`, `unknown
 `money|<evidence>|<basis>`, for its lower confidence (owner #68, owner 2026-10-19); every published field notes its `basis` in `field_meta` when it has one. Every
 chosen value publishes with that
 confidence unless the request sets `min_confidence` and the bucket is calibrated below it: the field is then
-`abstained` with reason `below_min_confidence`. An uncalibrated bucket never abstains. (Previously: a calibrated bucket
-below τ, 0.97 required and 0.95 otherwise, abstained `below_tau`; a lone `js_state` value had no bucket.)
+`abstained` with reason `below_min_confidence`. An uncalibrated bucket never abstains.
 Refs: §10, §16.3, D-0455, D-0456, D-1316, D-1740, D-1770, D-1771, D-1773.
 #### Scenario: Calibrated bucket below the minimum
 - **WHEN** a money bucket has n=40 and precision 0.9 and the request sets `min_confidence` 0.95
@@ -259,9 +253,7 @@ field's candidate that resolution rejected, or a page whose content the engine c
 `closed_shadow_root` or `obfuscated_text` signal, [jobs](../jobs/spec.md) "Job outcome summary"), keeps a
 caller-supplied page's record, `partial`, its fields' reasons as they resolved (`no_candidates` on an HTTP capture is
 the summary's render hint). A listing's row states its item only by a row field (the needed row fields, else any row
-field), never by the page fields every row shares. (Previously: a caller-supplied URL kept such a record, even an
-empty one; then a page with no published needed field was `no_match`, its rejected candidates and unreadable content
-included.) Refs: §10, §23, D-0513, D-0930.
+field), never by the page fields every row shares. Refs: §10, §23, D-0513, D-0930.
 #### Scenario: Crawl page missing price
 - **WHEN** a crawl-discovered detail page leaves the required `price` missing
 - **THEN** the outcome is `no_match` and no record is stored
@@ -280,9 +272,7 @@ browser (`ConfigExecutor.browser_fields`: each running field whose `needs` is `b
 browser's and no browser attempt is among its `fetch_policy.attempts`: the fetch did not render, for budget or
 `method_hint http`), SHALL be `interaction_required` with reason `render_bound`. Every other unpublished field stays
 `missing` with its furthest-stage reason; a page without a config leaves a field it does not carry `missing` with
-`no_candidates`. (Previously: a field `missing/no_candidates` on an unrendered page whose document carried a state
-document of at least `STATE_MIN_VALUES` scalar values, `content/state.holds_state`, was `interaction_required` with
-reason `script_rendered`; then every field of a config whose `fetch.method` was `browser` was browser-bound.) Refs: owner plan 2026-10-19 P3, P9; architecture v3 a.5.
+`no_candidates`. Refs: owner plan 2026-10-19 P3, P9; architecture v3 a.5.
 #### Scenario: Browser field on an HTTP page
 - **WHEN** the site's config reads `size` from rendered pages and an HTTP page with no browser attempt carries no `size`
 - **THEN** `size` is `interaction_required` with reason `render_bound`, and the same page captured in the browser leaves
@@ -306,8 +296,7 @@ deterministic resolution, optional ones included (in `active` mode only those th
 absent, which stay `missing` with reason `absent`), reading the product's own evidence only ([llm](../llm/spec.md)
 "Role C input, claims and candidates"); `conflict`, `abstained`, `object` and `list<object>` fields are never sent, and
 its candidates pass the same stages as `llm_grounded`. A field whose claimed value the evidence does not hold (INV-12)
-stays `missing` with reason `unverified`, never published. (Previously: only missing required fields and groups were
-asked, and an ungrounded field's reason was `no_candidates`.) Refs: §8.4, D-0489, D-0797, D-1341.
+stays `missing` with reason `unverified`, never published. Refs: §8.4, D-0489, D-0797, D-1341.
 #### Scenario: Value the page does not hold
 - **WHEN** role C claims `price` `$19` and the product's text holds no `$19`
 - **THEN** `price` stays `missing` with reason `unverified`
