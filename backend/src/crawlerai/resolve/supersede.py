@@ -30,7 +30,7 @@ from collections.abc import Sequence
 from crawlerai.collect.base import Candidate
 from crawlerai.normalize.base import Ok
 from crawlerai.normalize.images import representative_part
-from crawlerai.normalize.strings import collapse, is_cut_of, solid
+from crawlerai.normalize.strings import collapse, is_cut_of, solid, uncut
 from crawlerai.schemas.types import FieldSpec, FieldType
 
 _OPEN_GRAPH = "og"
@@ -87,13 +87,16 @@ def _by_length(kept: Sequence[Candidate]) -> list[Candidate]:
 
 
 def _longer(c: Candidate, form: str, other: Candidate, longer: str, summaries: set[str]) -> bool:
-    if len(longer) <= len(form) or other is c:
+    if other is c:
         return False
-    # A text equal to `longer` white space aside is one text in two renditions, no cut of it: only the line breaks
-    # each keeps tell them apart (`_flattened`).
-    truncation = solid(form) != solid(longer) and is_cut_of(form, longer, word_boundary=False)
+    # A cut and its length compare in one form, white space aside: a text equal to `longer` but for white space is one
+    # text in two renditions, no cut of it, and only the line breaks each keeps tell them apart (`_flattened`).
+    if len(uncut(solid(form))) < len(solid(longer)) and is_cut_of(form, longer, word_boundary=False):
+        return True
+    if len(longer) <= len(form):
+        return False
     summary = form in summaries and other.source_kind != _OPEN_GRAPH
-    return truncation or summary or _headed(c, longer)
+    return summary or _headed(c, longer)
 
 
 def _headed(c: Candidate, longer: str) -> bool:
