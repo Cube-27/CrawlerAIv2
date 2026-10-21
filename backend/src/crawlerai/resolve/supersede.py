@@ -3,10 +3,11 @@
 
 Source precedence ranks by kind, so a kind that states a field as a fragment would win over one that states it whole.
 Two structural properties of the values say a candidate is a fragment of another, whatever its kind:
-- long_text: a text that is a prefix of a longer candidate, or an ellipsis-cut prefix of it (Unicode U+2026 or
-  `...`), is a truncation of it; an Open Graph description (the protocol defines it as a one-to-two sentence summary)
-  is a summary, and so is a candidate of another kind stating the same text as it, so a longer description of a kind
-  other than Open Graph supersedes it. A text that is another's with fewer line breaks, white space aside, is that
+- long_text: a text that is a strict prefix of a longer candidate, white space aside, or an ellipsis-cut prefix of it
+  (Unicode U+2026 or `...`), is a truncation of it (one equal to it but for white space is the same text, no cut); an
+  Open Graph description (the protocol defines it as a one-to-two sentence summary) is a summary, and so is a
+  candidate of another kind stating the same text as it, so a longer description of a kind other than Open Graph
+  supersedes it. A text that is another's with fewer line breaks, white space aside, is that
   text with its block structure flattened (paragraphs and `br` line breaks, HTML Standard §4.4.1, §4.5.27, dropped),
   so the rendition keeping more of its lines supersedes it. A text whose first line stands alone before the start of a
   longer candidate is that text with the heading that names its block kept as text (HTML Standard §4.3.6: a heading
@@ -88,7 +89,9 @@ def _by_length(kept: Sequence[Candidate]) -> list[Candidate]:
 def _longer(c: Candidate, form: str, other: Candidate, longer: str, summaries: set[str]) -> bool:
     if len(longer) <= len(form) or other is c:
         return False
-    truncation = is_cut_of(form, longer, word_boundary=False)
+    # A text equal to `longer` white space aside is one text in two renditions, no cut of it: only the line breaks
+    # each keeps tell them apart (`_flattened`).
+    truncation = solid(form) != solid(longer) and is_cut_of(form, longer, word_boundary=False)
     summary = form in summaries and other.source_kind != _OPEN_GRAPH
     return truncation or summary or _headed(c, longer)
 
