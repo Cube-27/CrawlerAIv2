@@ -19,16 +19,17 @@ same PR, tests for removed code deleted, green CI, bot threads resolved. Sizes: 
 | A1 | One cookie rule; the profile is the browser's cookie store | #403 | merged |
 | A2 | Listing renders through the shared browser | #405 | merged |
 | A3 | Site memory in its own short transactions | #400 | merged |
-| A4 | One page run for scrape and the worker | | next |
-| A5 | Decode and fingerprint a body once | | next |
+| A4 | One page run for scrape and the worker | #409 | merged |
+| A5 | Decode and fingerprint a body once | #410 | merged |
 | B1 | One document key, one item key | #399 | merged |
 | B2 | One page-locale derivation | #401 | merged |
 | B3 | Variant rows keep their stated amount | #402 | merged |
 | B4 | One text module | #404 | merged |
-| B5 | Image policy in one module; cached canonical | | next |
-| E1 | Mid-point e2e (orchestrator) | | after A4, A5, B5 |
-| T1 | DB tests: one engine per worker, shared fixtures | | after E1 |
-| T2 | Slow tests trimmed, pairs merged | | after E1 |
+| B5 | Image policy in one module; cached canonical | #408 | merged |
+| E1 | Mid-point e2e (orchestrator) | | done: one engine regression (#404) |
+| E1-fix | A text equal but for white space is no cut | #411 | merged |
+| T1 | DB tests: one engine per worker, shared fixtures | #413 | open |
+| T2 | Slow tests trimmed, pairs merged | #412 | merged |
 | T3 | Path-gated sdk job; aligned pins | | after T1, T2 |
 | F1–F6 | Bug and accuracy classes | | after E1 |
 | X1 | architecture-v3 rewritten in place | | after F1–F6 |
@@ -46,34 +47,6 @@ same PR, tests for removed code deleted, green CI, bot threads resolved. Sizes: 
 
 ## Remaining PRs
 
-### Wave 1 (rest)
-
-**A4 refactor(services): one page run for scrape and the worker; split scrape_steps** — L, risk medium. Deps: A3.
-Scope (A7, A13): `services/page_run.py` core `page_run(fetched, records, *, retryable)` (cache read, failure mapping,
-further-page storage); `services/scrape.py` and `worker/handlers/{steps,scrape,crawl}.py` become adapters; delete the
-`_stored`/`_read_stored` vs `_stored_page` and `_finish` vs `unreached`+`extract_records` duplicates; collapse
-`PagePlan`/`FetchPlan` where one suffices; split `scrape_steps.py` into `scrape_request.py`, `page_store.py`,
-`page_formats.py`. Spec: jobs spec states that the worker's `cache` semantics equal scrape's. Verify: one scrape, one
-batch of 3, one crawl of 5 against a local fixture server; verify-worker-queue. Parallel: B5.
-
-**A5 perf(acquire): decode and fingerprint a body once; bounded network-body reads** — S/M, risk low. Deps: A2.
-Scope (A6, A10): decode once in the rung and carry the text (`FetchResult` cached property); compute `platform` once
-in `acquire` and stamp it for `memory`; remaining parses in `asyncio.to_thread`; `json_bodies` checks `post_data`
-size first and gathers bodies bounded, order kept. Delete the repeated decodes in `rungs.py`, `memory.py`,
-`page_refs.py`. Verify: one HTTP detail fetch timed before/after on a stored capture replay. Parallel: B5 (not A4:
-shared files, A5 after A4 if they collide).
-
-**B5 perf(resolve): image policy in one module; cached canonical; linear supersede; one JSON-LD parse** — M, risk medium. Deps: B4.
-Scope (B9–B12, B16): `normalize/images.py` (resource key, rendition, secure-first, at-largest) replaces
-`preference._secure_first|_largest_renditions|_at_largest|_secure` and `supersede._representative|_part_of`;
-`lru_cache` on `normalize.url.canonical`; `supersede._by_length` precomputes `solid`/lines; `metadata._json_ld_types`
-reads `ParsedPage.derived`'s parsed blocks; `js_state.attribute_documents` cached. Move the offers/variants part of
-`preference.py` to `resolve/offers.py` and precedence loading to `score.py` (preference under 800 lines). Verify:
-replay of one 50-image capture timed before/after (at least 5× fewer `canonical` calls). Parallel: A4 or A5.
-
-**E1 mid-point e2e (orchestrator)** — Deps: A4, A5, B5. One run over the eval set to catch refactor regressions;
-regressions classified per `orchestrator.md`; an engine regression becomes a fix PR before Wave 2.
-
 ### Wave 2: test debt and CI
 
 **T1 test(db): one engine per worker, TRUNCATE teardown, shared fixtures** — M (−1.2k lines), risk low–medium. Deps: E1.
@@ -81,13 +54,6 @@ Scope (C1, C2, D6): `tests/db/conftest.py` session-scoped engine per xdist worke
 `TRUNCATE … CASCADE` instead of the per-table DELETEs; `tests/db/support.py` with `kettle_schema`, `fetching_from(web)`,
 the `Web` stand-in, `client`, `server`; delete the per-file copies. Verify: CI `--durations=0` before/after in the PR
 body (backend pytest 2m18s → ≤ 90 s). Parallel: T2.
-
-**T2 test: slow tests trimmed, unit/property pairs merged, redundant examples deleted** — M (−0.8k lines), risk low. Deps: E1.
-Scope (C6, C9): `test_js_state_collector` chain 40 → 20 levels; `property/test_rows` "never merge" at
-`max_examples=50`; `test_mcp_server` one stdio smoke, the rest in-process; merge the 8 same-name unit/property pairs
-(rows, preference, grounding, evidence, release_executor, record_exporters, content_formats, api_recipe_binding) into
-one file each, deleting example tests a property covers; deduplicate the `unit/db` overlaps (config_drift,
-llm_client, role_s). Verify: CI durations. Parallel: T1.
 
 **T3 ci: path-gated sdk job; local parallel pytest; aligned pins** — S, risk low. Deps: T1, T2.
 Scope (C8, C11): one `sdk` job gated on `sdk/**` and `frontend/openapi.json` (tsc, the SDKs' own tests, ruff/mypy on
