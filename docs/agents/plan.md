@@ -28,13 +28,21 @@ same PR, tests for removed code deleted, green CI, bot threads resolved. Sizes: 
 | B5 | Image policy in one module; cached canonical | #408 | merged |
 | E1 | Mid-point e2e (orchestrator) | | done: one engine regression (#404) |
 | E1-fix | A text equal but for white space is no cut | #411 | merged |
-| T1 | DB tests: one engine per worker, shared fixtures | #413 | open |
+| T1 | DB tests: one engine per worker, shared fixtures | #413 | merged |
 | T2 | Slow tests trimmed, pairs merged | #412 | merged |
-| T3 | Path-gated sdk job; aligned pins | | after T1, T2 |
-| F1–F6 | Bug and accuracy classes | | after E1 |
-| X1 | architecture-v3 rewritten in place | | after F1–F6 |
-| X2 | README, CONTRIBUTING, CLAUDE.md, HANDOVER.md | | after X1 |
-| E2 | Final e2e (orchestrator) | | beside X1 |
+| T3 | Path-gated sdk job; aligned pins | #419 | merged |
+| F1 | An extraction miss is `partial`, never `no_match` | #415 | merged |
+| F2 | The canonical link is the page-URL field's stated value | #416 | merged |
+| F3 | A site summary is not the description; a legend is not prose | #417 | merged |
+| F4 | A single stated image never fills an image list; gallery slides | #420 | merged |
+| F5 | Inline-state rating and count the page text shows | | closed: no bug class (values only client-side) |
+| F6 | Unknown `?variant=` selects the default variant; struck amount | #421 | merged |
+| X1 | architecture-v3 rewritten in place | #422 | merged |
+| X1-fu | Spec text: timeout fallback, rejected-reason storage | #423 | merged |
+| X2 | README, CONTRIBUTING, CLAUDE.md, HANDOVER.md | #425 | merged |
+| E2 | Final e2e (orchestrator) | | done: two engine regressions, fixed below |
+| E2-fix 1 | The selected variant's ids don't override the page's | #424 | merged |
+| E2-fix 2 | A platform image list holds only the shown variant's images | #426 | merged |
 
 ## Owner decisions for this plan (binding)
 
@@ -47,78 +55,7 @@ same PR, tests for removed code deleted, green CI, bot threads resolved. Sizes: 
 
 ## Remaining PRs
 
-### Wave 2: test debt and CI
-
-**T1 test(db): one engine per worker, TRUNCATE teardown, shared fixtures** — M (−1.2k lines), risk low–medium. Deps: E1.
-Scope (C1, C2, D6): `tests/db/conftest.py` session-scoped engine per xdist worker, rollback-per-test `conn` kept, one
-`TRUNCATE … CASCADE` instead of the per-table DELETEs; `tests/db/support.py` with `kettle_schema`, `fetching_from(web)`,
-the `Web` stand-in, `client`, `server`; delete the per-file copies. Verify: CI `--durations=0` before/after in the PR
-body (backend pytest 2m18s → ≤ 90 s). Parallel: T2.
-
-**T3 ci: path-gated sdk job; local parallel pytest; aligned pins** — S, risk low. Deps: T1, T2.
-Scope (C8, C11): one `sdk` job gated on `sdk/**` and `frontend/openapi.json` (tsc, the SDKs' own tests, ruff/mypy on
-handwritten files); `sdk/typescript/src/schema.d.ts` generated from the one frontend file (delete the copy if the
-generator can reference it, else keep the digest check); pnpm/TypeScript pins aligned with the frontend; Makefile
-`check-backend` runs `pytest -n auto` with per-worker databases, no `patchright install` each run. Verify: CI green
-with the new job skipped on a backend-only change.
-
-### Wave 3: bug and accuracy classes (each one class, each with a synthetic fixture; two at a time)
-
-**F1 fix(resolve): an extraction miss is `partial`, never `no_match`** — S/M, risk low. Deps: E1.
-Rule: `no_match` only when no needed field has any candidate from the page; a page with candidates resolution
-rejected, or with a `closed_shadow_root`/unreadable-content signal, is `partial` with the reasons and the render hint.
-`records.states_entity` takes the candidate set, not only published fields. Spec: resolution "Incomplete pages", jobs
-"Page outcomes". Verify: fixture (custom element without light DOM plus a stated title).
-
-**F2 fix(resolve): the page's canonical link is the page-URL field's stated value** — S, risk medium. Deps: E1.
-Rule: for the page-URL field only, a single `<link rel=canonical>` on the page's registrable domain (RFC 6596) is the
-page's own URL; og:url and JSON-LD `url` naming another document are held to the page and rejected `other_document`;
-without a canonical, behaviour is unchanged (conflicting canonicals → none; final-URL derivation per owner #40). Spec:
-resolution "Derived values"; owner-decisions row. Verify: fixture with canonical ≠ og:url.
-
-**F3 fix(collect): a meta summary naming the site is not the entity's description; a legend is not prose** — S, risk low. Deps: E1.
-Rules: an `og:description`/`meta description` that contains the page's site name (`og:site_name`, else the title's
-site segment) is the site's summary, not the entity's (extends `og.py`'s site-title rule; OGP "one to two sentence
-description"); `legend` (HTML §4.10.16) is excluded from description text blocks. Spec: extraction "Structured-data
-collectors", "cleaned text". Verify: fixtures.
-
-**F4 fix(collect): a single stated image never fills an image list; gallery slides found by rendition** — M, risk medium. Deps: E1.
-Diagnose first on the eval captures the orchestrator names in the brief (gallery blocks present, `_gallery` did not
-read them), then ship the class rule found (expected: slides whose `srcset`/`data-src` renditions name the main
-image's file family, outside the main image's tag path). Rule 2: `og:image` alone is one image, not a list; it fills
-`additional_images` only beside DOM or structured slides. Galleries whose names exist only in inline state are out of
-scope. Spec: extraction "images". Verify: fixtures.
-
-**F5 fix(collect): inline-state rating and count that the page text shows are admitted** — S, risk low. Deps: E1.
-Diagnose first on the pages named in the brief: did the admission rule refuse a value visible in the page text (bug:
-fix the visibility match, e.g. number formatting) or a value not in the HTML text (by design, not done)? Only the bug
-class ships. Verify: fixture.
-
-**F6 fix(adapters): a `?variant=` id the product data lacks selects the default variant; a struck amount is a was-price** — S, risk low. Deps: E1.
-Rules: Shopify `?variant=` not among `variants[].id` → the product's default (first available) variant, as the page
-shows; a structured amount equal to a visible struck amount (`s`/`del`, HTML §4.5.5/§4.7.2) is the list price, so the
-visible selling price wins. Spec: adapters "Shopify values", resolution price rule. Verify: fixtures; verify-money.
-
-### Wave 4: documentation
-
-**X1 docs(openspec): architecture-v3 rewritten in place; owner-decisions marked; specs state current behaviour** — M, risk none. Deps: F1–F6.
-Scope (C3, C12, D5, A15): superseded paragraphs in §(f) and §(g) replaced by the current rule with a one-line pointer
-to the owner row; (b) row 13 corrected (no per-site proxy pool); (e) table extended with this plan's deletions;
-owner-decisions rows 40 and 60 "Superseded 2026-10-21 (#376)", row 50 "amended by #71", #67(12) resource blocking
-removed (#393); new rows: cookie rule (A1), variant price (B3), canonical (F2), eval machinery deleted (D1);
-`overview.md` L4 reworded; every "(Previously …)" clause moved to a dated section of `decisions/log.md`; INV-29 text
-amended. Verify: `tools/decision_ids.py`.
-
-**X2 docs: README, CONTRIBUTING, CLAUDE.md, HANDOVER.md** — S/M, risk none. Deps: X1.
-Scope: README status line and docs table; CONTRIBUTING "evaluation report" → the e2e procedure; CLAUDE.md contract
-lines C1/C10 matching `project.md`; `HANDOVER.md` at the repo root: what the system is and is not, how to run it (make
-targets, env, profiles directory), how to run the e2e (eval set and scorer live outside the repo; the matcher caveat
-for query-keyed item URLs), what is frozen (fitted data), open owner decisions, "Not done", machine constraints.
-
-**E2 final e2e (orchestrator)** — Deps: F1–F6; runs beside X1. One run over the eval set with LLM (bounded LLM
-budget, robots off, profiles directory set, fresh DB), compared page by page with the previous rounds: outcome deltas,
-per-field agree/disagree, LLM values not on the page, blocked/shell per page. Engine regressions are fixed before
-handover or listed in HANDOVER.
+None: every plan PR is merged. Open items and owner decisions are in `HANDOVER.md`.
 
 ## Not done, and why
 
