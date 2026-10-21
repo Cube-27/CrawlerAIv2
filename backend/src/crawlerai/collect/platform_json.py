@@ -1,7 +1,7 @@
 """The documented platform JSON collector (extraction spec, acquisition spec "Data calls"): the product JSON a platform
 documents, fetched beside a detail page's HTTP fetch and kept only when it stated the requested product
 (`acquire.identity`), read as the schema.org nodes the platform's documentation says it holds
-(`adapters.platforms.answer_shapes`).
+(`adapters.platforms.answer_shape`).
 
 Such a body is structured evidence of the requested product, as an adapter's answer is: its values are `adapter`
 candidates read by the schema.org path rules (`read_shapes` of `collect/adapter.py`), located under `<platform>_json`,
@@ -15,7 +15,7 @@ from collections.abc import Iterator
 from pydantic import JsonValue
 
 from crawlerai.adapters.base import ADAPTER_CALL
-from crawlerai.adapters.platforms import answer_shapes
+from crawlerai.adapters.platforms import answer_shape
 from crawlerai.collect.adapter import read_shapes
 from crawlerai.collect.base import Candidate, CollectResult, Entity
 from crawlerai.collect.vocabulary import Vocabulary
@@ -41,9 +41,9 @@ class PlatformJsonCollector:
         candidates: list[Candidate] = []
         diagnostics: list[str] = []
         for platform, answer in _answers(page, diagnostics):
-            read = read_shapes(
-                f"{platform}_json", answer_shapes(platform, answer), answer, schema, ctx, self._vocabulary
-            )
+            shape = answer_shape(platform, answer, ctx.page_url)
+            shapes = () if shape is None else (shape,)
+            read = read_shapes(f"{platform}_json", shapes, answer, schema, ctx, self._vocabulary)
             entities.extend(_requested(e) for e in read.entities)
             candidates.extend(read.candidates)
             diagnostics.extend(read.diagnostics)

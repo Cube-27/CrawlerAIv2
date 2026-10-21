@@ -74,7 +74,7 @@ IRI of a schema.org enumeration member (`suggestedGender`: `https://schema.org/M
 whose path ends at a node (schema.org `image`: ImageObject or URL) reads the node's `contentUrl`, else its `url`. A
 platform's documented
 product JSON that a detail page's HTTP fetch joined after its identity check (acquisition spec, "Data calls") is read
-as that platform documents its members (`adapters/platforms.answer_shapes`, `collect/platform_json.py`): `adapter`
+as that platform documents its members (`adapters/platforms.answer_shape`, `collect/platform_json.py`): `adapter`
 candidates of the requested product, amounts in the minor unit the documentation states, and no Offer when its
 variants are priced differently (the page states the selected one). Refs: §8.1,
 D-0388..D-0406, D-0940, D-1180, D-1183, D-1186, D-1486, owner decision 2026-10-19 on #326, architecture-v3 d.6.

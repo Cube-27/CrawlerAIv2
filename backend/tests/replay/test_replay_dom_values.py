@@ -55,3 +55,14 @@ def test_a_page_without_structured_data_publishes_what_its_label_table_and_main_
         "image_url": ("https://shop.example.test/img/widget.jpg", "dom", "dom"),
     }
     assert fields["brand"].locator == "dom:/html[1]/body[1]/main[1]/table[1]/tbody[1]/tr[1]/td[1]"
+
+
+def test_a_structured_amount_the_page_shows_struck_is_the_was_price_and_the_shown_price_publishes() -> None:
+    # HTML Standard §4.5.4 `s`, §4.7.2 `del`: the struck amount is no longer accurate; structured data stating it is
+    # stale, and the one current amount the page shows is the price.
+    for tag in ("s", "del"):
+        body = f"<main><h1>Synthetic Widget</h1><p><{tag}>$70.00</{tag}> $54.97</p></main>"
+
+        price = _fields(_jsonld(offers={"@type": "Offer", "price": "70.00", "priceCurrency": "USD"}), body)["price"]
+
+        assert (price.value, price.source_kind) == ({"amount": "54.97", "currency": "USD"}, "dom")
