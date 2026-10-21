@@ -131,6 +131,9 @@ def test_the_resource_key_ignores_only_the_scheme_the_query_and_a_stated_size() 
     # Transform-pair segments (one of them a number) state the rendition: one file at two crops and a pixel ratio.
     small = "https://cdn.example.test/t_img/c_fill,h_573,w_458/dpr_2.0/v1/a.png"
     assert images.resource_key(small) == images.resource_key("https://cdn.example.test/t_img/c_fill,w_2000/v1/a.png")
+    # A pixel ratio is no size: neither rendition outranks the other by it.
+    ratios = ["https://cdn.example.test/t_img/dpr_2.0/v1/a.png", "https://cdn.example.test/t_img/dpr_1.5/v1/a.png"]
+    assert images.distinct_files(ratios) == ratios[:1]
     assert images.resource_key("https://cdn.example.test/men_x/a.png") != images.resource_key(
         "https://cdn.example.test/women_x/a.png"
     )

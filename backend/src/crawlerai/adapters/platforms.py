@@ -266,7 +266,10 @@ def _file(src: JsonValue, page_url: str | None) -> tuple[str, str] | None:
     (§5.2); None for no URL."""
     if not isinstance(src, str):
         return None
-    parts = urlsplit(urljoin(page_url or "", src))
+    try:
+        parts = urlsplit(urljoin(page_url or "", src))
+    except ValueError:  # RFC 3986 §3.2.2: an authority no URL has (an unclosed IPv6 bracket) names no file
+        return None
     return (parts.netloc.lower(), parts.path) if parts.netloc and parts.path else None
 
 

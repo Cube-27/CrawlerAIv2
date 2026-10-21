@@ -155,8 +155,9 @@ def _without_dimensions(path: str) -> str:
     return _CONVERSION.sub(r"\1", _SIZE_SUFFIX.sub("", stripped))
 
 
-# A size has a few digits; a longer run (an id or a stamp) is no size, and stays clear of `int`'s digit limit.
-_NUMBER = re.compile(r"(?<!\d)\d{1,9}(?!\d)")
+# A size has a few digits; a longer run (an id or a stamp) is no size, and stays clear of `int`'s digit limit. A
+# decimal (a pixel ratio, `dpr_1.5`) is a scale factor, no size: neither of its digit runs is read.
+_NUMBER = re.compile(r"(?<![\d.])\d{1,9}(?![\d.])")
 
 
 def largest_rendition(values: Sequence[str]) -> int:
