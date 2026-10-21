@@ -9,6 +9,7 @@ import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from itertools import islice
 from typing import Final, cast
 from urllib.parse import urlsplit
 
@@ -261,15 +262,15 @@ async def json_bodies(responses: list[tuple[Response, int]]) -> tuple[tuple[Netw
     `DataCalls.on_response` admitted them) a capture keeps, within its caps, in response order. A call whose request
     body is past the per-body cap is left out before its answer is read; the answers are read `_READS_AT_ONCE` at a
     time, and none after the capture is full."""
-    sent = [(response, action) for response, action in responses if _request_size(response) <= _JSON_BODY_MAX_BYTES]
+    sent = ((response, action) for response, action in responses if _request_size(response) <= _JSON_BODY_MAX_BYTES)
     captured: list[tuple[NetworkBody, bytes]] = []
     total = 0
-    for start in range(0, len(sent), _READS_AT_ONCE):
-        batch = sent[start : start + _READS_AT_ONCE]
+    # No more answers are read than the capture has room for.
+    while len(captured) < JSON_BODIES_MAX and (
+        batch := list(islice(sent, min(_READS_AT_ONCE, JSON_BODIES_MAX - len(captured))))
+    ):
         bodies = await asyncio.gather(*(_json_body(response) for response, _ in batch))
         for (response, action), data in zip(batch, bodies, strict=True):
-            if len(captured) == JSON_BODIES_MAX:
-                return tuple(captured)
             if data is None or total + len(data) > JSON_PAGE_MAX_BYTES:
                 continue
             captured.append((await _entry(response, action, data, len(captured)), data))
