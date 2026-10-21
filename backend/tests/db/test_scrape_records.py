@@ -221,6 +221,24 @@ async def test_a_page_without_a_required_field_is_partial_and_keeps_its_record(
     assert tuple(task) == ("done", "partial")
 
 
+async def test_a_page_that_states_no_entity_is_no_match_without_records(
+    engine: AsyncEngine,
+    fetching: Fetching,
+    web: Web,
+    own_origin: str,
+    kettle_schema: SchemaDef,
+    engine_data: EngineData,
+) -> None:
+    url = f"{own_origin}/kettles/blue"
+    web.pages[url] = (200, b"<!doctype html><html><head></head><body><p>Back soon.</p></body></html>", "ok")
+
+    result = await scrape(engine, fetching, _records(url, {"id": str(kettle_schema.id)}), data=engine_data)
+
+    assert (result.outcome, result.records) == ("no_match", [])
+    task = await _row(engine, select(UrlTask.status, UrlTask.outcome).where(UrlTask.job_id == result.job_id))
+    assert tuple(task) == ("done", "no_match")
+
+
 async def test_a_listing_without_rows_says_why_and_answers_its_page_fields(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, schema_name: str, engine_data: EngineData
 ) -> None:

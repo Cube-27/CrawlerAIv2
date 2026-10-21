@@ -130,8 +130,9 @@ ReachedOutcome = Literal[
     "unsupported_media",
     "geo_blocked",
 ]
-# The outcome a page task reports (rest-api spec): a reached page's, or its fetch's failure (`FetchFailure`).
-PageOutcome = Literal[ReachedOutcome, "timeout", "failed"]
+# The outcome a page task reports (rest-api spec): a reached page's, `no_match` for a reached page that states no entity
+# of the schema (resolution spec, "Incomplete pages"), or its fetch's failure (`FetchFailure`).
+PageOutcome = Literal[ReachedOutcome, "no_match", "timeout", "failed"]
 
 # The outcome of each block class but `error`, which is a fetch failure (`fetch_failure`).
 BLOCK_OUTCOMES: Final[dict[BlockClass, ReachedOutcome]] = {

@@ -3688,7 +3688,7 @@ export interface components {
              * Outcome
              * @enum {string}
              */
-            outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media" | "geo_blocked" | "timeout" | "failed";
+            outcome: "extracted" | "partial" | "blocked" | "shell" | "not_found" | "auth_wall" | "soft_404" | "geo_redirect" | "redirected_to_listing" | "unsupported_media" | "geo_blocked" | "no_match" | "timeout" | "failed";
             /** Page */
             page?: {
                 [key: string]: components["schemas"]["RecordField"];
