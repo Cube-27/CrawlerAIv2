@@ -10,7 +10,6 @@ the one naming a page URL, and of several of those the one product group with va
 ambiguous and nothing is guessed. A page with no entity of a primary type at all is about itself, the `page` entity.
 """
 
-import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal
@@ -18,7 +17,7 @@ from typing import Literal
 from crawlerai.collect.base import Entity
 from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.collect.scope import LISTS, RELATIONS, leads_elsewhere, page_documents
-from crawlerai.resolve.identity import VARIANT
+from crawlerai.resolve.identity import VARIANT, repeated
 from crawlerai.resolve.ownership import OFFER, EntityGraph, names_any
 from crawlerai.schemas.paths import required_types
 from crawlerai.schemas.types import SchemaDef
@@ -30,12 +29,6 @@ _BACK_REFERENCES = frozenset({"itemReviewed"})
 # about: they often repeat the group's URL, which would leave the page ambiguous. schema.org `isVariantOf`, the inverse
 # of `hasVariant`, holds the group its holder is a variant of: a more general thing than the holder.
 _NOT_THE_SUBJECT = RELATIONS | {VARIANT, "isVariantOf"}
-# Microdata entities are addressed by their element's XPath (`collect.microdata`): items whose paths differ only in
-# their positions (XPath 1.0 §2.4 `[n]` predicates) are sibling elements of one shape, rendered by one template as one
-# list's items, as an ItemList's are. At least this many make a list, as `acquire.items.MIN_ITEMS`.
-_MICRODATA = "microdata:"
-_POSITION = re.compile(r"\[\d+\]")
-_MIN_REPEATED = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,18 +89,8 @@ def is_primary(graph: EntityGraph, entity: Entity, primary: frozenset[str]) -> b
 def _own(candidates: list[Entity], page_urls: list[str]) -> list[Entity]:
     """The candidates that are not another page's item: not leading only to other documents, not repeated."""
     documents = page_documents(page_urls)
-    shapes: dict[str, int] = {}
-    for entity in candidates:
-        shape = _shape(entity)
-        if shape is not None:
-            shapes[shape] = shapes.get(shape, 0) + 1
-    return [
-        e for e in candidates if not leads_elsewhere(e, documents) and shapes.get(_shape(e) or "", 0) < _MIN_REPEATED
-    ]
-
-
-def _shape(entity: Entity) -> str | None:
-    return _POSITION.sub("", entity.id) if entity.id.startswith(_MICRODATA) else None
+    apart = repeated(candidates)
+    return [e for e in candidates if not leads_elsewhere(e, documents) and e.id not in apart]
 
 
 def _has_variants(graph: EntityGraph, entity: Entity) -> bool:
