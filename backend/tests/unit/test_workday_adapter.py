@@ -19,7 +19,7 @@ from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.adapters.base import AdapterMatch, PageRefs
 from crawlerai.adapters.workday import FIRST_PAGE, JOBS_DOMAIN, Workday
 from crawlerai.collect.adapter import AdapterCollector
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId

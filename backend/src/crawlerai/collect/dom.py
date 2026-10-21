@@ -54,7 +54,8 @@ from crawlerai.collect.dom_images import (
 from crawlerai.collect.items.spot import is_typed, reads, spots
 from crawlerai.collect.labels import Words, field_labels, words
 from crawlerai.collect.locator import format_locator
-from crawlerai.collect.schema_org_map import NAMESPACES, candidate, schema_term
+from crawlerai.collect.schema_org_map import candidate
+from crawlerai.collect.vocabulary import NAMESPACES, schema_term
 from crawlerai.content.page import ParsedPage, node_xpath
 from crawlerai.content.text import CELLS, declarations, shown
 from crawlerai.normalize.base import Context, Ok

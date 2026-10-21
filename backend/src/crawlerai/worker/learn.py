@@ -18,7 +18,7 @@ from typing import Any, Final
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.api_recipe.replay import Render, Replays
 from crawlerai.config_ir.learning import next_learn_job, run_learn_job
 from crawlerai.config_ir.locate import Extract

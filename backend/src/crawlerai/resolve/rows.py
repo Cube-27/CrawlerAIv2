@@ -16,9 +16,10 @@ from urllib.parse import parse_qsl, urlsplit
 from pydantic import JsonValue
 
 from crawlerai.collect.base import Candidate, Entity
-from crawlerai.collect.scope import LISTS, RELATIONS, document
+from crawlerai.collect.scope import LISTS, RELATIONS
 from crawlerai.normalize.base import Ok
 from crawlerai.normalize.dispatch import equal, equality_key
+from crawlerai.normalize.url_key import DocumentKey, document_key
 from crawlerai.resolve.evidence import BELOW_MIN_CONFIDENCE, Calibration, assess
 from crawlerai.resolve.ownership import AGGREGATE_OFFER, EntityGraph
 from crawlerai.resolve.preference import OUTSCORED, Chosen, Orders, PageFacts, Preference, Resolver, source_of
@@ -214,20 +215,20 @@ def _not_own(row_field: RowField, outcome: RowOutcome) -> str | None:
     the page's platform selects a variant (`RowField.variant_params`): a variant addressed by its URL, not a link."""
     published = {sub: o.value for sub, o in outcome.fields.items() if o.status == "published"}
     urls = {sub for sub in published if row_field.sub_fields[sub].type is FieldType.URL}
-    pages = {_resource(u) for u in (*row_field.page_urls, *row_field.target.urls)} - {None}
-    stated = {_resource(published[sub]) for sub in urls} - {None}
+    pages = {_document(u) for u in (*row_field.page_urls, *row_field.target.urls)} - {None}
+    stated = {_document(published[sub]) for sub in urls} - {None}
     if not published.keys() - urls and not _variant_urls(row_field, [published[sub] for sub in urls], pages):
         return URL_ONLY
     return OTHER_PAGE if pages and stated - pages else None
 
 
-def _variant_urls(row_field: RowField, values: Sequence[JsonValue], pages: set[tuple[str, str] | None]) -> bool:
+def _variant_urls(row_field: RowField, values: Sequence[JsonValue], pages: set[DocumentKey | None]) -> bool:
     """Whether every value is a URL of the page's resource whose query selects a variant (`RowField.variant_params`:
     a parameter named so, or a name starting with a prefix that ends in `_`)."""
     params = row_field.variant_params
     return bool(params) and all(
         isinstance(v, str)
-        and _resource(v) in pages
+        and _document(v) in pages
         and any(_selects(name, params) for name, _ in parse_qsl(urlsplit(v).query))
         for v in values
     )
@@ -237,11 +238,10 @@ def _selects(name: str, params: Sequence[str]) -> bool:
     return any(name == p or (p.endswith("_") and name.startswith(p)) for p in params)
 
 
-def _resource(value: JsonValue) -> tuple[str, str] | None:
-    """The authority and path of the document a URL names (`collect.scope.document`), a trailing `/` aside: the
-    resource it names, however reached; None for anything that is no URL."""
-    named = document(value) if isinstance(value, str) else None
-    return None if named is None else (named[1], named[2].rstrip("/"))
+def _document(value: JsonValue) -> DocumentKey | None:
+    """The document a URL names (`normalize.url_key.document_key`), however reached; None for anything that is no
+    URL."""
+    return document_key(value) if isinstance(value, str) else None
 
 
 def row_entities(graph: EntityGraph, target: Entity, spec: FieldSpec) -> list[Entity]:

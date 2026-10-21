@@ -12,7 +12,7 @@ from hypothesis import strategies as st
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.jsonld import JsonLdCollector
 from crawlerai.collect.microdata import MicrodataCollector
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId

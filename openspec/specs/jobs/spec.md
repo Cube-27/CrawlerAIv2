@@ -218,7 +218,7 @@ columns. Refs: owner 2026-10-21 (page delta after fresh extraction).
 
 ### Requirement: Listing diff and gone URLs
 Each `completed` records crawl SHALL mark its rule-matched URLs, and for a listing schema its row URLs
-(`resolve.records.row_url_fields`), seen in `url_state`; a URL missing from two consecutive runs of the same crawl gets
+(`collect.schema_org_map.item_url_fields`), seen in `url_state`; a URL missing from two consecutive runs of the same crawl gets
 `gone_at` and a `url_gone` event, cleared when seen again. The listing is on the host the start page is on. A partial
 run (limit hit, empty listing, unreached navigation page, sitemap time cap) counts no misses. (Previously: page URLs
 only, on the start URL's host.) Refs: §14, D-0689, D-0691, D-0692, D-0693, D-1284.

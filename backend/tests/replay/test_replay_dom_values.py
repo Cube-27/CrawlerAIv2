@@ -8,7 +8,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import SchemaId, SourceKind
 from crawlerai.resolve.pipeline import EngineData, extract_page

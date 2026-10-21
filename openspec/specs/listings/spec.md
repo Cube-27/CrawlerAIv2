@@ -116,8 +116,8 @@ half of whose blocks lead to items the chosen group lists (else it is a featured
 starting after the chosen group's `rel=next` link (past the listing's end); an item two sections show is one block
 (D-1776). Where one structured list is the page's `mainEntity`, only its entries are stated rows
 (`resolve/listing.py`); else, with stated rows in several lists, the list or lists with the most rows bound to the chosen group's blocks, give rows; with
-none bound, all do. Stated rows and those blocks bind one to one by item URL (session parameters, a trailing
-slash and added query parameters aside) or by a name the block shows (`collect/items/bind.py`); a page-scoped adapter's
+none bound, all do. Stated rows and those blocks bind one to one by item URL (`item_key`: session parameters, one trailing
+slash and added query pairs aside) or by a name the block shows (`collect/items/bind.py`); a page-scoped adapter's
 row also goes by the page's links its platform routes to the same item (`PageScoped.row_links`: a Shopify product under
 the collection, adapters spec). With no stated rows or
 only stubs, the blocks are the rows; otherwise stated rows stay and the group's blocks no stated row names extend them.
@@ -203,7 +203,16 @@ a page's `url`), else its own IRI (JSON-LD `@id`, microdata `itemid`) when absol
 page's site and not the page's URL, a bound block's link replacing a respelling; row keys drop each query parameter that two or
 more row URLs carry once with one value and none of the page's own URLs carries (`normalize.url_key`), named in the
 result, while each row URL publishes as the page writes it (normalization spec). (Previously: the published row URLs
-dropped them too.) Refs: owner #67 decisions 1 and 6.
+dropped them too.) A row url field is the item URL field (`collect/schema_org_map.py` `is_item_url`) when any
+alternative of its path is the row type's own `url` (`Product.url|Offer.url` is one): one predicate for alignment,
+binding, the row key of a listing's records (the first item URL a row publishes, else its position on the page) and
+the recurring listing diff. Two URLs name one document by `normalize/url_key.py` `document_key` (the canonical form's
+scheme, authority and path, one trailing slash of the path aside: RFC 3986 §6.2.4, `/a//` is another path) and one
+item by `item_key` (that and the query's decoded pairs as a multiset, in any order); the keys compare URLs and are never
+published. (Previously: the record row key and the listing diff took a field as the item URL only when every
+alternative was `url`, so such a row was keyed by its position; and the align, bind, state-row, scope, row and derive
+steps each compared URLs by their own rule: all trailing slashes or one, scheme or not, raw or canonical query.)
+Refs: owner #67 decisions 1 and 6, D-1785.
 #### Scenario: Item named by its offer
 - **WHEN** a listed Product states no `url` and its Offer states `url`
 - **THEN** the row's item URL is the Offer's
@@ -214,6 +223,13 @@ dropped them too.) Refs: owner #67 decisions 1 and 6.
 #### Scenario: Visit parameter on every row
 - **WHEN** every row URL carries `sid=abc` and its own `v=<n>`, and the page URL carries neither
 - **THEN** the rows are keyed by their URLs with `v=<n>` and without `sid`, and publish them as written
+#### Scenario: Item URL among alternatives
+- **WHEN** a listing schema's row field `url` maps `Product.url|Offer.url` and the rows publish it
+- **THEN** each record is keyed by its row's URL, not its position, in the run and in the recurring listing diff
+#### Scenario: One trailing slash
+- **WHEN** a stated row names `https://example.com/p/7/?b=2&a=1` and a block links to `https://example.com/p/7?a=1&b=2`
+- **THEN** they name one item and bind, and the row publishes the URL as written; `https://example.com/p/7//` names
+  another
 
 ### Requirement: Role C rows
 Role C SHALL be asked for the blocks whose bound rows lack a row field, each for the fields its row lacks but the item

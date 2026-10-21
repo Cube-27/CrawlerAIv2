@@ -31,7 +31,7 @@ from crawlerai.collect.base import PAGE, Candidate
 from crawlerai.collect.config import Executed
 from crawlerai.collect.json_doc import nodes
 from crawlerai.collect.locator import InvalidLocator, parse_locator
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir import sample_view, step_wire
 from crawlerai.config_ir.executor import EngineExecutor, row_id
 from crawlerai.config_ir.induction import Published, SamplePage

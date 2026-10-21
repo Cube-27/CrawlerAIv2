@@ -37,7 +37,7 @@ from typing import Final, get_args
 from pydantic import JsonValue
 
 from crawlerai.acquire.types import RequestContext
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.api_recipe.binding import Sample, page_data
 from crawlerai.config_ir.api_recipe.discovery import DiscoverySample, discover
 from crawlerai.config_ir.api_recipe.learn import prove

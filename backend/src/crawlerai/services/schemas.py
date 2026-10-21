@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from crawlerai.collect.labels import labelled
-from crawlerai.collect.schema_org_map import pinned_reference_errors
+from crawlerai.collect.vocabulary import pinned_reference_errors
 from crawlerai.config_ir.progressive import locate_added, relearn_schema
 from crawlerai.core.errors import Refusal
 from crawlerai.core.validation import field_error

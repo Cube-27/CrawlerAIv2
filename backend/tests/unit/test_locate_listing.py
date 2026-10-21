@@ -11,7 +11,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.active import fetch_plan
 from crawlerai.config_ir.api_recipe.validate import RecipeValidated, refused
 from crawlerai.config_ir.executor import EngineExecutor

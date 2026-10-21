@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.induction import Induction, Published, SamplePage, induce
 from crawlerai.config_ir.model import JsonLdStep, JsonPathStep, XPathStep
 from crawlerai.content.page import ParsedPage

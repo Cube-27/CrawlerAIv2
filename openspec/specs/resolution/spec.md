@@ -170,11 +170,14 @@ Derived values SHALL fill only `missing` fields and carry `derived_by`; the only
 a detail page's `T.url` field (`T.url` in every alternative of its path) `canonical_link` (RFC 6596), then
 `final_url`, each a named function (`resolve/derive.py`). Canonical links naming more than one URL designate none
 (RFC 6596 §3: one per resource), so such a page states no canonical URL. Before derivation, when the canonical link and
-the final URL are one URL, a kept candidate of that `T.url` field naming another document (another host, port or path;
-a query or a fragment alone names none) is rejected `other_document`, and preference decides among the rest; a relative
+the final URL are one URL, a kept candidate of that `T.url` field naming another document (`normalize/url_key.py` `document_key`:
+another scheme, authority or path, one trailing slash of the path aside; a query or a fragment alone names none) is
+rejected `other_document`, and preference decides among the rest; a relative
 reference `absolutize` resolves to another document is rejected so too. A derived value publishes as the page states it
 (normalization spec): an absolutized reference as written, the canonical link as its first `href` is written; the final
 URL, which no page statement gives, as fetched. (Previously: a field
+the page stated on its other scheme or with userinfo was its own document, and `/p` and `/p/` named one document here
+but two in candidate scope (`collect/scope.py`); a field
 whose last rank was `T.url`, such as `apply_url`, took the page URL too; a structured `url` built from another id than
 the page's outranked its canonical URL; the first of conflicting canonical links named the page.) Refs: §9, §10, Appendix A #40, D-0442, D-0910, D-1625. Enforced by: resolver
 tests; active.

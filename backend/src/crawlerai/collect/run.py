@@ -35,8 +35,8 @@ from crawlerai.collect.microdata import MicrodataCollector
 from crawlerai.collect.network_match import LearnedCalls
 from crawlerai.collect.og import OpenGraphCollector
 from crawlerai.collect.platform_json import PlatformJsonCollector
-from crawlerai.collect.schema_org_map import Vocabulary
 from crawlerai.collect.scope import other_items
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.collect.xhr import XhrCollector
 from crawlerai.content.metadata import canonical_link, language_alternates
 from crawlerai.content.page import ParsedPage

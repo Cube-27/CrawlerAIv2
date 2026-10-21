@@ -21,7 +21,7 @@ from crawlerai.acquire.api import JsonFetcher, JsonRequest, fetch_json
 from crawlerai.acquire.rungs import FetchPlan
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import CallEndpoint, FetchPolicy, FetchResult, RequestContext
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.active import fetch_plan
 from crawlerai.config_ir.api_recipe.model import ContextHeader
 from crawlerai.config_ir.executor import EngineExecutor

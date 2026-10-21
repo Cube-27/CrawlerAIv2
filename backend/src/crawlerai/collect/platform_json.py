@@ -18,7 +18,7 @@ from crawlerai.adapters.base import ADAPTER_CALL
 from crawlerai.adapters.platforms import answer_shapes
 from crawlerai.collect.adapter import read_shapes
 from crawlerai.collect.base import Candidate, CollectResult, Entity
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.content.page import ParsedPage
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import SchemaDef

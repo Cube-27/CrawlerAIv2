@@ -9,7 +9,7 @@ from typing import Any
 from crawlerai.collect.base import Candidate, Entity
 from crawlerai.collect.config import Executed
 from crawlerai.collect.jsonld import JsonLdCollector
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.executor import EngineExecutor
 from crawlerai.config_ir.model import ExtractionConfigIR
 from crawlerai.content.page import ParsedPage

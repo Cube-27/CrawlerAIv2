@@ -13,7 +13,7 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.held_out import StoredPage, read_bundle
 from crawlerai.config_ir.induction import SamplePage
 from crawlerai.config_ir.locate import Located, Sampled, locate

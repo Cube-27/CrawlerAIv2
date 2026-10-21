@@ -8,11 +8,18 @@ dropped or rewritten by name: there is no list of parameter names (C4).
 The row keys of one listing page drop its session parameters (`session_parameters`): a parameter that every row link
 carries with one same value, and that the page's own URLs do not carry, names the visit, not the item (owner #67). It
 is read from the page, never from a list, and only dropped, never invented (C7).
+
+Whether two URLs name one document or one item is read by one pair of keys, used for comparison only and never
+published (a URL publishes as the page writes it): `document_key` is the canonical form's scheme, authority and path,
+one trailing slash of the path aside (RFC 3986 §3 names the resource by them; §6.2.4: `/a/` and `/a` may name one
+resource, while `/a//` is another path), so a query (§3.4: it selects within the resource, a variant or a view) and a
+fragment (§3.5) name no other document. `item_key` adds the query as a multiset of its decoded name-value pairs, in
+any order (a repeated pair counts twice): two URLs name one item when their pairs are the same.
 """
 
 from collections import Counter
 from collections.abc import Collection, Iterable
-from urllib.parse import unquote_plus
+from urllib.parse import parse_qsl, unquote_plus, urlsplit
 
 from crawlerai.normalize.url import canonical_url
 
@@ -36,6 +43,28 @@ def _name(pair: str) -> bytes:
     # The name as the form parser decodes it (`+` is a space, then percent-decoding as UTF-8), compared by UTF-16
     # code units as `sort()` compares names. The pair itself keeps the url type's bytes.
     return unquote_plus(pair.partition("=")[0]).encode("utf-16-be")
+
+
+DocumentKey = tuple[str, str, str]
+ItemKey = tuple[DocumentKey, tuple[tuple[str, str], ...]]
+
+
+def document_key(url: str, base: str | None = None) -> DocumentKey | None:
+    """The document `url`, resolved against `base` when relative, names (module docstring): scheme, authority and path
+    of its canonical form, one trailing slash of the path aside; `None` when it is not an http(s) URL."""
+    key = item_key(url, base)
+    return None if key is None else key[0]
+
+
+def item_key(url: str, base: str | None = None) -> ItemKey | None:
+    """The item `url`, resolved against `base` when relative, names (module docstring): its `document_key` and its
+    query's decoded name-value pairs, sorted; `None` when it is not an http(s) URL."""
+    canonical = canonical_url(url, base)
+    if canonical is None:
+        return None
+    parts = urlsplit(canonical)
+    pairs = tuple(sorted(parse_qsl(parts.query, keep_blank_values=True)))
+    return (parts.scheme, parts.netloc, parts.path.removesuffix("/")), pairs
 
 
 def session_parameters(row_urls: Collection[str], page_urls: Iterable[str]) -> frozenset[str]:

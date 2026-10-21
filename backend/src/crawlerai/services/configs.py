@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import RowMapping, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir import corrections
 from crawlerai.config_ir.activation import NotPending, approve, reject, store_correction
 from crawlerai.config_ir.corrections import Correction

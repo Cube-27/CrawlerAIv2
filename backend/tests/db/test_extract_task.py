@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import AttemptRecord, FetchResult
-from crawlerai.collect.schema_org_map import Vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.role_c import role_c
 from crawlerai.core.capture import BlockClass
 from crawlerai.core.engine_version import ENGINE_VERSION
