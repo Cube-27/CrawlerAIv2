@@ -49,7 +49,8 @@ The machine needs Docker, `uv`, `pnpm`, GNU make, `gh` (logged in) and herdr; ev
 
    The first start in a new folder stops at Claude's folder-trust prompt (`agent_not_ready`): check it with
    `herdr agent read <id> --source visible`, answer with `herdr agent send-keys <id> down`, then
-   `herdr agent send-keys <id> enter`. Only once `herdr agent wait <id> --until idle` returns, send the brief:
+   `herdr agent send-keys <id> enter`. Then `herdr agent wait <id> --until idle --until blocked --timeout 120000`; on
+   `blocked` or a timeout, read the screen again and clear what it shows. Only once the agent is idle, send the brief:
    `herdr agent prompt <id> "$(cat ../briefs/<id>.txt)"`.
 4. Watch it in the background:
    `herdr agent wait <id> --until idle --until done --until blocked --timeout 10800000`, then
