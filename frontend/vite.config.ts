@@ -304,12 +304,13 @@ export default defineConfig({
   },
   plugins: [react(), tailwindcss()],
   // `pnpm dev` serves the screens and forwards API calls to `make dev`'s backend, so the app calls its own origin:
-  // `/v1`. Anyone who reaches the dev server acts with the key, so it listens on loopback only. The app calls its own
+  // `/v1`, and `/healthz` at the root, so every path of the API is reachable. Anyone who reaches the dev server acts
+  // with the key, so it listens on loopback only. The app calls its own
   // origin only, so no other origin may read a response the key was attached to: CORS is off.
   server: {
     host: "127.0.0.1",
     cors: false,
-    proxy: { "/v1": backend },
+    proxy: { "/v1": backend, "/healthz": backend },
   },
   test: {
     environment: "jsdom",
