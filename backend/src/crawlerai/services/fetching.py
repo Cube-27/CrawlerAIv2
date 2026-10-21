@@ -36,6 +36,7 @@ from crawlerai.core.errors import Refusal
 from crawlerai.crawl.paging import collect
 from crawlerai.crawl.sitemaps import MAX_SITEMAP_BYTES
 from crawlerai.db.models import JobId, Site
+from crawlerai.services.page_store import SiteRow, record_fetch_usage
 from crawlerai.services.polite import (
     IN_PLACE,
     SLOW_DOWN,
@@ -49,7 +50,6 @@ from crawlerai.services.polite import (
     polite_fetch,
     rules_of,
 )
-from crawlerai.services.scrape_steps import SiteRow, record_fetch_usage
 from crawlerai.storage.base import ObjectStore
 
 

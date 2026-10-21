@@ -30,7 +30,7 @@ import secrets
 import socket
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from functools import partial
 from typing import Final, assert_never
@@ -41,18 +41,20 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 
 from crawlerai.acquire.shared_browser import BROWSER_CONTEXTS
 from crawlerai.core.settings import Settings
-from crawlerai.db.models import CaptureId, FinishedOutcome, Job, JobKind, TaskOutcome
+from crawlerai.db.models import Job, JobKind
 from crawlerai.db.queue import (
     TASK_DEADLINE,
     ClaimedTask,
+    Failed,
+    Finished,
     JobEnding,
     LeaseLost,
     cancel_task,
     claim_tasks,
-    complete_task,
     fail_task,
     release_task,
     retried,
+    settle_task,
 )
 
 log = logging.getLogger(__name__)
@@ -71,25 +73,6 @@ DEADLINE: Final = "timeout: the task ran past its deadline"
 _LOCK_WAIT: Final = TASK_DEADLINE + CANCEL_GRACE + timedelta(seconds=10)
 # An absolute URI: an RFC 3986 §3.1 scheme followed by "://" and everything up to the next whitespace.
 URL: Final = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
-
-
-@dataclass(frozen=True)
-class Finished:
-    outcome: FinishedOutcome
-    reason: str | None = None  # why, when the outcome alone does not say: a `blocked` task's `robots`
-    capture_id: CaptureId | None = None  # the page the task fetched, if it fetched one
-
-
-@dataclass(frozen=True)
-class Failed:
-    """A failure (`fail_task`). `after` is the delay the target asked for before a retry (a `Retry-After`, acquisition
-    spec §4.6); `exhausted` the outcome once no attempt is left; `capture_id` the page the attempt fetched, if any."""
-
-    error: str
-    transient: bool
-    after: timedelta | None = None
-    exhausted: TaskOutcome = "failed"
-    capture_id: CaptureId | None = None
 
 
 @dataclass(frozen=True)
@@ -286,22 +269,13 @@ async def _record(
 ) -> None:
     """Record the task's `result`."""
     match result:
-        case Finished(outcome, reason, capture_id):
-            await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id, ending=ending)
+        case Finished(outcome):
+            await settle_task(conn, task, result, ending=ending)
             # The task's id and job, never its URL, which `CRAWLERAI_LOG_REDACT_URLS` may keep out of the logs.
             log.info("url_task %s: %s task of job %s: %s", task.id, kind, task.job_id, outcome)
-        case Failed(error, transient, after, exhausted, capture_id):
+        case Failed(error):
             text = _error_text(error, redact_urls=redact_urls)
-            await fail_task(
-                conn,
-                task,
-                text,
-                transient=transient,
-                after=after,
-                exhausted=exhausted,
-                capture_id=capture_id,
-                ending=ending,
-            )
+            await settle_task(conn, task, replace(result, error=text), ending=ending)
             log.warning("url_task %s: %s task of job %s: failed: %s", task.id, kind, task.job_id, text)
         case Postpone(after):
             await release_task(conn, task, after=after)

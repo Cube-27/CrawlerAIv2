@@ -32,15 +32,14 @@ from crawlerai.normalize.url_key import canonicalize
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.types import Probability
 from crawlerai.services.batch import OWN_TRANSACTION, Placement, insert_job, records_schema
-from crawlerai.services.fetch_options import check_proxy_pool
+from crawlerai.services.fetch_options import FetchOptions, check_proxy_pool
 from crawlerai.services.fetching import check_targets
 from crawlerai.services.location import job_egress
 from crawlerai.services.map import MAX_LIMIT  # a crawl enqueues at most what a map of the site returns
 from crawlerai.services.scrape import Budget
-from crawlerai.services.scrape_steps import (
+from crawlerai.services.scrape_request import (
     MIN_CONFIDENCE_DESCRIPTION,
     RENDER_DESCRIPTION,
-    FetchOptions,
     PageFormat,
     RenderOptions,
     SchemaById,

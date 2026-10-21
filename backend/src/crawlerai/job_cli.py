@@ -14,7 +14,7 @@ from crawlerai.db.models import JobId
 from crawlerai.services.job_outcomes import job_outcomes
 from crawlerai.services.jobs import JobNotFound
 from crawlerai.services.reextract import reextract_job
-from crawlerai.services.scrape_steps import load_engine_data
+from crawlerai.services.runtime import load_engine_data
 from crawlerai.storage import open_store
 
 

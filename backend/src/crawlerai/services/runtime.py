@@ -2,6 +2,7 @@
 files. The API app and the MCP server's stdio process open one each from the settings (jobs spec)."""
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import aclosing, asynccontextmanager
 from dataclasses import dataclass
@@ -23,11 +24,13 @@ from crawlerai.acquire.session import CookieExport, SiteSessions
 from crawlerai.acquire.shared_browser import SharedBrowser
 from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
-from crawlerai.config_ir.drift import DriftMargins
+from crawlerai.collect.run import Adapters
+from crawlerai.collect.vocabulary import VocabularyMissing
+from crawlerai.config_ir.drift import MARGINS_FILE, DriftMargins, load_margins
 from crawlerai.content.fragments import eager_frames
 from crawlerai.core.context_digest import configure as configure_context_digest
 from crawlerai.core.egress import Egresses
-from crawlerai.core.engine_version import ENGINE_VERSION
+from crawlerai.core.engine_version import ENGINE_VERSION, engine_data_dir
 from crawlerai.core.event_loop import quiet_peer_resets
 from crawlerai.core.settings import Settings
 from crawlerai.llm.client import LLMClient
@@ -38,8 +41,31 @@ from crawlerai.normalize.locales import iso_3166_alpha2
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.search.providers import SearchProvider, configured
 from crawlerai.services.fetching import Fetching
-from crawlerai.services.scrape_steps import load_drift_margins, load_engine_data
 from crawlerai.storage import open_store
+
+log = logging.getLogger(__name__)
+
+
+def load_engine_data(adapters: Adapters) -> EngineData | None:
+    """The engine's data files from the engine directory's `data/`, with the process's active `adapters` to read their
+    captures, for `records` and replays; None where they are not there (no engine directory, or a tree without
+    `crawlerai data fetch`): `records` and replays are then unavailable, and the other formats work."""
+    data = engine_data_dir()
+    if data is None:
+        log.warning("no engine directory: records and replays are unavailable")
+        return None
+    try:
+        return EngineData.load(data, adapters)
+    except VocabularyMissing as e:
+        log.warning("records and replays are unavailable: %s", e)
+        return None
+
+
+def load_drift_margins() -> DriftMargins | None:
+    """The dev-fitted drift margins (learning-configs spec); None when none are fitted, and then no field is
+    suspended."""
+    data = engine_data_dir()
+    return None if data is None else load_margins(data / MARGINS_FILE)
 
 
 @dataclass(frozen=True)

@@ -8,18 +8,15 @@ from datetime import UTC, datetime
 import pytest
 
 from crawlerai.acquire.challenge import LEGAL, STRUCTURAL, challenge_label, vendor_block
-from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.outcome import Content, Exchange, fetch_result
 from crawlerai.acquire.types import AttemptRecord, BlockClass, FetchPolicy, FetchResult
 from crawlerai.adapters.challenges import SIGNATURES
 from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.ids import uuid7
 from crawlerai.core.retry import FIRST_BACKOFF
-from crawlerai.db.models import CaptureId, JobId, SiteId, UrlTaskId
-from crawlerai.db.queue import ClaimedTask
-from crawlerai.services.scrape_steps import SiteRow
-from crawlerai.worker.handlers.steps import FetchedPage, unreached
-from crawlerai.worker.loop import Failed, Finished
+from crawlerai.db.models import CaptureId, JobId, UrlTaskId
+from crawlerai.db.queue import ClaimedTask, Failed, Finished
+from crawlerai.services.page_run import unreached
 
 URL = "https://shop.example.test/item/1"
 # Vendor labels come from the adapter package's signature data (C3).
@@ -86,9 +83,12 @@ def _task(attempts: int) -> ClaimedTask:
     )
 
 
-def _fetched(result: FetchResult) -> FetchedPage:
-    site = SiteRow(SiteId(uuid7()), Remembered(), None)
-    return FetchedPage(site, result, CaptureId(uuid7()), result.attempts, None)
+def _fetched(result: FetchResult) -> tuple[FetchResult, CaptureId]:
+    return result, CaptureId(uuid7())
+
+
+def _ended(page: tuple[FetchResult, CaptureId], task: ClaimedTask) -> Finished | Failed | None:
+    return unreached(*page, task, retryable=True)
 
 
 def test_a_vendor_blocked_task_is_retried_once_after_the_back_off_then_ends_blocked_naming_the_vendor() -> None:
@@ -96,14 +96,14 @@ def test_a_vendor_blocked_task_is_retried_once_after_the_back_off_then_ends_bloc
     # The browser rung met the same vendor's challenge: a retry would send the same rungs to it.
     browser_met = _fetched(_result("blocked", VENDOR, VENDOR))
 
-    first, second = unreached(page, _task(1)), unreached(page, _task(2))
+    first, second = _ended(page, _task(1)), _ended(page, _task(2))
 
     assert first == Failed(
-        f"challenge: {VENDOR}", transient=True, after=FIRST_BACKOFF, exhausted="blocked", capture_id=page.capture_id
+        f"challenge: {VENDOR}", transient=True, after=FIRST_BACKOFF, exhausted="blocked", capture_id=page[1]
     )
-    assert second == Finished("blocked", reason=f"challenge: {VENDOR}", capture_id=page.capture_id)
-    blocked = Finished("blocked", reason=f"challenge: {VENDOR}", capture_id=browser_met.capture_id)
-    assert unreached(browser_met, _task(1)) == blocked
+    assert second == Finished("blocked", reason=f"challenge: {VENDOR}", capture_id=page[1])
+    blocked = Finished("blocked", reason=f"challenge: {VENDOR}", capture_id=browser_met[1])
+    assert _ended(browser_met, _task(1)) == blocked
 
 
 def test_a_451_is_blocked_for_legal_reasons_and_ends_geo_blocked_without_a_retry() -> None:
@@ -111,5 +111,5 @@ def test_a_451_is_blocked_for_legal_reasons_and_ends_geo_blocked_without_a_retry
     assert challenge_label(451, (), "<html><script>void 0</script></html>", URL) == LEGAL
     page = _fetched(_result("blocked", LEGAL))
 
-    assert vendor_block(page.result) is None
-    assert unreached(page, _task(1)) == Finished("geo_blocked", capture_id=page.capture_id)
+    assert vendor_block(page[0]) is None
+    assert _ended(page, _task(1)) == Finished("geo_blocked", capture_id=page[1])

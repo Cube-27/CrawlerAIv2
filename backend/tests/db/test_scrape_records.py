@@ -47,7 +47,7 @@ from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaChanges, SchemaDef, SchemaDocument, document_digest
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
-from crawlerai.services.scrape_steps import SchemaUnusable
+from crawlerai.services.scrape_request import SchemaUnusable
 from crawlerai.storage.fs import FsStore
 from tests.db.conftest import LISTING_FIELDS
 from tests.support.fake_llm import FakeProvider

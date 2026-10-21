@@ -233,10 +233,13 @@ only, on the start URL's host.) Refs: §14, D-0689, D-0691, D-0692, D-0693, D-12
 Batch, crawl and extract jobs SHALL fetch every page with the request's `fetch` context, `wait_for` and `actions`
 (D-1439); the job keeps the secret values in `job.request` for its workers while it runs, and when it ends its header
 and cookie values are replaced by `**********`, names kept (D-1510); `GET /v1/jobs/{id}/request` answers them as
-`**********`. `fetch.cache` `only` serves each task from the latest `ok` capture of its URL made with the same actions
-and context, names and value digest ([acquisition](../acquisition/spec.md), "Caller request context"), or fails the
-task `not_cached`. (Previously: the values stayed in `job.request` after the job ended; captures matched by context
-names alone.) Refs: owner delegation 2026-10-17, D-1432, D-1435, D-1439, D-1510.
+`**********`. A task's `fetch.cache` means what a scrape's does ([rest-api](../rest-api/spec.md), `POST /v1/scrape`)
+with `max_age` 0, since a job has no `max_age`: one page run serves both (`services/page_run.py`). `default` and
+`bypass` fetch; `only` serves each task from the latest `ok` capture of its URL made with the same actions and context,
+names and value digest ([acquisition](../acquisition/spec.md), "Caller request context"), or fails the task
+`not_cached`. (Previously: the values stayed in `job.request` after the job ended; captures matched by context names
+alone; a task read its stored capture apart from a scrape.) Refs: owner delegation 2026-10-17, D-1432, D-1435, D-1439,
+D-1510.
 #### Scenario: Stored request
 - **WHEN** a batch is submitted with cookie `sid` and its request is read back
 - **THEN** the answer's `fetch.cookies.sid` is `**********`

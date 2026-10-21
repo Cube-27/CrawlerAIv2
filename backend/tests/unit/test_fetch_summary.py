@@ -11,7 +11,7 @@ from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
 from crawlerai.adapters.base import AdapterMatch, Shape
 from crawlerai.adapters.registry import Registry
 from crawlerai.core.capture import CaptureMethod
-from crawlerai.services.scrape_steps import fetch_summary
+from crawlerai.services.page_formats import fetch_summary
 
 PAGE = "https://board.example.test/tenant/jobs"
 ENDPOINT = "https://board.example.test/api/tenant/jobs"

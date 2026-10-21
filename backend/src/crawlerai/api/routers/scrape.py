@@ -24,7 +24,7 @@ from crawlerai.services.scrape import (
     ScrapeResult,
     ScrapeTimedOut,
 )
-from crawlerai.services.scrape_steps import SchemaUnusable
+from crawlerai.services.scrape_request import SchemaUnusable
 from crawlerai.services.stored_captures import NOT_CACHED, NotCached
 
 router = APIRouter(

@@ -38,36 +38,28 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from crawlerai.acquire.types import AttemptRecord
 from crawlerai.config_ir.api_recipe.execute import MAX_PAGES
 from crawlerai.config_ir.drift import DriftMargins
+from crawlerai.config_ir.role_c import role_c
 from crawlerai.crawl.frontier import Frontier, Links, read_links
 from crawlerai.crawl.rules import located
 from crawlerai.crawl.sitemaps import SitemapReader, roots
 from crawlerai.db.jobs import record_event
-from crawlerai.db.models import Job, UrlTask
-from crawlerai.db.queue import ClaimedTask
+from crawlerai.db.models import FinishedOutcome, Job, UrlTask
+from crawlerai.db.queue import ClaimedTask, Failed
 from crawlerai.llm.client import LLMClient
 from crawlerai.normalize.url_key import canonicalize
 from crawlerai.recurring.listing_diff import SITEMAPS_TIMED_OUT
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.crawl import CrawlRequest
+from crawlerai.services.fetch_options import fetch_policy
 from crawlerai.services.fetching import Fetching, SiteHttp, TargetRejected
 from crawlerai.services.map import TIMEOUT_S
+from crawlerai.services.page_run import Extracted, Page, Records, extract_run, page_run
+from crawlerai.services.page_store import record_fetch_usage
 from crawlerai.services.polite import QUEUED, NoTurn, Turns, listed_sitemaps, rules_of
-from crawlerai.services.scrape_steps import PageFormat, fetch_policy, record_fetch_usage
+from crawlerai.services.scrape_request import PageFormat
 from crawlerai.storage.base import ObjectStore
-from crawlerai.worker.handlers.steps import (
-    Ended,
-    Fetched,
-    FetchedPage,
-    Records,
-    count_fetch,
-    extract_records,
-    fetch_page,
-    keep_page,
-    load_job,
-    store_further_pages,
-    unreached,
-)
-from crawlerai.worker.loop import Failed, Finished, Postpone, Settle, Skipped, TaskHandler, TaskResult, ends_task
+from crawlerai.worker.handlers.steps import Ended, count_fetch, fetch_page, load_job
+from crawlerai.worker.loop import Postpone, Settle, Skipped, TaskHandler, TaskResult, ends_task
 
 log = logging.getLogger(__name__)
 
@@ -128,22 +120,29 @@ async def _run(engine: AsyncEngine, fetching: Fetching, crawl: _Crawl) -> Settle
         # A page read for its links only is no page of the records surface: its fetch plan is not the surface's.
         planned=crawl.records if _extracted(task, crawl.request) else None,
     )
-    return partial(_settle, engine, fetching, crawl, fetched)
+    extracted = None
+    if not isinstance(fetched, Ended):
+        # The page resolves before the task's transaction opens (`page_run`); a page no rule matched is not extracted.
+        records = crawl.records if _extracted(task, crawl.request) else None
+        extracted = await extract_run(fetched, records, role_c(crawl.llm, job_id=task.job_id))
+    return partial(_settle, engine, fetching, crawl, (fetched, extracted))
 
 
 async def _settle(
-    engine: AsyncEngine, fetching: Fetching, crawl: _Crawl, fetched: Fetched | Ended, conn: AsyncConnection
+    engine: AsyncEngine,
+    fetching: Fetching,
+    crawl: _Crawl,
+    fetched: tuple[Page | Ended, Extracted | None],
+    conn: AsyncConnection,
 ) -> TaskResult:
-    """The task's writes, in its transaction: the fetched page settled, and the URLs it leads to added."""
+    """The task's writes, in its transaction: the fetched page's run, and the URLs it leads to added."""
     task = crawl.task
-    page = await keep_page(conn, fetching.store, fetched)
-    if not isinstance(page, Ended):
+    page, extracted = fetched
+    if isinstance(page, Ended):
+        result, links = page.task_result, Links()
+    else:
         await _record_final_url(conn, task, page)
-    result, links = (
-        (page.task_result, Links())
-        if isinstance(page, Ended)
-        else await _visit(conn, engine, fetching.store, crawl, page)
-    )
+        result, links = await _visit(conn, engine, fetching.store, crawl, page, extracted)
     is_start = task.canonical_url == crawl.request.start
     # The sitemaps are read before the task writes its job's row (usage, the frontier), which stays locked until the
     # task commits: a cancel, which locks that row, never waits for the reading (up to `SITEMAP_TIMEOUT_S`).
@@ -183,7 +182,7 @@ def _extracted(task: ClaimedTask, request: CrawlRequest) -> bool:
     return task.page_kind is not None or not request.page_kind_rules
 
 
-async def _record_final_url(conn: AsyncConnection, task: ClaimedTask, page: FetchedPage) -> None:
+async def _record_final_url(conn: AsyncConnection, task: ClaimedTask, page: Page) -> None:
     """Store where the task's page was fetched, in canonical form, before the task adds any URL (jobs spec, "Crawl
     frontier and page-kind rules"). An adapter's or API recipe's capture (method `api`) stands for the page it was asked
     for: its final URL is the endpoint, which is no page of the crawl (as `rules.located` reads it)."""
@@ -192,7 +191,7 @@ async def _record_final_url(conn: AsyncConnection, task: ClaimedTask, page: Fetc
     await conn.execute(update(UrlTask).where(UrlTask.id == task.id).values(final_url=final_url))
 
 
-async def _site_url(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage | Ended) -> str:
+async def _site_url(conn: AsyncConnection, crawl: _Crawl, page: Page | Ended) -> str:
     """Where the crawl's start page is (`rules.located`), which its scope follows: for the start task, from its own
     page's capture; for every other, as the start task stored it on the job (D-1285)."""
     request = crawl.request
@@ -204,32 +203,27 @@ async def _site_url(conn: AsyncConnection, crawl: _Crawl, page: FetchedPage | En
 
 
 async def _visit(
-    conn: AsyncConnection, engine: AsyncEngine, store: ObjectStore, crawl: _Crawl, page: FetchedPage
+    conn: AsyncConnection,
+    engine: AsyncEngine,
+    store: ObjectStore,
+    crawl: _Crawl,
+    page: Page,
+    extracted: Extracted | None,
 ) -> tuple[TaskResult, Links]:
-    """The result of the fetched page and the links it contributes (none when it was not reached)."""
-    ended = unreached(page, crawl.task)
-    if ended is not None:
-        return ended, Links()
-    bundle = page.result.bundle
-    parsed = page.parsed
+    """The result of the fetched page's run (`page_run`: `links_only` for a page no rule matched) and the links it
+    contributes (none when it was not reached)."""
+    task, request = crawl.task, crawl.request
     links = Links()
     # A page at `max_depth` leads nowhere the crawl goes, so its links are not read.
-    if crawl.task.depth < crawl.request.max_depth:
+    if page.reached and task.depth < request.max_depth:
         # One parse serves the links and the extraction (INV-26); parsing is CPU work, so it runs in a thread.
-        wanted = crawl.request.frontier().wanted if crawl.request.strategy == "best_first" else None
-        links = await asyncio.to_thread(read_links, parsed, bundle.manifest.final_url, wanted)
-    if crawl.task.page_kind is None and crawl.request.page_kind_rules:
-        return Finished("links_only", capture_id=page.capture_id), links
-    if crawl.records is None:
-        return Finished("extracted", capture_id=page.capture_id), links
-    result = await extract_records(
-        conn, engine, crawl.task, page, crawl.records, caller_supplied=False, llm=crawl.llm, parsed=parsed
+        wanted = request.frontier().wanted if request.strategy == "best_first" else None
+        links = await asyncio.to_thread(read_links, page.parsed, page.result.bundle.manifest.final_url, wanted)
+    reached: FinishedOutcome = "extracted" if _extracted(task, request) else "links_only"
+    run = await page_run(
+        conn, engine, store, task, page, extracted, retryable=True, caller_supplied=False, reached=reached
     )
-    if isinstance(result, Finished):
-        result = await store_further_pages(
-            conn, engine, store, crawl.task, page, crawl.records, caller_supplied=False, llm=crawl.llm, result=result
-        )
-    return result, links
+    return run.result, links
 
 
 async def _sitemap_seeds(
