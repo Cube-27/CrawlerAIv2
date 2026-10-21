@@ -30,7 +30,6 @@ export function rangeStart(range: RangeKey): string {
 const ROLE_LABELS: Readonly<Record<string, string>> = {
   c_extract_detail: "Extraction, detail page",
   c_extract_listing: "Extraction, listing page",
-  c_prefill: "Labeling pre-fill",
   a_synth: "Config synthesis",
   a_repair: "Config repair",
   d_bind: "API binding",

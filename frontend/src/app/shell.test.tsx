@@ -1,8 +1,8 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
-import { healthReply, problem, stubApi } from "../test/api";
+import { stubApi } from "../test/api";
 import { routes } from "./router";
 
 function renderApp(path = "/") {
@@ -21,48 +21,19 @@ describe("app shell", () => {
     expect(screen.queryByLabelText(/API key/)).not.toBeInTheDocument();
   });
 
-  it("asks /healthz without a key and shows the Labeling entry when the API reports eval_ui", async () => {
-    const calls = stubApi({ "GET /healthz": () => healthReply(true) });
-    renderApp();
-
-    const nav = screen.getByRole("navigation", { name: "Main" });
-    expect(await within(nav).findByRole("link", { name: "Labeling" })).toHaveAttribute(
-      "href",
-      "/labeling",
-    );
-    expect(calls.filter((call) => call.path === "/healthz")).toEqual([
-      { method: "GET", path: "/healthz", query: "", authorization: null, body: null },
-    ]);
-  });
-
-  it("hides the Labeling entry when the API reports eval_ui off", async () => {
-    const calls = stubApi({ "GET /healthz": () => healthReply(false) });
-    renderApp();
-
-    await waitFor(() => {
-      expect(calls.filter((call) => call.path === "/healthz")).toHaveLength(1);
-    });
-    const nav = screen.getByRole("navigation", { name: "Main" });
-    expect(within(nav).queryByRole("link", { name: "Labeling" })).toBeNull();
-  });
-
   it("marks the entry of the current section as the current page, on its nested routes too", async () => {
-    stubApi({
-      "GET /healthz": () => healthReply(true),
-      "GET /v1/eval/pages/page-1": () => problem(404, { title: "Not Found" }),
-    });
-    renderApp("/labeling/page-1");
+    stubApi({});
+    renderApp("/schemas/new");
 
-    // The labeling route renders once its page has answered.
-    await screen.findByText("No dev eval page has this id.");
-    const nav = await screen.findByRole("navigation", { name: "Main" });
-    const labeling = await within(nav).findByRole("link", { name: "Labeling" });
-    expect(labeling).toHaveAttribute("aria-current", "page");
+    await screen.findByRole("heading", { level: 1, name: "New schema" });
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    const schemas = within(nav).getByRole("link", { name: "Schemas" });
+    expect(schemas).toHaveAttribute("aria-current", "page");
     expect(
       within(nav)
         .getAllByRole("link")
         .filter((link) => link.getAttribute("aria-current") === "page"),
-    ).toEqual([labeling]);
+    ).toEqual([schemas]);
   });
 });
 

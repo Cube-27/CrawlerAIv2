@@ -133,8 +133,8 @@ class Normalizer(Protocol):
 
 
 class Equality(Protocol):
-    """One field type's equality of two normalized values (normalization spec), used by the resolver's agreement rule
-    and by eval. It is reflexive and symmetric for every JSON value, and never raises on values of another shape."""
+    """One field type's equality of two normalized values (normalization spec), used by the resolver's agreement rule.
+    It is reflexive and symmetric for every JSON value, and never raises on values of another shape."""
 
     def __call__(self, a: JsonValue, b: JsonValue, spec: FieldSpec, /) -> bool: ...
 

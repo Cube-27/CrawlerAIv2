@@ -3,14 +3,13 @@
 ## Purpose
 
 Where CrawlerAI v2 keeps its state: one PostgreSQL database, the data model in one baseline migration, capture
-bundles in an object store, retention, deterministic replay and the engine version stamp. Queue and job state are in [jobs](../jobs/spec.md); the golden set in
-[evaluation](../evaluation/spec.md).
+bundles in an object store, retention, deterministic replay and the engine version stamp. Queue and job state are in [jobs](../jobs/spec.md).
 
 ## Requirements
 
 ### Requirement: One database
-The system SHALL use one database, `crawlerai` (role `app`), created by `infra/postgres/init.sql`; eval pages,
-captures and runs live in it. Refs: owner (2026-10-18, master plan decision 2).
+The system SHALL use one database, `crawlerai` (role `app`), created by `infra/postgres/init.sql`. Refs: owner
+(2026-10-18, master plan decision 2).
 
 ### Requirement: Main data model tables
 The main database SHALL hold the §6 tables as defined in the baseline migration, with `site.host` exact, lowercased
@@ -59,21 +58,21 @@ Refs: §15, D-0094, D-0095, D-0096.
 - **THEN** it raises `ValueError` and writes nothing
 
 ### Requirement: Retention
-Production captures and candidates SHALL expire after 30 days; eval captures never expire. `expire_captures` deletes
-only expired rows under `captures/`, in batches, nulling `capture_id` on tasks and extractions, which are kept.
+Production captures and candidates SHALL expire after 30 days. `expire_captures` deletes only expired rows under
+`captures/`, in batches, nulling `capture_id` on tasks and extractions, which are kept.
 Refs: §15, D-0137, D-0154, D-0157.
 
 ### Requirement: Deterministic replay (INV-10)
 Replay SHALL be a pure function `(capture, engine_version, config, schema) → record` sharing the live code path, with
-LLM calls replayed from recorded responses, so the same inputs give byte-identical records with no network.
-Enforced by: replay tests that run twice and diff (`tests/replay/`); active. Refs: §15, G7, D-0217.
-#### Scenario: Two replays
-- **WHEN** the synthetic dev split is replayed twice with recorded LLM responses
-- **THEN** the two JSON results are byte-identical
+no LLM call, so the same inputs give the same record with no network. Enforced by:
+`tests/db/test_records_and_replay.py` and the replay tests (`tests/replay/`); active. Refs: §15, G7, D-0217.
+#### Scenario: Replay of a stored capture
+- **WHEN** a stored capture is replayed with the engine that extracted it
+- **THEN** the record equals the stored one and nothing is stored
 
 ### Requirement: Engine version stamp
 `ENGINE_VERSION` SHALL be `<git sha>+cal.<12 hex of sha256(calibration.json)>` (`unknown` without `VERSION`, `none`
-without calibration), stamped on `job`, `extraction`, the capture manifest and `eval_run`. Refs: §15, D-0152.
+without calibration), stamped on `job`, `extraction`, and the capture manifest. Refs: §15, D-0152.
 #### Scenario: No calibration fitted
 - **WHEN** `backend/data/calibration.json` does not exist
 - **THEN** the engine version ends in `+cal.none`

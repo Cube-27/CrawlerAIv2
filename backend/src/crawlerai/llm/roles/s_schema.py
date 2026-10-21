@@ -13,8 +13,8 @@ The schema is data: it is validated, stored and interpreted, never executed (§1
 Field names (frontend spec, D-0810) are drafted the same way without sample pages: the request is the names and the
 page kind, and the reply check also refuses a draft of another page kind or whose top-level fields are not exactly
 those names. Its name is `draft_` and the hash of the page kind and the sorted names, so one set of names gives one
-schema per page kind. No job exists yet when a run's names are drafted, so the call is charged to none (as the
-labeling pre-fill's, `LLMRequest.job_id`).
+schema per page kind. No job exists yet when a run's names are drafted, so the call is charged to none
+(`LLMRequest.job_id`).
 """
 
 import json

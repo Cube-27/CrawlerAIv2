@@ -57,7 +57,7 @@ async def _create(capsys: pytest.CaptureFixture[str], label: str = "test") -> di
 
 
 def _app() -> FastAPI:
-    app = create_app(eval_ui=False)
+    app = create_app()
     router = APIRouter()
 
     @router.get("/v1/whoami")

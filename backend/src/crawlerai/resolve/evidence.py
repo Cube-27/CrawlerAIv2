@@ -58,8 +58,8 @@ class Bucket(_Model):
 
 
 class Calibration(_Model):
-    """`backend/data/calibration.json`: per `"field_type|evidence"` bucket, its fitted golden-set confidence
-    (`eval.calibrate`); a bucket the fit lacked is not in it, so uncalibrated."""
+    """`backend/data/calibration.json`: per `"field_type|evidence"` bucket, its fitted confidence (frozen
+    engine data, evaluation spec); a bucket the fit lacked is not in it, so uncalibrated."""
 
     calibration_version: Literal[1] = 1
     source_split: Literal["dev"] = "dev"

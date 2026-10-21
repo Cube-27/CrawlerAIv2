@@ -1,8 +1,8 @@
 """Retention (persistence-storage spec): the scheduler's `expire_captures`, `expire_candidates` and
 `expire_webhooks`.
 
-Only production captures expire: a row is deleted only when its `object_key` is under `captures/`, so dev eval
-bundles under `eval/` are never touched, whatever their row says.
+Only production captures expire: a row is deleted only when its `object_key` is under `captures/`, so a bundle
+elsewhere is never touched, whatever its row says.
 """
 
 import asyncio

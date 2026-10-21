@@ -128,7 +128,7 @@ schema.org shapes; learning, drift and role C skip row-mapped fields. Refs: SPEC
 
 ### Requirement: Preset field, storage and scoring
 `commerce_detail` SHALL carry one optional `variants` field (see the preset file); rows are stored in `record.data` with
-`items`/`dropped` in `field_meta`, and are scored by key per [evaluation](../evaluation/spec.md). Refs: §5.3, D-0803, D-0963.
+`items`/`dropped` in `field_meta`, and are scored by key by the e2e scorer ([evaluation](../evaluation/spec.md)). Refs: §5.3, D-0803, D-0963.
 
 ### Requirement: Standalone variants
 A root Product whose `inProductGroupWithID` is the `productGroupID` of exactly one standalone ProductGroup, or whose

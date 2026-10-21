@@ -1,7 +1,4 @@
-"""Persist a fetched page (acquisition spec): its bundle to the object store, and a `capture` row describing it.
-
-Eval captures never come here: they encode the bundle and write it under their own prefixes (evaluation spec, C1).
-"""
+"""Persist a fetched page (acquisition spec): its bundle to the object store, and a `capture` row describing it."""
 
 import asyncio
 from datetime import timedelta

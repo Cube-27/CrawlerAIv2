@@ -7,7 +7,7 @@
  * The theme layer (DESIGN.md, Theming): every visual value the app sets lives here, so a visual change is an edit
  * to this file only. HeroUI's own variables are overridden under `:root` and `[data-theme="dark"]`. Layout sizes
  * outside Tailwind's default scale are Tailwind theme variables, used through the utilities they generate
- * (`max-w-content`, `h-page-view`).
+ * (`max-w-content`, `h-table-page`).
  */
 @theme {
   /* Inter for the interface and JetBrains Mono for code, both SIL OFL 1.1 and bundled with the app (Fontsource), so
@@ -20,8 +20,6 @@
   --container-content: 80rem;
   /* The sidebar's width at tablet width and up. */
   --width-sidebar: 15rem;
-  /* The captured page's frame on the labeling screen: most of the viewport's height. */
-  --height-page-view: 70dvh;
   /* A paged table's box: a full page of rows, so a short page, a loading page or an empty one moves nothing below it
    * (no layout shift on paging). */
   --height-table-page: 72rem;

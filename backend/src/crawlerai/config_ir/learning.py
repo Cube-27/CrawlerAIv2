@@ -1,30 +1,12 @@
-"""The learning run (learning-configs spec): what a `learn` job does, from a state's stored pages to
-an active config or a failed run.
+"""The learning run (learning-configs spec): what a `learn` job does, from a state's stored pages to an active config
+or a failed run.
 
-A run reads the state's `LEARN_AFTER_PAGES` most recent extracted pages (`held_out.load_pages`, §4.4). The
-`SAMPLE_PAGES` with the most published required values are the learning sample, and the rest are held out. Induction
-proposes selectors without an LLM (§4.5), role A synthesizes the fields it left (§4.6), and the config is validated on
-the held-out pages (§4.7) and activated (§4.8), with the API recipe its pages' browser captures show their values came
-from when one is learned and validated (adapters spec, `api_recipe.learn`); when the site's project requires approval
-(D-1342), the validated config waits as `pending_approval` instead (`store_pending`). Every other end is a
-failed run
-(`progressive.learning_failed`): validation refusing the config, an LLM failure (D-0588), a cancelled job, an error,
-the worker stopping (`SHUTDOWN`), or an operator's config activated while the run was in flight, which a run that
-started before it does not replace. A job that cannot start, its request naming no state included, and a run still
-`running` after `LEARN_RUN_TIMEOUT` (its process died; `expire_learn_runs`), end failed too.
-
-A run on a surface whose render mode locates (`locate`, `always`), or one a job's `render` started
-(`progressive.request_locate`), is the surface's locate run too (`locate`): it renders the newest stored pages (a
-listing's that listed nothing included, `held_out.load_pages`) and writes the fields it locates into the config it
-learned, else the config the surface serves, else a config of those fields alone. A recipe it proves may reference a
-header of the request context of the job that started it (whose stored request keeps the caller's secrets, jobs spec
-"Stored request"), never hold its value.
-
-A run takes two transactions: one starts the job, one ends it; the pages are read between them. None is open while
-role A or role D is called or a recipe is replayed: the LLM client commits usage on a connection of its own and must
-not wait on a write to the job's row (D-0346). A worker that stops after the start, during the final transaction too,
-ends the run (`SHUTDOWN`), so its job never waits for `expire_learn_runs`. The job's start and end are recorded as
-`learning_started` and `learning_finished` events (jobs spec).
+The sample is the stored pages with the most published required values, the rest are held out (`split`). Induction
+proposes selectors without an LLM, role A synthesizes the fields it left, and the config is validated on the held-out
+pages and activated (or left `pending_approval`), with an API recipe when one is learned and validated. A run whose
+surface locates also renders the newest stored pages and writes the fields it locates (`_located`). A run takes two
+transactions, one to start the job and one to end it; none is open while an LLM is called or a recipe replayed
+(D-0346).
 """
 
 import asyncio
@@ -33,6 +15,7 @@ from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Any, Final
 
 from pydantic import JsonValue, SecretStr, ValidationError
@@ -326,7 +309,7 @@ async def _learned(client: LLMClient, run: _Run, vocabulary: Vocabulary, max_cha
     # A recipe enters a validated config only (`attach`, D-0583), so nothing is replayed for a refused one.
     if validated.ir is not None and hooks.replay is not None:
         validated = attach(validated, await _page_recipe(client, run, sample, held_out, hooks.replay, hooks.render))
-    if run.locate is not None and hooks.render is not None and hooks.extract is not None:
+    if run.locate is not None:
         validated = await _locate_step(client, run, target, validated, vocabulary, hooks)
     return validated
 
@@ -335,7 +318,8 @@ async def _locate_step(
     client: LLMClient, run: _Run, target: "Target", validated: Validated, vocabulary: Vocabulary, hooks: _Hooks
 ) -> Validated:
     """`validated` with the fields the locate run located; unchanged when the locate step fails: its error refuses
-    the located fields, not the config learning validated (as a recipe's does)."""
+    the located fields, not the config learning validated (as a recipe's does); unchanged too when the run cannot
+    render."""
     if hooks.render is None or hooks.extract is None:
         return validated
     try:
@@ -361,11 +345,9 @@ async def _page_recipe(
         return await learn_recipe(
             client, sample, held_out, run.schema, replay(run.job_id), job_id=run.job_id, render=render
         )
-    except LLMFailure:
-        raise  # D-0738: role D's failure ends the run as role A's does
-    except SQLAlchemyError:
-        # A database error is the run's, not the recipe's: a replay whose usage was not stored would go unaccounted
-        # (adapters spec, "Held-out validation"), so the run ends failed rather than activating the config.
+    except (LLMFailure, SQLAlchemyError):
+        # The run's own failures: role D's ends the run as role A's does (D-0738), and a database error would leave a
+        # replay's usage unaccounted (adapters spec, "Held-out validation"), so the run ends failed.
         raise
     except Exception as e:
         # D-1389: the recipe learner's own error refuses the recipe, not the config it would have joined.
@@ -434,7 +416,7 @@ def _listing_recipe(
     rows = {page.stored.held_out.capture_id: page.rows for page in rendered if not page.stored.held_out.rows}
     pages = [_with_rows(page, rows.get(page.held_out.capture_id, ())) for page in run.surface]
     sample, held_out = split(run.schema, pages)
-    return lambda: _page_recipe(client, run, sample, held_out, replays, render)
+    return partial(_page_recipe, client, run, sample, held_out, replays, render)
 
 
 def _with_rows(page: StoredPage, rows: Sequence[Mapping[str, JsonValue]]) -> StoredPage:
@@ -447,13 +429,13 @@ def _with_rows(page: StoredPage, rows: Sequence[Mapping[str, JsonValue]]) -> Sto
 
 @dataclass(frozen=True, slots=True)
 class Target:
-    """What a run learns a config for: the schema, the site's host and fetch method, and the job role A is charged to
-    (None for a simulated run, which no job pays for)."""
+    """What a run learns a config for: the schema, the site's host and fetch method, and the job role A is charged
+    to."""
 
     schema: SchemaDef
     host: str
     fetch: FetchMethod
-    job_id: JobId | None
+    job_id: JobId
 
 
 async def learn_config(

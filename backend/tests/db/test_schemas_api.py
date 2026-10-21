@@ -51,7 +51,7 @@ async def database(database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path:
 async def client(database: AsyncEngine) -> AsyncIterator[httpx.AsyncClient]:
     async with database.begin() as conn:
         key = await create_key(conn, "schemas-api-test")
-    app = create_app(eval_ui=False)
+    app = create_app()
     async with (
         app.router.lifespan_context(app),
         httpx.AsyncClient(

@@ -24,7 +24,7 @@ BODY = {"urls": [URL], "formats": ["records"], "schema": {"id": str(uuid.UUID(in
 
 
 def _post(path: str, body: object) -> httpx.Response:
-    app = create_app(eval_ui=False)
+    app = create_app()
     app.dependency_overrides[require_api_key] = lambda: ApiKeyId(uuid.UUID(int=1))
 
     async def send() -> httpx.Response:

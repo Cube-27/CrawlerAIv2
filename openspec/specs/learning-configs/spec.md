@@ -147,7 +147,7 @@ again. In `active` mode a field the config runs SHALL NOT be asked of role C, ev
 
 ### Requirement: Drift suspension
 Config-mode pages SHALL feed a per-field 50-page window; from 3 pages, a field whose yield or validity falls below its
-baseline minus the margins in `backend/data/drift_margins.json` (fitted on the golden set only,
+baseline minus the margins in `backend/data/drift_margins.json` (frozen fitted data,
 [evaluation](../evaluation/spec.md)) is `suspended`, falls back to cold extraction and triggers re-learning. On a
 surface whose `render_mode` still locates (`locate`, `always`), that run is a locate run for the suspended fields a
 locate run placed (`needs` other than `http`, or the config's origin `located`; `drift.relocated`).

@@ -41,7 +41,6 @@ PROBLEM_RESPONSE: dict[str, object] = {
 
 class Health(Model):
     status: Literal["ok"] = "ok"
-    eval_ui: bool  # the labeling endpoints are mounted (frontend spec reads it for its navigation)
     # The LLM setup check (`crawlerai.llm.setup`): `unavailable` when a listed provider has no key or refuses a
     # configured model; the log names the problem. The API serves either way: only LLM calls are affected.
     llm: LLMStatus

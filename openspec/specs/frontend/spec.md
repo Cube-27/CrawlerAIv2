@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The web UI is a thin client over the REST API: an app shell, the playground (Scrape, Batch, Crawl, Map, Extract) and the data screens (Jobs, Records, Schemas, Sites and configs, Labeling, Settings); visual conventions are in [DESIGN.md](../../conventions/DESIGN.md).
+The web UI is a thin client over the REST API: an app shell, the playground (Scrape, Batch, Crawl, Map, Extract) and the data screens (Jobs, Records, Schemas, Sites and configs, Settings); visual conventions are in [DESIGN.md](../../conventions/DESIGN.md).
 
 ## Requirements
 
@@ -22,10 +22,10 @@ The UI SHALL never ask for or hold an API key: the Vite dev proxy (`frontend/vit
 Any 401 SHALL replace the routed screen (sidebar kept) with a setup notice naming `CRAWLERAI_UI_API_KEY` and `crawlerai apikey create`, until reload; no Connect screen or redirect (`frontend/src/app/auth.tsx`). Refs: D-0812.
 
 ### Requirement: App shell and navigation
-The shell SHALL have a sidebar with groups Playground (from `screens/playground/modes.ts`), Data (Jobs, Schedules, Records, Schemas, Sites), Evaluate (Labeling, only when `GET /healthz` reports `eval_ui: true`) and Settings plus theme toggle; the current entry carries `aria-current="page"`; routes are in `frontend/src/app/router.tsx`. (Previously: no Schedules.) Refs: D-0451, D-0452, D-0834, D-1418.
-#### Scenario: Labeling hidden
-- **WHEN** `/healthz` answers `eval_ui: false`, fails, or has not answered
-- **THEN** the Labeling entry is not shown
+The shell SHALL have a sidebar with groups Playground (from `screens/playground/modes.ts`), Data (Jobs, Schedules, Records, Schemas, Sites) and Settings plus theme toggle; the current entry carries `aria-current="page"`, on the section's nested routes too; routes are in `frontend/src/app/router.tsx`. Refs: D-0451, D-0452, D-0834, D-1418.
+#### Scenario: Nested route
+- **WHEN** the page shown is `/schemas/new`
+- **THEN** the Schemas entry, and no other, carries `aria-current="page"`
 
 ### Requirement: Showing extraction results (INV-22, UI side)
 Screens SHALL show a field only through `FieldValue`, `FieldStatusBadge`, `ConfidenceCell`, `EvidenceText`, `SourceKindText` and `LocatorText`, and a record's badge only through `UncalibratedBadge` (`frontend/src/components/`): a non-published value renders "—" with its reason, a money value whose currency is `null` renders its amount with "(currency unknown)" (owner #68), status is text plus icon, confidence a two-decimal number, and one "uncalibrated" badge per record, never per field, when a published field has `calibrated=false`; evidence and source kind read in words with the server's code on hover. INV-22 is owned by [resolution](../resolution/spec.md). Enforced by: component tests; active. (Previously: an uncalibrated badge on every field.) Refs: D-0368, D-0369, D-1390, D-1396.
@@ -95,7 +95,7 @@ Jobs (`/jobs`, run history, filters in the URL), Records (one schema, drawer ins
 - **THEN** `PUT /v1/configs/{id}` carries only changed and confirmed fields and the validation report shows inline
 
 ### Requirement: Scope limits
-The UI MUST NOT add review queues, site health dashboards, alerts, metric charts, users, roles, signup or billing (§22, C13); Labeling behaviour is owned by [evaluation](../evaluation/spec.md). Refs: D-0716.
+The UI MUST NOT add review queues, site health dashboards, alerts, metric charts, users, roles, signup or billing (§22, C13), and no labeling screen: evaluation runs outside the product ([evaluation](../evaluation/spec.md)). Refs: owner (2026-10-21).
 
 ### Requirement: No site literals in frontend code (INV-03, cross-link)
 Frontend source and tests SHALL contain no hostnames; fixtures use RFC 2606 names such as `https://example.test/p`. Enforced by: the site-literal scan (`tools/site_literal_scan.py`, see `openspec/project.md`); active.

@@ -3,7 +3,7 @@
 ## Purpose
 
 Normalization turns a raw candidate into a typed value for its field type, or declines, with one pure normalizer
-per type under `backend/src/crawlerai/normalize/`; it also gives per-type equality to the resolver and eval. Field
+per type under `backend/src/crawlerai/normalize/`; it also gives per-type equality to the resolver and the e2e scorer. Field
 types are [schemas](../schemas/spec.md); what publishes is [resolution](../resolution/spec.md).
 
 ## Requirements

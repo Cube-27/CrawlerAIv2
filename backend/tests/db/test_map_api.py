@@ -74,7 +74,7 @@ def fetching(fetch_result: Callable[..., FetchResult], pages: dict[str, tuple[in
 async def client(database: AsyncEngine, fetching: Fetching) -> AsyncIterator[httpx.AsyncClient]:
     async with database.begin() as conn:
         key = await create_key(conn, "map-api-test")
-    app = create_app(eval_ui=False)
+    app = create_app()
     async with (
         app.router.lifespan_context(app),
         httpx.AsyncClient(

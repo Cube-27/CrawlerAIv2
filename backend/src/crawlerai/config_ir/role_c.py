@@ -3,7 +3,7 @@ detail page's gaps, and on a listing's blocks whose rows lack row fields and its
 input, claims and candidates").
 
 `resolve` and `llm` don't import each other (C8 layering), so the hook is bound here, in the first layer above both;
-the worker and the replay harness (`eval.engine`) bind it the same way.
+the worker binds it so.
 
 The client commits each call's usage on a connection of its own (D-0346). A caller of `extract_page` with this hook
 must not hold an uncommitted write to the job's row meanwhile: the client's usage update would wait on it.
