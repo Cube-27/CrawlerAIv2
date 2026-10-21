@@ -3,6 +3,7 @@ D-1434, D-1435): a stored capture is reused only when made the way the request f
 `bypass` always does, and a caller's secrets are never stored with a scrape or answered with a job's request.
 """
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from ipaddress import ip_address
@@ -21,13 +22,14 @@ from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.egress import Egresses
 from crawlerai.core.proxy import ProxyPool
 from crawlerai.core.redaction import REDACTED
-from crawlerai.db.models import Job, Site
+from crawlerai.db.models import Capture, Job, Site
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetch_options import UnknownProxyPool
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.jobs import job_request
 from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.services.scrape_steps import DEFAULT_PROJECT
+from crawlerai.services.stored_captures import NotCached
 from crawlerai.storage.artifacts import SCREENSHOT
 from crawlerai.storage.fs import FsStore
 
@@ -98,6 +100,24 @@ async def test_cache_only_serves_the_stored_capture_of_any_age_and_bypass_fetche
     assert stored.markdown == first.markdown
     assert again.capture_id not in (None, first.capture_id)
     assert web.pages() == [("http", url), ("http", url)]
+
+
+async def test_cache_only_serves_a_capture_only_to_the_same_cookie_value(
+    engine: AsyncEngine, fetching: Fetching, own_origin: str
+) -> None:
+    url = f"{own_origin}/lamps/a"
+    first = await scrape(engine, fetching, _scrape(url, fetch={"cookies": {"sid": "alice"}}))
+
+    same = await scrape(engine, fetching, _scrape(url, fetch={"cache": "only", "cookies": {"sid": "alice"}}))
+    assert same.capture_id == first.capture_id
+    for other in ({"cookies": {"sid": "bob"}}, {}):
+        with pytest.raises(NotCached):
+            await scrape(engine, fetching, _scrape(url, fetch={"cache": "only", **other}))
+    async with engine.connect() as conn:
+        policy: dict[str, Any] = (
+            await conn.execute(select(Capture.fetch_policy).where(Capture.id == first.capture_id))
+        ).scalar_one()
+    assert "alice" not in json.dumps(policy)
 
 
 async def test_a_scrape_stores_its_request_with_the_cookie_redacted(
