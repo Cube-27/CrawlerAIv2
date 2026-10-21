@@ -23,13 +23,11 @@ no ISO 3166-1 code is `Invalid("unknown_country")`.
 import re
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
-from functools import cache
 from typing import TypeGuard
 
-from babel import Locale
 from pydantic import JsonValue
 
-from crawlerai.normalize import vocab
+from crawlerai.normalize import locales, vocab
 from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -150,7 +148,7 @@ def mentions_remote(text: str, ctx: Context) -> bool:
 
 
 def _remote_entries(ctx: Context) -> list[vocab.Entries]:
-    return vocab.entries_for(vocab.type_vocabulary("remote") or {}, vocab.context_languages(ctx))
+    return vocab.entries_for(vocab.type_vocabulary("remote") or {}, locales.page_languages(ctx, request=True))
 
 
 def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
@@ -169,7 +167,7 @@ def _structured(raw: Mapping[str, JsonValue], ctx: Context) -> NormalizeResult:
     }
     country_name = country_written
     if country_written is not None and _looks_like_a_code(country_written):
-        if country_written.upper() not in iso_3166_alpha2():
+        if country_written.upper() not in locales.iso_3166_alpha2():
             return Invalid("unknown_country")
         parts["country"], country_name = country_written.upper(), None
     name = _part(raw.get("name")) or _part(address.get("name"))
@@ -230,22 +228,3 @@ def _part(given: JsonValue) -> str | None:
     if not isinstance(given, str):
         return None
     return " ".join(unicodedata.normalize("NFC", given).split()) or None
-
-
-# ISO 3166-1 "exceptional reservations" (the standard's list of codes reserved at a body's request, which the
-# standard does not assign to a country): CLDR names regions by some of them.
-_EXCEPTIONALLY_RESERVED = frozenset({"AC", "CP", "CQ", "DG", "EA", "EU", "EZ", "FX", "IC", "SU", "TA", "UK", "UN"})
-
-
-@cache
-def iso_3166_alpha2() -> frozenset[str]:
-    """The ISO 3166-1 alpha-2 codes CLDR names regions by (via Babel), less the ranges ISO 3166-1 leaves to users
-    (AA, QM to QZ, XA to XZ, ZZ) and its exceptional reservations (EU, EZ, UN, ...), which name no country."""
-    return frozenset(
-        code
-        for code in Locale("en").territories
-        if isinstance(code, str)
-        and _looks_like_a_code(code)
-        and code not in _EXCEPTIONALLY_RESERVED
-        and not (code in {"AA", "ZZ"} or code[0] == "X" or ("QM" <= code <= "QZ"))
-    )

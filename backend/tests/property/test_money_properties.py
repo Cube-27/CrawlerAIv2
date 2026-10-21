@@ -30,7 +30,7 @@ from hypothesis import strategies as st
 from pydantic import JsonValue
 
 from crawlerai.llm.grounding import SpanClaim, align
-from crawlerai.normalize import money, numbers, units
+from crawlerai.normalize import locales, money, numbers, units
 from crawlerai.normalize.base import Context, Invalid, NormalizeResult, Ok
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -46,8 +46,8 @@ _CODES = sorted(list_currencies())
 # CLDR symbols and ISO 4217 codes a page writes beside an amount.
 _SIGNS = ["$", "€", "£", "¥", "₹", "R$", "kr", "Rs.", "CHF", "USD", "EUR", "GBP", "JPY", "INR"]
 _GAPS = ["", " ", "\u00a0", "\u202f"]
-# Two-letter CLDR territories with currency data: what a ccTLD, a country subdomain or a locale segment can name.
-_TERRITORIES = sorted(t for t in money._territories() if t.isalpha())
+# The ISO 3166-1 regions a ccTLD, a country subdomain or a locale segment can name.
+_TERRITORIES = sorted(locales.iso_3166_alpha2(reserved=True))
 
 _amounts = st.decimals(min_value=Decimal("0.01"), max_value=Decimal("999999999.99"), places=2)
 _tags = st.sampled_from(_TAGS)

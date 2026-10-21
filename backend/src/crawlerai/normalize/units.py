@@ -3,7 +3,7 @@ written with a CLDR "per" pattern and a unit after it (`€25/kg`, `$0.50 per 10
 or one period, not the price of the item.
 
 The patterns and the unit names are Unicode CLDR unit data (Babel, the version `backend/data/manifest.json` pins), for
-the CLDR root locale and the locales the page and the request state (`numbers.locale_set`), never a word list (C4):
+the CLDR root locale and the page locales (`numbers.locale_set`), never a word list (C4):
 - a unit's own per pattern (`unitPattern-count-per`: `{0}/kg`, `{0} pro Kilogramm`);
 - the compound per pattern (`compoundUnitPattern` "per": `{0}/{1}`, `{0} per {1}`) with a unit's name after it, a
   count before the name allowed (`per 100 ml`): its unit patterns' text (`{0} kg`, `{0} kilograms`) and its display

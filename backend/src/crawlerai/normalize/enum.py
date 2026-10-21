@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 
 from pydantic import JsonValue
 
-from crawlerai.normalize import vocab
+from crawlerai.normalize import locales, vocab
 from crawlerai.normalize.base import Ambiguous, Context, Invalid, NormalizeResult, Ok, Raw, has_surrogate, raw_key
 from crawlerai.schemas.types import FieldSpec, FieldType
 
@@ -119,7 +119,7 @@ def _type_code(raw: Raw, name: str, ctx: Context) -> NormalizeResult:
 
 
 def _page_entries(by_language: Mapping[str, vocab.Entries], ctx: Context) -> list[vocab.Entries]:
-    return vocab.entries_for(by_language, vocab.context_languages(ctx))
+    return vocab.entries_for(by_language, locales.page_languages(ctx, request=True))
 
 
 def _one_code(codes: frozenset[str], none: str) -> NormalizeResult:
