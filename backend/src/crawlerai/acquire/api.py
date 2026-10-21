@@ -8,7 +8,7 @@ Metadata of a CORS request for no destination (W3C Fetch Metadata Request Header
 `Sec-Fetch-Dest: empty`, `Sec-Fetch-Site` from the page to the endpoint), the `Referer` the default referrer policy
 gives (W3C Referrer Policy §3, `strict-origin-when-cross-origin`) and an `Origin` where Fetch §3.1 sends one (a CORS
 request to another origin, or any request that is not a GET). A recipe's own headers come last and win. The page's
-site session, if any (`acquire.session`, INV-29's exception), lends its cookies and identity to a request in the
+site session, if any (`acquire.session`, INV-29's exception), lends its cookies to a request in the
 site's registrable domain.
 """
 

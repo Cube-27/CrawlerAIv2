@@ -230,9 +230,7 @@ async def _polite_page(engine: AsyncEngine, fetching: Fetching, url: str, schema
         raise EvalCliError("not an http or https URL with a host")
     async with engine.begin() as conn:
         site = await site_row(conn, host, schema.page_kind)
-    policy = FetchPolicy(
-        page_kind=schema.page_kind, proxy_pool=site.proxy_pool, block_resources=not site.load_all_resources
-    )
+    policy = FetchPolicy(page_kind=schema.page_kind, proxy_pool=site.proxy_pool)
     page = PagePlan(site_rungs(fetching, host, site), site, policy, [])
     try:
         # A page not reached is fetched again after the back-off, and the closest capture kept (`best_fetch`).

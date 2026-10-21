@@ -143,11 +143,6 @@ class FetchPolicy(_Frozen):
     max_body_bytes: PositiveInt = 10_000_000
     max_decompressed_bytes: PositiveInt = 50_000_000
     capture_network_json: bool = True  # browser only
-    # Browser only: abort the requests the page's DOM and data calls never need (`acquire.blocklist`: images, fonts,
-    # media and pings by resource type, listed advertising and tracking servers by category; never an anti-bot
-    # vendor's); the page's documents, scripts, styles and data calls still load. Off for a site that opted out
-    # (`site.load_all_resources`) and for a page captured as a file, whose pixels need them.
-    block_resources: bool = True
     # The request's locale (BCP 47), for the normalizers' context and the browser context's `locale` and `timezone_id`.
     locale_hint: str | None = None
     page_kind: PageKind | None = None  # the kind the task fetches the page as, which `classify` reads

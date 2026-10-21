@@ -78,4 +78,3 @@ license-report/
 # --- Fetched data (SPEC-04 §4.6): `crawlerai data fetch` downloads it; never committed ---
 backend/data/schemaorg/
 backend/data/publicsuffix/
-backend/data/easylist/

@@ -59,8 +59,8 @@ estimated LLM cost, from the providers' published prices kept as versioned data,
 - **Learning oracle:** the engine's published values plus role-C-grounded values.
 - **Row identity:** the item URL with per-page session-parameter removal, one function in engine and eval.
 - **Acquisition:** listing growth (scroll, next) on by default for single-URL scrapes in `auto`, never for batch or
-  crawl; resource blocking by resource type with a per-site opt-out; a vendor-blocked page is a `blocked` outcome,
-  managed access deferred.
+  crawl; no request blocking in the browser (2026-10-21: Playwright's routing marks every request `no-cache`); a
+  vendor-blocked page is a `blocked` outcome, managed access deferred.
 - **Measurement:** the golden set is the only measure, grown in fresh batches; precedence and calibration are fitted
   on it for buckets with n ≥ 20.
 - **Docs policy:** code cites spec requirements, not decision IDs or frozen sections; an architecture change deletes

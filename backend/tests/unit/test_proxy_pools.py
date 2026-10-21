@@ -298,8 +298,7 @@ def test_the_pools_credentials_reach_the_proxy_and_never_the_capture(origin: Ori
 def _session_through(endpoint: ProxyEndpoint) -> SiteSessions:
     sessions = SiteSessions()
     cookies = (SessionCookie("clearance", "1", "example.test", "/", secure=False, host_only=False, expires=None),)
-    identity = (("User-Agent", "Mozilla/5.0 Solver/153.0"),)
-    assert sessions.open("http://shop.example.test/", "dc", CookieExport(cookies, endpoint), identity) is not None
+    assert sessions.open("http://shop.example.test/", "dc", CookieExport(cookies, endpoint)) is not None
     return sessions
 
 

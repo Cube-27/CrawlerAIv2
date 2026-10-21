@@ -3,8 +3,8 @@
 Redirects are followed by hand so the SSRF guard checks every hop (§4.5), and each request connects only to the
 address the guard checked. Through a proxy pool, which resolves names itself, the guard still checks each hop's host
 before it is requested. Every failure becomes an `error` outcome with a short reason that never
-contains the URL. The request is a navigation, sent with the impersonation's own headers, or
-with a site session's cookies and identity where the site has one (`acquire.session`, INV-29's exception).
+contains the URL. The request is a navigation, sent with the impersonation's own headers, and
+with a site session's cookies where the site has one (`acquire.session`, INV-29's exception).
 """
 
 import asyncio

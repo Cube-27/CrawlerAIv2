@@ -396,7 +396,6 @@ class SiteRow:
     robots_snapshot: str | None
     crawl_delay_ms: int | None
     adapter_declined: dict[str, str] = field(default_factory=dict)
-    load_all_resources: bool = False
 
 
 async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None = None) -> SiteRow:
@@ -411,7 +410,6 @@ async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None 
         Site.robots_snapshot,
         Site.crawl_delay_ms,
         Site.adapter_declined,
-        Site.load_all_resources,
     )
     row = (await conn.execute(select(*columns).where(Site.host == host))).one()
     return SiteRow(
@@ -421,7 +419,6 @@ async def site_row(conn: AsyncConnection, host: str, page_kind: PageKind | None 
         row.robots_snapshot,
         row.crawl_delay_ms,
         row.adapter_declined,
-        row.load_all_resources,
     )
 
 

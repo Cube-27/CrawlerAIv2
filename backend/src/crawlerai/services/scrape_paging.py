@@ -27,7 +27,7 @@ from crawlerai.config_ir.api_recipe.replay import Render
 from crawlerai.db.models import PageKind
 from crawlerai.services.fetching import Fetching, TargetRejected, grown, recipe_rung, refusal
 from crawlerai.services.polite import IN_PLACE, HostRules, ReadRules, Refused, Turns, polite_fetch, rules_of
-from crawlerai.services.scrape_steps import FetchOptions, site_row
+from crawlerai.services.scrape_steps import FetchOptions
 from crawlerai.storage.capture_bundle import CaptureBundle
 
 # D-1222: the actions' time cap; the probe's slowest passing listing took under 50 s.
@@ -143,16 +143,13 @@ RENDER_RECORDS: Final = 60
 def learning_render(engine: AsyncEngine, fetching: Fetching) -> Render | None:
     """A learning run's browser renders (`api_recipe.learn`) through the polite fetch: the page with network capture, a
     listing with browser actions toward `RENDER_RECORDS` rows; the document states kept, none for a page that was not
-    sent or not reached. A `learn` job names no fetch policy, so renders go with the default one, but for the site's:
-    one that loads every resource (`site.load_all_resources`) is rendered with none blocked. None without the listing
-    rung."""
+    sent or not reached. A `learn` job names no fetch policy, so renders go with the default one. None without the
+    listing rung."""
     if fetching.rungs.listing is None:
         return None
 
     async def render(url: str, page_kind: PageKind) -> tuple[CaptureBundle, ...]:
-        async with engine.begin() as conn:
-            site = await site_row(conn, urlsplit(url).hostname or "", page_kind)
-        policy = FetchPolicy(method_hint="browser", page_kind=page_kind, block_resources=not site.load_all_resources)
+        policy = FetchPolicy(method_hint="browser", page_kind=page_kind)
         kept: list[FetchResult] = []
 
         async def fetch(target: str, admit_next: Admit, known: HostRules) -> FetchResult:
