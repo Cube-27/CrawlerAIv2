@@ -431,7 +431,8 @@ async def _grown(
 ) -> tuple[Page | str, ActionsReport | None]:
     """The page fetched now, a listing grown by the default browser actions where its page is rendered (`_growth`)."""
     growth = _growth(request, fetching)
-    result = await fetch_now(engine, fetching, request.url, replace(plan, growth=growth))
+    grown: PagePlan = replace(plan, growth=growth)
+    result = await fetch_now(engine, fetching, request.url, grown)
     if isinstance(result, str):
         return result, None
     grew = None if growth is None else growth.of(result)

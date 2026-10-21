@@ -162,7 +162,8 @@ async def store_page_record(
         if listed_nothing:
             await _count_page(conn, site_id, schema)
             await render_surface(conn, task.job_id, site_id, schema, render, extraction)
-            return replace(stored, outcome="partial")
+            partial: Stored = replace(stored, outcome="partial")
+            return partial
         # A page that states no entity of the schema (resolution spec, "Incomplete pages") is `no_match`; one whose
         # resolution failed, `failed`.
         return stored if stored.outcome == "no_match" else replace(stored, outcome="failed")
@@ -307,7 +308,7 @@ def unpublished(extraction: ExtractionResult, schema: SchemaDef) -> list[str]:
     of `schema`'s row fields when it has no row)."""
     entity = extraction.entity or {}
     names = [name for name, outcome in entity.items() if outcome.status != "published"]
-    rows = [row for row in extraction.rows]
+    rows = list(extraction.rows)
     row_names = {name for row in rows for name in row} or {
         name for name, spec in schema.fields.items() if spec.scope == "row"
     }
