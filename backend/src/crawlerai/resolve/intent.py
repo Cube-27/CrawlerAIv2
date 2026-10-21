@@ -61,7 +61,8 @@ def select_target(
     candidates = [e for e in primaries if not _excluded(graph, e, primary)]
     if len(candidates) == 1:
         return candidates[0]
-    page_urls = [url for url in (request_url, final_url, canonical_url) if url is not None]
+    # The graph's page URLs add the page's alternates by language (`collect.run`'s `page_urls`).
+    page_urls = list(dict.fromkeys((*(u for u in (request_url, final_url, canonical_url) if u), *graph.page_urls)))
     named = [e for e in candidates if names_any(e, page_urls)]
     for settled in _tie_breaks(graph, candidates, named, page_urls):
         if len(settled) == 1:

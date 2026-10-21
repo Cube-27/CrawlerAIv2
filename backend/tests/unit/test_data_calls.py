@@ -149,7 +149,9 @@ def test_a_documented_answer_is_the_page_products_own_entity() -> None:
     assert not EntityGraph.of((elsewhere, *reads[1].entities), VOCABULARY, (page,)).aliases
     # Unless the page declares that URL as its version in another language (HTML `link rel=alternate hreflang`).
     regional = f"{HOST}/en-nz/products/blue-mug"
-    linked = f'<html><head><link rel="alternate" hreflang="en-NZ" href="{regional}"></head></html>'.encode()
+    # A feed in that language is another resource, not a version of the page.
+    feed = f'<link rel="alternate" hreflang="en" type="application/rss+xml" href="{HOST}/feed">'
+    linked = f'<html><head><link rel="alternate" hreflang="en-NZ" href="{regional}">{feed}</head></html>'.encode()
     declared = page_urls(ParsedPage.of(_capture(page, "http", linked).bundle), served.bundle.manifest)
     assert declared == (page, regional)
     sold_there = elsewhere.model_copy(update={"item_urls": (regional,)})
