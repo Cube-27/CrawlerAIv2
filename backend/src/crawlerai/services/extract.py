@@ -287,7 +287,6 @@ async def _samples(
             request.fetch,
             request.locale,
             page_kind=request.page_kind,
-            all_resources=site.load_all_resources,
             scope=str(job_id),
         )
         page: FetchResult | str | None

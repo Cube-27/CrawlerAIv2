@@ -227,7 +227,6 @@ async def fetch_page(
     host = urlsplit(task.url).hostname or ""
     site = await site_row(conn, host, task.page_kind)
     rungs = site_rungs(fetching, host, site)
-    all_resources = site.load_all_resources
     read_with = planned or served
     policy = fetch_policy(
         options,
@@ -235,7 +234,6 @@ async def fetch_page(
         page_kind=task.page_kind,
         schema=None if read_with is None else read_with.schema,
         formats=formats,
-        all_resources=all_resources,
         scope=str(task.job_id),
     )
     if options.cache == "only":

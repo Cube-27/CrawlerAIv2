@@ -1,8 +1,10 @@
 """Site sessions (INV-29's one exception, owner #58, D-1350): the cookies a browser fetch of a site held, handed to
 the later fetches of the same site (browser to HTTP only: nothing an HTTP response sets is ever handed on).
 
-A live session is the cookies a browser fetch earned past a refusal that plain HTTP met, with the user agent they were
-earned under, in this process's memory only, for the same proxy endpoint. Behind it is the site's stored cookie state
+A live session is the cookies a browser fetch earned past a refusal that plain HTTP met, in this process's memory
+only, for the same proxy endpoint. The HTTP and JSON rungs send them with their own identity (the impersonation's
+user agent and client hints), never the browser's: a header copied from the browser would pair a browser's user agent
+with curl's TLS and HTTP/2 fingerprint. Behind it is the site's stored cookie state
 (`acquire.cookie_store`), kept across jobs and processes, which serves direct fetches only (no proxy pool): a fetch
 takes the live session first, then the stored state. Challenge and clearance cookies
 (`adapters.challenges.challenge_cookie`) are in neither: they are never kept nor replayed. No cookie is logged or
@@ -29,11 +31,9 @@ from crawlerai.acquire.types import FetchResult
 from crawlerai.adapters.challenges import challenge_cookie
 from crawlerai.core.proxy import ProxyEndpoint
 from crawlerai.db.models import BrowserEngine
-from crawlerai.storage.capture_bundle import HeaderList
 
 __all__ = [
     "ENGINE",
-    "IDENTITY_HEADERS",
     "SESSION_FETCHES",
     "SESSION_TTL",
     "CookieExport",
@@ -42,15 +42,10 @@ __all__ = [
     "SiteSessions",
     "StoredState",
     "browser_cookies",
-    "identity",
 ]
 
 SESSION_TTL: Final = timedelta(minutes=30)
 SESSION_FETCHES: Final = 200
-# The request headers that make up the identity a challenge's cookies are bound to: the user agent (RFC 9110 §10.1.5)
-# and the low-entropy client hints a browser sends with every request (W3C User-Agent Client Hints §3.1).
-IDENTITY_HEADERS: Final = ("user-agent", "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform")
-_USER_AGENT = "user-agent"
 # The engine of the browser rung (`acquire.browser`), whose state the stored cookie state keeps.
 ENGINE: Final[BrowserEngine] = "patchright"
 
@@ -100,14 +95,6 @@ class CookieExport:
     proxy: ProxyEndpoint | None = None
 
 
-def identity(result: FetchResult) -> HeaderList:
-    """The identity headers the fetch's last request sent (`IDENTITY_HEADERS`), as its capture recorded them; empty
-    without a user agent, which a session cannot do without."""
-    request = result.bundle.manifest.headers.request
-    sent = tuple((name, value) for name, value in request if name.lower() in IDENTITY_HEADERS)
-    return sent if any(name.lower() == _USER_AGENT for name, _ in sent) else ()
-
-
 class StoredState(Protocol):
     """The stored cookie state (`acquire.cookie_store.CookieStore`)."""
 
@@ -124,7 +111,6 @@ class SiteSession:
     registrable_domain: str
     pool: str | None
     proxy: ProxyEndpoint | None
-    identity: HeaderList
     cookies: tuple[SessionCookie, ...] = field(repr=False)
     expires_at: float  # on the store's clock
     fetches_left: int
@@ -141,22 +127,21 @@ class SiteSessions:
     store: StoredState | None = None
     _by_site: dict[tuple[str, str | None], SiteSession] = field(default_factory=dict, repr=False)
 
-    def open(self, url: str, pool: str | None, export: CookieExport, sent: HeaderList) -> SiteSession | None:
+    def open(self, url: str, pool: str | None, export: CookieExport) -> SiteSession | None:
         """A session for the site of `url` through `pool`, from the cookies of `export` that belong to its registrable
-        domain, challenge cookies left out, and the identity headers `sent`; it replaces the site's earlier one. None,
-        and no session, when no cookie is left or `sent` has no user agent. A site whose sessions keep being refused
+        domain, challenge cookies left out; it replaces the site's earlier one. None, and no session, when no cookie is
+        left. A site whose sessions keep being refused
         starts its pages in the browser for a while (`acquire.memory`, block history), which opens none."""
         site = _host(url)
         domain = self.suffixes().site(site)
         cookies = _replayable(export.cookies, domain)
-        if not cookies or not any(name.lower() == _USER_AGENT for name, _ in sent):
+        if not cookies:
             return None
         session = SiteSession(
             site=site,
             registrable_domain=domain,
             pool=pool,
             proxy=export.proxy,
-            identity=sent,
             cookies=cookies,
             expires_at=self.clock() + SESSION_TTL.total_seconds(),
             fetches_left=SESSION_FETCHES,
@@ -167,7 +152,7 @@ class SiteSessions:
     async def take(self, page_url: str, url: str, pool: str | None) -> SiteSession | None:
         """The live session of the site of `page_url` through `pool` for a request to `url` in its registrable domain,
         one of its fetches spent; else, on a direct route, the site's stored state as a session for this fetch
-        (`stored`, no identity); None otherwise."""
+        (`stored`); None otherwise."""
         site = _host(page_url)
         session = self._live((site, pool))
         domain = session.registrable_domain if session is not None else self.suffixes().site(site)
@@ -181,7 +166,7 @@ class SiteSessions:
         cookies = _replayable(await self.store.load(site, ENGINE), domain)
         if not cookies:
             return None
-        return SiteSession(site, domain, None, None, (), cookies, self.clock(), 0, stored=True)
+        return SiteSession(site, domain, None, None, cookies, self.clock(), 0, stored=True)
 
     async def for_browser(self, url: str, pool: str | None) -> tuple[SessionCookie, ...]:
         """The cookies a browser context for `url` through `pool` starts with: on a direct route, the site's live

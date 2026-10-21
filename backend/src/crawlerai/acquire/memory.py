@@ -10,8 +10,10 @@ durable strategy and a short-lived safety bias age differently.
   it fresh again. The 7-day re-check (`scheduler.recheck`) still sets a `browser` contract back to `http` when HTTP
   passes.
 - The block history (`site_block`), short-lived, per site: each HTTP request the site refused (`refused`) counts, the
-  count starting over when the last one is older than `BLOCK_TTL`; at `BROWSER_FIRST_BLOCKS` the site's pages start in
-  the browser for one `BLOCK_TTL`. An HTTP `ok` kept for the site clears it.
+  count starting over when the last one is older than `BLOCK_TTL`; at `BROWSER_FIRST_BLOCKS`, once the browser has
+  passed (a browser `ok` after the refusal), the site's pages start in the browser for one `BLOCK_TTL`: a browser the
+  site refuses too gains nothing by going first. A browser the site refuses ends a browser-first window. An HTTP `ok`
+  kept for the site clears it.
 
 Precedence (`remembered`): a job's own setting (`FetchPolicy.method_hint` other than `auto`) beats memory, which the
 caller applies; the block history's browser-first beats the contract's method; a fresh contract beats the default
@@ -174,16 +176,34 @@ async def _record_platform(conn: AsyncConnection, site_id: SiteId, result: Fetch
         await conn.execute(query.values(platform=platform))
 
 
+def _browser_refused(result: FetchResult) -> bool:
+    """Whether the fetch's browser attempt was refused as an HTTP request is (`refused`): `blocked`, or a `shell` a
+    challenge names; a fetch that kept a browser `ok` was not."""
+    if result.method == "browser" and result.block_class == "ok":
+        return False
+    return any(
+        attempt.method == "browser"
+        and (attempt.block_class == "blocked" or (attempt.block_class == "shell" and attempt.challenge is not None))
+        for attempt in result.attempts
+    )
+
+
 async def _record_block(conn: AsyncConnection, site_id: SiteId, result: FetchResult) -> None:
     """Count the fetch's last `refused` HTTP request in the site's block history, or clear the history when the fetch
-    kept an HTTP `ok`."""
+    kept an HTTP `ok`. Browser-first starts only from a fetch that kept a browser `ok`, and a browser attempt the site
+    refused ends it (module docstring)."""
     block = next((attempt for attempt in reversed(result.attempts) if refused(attempt)), None)
+    browser_refused = _browser_refused(result)
     if block is None:
         if result.block_class == "ok" and result.method == "http":
             await conn.execute(delete(SiteBlock).where(SiteBlock.site_id == site_id))
+        elif browser_refused:
+            await conn.execute(update(SiteBlock).where(SiteBlock.site_id == site_id).values(browser_first_until=None))
         return
     blocks = case((SiteBlock.last_block_at > func.now() - BLOCK_TTL, SiteBlock.blocks + 1), else_=1)
-    first_until = case((blocks >= BROWSER_FIRST_BLOCKS, func.now() + BLOCK_TTL), else_=SiteBlock.browser_first_until)
+    kept = None if browser_refused else SiteBlock.browser_first_until
+    passed = result.method == "browser" and result.block_class == "ok"
+    first_until = case((blocks >= BROWSER_FIRST_BLOCKS, func.now() + BLOCK_TTL), else_=kept) if passed else kept
     insert = pg_insert(SiteBlock).values(
         site_id=site_id, blocks=1, last_block_at=func.now(), vendor=block.challenge, browser_first_until=None
     )

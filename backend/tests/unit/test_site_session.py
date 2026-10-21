@@ -29,8 +29,6 @@ from crawlerai.storage.capture_bundle import encode
 from tests.local_server import LoopbackConnector, Reply, Server, serving
 
 SITE = "shop.example.test"
-UA = "Mozilla/5.0 (X11; Linux x86_64) Solver/153.0"
-IDENTITY = (("User-Agent", UA), ("sec-ch-ua", '"Chromium";v="153"'))
 COOKIE_VALUE = "c1earance-value"
 _LINKS = "".join(f'<a href="/item/{i}">Item {i}</a>' for i in range(8))
 _PAGE = f"<html><body><h1>Catalogue</h1>{_LINKS}</body></html>".encode()
@@ -52,7 +50,7 @@ def sessions_with(
     url: str, cookies: tuple[SessionCookie, ...], pool: str | None = None, clock: Clock | None = None
 ) -> SiteSessions:
     sessions = SiteSessions(clock=clock or Clock())
-    assert sessions.open(url, pool, CookieExport(cookies), IDENTITY) is not None
+    assert sessions.open(url, pool, CookieExport(cookies)) is not None
     return sessions
 
 
@@ -86,7 +84,7 @@ def test_a_session_keeps_only_the_cookies_of_the_sites_registrable_domain() -> N
         )
     )
 
-    session = sessions.open(f"https://{SITE}/p", None, export, IDENTITY)
+    session = sessions.open(f"https://{SITE}/p", None, export)
 
     assert session is not None
     assert (session.site, session.registrable_domain) == (SITE, "example.test")
@@ -127,18 +125,14 @@ def sent(server: Server, index: int, name: str) -> str | None:
     return next((value for key, value in server.requests[index][1] if key.lower() == name), None)
 
 
-def test_inv29_a_site_sessions_cookies_and_identity_go_with_the_sites_fetches_and_never_into_a_capture(
-    server: Server,
-) -> None:
+def test_inv29_a_site_sessions_cookies_go_with_the_sites_fetches_and_never_into_a_capture(server: Server) -> None:
     server.route("/p", Reply(200, (("Content-Type", "text/html"),), _PAGE))
     sessions = sessions_with(server.url("/"), (cookie("clearance", "example.test"),))
 
     result = http(server, server.url("/p"), sessions)
 
-    assert (sent(server, 0, "cookie"), sent(server, 0, "user-agent")) == (f"clearance={COOKIE_VALUE}", UA)
-    assert sent(server, 0, "sec-ch-ua") == '"Chromium";v="153"'
+    assert sent(server, 0, "cookie") == f"clearance={COOKIE_VALUE}"
     manifest = result.bundle.manifest
-    assert ("User-Agent", UA) in manifest.headers.request
     assert all(name.lower() != "cookie" for name, _ in manifest.headers.request)
     assert COOKIE_VALUE.encode() not in encode(result.bundle)
 
@@ -191,7 +185,6 @@ def test_a_browser_ok_is_stored_without_challenge_cookies_and_goes_with_the_next
     http(server, server.url("/p"), sessions)
 
     assert sent(server, 0, "cookie") == "session=s1"
-    assert sent(server, 0, "user-agent") != UA
 
 
 def test_a_blocked_fetch_clears_the_stored_state_and_writes_nothing(server: Server) -> None:

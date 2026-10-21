@@ -87,8 +87,8 @@ which are "blocked" in the owner's sense (the server did not give the page to th
 The `BROWSER_MIN_S=20` budget guard, the site-session handoff (browser cookies to HTTP, challenge cookies stripped,
 one way), block history and the 7-day re-check of `browser` contracts stay as specified.
 
-Browser rung (`acquire/browser.py`, Patchright headless Chromium, INV-42..44): one navigation, resource blocking,
-network capture, caller steps. The ready condition becomes fixed and source-driven:
+Browser rung (`acquire/browser.py`, Patchright headless Chromium, INV-42..44): one navigation, no request blocking
+(amended 2026-10-21: request routing sends `no-cache` headers no user's browser sends), network capture, caller steps. The ready condition becomes fixed and source-driven:
 
 - ready when `DOMContentLoaded` has fired and (a) every `call` endpoint the surface's field sources name has answered,
   else (b) no data call has been in flight for `_STEP_QUIET_S` (0.5 s); capped at `READY_MAX_S` (3.5 s) after

@@ -236,9 +236,6 @@ class Site(Base):
     # The adapters that declined the host (`adapters.registry`, adapters spec), each with the time (ISO 8601, UTC) until
     # which it is not asked again (D-1384).
     adapter_declined: Mapped[dict[str, str]] = mapped_column(JSONB, server_default=empty_object_default())
-    # Whether the browser rung loads the site's images, fonts and media (`FetchPolicy.block_resources`): set once a
-    # render of its listing with them blocked listed fewer items than its HTTP page (master plan 2026-10-18 §3.1).
-    load_all_resources: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
 
 class SiteContract(Base):

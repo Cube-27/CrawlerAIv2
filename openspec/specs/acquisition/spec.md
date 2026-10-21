@@ -83,13 +83,15 @@ short-lived safety bias age differently, both in Postgres so every process reads
   latest `ok` URL of that kind, with no robots.txt request) and reset it to `http` on `ok`.
 - A block history per site (`site_block`): each HTTP request the site refused (`blocked` other than 429/503, or a
   `shell` a challenge names) counts, the count starting over when the last block is older than `BLOCK_TTL` (15 min);
-  at `BROWSER_FIRST_BLOCKS` (2) the site's pages start in the browser for one `BLOCK_TTL`. A kept HTTP `ok` clears it.
+  at `BROWSER_FIRST_BLOCKS` (2), by a fetch whose browser attempt then kept an `ok`, the site's pages start in the
+  browser for one `BLOCK_TTL`; a browser attempt the site refuses too (`blocked`, or a `shell` a challenge names) starts
+  no such window and ends a running one. A kept HTTP `ok` clears it.
 Precedence: a job's own `method_hint` beats memory; the block history's browser-first beats the contract's method; a
 fresh contract beats the default (`http`). A learned config's fetch method is the contract's
 alone: a block bias it kept would outlive the block history. An `ok` page's platform
 ("Platform fingerprints") is recorded on `site.platform`. (Previously: `site_fetch_method` held only `http` or
 `browser`; a site session refused before any `ok` kept its site from opening another for 30 min, in process memory
-only; the contract also held a learned wait condition `settle_on`, what the browser was needed for `needs_render`,
+only; two refused HTTP requests started browser-first whether or not the browser passed; the contract also held a learned wait condition `settle_on`, what the browser was needed for `needs_render`,
 `needs_xhr` and `needs_traversal`, and a render forced by `render_fields` taught nothing.) Refs: §7.1, D-0204, D-0205,
 D-1260, D-1353, D-1380, owner plan 2026-10-19 P4 (domain memory), architecture v3 (e).
 #### Scenario: Browser needed only to pass a block
@@ -99,7 +101,8 @@ D-1260, D-1353, D-1380, owner plan 2026-10-19 P4 (domain memory), architecture v
   cookies, in another process too when the cookie store is configured (`CRAWLERAI_COOKIE_KEY`)
 #### Scenario: Two blocks
 - **WHEN** two HTTP requests to a site are refused within 15 min
-- **THEN** its pages start in the browser until 15 min after the second, unless an HTTP `ok` clears the history first
+- **THEN** when the browser then keeps an `ok`, its pages start in the browser until 15 min after the second, unless an
+  HTTP `ok` clears the history first; when the browser is refused too, they keep starting over HTTP
 #### Scenario: Stale contract
 - **WHEN** two consecutive caller-supplied pages of a `browser` contract's kind are extracted without a record
 - **THEN** the next fetch of that kind starts over HTTP
@@ -176,19 +179,15 @@ actions (a listing scrape's browser actions and the caller's page steps excepted
 (plus the steps' own timeouts).
 
 Contexts: a job's pages of one site render in one context (`FetchPolicy.scope`, the job; keyed also by the proxy pool
-and endpoint and whether requests are blocked), kept between them, so the site's cookies, storage and passed challenges
+and endpoint), kept between them, so the site's cookies, storage and passed challenges
 carry on; a context renders one page at a time, at most 2 idle ones are kept (least recently used closed first), all
 close with the browser, and one whose page ended with an error or a 4xx/5xx document is closed. A fetch outside a job,
 or with the caller's cookies (added before it navigates), gets a context of its own.
 
-Request blocking (`acquire/blocklist.py`), unless the policy captures the page as a file or the site loads every
-resource (`site.load_all_resources`): image, font, media and ping (Beacon, hyperlink auditing) requests by resource type, and requests to the
-advertising and tracking servers the EasyList and EasyPrivacy server lists name (pinned data, C4; `||host^` lines with
-at most `third-party` and resource-type options), never per site. Never blocked, whatever the lists say: the main frame's
-navigation; an anti-bot challenge resource (`adapters.challenges`) or a fraud-prevention, device-fingerprinting or
-bot-detection vendor's resource (a page whose bot defence cannot run is refused); and a tag manager's container, which
-can inject the page's structured data, while the analytics, ad and pixel endpoints it loads are blocked as any other
-(vendor categories in `adapters.kept_resources`, never per site).
+No request interception: the browser rung SHALL NOT route, abort or block a page's requests (no `route`, no CDP
+`Network.setBlockedURLs`), so every request the page makes loads as in a user's browser. Playwright's request routing
+turns the HTTP cache off, which makes every request carry `Cache-Control: no-cache` and `Pragma: no-cache`, a header
+pair no user's browser sends on a first load.
 
 The ready wait, the one wait for a page, a fixed condition: the page is read once it has fired `DOMContentLoaded` and
 (a) every endpoint the surface's located `call` field sources name (`FetchPolicy.ready_calls`, from the fetch plan) has
@@ -212,7 +211,8 @@ and the HTTP timeout was 30 s; every fetch had a fresh context, only images, fon
 was read after `load` once its DOM was unchanged for 2 s or the network idle, at most 5 s later, up to 3 s more while a
 data call was in flight; then by a learned wait condition, `settle_on`, a detail page's DOM stating its offer
 (`classify.usable_content`) or a data call ended, a listing at the wait's end; no endpoint was named, and the document
-was read as `page.content()`, without shadow roots.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
+was read as `page.content()`, without shadow roots; images, fonts, media, pings and the EasyList and EasyPrivacy
+servers were blocked through Playwright's request routing, unless a site loaded every resource.) Refs: §7.1, D-0130, D-0251, D-0268, owner #49, D-1200, D-1201, owner #50, D-1206, owner #52, D-1262,
 D-1264, D-1265, owner #58, D-1320–D-1322, D-1325, D-1433, D-1437, master plan 2026-10-18 recommendation 12, owner
 plan 2026-10-19 (crawl speed, P2 browser wait and blocking).
 #### Scenario: Interstitial that navigates on
@@ -378,11 +378,15 @@ session and the stored cookie state (`acquire/session.py`, next requirement), an
 ("HTTP and browser rungs", contexts), which its later pages of that site in the same process render in, never another
 job's nor a fetch with the caller's cookies. A site session is the cookies of the
 site's registrable domain that a browser `ok` held after a `blocked` or `shell` HTTP attempt, challenge and clearance
-cookies left out, read without change with the user agent it sent; it seeds later HTTP and JSON fetches of that site
+cookies left out, read without change; it seeds later HTTP and JSON fetches of that site
 (`site.host`) in that domain through the same pool endpoint, and its browser contexts on a direct route (a pooled
 context picks its own endpoint), in process memory, for at most 30 min and 200 fetches; `blocked` drops it, as does a
-`shell` before any `ok`; a site whose sessions keep being refused starts in the browser (block history, above). No cookie is logged or captured. (Previously: a vendor's clearance cookies were replayed when its signature
-called them portable; every browser fetch had a fresh context.) Enforced by: cross-fetch, cross-site, cross-domain,
+`shell` before any `ok`; a site whose sessions keep being refused starts in the browser (block history, above). The
+HTTP and JSON rungs send a session's cookies with their own identity headers (the impersonation's user agent and
+client hints), never the browser's: those would pair a browser's user agent with curl's TLS and HTTP/2 fingerprint.
+No cookie is logged or captured. (Previously: a vendor's clearance cookies were replayed when its signature
+called them portable; every browser fetch had a fresh context; a session carried the browser's user agent and client
+hints onto the HTTP and JSON rungs' requests.) Enforced by: cross-fetch, cross-site, cross-domain,
 cross-proxy, expiry, no-persistence and caller-cookie tests; active. Refs: §7.1, D-0321, D-0884, D-0902, owner #58,
 D-1350–D-1353, D-1433, owner plan 2026-10-19 P2.
 #### Scenario: Next fetch to the same host

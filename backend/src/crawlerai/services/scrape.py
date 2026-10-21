@@ -383,7 +383,6 @@ async def _run(
             page_kind=request.page_kind,
             schema=work.schema,
             formats=request.formats,
-            all_resources=site.load_all_resources,
         )
         row = await _stored(conn, request, policy, site.id, task.canonical_url, api=recipe is not None)
         by_sources = await surface_plan(conn, site.id, work.schema, config, work.render)

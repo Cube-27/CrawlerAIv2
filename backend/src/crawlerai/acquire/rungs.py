@@ -33,7 +33,7 @@ from crawlerai.acquire.identity import identified, joined, with_call
 from crawlerai.acquire.memory import Remembered
 from crawlerai.acquire.page_refs import canonical_link, page_refs
 from crawlerai.acquire.politeness import BACKOFF_MAX, SLOW_DOWN, Admit, backoff
-from crawlerai.acquire.session import CookieExport, SiteSessions, identity
+from crawlerai.acquire.session import CookieExport, SiteSessions
 from crawlerai.acquire.types import (
     AttemptRecord,
     BlockClass,
@@ -411,7 +411,7 @@ def _documented(result: FetchResult) -> ProductJson | None:
 async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: FetchResult) -> FetchResult:
     """The browser attempt after the HTTP `result`. When HTTP was refused (`shell` or `blocked`) and the process keeps
     site sessions, the browser's `ok` opens the site's session with the context's cookies, challenge and clearance
-    cookies left out, and the identity it sent (INV-29's exception), and its attempt says so (`site_session`)."""
+    cookies left out (INV-29's exception), and its attempt says so (`site_session`)."""
     sessions, exporting = rungs.sessions, rungs.exporting
     # A fetch with the caller's own context opens no session (D-1432): its cookies are the caller's, not the site's.
     handoff = policy.context is None and result.block_class in _BROWSER_EVIDENCE
@@ -419,7 +419,7 @@ async def _browser_retry(url: str, policy: FetchPolicy, rungs: Rungs, result: Fe
         return await rungs.browser(url, policy)
     export = CookieExport()
     retry = await exporting(url, policy, export=export)
-    if retry.block_class != "ok" or sessions.open(url, policy.proxy_pool, export, identity(retry)) is None:
+    if retry.block_class != "ok" or sessions.open(url, policy.proxy_pool, export) is None:
         return retry
     opened = tuple(a.model_copy(update={"site_session": True}) for a in retry.attempts)
     return retry.model_copy(update={"attempts": opened})

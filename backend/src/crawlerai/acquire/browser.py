@@ -13,8 +13,9 @@ exception). Given the process's site sessions, the context starts with the site'
 and its cookies after an `ok` are kept as the site's stored state (`acquire.session`, browser to HTTP only). The
 caller's cookies (`RequestContext`) are added to the context before the navigation, as host-only
 cookies of the URL's host; the caller's headers are never set in the browser (INV-44). A page is read once it is
-ready (`_settle`), with what it never needs blocked (`acquire.blocklist`). The caller's page steps run after that wait
-and before the read (`run_steps`), within the browser's time cap plus their own timeouts.
+ready (`_settle`); every request the page makes loads, as in a user's browser (no request interception). The
+caller's page steps run after that wait and before the read (`run_steps`), within the browser's time cap plus their
+own timeouts.
 """
 
 import asyncio
@@ -30,11 +31,10 @@ from typing import Final, cast
 from urllib.parse import urlsplit
 
 from patchright._impl._api_structures import SetCookieParam
-from patchright.async_api import Browser, BrowserContext, Frame, Page, Request, Response, Route, async_playwright
+from patchright.async_api import Browser, BrowserContext, Frame, Page, Request, Response, async_playwright
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
-from crawlerai.acquire.blocklist import blocked_request, default_blocklist
 from crawlerai.acquire.challenge import CHALLENGED, block_class_of, challenge_label, count
 from crawlerai.acquire.classify import INTERSTITIAL_STATUS, Redirect, interstitial
 from crawlerai.acquire.headers import recorded
@@ -196,8 +196,8 @@ class _Context:
             await self.stack.aclose()
 
 
-# What a context may be reused for (`_context_key`): the job, the site, the proxy pool and endpoint, request blocking.
-type _ContextKey = tuple[str, str, str | None, ProxyEndpoint | None, bool]
+# What a context may be reused for (`_context_key`): the job, the site, the proxy pool and endpoint.
+type _ContextKey = tuple[str, str, str | None, ProxyEndpoint | None]
 
 
 @dataclass
@@ -582,8 +582,10 @@ async def _open_context(
     proxy: ProxyEndpoint | None,
     seeded: Sequence[SessionCookie],
 ) -> "_Context":
-    """A new context behind a guard of its own, holding the `seeded` and the caller's cookies, its requests blocked as
-    the policy says (`_blocking`), with the request locale's `locale` and `timezone_id` (`acquire.locality`)."""
+    """A new context behind a guard of its own, holding the `seeded` and the caller's cookies, with the request locale's
+    `locale` and `timezone_id` (`acquire.locality`). Nothing intercepts its requests: Playwright's request routing
+    turns the HTTP cache off, so every request carries `Cache-Control: no-cache` and `Pragma: no-cache`, which no
+    user's browser sends on a first load (acquisition spec, "HTTP and browser rungs")."""
     stack = AsyncExitStack()
     traffic = Traffic()
     try:
@@ -600,8 +602,6 @@ async def _open_context(
             await context.add_cookies(seeded_cookies(seeded))
         if policy.context is not None and policy.context.cookies:
             await context.add_cookies(caller_cookies(url, policy.context))
-        if _blocking(policy):
-            await context.route("**/*", _route)
     except BaseException as e:
         await stack.aclose()
         # A context the browser refused while it still runs is this fetch's error, not a crashed browser.
@@ -611,46 +611,15 @@ async def _open_context(
     return _Context(context, guard, traffic, stack)
 
 
-def _blocking(policy: FetchPolicy) -> bool:
-    """Whether the render blocks requests (`acquire.blocklist`): not for a page captured as a file, whose pixels need
-    every resource, nor for a site that loads every resource (`FetchPolicy.block_resources`)."""
-    return policy.block_resources and not policy.captures_page
-
-
 def _context_key(url: str, policy: FetchPolicy, proxy: ProxyEndpoint | None) -> _ContextKey | None:
     """What a context may be reused for (`_Contexts`): the job (`FetchPolicy.scope`), the page's site (HTML Standard
-    §7.1.1), the proxy pool and endpoint its guard goes through, and whether it blocks requests. None when it is not
+    §7.1.1), and the proxy pool and endpoint its guard goes through. None when it is not
     reused: a fetch outside a job, or with the caller's own cookies, which are no site's state (acquisition spec,
     "Cookies stay inside one fetch")."""
     host = urlsplit(url).hostname
     if policy.scope is None or policy.context is not None or host is None:
         return None
-    return (policy.scope, default_suffixes().site(host), policy.proxy_pool, proxy, _blocking(policy))
-
-
-async def _route(route: Route) -> None:
-    """Abort a request the blocklist names (`acquire.blocklist.blocked_request`) and let every other one through: the
-    page's documents, scripts, styles and data calls load as they would, and what is read of the page is its DOM and
-    its data calls."""
-    request = route.request
-    try:
-        frame = request.frame
-    except PlaywrightError:
-        frame = None  # a service worker's request has no frame
-    navigation = frame is not None and request.is_navigation_request()
-    # A frame's navigation is made by the document that holds the frame; any other request by the frame's document.
-    parent = None if frame is None else frame.parent_frame
-    if navigation and parent is not None:
-        document: str | None = parent.url
-    else:
-        document = None if frame is None else frame.url
-    navigation = navigation and parent is None
-    if blocked_request(
-        request.url, request.resource_type, document, navigation=navigation, blocklist=default_blocklist()
-    ):
-        await route.abort()
-    else:
-        await route.continue_()
+    return (policy.scope, default_suffixes().site(host), policy.proxy_pool, proxy)
 
 
 class _MainFrame:
