@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Final, cast
 from urllib.parse import urlsplit
 
-from patchright._impl._api_structures import SetCookieParam
+from patchright._impl._api_structures import SetCookieParam, ViewportSize
 from patchright.async_api import BrowserContext, Frame, Page, Playwright, Request, Response, async_playwright
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import TimeoutError as PlaywrightTimeout
@@ -88,9 +88,11 @@ __all__ = [
 # Patchright's documented setup (D-1204, D-1205): the full Chromium build (`chromium`), not the headless shell
 # Playwright picks for `headless=True` by default, run in Chromium's own headless mode, with its own user agent and
 # client hints and no custom headers, so the page, its workers and its requests all show one identity. Each browser runs
-# in a persistent profile with no fixed viewport (`no_viewport`), as Patchright's README sets it up, and no launch
-# argument: WebRTC's proxy policy is a profile preference (`acquire.browser_profiles`).
+# in a persistent profile with Playwright's fixed 1280x720 viewport (owner #50 as amended 2026-10-21: not the README's
+# `no_viewport`, whose headless window is 800x600), and no launch argument: WebRTC's proxy policy is a profile
+# preference (`acquire.browser_profiles`).
 _CHANNEL = "chromium"
+_VIEWPORT: Final = ViewportSize(width=1280, height=720)
 # Chromium's implicit proxy-bypass rules (`ProxyBypassRules`, net/proxy_resolution) send `localhost`, 127.0.0.0/8,
 # [::1], 169.254.0.0/16 and fe80::/10 around any proxy; 169.254.169.254 is the cloud metadata address. The bypass rule
 # `<-loopback>` removes those implicit rules, so they too go through the guard (INV-16). Playwright adds it itself
@@ -687,7 +689,7 @@ async def _open_context(
             profile.directory,
             channel=_CHANNEL,
             headless=True,
-            no_viewport=True,
+            viewport=_VIEWPORT,
             proxy={"server": guard.url, "bypass": _PROXY_ALL_LOOPBACK},
             accept_downloads=False,
             **locale,

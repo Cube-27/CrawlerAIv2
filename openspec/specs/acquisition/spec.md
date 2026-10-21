@@ -485,8 +485,9 @@ browser action typed, and only a listing scrape's existed.) Refs: §7.2, §22, o
 ### Requirement: Patchright's documented browser setup (INV-42, INV-43, INV-44)
 The browser rung SHALL follow the Patchright README's setup (owner #50): INV-42, it launches Patchright's full
 Chromium build (`channel="chromium"`, installed with `patchright install --no-shell chromium`), never the headless
-shell; INV-43, it runs in a persistent profile (`launch_persistent_context`) with no fixed viewport
-(`no_viewport`) and no launch argument (no flag Patchright removes, none that changes the fingerprint; the guard's
+shell; INV-43, it runs in a persistent profile (`launch_persistent_context`) with Playwright's fixed
+1280x720 viewport (owner #50 as amended 2026-10-21; the README's `no_viewport` leaves headless Chromium's 800x600
+window) and no launch argument (no flag Patchright removes, none that changes the fingerprint; the guard's
 WebRTC policy is a profile preference, "HTTP and browser rungs", profiles); INV-44, no context, page or CDP call sets a user agent, client hints, extra headers or init scripts,
 and `evaluate` runs only in Patchright's isolated world (owner #71: no user-agent override). The context's `locale` and
 `timezone_id` are the request's (`FetchPolicy.locale_hint`, `acquire/locality.py`): the locale as a BCP 47 tag, and
