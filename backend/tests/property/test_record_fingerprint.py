@@ -1,6 +1,6 @@
-"""Record fingerprints and changed fields (jobs spec): the fingerprint is a pure function of the required
-fields' and required groups' published values, and `changed_fields` names exactly the fields whose published value
-differs, a field that became published or stopped publishing included."""
+"""Record fingerprints and changed fields (jobs spec): the fingerprint is a pure function of the published values, and
+`changed_fields` names exactly the fields whose published value differs, a field that became published or stopped
+publishing included."""
 
 import json
 import string
@@ -20,8 +20,6 @@ SCHEMA = SchemaDocument(
     required_groups=[["sku", "gtin"]],
     fields={"title": _REQUIRED, "price": _REQUIRED, "sku": _TEXT, "gtin": _TEXT, "colour": _TEXT, "notes": _TEXT},
 )
-FINGERPRINTED = ("title", "price", "sku", "gtin")
-OPTIONAL = ("colour", "notes")
 
 _scalars = st.none() | st.booleans() | st.integers() | st.text(alphabet=string.printable, max_size=8)
 _values: st.SearchStrategy[JsonValue] = st.recursive(
@@ -49,17 +47,8 @@ def test_the_fingerprint_is_a_sha256_hex_digest_independent_of_key_order(data: d
     assert set(fingerprint) <= set(string.hexdigits.lower())
 
 
-@given(_data, st.sampled_from(OPTIONAL), _values)
-def test_an_optional_field_outside_every_required_group_leaves_the_fingerprint_unchanged(
-    data: dict[str, JsonValue], name: str, value: JsonValue
-) -> None:
-    without = {key: item for key, item in data.items() if key != name}
-
-    assert record_fingerprint({**data, name: value}, SCHEMA) == record_fingerprint(without, SCHEMA)
-
-
-@given(_data, st.sampled_from(FINGERPRINTED), _values, _values)
-def test_a_required_or_group_field_with_another_value_changes_the_fingerprint(
+@given(_data, st.sampled_from(sorted(SCHEMA.fields)), _values, _values)
+def test_a_field_with_another_value_changes_the_fingerprint(
     data: dict[str, JsonValue], name: str, before: JsonValue, after: JsonValue
 ) -> None:
     assume(_canonical(before) != _canonical(after))

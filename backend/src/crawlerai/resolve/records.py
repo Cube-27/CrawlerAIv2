@@ -4,16 +4,18 @@ field outcomes become.
 `data` holds the published values and nothing else; `field_meta` says, for every schema field, how it resolved. A
 page whose required fields and groups all publish is `extracted` and its record `complete`. Otherwise a caller-supplied
 URL still gets its record, `complete=false`, with outcome `partial`, and a crawl-discovered URL gets `no_match` and no
-record. A listing's rows are records each, judged the same way (`assemble_listing`). Records only serialize what
-resolution published (INV-27).
+record. Either way a record needs the page to state its entity: a page none of whose required fields or group members
+publishes a value read from it, beyond the page's own address, is `no_match` with no record (`states_entity`). A
+listing's rows are records each, judged the same way (`assemble_listing`). Records only serialize what resolution
+published (INV-27).
 """
 
 from collections.abc import Mapping, Sequence
-from typing import Literal, Protocol
+from typing import Final, Literal, Protocol, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from crawlerai.collect.locator import LocatorText
+from crawlerai.collect.locator import LocatorText, PageUrlDerivation
 from crawlerai.db.models import SiteId, SourceKind
 from crawlerai.normalize.base import Basis
 from crawlerai.resolve.evidence import required_fields
@@ -23,6 +25,9 @@ from crawlerai.schemas.types import FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import sha256_hex
 
 PageOutcome = Literal["extracted", "partial", "no_match"]
+# The derivations that publish the page's own address (RFC 6596 canonical link, RFC 9110 §15.4 final URL): every page,
+# a maintenance or error page a request was redirected to included, has one, so it states no entity.
+_PAGE_ADDRESS: Final = frozenset(get_args(PageUrlDerivation))
 
 
 class _Model(BaseModel):
@@ -148,10 +153,25 @@ def assemble(
     """The page's outcome and its record, if it gets one (§4.10). `canonical_url` is the target's canonicalized URL;
     `caller_supplied` is true for `scrape`, `batch_scrape` and `extract` URLs, false for crawl-discovered ones."""
     content = RecordContent.of(schema, fields)
-    if not content.complete and not caller_supplied:
+    if not states_entity(schema, fields) or (not content.complete and not caller_supplied):
         return "no_match", None
     record = RecordDraft(entity_key=entity_key(site_id, canonical_url), **dict(content))
     return ("extracted" if content.complete else "partial"), record
+
+
+def states_entity(schema: SchemaDef, fields: Mapping[str, FieldOutcome], *, row: bool = False) -> bool:
+    """Whether the page states the schema's entity: a field it needs (`required_fields`; any field of a schema that
+    needs none) publishes a value read from the page, not derived from its own address (`_PAGE_ADDRESS`). A page that
+    is not the entity asked for (a maintenance or error page served for it) may still publish prose as a description;
+    it publishes none of what identifies the item, so it gets no record. With `row`, a listing's row states its item
+    by a row field only: the needed row fields, else any row field (the page's fields are every row's)."""
+    in_scope = frozenset(name for name, spec in schema.fields.items() if not row or spec.scope == "row")
+    needed = (required_fields(schema) & in_scope) or in_scope
+    return any(
+        outcome.status == "published" and outcome.derived_by not in _PAGE_ADDRESS
+        for name, outcome in fields.items()
+        if name in needed
+    )
 
 
 def assemble_listing(
@@ -173,6 +193,8 @@ def assemble_listing(
         fields = {**page_fields, **row}
         key = _row_key(schema, row) or f"{page_url}#{position}"
         outcome, record = assemble(schema, fields, site_id=site_id, canonical_url=key, caller_supplied=caller_supplied)
+        if not states_entity(schema, row, row=True):
+            outcome, record = "no_match", None
         complete = complete and outcome == "extracted"
         if record is not None:
             records.setdefault(record.entity_key, record)

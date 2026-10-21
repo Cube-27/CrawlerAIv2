@@ -640,7 +640,6 @@ class JsonValue(RootModel[Any]):
 class Outcome(Enum):
     extracted = "extracted"
     partial = "partial"
-    unchanged = "unchanged"
     links_only = "links_only"
     blocked = "blocked"
     shell = "shell"
@@ -797,7 +796,6 @@ class OutcomeCounts(BaseModel):
     shell: Annotated[int, Field(title="Shell")]
     soft_404: Annotated[int, Field(title="Soft 404")]
     timeout: Annotated[int, Field(title="Timeout")]
-    unchanged: Annotated[int, Field(title="Unchanged")]
     unsupported_media: Annotated[int, Field(title="Unsupported Media")]
 
 

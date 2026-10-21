@@ -66,7 +66,14 @@ DRAFT_REPLY = ProviderReply(
         to_wire(
             {
                 "page_kind": "detail",
-                "fields": {"title": {"type": "text", "required": True, "description": "Product name"}},
+                "fields": {
+                    "title": {
+                        "type": "text",
+                        "required": True,
+                        "description": "Product name",
+                        "schema_org": "Product.name",
+                    }
+                },
             }
         )
     ),

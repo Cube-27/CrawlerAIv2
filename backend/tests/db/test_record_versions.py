@@ -1,6 +1,6 @@
-"""Record versions (jobs spec), against a real Postgres: a re-extracted entity whose
-required values are unchanged adds no record row, and one whose fingerprint differs adds the next version, pointing at
-the one it supersedes and naming its changed fields."""
+"""Record versions (jobs spec), against a real Postgres: a re-extracted entity equal to its latest version adds no
+record row, and one with any other value adds the next version, pointing at the one it supersedes and naming its changed
+fields."""
 
 import uuid
 from typing import Any
@@ -124,6 +124,16 @@ async def test_a_first_extraction_is_version_1_with_its_fingerprint(site: _Site)
             "data": KETTLE,
         }
     ]
+
+
+async def test_an_equal_record_is_its_latest_version_and_a_changed_optional_value_adds_one(site: _Site) -> None:
+    (first,) = await site.run(site.draft(KETTLE))
+    (again,) = await site.run(site.draft(KETTLE))
+    (coloured,) = await site.run(site.draft({**KETTLE, "colour": "Blue"}))
+
+    assert again.id == first.id
+    assert coloured.draft.data == {**KETTLE, "colour": "Blue"}
+    assert [(row["version"], row["changed_fields"]) for row in await site.rows()] == [(1, []), (2, ["colour"])]
 
 
 async def test_a_changed_price_adds_version_2_naming_price(site: _Site) -> None:

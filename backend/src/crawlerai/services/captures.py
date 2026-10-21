@@ -58,7 +58,7 @@ async def replay(
             stored = select(Record.schema_id).distinct().join(Extraction, Extraction.id == Record.extraction_id)
             stored = stored.where(Extraction.capture_id == capture_id)
         else:
-            # The records the job's tasks stand for, an unchanged page's included (they belong to an earlier job).
+            # The records the job's tasks stand for, equal records of an earlier job's included.
             stored = select(Record.schema_id).distinct().join(TaskRecord, TaskRecord.record_id == Record.id)
             stored = stored.join(UrlTask, UrlTask.id == TaskRecord.url_task_id)
             stored = stored.where(UrlTask.job_id == job_id, UrlTask.capture_id == capture_id)

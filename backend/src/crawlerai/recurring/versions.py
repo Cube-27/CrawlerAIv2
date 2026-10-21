@@ -2,9 +2,10 @@
 entities were extracted before.
 
 Each record is compared with the latest version of its entity, the record with the same (site, schema, entity key) and
-the highest `version`. An equal fingerprint (`recurring.record_fp`) stores nothing and answers with that version; a
-different one, none stored, or one extracted with another document of the schema (`record.schema_digest`; a
-schema is edited in place) adds the next version, superseding it and naming its changed fields. Either
+the highest `version`. A record equal to it in every value (`recurring.record_fp`), every field's metadata and
+completeness, under the same document of the schema, stores nothing and answers with that version, which holds exactly
+what was just extracted; any difference, none stored, or another document (`record.schema_digest`; a schema is edited
+in place) adds the next version, superseding it and naming its changed fields. Either
 way the task stands for the record it answers with (`task_record`, §4.2), so that its job lists it. This is the
 `resolve.task.RecordWriter` a page task stores its records with.
 
@@ -46,7 +47,8 @@ async def store_records(
     conn: AsyncConnection, schema: SchemaDef, drafts: Sequence[RecordDraft], source: RecordSource
 ) -> tuple[StoredRecord, ...]:
     """Store a page's records, in `conn`'s transaction, as new versions of their entities where their fingerprints
-    differ, and return them in `drafts`' order: an unchanged entity's is its latest stored record, as stored."""
+    differ (`_same`), and return them in `drafts`' order: an entity extracted exactly as its latest version is that
+    record."""
     await _lock(conn, source.site_id, schema)
     latest = await latest_versions(conn, source.site_id, schema, [draft.entity_key for draft in drafts])
     digest = document_digest(schema)
@@ -55,7 +57,7 @@ async def store_records(
     for position, draft in enumerate(drafts):
         fingerprint = record_fingerprint(draft.data, schema)
         previous = latest.get(draft.entity_key)
-        if previous is not None and previous["fingerprint"] == fingerprint and previous["schema_digest"] == digest:
+        if previous is not None and _same(previous, draft, fingerprint, digest):
             stored.append(StoredRecord(previous["id"], _stored_draft(previous)))
         else:
             stored.append(None)
@@ -68,8 +70,8 @@ async def store_records(
 
 
 async def link_records(conn: AsyncConnection, task_id: UrlTaskId, record_ids: Sequence[RecordId]) -> None:
-    """Record that the task's page stands for `record_ids`: those it stored, or the latest versions it found
-    unchanged. A listing's rows can name one entity twice, so a link already there is kept."""
+    """Record that the task's page stands for `record_ids`: those it stored, or the latest versions equal to what it
+    extracted. A listing's rows can name one entity twice, so a link already there is kept."""
     if record_ids:
         rows = [{"url_task_id": task_id, "record_id": record_id} for record_id in dict.fromkeys(record_ids)]
         await conn.execute(pg_insert(TaskRecord).values(rows).on_conflict_do_nothing())
@@ -96,6 +98,18 @@ async def latest_versions(
         .order_by(Record.entity_key, Record.version.desc(), Record.id.desc())
     )
     return {row["entity_key"]: row for row in (await conn.execute(query)).mappings()}
+
+
+def _same(previous: RowMapping, draft: RecordDraft, fingerprint: str, digest: str) -> bool:
+    """Whether the latest stored version holds exactly what `draft` does: its values, the metadata of every field and
+    its completeness, under the same schema document."""
+    stored = (previous["fingerprint"], previous["schema_digest"], previous["complete"], previous["field_meta"])
+    return bool(stored == (fingerprint, digest, draft.complete, _meta(draft)))
+
+
+def _meta(draft: RecordDraft) -> dict[str, Any]:
+    """The record's field metadata as `record.field_meta` stores it."""
+    return {name: meta.model_dump(mode="json") for name, meta in draft.field_meta.items()}
 
 
 def _stored_draft(row: RowMapping) -> RecordDraft:
@@ -128,7 +142,7 @@ def _values(schema: SchemaDef, source: RecordSource, record: _New) -> dict[str, 
         "schema_id": schema.id,
         "entity_key": draft.entity_key,
         "data": draft.data,
-        "field_meta": {name: meta.model_dump(mode="json") for name, meta in draft.field_meta.items()},
+        "field_meta": _meta(draft),
         "complete": draft.complete,
         "mode": source.mode,
         "fingerprint": record.fingerprint,
