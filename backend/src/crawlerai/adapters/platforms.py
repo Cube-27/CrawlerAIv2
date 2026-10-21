@@ -24,10 +24,11 @@ Shopify's product answer states one Offer per variant, each with the variant's o
 per-variant Offers do: resolution weighs them as it weighs those (resolution spec, price), and they fill the `variants`
 rows when the page states none (variants spec). Of them, the page shows one variant (Liquid
 `product.selected_or_first_available_variant`), whose `sku` and `barcode` are read as the product's own, so resolution
-reads its Offer as the variant the page shows (variants spec). WooCommerce's answer states one price for the product:
-a product whose variations are priced differently has none for the page, which shows the selected variation's, so its
-answer is read without its Offer and never stands against the price the page shows (INV-14; adapters spec "merge,
-don't override").
+reads its Offer as the variant the page shows (variants spec); held from the variant's node, they stay that variant's,
+and publish for the product only where the page states none of its own (variants spec, Variant fill). WooCommerce's
+answer states one price for the product: a product whose variations are priced differently has none for the page,
+which shows the selected variation's, so its answer is read without its Offer and never stands against the price the
+page shows (INV-14; adapters spec "merge, don't override").
 """
 
 import re

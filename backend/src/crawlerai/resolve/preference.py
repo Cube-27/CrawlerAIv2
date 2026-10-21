@@ -144,6 +144,7 @@ class Resolver:
             name: _without_bounds(*found, bounds, fields[name]) if price_role(fields[name]) == "price" else found
             for name, found in screened.items()
         }
+        screened = {name: self._variants_yield(fields[name], *found) for name, found in screened.items()}
         # In schema order: the anchor takes the first Offer seen on a tie.
         offer_fields = [name for name, spec in fields.items() if self.target_offers.is_offer_field(spec)]
         offers = self._page_offers(fields, candidates, screened, offer_fields)
@@ -307,10 +308,13 @@ class Resolver:
         offers = PageOffers(frozenset(() if anchor is None else (anchor,)))
         if not self.detail:
             return offers
-        # The target's own sku and gtin, as they publish, select the variant it shows (variants spec).
+        # The target's own sku and gtin, as they publish, select the variant it shows (variants spec), and so does the
+        # shown variant's that yielded to the product's own (`_variants_yield`): it still names that variant.
         ids = [name for name in variant_ids(fields) if name in fields]
         stated = {name: self._choose(fields[name], *screened[name], offers=offers, offer_field=False) for name in ids}
-        shown, other = self.target_offers.shown_offers(fields, candidates, self._published_ids(fields, stated))
+        yielded = [(c, fields[name]) for name in ids for c, why in screened[name][1] if why == OUTSCORED]
+        own = [*self._published_ids(fields, stated), *yielded]
+        shown, other = self.target_offers.shown_offers(fields, candidates, own)
         shown |= self.target_offers.lone_offers(frozenset(source_of(offer) for offer in shown)) - other
         return PageOffers(shown, shown) if shown else offers
 
@@ -327,11 +331,33 @@ class Resolver:
             and (self.confident is None or self.confident(name, fields[name], decision))
         ]
 
+    def _variants_yield(
+        self, spec: FieldSpec, kept: list[Candidate], rejected: list[Rejection]
+    ) -> tuple[list[Candidate], list[Rejection]]:
+        """Variant fill (variants spec): a gtin or sku the target holds from inside the node of one of its Offers or
+        variants (a platform answer stating the shown variant's identifiers as the product's, `adapters.platforms`) is
+        that variant's, and stands for the product only where nothing else the target owns states the field: a value
+        the product states itself is the product's (GS1 GTIN and a seller's SKU identify one variant), so the
+        variant's other value is `outscored`, not its rival, and so is a page state value admitted only by equality
+        to it (§8.1)."""
+        if not self._fills(spec):
+            return kept, rejected
+        nodes = tuple(e.id for e in (*self.graph.offers(self.target), *self.graph.variants(self.target)))
+        held = [c for c in kept if any(_inside(c.locator, node) for node in nodes)]
+        stated = [c for c in kept if c.independent and not any(c is h for h in held)]
+        if not held or not stated:
+            return kept, rejected
+        lower = [c for c in kept if not any(same_value(c, s, spec) for s in stated)]
+        return [c for c in kept if not any(c is low for low in lower)], [*rejected, *((c, OUTSCORED) for c in lower)]
+
+    def _fills(self, spec: FieldSpec) -> bool:
+        return self.detail and spec.type is FieldType.IDENTIFIER and spec.scheme in VARIANT_IDS
+
     def _fill(self, spec: FieldSpec, candidates: Sequence[Candidate], preference: Preference) -> Preference:
         """Variant fill (variants spec): a gtin or sku field the target states nothing for (no candidate is the
         target's) takes its variants' candidates when every variant has one and all agree: the value is common to
         the variants. A value the target states is never replaced, and no other field is filled."""
-        if not self.detail or spec.type is not FieldType.IDENTIFIER or spec.scheme not in VARIANT_IDS:
+        if not self._fills(spec):
             return preference
         if any(self.graph.owned_by(c, self.target, page_values=self.page_values) for c in candidates):
             return preference
@@ -560,6 +586,12 @@ def _all_rejected(
     status: Literal["missing", "conflict"], reason: str, kept: list[Candidate], rejected: list[Rejection]
 ) -> Unpublished:
     return Unpublished(status, reason, (*rejected, *((c, reason) for c in kept)), tuple(kept))
+
+
+def _inside(locator: str, node: str) -> bool:
+    """Whether a value's locator is a member path below the node `node` names (RFC 9535 JSONPath: a child segment
+    `[...]` selects a member of the node the path before it selects)."""
+    return locator.startswith(f"{node}[")
 
 
 def _missing_reason(rejected: list[Rejection]) -> str:

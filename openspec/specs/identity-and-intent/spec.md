@@ -17,7 +17,9 @@ one most specific type), and entities of one most specific type that share an id
 (unless their item URLs differ) or, across collectors, an item URL other than a page URL SHALL be one entity before
 intent (`resolve/identity.py`); the merged entity holds every member's types, most specific first. The root
 of an identity-checked data call's answer (acquisition spec "Data calls") SHALL be one entity with the page's single
-root entity of its most specific type, and stay apart when the page states none or several; one of a repeated set of
+root entity of its most specific type, and stay apart when the page states none or several; it states the product
+with every variant it has, so it never joins a product group's `hasVariant` member, whichever variant's identifiers it
+states as the one the page shows (adapters spec, Shopify); one of a repeated set of
 microdata items (three or more elements whose XPaths differ only in one step's position: a carousel, a comparison
 table) is not counted, as intent reads it as another page's item, and the root is the page's own when one of its
 merged members names the page or none names another document. A page URL, by which an entity names the page, is

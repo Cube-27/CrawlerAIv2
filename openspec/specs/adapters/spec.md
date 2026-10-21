@@ -117,7 +117,9 @@ currency (×100), `available: false` as `OutOfStock` (`Shape.booleans`; `true`, 
 ItemAvailability: a variant on pre-order or back order can be bought too, so the page states which), so the variants
 rows fill from it; the variant the page shows (Liquid `product.selected_or_first_available_variant`: the one whose `id`
 the page URL's `?variant=` names, else, when it names none or an id the product lacks, the first `available` one, else
-the first) gives the Product its `sku` and `barcode`, so resolution reads that variant's Offer as the shown one; its
+the first) gives the Product its `sku` and `barcode`, so resolution reads that variant's Offer as the shown one; they
+stay that variant's, so they publish for the Product only where the page states none of its own (variants spec,
+Variant fill) and never make the answer one of a group's variants (identity-and-intent spec); its
 currency is the page's `Shopify.currency.active`, a platform signature's `currency_members` (Shopware:
 `window.currencyIsoCode`), read only on a page showing the platform's signal. Refs: D-1080, D-1081, D-1085, D-1114,
 D-1118, architecture-v3 d.7.
