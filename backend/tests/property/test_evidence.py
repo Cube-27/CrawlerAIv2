@@ -123,8 +123,12 @@ def test_a_price_on_weak_currency_evidence_is_noted_and_measured_apart(
 
     outcome = _assess(_chosen(chosen), calibration, type_=FieldType.MONEY)
 
-    assert (outcome.status, outcome.value, outcome.basis) == ("published", value, basis)
-    assert (outcome.confidence, outcome.calibrated) == measured
+    assert (outcome.status, outcome.value, outcome.basis, outcome.confidence, outcome.calibrated) == (
+        "published",
+        value,
+        basis,
+        *measured,
+    )
 
 
 def test_a_url_publishes_as_written_and_in_full_when_an_agreeing_source_writes_it_so() -> None:
