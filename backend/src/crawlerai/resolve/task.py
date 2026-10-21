@@ -36,11 +36,10 @@ from crawlerai.db.models import (
 )
 from crawlerai.db.queue import ClaimedTask
 from crawlerai.normalize.base import Ambiguous, Invalid, Ok
-from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.records import RecordDraft, assemble, assemble_listing
 from crawlerai.resolve.types import ExtractionResult, FieldOutcome, FieldSet
 from crawlerai.schemas.types import SchemaDef
-from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest
+from crawlerai.storage.capture_bundle import CaptureManifest
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,43 +108,6 @@ class Stored:
     result: ExtractionResult
 
 
-async def extract_task(
-    conn: AsyncConnection,
-    task: ClaimedTask,
-    *,
-    capture_id: CaptureId,
-    site_id: SiteId,
-    bundle: CaptureBundle,
-    schema: SchemaDef,
-    data: EngineData,
-    role_c: RoleC | None,
-    config: ActiveConfig | None,
-    caller_supplied: bool,
-    write_records: RecordWriter,
-) -> Stored:
-    """Extract the task's capture and store the result in `conn`'s transaction. `caller_supplied` is true for
-    `scrape`, `batch_scrape` and `extract` URLs: an incomplete page then keeps its record (`partial`), where a
-    crawl-discovered one gets `no_match` and none (§4.10). The caller settles the task with the returned outcome.
-
-    `config` is the site's active config for the schema and page kind (`config` mode).
-    `role_c` calls the LLM client before this step writes anything, and the client commits usage on its own
-    connection (D-0346): `conn`'s transaction must not hold an uncommitted write to the job's row. `write_records`
-    stores the page's records."""
-    executor = None if config is None else config.executor
-    result = await extract_page(bundle, schema, executor, role_c, data=data)
-    return await store_extraction(
-        conn,
-        task,
-        result,
-        capture_id=capture_id,
-        site_id=site_id,
-        schema=schema,
-        caller_supplied=caller_supplied,
-        config=config,
-        write_records=write_records,
-    )
-
-
 async def store_extraction(
     conn: AsyncConnection,
     task: ClaimedTask,
@@ -159,9 +121,11 @@ async def store_extraction(
     config: ActiveConfig | None = None,
     page_url: str | None = None,
 ) -> Stored:
-    """Store `result`, `extract_page`'s for the task's capture, as `extract_task` does: for a caller that extracts
-    before it opens the transaction (`scrape`, which holds no connection while the page resolves). `config` is the
-    config a `config`-mode result ran; `page_url` the canonical URL of the document it read, when that is not the
+    """Store `result`, `extract_page`'s for the task's capture, in `conn`'s transaction. `caller_supplied` is true for
+    `scrape`, `batch_scrape` and `extract` URLs: an incomplete page then keeps its record (`partial`), where a
+    crawl-discovered one gets `no_match` and none (§4.10). The caller settles the task with the returned outcome.
+    `scrape` extracts before it opens the transaction, so it holds no connection while the page resolves. `config` is
+    the config a `config`-mode result ran; `page_url` the canonical URL of the document it read, when that is not the
     task's (a listing's further page, owner #52)."""
     page_url = page_url or task.canonical_url
     extraction_id: ExtractionId = (

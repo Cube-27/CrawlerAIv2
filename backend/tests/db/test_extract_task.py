@@ -21,16 +21,16 @@ from crawlerai.core.ids import uuid7
 from crawlerai.db.models import Candidate, Extraction, Job, JobId, Project, Record, Site, SiteId, SourceKind, UsageEvent
 from crawlerai.db.queue import ClaimedTask, insert_claimed
 from crawlerai.llm.client import MeteredClient, ProviderReply
-from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.recurring.versions import store_records
-from crawlerai.resolve.pipeline import EngineData, RoleC
+from crawlerai.resolve.pipeline import EngineData, RoleC, extract_page
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.records import entity_key
-from crawlerai.resolve.task import Stored, extract_task
+from crawlerai.resolve.task import Stored, store_extraction
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, Headers, sha256_hex
 from crawlerai.storage.fs import FsStore
+from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
 
@@ -120,16 +120,14 @@ class _Setup:
         fetched = FetchResult(bundle=bundle, duration_ms=1, attempts=(attempt,))
         capture_id = await store_capture(self.conn, self.store, fetched, site_id)
         self.site_id, self.schema = site_id, schema
-        return await extract_task(
+        result = await extract_page(bundle, schema, None, role_c, data=DATA)
+        return await store_extraction(
             self.conn,
             task,
+            result,
             capture_id=capture_id,
             site_id=site_id,
-            bundle=bundle,
             schema=schema,
-            data=DATA,
-            role_c=role_c,
-            config=None,
             caller_supplied=caller_supplied,
             write_records=store_records,
         )

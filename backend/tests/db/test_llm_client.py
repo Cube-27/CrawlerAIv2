@@ -15,7 +15,7 @@ from crawlerai.llm.client import (
     ProviderReply,
     request_hash,
 )
-from crawlerai.llm.providers.fake import FakeProvider
+from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
 

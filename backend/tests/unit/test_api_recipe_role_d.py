@@ -22,9 +22,9 @@ from crawlerai.config_ir.api_recipe.replay import ReplayPage
 from crawlerai.config_ir.api_recipe.role_d import REPAIR_SYSTEM, SYSTEM, Rejected, bind_by_role_d
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId
-from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from tests.support.fake_llm import ScriptedClient
 
 StandInApi = Callable[[Mapping[str, bytes]], JsonFetcher]  # the `stand_in_api` fixture (conftest)
 JOB = JobId(uuid7())

@@ -24,26 +24,36 @@ def run(*args: str, stdin: str = "") -> str:
     [
         (
             "docs/specs/SPEC-99.md\nREADME.md\n",
-            f"backend=false\nfrontend=false\napi_client=false\nlicenses=false\n{NO_MODEL}{NO_MONEY}",
+            f"backend=false\nbackend_static=false\nfrontend=false\napi_client=false\nlicenses=false\n{NO_MODEL}{NO_MONEY}",
         ),
         (
             "backend/src/crawlerai/normalize/money.py\n",
-            "backend=true\nfrontend=false\napi_client=true\nlicenses=false\n" + NO_MODEL + MONEY,
+            "backend=true\nbackend_static=true\nfrontend=false\napi_client=true\nlicenses=false\n" + NO_MODEL + MONEY,
         ),
-        ("backend/uv.lock\n", f"backend=true\nfrontend=false\napi_client=true\nlicenses=true\n{NO_MODEL}{MONEY}"),
+        (
+            "backend/uv.lock\n",
+            f"backend=true\nbackend_static=true\nfrontend=false\napi_client=true\nlicenses=true\n{NO_MODEL}{MONEY}",
+        ),
         (
             "backend/src/crawlerai/db/queue.py\n",
-            f"backend=true\nfrontend=false\napi_client=true\nlicenses=false\n{MODEL}{NO_MONEY}",
+            f"backend=true\nbackend_static=true\nfrontend=false\napi_client=true\nlicenses=false\n{MODEL}{NO_MONEY}",
         ),
         (
             "tools/verify/worker_queue/WorkerQueue.tla\n",
-            "backend=true\nfrontend=false\napi_client=false\nlicenses=false\n" + MODEL + NO_MONEY,
+            "backend=false\nbackend_static=true\nfrontend=false\napi_client=false\nlicenses=false\n" + MODEL + NO_MONEY,
+        ),
+        (
+            "infra/postgres/init.sql\n",
+            f"backend=true\nbackend_static=false\nfrontend=false\napi_client=false\nlicenses=false\n{NO_MODEL}{NO_MONEY}",
         ),
         (
             "frontend/src/App.tsx\n",
-            f"backend=false\nfrontend=true\napi_client=true\nlicenses=false\n{NO_MODEL}{NO_MONEY}",
+            f"backend=false\nbackend_static=false\nfrontend=true\napi_client=true\nlicenses=false\n{NO_MODEL}{NO_MONEY}",
         ),
-        ("", f"backend=false\nfrontend=false\napi_client=false\nlicenses=false\n{NO_MODEL}{NO_MONEY}"),
+        (
+            "",
+            f"backend=false\nbackend_static=false\nfrontend=false\napi_client=false\nlicenses=false\n{NO_MODEL}{NO_MONEY}",
+        ),
     ],
 )
 def test_each_job_runs_only_when_a_changed_path_is_one_of_its_inputs(changed: str, expected: str) -> None:
@@ -51,9 +61,14 @@ def test_each_job_runs_only_when_a_changed_path_is_one_of_its_inputs(changed: st
 
 
 def test_a_path_that_only_shares_a_name_prefix_with_a_directory_is_not_its_input() -> None:
-    expected = f"backend=false\nfrontend=false\napi_client=false\nlicenses=false\n{NO_MODEL}{NO_MONEY}"
+    expected = (
+        f"backend=false\nbackend_static=false\nfrontend=false\napi_client=false\nlicenses=false\n{NO_MODEL}{NO_MONEY}"
+    )
     assert run(stdin="frontend-notes.md\nbackend_old/readme.md\n") == expected
 
 
 def test_all_runs_every_job_without_reading_input() -> None:
-    assert run("--all") == f"backend=true\nfrontend=true\napi_client=true\nlicenses=true\n{MODEL}{MONEY}"
+    assert (
+        run("--all")
+        == f"backend=true\nbackend_static=true\nfrontend=true\napi_client=true\nlicenses=true\n{MODEL}{MONEY}"
+    )

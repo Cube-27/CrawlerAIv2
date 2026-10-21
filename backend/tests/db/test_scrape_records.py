@@ -38,7 +38,6 @@ from crawlerai.db.models import (
 )
 from crawlerai.db.models import SchemaDef as SchemaRow
 from crawlerai.llm.client import MeteredClient, ProviderRefused, ProviderReply
-from crawlerai.llm.providers.fake import FakeProvider
 from crawlerai.llm.roles.s_wire import to_wire
 from crawlerai.resolve import pipeline
 from crawlerai.resolve.evidence import Bucket, Calibration
@@ -51,6 +50,7 @@ from crawlerai.services.scrape import ScrapeRequest, scrape
 from crawlerai.services.scrape_steps import SchemaUnusable
 from crawlerai.storage.fs import FsStore
 from tests.db.conftest import LISTING_FIELDS
+from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
 

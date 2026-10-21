@@ -21,7 +21,7 @@ worker SHALL check model ids at start (no tokens) and `/healthz` reports `llm: c
 
 ### Requirement: Constrained JSON output inside provider subsets
 Every call SHALL request JSON-schema constrained output with a closed object root, kept inside each provider's subset
-in `backend/data/llm/<provider>-structured-output.json` (checked by `llm/schema_subset.py`). Gemini sends
+in `backend/data/llm/<provider>-structured-output.json` (checked by `tests/support/schema_subset.py`). Gemini sends
 `temperature: 0`; Anthropic sends no sampling parameters, `fast` calls ask low effort. Refs: D-0349, D-0370, D-1008.
 #### Scenario: Open root refused
 - **WHEN** a request's output schema omits `additionalProperties: false` at the root

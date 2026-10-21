@@ -15,9 +15,9 @@ from crawlerai.config_ir.synthesis import Synthesis, synthesize
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId, SchemaId
-from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.normalize.base import Context
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
+from tests.support.fake_llm import ScriptedClient
 
 JOB = JobId(uuid7())
 PAGE_URL = "https://shop.example.test/p/1"

@@ -32,8 +32,8 @@ from crawlerai.db.models import (
 )
 from crawlerai.db.queue import complete_task, insert_claimed
 from crawlerai.recurring.versions import store_records
-from crawlerai.resolve.pipeline import EngineData
-from crawlerai.resolve.task import extract_task
+from crawlerai.resolve.pipeline import EngineData, extract_page
+from crawlerai.resolve.task import store_extraction
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocument, document_digest
 from crawlerai.storage.fs import FsStore
@@ -115,16 +115,14 @@ class World:
             job_id: JobId = (await conn.execute(job.values(engine_version="e").returning(Job.id))).scalar_one()
             capture_id = await store_capture(conn, self.store, fetched, self.site_id)
             task = await insert_claimed(conn, job_id, url, url, "detail", "test-worker")
-            stored = await extract_task(
+            result = await extract_page(fetched.bundle, schema, None, None, data=self.data)
+            stored = await store_extraction(
                 conn,
                 task,
+                result,
                 capture_id=capture_id,
                 site_id=self.site_id,
-                bundle=fetched.bundle,
                 schema=schema,
-                data=self.data,
-                role_c=None,
-                config=None,
                 caller_supplied=True,
                 write_records=store_records,
             )

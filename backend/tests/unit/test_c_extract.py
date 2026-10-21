@@ -14,10 +14,10 @@ from crawlerai.config_ir.role_c import role_c
 from crawlerai.content.page import ParsedPage
 from crawlerai.core.ids import uuid7
 from crawlerai.db.models import JobId
-from crawlerai.llm.providers.fake import ScriptedClient
 from crawlerai.normalize.base import Context
 from crawlerai.resolve.pipeline import UNVERIFIED, GapRequest
 from crawlerai.schemas.types import FieldSpec, FieldType
+from tests.support.fake_llm import ScriptedClient
 from tests.unit.test_pipeline import PRODUCT, _bundle, _extract, _html, _product
 
 SCHEMA = PRODUCT.model_copy(
