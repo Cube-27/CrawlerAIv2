@@ -237,7 +237,7 @@ page fields every row shares. (Previously: a caller-supplied URL kept such a rec
 - **WHEN** a crawl-discovered detail page leaves the required `price` missing
 - **THEN** the outcome is `no_match` and no record is stored
 #### Scenario: Maintenance page for a caller-supplied URL
-- **WHEN** a batch URL redirects to a maintenance page whose only published values are its prose as `description` and
+- **WHEN** a batch or scrape URL redirects to a maintenance page whose only published values are its prose as `description` and
   its final URL as `url`
 - **THEN** the outcome is `no_match` and no record is stored
 

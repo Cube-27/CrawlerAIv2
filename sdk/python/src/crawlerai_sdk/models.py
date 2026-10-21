@@ -1208,6 +1208,7 @@ class Outcome2(Enum):
     redirected_to_listing = "redirected_to_listing"
     unsupported_media = "unsupported_media"
     geo_blocked = "geo_blocked"
+    no_match = "no_match"
     timeout = "timeout"
     failed = "failed"
 

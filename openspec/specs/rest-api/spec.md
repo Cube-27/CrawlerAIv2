@@ -60,9 +60,13 @@ turn at its rate is more than a minute off `blocked` with `reason` `slow_down` a
 challenge kept from being reached `blocked` with `reason` `challenge: <vendor>`. A listing whose extraction gives no
 rows answers `reason` `no_rows: no_blocks` (`resolve/pipeline.py`: no source stated rows and the page showed no
 block of items, so role C, which fills the rows of blocks, had none to read), also the task's `last_error`, and a `page` member holding the page-scope fields in the record field
-shape; `reason` is null for any other page fetched. Request-level failures are problems: an SSRF refusal (DNS failure
+shape; `reason` is null for any other page fetched. A reached page that states no entity of the schema (resolution
+spec, "Incomplete pages") answers `no_match` with no record, as a batch task does; the not-reached outcomes (`blocked`,
+`not_found`, `shell` and the others of [jobs](../jobs/spec.md) "Page outcomes") are never `extracted` or `partial`.
+Request-level failures are problems: an SSRF refusal (DNS failure
 included) is 422 `ssrf_rejected` before any job is created; the guard is in [acquisition](../acquisition/spec.md)
-(INV-16). (Previously: the no-rows cause was also role C's failure reason or `none_listed`, then `not_asked`.) Refs: §18, D-0423, D-0426,
+(INV-16). (Previously: the no-rows cause was also role C's failure reason or `none_listed`, then `not_asked`; a scrape
+of a page that states no entity answered `partial` with no record.) Refs: owner 2026-10-21, §18, D-0423, D-0426,
 D-0504, D-1451, D-1475, D-1476, D-1605.
 #### Scenario: Robots disallow
 - **WHEN** robots.txt disallows the URL

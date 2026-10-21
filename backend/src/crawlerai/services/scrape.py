@@ -15,11 +15,12 @@ from. A draft the LLM could not give (no provider, no budget, an invalid reply) 
 `records` extracts the page with `extract_page` (extraction spec) against the schema named by id, given inline, or
 drafted, and stores the extraction and the records (`resolve.task`: a listing has one per row). A scrape URL is
 caller-supplied, so a page whose required fields don't all publish keeps its record, `complete=false`, with outcome
-`partial`. A site with an active config for the schema extracts in `config` mode (learning-configs spec), and the page
-joins the config's drift window (§4.9). A scrape that asks for the record only is served by the config's API recipe when
-it has one (adapters spec): a JSON body has no markdown, links or metadata of the page, so other formats fetch the page.
-The formats, the draft and the records all read one parse of the page (INV-26). With `max_age`, a capture of the same
-canonical URL that reached its page within that many seconds is read again instead of fetching.
+`partial`; a page that states no entity of the schema (a maintenance or error page served 200) is `no_match` with no
+record, as in a batch. A site with an active config for the schema extracts in `config` mode (learning-configs spec),
+and the page joins the config's drift window (§4.9). A scrape that asks for the record only is served by the config's
+API recipe when it has one (adapters spec): a JSON body has no markdown, links or metadata of the page, so other formats
+fetch the page. The formats, the draft and the records all read one parse of the page (INV-26). With `max_age`, a
+capture of the same canonical URL that reached its page within that many seconds is read again instead of fetching.
 """
 
 import asyncio
@@ -641,12 +642,13 @@ async def _finish(
     further = StoredFurther() if more is None else await more()
     # A detail page's one record, or a listing's one per row (none when it listed nothing, extraction spec).
     kept = {record.id: (record, extraction) for record in stored.records} | {r.id: (r, e) for r, e in further.records}
-    outcome = records_outcome(tuple(record for record, _ in kept.values()))
-    if further.failed:
-        outcome = "partial"
+    records = tuple(record for record, _ in kept.values())
+    # A page that states no entity of the schema keeps no record (resolution spec, "Incomplete pages").
+    no_match = stored.outcome == "no_match" and not records
+    kept_outcome = "partial" if further.failed else "no_match" if no_match else records_outcome(records)
     reason, page = _unlisted(derived.schema, extraction) if not kept else (None, None)
-    await complete_task(conn, task, outcome, reason=reason, capture_id=capture_id)
-    return _Finished(outcome, [_scraped(record, of) for record, of in kept.values()], reason, page)
+    await complete_task(conn, task, kept_outcome, reason=reason, capture_id=capture_id)
+    return _Finished(kept_outcome, [_scraped(record, of) for record, of in kept.values()], reason, page)
 
 
 def _unlisted(schema: SchemaDef, extraction: ExtractionResult) -> tuple[str | None, dict[str, RecordField] | None]:
