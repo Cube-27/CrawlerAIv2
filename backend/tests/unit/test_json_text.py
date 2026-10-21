@@ -54,5 +54,8 @@ def test_raw_control_characters_inside_strings_parse_leniently_as_the_same_docum
 def test_a_number_with_leading_zeros_parses_leniently_as_its_written_digits() -> None:
     text = '{"gtin13": 0745114652584, "note": "0, 07", "n": [0, -012.5]}'
     assert parse(text, lenient=True) == {"gtin13": "0745114652584", "note": "0, 07", "n": [0, "-012.5"]}
+    assert parse(" 007 ", lenient=True) == "007"
     with pytest.raises(ValueError, match="delimiter"):
         parse(text)
+    with pytest.raises(ValueError, match="delimiter"):
+        parse("[0\u0661]", lenient=True)

@@ -60,11 +60,12 @@ _DECODER = json.JSONDecoder(parse_constant=_not_json)
 # `strict=False` relaxes exactly the control characters inside strings (Python `json` docs); nothing else.
 _LENIENT_DECODER = json.JSONDecoder(parse_constant=_not_json, strict=False)
 # RFC 8259 §7: a string token, its escapes included (`[\s\S]`: lenient strings may hold raw line breaks), is skipped
-# whole; outside strings, a value (after `[`, `:` or `,` and before `,`, `]` or `}`, §2) that is a number (§6) with a
-# zero before further integer digits.
+# whole; outside strings, a value (after `[`, `:`, `,` or the text's start and before `,`, `]`, `}` or its end, §2)
+# that is a number (§6, ASCII digits) with a zero before further integer digits.
 _LEADING_ZEROS = re.compile(
     r'"(?:[^"\\]|\\[\s\S])*"'
-    r"|(?<=[\[:,])(?P<space>[ \t\n\r]*)(?P<number>-?0\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)(?=[ \t\n\r]*[,\]}])"
+    r"|(?:(?<=[\[:,])|(?<![\s\S]))(?P<space>[ \t\n\r]*)(?P<number>-?0[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)"
+    r"(?=[ \t\n\r]*(?:[,\]}]|\Z))"
 )
 # RFC 8259 §2: insignificant whitespace is space, horizontal tab, line feed and carriage return.
 _NOT_WHITESPACE = re.compile(r"[^ \t\n\r]")
