@@ -16,13 +16,28 @@ def parse(data: str | bytes, *, lenient: bool = False) -> JsonValue:
     text is exchanged, UTF-8, with the UTF-16 and UTF-32 forms RFC 4627 §3 let a reader tell from the first bytes
     (`json.detect_encoding`). `lenient` also accepts raw control characters (U+0000-U+001F) inside strings, which RFC
     8259 §7 requires escaped and §9 lets a parser accept as an extension: a raw newline in a string is unambiguous, so
-    the value is the one an escaped newline would give."""
+    the value is the one an escaped newline would give. It also accepts a number written with leading zeros
+    (`0745114652584`), which RFC 8259 §6 forbids: its value is the digits as written, a string, since reading them as
+    a number would drop the zeros the page wrote (an identifier such as a GTIN, written unquoted)."""
     text = data.decode(json.detect_encoding(data)) if isinstance(data, bytes) else data
-    decoder = _LENIENT_DECODER if lenient else _DECODER
+    try:
+        return _decode(text, _LENIENT_DECODER if lenient else _DECODER)
+    except ValueError:
+        if not lenient or (written := _LEADING_ZEROS.sub(_as_written, text)) == text:
+            raise
+        return _decode(written, _LENIENT_DECODER)
+
+
+def _decode(text: str, decoder: json.JSONDecoder) -> JsonValue:
     try:
         return decoder.decode(text)  # type: ignore[no-any-return]
     except RecursionError:
         raise ValueError("nested too deeply") from None
+
+
+def _as_written(match: re.Match[str]) -> str:
+    """A string token as it is, a number with leading zeros as a string of its digits (`parse`)."""
+    return match[0] if match["number"] is None else f'{match["space"]}"{match["number"]}"'
 
 
 def parse_prefix(text: str, start: int) -> tuple[JsonValue, int]:
@@ -44,5 +59,13 @@ def _not_json(constant: str) -> JsonValue:
 _DECODER = json.JSONDecoder(parse_constant=_not_json)
 # `strict=False` relaxes exactly the control characters inside strings (Python `json` docs); nothing else.
 _LENIENT_DECODER = json.JSONDecoder(parse_constant=_not_json, strict=False)
+# RFC 8259 §7: a string token, its escapes included (`[\s\S]`: lenient strings may hold raw line breaks), is skipped
+# whole; outside strings, a value (after `[`, `:`, `,` or the text's start and before `,`, `]`, `}` or its end, §2)
+# that is a number (§6, ASCII digits) with a zero before further integer digits.
+_LEADING_ZEROS = re.compile(
+    r'"(?:[^"\\]|\\[\s\S])*"'
+    r"|(?:(?<=[\[:,])|(?<![\s\S]))(?P<space>[ \t\n\r]*)(?P<number>-?0[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)"
+    r"(?=[ \t\n\r]*(?:[,\]}]|\Z))"
+)
 # RFC 8259 §2: insignificant whitespace is space, horizontal tab, line feed and carriage return.
 _NOT_WHITESPACE = re.compile(r"[^ \t\n\r]")
