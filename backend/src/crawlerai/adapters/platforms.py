@@ -31,13 +31,13 @@ don't override").
 """
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Final
 from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
 from pydantic import JsonValue
 
-from crawlerai.adapters.base import ALL, Shape
+from crawlerai.adapters.base import ALL, Members, Shape
 from crawlerai.storage.capture_bundle import HeaderList
 
 __all__ = [
@@ -214,17 +214,18 @@ _SHOPIFY_VARIANT: Final = Shape(
     minor_units={"price": 2},
     booleans={"availability": (None, "https://schema.org/OutOfStock")},
 )
-_SHOPIFY_PRODUCT_NODE: Final = Shape(
-    type="Product",
-    properties={
-        "name": ("title",),
-        "url": ("url",),
-        "description": ("description",),
-        "image": ("images", ALL),
-        "brand": ("vendor",),
-    },
-    nodes={"offers": (_SHOPIFY_VARIANT,)},
-)
+_SHOPIFY_PRODUCT_MEMBERS: Final[dict[str, Members]] = {
+    "name": ("title",),
+    "url": ("url",),
+    "description": ("description",),
+    "image": ("images", ALL),
+    "brand": ("vendor",),
+}
+
+
+def _shopify_product(own: dict[str, Members]) -> Shape:
+    """The product's node, with `own`, the members of the shown variant's identifiers (`_shown_variant`)."""
+    return Shape(type="Product", properties={**_SHOPIFY_PRODUCT_MEMBERS, **own}, nodes={"offers": (_SHOPIFY_VARIANT,)})
 
 
 def _shown_variant(answer: dict[str, JsonValue], page_url: str | None) -> int | None:
@@ -257,6 +258,10 @@ _WOO_OFFER: Final = Shape(
     properties={"price": ("price",), "priceCurrency": ("currency_code",)},
     minor_units={"price": ("currency_minor_unit",)},
 )
+# A product whose variations share one price: its answer's price is the product's Offer.
+_WOO_PRICED_NODE: Final = Shape(
+    type="Product", at=_WOO_PRODUCT_NODE.at, properties=_WOO_PRODUCT_NODE.properties, nodes={"offers": (_WOO_OFFER,)}
+)
 
 
 def answer_shape(platform: str, answer: JsonValue, page_url: str | None) -> Shape | None:
@@ -266,13 +271,10 @@ def answer_shape(platform: str, answer: JsonValue, page_url: str | None) -> Shap
     if platform == "shopify" and isinstance(answer, dict):
         shown = _shown_variant(answer, page_url)
         if shown is None:
-            return _SHOPIFY_PRODUCT_NODE
-        own = {"sku": ("variants", shown, "sku"), "gtin": ("variants", shown, "barcode")}
-        product: Shape = replace(_SHOPIFY_PRODUCT_NODE, properties={**_SHOPIFY_PRODUCT_NODE.properties, **own})
-        return product
+            return _shopify_product({})
+        return _shopify_product({"sku": ("variants", shown, "sku"), "gtin": ("variants", shown, "barcode")})
     if platform == "woocommerce" and isinstance(answer, list) and len(answer) == 1 and isinstance(answer[0], dict):
         prices = answer[0].get("prices")
         varies = not isinstance(prices, dict) or prices.get("price_range") is not None
-        priced: Shape = replace(_WOO_PRODUCT_NODE, nodes={"offers": (_WOO_OFFER,)})
-        return _WOO_PRODUCT_NODE if varies else priced
+        return _WOO_PRODUCT_NODE if varies else _WOO_PRICED_NODE
     return None
