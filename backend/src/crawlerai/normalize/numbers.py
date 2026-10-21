@@ -1,6 +1,6 @@
-"""Numbers as pages write them (normalization spec): the page locales (`locales.page_locales`), and the values a written
-number has under their Unicode CLDR number symbols (Babel). Shared by the normalizers that read numbers from text
-(money, count, number), so each reads them one way."""
+"""Numbers as pages write them (normalization spec): the page locales (`page_locales` of `normalize/locales.py`), and
+the values a written number has under their Unicode CLDR number symbols (Babel). Shared by the normalizers that read
+numbers from text (money, count, number), so each reads them one way."""
 
 import re
 import unicodedata
@@ -47,7 +47,8 @@ def storable(amount: Decimal) -> bool:
     _, digits, exponent = amount.as_tuple()
     if not isinstance(exponent, int):
         return False
-    exponent += len(digits) - len("".join(map(str, digits)).rstrip("0") or "0")
+    # Zero has no precision to keep: `0.0000000` fits.
+    exponent = 0 if not any(digits) else exponent + len(digits) - len("".join(map(str, digits)).rstrip("0"))
     # `adjusted` is the exponent of the leading digit, read without arithmetic that could overflow (`1e1000000000`).
     return amount.adjusted() < _MAX_INTEGER_DIGITS and exponent >= _MAX_EXPONENT
 
@@ -271,10 +272,10 @@ def _grouped(written: str, group: str) -> str:
 
 
 def locale_set(ctx: Context) -> frozenset[str]:
-    """The CLDR locales whose number symbols the page declares, else the request states (`locales.page_locales`). A
-    tag with a territory is that locale; a tag with a language only is the language's own CLDR locale (`de` writes
-    `1.234,5`), or its locale of the ccTLD's territory when the ccTLD names one; the ccTLD alone stands for its
-    territory's locales."""
+    """The CLDR locales whose number symbols the page declares, else the request states (`page_locales` of
+    `normalize/locales.py`). A tag with a territory is that locale; a tag with a language only is the language's own
+    CLDR locale (`de` writes `1.234,5`), or its locale of the ccTLD's territory when the ccTLD names one; the ccTLD
+    alone stands for its territory's locales."""
     return _cldr_locales(ctx, whole_language=False, request=True)
 
 

@@ -20,6 +20,7 @@ Declines (§9): the currency unresolved, or the period unresolved on a monetary 
 """
 
 import re
+import unicodedata
 from collections.abc import Callable, Hashable
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
@@ -176,7 +177,8 @@ def _from_text(raw: str, ctx: Context, money: MoneyRules) -> NormalizeResult:
     if not raw.strip():
         return Invalid("empty")
     languages = locales.page_languages(ctx, request=True)
-    text, periods = _strip_periods(raw, languages)
+    # Unicode NFKC (UAX #15), as the money rules read each bound: a fullwidth digit or comma is its plain form.
+    text, periods = _strip_periods(unicodedata.normalize("NFKC", raw), languages)
     if len(periods) > 1:
         return Invalid("period_mismatch")
     bounds = _split_bounds(text, _separator(languages))

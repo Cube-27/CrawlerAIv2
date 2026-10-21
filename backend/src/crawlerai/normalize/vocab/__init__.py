@@ -183,8 +183,8 @@ def name_entries(members: frozenset[str]) -> Entries:
 
 
 def entries_for(by_language: Mapping[str, Entries], languages: frozenset[str]) -> list[Entries]:
-    """A type vocabulary's entries for the page's `languages` (`locales.page_languages`), or for every language when
-    the page states none; languages without a file have none."""
+    """A type vocabulary's entries for the page's `languages` (`page_languages` in `normalize/locales.py`), or for
+    every language when the page states none; languages without a file have none."""
     return [by_language[language] for language in sorted(languages or by_language.keys()) if language in by_language]
 
 

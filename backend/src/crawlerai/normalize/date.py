@@ -10,7 +10,7 @@ Any other JSON value is `Invalid("not_a_string")`. Three paths, tried in order:
 3. Anything else goes to `dateparser` in the page's languages, once per allowed order, with `ctx.captured_at` as the
    base of relative dates ("2 days ago").
 
-The locales are the page's (`locales.page_locales`, normalization spec "Page languages"); with none, every order is
+The locales are the page's (`page_locales`, normalization spec "Page languages"); with none, every order is
 allowed. A datetime needs a time and a numeric UTC offset; a date takes the calendar date the input states, in its own
 offset.
 """
