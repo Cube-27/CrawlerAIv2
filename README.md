@@ -53,7 +53,8 @@ capability, in-flight work as change folders (deleted once their deltas are appl
 | [openspec/archive/](openspec/archive/README.md) | Superseded documents (the former backlog and open questions), kept for history |
 | [openspec/conventions/](openspec/conventions/) | `ENGINEERING.md` (engineering principles), `DESIGN.md` (frontend conventions), `RECURRING.md` (recurring agent mistakes) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute: checks, pull requests, the evaluation report |
-| [.claude/skills/](.claude/skills/) | The `implement-pr` procedure |
+| [docs/agents/](docs/agents/) | The agent workflow: orchestrator guide, builder protocol, the current plan |
+| [.claude/skills/](.claude/skills/) | The `verify-*` checks and `/crawlerai-orchestrator` |
 
 ## Stack
 

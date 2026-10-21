@@ -738,7 +738,7 @@ until that PR lands, this document governs where the spec differs.
 Kept as is: `openspec/decisions/log.md` (archive, append-only, closed since 2026-10-19), `openspec/decisions/README.md`,
 `openspec/conventions/ENGINEERING.md` and `DESIGN.md`, `openspec/specs/variants`, `evaluation`, `identity-and-intent`,
 `llm` (role C's place is unchanged; the locate run uses it as learning does), `frontend` (except the render picker
-copy), `.claude/skills/verify-worker-queue`, `.claude/skills/implement-pr`.
+copy), `.claude/skills/verify-worker-queue`. The PR procedure is `docs/agents/builder-protocol.md`.
 
 ---
 
