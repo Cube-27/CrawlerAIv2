@@ -256,7 +256,11 @@ class _Profiles:
         self.busy += 1
 
     async def keep(self, key: _ContextKey, context: _Context) -> None:
-        """`context` stops rendering and is kept idle for the site's next page."""
+        """`context` stops rendering and is kept idle for the site's next page; a temporary profile opened because the
+        site's own was held is closed instead, so it never stands in for the site's profile."""
+        if self.root is not None and context.profile.lock is None:
+            await self.release(context)
+            return
         self.busy -= 1
         previous = self.idle.pop(key, None)
         if previous is not None:  # two pages of a site rendered at once: the one kept first is closed, never dropped

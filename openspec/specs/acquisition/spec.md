@@ -186,7 +186,9 @@ the host. A profile renders one page at a time and is opened by one process at a
 profile is held elsewhere, and a fetch with the caller's cookies (added before it navigates), get a temporary profile,
 deleted when it closes. At most `_OPEN_PROFILES` (2) are open in a process, rendering or idle (the least recently used
 idle one closed first); an idle one closes after 60 s, all close with the session, one whose page ended with an
-error or a 4xx/5xx document closes, and a profile whose page was `blocked` is deleted. Before each launch the
+error or a 4xx/5xx document closes, and a profile whose page was `blocked` is deleted; a temporary profile is never
+kept in a site profile's place. Before each launch a kept profile's HTTP cache and service workers (with their Cache
+Storage) are deleted, so no capture is served from an earlier job's visit; cookies and storage stay. The
 profile's preferences get Chromium's WebRTC IP handling policy `disable_non_proxied_udp` (non-proxied UDP and
 multiple routes off), so WebRTC sends no UDP around the guard (INV-16). Every connection of the profile's browser,
 its own background requests included, goes through the guard.
