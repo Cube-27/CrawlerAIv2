@@ -22,7 +22,7 @@ from crawlerai.collect.base import Candidate
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
-from crawlerai.db.models import PageKind, SchemaId, SourceKind
+from crawlerai.db.models import PageKind, SchemaId, SiteId, SourceKind
 from crawlerai.normalize.base import Ok
 from crawlerai.resolve.evidence import Bucket, Calibration
 from crawlerai.resolve.pipeline import (
@@ -36,6 +36,7 @@ from crawlerai.resolve.pipeline import (
 )
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.resolve.score import PRECEDENCE_FILE, load_precedence
+from crawlerai.resolve.task import page_records
 from crawlerai.resolve.types import ExtractionResult, LLMCallRecord
 from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef
 from crawlerai.storage.capture_bundle import (
@@ -154,6 +155,34 @@ def test_a_page_missing_a_required_field_is_partial() -> None:
     result = _extract(_bundle(_html(_product(price=None))))
     assert result.outcome == "partial"
     assert _statuses(result)["price"] == ("missing", "no_candidates")
+
+
+def test_a_page_whose_content_the_engine_cannot_read_is_partial_never_no_match() -> None:
+    """A custom element with no light DOM (a closed shadow root's host) beside a document title: no needed field has a
+    candidate, and the caller-supplied page keeps its record, `partial`, its fields `missing` with `no_candidates` (the
+    render hint's evidence, jobs spec); a crawl-discovered one still keeps none."""
+    body = '<html lang="en"><head><title>Widget One</title></head><body><product-view></product-view></body></html>'
+    result = _extract(_bundle(body))
+    assert result.entity is not None
+    assert "signal:closed_shadow_root" in result.diagnostics
+    assert _statuses(result)["title"] == ("missing", "no_candidates")
+    site = SiteId(uuid7())
+
+    def records(caller_supplied: bool) -> tuple[str, int]:
+        assert result.entity is not None
+        outcome, drafts = page_records(
+            PRODUCT,
+            result.entity,
+            result.rows,
+            site_id=site,
+            page_url=PAGE_URL,
+            caller_supplied=caller_supplied,
+            diagnostics=result.diagnostics,
+        )
+        return outcome, len(drafts)
+
+    assert records(caller_supplied=True) == ("partial", 1)
+    assert records(caller_supplied=False) == ("no_match", 0)
 
 
 def _group(*prices: str) -> dict[str, Any]:

@@ -42,6 +42,10 @@ Signal = Literal[
 SIGNALS: Final[tuple[Signal, ...]] = get_args(Signal)
 # A signal's diagnostic is this prefix and its name.
 PREFIX: Final = "signal:"
+# The signals of content the page delivers in a form the engine does not read (a closed shadow root's tree, text drawn
+# by a font's Private Use Area glyphs): a caller-supplied page raising one is `partial`, never `no_match` (resolution
+# spec, "Incomplete pages").
+UNREADABLE: Final[frozenset[Signal]] = frozenset({"closed_shadow_root", "obfuscated_text"})
 
 # Unicode Private Use Areas: the BMP area (U+E000-U+F8FF) and planes 15 and 16 (from U+F0000).
 _PUA_BMP, _PUA_PLANES = range(0xE000, 0xF900), 0xF0000
@@ -77,6 +81,11 @@ def page_signals(
     if any(_private_use(text) for text in money_texts):
         found.add("obfuscated_text")
     return tuple(signal for signal in SIGNALS if signal in found)
+
+
+def unreadable(diagnostics: Iterable[str]) -> bool:
+    """Whether a page's diagnostics name an `UNREADABLE` signal."""
+    return any(note.removeprefix(PREFIX) in UNREADABLE for note in diagnostics if note.startswith(PREFIX))
 
 
 def _private_use(text: str) -> bool:

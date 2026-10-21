@@ -5,9 +5,10 @@ field outcomes become.
 page whose required fields and groups all publish is `extracted` and its record `complete`. Otherwise a caller-supplied
 URL still gets its record, `complete=false`, with outcome `partial`, and a crawl-discovered URL gets `no_match` and no
 record. Either way a record needs the page to state its entity: a page none of whose required fields or group members
-publishes a value read from it, beyond the page's own address, is `no_match` with no record (`states_entity`). A
-listing's rows are records each, judged the same way (`assemble_listing`). Records only serialize what resolution
-published (INV-27).
+has a candidate read from it, beyond the page's own address, is `no_match` with no record (`states_entity`), unless
+its content is unreadable to the engine (`content.signals.UNREADABLE`): an extraction miss is `partial`, never
+`no_match`. A listing's rows are records each, judged the same way (`assemble_listing`). Records only serialize what
+resolution published (INV-27).
 """
 
 from collections.abc import Mapping, Sequence
@@ -170,12 +171,20 @@ def record_confidence(schema: SchemaDef, fields: Mapping[str, Assessed]) -> floa
 
 
 def assemble(
-    schema: SchemaDef, fields: FieldSet, *, site_id: SiteId, canonical_url: str, caller_supplied: bool
+    schema: SchemaDef,
+    fields: FieldSet,
+    *,
+    site_id: SiteId,
+    canonical_url: str,
+    caller_supplied: bool,
+    unreadable: bool,
 ) -> tuple[PageOutcome, RecordDraft | None]:
     """The page's outcome and its record, if it gets one (§4.10). `canonical_url` is the target's canonicalized URL;
-    `caller_supplied` is true for `scrape`, `batch_scrape` and `extract` URLs, false for crawl-discovered ones."""
+    `caller_supplied` is true for `scrape`, `batch_scrape` and `extract` URLs, false for crawl-discovered ones;
+    `unreadable` is true for a page whose content the engine cannot read (`content.signals.unreadable`), which states
+    its entity where the engine sees nothing of it."""
     content = RecordContent.of(schema, fields)
-    if not states_entity(schema, fields) or (not content.complete and not caller_supplied):
+    if not (unreadable or states_entity(schema, fields)) or (not content.complete and not caller_supplied):
         return "no_match", None
     record = RecordDraft(entity_key=entity_key(site_id, canonical_url), **dict(content))
     return ("extracted" if content.complete else "partial"), record
@@ -183,17 +192,23 @@ def assemble(
 
 def states_entity(schema: SchemaDef, fields: Mapping[str, FieldOutcome], *, row: bool = False) -> bool:
     """Whether the page states the schema's entity: a field it needs (`required_fields`; any field of a schema that
-    needs none) publishes a value read from the page, not derived from its own address (`_PAGE_ADDRESS`). A page that
-    is not the entity asked for (a maintenance or error page served for it) may still publish prose as a description;
-    it publishes none of what identifies the item, so it gets no record. With `row`, a listing's row states its item
-    by a row field only: the needed row fields, else any row field (the page's fields are every row's)."""
+    needs none) has a candidate read from the page, published or not (resolution may reject it), beyond a value derived
+    from its own address (`_PAGE_ADDRESS`). A page that is not the entity asked for (a maintenance or error page served
+    for it) may still state prose as a description; it states none of what identifies the item, so it gets no record.
+    With `row`, a listing's row states its item by a row field only: the needed row fields, else any row field (the
+    page's fields are every row's)."""
     in_scope = frozenset(name for name, spec in schema.fields.items() if not row or spec.scope == "row")
     needed = (required_fields(schema) & in_scope) or in_scope
-    return any(
-        outcome.status == "published" and outcome.derived_by not in _PAGE_ADDRESS
-        for name, outcome in fields.items()
-        if name in needed
-    )
+    return any(_read_from_page(outcome) for name, outcome in fields.items() if name in needed)
+
+
+def _read_from_page(outcome: FieldOutcome) -> bool:
+    """Whether the field has a candidate from the page: a published value, or one resolution kept or rejected. A field
+    whose value is the page's own address (`_PAGE_ADDRESS`) has none: its other candidates named another document or
+    lost to that address."""
+    if outcome.derived_by in _PAGE_ADDRESS:
+        return False
+    return outcome.status == "published" or bool(outcome.kept or outcome.rejected)
 
 
 def assemble_listing(
@@ -214,7 +229,9 @@ def assemble_listing(
     for position, row in enumerate(rows, start=1):
         fields = {**page_fields, **row}
         key = _row_key(schema, row) or f"{page_url}#{position}"
-        outcome, record = assemble(schema, fields, site_id=site_id, canonical_url=key, caller_supplied=caller_supplied)
+        outcome, record = assemble(
+            schema, fields, site_id=site_id, canonical_url=key, caller_supplied=caller_supplied, unreadable=False
+        )
         if not states_entity(schema, row, row=True):
             outcome, record = "no_match", None
         complete = complete and outcome == "extracted"

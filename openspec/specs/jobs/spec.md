@@ -82,7 +82,9 @@ document), and `geo_blocked`, a `blocked` page whose kept attempt is a 451 (chal
 is not retried as a vendor's block; and, for a `failed` task, `timeout` when the fetch's
 kept attempt got no answer in time or the task ran past `TASK_DEADLINE`, else `failed`. A served page that states its
 item is not for sale and gives no price is `partial` with `price` `missing`, reason `out_of_stock`
-([resolution](../resolution/spec.md)). (Previously: `unchanged`, a page a stored record stood for.) Refs: owner plan
+([resolution](../resolution/spec.md)). `no_match` is a page that states no entity of the schema (no needed field has a
+candidate from the page) or, crawl-discovered, an incomplete one; an extraction miss on a caller-supplied page (a
+rejected candidate, an unreadable-content signal) is `partial` (resolution, "Incomplete pages"). (Previously: `unchanged`, a page a stored record stood for.) Refs: owner plan
 2026-10-19 P9.
 #### Scenario: Fetch that timed out
 - **WHEN** a fetch's kept attempt is an `error` with reason `timeout`
