@@ -15,6 +15,13 @@ CrawlerAI v2 is a schema-driven web extraction engine; see `README.md`.
 - Work on a branch `change/<id>` in a worktree made by `tools/orchestrator/new_worktree.sh <id> change/<id>`, never
   in the main checkout. `main` takes PRs only. Never merge your own PR.
 
+## Agent workflow
+
+One orchestrator and at most two builders, each a Claude session in its own herdr tab:
+`docs/agents/orchestrator.md` (the orchestrator, `/crawlerai-orchestrator`), `docs/agents/builder-protocol.md` (every
+builder; its HARD RULES override the rest), `docs/agents/plan.md` (the ordered PR list and its status). Test output is
+cut to failures and the summary by `.claude/hooks/test_output_hook.py` (`TEST_FILTER=0` shows it all).
+
 ## Commands
 
 Needs Docker, `uv`, `pnpm`, GNU make. From the repo root:
