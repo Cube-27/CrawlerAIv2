@@ -93,7 +93,7 @@ check-tools:
 # Same steps and order as CI's backend-static and backend jobs. The migration round trip and the tests (tests/db needs a
 # live Postgres) run against scratch databases recreated each run, so the dev database keeps its data: the tests run in
 # parallel (`-n auto`), each xdist worker in its own copy of the migrated `crawlerai_check` (`crawlerai_check_gw0`, ...,
-# one per CPU, at least as many as `-n auto` starts). `browser` tests are skipped where Chromium is not installed (`uv
+# `PYTEST_XDIST_AUTO_NUM_WORKERS`, else one per CPU: at least as many as `-n auto` starts). `browser` tests are skipped where Chromium is not installed (`uv
 # run patchright install --no-shell chromium` once). 127.0.0.1, not localhost: asyncpg can hang resolving localhost on
 # Windows.
 CHECK_DATABASE_URL := postgresql+asyncpg://app:app@127.0.0.1:5432/crawlerai_check
@@ -108,8 +108,9 @@ check-backend: db
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic upgrade head
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic downgrade base
 	cd backend && CRAWLERAI_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) alembic upgrade head
-	python3 -c "import os; [print(f'DROP DATABASE IF EXISTS crawlerai_check_gw{i};' \
-		f' CREATE DATABASE crawlerai_check_gw{i} TEMPLATE crawlerai_check OWNER app;') for i in range(os.cpu_count() or 1)]" \
+	python3 -c "import os; n = int(os.environ.get('PYTEST_XDIST_AUTO_NUM_WORKERS') or os.cpu_count() or 1); \
+		[print(f'DROP DATABASE IF EXISTS crawlerai_check_gw{i};' \
+		f' CREATE DATABASE crawlerai_check_gw{i} TEMPLATE crawlerai_check OWNER app;') for i in range(n)]" \
 		| $(CHECK_PSQL)
 	cd backend && CRAWLERAI_TEST_DATABASE_URL=$(CHECK_DATABASE_URL) $(UV_RUN) pytest -n auto
 
@@ -120,7 +121,9 @@ sdk:
 	cd sdk/typescript && pnpm install --frozen-lockfile && pnpm gen
 
 check-sdk: sdk
-	git diff --exit-code -- sdk || { echo "SDK out of date: run 'make sdk' and commit the result."; exit 1; }
+	@# `git status`, not `git diff`: a committed file the generators recreate shows only as untracked.
+	@test -z "$$(git status --porcelain -- sdk)" || { git status --short -- sdk; git diff -- sdk; \
+		echo "SDK out of date: run 'make sdk' and commit the result."; exit 1; }
 	cd sdk/typescript && pnpm check && pnpm test
 	cd sdk/python && uv sync --frozen --no-build --no-binary-package crawlerai-sdk --extra dev -q \
 		&& .venv/bin/ruff check src tests && .venv/bin/mypy src tests && .venv/bin/pytest -q
