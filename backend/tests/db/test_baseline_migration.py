@@ -59,8 +59,8 @@ def _migrate(database_url: str, direction: str, revision: str) -> None:
     getattr(command, direction)(config, revision)
 
 
-# Sync: Alembic's env runs its own event loop. Downgrading drops what other tests stored; they delete what they store
-# anyway, and find the default project by name.
+# Sync: Alembic's env runs its own event loop. Downgrading drops what other tests stored; the `engine` fixture empties
+# the tables after each of them anyway, and they find the default project by name.
 def test_the_baseline_downgrades_to_an_empty_schema_and_upgrades_again(database_url: str) -> None:
     try:
         upgraded = asyncio.run(_state(database_url))

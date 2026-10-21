@@ -3,11 +3,9 @@ the real queue, and read back through the jobs service. The frontier's enqueuein
 `url_task` table."""
 
 import asyncio
-import itertools
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -15,11 +13,8 @@ from pydantic import SecretStr
 from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
-from crawlerai.core.capture import BlockClass
+from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.settings import Settings
 from crawlerai.crawl.frontier import Frontier
 from crawlerai.crawl.rules import PageKindRule, Scope
@@ -27,25 +22,20 @@ from crawlerai.db.models import Extraction, Job, JobEvent, JobId, JobKind, Proje
 from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.recurring.listing_diff import close_run
 from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaDef, SchemaDocument
+from crawlerai.schemas.types import SchemaDef
 from crawlerai.services import jobs
 from crawlerai.services.crawl import CrawlRequest, submit_crawl
 from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.jobs import ResultsQuery
 from crawlerai.services.records import RecordPage
-from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.loop import TaskHandler, run_worker
-from tests.db.conftest import PRIVATE_HOST, resolve
+from tests.db.support import PRIVATE_HOST, Page
+from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio
 
 NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
-TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
-PRICE = {"type": "money", "required": True, "description": "The price", "schema_org": "Offer.price+priceCurrency"}
-
-Page = tuple[int, bytes, BlockClass]
 
 
 def page(*hrefs: str, product: str | None = None, offers: bool = True) -> Page:
@@ -57,70 +47,34 @@ def page(*hrefs: str, product: str | None = None, offers: bool = True) -> Page:
         head = f'<script type="application/ld+json">{json.dumps(node)}</script>'
     anchors = "".join(f'<a href="{href}">link</a>' for href in hrefs)
     body = f"<main><h1>{product or 'Shop'}</h1><p>A shop that sells kettles.</p>{anchors}</main>"
-    return 200, f"<!doctype html><html lang='en'><head>{head}</head><body>{body}</body></html>".encode(), "ok"
+    return Page(200, f"<!doctype html><html lang='en'><head>{head}</head><body>{body}</body></html>".encode())
 
 
 def urlset(*locs: str) -> Page:
     entries = "".join(f"<url><loc>{loc}</loc></url>" for loc in locs)
-    return 200, f'<?xml version="1.0"?><urlset xmlns="{NS}">{entries}</urlset>'.encode(), "ok"
+    return Page(200, f'<?xml version="1.0"?><urlset xmlns="{NS}">{entries}</urlset>'.encode())
 
 
 def robots(*lines: str) -> Page:
-    return 200, "\n".join(["User-agent: *", "Allow: /", *lines]).encode(), "ok"
+    return Page(200, "\n".join(["User-agent: *", "Allow: /", *lines]).encode())
 
 
 @dataclass
-class Web:
-    """Answers each URL from `pages` over HTTP; anything else is a 404. A URL of `redirects` answers as its target,
-    reached through the site's redirect. A URL in `refused` redirects to a private address: the rung reports the
-    guard's refusal as the attempt's error. A URL in `held` answers once its event is set. The browser renders a page
-    as it is served (`rendered` lists the URLs)."""
+class Web(SharedWeb):
+    """`SharedWeb`, where a URL in `refused` redirects to a private address: the rung reports the guard's refusal as
+    the attempt's error."""
 
-    fetch_result: Callable[..., FetchResult]
-    pages: dict[str, Page] = field(default_factory=dict)
-    redirects: dict[str, str] = field(default_factory=dict)
     refused: set[str] = field(default_factory=set)
-    held: dict[str, asyncio.Event] = field(default_factory=dict)
-    fetched: list[str] = field(default_factory=list)
-    rendered: list[str] = field(default_factory=list)
 
-    async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
+    async def fetch(self, method: CaptureMethod, url: str, policy: FetchPolicy) -> FetchResult:
         if url in self.refused:
             return self.fetch_result(url, 0, b"", block_class="error", error="ssrf_rejected: private_address")
-        self.fetched.append(url)
-        if url in self.held:
-            await self.held[url].wait()
-        final_url = self.redirects.get(url, url)
-        status, body, block_class = self.pages.get(final_url, (404, b"gone", "not_found"))
-        return self.fetch_result(url, status, body, block_class=block_class, final_url=final_url)
-
-    async def browser(self, url: str, policy: FetchPolicy) -> FetchResult:
-        self.rendered.append(url)
-        status, body, block_class = self.pages.get(url, (404, b"gone", "not_found"))
-        return self.fetch_result(url, status, body, block_class=block_class, method="browser")
+        return await super().fetch(method, url, policy)
 
 
 @pytest.fixture
 def web(fetch_result: Callable[..., FetchResult], own_origin: str) -> Web:
-    return Web(fetch_result, {f"{own_origin}/robots.txt": robots()})
-
-
-@pytest.fixture
-def fetching(web: Web, tmp_path: Path) -> Fetching:
-    clock = itertools.count(step=3600)
-    return Fetching(
-        Rungs(http=web.http, browser=web.browser),
-        SafeConnector(resolve),
-        FsStore(tmp_path / "objects"),
-        HostLimiter(clock=lambda: float(next(clock))),
-    )
-
-
-@pytest.fixture
-async def kettle_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
-    async with engine.begin() as conn:
-        return await registry.create(conn, SchemaDocument.model_validate(document), "user")
+    return Web.site(fetch_result, own_origin)
 
 
 def crawl(url: str, *formats: str, **members: Any) -> CrawlRequest:

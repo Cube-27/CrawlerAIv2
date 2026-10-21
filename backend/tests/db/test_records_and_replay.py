@@ -9,15 +9,12 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import delete, func, insert, select
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy import func, insert, select
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
 from crawlerai.acquire.types import FetchResult
-from crawlerai.api.app import create_app
-from crawlerai.db.keys import create_key
 from crawlerai.db.models import (
-    ApiKey,
     CaptureId,
     Job,
     JobId,
@@ -36,6 +33,7 @@ from crawlerai.schemas.types import FieldSpec, FieldType, SchemaDef, SchemaDocum
 from crawlerai.services import captures, records
 from crawlerai.services.records import RecordFilter
 from crawlerai.storage.fs import FsStore
+from tests.db.support import api
 
 pytestmark = pytest.mark.anyio
 
@@ -206,30 +204,13 @@ def app_data(world: World) -> EngineData | None:
 
 @pytest.fixture
 async def client(
-    world: World, database_url: str, app_data: EngineData | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    app_env: pytest.MonkeyPatch, world: World, app_data: EngineData | None
 ) -> AsyncIterator[httpx.AsyncClient]:
     """The app against the test database, reading captures from the world's object store, with no LLM provider key."""
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + (tmp_path / "objects").as_posix().lstrip("/"))
-    monkeypatch.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
-    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
-    async with world.engine.begin() as conn:
-        key = await create_key(conn, "records-api-test")
-    app = create_app()
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url="http://api.test",
-            headers={"authorization": f"Bearer {key.key}"},
-        ) as client,
-    ):
+    app_env.setenv("CRAWLERAI_LLM_PROVIDERS", "anthropic")
+    async with api(world.engine) as (app, client):
         app.state.engine_data = app_data
         yield client
-    keys = create_async_engine(database_url)
-    async with keys.begin() as conn:
-        await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
-    await keys.dispose()
 
 
 async def test_records_are_listed_in_the_field_shape_with_a_cursor(client: httpx.AsyncClient, world: World) -> None:

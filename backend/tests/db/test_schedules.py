@@ -11,18 +11,15 @@ import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import Job, JobId, Schedule, ScheduleId
 from crawlerai.llm.client import NO_LLM
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services import schedules
-from crawlerai.services.fetching import Fetching, TargetsRejected
+from crawlerai.services.fetching import TargetsRejected
 from crawlerai.services.schedules import NewBatchSchedule, Submitting
-from crawlerai.storage.fs import FsStore
-from tests.db.conftest import PRIVATE_HOST, resolve
+from tests.db.support import PRIVATE_HOST, fetching_from
 
 pytestmark = pytest.mark.anyio
 
@@ -36,8 +33,7 @@ async def _never(url: str, policy: FetchPolicy) -> FetchResult:
 
 @pytest.fixture
 def submitting(tmp_path: Path, engine_data: EngineData) -> Submitting:
-    fetching = Fetching(Rungs(http=_never, browser=_never), SafeConnector(resolve), FsStore(tmp_path), HostLimiter())
-    return Submitting(fetching, engine_data, NO_LLM)
+    return Submitting(fetching_from(Rungs(http=_never, browser=_never), tmp_path), engine_data, NO_LLM)
 
 
 @pytest.fixture

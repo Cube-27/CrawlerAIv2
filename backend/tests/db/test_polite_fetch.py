@@ -2,12 +2,12 @@
 (`worker.handlers.steps.fetch_queued`, the one polite fetch as a worker runs it)."""
 
 import json
-from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 import pytest
-from sqlalchemy import delete, insert, select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.politeness import Admit, HostLimiter
@@ -18,6 +18,7 @@ from crawlerai.db.queue import ClaimedTask, Failed, Finished, claim_tasks
 from crawlerai.services.polite import QUEUED, HostRules, PageFetch, Turns, rules_of
 from crawlerai.worker.handlers.steps import fetch_queued
 from crawlerai.worker.loop import TaskResult
+from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio
 
@@ -29,40 +30,27 @@ OBEYS = FetchPolicy(respect_robots=True)
 
 
 @dataclass
-class Web:
-    """Answers each URL from `pages`, as (status, body, response headers); anything else is a 404. A page fetch's
-    `Admit` goes unused: it makes one request."""
-
-    fetch_result: Callable[..., FetchResult]
-    pages: dict[str, tuple[int, bytes, tuple[tuple[str, str], ...]]] = field(default_factory=dict)
-    fetched: list[str] = field(default_factory=list)
-
-    async def rung(self, url: str, _policy: FetchPolicy) -> FetchResult:
-        return await self(url)
+class Web(SharedWeb):
+    """`SharedWeb`, which is a page fetch too: its `Admit` goes unused, it makes one request."""
 
     async def __call__(self, url: str, _admit: Admit | None = None, _known: HostRules | None = None) -> FetchResult:
-        self.fetched.append(url)
-        status, body, headers = self.pages.get(url, (404, b"no such page", ()))
-        return self.fetch_result(url, status, body, headers, block_class="ok" if status < 400 else "blocked")
+        return await self.fetch("http", url, FetchPolicy())
 
 
 @pytest.fixture
 def web(fetch_result: Callable[..., FetchResult]) -> Web:
-    return Web(fetch_result, {f"{ORIGIN}/robots.txt": (200, ROBOTS.encode(), ())})
+    site = Web(fetch_result)
+    site.robots(ORIGIN, ROBOTS.encode())
+    return site
 
 
 @pytest.fixture
-async def site_id(engine: AsyncEngine) -> AsyncIterator[SiteId]:
-    """The site of `ORIGIN`, deleted after the test: its row and robots.txt snapshot are written in transactions of
-    their own (`rules_of`)."""
-    host = urlsplit(ORIGIN).hostname
+async def site_id(engine: AsyncEngine) -> SiteId:
+    """The site of `ORIGIN`: its row and robots.txt snapshot are written in transactions of their own (`rules_of`)."""
+    values = {"project_id": DEFAULT_PROJECT, "host": urlsplit(ORIGIN).hostname}
     async with engine.begin() as conn:
-        await conn.execute(delete(Site).where(Site.host == host))
-        values = {"project_id": DEFAULT_PROJECT, "host": host}
         site: SiteId = (await conn.execute(insert(Site).values(**values).returning(Site.id))).scalar_one()
-    yield site
-    async with engine.begin() as conn:
-        await conn.execute(delete(Site).where(Site.id == site))
+    return site
 
 
 async def _tasks(engine: AsyncEngine, *paths: str) -> list[ClaimedTask]:
@@ -89,7 +77,12 @@ async def _polite(
     web = robots or page
     assert isinstance(web, Web)
     return await fetch_queued(
-        task, policy, rules_of(engine, web.rung, [], Turns(limiter, QUEUED)), page, limiter, by_adapter=by_adapter
+        task,
+        policy,
+        rules_of(engine, web.rung("http"), [], Turns(limiter, QUEUED)),
+        page,
+        limiter,
+        by_adapter=by_adapter,
     )
 
 
@@ -108,7 +101,7 @@ async def test_a_disallowed_page_is_blocked_by_robots_without_being_fetched(
     result = await _polite(engine, task, OBEYS, web, HostLimiter())
 
     assert result == Finished("blocked", reason="robots")
-    assert web.fetched == [f"{ORIGIN}/robots.txt"]
+    assert web.urls() == [f"{ORIGIN}/robots.txt"]
     snapshot = await _snapshot(engine, site_id)
     assert snapshot is not None
     assert (snapshot.status_code, snapshot.body) == (200, ROBOTS)
@@ -116,24 +109,24 @@ async def test_a_disallowed_page_is_blocked_by_robots_without_being_fetched(
 
 @pytest.mark.usefixtures("site_id")
 async def test_by_default_a_disallowed_page_is_fetched_without_reading_robots(engine: AsyncEngine, web: Web) -> None:
-    web.pages[f"{ORIGIN}/private/a"] = (200, PAGE, ())
+    web.serve(f"{ORIGIN}/private/a", PAGE)
     [task] = await _tasks(engine, "/private/a")
 
     result = await _polite(engine, task, FetchPolicy(), web, HostLimiter())
 
     assert isinstance(result, FetchResult)
-    assert web.fetched == [f"{ORIGIN}/private/a"]
+    assert web.urls() == [f"{ORIGIN}/private/a"]
     assert result.bundle.manifest.url == f"{ORIGIN}/private/a"
 
 
 async def test_an_unreachable_robots_file_fails_the_attempt_and_stores_nothing(
     engine: AsyncEngine, site_id: SiteId, web: Web
 ) -> None:
-    web.pages[f"{ORIGIN}/robots.txt"] = (503, b"", ())
+    web.serve(f"{ORIGIN}/robots.txt", b"", 503, "blocked")
     [task] = await _tasks(engine, "/item/1")
 
     result = await _polite(engine, task, OBEYS, web, HostLimiter())
 
     assert result == Failed("robots_unreachable", transient=True, exhausted="blocked")
-    assert web.fetched == [f"{ORIGIN}/robots.txt"]
+    assert web.urls() == [f"{ORIGIN}/robots.txt"]
     assert await _snapshot(engine, site_id) is None

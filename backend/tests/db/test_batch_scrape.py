@@ -4,11 +4,8 @@ others (INV-31)."""
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from ipaddress import ip_address
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -16,12 +13,8 @@ from pydantic import SecretStr
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.session import CookieExport
-from crawlerai.acquire.shared_browser import SharedBrowser
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.core.capture import CaptureMethod
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import (
     Job,
@@ -31,25 +24,20 @@ from crawlerai.db.models import (
 from crawlerai.db.queue import MAX_ATTEMPTS, ClaimedTask
 from crawlerai.llm.client import NO_LLM, LLMClient
 from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaDef, SchemaDocument
 from crawlerai.services import jobs
 from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.fetching import Fetching, TargetsRejected
 from crawlerai.services.jobs import PageOutputPage, ResultsQuery
 from crawlerai.services.page_run import Page
-from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers import scrape as scrape_handler
 from crawlerai.worker.handlers import steps
 from crawlerai.worker.handlers.steps import Ended
 from crawlerai.worker.handlers.table import task_handlers
 from crawlerai.worker.loop import run_worker
+from tests.db.support import PRIVATE_HOST
+from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio
-
-PRIVATE_HOST = "intranet.example.test"
-TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
-PRICE = {"type": "money", "required": True, "description": "The price", "schema_org": "Offer.price+priceCurrency"}
 
 
 def _page(name: str, *, offers: bool = True) -> bytes:
@@ -69,77 +57,20 @@ class Crash(Exception):
 
 
 @dataclass
-class Session:
-    number: int
-    connected: bool = True
+class Web(SharedWeb):
+    """`SharedWeb`, where the HTTP rung raises for a URL in `raising`."""
 
-
-@dataclass
-class Web:
-    """Answers each URL from `pages` as (status, body) over HTTP; anything else is a 404. A URL in `raising` makes
-    the HTTP rung raise. The browser answers the same pages, or a URL's page in `renders`; a fetch of a URL in
-    `crashing` kills its session."""
-
-    fetch_result: Callable[..., FetchResult]
-    pages: dict[str, tuple[int, bytes]] = field(default_factory=dict)
     raising: set[str] = field(default_factory=set)
-    crashing: set[str] = field(default_factory=set)
-    renders: dict[str, bytes] = field(default_factory=dict)
-    browser_fetches: list[tuple[int, str]] = field(default_factory=list)
-    http_fetches: list[tuple[str, FetchPolicy]] = field(default_factory=list)
-    policies: list[FetchPolicy] = field(default_factory=list)  # of the browser's fetches
-    sessions: int = 0
 
-    def answer(self, url: str, method: str = "http") -> FetchResult:
-        status, body = self.pages.get(url, (404, b"gone"))
-        return self.fetch_result(url, status, body, block_class="ok" if status == 200 else "not_found", method=method)
-
-    async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
-        if url in self.raising:
+    async def fetch(self, method: CaptureMethod, url: str, policy: FetchPolicy) -> FetchResult:
+        if method == "http" and url in self.raising:
             raise Crash("the rung raised")
-        self.http_fetches.append((url, policy))
-        return self.answer(url)
-
-    @asynccontextmanager
-    async def launch(self) -> AsyncIterator[Session]:
-        self.sessions += 1
-        yield Session(self.sessions)
-
-    async def in_browser(
-        self, session: Session, url: str, policy: FetchPolicy, export: CookieExport | None = None
-    ) -> FetchResult:
-        self.browser_fetches.append((session.number, url))
-        self.policies.append(policy)
-        if url in self.crashing:
-            session.connected = False
-            return self.fetch_result(url, 0, b"", block_class="error", error="browser crashed", method="browser")
-        if url in self.renders:
-            return self.fetch_result(url, 200, self.renders[url], method="browser")
-        result = self.answer(url, "browser")
-        files = {**({"screenshot.png": b"png " + url.encode()} if policy.screenshot else {})}
-        return result.model_copy(update={"artifacts": files})
+        return await super().fetch(method, url, policy)
 
 
 @pytest.fixture
 def web(fetch_result: Callable[..., FetchResult], own_origin: str) -> Web:
-    return Web(fetch_result, {f"{own_origin}/robots.txt": (200, b"User-agent: *\nAllow: /\n")})
-
-
-@pytest.fixture
-def fetching(web: Web, tmp_path: Path) -> Fetching:
-    async def resolve(host: str) -> list[IPAddress]:
-        return [ip_address("10.0.0.7" if host == PRIVATE_HOST else "93.184.215.14")]
-
-    browser = SharedBrowser(web.launch, web.in_browser, lambda session: session.connected)
-    rungs = Rungs(http=web.http, browser=browser.fetch)
-    return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
-
-
-@pytest.fixture
-async def kettle_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
-    async with engine.begin() as conn:
-        return await registry.create(conn, SchemaDocument.model_validate(document), "user")
+    return Web.site(fetch_result, own_origin)
 
 
 def _batch(urls: list[str], *formats: str, **members: Any) -> BatchScrapeRequest:
@@ -222,8 +153,8 @@ async def test_page_outputs_are_made_from_each_tasks_capture_and_paginate(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     urls = [f"{own_origin}/kettles/{name}" for name in ("blue", "red", "gone")]
-    web.pages[urls[0]] = (200, _page("Blue kettle"))
-    web.pages[urls[1]] = (200, _page("Red kettle"))
+    web.serve(urls[0], _page("Blue kettle"))
+    web.serve(urls[1], _page("Red kettle"))
     submitted = await submit_batch(engine, fetching.connector, _batch(urls, "markdown", "links"), data=None)
 
     await _run(engine, fetching, None, submitted.job_id)
@@ -267,8 +198,8 @@ async def test_a_task_that_raises_fails_alone(
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str
 ) -> None:
     urls = [f"{own_origin}/kettles/{name}" for name in ("blue", "broken", "red")]
-    web.pages[urls[0]] = (200, _page("Blue kettle"))
-    web.pages[urls[2]] = (200, _page("Red kettle"))
+    web.serve(urls[0], _page("Blue kettle"))
+    web.serve(urls[2], _page("Red kettle"))
     web.raising.add(urls[1])
     submitted = await submit_batch(engine, fetching.connector, _batch(urls, "markdown"), data=None)
     await _last_attempt(engine, urls[1])
@@ -296,7 +227,7 @@ async def test_tasks_of_one_site_hold_none_of_its_rows_across_their_transactions
     # that a task's transaction held (the contract its fetch taught) would keep the other out until it timed out.
     urls = [f"{own_origin}/kettles/{name}" for name in ("blue", "red")]
     for url in urls:
-        web.pages[url] = (200, _page("Kettle"))
+        web.serve(url, _page("Kettle"))
     both, timed_out = asyncio.Barrier(2), []
     count_fetch = steps.count_fetch
 

@@ -7,14 +7,14 @@ guard itself is under test.
 import hashlib
 import hmac
 import json
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
 from ipaddress import ip_address
 from typing import Any
 
 import pytest
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.ssrf import IPAddress, SafeConnector
@@ -22,16 +22,13 @@ from crawlerai.api.webhooks import MAX_ATTEMPTS, Poster, deliver_webhooks, poste
 from crawlerai.db.jobs import transition_job
 from crawlerai.db.keys import CreatedKey, create_key
 from crawlerai.db.models import (
-    ApiKey,
     ApiKeyId,
     Job,
-    JobEvent,
     JobId,
     JobStatus,
     Project,
     UrlTask,
     WebhookDelivery,
-    WebhookEvent,
     WebhookEventType,
 )
 from crawlerai.db.webhook_outbox import FORM_BATCH, JOB_END_EVENTS, form_deliveries
@@ -60,17 +57,9 @@ class Receiver:
 
 
 @pytest.fixture
-async def key(engine: AsyncEngine) -> AsyncIterator[CreatedKey]:
+async def key(engine: AsyncEngine) -> CreatedKey:
     async with engine.begin() as conn:
-        created = await create_key(conn, "webhook-test")
-    yield created
-    async with engine.begin() as conn:
-        # The key's jobs go first, as they reference it; the `engine` fixture deletes the rest.
-        jobs = select(Job.id).where(Job.api_key_id == created.id).scalar_subquery()
-        for model in (WebhookEvent, WebhookDelivery, JobEvent, UrlTask):
-            await conn.execute(delete(model).where(model.job_id.in_(jobs)))
-        await conn.execute(delete(Job).where(Job.api_key_id == created.id))
-        await conn.execute(delete(ApiKey).where(ApiKey.id == created.id))
+        return await create_key(conn, "webhook-test")
 
 
 async def _running(

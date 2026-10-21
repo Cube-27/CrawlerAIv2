@@ -5,16 +5,14 @@ creates, reactivates or resets a key."""
 import asyncio
 import json
 import uuid
-from collections.abc import AsyncIterator
 from datetime import timedelta
-from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
 import pytest
 from fastapi import APIRouter, Depends, FastAPI
-from sqlalchemy import Row, delete, func, select, update
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy import Row, func, select, update
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.api.app import create_app
 from crawlerai.api.auth import require_api_key
@@ -23,26 +21,6 @@ from crawlerai.db.keys import hash_key
 from crawlerai.db.models import ApiKey, ApiKeyId
 
 pytestmark = pytest.mark.anyio
-
-
-@pytest.fixture
-def env(database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> pytest.MonkeyPatch:
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + tmp_path.as_posix().lstrip("/"))
-    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
-    return monkeypatch
-
-
-@pytest.fixture
-async def keys(database_url: str) -> AsyncIterator[AsyncEngine]:
-    """The database, with every key a test created deleted afterwards."""
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        before = set((await conn.execute(select(ApiKey.id))).scalars())
-    yield engine
-    async with engine.begin() as conn:
-        await conn.execute(delete(ApiKey).where(ApiKey.id.not_in(before)))
-    await engine.dispose()
 
 
 async def _cli(capsys: pytest.CaptureFixture[str], *argv: str) -> str:
@@ -83,11 +61,11 @@ async def _row(engine: AsyncEngine, key_id: str) -> Row[Any]:
 
 
 async def test_a_created_key_is_shown_once_stored_hashed_and_accepted(
-    env: pytest.MonkeyPatch, keys: AsyncEngine, capsys: pytest.CaptureFixture[str]
+    app_env: pytest.MonkeyPatch, engine: AsyncEngine, capsys: pytest.CaptureFixture[str]
 ) -> None:
     created = await _create(capsys, "ci")
 
-    row = await _row(keys, created["id"])
+    row = await _row(engine, created["id"])
     [response] = await _whoami(created["key"])
 
     assert sorted(created) == ["id", "key", "label", "webhook_secret"]
@@ -100,7 +78,7 @@ async def test_a_created_key_is_shown_once_stored_hashed_and_accepted(
 
 
 async def test_unknown_and_revoked_keys_are_unauthorized(
-    env: pytest.MonkeyPatch, keys: AsyncEngine, capsys: pytest.CaptureFixture[str]
+    app_env: pytest.MonkeyPatch, engine: AsyncEngine, capsys: pytest.CaptureFixture[str]
 ) -> None:
     created = await _create(capsys)
     revoked = json.loads(await _cli(capsys, "apikey", "revoke", created["id"]))
@@ -108,15 +86,15 @@ async def test_unknown_and_revoked_keys_are_unauthorized(
     responses = await _whoami(created["key"], "ck_" + "0" * 43)
 
     assert revoked == {"id": created["id"], "revoked": True}
-    assert (await _row(keys, created["id"])).revoked_at is not None
+    assert (await _row(engine, created["id"])).revoked_at is not None
     assert [response.status_code for response in responses] == [401, 401]
     assert {response.json()["type"] for response in responses} == {"unauthorized"}
 
 
 @pytest.mark.parametrize(("age_s", "moves"), [(None, True), (30, False), (120, True)])
 async def test_last_used_at_moves_at_most_once_a_minute(
-    env: pytest.MonkeyPatch,
-    keys: AsyncEngine,
+    app_env: pytest.MonkeyPatch,
+    engine: AsyncEngine,
     capsys: pytest.CaptureFixture[str],
     age_s: int | None,
     moves: bool,
@@ -124,12 +102,12 @@ async def test_last_used_at_moves_at_most_once_a_minute(
     created = await _create(capsys)
     key_id = uuid.UUID(created["id"])
     last_used = None if age_s is None else func.now() - timedelta(seconds=age_s)
-    async with keys.begin() as conn:
+    async with engine.begin() as conn:
         await conn.execute(update(ApiKey).where(ApiKey.id == key_id).values(last_used_at=last_used))
-    before = (await _row(keys, created["id"])).last_used_at
+    before = (await _row(engine, created["id"])).last_used_at
 
     [response] = await _whoami(created["key"])
 
-    after = (await _row(keys, created["id"])).last_used_at
+    after = (await _row(engine, created["id"])).last_used_at
     assert response.status_code == 200
     assert (after != before) is moves

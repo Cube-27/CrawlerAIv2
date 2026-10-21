@@ -8,30 +8,25 @@ adapter's values are `adapter` candidates in the `adapter` bucket."""
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from pathlib import Path
 from typing import Any
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs, adapter_registry
-from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDef, SchemaDocument
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
-from crawlerai.storage.fs import FsStore
-from tests.db.conftest import resolve
+from tests.db.support import PRICE, TITLE
+from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio
 
 API_VERSION = "2026-10"
-TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
-PRICE = {"type": "money", "required": True, "description": "The price", "schema_org": "Offer.price+priceCurrency"}
 URL = {"type": "url", "required": True, "description": "The product page the row links to", "schema_org": "Product.url"}
 # Three products, each a card that shows its tax-inclusive amount; the API states the catalogue (tax-exclusive) one.
 LAMPS = (
@@ -64,32 +59,14 @@ def _answer(own_origin: str) -> dict[str, Any]:
 
 
 @dataclass
-class Web:
-    """Answers each URL from `pages` over HTTP, and the storefront endpoint with `answer` and, when `platform`, the
-    platform's version header. The browser renders a page as it is served (`rendered` lists the URLs)."""
+class Web(SharedWeb):
+    """`SharedWeb` with the storefront endpoint, which answers with `endpoint` and, when `platform`, the platform's
+    version header, or fails with `status`."""
 
-    fetch_result: Callable[..., FetchResult]
-    pages: dict[str, bytes] = field(default_factory=dict)
-    answer: dict[str, Any] = field(default_factory=dict)
+    endpoint: dict[str, Any] = field(default_factory=dict)
     platform: bool = True
     status: int = 200
-    fetched: list[str] = field(default_factory=list)
     requested: list[str] = field(default_factory=list)
-    rendered: list[str] = field(default_factory=list)
-    redirects: dict[str, str] = field(default_factory=dict)  # a URL -> where its redirects end
-
-    async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
-        self.fetched.append(url)
-        final = self.redirects.get(url, url)
-        if final not in self.pages:
-            return self.fetch_result(url, 404, b"gone", block_class="not_found")
-        return self.fetch_result(url, 200, self.pages[final], final_url=final)
-
-    async def browser(self, url: str, policy: FetchPolicy) -> FetchResult:
-        self.rendered.append(url)
-        if url not in self.pages:
-            return self.fetch_result(url, 404, b"gone", block_class="not_found", method="browser")
-        return self.fetch_result(url, 200, self.pages[url], method="browser")
 
     async def json(self, request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         self.requested.append(request.url)
@@ -100,22 +77,16 @@ class Web:
             return self.fetch_result(
                 request.page_url, self.status, b"", headers, block_class="blocked", method="api", final_url=request.url
             )
-        body = json.dumps(self.answer).encode()
+        body = json.dumps(self.endpoint).encode()
         return self.fetch_result(request.page_url, 200, body, headers, method="api", final_url=request.url)
 
-    def page_fetches(self) -> list[str]:
-        return [url for url in self.fetched if not url.endswith("/robots.txt")]
+    def rungs(self) -> Rungs:
+        return replace(super().rungs(), adapters=adapter_registry(()), json=self.json)
 
 
 @pytest.fixture
 def web(fetch_result: Callable[..., FetchResult], own_origin: str) -> Web:
-    return Web(fetch_result, {f"{own_origin}/robots.txt": b"User-agent: *\nAllow: /\n"}, _answer(own_origin))
-
-
-@pytest.fixture
-def fetching(web: Web, tmp_path: Path) -> Fetching:
-    rungs = Rungs(http=web.http, browser=web.browser, adapters=adapter_registry(()), json=web.json)
-    return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
+    return Web.site(fetch_result, own_origin, endpoint=_answer(own_origin))
 
 
 @pytest.fixture
@@ -147,12 +118,12 @@ async def test_a_storefront_collection_page_is_joined_with_its_answer_and_shows_
     engine: AsyncEngine, fetching: Fetching, web: Web, own_origin: str, lamp_schema: SchemaDef, data: EngineData
 ) -> None:
     url = f"{own_origin}/collections/lamps"
-    web.pages[url] = PAGE
+    web.serve(url, PAGE)
 
     result = await scrape(engine, fetching, _scrape(url, lamp_schema), data=data)
 
     assert result.fetch is not None
-    assert (result.outcome, result.fetch.method, web.page_fetches()) == ("extracted", "http", [url])
+    assert (result.outcome, result.fetch.method, web.page_fetches()) == ("extracted", "http", [("http", url)])
     assert web.requested == [f"{own_origin}/api/{API_VERSION}/graphql.json"]
     # The page stays the capture, with its next-page link for the crawl to follow.
     assert f"{url}?page=2" in (result.links or [])
@@ -173,8 +144,8 @@ async def test_a_collection_redirected_to_its_www_host_is_joined_with_that_host_
     www = own_origin.replace("://", "://www.", 1)
     url = f"{own_origin}/collections/lamps"
     web.redirects[url] = f"{www}/collections/lamps"
-    web.pages[f"{www}/collections/lamps"] = PAGE
-    web.answer = _answer(www)
+    web.serve(f"{www}/collections/lamps", PAGE)
+    web.endpoint = _answer(www)
 
     result = await scrape(engine, fetching, _scrape(url, lamp_schema), data=data)
 
@@ -190,8 +161,8 @@ async def test_a_collection_page_robots_txt_disallows_is_neither_fetched_nor_ask
 ) -> None:
     # adapters spec: a page-scoped adapter serves a fetched page only, so a page robots.txt disallows is not served.
     url = f"{own_origin}/collections/lamps"
-    web.pages[url] = PAGE
-    web.pages[f"{own_origin}/robots.txt"] = b"User-agent: *\nDisallow: /collections/\n"
+    web.serve(url, PAGE)
+    web.robots(own_origin, b"User-agent: *\nDisallow: /collections/\n")
 
     obeying = _scrape(url, lamp_schema, fetch={"respect_robots": True})
     result = await scrape(engine, fetching, obeying, data=data)

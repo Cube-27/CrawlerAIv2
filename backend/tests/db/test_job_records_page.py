@@ -26,10 +26,9 @@ from crawlerai.db.models import (
 from crawlerai.schemas import registry
 from crawlerai.schemas.types import SchemaDocument
 from crawlerai.services.records import RecordFilter, list_records
+from tests.db.support import TITLE
 
 pytestmark = pytest.mark.anyio
-
-TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
 
 
 @dataclass

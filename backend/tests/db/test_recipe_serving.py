@@ -5,19 +5,16 @@ through robots.txt and the site's rate like the page's would (acquisition spec);
 
 import json
 import uuid
-from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass, field
-from pathlib import Path
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import pytest
-from sqlalchemy import delete, insert, select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.api import JsonRequest
-from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SafeConnector
 from crawlerai.acquire.types import FetchPolicy, FetchResult
 from crawlerai.db.models import (
     ExtractionConfig,
@@ -25,17 +22,13 @@ from crawlerai.db.models import (
     SiteId,
 )
 from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaDef, SchemaDocument, document_digest
+from crawlerai.schemas.types import SchemaDef, document_digest
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
-from crawlerai.storage.fs import FsStore
-from tests.db.conftest import resolve
+from tests.db.support import Web as SharedWeb
 
 pytestmark = pytest.mark.anyio
 
-TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
-PRICE = {"type": "money", "required": True, "description": "The price", "schema_org": "Offer.price+priceCurrency"}
 # The page's heading is not the product's name, so a value read from the page and one from the API differ.
 PAGE = b"""<!doctype html><html lang="en"><head><title>Lamps</title></head>
 <body><main><h1>Lamp page</h1><p>A lamp that lights a desk.</p><a href="/p/other-lamp">Another lamp</a></main></body>
@@ -45,24 +38,11 @@ PRODUCT = {"data": {"slug": "desk-lamp", "name": "Desk Lamp", "price": 19.5, "cu
 
 
 @dataclass
-class Web:
-    """Answers each URL from `pages` over HTTP, and each endpoint from `endpoints` as JSON; anything else is a 404.
-    The browser renders a page as it is served."""
+class Web(SharedWeb):
+    """`SharedWeb` with each endpoint of `endpoints` answering as JSON; any other is a 404."""
 
-    fetch_result: Callable[..., FetchResult]
-    pages: dict[str, bytes] = field(default_factory=dict)
     endpoints: dict[str, object] = field(default_factory=dict)
-    fetched: list[str] = field(default_factory=list)
     requested: list[JsonRequest] = field(default_factory=list)
-
-    async def http(self, url: str, policy: FetchPolicy) -> FetchResult:
-        self.fetched.append(url)
-        if url not in self.pages:
-            return self.fetch_result(url, 404, b"gone", block_class="not_found")
-        return self.fetch_result(url, 200, self.pages[url])
-
-    async def browser(self, url: str, policy: FetchPolicy) -> FetchResult:
-        return self.fetch_result(url, 200, self.pages[url], method="browser")
 
     async def json(self, request: JsonRequest, policy: FetchPolicy) -> FetchResult:
         self.requested.append(request)
@@ -71,26 +51,13 @@ class Web:
         body = json.dumps(self.endpoints[request.url]).encode()
         return self.fetch_result(request.page_url, 200, body, method="api")
 
-    def page_fetches(self) -> list[str]:
-        return [url for url in self.fetched if not url.endswith("/robots.txt")]
+    def rungs(self) -> Rungs:
+        return replace(super().rungs(), json=self.json)
 
 
 @pytest.fixture
 def web(fetch_result: Callable[..., FetchResult], own_origin: str) -> Web:
-    return Web(fetch_result, {f"{own_origin}/robots.txt": b"User-agent: *\nAllow: /\n"})
-
-
-@pytest.fixture
-def fetching(web: Web, tmp_path: Path) -> Fetching:
-    rungs = Rungs(http=web.http, browser=web.browser, json=web.json)
-    return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
-
-
-@pytest.fixture
-async def lamp_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
-    async with engine.begin() as conn:
-        return await registry.create(conn, SchemaDocument.model_validate(document), "user")
+    return Web.site(fetch_result, own_origin)
 
 
 def _ir(origin: str, schema: SchemaDef) -> dict[str, Any]:
@@ -120,16 +87,16 @@ def _ir(origin: str, schema: SchemaDef) -> dict[str, Any]:
 
 @pytest.fixture
 async def recipe_config(
-    engine: AsyncEngine, own_origin: str, site: SiteId, lamp_schema: SchemaDef
-) -> AsyncIterator[ExtractionConfigId]:
+    engine: AsyncEngine, own_origin: str, site: SiteId, kettle_schema: SchemaDef
+) -> ExtractionConfigId:
     """The site's active config for the schema, with its API recipe."""
     values = {
         "site_id": site,
-        "schema_id": lamp_schema.id,
+        "schema_id": kettle_schema.id,
         "page_kind": "detail",
         "version": 1,
         "status": "active",
-        "ir": _ir(own_origin, lamp_schema),
+        "ir": _ir(own_origin, kettle_schema),
         "origin": "induced",
         "field_status": {"title": "corroborated"},
     }
@@ -137,9 +104,7 @@ async def recipe_config(
         config_id = (
             await conn.execute(insert(ExtractionConfig).values(values).returning(ExtractionConfig.id))
         ).scalar_one()
-    yield config_id
-    async with engine.begin() as conn:
-        await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site))
+    return config_id
 
 
 async def _drift_window(engine: AsyncEngine, config_id: uuid.UUID) -> object:
@@ -168,15 +133,15 @@ async def test_a_scrape_of_a_site_with_a_recipe_is_served_over_its_api(
     fetching: Fetching,
     web: Web,
     own_origin: str,
-    lamp_schema: SchemaDef,
+    kettle_schema: SchemaDef,
     recipe_config: uuid.UUID,
     engine_data: EngineData,
 ) -> None:
     url = f"{own_origin}/p/desk-lamp"
-    web.pages[url] = PAGE
+    web.serve(url, PAGE)
     web.endpoints[f"{own_origin}/api/products/desk-lamp"] = PRODUCT
 
-    result = await scrape(engine, fetching, _scrape(url, lamp_schema), data=engine_data)
+    result = await scrape(engine, fetching, _scrape(url, kettle_schema), data=engine_data)
 
     assert result.fetch is not None
     assert (result.outcome, result.fetch.method) == ("extracted", "api")
@@ -197,20 +162,20 @@ async def test_an_endpoint_robots_txt_disallows_is_not_requested_and_the_page_is
     fetching: Fetching,
     web: Web,
     own_origin: str,
-    lamp_schema: SchemaDef,
+    kettle_schema: SchemaDef,
     recipe_config: uuid.UUID,
     engine_data: EngineData,
 ) -> None:
     url = f"{own_origin}/p/desk-lamp"
-    web.pages[url] = PAGE
-    web.pages[f"{own_origin}/robots.txt"] = b"User-agent: *\nDisallow: /api/\n"
+    web.serve(url, PAGE)
+    web.robots(own_origin, b"User-agent: *\nDisallow: /api/\n")
     web.endpoints[f"{own_origin}/api/products/desk-lamp"] = PRODUCT
-    obeying = _scrape(url, lamp_schema, fetch={"respect_robots": True})
+    obeying = _scrape(url, kettle_schema, fetch={"respect_robots": True})
 
     result = await scrape(engine, fetching, obeying, data=engine_data)
 
     assert result.fetch is not None
-    assert (result.fetch.method, web.page_fetches(), web.requested) == ("http", [url], [])
+    assert (result.fetch.method, web.page_fetches(), web.requested) == ("http", [("http", url)], [])
     assert [(a.method, a.error) for a in result.fetch.attempts if a.method == "api"] == [("api", "robots")]
     assert result.records is not None
     assert result.records[0].fields["title"].value == "Lamp page"

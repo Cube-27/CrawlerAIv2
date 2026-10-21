@@ -11,6 +11,7 @@ import json
 import os
 import sys
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -22,14 +23,12 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.memory import create_connected_server_and_client_session
 from mcp.types import CallToolResult, ImageContent, TextContent
 from pydantic import TypeAdapter
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.acquire.politeness import HostLimiter
-from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SafeConnector
-from crawlerai.acquire.types import FetchPolicy, FetchResult
+from crawlerai.acquire.types import FetchResult
 from crawlerai.api.app import create_app
+from crawlerai.core.capture import BlockClass
 from crawlerai.db.keys import CreatedKey, create_key, revoke_key
 from crawlerai.db.models import (
     ApiKey,
@@ -37,7 +36,6 @@ from crawlerai.db.models import (
     ExtractionConfigId,
     Job,
     Project,
-    Schedule,
     Site,
     SiteId,
     WebhookDelivery,
@@ -48,13 +46,12 @@ from crawlerai.mcp_server.output import MARKDOWN_PAGE_CHARS
 from crawlerai.mcp_server.server import UNTRUSTED, AnyContext, build_server
 from crawlerai.mcp_server.stdio import key_bind
 from crawlerai.resolve.pipeline import EngineData
-from crawlerai.schemas import registry
-from crawlerai.schemas.types import SchemaDef, SchemaDocument
+from crawlerai.schemas.types import SchemaDef
 from crawlerai.services import schemas
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.runtime import Runtime
-from crawlerai.storage.fs import FsStore
-from tests.db.conftest import PRIVATE_HOST, resolve
+from tests.db.support import PRIVATE_HOST, TITLE, Page
+from tests.db.support import Web as SharedWeb
 from tests.support.fake_llm import FakeProvider
 
 pytestmark = pytest.mark.anyio
@@ -85,8 +82,6 @@ TOOLS = {
 # The tools that answer with page content say that it is untrusted (§4.7).
 CONTENT_TOOLS = {"scrape", "map", "search", "crawl_status", "extract_status", "llms_txt"}
 PNG = b"\x89PNG\r\n\x1a\nsynthetic screenshot"
-TITLE = {"type": "text", "required": True, "description": "The product's name", "schema_org": "Product.name"}
-PRICE = {"type": "money", "required": True, "description": "The price", "schema_org": "Offer.price+priceCurrency"}
 
 
 def _page(title: str, body: str = "") -> bytes:
@@ -98,44 +93,24 @@ def _page(title: str, body: str = "") -> bytes:
     ).encode()
 
 
-@pytest.fixture
-def pages(own_origin: str) -> dict[str, tuple[int, bytes]]:
-    return {f"{own_origin}/robots.txt": (200, b"User-agent: *\nAllow: /\n")}
+@dataclass
+class Web(SharedWeb):
+    """`SharedWeb` serving HTML."""
+
+    def serve(self, url: str, body: bytes, status: int = 200, block_class: BlockClass = "ok") -> None:
+        self.pages[url] = Page(status, body, block_class, headers=(("Content-Type", "text/html"),))
 
 
 @pytest.fixture
-def fetching(fetch_result: Callable[..., FetchResult], pages: dict[str, tuple[int, bytes]], tmp_path: Path) -> Fetching:
-    async def http(url: str, policy: FetchPolicy) -> FetchResult:
-        status, body = pages.get(url, (404, b""))
-        return fetch_result(
-            url, status, body, (("Content-Type", "text/html"),), block_class="ok" if status == 200 else "not_found"
-        )
-
-    async def browser(url: str, policy: FetchPolicy) -> FetchResult:
-        result = await http(url, policy)
-        return result.model_copy(update={"artifacts": {"screenshot.png": PNG} if policy.screenshot else {}})
-
-    return Fetching(
-        Rungs(http=http, browser=browser), SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter()
-    )
+def web(fetch_result: Callable[..., FetchResult], own_origin: str) -> Web:
+    return Web.site(fetch_result, own_origin, screenshot=PNG)
 
 
 @pytest.fixture
-async def key(
-    database_url: str, engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> AsyncIterator[CreatedKey]:
-    """A key, and the app's settings pointed at the test database. `engine` deletes the jobs afterwards; they let go of
-    the key, deleted here, first."""
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + tmp_path.as_posix().lstrip("/"))
-    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
+async def key(app_env: pytest.MonkeyPatch, engine: AsyncEngine) -> CreatedKey:
+    """A key, with the app's settings pointed at the test database."""
     async with engine.begin() as conn:
-        created = await create_key(conn, "mcp-test")
-    yield created
-    async with engine.begin() as conn:
-        await conn.execute(update(Job).where(Job.api_key_id == created.id).values(api_key_id=None))
-        await conn.execute(update(Schedule).where(Schedule.api_key_id == created.id).values(api_key_id=None))
-        await conn.execute(delete(ApiKey).where(ApiKey.id == created.id))
+        return await create_key(conn, "mcp-test")
 
 
 @pytest.fixture
@@ -164,15 +139,6 @@ async def session(app_client: httpx.AsyncClient) -> AsyncIterator[ClientSession]
     ):
         await client.initialize()
         yield client
-
-
-@pytest.fixture
-async def kettle_schema(engine: AsyncEngine, schema_name: str) -> SchemaDef:
-    document = SchemaDocument.model_validate(
-        {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
-    )
-    async with engine.begin() as conn:
-        return await registry.create(conn, document, "user")
 
 
 async def _call(session: ClientSession, tool: str, **arguments: Any) -> dict[str, Any]:
@@ -211,10 +177,10 @@ async def test_the_endpoint_refuses_a_request_without_a_key(app_client: httpx.As
 
 
 async def test_scrape_pages_the_markdown_the_rest_endpoint_answers_with(
-    session: ClientSession, app_client: httpx.AsyncClient, pages: dict[str, tuple[int, bytes]], own_origin: str
+    session: ClientSession, app_client: httpx.AsyncClient, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    pages[url] = (200, _page("Blue kettle", "steel " * MARKDOWN_PAGE_CHARS))
+    web.serve(url, _page("Blue kettle", "steel " * MARKDOWN_PAGE_CHARS))
     rest = (await app_client.post("/v1/scrape", json={"url": url, "formats": ["markdown"]})).json()
 
     first = await _call(session, "scrape", request={"url": url, "formats": ["markdown"]})
@@ -231,10 +197,10 @@ async def test_scrape_pages_the_markdown_the_rest_endpoint_answers_with(
 
 
 async def test_scrape_records_read_unknown_for_a_field_without_a_published_value(
-    session: ClientSession, pages: dict[str, tuple[int, bytes]], own_origin: str, kettle_schema: SchemaDef
+    session: ClientSession, web: Web, own_origin: str, kettle_schema: SchemaDef
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    pages[url] = (200, _page("Blue kettle"))
+    web.serve(url, _page("Blue kettle"))
     request = {"url": url, "formats": ["records"], "schema": {"id": str(kettle_schema.id)}, "page_kind": "detail"}
 
     result = await session.call_tool("scrape", {"request": request})
@@ -253,10 +219,10 @@ async def test_scrape_records_read_unknown_for_a_field_without_a_published_value
 
 
 async def test_a_screenshot_is_named_by_its_url_and_comes_back_as_an_image(
-    session: ClientSession, pages: dict[str, tuple[int, bytes]], own_origin: str
+    session: ClientSession, web: Web, own_origin: str
 ) -> None:
     url = f"{own_origin}/kettles/blue"
-    pages[url] = (200, _page("Blue kettle"))
+    web.serve(url, _page("Blue kettle"))
 
     result = await session.call_tool("scrape", {"request": {"url": url, "formats": ["screenshot"]}})
 
@@ -269,11 +235,9 @@ async def test_a_screenshot_is_named_by_its_url_and_comes_back_as_an_image(
     assert (image.mimeType, base64.b64decode(image.data)) == ("image/png", PNG)
 
 
-async def test_llms_txt_is_the_pages_a_job_reached(
-    session: ClientSession, pages: dict[str, tuple[int, bytes]], own_origin: str
-) -> None:
+async def test_llms_txt_is_the_pages_a_job_reached(session: ClientSession, web: Web, own_origin: str) -> None:
     url = f"{own_origin}/kettles/blue"
-    pages[url] = (200, _page("Blue kettle"))
+    web.serve(url, _page("Blue kettle"))
     scraped = await _call(session, "scrape", request={"url": url, "formats": ["markdown"]})
 
     result = await _call(session, "llms_txt", job_id=scraped["job_id"])
@@ -289,10 +253,8 @@ async def test_scrape_of_a_private_target_is_an_error_result(session: ClientSess
     assert (result.isError, _texts(result)) == (True, ["Error executing tool scrape: ssrf_rejected: private_address"])
 
 
-async def test_map_answers_the_start_pages_links(
-    session: ClientSession, pages: dict[str, tuple[int, bytes]], own_origin: str
-) -> None:
-    pages[f"{own_origin}/"] = (200, _page("Kettles"))
+async def test_map_answers_the_start_pages_links(session: ClientSession, web: Web, own_origin: str) -> None:
+    web.serve(f"{own_origin}/", _page("Kettles"))
 
     result = await _call(session, "map", request={"url": f"{own_origin}/", "use_sitemaps": False})
 
@@ -351,8 +313,8 @@ async def site_config(
     own_origin: str,
     kettle_schema: SchemaDef,
     heading_config: Callable[[SiteId, SchemaDef, int], dict[str, Any]],
-) -> AsyncIterator[ExtractionConfigId]:
-    """An active config of the kettle schema for `own_origin`'s site; deleted before `own_origin` deletes the site."""
+) -> ExtractionConfigId:
+    """An active config of the kettle schema for `own_origin`'s site."""
     async with engine.begin() as conn:
         project = select(Project.id).where(Project.name == "default").scalar_subquery()
         site = insert(Site).values(project_id=project, host=own_origin.removeprefix("https://")).returning(Site.id)
@@ -361,9 +323,7 @@ async def site_config(
         config_id = (
             await conn.execute(insert(ExtractionConfig).values(**row).returning(ExtractionConfig.id))
         ).scalar_one()
-    yield config_id
-    async with engine.begin() as conn:
-        await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site_id))
+    return config_id
 
 
 async def test_a_sites_config_is_read_and_exported(

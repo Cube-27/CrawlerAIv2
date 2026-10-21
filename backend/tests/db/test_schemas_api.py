@@ -2,19 +2,14 @@
 themselves are the service's (`test_schema_service.py`); these tests check what a client sends and gets back."""
 
 import uuid
-from collections.abc import AsyncIterator
-from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncEngine
 
-from crawlerai.api.app import create_app
-from crawlerai.db.keys import create_key
-from crawlerai.db.models import ApiKey, ExtractionConfig, ProgressiveState, SchemaId, Site
-from crawlerai.db.models import SchemaDef as SchemaRow
+from crawlerai.db.models import ExtractionConfig, ProgressiveState, SchemaId
 from crawlerai.schemas import registry
 from tests.db.conftest import learned_site
 
@@ -23,44 +18,6 @@ pytestmark = pytest.mark.anyio
 TITLE = {"type": "text", "required": True, "description": "Name of the event"}
 STARTS = {"type": "datetime", "description": "When the event starts"}
 EVENT = {"name": "event_detail", "page_kind": "detail", "fields": {"title": TITLE}}
-
-
-@pytest.fixture
-async def database(database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncIterator[AsyncEngine]:
-    """The app's settings pointed at the test database, with every key, site and schema a test added deleted
-    afterwards."""
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + tmp_path.as_posix().lstrip("/"))
-    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        keys = set((await conn.execute(select(ApiKey.id))).scalars())
-        schemas = set((await conn.execute(select(SchemaRow.id))).scalars())
-        sites = set((await conn.execute(select(Site.id))).scalars())
-    yield engine
-    async with engine.begin() as conn:
-        await conn.execute(delete(ProgressiveState).where(ProgressiveState.schema_id.not_in(schemas)))
-        await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.schema_id.not_in(schemas)))
-        await conn.execute(delete(Site).where(Site.id.not_in(sites)))
-        await conn.execute(delete(SchemaRow).where(SchemaRow.id.not_in(schemas)))
-        await conn.execute(delete(ApiKey).where(ApiKey.id.not_in(keys)))
-    await engine.dispose()
-
-
-@pytest.fixture
-async def client(database: AsyncEngine) -> AsyncIterator[httpx.AsyncClient]:
-    async with database.begin() as conn:
-        key = await create_key(conn, "schemas-api-test")
-    app = create_app()
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url="http://api.test",
-            headers={"authorization": f"Bearer {key.key}"},
-        ) as client,
-    ):
-        yield client
 
 
 async def _created(client: httpx.AsyncClient, body: dict[str, Any] = EVENT) -> dict[str, Any]:
@@ -88,10 +45,10 @@ async def test_post_creates_a_user_schema(client: httpx.AsyncClient) -> None:
 
 
 async def test_put_edits_the_schema_in_place_and_sends_its_site_configs_back_to_learning(
-    client: httpx.AsyncClient, database: AsyncEngine
+    client: httpx.AsyncClient, engine: AsyncEngine
 ) -> None:
     first = await _created(client)
-    async with database.begin() as conn:
+    async with engine.begin() as conn:
         key = await learned_site(conn, await registry.get_by_id(conn, SchemaId(uuid.UUID(first["id"]))), ["active"])
     edit = {"page_kind": "detail", "fields": {"title": TITLE, "starts": STARTS}}
 
@@ -105,7 +62,7 @@ async def test_put_edits_the_schema_in_place_and_sends_its_site_configs_back_to_
         first["fields"]["title"],
     )
     assert (await client.get("/v1/schemas", params={"name": "event_detail"})).json() == {"items": [edited]}
-    async with database.connect() as conn:
+    async with engine.connect() as conn:
         status = (await conn.execute(select(ExtractionConfig.status).where(*key.config_scope()))).one()
         state = select(ProgressiveState.mode, ProgressiveState.active_config_id).where(*key.where())
         assert (status, (await conn.execute(state)).one()) == (("suspended",), ("cold", None))

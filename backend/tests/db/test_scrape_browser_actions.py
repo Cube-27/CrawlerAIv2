@@ -3,7 +3,6 @@ extraction, the answer lists their records once each with the actions' report, a
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 
@@ -11,15 +10,13 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.browser_tab import Drive
-from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import ActionsReport, FetchPolicy, FetchResult, PagedFetch
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
-from crawlerai.storage.fs import FsStore
 from tests.db.conftest import listing_schema
+from tests.db.support import fetching_from
 
 pytestmark = pytest.mark.anyio
 
@@ -58,11 +55,7 @@ def fetching(fetch_result: Callable[..., FetchResult], listing: Listing, own_ori
         assert url == robots, "a listing with browser actions is fetched by the listing rung only"
         return fetch_result(url, 200, b"User-agent: *\nDisallow: /private\n")
 
-    async def resolve(_host: str) -> list[IPAddress]:
-        return [ip_address("93.184.215.14")]
-
-    rungs = Rungs(http=http, browser=http, listing=listing)
-    return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path), HostLimiter())
+    return fetching_from(Rungs(http=http, browser=http, listing=listing), tmp_path)
 
 
 def _request(url: str, schema_id: object, **fields: Any) -> ScrapeRequest:

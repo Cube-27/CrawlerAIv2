@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from crawlerai.acquire.persist import store_capture
@@ -266,17 +266,13 @@ async def site(
     engine_data: EngineData,
     fetch_result: Callable[..., FetchResult],
     tmp_path: Path,
-) -> AsyncIterator[LearnSite]:
+) -> LearnSite:
     async with engine.begin() as conn:
         project = select(Project.id).where(Project.name == "default").scalar_subquery()
         created = insert(Site).values(project_id=project, host=own_origin.removeprefix("https://"))
         site_id = (await conn.execute(created.returning(Site.id))).scalar_one()
         schema = await registry.create(conn, _document(schema_name), "user")
-    yield LearnSite(engine, FsStore(tmp_path / "objects"), own_origin, site_id, schema, engine_data, fetch_result)
-    # The site's configs, which `own_origin` does not know of, go before it deletes the site.
-    async with engine.begin() as conn:
-        await conn.execute(delete(ProgressiveState).where(ProgressiveState.site_id == site_id))
-        await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site_id))
+    return LearnSite(engine, FsStore(tmp_path / "objects"), own_origin, site_id, schema, engine_data, fetch_result)
 
 
 async def test_a_site_with_8_extracted_pages_is_learned_and_then_served_from_its_config(site: LearnSite) -> None:

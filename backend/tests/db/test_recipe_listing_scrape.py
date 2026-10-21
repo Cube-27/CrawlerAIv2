@@ -6,7 +6,7 @@ every page of the listing the same way, up to the job's page bound."""
 import asyncio
 import json
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -14,14 +14,13 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import delete, insert, select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from crawlerai.acquire.api import JsonRequest
 from crawlerai.acquire.browser_tab import Drive
-from crawlerai.acquire.politeness import HostLimiter
 from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import SSRF_REJECTED, SafeConnector
+from crawlerai.acquire.ssrf import SSRF_REJECTED
 from crawlerai.acquire.types import FetchPolicy, FetchResult, PagedFetch
 from crawlerai.core.settings import Settings
 from crawlerai.db.models import (
@@ -43,11 +42,11 @@ from crawlerai.services.batch import BatchScrapeRequest, submit_batch
 from crawlerai.services.crawl import CrawlRequest, submit_crawl
 from crawlerai.services.fetching import Fetching
 from crawlerai.services.scrape import ScrapeRequest, scrape
-from crawlerai.storage.fs import FsStore
 from crawlerai.worker.handlers.crawl import crawl_handler
 from crawlerai.worker.handlers.scrape import scrape_handler
 from crawlerai.worker.loop import TaskHandler, run_worker
-from tests.db.conftest import listing_page, listing_schema, resolve
+from tests.db.conftest import listing_page, listing_schema
+from tests.db.support import fetching_from
 
 pytestmark = pytest.mark.anyio
 
@@ -110,8 +109,9 @@ def web(fetch_result: Callable[..., FetchResult], own_origin: str) -> Web:
 
 @pytest.fixture
 def fetching(web: Web, tmp_path: Path) -> Fetching:
-    rungs = Rungs(http=web.http, browser=web.http, json=web.json, listing=web.listing)
-    return Fetching(rungs, SafeConnector(resolve), FsStore(tmp_path / "objects"), HostLimiter())
+    return fetching_from(
+        Rungs(http=web.http, browser=web.http, json=web.json, listing=web.listing), tmp_path / "objects"
+    )
 
 
 @pytest.fixture
@@ -151,7 +151,7 @@ def _ir(origin: str, schema: SchemaDef) -> dict[str, Any]:
 
 
 @pytest.fixture
-async def recipe_config(engine: AsyncEngine, own_origin: str, site: SiteId, schema: SchemaDef) -> AsyncIterator[None]:
+async def recipe_config(engine: AsyncEngine, own_origin: str, site: SiteId, schema: SchemaDef) -> None:
     values = {
         "site_id": site,
         "schema_id": schema.id,
@@ -164,9 +164,6 @@ async def recipe_config(engine: AsyncEngine, own_origin: str, site: SiteId, sche
     }
     async with engine.begin() as conn:
         await conn.execute(insert(ExtractionConfig).values(values))
-    yield
-    async with engine.begin() as conn:
-        await conn.execute(delete(ExtractionConfig).where(ExtractionConfig.site_id == site))
 
 
 def _request(url: str, schema: SchemaDef, records: int, **fetch: Any) -> ScrapeRequest:

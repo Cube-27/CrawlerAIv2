@@ -1,12 +1,12 @@
 """Tests against a real Postgres, in a database of their own: `CRAWLERAI_TEST_DATABASE_URL`. CI provides one, and
 `make check` recreates one each run. Without it these tests are skipped."""
 
+import asyncio
 import json
 import os
 import uuid
 from collections.abc import AsyncIterator, Callable, Sequence
 from datetime import UTC, datetime, timedelta
-from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 
@@ -15,47 +15,29 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import insert, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from crawlerai.acquire import politeness
-from crawlerai.acquire.politeness import HostLimiter, retry_after
+from crawlerai.acquire.politeness import retry_after
 from crawlerai.acquire.rungs import Rungs
-from crawlerai.acquire.ssrf import IPAddress, SafeConnector
 from crawlerai.acquire.types import AttemptRecord, FetchPolicy, FetchResult
-from crawlerai.api.app import create_app
 from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.progressive import StateKey
 from crawlerai.core.capture import BlockClass, CaptureMethod
 from crawlerai.core.ids import uuid7
-from crawlerai.db.keys import create_key
 from crawlerai.db.models import (
-    ApiKey,
-    Candidate,
-    Capture,
+    Base,
     ConfigStatus,
-    Extraction,
     ExtractionConfig,
-    Job,
-    JobEvent,
     ProgressiveState,
     Project,
-    Record,
-    Schedule,
-    SchemaDef,
     Site,
-    SiteBlock,
-    SiteContract,
     SiteId,
     SourceKind,
-    UrlState,
-    UrlTask,
-    UsageEvent,
-    WebhookDelivery,
-    WebhookEvent,
 )
-from crawlerai.llm.roles.s_schema import draft_name
+from crawlerai.normalize.dispatch import warm
 from crawlerai.resolve.pipeline import EngineData
 from crawlerai.resolve.preference import PRECEDENCE_TYPES
 from crawlerai.schemas import registry
@@ -63,7 +45,7 @@ from crawlerai.schemas import types as schema_types
 from crawlerai.schemas.types import document_digest
 from crawlerai.services.fetching import Fetching
 from crawlerai.storage.capture_bundle import CaptureBundle, CaptureManifest, HeaderList, Headers, sha256_hex
-from crawlerai.storage.fs import FsStore
+from tests.db.support import PRICE, TITLE, Web, api, fetching_from, unpaced
 
 TEST_DATABASE_URL = "CRAWLERAI_TEST_DATABASE_URL"
 VOCABULARY = Path(__file__).parents[1] / "fixtures" / "synthetic" / "schemaorg_vocabulary.jsonld"
@@ -87,8 +69,9 @@ def _test_database_url(variable: str) -> str:
     return worker_database_url(url, os.environ.get("PYTEST_XDIST_WORKER"))
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def anyio_backend() -> str:
+    """One event loop for the session, so the worker's one engine (`shared_engine`) serves every test."""
     return "asyncio"
 
 
@@ -101,90 +84,80 @@ def database_url() -> str:
     return url
 
 
-@pytest.fixture
-async def conn(database_url: str) -> AsyncIterator[AsyncConnection]:
+@pytest.fixture(scope="session")
+async def shared_engine(database_url: str) -> AsyncIterator[AsyncEngine]:
+    """The one engine of this xdist worker, against its own database; its pool serves every test."""
     engine = create_async_engine(database_url)
-    async with engine.connect() as connection:
+    yield engine
+    await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+async def uncancelled(anyio_backend: str) -> AsyncIterator[None]:
+    """Every test starts and ends with no cancellation counted on the session's one task. Python 3.12's
+    `asyncio.TaskGroup` leaves one counted on its parent for each child that fails (3.13 no longer does), and in a
+    task that outlives the test, that count makes a later test's task group raise `CancelledError`."""
+    _uncancel()
+    yield
+    _uncancel()
+
+
+def _uncancel() -> None:
+    task = asyncio.current_task()
+    while task is not None and task.cancelling():
+        task.uncancel()
+
+
+@pytest.fixture
+async def conn(shared_engine: AsyncEngine) -> AsyncIterator[AsyncConnection]:
+    """A connection in a transaction rolled back after the test."""
+    async with shared_engine.connect() as connection:
         transaction = await connection.begin()
         yield connection
         await transaction.rollback()
-    await engine.dispose()
+
+
+# Every table, referencing ones first. On tables of a few rows a DELETE each is about ten times faster than one TRUNCATE
+# (which recreates every table's files) and locks rows, not tables.
+_TABLES = tuple(reversed(Base.metadata.sorted_tables))
 
 
 @pytest.fixture
-async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
-    engine = create_async_engine(database_url)
-    yield engine
-    async with engine.begin() as connection:
-        for model in (
-            Candidate,
-            Record,
-            Extraction,
-            ProgressiveState,
-            UsageEvent,
-            JobEvent,
-            WebhookEvent,
-            WebhookDelivery,
-            UrlTask,
-            Job,
-            Schedule,
-        ):
-            await connection.execute(delete(model))
-    await engine.dispose()
+async def engine(shared_engine: AsyncEngine) -> AsyncIterator[AsyncEngine]:
+    """The database for a test that commits (through it, the app, the CLI or a worker): every table is emptied
+    afterwards but for the default project, which the baseline migration seeds. A test that commits requests it,
+    directly or through a fixture."""
+    yield shared_engine
+    async with shared_engine.begin() as connection:
+        for table in _TABLES:
+            rows = table.delete()
+            if table is Project.__table__:
+                rows = rows.where(table.c.name != "default")
+            await connection.execute(rows)
 
 
 @pytest.fixture
-async def own_origin(database_url: str) -> AsyncIterator[str]:
-    """An https origin on a host no other test uses, for tests that commit a site for it. The site, its captures, and
-    its records, progressive state and url_state are deleted afterwards (a task or extraction that named a capture
-    keeps a NULL, persistence-storage spec)."""
-    async for origin in _origin(database_url, f"shop-{uuid7().hex[-12:]}.example.test"):
-        yield origin
+def own_origin() -> str:
+    """An https origin on a host no other test uses."""
+    return f"https://shop-{uuid7().hex[-12:]}.example.test"
 
 
 @pytest.fixture
-async def www_origin(database_url: str, own_origin: str) -> AsyncIterator[str]:
-    """`own_origin` on its `www.` subdomain, cleaned up as `own_origin` is: a site that redirects one to the other."""
-    async for origin in _origin(database_url, f"www.{own_origin.removeprefix('https://')}"):
-        yield origin
-
-
-async def _origin(database_url: str, host: str) -> AsyncIterator[str]:
-    yield f"https://{host}"
-    engine = create_async_engine(database_url)
-    async with engine.begin() as connection:
-        site_ids = select(Site.id).where(Site.host == host).scalar_subquery()
-        for model in (Record, ProgressiveState, Capture, UrlState, SiteContract, SiteBlock):
-            await connection.execute(delete(model).where(model.site_id.in_(site_ids)))
-        await connection.execute(delete(Site).where(Site.host == host))
-    await engine.dispose()
-
-
-async def _delete_schemas(engine: AsyncEngine, name: str) -> None:
-    """Schema `name` and those whose names start with it, with their records and progressive state; jobs that named
-    them keep a NULL."""
-    async with engine.begin() as conn:
-        ids = select(SchemaDef.id).where(SchemaDef.name.startswith(name)).scalar_subquery()
-        await conn.execute(update(Job).where(Job.schema_id.in_(ids)).values(schema_id=None))
-        for model in (Record, ProgressiveState):
-            await conn.execute(delete(model).where(model.schema_id.in_(ids)))
-        await conn.execute(delete(SchemaDef).where(SchemaDef.name.startswith(name)))
+def www_origin(own_origin: str) -> str:
+    """`own_origin` on its `www.` subdomain: a site that redirects one to the other."""
+    return f"https://www.{own_origin.removeprefix('https://')}"
 
 
 @pytest.fixture
-async def prompt(engine: AsyncEngine) -> AsyncIterator[str]:
-    """A prompt no other test drafts; its draft schema is deleted afterwards."""
-    text = f"Product names {uuid.uuid4()}"
-    yield text
-    await _delete_schemas(engine, draft_name(text))
+def prompt() -> str:
+    """A prompt no other test drafts."""
+    return f"Product names {uuid.uuid4()}"
 
 
 @pytest.fixture
-async def schema_name(engine: AsyncEngine) -> AsyncIterator[str]:
-    """A schema name no other test uses, and a prefix for more; those schemas are deleted afterwards."""
-    name = f"synthetic_{uuid.uuid4().hex[:12]}"
-    yield name
-    await _delete_schemas(engine, name)
+def schema_name() -> str:
+    """A schema name no other test uses, and a prefix for more."""
+    return f"synthetic_{uuid.uuid4().hex[:12]}"
 
 
 @pytest.fixture
@@ -347,14 +320,6 @@ def listing_page(
     return f"<!doctype html><html><head>{head}</head><body></body></html>".encode()
 
 
-PRIVATE_HOST = "intranet.example.test"
-
-
-async def resolve(host: str) -> list[IPAddress]:
-    """A stub resolver: `PRIVATE_HOST` has a private address, every other host a public one."""
-    return [ip_address("10.0.0.7" if host == PRIVATE_HOST else "93.184.215.14")]
-
-
 @pytest.fixture
 async def submit_client(submit_app: tuple[FastAPI, httpx.AsyncClient]) -> httpx.AsyncClient:
     """The client of `submit_app`."""
@@ -363,37 +328,58 @@ async def submit_client(submit_app: tuple[FastAPI, httpx.AsyncClient]) -> httpx.
 
 @pytest.fixture
 async def submit_app(
-    database_url: str, engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    app_env: pytest.MonkeyPatch, engine: AsyncEngine, tmp_path: Path
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
-    """The app, and its client, against the test database, for the endpoints that submit jobs: without the engine's
-    data files, its fetching a stub that resolves `PRIVATE_HOST` to a private address and fetches nothing
-    (submitting fetches nothing). `engine` deletes the jobs afterwards; the key is deleted here."""
-    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
-    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + tmp_path.as_posix().lstrip("/"))
-    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
+    """The app, and its client, for the endpoints that submit jobs: without the engine's data files, its fetching a
+    stub that resolves `PRIVATE_HOST` to a private address and fetches nothing (submitting fetches nothing)."""
 
     async def never(url: str, policy: FetchPolicy) -> FetchResult:
         raise AssertionError("submitting a job fetches nothing")
 
-    async with engine.begin() as conn:
-        key = await create_key(conn, "submit-api-test")
-    app = create_app()
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url="http://api.test",
-            headers={"authorization": f"Bearer {key.key}"},
-        ) as client,
-    ):
-        store = FsStore(tmp_path / "objects")
-        app.state.fetching = Fetching(Rungs(http=never, browser=never), SafeConnector(resolve), store, HostLimiter())
+    async with api(engine) as (app, client):
+        app.state.fetching = fetching_from(Rungs(http=never, browser=never), tmp_path / "objects")
         app.state.engine_data = None
         yield app, client
-    keys_engine = create_async_engine(database_url)
-    async with keys_engine.begin() as conn:
-        # The key's jobs keep their rows until `engine` deletes them; they let go of the key first.
-        await conn.execute(update(Job).where(Job.api_key_id == key.id).values(api_key_id=None))
-        await conn.execute(update(Schedule).where(Schedule.api_key_id == key.id).values(api_key_id=None))
-        await conn.execute(delete(ApiKey).where(ApiKey.id == key.id))
-    await keys_engine.dispose()
+
+
+@pytest.fixture
+def web(fetch_result: Callable[..., FetchResult], own_origin: str) -> Web:
+    """`own_origin` as a site whose robots.txt allows everything."""
+    return Web.site(fetch_result, own_origin)
+
+
+@pytest.fixture
+async def kettle_schema(engine: AsyncEngine, schema_name: str) -> schema_types.SchemaDef:
+    """A stored detail schema of `TITLE` and `PRICE`."""
+    document = {"name": schema_name, "page_kind": "detail", "fields": {"title": TITLE, "price": PRICE}}
+    async with engine.begin() as conn:
+        return await registry.create(conn, schema_types.SchemaDocument.model_validate(document), "user")
+
+
+@pytest.fixture(scope="session")
+def warmed() -> None:
+    """The normalizers' CLDR tables, built once for the session: every app's startup builds them on a thread
+    (`services.runtime`), and apps of tests sharing one event loop would otherwise build them side by side."""
+    warm()
+
+
+@pytest.fixture
+def app_env(warmed: None, database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> pytest.MonkeyPatch:
+    """The app's settings: the test database, an object store under `tmp_path/objects`, no trusted proxies."""
+    monkeypatch.setenv("CRAWLERAI_DATABASE_URL", database_url)
+    monkeypatch.setenv("CRAWLERAI_OBJECT_STORE", "fs:///" + (tmp_path / "objects").as_posix().lstrip("/"))
+    monkeypatch.setenv("CRAWLERAI_TRUSTED_PROXIES", "[]")
+    return monkeypatch
+
+
+@pytest.fixture
+async def client(app_env: pytest.MonkeyPatch, engine: AsyncEngine) -> AsyncIterator[httpx.AsyncClient]:
+    """The app's client, on the app as configured; a file needing the app's state changed defines its own."""
+    async with api(engine) as (_, client):
+        yield client
+
+
+@pytest.fixture
+def fetching(web: Web, tmp_path: Path) -> Fetching:
+    """What a service fetches with: `web`'s rungs, unpaced, storing captures under `tmp_path/objects`."""
+    return fetching_from(web, tmp_path / "objects", limiter=unpaced())
