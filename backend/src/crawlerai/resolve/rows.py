@@ -9,7 +9,7 @@ Each variant resolves its sub-fields with the resolver's own rules, its scope st
 """
 
 from collections.abc import Callable, Hashable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Final, TypeGuard
 from urllib.parse import parse_qsl, urlsplit
 
@@ -150,7 +150,7 @@ class _Resolved:
     def add(self, row_field: RowField, variant: "_Variant", candidates: Sequence[Candidate], row_of: RowOf) -> None:
         ids = {row.id for row in variant.rows}
         own = [c for c in candidates if row_of(c) in ids]
-        outcome = _as_shown(row_field, _resolve_variant(row_field, own, ids, row_of))
+        outcome = _resolve_variant(row_field, own, ids, row_of)
         keys = [outcome.fields[sub].status for sub in row_field.key]
         # §4.5: a row publishes when at least one key sub-field publishes, and it is the target's own variant.
         reason = _not_own(row_field, outcome) if "published" in keys else "key_unpublished"
@@ -194,24 +194,18 @@ def _shown_value(decision: Preference | None, spec: FieldSpec) -> tuple[JsonValu
     return None
 
 
-def _as_shown(row_field: RowField, outcome: RowOutcome) -> RowOutcome:
-    """The row with the page's shown value in place of the stated value it renders (`shown_values`)."""
-    fields = dict(outcome.fields)
+def _as_shown(row_field: RowField, preferences: Mapping[str, Preference]) -> dict[str, Preference]:
+    """The row's preferences with the page's shown value chosen in place of the stated value it renders
+    (`shown_values`); the stated value's candidates agree with it."""
+    chosen = dict(preferences)
     for sub, (stated, shown) in row_field.shown.items():
-        found = fields.get(sub)
-        if found is None or found.status != "published" or not equal(found.value, stated, row_field.sub_fields[sub]):
+        found = chosen.get(sub)
+        if not isinstance(found, Chosen) or not isinstance(found.candidate.normalized, Ok):
             continue
-        normalized = shown.normalized
-        if not isinstance(normalized, Ok):
-            continue
-        update = {
-            "value": normalized.value,
-            "source_kind": shown.source_kind,
-            "locator": shown.locator,
-            "chosen": shown,
-        }
-        fields[sub] = found.model_copy(update=update | {"basis": normalized.basis})
-    return RowOutcome(fields=fields)
+        if equal(found.candidate.normalized.value, stated, row_field.sub_fields[sub]):
+            agreeing = (found.candidate, *found.agreeing)
+            chosen[sub] = replace(found, candidate=shown, agreeing=agreeing, kept=(*found.kept, shown))
+    return chosen
 
 
 def _not_own(row_field: RowField, outcome: RowOutcome) -> str | None:
@@ -313,7 +307,7 @@ def _variants(
     reasons = ["no_row_key"] * len(dropped)
     variants: list[_Variant] = []
     key_fields = {sub: row_field.sub_fields[sub] for sub in row_field.key}
-    for group in _lone_rows(row_field, keyed, keys, linked(key_fields, keyed, keys)):
+    for group in _lone_rows(row_field, rows, keys, linked(key_fields, keyed, keys)):
         variant = _Variant(group, _merged_keys(group, keys))
         if _conflicting(row_field, variant):
             dropped.append(DroppedRow(locators=tuple(row.id for row in group), reason="row_key_conflict"))
@@ -324,16 +318,16 @@ def _variants(
 
 
 def _lone_rows(
-    row_field: RowField, keyed: list[Entity], keys: Mapping[str, _Keys], groups: list[list[Entity]]
+    row_field: RowField, rows: Sequence[Entity], keys: Mapping[str, _Keys], groups: list[list[Entity]]
 ) -> list[list[Entity]]:
-    """The rows as one variant when every source (`source_of`) states one keyed row of the target and their keys do
-    not conflict: a source's one offer of the item is the item's one offer (resolution spec, atomic offers), whatever
-    key each source happens to state it by (one a URL, another a SKU); else `groups`."""
-    sources = {source_of(row.id) for row in keyed}
-    if len(groups) < 2 or len(sources) != len(keyed):
+    """The keyed rows as one variant when every source (`source_of`) states one row of the target, keyed or not, and
+    their keys do not conflict: a source's one offer of the item is the item's one offer (resolution spec, atomic
+    offers), whatever key each source happens to state it by (one a URL, another a SKU); else `groups`."""
+    if len(groups) < 2 or len({source_of(row.id) for row in rows}) != len(rows):
         return groups
-    merged = _Variant(list(keyed), _merged_keys(keyed, keys))
-    return groups if _conflicting(row_field, merged) else [list(keyed)]
+    keyed = [row for group in groups for row in group]
+    merged = _Variant(keyed, _merged_keys(keyed, keys))
+    return groups if _conflicting(row_field, merged) else [keyed]
 
 
 def _key_values(
@@ -476,7 +470,9 @@ def _resolve_variant(row_field: RowField, candidates: Sequence[Candidate], ids: 
     resolver = Resolver(
         row_field.graph, row_field.target, row_field.page, row_field.orders, owns=lambda c: row_of(c) in ids
     )
-    preferences = resolver.prefer_fields(row_field.sub_fields, candidates, prefix=f"{row_field.name}.")
+    preferences = _as_shown(
+        row_field, resolver.prefer_fields(row_field.sub_fields, candidates, prefix=f"{row_field.name}.")
+    )
     outcomes: dict[str, FieldOutcome] = {}
     for sub, spec in row_field.sub_fields.items():
         outcomes[sub] = assess(

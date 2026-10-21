@@ -28,8 +28,8 @@ state different values of a key sub-field listed before it (the preset's `key` r
 two entries of one list (one node's values of one property), of any key sub-field: a list names each item once, so
 two of its entries with other SKUs are two variants whatever barcode they repeat; page and
 target URLs are not key values; a cluster with two values of one key sub-field is dropped `row_key_conflict`, a keyless
-row `no_row_key`. Where every source (resolution spec, Atomic offers) states one keyed row of the target and their keys
-do not conflict, the rows are one cluster whatever key each states: a source's one offer of the item is the item's one
+row `no_row_key`. Where every source (resolution spec, Atomic offers) states one row of the target and the keyed ones'
+keys do not conflict, the keyed rows are one cluster whatever key each states: a source's one offer of the item is the item's one
 offer. A published row's money sub-field equal to the one amount the target's visible price outscored publishes that
 visible price instead (the page renders that stated amount as the price it shows, as with tax included); a row stating
 another amount keeps it. Refs: §10, D-0802, D-0963, D-1181.
