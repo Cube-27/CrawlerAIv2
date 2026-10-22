@@ -59,8 +59,7 @@ RDFa IRI value is a URL, never text, D-1153) and Open Graph
 description, and the `product:` namespace: `product:price`/`og:price` amount and currency, `product:sale_price`
 as the active price (unless `product:sale_price_dates:end` is before the capture) with the stated price beside it
 as the list price, `product:original_price` as the list price,
-`og:availability`, `product:condition`, `product:retailer_item_id` and `product:brand`; `og:title` fills a field whose
-role is `name` or, a JobPosting's title, `title`; no translation, site-default
+`og:availability`, `product:condition`, `product:retailer_item_id` and `product:brand`; no translation, site-default
 blocks skipped, an `og:title` read without trailing segments naming the site and, when words of its own come before a
 run of its words that the document's one `h1` states (two words or more), as that run, else before a run that a slug
 segment of the page URL path spells (the last such segment the title holds), as that run; an `og:description` holding

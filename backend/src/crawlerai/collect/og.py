@@ -49,16 +49,15 @@ _OG_URL = "og:url"
 _TITLE = "og:title"
 _IMAGES = ("og:image", "og:image:url")
 _DESCRIPTION = "og:description"
-# Open Graph protocol, "Basic Metadata": `og:title` is the object's title (schema.org names a thing's title `name`,
-# a JobPosting's `title`), `og:image` its image, `og:url` its canonical URL; "Structured Properties": `og:image:url`
-# is identical to `og:image`; "Optional Metadata": `og:description` is "a one to two sentence description" of the
-# object, prose for a long_text description. The `product` namespace: `product:availability` (and the historic OGP
-# product type's `og:availability`) is the item's availability, `product:condition` its condition,
-# `product:retailer_item_id` the retailer's id of it (its sku) and `product:brand` its brand. The prices are the money
-# rows (`_MONEY`). Only properties these define are read (owner, Appendix A #48); others are left to learned configs.
+# Open Graph protocol, "Basic Metadata": `og:title` is the object's title, `og:image` its image, `og:url` its
+# canonical URL; "Structured Properties": `og:image:url` is identical to `og:image`; "Optional Metadata":
+# `og:description` is "a one to two sentence description" of the object, prose for a long_text description. The
+# `product` namespace: `product:availability` (and the historic OGP product type's `og:availability`) is the item's
+# availability, `product:condition` its condition, `product:retailer_item_id` the retailer's id of it (its sku) and
+# `product:brand` its brand. The prices are the money rows (`_MONEY`). Only properties these define are read (owner,
+# Appendix A #48); others are left to learned configs.
 _TABLE = (
     _Row((_TITLE,), FieldType.TEXT, "name"),
-    _Row((_TITLE,), FieldType.TEXT, "title"),
     _Row(_IMAGES, FieldType.IMAGE_URL, "image"),
     _Row((_OG_URL,), FieldType.URL, "url"),
     _Row((_DESCRIPTION,), FieldType.LONG_TEXT, "description"),
