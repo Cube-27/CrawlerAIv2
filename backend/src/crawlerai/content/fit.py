@@ -10,12 +10,13 @@ structural properties, and dropped when
 - its text occurs again on the page (a repeated "Add to cart" or "Read more" is page furniture, not content).
 
 Code (`pre`) and table cells, with the blocks inside them, are data a reader wants as written: no block score touches
-them. Headings are dropped only when their section ends up empty. A page whose pruning leaves nothing is returned as
-`markdown` would.
+them. Headings are dropped only when their section ends up empty. A page whose pruning leaves nothing, or only
+headings, is returned as `markdown` would.
 
-With a `query`, the pruned markdown is split into blocks (`content.md_blocks`) and each block that is not a heading is
-scored against it with BM25 (`content.bm25`); blocks with a score of zero are dropped, and with `max_blocks` only the
-highest-scoring ones stay, in page order. A heading stays while a block of its section does.
+With a `query`, that markdown (pruned, or unpruned by the fallback above) is split into blocks (`content.md_blocks`)
+and each block that is not a heading is scored against it with BM25 (`content.bm25`); blocks with a score of zero are
+dropped, and with `max_blocks` only the highest-scoring ones stay, in page order. A heading stays while a block of its
+section does.
 """
 
 from lxml.html import HtmlElement
@@ -52,8 +53,7 @@ def markdown_fit(page: ParsedPage, final_url: str, options: FitOptions | None = 
     """The pruned main content as Markdown, kept to the blocks relevant to `options.query` when it is given; `""` when
     there is none."""
     options = options or FitOptions()
-    text = markdown(page, final_url, prune=prune) or markdown(page, final_url)
-    blocks = _without_empty_sections(parse(text))
+    blocks = _without_empty_sections(parse(markdown(page, final_url, prune=prune))) or parse(markdown(page, final_url))
     if options.query is not None:
         blocks = _relevant(blocks, options.query, options.max_blocks)
     return render(blocks)
