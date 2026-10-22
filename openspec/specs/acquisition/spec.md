@@ -289,7 +289,8 @@ under 200 non-space characters while its scripts and concealed (`hidden`, inline
 least 2,000 (the content rule: HTML Standard §4.12.1 script data and §6.1 `hidden` content are not rendered, so the
 browser renders it once); a 2xx document whose JSON-LD or microdata states an item of a type the task reads the page
 for (`FetchPolicy.target_types`: the schema's row types and their schema.org subtypes), or an OGP product price for a
-Product or Offer, is never a shell nor `blocked` for want of links (the reader reads that data); a 401 is
+Product or Offer, is not a shell by the text rules nor `blocked` for want of links (the reader reads that data; a
+listing is still a shell unless it lists items, and a content-only fetch reads the rendered text alone); a 401 is
 `auth_wall`), and from one kind of site data only: a 2xx HTML document that shows a vendor's stand-in marker
 (`adapters/challenges.py`: a fixed string of the vendor's template, or the pattern of a token the vendor fills in, such
 as an edge's error reference id) is `blocked`. A block needs corroboration and usable content beats it: a 403, or a 2xx
@@ -328,7 +329,8 @@ Enforced by: the site-literal scan (INV-03), classify and challenge tests and re
 #### Scenario: Content carried by a script
 - **WHEN** a `markdown` fetch answers 200 with a site header of links, an empty application root and its text in an
   inline script's state
-- **THEN** the class is `shell` and the browser renders it once; the same answer to a `records` fetch is `ok`
+- **THEN** the class is `shell` and the browser renders it once, with or without links; the same answer to a
+  `records` fetch is `ok`, and a stored HTTP capture of it made for `records` is not reused for `markdown`
 #### Scenario: Detail page redirected home
 - **WHEN** a detail page's HTTP fetch is redirected to its site's `/` and answers 200
 - **THEN** the class is `soft_404`, no browser attempt is made, and the task ends `soft_404`

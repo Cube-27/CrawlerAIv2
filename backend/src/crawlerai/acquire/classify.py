@@ -48,7 +48,7 @@ thing: an interstitial that sends the client back once passed (`_returns_to`), a
 
 import re
 from base64 import urlsafe_b64decode
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import suppress
 from typing import NamedTuple
 from urllib.parse import SplitResult, parse_qsl, unquote, urldefrag, urljoin, urlsplit
@@ -194,7 +194,8 @@ def _document_class(
     # Read before the shell rule strips script data blocks from the tree.
     documents = _json_ld(tree)
     structured = _structured_rows(tree, documents)
-    described = _describes(tree, documents, types)
+    # A content-only fetch reads the rendered text, whatever structured data the page states.
+    described = not content_only and _describes(tree, documents, types)
     unstructured = None if described else _page_shell(tree, content_only=content_only)
     # Before the shell return: a short document that refreshes and links only to mail or phone is a stand-in too.
     if unstructured == "blocked" or (_refreshes(tree, headers) and _offers_no_web_page(tree)):
@@ -210,11 +211,11 @@ def _document_class(
 
 
 def _page_shell(tree: LexborHTMLParser, *, content_only: bool) -> BlockClass | None:
-    """`_no_site_page`, and for a fetch for content formats alone, a document that carries its content unrendered
-    (`carries_unrendered`, read before the shell rule strips the scripts) is a shell whatever its links."""
-    carried = content_only and _carries_unrendered(tree)
-    unstructured = _no_site_page(tree)
-    return "shell" if carried and unstructured is None else unstructured
+    """`_no_site_page`, except that for a fetch for content formats alone, a document that carries its content
+    unrendered (`carries_unrendered`, read before the shell rule strips the scripts) is a shell whatever its links."""
+    if content_only and _carries_unrendered(tree):
+        return "shell"
+    return _no_site_page(tree)
 
 
 def usable_content(text: str, page_kind: PageKind | None = None, types: tuple[str, ...] = ()) -> bool:
@@ -260,7 +261,9 @@ def _carries_unrendered(tree: LexborHTMLParser) -> bool:
     content a script puts in place (module docstring). Counted in non-whitespace characters, as the shell rule counts.
     The tree is read, not changed."""
     scripts = sum(_chars(script.text()) for script in tree.css(_SCRIPT))
-    concealed = sum(_chars(node.text()) for node in tree.css(_CONCEALED) if _concealed(node.attributes))
+    concealed = sum(
+        _chars(node.text()) for node in _outermost(n for n in tree.css(_CONCEALED) if _concealed(n.attributes))
+    )
     if scripts + concealed < _CARRIED_MIN_CHARS:
         return False
     root = lxml_of(tree)
@@ -270,6 +273,24 @@ def _carries_unrendered(tree: LexborHTMLParser) -> bool:
         if element.getparent() is not None:
             element.drop_tree()
     return _chars(shown.text_content()) < _SHELL_MAX_TEXT_CHARS
+
+
+def _outermost(nodes: Iterable[LexborNode]) -> Iterator[LexborNode]:
+    """The `nodes` (in document order) inside none of the others, so that a subtree's text is counted once."""
+    kept: list[LexborNode] = []
+    for node in nodes:
+        if not any(_inside(node, outer) for outer in kept):
+            kept.append(node)
+            yield node
+
+
+def _inside(node: LexborNode, outer: LexborNode) -> bool:
+    parent = node.parent
+    while parent is not None:
+        if parent == outer:
+            return True
+        parent = parent.parent
+    return False
 
 
 def _unshown(element: HtmlElement) -> bool:

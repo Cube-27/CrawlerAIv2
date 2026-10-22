@@ -177,6 +177,7 @@ async def fetch_page(
         locale,
         page_kind=task.page_kind,
         schema=None if read_with is None else read_with.schema,
+        vocabulary=None if read_with is None else read_with.data.vocabulary,
         formats=formats,
     )
     # A new host's site row is committed at once, so the other tasks of the host do not wait on it.

@@ -61,8 +61,9 @@ async def recent_capture(
 ) -> CaptureRow | None:
     """The latest capture of `canonical` that reached its page (§4.8), within `max_age` seconds (None: any age), has
     not expired and was made with `policy`'s page steps and context, names and value digest (and its screenshot area,
-    when it asks for a screenshot); one an API recipe fetched only with `api` (it holds JSON, not the page). Captures
-    are found through the tasks that fetched them, which hold the canonical URL. Its bundle is read with `reread`,
+    when it asks for a screenshot; for a content-only read, one judged by that rule or rendered, `content_only`); one
+    an API recipe fetched only with `api` (it holds JSON, not the page). Captures are found through the tasks that
+    fetched them, which hold the canonical URL. Its bundle is read with `reread`,
     outside the transaction."""
     made = policy.model_dump(mode="json", include={"steps", "context", "screenshot"})
     query = (
@@ -84,6 +85,9 @@ async def recent_capture(
     if policy.screenshot is not None:
         # A screenshot of the viewport does not stand for one of the full page, nor the other way round.
         query = query.where(Capture.fetch_policy["screenshot"] == _jsonb(made["screenshot"]))
+    if policy.content_only:
+        # An HTTP page kept `ok` for a records read may carry its text in a script: the content rule never judged it.
+        query = query.where(or_(Capture.fetch_policy["content_only"] == _jsonb(True), Capture.method == "browser"))
     if not api:
         query = query.where(Capture.method != "api")
     return (await conn.execute(query)).one_or_none()

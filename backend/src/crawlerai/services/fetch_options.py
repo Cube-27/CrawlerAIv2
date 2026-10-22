@@ -27,7 +27,7 @@ from pydantic import (
 )
 
 from crawlerai.acquire.types import FetchPolicy, RequestContext
-from crawlerai.collect.vocabulary import default_vocabulary
+from crawlerai.collect.vocabulary import Vocabulary
 from crawlerai.config_ir.page_actions import MAX_ACTIONS, Action, WaitFor, to_steps, wait_for_action
 from crawlerai.core.errors import Refusal
 from crawlerai.core.redaction import REDACTED
@@ -188,17 +188,19 @@ def fetch_policy(
     *,
     page_kind: PageKind | None = None,
     schema: SchemaContent | None = None,
+    vocabulary: Vocabulary | None = None,
     formats: Iterable[str] = (),
 ) -> FetchPolicy:
     """The fetch policy of a page task, through the proxy pool `options` names: for a job's pages, the one pool its
     request names (`services.location`). A screenshot or PDF among its `formats` is made in the
     browser, which then fetches the page whatever the site's remembered method (`FetchPolicy.screenshot`, `pdf`).
     `schema`, the one the page is read with, names the types of the items it is read for (the policy's
-    `target_types`, `_with_subtypes`); content formats without `records` read the page's text alone (`content_only`)."""
+    `target_types`, with their subtypes in the engine's `vocabulary`, `_with_subtypes`); content formats without
+    `records` read the page's text alone (`content_only`)."""
     wanted = set(formats)
     return FetchPolicy(
         page_kind=page_kind,
-        target_types=() if schema is None else _with_subtypes(target_types(schema)),
+        target_types=() if schema is None else _with_subtypes(target_types(schema), vocabulary),
         content_only=bool(_CONTENT_FORMATS & wanted) and _RECORDS not in wanted,
         method_hint="browser" if options.in_browser or CAPTURE_FORMATS & wanted else options.method_hint,
         screenshot=options.screenshot if "screenshot" in wanted else None,
@@ -212,12 +214,11 @@ def fetch_policy(
     )
 
 
-def _with_subtypes(types: tuple[str, ...]) -> tuple[str, ...]:
-    """`types` and every type of the pinned schema.org vocabulary that is a subclass of one of them (`rdfs:subClassOf`,
-    transitively), sorted: a `JobPosting` schema reads a page whose data states one, a `Product` schema one stating a
-    `ProductGroup`."""
-    if not types:
-        return ()
-    vocabulary = default_vocabulary()
+def _with_subtypes(types: tuple[str, ...], vocabulary: Vocabulary | None) -> tuple[str, ...]:
+    """`types` and every type of the pinned schema.org `vocabulary` that is a subclass of one of them
+    (`rdfs:subClassOf`, transitively), sorted: a `Product` schema reads a page whose data states a `ProductGroup`.
+    Without the vocabulary, `types` alone."""
+    if not types or vocabulary is None:
+        return types
     subtypes = {name for name in vocabulary.supertypes if any(vocabulary.is_a(name, wanted) for wanted in types)}
     return tuple(sorted(subtypes.union(types)))
