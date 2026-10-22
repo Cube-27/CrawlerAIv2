@@ -38,9 +38,13 @@ def _application_form(page: ParsedPage, form: LexborNode) -> bool:
     applicant's documents) and another asks for the person's name or contact (`_CONTACT_AUTOFILL`, `_CONTACT_TYPES`).
     A form's controls are its descendants and the controls naming it by their `form` attribute (§4.10.17.3, form
     owner)."""
-    controls = list(form.css(_CONTROLS))
-    if form_id := form.attributes.get("id"):
-        controls += [c for c in page.tree.css(_CONTROLS) if c.attributes.get("form") == form_id]
+    form_id = form.attributes.get("id")
+    # A descendant naming another form by its `form` attribute is that form's.
+    controls = [c for c in form.css(_CONTROLS) if c.attributes.get("form") in (None, form_id)]
+    if form_id:
+        controls += [
+            c for c in page.tree.css(_CONTROLS) if c.attributes.get("form") == form_id
+        ]  # a descendant twice is one control
     # The `type` attribute is an enumerated attribute (ASCII case-insensitive, §2.3.3); `autocomplete`, a list of
     # tokens whose last names the field (§4.10.18.7.1).
     types = {(c.attributes.get("type") or "").strip().lower() for c in controls if c.tag == "input"}
@@ -50,8 +54,8 @@ def _application_form(page: ParsedPage, form: LexborNode) -> bool:
 
 def _embeds(page: ParsedPage, final_url: str, embed: ApplicationEmbed) -> bool:
     """Whether the page shows `embed`'s application form: its URL's query names one posting by the embed's parameter
-    (RFC 3986 §3.4), and the page holds the embed's container element and loads its loader script (HTML Standard
-    §4.12.1, `script src`, resolved against the page URL)."""
+    (RFC 3986 §3.4), and the page holds the embed's container element and loads its loader script for one board
+    (HTML Standard §4.12.1, `script src`, resolved against the page URL)."""
     posting = parse_qs(urlsplit(final_url).query).get(embed.posting_param, [])
     if len(posting) != 1 or not embed.posting_id.fullmatch(posting[0]):
         return False
@@ -62,6 +66,7 @@ def _embeds(page: ParsedPage, final_url: str, embed: ApplicationEmbed) -> bool:
             loader = urlsplit(urljoin(final_url, (script.attributes.get("src") or "").strip()))
         except ValueError:  # RFC 3986 §3.2.2: an authority no URL parser reads names no script
             continue
-        if loader.hostname in embed.loader_hosts and loader.path == embed.loader_path:
+        board = parse_qs(loader.query).get(embed.loader_param, [])
+        if loader.hostname in embed.loader_hosts and loader.path == embed.loader_path and len(board) == 1:
             return True
     return False

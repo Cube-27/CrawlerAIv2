@@ -24,9 +24,11 @@ POSTING = f"{PAGE}?{APPLICATION_EMBED.posting_param}=123"
         ('<form><input type="file" name="b"></form>', PAGE, False),
         # Contact in one form and an upload in another are two forms.
         ('<form><input type="email"></form><form><input type="file"></form>', PAGE, False),
+        ('<form id="g"></form><form><input type="email"><input type="file" form="g"></form>', PAGE, False),
         (EMBED, POSTING, True),
         (EMBED, PAGE, False),  # the board, not one posting
         (f'<div id="{APPLICATION_EMBED.container}"></div>', POSTING, False),
+        (EMBED.replace("?for=example", ""), POSTING, False),  # a loader for no board
         ("<p>Apply on this page</p>", POSTING, False),
     ],
 )

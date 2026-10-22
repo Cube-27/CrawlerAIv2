@@ -46,6 +46,7 @@ APPLICATION_EMBED: Final = ApplicationEmbed(
     container="grnhse_app",
     loader_hosts=frozenset({"boards.greenhouse.io"}),
     loader_path="/embed/job_board/js",
+    loader_param="for",
     posting_param="gh_jid",
     posting_id=_JOB_ID,
 )
