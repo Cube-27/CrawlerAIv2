@@ -22,7 +22,6 @@ from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
-from typing import Final, cast
 
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import Page, Response
@@ -33,6 +32,7 @@ from crawlerai.acquire.browser_capture import (
     DataCalls,
     Resources,
     capture_artifacts,
+    document_html,
     header_list,
     item_areas,
     json_bodies,
@@ -62,29 +62,6 @@ __all__ = ["Render", "Rendered", "classified", "fetch_browser", "markup", "read_
 
 # RFC 9110 §15.5, §15.6: a 4xx or 5xx document; the profile that rendered one is not reused (`_Profiles`).
 _ERROR_STATUS = 400
-# The rendered document with its open shadow roots (HTML Standard, `Element.getHTML` with `serializableShadowRoots` and
-# `shadowRoots`): every open root reachable from the document by walking `shadowRoot` is serialized as a declarative
-# `<template shadowrootmode="open">`, which the HTML reader flattens. Run in Patchright's isolated world with `evaluate`
-# (INV-44: no init script); a closed root is not reachable and stays out. The doctype and the root element's own tag
-# are written around `getHTML`, which serializes the children; a browser without it gives `outerHTML`.
-DOCUMENT_HTML_JS: Final = """() => {
-  const roots = [];
-  const walk = (root) => {
-    for (const element of root.querySelectorAll('*')) {
-      if (element.shadowRoot) { roots.push(element.shadowRoot); walk(element.shadowRoot); }
-    }
-  };
-  walk(document);
-  const html = document.documentElement;
-  const { doctype: type } = document;
-  const doctype = type ? `<!DOCTYPE ${type['name']}>` : '';
-  if (html === null) return doctype;
-  if (typeof html.getHTML !== 'function') return doctype + html.outerHTML;
-  const quoted = (value) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-  const attributes = Array.from(html.attributes, ({ name, value }) => ` ${name}="${quoted(value)}"`).join('');
-  const inner = html.getHTML({ serializableShadowRoots: true, shadowRoots: roots });
-  return `${doctype}<html${attributes}>${inner}</html>`;
-}"""
 # Chromium's network error names (net/base/net_error_list.h) carry no URL.
 _NET_ERROR = re.compile(r"net::ERR_[A-Z0-9_]+")
 
@@ -397,9 +374,9 @@ async def read_state(
 
 
 async def _rendered(page: Page, exchange: Exchange) -> bytes:
-    """The rendered document with its open shadow roots (`DOCUMENT_HTML_JS`), read in the isolated world."""
+    """The rendered document with its open shadow roots (`browser_capture.document_html`)."""
     try:
-        return cast(str, await page.evaluate(DOCUMENT_HTML_JS, isolated_context=True)).encode()
+        return (await document_html(page)).encode()
     except PlaywrightError as e:
         raise Failed("render_error", exchange) from e
 

@@ -349,3 +349,33 @@ def _text_or_none(data: bytes | None) -> str | None:
 def header_list(headers: Sequence[Mapping[str, object]]) -> HeaderList:
     # Playwright's header arrays keep repeated names in order (RFC 9110 §5.3), as the bundle does.
     return tuple((str(h["name"]), str(h["value"])) for h in headers)
+
+
+# The rendered document with its open shadow roots (HTML Standard, `Element.getHTML` with `serializableShadowRoots` and
+# `shadowRoots`): every open root reachable from the document by walking `shadowRoot` is serialized as a declarative
+# `<template shadowrootmode="open">`, which the HTML reader flattens. Run in Patchright's isolated world with `evaluate`
+# (INV-44: no init script); a closed root is not reachable and stays out. The doctype and the root element's own tag
+# are written around `getHTML`, which serializes the children; a browser without it gives `outerHTML`.
+DOCUMENT_HTML_JS: Final = """() => {
+  const roots = [];
+  const walk = (root) => {
+    for (const element of root.querySelectorAll('*')) {
+      if (element.shadowRoot) { roots.push(element.shadowRoot); walk(element.shadowRoot); }
+    }
+  };
+  walk(document);
+  const html = document.documentElement;
+  const { doctype: type } = document;
+  const doctype = type ? `<!DOCTYPE ${type['name']}>` : '';
+  if (html === null) return doctype;
+  if (typeof html.getHTML !== 'function') return doctype + html.outerHTML;
+  const quoted = (value) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const attributes = Array.from(html.attributes, ({ name, value }) => ` ${name}="${quoted(value)}"`).join('');
+  const inner = html.getHTML({ serializableShadowRoots: true, shadowRoots: roots });
+  return `${doctype}<html${attributes}>${inner}</html>`;
+}"""
+
+
+async def document_html(page: Page) -> str:
+    """The rendered document with its open shadow roots (`DOCUMENT_HTML_JS`), read in the isolated world."""
+    return cast(str, await page.evaluate(DOCUMENT_HTML_JS, isolated_context=True))

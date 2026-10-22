@@ -14,7 +14,7 @@ from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import Frame, Page, Request, Response
 from patchright.async_api import TimeoutError as PlaywrightTimeout
 
-from crawlerai.acquire.browser_capture import DataCalls
+from crawlerai.acquire.browser_capture import DataCalls, document_html
 from crawlerai.acquire.classify import interstitial
 from crawlerai.acquire.types import CallEndpoint, FetchPolicy
 
@@ -106,8 +106,9 @@ async def settle(page: Page, frame: MainFrame, calls: DataCalls, policy: FetchPo
     interstitial_deadline = started + min(_INTERSTITIAL_SHARE * budget_s, _INTERSTITIAL_MAX_S)
     deadline = started + _SETTLE_SHARE * budget_s
     await until(frame, lambda: _ready(frame, calls, policy), READY_MAX_S, deadline, after_load=True)
-    while time.monotonic() < interstitial_deadline and await _interstitial(page, frame):
-        if not await _next_document(page, frame, interstitial_deadline):
+    while time.monotonic() < interstitial_deadline and (judged := await _interstitial(page, frame)) is not False:
+        # None: the document was replaced while it was read, so the next one is waited for as any navigation is.
+        if judged and not await _next_document(page, frame, interstitial_deadline):
             return
         await until(frame, lambda: _ready(frame, calls, policy), READY_MAX_S, deadline, after_load=True)
 
@@ -161,14 +162,16 @@ def _answered(endpoint: CallEndpoint, calls: DataCalls) -> bool:
     )
 
 
-async def _interstitial(page: Page, frame: MainFrame) -> bool:
+async def _interstitial(page: Page, frame: MainFrame) -> bool | None:
+    """Whether the document shown is an interstitial (`classify.interstitial`, judged as rendered: read as the capture
+    reads it, open shadow roots included); None when it was replaced while it was read."""
     shown = frame.latest
     if shown is None:
         return False
     try:
-        text = await page.content()
+        text = await document_html(page)
     except PlaywrightError:
-        return False  # the document is being replaced: the waits that follow see the next one
+        return None
     # classify's rules parse HTML synchronously; a thread keeps the event loop free.
     headers = tuple(shown.headers.items())
     return await asyncio.to_thread(partial(interstitial, rendered=True), shown.status, headers, text, shown.url)

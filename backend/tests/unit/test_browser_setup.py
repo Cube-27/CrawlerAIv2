@@ -181,8 +181,8 @@ def test_open_shadow_roots_are_serialized_by_get_html_in_the_isolated_world_only
     ]
     evaluated = [line for _, line in calls if "evaluate(" in line]
 
-    assert {path for path, _ in calls} == {"acquire/browser.py"}
-    assert evaluated == ["return cast(str, await page.evaluate(DOCUMENT_HTML_JS, isolated_context=True)).encode()"]
+    assert {path for path, _ in calls} == {"acquire/browser_capture.py"}
+    assert evaluated == ["return cast(str, await page.evaluate(DOCUMENT_HTML_JS, isolated_context=True))"]
 
 
 def test_inv44_a_profile_sets_only_the_proxy_downloads_viewport_user_agent_and_the_request_locale(
