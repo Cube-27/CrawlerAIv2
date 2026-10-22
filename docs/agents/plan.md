@@ -48,6 +48,10 @@ same PR, tests for removed code deleted, green CI, bot threads resolved. Sizes: 
 | s3b | Listing cells: the shown title link, prices beside add-on options, every section; one HTML5 parse | #431 | merged |
 | s3c | A requested variant URL selects the shown variant; tied list images follow collector order | #432 | merged |
 | s3d | Labelled ids, condition phrases, untyped `offers` nodes are Offers | #433 | merged |
+| s3e | A stated brand outranks the platform vendor (owner #81) | #435 | merged |
+| s3f | A job page holding its application form is its own apply_url (owner #82) | #436 | merged |
+| s3h | Markdown re-reads in recall mode when the precision read is empty | #437 | merged |
+| s3g | PHP 8.4 HTML5 parse for exported XPaths; one parse everywhere (owner #83) | #438 | merged |
 
 ## Owner decisions for this plan (binding)
 
