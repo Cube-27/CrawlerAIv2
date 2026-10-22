@@ -376,9 +376,12 @@ collectors share): elements never rendered or hidden by the page itself (`script
 `aria-hidden="true"`, a closed `dialog`), the landmarks `nav`, `aside`, an open `dialog` and a `header` or `footer`
 whose scope is the body, the WAI-ARIA landmark and window roles of the same meaning, and elements whose class or id
 names a furniture word (header, footer, nav, menu, breadcrumb, cookie, consent, sidebar, social, share, newsletter,
-modal, popup, skip, as Firecrawl's `excludeNonMainTags` and Readability read them); no rule drops an element holding the
-page's first `h1`, a `main` or `article`, and no name or page-hidden mark one holding more than two fifths of the page's
-text. Everything left is written in document order as CommonMark with GFM tables (headings, paragraphs with collapsed
+modal, popup, skip, as Firecrawl's `excludeNonMainTags` and Readability read them, a name's parts split at `-`, `_` and
+camelCase boundaries; a header or footer class only where the element's scope is the body, `main` being no scope, and
+a header or footer `id` whatever its scope, an id being unique in the document); no rule drops an element holding the
+page's first `h1`, a `main` or `article`, and no name or page-hidden mark one holding the page's longest leaf text
+block or more than two fifths of the page's text outside hyperlinks; when the names together would drop more than two
+fifths of that text, the page is read without them. Everything left is written in document order as CommonMark with GFM tables (headings, paragraphs with collapsed
 inline whitespace, nested lists, tables, fenced code, block quotes, links and images resolved against the document
 base URL); a form control's value is no text. A page that shows nothing once scripts would run is written as a user
 agent with scripting disabled renders it, its `noscript` content included (HTML Standard §4.12.2). `markdown` is `""`
@@ -391,6 +394,9 @@ D-1277, D-1450, D-1473, D-1474; endpoint in [rest-api](../rest-api/spec.md).
 - **THEN** `markdown` holds the content and none of their text
 #### Scenario: Wrapper named after furniture
 - **WHEN** a `div` whose class names a drawer modal holds the page's `h1` and its text
+- **THEN** `markdown` keeps it
+#### Scenario: Content in a wrapper named after a sidebar
+- **WHEN** a `div` whose class names a sidebar holds the page's longest paragraph, under two fifths of its text
 - **THEN** `markdown` keeps it
 #### Scenario: Listing items
 - **WHEN** a listing's grid of cards sits in its `main`

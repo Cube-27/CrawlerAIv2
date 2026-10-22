@@ -2,8 +2,8 @@
 without a model, and, given a `query`, only the blocks relevant to it.
 
 Pruning runs on the copy of the page's tree that `content.markdown` writes, after its furniture is gone
-(`content.regions`). Each leaf text block (an element that holds no other text block) is scored on its own, by three
-structural properties, and dropped when
+(`content.regions`). Each leaf text block (`content.regions`: a block element that holds no other) is scored on its
+own, by three structural properties, and dropped when
 - its text is mostly link text (link density above one half: a menu, a list of related links);
 - little of its markup is text (text density, the share of its characters that are text rather than tag names, times
   one minus the link density, under 0.3: a block of controls and wrappers around a few words);
@@ -25,11 +25,10 @@ from crawlerai.content import bm25
 from crawlerai.content.markdown import markdown
 from crawlerai.content.md_blocks import Block, parse, render
 from crawlerai.content.page import ParsedPage
+from crawlerai.content.regions import leaf_blocks
 from crawlerai.normalize.strings import collapse
 
-_LEAF_BLOCKS = ("p", "li", "dd", "dt", "blockquote", "figcaption", "summary", "div", "pre", "td", "th")
 _HEADINGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
-_LEAF_TAGS = (*_LEAF_BLOCKS, *_HEADINGS)
 # Blocks of data or code, read as written.
 _AS_WRITTEN = frozenset({"pre", "td", "th"})
 _MAX_LINK_DENSITY = 0.5
@@ -61,11 +60,7 @@ def markdown_fit(page: ParsedPage, final_url: str, options: FitOptions | None = 
 
 def prune(tree: HtmlElement) -> None:
     """Take the page's low-content blocks out of `tree`."""
-    blocks = [
-        (element, collapse(element.text_content()))
-        for element in tree.iter(*_LEAF_TAGS)
-        if not any(True for _ in element.iterdescendants(*_LEAF_TAGS))
-    ]
+    blocks = [(element, collapse(element.text_content())) for element in leaf_blocks(tree)]
     counts: dict[str, int] = {}
     for _, text in blocks:
         counts[text.casefold()] = counts.get(text.casefold(), 0) + 1
