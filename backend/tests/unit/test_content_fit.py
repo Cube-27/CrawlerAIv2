@@ -9,7 +9,7 @@ PROSE = "Bees keep a colony through the winter by clustering around the queen an
 
 
 def _fit(html: str, options: FitOptions | None = None) -> str:
-    return markdown_fit(ParsedPage(html), URL, None, options)
+    return markdown_fit(ParsedPage(html), URL, options)
 
 
 def test_a_menu_of_links_in_a_div_is_pruned_but_prose_with_a_link_is_kept() -> None:

@@ -1,8 +1,9 @@
 """Text and long_text normalizer (normalization spec): a decoded, composed, whitespace-collapsed string.
 
 Accepts a string, from the DOM, an LLM or a structured source (schema.org Text values are JSON strings). Any other
-JSON value is `Invalid("not_a_string")`. A long_text value arrives already extracted as main content (trafilatura,
-in the content layer); here it keeps its line breaks, with at most one blank line between paragraphs.
+JSON value is `Invalid("not_a_string")`. A long_text value arrives as its source states it (a structured value, or a
+DOM block's cleaned text, one block box per line); here it keeps its line breaks, with at most one blank line between
+paragraphs.
 """
 
 import html

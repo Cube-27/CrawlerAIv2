@@ -1,24 +1,34 @@
-"""The `markdown` content format (rest-api spec): the page's main content, by trafilatura.
+"""The `markdown` content format (rest-api spec): the page minus its furniture, as Markdown.
 
-trafilatura reads the page's lxml tree, not the body, so the capture is parsed once (INV-26). This module resolves
-link targets on a copy of that tree, so the shared tree stays as parsed. No per-site rules (C2). A browser capture's
-body is the rendered DOM, so the same call covers both rungs.
+The page's furniture (`content.regions`: what it never renders, its landmarks and the elements its class and id names
+call furniture) is taken out of a copy of the page's lxml tree, so the capture is parsed once (INV-26) and the shared
+tree stays as parsed; everything left is written, in document order, as CommonMark with GFM tables. No per-site rules
+(C2). A browser capture's body is the rendered DOM, so the same call covers both rungs.
+
+The writer follows the HTML Standard's rendering: an element the user-agent style sheet lays out as a block
+(`content.text.LINE_BOXES`, table cells) starts a block of its own, and so does an inline element that holds one (CSS
+2 §9.2.1.1: the inline box is broken around the block), but for a hyperlink, which stays one link around its content.
+A run of inline content between blocks is a paragraph, its whitespace collapsed to one space (CSS Text Level 3,
+`white-space: normal`) and a `br` a line break. Headings (`h1`-`h6`) are ATX headings (CommonMark §4.2); `ul`, `ol`
+and `menu` are lists (§5.3), their items' blocks on the item's lines and nested lists indented under them; a table
+with no table inside it is a GFM table, its first row the header and each cell's content on one line, while a table
+that holds tables lays out the page and is read as blocks; `pre` is a fenced code block (§4.5) of its text as written;
+`blockquote` is a block quote (§5.1); `hr` a thematic break (§4.1). Inline, a hyperlink (an `a` with an `href`, HTML
+Standard §4.6.1) is a link (§6.3) whose text is its content, else its `aria-label` or `title`; an image is an image
+(§6.4) of its `alt`, from its `src`, else, where `src` is an inline `data:` placeholder (RFC 2397), from the `data-src`
+a lazy loader keeps it in (HTML Standard §3.2.6.6); `strong`/`b` and `em`/`i` are strong and emphasis (§6.2), `code`,
+`kbd` and `samp` code spans (§6.1). A form control's value (`input`, `select`, `textarea`, HTML Standard §4.10) is
+what a reader of the page enters, not reads: it is no text.
 
 Link and image targets are resolved against the document base URL (HTML Living Standard §2.4.1; RFC 3986 §5.2), so
-the Markdown can be read away from the page. The source's layout whitespace is not content: outside `pre`, HTML
-renders indentation and line breaks as one space (CSS Text Level 3, `white-space: normal`), while in Markdown an
-indent of four spaces starts a code block and a run of blank lines means one (CommonMark §4.4, §4.9). So a line's
-leading whitespace is dropped unless it nests a list item or continues one, and blank-line runs become one; fenced
-code is kept as written.
+the Markdown can be read away from the page. The source's layout whitespace is not content: in Markdown an indent of
+four spaces starts a code block and a run of blank lines means one (CommonMark §4.4, §4.9). So a line's leading
+whitespace is dropped unless it nests a list item or continues one, and blank-line runs become one; fenced code is
+kept as written.
 
-trafilatura reads a listing's item grid as boilerplate (link-dense repeated blocks), so for a page fetched as a listing
-the items (the segment step's first group, `ParsedPage.item_groups`) are taken out of its copy of the tree and written
-as a Markdown list after the rest of the content (`_items`): each item's links, images and text, in document order. A
-listing page with no repeated items is read in recall mode, as precision mode keeps little of a page that is not an
-article; so is any page whose precision read finds no main content (extraction spec, "Page content formats").
-
-trafilatura drops the space after an inline element that opens a `div`, `td` or `li`'s text ("**Warning!**This"), so
-each such run of inline content is wrapped in a `p` first (`_wrap_inline_runs`, D-1275).
+A page that shows nothing once scripts would run (a client-rendered application) is read as a user agent with scripting
+disabled renders it: its `noscript` content, which such a page serves to readers that run no script (HTML Standard
+§4.12.2), is written too.
 
 A JSON body (an `api` capture's, `ParsedPage.json_body`) is no HTML document: its Markdown is the answer itself,
 pretty-printed in one fenced code block whose info string is `json` (CommonMark §4.5), never its text read as HTML
@@ -29,75 +39,53 @@ import json
 import re
 from collections.abc import Callable, Iterator
 from copy import deepcopy
-from typing import NamedTuple
 
-import trafilatura
 from lxml.html import HtmlElement
 
-from crawlerai.acquire.items import element_path, is_hyperlink
-from crawlerai.content.dom import document_base_url
+from crawlerai.content.dom import document_base_url, tokens
 from crawlerai.content.md_blocks import FENCE, LIST_ITEM
 from crawlerai.content.page import ParsedPage
-from crawlerai.content.text import NOT_RENDERED
+from crawlerai.content.regions import drop_furniture
+from crawlerai.content.text import CELLS, LINE_BOXES
 from crawlerai.core import json_text
-from crawlerai.db.models import PageKind
 from crawlerai.normalize.strings import collapse
 
-# Elements whose content is not an item's text: those never rendered (`content.text`), and form controls (HTML
-# Standard §4.10), which a reader of the page uses rather than reads.
-# HTML Standard §3.2.5.2.5: the elements of phrasing content that mark up text inside a block.
-_PHRASING = frozenset(
-    {*("a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark", "q", "s", "samp")}
-    | {*("small", "span", "strong", "sub", "sup", "time", "u", "var")}
-)
-_NOT_TEXT = NOT_RENDERED | {"button", "select", "input", "textarea", "option"}
+_BLOCKS = LINE_BOXES | CELLS
+_HEADINGS = {f"h{level}": level for level in range(1, 7)}
+_LISTS = frozenset({"ul", "ol", "menu"})
+# HTML Standard §4.10: controls whose value the reader enters or picks.
+_CONTROLS = frozenset({"input", "select", "textarea", "option", "optgroup", "datalist"})
+_STRONG = frozenset({"strong", "b"})
+_EMPHASIS = frozenset({"em", "i"})
+_CODE = frozenset({"code", "kbd", "samp"})
+# HTML Living Standard §2.3.1: ASCII whitespace, which `white-space: normal` collapses.
+_WHITESPACE = re.compile(r"[\t\n\f\r ]+")
+_SPACED_BREAK = re.compile(r" *\n *")
+_SPACES = re.compile(" {2,}")
+# HTML Standard §4.5.15: a `code` element names its language with a `language-` class.
+_LANGUAGE = "language-"
+_INLINE_DATA = "data:"
+# CommonMark §4.2: an ATX heading's opening sequence. In a list item a heading is written as its text: an item's lines
+# are its own (§5.2), and readers of the Markdown by block (`content.md_blocks`) take a heading line for a section.
+_HEADING_MARK = re.compile(r"^#{1,6} ")
+_JAVASCRIPT = re.compile(r"\s*javascript:", re.IGNORECASE)
 
 
-def markdown(
-    page: ParsedPage,
-    final_url: str,
-    page_kind: PageKind | None = None,
-    *,
-    prune: Callable[[HtmlElement], None] | None = None,
-) -> str:
-    """The main content as Markdown, with its links and images, and a listing's items; `""` when there is none.
-    `page_kind` is the kind the capture was fetched as. `prune`, when given, takes content out of the copy of the tree
-    that is read, after a listing's items were taken from it (`content.fit`)."""
+def markdown(page: ParsedPage, final_url: str, *, prune: Callable[[HtmlElement], None] | None = None) -> str:
+    """The page minus its furniture as Markdown, with its links and images; `""` when nothing is left. `prune`, when
+    given, takes more out of the copy of the tree that is written, after its furniture (`content.fit`)."""
     if page.json_body:
         return json_block(page.html)
+    return _written(page, final_url, prune, scripting=True) or _written(page, final_url, prune, scripting=False)
+
+
+def _written(page: ParsedPage, final_url: str, prune: Callable[[HtmlElement], None] | None, *, scripting: bool) -> str:
     tree = _absolute(page, final_url)
-    items = _copied(tree, page.item_groups[0]) if page_kind == "listing" and page.item_groups else ()
-    for item in items:
-        item.drop_tree()  # lxml keeps the item's tail text in the tree
+    drop_furniture(tree, scripting=scripting)
     if prune is not None:
         prune(tree)
-    _wrap_inline_runs(tree)
-    # A page with no repeated items is not an article either, so precision mode would keep only its prose blocks.
-    recall = page_kind == "listing" and not items
-    extracted = _extract(tree, recall=recall) or ("" if recall else _extract(tree, recall=True))
-    listed = "\n".join(f"- {line}" for line in map(_item, items) if line)
-    return _tidy("\n\n".join(part for part in (extracted, listed) if part))
-
-
-def _extract(tree: HtmlElement, *, recall: bool) -> str:
-    """trafilatura's Markdown of the tree, in recall or precision mode; `""` when it finds no main content."""
-    return (
-        trafilatura.extract(
-            tree,
-            output_format="markdown",
-            include_links=True,
-            include_images=True,
-            favor_precision=not recall,
-            favor_recall=recall,
-        )
-        or ""
-    )
-
-
-def _copied(tree: HtmlElement, blocks: tuple[HtmlElement, ...]) -> list[HtmlElement]:
-    """The `blocks` of the page's tree in its copy `tree`, found by their element paths."""
-    found = (tree.xpath(element_path(block)) for block in blocks)
-    return [nodes[0] for nodes in found if isinstance(nodes, list) and nodes and isinstance(nodes[0], HtmlElement)]
+    body = tree.find("body")
+    return _tidy("\n\n".join(_Writer(tree).blocks(body if body is not None else tree)))
 
 
 def json_block(text: str) -> str:
@@ -109,92 +97,222 @@ def json_block(text: str) -> str:
         pretty = json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False)  # RFC 8259 §6: no Infinity, NaN
     except (ValueError, RecursionError):  # writing a value back nests as deep as reading it
         return ""
-    fence = "`" * max(3, 1 + max((len(run) for run in re.findall("`+", pretty)), default=0))
+    fence = _fence(pretty, "`", 3)
     return f"{fence}json\n{pretty}\n{fence}"
+
+
+def _fence(text: str, mark: str, least: int) -> str:
+    """A run of `mark` longer than any run of it in `text`, and at least `least` long."""
+    return mark * max(least, 1 + max((len(run) for run in re.findall(f"{re.escape(mark)}+", text)), default=0))
 
 
 def _absolute(page: ParsedPage, final_url: str) -> HtmlElement:
     """A copy of the page's lxml tree with every link and resource target resolved against the document base URL
-    (RFC 3986 §5.2). trafilatura's own `url=` resolves link targets against the host alone, so `about/x` under a base
-    of `/site/` would lose `/site/`. A target that does not parse is left as written."""
+    (RFC 3986 §5.2), a lazy image's source in its `src` first. A target that does not parse is left as written."""
     tree = deepcopy(page.lxml_tree)
+    for image in tree.iter("img"):
+        _lazy_source(image)
     tree.make_links_absolute(document_base_url(page, final_url), resolve_base_href=False, handle_failures="ignore")
     return tree
 
 
-def _wrap_inline_runs(tree: HtmlElement) -> None:
-    """Wraps each run of inline content (text and phrasing elements, HTML Standard §3.2.5.2.5) that holds an element,
-    in a `div`, `td` or `li`, in a `p`, which trafilatura reads with the spaces between its parts."""
-    for container in list(tree.iter("div", "td", "li")):
-        start = 0
-        while start < len(container) or start == 0:
-            run = _run_from(container, start)
-            if run.elements and _has_text(container, run):
-                _wrap(container, run)
-                start = run.start + 2  # past the `p` and the block child that ended the run
-            else:
-                start = run.end + 1
+class _Writer:
+    """Writes a tree as Markdown blocks (module docstring)."""
 
+    def __init__(self, tree: HtmlElement) -> None:
+        # The elements that hold a block: an inline one among them is broken around it.
+        self.holding: set[HtmlElement] = set()
+        for block in tree.iter(*_BLOCKS):
+            for ancestor in block.iterancestors():
+                if ancestor in self.holding:
+                    break
+                self.holding.add(ancestor)
 
-class _Run(NamedTuple):
-    start: int
-    end: int  # index of the block child that ends the run, or the child count
-    elements: list[HtmlElement]
+    def is_block(self, element: HtmlElement) -> bool:
+        return element.tag in _BLOCKS or (element.tag != "a" and element in self.holding)
 
-
-def _run_from(container: HtmlElement, start: int) -> _Run:
-    end = start
-    while end < len(container) and container[end].tag in _PHRASING:
-        end += 1
-    return _Run(start, end, list(container[start:end]))
-
-
-def _has_text(container: HtmlElement, run: _Run) -> bool:
-    """Whether the run has text of its own, so the elements' spacing is in question (a run of elements only has
-    none)."""
-    texts = [container.text if run.start == 0 else container[run.start - 1].tail, *(e.tail for e in run.elements)]
-    return any(t and t.strip() for t in texts)
-
-
-def _wrap(container: HtmlElement, run: _Run) -> None:
-    paragraph = container.makeelement("p")
-    if run.start == 0:
-        paragraph.text, container.text = container.text, None
-    else:
-        previous = container[run.start - 1]
-        paragraph.text, previous.tail = previous.tail, None
-    for element in run.elements:
-        paragraph.append(element)  # moves the element with its tail
-    container.insert(run.start, paragraph)
-
-
-def _item(item: HtmlElement) -> str:
-    """One item on one line: its hyperlinks as Markdown links (an image link's image as its text), its other images,
-    and its other visible text, in document order, whitespace collapsed (CSS Text Level 3, `white-space: normal`)."""
-    return collapse("".join(_parts(item)))
-
-
-def _parts(element: HtmlElement) -> Iterator[str]:
-    """The element's content as Markdown pieces, without its tail, which follows it in its parent."""
-    if is_hyperlink(element):
-        yield f" {_link(element)} "
-    elif element.tag == "img":
-        yield f" {_image(element)} "
-    elif isinstance(element.tag, str) and element.tag not in _NOT_TEXT:  # not a comment or processing instruction
-        yield element.text or ""
+    def blocks(self, element: HtmlElement) -> list[str]:
+        """The element's content as blocks: each block child's, and each run of inline content between them as a
+        paragraph."""
+        out: list[str] = []
+        run = [_spaced(element.text)]
         for child in element:
-            yield from _parts(child)
-            yield child.tail or ""
+            if self.is_block(child):
+                _flush(out, run)
+                out.extend(self.block(child))
+            else:
+                run.append(self.inline(child))
+            run.append(_spaced(child.tail))
+        _flush(out, run)
+        return out
+
+    def block(self, element: HtmlElement) -> list[str]:
+        tag = element.tag
+        if tag in _HEADINGS:
+            text = _line(self.inline_content(element))
+            return [f"{'#' * _HEADINGS[tag]} {text}"] if text else []
+        if tag in _LISTS:
+            return [text] if (text := self.listed(element)) else []
+        if tag == "table":
+            return self.table(element)
+        if tag == "pre":
+            return _fenced(element)
+        if tag == "blockquote":
+            return _quoted(self.blocks(element))
+        if tag == "hr":
+            return ["***"]  # CommonMark §4.1; `---` under a line would make it a setext heading (§4.3)
+        return self.blocks(element)
+
+    def inline(self, element: HtmlElement) -> str:
+        """The element's content as inline Markdown, without its tail."""
+        tag = element.tag
+        if not isinstance(tag, str) or tag in _CONTROLS:  # a comment or processing instruction is no content
+            return ""
+        if tag == "br":
+            return "\n"
+        if tag == "img":
+            return _image(element)
+        if tag == "a" and element.get("href") is not None:
+            return self.link(element)
+        content = self.inline_content(element)
+        if tag in _STRONG:
+            return _wrapped(content, "**")
+        if tag in _EMPHASIS:
+            return _wrapped(content, "*")
+        if tag in _CODE:
+            return _wrapped(content, _fence(content, "`", 1))
+        return content
+
+    def inline_content(self, element: HtmlElement) -> str:
+        """The element's children and text as inline Markdown, a block among them set apart by spaces."""
+        parts = [_spaced(element.text)]
+        for child in element:
+            piece = self.inline(child)
+            parts.append(f" {piece} " if child.tag in _BLOCKS else piece)
+            parts.append(_spaced(child.tail))
+        return "".join(parts)
+
+    def link(self, link: HtmlElement) -> str:
+        label = _line(self.inline_content(link))
+        label = label or _escaped(collapse(link.get("aria-label") or link.get("title") or ""))
+        href = link.get("href", "")
+        if not label or _JAVASCRIPT.match(href):  # a `javascript:` URL runs a script, it leads nowhere
+            return label
+        return f"[{label}]({_target(href)})"
+
+    def listed(self, element: HtmlElement) -> str:
+        """The list's items, numbered from its `start` when ordered; each item's blocks on its lines, indented to its
+        content column (CommonMark §5.2)."""
+        ordered = element.tag == "ol"
+        number = int(start) if (start := element.get("start", "").strip()).isdecimal() and len(start) < 9 else 1
+        lines: list[str] = []
+        for blocks in self.items(element):
+            body = "\n".join(_HEADING_MARK.sub("", block, count=1) for block in blocks if block)
+            if not body:
+                continue
+            marker = f"{number}." if ordered else "-"
+            number += 1
+            first, *rest = body.split("\n")
+            pad = " " * (len(marker) + 1)
+            lines += [f"{marker} {first}", *(pad + line if line else "" for line in rest)]
+        return "\n".join(lines)
+
+    def items(self, element: HtmlElement) -> Iterator[list[str]]:
+        """The blocks of each item of a list: an `li`'s, and each block of anything else the list holds."""
+        for child in element:
+            if child.tag == "li":
+                yield self.blocks(child)
+            elif self.is_block(child):
+                yield from ([block] for block in self.block(child))
+            else:
+                yield [_line(self.inline(child))]
+
+    def table(self, table: HtmlElement) -> list[str]:
+        """A GFM table of the table's rows, the first the header, after its caption; a table holding tables, or of
+        one column, as blocks."""
+        if next(table.iterdescendants("table"), None) is not None:
+            return self.blocks(table)
+        caption = table.find("caption")
+        head = [text] if caption is not None and (text := _line(self.inline_content(caption))) else []
+        rows = [[self.cell(cell) for cell in row if cell.tag in CELLS] for row in table.iter("tr")]
+        rows = [row for row in rows if any(row)]
+        width = max((len(row) for row in rows), default=0)
+        if width < 2:
+            return [*head, *(row[0] for row in rows)]
+        lines = [_row(rows[0], width), _row(["---"] * width, width), *(_row(row, width) for row in rows[1:])]
+        return [*head, "\n".join(lines)]
+
+    def cell(self, cell: HtmlElement) -> str:
+        # GFM tables: a cell is one line, and `|` inside it is escaped.
+        return _line(self.inline_content(cell)).replace("|", r"\|")
 
 
-def _link(link: HtmlElement) -> str:
-    text = collapse(link.text_content()) or link.get("title", "")
-    label = _escaped(text) if text else " ".join(_image(image) for image in link.iter("img"))
-    return f"[{label}]({_target(link.get('href', ''))})"
+def _spaced(text: str | None) -> str:
+    return _WHITESPACE.sub(" ", text or "")
+
+
+def _paragraph(text: str) -> str:
+    """Inline Markdown as a paragraph: spaces around a line break and runs of spaces collapsed, trimmed."""
+    return _SPACES.sub(" ", _SPACED_BREAK.sub("\n", text)).strip()
+
+
+def _line(text: str) -> str:
+    return _paragraph(text).replace("\n", " ")
+
+
+def _flush(out: list[str], run: list[str]) -> None:
+    text = _paragraph("".join(run))
+    run.clear()
+    if text:
+        out.append(text)
+
+
+def _wrapped(content: str, mark: str) -> str:
+    """The content between `mark`s, its outer spaces outside them (CommonMark §6.2: a delimiter run next to a space
+    opens or closes nothing)."""
+    core = content.strip(" ")
+    if not core.strip():
+        return content
+    lead = content[: len(content) - len(content.lstrip(" "))]
+    trail = content[len(content.rstrip(" ")) :]
+    if mark.startswith("`") and (core.startswith("`") or core.endswith("`")):
+        core = f" {core} "  # CommonMark §6.1: one space each side is stripped from a code span's content
+    return f"{lead}{mark}{core}{mark}{trail}"
+
+
+def _lazy_source(image: HtmlElement) -> None:
+    """Moves a lazy loader's `data-src` into an image's `src` that is missing or an inline placeholder."""
+    source = image.get("src", "").strip()
+    lazy = image.get("data-src", "").strip()
+    if (not source or source.startswith(_INLINE_DATA)) and lazy:
+        image.set("src", lazy)
 
 
 def _image(image: HtmlElement) -> str:
-    return f"![{_escaped(' '.join(image.get('alt', '').split()))}]({_target(image.get('src', ''))})"
+    source = image.get("src", "").strip()
+    if not source or source.startswith(_INLINE_DATA):
+        return ""
+    return f"![{_escaped(collapse(image.get('alt', '')))}]({_target(source)})"
+
+
+def _fenced(pre: HtmlElement) -> list[str]:
+    text = pre.text_content().strip("\n")
+    if not text.strip():
+        return []
+    code = pre.find(".//code")
+    names = tokens(pre.get("class")) + (tokens(code.get("class")) if code is not None else [])
+    language = next((name[len(_LANGUAGE) :] for name in names if name.startswith(_LANGUAGE)), "")
+    fence = _fence(text, "`", 3)
+    return [f"{fence}{language}\n{text}\n{fence}"]
+
+
+def _quoted(blocks: list[str]) -> list[str]:
+    inner = "\n\n".join(blocks)
+    return ["\n".join(f"> {line}" if line else ">" for line in inner.split("\n"))] if inner else []
+
+
+def _row(cells: list[str], width: int) -> str:
+    return "| " + " | ".join([*cells, *([""] * (width - len(cells)))]) + " |"
 
 
 def _escaped(text: str) -> str:

@@ -18,7 +18,7 @@ the WAI-ARIA `menubar` and `menu` roles), ranked once per parse (`ParsedPage.ite
 by the rendered area of their blocks when the browser capture measured it (`CaptureManifest.item_areas`, recorded for
 listing captures), else by blocks showing an image or two or more text runs, then size; a block not rendered (no area,
 or hidden by the HTML rendering rules, unless the element hiding it is content a script reveals, extraction spec
-"Cleaned text and visibility index") is left out. The markdown format, `xhr` and the paging driver read this one
+"Cleaned text and visibility index") is left out. `xhr` and the paging driver read this one
 ranking. Refs:
 owner #67, master plan §3.2.
 #### Scenario: Tag cloud beside a grid

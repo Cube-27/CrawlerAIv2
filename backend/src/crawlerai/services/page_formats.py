@@ -7,7 +7,7 @@ from typing import Any, TypedDict
 
 from pydantic import BaseModel, Field
 
-from crawlerai.acquire.types import AttemptRecord, fetched_as
+from crawlerai.acquire.types import AttemptRecord
 from crawlerai.collect.run import Adapters
 from crawlerai.content.chunks import Chunk, ChunkOptions, chunks
 from crawlerai.content.fit import FitOptions, markdown_fit
@@ -96,14 +96,14 @@ def _markdown_formats(
 ) -> Formats:
     """`markdown`, `markdown_fit` and `chunks`, which read the same markdown: each is made once."""
     formats: Formats = {}
-    final_url, kind = manifest.final_url, fetched_as(manifest.fetch_policy)
+    final_url = manifest.final_url
     pieces = options.chunking or ChunkOptions()
     chunked = "chunks" in requested
     plain = fitted = ""
     if "markdown" in requested or (chunked and pieces.source == "markdown"):
-        plain = markdown(page, final_url, kind)
+        plain = markdown(page, final_url)
     if "markdown_fit" in requested or (chunked and pieces.source == "markdown_fit"):
-        fitted = markdown_fit(page, final_url, kind, options.fit)
+        fitted = markdown_fit(page, final_url, options.fit)
     if "markdown" in requested:
         formats["markdown"] = plain
     if "markdown_fit" in requested:

@@ -1,6 +1,7 @@
 """Content-format properties (rest-api spec): `links` are absolute canonical http(s) URLs, cleaned `html` runs no
 script, and `metadata.language` is `<html lang>`, else `og:locale`, else absent. Examples pin the markdown of an
-article and of a listing, and that two canonical links name none (RFC 6596 §3); all read the shared `ParsedPage`."""
+article, of a page with furniture and of a listing, and that two canonical links name none (RFC 6596 §3); all read the
+shared `ParsedPage`."""
 
 from html import escape
 from urllib.parse import urlsplit
@@ -136,24 +137,33 @@ def test_markdown_is_the_main_content_with_its_links_and_images() -> None:
     )
 
 
-def test_markdown_reads_in_recall_mode_what_precision_mode_drops() -> None:
-    # trafilatura's precision mode drops a link-dense paragraph; a page whose only content it is still has content.
+def test_markdown_is_the_page_minus_its_furniture() -> None:
+    # Landmarks and named furniture go; a wrapper named after furniture that holds the page's title stays.
     page = (
-        "<html><body><div><p><a href='/a'>Deep cleansing facial</a> with steam, <a href='/b'>extraction</a> and a"
-        " hydrating mask</p></div></body></html>"
+        "<html><body><header><a href='/'>Home</a></header><div class='cookie-consent'>We use cookies.</div>"
+        "<div class='drawer modal-wrapper'><h1>Opening hours</h1><p>Open <b>daily</b>from nine.</p>"
+        "<ul><li>Mon<ul><li>9-17</li></ul></li></ul><table><tr><th>Day</th><th>Hours</th></tr>"
+        "<tr><td>Sat</td><td>10-14</td></tr></table><pre>a  b</pre></div>"
+        "<div class='site-footer'>Imprint</div><div hidden>Later</div></body></html>"
     )
 
     assert markdown(ParsedPage(page), FINAL_URL) == (
-        "[Deep cleansing facial](https://shop.example.test/a) with steam,"
-        " [extraction](https://shop.example.test/b) and a hydrating mask"
+        "# Opening hours\n\nOpen **daily**from nine.\n\n- Mon\n  - 9-17\n\n"
+        "| Day | Hours |\n| --- | --- |\n| Sat | 10-14 |\n\n```\na  b\n```"
     )
+
+
+def test_a_page_that_shows_nothing_with_scripts_is_read_without_them() -> None:
+    # HTML Standard §4.12.2: a user agent with scripting disabled renders `noscript` content.
+    page = "<html><body><div id='app'></div><noscript><p>Posted answer text.</p></noscript></body></html>"
+
+    assert markdown(ParsedPage(page), FINAL_URL) == "Posted answer text."
 
 
 def _tile(i: int) -> str:
     return (
         f'<li class="tile"><a href="/p/{i}"><img src="/i/{i}.jpg" alt="Chair {i} photo"></a>'
-        f'<h3><a href="/p/{i}" title="Chair {i}">Chair {i}</a></h3><p class="price">{i}9.90 EUR</p>'
-        "<button>Add to basket</button></li>"
+        f'<h3><a href="/p/{i}" title="Chair {i}">Chair {i}</a></h3><p class="price">{i}9.90 EUR</p></li>'
     )
 
 
@@ -169,19 +179,14 @@ LISTING = (
 
 
 def test_listing_markdown_keeps_every_item_with_its_link_image_and_text() -> None:
-    made = markdown(ParsedPage(LISTING), FINAL_URL, page_kind="listing")
+    made = markdown(ParsedPage(LISTING), FINAL_URL)
 
     assert made.startswith("# Folding chairs\n\nChairs that fold flat")
-    items = [line for line in made.splitlines() if line.startswith("- ")]
-    assert items[0] == (
-        "- [![Chair 1 photo](https://shop.example.test/i/1.jpg)](https://shop.example.test/p/1)"
-        " [Chair 1](https://shop.example.test/p/1) 19.90 EUR"
-    )
-    assert len(items) == 12
-    assert all(f"[Chair {i}](https://shop.example.test/p/{i}) {i}9.90 EUR" in items[i - 1] for i in range(1, 13))
-    # Buttons are controls, not content (HTML Standard §4.10.6); the site's navigation is not an item.
-    assert "basket" not in made
+    assert "1. [![Chair 1 photo](https://shop.example.test/i/1.jpg)](https://shop.example.test/p/1)\n" in made
+    assert all(f"[Chair {i}](https://shop.example.test/p/{i})\n" in made for i in range(1, 13))
+    assert all(f"{i}9.90 EUR" in made for i in range(1, 13))
     assert "Section" not in made
+    assert "Copyright" not in made
 
 
 def test_canonical_links_naming_two_urls_name_none() -> None:

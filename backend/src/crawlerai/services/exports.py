@@ -15,7 +15,6 @@ from typing import Final, NamedTuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from crawlerai.acquire.types import fetched_as
 from crawlerai.config_ir.exporters.files import MEDIA_TYPES, FileFormat, export_file
 from crawlerai.content.llms import LlmsPage, llms_full_txt, llms_txt
 from crawlerai.content.markdown import markdown
@@ -110,6 +109,6 @@ def _made(store: ObjectStore, reached: Sequence[_Reached], full: bool) -> list[t
             continue  # the capture expired
         page = ParsedPage.of(bundle)
         found = metadata(page, bundle.manifest.final_url)
-        text = markdown(page, bundle.manifest.final_url, fetched_as(bundle.manifest.fetch_policy)) if full else ""
+        text = markdown(page, bundle.manifest.final_url) if full else ""
         made.append((LlmsPage(page_ref.url, found.title, found.description), text))
     return made
