@@ -11,14 +11,21 @@ paths of the elements `content.text.script_revealed` names, as the cleaned text 
   (DEPTA, Zhai and Liu 2005: visual cues separate data records from navigation and adverts);
 - else by structural evidence: each block counts one for an image and one for text in two or more runs (a label and
   something besides it), so a bare tag cloud or pager cannot outrank a grid of items showing more; then by size.
+
+What a group must be to list a page's items, for every reader that asks (the item layer's alignment, the listing shell
+rule of `acquire.classify`): `MIN_ITEMS` of its blocks show more than their link (`shows_items`), and it is no copy of
+the site's navigation (`copies_navigation`): more than half of its blocks lead to documents the site's chrome outside
+it, or another group apart from it, leads to. What a page repeats is its template, not its records (DEPTA, Zhai and Liu
+2005): the same links shown twice (a menu's desktop and mobile copies) or again beside the chrome's are the site's
+sections.
 """
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import Final
 
 from lxml.html import HtmlElement
 
-from crawlerai.acquire.items import LINKS, Group, content_root, element_path, in_chrome, is_hyperlink
+from crawlerai.acquire.items import LINKS, MIN_ITEMS, Group, content_root, element_path, in_chrome, is_hyperlink
 from crawlerai.content.text import hidden, xpath_step
 from crawlerai.normalize.url import canonical_url
 
@@ -77,6 +84,40 @@ def _holds_several_texts(block: HtmlElement) -> bool:
 def shows_more(block: HtmlElement) -> bool:
     """Whether a block shows more than its link: an image, or text in two or more runs."""
     return holds_image(block) or _holds_several_texts(block)
+
+
+def shows_items(blocks: Iterable[HtmlElement]) -> bool:
+    """Whether `MIN_ITEMS` of the blocks show more than their link (`shows_more`): a pager, a tag cloud or a list of
+    related searches shows a link and its label only, while a grid whose later cards a script fills still shows its
+    first ones."""
+    return sum(shows_more(block) for block in blocks) >= MIN_ITEMS
+
+
+def copies_navigation(
+    group: Group,
+    leads: Iterable[str | None],
+    groups: Sequence[Group],
+    chrome: Sequence[tuple[HtmlElement, str]],
+    base: str | None,
+) -> bool:
+    """Whether the group is a copy of the site's navigation (module docstring): more than half of its blocks (`leads`:
+    the document each block leads to, None for none, counting against it) lead to documents that a hyperlink of the
+    `chrome` (`chrome_links`) outside the group, or a block of another of the page's `groups` apart from it, leads
+    to. Apart means neither inside nor around a block of it (an item's own list is no copy) nor its sibling: a record
+    may span adjacent siblings of one parent (DEPTA's generalized nodes), each part a group of its own."""
+    members = set(group)
+    around = {ancestor for block in group for ancestor in block.iterancestors()}
+    parents = {block.getparent() for block in group}
+    led = {url for anchor, url in chrome if anchor not in members and members.isdisjoint(anchor.iterancestors())}
+    led.update(
+        url
+        for other in groups
+        if other is not group
+        for block in other
+        if block not in around and block.getparent() not in parents and members.isdisjoint(block.iterancestors())
+        for url in block_links(block, base)
+    )
+    return 2 * sum(link in led for link in leads) > len(group)
 
 
 def hyperlinks(block: HtmlElement) -> Iterator[HtmlElement]:

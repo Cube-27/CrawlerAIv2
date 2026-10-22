@@ -274,7 +274,10 @@ D-0010, D-0540, D-1311, D-1312, D-1369, owner plan 2026-10-19 (crawl speed).
 The system SHALL classify each final response, before extraction, from status and structure (the classes and the shell,
 linkless page, self-refreshing page and listing-shell rules in `acquire/classify.py`: a 2xx HTML page that is no shell
 and has no hyperlink, or that declares a refresh and has hyperlinks but none to a web page (even one short enough to be
-a shell), is `blocked`; a listing without repeated items is a shell unless its structured data lists items; a 401 is
+a shell), is `blocked`; a listing is a shell unless its structured data lists items or a group of its repeated items
+shows `MIN_ITEMS` blocks with more than a link (an image, or text in two or more runs) and copies no navigation, as the
+item layer requires of a group (listings spec, "Rows from blocks"; a tag cloud, a pager or the menu's category tiles
+lists no items, so the browser renders the grid a script fills); a 401 is
 `auth_wall`), and from one kind of site data only: a 2xx HTML document that shows a vendor's stand-in marker
 (`adapters/challenges.py`) is `blocked`. A block needs corroboration and usable content beats it: a 403, or a 2xx
 document with a stand-in marker, that carries the page's structured data (`classify.usable_content`: a schema.org
@@ -319,6 +322,10 @@ Enforced by: the site-literal scan (INV-03), classify and challenge tests and re
 #### Scenario: Refused for legal reasons
 - **WHEN** a page's HTTP fetch answers 451
 - **THEN** the class is `blocked`, the attempt's challenge label is `legal`, and the task ends `geo_blocked`
+#### Scenario: Listing showing only the menu's tiles
+- **WHEN** a listing's HTTP answer has text and links, no structured data, and its only repeated blocks are category
+  tiles with images leading where its `nav` leads, or bare links with one label each
+- **THEN** the class is `shell`, and the browser renders it
 
 ### Requirement: Error outcomes and reasons
 Every exception in a rung SHALL become an `error` attempt with a reason (`timeout`, `body_cap`, `network_error`, ...)

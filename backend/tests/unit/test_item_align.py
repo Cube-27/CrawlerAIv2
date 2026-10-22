@@ -280,13 +280,18 @@ def test_a_group_holding_the_current_page_is_navigation_not_rows(current: str) -
     assert _groups(body) == ()
 
 
+@pytest.mark.parametrize("copy", ["nav", "twice"])
 @pytest.mark.parametrize(("price", "rows"), [("", 0), ("<span>1{i}.50 EUR</span>", 4)])
-def test_tiles_leading_where_the_menu_leads_are_navigation_unless_they_show_typed_values(price: str, rows: int) -> None:
-    # The site's chrome (HTML Standard `nav`) links three of the four documents: its sections, not the page's items.
+def test_tiles_leading_where_the_menu_or_their_copy_leads_are_navigation_unless_they_show_typed_values(
+    copy: str, price: str, rows: int
+) -> None:
+    # The site's chrome (HTML Standard `nav`) links three of the four documents, or the content shows the same tiles
+    # again in another container (a desktop and a mobile copy): the site's sections, not the page's items.
     menu = "<nav><ul>" + "".join(f'<li><a href="/c/{i}">Category {i}</a></li>' for i in range(3)) + "</ul></nav>"
     tile = '<li class="c"><a href="/c/{i}"><img src="/t/{i}.jpg" alt=""> Category {i}</a>' + price + "</li>"
+    body = menu + _repeat(tile) if copy == "nav" else f"<div>{_repeat(tile)}</div><div>{_repeat(tile)}</div>"
 
-    assert len(_rows(menu + _repeat(tile))) == rows
+    assert len(_rows(body)) == rows
 
 
 def test_lists_that_different_sections_hold_are_no_items_own_lists() -> None:

@@ -13,8 +13,10 @@ it holds, is not one of them. Nor is a document that declares a refresh (it navi
 and whose hyperlinks all lead to no web page (`mailto:`, `tel:`, RFC 6068, RFC 3966): a stand-in for the page while the
 site is busy or checking the client.
 
-A page fetched as a listing is a shell too when nothing on it lists items: no repeated items (`lists_items`) and no
-structured data that lists them (`_structured_rows`). Its grid loads by script after the page (an XHR), so the
+A page fetched as a listing is a shell too when nothing on it lists items: no group of repeated items that shows more
+than links and copies no navigation (`lists_items`, the item layer's own test of a group) and no structured data that
+lists them (`_structured_rows`). A tag cloud, a pager or the site's category tiles repeated in the content are what a
+listing whose grid a script fills still shows. Its grid loads by script after the page (an XHR), so the
 browser may render what HTTP did not. Only the HTTP rung passes the page kind: the
 browser is the last rung, and its page is extracted whatever its links.
 
@@ -45,6 +47,7 @@ from selectolax.lexbor import LexborHTMLParser
 
 from crawlerai.acquire.items import MIN_ITEMS, item_groups, lxml_root
 from crawlerai.acquire.types import BlockClass
+from crawlerai.content.segment import block_links, chrome_links, copies_navigation, shows_items
 from crawlerai.core import json_text
 from crawlerai.db.models import PageKind
 from crawlerai.storage.capture_bundle import HeaderList
@@ -160,10 +163,11 @@ def _document_class(
         return "blocked"
     if unstructured is not None:
         return unstructured
-    if page_kind == "listing" and not structured and not lists_items(text):
+    base = None if redirect is None else redirect.answered
+    if page_kind == "listing" and not structured and not lists_items(text, base):
         return "shell"
     if redirect is not None and redirect.kind is not None:
-        return _moved(redirect, product=product, lists=lambda: structured or lists_items(text)) or "ok"
+        return _moved(redirect, product=product, lists=lambda: structured or lists_items(text, base)) or "ok"
     return "ok"
 
 
@@ -386,7 +390,16 @@ def _type_names(found: object) -> Iterator[str]:
             yield _SCHEMA_ORG.sub("", name)
 
 
-def lists_items(text: str) -> bool:
-    """Whether the page shows repeated items: any group of them (`acquire.items.item_groups`, the walk the item layer's
-    segment step ranks); lxml reads it, as the segment step does."""
-    return bool(item_groups(lxml_root(text)))
+def lists_items(text: str, base: str | None) -> bool:
+    """Whether the page lists items: a group of its repeated blocks (`acquire.items.item_groups`, the walk the item
+    layer's segment step ranks; lxml reads it, as the segment step does) that shows them and copies no navigation, as
+    the item layer requires of a group (`content.segment`: `shows_items`, `copies_navigation`, each block leading to
+    its first hyperlink's document, resolved against `base`, the URL that served the page)."""
+    root = lxml_root(text)
+    groups = item_groups(root)
+    chrome = chrome_links(root, base)
+    return any(
+        shows_items(group)
+        and not copies_navigation(group, (next(block_links(b, base), None) for b in group), groups, chrome, base)
+        for group in groups
+    )
