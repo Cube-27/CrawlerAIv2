@@ -60,7 +60,6 @@ _EMPHASIS = frozenset({"em", "i"})
 _CODE = frozenset({"code", "kbd", "samp"})
 # HTML Living Standard §2.3.1: ASCII whitespace, which `white-space: normal` collapses.
 _WHITESPACE = re.compile(r"[\t\n\f\r ]+")
-_SPACED_BREAK = re.compile(r" *\n *")
 _SPACES = re.compile(" {2,}")
 # HTML Standard §4.5.15: a `code` element names its language with a `language-` class.
 _LANGUAGE = "language-"
@@ -201,17 +200,18 @@ class _Writer:
         return f"[{label}]({_target(href)})"
 
     def listed(self, element: HtmlElement) -> str:
-        """The list's items, numbered from its `start` when ordered; each item's blocks on its lines, indented to its
-        content column (CommonMark §5.2)."""
+        """The list's items, numbered from its `start` when ordered (HTML Standard §4.4.5: by default 1, or the item
+        count for a `reversed` list, which counts down); each item's blocks on its lines, indented to its content column
+        (CommonMark §5.2). CommonMark numbers a list up from its first marker, so a written number is the page's."""
         ordered = element.tag == "ol"
-        number = int(start) if (start := element.get("start", "").strip()).isdecimal() and len(start) < 9 else 1
+        step = -1 if element.get("reversed") is not None else 1
+        bodies = [body for blocks in self.items(element) if (body := "\n".join(map(_unheaded, filter(None, blocks))))]
+        start = element.get("start", "").strip()
+        number = int(start) if start.isdecimal() and len(start) < 9 else (len(bodies) if step < 0 else 1)
         lines: list[str] = []
-        for blocks in self.items(element):
-            body = "\n".join(_HEADING_MARK.sub("", block, count=1) for block in blocks if block)
-            if not body:
-                continue
-            marker = f"{number}." if ordered else "-"
-            number += 1
+        for body in bodies:
+            marker = f"{max(number, 0)}." if ordered else "-"
+            number += step
             first, *rest = body.split("\n")
             pad = " " * (len(marker) + 1)
             lines += [f"{marker} {first}", *(pad + line if line else "" for line in rest)]
@@ -247,13 +247,17 @@ class _Writer:
         return _line(self.inline_content(cell)).replace("|", r"\|")
 
 
+def _unheaded(block: str) -> str:
+    return _HEADING_MARK.sub("", block, count=1)
+
+
 def _spaced(text: str | None) -> str:
     return _WHITESPACE.sub(" ", text or "")
 
 
 def _paragraph(text: str) -> str:
     """Inline Markdown as a paragraph: spaces around a line break and runs of spaces collapsed, trimmed."""
-    return _SPACES.sub(" ", _SPACED_BREAK.sub("\n", text)).strip()
+    return "\n".join(_SPACES.sub(" ", line).strip(" ") for line in text.split("\n")).strip()
 
 
 def _line(text: str) -> str:

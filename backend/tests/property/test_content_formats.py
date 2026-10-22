@@ -155,7 +155,10 @@ def test_markdown_is_the_page_minus_its_furniture() -> None:
 
 def test_a_page_that_shows_nothing_with_scripts_is_read_without_them() -> None:
     # HTML Standard §4.12.2: a user agent with scripting disabled renders `noscript` content.
-    page = "<html><body><div id='app'></div><noscript><p>Posted answer text.</p></noscript></body></html>"
+    page = (
+        "<html><body><nav>" + "Menu entry " * 50 + "</nav><div id='app'></div>"
+        "<noscript><p>Posted answer text.</p></noscript></body></html>"
+    )
 
     assert markdown(ParsedPage(page), FINAL_URL) == "Posted answer text."
 

@@ -408,8 +408,8 @@ D-1277, D-1450, D-1473, D-1474; endpoint in [rest-api](../rest-api/spec.md).
 
 ### Requirement: Fit markdown and chunks
 `markdown_fit` SHALL be `markdown`'s tree (the page minus its furniture) pruned further by deterministic block scores
-(link density, text density, and repetition of a block across the page), keeping at most `fit.max_blocks`; with
-`fit.query` it keeps the blocks that rank by BM25 (Robertson and Zaragoza, 2009) over the blocks. `chunks` SHALL split
+(link density, text density, and repetition of a block across the page); with `fit.query` it keeps the blocks that
+rank by BM25 (Robertson and Zaragoza, 2009) over the blocks, at most `fit.max_blocks` of them. `chunks` SHALL split
 the markdown (or `markdown_fit`) by `heading`, `sentence` or `token` strategy with a `size` and `overlap` in words, each
 chunk carrying its heading path. Neither uses an LLM. Refs: D-1422, D-1423.
 #### Scenario: Query keeps relevant blocks

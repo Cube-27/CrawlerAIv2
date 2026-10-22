@@ -90,7 +90,8 @@ def drop_furniture(tree: HtmlElement, *, scripting: bool = True) -> None:
     """Takes the page's furniture (module docstring) out of `tree`, an lxml tree of the page, keeping each element's
     tail text. Without `scripting`, the page is read as a user agent with scripting disabled renders it: its `noscript`
     content is shown (HTML Standard §4.12.2)."""
-    unrendered = NOT_RENDERED if scripting else NOT_RENDERED - {_NOSCRIPT}
+    shown = frozenset() if scripting else frozenset({_NOSCRIPT})
+    unrendered = NOT_RENDERED - shown
     for element in [e for e in tree.iter() if not isinstance(e.tag, str) or e.tag in unrendered]:
         _drop(element)
     body = tree.find("body")
@@ -98,7 +99,7 @@ def drop_furniture(tree: HtmlElement, *, scripting: bool = True) -> None:
     stack = [tree]
     while stack:
         element = stack.pop()
-        found = _furniture(element) if element is not tree else None
+        found = _furniture(element) if element is not tree and element.tag not in shown else None
         if found is not None and not guard.keeps(element, weak=found == "weak"):
             _drop(element)
         else:
@@ -142,7 +143,9 @@ def _furniture(element: HtmlElement) -> Literal["stated", "weak"] | None:
 
 
 def _role(element: HtmlElement) -> str:
-    return (element.get("role") or "").strip().lower()
+    """WAI-ARIA 1.2 §7.1: `role` is a list of tokens, the first one a user agent recognizes taken; a furniture or main
+    role is one of those, so the first token is read."""
+    return next(iter(tokens((element.get("role") or "").lower())), "")
 
 
 def _named_furniture(element: HtmlElement) -> bool:
