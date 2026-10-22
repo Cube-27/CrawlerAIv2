@@ -218,14 +218,19 @@ def test_a_fallback_fills_a_field_only_where_the_page_states_no_value(
 ) -> None:
     fallback = _candidate("brand", record, kind="adapter").model_copy(update={"fallback": True})
     page = _candidate("brand", stated, PRODUCT if kind != "og" else PAGE, kind, n=1)
+    decorated = _candidate("brand", f"{record} | Shop", PRODUCT, "jsonld", n=2)
 
     alone = _prefer(_schema(brand=BRAND), fallback)
     beside = _prefer(_schema(brand=BRAND), fallback, page)
+    referenced = _prefer(_schema(brand=BRAND), fallback, decorated)
 
     # A platform's record weighs 0 beside a value the page states: it neither wins, agrees nor flags the field.
     assert alone["brand"] == Chosen(fallback, (), (), (fallback,))
     assert isinstance(chosen := beside["brand"], Chosen)
     assert (chosen.candidate, chosen.flag) == (page, None)
+    # Nor is it the reference that makes a stated value a fragment.
+    assert isinstance(fragment := referenced["brand"], Chosen)
+    assert fragment.candidate == decorated
 
 
 IMAGE = FieldSpec(type=FieldType.IMAGE_URL, description="d", schema_org="Product.image")

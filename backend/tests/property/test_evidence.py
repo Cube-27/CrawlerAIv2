@@ -143,15 +143,19 @@ def test_a_url_publishes_as_written_and_in_full_when_an_agreeing_source_writes_i
 # Properties
 
 
-candidates = st.lists(st.tuples(st.sampled_from(KINDS), st.booleans()), min_size=1, max_size=6).map(
-    lambda pairs: [_candidate(kind, independent=independent, n=n) for n, (kind, independent) in enumerate(pairs)]
+candidates = st.lists(st.tuples(st.sampled_from(KINDS), st.booleans(), st.booleans()), min_size=1, max_size=6).map(
+    lambda rows: [
+        _candidate(kind, independent=independent, n=n).model_copy(update={"fallback": fallback})
+        for n, (kind, independent, fallback) in enumerate(rows)
+    ]
 )
 
 
 @given(candidates)
 def test_agreed_means_two_independent_kinds(supporting: list[Candidate]) -> None:
     chosen, *agreeing = supporting
-    independent_kinds = {c.source_kind for c in supporting if c.independent}
+    # A fallback is no agreement (resolution spec, "Candidate score").
+    independent_kinds = {c.source_kind for c in supporting if c.independent and not c.fallback}
 
     agreed = evidence_of(chosen, tuple(agreeing), corroborated=False) == "agreed"
 

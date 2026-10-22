@@ -98,8 +98,9 @@ def evidence_of(chosen: Candidate, agreeing: tuple[Candidate, ...], *, corrobora
     is the config's field status (learning-configs spec); `None` when no bucket holds the value."""
     if chosen.source_kind in _ADAPTER:
         return "adapter"
-    # §8.1, §10: only independent candidates count, so a state value admitted by equality never agrees with itself.
-    if len({c.source_kind for c in (chosen, *agreeing) if c.independent}) >= 2:
+    # §8.1, §10: only independent candidates count, so a state value admitted by equality never agrees with itself; a
+    # fallback (`Candidate.fallback`) is no agreement either (resolution spec, "Candidate score").
+    if len({c.source_kind for c in (chosen, *agreeing) if c.independent and not c.fallback}) >= 2:
         return "agreed"
     if chosen.source_kind == "config":
         return "config_corroborated" if corroborated else "config_uncorroborated"
