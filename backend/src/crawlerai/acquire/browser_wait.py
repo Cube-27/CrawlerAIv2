@@ -6,8 +6,9 @@
 import asyncio
 import contextlib
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from functools import partial
+from inspect import isawaitable
 from typing import Final
 
 from patchright.async_api import Error as PlaywrightError
@@ -104,7 +105,8 @@ async def settle(page: Page, frame: MainFrame, calls: DataCalls, policy: FetchPo
     budget_s = policy.browser_timeout_s
     interstitial_deadline = started + min(_INTERSTITIAL_SHARE * budget_s, _INTERSTITIAL_MAX_S)
     deadline = started + _SETTLE_SHARE * budget_s
-    await _rendered(page, frame, partial(_ready, frame, calls, policy), deadline)
+    ready = partial(_rendered, page, partial(_ready, frame, calls, policy))
+    await until(frame, ready, READY_MAX_S, deadline, after_load=True)
     while time.monotonic() < interstitial_deadline:
         # Counted before the document is judged: a commit while it is read or classified is the one waited for.
         seen = frame.commits
@@ -113,39 +115,48 @@ async def settle(page: Page, frame: MainFrame, calls: DataCalls, policy: FetchPo
         # None: the document was replaced while it was read, so the next one is waited for as any navigation is.
         if judged and not await _next_document(page, frame, seen, interstitial_deadline):
             return
-        await _rendered(page, frame, partial(_ready, frame, calls, policy), deadline)
+        await until(frame, ready, READY_MAX_S, deadline, after_load=True)
 
 
-async def _rendered(page: Page, frame: MainFrame, ready: Callable[[], bool], deadline: float) -> None:
-    """Wait `until` the document is `ready` and no longer carries its text unrendered (`classify.carries_unrendered`:
-    near-empty rendered text beside large script or concealed text), within the same bound: a page that hydrates from
-    its inline state makes no data call, so the quiet network says nothing of whether its script has written the
-    DOM."""
-    while await until(frame, ready, READY_MAX_S, deadline, after_load=True):
-        try:
-            text = await document_html(page)
-        except PlaywrightError:  # replaced while it was read: the next document is waited for
-            text = None
-        if text is not None and not await asyncio.to_thread(carries_unrendered, text):
-            return
-        await asyncio.sleep(_POLL_S)
+async def _rendered(page: Page, ready: Callable[[], bool]) -> bool:
+    """Whether the document is `ready` and no longer carries its text unrendered (`classify.carries_unrendered`:
+    near-empty rendered text beside large script or concealed text): a page that hydrates from its inline state makes
+    no data call, so the quiet network says nothing of whether its script has written the DOM. A document replaced
+    while it was read is not."""
+    if not ready():
+        return False
+    try:
+        text = await document_html(page)
+    except PlaywrightError:
+        return False
+    return not await asyncio.to_thread(carries_unrendered, text)
 
 
 async def until(
-    frame: MainFrame, ready: Callable[[], bool], within_s: float, deadline: float, *, after_load: bool = False
-) -> bool:
-    """Whether `ready` held with no navigation in flight before the wait ended: `within_s` after it began, or after the
-    last document the main frame navigated to meanwhile (a script's `location.replace`, a refresh: what was shown was an
-    interim document; a same-document navigation, `history.pushState`, is none), at most at `deadline`. With
-    `after_load`, the wait ends `within_s` after the document fired `load`, and before that only at `deadline`."""
+    frame: MainFrame,
+    ready: Callable[[], bool | Awaitable[bool]],
+    within_s: float,
+    deadline: float,
+    *,
+    after_load: bool = False,
+) -> None:
+    """Returns once `ready` holds (awaited, when it reads the page) with no navigation in flight, or `within_s` after
+    the wait began, or after the last document the main frame navigated to meanwhile (a script's `location.replace`, a
+    refresh: what was shown was an interim document; a same-document navigation, `history.pushState`, is none), at
+    most at `deadline`. With `after_load`, the wait ends `within_s` after the document fired `load`, and before that
+    only at `deadline`."""
     shown, begun = frame.latest, time.monotonic()
     while time.monotonic() < _wait_end(frame, begun, within_s, deadline, after_load=after_load):
         if frame.latest is not shown:
             shown, begun = frame.latest, time.monotonic()
-        elif not frame.pending and ready():
-            return True
+        elif not frame.pending and await _holds(ready):
+            return
         await asyncio.sleep(_POLL_S)
-    return False
+
+
+async def _holds(ready: Callable[[], bool | Awaitable[bool]]) -> bool:
+    held = ready()
+    return await held if isawaitable(held) else held
 
 
 def _wait_end(frame: MainFrame, begun: float, within_s: float, deadline: float, *, after_load: bool) -> float:
