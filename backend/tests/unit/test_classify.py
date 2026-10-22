@@ -111,11 +111,51 @@ _PRODUCT = (
         pytest.param(_PRODUCT, "ok", id="product-with-offers"),
         pytest.param('<meta property="product:price:amount" content="9.50">', "ok", id="ogp-price"),
         pytest.param(_PRODUCT.replace('"Product"', '"https://schema.org/Product"'), "ok", id="product-type-iri"),
+        pytest.param(
+            '<div itemscope itemtype="https://schema.org/Product"><span itemprop="name">W</span></div>',
+            "ok",
+            id="microdata-product",
+        ),
         pytest.param("", "blocked", id="no-structured-data"),
     ],
 )
 def test_a_403_that_carries_the_page_is_the_page(extra: str, expected: BlockClass) -> None:
-    assert classify(403, _HTML, _page(400, 20, extra)) == expected
+    assert classify(403, _HTML, _page(400, 20, extra), types=_PRODUCT_TYPES) == expected
+    # Structured data of a type the task does not read the page for is not the page.
+    assert classify(403, _HTML, _page(400, 20, extra), types=("JobPosting",)) == "blocked"
+
+
+_PRODUCT_TYPES = ("Offer", "Product", "ProductGroup")
+_POSTING = (
+    '<script type="application/ld+json">{"@context": "https://schema.org", "@type": "JobPosting", "title": "Welder",'
+    f' "description": "{"d" * 3000}"}}</script>'
+)
+
+
+def test_a_document_stating_an_item_of_a_read_type_is_never_a_shell() -> None:
+    # No links and no rendered text: the reader reads the structured data, not the rendered page.
+    body = f"<html><head>{_POSTING}</head><body><div id='root'></div></body></html>"
+    assert classify(200, _HTML, body, types=("JobPosting",)) == "ok"
+    assert classify(200, _HTML, body) == "shell"
+
+
+_NAV = "<nav>" + "".join(f'<a href="/s/{i}">Section {i}</a>' for i in range(8)) + "</nav>"
+_STATE = f'<script>window.__STATE__ = {{"text": "{"s" * 3000}"}}</script>'
+
+
+@pytest.mark.parametrize(
+    ("main", "expected"),
+    [
+        pytest.param("<div id='root'></div>", "shell", id="text-in-a-script"),
+        pytest.param(f"<div hidden>{'h' * 3000}</div>", "shell", id="text-concealed"),
+        pytest.param(f"<main><p>{'x' * 400}</p></main>", "ok", id="text-rendered"),
+    ],
+)
+def test_a_content_fetch_of_a_page_whose_scripts_carry_its_text_is_a_shell(main: str, expected: BlockClass) -> None:
+    body = f"<html><head>{_STATE}</head><body><header>{_NAV}</header>{main}</body></html>"
+    assert classify(200, _HTML, body, content_only=True) == expected
+    # A records fetch reads the inline state over HTTP: the site's links make it a page.
+    assert classify(200, _HTML, body) == "ok"
 
 
 _LISTING = "<ul>" + "".join(f'<li><a href="/p/{i}">Widget {i}</a><p>{"y" * 40}</p></li>' for i in range(8)) + "</ul>"

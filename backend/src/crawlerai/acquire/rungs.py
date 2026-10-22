@@ -41,7 +41,6 @@ from crawlerai.acquire.types import (
     CallEndpoint,
     FetchPolicy,
     FetchResult,
-    fetched_as,
     policy_with_attempts,
 )
 from crawlerai.adapters.base import ADAPTER_CALL
@@ -454,11 +453,12 @@ def _paused_by(result: FetchResult) -> timedelta:
 
 async def _as_last_page(result: FetchResult) -> FetchResult:
     """D-1261: an HTTP page kept with no browser outcome is the last page of the fetch, which is extracted whatever its
-    links, as the browser's is (`browser.classified`): a listing shell by the listing rule alone (a page with site
-    structure but no repeated items, `classify`) becomes `ok`, so the rows role C reads from it are kept; one showing a
+    links, as the browser's is (`browser.classified`): a shell by the listing rule alone (a page with site structure
+    but no repeated items, `classify`) or by the content rule alone (a page whose text a script carries, read for
+    content formats) becomes `ok`, so the rows role C reads from it, or the text it shows, are kept; one showing a
     vendor's stand-in marker (`block_class_of`) stays as it is. Its attempt keeps the class HTTP gave it."""
     manifest = result.bundle.manifest
-    if result.block_class != "shell" or manifest.method != "http" or fetched_as(manifest.fetch_policy) != "listing":
+    if result.block_class != "shell" or manifest.method != "http":
         return result
     text = result.bundle.text
     unlisted = await asyncio.to_thread(block_class_of, manifest.status_code, manifest.headers.response, text)

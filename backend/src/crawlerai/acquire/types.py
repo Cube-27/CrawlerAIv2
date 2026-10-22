@@ -145,9 +145,13 @@ class FetchPolicy(_Frozen):
     # The request's locale (BCP 47), for the normalizers' context and the browser context's `locale` and `timezone_id`.
     locale_hint: str | None = None
     page_kind: PageKind | None = None  # the kind the task fetches the page as, which `classify` reads
-    # The schema.org types the task reads the page for (`target_types` of `schemas.paths`), which a referring adapter
-    # weighs (adapters spec, "Referral from a tenant's own host"); empty when no schema reads the page.
+    # The schema.org types the task reads the page for (`target_types` of `schemas.paths`) and their subtypes in the
+    # pinned vocabulary, which a referring adapter weighs (adapters spec, "Referral from a tenant's own host") and
+    # `classify` reads a document's structured data for; empty when no schema reads the page.
     target_types: tuple[str, ...] = Field(default=(), exclude_if=lambda value: not value)
+    # The task reads the page for content formats only (`markdown`, `markdown_fit`, `chunks`) and no records: the
+    # page's rendered text is what it reads, so `classify` judges a shell by it.
+    content_only: bool = Field(default=False, exclude_if=lambda value: not value)
     # A soft row target for a list an adapter's API serves in pages: its walk ends once it has at least this many rows
     # (whole pages are kept); None asks for every page, up to the adapters' hard cap (`adapters.paging.MAX_ROWS`).
     max_rows: PositiveInt | None = None

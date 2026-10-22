@@ -376,7 +376,12 @@ async def _run(
         by_sources = await surface_plan(conn, site.id, work.schema, config, work.render)
     recipe = recipe_of(config) if config is not None and set(request.formats) == {"records"} else None
     policy = fetch_policy(
-        request.fetch, request.locale, page_kind=request.page_kind, schema=work.schema, formats=request.formats
+        request.fetch,
+        request.locale,
+        page_kind=request.page_kind,
+        schema=work.schema,
+        vocabulary=None if work.data is None else work.data.vocabulary,
+        formats=request.formats,
     )
     stored = (site, task.canonical_url)
     max_age, formats = request.max_age, request.formats

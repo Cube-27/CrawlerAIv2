@@ -22,6 +22,7 @@ from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from functools import partial
 
 from patchright.async_api import Error as PlaywrightError
 from patchright.async_api import Page, Response
@@ -111,7 +112,7 @@ class Render:
         text = markup(content)
         self.content = replace(content, text=text)
         redirect = Redirect(self.url, self.exchange.url, self.policy.page_kind)
-        self.block_class = await classified(self.exchange, text, redirect)
+        self.block_class = await classified(self.exchange, text, self.policy.target_types, redirect)
         self.challenge = await challenge_of(self.block_class, self.exchange, text, self.cookies)
 
     def failed(self, error: str, exchange: Exchange | None = None) -> None:
@@ -229,13 +230,16 @@ async def challenge_of(
     return await asyncio.to_thread(challenge_label, status, headers, text, exchange.url, names)
 
 
-async def classified(exchange: Exchange, text: str, redirect: Redirect | None = None) -> BlockClass:
-    """The block class of a rendered document from its markup `text`, and from where its navigation led (`classify`'s
-    redirect rules), when given. classify parses HTML synchronously; a thread keeps the event loop free. Without the
-    page kind: the listing rule calls a page a shell for the browser to render, and the browser is the last rung, so
-    its page is extracted whatever its links (rows from captured JSON are read then)."""
+async def classified(
+    exchange: Exchange, text: str, types: tuple[str, ...], redirect: Redirect | None = None
+) -> BlockClass:
+    """The block class of a rendered document from its markup `text`, the schema.org `types` the task reads it for
+    (the policy's `target_types`), and from where its navigation led (`classify`'s redirect rules), when given. classify
+    parses HTML synchronously; a thread keeps the event loop free. Without the page kind or `content_only`: the listing
+    and content rules call a page a shell for the browser to render, and the browser is the last rung, so its page is
+    extracted whatever its links (rows from captured JSON are read then)."""
     status, headers = exchange.status, exchange.response_headers
-    return await asyncio.to_thread(block_class_of, status, headers, text, None, redirect)
+    return await asyncio.to_thread(partial(block_class_of, types=types), status, headers, text, None, redirect)
 
 
 @dataclass

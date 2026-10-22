@@ -13,6 +13,16 @@ it holds, is not one of them. Nor is a document that declares a refresh (it navi
 and whose hyperlinks all lead to no web page (`mailto:`, `tel:`, RFC 6068, RFC 3966): a stand-in for the page while the
 site is busy or checking the client.
 
+A 2xx document whose structured data states an item of a type the task reads the page for (the policy's
+`target_types`: a JSON-LD node or a microdata item typed so, or an OGP product price for a Product or Offer) is the
+page, however little it shows or links: the reader reads that data, never the rendered page (`_describes`).
+
+A page fetched for content formats alone (`content_only`) is read for its rendered text, so it is a shell when that text
+is near-empty while its scripts and concealed subtrees carry an order of magnitude more (`carries_unrendered`): the
+document holds its content in a form no reader renders (HTML Standard §4.12.1: script data is not rendered; §6.1:
+`hidden`), and the browser runs the scripts that put it in place. Its links do not make it a page: the site's chrome
+(`in_chrome`) is not counted as its text.
+
 A page fetched as a listing is a shell too when nothing on it lists items: no group of repeated items that shows more
 than links and copies no navigation (`lists_items`, the item layer's own test of a group) and no structured data that
 lists them (`_structured_rows`). A tag cloud, a pager or the site's category tiles repeated in the content are what a
@@ -26,25 +36,25 @@ the browser would render the same bytes, so it gets no browser attempt. A 451 is
 
 A 401 asks for credentials (RFC 9110 §15.5.2): an `auth_wall`, which no rung passes, never a block. A block needs
 corroboration, and usable content beats it (`usable_content`): a 403 document that carries the page's structured data
-(a schema.org Product with offers or an OGP product price; on a listing, the items it lists) is the page, served with a
+(an item of a type the task reads it for, `_describes`; on a listing, the items it lists) is the page, served with a
 refusal status. A 2xx page reached through a redirect (`redirect`: the URL asked for and the one that answered) is
 classed by where the redirect led (`_moved`): to another country's site and away from the page (`geo_redirect`), to a
 site's root (`soft_404`: RFC 9110 §15.5.5 asks a server to answer 404 for what it does not have, and a redirect to the
-home page stands in for one), or, for a detail page, to a page that lists items and describes no product
-(`redirected_to_listing`). None of these is a block, so none is fetched again in the browser, whose navigation would
-follow the same redirect. A redirect to a page whose query carries the asked page's path is another thing: an
-interstitial that sends the client back once passed (`_returns_to`), a block the browser may pass.
+home page stands in for one), or, for a detail page, to a page that lists items and states no item of a type the task
+reads it for (`redirected_to_listing`). None of these is a block, so none is fetched again in the browser, whose
+navigation would follow the same redirect. A redirect to a page whose query carries the asked page's path is another
+thing: an interstitial that sends the client back once passed (`_returns_to`), a block the browser may pass.
 """
 
 import re
 from base64 import urlsafe_b64decode
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import suppress
 from typing import NamedTuple
 from urllib.parse import SplitResult, parse_qsl, unquote, urldefrag, urljoin, urlsplit
 
 from lxml.html import HtmlElement
-from selectolax.lexbor import LexborHTMLParser
+from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from crawlerai.acquire.items import (
     MIN_ITEMS,
@@ -52,6 +62,7 @@ from crawlerai.acquire.items import (
     hyperlinks,
     in_chrome,
     item_groups,
+    lxml_of,
     lxml_root,
     shows_items,
 )
@@ -77,6 +88,14 @@ _HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 # Shell thresholds: unmeasured starting points, to be confirmed on dev (acquisition spec, D-0008).
 _SHELL_MAX_TEXT_CHARS = 200
 _SHELL_MAX_LINKS = 5
+# A document carries its content unrendered when its scripts and concealed subtrees hold at least an order of magnitude
+# more text than a shell renders (`carries_unrendered`).
+_CARRIED_MIN_CHARS = 10 * _SHELL_MAX_TEXT_CHARS
+# HTML Standard §6.1: an element with the `hidden` attribute is not rendered, nor one whose inline style sets
+# `display: none` (CSS Display 3 §2.5); a script may show either later.
+_HIDDEN = "hidden"
+_DISPLAY_NONE = re.compile(r"(?:^|;)\s*display\s*:\s*none\s*(?:!\s*important\s*)?(?:;|$)", re.IGNORECASE)
+_CONCEALED = "[hidden], [style]"
 # HTML Standard §4.6.1: `a` and `area` elements with an `href` are hyperlinks.
 _HYPERLINKS = "a[href], area[href]"
 # Structured data a listing's rows are read from without its grid (extraction spec): as many microdata items (HTML
@@ -88,15 +107,13 @@ _MICRODATA = "[itemscope]:not([itemprop])"
 _JSON_LD = "application/ld+json"
 _ITEM_LIST = "ItemList"
 _ENTRIES = "itemListElement"  # schema.org ItemList: the list's entries
-# schema.org Product and its subtypes (ProductGroup, ProductModel, IndividualProduct, SomeProducts), and `offers`, the
-# property that states what it is sold for (an Offer or AggregateOffer).
-_PRODUCTS = frozenset({"Product", "ProductGroup", "ProductModel", "IndividualProduct", "SomeProducts"})
-_OFFERS = "offers"
 _SCHEMA_ORG = re.compile(r"^(?:https?://schema\.org/|schema:)")
-# The Open Graph protocol's product object price (`product:price:amount`), in RDFa's `property` or HTML's `name`.
-OGP_PRICE_AMOUNT = "product:price:amount"
-# HTML Standard §5.2 microdata: an item typed as a schema.org Product, under any URL scheme or path form of it.
-_MICRODATA_PRODUCT = "[itemscope][itemtype$='schema.org/Product'], [itemscope][itemtype$='schema.org/ProductGroup']"
+# HTML Standard §5.2.2: a microdata item's `itemtype`, a set of space-separated absolute URLs naming its types.
+_MICRODATA_TYPED = "[itemscope][itemtype]"
+# The Open Graph protocol's product object price (`product:price:amount`), in RDFa's `property` or HTML's `name`: it
+# states the price of the page's one product, a schema.org Product's Offer.
+_OGP_PRICE_AMOUNT = "product:price:amount"
+_OGP_PRICED = frozenset({"Product", "Offer"})
 # BCP 47 (RFC 5646 §2.1): a language subtag of 2 or 3 letters, with a region subtag of 2 letters (ISO 3166-1) or none,
 # as a path segment names a site's edition (`en`, `en-us`, `de_DE`).
 _BREAKS = r"/\-_."
@@ -131,15 +148,21 @@ def classify(
     text: str,
     page_kind: PageKind | None = None,
     redirect: Redirect | None = None,
+    *,
+    types: tuple[str, ...] = (),
+    content_only: bool = False,
 ) -> BlockClass:
     """The response's block class from its decoded `text`; `page_kind` is the kind the page is fetched as, when its
-    task names one and the listing rule applies; `redirect` where the fetch was answered from."""
+    task names one and the listing rule applies; `redirect` where the fetch was answered from; `types` the schema.org
+    types the task reads the page for and `content_only` a fetch for content formats alone (`FetchPolicy`), when the
+    rules that read them apply."""
     if status in _NOT_FOUND:
         return "not_found"
     if status == _AUTH_WALL:
         return "auth_wall"
     if status in _BLOCKED:
-        usable = status == _FORBIDDEN and is_html(headers) and usable_content(text, fetched_as(page_kind, redirect))
+        kind = fetched_as(page_kind, redirect)
+        usable = status == _FORBIDDEN and is_html(headers) and usable_content(text, kind, types)
         return "ok" if usable else "blocked"
     if status >= 400:
         return "error"
@@ -147,7 +170,7 @@ def classify(
         return "ok"
     if not is_html(headers):
         return "unsupported_media"
-    return _document_class(text, headers, page_kind, redirect)
+    return _document_class(text, headers, (page_kind, redirect), types, content_only=content_only)
 
 
 def fetched_as(page_kind: PageKind | None, redirect: Redirect | None) -> PageKind | None:
@@ -157,15 +180,23 @@ def fetched_as(page_kind: PageKind | None, redirect: Redirect | None) -> PageKin
 
 
 def _document_class(
-    text: str, headers: HeaderList, page_kind: PageKind | None, redirect: Redirect | None
+    text: str,
+    headers: HeaderList,
+    fetch: tuple[PageKind | None, Redirect | None],
+    types: tuple[str, ...],
+    *,
+    content_only: bool,
 ) -> BlockClass:
-    """The class of a 2xx HTML document (`classify`): its structure, then where a redirect led."""
+    """The class of a 2xx HTML document (`classify`), fetched as `fetch` (its page kind and redirect): its structure,
+    then where a redirect led."""
+    page_kind, redirect = fetch
     tree = LexborHTMLParser(text)
     # Read before the shell rule strips script data blocks from the tree.
     documents = _json_ld(tree)
     structured = _structured_rows(tree, documents)
-    product = _describes_product(tree, documents)
-    unstructured = _no_site_page(tree)
+    # A content-only fetch reads the rendered text, whatever structured data the page states.
+    described = not content_only and _describes(tree, documents, types)
+    unstructured = None if described else _page_shell(tree, content_only=content_only)
     # Before the shell return: a short document that refreshes and links only to mail or phone is a stand-in too.
     if unstructured == "blocked" or (_refreshes(tree, headers) and _offers_no_web_page(tree)):
         return "blocked"
@@ -175,32 +206,110 @@ def _document_class(
     if page_kind == "listing" and not structured and not lists_items(text, base):
         return "shell"
     if redirect is not None and redirect.kind is not None:
-        return _moved(redirect, product=product, lists=lambda: structured or lists_items(text, base)) or "ok"
+        return _moved(redirect, described=described, lists=lambda: structured or lists_items(text, base)) or "ok"
     return "ok"
 
 
-def usable_content(text: str, page_kind: PageKind | None = None) -> bool:
+def _page_shell(tree: LexborHTMLParser, *, content_only: bool) -> BlockClass | None:
+    """`_no_site_page`, except that for a fetch for content formats alone, a document that carries its content
+    unrendered (`carries_unrendered`, read before the shell rule strips the scripts) is a shell whatever its links."""
+    if content_only and _carries_unrendered(tree):
+        return "shell"
+    return _no_site_page(tree)
+
+
+def usable_content(text: str, page_kind: PageKind | None = None, types: tuple[str, ...] = ()) -> bool:
     """Whether an HTML document carries the page's structured data, whatever its status or a vendor's marker says:
-    a schema.org Product with offers or an OGP product price (`_describes_product`), or, fetched as a listing, the
-    items its structured data lists (`_structured_rows`). Usable content beats vendor noise."""
+    an item of one of the `types` the task reads it for (`_describes`), or, fetched as a listing, the items its
+    structured data lists (`_structured_rows`). Usable content beats vendor noise."""
     tree = LexborHTMLParser(text)
     documents = _json_ld(tree)
-    return _describes_product(tree, documents) or (page_kind == "listing" and _structured_rows(tree, documents))
+    return _describes(tree, documents, types) or (page_kind == "listing" and _structured_rows(tree, documents))
 
 
-def _describes_product(tree: LexborHTMLParser, documents: list[object]) -> bool:
-    """A JSON-LD node typed as a schema.org Product (or subtype) with `offers`, at any depth; an OGP product price with
-    content; or a microdata Product item holding an `offers` property."""
-    if any(_typed(documents, _PRODUCTS, _OFFERS)):
+def _describes(tree: LexborHTMLParser, documents: list[object], types: tuple[str, ...]) -> bool:
+    """Whether the document's structured data states an item of one of `types` (schema.org type names, subtypes
+    included by the policy): a JSON-LD node at any depth (JSON-LD 1.1 §3.5 `@type`) or a microdata item (HTML Standard
+    §5.2.2 `itemtype`) typed so, or, for a Product or an Offer, an OGP product price with content."""
+    wanted = frozenset(types)
+    if not wanted:
+        return False
+    if any(_typed(documents, wanted)):
         return True
-    for meta in tree.css("meta"):
-        attributes = meta.attributes
-        if (attributes.get("property") or attributes.get("name")) == OGP_PRICE_AMOUNT and attributes.get("content"):
+    if any(not wanted.isdisjoint(_item_types(item)) for item in tree.css(_MICRODATA_TYPED)):
+        return True
+    return not wanted.isdisjoint(_OGP_PRICED) and any(
+        (meta.attributes.get("property") or meta.attributes.get("name")) == _OGP_PRICE_AMOUNT
+        and meta.attributes.get("content")
+        for meta in tree.css("meta")
+    )
+
+
+def _item_types(item: LexborNode) -> set[str]:
+    """The schema.org type names of a microdata item's `itemtype` URLs (a URL of another vocabulary kept whole)."""
+    return {_SCHEMA_ORG.sub("", url) for url in (item.attributes.get("itemtype") or "").split()}
+
+
+def carries_unrendered(text: str) -> bool:
+    """Whether a decoded HTML document carries its content unrendered (`_carries_unrendered`)."""
+    return _carries_unrendered(LexborHTMLParser(text))
+
+
+def _carries_unrendered(tree: LexborHTMLParser) -> bool:
+    """Whether the document's scripts and concealed subtrees (`_HIDDEN`, `_DISPLAY_NONE`) hold at least
+    `_CARRIED_MIN_CHARS` of text while what it renders outside the site's chrome is under `_SHELL_MAX_TEXT_CHARS`:
+    content a script puts in place (module docstring). Counted in non-whitespace characters, as the shell rule counts.
+    The tree is read, not changed."""
+    scripts = sum(_chars(script.text()) for script in tree.css(_SCRIPT))
+    concealed = sum(
+        _chars(node.text()) for node in _outermost(n for n in tree.css(_CONCEALED) if _concealed(n.attributes))
+    )
+    if scripts + concealed < _CARRIED_MIN_CHARS:
+        return False
+    root = lxml_of(tree)
+    body = root.find("body")
+    shown = root if body is None else body
+    for element in [e for e in shown.iter() if _unshown(e)]:
+        if element.getparent() is not None:
+            element.drop_tree()
+    return _chars(shown.text_content()) < _SHELL_MAX_TEXT_CHARS
+
+
+def _outermost(nodes: Iterable[LexborNode]) -> Iterator[LexborNode]:
+    """The `nodes` (in document order) inside none of the others, so that a subtree's text is counted once."""
+    kept: list[LexborNode] = []
+    for node in nodes:
+        if not any(_inside(node, outer) for outer in kept):
+            kept.append(node)
+            yield node
+
+
+def _inside(node: LexborNode, outer: LexborNode) -> bool:
+    parent = node.parent
+    while parent is not None:
+        if parent == outer:
             return True
-    return any(item.css_first("[itemprop~='offers']") is not None for item in tree.css(_MICRODATA_PRODUCT))
+        parent = parent.parent
+    return False
 
 
-def _moved(redirect: Redirect, *, product: bool, lists: Callable[[], bool]) -> BlockClass | None:
+def _unshown(element: HtmlElement) -> bool:
+    """Whether an element of the lxml copy shows none of the page's own text: never rendered (`_INVISIBLE`), concealed,
+    or the site's chrome. A comment or processing instruction is no element."""
+    if not isinstance(element.tag, str):
+        return False
+    return element.tag in _INVISIBLE or _concealed(dict(element.attrib)) or in_chrome(element)
+
+
+def _concealed(attributes: Mapping[str, str | None]) -> bool:
+    return _HIDDEN in attributes or _DISPLAY_NONE.search(attributes.get("style") or "") is not None
+
+
+def _chars(text: str) -> int:
+    return sum(not character.isspace() for character in text)
+
+
+def _moved(redirect: Redirect, *, described: bool, lists: Callable[[], bool]) -> BlockClass | None:
     """The class of a 2xx page fetched as a page of a kind that a redirect led elsewhere (module docstring), or None
     when it is the page asked for: the same host and path past any locale segment (RFC 3986 §6.2.2.1: the host
     case-insensitively; a query or fragment is no other page). A fetch of no kind (a crawl's page) may land anywhere."""
@@ -215,7 +324,7 @@ def _moved(redirect: Redirect, *, product: bool, lists: Callable[[], bool]) -> B
         return "soft_404"
     # RFC 3986 §3.3: the last segment names the resource within its hierarchy; a path that keeps it is the same page
     # under another name (a slug added), not a listing in its place.
-    if redirect.kind == "detail" and not _keeps_name(a, b) and not product and lists():
+    if redirect.kind == "detail" and not _keeps_name(a, b) and not described and lists():
         return "redirected_to_listing"
     return None
 
