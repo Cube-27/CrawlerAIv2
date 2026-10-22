@@ -43,6 +43,11 @@ same PR, tests for removed code deleted, green CI, bot threads resolved. Sizes: 
 | E2 | Final e2e (orchestrator) | | done: two engine regressions, fixed below |
 | E2-fix 1 | The selected variant's ids don't override the page's | #424 | merged |
 | E2-fix 2 | A platform image list holds only the shown variant's images | #426 | merged |
+| S3 | Fresh-batch e2e on a new 100-page set (orchestrator) | | done: fixes below |
+| s3a | One product in several structured-data blocks is one entity; offered-elsewhere variants kept; trailing commas | #430 | merged |
+| s3b | Listing cells: the shown title link, prices beside add-on options, every section; one HTML5 parse | #431 | merged |
+| s3c | A requested variant URL selects the shown variant; tied list images follow collector order | #432 | merged |
+| s3d | Labelled ids, condition phrases, untyped `offers` nodes are Offers | #433 | merged |
 
 ## Owner decisions for this plan (binding)
 

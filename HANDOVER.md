@@ -106,6 +106,24 @@ matches, so listing recall on such pages is read against the capture before it i
 Fixed after E2: #424, a variant's own ids no longer override the sku and GTIN the page states, and variant rows
 are restored. #426, a platform image list holds only the shown variant's images and those no variant features.
 
+### Fresh batch (S3), on main 0f66f497, before the S3 fixes
+
+A new 100-page set (55 sites, none shared with the earlier set but one job board), scored once: 100/100 pages, 0
+failed tasks, 3.7 minutes. 18 pages (16 sites) were bot-blocked or served a shell over HTTP and the browser.
+
+| Measure | Result |
+|---|---|
+| `commerce_detail` agree / disagree | 234 / 41 (135 of the 236 eval-only fields are on the 9 blocked pages) |
+| `job_detail` agree / disagree | 49 / 6 |
+| Listing recall, commerce / job | 49.5% / 64.8% (69.1% / 66.2% without bot-blocked pages) |
+
+Fixed after S3 (#430–#433), each replayed on every S3 capture of its schemas with every changed value checked: two
+JSON-LD blocks for one product no longer cancel each other; a ProductGroup keeps variants whose offers name their own
+URLs; JSON-LD with a trailing comma parses; listing titles come from the shown title link and every section is read
+(job-listing titles correct 416 → 575 of the replayed rows); a `?variant=` URL selects that variant; a labelled item
+number is no GTIN; "New" maps to `NewCondition`; untyped `offers` nodes are Offers. The S3 score above is the C1
+claim; these fixes are verified only on a later fresh batch.
+
 ## What is frozen
 
 - `backend/data/calibration.json`, `backend/data/source_precedence.yaml` and `backend/data/drift_margins.json`, as
@@ -126,6 +144,14 @@ Each is a working rule today; the owner may change it (`openspec/design/owner-de
 - **Inline-state rating and count.** Admitted only when another source agrees (the documented admission rule).
 - **Client-side review widgets.** Decided: they count as "render needed"; no engine change.
 - **Role S label language tags.** Would change the public labels API; deferred.
+- **Shopify vendor as brand.** The platform vendor outranks the JSON-LD `brand`; on one S3 page the vendor is a
+  season name ("Fall 2026"). The owner may rank it below the JSON-LD brand.
+- **The page itself as `apply_url`.** Where the application form is on the job page (and the Greenhouse API's
+  `absolute_url`, which is the job page), `apply_url` stays missing; the owner may make the page URL the value.
+- **PHP export on an HTML5 parse.** The engine parses once with the HTML Standard parser (#431); the PHP export still
+  runs XPaths on libxml2's parse, so the few fields whose paths differ export as `manual`. PHP 8.4's
+  `Dom\HTMLDocument` would close the gap.
+- **og:title as a job title.** Not mapped: on S3 it gave 3 right and 3 wrong titles (site wording, generic titles).
 
 ## Open items (known, not fixed)
 
@@ -135,6 +161,13 @@ Each is a working rule today; the owner may change it (`openspec/design/owner-de
 - On some pages the main image is a smaller rendition of the same file (the https-first rendition choice is kept).
 - Availability is a conflict (unpublished) on pages where offers split after #421.
 - A was-price struck only by an external stylesheet is not seen over HTTP (the HTML states no strike).
+- Listing main-group choice on category hubs whose products show only range prices: category tiles win (S3).
+- Client-rendered listings classed `partial`, so no browser is tried; rows inside collapsed accordions are dropped.
+- Listing locations come only from the LLM, whose block cap (200) leaves long boards' rows without one.
+- Compare-at prices stated only by a CSS class or by words stay abstained; JSON-LD `ItemList` rows don't bind to
+  collection-scoped card links.
+- Detail price can pick a financing threshold or promo amount from the page text ("0% APR on orders $50+").
+- A selected colour shown only by a checked swatch is not read; a recommendation tile's colour can win.
 
 ## Not done, and why
 
