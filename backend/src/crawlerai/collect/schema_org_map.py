@@ -11,6 +11,7 @@ read as fields of their own, named `<field>.<sub-field>` (variants spec).
 import html
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Protocol
 from urllib.parse import urlsplit
 
@@ -39,6 +40,10 @@ _VARIANT_OF = "isVariantOf"
 # listing's row fields read them (`resolve.listing`).
 ENTRY = "ListItem"
 _ITEM = "item"
+# schema.org AggregateOffer: `lowPrice` "the lowest price of all offers available", `highPrice` the highest, each a
+# Number (or Text) written with a `.` decimal point, in `priceCurrency`.
+_AGGREGATE_OFFER = "AggregateOffer"
+_LOW_PRICE, _HIGH_PRICE, _CURRENCY = "lowPrice", "highPrice", "priceCurrency"
 # JSON-LD 1.1 §4.5.1: a blank node identifier is scoped to its document, so it identifies nothing across blocks.
 _BLANK = "_:"
 
@@ -508,8 +513,8 @@ def _page_names(node: Node) -> list[JsonValue]:
 
 
 def entity(typed: Typed, ctx: Context, vocabulary: Vocabulary, *, parent: str | None, via: str | None) -> Entity:
-    """The entity of a node: its URLs (`entity_urls`), its own URLs (`item_urls`), what identifies it (`identity`) and
-    the product groups it names (`group_ids`, `variant_of`)."""
+    """The entity of a node: its URLs (`entity_urls`), its own URLs (`item_urls`), what identifies it (`identity`), the
+    product groups it names (`group_ids`, `variant_of`) and an AggregateOffer's price range (`price_range`)."""
     return Entity(
         id=typed.id,
         types=typed.types,
@@ -520,7 +525,32 @@ def entity(typed: Typed, ctx: Context, vocabulary: Vocabulary, *, parent: str | 
         item_urls=item_urls(typed.node, ctx),
         group_ids=tuple(dict.fromkeys(_scalar_texts(typed.node, _IN_GROUP))),
         variant_of=tuple(dict.fromkeys(_node_iris(typed.node, _VARIANT_OF))),
+        price_range=price_range(typed, vocabulary),
     )
+
+
+def price_range(typed: Typed, vocabulary: Vocabulary) -> tuple[Decimal, Decimal, str | None] | None:
+    """An AggregateOffer's `lowPrice` and `highPrice`, each its one number, when they differ, with its one
+    `priceCurrency` (None when it states none or several); None for another node, or one stating no such range."""
+    if not any(vocabulary.is_a(t, _AGGREGATE_OFFER) for t in typed.types):
+        return None
+    low, high = _number(typed.node, _LOW_PRICE), _number(typed.node, _HIGH_PRICE)
+    if low is None or high is None or low == high:
+        return None
+    currencies = list(dict.fromkeys(_scalar_texts(typed.node, _CURRENCY)))
+    return low, high, currencies[0] if len(currencies) == 1 else None
+
+
+def _number(node: Node, prop: str) -> Decimal | None:
+    """The one finite number `prop` states on the node (a JSON number, or text of one with a `.` decimal point)."""
+    texts = list(dict.fromkeys(_scalar_texts(node, prop)))
+    if len(texts) != 1:
+        return None
+    try:
+        number = Decimal(texts[0])
+    except InvalidOperation:
+        return None
+    return number if number.is_finite() else None
 
 
 def identity(node: Node, vocabulary: Vocabulary) -> tuple[tuple[str, str], ...]:

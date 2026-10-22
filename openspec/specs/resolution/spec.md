@@ -63,18 +63,28 @@ variants and sellers (INV-38); a price a single Offer states that is not the anc
 member and unit prices are not rivals: a money field's path predicates give it its price role (schemas spec,
 "Presets"), so the active price reads an Offer's `price` and its `priceSpecification` without a `priceType`,
 `validForMemberTier` or `referenceQuantity`, and collectors read struck, per-unit and per-period text only for the
-fields of those roles (extraction spec, "Structural DOM values"). A `dom` amount of an active-price field equal to a
-bound of a stated price range (an AggregateOffer's `lowPrice` or `highPrice`, the two bounds differing; in the range's
-currency, or either currency unknown) is that range's bound, rejected `range_bound`; a user-added `price_range` publishes the range. An amount of the same role for the same variant that nothing explains leaves the field a
+fields of those roles (extraction spec, "Structural DOM values"). An amount of an active-price field equal to a
+bound of a price range the target's data states (an AggregateOffer's `lowPrice` or `highPrice`, a platform answer's
+lowest and highest variant price mapped to them, or a user-added `price_range`'s; the two bounds differing; in the
+range's currency, or either currency unknown) is that range's bound, rejected `range_bound`: a `dom` amount always, a
+structured, meta or data-call amount while another amount stands for the shown variant (any of a variant row's; on a
+detail page whose shown variant is known, one no Offer outside its Offers states), so that a shown variant that is the
+cheapest keeps its price; the anchor Offer is then the one holding the most of what is left. A user-added `price_range`
+publishes the range. An amount of the same role for the same variant that nothing explains leaves the field a
 `conflict` (`disagree`, `offers_disagree` or `offer_split`): accuracy before coverage, and a price range is no price
 unless the page states one amount for the product (a low bound is never derived from disagreeing Offers). Refs: §10,
 owner #68,
 owner 2026-10-19, architecture-v3 d.2. Enforced by: `tests/property/test_preference.py`,
+`tests/replay/test_replay_resolution_classes.py`, `tests/replay/test_replay_shopify.py`,
 `tests/unit/test_preference.py`; active.
 #### Scenario: A visible range bound
 - **WHEN** JSON-LD states an AggregateOffer from 80 to 120 EUR and no Offer price, and the page shows `€80`
 - **THEN** `price` is `missing`, the `dom` candidate rejected `range_bound`, and a user-added `price_range` publishes
   80–120 EUR
+#### Scenario: The product's lowest price beside the shown variant's
+- **WHEN** JSON-LD states an AggregateOffer from 10 to 30 EUR, an Offer of 10 EUR (variant W-1) and one of 20 EUR
+  (W-2), `og:price:amount` is 10.00 EUR, and the page shows W-2
+- **THEN** `price` publishes 20 EUR, the 10 EUR candidates rejected `range_bound`; on W-1's page it publishes 10 EUR
 #### Scenario: Places from structured data and the page
 - **WHEN** JSON-LD states a job's place `Brooklyn, New York, USA` (locality Brooklyn) and the page shows `New York City`
 - **THEN** `locations` publishes both, `Brooklyn, New York, USA` then `New York City`

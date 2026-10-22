@@ -140,3 +140,21 @@ def test_a_visible_bound_of_a_stated_price_range_is_no_price() -> None:
             {"min": "80", "max": "120", "currency": "EUR", "unit": None, "period": None},
         ),
     }
+
+
+def test_an_amount_equal_to_a_bound_of_the_items_price_range_yields_to_the_shown_variants_own() -> None:
+    # Resolution spec, "Candidate score": `og:price:amount` 10 is the low bound of the AggregateOffer's 10-30, not the
+    # shown variant W-2's 20; the bound stands where the shown variant is the cheapest (W-1).
+    def price(shown: str) -> tuple[str, str | None, JsonValue]:
+        offers = [
+            {"@type": "AggregateOffer", "lowPrice": 10, "highPrice": 30, "priceCurrency": "EUR"},
+            _offer("10.00", "https://schema.org/InStock", sku="W-1"),
+            _offer("20.00", "https://schema.org/InStock", sku="W-2"),
+        ]
+        head = _jsonld(_product(name="Widget", sku=shown, offers=offers)) + _og(
+            ("og:price:amount", "10.00"), ("og:price:currency", "EUR")
+        )
+        return _outcomes(_extract(head), "price")["price"]
+
+    assert price("W-2") == ("published", None, {"amount": "20.00", "currency": "EUR"})
+    assert price("W-1") == ("published", "offers_disagree", {"amount": "10.00", "currency": "EUR"})

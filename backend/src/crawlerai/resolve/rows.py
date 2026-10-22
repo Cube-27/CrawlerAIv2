@@ -420,7 +420,12 @@ def _resolve_variant(row_field: RowField, candidates: Sequence[Candidate], ids: 
     """§4.5: the variant's sub-fields, chosen by the resolver with the variant's scope as owner (atomic offers per row,
     INV-35) and assessed in the `list.<type>` buckets."""
     resolver = Resolver(
-        row_field.graph, row_field.target, row_field.page, row_field.orders, owns=lambda c: row_of(c) in ids
+        row_field.graph,
+        row_field.target,
+        row_field.page,
+        row_field.orders,
+        owns=lambda c: row_of(c) in ids,
+        variant=True,
     )
     preferences = resolver.prefer_fields(row_field.sub_fields, candidates, prefix=f"{row_field.name}.")
     outcomes: dict[str, FieldOutcome] = {}

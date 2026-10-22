@@ -27,9 +27,12 @@ rows when the page states none (variants spec). Of them, the page shows one vari
 reads its Offer as the variant the page shows (variants spec); held from the variant's node, they stay that variant's,
 and publish for the product only where the page states none of its own (variants spec, Variant fill). An image a variant
 features (its `featured_image`) is that variant's, so the page's images are the shown variant's, first, and those no
-variant features. WooCommerce's answer states one price for the product: a product whose variations are priced
-differently has none for the page, which shows the selected variation's, so its answer is read without its Offer and
-never stands against the price the page shows (INV-14; adapters spec "merge, don't override").
+variant features. Its `price_min` and `price_max` are the range its variants' prices span (an AggregateOffer's
+`lowPrice` and `highPrice`): a page amount equal to one of them is that bound, not the shown variant's price, where the
+page states another for it (resolution spec, price). WooCommerce's answer states one price for the product: a product
+whose variations are priced differently has none for the page, which shows the selected variation's, so its answer is
+read without its Offer and never stands against the price the page shows (INV-14; adapters spec "merge, don't
+override").
 """
 
 import re
@@ -217,6 +220,15 @@ _SHOPIFY_VARIANT: Final = Shape(
     minor_units={"price": 2},
     booleans={"availability": (None, "https://schema.org/OutOfStock")},
 )
+# The product's `price_min` and `price_max`, in cents, the lowest and highest of its variants' prices (`price_varies`
+# when they differ): an AggregateOffer's `lowPrice` and `highPrice` (schema.org: "the lowest price of all offers
+# available"), the range the variants' prices span. Its `price` is `price_min`, no variant's own: it is not read.
+_SHOPIFY_RANGE: Final = Shape(
+    type="AggregateOffer",
+    anchor=("price_min",),
+    properties={"lowPrice": ("price_min",), "highPrice": ("price_max",)},
+    minor_units={"lowPrice": 2, "highPrice": 2},
+)
 _SHOPIFY_PRODUCT_MEMBERS: Final[dict[str, Members]] = {
     "name": ("title",),
     "url": ("url",),
@@ -235,7 +247,10 @@ def _shopify_product(own: dict[str, Members], images: tuple[Members, ...] = (_SH
     if images:
         properties["image"] = images[0]
     return Shape(
-        type="Product", properties=properties, also={"image": images[1:]}, nodes={"offers": (_SHOPIFY_VARIANT,)}
+        type="Product",
+        properties=properties,
+        also={"image": images[1:]},
+        nodes={"offers": (_SHOPIFY_VARIANT, _SHOPIFY_RANGE)},
     )
 
 
