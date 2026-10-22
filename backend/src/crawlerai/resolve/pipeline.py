@@ -47,7 +47,7 @@ from crawlerai.db.models import ExtractionMode, SourceKind
 from crawlerai.normalize.base import Context
 from crawlerai.resolve.derive import Derived, fill, is_application_field, is_page_url_field
 from crawlerai.resolve.evidence import Calibration, assess, assess_fields, load_calibration
-from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target
+from crawlerai.resolve.intent import AmbiguousTarget, primary_types, select_target, sole_primary
 from crawlerai.resolve.listing import listing_rows, row_lists
 from crawlerai.resolve.ownership import EntityGraph
 from crawlerai.resolve.page_state import out_of_stock, render_bound, was_rendered
@@ -346,6 +346,8 @@ class _Page:
         )
         primary = primary_types(schema, data.vocabulary)
         target = select_target(manifest.url, manifest.final_url, canonical, graph, primary)
+        if schema.page_kind == "detail" and (sole := sole_primary(graph, target, primary)) is not None:
+            collected = replace(collected, candidates=graph.ratings_apart(sole, collected.candidates))
         facts = PageFacts.of(manifest.url, page.visible_values.visible)
         href = canonical_href(page, manifest.final_url)
         applies = any(is_application_field(schema, spec) for spec in schema.fields.values())

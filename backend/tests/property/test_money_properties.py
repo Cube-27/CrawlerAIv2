@@ -107,11 +107,15 @@ def _tender(territory: str) -> str | None:
 
 @st.composite
 def _evidence(draw: st.DrawFn) -> Context:
-    """A page's currency evidence, any of it: structured and declared currencies, and a URL naming a territory."""
+    """A page's currency evidence, any of it: structured, declared and state currencies, and a URL naming a
+    territory."""
     page = tuple(draw(st.lists(_codes, max_size=2)))
     declared = tuple(draw(st.lists(_codes, max_size=2)))
+    state = tuple(draw(st.lists(_codes, max_size=2)))
     url = draw(st.one_of(st.none(), _urls().map(lambda u: u[0])))
-    return _ctx(html_lang=draw(_tags), page_currencies=page, declared_currencies=declared, page_url=url)
+    return _ctx(
+        html_lang=draw(_tags), page_currencies=page, declared_currencies=declared, state_currencies=state, page_url=url
+    )
 
 
 @given(_amounts, _evidence(), st.sampled_from(["", *_SIGNS]), st.sampled_from(_GAPS), st.booleans())
@@ -121,7 +125,8 @@ def test_a_grounded_amount_always_publishes_with_a_currency_from_evidence_or_non
     assert ctx.html_lang is not None
     written = _written(amount, ctx.html_lang)
     raw = (f"{sign}{gap}{written}" if before else f"{written}{gap}{sign}") if sign else written
-    named = {*ctx.page_currencies, *ctx.declared_currencies, money.url_currency(ctx), *money._currencies_for(sign)}
+    stated = {*ctx.page_currencies, *ctx.declared_currencies, *ctx.state_currencies}
+    named = {*stated, money.url_currency(ctx), *money._currencies_for(sign)}
 
     result = money.normalize(raw, MONEY, ctx)
 
@@ -140,8 +145,7 @@ def test_a_grounded_amount_always_publishes_with_a_currency_from_evidence_or_non
     if money.is_currency_code(sign):
         assert currency == sign
     elif currency is not None:
-        named = {*ctx.page_currencies, *ctx.declared_currencies, money.url_currency(ctx)}
-        assert currency in named | money._currencies_for(sign)
+        assert currency in {*stated, money.url_currency(ctx)} | money._currencies_for(sign)
     # The structured form publishes too, a `priceCurrency` ISO 4217 does not list stating none.
     code = sign if money.is_currency_code(sign) else sign.lower() or None
     for price in (format(amount, "f"), float(amount)):
@@ -289,7 +293,7 @@ def test_an_explicit_currency_beats_the_url_one_and_currency_fill_never_changes_
     # An offer's own currency, or one the page states page-wide, always wins.
     offer = money.normalize({"price": price, "priceCurrency": code}, MONEY, _ctx(**where))
     assert (_currency(offer), _amount(offer)) == (code, amount)
-    for stated in ({"page_currencies": (code,)}, {"declared_currencies": (code,)}):
+    for stated in ({"page_currencies": (code,)}, {"declared_currencies": (code,)}, {"state_currencies": (code,)}):
         page = money.normalize(price, MONEY, _ctx(**where, **stated))
         assert (_currency(page), _amount(page)) == (code, amount)
     # A sign naming one currency is explicit too, unless the code is also a unit word (`CUP`) the page names no

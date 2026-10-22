@@ -65,7 +65,7 @@ def _page(*nodes: dict[str, Any], state: JsonValue = None, body: str = "", micro
     )
 
 
-def _extract(html: str) -> ExtractionResult:
+def _extract(html: str, schema: SchemaDef = SCHEMA) -> ExtractionResult:
     raw = html.encode()
     manifest = CaptureManifest(
         capture_id=uuid7(),
@@ -83,7 +83,7 @@ def _extract(html: str) -> ExtractionResult:
         engine_version="0+cal.0",
     )
     return asyncio.run(
-        extract_page(CaptureBundle(manifest=manifest, body=raw, network=()), SCHEMA, None, None, data=DATA)
+        extract_page(CaptureBundle(manifest=manifest, body=raw, network=()), schema, None, None, data=DATA)
     )
 
 
@@ -139,3 +139,39 @@ def test_related_products_offers_in_json_ld_are_not_the_targets() -> None:
     result = _extract(_page(target, body="€5.00 €7.00 €9.00"))
 
     assert _price(result) == ("missing", "not_owned", None)
+
+
+# --- a rating stated apart (OD-4) ---
+
+RATED = SCHEMA.model_copy(
+    update={
+        "fields": {
+            **SCHEMA.fields,
+            "rating": FieldSpec(
+                type=FieldType.NUMBER, description="d", schema_org="Product.aggregateRating.ratingValue"
+            ),
+        }
+    }
+)
+WIDGET = (
+    '<div itemscope itemtype="https://schema.org/AggregateRating">'
+    '<meta itemprop="ratingValue" content="4.5"><meta itemprop="reviewCount" content="8"></div>'
+)
+
+
+def _rating(html: str) -> tuple[str, str | None, JsonValue]:
+    result = _extract(html, RATED)
+    assert result.entity is not None
+    outcome = result.entity["rating"]
+    return outcome.status, outcome.reason, outcome.value
+
+
+def test_a_lone_rating_stated_apart_is_the_one_products_and_no_one_elses() -> None:
+    assert _rating(_page(TARGET, microdata=WIDGET))[::2] == ("published", "4.5")
+    # A rating in another entity rates that entity; with two products, or two ratings stating other values, the page
+    # does not say which item a rating apart is of.
+    store = {"@type": "Organization", "name": "Shop", "aggregateRating": {"@type": "AggregateRating", "ratingValue": 4}}
+    assert _rating(_page(TARGET, store))[:2] == ("missing", "not_owned")
+    assert _rating(_page(TARGET, _related(2, "5.00"), microdata=WIDGET))[0] != "published"
+    other = WIDGET.replace("4.5", "3.9")
+    assert _rating(_page(TARGET, microdata=WIDGET + other))[:2] == ("missing", "not_owned")

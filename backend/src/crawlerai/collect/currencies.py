@@ -3,12 +3,14 @@ as evidence the normalizers weigh.
 
 - Stated in structured data: the ISO 4217 codes written as schema.org `priceCurrency` (on an Offer, AggregateOffer,
   PriceSpecification or any other node, in JSON-LD, microdata or RDFa Lite).
-- Declared page-wide: the OGP `product:price:currency` and `og:price:currency`, and a currency in the page's decoded
-  state documents (`collect.js_state`, analytics call arguments included), a member named `currency`, `currencyCode`
-  or `activeCurrency` (letter case and `_` aside) holding an ISO 4217 code (owner decision of 2026-10-18: generic
-  member names only); on a page showing a platform's signal, the script global its documentation names for the shop's
-  currency (`adapters.platforms.CurrencyMember`: Shopify's `Shopify.currency.active`, Shopware's
+- Declared page-wide in the page's own name: the OGP `product:price:currency` and `og:price:currency` (a page-level
+  statement by the OGP spec) and, on a page showing a platform's signal, the script global its documentation names for
+  the shop's currency (`adapters.platforms.CurrencyMember`: Shopify's `Shopify.currency.active`, Shopware's
   `window.currencyIsoCode`), its value read by the JS literal reader (`content.js_literal`).
+- Held in the page's decoded state documents (`collect.js_state`, analytics call arguments included): a member named
+  `currency`, `currencyCode` or `activeCurrency` (letter case and `_` aside) holding an ISO 4217 code (owner decision
+  of 2026-10-18: generic member names only). Such a member is anonymous: a third party's script config (a tag
+  manager's account currency) writes it as readily as the page, so it weighs below the page's own declarations.
 - The page's number convention: the CLDR decimal symbol every structured `price` the page writes with a fraction uses
   when only one CLDR convention reads it (`12.50`, `1.234,56`), which settles amounts the conventions read differently
   (`numbers.readings`).
@@ -51,9 +53,13 @@ def stated_currencies(page: ParsedPage) -> tuple[str, ...]:
 
 
 def declared_currencies(page: ParsedPage) -> tuple[str, ...]:
-    """The ISO 4217 codes the page declares page-wide, each once: OGP's, then its state JSON's."""
-    state = [value for document in state_documents(page, []) for value in _state_currencies(document.data)]
-    return _codes([*og.price_currencies(page), *state, *_platform_currencies(page)])
+    """The ISO 4217 codes the page declares page-wide in its own name, each once: OGP's, then its platform's global."""
+    return _codes([*og.price_currencies(page), *_platform_currencies(page)])
+
+
+def state_currencies(page: ParsedPage) -> tuple[str, ...]:
+    """The ISO 4217 codes the currency members of the page's state documents hold, each once."""
+    return _codes([value for document in state_documents(page, []) for value in _state_currencies(document.data)])
 
 
 def page_convention(page: ParsedPage) -> str | None:
@@ -112,12 +118,14 @@ def stated_languages(page: ParsedPage) -> tuple[str, ...]:
 
 
 def with_page_declarations(ctx: Context, page: ParsedPage) -> Context:
-    """`ctx` with what `page` states about money and language: the currencies it states (`page_currencies`) and
-    declares (`declared_currencies`), its `inLanguage` (`in_language`) and its decimal symbol (`page_convention`)."""
+    """`ctx` with what `page` states about money and language: the currencies it states (`page_currencies`), declares
+    (`declared_currencies`) and holds in state members (`state_currencies`), its `inLanguage` (`in_language`) and its
+    decimal symbol (`page_convention`)."""
     return ctx.model_copy(
         update={
             "page_currencies": stated_currencies(page),
             "declared_currencies": declared_currencies(page),
+            "state_currencies": state_currencies(page),
             "in_language": stated_languages(page),
             "page_convention": page_convention(page),
         }

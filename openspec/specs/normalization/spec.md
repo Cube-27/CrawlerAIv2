@@ -67,11 +67,13 @@ justification ([resolution](../resolution/spec.md)). Refs: Appendix A #40, D-035
 `normalize/money.py` SHALL return `{amount, currency}` for every grounded positive amount (owner #68: a price is never
 skipped for its currency), the currency from the best evidence, in order: (1) an ISO 4217 code or a sign written with
 the amount that denotes one currency (CLDR symbols), or the value's own structured `priceCurrency`/`currency`;
-(2) the page's structured data (schema.org `priceCurrency`, `page_currencies`); (3) a page-level declaration
-(`declared_currencies`: OGP `og:price:currency` and `product:price:currency`, and a state JSON member named
-`currency`, `currencyCode` or `activeCurrency` holding an ISO 4217 code, and, on a page showing its platform's
-signal, the platform's documented currency global: Shopify `Shopify.currency.active`, Shopware
-`window.currencyIsoCode` (`adapters/platforms.py` `currency_members`); `collect/currencies.py`); (4) the CLDR
+(2) the page's structured data (schema.org `priceCurrency`, `page_currencies`); (3) a page-level declaration, the
+page's own before its state members: (3a) `declared_currencies`, OGP `og:price:currency` and `product:price:currency`
+and, on a page showing its platform's signal, the platform's documented currency global (Shopify
+`Shopify.currency.active`, Shopware `window.currencyIsoCode`, `adapters/platforms.py` `currency_members`); (3b)
+`state_currencies`, a state JSON member named `currency`, `currencyCode` or `activeCurrency` holding an ISO 4217
+code, analytics call arguments included, which a third party's script config writes as readily as the page
+(`collect/currencies.py`); (4) the CLDR
 currency symbols of the locales the page's language tags, Content-Language (RFC 9110 §8.5, its HTML pragma) and ccTLD
 (RFC 1591, a CLDR territory or its CLDR alias: `uk` is GB) name, when they narrow a shared sign to one currency; (5)
 the territory the URL names (owner 2026-10-19, `url_currency`): of the final URL, then the requested one, a locale
@@ -79,9 +81,9 @@ path segment (`/en-gb/`: language then region, the language used in the region p
 country subdomain (`in.`: a first label of two letters that is a CLDR territory, two more labels following), else the
 ccTLD (a CLDR alias counts in each: `uk` is GB); the first URL and step that names a territory decides, and it names a currency only when it names one territory,
 one of the page's stated languages (if any) is used there, and CLDR gives it one tender currency on the capture date;
-(6) else `null`. A shared sign is narrowed by (2), then (3), then (4), then (5), each step keeping what the last
-left; an amount written without any sign takes the page's currency when (2) and (3) together name exactly one, else
-the URL's (5), else `null`. A generic TLD, several locale segments, and a URL territory the page's language
+(6) else `null`. A shared sign is narrowed by (2), then (3a), then (3b), then (4), then (5), each step keeping what
+the last left; an amount written without any sign takes the page's currency when (2) and (3a) together name exactly
+one, or, when they name none, when (3b) names exactly one; else the URL's (5), else `null`. A generic TLD, several locale segments, and a URL territory the page's language
 contradicts name none. No host table. `Ok.basis` notes the evidence of a currency below (2): `page`, `locale`, `url`
 or `unknown`; `Ok.checked` is false for a text without a sign, which only a
 grounded source may publish (extraction spec). Two signs that share no currency, or a sign that cannot denote the
@@ -128,6 +130,9 @@ measure, not an amount: `Invalid("measure")` (`3.5 CUP FOOD CHOPPER`, `Kettle 1,
 - **WHEN** the text is `12` and the page declares only `og:price:currency` SEK
 - **THEN** the result is `Ok({amount: "12", currency: "SEK"})` with basis `page`, not `checked`; with a second
   currency stated elsewhere on the page the currency is `null`
+#### Scenario: The page's own declaration outranks a state member
+- **WHEN** the text is `$12` or `12`, the page declares `og:price:currency` NZD and a state JSON member `currency` USD
+- **THEN** the currency is NZD with basis `page`; with the state member alone, `$12` is USD with basis `page`
 #### Scenario: A currency from the URL
 - **WHEN** a structured value is `{price: "12"}` with no currency on the page, at `https://shop.example.com/en-gb/p`
   (or `gb.example.com`, or a `.uk` host)
