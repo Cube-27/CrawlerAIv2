@@ -73,13 +73,17 @@ another URL a sibling. A row whose only published sub-fields are URLs is dropped
 elsewhere), unless each names the page's resource with a query parameter by which the page's platform selects a
 variant (the platform's fingerprint states it, `adapters/platforms.py`: a variant addressed by its URL), and a row whose published URL names another resource than the page and the
 target (RFC 3986 authority and path, a trailing `/` aside; its query may select the variant) is dropped `other_page` (another product's
-page, such as a sibling colourway). Rows of one variant are already one by their shared key (INV-33). Refs: owner
+page, such as a sibling colourway); a URL a ProductGroup's `hasVariant` member states only on its Offer is where it is
+offered, not another item, so the member stays the group's variant whatever that URL names. Rows of one variant are already one by their shared key (INV-33). Refs: owner
 2026-10-18,
 owner 2026-10-19.
 #### Scenario: Sibling products listed as members
 - **WHEN** a ProductGroup's `hasVariant` lists two variants at the page's URL with a `size` query, Products stating only
   a URL of another product page, and a Product with a sku at another product's page
 - **THEN** `variants` holds the two variants only
+#### Scenario: Variants offered at their own URLs
+- **WHEN** a ProductGroup's `hasVariant` members state no `url` of their own and each Offer's `url` names another path
+- **THEN** `variants` holds every member
 
 ### Requirement: Row-mapped field outcome (INV-34)
 A row-mapped field SHALL publish when two or more rows publish, with `items` (a `FieldOutcome` per sub-field of each

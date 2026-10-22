@@ -51,7 +51,8 @@ Enforced by: unit tests on the pipeline entry; active.
 
 ### Requirement: Structured-data collectors
 The system SHALL read JSON-LD (RFC 8259, with the §9 extensions of raw control characters in strings and of a number
-written with leading zeros, read as the string of its digits; `@graph`/`@id` resolved, schema.org terms only under a schema.org context,
+written with leading zeros, read as the string of its digits, and of a trailing comma before a closing `]` or `}`, read as
+if absent; `@graph`/`@id` resolved, schema.org terms only under a schema.org context,
 `rdfs:subPropertyOf` for identifiers), microdata and RDFa Lite (HTML Standard item and value rules; a URL-attribute or
 RDFa IRI value is a URL, never text, D-1153) and Open Graph
 (one fixed table of OGP-defined properties: basic and optional metadata, `og:description` filling a long_text

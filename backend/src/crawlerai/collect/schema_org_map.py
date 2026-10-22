@@ -33,6 +33,7 @@ _URL = FieldSpec(type=FieldType.URL)
 # isVariantOf".
 _GROUP_ID = "productGroupID"
 _IN_GROUP = "inProductGroupWithID"
+_NAME = "name"  # schema.org `name`: "The name of the item."
 # schema.org `isVariantOf`: "Indicates the kind of product that this is a variant of", a ProductGroup or ProductModel.
 _VARIANT_OF = "isVariantOf"
 # schema.org ListItem: an item in a list; its `item` is "An entity represented by an entry in a list" (range Thing).
@@ -513,8 +514,9 @@ def _page_names(node: Node) -> list[JsonValue]:
 
 
 def entity(typed: Typed, ctx: Context, vocabulary: Vocabulary, *, parent: str | None, via: str | None) -> Entity:
-    """The entity of a node: its URLs (`entity_urls`), its own URLs (`item_urls`), what identifies it (`identity`), the
-    product groups it names (`group_ids`, `variant_of`) and an AggregateOffer's price range (`price_range`)."""
+    """The entity of a node: its URLs (`entity_urls`), its own URLs (`item_urls`), what identifies it (`identity`), its
+    names, the product groups it names (`group_ids`, `variant_of`) and an AggregateOffer's price range
+    (`price_range`)."""
     return Entity(
         id=typed.id,
         types=typed.types,
@@ -523,6 +525,7 @@ def entity(typed: Typed, ctx: Context, vocabulary: Vocabulary, *, parent: str | 
         via=via,
         identity=identity(typed.node, vocabulary),
         item_urls=item_urls(typed.node, ctx),
+        names=tuple(dict.fromkeys(_scalar_texts(typed.node, _NAME))),
         group_ids=tuple(dict.fromkeys(_scalar_texts(typed.node, _IN_GROUP))),
         variant_of=tuple(dict.fromkeys(_node_iris(typed.node, _VARIANT_OF))),
         price_range=price_range(typed, vocabulary),

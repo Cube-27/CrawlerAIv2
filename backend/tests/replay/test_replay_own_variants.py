@@ -43,16 +43,20 @@ def _entity(group: dict[str, Any], head: str = "") -> dict[str, JsonValue]:
 def test_only_members_that_state_more_than_a_url_of_this_page_are_variants() -> None:
     sibling = "https://shop.example.test/p/2"
     own = [_variant("W-1-S", "S", f"{PAGE_URL}?size=S"), _variant("W-1-M", "M", f"{PAGE_URL}?size=M")]
+    # A member that states no URL of its own is the group's variant, wherever its Offer is offered.
+    offered = {key: value for key, value in _variant("W-1-L", "L", "").items() if key != "url"}
+    offered["offers"] |= {"url": f"{PAGE_URL}-L"}
     links = [{"@type": "Product", "url": f"{sibling}?size={size}"} for size in ("S", "M")]
     other = _variant("W-2-S", "S", f"{sibling}?size=S")
 
-    entity = _entity({"url": PAGE_URL, "hasVariant": [*links, *own, other, *links]})
+    entity = _entity({"url": PAGE_URL, "hasVariant": [*links, *own, offered, other, *links]})
 
     variants = entity["variants"]
     assert isinstance(variants, list)
     assert [(v["sku"], v["url"]) for v in variants if isinstance(v, dict)] == [
         ("W-1-S", f"{PAGE_URL}?size=S"),
         ("W-1-M", f"{PAGE_URL}?size=M"),
+        ("W-1-L", f"{PAGE_URL}-L"),
     ]
 
 

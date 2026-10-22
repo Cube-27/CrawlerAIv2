@@ -21,6 +21,7 @@ from crawlerai.normalize.base import Ok
 from crawlerai.normalize.dispatch import equal, equality_key
 from crawlerai.normalize.url_key import DocumentKey, document_key
 from crawlerai.resolve.evidence import BELOW_MIN_CONFIDENCE, Calibration, assess
+from crawlerai.resolve.identity import VARIANT
 from crawlerai.resolve.offers import source_of
 from crawlerai.resolve.ownership import AGGREGATE_OFFER, EntityGraph
 from crawlerai.resolve.preference import Orders, PageFacts, Resolver
@@ -37,7 +38,9 @@ SINGLE_ROW: Final = "single_row"
 _NO_ROWS = ("no_rows", "no_row_key", "row_key_conflict", "key_unpublished", "url_only", "other_page")
 # variants spec, own variants: a row that states nothing of itself but a URL is a link (schema.org: a Product node with
 # only `url` names a thing described elsewhere), and a row whose URL names another resource than the page (RFC 3986
-# §3.2, §3.3: authority and path identify the resource; the query may select a variant of it) is another product.
+# §3.2, §3.3: authority and path identify the resource; the query may select a variant of it) is another product. A
+# `hasVariant` member's Offer URL is not such a URL: schema.org `hasVariant` makes the member the group's variant, and
+# an Offer's `url` names where it is offered, not the item.
 URL_ONLY: Final = "url_only"
 OTHER_PAGE: Final = "other_page"
 _URL = FieldSpec(type=FieldType.URL)
@@ -151,7 +154,7 @@ class _Resolved:
         outcome = _resolve_variant(row_field, own, ids, row_of)
         keys = [outcome.fields[sub].status for sub in row_field.key]
         # §4.5: a row publishes when at least one key sub-field publishes, and it is the target's own variant.
-        reason = _not_own(row_field, outcome) if "published" in keys else "key_unpublished"
+        reason = _not_own(row_field, outcome, variant.rows) if "published" in keys else "key_unpublished"
         if reason is None:
             self.published.append((variant.rows[0].id, outcome))
             return
@@ -161,17 +164,26 @@ class _Resolved:
         self.rejected.extend((c, reason) for c in own)
 
 
-def _not_own(row_field: RowField, outcome: RowOutcome) -> str | None:
+def _not_own(row_field: RowField, outcome: RowOutcome, rows: Sequence[Entity]) -> str | None:
     """Why a published variant is not one of the target's own (`URL_ONLY`, `OTHER_PAGE`), or None when it is. A row
     stating only URLs is the page's own variant when each names the page's resource with a query parameter by which
-    the page's platform selects a variant (`RowField.variant_params`): a variant addressed by its URL, not a link."""
+    the page's platform selects a variant (`RowField.variant_params`): a variant addressed by its URL, not a link. A
+    URL a `hasVariant` member states only on its Offers names no other product (`_offered_only`)."""
     published = {sub: o.value for sub, o in outcome.fields.items() if o.status == "published"}
     urls = {sub for sub in published if row_field.sub_fields[sub].type is FieldType.URL}
     pages = {_document(u) for u in (*row_field.page_urls, *row_field.target.urls)} - {None}
-    stated = {_document(published[sub]) for sub in urls} - {None}
+    offered = _offered_only(rows)
+    stated = {_document(published[sub]) for sub in urls if published[sub] not in offered} - {None}
     if not published.keys() - urls and not _variant_urls(row_field, [published[sub] for sub in urls], pages):
         return URL_ONLY
     return OTHER_PAGE if pages and stated - pages else None
+
+
+def _offered_only(rows: Sequence[Entity]) -> frozenset[str]:
+    """The URLs the rows' `hasVariant` members state on their Offers only, which no row of the variant states as its own
+    (`Entity.urls` holds both, `Entity.item_urls` the member's own)."""
+    own = {u for e in rows for u in e.item_urls}
+    return frozenset(u for e in rows if e.via == VARIANT for u in e.urls if u not in own)
 
 
 def _variant_urls(row_field: RowField, values: Sequence[JsonValue], pages: set[DocumentKey | None]) -> bool:

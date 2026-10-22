@@ -48,6 +48,8 @@ class Entity(_Model):
     identity: tuple[tuple[str, str], ...] = ()
     # The canonical URLs naming the item itself (`schema_org_map.item_urls`), not its offers'.
     item_urls: tuple[str, ...] = ()
+    # schema.org `name`: the item's names as stated, for identity (`resolve.identity`, root items naming the page).
+    names: tuple[str, ...] = ()
     # schema.org `inProductGroupWithID`: the `productGroupID` of the ProductGroup this product is a variant of.
     group_ids: tuple[str, ...] = ()
     # schema.org `isVariantOf`: the IRIs (`@id`, `itemid`) of the nodes this product names as what it is a variant of.
